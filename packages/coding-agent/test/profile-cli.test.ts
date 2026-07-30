@@ -203,13 +203,20 @@ describe("global --profile flag", () => {
 		expect(output).not.toContain(`${APP_NAME}/${VERSION}`);
 	});
 
-	it("rejects missing profile values without dispatching", async () => {
+	/**
+	 * A bootstrap flag with no value is a usage error, so it exits 2 like every
+	 * other bad command line. This asserted 1 while `--definitely-not-a-real-flag`
+	 * already exited 2, which is the collapse `cli/exit-codes.ts` exists to
+	 * prevent: a wrapper cannot tell "retry may help" from "the invocation is
+	 * wrong" if the same class returns two codes.
+	 */
+	it("rejects missing profile values without dispatching, as a usage error", async () => {
 		const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
 		await runCli(["--profile", "--version"]);
 
-		expect(process.exitCode).toBe(1);
+		expect(process.exitCode).toBe(2);
 		expect(errSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n")).toContain(
 			"--profile requires a profile name",
 		);

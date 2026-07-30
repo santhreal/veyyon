@@ -1,12 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import { parseArgs } from "../src/cli/args";
+import { CLI_THINKING_LEVELS } from "../src/thinking";
 import {
 	flagConsumesValue,
 	isUnknownLongValueCandidate,
+	MODE_VALUES,
 	OPTIONAL_VALUE_FLAGS,
 	STRING_VALUE_FLAGS,
 } from "../src/cli/flag-tables";
 import { CliUsageError } from "../src/cli/usage-error";
+import { APPROVAL_MODE_VALUES } from "../src/tools/approval-modes";
+import { BUILTIN_TOOL_NAMES } from "../src/tools/builtin-names";
 
 /**
  * Catches the set → args.ts direction of drift between
@@ -66,6 +70,62 @@ describe("--tools legacy aliases", () => {
 		const result = parseArgs(["--tools", "search,find,grep"]);
 
 		expect(result.tools).toEqual(["grep", "glob"]);
+	});
+});
+
+/**
+ * Every enum-valued flag rejects a bad value with a message that NAMES the
+ * accepted set. That message is only useful if the set it prints is the set the
+ * parser will actually take, so this walks each printed value back through the
+ * parser.
+ *
+ * `--thinking` is the reason this exists. Its rejection message lists
+ * `CLI_THINKING_LEVELS` (`[off, auto, ...THINKING_EFFORTS]`), while the value is
+ * validated by `parseCliThinkingLevel` against a separately maintained selector
+ * map. Add a level to `@veyyon/catalog/effort` and it appears in the MESSAGE
+ * without becoming parseable, so the error would confidently advertise a level
+ * the parser refuses. The other three read their list from the same table they
+ * validate against and are here to stay that way.
+ */
+describe("a rejection message only names values the parser accepts", () => {
+	const ACCEPTED_BY_FLAG: Record<string, readonly string[]> = {
+		"--mode": MODE_VALUES,
+		"--approval-mode": APPROVAL_MODE_VALUES,
+		"--thinking": CLI_THINKING_LEVELS,
+		"--tools": BUILTIN_TOOL_NAMES,
+	};
+
+	for (const [flag, accepted] of Object.entries(ACCEPTED_BY_FLAG)) {
+		it(`accepts every value ${flag} advertises`, () => {
+			expect(accepted.length).toBeGreaterThan(0);
+			for (const value of accepted) {
+				expect(() => parseArgs([flag, value])).not.toThrow();
+			}
+		});
+	}
+
+	it("names the accepted values, and the flag, when it refuses one", () => {
+		expect(() => parseArgs(["--mode", "banana"])).toThrow(CliUsageError);
+		expect(() => parseArgs(["--mode", "banana"])).toThrow(
+			'Invalid --mode value: "banana". Expected one of: text, json, rpc, acp, rpc-ui.',
+		);
+		expect(() => parseArgs(["--approval-mode", "nonsense"])).toThrow(
+			'Invalid --approval-mode value: "nonsense". Expected one of: plan, ask, auto-edit, yolo, always-ask, write.',
+		);
+		expect(() => parseArgs(["--thinking", "banana"])).toThrow(
+			'Invalid --thinking value: "banana". Expected one of: off, auto, minimal, low, medium, high, xhigh, max.',
+		);
+	});
+
+	/**
+	 * A single typo used to be dropped name-by-name, leaving `tools` EMPTY, so the
+	 * session started with no tools and only the model mentioned it mid-answer.
+	 * `--no-tools` is the way to ask for that.
+	 */
+	it("refuses an unknown --tools name instead of silently emptying the toolset", () => {
+		expect(() => parseArgs(["--tools", "raed"])).toThrow('Unknown tool passed to --tools: "raed"');
+		expect(() => parseArgs(["--tools", "read,raed"])).toThrow('Unknown tool passed to --tools: "raed"');
+		expect(parseArgs(["--tools", "read,bash"]).tools).toEqual(["read", "bash"]);
 	});
 });
 

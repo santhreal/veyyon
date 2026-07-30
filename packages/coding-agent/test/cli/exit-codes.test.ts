@@ -135,11 +135,74 @@ describe("a usage error exits 2, distinct from a runtime failure", () => {
 	 * A bad VALUE for a good flag is the same class as a bad flag. Both are
 	 * "the command line is wrong", and splitting them would give a caller two
 	 * codes to handle for one decision.
+	 *
+	 * The assertions name the exit code AND the accepted set, because a weaker
+	 * "non-zero" check passed here for the wrong reason: the setter used to drop
+	 * an unusable value and let the run continue, so what failed was the
+	 * credential lookup further downstream, not the invalid mode.
 	 */
-	it("exits non-zero for a flag value outside its declared set", async () => {
+	it("exits 2 for a flag value outside its declared set, listing the accepted values", async () => {
 		const result = await runCli(["--mode", "not-a-mode", "--print", "hi"]);
 
-		expect(result.code).not.toBe(EXIT_OK);
+		expect(result.code).toBe(EXIT_USAGE);
+		expect(result.stderr).toContain('Invalid --mode value: "not-a-mode".');
+		expect(result.stderr).toContain("Expected one of: text, json, rpc, acp, rpc-ui.");
+	}, 60_000);
+
+	/**
+	 * The same contract for the flag where silence is a SAFETY problem, not a
+	 * cosmetic one. A dropped `--approval-mode` value ran the session under
+	 * whatever the config said, so a typo quietly granted more autonomy than the
+	 * command line asked for while the run still looked successful.
+	 */
+	it("exits 2 for an unknown --approval-mode instead of falling back to the default", async () => {
+		const result = await runCli(["--approval-mode", "nonsense", "--print", "hi"]);
+
+		expect(result.code).toBe(EXIT_USAGE);
+		expect(result.stderr).toContain('Invalid --approval-mode value: "nonsense".');
+		expect(result.stderr).toContain("plan, ask, auto-edit, yolo");
+	}, 60_000);
+
+	/**
+	 * `--tools` dropped unknown names one by one, so a single typo left the list
+	 * EMPTY and the agent started with no tools at all — reported only by the
+	 * model saying mid-answer that it had none. Refusing is the only honest
+	 * outcome: an empty toolset is what `--no-tools` is for.
+	 */
+	it("exits 2 for an unknown --tools name rather than starting with no tools", async () => {
+		const result = await runCli(["--tools", "raed", "--print", "hi"]);
+
+		expect(result.code).toBe(EXIT_USAGE);
+		expect(result.stderr).toContain('Unknown tool passed to --tools: "raed".');
+		expect(result.stderr).toContain("read");
+	}, 60_000);
+
+	/**
+	 * An explicitly EMPTY prompt is still an incomplete command line. It used to
+	 * slip past the missing-prompt guard and spend a real provider round-trip,
+	 * which came back to the user as a raw upstream 400 payload and an internal
+	 * http-log path — a provider-shaped error for a plain input mistake.
+	 */
+	it("exits 2 for a blank -p prompt without contacting the provider", async () => {
+		const result = await runCli(["--print", "   "]);
+
+		expect(result.code).toBe(EXIT_USAGE);
+		expect(result.stderr).toContain("No prompt provided");
+		expect(result.stderr).not.toContain("at least one message is required");
+	}, 60_000);
+
+	/**
+	 * A mistyped SUBCOMMAND is the same decision for a wrapper as a mistyped
+	 * flag, so it must return the same code. This exited 1 while
+	 * `--definitely-not-a-real-flag` exited 2, which is exactly the collapse this
+	 * suite exists to prevent, one level up.
+	 */
+	it("exits 2 for a mistyped subcommand, agreeing with the unrecognized-flag case", async () => {
+		const result = await runCli(["confg"]);
+
+		expect(result.code).toBe(EXIT_USAGE);
+		expect(result.stderr).toContain("`veyyon confg` is not a command");
+		expect(result.stderr).toContain("`veyyon config`");
 	}, 60_000);
 });
 

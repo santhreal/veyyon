@@ -97,6 +97,25 @@
 
 ### Fixed
 
+- A value-taking flag with no value is refused instead of silently dropped. `--model`,
+  `--approval-mode`, `--thinking`, `--system-prompt` and every other string-valued flag fell through
+  the parse loop when they sat in the last argv position, so `veyyon -p "..." --approval-mode` exited
+  0, answered normally, and ran on the DEFAULT approval mode. Nothing was printed. There is no
+  misspelling to notice in that command, so the only evidence the operator had that a safety-relevant
+  flag took effect was that they had typed it, and the same hole could quietly run a session on the
+  wrong model. The refusal names the flag and both accepted spellings. The one case still skipped
+  rather than refused is the profile bootstrap's internal boundary marker, where refusing would
+  discard the message the user is waiting on to report a flag they did not really leave empty.
+- An unrecognized flag suggests the flag you meant. `veyyon --modle=x` answered "unknown flag:
+  --modle" and stopped there, leaving the reader to diff their typo against a list of fifty-seven
+  flags, while a misspelled SUBCOMMAND one keystroke away already answered "Did you mean `veyyon
+  config`?". Suggestions come from the parser's own flag tables, so a name it offers is always a name
+  it accepts; nothing close enough produces no guess rather than a wrong one.
+- An interactive launch with no terminal exits 2 rather than 1. `cli/exit-codes.ts` names this case
+  verbatim in its description of the usage code, so the documented contract and the code disagreed,
+  and the visible symptom was one mistake split down the middle: `veyyon confg` exited 2 while
+  `veyyon confg get foo` reached the no-TTY guard and exited 1. A wrapping script branching on the
+  code to decide whether retrying could help got opposite answers for the same typo.
 - A vault that cannot be read no longer stops a session from starting, which had made the command
   that repairs one unreachable on every surface except the full-screen interface. `/secret discard`
   moves a broken vault file aside, but the vault was read while the session was being assembled, so

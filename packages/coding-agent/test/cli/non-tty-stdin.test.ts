@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { EXIT_USAGE } from "@veyyon/coding-agent/cli/exit-codes";
 import { commands } from "@veyyon/coding-agent/cli-commands";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
@@ -62,6 +63,15 @@ const PROSE_POSITIONALS = ["rename", "everything"] as const;
 const registeredNames = (): string[] => commands.flatMap(c => [c.name, ...(c.aliases ?? [])]);
 
 describe("non-TTY stdin contract (e2e)", () => {
+	/**
+	 * These four assert EXIT_USAGE where they used to assert a bare `1`, and the change was the
+	 * code's, not the test's. `cli/exit-codes.ts` names this exact case in EXIT_USAGE's contract:
+	 * "an interactive launch with no terminal to be interactive in". The guard returned
+	 * EXIT_FAILURE, so the documented contract and the implementation disagreed, and the visible
+	 * symptom was one mistake split down the middle: `veyyon confg` exited 2 while `veyyon confg
+	 * get foo` reached this guard and exited 1. The named constant is used rather than the literal
+	 * so a future renumbering cannot leave these tests asserting a stale number.
+	 */
 	it("the prose positional this suite relies on is not a registered subcommand", () => {
 		// Guards the suite's own premise. Without this, a future `veyyon rename`
 		// would turn the test below into an assertion about that command's usage
@@ -74,7 +84,7 @@ describe("non-TTY stdin contract (e2e)", () => {
 		const { done } = spawnCli([], "ignore");
 		const { stderr, exitCode } = await done;
 
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(EXIT_USAGE);
 		expect(stderr).toContain("Interactive mode needs a terminal");
 		expect(stderr).toContain("-p");
 	}, 60_000);
@@ -83,7 +93,7 @@ describe("non-TTY stdin contract (e2e)", () => {
 		const { done } = spawnCli(["auth", "list"], "ignore");
 		const { stdout, stderr, exitCode } = await done;
 
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(EXIT_USAGE);
 		expect(stderr).toContain("Interactive mode needs a terminal");
 		// The old failure mode: zero bytes on both streams, process never exits.
 		expect(stdout + stderr).not.toBe("");
@@ -103,7 +113,7 @@ describe("non-TTY stdin contract (e2e)", () => {
 		const { done } = spawnCli([first, second], "ignore");
 		const { stderr, exitCode } = await done;
 
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(EXIT_USAGE);
 		expect(stderr).toContain("Interactive mode needs a terminal");
 		// The exact rerun command, with the positional prompt quoted into it.
 		expect(stderr).toContain(`veyyon -p "${first} ${second}"`);
@@ -120,7 +130,7 @@ describe("non-TTY stdin contract (e2e)", () => {
 		const { done } = spawnCli(["confg", "get", "foo"], "ignore");
 		const { stderr, exitCode } = await done;
 
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(EXIT_USAGE);
 		expect(stderr).toContain('veyyon -p "confg get foo"');
 		expect(stderr).toContain("Did you mean");
 		expect(stderr).toContain("`veyyon config`");
