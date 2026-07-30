@@ -438,13 +438,13 @@ export const APPEARANCE_SETTINGS = {
 	},
 	"tui.scrollIsolation": {
 		type: "boolean",
-		default: true,
+		default: false,
 		ui: {
 			tab: "appearance",
 			group: "Display",
 			label: "Scroll Isolation",
 			description:
-				"Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the position on the right edge. When off, the wheel drives the terminal's native scrollback and the whole window scrolls with it, prompt included. While on, the mouse is held once anything has scrolled off, so selecting with the mouse becomes shift+drag; veyyon says so the first time a drag comes back empty, and `/copy` picks text or code from the conversation without the mouse.",
+				"Read the mouse wheel so the transcript scrolls with the prompt pinned at the bottom, showing the position on the right edge. This costs you drag-select: while it is on, veyyon holds the mouse, so plain dragging selects nothing and you need shift+drag, or `/copy` to pick text and code out of the conversation without the mouse. When off (default), the terminal keeps the wheel and the mouse, so native scrollback, drag-select and copy all behave exactly as they do in any other program, and the prompt still sits at the bottom of the live view.",
 			advanced: true,
 			keywords: ["scroll", "wheel", "mouse", "copy", "paste", "select", "clipboard", "scrollback"],
 		},

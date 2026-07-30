@@ -6,12 +6,15 @@
  * gesture that no longer performs that action. The layout is also part of the
  * contract because chip widths are measured only after absent actions are removed.
  */
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { layoutShortcutRows, SELECT_LIST_SHORTCUTS } from "@veyyon/coding-agent/modes/components/modal-shell";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { getKeybindings, setKeybindings } from "@veyyon/tui";
 
 const originalKeybindings = getKeybindings();
+
+beforeAll(() => initTheme());
 
 afterEach(() => {
 	setKeybindings(originalKeybindings);

@@ -43,6 +43,8 @@ export interface SubagentAgentSettings {
 	model?: string;
 	/** Thinking level / effort for this agent; blank inherits the session's. */
 	thinkingLevel?: string;
+	/** Nested levels this agent may still spawn; blank inherits the blanket limit. */
+	maxNestedSpawnDepth?: number;
 }
 
 /**
@@ -55,6 +57,17 @@ export interface SubagentAgentSettings {
  * writing the file is the opt-in.
  */
 export const DEFAULT_ENABLED_BUNDLED_AGENT = "task";
+
+export const DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH = 0;
+
+/** Shared recursion choices for the blanket setting and each per-agent override. */
+export const SUBAGENT_RECURSION_DEPTH_OPTIONS = [
+	{ value: "-1", label: "Unlimited" },
+	{ value: "0", label: "Parent only", description: "Direct subagents cannot spawn" },
+	{ value: "1", label: "One nested level" },
+	{ value: "2", label: "Two nested levels" },
+	{ value: "3", label: "Three nested levels" },
+] as const;
 
 export const SUBAGENTS_SETTINGS = {
 	// ────────────────────────────────────────────────────────────────────────
@@ -134,7 +147,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Agents",
 			description:
-				"Which agent types the model may choose, and the model and effort each one runs. Enabled means the model can pick that agent on its own; disabled means it cannot, and nothing runs behind your back. Every row is optional: with no row, the general worker and any agent you wrote are enabled, and the bundled specialists are disabled. Turning an agent off does not disable the `/` commands that name it — `/review` is you asking for a review, so it still spawns its reviewer. A per-agent model wins over the blanket Subagent Model; blank inherits.",
+				"Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general worker and agents you wrote are enabled. Bundled specialists are disabled. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits.",
 			keywords: ["agents", "scout", "reviewer", "librarian", "designer", "sonic", "enable", "disable", "per-agent"],
 		},
 	},
@@ -210,21 +223,16 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
-	"subagent.maxRecursionDepth": {
+	"subagent.maxNestedSpawnDepth": {
 		type: "number",
-		default: 2,
+		default: DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH,
 		ui: {
 			tab: "subagents",
 			group: "Limits",
-			label: "Max Spawn Depth",
-			description: "How many levels deep subagents can spawn their own subagents",
-			options: [
-				{ value: "-1", label: "Unlimited" },
-				{ value: "0", label: "None" },
-				{ value: "1", label: "Single" },
-				{ value: "2", label: "Double" },
-				{ value: "3", label: "Triple" },
-			],
+			label: "Max Nested Spawn Depth",
+			description:
+				"How many nested levels subagents may spawn. 0 still lets the parent session spawn direct subagents, but those children do not receive the task tool. Each agent can override this in the Agents editor.",
+			options: SUBAGENT_RECURSION_DEPTH_OPTIONS,
 		},
 	},
 

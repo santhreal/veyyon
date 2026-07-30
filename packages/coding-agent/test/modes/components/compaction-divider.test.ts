@@ -6,14 +6,27 @@
  * components return the identical array so containers can memoize.
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { createCompactionSummaryMessage } from "@veyyon/agent-core/compaction";
 import type { ImageContent } from "@veyyon/ai";
+import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
 import { CompactionSummaryMessageComponent } from "@veyyon/coding-agent/modes/components/compaction-summary-message";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getKeybindings, KeybindingsManager, setKeybindings } from "@veyyon/tui/keybindings";
 
 beforeAll(() => {
 	initTheme();
+});
+
+let priorKeybindings: KeybindingsManager;
+
+beforeEach(() => {
+	priorKeybindings = getKeybindings();
+	setKeybindings(new KeybindingsManager(KEYBINDINGS));
+});
+
+afterEach(() => {
+	setKeybindings(priorKeybindings);
 });
 
 const SUMMARY = "Earlier the user fixed the login TTL bug.";

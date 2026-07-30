@@ -23,4 +23,4 @@ Hit a Codex rate limit? `/usage reset` spends a saved reset credit to immediatel
 No native tool_calling? Inference provider botches parsing them? `VEYYON_DIALECT=glm|kimi|anthropic…` rolls it locally for them!
 Turn on `/advisor` to attach a second model that reviews every turn and quietly injects advice
 Try starting your prompt with a ->, and writing a list (1. Do X, 2. Do Y)
-[gate:tui.scrollIsolation]The wheel scrolls the transcript while the prompt stays put, so selecting text with the mouse is shift+drag. `/copy` picks text and code straight from the conversation.
+[gate:tui.scrollIsolation]The wheel scrolls the transcript while the prompt stays put, and veyyon holds the mouse to do it. Shift+drag to select, `/copy` to pick text and code straight from the conversation, or `tui.scrollIsolation=false` to give the mouse back to your terminal.

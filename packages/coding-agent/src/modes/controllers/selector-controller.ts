@@ -1,4 +1,5 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
+import type { InstrumentationLevel } from "@veyyon/ai/instrumentation";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // The derived provider set from the registry that derives it (164 modules) rather than the
@@ -538,8 +539,8 @@ export class SelectorController {
 		// Any setting the prompt gates on rebuilds the prompt, read off the ONE registry that
 		// records which those are (`system-prompt-builder/gate-registry.ts`). This used to be a
 		// `case` per setting and carried two of the nine: flipping `subagent.batch`,
-		// `subagent.delegation`, `subagent.maxConcurrency`, `subagent.maxRecursionDepth`,
-		// `subagent.agents`, `includeModelInPrompt` or `tools.format` changed the setting and
+		// `subagent.delegation`, `subagent.maxConcurrency`, `subagent.agents`,
+		// `includeModelInPrompt` or `tools.format` changed the setting and
 		// left the prompt describing the previous configuration, with nothing logged. The
 		// switch below still runs, for the UI side effects a flip also needs.
 		if (isLivePromptGate(id)) {
@@ -578,6 +579,9 @@ export class SelectorController {
 				break;
 			case "interruptMode":
 				this.ctx.session.setInterruptMode(value as "immediate" | "wait");
+				break;
+			case "session.instrumentation":
+				this.ctx.session.setInstrumentationLevel(value as InstrumentationLevel);
 				break;
 			case "thinkingLevel":
 			case "defaultThinkingLevel":

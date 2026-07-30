@@ -366,14 +366,32 @@ export function formatApprovalPrompt(tool: ApprovalSubject, args: unknown, reaso
 		lines.push(`Reason: ${reason}`);
 	}
 
-	const details = tool.formatApprovalDetails?.(args);
-	if (typeof details === "string") {
-		if (details.length > 0) lines.push(details);
-	} else if (Array.isArray(details)) {
-		for (const detail of details) {
-			if (detail.length > 0) lines.push(detail);
-		}
+	lines.push(...approvalDetailLines(tool, args));
+	return lines.join("\n");
+}
+
+/** Format the richer interactive card without breaking prompt-text consumers. */
+export function formatApprovalCard(tool: ApprovalSubject, args: unknown, reason?: string): string {
+	const lines = ["## Permission required", `**Tool:** \`${tool.name}\``, "**Scope:** This call only"];
+
+	if (tool.name.startsWith("mcp__") && tool.approval === undefined) {
+		lines.push("**Origin:** MCP server tool");
 	}
 
+	if (reason) {
+		lines.push(`**Reason:** ${reason}`);
+	}
+
+	const details = approvalDetailLines(tool, args);
+	if (details.length > 0) {
+		lines.push("", "**Requested action**", ...details);
+	}
 	return lines.join("\n");
+}
+
+function approvalDetailLines(tool: ApprovalSubject, args: unknown): string[] {
+	const details = tool.formatApprovalDetails?.(args);
+	if (typeof details === "string") return details.length > 0 ? [details] : [];
+	if (Array.isArray(details)) return details.filter(detail => detail.length > 0);
+	return [];
 }

@@ -9,15 +9,27 @@
  * table has a single home and cannot drift from itself.
  */
 
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { settings } from "@veyyon/coding-agent/config/settings";
 import { SETTING_TABS, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-schema";
 import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	nextSubagentEnableValue,
 	SUBAGENT_ENABLE_STATE_LABEL,
 	type SubagentEnableState,
 } from "@veyyon/coding-agent/task/subagent-settings";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { useIsolatedAgentDir } from "../../helpers/isolated-agent-dir";
+
+useIsolatedAgentDir({ globalSettings: true });
+
+beforeAll(async () => {
+	await initTheme();
+});
 
 describe("subagent.agents settings surface", () => {
 	/**
@@ -64,6 +76,51 @@ describe("subagent.agents settings surface", () => {
 		for (const group of TAB_GROUPS.subagents) {
 			expect(groups.has(group)).toBe(true);
 		}
+	});
+
+	/**
+	 * Opening a picker must highlight the value already stored on the agent row.
+	 * Starting every picker on Inherit makes an explicit override look inactive
+	 * and lets Enter erase it without the operator moving the cursor.
+	 */
+	it("opens the recursion picker on the persisted per-agent override", async () => {
+		settings.set("subagent.agents", { designer: { maxNestedSpawnDepth: 2 } });
+		const component = new SettingsSelectorComponent(
+			{
+				availableThinkingLevels: [],
+				thinkingLevel: undefined,
+				availableThemes: ["dark"],
+				availablePersonalities: ["default"],
+				providers: [],
+				cwd: process.cwd(),
+				modelRegistry: {} as ModelRegistry,
+				availableModels: [],
+			},
+			{ onChange: () => {}, onCancel: () => {} },
+		);
+		component.openTab("subagents");
+		expect(component.selectSetting("subagent.agents")).toBe(true);
+		component.handleInput("\n");
+		const deadline = Date.now() + 4_000;
+		while (!component.render(120).some(line => stripVTControlCharacters(line).includes("designer"))) {
+			if (Date.now() >= deadline) {
+				throw new Error(
+					`Agent settings did not finish discovery:\n${component.render(120).map(stripVTControlCharacters).join("\n")}`,
+				);
+			}
+			await Bun.sleep(10);
+		}
+		component.handleInput("\n");
+		component.handleInput("\u001b[B");
+		component.handleInput("\u001b[B");
+		component.handleInput("\u001b[B");
+		component.handleInput("\n");
+
+		const frame = component.render(120).map(stripVTControlCharacters);
+		const selected = frame.find(line => line.includes("Two nested levels"));
+		expect(selected).toContain("›");
+		const inherit = frame.find(line => line.includes("Inherit"));
+		expect(inherit).not.toContain("›");
 	});
 });
 

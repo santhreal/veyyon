@@ -1,8 +1,8 @@
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
-import { type Component, Loader, type LoaderMessageColorFn, TERMINAL } from "@veyyon/tui";
-import { clampLow, logger, prompt } from "@veyyon/utils";
+import { type Component, Loader, type LoaderMessageColorFn, Spacer, TERMINAL, Text } from "@veyyon/tui";
+import { clampLow, escapeTerminalText, logger, prompt } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { extractTextContent } from "../../commit/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -25,6 +25,7 @@ import { getSymbolTheme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext, TodoPhase } from "../../modes/types";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
 import { sideChannelPrompts } from "../../prompts/side-channel/rows";
+import { SECRET_SPEND_NOTICE_SOURCE } from "../../secrets/notices";
 import type { AgentSessionEvent } from "../../session/agent-session";
 import { isSilentAbort, readQueueChipText, resolveAbortLabel } from "../../session/messages";
 import { previewLine, TRUNCATE_LENGTHS } from "../../tools/render-utils";
@@ -758,6 +759,17 @@ export class EventController {
 	}
 
 	async #handleNotice(event: Extract<AgentSessionEvent, { type: "notice" }>): Promise<void> {
+		if (event.source === SECRET_SPEND_NOTICE_SOURCE) {
+			// Its own block rather than `showStatus`, which COALESCES consecutive status lines: one
+			// assistant message can issue several tool calls, every block for them is already in the
+			// transcript before the first one executes, so nothing is appended between two spends and
+			// the second line would overwrite the first — three credentials spent, one named. A
+			// credential per line is the whole point. The message already reads as a sentence, so it
+			// skips the generic `source: text` prefix.
+			this.ctx.present([new Spacer(1), new Text(theme.fg("dim", escapeTerminalText(event.message)), 1, 0)]);
+			this.ctx.ui.requestRender();
+			return;
+		}
 		const message = event.source ? `${event.source}: ${event.message}` : event.message;
 		if (event.level === "error") {
 			this.ctx.showError(message);

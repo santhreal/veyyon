@@ -193,6 +193,11 @@ const CONDITIONS: Record<string, () => boolean> = {
 	hasImageProtocol: () => !!TERMINAL.imageProtocol,
 	advisorEnabled: () => whenSettingsSay(() => Settings.instance.get("advisor.enabled") === true),
 	argotEnabled: () => whenSettingsSay(() => Settings.instance.get("argot.enabled") === true),
+	autoQaEnabled: () => whenSettingsSay(() => Settings.instance.get("dev.autoqa") === true),
+	bashAutoBackgroundEnabled: () =>
+		whenSettingsSay(() => Settings.instance.get("bash.autoBackground.enabled") === true),
+	bashStallDetectionEnabled: () =>
+		whenSettingsSay(() => Settings.instance.get("bash.stallDetection.enabled") === true),
 	hindsightActive: () => whenSettingsSay(() => Settings.instance.get("memory.backend") === "hindsight"),
 	mnemopiActive: () => whenSettingsSay(() => Settings.instance.get("memory.backend") === "mnemopi"),
 	autolearnActive: () => whenSettingsSay(() => Settings.instance.get("autolearn.enabled") === true),
@@ -210,6 +215,8 @@ const CONDITIONS: Record<string, () => boolean> = {
 				}).level === AUTO_THINKING,
 		),
 	planModeEnabled: () => whenSettingsSay(() => Settings.instance.get("plan.enabled")),
+	speechEnabled: () => whenSettingsSay(() => Settings.instance.get("speech.enabled") === true),
+	sttEnabled: () => whenSettingsSay(() => Settings.instance.get("stt.enabled") === true),
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

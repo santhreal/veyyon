@@ -40,7 +40,8 @@ const TIME_UNITS_MS = new Map<string, number>([
 	["hours", 3_600_000],
 ]);
 
-const LOOP_USAGE = "Usage: /loop [count|duration]. Examples: /loop 10, /loop 10m, /loop 10min.";
+const LOOP_USAGE =
+	"Usage: /loop [count|duration] [prompt]\nExamples: /loop 10, /loop 10m, /loop 1h30m, /loop 10 minutes fix the bug";
 
 export interface ParsedLoopArgs {
 	/** Iteration/duration budget, when the user supplied a leading limit token. */

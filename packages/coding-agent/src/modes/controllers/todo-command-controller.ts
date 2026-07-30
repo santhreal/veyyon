@@ -39,6 +39,7 @@ const USAGE = [
 	"  /todo done   [<task|phase>]        Mark task/phase/all completed",
 	"  /todo drop   [<task|phase>]        Mark task/phase/all abandoned",
 	"  /todo rm     [<task|phase>]        Remove task/phase/all",
+	"  /todo help                         Show this help",
 ].join("\n");
 
 // =============================================================================

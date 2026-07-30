@@ -45,10 +45,11 @@ import {
 	getType,
 	normalizeProviderMaxInFlightRequests,
 	type SettingPath,
+	type SettingSource,
 	settings,
 	validateProviderMaxInFlightRequests,
 } from "../../config/settings";
-import type { SubagentAgentSettings } from "../../config/settings-domains/subagents";
+import { SUBAGENT_RECURSION_DEPTH_OPTIONS, type SubagentAgentSettings } from "../../config/settings-domains/subagents";
 import type {
 	SettingTab,
 	StatusLinePreset,
@@ -822,6 +823,7 @@ class ModelRolesSubmenu extends Container {
 const AGENT_ROW_OFFERED = "\\u0000agent-offered";
 const AGENT_ROW_MODEL = "\\u0000agent-model";
 const AGENT_ROW_EFFORT = "\\u0000agent-effort";
+const AGENT_ROW_RECURSION = "\\u0000agent-recursion";
 const AGENT_ROW_RESET = "\\u0000agent-reset";
 
 /**
@@ -893,6 +895,7 @@ class SubagentAgentsSubmenu extends Container {
 		if (next.enabled !== undefined) cleaned.enabled = next.enabled;
 		if (next.model?.trim()) cleaned.model = next.model.trim();
 		if (next.thinkingLevel?.trim()) cleaned.thinkingLevel = next.thinkingLevel.trim();
+		if (next.maxNestedSpawnDepth !== undefined) cleaned.maxNestedSpawnDepth = next.maxNestedSpawnDepth;
 		if (Object.keys(cleaned).length === 0) delete table[name];
 		else table[name] = cleaned;
 		settings.set("subagent.agents", table);
@@ -921,6 +924,11 @@ class SubagentAgentsSubmenu extends Container {
 		return resolved.source === "inherit"
 			? theme.fg("dim", `inherit · ${summary}`)
 			: `${summary} ${theme.fg("dim", `· ${subagentModelSourceLabel(resolved.source, agent.name)}`)}`;
+	}
+
+	#recursionDepthLabel(value: number): string {
+		const option = SUBAGENT_RECURSION_DEPTH_OPTIONS.find(candidate => Number(candidate.value) === value);
+		return option?.label ?? `${value} nested levels`;
 	}
 
 	#showAgentList(): void {
@@ -1028,6 +1036,17 @@ class SubagentAgentsSubmenu extends Container {
 					? row.thinkingLevel.trim()
 					: theme.fg("dim", `inherit${resolvedEffort ? ` · ${resolvedEffort}` : ""}`),
 			},
+			{
+				value: AGENT_ROW_RECURSION,
+				label: "Nested spawn depth",
+				description:
+					row.maxNestedSpawnDepth === undefined
+						? theme.fg(
+								"dim",
+								`inherit · ${this.#recursionDepthLabel(settings.get("subagent.maxNestedSpawnDepth") ?? 0)}`,
+							)
+						: this.#recursionDepthLabel(row.maxNestedSpawnDepth),
+			},
 		];
 		if (Object.keys(row).length > 0) {
 			items.push({
@@ -1049,6 +1068,9 @@ class SubagentAgentsSubmenu extends Container {
 					break;
 				case AGENT_ROW_EFFORT:
 					this.#showAgentEffortPicker(name);
+					break;
+				case AGENT_ROW_RECURSION:
+					this.#showAgentRecursionPicker(name);
 					break;
 				case AGENT_ROW_RESET:
 					this.#writeRow(name, {});
@@ -1128,6 +1150,53 @@ class SubagentAgentsSubmenu extends Container {
 		this.#writeRow(name, { ...this.#row(name), model: value });
 		this.#showAgentEditor(name);
 		this.requestRender?.();
+	}
+
+	#showAgentRecursionPicker(name: string): void {
+		this.clear();
+		this.addChild(new Text(theme.bold(theme.fg("accent", `${name} nested spawn depth`)), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(
+				theme.fg(
+					"muted",
+					"How deeply this agent may spawn. Inherit follows Max Nested Spawn Depth; Parent only removes task from direct children.",
+				),
+				0,
+				0,
+			),
+		);
+		this.addChild(new Spacer(1));
+		const blanket = settings.get("subagent.maxNestedSpawnDepth") ?? 0;
+		const items: SelectItem[] = [
+			{
+				value: "",
+				label: "Inherit",
+				description: `Follow Max Nested Spawn Depth · ${this.#recursionDepthLabel(blanket)}`,
+			},
+			...SUBAGENT_RECURSION_DEPTH_OPTIONS.map(option => ({ ...option })),
+		];
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
+		const configured = this.#row(name).maxNestedSpawnDepth;
+		const selectedIndex = items.findIndex(
+			item => item.value === (configured === undefined ? "" : String(configured)),
+		);
+		if (selectedIndex >= 0) this.#selectList.setSelectedIndex(selectedIndex);
+		this.#selectList.onSelect = item => {
+			this.#writeRow(name, {
+				...this.#row(name),
+				maxNestedSpawnDepth: item.value === "" ? undefined : Number(item.value),
+			});
+			this.#showAgentEditor(name);
+			this.requestRender?.();
+		};
+		this.#selectList.onCancel = () => {
+			this.#showAgentEditor(name);
+			this.requestRender?.();
+		};
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to choose · Esc to go back"), 0, 0));
 	}
 
 	/**
@@ -1376,9 +1445,9 @@ class DefaultEffortSubmenu extends Container {
  * Single-slot picker for the profile's DEFAULT model, the model each new
  * session starts on. Opens straight to the model picker because there is only
  * one slot, then persists a bare selector to the `default` model-role slot via
- * {@link Settings.setModelRole}. Default Effort is the one persisted effort
- * surface for the main model; this picker must not create a competing suffix.
- * Del clears the pin, letting the default resolve to the auto-selected model.
+ * {@link Settings.setPersistedModelRole}. Default Effort is the one persisted
+ * effort surface for the main model; this picker must not create a competing
+ * suffix. Del clears the saved pin without rewriting a session override.
  */
 class DefaultModelSubmenu extends Container {
 	constructor(
@@ -1393,7 +1462,7 @@ class DefaultModelSubmenu extends Container {
 
 	#showModelPicker(): void {
 		this.clear();
-		const current = settings.getModelRole(DEFAULT_MODEL_SLOT)?.trim();
+		const current = settings.getPersistedModelRole(DEFAULT_MODEL_SLOT)?.trim();
 		const panel = new ModelSelectorPanel(
 			settings,
 			this.registry,
@@ -1408,7 +1477,7 @@ class DefaultModelSubmenu extends Container {
 			{
 				onPick: (_model, selector) => this.#persist(selector),
 				onClear: () => {
-					settings.setModelRole(DEFAULT_MODEL_SLOT, undefined);
+					settings.setPersistedModelRole(DEFAULT_MODEL_SLOT, undefined);
 					this.onChange();
 					this.onCancel();
 				},
@@ -1419,7 +1488,7 @@ class DefaultModelSubmenu extends Container {
 	}
 
 	#persist(selector: string): void {
-		settings.setModelRole(DEFAULT_MODEL_SLOT, selector);
+		settings.setPersistedModelRole(DEFAULT_MODEL_SLOT, selector);
 		this.onChange();
 		this.onCancel();
 	}
@@ -1645,11 +1714,27 @@ const SETTINGS_TIPS: readonly string[] = [
 ];
 
 const SIDEBAR_GAP_COLS = 3;
+const MIN_SETTINGS_CONTENT_WIDTH = 32;
+
+const SETTING_SOURCE_LABELS: Record<SettingSource, string> = {
+	default: "default",
+	profile: "profile",
+	project: "project config",
+	"config-file": "--config file",
+	runtime: "runtime override",
+	global: "global config",
+};
 
 /** Footer chips while keyboard focus rests on the category sidebar. */
 const SETTINGS_SIDEBAR_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "up/down category" },
 	{ label: "right/enter settings" },
+	{ label: "/ search" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
+
+const SETTINGS_READ_ONLY_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "read-only" },
 	{ label: "/ search" },
 	{ label: "esc close", clickable: true, id: "close" },
 ];
@@ -1768,6 +1853,8 @@ export class SettingsSelectorComponent implements Component {
 	#textInputActive = false;
 	/** Per-tab collapsed state for the "Advanced" fold (session-only, defaults collapsed). */
 	#showAdvanced = new Map<SettingTab, boolean>();
+	/** Last selected setting per category; rendering derives the matching scroll window. */
+	#selectedSettingByTab = new Map<SettingTab, string>();
 	// Frame geometry from the last render, for mouse hit-testing (the
 	// fullscreen overlay paints from screen row 0, so mouse rows map 1:1).
 	#tabRowStart = 0;
@@ -1781,6 +1868,8 @@ export class SettingsSelectorComponent implements Component {
 	#sidebarWidthCache: number | undefined;
 	/** Last ModalShell geometry for mouse hit-testing. */
 	#shellGeometry: ModalShellGeometry | null = null;
+	/** True when the terminal cannot show an actionable settings pane safely. */
+	#viewportTooSmall = false;
 	#hoveredShortcutId: string | null = null;
 	/** Setting ids whose descriptions are expanded (Right/l). */
 	#expandedIds = new Set<string>();
@@ -1839,7 +1928,9 @@ export class SettingsSelectorComponent implements Component {
 	/** Open a settings tab by id. Test/debug + deep-link hook. */
 	openTab(tabId: SettingTab | "plugins"): void {
 		this.#tabBar.setActiveById(tabId);
-		this.#switchToTab(tabId);
+		// TabBar normally invokes onTabChange. Keep the hook usable with a tab
+		// implementation that suppresses same-id notifications, without rebuilding twice.
+		if (this.#currentTabId !== tabId) this.#switchToTab(tabId);
 	}
 
 	invalidate(): void {
@@ -1847,6 +1938,35 @@ export class SettingsSelectorComponent implements Component {
 		this.#currentList?.invalidate();
 		this.#searchList?.invalidate();
 		this.#pluginComponent?.invalidate();
+	}
+
+	#rememberCurrentSelection(): void {
+		if (this.#currentTabId === "plugins") return;
+		const selected = this.#currentList?.getSelectedItem()?.id;
+		if (selected) this.#selectedSettingByTab.set(this.#currentTabId, selected);
+	}
+
+	#restoreRememberedSelection(tabId: SettingTab, remembered: string | undefined): void {
+		if (!remembered) return;
+		if (this.#currentList?.selectItem(remembered)) return;
+
+		const defs = getSettingsForTab(tabId);
+		const rememberedIndex = defs.findIndex(def => def.path === remembered);
+		if (rememberedIndex !== -1) {
+			for (let offset = 1; offset < defs.length; offset++) {
+				const before = defs[rememberedIndex - offset];
+				if (before && this.#currentList?.selectItem(before.path)) {
+					this.#selectedSettingByTab.set(tabId, before.path);
+					return;
+				}
+				const after = defs[rememberedIndex + offset];
+				if (after && this.#currentList?.selectItem(after.path)) {
+					this.#selectedSettingByTab.set(tabId, after.path);
+					return;
+				}
+			}
+		}
+		this.#selectedSettingByTab.delete(tabId);
 	}
 
 	/** Swap the active content (per-tab list, search list, or plugins). */
@@ -1858,20 +1978,23 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	#switchToTab(tabId: SettingTab | "plugins"): void {
+		this.#rememberCurrentSelection();
 		this.#currentTabId = tabId;
 		this.#setContent(() => {
 			if (tabId === "plugins") {
 				this.#showPluginsTab();
 			} else {
 				this.#showSettingsTab(tabId);
+				this.#restoreRememberedSelection(tabId, this.#selectedSettingByTab.get(tabId));
 			}
 		});
 	}
 
 	#settingsShortcuts() {
 		if (this.#searchList) return SETTINGS_FILTER_SHORTCUTS;
-		if ((this.#searchList ?? this.#currentList)?.hasOpenSubmenu()) return SETTINGS_SUBPANE_SHORTCUTS;
+		if (this.#currentList?.hasOpenSubmenu()) return SETTINGS_SUBPANE_SHORTCUTS;
 		if (this.#sidebarFocused) return SETTINGS_SIDEBAR_SHORTCUTS;
+		if (this.#currentList?.getSelectedItem()?.readOnly) return SETTINGS_READ_ONLY_SHORTCUTS;
 		return SETTINGS_BROWSE_SHORTCUTS;
 	}
 
@@ -1910,34 +2033,61 @@ export class SettingsSelectorComponent implements Component {
 		return Math.min(this.#sidebarWidthCache, Math.max(10, Math.floor(contentWidth / 3)));
 	}
 
+	#renderTooSmall(width: number, termHeight: number): readonly string[] {
+		this.#viewportTooSmall = true;
+		this.#shellGeometry = null;
+		this.#contentRowCount = 0;
+		const lines = Array.from({ length: termHeight }, () => padding(width));
+		const messages =
+			width >= 40
+				? ["Settings needs a larger terminal · resize or press Esc to close"]
+				: ["Settings needs more room", "Resize · Esc closes"];
+		const firstRow = Math.max(0, Math.floor((termHeight - messages.length) / 2));
+		for (const [offset, message] of messages.entries()) {
+			const text = truncateToWidth(message, width);
+			const left = Math.max(0, Math.floor((width - visibleWidth(text)) / 2));
+			lines[firstRow + offset] = `${padding(left)}${text}`;
+		}
+		return lines;
+	}
+
 	/**
 	 * Floating ModalShell settings card: always-on search chrome, body list,
 	 * tip, centered shortcut chips. Transcript visible around the card.
 	 */
 	render(width: number): readonly string[] {
-		const termHeight = Math.max(14, process.stdout.rows || 40);
+		const termHeight = Math.max(1, process.stdout.rows || 40);
 		const sizing = withCompact(MODAL_SIZING_SETTINGS, modalNeedsCompactPadding(termHeight, MODAL_SIZING_SETTINGS));
 		const dims = computeModalDims(width, termHeight, sizing);
-		if (!dims) {
-			this.#shellGeometry = null;
-			return Array.from({ length: termHeight }, () => padding(width));
-		}
+		if (!dims || dims.contentWidth < MIN_SETTINGS_CONTENT_WIDTH) return this.#renderTooSmall(width, termHeight);
+		this.#viewportTooSmall = false;
 		// Must match ModalShell's contentWidth — provisional maxWidth math
 		// over-sized the search banner and fit() chopped off the match count.
 		const contentWidth = dims.contentWidth;
+		const settingsShortcuts = this.#settingsShortcuts();
+		const maxBodyRows = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth,
+			shortcuts: settingsShortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			tipCandidates: SETTINGS_TIPS,
+			hasSearch: true,
+		}).maxBodyRows;
+		if (maxBodyRows < 1) return this.#renderTooSmall(width, termHeight);
 
 		// Vertical category sidebar on the left, settings pane on the right,
 		// separated by a silver hairline: `sidebar │  pane`.
 		const sidebarWidth = this.#sidebarWidth(contentWidth);
-		const paneWidth = Math.max(20, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
+		const paneWidth = Math.max(1, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
 		// The cursor brightens while the sidebar itself holds keyboard focus.
 		const sidebarCursor = this.#sidebarFocused ? `${theme.fg("accent", theme.nav.cursor)} ` : `${theme.nav.cursor} `;
 		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, sidebarCursor);
 		const searching = this.#searchList !== null;
-		const showPreview = !searching && this.#currentTabId === "appearance";
+		const showPreview = !searching && this.#currentTabId === "appearance" && paneWidth >= 40;
 		// The preview is a live status-line render: clamp every line to the
 		// pane so a wide preview can't punch through the modal's right border.
-		const previewLines = showPreview
+		const requestedPreviewLines = showPreview
 			? [
 					"",
 					theme.fg("muted", "Preview:"),
@@ -1954,23 +2104,14 @@ export class SettingsSelectorComponent implements Component {
 		// reservation moves with the tip, the tip gap, and any chip row that wraps.
 		// Four sibling overlays shipped content off the end of a card this way.
 		// The sidebar runs parallel to the pane, so it costs no vertical budget.
-		const settingsShortcuts = this.#settingsShortcuts();
-		const estimatedBody = Math.max(
-			1,
-			planModalChrome({
-				sizing,
-				modalHeight: dims.modalHeight,
-				contentWidth,
-				shortcuts: settingsShortcuts,
-				hoveredShortcutId: this.#hoveredShortcutId,
-				tipCandidates: SETTINGS_TIPS,
-				hasSearch: true,
-			}).maxBodyRows,
-		);
+		const estimatedBody = maxBodyRows;
+		// Prefer visible, actionable setting rows in short terminals. The
+		// decorative status preview returns once the body has enough room.
+		const previewLines = estimatedBody >= 8 ? requestedPreviewLines : [];
 		const list = this.#searchList ?? this.#currentList;
 		let listLines: readonly string[] = [];
 		if (list) {
-			list.setMaxVisible(Math.max(8, estimatedBody - previewLines.length));
+			list.setMaxVisible(Math.max(1, estimatedBody - previewLines.length));
 			list.setOptions({
 				descriptionMode: "expand",
 				expandedIds: this.#expandedIds,
@@ -2035,6 +2176,18 @@ export class SettingsSelectorComponent implements Component {
 		return routeSgrMouseInput(data, event => this.#routeMouseEvent(event));
 	}
 
+	/** Cancel transient submenu state, such as an uncommitted theme preview. */
+	#cancelOpenSubmenu(): void {
+		const list = this.#searchList ?? this.#currentList;
+		if (list?.hasOpenSubmenu()) list.handleInput("\x1b");
+	}
+
+	/** Close the settings surface only after transient previews are restored. */
+	#close(): void {
+		this.#cancelOpenSubmenu();
+		this.callbacks.onCancel();
+	}
+
 	#routeMouseEvent(event: SgrMouseEvent): boolean {
 		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
 			motion: event.motion,
@@ -2048,7 +2201,7 @@ export class SettingsSelectorComponent implements Component {
 			return true;
 		}
 		if (chrome.kind === "close" || chrome.kind === "outside") {
-			this.callbacks.onCancel();
+			this.#close();
 			return true;
 		}
 		if (chrome.kind === "breadcrumb") {
@@ -2059,7 +2212,7 @@ export class SettingsSelectorComponent implements Component {
 		}
 		if (chrome.kind === "shortcut") {
 			if (chrome.id === "close") {
-				this.callbacks.onCancel();
+				this.#close();
 				return true;
 			}
 			if (chrome.id === "clear-filter") {
@@ -2085,6 +2238,7 @@ export class SettingsSelectorComponent implements Component {
 
 		if (event.wheel !== null) {
 			if (overPane) {
+				this.#sidebarFocused = false;
 				// An open submenu owns the pane pointer (text inputs ignore it).
 				if (list?.hasOpenSubmenu()) list.routeSubmenuMouse(event, bodyLine, paneCol);
 				else list?.handleWheelAt(event.wheel, bodyLine, paneCol);
@@ -2109,6 +2263,7 @@ export class SettingsSelectorComponent implements Component {
 		// A sidebar click switches category even while a sub-pane is open (the
 		// rebuilt tab list discards the submenu, same as Esc + Tab).
 		if (overSidebar) {
+			this.#cancelOpenSubmenu();
 			const tab = this.#tabBar.tabAt(bodyLine, innerCol);
 			if (tab) {
 				this.#tabBar.selectTab(tab.id);
@@ -2124,6 +2279,7 @@ export class SettingsSelectorComponent implements Component {
 		if (overPane && list) {
 			const id = list.hitTest(bodyLine, paneCol);
 			if (id !== undefined) {
+				this.#sidebarFocused = false;
 				const wasSelected = list.getSelectedItem()?.id === id;
 				const onValueColumn = list.isValueColumnHit(bodyLine, paneCol);
 				list.selectItem(id);
@@ -2143,6 +2299,7 @@ export class SettingsSelectorComponent implements Component {
 
 	/** Swap the tab content for the global search result list. */
 	#startSearch(initialQuery: string): void {
+		this.#rememberCurrentSelection();
 		// Search results live in the pane; sidebar focus would be stale there.
 		this.#sidebarFocused = false;
 		this.#preSearchTabId = this.#currentTabId;
@@ -2154,7 +2311,7 @@ export class SettingsSelectorComponent implements Component {
 			10,
 			getSettingsListTheme(),
 			(id, newValue) => this.#onSearchSettingChange(id as SettingPath, newValue),
-			() => this.callbacks.onCancel(),
+			() => this.#close(),
 			{
 				layout: "flat",
 				typeToSearch: false,
@@ -2255,6 +2412,7 @@ export class SettingsSelectorComponent implements Component {
 		this.#switchToTab(targetTab);
 		if (selectedDef) {
 			this.#currentList?.selectItem(selectedDef.path);
+			this.#selectedSettingByTab.set(selectedDef.tab, selectedDef.path);
 		}
 	}
 
@@ -2325,7 +2483,20 @@ export class SettingsSelectorComponent implements Component {
 	#defToItem(def: SettingDef): SettingItem | null {
 		const item = this.#defToItemBase(def);
 		if (!item) return null;
-		return { ...item, group: def.group, keywords: def.keywords };
+		const searchable = { ...item, group: def.group, keywords: def.keywords };
+		if (def.type === "defaultModel") return searchable;
+
+		const source = settings.getSource(def.path);
+		if (source !== "project" && source !== "config-file" && source !== "runtime") return searchable;
+		const sourceLabel = SETTING_SOURCE_LABELS[source];
+		return {
+			...searchable,
+			readOnly: true,
+			currentValue: `${sourceLabel} · ${searchable.currentValue}`,
+			description: `${searchable.description ?? def.label}. Effective value comes from ${sourceLabel}; this profile control is read-only.`,
+			values: undefined,
+			submenu: undefined,
+		};
 	}
 
 	#defToItemBase(def: SettingDef): SettingItem | null {
@@ -2442,15 +2613,27 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 
-			case "defaultModel":
+			case "defaultModel": {
+				const active = settings.getModelRole(DEFAULT_MODEL_SLOT);
+				const source = settings.getModelRoleSource(DEFAULT_MODEL_SLOT);
+				const overridden =
+					(source === "project" || source === "config-file" || source === "runtime") &&
+					typeof active === "string" &&
+					active.trim() !== currentValue;
+				if (overridden) this.#expandedIds.add(def.path);
 				return {
 					id: def.path,
-					label: def.label,
-					description: def.description,
-					currentValue: this.#formatModelSelectorValue(currentValue),
+					label: overridden ? `${def.label} · ${source}` : def.label,
+					description: overridden
+						? `${def.description} Active ${this.#formatModelSelectorValue(active)} comes from ${SETTING_SOURCE_LABELS[source]}; this row changes the saved profile default.`
+						: def.description,
+					currentValue: overridden
+						? `${this.#formatCompactModelSelectorValue(currentValue)} → ${this.#formatCompactModelSelectorValue(active)}`
+						: this.#formatModelSelectorValue(currentValue),
 					submenu: (_cv, done) => this.#createDefaultModelInput(done),
 					changed,
 				};
+			}
 		}
 	}
 
@@ -2458,9 +2641,10 @@ export class SettingsSelectorComponent implements Component {
 	 * Get the current value for a setting.
 	 */
 	#getCurrentValue(def: SettingDef): unknown {
-		// The default-model entry is synthetic (no schema key): its value lives in
-		// the `default` model-role slot, so read it from there, not settings.get.
-		if (def.type === "defaultModel") return settings.getModelRole(DEFAULT_MODEL_SLOT);
+		// The default-model entry is synthetic (no schema key): it deliberately
+		// reads the profile layer so a one-shot session override never masquerades
+		// as the model that will be restored on the next launch.
+		if (def.type === "defaultModel") return settings.getPersistedModelRole(DEFAULT_MODEL_SLOT);
 		return settings.get(def.path);
 	}
 
@@ -2658,9 +2842,21 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	#formatModelSelectorValue(value: unknown): string {
-		if (typeof value === "string" && value.trim()) return formatSelectorSummary(value);
-		// Unset resolves live against the active main model at use time.
-		return "inherit";
+		const selectors =
+			typeof value === "string" || Array.isArray(value) ? normalizeModelPatternList(value as string | string[]) : [];
+		const primary = selectors[0];
+		if (!primary) return "inherit";
+		const fallbacks = selectors.length - 1;
+		return fallbacks > 0
+			? `${formatSelectorSummary(primary)} +${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`
+			: formatSelectorSummary(primary);
+	}
+
+	/** Compact one selector for a row that must show both saved and active models. */
+	#formatCompactModelSelectorValue(value: unknown): string {
+		const summary = this.#formatModelSelectorValue(value);
+		const providerSlash = summary.indexOf("/");
+		return providerSlash >= 0 ? summary.slice(providerSlash + 1) : summary;
 	}
 
 	#formatModelRolesValue(): string {
@@ -2978,7 +3174,7 @@ export class SettingsSelectorComponent implements Component {
 				// immediately instead of waiting for the next tab switch.
 				this.#refreshCurrentTabItems(defs);
 			},
-			() => this.callbacks.onCancel(),
+			() => this.#close(),
 			// The selector owns type-to-search and the footer hint; pin the
 			// split sidebar width so the divider never jumps between tabs.
 			{ typeToSearch: false, hint: "", layout: "flat", descriptionMode: "expand", expandedIds: this.#expandedIds },
@@ -3009,7 +3205,7 @@ export class SettingsSelectorComponent implements Component {
 	 */
 	#buildItemsForDefs(defs: SettingDef[], tabId: SettingTab): SettingItem[] {
 		const items: SettingItem[] = [];
-		const advancedItems: SettingItem[] = [];
+		const advancedItems: Array<{ group: string | undefined; item: SettingItem }> = [];
 		let lastGroup: string | undefined;
 		let advancedTotal = 0;
 		for (const def of defs) {
@@ -3017,7 +3213,7 @@ export class SettingsSelectorComponent implements Component {
 			if (!item) continue;
 			if (def.advanced) {
 				advancedTotal++;
-				advancedItems.push(item);
+				advancedItems.push({ group: def.group, item });
 				continue;
 			}
 			if (def.group && def.group !== lastGroup) {
@@ -3046,8 +3242,19 @@ export class SettingsSelectorComponent implements Component {
 				// like any other setting row, without pi-tui's inert `heading` rows.
 				values: ["toggle"],
 			});
-			for (const item of advancedItems) {
-				if (expanded || item.changed) items.push(item);
+			let lastAdvancedGroup: string | undefined;
+			for (const { group, item } of advancedItems) {
+				if (!expanded && !item.changed) continue;
+				if (group && group !== lastAdvancedGroup) {
+					items.push({
+						id: `__heading:advanced:${group}`,
+						label: `Advanced · ${group}`,
+						currentValue: "",
+						heading: true,
+					});
+					lastAdvancedGroup = group;
+				}
+				items.push(item);
 			}
 		}
 
@@ -3117,7 +3324,7 @@ export class SettingsSelectorComponent implements Component {
 
 	#showPluginsTab(): void {
 		this.#pluginComponent = new PluginSettingsComponent(this.context.cwd, {
-			onClose: () => this.callbacks.onCancel(),
+			onClose: () => this.#close(),
 			onPluginChanged: () => this.callbacks.onPluginsChanged?.(),
 		});
 	}
@@ -3136,6 +3343,11 @@ export class SettingsSelectorComponent implements Component {
 		// SGR mouse reports (the fullscreen overlay enables tracking).
 		if (data.startsWith("\x1b[<")) {
 			this.#handleMouse(data);
+			return;
+		}
+
+		if (this.#viewportTooSmall) {
+			if (matchesKey(data, "escape") || data === "\x1b") this.#close();
 			return;
 		}
 

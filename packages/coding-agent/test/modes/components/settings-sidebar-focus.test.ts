@@ -18,6 +18,14 @@ const RIGHT = "\x1b[C";
 const UP = "\x1b[A";
 const DOWN = "\x1b[B";
 
+function pointerAt(frame: readonly string[], needle: string, button = 0): string {
+	const row = frame.findIndex(line => strip(line).includes(needle));
+	const col = row >= 0 ? strip(frame[row]!).indexOf(needle) : -1;
+	expect(row).toBeGreaterThanOrEqual(0);
+	expect(col).toBeGreaterThanOrEqual(0);
+	return `\x1b[<${button};${col + 1};${row + 1}M`;
+}
+
 function strip(s: string): string {
 	return stripVTControlCharacters(s);
 }
@@ -142,5 +150,32 @@ describe("settings sidebar focus", () => {
 			if (!line.includes("X") && !line.includes("Y")) continue;
 			expect(line.trimEnd().length).toBeLessThanOrEqual(frameWidth);
 		}
+	});
+
+	/** A pane click transfers keyboard focus so the next arrow moves rows, not categories. */
+	it("hands sidebar focus back to a clicked settings row", () => {
+		const comp = createSelector();
+		const initial = comp.render(160);
+		comp.handleInput(LEFT);
+		comp.handleInput(pointerAt(initial, "Status Line Preset"));
+		expect(comp.getSelectedSettingId()).toBe("statusLine.preset");
+		expect(footerText(comp.render(160))).toContain("up/down navigate");
+
+		comp.handleInput(DOWN);
+
+		expect(comp.getSelectedSettingId()).not.toBe("statusLine.preset");
+	});
+
+	/** Wheel input over the pane also transfers focus before later arrows are routed. */
+	it("hands sidebar focus back to the settings pane on wheel", () => {
+		const comp = createSelector();
+		const initial = comp.render(160);
+		comp.handleInput(LEFT);
+		comp.handleInput(pointerAt(initial, "Dark Theme", 65));
+		expect(footerText(comp.render(160))).toContain("up/down navigate");
+
+		comp.handleInput(DOWN);
+
+		expect(comp.getSelectedSettingId()).toBe("symbolPreset");
 	});
 });

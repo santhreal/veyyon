@@ -260,8 +260,8 @@ export interface InteractiveModeContext {
 	clearPinnedError(): void;
 	showWarning(message: string): void;
 	showNewVersionNotification(newVersion: string): void;
-	/** One line confirming an update landed, on the first launch after it. */
-	showUpdateReadyNotification(newVersion: string): void;
+	/** Confirm an update landed and surface any follow-up repair the user must run. */
+	showUpdateReadyNotification(newVersion: string, warnings?: readonly string[]): void;
 	showUpdateFailedNotification(newVersion: string, error: string): void;
 	/** `marketplace.autoUpdate: notify` found plugin updates the user can install. */
 	showPluginUpdatesNotification(count: number): void;
