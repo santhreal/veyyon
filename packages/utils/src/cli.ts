@@ -1,4 +1,5 @@
 import { parseArgs as nodeParseArgs } from "node:util";
+import { clampLow } from "./math";
 import { startupMarker } from "./startup-marker";
 import { errorMessage } from "./type-guards";
 
@@ -434,6 +435,122 @@ export function tokenizeQuotedArgs(input: string): string[] {
 // Help rendering
 // ---------------------------------------------------------------------------
 
+/**
+ * Terminal width to lay help out for, clamped to something a human reads.
+ *
+ * Help used to be laid out for an infinite terminal: it padded to the widest entry and never
+ * wrapped, so `veyyon --help` emitted 85 lines past 80 columns with a 221-character worst case, and
+ * every one of those was re-wrapped by the terminal at an arbitrary point with no indent. The lower
+ * bound keeps a narrow split pane from collapsing the description column to nothing; the upper one
+ * stops a maximized window from producing lines too long to track back to their flag.
+ */
+function helpWidth(): number {
+	const columns = process.stdout.columns;
+	if (typeof columns === "number" && columns > 0) return clampLow(columns, 60, 100);
+	// Not a TTY, so stdout reports no width. That is not the same as no width being KNOWN: piping
+	// help into a pager or `less -R` is the normal way to read a long one, and the shell still
+	// exports the real terminal size in COLUMNS. Consulting stdout alone laid out for 80 columns
+	// inside a 60-column pane and put 113 lines past the edge, which is the wrapping bug again by a
+	// different route. A junk COLUMNS falls through to the conventional 80 rather than being clamped
+	// into range, since a nonsense value is no evidence of width.
+	const exported = Number(process.env.COLUMNS);
+	if (Number.isFinite(exported) && exported > 0) return clampLow(exported, 60, 100);
+	return 80;
+}
+
+/**
+ * The widest left column worth aligning to, given the terminal.
+ *
+ * ALIGNING TO THE LONGEST ENTRY IS THE BUG. One flag spelling out an enum
+ * (`--approval-mode=<plan|ask|auto-edit|yolo|always-ask|write>`, 58 characters) set the gutter for
+ * all seventy-odd, so every description started past column 62 and had roughly fifteen usable
+ * columns left. A single outlier decided the layout for everything around it.
+ *
+ * So the gutter is capped at a third of the width. Entries within it still align, which is what
+ * makes a flag list scannable; the few that overflow put their description on the next line instead
+ * of dragging the column right. Trading alignment for one entry beats losing the column for all.
+ */
+function gutter(entries: readonly string[], width: number): number {
+	// `Bun.stringWidth`, never `.length`: a styled entry carries escape bytes that occupy no columns.
+	const longest = entries.length > 0 ? Math.max(...entries.map(entry => Bun.stringWidth(entry))) : 0;
+	return Math.min(longest + 2, Math.floor(width / 3));
+}
+
+/**
+ * Emit `left` and its description, wrapped, with continuation lines under the description.
+ *
+ * A wrapped description that returns to column 0 reads as a new entry, so the indent is what keeps
+ * a two-line flag from looking like two flags. `Bun.wrapAnsi` is the repo's wrapper and is correct
+ * for wide characters, which matters here because a description may quote a model id or a path.
+ */
+function pushWrapped(lines: string[], left: string, description: string, column: number, width: number): void {
+	if (!description) {
+		lines.push(left);
+		return;
+	}
+	// An entry that would leave less than this before its description goes on its own line instead.
+	// `>` alone was not enough: a name exactly as wide as the gutter padded to zero and produced
+	// `ANTHROPIC_CUSTOM_HEADERSExtra headers ...`, one run-on token with no boundary at all.
+	const MIN_GAP = 2;
+	// Measured, not `.length`, so a styled left column pads to the right screen position.
+	const leftWidth = Bun.stringWidth(left);
+	const indent = " ".repeat(column);
+	// `trim: true` matters twice: without it a wrapped line keeps the space it broke on, so every
+	// continuation is indented one column too far AND every line carries invisible trailing bytes.
+	const wrapped = Bun.wrapAnsi(description, Math.max(20, width - column), { trim: true }).split("\n");
+	const [first, ...rest] = wrapped;
+	if (leftWidth + MIN_GAP > column) {
+		lines.push(left);
+		lines.push(`${indent}${first}`);
+	} else {
+		lines.push(`${left}${" ".repeat(column - leftWidth)}${first}`);
+	}
+	for (const line of rest) lines.push(`${indent}${line}`);
+}
+
+/**
+ * Lay out a two-column help table so it fits the terminal, wrapping the right column.
+ *
+ * Exported because the same table is built by hand elsewhere. `getExtraHelpText` in the coding
+ * agent held an eighty-five line environment-variable table with its gutter typed into every row as
+ * literal spaces, three different gutters across its sections, and no wrapping at all, so the widest
+ * row ran to 129 columns and the terminal re-broke it wherever it liked. A padded string cannot
+ * respond to a terminal width; a table of rows can, and there is now one place that knows how.
+ *
+ * Widths go through `Bun.stringWidth`, not `.length`, because a caller may style the left column and
+ * an escape sequence occupies no columns on screen while counting as characters in a string.
+ */
+export function renderHelpTable(
+	rows: ReadonlyArray<readonly [name: string, description: string]>,
+	options: { indent?: string } = {},
+): string[] {
+	const indent = options.indent ?? "  ";
+	const width = helpWidth();
+	const lefts = rows.map(([name]) => `${indent}${name}`);
+	const column = gutter(lefts, width);
+	const lines: string[] = [];
+	for (const [index, [, description]] of rows.entries()) {
+		pushWrapped(lines, lefts[index] ?? "", description, column, width);
+	}
+	return lines;
+}
+
+/**
+ * Wrap a paragraph of help prose to the terminal, at a given indent.
+ *
+ * Prose interleaved into a table is how the environment section became unreadable: three sentences
+ * about profile resolution sat between two variable rows, aligned as though they were rows, so the
+ * eye read them as a variable with a very long name. Prose gets its own shape.
+ */
+export function renderHelpParagraph(text: string, options: { indent?: string } = {}): string[] {
+	const indent = options.indent ?? "  ";
+	const width = helpWidth();
+	const usable = Math.max(20, width - Bun.stringWidth(indent));
+	return Bun.wrapAnsi(text, usable, { trim: true })
+		.split("\n")
+		.map(line => `${indent}${line}`);
+}
+
 /** Render full root help: header, default command details, subcommand list. */
 export function renderRootHelp(config: CliConfig): void {
 	const { bin, version, commands } = config;
@@ -456,12 +573,16 @@ export function renderRootHelp(config: CliConfig): void {
 		["COMMANDS", visible.filter(([, C]) => !C.devTool)],
 		["DIAGNOSTIC COMMANDS", visible.filter(([, C]) => C.devTool)],
 	];
-	const maxLen = visible.length > 0 ? Math.max(...visible.map(([n]) => n.length)) : 0;
+	const width = helpWidth();
+	const column = gutter(
+		visible.map(([name]) => `  ${name}`),
+		width,
+	);
 	for (const [title, entries] of sections) {
 		if (entries.length === 0) continue;
 		lines.push(title);
 		for (const [name, C] of entries.sort((a, b) => a[0].localeCompare(b[0]))) {
-			lines.push(`  ${name.padEnd(maxLen + 2)}${C.description ?? ""}`);
+			pushWrapped(lines, `  ${name}`, C.description ?? "", column, width);
 		}
 		lines.push("");
 	}
@@ -504,17 +625,19 @@ export function renderCommandHelp(bin: string, id: string, Cmd: CommandCtor): vo
 function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 	const argDefs = Cmd.args ?? {};
 	const flagDefs = Cmd.flags ?? {};
+	const width = helpWidth();
 
 	// Arguments
 	const argEntries = Object.entries(argDefs);
 	if (argEntries.length > 0) {
 		lines.push("ARGUMENTS");
-		const maxLen = Math.max(...argEntries.map(([n]) => n.length));
-		for (const [name, desc] of argEntries) {
-			const parts = [name.toUpperCase().padEnd(maxLen + 2)];
+		const lefts = argEntries.map(([name]) => `  ${name.toUpperCase()}`);
+		const column = gutter(lefts, width);
+		for (const [index, [, desc]] of argEntries.entries()) {
+			const parts: string[] = [];
 			if (desc.description) parts.push(desc.description);
 			if (desc.options) parts.push(`(${[...desc.options].join("|")})`);
-			lines.push(`  ${parts.join(" ")}`);
+			pushWrapped(lines, lefts[index] ?? "", parts.join(" "), column, width);
 		}
 		lines.push("");
 	}
@@ -542,9 +665,12 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 							: "=<value>";
 			formatted.push([`  ${charPart}${namePart}${typePart}`, desc.description ?? ""]);
 		}
-		const maxLeft = Math.max(...formatted.map(([l]) => l.length));
+		const column = gutter(
+			formatted.map(([left]) => left),
+			width,
+		);
 		for (const [left, right] of formatted) {
-			lines.push(`${left.padEnd(maxLeft + 2)}${right}`);
+			pushWrapped(lines, left, right, column, width);
 		}
 		lines.push("");
 	}

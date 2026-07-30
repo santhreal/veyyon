@@ -170,12 +170,27 @@ describe("an alias is visible in help", () => {
 		expect(lines.filter(line => line.includes("--session"))).toHaveLength(1);
 	});
 
-	/** The description still renders, aligned, after the widened name column. */
-	it("keeps the description on the aliased line", () => {
-		const help = helpText();
-		const line = help.split("\n").find(l => l.includes("--resume, --session"));
+	/**
+	 * The description still renders and still belongs to the aliased entry.
+	 *
+	 * It is no longer necessarily on the SAME line, and that is the point of the layout rather than a
+	 * regression. An alias chain is one of the widest entries help produces
+	 * (`--resume, --session, --restore=<value>` is 43 characters), and the old renderer aligned every
+	 * description to the widest entry, so this one flag pushed all seventy-odd descriptions into the
+	 * right margin. An entry past the gutter now takes its own line and its description follows,
+	 * indented to the description column, so the outlier costs one line instead of costing every
+	 * other flag its readable width.
+	 */
+	it("keeps the description with the aliased entry", () => {
+		const lines = helpText().split("\n");
+		const index = lines.findIndex(line => line.includes("--resume, --session"));
 
-		expect(line).toContain("Resume a session");
+		expect(index).toBeGreaterThanOrEqual(0);
+		const entry = lines[index] ?? "";
+		const next = lines[index + 1] ?? "";
+		expect(`${entry}\n${next}`).toContain("Resume a session");
+		// Wherever it landed, it is indented rather than starting a new column-0 entry.
+		if (!entry.includes("Resume a session")) expect(next).toMatch(/^\s{4,}Resume a session/);
 	});
 
 	/** A flag with no aliases renders exactly as before. */
