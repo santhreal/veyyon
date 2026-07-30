@@ -289,7 +289,7 @@ describe("a lease whose expansion authority has been revoked", () => {
 
 			const options = await fixture.session.prepareSimpleStreamOptions({ apiKey: "unused" });
 			await expect(options.onPayload?.({ kind: "request" })).rejects.toThrow(
-				"AgentSession provider payload confidentiality transform failed.",
+				"AgentSession provider payload: two provider request keys collide after secret protection; confidentiality transform failed.",
 			);
 		} finally {
 			await dispose(fixture);
