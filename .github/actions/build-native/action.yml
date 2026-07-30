@@ -158,12 +158,27 @@ runs:
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
       - name: Enable sccache for cargo
         # CARGO_INCREMENTAL=0 is required: sccache silently skips caching when
-        # incremental is enabled, turning the wrapper into a no-op.
+        # incremental is enabled, turning the wrapper into a no-op. The cache is
+        # an optimization, not a build dependency: preflight its GitHub backend,
+        # retry transient network failures, then compile without the wrapper if
+        # the backend remains unavailable.
         shell: bash
         run: |
+           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+           export SCCACHE_GHA_ENABLED=true
+           attempt=1
+           while ! sccache "$(rustup which rustc)" -vV; do
+             if [ "$attempt" -ge 3 ]; then
+               echo "::warning title=sccache disabled::GitHub Actions cache stayed unavailable after $attempt attempts; compiling without sccache" >&2
+               echo "SCCACHE_GHA_ENABLED=false" >> "$GITHUB_ENV"
+               exit 0
+             fi
+             echo "::warning title=sccache retry::cache preflight failed on attempt $attempt; retrying" >&2
+             sleep "$attempt"
+             attempt=$((attempt + 1))
+           done
            {
              echo "RUSTC_WRAPPER=sccache"
-             echo "CARGO_INCREMENTAL=0"
              echo "SCCACHE_GHA_ENABLED=true"
            } >> "$GITHUB_ENV"
            echo "sccache backend: GitHub Actions cache"
