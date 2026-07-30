@@ -65,6 +65,52 @@ async function runDecideStep(options: {
 	};
 }
 
+async function runMaterializeGatedSha(options: { checkedOutSha: string; sourceSha: string }) {
+	const wf = await loadYaml("workflows/release.yml");
+	const step = wf.jobs.release.steps.find(
+		(candidate: { name?: string }) => candidate.name === "Materialize the gated SHA as main",
+	);
+	const dir = mkdtempSync(path.join(tmpdir(), "release-source-sha-"));
+	const calls = path.join(dir, "calls");
+	writeFileSync(calls, "");
+	const git = path.join(dir, "git");
+	writeFileSync(
+		git,
+		`#!/bin/sh
+printf '%s\n' "$*" >> "$CALLS"
+case "$*" in
+  "rev-parse HEAD") printf '%s\n' "$CHECKED_OUT_SHA" ;;
+  "switch -C main $RELEASE_SOURCE_SHA") ;;
+  *) printf 'unexpected git invocation: %s\n' "$*" >&2; exit 88 ;;
+esac
+`,
+	);
+	chmodSync(git, 0o755);
+	const proc = Bun.spawn(["bash", "-c", step.run], {
+		cwd: path.resolve(import.meta.dir, ".."),
+		env: {
+			...process.env,
+			PATH: `${dir}:${process.env.PATH ?? ""}`,
+			CALLS: calls,
+			CHECKED_OUT_SHA: options.checkedOutSha,
+			RELEASE_SOURCE_SHA: options.sourceSha,
+		},
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [exitCode, stdout, stderr] = await Promise.all([
+		proc.exited,
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+	]);
+	return {
+		exitCode,
+		stderr,
+		stdout,
+		calls: readFileSync(calls, "utf8").trim().split("\n").filter(Boolean),
+	};
+}
+
 async function runPublishDispatch(options: { failSecurity?: boolean } = {}) {
 	const wf = await loadYaml("workflows/release.yml");
 	const dispatch = wf.jobs.release.steps.find((step: { id?: string }) => step.id === "dispatch");
@@ -153,6 +199,8 @@ describe("release.yml exact-SHA source gates", () => {
 		expect(workflowText).not.toContain("cargo install sd");
 		expect(release.permissions).toEqual({ contents: "write", actions: "write" });
 		expect(checkout.with.token).toBeUndefined();
+		expect(checkout.with.ref).toContain("needs.gate.outputs.source-sha");
+		expect(wf.jobs.gate.outputs["source-sha"]).toContain("steps.decide.outputs.source-sha");
 		expect(dispatch.env.GH_TOKEN).toContain("GITHUB_TOKEN");
 		expect(dispatch.run).toContain("git tag --points-at HEAD");
 		expect(dispatch.run).toContain("dispatch_and_wait checks.yml Checks");
@@ -201,6 +249,31 @@ describe("release.yml exact-SHA source gates", () => {
 		expect(result.calls.trim()).toBe("scripts/release-gate-decision.ts");
 		expect(result.output).toContain("should-release=true");
 		expect(result.output).toContain("version=patch");
+	});
+
+	/**
+	 * The release job must receive the exact SHA whose three source workflows passed, not resolve main again later.
+	 */
+	it("exports the gated source SHA alongside the release decision", async () => {
+		const result = await runDecideStep({ mainSha: "proved-main-sha", triggerSha: "proved-main-sha" });
+		expect(result.exitCode).toBe(0);
+		expect(result.output).toContain("source-sha=proved-main-sha");
+		expect(result.output).toContain("should-release=true");
+	});
+
+	/** The cutter requires a local main branch, so the immutable checkout is materialized under that exact name. */
+	it("materializes the exact gated checkout as the local main branch", async () => {
+		const result = await runMaterializeGatedSha({ checkedOutSha: "proved-main-sha", sourceSha: "proved-main-sha" });
+		expect(result.exitCode).toBe(0);
+		expect(result.calls).toEqual(["rev-parse HEAD", "switch -C main proved-main-sha"]);
+	});
+
+	/** A checkout race must stop before the workflow creates or moves its local main branch. */
+	it("refuses to materialize a checkout that differs from the gated SHA", async () => {
+		const result = await runMaterializeGatedSha({ checkedOutSha: "newer-main-sha", sourceSha: "proved-main-sha" });
+		expect(result.exitCode).not.toBe(0);
+		expect(result.stdout).toContain("expected gated SHA proved-main-sha");
+		expect(result.calls).toEqual(["rev-parse HEAD"]);
 	});
 
 	it("manual dispatch proves the same gates and fails when that proof fails", async () => {
