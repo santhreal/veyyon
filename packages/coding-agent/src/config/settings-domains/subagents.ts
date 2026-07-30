@@ -82,7 +82,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Subagents",
 			description:
-				"Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Task Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Agents table are kept while this is off and take effect again when you turn it back on.",
+				"Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Agent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Agents table are kept while this is off and take effect again when you turn it back on.",
 			keywords: ["subagent", "spawn", "delegate", "off", "disable"],
 		},
 	},
@@ -94,9 +94,9 @@ export const SUBAGENTS_SETTINGS = {
 		ui: {
 			tab: "subagents",
 			group: "Delegation",
-			label: "Task Delegation",
+			label: "Agent Delegation",
 			description:
-				"How hard this session pushes work out to subagents. It never removes the ability to delegate — at `allowed` the model still has the task tool and still spawns a subagent when that is the sensible move, it is simply not asked to. To remove subagents entirely, use the Subagents switch above. WHAT gets delegated is decided by the Agents table, not here: the agents you enable are the instruction, so enabling the reviewer is how you say reviews are delegable. With no agent enabled there is nothing to delegate to and the strength you pick has no effect.",
+				"How strongly this session routes work to the agent roles you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Agents table is the routing policy: each name is a distinct role, task is the general-purpose fallback, specialists own only work matching their descriptions, and disabled roles stay with the main agent. Turn Subagents off above to remove delegation entirely.",
 			keywords: ["subagent", "spawn", "fan out", "parallel", "eager"],
 			options: [
 				{ value: "allowed", label: "Allowed", description: "Offered, never asked for — the model decides" },
@@ -147,7 +147,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Agents",
 			description:
-				"Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general worker and agents you wrote are enabled. Bundled specialists are disabled. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits.",
+				"Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general task worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits.",
 			keywords: ["agents", "scout", "reviewer", "librarian", "designer", "sonic", "enable", "disable", "per-agent"],
 		},
 	},

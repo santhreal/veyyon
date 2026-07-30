@@ -28,6 +28,7 @@ function fakeContextWithConfiguredModel(): InteractiveModeContext {
 				getAvailable: () => [{ provider: "configured", id: "model" }],
 			},
 		},
+		settings: Settings.isolated(),
 		// Required members of the context. Omitting them used to be tolerated by
 		// `?.()` calls in the controller, which meant production silently skipped
 		// the composer refresh and the welcome dismissal whenever either was

@@ -134,9 +134,7 @@ const GATING_PROPS = [
 	"taskIrcEnabled",
 	"subagentNames",
 	"hasSpawnableSubagent",
-	"hasSubagentSpecialists",
-	"investigativeSubagentNames",
-	"hasInvestigativeSubagent",
+	"hasGeneralSubagent",
 	"hasRead",
 	"hasEdit",
 	"hasWrite",
@@ -315,25 +313,83 @@ describe("system prompt settings parity: tool policy", () => {
 
 describe("system prompt settings parity: delegation (the regression this harness guards)", () => {
 	it(`${asserted("hasTask")} toggles the entire Delegation section`, async () => {
-		expect(await renderBlock0({ toolNames: DELEGATION_TOOLS })).toContain("# Delegation");
-		expect(await renderBlock0({ toolNames: ["read", "edit"] })).not.toContain("# Delegation");
+		expect(await renderDelegating({ toolNames: DELEGATION_TOOLS })).toContain("# Delegation");
+		expect(
+			await renderBlock0({
+				toolNames: ["read", "edit"],
+				subagentNames: ["task"],
+			}),
+		).not.toContain("# Delegation");
 	});
 
 	it(`${asserted("eagerTasks")} toggles the delegation-mode paragraph`, async () => {
-		const on = await renderBlock0({ eagerTasks: true, eagerTasksAlways: false });
-		const off = await renderBlock0({ eagerTasks: false });
+		const on = await renderDelegating({ eagerTasks: true, eagerTasksAlways: false });
+		const off = await renderDelegating({ eagerTasks: false });
 		expect(on).toContain("Delegation is preferred");
 		expect(off).not.toContain("Delegation is preferred");
 		expect(off).not.toContain("Delegation is the default");
 	});
 
 	it(`${asserted("eagerTasksAlways")} escalates preferred delegation to mandatory`, async () => {
-		const always = await renderBlock0({ eagerTasks: true, eagerTasksAlways: true });
-		const preferred = await renderBlock0({ eagerTasks: true, eagerTasksAlways: false });
+		const always = await renderDelegating({ eagerTasks: true, eagerTasksAlways: true });
+		const preferred = await renderDelegating({ eagerTasks: true, eagerTasksAlways: false });
 		expect(always).toContain("Delegation is the default here, not the exception");
-		expect(always).toContain("MUST fan the work out");
+		expect(always).toContain("MUST delegate substantial work");
 		expect(preferred).toContain("Delegation is preferred");
 		expect(preferred).not.toContain("Delegation is the default");
+	});
+
+	it("applies delegation strength to matching concrete roles", async () => {
+		const roles = { subagentNames: ["reviewer"] };
+		const preferred = await renderBlock0({ ...roles, eagerTasks: true, eagerTasksAlways: false });
+		const required = await renderBlock0({ ...roles, eagerTasks: true, eagerTasksAlways: true });
+
+		expect(preferred).toContain("when an enabled agent role matches");
+		expect(preferred).toContain("Specialists only");
+		expect(preferred).toContain("`reviewer`");
+		expect(required).toContain("MUST delegate substantial work when an enabled agent role matches");
+		expect(required).toContain("No enabled role's description matches the work");
+		expect(required).not.toContain("executing");
+		expect(required).not.toContain("investigative");
+	});
+
+	/**
+	 * All strength and role-set combinations preserve concrete names. This matrix
+	 * catches a branch that reintroduces inferred capability categories in only
+	 * one delegation mode.
+	 */
+	it("renders the concrete role policy across all twelve settings combinations", async () => {
+		const roleSets: Array<{ names: string[]; routing: string | null }> = [
+			{ names: [], routing: null },
+			{ names: ["task"], routing: "Route by exact role" },
+			{ names: ["designer", "reviewer"], routing: "Specialists only" },
+			{ names: ["task", "designer", "reviewer"], routing: "Route by exact role" },
+		];
+		const strengths = [
+			{ eagerTasks: false, eagerTasksAlways: false, marker: null },
+			{ eagerTasks: true, eagerTasksAlways: false, marker: "Delegation is preferred" },
+			{ eagerTasks: true, eagerTasksAlways: true, marker: "Delegation is the default here" },
+		];
+
+		for (const roles of roleSets) {
+			for (const strength of strengths) {
+				const rendered = await renderBlock0({ subagentNames: roles.names, ...strength });
+				if (roles.routing === null) {
+					expect(rendered).not.toContain("# Delegation");
+					continue;
+				}
+				expect(rendered).toContain(roles.routing);
+				expect(rendered).toContain(`Enabled roles (\`${roles.names.join(", ")}\`)`);
+				expect(rendered).not.toContain("Executing agents");
+				expect(rendered).not.toContain("Investigative agents");
+				if (strength.marker === null) {
+					expect(rendered).not.toContain("Delegation is preferred");
+					expect(rendered).not.toContain("Delegation is the default here");
+				} else {
+					expect(rendered).toContain(strength.marker);
+				}
+			}
+		}
 	});
 
 	it(`${asserted("taskBatch")} selects the batched vs parallel-calls call shape`, async () => {
@@ -359,74 +415,20 @@ describe("system prompt settings parity: delegation (the regression this harness
 	});
 
 	/**
-	 * The delegation prose may name a specialist only when this session can spawn
-	 * it. Bundled specialists ship unadvertised (`subagent.agents.*`), so a prompt
-	 * that hard-codes `scout` tells the model to route research to an agent absent
-	 * from the `task` description — an instruction it can only fail to follow.
+	 * The prompt names the exact enabled roles. It does not derive a second
+	 * classification from their tool grants or replace their own descriptions.
 	 */
-	it(`${asserted("subagentNames")} names the read-only agent only when one is on offer`, async () => {
-		const withScout = await renderBlock0({
-			subagentNames: ["task", "scout"],
-			investigativeSubagentNames: ["scout"],
-		});
-		const workerOnly = await renderBlock0({ subagentNames: ["task"], investigativeSubagentNames: [] });
-		expect(withScout).toContain("read-only agent (`scout`)");
-		// The BACKTICKED name, not the bare word: the no-agent branch ends "...exist to execute, not
-		// scout", using the word in its ordinary sense, so a bare substring check fails on English
-		// prose while the gate is working perfectly. What must be absent is the agent REFERENCE.
-		expect(workerOnly).not.toContain("`scout`");
-		// The rule the clause hangs off must survive either way, or the gate has
-		// swallowed the whole bullet rather than just the specialist reference.
-		expect(workerOnly).toContain("## Delegation gates:");
-	});
-
-	/**
-	 * The clause is gated on the ROLE, not on the name `scout`.
-	 *
-	 * It used to be `{{#has subagentNames "scout"}}`, which named one bundled agent as the yardstick for
-	 * every other, so a user-authored read-only agent could never satisfy it however plainly its
-	 * `tools:` line said what it was. The role is derived from that tool grant
-	 * (`task/agent-role.ts`), so a differently-named read-only agent gets named here.
-	 */
-	it(`${asserted("investigativeSubagentNames")} names a read-only agent that is not called scout`, async () => {
-		const custom = await renderBlock0({
-			subagentNames: ["task", "auditor"],
-			investigativeSubagentNames: ["auditor"],
+	it(`${asserted("subagentNames")} names every enabled concrete role`, async () => {
+		const rendered = await renderBlock0({
+			subagentNames: ["task", "designer", "reviewer"],
 		});
 
-		expect(custom).toContain("read-only agent (`auditor`)");
-		expect(custom).not.toContain("`scout`");
-	});
-
-	/**
-	 * AUDIT DELEGATION IS OFF WITH NO AGENT TYPED FOR IT, which is the other half of the fix the
-	 * `hasSubagentSpecialists` doc below describes.
-	 *
-	 * That pass removed the hardcoded "INVESTIGATIONS MUST be delegated" category list, and three
-	 * ungated bullets survived it in `delegation-subagent-value.md`: "Use `task` to map unknown code
-	 * instead of reading file after file yourself", the bulk-reading rationale, and "multi-subsystem
-	 * investigation". So every session was still told to delegate audits, by a different sentence. On a
-	 * stock install the only enabled agent is `task`, a worker with full edit capability, so the prompt
-	 * pointed audits at an agent that exists to change code.
-	 *
-	 * Both directions asserted, because a gate that is always true reads the same in the source.
-	 */
-	it(`${asserted("hasInvestigativeSubagent")} toggles whether audits may be delegated`, async () => {
-		const withReadOnly = await renderBlock0({
-			subagentNames: ["task", "scout"],
-			investigativeSubagentNames: ["scout"],
-		});
-		const executorsOnly = await renderBlock0({
-			subagentNames: ["task", "sonic"],
-			investigativeSubagentNames: [],
-		});
-
-		expect(withReadOnly).toContain("read-only agent (`scout`)");
-		expect(withReadOnly).not.toContain("audits inline");
-
-		expect(executorsOnly).toContain("audits inline");
-		expect(executorsOnly).not.toContain("read-only agent");
-		expect(executorsOnly).not.toContain("`scout`");
+		expect(rendered).toContain("Enabled roles (`task, designer, reviewer`)");
+		expect(rendered).toContain("Choose the closest specialist for each slice");
+		expect(rendered).not.toContain("`scout`");
+		expect(rendered).not.toContain("`sonic`");
+		expect(rendered).not.toContain("Executing agents");
+		expect(rendered).not.toContain("Investigative agents");
 	});
 
 	/**
@@ -445,69 +447,32 @@ describe("system prompt settings parity: delegation (the regression this harness
 	 * since suppressing delegation prose for everyone would satisfy the negative half by itself.
 	 */
 	it(`${asserted("hasSpawnableSubagent")} suppresses delegation prose when no agent can be spawned`, async () => {
-		const nothingSpawnable = await renderBlock0({ subagentNames: [], investigativeSubagentNames: [] });
-		const oneWorker = await renderBlock0({ subagentNames: ["task"], investigativeSubagentNames: [] });
+		const nothingSpawnable = await renderBlock0({ subagentNames: [] });
+		const taskOnly = await renderBlock0({ subagentNames: ["task"] });
 
 		expect(nothingSpawnable).not.toContain("(``)");
 		expect(nothingSpawnable).not.toContain("## Delegation gates:");
-		expect(nothingSpawnable).not.toContain("One agent type is enabled");
 		expect(nothingSpawnable).not.toContain("separate context");
+		expect(nothingSpawnable).not.toContain("# Delegation");
 
-		expect(oneWorker).toContain("One agent type is enabled** (`task`)");
-		expect(oneWorker).toContain("## Delegation gates:");
-		expect(oneWorker).toContain("separate context");
+		expect(taskOnly).toContain("Route by exact role");
+		expect(taskOnly).toContain("## Delegation gates:");
+		expect(taskOnly).toContain("separate context");
 	});
 
-	/**
-	 * The enabled agents ARE the delegation policy, and this is the bullet that says
-	 * so, so it has to say the right thing in both directions.
-	 *
-	 * The prompt used to carry a hardcoded category list ("...tests, INVESTIGATIONS
-	 * — MUST be decomposed and delegated"), which meant every session was told to
-	 * delegate audits whether or not an agent suited to that work existed. A
-	 * hardcoded list cannot follow a setting, so it was wrong in every session that
-	 * did not happen to match it. The list is gone and this gate replaces it: with
-	 * specialists enabled the operator has named what belongs to a subagent, and
-	 * with only the worker there is no agent TYPE to choose, so the model is told to
-	 * delegate for parallelism and context rather than to hand off a kind of work.
-	 *
-	 * Both branches are asserted because the `{{else}}` is the half that stops the
-	 * model inventing a specialist policy from nothing.
-	 */
-	it(`${asserted("hasSubagentSpecialists")} toggles the agent-typing gate`, async () => {
-		const specialists = await renderBlock0({
-			subagentNames: ["task", "reviewer"],
-			investigativeSubagentNames: ["reviewer"],
+	it(`${asserted("hasGeneralSubagent")} toggles task fallback against specialist-only routing`, async () => {
+		const withTask = await renderBlock0({
+			subagentNames: ["task", "designer", "reviewer"],
 		});
-		const workerOnly = await renderBlock0({ subagentNames: ["task"], investigativeSubagentNames: [] });
-
-		expect(specialists).toContain("Match agent types");
-		expect(specialists).not.toContain("One agent type is enabled");
-
-		expect(workerOnly).toContain("One agent type is enabled** (`task`)");
-		expect(workerOnly).not.toContain("Match agent types");
-	});
-
-	/**
-	 * A SECOND EXECUTOR OPENS THIS GATE AND NOT THE AUDIT ONE.
-	 *
-	 * The predicate was `subagentNames.some(name => name !== DEFAULT_ENABLED_BUNDLED_AGENT)`, which asked
-	 * "is anything other than `task` enabled" and named one agent as the yardstick for all the others:
-	 * `sonic`, another executor, satisfied it and made the prompt claim a kind-of-work specialist
-	 * existed. It counts now, because the gate is about having more than one TYPE to match a slice to.
-	 *
-	 * `sonic` legitimately does give the model that second type, and legitimately does not make handing
-	 * off an audit sensible, so the two gates must disagree here. This is the case that proves they are
-	 * two questions rather than one asked twice.
-	 */
-	it("opens type-matching for a second executor while audits stay inline", async () => {
-		const twoExecutors = await renderBlock0({
-			subagentNames: ["task", "sonic"],
-			investigativeSubagentNames: [],
+		const specialistsOnly = await renderBlock0({
+			subagentNames: ["designer", "reviewer"],
 		});
 
-		expect(twoExecutors).toContain("Match agent types");
-		expect(twoExecutors).toContain("audits inline");
+		expect(withTask).toContain("Route by exact role");
+		expect(withTask).toContain("use `task` as the general-purpose fallback");
+		expect(specialistsOnly).toContain("Specialists only");
+		expect(specialistsOnly).toContain("keep unmatched work inline");
+		expect(specialistsOnly).not.toContain("general-purpose fallback");
 	});
 
 	/**
@@ -520,8 +485,8 @@ describe("system prompt settings parity: delegation (the regression this harness
 	 * the bug live for half of all sessions. Both strengths are rendered.
 	 */
 	it(`${asserted("eagerTasks")} never names investigations as work that must be delegated`, async () => {
-		const required = await renderBlock0({ eagerTasks: true, eagerTasksAlways: true });
-		const preferred = await renderBlock0({ eagerTasks: true, eagerTasksAlways: false });
+		const required = await renderDelegating({ eagerTasks: true, eagerTasksAlways: true });
+		const preferred = await renderDelegating({ eagerTasks: true, eagerTasksAlways: false });
 
 		for (const rendered of [required, preferred]) {
 			expect(rendered).not.toContain("investigations—MUST be decomposed");
@@ -530,12 +495,9 @@ describe("system prompt settings parity: delegation (the regression this harness
 		// The surrounding guidance must survive: a gate that swallowed the whole
 		// paragraph would pass the two checks above for the wrong reason.
 		//
-		// Anchored on "MUST be delegated" and not on the older "MUST be decomposed and delegated":
-		// the sentence now reads "Everything else that clears the delegation gates ... MUST be
-		// delegated", because naming the gates is what replaced the hardcoded category list. The
-		// shorter anchor is a substring of both wordings, so it survives that edit and still fails if
-		// the paragraph disappears.
-		expect(required).toContain("MUST be delegated");
+		// The surrounding guidance must survive: removing the whole paragraph
+		// would make the negative checks pass for the wrong reason.
+		expect(required).toContain("MUST delegate substantial work");
 		expect(preferred).toContain("Delegation is preferred");
 	});
 
@@ -553,12 +515,12 @@ describe("system prompt settings parity: delegation (the regression this harness
 	});
 
 	it(`${asserted("useCodexTaskPrompt")} switches delegation to the Codex policy for gpt-5.6`, async () => {
-		const codexEager = await renderBlock0({ model: "openai/gpt-5.6", eagerTasks: true });
-		const codexQuiet = await renderBlock0({ model: "openai/gpt-5.6", eagerTasks: false });
+		const codexEager = await renderDelegating({ model: "openai/gpt-5.6", eagerTasks: true });
+		const codexQuiet = await renderDelegating({ model: "openai/gpt-5.6", eagerTasks: false });
 		expect(codexEager).toContain("Proactive multi-agent delegation is active");
 		expect(codexQuiet).toContain("Do not spawn sub-agents unless");
 		// Non-codex model must NOT use the Codex phrasing.
-		expect(await renderBlock0({ eagerTasks: true })).not.toContain("Proactive multi-agent delegation is active");
+		expect(await renderDelegating({ eagerTasks: true })).not.toContain("Proactive multi-agent delegation is active");
 	});
 });
 
@@ -639,9 +601,7 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	taskIrcEnabled: "taskIrcEnabled",
 	subagentNames: "subagentNames",
 	hasSpawnableSubagent: "hasSpawnableSubagent",
-	hasSubagentSpecialists: "hasSubagentSpecialists",
-	investigativeSubagentNames: "investigativeSubagentNames",
-	hasInvestigativeSubagent: "hasInvestigativeSubagent",
+	hasGeneralSubagent: "hasGeneralSubagent",
 	useCodexTaskPrompt: "useCodexTaskPrompt",
 	"tools:read": "hasRead",
 	"tools:edit": "hasEdit",

@@ -5,6 +5,12 @@
 ### Added
 
 - Expanded `session.instrumentation` into a complete session-study record. `basic` adds lifecycle checkpoints, task transitions, and tool timing; `rich` adds context attribution, directional agent-message delivery, result weight, and analytics rollups; `ultra` adds compaction links, per-task transitions, routes, fingerprints, and provider provenance. `veyyon session stats` reports each available family. `off` adds no telemetry but still stores the normal conversation and tool history required to resume.
+- First-run setup now includes a **Choose subagents** step. Only the general `task`
+  worker starts enabled; bundled specialists and user or project agent definitions
+  require an explicit grant there or in **Settings → Subagents → Agents**. Delegation
+  guidance now preserves each concrete agent role, uses `task` only as the
+  general-purpose fallback, keeps unmatched specialist work in the main session,
+  and collapses homogeneous triage fan-outs into one retrieval and classification operation.
 
 - Auto QA can upload grievances to `https://veyyon.dev/api/grievances`, where a Cloudflare Pages
   Function validates the batch and stores it in D1. Upload is controlled by

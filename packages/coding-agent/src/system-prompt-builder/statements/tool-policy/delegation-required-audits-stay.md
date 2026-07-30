@@ -1,1 +1,0 @@
-- Reading, reviewing or auditing, which stays with you: no agent enabled here is set up for read-only work, so "delegate it" would mean handing an audit to a worker that exists to edit code.

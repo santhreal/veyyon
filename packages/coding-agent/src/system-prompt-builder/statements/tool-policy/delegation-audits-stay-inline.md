@@ -1,1 +1,0 @@
-- Keep exploration, review, and audits inline; enabled workers can edit and exist to execute, not scout.

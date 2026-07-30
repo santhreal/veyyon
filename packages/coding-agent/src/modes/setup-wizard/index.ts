@@ -1,5 +1,6 @@
 import type { Settings } from "../../config/settings";
 import { CURRENT_SETUP_VERSION } from "../setup-version";
+import { agentsSetupScene } from "./scenes/agents";
 import { glyphSetupScene } from "./scenes/glyph";
 import { importSetupScene } from "./scenes/import";
 import { providersSetupScene } from "./scenes/providers";
@@ -14,6 +15,7 @@ export { CURRENT_SETUP_VERSION };
 
 export const ALL_SCENES = [
 	providersSetupScene,
+	agentsSetupScene,
 	glyphSetupScene,
 	themeSetupScene,
 	importSetupScene,

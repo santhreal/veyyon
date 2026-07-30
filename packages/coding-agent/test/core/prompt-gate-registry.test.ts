@@ -84,7 +84,6 @@ const NON_SETTINGS_GATES: Readonly<Record<string, string>> = {
 	hasMCPDiscoveryServers: "whether any discoverable MCP server summaries were produced",
 	hasMemoryRoot: "which memory backend resolved, not a setting read directly",
 	hasObsidian: "whether an Obsidian vault was discovered",
-	hasSubagentSpecialists: "derived from subagentNames, which subagent.agents already gates",
 	hasSpawnableSubagent: "derived from the enabled subagent names for this session",
 	useCodexTaskPrompt: "a per-model policy decision keyed off the active model",
 	eagerTasks: "delegation strength, gated by subagent.delegation",

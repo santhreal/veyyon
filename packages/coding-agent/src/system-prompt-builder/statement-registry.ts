@@ -131,9 +131,6 @@ import statementToolPolicyAstEdit from "./statements/tool-policy/ast-edit.md" wi
 import statementToolPolicyAstGrep from "./statements/tool-policy/ast-grep.md" with { type: "text" };
 import statementToolPolicyAstPlainText from "./statements/tool-policy/ast-plain-text.md" with { type: "text" };
 import statementToolPolicyDelegation from "./statements/tool-policy/delegation.md" with { type: "text" };
-import statementToolPolicyDelegationAuditsStayInline from "./statements/tool-policy/delegation-audits-stay-inline.md" with {
-	type: "text",
-};
 import statementToolPolicyDelegationCodexEager from "./statements/tool-policy/delegation-codex-eager.md" with {
 	type: "text",
 };
@@ -144,9 +141,6 @@ import statementToolPolicyDelegationConcurrencyCap from "./statements/tool-polic
 	type: "text",
 };
 import statementToolPolicyDelegationGates from "./statements/tool-policy/delegation-gates.md" with { type: "text" };
-import statementToolPolicyDelegationInvestigativeAgent from "./statements/tool-policy/delegation-investigative-agent.md" with {
-	type: "text",
-};
 import statementToolPolicyDelegationNoShrinking from "./statements/tool-policy/delegation-no-shrinking.md" with {
 	type: "text",
 };
@@ -154,12 +148,6 @@ import statementToolPolicyDelegationPreferred from "./statements/tool-policy/del
 	type: "text",
 };
 import statementToolPolicyDelegationRequired from "./statements/tool-policy/delegation-required.md" with {
-	type: "text",
-};
-import statementToolPolicyDelegationRequiredAuditsStay from "./statements/tool-policy/delegation-required-audits-stay.md" with {
-	type: "text",
-};
-import statementToolPolicyDelegationRequiredEverythingElse from "./statements/tool-policy/delegation-required-everything-else.md" with {
 	type: "text",
 };
 import statementToolPolicyDelegationSubagentValue from "./statements/tool-policy/delegation-subagent-value.md" with {
@@ -630,14 +618,19 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/delegation",
 		section: "tool-policy",
-		condition: contains("tools", "task"),
+		condition: allOf(contains("tools", "task"), when("hasSpawnableSubagent")),
 		text: statementToolPolicyDelegation,
 		purpose: "the Delegation heading, which opens the section the task tool makes real",
 	},
 	{
 		id: "tool-policy/delegation-codex-eager",
 		section: "tool-policy",
-		condition: allOf(contains("tools", "task"), when("useCodexTaskPrompt"), when("eagerTasks")),
+		condition: allOf(
+			contains("tools", "task"),
+			when("hasSpawnableSubagent"),
+			when("useCodexTaskPrompt"),
+			when("eagerTasks"),
+		),
 		text: statementToolPolicyDelegationCodexEager,
 		purpose:
 			"the Codex-style wording that activates proactive delegation and revokes any earlier ask-first instruction",
@@ -645,7 +638,12 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/delegation-codex-off",
 		section: "tool-policy",
-		condition: allOf(contains("tools", "task"), when("useCodexTaskPrompt"), not(when("eagerTasks"))),
+		condition: allOf(
+			contains("tools", "task"),
+			when("hasSpawnableSubagent"),
+			when("useCodexTaskPrompt"),
+			not(when("eagerTasks")),
+		),
 		text: statementToolPolicyDelegationCodexOff,
 		purpose:
 			"the Codex-style wording that forbids spawning without an explicit request; the else arm of the same block, hence `not`",
@@ -655,51 +653,28 @@ export const PROMPT_STATEMENTS = [
 		section: "tool-policy",
 		condition: allOf(
 			contains("tools", "task"),
+			when("hasSpawnableSubagent"),
 			not(when("useCodexTaskPrompt")),
 			when("eagerTasks"),
 			when("eagerTasksAlways"),
 		),
 		text: statementToolPolicyDelegationRequired,
-		purpose: "delegation as the default with the list of when to work alone, for the strongest delegation setting",
-	},
-	{
-		id: "tool-policy/delegation-required-audits-stay",
-		section: "tool-policy",
-		condition: allOf(
-			contains("tools", "task"),
-			not(when("useCodexTaskPrompt")),
-			when("eagerTasks"),
-			when("eagerTasksAlways"),
-			not(when("hasInvestigativeSubagent")),
-		),
-		text: statementToolPolicyDelegationRequiredAuditsStay,
 		purpose:
-			"one more entry in the work-alone list, present only when no read-only agent exists: under the strongest setting the model is told it MUST delegate, so without this it reads an audit as delegable to a worker that can only edit",
-	},
-	{
-		id: "tool-policy/delegation-required-everything-else",
-		section: "tool-policy",
-		condition: allOf(
-			contains("tools", "task"),
-			not(when("useCodexTaskPrompt")),
-			when("eagerTasks"),
-			when("eagerTasksAlways"),
-		),
-		text: statementToolPolicyDelegationRequiredEverythingElse,
-		purpose:
-			"closes the work-alone list with the MUST that follows it; it owns the blank lines that separate it from the list because the entry above it is conditional, and separation that disappears with an unrelated row is how blank-line drift starts",
+			"the strongest delegation setting, requiring substantial work to use the closest enabled agent role while unmatched work remains inline",
 	},
 	{
 		id: "tool-policy/delegation-preferred",
 		section: "tool-policy",
 		condition: allOf(
 			contains("tools", "task"),
+			when("hasSpawnableSubagent"),
 			not(when("useCodexTaskPrompt")),
 			when("eagerTasks"),
 			not(when("eagerTasksAlways")),
 		),
 		text: statementToolPolicyDelegationPreferred,
-		purpose: "the softer SHOULD wording in the else arm of the required block",
+		purpose:
+			"the softer delegation setting, encouraging substantial work to use the closest enabled agent role while unmatched work remains inline",
 	},
 	{
 		id: "tool-policy/delegation-subagent-value",
@@ -714,44 +689,18 @@ export const PROMPT_STATEMENTS = [
 			"the first bullet on what a subagent is FOR: a separate context rather than a lesser model. The brace nesting hides this group inside the not-Codex branch rather than the task block",
 	},
 	{
-		id: "tool-policy/delegation-investigative-agent",
-		section: "tool-policy",
-		condition: allOf(
-			contains("tools", "task"),
-			when("hasSpawnableSubagent"),
-			not(when("useCodexTaskPrompt")),
-			when("hasInvestigativeSubagent"),
-		),
-		text: statementToolPolicyDelegationInvestigativeAgent,
-		purpose: "names the read-only agents as the way to map unknown code, which can only be said when one is enabled",
-	},
-	{
-		id: "tool-policy/delegation-audits-stay-inline",
-		section: "tool-policy",
-		condition: allOf(
-			contains("tools", "task"),
-			when("hasSpawnableSubagent"),
-			not(when("useCodexTaskPrompt")),
-			not(when("hasInvestigativeSubagent")),
-		),
-		text: statementToolPolicyDelegationAuditsStayInline,
-		purpose:
-			"the other arm: with only editing workers enabled, exploration and review stay inline rather than going to an agent that exists to execute",
-	},
-	{
 		id: "tool-policy/delegation-no-shrinking",
 		section: "tool-policy",
 		condition: allOf(contains("tools", "task"), when("hasSpawnableSubagent"), not(when("useCodexTaskPrompt"))),
 		text: statementToolPolicyDelegationNoShrinking,
-		purpose: "closes the group with the rule that scope pressure is answered by delegating, never by shrinking",
+		purpose: "keeps scope intact while limiting delegation to assignments an enabled role can actually own",
 	},
 	{
 		id: "tool-policy/delegation-gates",
 		section: "tool-policy",
-		// Same reason as the bullets above. This block also held the agent-typing bullet whose `{{else}}`
-		// interpolated the enabled list, so with nothing enabled it rendered "Only one agent type is
-		// enabled here (``)" -- an empty list stating a falsehood. Gating the block is the fix; the
-		// branch inside it is now only reached with exactly one agent, so its list is never empty.
+		// The task tool remains built when every agent row is disabled so a direct
+		// slash command can grant one for a turn. Model-facing role guidance must
+		// disappear in that state because it has no enabled destination.
 		condition: allOf(contains("tools", "task"), when("hasSpawnableSubagent")),
 		text: statementToolPolicyDelegationGates,
 		purpose:

@@ -142,15 +142,9 @@ export const PROMPT_GATES = [
 	},
 	{
 		setting: "subagent.agents",
-		variables: [
-			"subagentNames",
-			"hasSpawnableSubagent",
-			"hasSubagentSpecialists",
-			"investigativeSubagentNames",
-			"hasInvestigativeSubagent",
-		],
+		variables: ["subagentNames", "hasSpawnableSubagent", "hasGeneralSubagent"],
 		renders:
-			"whether delegation prose is emitted at all, which specialists it names, so it cannot route work to an agent this session cannot spawn, and whether audit work may be delegated at all rather than done inline",
+			"whether delegation prose is emitted, which concrete agent roles it names, and whether the general-purpose task role is available as a fallback",
 		liveness: { kind: "live" },
 	},
 	{

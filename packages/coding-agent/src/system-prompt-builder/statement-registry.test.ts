@@ -425,7 +425,7 @@ describe("a condition describes itself", () => {
 
 		expect(arm).toBeDefined();
 		expect(describeCondition(arm?.condition ?? { kind: "always" })).toBe(
-			"tools has task and not useCodexTaskPrompt and eagerTasks and not eagerTasksAlways",
+			"tools has task and hasSpawnableSubagent and not useCodexTaskPrompt and eagerTasks and not eagerTasksAlways",
 		);
 	});
 

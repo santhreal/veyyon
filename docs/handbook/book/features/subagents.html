@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8d909778.js";
+            window.path_to_searchindex_js = "../searchindex-c8def376.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -212,9 +212,11 @@ other. It does not configure anything.</p>
 <p>Every subagent runs the model you are working with. Change the model you are talking
 to and your subagents follow it.</p>
 <p>Veyyon also ships five specialists (<code>scout</code>, <code>reviewer</code>, <code>designer</code>, <code>librarian</code>,
-<code>sonic</code>), and they are <strong>disabled</strong> by default. Each agent type you enable adds its
-description to every request you send for the rest of the session, so you pay for the
-ones you use and nothing else. Enable one in the Subagents tab.</p>
+<code>sonic</code>), and they are <strong>disabled</strong> by default. During first-run setup, the
+<strong>Choose subagents</strong> step shows every available role with only <code>task</code> checked.
+Enable the specialists you want the model to start on its own. Each enabled type
+adds its description to future requests, so leave roles off when you do not use
+them.</p>
 <h2 id="how-hard-to-push"><a class="header" href="#how-hard-to-push">How hard to push</a></h2>
 <p><code>subagent.delegation</code> decides how hard this session is pushed to delegate:</p>
 <div class="table-wrapper">
@@ -229,56 +231,48 @@ ones you use and nothing else. Enable one in the Subagents tab.</p>
 </tbody>
 </table>
 </div>
+<p>The strength applies only when an enabled role matches the work. If <code>task</code> is
+enabled, it acts as the general-purpose fallback. If only specialists are
+enabled, work that matches none of their descriptions stays in the main
+session. With no enabled agent, the delegation preamble is omitted.</p>
 <p>The separate <code>subagent.enabled</code> boolean (default on) is the kill switch: off removes the <code>task</code>
 tool and every delegation instruction from the prompt, so nothing can be spawned. A legacy
 <code>delegation: off</code> migrates to <code>subagent.enabled: false</code>.</p>
-<p>The instructions follow what you have enabled. With only the worker offered, nothing
-in the prompt talks about picking an agent type, and nothing tells the model to send
-research to a <code>scout</code> it cannot spawn.</p>
+<p>The instructions follow the exact roles you enable. With only <code>task</code> offered,
+the prompt uses it as the general-purpose route. Enabling <code>designer</code> or
+<code>reviewer</code> adds those separate roles without changing what <code>task</code> means.</p>
 <h3 id="what-counts-as-delegable-work"><a class="header" href="#what-counts-as-delegable-work">What counts as delegable work</a></h3>
-<p><code>subagent.delegation</code> decides how hard the model is pushed to delegate. Which <em>kind</em> of work it is
-pushed to delegate is decided by the agents you enable, and those are two different questions.</p>
-<p>The split is between doing the work and looking at it. Editing files, refactoring, adding a feature,
-writing tests: that is work, and any enabled agent can take it. Exploring unfamiliar code, reviewing
-a change, auditing a subsystem: that is investigation, and it only gets delegated when you have
-enabled an agent set up for it.</p>
-<p>An agent is set up for investigation when it grants no tool that edits your workspace. Veyyon reads
-that from the agent’s own <code>tools:</code> line rather than from a list of names, so this works for agents you
-write yourself:</p>
-<pre><code class="language-yaml"># agents/auditor.md frontmatter
-name: auditor
-description: Reads a subsystem and reports what is wrong with it
-tools: read, grep, glob        # no edit, no write: an investigative agent
+<p><code>subagent.delegation</code> decides how strongly the model is pushed to delegate.
+The description of each enabled agent decides which work that role can own.
+These are separate settings.</p>
+<p>Veyyon preserves concrete roles. It does not infer a second role category from
+the tools an agent can call. For example, <code>designer</code> remains a designer and
+<code>reviewer</code> remains a reviewer. The model chooses the closest matching
+specialist for each independent slice:</p>
+<pre><code class="language-yaml"># agents/accessibility-reviewer.md frontmatter
+name: accessibility-reviewer
+description: Reviews terminal interfaces for accessibility problems and reports findings
+tools: read, grep, glob
 </code></pre>
-<p>Of the bundled agents, <code>scout</code>, <code>reviewer</code> and <code>librarian</code> are investigative. <code>task</code>, <code>sonic</code> and
-<code>designer</code> are not: they restrict nothing, so they can edit. Granting <code>bash</code> does not make an agent an
-editor, which is why <code>reviewer</code> still counts as investigative: it runs commands in order to read.</p>
-<p>One case reads the other way, and it is worth knowing before you wonder why your agent is not being
-named. An agent that grants a tool Veyyon does not ship, such as an MCP tool or one a plugin adds, is
-treated as an editor. Veyyon cannot see what those tools do: <code>mcp__github__list_issues</code> and
-<code>mcp__github__create_pull_request</code> look the same from here, and MCP servers commonly expose file
-writes and commits. Calling the agent investigative would be a guess, and the cost of guessing wrong
-is that the model is told to send an audit to something that can push a branch. If you want an agent
-advertised as investigative, grant it built-in tools only:</p>
-<pre><code class="language-yaml">tools: read, grep, glob, lsp        # named agents, so this one is advertised
-tools: read, mcp__acme__search      # unrecognised tool: treated as an editor
+<p>Enable that role when you want it available:</p>
+<pre><code class="language-console">$ veyyon config set subagent.agents.accessibility-reviewer.enabled true
 </code></pre>
-<p>With no investigative agent enabled, the prompt tells the model that exploration and review stay with
-it, and to map unknown code itself rather than spawn a worker to go and look. That is deliberate. The
-general worker exists to change code, and handing it an audit gets you a report from an agent set up
-to edit rather than to read. Enable <code>scout</code> if you would rather that work were delegated:</p>
-<pre><code class="language-console">$ veyyon config set subagent.agents.scout.enabled true
-</code></pre>
-<p>This is not a security boundary. An investigative agent that holds <code>bash</code> can still write a file if it
-decides to; use the <a href="./sandbox.html">sandbox</a> when you need that enforced.</p>
+<p>When <code>task</code> is enabled, the model can use it for substantial work that does not
+fit a specialist. When <code>task</code> is disabled, the model keeps unmatched work
+inline. This prevents a specialist name from becoming a generic worker merely
+because no closer role is available.</p>
+<p>An agent role is routing guidance, not a security boundary. Use the
+<a href="./sandbox.html">sandbox</a> when you need to restrict filesystem or process access.</p>
 <h2 id="choosing-agents"><a class="header" href="#choosing-agents">Choosing agents</a></h2>
-<p><code>subagent.agents</code> holds one row per agent name, and one screen edits it:
-<strong><code>/settings</code> → Subagents → Agents</strong>. It lists every discovered agent with its state,
-the model it resolves to, and the setting that decided. Enter opens one agent to set
-its state, model and effort, or reset it back to defaults.</p>
-<p>To add an agent, write the file: drop a markdown definition in your own or the
-project’s <code>agents/</code> directory, or start from the shipped ones by running
-<code>veyyon agents unpack</code>. A new agent is offered as soon as the file exists.</p>
+<p><code>subagent.agents</code> holds one row per agent name. You choose initial permissions in
+the first-run <strong>Choose subagents</strong> step, then edit them through <strong><code>/settings</code> →
+Subagents → Agents</strong>. The settings screen lists every discovered agent with its
+state, resolved model, and deciding setting. Enter opens one agent to set its
+state, model, and effort, or reset it to defaults.</p>
+<p>To add an agent, put a markdown definition in your own or the project’s
+<code>agents/</code> directory, or start from the shipped definitions by running
+<code>veyyon agents unpack</code>. The definition makes the role available. Enable its row
+before the model may start it.</p>
 <p>A row has two states:</p>
 <div class="table-wrapper">
 <table>
@@ -286,16 +280,16 @@ project’s <code>agents/</code> directory, or start from the shipped ones by ru
 <tr><th>State</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Enabled</strong></td><td>Listed in the <code>task</code> tool and choosable by the model. Your own agents and the general worker default to enabled.</td></tr>
-<tr><td><strong>Disabled</strong></td><td>Refused even when named, with a message pointing at the setting. The bundled specialists default to disabled, so they cost nothing.</td></tr>
+<tr><td><strong>Enabled</strong></td><td>Listed in the <code>task</code> tool and choosable by the model. Only the bundled <code>task</code> worker defaults to enabled.</td></tr>
+<tr><td><strong>Disabled</strong></td><td>Refused even when named, with a message pointing at the setting. Specialists and user or project agents default to disabled.</td></tr>
 </tbody>
 </table>
 </div>
 <p>The built-in flows still work with the specialists disabled because a command can grant its
 agent for the turn: <code>/review</code> asks for <code>agent: "reviewer"</code> through a per-turn grant, and so can
 you (“use the scout agent to map the parser”).</p>
-<p>Writing an agent file is itself the opt-in: an agent under your own or the project’s
-<code>agents/</code> directory is offered as soon as it exists.</p>
+<p>Writing an agent file makes the role available but does not grant spawn
+permission. Enable the role during setup or in the Agents settings table.</p>
 <h2 id="choosing-models"><a class="header" href="#choosing-models">Choosing models</a></h2>
 <p>Four things can name the model a subagent runs. The first that names one wins:</p>
 <ol>
