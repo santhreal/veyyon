@@ -11,6 +11,8 @@
   guidance now preserves each concrete agent role, uses `task` only as the
   general-purpose fallback, keeps unmatched specialist work in the main session,
   and collapses homogeneous triage fan-outs into one retrieval and classification operation.
+  The classifier uses the shared Unicode alphanumeric matcher, so non-ASCII labels follow the
+  same token boundaries as the rest of the CLI.
 
 - Auto QA can upload grievances to `https://veyyon.dev/api/grievances`, where a Cloudflare Pages
   Function validates the batch and stores it in D1. Upload is controlled by
