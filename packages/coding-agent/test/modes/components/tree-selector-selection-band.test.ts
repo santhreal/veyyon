@@ -24,14 +24,14 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
-import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
-const BG_OPEN = /\x1b\[48;2;\d+;\d+;\d+m/;
+const BG_OPEN = /\x1b\[(?:4[0-7]|10[0-7]|48;(?:2;\d+;\d+;\d+|5;\d+))m/;
 const BG_CLOSE = "\x1b[49m";
 const WIDTH = 100;
 
-let policy: ReturnType<typeof getAnsiPolicy>;
+let policy: AnsiPolicy;
 
 beforeEach(async () => {
 	await initTheme(false);
