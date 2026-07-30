@@ -5,7 +5,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { renderMCPResult } from "@veyyon/coding-agent/mcp/render";
 import { DeferredMCPTool, MCPTool, type MCPToolDetails } from "@veyyon/coding-agent/mcp/tool-bridge";
 import type { MCPServerConnection, MCPToolDefinition, MCPTransport } from "@veyyon/coding-agent/mcp/types";
-import { theme as activeTheme, getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { formatOutputNotice, type OutputMeta } from "@veyyon/coding-agent/tools/output-meta";
 import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
 import { TUI } from "@veyyon/tui";
@@ -81,11 +81,11 @@ function makeAgentTool(mcpTool: MCPTool): RenderableMCPAgentTool {
 		execute(): Promise<never> {
 			return Promise.reject(new Error("MCP execution is not used by renderer tests"));
 		},
-		renderCall(args, options) {
-			return mcpTool.renderCall(args, options, activeTheme);
+		renderCall(args, options, uiTheme) {
+			return mcpTool.renderCall(args, options, uiTheme);
 		},
-		renderResult(result, options) {
-			return mcpTool.renderResult(result, options, activeTheme);
+		renderResult(result, options, uiTheme) {
+			return mcpTool.renderResult(result, options, uiTheme);
 		},
 	};
 }
@@ -133,7 +133,9 @@ describe("MCP tool rendering", () => {
 		expect(rendered).not.toContain(`${pendingIcon} sentry/search_events`);
 	}, 15_000);
 
-	it("strips the spill notice from the body and surfaces the artifact link as a styled warning", () => {
+	/** The direct renderer uses the explicit local theme, never the mutable process-global binding. */
+	it("strips the spill notice from the body and surfaces the artifact link as a styled warning", async () => {
+		const uiTheme = await getRequiredTheme();
 		const meta: OutputMeta = {
 			truncation: {
 				direction: "tail",
@@ -156,7 +158,7 @@ describe("MCP tool rendering", () => {
 		};
 
 		const rendered = Bun.stripANSI(
-			renderMCPResult(result, { expanded: true, isPartial: false }, activeTheme).render(160).join("\n"),
+			renderMCPResult(result, { expanded: true, isPartial: false }, uiTheme).render(160).join("\n"),
 		);
 
 		expect(rendered).toContain("event 97");
