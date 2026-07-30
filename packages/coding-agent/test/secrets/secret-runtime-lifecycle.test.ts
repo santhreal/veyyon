@@ -223,8 +223,10 @@ describe("live secret runtime toggles", () => {
 
 describe("runtime replacement", () => {
 	/**
-	 * must revoke removed names and source-project expansion authority while retaining
+	 * Must revoke removed names and source-project expansion authority while retaining
 	 * redaction-only tombstones for values that may still exist in transcript history.
+	 * This drives a real session through encrypted vault writes and a project move, so
+	 * cold hosted runners need more than Bun's five-second unit-test default.
 	 */
 	it("reconciles additions/removals and revokes source-project expansion authority on move", async () => {
 		const fixture = await createRuntimeFixture();
@@ -251,7 +253,7 @@ describe("runtime replacement", () => {
 		} finally {
 			await disposeFixture(fixture);
 		}
-	});
+	}, 20_000);
 	/**
 	 * A vault revision check is the provider-admission fast path: unchanged
 	 * revisions must keep the exact immutable authority, while one external
