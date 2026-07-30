@@ -105,9 +105,9 @@
   mid-cell and replay the cell once. Unexpected process exits were classified as user cancellation,
   which bypassed the existing dead-kernel recovery path. Timeouts and explicit cancellation still
   stop without replaying the cell.
-- A cold Julia eval now gets 30 seconds to compile each kernel startup phase instead of 15 seconds.
-  Clean hosted runners exceeded the old ceiling before the first cell could run, which surfaced as a
-  cell timeout even though the user's code had not started. Warm kernels still return immediately.
+- A cold Julia eval now gets 60 seconds to compile each kernel startup phase instead of 15 seconds.
+  Clean hosted runners exceeded 30 seconds before the first cell could run, which surfaced as a cell
+  timeout even though the user's code had not started. Warm kernels still return immediately.
 - Tool status headers no longer gain a blank leading cell when the active symbol preset intentionally
   leaves that tool's glyph empty. Empty symbols now produce no ANSI wrapper, so IRC inbox headers and
   other iconless tool rows begin at the same column as their title.

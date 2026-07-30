@@ -59,10 +59,10 @@ async function ensureRunnerScript(): Promise<string> {
 	return target;
 }
 
-// Julia compiles both the runner and the prelude on first load. A clean hosted
-// runner exceeded the old 15-second ceiling before it could accept its first
-// cell, so cold starts need a wider budget than cached local launches.
-const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS + 20_000;
+// Julia compiles both the runner and the prelude on first load. Clean hosted
+// runners have taken more than 30 seconds before accepting their first cell, so
+// cold starts need a wider budget than cached local launches.
+const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS + 50_000;
 
 export interface JuliaKernelAvailability {
 	ok: boolean;
