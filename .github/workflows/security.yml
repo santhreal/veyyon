@@ -145,6 +145,7 @@ jobs:
   codeql:
     name: SAST (CodeQL JS/TS)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: read
       security-events: write
@@ -155,6 +156,7 @@ jobs:
         uses: github/codeql-action/init@4187e74d05793876e9989daffde9c3e66b4acd07 # v3.37.3
         with:
           languages: javascript-typescript
+          config-file: ./.github/codeql/codeql-config.yml
           # security-and-quality adds maintainability/correctness queries on top
           # of the default security suite.
           queries: security-and-quality

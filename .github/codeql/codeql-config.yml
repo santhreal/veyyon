@@ -1,0 +1,24 @@
+name: Veyyon production JavaScript and TypeScript
+
+# CodeQL's data-flow queries previously analyzed more than 1,200 test files and
+# never completed within GitHub's six-hour job limit. Scan every shipped source
+# root, including release and deployment scripts, while excluding non-shipped
+# tests, fixtures, benchmarks, and demo drivers.
+paths:
+  - packages
+  - scripts
+  - website
+  - tools
+  - types
+
+paths-ignore:
+  - "**/test/**"
+  - "**/tests/**"
+  - "**/__tests__/**"
+  - "**/fixtures/**"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
+  - "**/*.bench.ts"
+  - "scripts/demos/**"
