@@ -80,6 +80,13 @@
 
 ### Fixed
 
+- `renderHelpTable` takes `maxGutterFraction`, how much of the terminal the left column may occupy.
+  The cap exists so one long entry cannot set the column for every short one, and a third is right
+  when that column is a flag name. It is wrong when the column is inherently longer: `veyyon config
+  list`'s left column is a dotted setting path routinely past thirty characters, so a third pushed
+  the value onto a second line even when the value was `true`, growing that listing from 470 lines to
+  714 without making one of them easier to read. The default is unchanged, and it now lives in one
+  place on the `gutter` helper rather than at each call site.
 - `cli.ts` owns the help layout, and it now fits the terminal it prints into. Help was laid out for
   an infinite screen: it padded to the widest entry and never wrapped, so `veyyon --help` emitted 85
   lines past 80 columns with a 221-character worst case, and the terminal re-broke every one of them

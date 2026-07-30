@@ -459,6 +459,17 @@ function helpWidth(): number {
 }
 
 /**
+ * How much of the terminal the left column may take when the caller does not say.
+ *
+ * One owner, defaulted on `gutter` itself rather than at each call site. It was briefly defaulted
+ * in `renderHelpTable` instead, which left `renderRootHelp`'s direct `gutter` call passing nothing
+ * for a required parameter: `width * undefined` is `NaN`, `Math.min(n, NaN)` is `NaN`, and the pad
+ * silently collapsed to zero, printing `grepRun the grep tool standalone...` with no gap at all.
+ * A layout constant with two homes is a layout constant with one stale home.
+ */
+const DEFAULT_GUTTER_FRACTION = 1 / 3;
+
+/**
  * The widest left column worth aligning to, given the terminal.
  *
  * ALIGNING TO THE LONGEST ENTRY IS THE BUG. One flag spelling out an enum
@@ -466,14 +477,20 @@ function helpWidth(): number {
  * all seventy-odd, so every description started past column 62 and had roughly fifteen usable
  * columns left. A single outlier decided the layout for everything around it.
  *
- * So the gutter is capped at a third of the width. Entries within it still align, which is what
- * makes a flag list scannable; the few that overflow put their description on the next line instead
- * of dragging the column right. Trading alignment for one entry beats losing the column for all.
+ * So the gutter is capped. Entries within it still align, which is what makes a flag list
+ * scannable; the few that overflow put their description on the next line instead of dragging the
+ * column right. Trading alignment for one entry beats losing the column for all.
+ *
+ * `maxFraction` is how much of the width that cap may take, and it is a parameter because the right
+ * answer depends on what the left column IS. For flags a third is generous: the name is short and
+ * the description is the content. For `veyyon config list` the left column is a dotted setting path
+ * that legitimately runs to thirty characters, so a third pushed a four-character value like `true`
+ * onto its own line and grew the listing from 470 lines to 714 for no gain in readability.
  */
-function gutter(entries: readonly string[], width: number): number {
+function gutter(entries: readonly string[], width: number, maxFraction: number = DEFAULT_GUTTER_FRACTION): number {
 	// `Bun.stringWidth`, never `.length`: a styled entry carries escape bytes that occupy no columns.
 	const longest = entries.length > 0 ? Math.max(...entries.map(entry => Bun.stringWidth(entry))) : 0;
-	return Math.min(longest + 2, Math.floor(width / 3));
+	return Math.min(longest + 2, Math.floor(width * maxFraction));
 }
 
 /**
@@ -522,12 +539,14 @@ function pushWrapped(lines: string[], left: string, description: string, column:
  */
 export function renderHelpTable(
 	rows: ReadonlyArray<readonly [name: string, description: string]>,
-	options: { indent?: string } = {},
+	options: { indent?: string; maxGutterFraction?: number } = {},
 ): string[] {
 	const indent = options.indent ?? "  ";
 	const width = helpWidth();
 	const lefts = rows.map(([name]) => `${indent}${name}`);
-	const column = gutter(lefts, width);
+	// The default lives on `gutter`; a caller whose left column is inherently longer (a dotted
+	// setting path) raises it rather than reimplementing the layout. See the note there.
+	const column = gutter(lefts, width, options.maxGutterFraction);
 	const lines: string[] = [];
 	for (const [index, [, description]] of rows.entries()) {
 		pushWrapped(lines, lefts[index] ?? "", description, column, width);
