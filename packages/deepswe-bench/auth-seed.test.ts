@@ -264,7 +264,10 @@ describe("probeCredentialStore", () => {
 		const file = path.join(dir, "torn.db");
 		const db = new Database(file, { create: true });
 		db.run("CREATE TABLE credential (provider TEXT PRIMARY KEY, token TEXT)");
-		for (let i = 0; i < 400; i++) db.run("INSERT INTO credential VALUES (?, ?)", [`p${i}`, "x".repeat(200)]);
+		const insert = db.prepare("INSERT INTO credential VALUES (?, ?)");
+		db.transaction(() => {
+			for (let i = 0; i < 400; i++) insert.run(`p${i}`, "x".repeat(200));
+		})();
 		db.close();
 
 		// Keep the 100-byte header intact and shred what follows, which is what a
