@@ -128,15 +128,15 @@ jobs:
    # Compute a stable hash of every input that affects the native cdylib output,
    # then look for any prior successful main run that already uploaded the
    # native artifacts for this hash. Two independent outputs:
-   #   * `linux-x64-run-id` — set when the linux x64 canary
-   #     (`veyyon-natives-linux-x64-modern-h<hash>`) is present on a prior main run,
-   #     so native-dependent TS test jobs and `native_linux_x64` can reuse it.
-   #   * `cross-platform-run-id` — set when ALL cross-platform native artifacts
-   #     also have non-expired artifacts on that same prior run, so
-   #     `native_cross_platform` can skip the cold rebuild on main pushes after
-   #     dep changes have already warmed sccache there.
-   # Non-release native jobs are skipped when their canary hits; the canary
-   # retention window (see build-native action) is the effective TTL.
+   #   * `linux-x64-run-id` — set when BOTH linux x64 variants
+   #     (`baseline` and `modern`) are present on a prior main run, so
+   #     native-dependent TS test jobs and `native_linux_x64` can reuse it.
+   #   * `cross-platform-run-id` — set when the complete Linux x64 and
+   #     cross-platform artifact set is present and non-expired on that same
+   #     prior run, so `native_cross_platform` can skip the cold rebuild on
+   #     main pushes after dep changes have already warmed sccache there.
+   # Non-release native jobs are skipped only for complete artifact sets; the
+   # artifact retention window (see build-native action) is the effective TTL.
    native_artifact_lookup:
       name: Look up cached native artifacts
       runs-on: ubuntu-22.04
@@ -153,6 +153,7 @@ jobs:
               source_hash=$(find crates Cargo.toml Cargo.lock rust-toolchain.toml \
                       packages/natives/scripts packages/natives/package.json \
                       scripts/ci-build-native.ts scripts/host-detect.ts \
+                      .github/actions/build-native/action.yml \
                       -type f -print0 \
                     | sort -z \
                     | xargs -0 sha256sum \
@@ -167,13 +168,15 @@ jobs:
            shell: bash
            run: |
               hash="${{ steps.compute.outputs.source-hash }}"
-              # Canary for native_linux_x64: presence of the modern artifact
-              # implies the baseline sibling is also there (they upload from the
-              # same job).
-              linux_canary="veyyon-natives-linux-x64-modern-h${hash}"
-              # Required set for cross-platform reuse — names must match the
-              # `actions/upload-artifact` `name:` template in build-native action.
+              # Required names must match the `actions/upload-artifact` `name:`
+              # template in the build-native action. Both x64 variants are
+              # independent matrix jobs, so neither one's presence implies the other.
+              linux_x64_required=(
+                "veyyon-natives-linux-x64-baseline-h${hash}"
+                "veyyon-natives-linux-x64-modern-h${hash}"
+              )
               cross_platform_required=(
+                "${linux_x64_required[@]}"
                 "veyyon-natives-linux-arm64-h${hash}"
                 "veyyon-natives-darwin-x64-baseline-h${hash}"
                 "veyyon-natives-darwin-arm64-h${hash}"
@@ -186,24 +189,26 @@ jobs:
                   --limit=20 --json databaseId --jq='.[].databaseId'); do
                 names=$(gh api "/repos/${{ github.repository }}/actions/runs/$candidate/artifacts?per_page=100" \
                     --jq '.artifacts[] | select(.expired == false) | .name')
-                if [ -z "$linux_x64_run_id" ] && echo "$names" | grep -qFx "$linux_canary"; then
-                  linux_x64_run_id="$candidate"
+                if [ -z "$linux_x64_run_id" ]; then
+                  all_found=true
+                  for req in "${linux_x64_required[@]}"; do
+                    if ! echo "$names" | grep -qFx "$req"; then
+                      all_found=false
+                      break
+                    fi
+                  done
+                  if $all_found; then
+                    linux_x64_run_id="$candidate"
+                  fi
                 fi
                 if [ -z "$cross_platform_run_id" ]; then
                   all_found=true
-                  # Cross-platform reuse requires the linux canary AND every
-                  # cross-platform artifact, since release_binary downloads them
-                  # from the same run.
-                  if ! echo "$names" | grep -qFx "$linux_canary"; then
-                    all_found=false
-                  else
-                    for req in "${cross_platform_required[@]}"; do
-                      if ! echo "$names" | grep -qFx "$req"; then
-                        all_found=false
-                        break
-                      fi
-                    done
-                  fi
+                  for req in "${cross_platform_required[@]}"; do
+                    if ! echo "$names" | grep -qFx "$req"; then
+                      all_found=false
+                      break
+                    fi
+                  done
                   if $all_found; then
                     cross_platform_run_id="$candidate"
                   fi
