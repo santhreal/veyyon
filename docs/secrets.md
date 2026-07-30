@@ -28,7 +28,7 @@ Opaque authenticated replay fields are validated rather than mutated. A live sec
 
 3. Local display restoration expands only live reversible placeholders. Replace-mode substitutions are one-way. Expired and removed values lose expansion rights but retain forward redaction tombstones, so old transcript text cannot become provider-visible.
 
-4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted subagents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
+4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately, and the system-prompt inventory of spendable names with it. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted subagents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
 
 ### Spending a secret asks first
 
@@ -99,10 +99,11 @@ Two stores feed the obfuscator. `secrets.yml` below is declarative and plaintext
 | `/secret add <name>` | Prompt for the value in a masked field. TUI only; the composer is cleared before the field opens. |
 | `/secret add <name> --from-env <VAR>` | Store the value of an environment variable. The credential is never typed. The only form available to a client with no terminal. |
 | `/secret add <name> <value>` | Store a value directly. Visible in terminal scrollback, but excluded from persistent editor history. |
-| `/secret list` | Names, scopes, lifetimes. Never values, not even a prefix. |
-| `/secret rm <name>` | Remove the entry that is currently in effect. |
-| `/secret extend <name> --ttl 7d` | Give an entry a fresh lifetime, measured from now. |
+| `/secret list` | An aligned table of placeholders, scopes and lifetimes, plus a `STATUS` column when a row is near expiry. Never values, not even a prefix. |
+| `/secret rm <name>` | Remove the entry that is currently in effect, and tell the model that its placeholder is revoked. |
+| `/secret extend <name> --ttl 7d` | Give an entry a fresh lifetime, measured from now, and tell the model the placeholder is still live. |
 | `/secret log [--limit N]` | The expansion log: which placeholder went into which command, when. |
+| `/secret discard --scope <scope>` | Move one scope's unreadable vault file aside so that scope works again. Never deletes it. |
 
 Each option belongs to the subcommands that read it, and `SUBCOMMAND_SHAPES` is the one owner of that mapping:
 
@@ -110,16 +111,31 @@ Each option belongs to the subcommands that read it, and `SUBCOMMAND_SHAPES` is 
 | ------ | -------- | ------ |
 | `--from-env` | `add` | an environment variable name |
 | `--ttl` | `add`, `extend` | `30m`, `12h`, `7d`, `2w`, `never` |
-| `--scope` | `add` | `profile` (default), `project`, `global` |
+| `--scope` | `add`, `discard` | `profile` (default for `add`, required for `discard`), `project`, `global` |
 | `--limit` | `log` | a positive whole number |
 
-`SUBCOMMAND_SHAPES` also records how many bare words each subcommand reads: one for `rm` and `extend`, none for `list`, `log` and `help`, and unbounded for `add`. `add` has to be unbounded because everything after the name is rejoined into the credential and a passphrase contains spaces, so a word count there would refuse `/secret add gpg my long pass phrase` as five arguments when it is two.
+`SUBCOMMAND_SHAPES` also records how many bare words each subcommand reads: one for `rm` and `extend`, none for `list`, `log`, `discard` and `help`, and unbounded for `add`. `add` has to be unbounded because everything after the name is rejoined into the credential and a passphrase contains spaces, so a word count there would refuse `/secret add gpg my long pass phrase` as five arguments when it is two. `discard` takes none because it names a whole scope's file rather than an entry, and `/secret discard MY_TOKEN` reads as removing one secret when it would in fact have moved every secret in that scope.
 
 An option given to a subcommand that does not read it is **refused**, naming the subcommand that does. Previously every option parsed for every verb and each subcommand read only the fields it cared about, so `/secret extend NAME --scope global` reported success and did nothing about the scope, and `/secret rm NAME --scope project` read as "the project copy is gone" when the copy in effect had been removed and the others were untouched. A silent no-op on a command that moves credentials around is the worst place for one.
 
 A bare word the subcommand does not read is refused the same way. `/secret log 50` is the natural way to ask for fifty records, and it used to parse the `50` into `request.name`, which `showLog` never reads: the command printed the default twenty in silence and the operator concluded twenty was all there was. The refusal names `--limit` and echoes the number that was given, because "too many arguments" does not tell somebody what to type instead.
 
 `needsValuePrompt` decides whether a surface prompts, and it lives in the pure command layer so the TUI and text/ACP paths cannot disagree about when a masked field is warranted. A surface that cannot mask must not substitute an unmasked prompt: absent `promptForValue`, `runSecretCommand` refuses the add and names `--from-env`.
+
+### `discard`: the repair for a vault that cannot be read
+
+`load()` skips a scope whose file exists and cannot be read, with a notice, and `remove()` refuses to touch one. Between them that left the operator able to start and unable to fix: `discardUnreadableScope` existed with no caller, so the only real route was deleting the file by hand. `/secret discard` is that call, and it is the one operation that resolves the state from inside veyyon.
+
+It **moves** the file to a `vault.json.unreadable-<timestamp>-<uuid>` sibling rather than deleting it. The file still holds real credentials, sealed with a key that is still on disk, so the damage may be a truncated tail with recoverable entries behind it, and destroying a credential store to make the product usable again is a trade the operator has not agreed to. A rename costs nothing. The new path is returned and printed, because it is the operator's only route back to those entries: a message that omitted it would make a recoverable move indistinguishable from a delete.
+
+`--scope` is **required here and defaulted everywhere else**, which is the one exception in the table above. Elsewhere the argument names where to PUT something, so a wrong guess costs a secret filed in the wrong place and `/secret list` shows you that. Here it selects a file to move aside, so a default would let a bare `/secret discard` move a working vault out from under the session. The refusal carries the usage, and the guard is repeated at the dispatch as well as the parser, because ACP and other adapters build a request object without going through `parseSecretCommand`.
+
+Two refusals are load-bearing:
+
+- **A scope that reads normally.** Checked inside `discardUnreadableScope`, under the file lock, rather than trusted from an earlier `load()`: the file may have been repaired in between. This is not a second delete path, and the refusal names `/secret rm <name>`, which unlike this can say what it removed.
+- **A scope whose path is also another scope's vault.** A profile directory that is the config root makes the profile and global vaults one file, so moving it aside as one would take the other with it. `#scopePathOwner` resolves the owner by file identity and the refusal names it, because an operator told only "cannot discard" reaches for `rm` on the file and loses both.
+
+Afterwards the result carries `changed: true`, so the surface rebuilds the obfuscator: a scope's file has just stopped existing at the path the loader reads, and until it reloads the session still holds the pre-discard view. The moved-aside file keeps mode `0600`, since a repair that widened permissions on a sealed credential store would be a worse outcome than the fault it fixed.
 
 ### Masked entry
 
@@ -136,6 +152,55 @@ A vault entry's placeholder is its name, so the model sees `#GITHUB_TOKEN#`. Tha
 Names are 5 to 64 characters of `A-Z`, `0-9` and `_`, starting with a letter. Unnamed HMAC placeholders start with the reserved digit `0`, so a name can never collide with one. `normaliseSecretName` accepts what people type (`github-token`, `github token`, lowercase) and uppercases it. It rejects non-ASCII input before uppercasing, so Unicode case expansion cannot alias an existing name.
 
 Entries without a name get a generated name (`SECRET_1`), so every vault entry has a placeholder the model can reference. Plain environment and `secrets.yml` values use the machine-keyed unnamed form.
+
+### Completing a stored name
+
+`/secret rm` and `/secret extend` complete the names of stored credentials. The operator-facing
+description is [Seeing and removing what you stored](./handbook/src/features/secrets.md#seeing-and-removing-what-you-stored).
+
+`buildSecretArgumentCompletions` (`slash-commands/builtin-registry.ts`) layers over the declarative
+subcommand completion every other command uses. Before a verb is chosen it delegates to that verb
+list unchanged. After `rm ` or `extend ` it returns names instead. `add` is excluded, since its name
+is one the operator is inventing.
+
+The names come from `session.obfuscator.namedSecretNames()`, the running runtime, and not from
+`SecretVault.load()`. The vault is the authoritative store, but reading it is file I/O plus a decrypt
+on every keystroke, and `load()` throws on a malformed or key-missing vault, which would turn a bad
+vault into a dropdown that crashes as you type. The cost is that completion goes quiet when secret
+protection is off and no obfuscator exists, which leaves `rm` working when the name is typed in full.
+
+The completion `value` carries the verb as well as the name (`rm GITHUB_TOKEN`). The TUI reports the
+whole argument text as the replaced span (`autocomplete.ts` returns `prefix: argumentText`, and
+`applyCompletion` splices `item.value` over exactly that span), so a value of just the name would
+rewrite `/secret rm gi` into `/secret GITHUB_TOKEN` and drop the verb. No other builder in the
+registry returns a multi-token value.
+
+Whether the completion leaves a trailing space is read off the subcommand's declared `usage`: a verb
+with parameters after `<name>` completes to `extend NAME ` with the cursor ready for `--ttl`, and one
+without completes to a finished command. Deriving it means a subcommand that grows a flag does not
+need this function edited to match.
+
+### What the model is told about a stored secret
+
+The operator-facing account is [What the agent knows, and when](./handbook/src/features/secrets.md#what-the-agent-knows-and-when). Two mechanisms carry it, with different jobs.
+
+**The inventory** is a system-prompt section. `SecretObfuscator.namedSecretNames()` returns every readable name the live runtime can expand, sorted, and never a value. It calls `#forgetExpired()` first, so a name stops being answered at the moment it stops working. That list becomes an optional option-backed runtime section registered in `RUNTIME_SECTIONS` (`system-prompt-builder/section-registry.ts`) and supplied where `sdk.ts` calls the system-prompt builder, beside `secretsEnabled`. `AgentSession.refreshSecrets()` reloads the runtime and rebuilds the base prompt, which is what makes a removed or expired name stop appearing.
+
+Sorted because the section sits in the cached prompt prefix. Map insertion order would shuffle between refreshes and invalidate the provider's prompt cache without changing anything the section says.
+
+An optional section renders only when its option is present, so protection being off, or nothing being spendable, produces no section rather than an empty heading. Names are listed in placeholder form, which is the form the model has to write. Index-form secrets are absent, having no name to list.
+
+It belongs in the prompt rather than in the conversation because the vault outlives the conversation. Vault entries are profile, project or global scoped and persist across sessions; a notice injected into history does not. Before this, a credential stored yesterday was live this morning and unknown to the model that could spend it.
+
+**The notice** is a `developer` message. `runSecretCommand` returns `agentNotice` for `add`, `rm` and `extend`; `list`, `log` and `help` return none. `tellTheAgent` (`slash-commands/helpers/secret.ts`) appends it to the live agent and to the session file, because only the first leaves a resumed session holding a placeholder it was never introduced to, and only the second withholds the news until the next restart.
+
+`rm` states the revocation rather than leaving it to the name's disappearance from the inventory. A model does not reliably notice an absence, and the consequence here is not benign: expansion has already been revoked, so the literal `#NAME#` reaches the tool argument and the operator gets an authentication failure with no stated cause. The removal notice is therefore delivered even when `secrets.enabled` is off, where the `add` and `extend` notices are suppressed. A revoked placeholder is already in the history; a new one with protection off has nothing to expand into.
+
+No notice carries a lifetime. A duration is accurate when written and wrong afterwards, and the operator reads the exact time left from the terminal confirmation instead.
+
+Expiry that no command triggered has no notice at all. The name leaves the inventory on the next rebuild, `#forgetPlaceholder` has already revoked expansion, and the operator hears about it through `OperatorNotices`.
+
+No path puts a value in front of the model. The inventory carries names, the notices carry names, and substitution happens after the model has written the placeholder.
 
 ### Storage
 
@@ -184,7 +249,7 @@ Expiry is enforced at use time as well as at load:
 - `addNamedSecret` takes the deadline, so `/secret extend` moves the moment substitution stops.
 - `#forgetPlaceholder` is the one owner of revoking reverse mappings and installing forward redaction tombstones.
 
-`WARN_AT_FRACTIONS` (`[0.5, 0.9]`) is the single owner of when a warning fires, as fractions rather than absolute times so one rule serves `1d` and `90d` alike. `expiryWarnings` consults `warningThresholdCrossed` rather than doing its own comparison: it previously held an inline `0.9`, which meant two owners disagreeing and a halfway warning that could not fire. The wording reads the urgent threshold off the end of the list for the same reason, so adding a `0.99` would not leave a secret with minutes left described as "over halfway through its lifetime". Warnings are raised at session startup through `OperatorNotices`, and the channel collapses repeats so a long-running session is told once. Each line names the `/secret extend` command that prevents the loss, since expiry is not recoverable after the fact.
+`WARN_AT_FRACTIONS` (`[0.5, 0.9]`) is the single owner of when a warning fires, as fractions rather than absolute times so one rule serves `1d` and `90d` alike. `expiryWarnings` consults `warningThresholdCrossed` rather than doing its own comparison: it previously held an inline `0.9`, which meant two owners disagreeing and a halfway warning that could not fire. The wording reads the urgent threshold off the end of the list for the same reason, so adding a `0.99` would not leave a secret with minutes left described as "over halfway through its lifetime". `expiryUrgency` wraps that one comparison and classifies an entry as `soon` or `halfway`, so the `STATUS` column in `/secret list` reads the same thresholds as the warnings rather than becoming a third owner of the question. Warnings are raised at session startup through `OperatorNotices`, and the channel collapses repeats so a long-running session is told once. Each line names the `/secret extend` command that prevents the loss, since expiry is not recoverable after the fact.
 
 ### The expansion log
 
@@ -337,6 +402,7 @@ Environment variables are collected first, then file-defined entries are appende
 - `packages/coding-agent/src/secrets/vault.ts` -- entries, lifetimes, scopes, the store
 - `packages/coding-agent/src/secrets/vault-crypto.ts` -- the key, the seal, and the threat model
 - `packages/coding-agent/src/slash-commands/helpers/secret.ts` -- the session-bound adapter shared by the TUI and text/ACP paths
+- `packages/coding-agent/src/system-prompt-builder/section-registry.ts` -- the runtime section row that puts the inventory of spendable names in the base system prompt
 - `packages/coding-agent/src/session/operator-notices.ts` -- the one channel for a warning that must reach a person
 - `packages/tui/src/components/input.ts` -- `Input.mask` and `maskValue`, the one place a value becomes visible text
 - `packages/coding-agent/src/config/settings-domains/providers.ts` -- the three settings: `secrets.enabled`, `secrets.defaultTtl`, `secrets.auditLog`

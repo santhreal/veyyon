@@ -17,9 +17,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 BUN="${VEYYON_DEMO_BUN:-$HOME/.bun/bin/bun}"
-PROFILE="${VEYYON_DEMO_PROFILE:-work}"
+PROFILE="${VEYYON_DEMO_PROFILE:-demo}"
 TAPE="assets/tapes/argot-settings.tape"
 SHOT="assets/.argot-settings-shot.png"
+
+bash scripts/demos/setup-profile.sh >/dev/null
 
 set_argot() {
 	( cd packages/coding-agent && "$BUN" src/cli.ts --profile "$PROFILE" config set argot.enabled "$1" >/dev/null )

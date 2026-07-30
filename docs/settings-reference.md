@@ -48,7 +48,7 @@ veyyon config get compaction.threshold
 | `tui.paintGround` | Paint Theme Ground | enum | `auto` | Set the terminal background (OSC 11) to the theme's ground color while Veyyon runs, restoring it on exit (auto: only when the terminal background already matches the theme so no seam appears; always: unconditional; never: inherit the terminal background). Values: `auto`, `always`, `never`. |
 | `tui.tight` | Tight Layout | boolean | `false` | Remove the 1-character horizontal padding from the left and right of the terminal output. Shown under the tab's Advanced fold. |
 | `tui.scrollbackRebuild` | Rewrite Scrollback | boolean | `false` | Erase and replay terminal scrollback when a block's final form replaces its live preview. When off (default), stale preview copies remain in history and the final content is appended below. Shown under the tab's Advanced fold. |
-| `tui.scrollIsolation` | Scroll Isolation | boolean | `true` | Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the position on the right edge. When off, the wheel drives the terminal's native scrollback and the whole window scrolls with it, prompt included. While on, the mouse is held once anything has scrolled off, so selecting with the mouse becomes shift+drag; veyyon says so the first time a drag comes back empty, and `/copy` picks text or code from the conversation without the mouse. Shown under the tab's Advanced fold. |
+| `tui.scrollIsolation` | Scroll Isolation | boolean | `false` | Read the mouse wheel so the transcript scrolls with the prompt pinned at the bottom, showing the position on the right edge. This costs you drag-select: while it is on, veyyon holds the mouse, so plain dragging selects nothing and you need shift+drag, or `/copy` to pick text and code out of the conversation without the mouse. When off (default), the terminal keeps the wheel and the mouse, so native scrollback, drag-select and copy all behave exactly as they do in any other program, and the prompt still sits at the bottom of the live view. Shown under the tab's Advanced fold. |
 | `display.transitions` | Transitions | enum | `on` | Structural motion: overlay open transitions and the welcome bloom. Values: `on`, `off`. |
 | `display.shimmer` | Shimmer | enum | `disabled` | Animation style for working/loading messages. Values: `classic`, `kitt`, `living`, `disabled`. |
 | `display.smoothStreaming` | Smooth Streaming | boolean | `true` | Reveal assistant text and streamed tool input smoothly while chunks arrive. |
@@ -278,7 +278,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.instrumentation` | Session instrumentation | enum | `off` | Record study data on each tool result and each model turn: how long a tool ran and how much its output weighed, plus when a turn started, its time to first token, and its throughput. Off stores nothing extra. Each level adds more detail (and a little more cost) for studying where a session spent time. Values: `off`, `basic`, `rich`, `ultra`. |
+| `session.instrumentation` | Session instrumentation | enum | `off` | Record structured, redacted study data in the session file. Higher levels add lifecycle, task-state, tool, model-turn, context, and agent-communication detail for `veyyon session stats`. Off still stores the normal resumable conversation and tool history, but adds no study fields. Values: `off`, `basic`, `rich`, `ultra`. |
 
 ## Memory
 
@@ -473,7 +473,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `tools.discoveryMode` | Tool Discovery | enum | `auto` | Hide tools behind a search tool to save tokens. 'auto' hides MCP tools once the tool set has more than 40 tools; 'mcp-only' always hides MCP tools; 'all' hides all non-essential built-ins too. Values: `auto`, `off`, `mcp-only`, `all`. |
+| `tools.discoveryMode` | Tool Discovery | enum | `auto` | Hide tools behind a search tool to save tokens. 'auto' hides MCP tools once the tool set has more than 40 tools; 'mcp-only' always hides MCP tools; 'all' also hides non-essential built-ins and first-party heavyweight tools such as generate_image. Values: `auto`, `off`, `mcp-only`, `all`. |
 | `tools.essentialOverride` | Essential Tools Override | array | `[]` | Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults. |
 | `mcp.enableProjectConfig` | MCP Project Config | boolean | `true` | Load .mcp.json/mcp.json from project root. |
 | `mcp.discoveryMode` | MCP Tool Discovery | boolean | `false` | Hide MCP tools by default and expose them through a tool discovery tool. |
@@ -485,8 +485,9 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `dev.autoqa` | Auto QA | boolean | `false` | Enable automated tool issue reporting (report_tool_issue) for all agents. |
-| `dev.autoqaPush.endpoint` | Auto QA Push Endpoint | string | _(unset)_ | Full URL receiving Auto QA JSON reports (unset by default; no bundled endpoint). |
+| `dev.autoqa` | Auto QA | boolean | `false` | Record unexpected built-in tool behavior in this profile's local grievance database. |
+| `dev.autoqaPush.enabled` | Auto-upload Grievances | boolean | `false` | Send new and queued grievances to veyyon.dev after recording them. Off keeps reports local until you run veyyon grievances push. |
+| `dev.autoqaPush.endpoint` | Grievance Upload Endpoint | string | `https://veyyon.dev/api/grievances` | Destination for automatic and manual grievance uploads. |
 
 ## Tasks
 
@@ -525,7 +526,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.agents` | Agents | record | `{}` | Which agent types the model may choose, and the model and effort each one runs. Enabled means the model can pick that agent on its own; disabled means it cannot, and nothing runs behind your back. Every row is optional: with no row, the general worker and any agent you wrote are enabled, and the bundled specialists are disabled. Turning an agent off does not disable the `/` commands that name it — `/review` is you asking for a review, so it still spawns its reviewer. A per-agent model wins over the blanket Subagent Model; blank inherits. |
+| `subagent.agents` | Agents | record | `{}` | Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general worker and agents you wrote are enabled. Bundled specialists are disabled. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits. |
 
 ### Models
 
@@ -540,7 +541,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `subagent.maxConcurrency` | Max Concurrent Subagents | number | `32` | Maximum number of subagents running concurrently. |
-| `subagent.maxRecursionDepth` | Max Spawn Depth | number | `2` | How many levels deep subagents can spawn their own subagents. |
+| `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn. 0 still lets the parent session spawn direct subagents, but those children do not receive the task tool. Each agent can override this in the Agents editor. |
 | `subagent.maxRuntimeMs` | Max Subagent Runtime | number | `0` | Hard wall-clock limit per subagent (ms). 0 disables it. Defense-in-depth against provider-side stream hangs that escape the inference-layer watchdog; triggers a normal subagent abort with a 'timed out' reason. |
 | `subagent.idleTtlMs` | Idle TTL | number | `420000` | How long an idle subagent stays live in memory before being parked to disk (ms). Parked agents are revived automatically when messaged or resumed. 0 keeps idle agents live until exit. |
 | `subagent.softRequestBudget` | Soft Request Budget | number | `200` | Soft per-subagent request budget (assistant requests per run). Crossing it injects a wrap-up steering notice (see the notice setting below); at 1.5x the budget the run is force-stopped and the agent must yield its partial findings. 0 disables the guard. Bundled scout/sonic agents use a lower built-in budget. |
@@ -686,4 +687,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-327 settings.
+328 settings.

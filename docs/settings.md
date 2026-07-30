@@ -112,6 +112,21 @@ Keys must match a real schema path exactly. There is no shorthand, set `theme.da
 
 `veyyon config set`, `veyyon config reset`, `/settings`, and any runtime settings change all write to the global `config.yml` under the active agent directory. They never write to `<cwd>/.veyyon/config.yml`. To create a project-local override, edit that file directly (see [Project-local config](#project-local-config)). Saves are debounced and re-read the file under a lock, so external edits made while a session is open are preserved. The machine-global keys on the **Global** tab (`defaultProfile`, `profileSharing`) are the exception: they write to `~/.veyyon/config.yml` instead of the active agent directory, and are read live so an external edit to that file is reflected without a restart.
 
+`/settings` shows the effective value from the full precedence chain. A row
+supplied by project config, a `--config` file, or a runtime override names that
+source beside the value and is read-only. Change the owning source instead.
+This prevents an accepted-looking profile edit from remaining hidden until the
+higher layer disappears.
+
+**Default Model** is intentionally profile-owned. If `--model` or another
+higher layer selects a different active model, the row shows both the saved
+profile model and the active override. Editing the row changes the model used
+by the next session; it does not replace the current session override.
+
+Within one open panel, each category remembers its last selected row. Switch to
+another sidebar category and back to resume where you left off. If a condition
+hides that row, the panel selects the nearest available setting instead.
+
 ## Precedence
 
 From lowest to highest priority, the effective value of a setting is built as:
@@ -381,9 +396,10 @@ rewrites your default.
 The retired `defaultThinkingLevel` is consulted only when the `defaultEffort` key is absent. Once `defaultEffort` is present, its object is authoritative, including `{}` and a set of model-specific rows with no `*` fallback. Removing the **Any Model** row therefore keeps every unmatched model on its native default instead of resurrecting a legacy profile-wide value.
 
 Choose **Default** in the session effort picker to clear the temporary override.
-Veyyon then applies the active model's saved row, the `*` row, or the model
-default according to the precedence below. Switching models re-evaluates these
-rows. A temporary session choice remains in force until you clear it.
+Veyyon then applies an explicit `:level` on the active selector, the active
+model's saved row, the `*` row, or the model default according to the precedence
+below. Switching models re-evaluates these sources. A temporary session choice
+remains in force until you clear it.
 
 Effort is resolved in this order, highest first:
 
@@ -513,7 +529,7 @@ tools:
 |---|---|---|---|
 | `tools.approvalMode` | enum | `yolo` | Canonical: `plan` (read auto; write asks with an active plan-mode session, otherwise write/exec denied), `ask` (read auto; write/exec ask), `auto-edit` (read+write auto; exec ask), `yolo` (all tiers auto). Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`. Override per run with `--approval-mode` / `--auto-approve` / `--yolo`. |
 | `tools.approval` | record | `{}` | Per-tool policy keyed by tool name; each value is `allow`, `deny`, or `prompt`. e.g. `veyyon config set tools.approval '{"bash":"prompt"}'`. |
-| `tools.discoveryMode` | enum | `auto` | `auto`, `off`, `mcp-only`, `all`. Controls dynamic tool discovery. |
+| `tools.discoveryMode` | enum | `auto` | `auto`, `off`, `mcp-only`, `all`. `all` hides non-essential built-ins and first-party heavyweight tools such as `generate_image` until the discovery search activates them. |
 | `tools.essentialOverride` | array | `[]` | Tool names kept available even when tools are narrowed. |
 | `tools.maxTimeout` | number | `0` | Max tool runtime in seconds; `0` = no cap. |
 | `tools.intentTracing` | boolean | `true` | Record per-call intent strings. |
@@ -737,10 +753,10 @@ They used to open a separate screen with its own roster, which meant two answers
 | `subagent.delegation` | enum | `preferred` | `allowed`, `preferred`, `required`. How hard the prompt pushes; it never removes the ability to delegate. See above. |
 | `subagent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`. Edit in the Agents row of the Subagents tab. |
 | `subagent.model` | modelChain | unset | Models for every subagent that has no model of its own, tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: subagents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. A pattern that matches no model refuses the spawn rather than falling through to the next entry. |
-| `subagent.thinkingLevel` | string | unset | Blanket subagent effort, picked from `off`, `minimal`..`max`, `auto`. Unset means inherit. |
+| `subagent.thinkingLevel` | string | unset | Blanket subagent effort, picked from `off`, `minimal`..`max`, `auto`. Unset or **Inherit** passes the current session's effective effort into the child. It does not ask the provider to choose `auto`. |
 | `subagent.batch` | boolean | `true` | Batch shape for the `task` tool: one call, many items. |
 | `subagent.maxConcurrency` | number | `32` | Subagents running at once. |
-| `subagent.maxRecursionDepth` | number | `2` | How deep subagents may spawn their own subagents. |
+| `subagent.maxNestedSpawnDepth` | number | `0` | Nested levels that subagents may spawn. Direct children receive no `task` tool at `0`; an agent-specific override may raise the limit. |
 | `subagent.maxRuntimeMs` | number | `0` | Hard per-subagent wall-clock limit in ms; `0` disables it. |
 | `subagent.idleTtlMs` | number | `420000` | How long an idle subagent stays in memory before being parked to disk. |
 | `subagent.softRequestBudget` | number | `200` | Requests after which a subagent is asked to wrap up; `0` disables the guard. |
@@ -837,6 +853,29 @@ read:
 | `read.toolResultPreview` | boolean | `false` | Inline preview of tool results. |
 | `readLineNumbers` | boolean | `false` | Show plain line numbers. |
 
+
+### Automatic tool issue reports
+
+Auto QA records a model's report when a built-in tool behaves differently from its contract. Recording
+is local to the active profile. Automatic upload is a separate setting and is off by default.
+
+```yaml
+dev:
+  autoqa: true
+  autoqaPush:
+    enabled: false
+    endpoint: https://veyyon.dev/api/grievances
+```
+
+Turn on **Auto QA** to create reports in the profile's `autoqa.db`. Turn on
+**Auto-upload Grievances** to send new and queued reports to the collector at `veyyon.dev`. You can
+leave automatic upload off and inspect the queue with `veyyon grievances`. Running
+`veyyon grievances push` is an explicit one-time upload and does not change the profile toggle.
+
+Each profile owns its own recording and upload settings. The install identifier in an uploaded batch
+is shared across profiles so the collector can make a retried local row idempotent. It contains no
+hostname or username.
+
 ### Context, compaction, and memory
 
 ```yaml
@@ -913,7 +952,7 @@ tui:
 | `images.autoResize` | boolean | `true` | Resize large images for model compatibility. |
 | `images.blockImages` | boolean | `false` | Never send images to providers. |
 | `tui.hyperlinks` | enum | `auto` | `off`, `auto`, `always`. |
-| `tui.scrollIsolation` | boolean | `true` | Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the scroll position drawn on the right edge of the transcript (`/settings` → Appearance → Display, Advanced). Scrolling back reaches the whole session, not just what is on screen. When off, the wheel drives the terminal's native scrollback and the whole window scrolls with it, prompt included. While on, the mouse is held once anything has scrolled off, so selecting with the mouse becomes shift+drag; veyyon says so the first time a drag comes back empty, and `/copy` picks text or code from the conversation without the mouse. |
+| `tui.scrollIsolation` | boolean | `false` | Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the scroll position drawn on the right edge of the transcript (`/settings` → Appearance → Display, Advanced). Scrolling back reaches the whole session, not just what is on screen. Off by default: turning it on means veyyon holds the mouse to read wheel events, and your terminal's own drag-to-select stops working while it does. With it on you select using shift+drag, or with `/copy`, which picks text or code from the conversation without the mouse. With it off the wheel drives the terminal's native scrollback, the whole window scrolls with it including the prompt, and selection behaves as it does in any other program. |
 
 For a custom status line, set `statusLine.preset: custom` and configure `statusLine.leftSegments`, `statusLine.rightSegments`, and `statusLine.segmentOptions`. See the [status line reference](./handbook/src/features/cockpit.md#status-line) for the full list of segment IDs.
 

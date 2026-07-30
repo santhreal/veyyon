@@ -407,7 +407,7 @@ replay/reduce tooling).
 
 Native scrollback scrolling moves the whole window, composer included, so
 reading history used to scroll the prompt off screen. Scroll isolation
-(`TUI.setScrollIsolation`, surfaced as `tui.scrollIsolation`, default on)
+(`TUI.setScrollIsolation`, surfaced as `tui.scrollIsolation`, default OFF)
 changes the model to the opencode/grok-build one: the wheel scrolls the
 transcript region while the pinned footer stays live at the viewport
 bottom.
@@ -464,7 +464,16 @@ bottom.
   the first row scrolls off.
 - **Tradeoff**: with the mouse captured, plain drag-select becomes
   Shift+drag (the standard convention in mouse-capturing TUIs). The setting
-  documents this and can be switched off to return to native scrollback.
+  documents this and can be switched off to return to native scrollback, which
+  is why it now defaults OFF: the capture gate below made capture the normal
+  state, and taking drag-select away from every operator by default is not a
+  trade the product gets to make silently.
+  The capture is permanent for as long as the setting is on. A time-boxed grab
+  was tried (`#MOUSE_GRAB_IDLE_MS`, released after 3s of quiet) and reverted:
+  releasing on a timer unpinned the composer at unpredictable moments and made
+  whether a drag selected anything depend on how recently the operator had
+  typed, which is a worse surface than a hold that is simply always on and
+  documented. Do not reintroduce it without solving the unpinning.
   Documenting it is not enough on its own: after the capture gate above started
   arming on history rather than frame height, capture became the normal state and
   the operator hit a drag that silently selected nothing ("i cant copy and paste

@@ -60,7 +60,7 @@
 ## Modes / Variants
 - Discovery-mode gating:
   - `tools.discoveryMode = "auto"` (default): when the registered tool set has more than 40 tools, searches hidden MCP tools only; otherwise discovery stays off.
-  - `tools.discoveryMode = "all"`: searches hidden discoverable built-ins plus hidden MCP tools.
+  - `tools.discoveryMode = "all"`: searches hidden discoverable built-ins, first-party heavyweight tools such as `generate_image`, and hidden MCP tools.
     - Two built-ins survive hiding under `"all"` because a request without them contradicts the prompt: `todo` when `todo.eager` is not `default` (a forced named tool_choice must reference a tool that is present, or the provider rejects the request), and `task` at `subagent.delegation` `preferred` or `required`. At `allowed` `task` is hidden like the rest and you activate it from here.
   - `tools.discoveryMode = "mcp-only"`: searches hidden MCP tools only.
   - legacy `mcp.discoveryMode = true`: same as MCP-only.
@@ -112,8 +112,9 @@
 - Corpus composition is session-dependent and excludes already-active tools:
   - MCP entries come from `#discoverableMCPTools` (built by `#collectDiscoverableMCPToolsFromRegistry()`), filtered to names not currently active; `MCPTool` carries no `summary`, so `getDiscoverableTool()` derives `summary` from the first `200` chars of `description`.
   - Built-in entries appear only in `"all"` mode and only for registry tools whose `loadMode === "discoverable"` and are not currently active.
+  - First-party heavyweight custom entries such as `generate_image` appear in `"all"` mode while inactive. Arbitrary extension and caller-supplied SDK custom tools keep their existing startup behavior.
   - Hidden/internal built-ins are intentionally excluded from the built-in corpus: `resolve`, `yield`, `report_finding`, `report_tool_issue` are called out in the `#collectDiscoverableBuiltinTools()` comment.
-- `DiscoverableToolSource` includes `"extension"` and `"custom"`, but `AgentSession.getDiscoverableTools()` currently assembles only built-in and MCP sources.
-- On startup, `packages/coding-agent/src/sdk.ts` resolves `"auto"` after the full registry exists and injects `search_tool_bm25` when the count exceeds 40. It hides non-essential discoverable built-ins only in `tools.discoveryMode = "all"`. Tools whose class is marked as `loadMode === "essential"` (defaults are `read`, `bash`, `launch`, `edit`, `write`, `glob`, and `eval`) are always active; they survive hiding regardless of configuration. `tools.essentialOverride` can be used to treat additional discoverable tools as essential (active on startup) or to explicitly specify the active essential list.
+- `DiscoverableToolSource` includes `"extension"` and `"custom"`. The session inventory uses `"custom"` for first-party heavyweight tools and does not implicitly hide third-party extension tools.
+- On startup, `packages/coding-agent/src/sdk.ts` resolves `"auto"` after the full registry exists and injects `search_tool_bm25` when the count exceeds 40. It hides non-essential built-ins and eligible first-party heavyweight tools only in `tools.discoveryMode = "all"`. Tools whose class is marked as `loadMode === "essential"` (defaults are `read`, `bash`, `launch`, `edit`, `write`, `glob`, and `eval`) are always active; they survive hiding regardless of configuration. `tools.essentialOverride` can be used to treat additional discoverable tools as essential (active on startup) or to explicitly specify the active essential list.
 - Query tokenization is simple and deterministic: Unicode is NFKD-normalized, combining marks are dropped, acronym/camelCase and digit-to-capital boundaries are split, non-letter/non-number characters become spaces, tokens are lowercased, and only non-empty tokens survive.
 - Scores are rounded differently by surface: `details.tools[].score` keeps 6 decimals; the TUI line renders 3.

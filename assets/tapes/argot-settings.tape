@@ -7,9 +7,9 @@
 #
 # Do not run this tape directly. Run its driver, which seeds each state and
 # moves the shot into place, producing the disabled-vs-enabled differential:
-#   bash scripts/demos/record-argot-settings.sh
+# Regenerate: `bash scripts/demos/record-argot-settings.sh`.
 # The driver writes assets/argot-settings-off.png (only the master toggle) and
-# assets/argot-settings-on.png (the master toggle plus its four dependent
+# assets/argot-settings-on.png (the master toggle plus its five dependent
 # knobs), and restores argot to off. The contrast is the proof: an experimental
 # feature that is off hides its knobs completely.
 #
@@ -17,10 +17,10 @@
 
 Output assets/.argot-settings-shot.gif
 
-Set Shell bash
+Set Shell "bash"
 Set FontSize 22
 Set Width 1400
-Set Height 720
+Set Height 800
 Set Padding 30
 Set Margin 40
 Set MarginFill "#000000"
@@ -28,7 +28,7 @@ Set BorderRadius 0
 Set Framerate 30
 Set TypingSpeed 55ms
 Set CursorBlink false
-Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
+Set Theme {"name":"veyyon","black":"#000000","background":"#000000","foreground":"#C6CBD4","cursor":"#F0862E"}
 
 Env VEYYON_DEMO_CWD "/tmp/veyyon-argot-demo"
 

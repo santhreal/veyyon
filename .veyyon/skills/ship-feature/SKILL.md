@@ -42,7 +42,7 @@ If the feature adds or changes a setting, capture the settings screen off and on
 
 ### 4. Demo
 
-If the change is a user-facing flow, record or refresh its demo. A demo submits a real prompt and ends on the finished result, driven by `scripts/demos/launch.sh` (work profile, Gemini 3.6 Flash with thinking high). The [record-demo](../record-demo/SKILL.md) skill owns the real-task rule, seeding, and the shared capture block. If the flow is a Veyyon differentiator, raise the bar with [prove-feature](../prove-feature/SKILL.md) so the gif shows something upstream cannot. Refresh any existing demo whose flow your change altered, or its gif now lies about the product.
+If the change is a user-facing flow, record or refresh its demo. A demo submits a real prompt and ends on the finished result, driven by `scripts/demos/launch.sh` (isolated `demo` profile, Gemini 3.6 Flash with thinking high). The [record-demo](../record-demo/SKILL.md) skill owns the real-task rule, seeding, and the shared capture block. If the flow is a Veyyon differentiator, raise the bar with [prove-feature](../prove-feature/SKILL.md) so the gif shows something upstream cannot. Refresh any existing demo whose flow your change altered, or its gif now lies about the product.
 
 ### 5. Gates
 

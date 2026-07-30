@@ -1,57 +1,30 @@
 <p align="center">
-  <img src="assets/sun.svg" width="320" alt="Veyyon sun">
+  <img src="assets/sun.svg" width="260" alt="Veyyon sun">
 </p>
 
+<h1 align="center">Veyyon</h1>
+
 <p align="center">
-  <strong style="font-size: 2.5em; letter-spacing: 0.08em;">Veyyon</strong>
+  A terminal coding agent whose harness is built for inspectable context, controlled mutation, and long-running work.
 </p>
 
 <p align="center">
   <a href="https://github.com/santhreal/veyyon/releases/latest"><img src="https://img.shields.io/github/v/release/santhreal/veyyon?style=flat&colorA=222222&colorB=E05735&label=release" alt="Latest release"></a>
-  <a href="https://github.com/santhreal/veyyon/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep-E05735?style=flat&colorA=222222" alt="Changelog"></a>
-  <a href="https://github.com/santhreal/veyyon/actions"><img src="https://img.shields.io/github/actions/workflow/status/santhreal/veyyon/ci.yml?style=flat&colorA=222222&colorB=3FB950" alt="CI"></a>
-  <a href="https://github.com/santhreal/veyyon/blob/main/LICENSE"><img src="https://img.shields.io/github/license/santhreal/veyyon?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
-  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&colorA=222222&logo=typescript&logoColor=white" alt="TypeScript"></a>
-  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-DEA584?style=flat&colorA=222222&logo=rust&logoColor=white" alt="Rust"></a>
-  <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun-f472b6?style=flat&colorA=222222" alt="Bun"></a>
+  <a href="https://github.com/santhreal/veyyon/actions"><img src="https://img.shields.io/github/actions/workflow/status/santhreal/veyyon/checks.yml?style=flat&colorA=222222&colorB=3FB950&label=checks" alt="Checks"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/santhreal/veyyon?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
 </p>
 
 <p align="center">
-  <em>A coding agent with the whole workbench wired in.</em>
+  <img src="assets/demo-hero.gif" width="960" alt="Veyyon reads a project, applies an edit, and reports the result">
 </p>
 
-Veyyon runs in your terminal and treats the machinery around your code, the language server, the debugger, the shell, the browser, as tools it can call. The model weights are the same ones you get anywhere. The harness is what changes how reliably they land a change.
+Veyyon uses the same model weights available in other clients. The difference is the workbench around them: a prompt you can inspect, model-native effort controls, explicit state ownership, protected secret spending, typed workers, language-server refactors, durable sessions, and tools that fail before stale state becomes a bad write.
 
-Multi-provider catalog · 34 built-in tools (more optional and gated) · LSP and DAP · Rust natives on every hot path · and a per-project shorthand the model writes in.
+Veyyon is a source fork of [oh-my-pi](https://github.com/can1357/oh-my-pi). It is not a clean-room rewrite. [UPSTREAM.md](UPSTREAM.md) records the inherited foundation and the contracts Veyyon changed.
 
-Veyyon is a source fork of oh-my-pi (MIT), not a clean-room rewrite or a renamed distribution. The fork boundary matters: Veyyon retains a strong base and owns the contracts it changed after that point. The table below makes that split explicit.
+## Install
 
-## From oh-my-pi to Veyyon
-
-### Inherited foundation
-
-Veyyon retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native grep, PTY, and tree-sitter helpers. [UPSTREAM.md](UPSTREAM.md) records that source boundary, and the [Acknowledgements](docs/handbook/src/acknowledgements.md) page records the full provenance.
-
-### What Veyyon adds
-
-| Area | Veyyon contract | Proof and reference |
-| --- | --- | --- |
-| Prompt and project context | A registered, statement-owned prompt assembled from a zero-prose scaffold; persistent customization through layered `AGENTS.md` and validated `PROMPT_SECTIONS/`; transactional context reload on `/move` | [System prompt customization](docs/system-prompt-customization.md), [Context files](docs/context-files.md) |
-| Models and compaction | Model-native effort variants, one persisted default-effort surface, explicit effort precedence, editable compaction and subagent fallback chains, absolute-token thresholds, and a lossless pass before any summary | [Settings](docs/settings.md#models), [Compaction](docs/handbook/src/context/compaction-memory.md), [effort and chain differential](assets/model-effort-controls.gif), [default-effort proof](assets/default-effort-ownership-grey.png) |
-| Credentials, profiles, and sessions | Shared SQLite credentials, several credentials per provider, encrypted working secrets, final outbound obfuscation, shared global config, per-profile working directories, serialized atomic config writes, atomic session writes, and non-destructive corruption handling | [Secrets](docs/secrets.md), [Profiles](docs/handbook/src/features/profiles.md), [Sessions](docs/handbook/src/using/sessions.md) |
-| Tools and workers | One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center | [Tools](docs/tools/), [Subagents](docs/handbook/src/features/subagents.md), [IRC](docs/tools/irc.md) |
-| Native runtime | Reusable Rust kernels for glob, keys, text, diff, grep, and directory walking, shared across the CLI and tool paths | [Mechanisms](docs/handbook/src/why/innovations.md), [Rust crates](#rust-crates) |
-| Argot | An experimental, off-by-default, lossless per-project shorthand codec that expands before a tool, transcript, parent agent, or display receives it | [Argot](docs/handbook/src/why/argot.md) |
-
-<p align="center">
-  <img src="assets/model-effort-controls.gif" width="900" alt="Model-native effort choices followed by highlighted-position model-chain editing">
-</p>
-
-This is a provenance boundary, not a claim that current oh-my-pi has stood still. The [intentional-divergence ledger](docs/internal/porting-from-pi-mono.md#15-intentional-divergences) records differences that must survive upstream ports. The generated root [changelog](CHANGELOG.md) records release-level changes.
-
-## Install it in one line
-
-**Linux / macOS**
+**Linux and macOS**
 
 ```sh
 curl -fsSL https://get.veyyon.dev | sh
@@ -63,484 +36,204 @@ curl -fsSL https://get.veyyon.dev | sh
 irm https://veyyon.dev/install.ps1 | iex
 ```
 
-This installs one self-contained binary for your OS and architecture and links a short `vey` command. The first interactive `vey` opens first-run setup (providers, glyphs, theme); run it again with `veyyon setup`.
+The release installer stages one self-contained binary, then checks its SHA-256 sidecar, exact release version, and native search support before it replaces an active install or changes your shell. Prebuilt releases are Linux x64 and arm64 (glibc), macOS x64 and arm64, and Windows x64 only. Windows arm64 runs the x64 build under emulation.
 
-To pin a Linux or macOS release binary:
+Self-updates use the same preflight. They preserve the previous binary and atomically switch the live path, so a hard kill leaves either the old or new binary available, never a missing command. If an installed completion file cannot be refreshed, the automatic-update notice in the TUI tells you to re-run the installer. Veyyon ships through GitHub Releases and source checkouts only. There is no npm, Homebrew, or crates.io distribution for the application.
 
-```sh
-curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.12
-```
-
-To pin the same release on Windows:
-
-```powershell
-& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v1.0.12
-```
-
-A bare `--ref` on POSIX, or `-Ref` on Windows, builds that ref from a source checkout. See [Install](docs/handbook/src/using/install.md) for source, help, and uninstall forms on both platforms.
-
-Veyyon ships two ways only: a prebuilt release binary served through veyyon.dev from [GitHub Releases](https://github.com/santhreal/veyyon/releases), or a source checkout you build yourself. The installers verify the published SHA-256 sidecar before replacing an installed binary. A checksum detects changed bytes; it is not a publisher signature. There is no npm package, Homebrew tap, or crates.io release.
-
-**From source (contributing)**
+To build from source:
 
 ```sh
-git clone https://github.com/santhreal/veyyon.git && cd veyyon
+git clone https://github.com/santhreal/veyyon.git
+cd veyyon
 bun setup
 bun dev
 ```
 
-`bun setup` installs workspace dependencies and builds `@veyyon/natives`. Re-run `bun run build:native` after changing Rust crates.
+See [Install Veyyon](docs/handbook/src/using/install.md) for pinned releases, source installs, updates, rollback, and uninstall commands.
 
-Config and state live under `~/.veyyon` by default.
+## What Veyyon changes
 
-Prebuilt install: macOS, Linux, or Windows, with no Bun runtime required. Source and development: Bun ≥ 1.3.14 plus Git.
+### 1. The prompt is an inspectable program
 
-### Shell completions
-
-`veyyon` generates completion scripts for **bash**, **zsh**, **fish**, and **PowerShell** from live command and flag metadata. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against on-disk sessions.
+You can ask Veyyon what the model receives before you spend a token:
 
 ```sh
-# zsh: add to ~/.zshrc (or write the output into a file on your $fpath)
-eval "$(veyyon completions zsh)"
-
-# bash: add to ~/.bashrc
-eval "$(veyyon completions bash)"
-
-# fish
-veyyon completions fish > ~/.config/fish/completions/veyyon.fish
-
-# PowerShell: write the script beside your profile, then dot-source it from $PROFILE
-veyyon completions powershell > $HOME\veyyon-completions.ps1
+veyyon prompt --sections --cwd ./my-project
+veyyon prompt --statements --cwd ./my-project
+veyyon prompt --statement tool-selection --cwd ./my-project
 ```
 
-Add `--no-alias` to any of these if `vey` is already your own command: the
-generated scripts complete both `veyyon` and `vey`, and that flag drops the
-second binding.
+The outer prompt is a zero-prose scaffold. Registered statements own the actual instructions and their activation conditions. Project context comes from layered `AGENTS.md` files and validated `PROMPT_SECTIONS/` overrides. `/move` reloads cwd-derived context transactionally, so a failed discovery does not leave half of one project mixed with half of another.
 
-PowerShell has no directory it autoloads completions from, so the script
-registers itself when you run it. Add `. $HOME\veyyon-completions.ps1` to your
-`$PROFILE` to load it in every session.
+<p align="center">
+  <img src="assets/demo-prompt-architecture.gif" width="900" alt="The production prompt inspector lists assembled sections and active or omitted registered statements">
+</p>
 
-## What it can do
+[Prompt customization](docs/system-prompt-customization.md) · [Context files](docs/context-files.md)
 
-The product surface, as you meet it. Some of this is the base the fork was built on, some of it is the work above; the split is in [What Veyyon adds](#what-veyyon-adds) rather than repeated on every line here.
+### 2. Effort belongs to the model, and compaction is visible
 
-### 01 · The agent writes code that calls its own tools
+A session effort override wins first. An explicit selector suffix wins next, followed by the saved `defaultEffort[model]` row, the saved `defaultEffort["*"]` row, and finally the model default. `Default` removes the session override. The picker shows only effort variants the selected model supports, so Veyyon does not offer a choice that it will silently clamp into something else.
 
-Ask it to cross-reference two files and it does not grep twice and guess. Persistent Python and Bun eval kernels stay live across the session and call agent tools (`read`, `grep`, `task`, and the rest) over a loopback bridge, so one cell can read, transform, and act.
+Compaction uses editable model chains and explicit fallback policy. Before a model summarizes history, a lossless pass removes contained duplicates. Manual and automatic compaction report what happened instead of silently switching models or discarding context.
 
-### 02 · Renames go through the language server, not find-and-replace
+<p align="center">
+  <img src="assets/model-effort-controls.gif" width="960" alt="Model-native effort choices and ordered model-chain editing in the shipped settings components">
+</p>
 
-Ask for a rename and the dependent files move with it. Rename and related operations route through the language server (including `workspace/willRenameFiles` where the server supports it), so references update with the edit instead of drifting.
+<p align="center">
+  <img src="assets/demo-context-compaction.gif" width="960" alt="A live Gemini 3.6 Flash session grows context, compacts it, and displays the resulting context report">
+</p>
 
-### 03 · It drives a real debugger
+[Models and effort](docs/settings.md#models) · [Compaction and memory](docs/handbook/src/context/compaction-memory.md)
 
-A binary segfaults, and the agent attaches over DAP, steps to the bad frame, and reads the values there. Backends (lldb, dlv, debugpy, and others configured for the project) let it step, inspect frames, and evaluate.
+### 3. The model spends placeholders, not credentials
 
-### 04 · Rules that wait for the model to go off-script
+Store a credential without typing it into the transcript:
 
-Your rules sit dormant until a regex matches mid-stream. Then Veyyon aborts the stream mid-token, injects a system reminder, and retries. These injections can survive compaction, so the correction keeps holding.
-
-### 05 · Fan a job out to workers, get typed results back
-
-Split a task with the `task` tool and each worker runs in its own optional isolated worktree with its own tool surface. Workers return schema-validated results to the parent, not free text you have to reparse.
-
-### 06 · A second model, reading every turn
-
-Pair a reviewer to the advisor role and it reads each main-agent turn on its own context, injecting notes into the session when the main agent starts to drift.
-
-### 07 · Hand someone the link and they are in
-
-`/collab` publishes your live session on a relay as a link or QR. Peers join with `veyyon join` or a browser view. Frames are sealed client-side.
-
-### 08 · Read a PDF off arxiv like it is a local file
-
-`read` accepts URLs, PDFs included, and returns structured markdown you use exactly like a path. `web_search` ranks providers, so the agent picks a source instead of guessing a URL.
-
-### 09 · Native on every path, Windows included
-
-Other agents shell out to `rg`, `grep`, `find`, and `bash`. Veyyon runs search, glob, and find in-process through its Rust natives, and shell through brush with session continuity. One binary for macOS, Linux, and Windows.
-
-### 10 · Code review that ends with a verdict
-
-`/review` reads a branch, a commit, or your uncommitted work and returns ranked findings with confidence scores in-session, so you get a call on whether the change ships, not a wall of nits.
-
-### 11 · Edits anchored to content hashes, not line numbers
-
-The model points an edit at a content-hash anchor from an earlier read instead of retyping the surrounding lines. A stale anchor fails verification before anything is written, so a file that moved under the agent cannot silently corrupt a patch.
-
-### 12 · One read tool for files, URLs, and internal resources
-
-`read` covers filesystem paths, URLs, and internal schemes under a single interface (including PR-shaped paths where configured), so the agent learns one call shape and reuses it everywhere.
-
-### 13 · Memory the agent keeps between sessions
-
-With a backend such as mnemopi enabled, Veyyon retains and recalls project-scoped facts across sessions, so it does not relearn your codebase every time you open it.
-
-### 14 · Drive it from your editor
-
-`veyyon acp` runs as an Agent Client Protocol server, so Zed and other ACP editors get the same tool loop and approval gates as the terminal.
-
-### 15 · It inherits the config your other tools already wrote
-
-With foreign-config discovery enabled, Veyyon loads context, skills, rules, and MCP from the on-disk layouts of Claude, Codex, Cursor, Gemini, OpenCode, and related tools, with no conversion step. It is off by default; turn it on with `discovery.importForeignConfig: true`.
-
-### 16 · Commits split into atomic, ordered pieces
-
-`veyyon commit` reads the working tree through `git_overview`, `git_file_diff`, and `git_hunk`, groups the changes into dependency-ordered atomic commits, and rejects cycles before it writes. Lock files stay out of the analysis.
-
-### 17 · A PR is just another path
-
-FS-shaped tools accept internal schemes like `pr://`, `issue://`, `agent://`, `skill://`, `rule://`, and `conflict://` with the same call shapes as filesystem paths, so `read pr://1428` and `agent://<id>/findings.0.path` just work.
-
-### 18 · Each merge conflict is one addressable URL
-
-A conflict hunk is `conflict://N` (or `conflict://*` for all of them). Write `@theirs`, `@ours`, or `@base` to pick a side without hand-editing the markers.
-
-### 19 · Preview a structural rewrite, then accept it
-
-`ast_edit` stages an ast-grep rewrite and returns a proposed preview with the match count. `resolve` accepts or rejects, and an accepted apply is atomic.
-
-### 20 · Drives a real browser, quietly
-
-`browser` drives headless Chromium (Puppeteer) or a CDP-attached target. Stealth defaults are on, so a page sees a normal user rather than an automation fingerprint.
-
-## Whatever the task needs is already a tool
-
-Tools share the agent registry with `read` and `bash`. Restrict the exposed set with `--tools read,edit,bash,…`. Hidden tools stay indexed for `search_tool_bm25` when `tools.discoveryMode` allows discovery.
-
-**Files and search**
-
-- `read`: files, dirs, archives, SQLite, PDFs, notebooks, URLs, internal schemes
-- `write`: create or overwrite a file, archive entry, or SQLite row
-- `edit`: hashline patches with content-hash anchors
-- `ast_edit` / `ast_grep`: structural rewrite preview and queries
-- `grep` / `glob`: content regex and path globs
-
-**Runtime**
-
-- `bash`: shell (optional PTY / background jobs)
-- `eval`: persistent Python/JS cells (opt-in Ruby/Julia kernels)
-- `launch`: supervised long-running processes (dev servers, watchers)
-- `ssh`: remote host command
-
-**Code intelligence**
-
-- `lsp`: diagnostics, navigation, symbols, renames, code actions
-- `debug`: DAP session control
-
-**Coordination**
-
-- `task`: subagents (optional workspace isolation)
-- `irc`: inter-agent messages in-process
-- `todo` / `job` / `ask`: list, background jobs, interactive questions
-
-**External and media**
-
-- `browser` / `web_search` / `github`
-- `generate_image` / `inspect_image` / `tts`
-
-**Memory and state**
-
-- `checkpoint` / `rewind`
-- `set_cwd`: re-root the session's working directory
-- `retain` / `recall` / `reflect` (when the hindsight or mnemopi memory backend is active)
-
-**Misc**
-
-- `resolve`: apply or discard a queued preview action.
-- `search_tool_bm25`: BM25 over the hidden tool index; activates top matches mid-session.
-
-Setting-gated and off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `rewind`, `memory_edit`, `retain`, `recall`, `reflect`, `learn`, `manage_skill`, `argot_load`, `argot_unload`. Enable them in `/settings` or `config.yml`. `search_tool_bm25` needs no toggle: it appears automatically once the tool count passes 40 (`tools.discoveryMode: auto`).
-
-[Tool guides →](docs/tools/)
-
-## Dozens of providers, one `/model` away
-
-- **Interactive model:** `/model` or `--model`; persisted as `modelRoles.default`.
-- **Roles:** `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `advisor` (plus custom names). Assign in `modelRoles` or settings → Model → Roles. Launch pins: `--smol`, `--slow`, `--plan`.
-- **Overrides:** `subagent.model`, `compaction.model` (else inherit interactive).
-- **Cycle:** `cycleOrder` (default `smol`, `slow`); keybinding `app.model.cycleForward` (often Ctrl+P).
-
-See [Models, roles, and profiles](docs/handbook/src/using/roles-and-profiles.md).
-
-The auth tags below read as follows: `oauth` signs in with your provider account, `plan` routes through a coding-plan subscription, `local` runs against a local server with the key optional.
-
-### Hosted APIs
-
-Direct APIs and gateways. Mix providers per role.
-
-Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google Antigravity `oauth` · xAI · Mistral · Groq · Cerebras · Fireworks · Together · Hugging Face · NVIDIA · OpenRouter · Synthetic · Vercel AI Gateway · Cloudflare AI Gateway · Wafer Serverless
-
-### Coding plans
-
-Subscription-routed. `/login` attaches the session.
-
-Cursor `oauth` · GitHub Copilot `oauth` · GitLab Duo · Kimi Code `plan` · Moonshot · MiniMax Coding Plan `plan` · MiniMax Coding Plan CN `plan` · Alibaba Coding Plan `plan` · Qwen Portal · Z.AI / GLM Coding Plan `plan` · Xiaomi MiMo · Qianfan · NanoGPT · Novita · Venice · Kilo · ZenMux · OpenCode Go · OpenCode Zen
-
-### Run it yourself
-
-OpenAI-compatible `/v1/models`. Local instances skip the key.
-
-Ollama `local` · Ollama Cloud · LM Studio `local` · llama.cpp `local` · vLLM `local` · LiteLLM
-
-### Routing settings
-
-- **Custom providers**: OpenAI-compatible and other API kinds in `~/.veyyon/profiles/default/agent/models.yml` (`openai-completions`, `openai-responses`, `openai-codex-responses`, `azure-openai-responses`, `anthropic-messages`, `google-generative-ai`, `google-vertex`, …).
-- **Fallback chains**: `retry.fallbackChains` (per role or model). On a 429 or quota failure the next entry continues the turn; the primary returns after cooldown.
-- **Path-scoped models**: `enabledModels` / `disabledProviders` with a `path:` prefix for repo-local sets.
-- **Round-robin credentials**: multiple API keys per provider with session affinity and per-credential backoff.
-
-Provider and routing settings live in `~/.veyyon/profiles/default/agent/models.yml` (see `packages/coding-agent` docs).
-
-## One search tool, many backends behind it
-
-`web_search` is a built-in tool. Mode `auto` walks the configured provider chain; pin a single provider id when you want one. Site-aware extraction turns selected hosts into structured markdown.
-
-### Search providers
-
-Providers (pin one, or `auto`):
-
-| provider     | auth                   |
-| ------------ | ---------------------- |
-| `auto`       | chain                  |
-| `perplexity` | `PERPLEXITY_API_KEY`   |
-| `gemini`     | oauth                  |
-| `anthropic`  | oauth                  |
-| `codex`      | oauth                  |
-| `xai`        | `XAI_API_KEY`          |
-| `zai`        | `ZAI_API_KEY`          |
-| `exa`        | `EXA_API_KEY` (or mcp) |
-| `tinyfish`   | `TINYFISH_API_KEY`     |
-| `jina`       | `JINA_API_KEY`         |
-| `kagi`       | `KAGI_API_KEY`         |
-| `tavily`     | `TAVILY_API_KEY`       |
-| `firecrawl`  | `FIRECRAWL_API_KEY`    |
-| `brave`      | `BRAVE_API_KEY`        |
-| `kimi`       | `MOONSHOT_API_KEY`     |
-| `parallel`   | `PARALLEL_API_KEY`     |
-| `synthetic`  | `SYNTHETIC_API_KEY`    |
-| `searxng`    | self-hosted            |
-| `duckduckgo` | no key                 |
-| `startpage`  | no key                 |
-| `google`     | no key (browser)       |
-| `ecosia`     | no key (browser)       |
-| `mojeek`     | no key (browser)       |
-| `public`     | no key (all of the above, consolidated) |
-
-### Specialized handlers
-
-Host-specific extraction for:
-
-- **Code hosts**: github, gitlab
-- **Package registries**: npm, PyPI, crates.io, Hex, Hackage, NuGet, Maven, RubyGems, Packagist, pub.dev, Go packages
-- **Research**: arxiv, semantic scholar
-- **Forums**: stack overflow, reddit, hn
-- **Docs**: mdn, readthedocs, docs.rs
-
-### Security databases
-
-- **NVD**: national vulnerability database
-- **OSV**: open source vuln feed
-- **CISA KEV**: known exploited vulns
-
-[`web_search` source](packages/coding-agent/src/web/search/index.ts)
-
-## Rust on the hot paths (`@veyyon/natives`)
-
-Thirteen crates, one platform-tagged N-API addon. Search, shell, AST, highlight, PTY, image decode, and BPE counting run in-process on the libuv pool.
-
-- Crates: `veyyon-natives`, `veyyon-shell`, `veyyon-ast`, `veyyon-iso`, `veyyon-walker`, `veyyon-uutils-ctx`, `veyyon-uu-diff`, `veyyon-uu-grep`, `veyyon-diff-kernel`, `veyyon-grep-kernel`, `veyyon-glob`, `veyyon-keys`, `veyyon-text`
-- Platforms: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`
-
-The table below is a per-module breakdown that intentionally omits glue and tests.
-
-| Module     | What it does                                                                         | Powered by                                |  ~LoC |
-| ---------- | ------------------------------------------------------------------------------------ | ----------------------------------------- | ----: |
-| shell      | Embedded bash · persistent sessions · timeout/abort · custom builtins                | brush-shell (vendored)                    | 3,700 |
-| grep       | Regex search · parallel/sequential · glob & type filters · fuzzy find                | grep-regex · grep-searcher                | 1,900 |
-| keys       | Kitty keyboard protocol with xterm fallback · PHF perfect-hash lookup                | phf                                       | 1,490 |
-| text       | ANSI-aware width · truncation · column slicing · SGR-preserving wrap                 | unicode-width · segmentation              | 1,450 |
-| summary    | Tree-sitter structural source summaries with elision controls                        | tree-sitter · ast-grep-core               | 1,040 |
-| ast        | ast-grep pattern matching and structural rewrites                                    | ast-grep-core                             | 1,000 |
-| highlight  | Syntax highlighting · 11 semantic categories · 30+ aliases                           | syntect                                   |   470 |
-| pty        | Native PTY allocation for sudo · ssh interactive prompts                             | portable-pty                              |   455 |
-| glob       | Discovery with glob · type filters · mtime sort · gitignore respect                  | ignore · globset                          |   410 |
-| workspace  | Workspace walker with gitignore + AGENTS.md discovery in one pass                    | ignore                                    |   385 |
-| appearance | Mode 2031 + native macOS dark/light via CoreFoundation FFI                           | core-foundation                           |   270 |
-| power      | macOS power-assertion API for idle/system/display-sleep prevention                   | IOKit FFI                                 |   270 |
-| task       | Blocking work on libuv thread pool · cancellation · timeout · profiling              | tokio · napi                              |   260 |
-| fd         | Filesystem walker for find-tool replacement                                          | ignore                                    |   250 |
-| iso        | Workspace isolation shim · apfs · btrfs · zfs · reflink · overlayfs · projfs · rcopy | veyyon-iso (PAL)                              |   245 |
-| prof       | Circular buffer profiler with folded-stack and SVG flamegraph output                 | inferno                                   |   240 |
-| ps         | Cross-platform process-tree kill and descendant listing                              | libc · libproc · CreateToolhelp32Snapshot |   195 |
-| clipboard  | Text copy and image read from system clipboard · no xclip/pbcopy                     | arboard                                   |    80 |
-| tokens     | O200k / Cl100k BPE token counting · both tables embedded                             | tiktoken-rs                               |    65 |
-| sixel      | Terminal image rendering · decode PNG · JPEG · WebP · GIF · resize · SIXEL encode    | icy_sixel · image                         |    55 |
-| html       | HTML to Markdown with optional content cleaning                                      | html-to-markdown-rs                       |    50 |
-
-## Four ways to run the same engine
-
-- **Interactive:** `veyyon` (TUI)
-- **One-shot:** `veyyon -p` / `--print`
-- **SDK:** embed in Node via `@veyyon/coding-agent`
-- **RPC / ACP:** `veyyon --mode rpc` and `veyyon acp` over stdio
-
-### Interactive TUI
-
-The default surface. Tool calls render as cards; the `ask` tool shows a structured option picker. The same permission and ask surfaces route over ACP when the client advertises them.
-
-### SDK: embed in Node
-
-`@veyyon/coding-agent`
-
-Node and TypeScript hosts pull the engine in directly. The package exposes `ModelRegistry`, `SessionManager`, `createAgentSession`, and `discoverAuthStorage`; the session emits typed events you subscribe to.
-
-```ts
-import {
-  ModelRegistry,
-  SessionManager,
-  createAgentSession,
-  discoverAuthStorage,
-} from "@veyyon/coding-agent";
-
-const auth = await discoverAuthStorage();
-const models = new ModelRegistry(auth);
-await models.refresh();
-
-const { session } = await createAgentSession({
-  sessionManager: SessionManager.inMemory(),
-  authStorage: auth,
-  modelRegistry: models,
-});
-await session.prompt("list .ts files");
+```text
+/secret add DEPLOY_TOKEN --from-env DEPLOY_TOKEN --scope project
 ```
 
-### RPC: drive over stdio
+The model sees a named placeholder. Expansion happens at the final outbound tool boundary. The real value stays local, is encrypted at rest, is redacted from later outbound seams, and appears in an operator-visible use log by name rather than value. Scope, expiry, and removal are enforced when the credential is used.
 
-`veyyon --mode rpc`
+<p align="center">
+  <img src="assets/demo-secret-boundary.gif" width="960" alt="A project secret is listed by placeholder, spent through a bash command, and recorded once in the use log without displaying its value">
+</p>
 
-For non-Node embedders, or when you want process isolation. NDJSON commands in, response and event frames out. `--mode rpc-ui` adds tool cards, selectors, and dialogs as `extension_ui_request` frames the host must answer.
+[Secret protection](docs/secrets.md) · [Secret workflow](docs/handbook/src/features/secrets.md)
 
+### 4. Workers are an operator surface, not hidden subprocesses
+
+The `task` tool starts typed workers concurrently. Workers can coordinate through `irc`, return schema-validated results, persist their transcripts, and expose those results through `agent://` and `history://` URLs. `/agents` opens the Agent Control Center, where you can inspect each worker's live state, model, effort, and lifecycle controls.
+
+<p align="center">
+  <img src="assets/demo-agent-control-center.gif" width="960" alt="Two workers report on separate concerns and appear as idle beside the running main agent with their models and effort">
+</p>
+
+[Subagents](docs/handbook/src/features/subagents.md) · [IRC](docs/tools/irc.md) · [Internal URL routing](docs/tools/read.md#internal-urls)
+
+### 5. Code intelligence writes through the language server
+
+A rename is a symbol operation, not a text replacement. Veyyon asks the active language server for the workspace edit, applies it, and keeps file renames and references together. The edit tool separately uses content-hash anchors, so a file changed since the model read it fails closed before a patch lands.
+
+<p align="center">
+  <img src="assets/demo-lsp-refactor.gif" width="960" alt="A production language-server symbol rename followed by four passing fixture tests">
+</p>
+
+[Language servers](docs/tools/lsp.md) · [Editing and repair](docs/handbook/src/using/editing.md)
+
+### 6. Argot shortens repeated project vocabulary without leaking handles
+
+Argot is experimental and off by default. A project dictionary maps repeated paths and phrases to short handles in the model's history. Handles expand before a tool, transcript, child result, parent result, or live display receives them. Disabling teaching does not disable decoding, so an old handle cannot leak after the feature is turned off.
+
+The dependent controls are hidden while Argot is disabled:
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/argot-settings-off.png" width="440" alt="Argot disabled with only the master toggle visible"><br><strong>Off</strong></td>
+    <td align="center"><img src="assets/argot-settings-on.png" width="440" alt="Argot enabled with its dependent controls visible"><br><strong>On</strong></td>
+  </tr>
+</table>
+
+Its token economics remain unproven across workloads. The codec boundary is shipped; the performance claim is not assumed.
+
+[Argot design and limits](docs/handbook/src/why/argot.md)
+
+## Demo gallery
+
+Every live workflow below uses the isolated `demo` profile with `google-antigravity/gemini-3.6-flash` at `high` effort. `scripts/demos/setup-profile.sh` creates that profile without copying a maintainer's working settings. `scripts/demos/record.sh` verifies the exact model before recording and refuses a fallback.
+
+```sh
+bash scripts/demos/setup-profile.sh --refresh
+bash scripts/demos/record.sh
 ```
-$ veyyon --mode rpc --no-session
-> {"id":"r1","type":"prompt","message":"list .ts files"}
-< {"id":"r1","type":"response", ...}
-> {"id":"r2","type":"set_model","provider":"anthropic","modelId":"sonnet-4.5"}
-> {"id":"r3","type":"abort"}
+
+| Workflow | What the recording proves | Artifact | Regenerate |
+| --- | --- | --- | --- |
+| End-to-end change | Read, edit, final report | [hero](assets/demo-hero.gif) | `bash scripts/demos/record.sh hero` |
+| Prompt architecture | Assembled section costs and conditional statement registry | [prompt architecture](assets/demo-prompt-architecture.gif) | `bash scripts/demos/record.sh prompt-architecture` |
+| Language-server refactor | Cross-file symbol rename and four passing fixture tests | [LSP recording](assets/demo-lsp-refactor.gif) | `bash scripts/demos/record.sh lsp-refactor` |
+| File write | A written test file and its passing test output | [write recording](assets/demo-edit.gif) | `bash scripts/demos/record.sh edit` |
+| Plan mode | Two-file read-only inspection and a completed plan review | [plan mode](assets/demo-plan.gif) | `bash scripts/demos/record.sh plan` |
+| Context maintenance | Context report, compaction, post-compact report | [compaction](assets/demo-context-compaction.gif) | `bash scripts/demos/record.sh context-compaction` |
+| Multi-agent work | Parallel worker progress and Agent Control Center live and idle states | [agents](assets/demo-agent-control-center.gif) | `bash scripts/demos/record.sh agent-control-center` |
+| Secret boundary | Placeholder listing, one bash spend, numeric output, and one value-free use-log record | [secrets](assets/demo-secret-boundary.gif) | `bash scripts/demos/record-secret-boundary.sh` |
+| Settings | Category list, category navigation, and filtered default-model rows | [settings tour](assets/demo-settings-tour.gif) | `bash scripts/demos/record.sh settings-tour` |
+| Model controls | Native effort variants and ordered chains | [model controls](assets/model-effort-controls.gif) | `bash scripts/demos/record.sh model-effort-controls` |
+| Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) | `bash scripts/demos/record-argot-settings.sh` |
+| Command discovery | Live slash-command filtering | [commands](assets/demo-commands.gif) | `bash scripts/demos/record.sh commands` |
+| Project answer | An answer describing `RateLimiter` behavior | [answer recording](assets/demo-ask.gif) | `bash scripts/demos/record.sh ask` |
+| Installation | Isolated binary install, installed help, and version | [install](assets/install-demo.gif) | `bash scripts/demos/record-install.sh` |
+
+A committed tape must submit the action and finish on its result. A settings proof must show a differential, not one default screenshot. The recording contract lives in [record-demo](.veyyon/skills/record-demo/SKILL.md) and [prove-feature](.veyyon/skills/prove-feature/SKILL.md).
+
+## The complete workbench
+
+The gallery leads with Veyyon-owned contracts. The rest of the product is still available when the task needs it.
+
+| Area | Production surface |
+| --- | --- |
+| Files and data | Files, directories, archives, SQLite, PDFs, notebooks, URLs, and internal resources through `read`; exact creation through `write`; hash-anchored patches through `edit` |
+| Search and structure | Native `grep` and `glob`; tree-sitter summaries; `ast_grep` discovery; previewed and resolved `ast_edit` rewrites |
+| Runtime | Persistent shell sessions, supervised processes, persistent Python and Bun kernels, SSH, and DAP debugging |
+| Code intelligence | Diagnostics, navigation, references, implementations, code actions, symbol rename, and rename-file through `lsp` |
+| Browser and research | Chromium/CDP control, web search provider routing, URL extraction, images, and speech tools when enabled |
+| Coordination | Tasks, IRC, background jobs, todos, interactive questions, checkpoints, rewind, and agent URLs |
+| Sessions | Resume, branch, fork, export, compaction, goal continuation, plan mode, review, and project-scoped memory |
+| Integrations | MCP, extensions, hooks, skills, custom commands, ACP, RPC, SDK embedding, and encrypted collaboration |
+
+Use `/` to search commands and `/settings` to search configuration. The generated references stay closer to the registries than a hand-maintained README list:
+
+- [Slash commands](docs/handbook/src/reference/slash-commands.md)
+- [Settings reference](docs/settings-reference.md)
+- [Tool guides](docs/tools/)
+- [Environment variables](docs/environment-variables.md)
+- [File locations](docs/handbook/src/reference/file-locations.md)
+
+## Models, providers, and routing
+
+Use `/model` or `--model` for the interactive model. Assign `smol`, `slow`, `plan`, `designer`, `commit`, `advisor`, and custom roles independently. Compaction and subagents own separate ordered model chains. Retry fallback chains, path-scoped model filters, several credentials per provider, session affinity, and per-credential cooldown are explicit configuration.
+
+Veyyon supports direct APIs, OAuth coding subscriptions, gateways, and local OpenAI-compatible servers. The catalog changes more often than this README. Run `veyyon models` for the active catalog and see [Models, roles, and profiles](docs/handbook/src/using/roles-and-profiles.md) for routing.
+
+## Four ways to run the engine
+
+```sh
+veyyon                         # interactive TUI
+veyyon -p "inspect this repo"  # one-shot output
+veyyon --mode rpc             # NDJSON RPC over stdio
+veyyon acp                    # Agent Client Protocol for editors
 ```
 
-### ACP: speak to editors
+TypeScript hosts can also use the session SDK. All four surfaces share the model registry, session runtime, tool policy, and approval semantics.
 
-`veyyon acp`
+[ACP and CLI modes](docs/handbook/src/reference/cli.md) · [Extensions](docs/extensions.md) · [Custom tools](docs/custom-tools.md)
 
-The [Agent Client Protocol](https://github.com/zed-industries/agent-client-protocol) over JSON-RPC. When the editor advertises capabilities, tool I/O routes through it and writes are gated by `session/request_permission`.
+## Provenance
 
-| Veyyon tool                   | ACP route                           |
-| ----------------------------- | ----------------------------------- |
-| `bash`                        | `terminal/create + terminal/output` |
-| `read`                        | `fs/read_text_file`                 |
-| `write`                       | `fs/write_text_file`                |
-| `edit, bash`                  | `session/request_permission`        |
+### Inherited foundation
 
-SDK: `@veyyon/coding-agent` (see `packages/coding-agent`).
+Veyyon retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native grep, PTY, and tree-sitter hot-path foundations from oh-my-pi. These remain important product capabilities. They are not presented as Veyyon inventions.
 
-## Built to extend, not outgrow
+### Veyyon-owned contracts
 
-Source and releases: [github.com/santhreal/veyyon](https://github.com/santhreal/veyyon).
+Veyyon owns the statement-based prompt architecture, transactional context moves, model-native effort and explicit effort precedence, current compaction strategy and chains, provider-bound secret protection, profile/session durability rules, LSP write-through, capability and tool registry, typed worker and IRC operations, Agent Control Center, internal agent URLs, post-fork reusable Rust crate boundaries and their current contracts, and Argot integration boundaries described above.
 
-- **Extensions**: TypeScript modules using the same tool, slash-command, hotkey, and TUI registration APIs as the built-ins.
-- **Discovery**: with foreign import enabled, loads rules, skills, and MCP from common on-disk layouts (Claude, Cursor, Codex, Gemini, Windsurf, Cline, Copilot, VS Code, …).
-- **Reload**: `/reload-plugins` after local edits; packages publish via npm or marketplaces.
-
-Operator handbook: `docs/handbook/`.
-
----
+This boundary describes this repository. It does not claim that current upstream has stood still. Read [UPSTREAM.md](UPSTREAM.md), the [mechanisms chapter](docs/handbook/src/why/innovations.md), and the [intentional divergence ledger](docs/internal/porting-from-pi-mono.md#15-intentional-divergences) for the detailed record.
 
 ## Development
 
-### Getting started from source
-
-Fresh clones need both workspace dependencies and the local Rust/N-API addon before the source CLI can start.
-
 ```sh
 bun setup
 bun dev
+bun run check
 ```
 
-`bun setup` installs Bun workspaces and builds `@veyyon/natives`. Re-run `bun run build:native` after changing Rust crates or `packages/natives`.
-
-For a non-interactive smoke check:
-
-```sh
-bun dev -- --version
-```
-
-### Debug Command
-
-`/debug` opens tools for debugging, reporting, and profiling.
-
-For architecture and contribution guidelines, see [packages/coding-agent/DEVELOPMENT.md](packages/coding-agent/DEVELOPMENT.md).
-
----
-
-## Monorepo Packages
-
-| Package                                                   | Description                                                                |
-| --------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **[@veyyon/collab-web](packages/collab-web)**           | Browser guest client, mock host, and local relay for collab live sessions  |
-| **[@veyyon/ai](packages/ai)**                        | Multi-provider LLM client with streaming and model/provider integration    |
-| **[@veyyon/catalog](packages/catalog)**              | Model catalog: bundled model database, provider descriptors, and identity  |
-| **[@veyyon/agent-core](packages/agent)**             | Agent runtime with tool calling and state management                       |
-| **[@veyyon/argot](packages/argot)**                  | Per-project shorthand vocabularies: a lossless substitution codec over AGENTS.dict |
-| **[@veyyon/coding-agent](packages/coding-agent)**    | Interactive coding agent CLI and SDK                                       |
-| **[@veyyon/tui](packages/tui)**                      | Terminal UI library with differential rendering                            |
-| **[@veyyon/natives](packages/natives)**              | N-API bindings for grep, shell, image, text, syntax highlighting, and more |
-| **[@veyyon/stats](packages/stats)**                 | Local observability dashboard for AI usage statistics                      |
-| **[@veyyon/utils](packages/utils)**                  | Shared utilities (logging, streams, dirs/env/process helpers)              |
-| **[@veyyon/wire](packages/wire)**                    | Shared collab live-session protocol types and relay constants              |
-| **[@veyyon/hashline](packages/hashline)**               | Line-anchored patch language and applier behind the `edit` tool            |
-| **[@veyyon/mnemopi](packages/mnemopi)**              | Local SQLite memory engine for Veyyon agents                             |
-| **[@veyyon/metaharness](packages/metaharness)**      | Experimentation / meta harness package                                     |
-| **[@veyyon/swarm-extension](packages/swarm-extension)** | Swarm orchestration extension package                                   |
-| **[@veyyon/tool-render](packages/tool-render)**      | Shared React tool-call renderers for HTML export and collab-web            |
-| **[@veyyon/deepswe-bench](packages/deepswe-bench)**  | DeepSWE bench runner for perf-affecting features                           |
-| **[@veyyon/typescript-edit-benchmark](packages/typescript-edit-benchmark)** | Edit benchmark suite over TypeScript source mutations    |
-
-### Rust Crates
-
-| Crate                                              | Description                                                                                         |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **[veyyon-natives](crates/veyyon-natives)**                | Core Rust native addon (N-API `cdylib`) used by `@veyyon/natives`; aggregates the crates below |
-| **[veyyon-shell](crates/veyyon-shell)**                    | Embedded shell / PTY / process management split out of `veyyon-natives` (wraps `brush-*`)               |
-| **[veyyon-ast](crates/veyyon-ast)**                        | tree-sitter-based code summarizer and AST utilities (50+ language grammars)                         |
-| **[veyyon-iso](crates/veyyon-iso)**                        | Task isolation backend resolver: APFS clones, btrfs/zfs reflinks, overlayfs, projfs, rcopy          |
-| **[veyyon-walker](crates/veyyon-walker)**                  | Platform directory traversal primitives: the native directory-read fast path                    |
-| **[veyyon-glob](crates/veyyon-glob)**                      | Glob matching engine (globset) behind the native glob binding                                   |
-| **[veyyon-keys](crates/veyyon-keys)**                      | Kitty keyboard protocol parsing with PHF perfect-hash lookup                                    |
-| **[veyyon-text](crates/veyyon-text)**                      | ANSI-aware text measurement and slicing over UTF-16 (the engine behind the native text module)  |
-| **[veyyon-uutils-ctx](crates/veyyon-uutils-ctx)**          | Thread-local stdio + cwd context for embedding uutils as in-process shell builtins              |
-| **[veyyon-uu-diff](crates/veyyon-uu-diff)**                | `diff`: in-process shell builtin for file comparison                                            |
-| **[veyyon-diff-kernel](crates/veyyon-diff-kernel)**        | One owner for unified-diff text: line splitting, comparison keys, hunk formatting, binary sniff  |
-| **[veyyon-grep-kernel](crates/veyyon-grep-kernel)**        | One owner for the search stack: pattern compilation and searcher construction                    |
-| **[veyyon-uu-grep](crates/veyyon-uu-grep)**                | `grep`: ripgrep-backed in-process shell builtin                                                 |
-| **[brush-core](crates/vendor/brush-core)**         | Vendored fork of [brush-shell](https://github.com/reubeno/brush) for embedded bash execution        |
-| **[brush-builtins](crates/vendor/brush-builtins)** | Vendored bash builtins (cd, echo, test, printf, read, export, etc.)                                 |
-| **[crates/vendor](crates/vendor)**                 | Vendored [uutils](https://github.com/uutils/coreutils) coreutils and jaq, embedded as in-process shell builtins |
-
-## Contributing
-
-See **[CONTRIBUTING.md](CONTRIBUTING.md)** for contribution guidelines.
-
----
+`bun setup` installs workspace dependencies and builds the local Rust/N-API addon. See [CONTRIBUTING.md](CONTRIBUTING.md) and [packages/coding-agent/DEVELOPMENT.md](packages/coding-agent/DEVELOPMENT.md) before changing the runtime.
 
 ## License
 
-MIT. See [LICENSE](LICENSE) for the full text and copyright notices.
+Veyyon is licensed under MIT. See [LICENSE](LICENSE).
 
-Veyyon is a fork of oh-my-pi (MIT) and Pi, created by Mario Zechner and Can Bölük. Their copyright notices are retained in [LICENSE](LICENSE).
-
-- [GitHub](https://github.com/santhreal/veyyon)
-- [Changelog](https://github.com/santhreal/veyyon/blob/main/CHANGELOG.md)
-- [Releases](https://github.com/santhreal/veyyon/releases) (the installer downloads one SHA-256-verified binary per supported OS and architecture)
-- [MIT](https://github.com/santhreal/veyyon/blob/main/LICENSE)
+The project is derived from oh-my-pi. Upstream copyright and license notices are preserved in [UPSTREAM.md](UPSTREAM.md) and the source tree.

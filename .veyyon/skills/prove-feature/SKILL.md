@@ -29,7 +29,7 @@ Generic ask/edit/hero tapes may still exist as orientation, but a *proof* demo f
 2. **Show a contrast when the feature is gated.** Off then on, seeded with `config set`, same as screenshots. Degenerate pairs fail.
 3. **End on the outcome:** expanded handle, landed hashline diff, written plan file, compacted transcript, live inbox. Not the spinner.
 4. **Keep the fixture honest.** Prefer a small real shape that forces the mechanism (repeated long strings for Argot, multi-hunk edit for hashline). Do not rely on `~/orbit`’s two toy files if they cannot surface the win.
-5. **Reuse launch defaults.** `scripts/demos/launch.sh` (work profile, Gemini 3.6 Flash high). No second pin.
+5. **Reuse launch defaults.** `scripts/demos/launch.sh` (isolated `demo` profile, Gemini 3.6 Flash high). No second pin.
 
 ## Record and embed
 

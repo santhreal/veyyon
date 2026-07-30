@@ -86,21 +86,27 @@ $ veyyon session stats --json
 
 It reports, in one pass:
 
-- **Totals**: wall clock, turn and tool-call counts, token usage, request time, tool execution time, queue wait, and the weight tool results added to context.
-- **Tool latency**: per tool, the call count and the p50, p95, and max execution time, plus total scheduler wait, slowest tool first.
-- **Tool cost**: per tool, the tokens and bytes its results returned into context, most expensive first.
-- **Repeated identical calls**: tools called more than once with byte-identical arguments, keyed by an arguments fingerprint.
+- **Totals**: wall clock, turn and tool-call counts, token usage, request time, tool execution time, queue wait, and tool-result weight.
+- **Lifecycle**: sequence coverage, checkpoints, and the latest running or ended state.
+- **Context**: prompt, non-message, stored-message, and tail-token attribution when recorded.
+- **Agent communication**: sent and received message counts, payload bytes, outcomes, and delivery routes.
+- **Task state**: latest open, active, dropped, and completed counts plus recorded transitions.
+- **Tool latency and cost**: per-tool execution percentiles, scheduler wait, returned tokens, and returned bytes.
+- **Repeated argument fingerprints**: tools called more than once with the same collision-resistant argument digest. Older sessions with only 32-bit fingerprints are analyzed in a separate legacy namespace.
 - **Per-turn**: each assistant turn's model, request time, tool calls, and token usage.
 
-The timing and weight fields come from the per-tool-call records that
-instrumentation writes. How much is recorded depends on the `session.instrumentation`
-setting: `off` records nothing (the command still reports turns and usage from the
-assistant's own accounting, but tool timing reads as zero), `basic` records
-wall-clock, `rich` adds output weight, and `ultra` adds the arguments fingerprint
-that powers repeated-call detection. Turn on `ultra` for a session you want to
-study in full, or create a ready-made study profile with `veyyon profile new dev
---from dev`. See [Profiles](../features/profiles.md) and the `session.instrumentation`
-setting for the level details.
+The `session.instrumentation` setting controls the stored detail:
+
+- `off` stores the normal resumable conversation and tool history without extra telemetry. Stats still use normal assistant usage and messages.
+- `basic` adds lifecycle and checkpoints, task-state transitions, tool wall-clock and status, and model request timing.
+- `rich` adds context attribution, agent-message delivery, tool scheduling and result weight, model token throughput, and richer rollups.
+- `ultra` adds argument fingerprints, abort state, compaction links, directional agent routes, per-task transitions, cache and reasoning detail, and upstream-provider provenance.
+
+The setting applies immediately. A new level starts a new measured lifecycle interval. A turn already in flight keeps the lower of its dispatch level and the current level when it is stored. If you turn instrumentation off before that turn finishes, its added study fields are omitted. Normal conversation and tool history remain resumable.
+
+Use `ultra` for a session you want to study in full, or create a study profile with
+`veyyon profile new dev --from dev`. See [Profiles](../features/profiles.md) for the
+setting and profile behavior.
 
 `--json` prints the complete report, including every turn; the text view caps the
 longest tables and says so when it does.

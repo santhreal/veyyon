@@ -1,9 +1,9 @@
 ---
 title: "Secrets: Let the Agent Use Your Credentials Without Seeing Them"
 slug: secrets
-date: 2026-07-28
-summary: "Your agent needs your deploy token to run the deploy. It does not need to read it. veyyon substitutes credentials into commands at execution time and sends the provider a placeholder instead. Here is every command, and a 60-second way to try it."
-draft: true
+date: 2026-07-29
+summary: "Store a credential once, let the agent spend it by name, and keep the value out of provider requests. This guide shows the vault commands, local substitution boundary, audit trail, and limits."
+draft: false
 ---
 
 # Secrets: Let the Agent Use Your Credentials Without Seeing Them
@@ -13,52 +13,54 @@ token into the chat, and now it is in the provider's logs, the session file on
 disk, and your terminal scrollback. Deleting the message does not remove it from
 any of those.
 
-veyyon splits reading a credential from spending one. The agent gets a
-placeholder like `#DEPLOY_KEY#`. When it writes that placeholder into a command,
-veyyon swaps in the real value just before the command runs. The command works.
-The text that goes to the provider says `#DEPLOY_KEY#`.
+veyyon splits reading a credential from spending one. A vault entry gives the
+agent a named placeholder such as `#DEPLOY_KEY#`. When it writes that placeholder
+into a command, veyyon swaps in the real value just before the command runs. The
+command works. The text that goes to the provider says `#DEPLOY_KEY#`.
 
 ## Try it in 60 seconds
 
-If the credential is already in your shell, there is nothing to set up. veyyon
-detects an environment variable as a secret when the value is 8 characters or
-longer and the name ends with (or has an underscore after) one of `KEY`,
-`SECRET`, `TOKEN`, `PASSWORD`, `PASS`, `PASSPHRASE`, `AUTH`, `CREDENTIAL`,
-`PRIVATE`, or `OAUTH`.
-
-So this already qualifies:
+If the credential is already in your shell, store it without typing it into the
+chat or terminal:
 
 ```sh
 export GITHUB_TOKEN=ghp_your_real_token_here
 veyyon
 ```
 
-Turn protection on and ask for something that needs it:
+```text
+/secret add github-token --from-env GITHUB_TOKEN
+```
 
 ```text
-/settings            → Hide Secrets → on
+Stored GITHUB_TOKEN in the profile vault, 1d left.
+The model sees #GITHUB_TOKEN# and never the value. Write that placeholder where the credential goes.
+Secret protection was off, so it is now on for this session and saved for the next one.
 ```
+
+Now ask for something that needs it:
 
 ```text
 > list my open pull requests
 ```
 
-The agent writes a `curl` with the placeholder, veyyon substitutes the token, and
-the request succeeds. Check what the provider received with `/dump`: the token is
-not in it.
+The agent writes a command with `#GITHUB_TOKEN#`. The approval view still shows
+the placeholder. After approval, veyyon substitutes the token locally and runs
+the command. Check what the provider received with `/dump`: the token is not in
+it.
 
-To store something that is not an environment variable, hand it to the vault.
-This also switches protection on for you:
+`--from-env` matters here. The credential never enters the editor buffer or
+terminal scrollback. The vault gives it a stable name that the agent can use in
+this session and after a restart.
 
-```text
-/secret add deploy-key --from-env DEPLOY_TOKEN
-```
-
-```text
-Stored DEPLOY_KEY in the profile vault, 1d left.
-The model sees #DEPLOY_KEY# and never the value. Write that placeholder where the credential goes.
-Secret protection was off, so it is now on for this session and saved for the next one.
-```
+Veyyon also detects credential-like environment variables defensively. A value
+of 8 characters or longer is protected when its name ends with, or has an
+underscore before, one of `KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASS`,
+`PASSPHRASE`, `AUTH`, `CREDENTIAL`, `PRIVATE`, or `OAUTH`. If a detected value
+appears in provider-bound text, veyyon replaces it with an opaque machine-keyed
+placeholder. Detection does not add a readable name to the agent's inventory.
+Use `/secret add --from-env` when the agent needs to spend the credential
+deliberately.
 
 That is the whole setup. Everything below is detail.
 
@@ -167,9 +169,9 @@ value. Turn it off with the `secrets.auditLog` setting.
 
 ### Repair
 
-An encrypted vault that will not open cannot be fixed by hand. If a disk filled
-up mid-write or a sync client merged two copies, move that scope's file aside and
-re-add what it held:
+Veyyon will not guess at repairing an encrypted vault that no longer opens. If
+a disk filled up mid-write or a sync client merged two copies, move that scope's
+file aside and re-add what it held:
 
 ```text
 /secret discard --scope project
@@ -213,8 +215,9 @@ at rest, put it in the vault instead.
 ## How it works
 
 Three sources feed one runtime: detected environment variables, your
-`secrets.yml` declarations, and the vault. Each contributes values to protect
-and, for reversible entries, a placeholder that maps back.
+`secrets.yml` declarations, and the vault. Each contributes values to protect.
+Reversible declarations and vault entries also contribute placeholders that map
+back locally.
 
 **On the way out**, every known value is replaced before provider dispatch. That
 covers messages, dynamic system prompts, tool descriptions and schemas, resumed

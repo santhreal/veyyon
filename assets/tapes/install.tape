@@ -1,8 +1,12 @@
-# VHS tape for Veyyon installation and setup flow
-# Regenerate: vhs assets/tapes/install.tape
+# Veyyon installer demo: a real release binary installed into a throwaway HOME,
+# followed by the installed binary's help and version output.
+# Regenerate: `bash scripts/demos/record-install.sh`.
+# Do not run this tape directly. The driver owns the isolated destination.
 
-Set Shell bash
-Set FontSize 20
+Output assets/install-demo.gif
+
+Set Shell "bash"
+Set FontSize 22
 Set Width 1400
 Set Height 800
 Set Padding 30
@@ -10,25 +14,15 @@ Set Margin 40
 Set MarginFill "#000000"
 Set BorderRadius 0
 Set Framerate 30
-Set TypingSpeed 45ms
+Set TypingSpeed 55ms
 Set CursorBlink false
-Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
+Set Theme {"name":"veyyon","black":"#000000","background":"#000000","foreground":"#C6CBD4","cursor":"#F0862E"}
 
-Type "bash scripts/install.sh --local"
-Enter
-Sleep 6s
+Type "bash scripts/install.sh --binary" Enter
+Sleep 12s
 
-
-Type "vey setup status"
-Enter
+Type "$VEYYON_INSTALL_DIR/veyyon --help" Enter
 Sleep 4s
 
-# Step 3 of the installer's own closing advice, so the recording shows a new user
-# the path the installer just told them to take.
-Type "vey --help"
-Enter
-Sleep 4s
-
-Type "vey --version"
-Enter
+Type "$VEYYON_INSTALL_DIR/veyyon --version" Enter
 Sleep 4s

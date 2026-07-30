@@ -42,14 +42,16 @@ tools:
 
 ## The approval prompt
 
-When the active mode requires approval for a tool call, the TUI shows a selector titled
-`Allow tool: <name>` with the reason and the tool's detail lines, and waits on two options:
+When the active mode requires approval for a tool call, the TUI shows a **Permission required**
+card. The card names the tool, states that the decision applies to this call only, separates the
+reason from the requested command or file operation, and waits on two options:
 
-- **Approve**: the call runs.
-- **Deny**: the call is refused and the model receives `Tool call denied by user: <name>`.
+- **Approve**: run this call once without saving a policy.
+- **Deny**: refuse this call and return `Tool call denied by user: <name>` to the model.
 
-Navigate with the usual list keys (`up`/`down`, `enter` to confirm, `esc` to cancel; cancelling
-counts as a denial). Denied actions return an error to the model, and permissions are never widened.
+The selected option uses a radio marker and includes a short description. Navigate with the usual
+list keys (`up`/`down`, `enter` to confirm, `esc` to cancel; cancelling counts as a denial).
+Denied actions return an error to the model, and permissions are never widened.
 
 ## Headless
 

@@ -447,34 +447,39 @@ The complete resolved Tier-A config that governed the run, keyed by dotted setti
 
 ## Session Instrumentation (structured analysis)
 
-Instrumentation is the graded, machine-readable study layer of the session file. It exists so a stored run can be measured and backtested field by field: where latency went, what each tool call cost, how fast each turn streamed, and exactly what each request asked the provider for. Every record is a plain JSON object inside the normal JSONL, so a run is analyzable with `grep`, `jq`, or any JSONL reader, with no special tooling.
+Instrumentation is the graded, machine-readable study layer of the session file. It records enough structured data to explain lifecycle, task state, context weight, tool execution, model turns, and agent communication. Every added field is policy-gated and content-minimized by `session.instrumentation`.
 
-Owner: [`packages/ai/src/instrumentation.ts`](../../packages/ai/src/instrumentation.ts) is the single place that decides which fields each level fills. The agent loop measures raw timings and hands them to the `capture*` functions; nothing else branches on the level.
+Owner: [`packages/ai/src/instrumentation.ts`](../../packages/ai/src/instrumentation.ts) defines the closed telemetry categories and the minimum level for each category. Producers call `sessionTelemetryDetail` at the persistence boundary. Raw secrets, unredacted tool arguments, and IRC message bodies are forbidden in telemetry at every level.
 
 ### Richness levels (`session.instrumentation`)
 
-One setting, `session.instrumentation`, grades how densely a run records. The levels are ordered, and each includes every field of the levels before it:
+One setting grades how densely a run records. Each level includes the previous level:
 
 | Level | What it adds | Cost |
 | --- | --- | --- |
-| `off` | Nothing. No instrumentation fields are attached (default). | none |
-| `basic` | Wall-clock only: start/end/duration and terminal status, plus provider time-to-first-token. | a subtraction (free) |
-| `rich` | Adds SCHEDULING (queue wait, concurrency, batch id/index/size) and output weight (result blocks/bytes/images/tokens) on a tool call, and token counts plus throughput (`generationMs`, output tokens/sec) on a turn. | one tokenizer pass per tool result |
-| `ultra` | Adds the args fingerprint and size, interruptibility and abort state on a tool call, and cache read/write tokens, cache hit ratio, reasoning tokens and the upstream provider on a turn. | rounding error |
+| `off` | No added telemetry. Normal conversation and tool history is still stored and remains fully resumable. | none |
+| `basic` | Lifecycle sequence, running/ended state and checkpoints; task-state transitions; tool timing/status; model request timing. | cheap timestamps and counters |
+| `rich` | Context attribution; sent/received agent-message weight and outcomes; tool scheduling and result weight; model token throughput; richer session rollups. | bounded result tokenization and structured counters |
+| `ultra` | Tool argument fingerprints and collision-resistant digests, abort state, context-to-compaction links, directional agent routes, per-task transitions, cache/reasoning detail, and provider provenance. | bounded hashing and provenance fields |
 
-`INSTRUMENTATION_LEVELS` in [`packages/ai/src/instrumentation.ts`](../../packages/ai/src/instrumentation.ts) is the order, and `captureToolCallMetrics` / `captureAssistantTurnMetrics` in the same file are the ONE place the level-to-fields mapping lives. Expensive work is gated by the tier that keeps it: the result is tokenized only at `rich`, and the args are serialized and hashed only at `ultra`.
+The category policy is explicit: lifecycle, tool spans, and goal/task telemetry begin at `basic`; context breakdown, agent communication, and analytics rollups begin at `rich`. `ultra` permits the complete structured payload for every category. Unknown levels fail closed as `off`.
 
-The `dev` profile sets `ultra`. A record carries its own `level` field, so a reader knows which optional fields to expect. Every field above `basic` is optional: a message recorded at a lower level (or by an older build) still loads unchanged.
+Changing the setting takes effect live. Each enabled-level change closes the current lifecycle interval and starts a new interval tagged with the new level. A turn already in flight cannot be upgraded retroactively. Persistence uses the lower of the dispatch level and the current level, so turning instrumentation off before completion strips its study fields. Forked and branched child sessions start fresh lifecycle intervals; source lifecycle and checkpoint entries stay with the source identity.
+
+Agent-message telemetry is gated independently for each participant. A rich recipient can record its `received` event while an off sender records nothing, and the reverse also holds.
+
+The `dev` profile sets `ultra`. Every telemetry payload records enough level or source information for older and lower-detail entries to remain readable.
 
 ### Where each record attaches
 
-Instrumentation rides on the messages it describes, not on separate entries, so it stays co-located with the turn/tool call it measures:
+- **`session_lifecycle` and `session_checkpoint` entries** record ordered lifecycle state and immutable prefix checkpoints at `basic` and above.
+- **`message.metrics` on a `toolResult`** records one tool call's span and result weight.
+- **`message.turnMetrics` and `message.request` on an assistant message** record model-turn timing and effective request parameters.
+- **`message.contextSnapshot` on a successful assistant message** adds stored-message and tail attribution at `rich`, then the governing compaction link at `ultra`.
+- **`details.telemetry` on a successful `todo` result** records aggregate task state at `basic`, before-state and affected references at `rich`, and per-task transitions at `ultra`.
+- **`irc:delivery-telemetry` custom entries** record content-free sent and received delivery facts at `rich`, then routes and participant detail at `ultra`. Matching message IDs correlate the two sessions without storing the body.
 
-- **`message.metrics`** on a `toolResult` message: a `ToolCallMetrics` record of what one tool call did.
-- **`message.turnMetrics`** on an `assistant` message: an `AssistantTurnMetrics` record of what one model turn did (timing, throughput).
-- **`message.request`** on an `assistant` message: an `AssistantTurnRequest` record of what that turn asked for (the sampling/reasoning/tool-choice params as sent).
-
-`turnMetrics` records what a turn DID; `request` records what it was ASKED for. They are siblings so a backtest can pair "this is the request we sent" with "this is what it produced".
+`veyyon session stats [id]` reduces these records in one pass. Missing fields are never guessed, so an `off` or older session still produces normal message and provider-usage totals.
 
 ### `ToolCallMetrics` (`message.metrics` on a tool result)
 
@@ -489,6 +494,7 @@ Times are Unix epoch milliseconds; durations are milliseconds.
     "content": [{ "type": "text", "text": "..." }],
     "metrics": {
       "level": "ultra",
+      "timeUnit": "ms",
       "startedAt": 1760000000000,
       "endedAt": 1760000000450,
       "durationMs": 450,
@@ -504,6 +510,8 @@ Times are Unix epoch milliseconds; durations are milliseconds.
       "resultTokens": 512,
       "argsBytes": 96,
       "argsHash": "1a2b3c4d",
+      "argsDigest": "0123456789abcdef0123456789abcdef",
+      "argsDigestAlgorithm": "sha256-128",
       "interruptible": true,
       "signalAborted": false
     }
@@ -514,15 +522,18 @@ Times are Unix epoch milliseconds; durations are milliseconds.
 | Field | Tier | Meaning |
 | --- | --- | --- |
 | `level` | basic | Level this record was captured at. |
+| `timeUnit` | basic | Declares milliseconds for every timestamp and duration in this record. |
 | `startedAt` / `endedAt` | basic | When `tool.execute()` began / when the result was emitted. |
 | `durationMs` | basic | Execution wall-clock (`endedAt - startedAt`). |
 | `status` | basic | `ok` \| `error` \| `aborted` \| `blocked` \| `skipped`. |
+| `uselessReason` | basic | Why a successful result was classified as contextually useless. Currently `tool-declared`. |
 | `queuedMs` | rich | Time waited between batch dispatch and execution start. |
 | `concurrency` | rich | `shared` \| `exclusive`: how the scheduler ran it. |
 | `batchId` / `batchIndex` / `batchSize` | rich | Which tool batch it ran in, its position, and the batch size. |
 | `resultBytes` / `resultBlocks` / `resultImages` | rich | UTF-8 bytes of textual content, number of content blocks, number of image blocks. |
 | `resultTokens` | rich | Tokens the result adds to context (the weight the model pays). |
-| `argsBytes` / `argsHash` | ultra | Serialized-args byte size and an FNV-1a fingerprint (spot repeated identical calls). |
+| `argsBytes` / `argsHash` | ultra | Serialized-args byte size and the legacy 32-bit FNV-1a fingerprint retained for compatibility. |
+| `argsDigest` / `argsDigestAlgorithm` | ultra | Collision-resistant digest used for current repeated-call and unique-argument aggregation. Legacy-only and digest-backed records use separate namespaces because old records cannot be upgraded without raw arguments. |
 | `interruptible` / `signalAborted` | ultra | Whether the tool declared itself interruptible, and whether its abort signal fired. |
 
 ### `AssistantTurnMetrics` (`message.turnMetrics` on an assistant message)
