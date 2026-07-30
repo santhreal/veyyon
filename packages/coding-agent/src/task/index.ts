@@ -25,7 +25,6 @@ import {
 	errorMessage,
 	formatCount,
 	getSessionsDir,
-	logger,
 	pluralize,
 	prompt,
 	Snowflake,
@@ -696,7 +695,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// Schema defaults fill `agent` for model calls, but internal callers
 		// and stale transcripts can bypass arktype. `spawnParamsFor` resolves each
 		// item's agent type against the session's actual default agent.
-		const defaultAgent = resolveSpawnPolicy(this.session.getSessionSpawns()).defaultAgent;
+		const spawnPolicy = resolveSpawnPolicy(this.session.getSessionSpawns());
+		const defaultAgent = spawnPolicy.defaultAgent;
 		const batchEnabled = this.#isBatchEnabled();
 		const validationError = validateShapeParams(batchEnabled, params) ?? validateSpawnParams(params, batchEnabled);
 		if (validationError) {
@@ -705,6 +705,19 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 		const spawnItems = resolveSpawnItems(params);
 		const resolvedAgents = spawnItems.map(item => item.agent?.trim() || defaultAgent);
+		const blockedAgent = resolvedAgents.find(name => this.#blockedAgent && name === this.#blockedAgent);
+		if (blockedAgent) {
+			return createTaskModeError(
+				`Cannot spawn ${blockedAgent} agent from within itself (recursion prevention). Use a different agent type.`,
+			);
+		}
+		const disallowedAgent = resolvedAgents.find(
+			name =>
+				!spawnPolicy.enabled || (spawnPolicy.allowedAgents !== null && !spawnPolicy.allowedAgents.includes(name)),
+		);
+		if (disallowedAgent) {
+			return createTaskModeError(`Cannot spawn '${disallowedAgent}'. Allowed: ${spawnPolicy.allowedErrorText}`);
+		}
 		if (isHomogeneousTriageFanout(spawnItems)) {
 			const text = homogeneousTriageRefusal(spawnItems.length);
 			return createTaskModeError(text, { kind: "homogeneous-triage", message: text });
@@ -718,6 +731,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		);
 		const asyncEnabled = this.session.settings.get("async.enabled");
 		const manager = asyncEnabled ? this.session.asyncJobManager : undefined;
+		if (asyncEnabled && !manager && itemBlocking.some(blocking => !blocking)) {
+			return createTaskModeError(
+				"Async task execution is enabled, but no AsyncJobManager is available. Disable async execution to run synchronously, or provide an AsyncJobManager.",
+			);
+		}
 		const asyncItems = manager ? spawnItems.filter((_, index) => !itemBlocking[index]) : [];
 		const depthCapacity = canSpawnAtDepth(
 			resolveSessionMaxNestedSpawnDepth(this.session.settings, this.session.maxNestedSpawnDepth),
@@ -758,13 +776,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			return { ...result, content };
 		};
 		if (!manager || asyncItems.length === 0) {
-			// Sync fallback: async execution disabled, orphaned host that never
-			// wired a job manager, or every item's agent type declares
-			// `blocking: true`. The session-scoped semaphore still bounds fan-out
-			// across parallel task calls.
-			if (asyncEnabled && !this.session.asyncJobManager) {
-				logger.warn("task: no AsyncJobManager registered; falling back to sync execution");
-			}
+			// Synchronous execution was explicitly selected, or every item's
+			// agent type declares `blocking: true`. The session-scoped semaphore
+			// still bounds fan-out across parallel task calls.
 			return withAdvisory(
 				await this.#executeSyncFanout(toolCallId, params, spawnItems, defaultAgent, signal, onUpdate),
 			);
@@ -1478,33 +1492,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				);
 
 		try {
-			// Check self-recursion prevention
-			if (this.#blockedAgent && agentName === this.#blockedAgent) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Cannot spawn ${this.#blockedAgent} agent from within itself (recursion prevention). Use a different agent type.`,
-						},
-					],
-					details: { projectAgentsDir, results: [], totalDurationMs: Date.now() - startTime },
-				};
-			}
-
-			// Check spawn restrictions from parent
-			const spawnPolicy = resolveSpawnPolicy(this.session.getSessionSpawns());
-			const spawnAllowed =
-				spawnPolicy.enabled &&
-				(spawnPolicy.allowedAgents === null || spawnPolicy.allowedAgents.includes(agentName));
-			if (!spawnAllowed) {
-				return {
-					content: [
-						{ type: "text", text: `Cannot spawn '${agentName}'. Allowed: ${spawnPolicy.allowedErrorText}` },
-					],
-					details: { projectAgentsDir, results: [], totalDurationMs: Date.now() - startTime },
-				};
-			}
-
 			await fs.mkdir(effectiveArtifactsDir, { recursive: true });
 
 			// Allocate a unique ID across the session to prevent artifact collisions
