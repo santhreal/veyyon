@@ -1,3 +1,5 @@
+import { NON_ALNUM_RUN_RE } from "@veyyon/utils";
+
 import type { TaskItem } from "./types";
 
 const TRIAGE_WORD = /\b(?:triage|triaging)\b/i;
@@ -5,7 +7,7 @@ const TRIAGE_WORD = /\b(?:triage|triaging)\b/i;
 function taskLabel(item: Pick<TaskItem, "name">): string {
 	return (item.name ?? "")
 		.replace(/([a-z\d])([A-Z])/g, "$1 $2")
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
+		.replace(NON_ALNUM_RUN_RE, " ")
 		.trim();
 }
 
