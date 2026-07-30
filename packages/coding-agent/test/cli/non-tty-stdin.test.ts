@@ -172,7 +172,7 @@ describe("non-TTY stdin contract (e2e)", () => {
 		// mode; with a model, it reaches print mode and "Working..." is written to
 		// stderr before the first prompt send. When it did reach print mode, assert
 		// that indicator so the print-mode path keeps its coverage.
-		if (!stderr.includes("No models available")) {
+		if (!stderr.includes("No models are available:")) {
 			expect(stderr).toContain("Working...");
 		}
 	}, 120_000);

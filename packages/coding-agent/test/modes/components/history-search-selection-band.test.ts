@@ -24,7 +24,7 @@ import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
-const BG_OPEN = /\x1b\[48;2;\d+;\d+;\d+m/;
+const BG_OPEN = /\x1b\[48;(?:2;\d+;\d+;\d+|5;\d+)m/;
 const BG_CLOSE = "\x1b[49m";
 const WIDTH = 110;
 const DOWN = "\x1b[B";
