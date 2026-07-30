@@ -10,9 +10,8 @@ import { renderDiff } from "@veyyon/coding-agent/modes/components/diff";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import { InMemorySnapshotStore } from "@veyyon/hashline";
-import { Text, type TUI, visibleWidth } from "@veyyon/tui";
+import { getAnsiPolicy, setAnsiPolicy, Text, type TUI, visibleWidth } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
-import chalk from "chalk";
 import { createToolExecution } from "../helpers/tool-execution";
 
 beforeAll(async () => {
@@ -604,20 +603,20 @@ describe("editToolRenderer diff line wrapping", () => {
 	});
 
 	it("closes inverse video at every wrapped row end so frame padding stays uninverted", async () => {
-		// A long contiguous rewritten phrase forces the wrap boundary to land
-		// inside an inverse-highlighted span; the frame pads each row with spaces,
-		// so any inverse still active at row end paints those cells as gray blocks.
-		const previousLevel = chalk.level;
-		chalk.level = 3;
+		// One changed token is wider than a row, so the wrap boundary must land
+		// inside an inverse-highlighted span. The frame pads each row with spaces,
+		// and inverse left active at row end paints those cells as gray blocks.
+		const previousPolicy = getAnsiPolicy();
+		setAnsiPolicy("full");
 		let rows: readonly string[];
 		try {
 			rows = await renderSingleLineReplacement(
-				"    stanza recounts venerable chronicle passages spanning bygone dynasties whose archivists engraved ledgers onto vellum scrolls",
-				"    stanza celebrates luminous festival processions winding through lantern boulevards while drummers herald jubilant choruses beneath cascading ribbons and fireworks",
+				`    ${"ancestralChronicle".repeat(12)}`,
+				`    ${"luminousFestival".repeat(12)}`,
 				100,
 			);
 		} finally {
-			chalk.level = previousLevel;
+			setAnsiPolicy(previousPolicy);
 		}
 
 		// Precondition: some continuation row's content reopens with inverse right
