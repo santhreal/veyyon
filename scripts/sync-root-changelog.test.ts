@@ -118,14 +118,11 @@ describe("the root changelog covers every package", () => {
 	});
 
 	/**
-	 * The cut is positional, and this is the case that proves a per-entry version
-	 * test cannot work. Upstream's history descends below the fork major: this
-	 * package records a `15.9.0` underneath its 16.x entries. A rule of "keep
-	 * anything whose major is below 16" reads that as a veyyon release, and it
-	 * along with every other pre-16 upstream entry came back into the root and
-	 * inflated it to over fifteen thousand lines of another project's releases.
-	 * Cutting at the FIRST entry at or above the fork major discards everything
-	 * below it, which is correct because each file is newest-first.
+	 * Product releases are defined by the lead changelog, not by a package file's
+	 * position or major version. Extracted packages contain inherited history
+	 * first and can append Veyyon releases after it. Their inherited history also
+	 * descends below the fork major, so "keep versions below 16" would replay more
+	 * than fifteen thousand lines of another project's releases.
 	 */
 	it("drops upstream history that dips below the fork major", () => {
 		const swarm = readFileSync(join(PACKAGES_DIR, "swarm-extension", "CHANGELOG.md"), "utf8");
@@ -136,26 +133,32 @@ describe("the root changelog covers every package", () => {
 	});
 
 	/**
-	 * The same rule stated directly on the renderer, so a regression is diagnosed
-	 * here rather than through the whole repo's changelogs. Only the leading run
-	 * survives: `0.9.0` is upstream history that happens to sort below the fork
-	 * major, and it must not be mistaken for a veyyon release.
+	 * The lead changelog owns the product release train. A package can carry
+	 * inherited history first and append a Veyyon release after it, as hashline
+	 * does. Matching the lead version keeps that release while rejecting both the
+	 * 16.x fork history and older inherited versions whose majors happen to be
+	 * smaller.
 	 */
-	it("keeps only the contiguous leading run of post-fork releases", () => {
+	it("merges appended package releases only when they belong to the product release train", () => {
 		const md = renderRootChangelog(
 			[
 				{
-					name: "a",
+					name: "coding-agent",
+					md: "# Changelog\n\n## [1.0.1] - 2026-03-01\n\n### Fixed\n\n- product release\n",
+				},
+				{
+					name: "package",
 					md:
-						"# Changelog\n\n## [1.0.1] - 2026-03-01\n\n### Fixed\n\n- ours\n\n" +
-						"## [16.5.2] - 2026-01-01\n\n### Fixed\n\n- fork point\n\n" +
-						"## [0.9.0] - 2025-01-01\n\n### Fixed\n\n- ancient upstream\n",
+						"# Changelog\n\n## [16.5.2] - 2026-01-01\n\n### Fixed\n\n- fork point\n\n" +
+						"## [0.9.0] - 2025-01-01\n\n### Fixed\n\n- ancient upstream\n\n" +
+						"## [1.0.1] - 2026-03-01\n\n### Fixed\n\n- package fix\n",
 				},
 			],
 			{ forkPointVersion: "16.5.2" },
 		) as string;
 
-		expect(md).toContain("- ours");
+		expect(md).toContain("- product release");
+		expect(md).toContain("- package fix");
 		expect(md).not.toContain("- fork point");
 		expect(md).not.toContain("- ancient upstream");
 	});
@@ -204,7 +207,10 @@ describe("the root changelog covers every package", () => {
 	 */
 	it("orders releases newest first, Unreleased on top", () => {
 		const md = renderRootChangelog([
-			{ name: "a", md: "# Changelog\n\n## [1.0.4] - 2026-01-01\n\n### Fixed\n\n- older\n" },
+			{
+				name: "a",
+				md: "# Changelog\n\n## [1.0.37] - 2026-02-01\n\n" + "## [1.0.4] - 2026-01-01\n\n### Fixed\n\n- older\n",
+			},
 			{
 				name: "b",
 				md: "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- pending\n\n## [1.0.37] - 2026-02-01\n\n### Fixed\n\n- newer\n",
