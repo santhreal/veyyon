@@ -975,6 +975,7 @@ describe("AgentSession MCP discovery", () => {
 			settings: Settings.isolated({ "tools.discoveryMode": "all" }),
 			modelRegistry: {} as never,
 			toolRegistry,
+			builtInToolNames: [readTool.name, findTool.name, resolveTool.name],
 			mcpDiscoveryEnabled: false,
 			rebuildSystemPrompt: async toolNames => ({ systemPrompt: [`tools:${toolNames.join(",")}`] }),
 		});
