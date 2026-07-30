@@ -158,13 +158,14 @@ describe("AgentSession silent-abort marker stamping", () => {
 		expect(session.isPlanInternalAbortPending).toBe(true);
 	});
 
+	/** A display-restorable placeholder must not drop the silent-abort marker when display allocates a copy. */
 	it("A4: marker is stamped on event.message BEFORE the obfuscator's displayEvent copy", async () => {
-		// Build a real obfuscator with a `plain` secret so `deobfuscateAssistantContent(content)`
-		// returns a NEW content array — that's the only path that triggers the
-		// `displayEvent = { ...event, message: { ...message, content } }` spread copy
-		// in `#handleAgentEvent`. The marker must be stamped BEFORE that spread so
-		// `displayEvent.message.errorMessage` inherits via the spread.
-		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: "SECRET_VALUE" }]);
+		// A config-regex value is deliberately display-restorable, so
+		// `displayAssistantContent(content)` returns a NEW content array. That is
+		// the path that triggers the `displayEvent = { ...event, message: {
+		// ...message, content } }` spread copy in `#handleAgentEvent`. A stored
+		// credential would correctly remain opaque and take the identity path.
+		const obfuscator = new SecretObfuscator([{ type: "regex", origin: "config", content: "SECRET_VALUE" }]);
 		// A real generated placeholder matters here because local display restoration must
 		// allocate the copied content array before the abort marker is observed.
 		const obfuscatedText = obfuscator.obfuscate("hello SECRET_VALUE world");
