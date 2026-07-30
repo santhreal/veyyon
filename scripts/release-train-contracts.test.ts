@@ -348,6 +348,29 @@ describe("required publication artifacts", () => {
 		expect(manifest.scripts.release).toBe("bun scripts/trigger-release.ts");
 	});
 
+	/**
+	 * CI is publicly dispatchable for diagnostics, so tag syntax alone cannot
+	 * authorize publication. The metadata job must re-prove both exact-tag gates.
+	 */
+	it("permits publication only from a verified strict-tag workflow dispatch", async () => {
+		const wf = await loadYaml("workflows/ci.yml");
+		const metadata = wf.jobs.release_metadata;
+		const detect = metadata.steps.find((step: { id?: string }) => step.id === "detect");
+		const setupBun = metadata.steps.find((step: { uses?: string }) => step.uses?.startsWith("oven-sh/setup-bun@"));
+
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: exact GitHub Actions expression is the contract
+		expect(detect.env.GH_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: exact GitHub Actions expression is the contract
+		expect(detect.run).toContain('if [ "${{ github.event_name }}" != "workflow_dispatch" ]');
+		expect(detect.run).toContain("grep -Eq '^v[0-9]+\\.[0-9]+\\.[0-9]+$'");
+		expect(detect.run).toContain(
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: exact GitHub Actions expression is the contract
+			'bun scripts/release-gate-decision.ts verify-tag-gates "$release_tag" "${{ github.sha }}"',
+		);
+		expect(detect.run).not.toContain("git tag --points-at HEAD");
+		expect(setupBun.if).toBe("startsWith(github.ref, 'refs/tags/')");
+	});
+
 	it("release Pages deployment fails when disabled or either credential is missing", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
 		const releaseSite = wf.jobs.release_site;
