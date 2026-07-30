@@ -13,10 +13,14 @@ This page is the loop that ties them together: queue → change → gate → shi
 sessions and context resets:
 
 - Row shape: `id | affected files | problem | acceptance criteria | status`.
+  The row key carries lifecycle state: a finding or lane id is open, `DONE` is
+  landed and verified, and `CLOSED` means no fix was needed.
 - Every finding, an agent's own, a subagent's, a test failure, a doc drift, is
   appended **the moment it is found**. A finding that lives only in chat context
   is lost work.
-- Fixed rows are flipped to `done` with a one-line record of the change, in place.
+- Rename a completed row to `DONE` only when it records a durable decision the
+  next reader would otherwise revisit. Delete a routine fixed row; rename a
+  withdrawn or disproved finding to `CLOSED` and record why.
   There is exactly one ledger and one plan; never a second notes/findings/report
   file, never a competing roadmap.
 
@@ -32,7 +36,8 @@ that doesn't collide with other active sessions, and drains it.
 2. **Edit in batches.** Land a coherent unit (a refactor, a module, a test suite),
    not one-line dribbles. Don't run the full gate after every tiny edit, batch,
    then gate.
-3. **Gate.** Typecheck the touched packages (`bunx tsc --noEmit` per package),
+3. **Gate.** Run each touched package's declared `check:types` script
+   (`bun --cwd=packages/<name> run check:types`),
    run the targeted test slice (`bun test <files>`), then the repo gate
    (`bun run check`) before anything is considered done. Website changes must
    pass `bun run site:build`'s brand check. New behavior gets proving tests that
@@ -70,7 +75,7 @@ everything that leaves the machine is gated on explicit per-action approval.
 | --- | --- |
 | Reading, editing, staging exact paths | `git commit` / `git push` to any remote (a releasable `main` push may release automatically) |
 | Local typecheck, tests, `bun run check` | Manually dispatching the Release workflow |
-| Background builds, benches, local installs | Website deploys (`bun run site:deploy`, both Pages projects) |
+| Background builds, benches, local installs | Website deploys (`bun run site:deploy` for `veyyon` and `bun run site:deploy:get` for `veyyon-get`) |
 | Ledger + changelog `[Unreleased]` upkeep | npm publish, Homebrew, or direct GitHub release mutation |
 | Docs under `docs/` and handbook sources | Opening/commenting on GitHub issues & PRs, any `gh` call against a public repo |
 
@@ -84,9 +89,9 @@ Production has three coordinated surfaces (see [`deployment.md`](./deployment.md
 
 **CLI binaries**, keep `main` release-ready: `bun run check` green and each
 publishable change documented under its package's `[Unreleased]` section. After an
-approved push, the Release workflow waits for exact-SHA CI and Checks. If there is
-something releasable, it cuts the patch automatically, gates the bump commit through
-Checks, and dispatches the tagged publish pipeline.
+approved push, the Release workflow waits for exact-SHA CI, Checks, and Security.
+If there is something releasable, it cuts the patch automatically, gates the bump
+commit through Checks and Security, and dispatches the tagged publish pipeline.
 
 For an approved manual cut, use the one operator command. It defaults to a patch
 and accepts `major`, `minor`, or an explicit `x.y.z`:
@@ -98,9 +103,9 @@ bun run release minor
 
 **Website and install scripts**, `bun run site:build` locally at will because the
 brand check is part of the gate. A matching push to `main`, and every release,
-deploys both `veyyon.dev` and `get.veyyon.dev`. Run `bun run site:deploy` with
-approval only for an out-of-band deployment. If handbook sources changed, run
-`mdbook build` in `docs/handbook` first.
+deploys both `veyyon.dev` and `get.veyyon.dev`. With approval, run both
+`bun run site:deploy` and `bun run site:deploy:get` for an out-of-band deployment.
+If handbook sources changed, run `mdbook build` in `docs/handbook` first.
 
 ## Verify like a user, not like a builder
 
@@ -122,4 +127,4 @@ a ledger row like any other bug.
   account-level Cloudflare/GitHub state) is a human-blocker: record it in the
   ledger with what was tried, and continue on other rows rather than stopping.
 
-*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*
+*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*

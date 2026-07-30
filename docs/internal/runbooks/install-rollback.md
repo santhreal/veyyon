@@ -21,8 +21,10 @@ confuses `release.ts`'s "latest tag" baseline. Demote it; delete only after a fi
 
 ## For a user already on the bad version
 
-Veyyon keeps all user data under `~/.veyyon` (relocatable via `VEYYON_CONFIG_DIR`), so rolling the
-binary back does not lose sessions or config:
+Veyyon keeps configuration and profiles under `~/.veyyon` by default. `VEYYON_CONFIG_DIR` selects a
+relative config directory name under your home directory. Existing `XDG_DATA_HOME`,
+`XDG_STATE_HOME`, and `XDG_CACHE_HOME` roots relocate data, state (including sessions), and cache.
+Rolling the binary back does not remove any of these paths:
 
 1. Reinstall the previous version (now `latest` again) with the same `curl … | sh`,
    or restore a copy of the prior binary from a kept archive.
@@ -35,9 +37,9 @@ binary back does not lose sessions or config:
 
 ## Ship the fix
 
-1. Land the fix on `main`. Its green CI and Checks runs trigger the next automatic patch release:
+1. Land the fix on `main`. Green CI, Checks, and Security runs for that SHA trigger the next automatic patch release:
    see [releasing](../releasing.md).
 2. Once the new release publishes and verifies, it becomes `latest` automatically.
 3. Only then delete the bad release + tag if you want it gone.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*

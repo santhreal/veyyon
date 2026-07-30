@@ -16,8 +16,8 @@ redeploys both Pages projects so the changelog and installer endpoints match the
 ## Website
 
 The site is a static tree under `website/`, deployed to Cloudflare Pages. There is no
-build framework, the HTML pages are authored directly; only the changelog and the
-install scripts are generated.
+build framework. Most marketing HTML is authored directly, while the build rewrites
+shared navigation and generates the changelog, blog pages, sitemap region, and installer trees.
 
 ### Build
 
@@ -25,30 +25,29 @@ install scripts are generated.
 bun run site:build      # = node website/build.mjs
 ```
 
-`build.mjs` does three things:
+`build.mjs` runs this sequence:
 
-1. Regenerates `website/changelog.html` from `packages/coding-agent/CHANGELOG.md`
-   (the curated source of truth) via `website/tools/gen-changelog.mjs`, reconciled
-   against the **published GitHub Releases** so the page can't drift from what actually
-   shipped. The generator:
-   - is fork-aware: it renders **only veyyon's own release cards** plus the
-     `[Unreleased]` block (as an "Unreleased / next release" card at the top). The
-     pre-fork oh-my-pi history is never replayed as release cards, it collapses to a
-     single credit note linking upstream;
-   - marks each veyyon version `published` only when GitHub has a non-draft release for
-     it, using GitHub's publish date and a `View on GitHub ↗` permalink, and marks a
-     finalized-but-unpublished version as `pending release`;
-   - fails **loud** (never silently): if the GitHub API is unreachable it warns and
-     builds from the CHANGELOG alone (`--no-github` forces this offline mode), and if a
-     published release has no CHANGELOG entry it prints a coherence warning rather than
-     dropping it. Repo resolves from `--repo` / `VEYYON_SITE_REPO` / `GITHUB_REPOSITORY`
-     / the git remote, defaulting to `santhreal/veyyon`.
-2. Stages `scripts/install.sh` and `scripts/install.ps1` at the site root so
-   `veyyon.dev/install.sh` resolves. **The staged copies are build artifacts**, edit
-   the originals in `scripts/`, never `website/install.*`.
-3. Runs a brand check that fails the build if a page leaks the old product name
-   (only the MIT oh-my-pi attribution and clearly-marked `OMP_` legacy env aliases are
-   allowed).
+1. Rewrites the three shared navigation regions in each of six hand-authored HTML
+   pages from `website/tools/nav.mjs`. Missing markers fail the build.
+2. Regenerates `website/changelog.html` from
+   `packages/coding-agent/CHANGELOG.md` via
+   `website/tools/gen-changelog.mjs`, reconciled against published GitHub
+   Releases. The generator renders veyyon's release cards plus `[Unreleased]`
+   and collapses inherited oh-my-pi history to one credit note. A normal build
+   fails closed if GitHub publication state is unavailable; `--no-github` is the
+   explicit offline mode. A published release with no changelog entry also
+   fails the build.
+3. Renders every Markdown report in `website/blog/`, rebuilds the blog index,
+   and reconciles the published blog URLs in `website/sitemap.xml`.
+4. Stages `scripts/install.sh` and `scripts/install.ps1` at the main site root.
+   These copies are build artifacts; edit the originals in `scripts/`, never
+   `website/install.*`.
+5. Generates `website-get/` for the separate `veyyon-get` Pages project,
+   including the two installer scripts, root rewrite, and response headers.
+6. Scans the hard-coded page list in `website/build.mjs` for leaked old product
+   names, allowing the MIT oh-my-pi attribution and marked `OMP_` legacy aliases,
+   then writes `website/.buildinfo`. This scan does not cover arbitrary blog or
+   handbook pages.
 
 The handbook at `website/docs` is a **symlink** to `docs/handbook/book` (mdBook's
 build output). If handbook sources under `docs/handbook/src/` changed, rebuild the
@@ -155,14 +154,15 @@ still has a source file. `website/tools/gen-blog.test.ts` pins the generator's r
 ### Automatic sync: merge a report, it publishes itself
 
 `.github/workflows/site.yml` is what makes the repository and the site one thing.
-It builds the site on any pull request touching `website/**` (so a malformed report
-fails review, never production), and on a matching push to `main` it builds again
-and deploys both the `veyyon` and `veyyon-get` Pages projects. Merging a report or
-installer change to `main` publishes it; there is no manual deploy step and no
-waiting for a release.
+It builds the site on pull requests targeting `main` that touch `website/**`
+(so a malformed report fails review, never production), and on a matching push
+to `main` it builds again and deploys both the `veyyon` and `veyyon-get` Pages
+projects. Merging a report or installer change to `main` publishes it; there is
+no manual deploy step and no waiting for a release.
 
-It runs on `website/**`, `docs/handbook/book/**`,
-`packages/coding-agent/CHANGELOG.md`, `scripts/install.*`, and its own file. It uses
+Its path filters are `website/**`, `docs/handbook/book/**`,
+`packages/coding-agent/CHANGELOG.md`, `scripts/install.sh`,
+`scripts/install.ps1`, and its own workflow file. It uses
 the same `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` values as the release
 deploy below. If the token is missing, the job fails loudly rather than reporting
 a green publish that never happened.
@@ -212,9 +212,10 @@ VEYYON_PAGES_PROJECT=veyyon-get bun run site:deploy
 
 Cloudflare reads these from the deployed root:
 
-- **`website/_headers`**: sets `Content-Type: text/x-shellscript` and
-  `Cache-Control: no-cache` on `install.sh`/`install.ps1` (a stale cached installer is
-  a real hazard), and long-lived immutable caching on `/fonts/*`.
+- **`website/_headers`**: serves `install.sh` as
+  `application/x-sh; charset=utf-8` and `install.ps1` as
+  `text/plain; charset=utf-8`, with `Cache-Control: no-cache, must-revalidate`
+  on both. `/fonts/*` uses long-lived immutable caching.
 - **`website/_redirects`**: clean-URL routing. `/install` serves the install *page*;
   the raw script lives at `/install.sh` and at `get.veyyon.dev`.
 
@@ -223,9 +224,12 @@ Cloudflare reads these from the deployed root:
 `POST https://veyyon.dev/api/grievances` is a Pages Function at
 `website/functions/api/grievances.ts`. It validates bounded Auto QA batches and writes them to the
 `veyyon-grievances` D1 database through the `GRIEVANCES_DB` binding in
-`website/wrangler.jsonc`. The database stores the sanitized report payload and a server timestamp. It
-does not store request headers or client IP addresses. `(install_id, local_id)` is unique, so a retry
-cannot create a duplicate row.
+`website/wrangler.jsonc`. The database stores the validated, bounded report payload
+verbatim with a server timestamp; the Function does not sanitize it. Automatic
+session uploads can apply the provider sanitizer, while manual
+`veyyon grievances push` uploads the stored report strings unchanged. The Function
+does not store request headers or client IP addresses. `(install_id, local_id)` is
+unique, so a retry cannot create a duplicate row.
 
 Apply committed schema migrations before deploying a function that needs them:
 
@@ -291,8 +295,8 @@ then pick it up through `releases/latest` with no further action.
 
 GitHub binary publication needs no repository secret. The Release workflow uses
 the built-in `GITHUB_TOKEN` to push the version bump and tag, gates that immutable
-tag through `checks.yml`, then dispatches `ci.yml` for publication. The Cloudflare
-credentials are required by the production deployment that follows GitHub
+tag through `checks.yml` and `security.yml`, then dispatches `ci.yml` for publication.
+The Cloudflare credentials are required by the production deployment that follows GitHub
 publication. Apple credentials are optional; missing any of them skips signing
 and notarization and leaves the release binaries unsigned.
 
@@ -314,12 +318,15 @@ rollback lever:
   binary's auto-updater resolves the same `releases/latest`, so it stops offering the
   bad version too. This is the fastest path and needs no new build.
 - **Website/changelog**: the next `site:deploy` (manual or the fixed release's
-  auto-deploy) reconciles the changelog against the *published* releases, so an
-  unpublished/rolled-back version automatically drops back to `pending release`.
+  auto-deploy) reconciles the changelog against non-draft releases. Deleting the
+  bad release, or making it absent, drops that version to `pending release`.
+  Merely marking it as a pre-release does not: the current generator still
+  renders non-draft pre-releases as published.
 
-**Hotfix flow**: fix on `main`, then let its green CI and Checks runs trigger the
-next automatic patch release. There are no release branches. If the bad version
-must stop being installed *right now*, do the pre-release flip above first.
+**Hotfix flow**: fix on `main`, then let its green CI, Checks, and Security runs
+trigger the next automatic patch release. There are no release branches. If the
+bad version must stop being installed *right now*, do the pre-release flip above
+first.
 
 ## Checklist for a normal site update
 
@@ -331,10 +338,11 @@ pull request, merge. Nothing else.
 Deploy by hand only when the automation is off or you need the site live before the
 merge lands:
 
-1. Edit the page(s) under `website/` (or the changelog source, or `scripts/install.*`).
+1. Edit the page(s) under `website/`, the changelog source, or
+   `scripts/install.sh` / `scripts/install.ps1`.
 2. `bun run site:build`: confirm the brand check passes and the changelog looks right.
 3. `export CLOUDFLARE_API_TOKEN="$CF_PAGES_API_TOKEN"`.
 4. `bun run site:deploy`.
-5. If `install.sh`/`install.ps1` changed, also deploy `veyyon-get`.
+5. If `install.sh` or `install.ps1` changed, also run `bun run site:deploy:get`.
 
-*Verified against `1c16624f` on 2026-07-28.*
+*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*

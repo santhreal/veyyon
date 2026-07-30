@@ -15,7 +15,7 @@ This document describes operator-visible behavior for session export/share/fork/
 
 | Operation                               | Entry path                | Session mutation                      | Session file creation/switch                                                       | Output artifact                                                 |
 | --------------------------------------- | ------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `/dump`                                 | Interactive slash command | No                                    | No                                                                                 | Clipboard text                                                  |
+| `/dump`                                 | Interactive slash command | No                                    | No                                                                                 | Clipboard text plus persistent temp LLM-request JSON sidecar                       |
 | `/export [path]`                        | Interactive slash command | No                                    | No                                                                                 | HTML file                                                       |
 | `--export <session.jsonl> [outputPath]` | CLI startup fast-path     | No runtime session mutation           | No active session; reads target file                                               | HTML file                                                       |
 | `/share`                                | Interactive slash command | No                                    | No                                                                                 | Encrypted share link (gist or share server); temp HTML only for custom handlers |
@@ -26,6 +26,7 @@ This document describes operator-visible behavior for session export/share/fork/
 | `--resume`                              | CLI startup picker        | Yes after session creation            | Opens selected existing session file                                               | None                                                            |
 | `--resume <id\|path>`                   | CLI startup               | Yes after session creation            | Opens existing session; global cross-project match re-roots (moved dir) or forks into current project   | None                                                            |
 | `--continue`                            | CLI startup               | Yes after session creation            | Opens terminal breadcrumb (re-roots it if its dir was moved) or most-recent session; creates new one if none exists   | None                                                            |
+| `--continue <UUID>`                     | CLI startup compatibility | Yes after session creation            | Normalizes to explicit resume of that session; non-UUID positional text remains an initial prompt | None                                                            |
 
 ## Export and dump
 
@@ -69,8 +70,10 @@ Behavior details:
 Flow:
 
 1. `CommandController.handleDumpCommand()` calls `session.formatSessionAsText()`.
-2. If empty string, reports `No messages to dump yet.`
-3. Otherwise copies to clipboard via native `copyToClipboard`.
+2. If empty string, it reports `No messages to dump yet.`
+3. Otherwise it calls `session.dumpLlmRequestToTmpDir()` and, on success, appends the sidecar path plus a raw-context/secrets warning to the formatted transcript.
+4. It copies the transcript to the clipboard through native `copyToClipboard`.
+5. Status output reports the clipboard copy and either the sidecar path or a separate sidecar error. A sidecar failure does not prevent the clipboard copy.
 
 Dump content includes:
 
@@ -82,7 +85,7 @@ Dump content includes:
 - Tool results and execution blocks (except `excludeFromContext` bash/python entries)
 - Custom/hook/file mention/branch summary/compaction summary entries
 
-No session persistence changes are made by dumping.
+Dumping does not append session entries or switch the session. The LLM-request JSON sidecar does persist in the operating system's temp directory and can contain raw context or secrets; treat it as sensitive.
 
 ## Share
 
@@ -91,7 +94,7 @@ a viewer link. Implementation: [`packages/coding-agent/src/export/share.ts`](../
 
 ### Phase 1: custom share handler (if present)
 
-`loadCustomShare()` checks `~/.veyyon/profiles/default/agent` for first existing candidate:
+`loadCustomShare()` checks the resolved active agent directory from `getAgentDir()` for the first existing candidate:
 
 - `share.ts`
 - `share.js`
@@ -189,7 +192,7 @@ Interactive `/fork` creates a new session from the current one and switches the 
   - `cwd` unchanged
   - `parentSession` set to previous session id
   - `providerPromptCacheKey` set to the previous header's inherited key, or the previous session id when none was pinned
-- Keeps all non-header entries unchanged in the new file.
+- Keeps conversation/history entries in the new file, but removes source-incarnation `session_lifecycle` and `session_checkpoint` telemetry before starting a fresh lifecycle interval when instrumentation permits it.
 
 ### Non-persistent behavior
 
@@ -206,6 +209,7 @@ Startup `--fork` is resolved before normal session creation:
 3. Other values resolve via `resolveResumableSession(...)`: local sessions first, then global search when `sessionDir` is not forced. Matching accepts lowercased session id prefixes, full JSONL filename prefixes, and timestamp-stripped filename id suffixes.
 4. The forked file is created in the current cwd/session-dir scope and becomes the active session manager for startup.
 5. Full-context forks automatically seed `providerPromptCacheKey` from the source header's inherited key, falling back to the source session id. Startup drops that automatic inheritance when `--model`, `--thinking`, `--system-prompt`, `--append-system-prompt`, `--tools`, or `--no-tools` changes the provider route or prompt/tool shape.
+6. As with an interactive fork, source `session_lifecycle` and `session_checkpoint` entries stay with the source. The startup fork begins fresh lifecycle telemetry when enabled.
 
 Use `--prompt-cache-key <key>` to pin the provider prompt-cache identity explicitly and independently from both the Veyyon session id and `--provider-session-id`. `--provider-session-id` continues to control provider session/routing headers and sticky credential selection; `--prompt-cache-key` controls the OpenAI Responses `prompt_cache_key` payload where supported.
 
@@ -215,19 +219,20 @@ Use `--prompt-cache-key <key>` to pin the provider prompt-cache identity explici
 
 Flow:
 
-1. Opens session selector populated via `SessionManager.list(currentCwd, currentSessionDir)`. If the current folder has no sessions, `SessionManager.listAll()` is preloaded and the picker opens directly in all-projects scope.
+1. Opens the session selector in current-folder scope, populated via `SessionManager.list(currentCwd, currentSessionDir)`.
 2. On selection, `SelectorController.handleResumeSession(sessionPath)` calls `session.switchSession(sessionPath)`.
 3. UI clears/rebuilds chat and todos, then reports `Resumed session` (or `Resumed session in <dir>` when the resumed session belongs to another project, in which case the process cwd and cwd-derived caches are re-pointed via `applyCwdChange`).
 
 Notes:
 
-- The picker starts in current-folder scope; Tab toggles to all-projects scope (lazily loading `SessionManager.listAll()` on first toggle, cached afterwards).
+- The picker always starts in current-folder scope, even when that list is empty.
+- Tab toggles to all-projects scope, lazily loading `SessionManager.listAll()` on the first toggle and caching it afterwards.
 
 ## CLI `--resume`
 
 ### `--resume` (no value)
 
-- `main.ts` lists sessions for current cwd/sessionDir and opens picker. When the current folder is empty, it falls back to `SessionManager.listAll()` and opens the picker in all-projects scope; `No sessions found` is printed only when the global list is also empty.
+- `main.ts` lists sessions for the current cwd/sessionDir and opens the picker in current-folder scope. If that list is empty, it can preload `SessionManager.listAll()` to detect a globally empty state and make the first Tab instant, but it does not switch the initial scope. `No sessions found` is printed only when the global list is also empty.
 - Selected path is opened with `SessionManager.open(selectedPath)` before session creation. Selecting a session from another project first switches the process into that project's directory and reloads cwd-scoped settings/caches.
 
 ### `--resume <value>`
@@ -251,6 +256,12 @@ Cross-project id match behavior:
     - On no: command cancels. On non-TTY: command errors.
 
 ## CLI `--continue`
+
+### Explicit UUID compatibility form
+
+When the sole positional value immediately after `--continue` or `-c` is UUID-shaped, `main.ts` removes it from initial prompt messages, normalizes it to `resume=<id>`, and resolves it with the explicit resume behavior above. A non-UUID positional value remains an initial prompt and bare-continue behavior still applies.
+
+### Bare `--continue`
 
 `SessionManager.continueRecent(cwd, sessionDir)`:
 
@@ -365,4 +376,4 @@ When session manager is created with `SessionManager.inMemory()` (`--no-session`
 - `/share` custom-share failures do not degrade to the default encrypted share flow; they terminate the command with error.
 - `/export` argument tokenization is simplistic and does not preserve quoted paths with spaces.
 
-*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*
+*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*

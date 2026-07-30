@@ -8,18 +8,27 @@ First-party themes follow [Brand and identity](./brand.md); the website (`websit
 
 | Role | Titanium (default dark) | Veyyon Dark | Light (default light) |
 | --- | --- | --- | --- |
-| Surface | Terminal's own ground (see [Terminal ground](#terminal-ground)) | Terminal's own ground | Terminal's own ground |
+| Surface | Terminal's own ground (see [Terminal ground](#terminal-ground)) | Explicit black `#000000` component fills (legacy) | Terminal's own ground |
 | Primary text | Silver bright `#E6E9EE` | `#FAFAFA` | Terminal default (near-black) |
 | Structure / brand | Silver `#C6CBD4` | Silver `#B8BDC7` | Dark silver `#5C6470` |
 | Accent | Ember `#F0862E` | Deep blue `#4A84C9` (pre-ember) | Ember `#F0862E` (chrome) / `#B65E14` (links) |
 
 Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse. Both are locked by `packages/coding-agent/test/brand-conformance.test.ts`, which is the shipped source of truth for every brand color: the brand notes it was written from are local to the maintainer's machine and are not distributed, so a doc that points a reader at them points at nothing.
 
-The pitch-black `#000000` surface still applies to CONTROLLED grounds only: the HTML export (`export.pageBg`/`cardBg`/`infoBg`) and the website, where we own every pixel.
+Veyyon Dark is the legacy exception. Its selected rows, message and tool surfaces, and status line use
+explicit `#000000` fills. Titanium is the default dark theme and follows the transparent-ground rules
+below. Outside the Veyyon Dark compatibility theme, pitch-black `#000000` applies only to controlled
+grounds such as the HTML export (`export.pageBg`/`cardBg`/`infoBg`) and the website.
 
 ## Terminal ground
 
-The terminal's background is not ours to paint. An in-terminal component must never fill an explicit page-ground color (`#000000`, `#0C0E12`, or any absolute dark hex): the mockups those hexes came from sit on a controlled page ground, but a real terminal can be grey, blue, or light, and an absolute fill renders as a foreign slab there. This shipped once (2026-07-22): titanium filled user rows, tool boxes, the footline, and the composer card with absolute darks, and on a grey terminal every one of them appeared as a harsh black rectangle, with row-open fills bleeding to the line edge via clear-to-EOL.
+The terminal's background is not ours to paint in Titanium or a new theme. An in-terminal component
+must not fill an explicit page-ground color (`#000000`, `#0C0E12`, or any absolute dark hex): the
+mockups those hexes came from sit on a controlled page ground, but a real terminal can be grey, blue,
+or light, and an absolute fill renders as a foreign slab there. This shipped once (2026-07-22):
+titanium filled user rows, tool boxes, the footline, and the composer card with absolute darks. On a
+grey terminal they appeared as harsh black rectangles, with row-open fills bleeding to the line edge
+via clear-to-EOL.
 
 The rules:
 
@@ -94,7 +103,13 @@ Prefer `space-1` / `space-2` in dense tool UIs. One-off paddings are bugs.
 
 ### Separator grammar
 
-The TUI has one separator dialect: the middle dot `·` with two spaces on each side (`  ·  `). It joins footer chips, status line segments, keybinding hints, and metadata runs (`v1.2.3 · gpt-5 · openai`). The dot is dim; the terms around it carry the emphasis. Do not introduce a second separator (`|`, `/`, `>`) for the same job: two dialects on one screen read as unfinished. Modal footers were the last `|` holdout; they now route through the shared `SHORTCUT_SEP = "  ·  "` in `modal-shell.ts`, locked by a conformance test (`modal-shell.test.ts`). The dense `theme.sep.dot` (` · `, one space each side) is the tighter variant for inline runs where two-space air is too loose.
+Modal footer chips use the middle dot `·` with two spaces on each side (`  ·  `). The dot is dim; the
+terms around it carry the emphasis. These footers route through the shared
+`SHORTCUT_SEP = "  ·  "` in `modal-shell.ts`, locked by `modal-shell.test.ts`. The dense
+`theme.sep.dot` (` · `, one space each side) joins compact inline metadata. Status-line separators are
+configurable instead: the shipped presets use pipe, slash, powerline-thin, powerline, and ASCII
+variants from `status-line/separators.ts`. Use the owner for the surface instead of pasting a separator
+literal into a widget.
 
 ## Color and emphasis
 
@@ -122,7 +137,10 @@ A row's width comes from the view that will render it. `renderScrollableList` ta
 
 The compact decision has one owner too. `modalNeedsCompactPadding(areaHeight, sizing)` answers "is this card still pinned to its floor", which depends on that sizing's own margin and padding. Twelve components carried a bare `height < 24` instead, so when the shared rule was fixed none of them moved; a threshold restated as a number against the terminal is only ever right for one sizing. `modal-shell-height-is-monotonic.test.ts` scans the source for that comparison and fails if a copy comes back.
 
-Call sites route through `packages/coding-agent/src/modes/theme/theme.ts` helpers, not raw ANSI literals at widget sites.
+Ordinary widget call sites route colors and attributes through theme helpers. Raw ANSI is limited to
+named component or terminal-protocol owners when a theme token cannot express the required SGR
+semantics. Examples include diff indentation and composer row-state resets. Do not duplicate those
+bytes in leaf widgets.
 
 ## Motion
 
@@ -250,6 +268,8 @@ The website nav speaks lowercase terse ("docs install models changelog"), a disp
 
 ## Conformance
 
-When touching TUI polish, name the token (spacing, theme color, motion budget). Hardcoded hex or ANSI at call sites outside `theme.ts` is a design-system bug.
+When touching TUI polish, name the token (spacing, theme color, motion budget). A hardcoded hex or ANSI
+sequence in an ordinary widget is a design-system bug. Keep any required raw sequence in one named
+component or terminal-protocol owner.
 
-*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*
+*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
