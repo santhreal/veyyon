@@ -132,6 +132,31 @@ describe("input controller — slash command history (#3148)", () => {
 		expect(addToHistory).not.toHaveBeenCalled();
 	});
 
+	/**
+	 * Locks out the disagreement where isSensitiveSlashCommand's regex required
+	 * whitespace or end-of-string after `--token`, so the equally common
+	 * `--token=VALUE` spelling was classified as non-sensitive and the bearer token
+	 * was written to recallable history. Both spellings carry a credential.
+	 */
+	it("does NOT record /mcp add with --token=VALUE (the equals spelling is a bearer token too)", async () => {
+		const { ctx, editor, addToHistory, handleMCPCommand } = makeCtx();
+		controllerFor(ctx);
+
+		await editor.onSubmit?.("/mcp add srv --url http://x --token=sk-secret123");
+
+		expect(handleMCPCommand).toHaveBeenCalledWith("/mcp add srv --url http://x --token=sk-secret123");
+		expect(addToHistory).not.toHaveBeenCalled();
+	});
+
+	it("still records a /mcp add whose option merely starts with the token flag's name", async () => {
+		const { ctx, editor, addToHistory } = makeCtx();
+		controllerFor(ctx);
+
+		await editor.onSubmit?.("/mcp add srv --url http://x --tokenizer fast");
+
+		expect(addToHistory).toHaveBeenCalledWith("/mcp add srv --url http://x --tokenizer fast");
+	});
+
 	it.each([
 		["inline plaintext", "/secret add API_TOKEN inline-history-secret"],
 		["environment lookup", "/secret add API_TOKEN --from-env HISTORY_SECRET_ENV"],
