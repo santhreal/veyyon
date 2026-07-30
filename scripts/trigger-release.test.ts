@@ -37,8 +37,8 @@ function operations(overrides: Partial<ReleaseTriggerOperations> = {}): {
 				events.push("auth");
 				return "✓ Logged in to github.com account santhsecurity (keyring)\n  - Active account: true";
 			},
-			dispatch: async version => {
-				events.push(`dispatch:${version}`);
+			dispatch: async (version, expectedSha) => {
+				events.push(`dispatch:${version}:${expectedSha}`);
 			},
 			...overrides,
 		},
@@ -79,7 +79,7 @@ describe("release trigger safety boundary", () => {
 			"local-head",
 			"remote-head",
 			"auth",
-			"dispatch:minor",
+			"dispatch:minor:approved-sha",
 		]);
 	});
 
@@ -104,7 +104,7 @@ describe("release trigger safety boundary", () => {
 		const fixture = operations({ originMainHead: async () => "newer-remote-sha" });
 
 		await expect(triggerRelease("patch", fixture.operations)).rejects.toThrow("does not match origin/main");
-		expect(fixture.events).not.toContain("dispatch:patch");
+		expect(fixture.events).not.toContain("dispatch:patch:newer-remote-sha");
 	});
 
 	/** Public release actions must never run through one of the workstation's unrelated GitHub accounts. */
@@ -116,7 +116,7 @@ describe("release trigger safety boundary", () => {
 		});
 
 		await expect(triggerRelease("patch", fixture.operations)).rejects.toThrow("santhsecurity must be active");
-		expect(fixture.events).not.toContain("dispatch:patch");
+		expect(fixture.events).not.toContain("dispatch:patch:approved-sha");
 	});
 
 	/** The status parser must bind the active marker to its own account block, not a later account. */

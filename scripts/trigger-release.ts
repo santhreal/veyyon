@@ -18,7 +18,7 @@ export interface ReleaseTriggerOperations {
 	localHead(): Promise<string>;
 	originMainHead(): Promise<string>;
 	authStatus(): Promise<string>;
-	dispatch(version: string): Promise<void>;
+	dispatch(version: string, expectedSha: string): Promise<void>;
 }
 
 export interface ReleaseDispatch {
@@ -76,8 +76,8 @@ export async function triggerRelease(
 		);
 	}
 
-	await operations.dispatch(version);
-	return { version, sha: localHead };
+	await operations.dispatch(version, originMainHead);
+	return { version, sha: originMainHead };
 }
 
 const releaseTriggerOperations: ReleaseTriggerOperations = {
@@ -96,8 +96,8 @@ const releaseTriggerOperations: ReleaseTriggerOperations = {
 			.nothrow();
 		return `${result.text()}\n${result.stderr.toString()}`;
 	},
-	dispatch: async version => {
-		await $`gh workflow run ${RELEASE_WORKFLOW} --repo ${RELEASE_REPOSITORY} --ref main -f version=${version}`
+	dispatch: async (version, expectedSha) => {
+		await $`gh workflow run ${RELEASE_WORKFLOW} --repo ${RELEASE_REPOSITORY} --ref main -f version=${version} -f expected_sha=${expectedSha}`
 			.cwd(REPO_ROOT)
 			.quiet();
 	},

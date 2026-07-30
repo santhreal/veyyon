@@ -21,6 +21,7 @@ async function runDecideStep(options: {
 	eventName?: "workflow_run" | "workflow_dispatch";
 	triggerSha?: string;
 	mainSha?: string;
+	expectedSha?: string;
 	bunExit?: number;
 	bunOutput?: string;
 }) {
@@ -51,6 +52,7 @@ async function runDecideStep(options: {
 			DISPATCH_VERSION: "minor",
 			HEAD_COMMIT_MESSAGE: "fix: ready",
 			TRIGGER_HEAD_SHA: options.triggerSha ?? "main-sha",
+			EXPECTED_SHA: options.expectedSha ?? "main-sha",
 			GH_TOKEN: "read-only-test-token",
 		},
 		stdout: "pipe",
@@ -182,7 +184,16 @@ describe("release.yml exact-SHA source gates", () => {
 			types: ["completed"],
 			branches: ["main"],
 		});
-		expect(wf.on.workflow_dispatch).toBeDefined();
+		expect(wf.on.workflow_dispatch.inputs.version).toMatchObject({
+			required: true,
+			default: "patch",
+			type: "string",
+		});
+		expect(wf.on.workflow_dispatch.inputs.expected_sha).toEqual({
+			description: "Exact origin/main SHA validated by the release operator",
+			required: true,
+			type: "string",
+		});
 		expect(wf.permissions.actions).toBe("read");
 	});
 
@@ -282,6 +293,37 @@ describe("release.yml exact-SHA source gates", () => {
 		expect(result.exitCode).not.toBe(0);
 		expect(result.stdout).toContain("expected gated SHA proved-main-sha");
 		expect(result.calls).toEqual(["rev-parse HEAD"]);
+	});
+
+	/**
+	 * A queued manual run must fail closed if main moved after local validation, while an unchanged main
+	 * proceeds with the exact expected SHA and original version selection.
+	 */
+	it("binds manual release selection to the operator-validated main SHA", async () => {
+		const unchanged = await runDecideStep({
+			eventName: "workflow_dispatch",
+			expectedSha: "validated-sha",
+			mainSha: "validated-sha",
+		});
+		expect(unchanged.exitCode).toBe(0);
+		expect(unchanged.calls.trim()).toBe("scripts/release-gate-decision.ts --green-only");
+		expect(unchanged.output).toContain("source-sha=validated-sha");
+		expect(unchanged.output).toContain("version=minor");
+
+		const advanced = await runDecideStep({
+			eventName: "workflow_dispatch",
+			expectedSha: "validated-sha",
+			mainSha: "advanced-main-sha",
+		});
+		expect(advanced.exitCode).not.toBe(0);
+		expect(advanced.calls).toBe("");
+		expect(advanced.output).not.toContain("should-release=true");
+		expect(advanced.output).not.toContain("version=minor");
+
+		const missing = await runDecideStep({ eventName: "workflow_dispatch", expectedSha: "" });
+		expect(missing.exitCode).not.toBe(0);
+		expect(missing.calls).toBe("");
+		expect(missing.output).not.toContain("should-release=true");
 	});
 
 	it("manual dispatch proves the same gates and fails when that proof fails", async () => {
