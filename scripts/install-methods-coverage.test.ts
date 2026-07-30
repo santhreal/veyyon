@@ -97,6 +97,23 @@ describe("the release gate covers both shipped install channels", () => {
 		expect(helpers).toBeGreaterThan(-1);
 		expect(build).toBeGreaterThan(helpers);
 	});
+
+	/**
+	 * A broken artifact already in production must stay visible without blocking the source-built release that repairs it.
+	 */
+	it("keeps published-release monitors non-blocking while candidate installer jobs remain release gates", async () => {
+		const workflow = Bun.YAML.parse(await Bun.file(path.join(repoRoot, ".github", "workflows", "ci.yml")).text()) as {
+			jobs: Record<string, { "continue-on-error"?: boolean; needs?: string[] }>;
+		};
+		expect(workflow.jobs.install_binary_posix?.["continue-on-error"]).toBe(true);
+		expect(workflow.jobs.install_ps1_binary?.["continue-on-error"]).toBe(true);
+		expect(workflow.jobs.install_methods?.["continue-on-error"]).toBeUndefined();
+		expect(workflow.jobs.install_ps1_e2e?.["continue-on-error"]).toBeUndefined();
+		expect(workflow.jobs.release_binary?.needs).toContain("install_methods");
+		expect(workflow.jobs.release_binary?.needs).toContain("install_ps1_e2e");
+		expect(workflow.jobs.release_binary?.needs).not.toContain("install_binary_posix");
+		expect(workflow.jobs.release_binary?.needs).not.toContain("install_ps1_binary");
+	});
 });
 
 describe("the npm/tarball topology stays deleted", () => {

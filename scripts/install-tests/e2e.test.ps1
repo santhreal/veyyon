@@ -121,7 +121,11 @@ try {
     Write-Host ""
     Write-Host "=== install ($modeArg) ==="
     & pwsh -NoProfile -File $installer $modeArg
-    Check "the installer exited 0" ($LASTEXITCODE -eq 0)
+    $installExit = $LASTEXITCODE
+    Check "the installer exited 0" ($installExit -eq 0)
+    if ($installExit -ne 0) {
+        throw "installer exited $installExit; artifact checks were not run because fail-closed preflight created nothing"
+    }
 
     ExpectExists $binPath "the binary itself"
     ExpectExists $aliasPath "the vey launch shim"

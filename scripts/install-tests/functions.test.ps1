@@ -633,7 +633,7 @@ try {
 # Windows PowerShell 5.1 classifies a command path by its final extension. The
 # installer used `.download`, so checksum verification succeeded but the native
 # self-test failed before launch with CantActivateDocumentInPipeline. This drives
-# the exact invocation shape against a copy of the current PowerShell executable.
+# the exact invocation shape against the relocatable Windows command processor.
 $executableStageSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon executable stage $PID"
 if (Test-Path $executableStageSandbox) { Remove-Item -Recurse -Force $executableStageSandbox }
 try {
@@ -645,12 +645,12 @@ try {
     Check "the local staging path keeps exe as its final extension" ([System.IO.Path]::GetExtension($localExecutableStage)) ".exe"
     Check "the local staging path remains unique to this installer" ([System.IO.Path]::GetFileName($localExecutableStage)) ".$BinName.$PID.local.exe"
 
-    $hostExecutable = (Get-Process -Id $PID).Path
+    $hostExecutable = (Get-Command cmd.exe -ErrorAction Stop).Source
     Copy-Item -LiteralPath $hostExecutable -Destination $executableStage
     Copy-Item -LiteralPath $hostExecutable -Destination $localExecutableStage
-    $pipelineOutput = (& $executableStage -NoProfile -Command "Write-Output pipeline-ok" 2>&1 | Out-String).Trim()
+    $pipelineOutput = (& $executableStage /d /c "echo pipeline-ok" 2>&1 | Out-String).Trim()
     Check "a download staged in a spaced path runs in the middle of a pipeline" $pipelineOutput "pipeline-ok"
-    $localPipelineOutput = (& $localExecutableStage -NoProfile -Command "Write-Output local-pipeline-ok" 2>&1 | Out-String).Trim()
+    $localPipelineOutput = (& $localExecutableStage /d /c "echo local-pipeline-ok" 2>&1 | Out-String).Trim()
     Check "a local build staged in a spaced path runs in the middle of a pipeline" $localPipelineOutput "local-pipeline-ok"
 
     # Cleanup accepts both executable staging kinds and their legacy bare
@@ -1043,8 +1043,9 @@ Check "and every one of them passes -UseBasicParsing" `
 # 300 MB binary that repainting dominates the transfer. Suppressed around the
 # download only, and restored afterwards, so nothing else in the user's session
 # loses its progress output.
-$dlBlock = $ps1Text.Substring($ps1Text.IndexOf('$StagingPath = Join-Path $InstallDir'))
-$dlBlock = $dlBlock.Substring(0, 1400)
+$dlStart = $ps1Text.IndexOf('$priorProgress = $ProgressPreference')
+Check "the binary download progress block exists" ($dlStart -ge 0) "True"
+$dlBlock = if ($dlStart -ge 0) { $ps1Text.Substring($dlStart, [Math]::Min(1400, $ps1Text.Length - $dlStart)) } else { "" }
 Check "the binary download suppresses the 5.1 progress bar" `
     ($dlBlock -match 'ProgressPreference = "SilentlyContinue"') "True"
 Check "it captures what the setting was first" `
