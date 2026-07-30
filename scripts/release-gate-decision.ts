@@ -393,7 +393,7 @@ async function gatherFacts(): Promise<ReleaseGateFacts | undefined> {
 		if (latestPublished.length > 0 && compareVersions(tag, latestPublished) <= 0) continue;
 		const conclusionOutput = await gh([
 			"api",
-			`repos/{owner}/{repo}/actions/runs?head_sha=${sha}&per_page=1`,
+			`repos/{owner}/{repo}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=1`,
 			"--jq",
 			".workflow_runs[0].conclusion",
 		]);

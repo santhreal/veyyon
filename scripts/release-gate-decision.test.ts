@@ -40,6 +40,7 @@ async function runGateCli(options: {
 	security?: "success" | "failure" | "missing";
 	greenOnly?: boolean;
 	failGh?: boolean;
+	silentTag?: boolean;
 }) {
 	const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT }).stdout.toString().trim();
 	const bin = mkdtempSync(join(tmpdir(), "release-gate-cli-"));
@@ -54,9 +55,12 @@ case "$*" in
     printf 'CI\\t%s\\tcompleted\\tsuccess\\n' "$FAKE_SHA"
     if [ "$CHECKS" != "missing" ]; then printf 'Checks\\t%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$CHECKS"; fi
     if [ "$SECURITY" != "missing" ]; then printf 'Security\\t%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$SECURITY"; fi ;;
+  *"actions/workflows/ci.yml/runs?head_sha=$SILENT_SHA&per_page=1"*) printf 'failure\\n' ;;
   *"release list --limit 1"*) printf 'v0.0.1\\n' ;;
   *"release list --limit 50"*) printf 'v0.0.1\\n' ;;
-  *"tags?per_page=50"*) printf 'v0.0.1 %s\\n' "$FAKE_SHA" ;;
+  *"tags?per_page=50"*)
+    if [ "$SILENT_TAG" = "1" ]; then printf 'v0.0.2 %s\\n' "$SILENT_SHA"; fi
+    printf 'v0.0.1 %s\\n' "$FAKE_SHA" ;;
   *) echo "unexpected gh invocation: $*" >&2; exit 88 ;;
 esac
 `,
@@ -73,6 +77,8 @@ esac
 			CHECKS: options.checks ?? "success",
 			SECURITY: options.security ?? "success",
 			FAIL_GH: options.failGh ? "1" : "0",
+			SILENT_TAG: options.silentTag ? "1" : "0",
+			SILENT_SHA: OLDER,
 		},
 		stdout: "pipe",
 		stderr: "pipe",
@@ -163,6 +169,14 @@ describe("exact-source gates", () => {
 		const unknown = await runGateCli({ failGh: true });
 		expect(unknown.exitCode).not.toBe(0);
 		expect(unknown.stderr).toContain("fails closed");
+	});
+	/**
+	 * Recovery must inspect the CI workflow specifically, because another workflow on the same tag can finish later.
+	 */
+	it("reads a silent tag conclusion from the CI workflow endpoint", async () => {
+		const result = await runGateCli({ silentTag: true });
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout.trim()).toBe("true");
 	});
 });
 
