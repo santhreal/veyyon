@@ -221,8 +221,16 @@ const total = reaches.reduce((sum, [, count]) => sum + count, 0);
  * left when the last path did: `packages/agent/src/compaction/messages.ts` 96 -> 20,
  * `session/session-context.ts` 130 -> 82, `session/messages.ts` 122 -> 74, `internal-urls/index.ts`
  * 231 -> 205, `tools/read.ts` 468 -> 449.
+ *
+ * AND 834,139 across 2,093 files after the session durability, secret-boundary, and telemetry suites
+ * landed. This is suite growth, not a widened shared import: the batch adds 64 dedicated behavioral
+ * suites whose current gross reach is 31,464 modules, while the source-graph cuts above absorb most of
+ * that cost. Seventeen of those suites cross 800 because they exercise the real SDK, session, or tool
+ * boundary; the net heavy-file count is 385, seven above the previous ceiling. The new bounds restore
+ * about one percent aggregate headroom and three heavy-file slots, rather than hiding the measured
+ * baseline behind a broad round number.
  */
-const TOTAL_CEILING = 830_000;
+const TOTAL_CEILING = 843_000;
 
 /**
  * Measured 2026-07-26 at 531, down from 552 with the same theme-classifier change: eleven `eval-*`
@@ -262,8 +270,13 @@ const TOTAL_CEILING = 830_000;
  * instantiates the module exactly like an import, and the first attempt at this removed only the import and
  * measured no change, because the re-export still carried the whole renderer. The total moved 0.8% for a
  * change that took a hot tool down by a fifth. That asymmetry is why both cases exist.
+ *
+ * RE-MEASURED at 385 after the 64-suite session durability, secret-boundary, and telemetry expansion
+ * described on `TOTAL_CEILING`. Seventeen new suites intentionally cross this line because their
+ * observable contract is the assembled SDK/session/tool path, not a leaf helper. The ceiling keeps
+ * three slots of headroom, so the next accidental application-entry import still fails this shape gate.
  */
-const HEAVY_FILE_CEILING = 378;
+const HEAVY_FILE_CEILING = 388;
 
 /** Above this a file is carrying most of an application entry point into its own realm. */
 const HEAVY_REACH = 800;
