@@ -1266,9 +1266,25 @@ alias_in_dir_is_ours() {
     [ "$(readlink "$_d/$ALIAS_NAME" 2>/dev/null)" = "$_d/$BIN_NAME" ]
 }
 
+# Whether the legacy Bun-global launcher is one this installer could have
+# created. Before source installs moved to the canonical install directory,
+# `bun install -g @veyyon/pi-coding-agent` wrote this exact symlink. A regular
+# executable, or a link to any other target, belongs to the user even though it
+# occupies our old filename.
+legacy_bun_launcher_is_ours() {
+    _legacy_launcher="$1"
+    [ -L "$_legacy_launcher" ] || return 1
+    _legacy_target=$(readlink "$_legacy_launcher" 2>/dev/null) || return 1
+    case "$_legacy_target" in
+        "../install/global/node_modules/@veyyon/pi-coding-agent/src/cli.ts"|"$HOME/.bun/install/global/node_modules/@veyyon/pi-coding-agent/src/cli.ts") return 0 ;;
+        (*) return 1 ;;
+    esac
+}
+
 do_uninstall() {
     removed=0; _rc_line_removed=0
-    for d in "$(install_dir)" "$HOME/.bun/bin"; do
+    canonical_dir=$(install_dir)
+    for d in "$canonical_dir" "$HOME/.bun/bin"; do
         # The alias is checked BEFORE the binary is removed, and it is checked at
         # all because install refuses to overwrite a `vey` the user already has.
         # Uninstall deleted it anyway, so removing veyyon destroyed the user's own
@@ -1281,7 +1297,13 @@ do_uninstall() {
             fi
         fi
         if [ -e "$d/$BIN_NAME" ] || [ -L "$d/$BIN_NAME" ]; then
-            rm -f "$d/$BIN_NAME" && { ok "removed $d/$BIN_NAME"; removed=1; }
+            # The canonical binary is unambiguously ours. The legacy Bun path is
+            # shared user space, so reclaim only Bun's exact Veyyon package link.
+            if [ "$d" = "$canonical_dir" ] || legacy_bun_launcher_is_ours "$d/$BIN_NAME"; then
+                rm -f "$d/$BIN_NAME" && { ok "removed $d/$BIN_NAME"; removed=1; }
+            else
+                ok "left $d/$BIN_NAME alone (not created by this installer)"
+            fi
         fi
         # A compiled binary probes for a staged addon next to itself; clear any
         # `veyyon_natives.*.node` left beside the removed binary so uninstall does
