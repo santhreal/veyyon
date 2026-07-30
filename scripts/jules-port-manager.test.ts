@@ -201,6 +201,18 @@ describe("buildPortPrompt", () => {
 		expect(p).not.toContain("mdbook build");
 	});
 
+	/**
+	 * Feature candidates change public behavior, so their prompt must replace the
+	 * fix-only handbook ban with local documentation work while preserving the
+	 * generated-book prohibition.
+	 */
+	it("requires clean feature candidates to update local docs without committing generated pages", () => {
+		const p = buildPortPrompt(40, "<!-- upstream-port-kind: clean-feature -->\nbody", null);
+		expect(p).toContain("must update the local user-facing docs");
+		expect(p).toContain("Never commit generated `docs/handbook/book/`");
+		expect(p).not.toContain("Do NOT edit `docs/handbook/src/`");
+	});
+
 	it("keeps the changelog pair instruction, which is a real CI gate and only ever touches two files", () => {
 		expect(buildPortPrompt(40, "body", null)).toContain("bun scripts/sync-root-changelog.ts");
 	});
