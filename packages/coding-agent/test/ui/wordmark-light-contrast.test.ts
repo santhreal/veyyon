@@ -20,7 +20,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import { LIGHT_SILVER_STOPS, SILVER_STOPS, silverEscape } from "@veyyon/coding-agent/modes/components/welcome";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
+import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+import { createTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import lightThemeJson from "../../src/modes/theme/light.json" with { type: "json" };
 
 /** `#RRGGBB` to the triple the stops are written as. */
@@ -56,6 +58,10 @@ const BRAND_BLACK: [number, number, number] = [8, 9, 11];
 /** The intensity the wordmark rests at once its entrance animation settles. */
 const RESTING = 0.55;
 
+function useTruecolorTheme(themeJson: ThemeJson): void {
+	setThemeInstance(createTheme(themeJson, { mode: "truecolor" }));
+}
+
 describe("the light-ground stops", () => {
 	it("are the light theme's own silver vars, not a second palette", () => {
 		// The one that matters: if someone retunes `light.json`, this fails rather
@@ -78,16 +84,16 @@ describe("the light-ground stops", () => {
 });
 
 describe("on a light theme", () => {
-	it("paints the wordmark with real contrast against white", async () => {
-		await initTheme(false, "unicode", false, "light", "light");
+	it("paints the wordmark with real contrast against white", () => {
+		useTruecolorTheme(lightThemeJson as ThemeJson);
 
 		// 4.5:1 is the WCAG floor for body text; the wordmark is far larger than
 		// body text, so clearing it outright leaves no argument.
 		expect(contrast(rgbOf(silverEscape(RESTING)), WHITE)).toBeGreaterThan(4.5);
 	});
 
-	it("keeps every stop legible, not just the resting one", async () => {
-		await initTheme(false, "unicode", false, "light", "light");
+	it("keeps every stop legible, not just the resting one", () => {
+		useTruecolorTheme(lightThemeJson as ThemeJson);
 
 		// The entrance sweeps the whole ramp. A stop that vanished would show as a
 		// letter dropping out mid-animation.
@@ -98,8 +104,8 @@ describe("on a light theme", () => {
 });
 
 describe("on a dark theme", () => {
-	it("still paints the brand silver, unchanged", async () => {
-		await initTheme(false, "unicode", false, "titanium", "titanium");
+	it("still paints the brand silver, unchanged", () => {
+		useTruecolorTheme(defaultThemes.titanium as ThemeJson);
 
 		// The fix must not cost the ground it was already right on. This is the
 		// exact resting colour the dark launch screen shipped with.
@@ -108,8 +114,8 @@ describe("on a dark theme", () => {
 		expect(contrast(rgb, BRAND_BLACK)).toBeGreaterThan(4.5);
 	});
 
-	it("does not reach for the light stops", async () => {
-		await initTheme(false, "unicode", false, "titanium", "titanium");
+	it("does not reach for the light stops", () => {
+		useTruecolorTheme(defaultThemes.titanium as ThemeJson);
 		const rgb = rgbOf(silverEscape(RESTING));
 
 		for (const stop of LIGHT_SILVER_STOPS) expect(rgb).not.toEqual([...stop]);
