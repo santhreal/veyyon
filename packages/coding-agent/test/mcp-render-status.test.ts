@@ -5,7 +5,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { renderMCPResult } from "@veyyon/coding-agent/mcp/render";
 import { DeferredMCPTool, MCPTool, type MCPToolDetails } from "@veyyon/coding-agent/mcp/tool-bridge";
 import type { MCPServerConnection, MCPToolDefinition, MCPTransport } from "@veyyon/coding-agent/mcp/types";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { formatOutputNotice, type OutputMeta } from "@veyyon/coding-agent/tools/output-meta";
 import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
 import { TUI } from "@veyyon/tui";
@@ -69,7 +69,7 @@ function makeDeferredTool(): DeferredMCPTool {
 	return new DeferredMCPTool("sentry", makeDefinition(), () => Promise.resolve(makeConnection()));
 }
 
-type RenderableMCPAgentTool = AgentTool<TSchema, MCPToolDetails> & { mergeCallAndResult: true };
+type RenderableMCPAgentTool = AgentTool<TSchema, MCPToolDetails, Theme> & { mergeCallAndResult: true };
 
 function makeAgentTool(mcpTool: MCPTool): RenderableMCPAgentTool {
 	return {
