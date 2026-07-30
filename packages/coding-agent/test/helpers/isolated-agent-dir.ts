@@ -2,6 +2,7 @@ import { afterAll, beforeAll } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
 import { getWorktreesDir, setAgentDir, setWorktreesDir, TempDir } from "@veyyon/utils";
+import { setTransports } from "@veyyon/utils/logger";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import {
 	beginSettingsTest,
@@ -108,6 +109,35 @@ export function useIsolatedConfigRoot(): () => string {
 	});
 
 	afterAll(() => {
+		// UNBIND THE LOGGER BEFORE THE ROOT IS DELETED, for the same reason
+		// `useIsolatedAgentDir` resets `AgentStorage`: it is a process-wide singleton
+		// holding a path into a temp tree this hook is about to remove.
+		//
+		// `makeFileTransport` resolves `getLogsDir()` exactly ONCE, when the shared winston
+		// logger is first built, and that build happens on the first log emission from
+		// anywhere in the process. A suite that runs a command IN-PROCESS logs as a side
+		// effect (`ttsr list`/`ttsr scan` load Settings, which does), so the shared transport
+		// ends up bound to `<this temp root>/profiles/default/logs`. That binding used to
+		// outlive the suite: the next file to emit a line made `rebindFileTransportIfMoved`
+		// try to follow the config root back to the developer's REAL
+		// `~/.veyyon/profiles/<profile>/logs`, the real-data tripwire refused that
+		// `createWriteStream`, and the failure surfaced as a `VEYYON_LOG_REBIND_FAILED`
+		// warning inside whatever innocent file happened to run next —
+		// `test/cli/auto-update-outcomes.test.ts` in the run this was found in, which passed
+		// alone and only failed after `test/cli/ttsr-cli.test.ts`. The still-live rotator
+		// also re-creates the deleted tree on its next open, which is where the 130 stale
+		// roots documented in `rebindFileTransportIfMoved` came from.
+		//
+		// `file: false` rather than a rebuild: rebuilding here would resolve the REAL logs
+		// dir and trip the guard inside this hook. It is also the end state the logger's own
+		// suites leave behind, and every suite that wants file logging sets its own
+		// transports (see `packages/utils/test/logger-file-transport-rebind.test.ts`).
+		//
+		// None of this is reachable by moving `HOME`: under Bun `os.homedir()` is resolved
+		// once at process start, so assigning `process.env.HOME` redirects nothing. The root
+		// moves through `VEYYON_CONFIG_DIR` (relative to the real home) plus a resolver
+		// refresh, which is what `enterIsolatedConfigRoot` does.
+		setTransports({ file: false, console: false });
 		isolated?.restore();
 		isolated = undefined;
 		restoreSettingsTestState(state);
