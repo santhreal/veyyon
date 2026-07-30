@@ -303,6 +303,17 @@ describe("resolveUpdateMethod classifies binary vs source installs", () => {
 		);
 	});
 
+	/**
+	 * Single quotes are the safe POSIX spelling when the checkout path contains
+	 * spaces. Missing this form classified the wrapper as a release binary, so an
+	 * update overwrote the user's script and orphaned the source checkout.
+	 */
+	it("classifies a single-quoted POSIX launcher as source", () => {
+		const wrapper = "/home/u/.local/bin/veyyon";
+		const launcher = "/home/u/source trees/veyyon/packages/coding-agent/scripts/veyyon";
+		expect(resolveUpdateMethod(wrapper, () => `#!/bin/sh\nexec '${launcher}' "$@"\n`)).toBe("source");
+	});
+
 	/** A wrapper in front of a standalone binary is still a binary install. */
 	it("classifies a POSIX wrapper that execs a plain binary as binary", () => {
 		const wrapper = "/home/u/.local/bin/veyyon";
@@ -607,11 +618,11 @@ describe("runAutoUpdate", () => {
 		// an earlier version only exercised the up-to-date path, which never
 		// reaches an install and so could not have caught a console write.
 		stubRegistry(async () => releaseRedirect("v9.9.9"));
-		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+		const install = spyOn(updateCli, "installRelease").mockResolvedValue({ warnings: [] });
 
 		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
 
-		expect(outcome).toEqual({ status: "updated", version: "9.9.9" });
+		expect(outcome).toEqual({ status: "updated", version: "9.9.9", warnings: [] });
 		expect(install).toHaveBeenCalledWith("9.9.9", false, updateCli.SILENT_UPDATE_REPORTER);
 	});
 
@@ -621,7 +632,7 @@ describe("runAutoUpdate", () => {
 		// attempt the install and fail-loop every launch (Law 10). The install method
 		// is injected so the test does not depend on how veyyon is installed locally.
 		stubRegistry(async () => releaseRedirect("v9.9.9"));
-		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+		const install = spyOn(updateCli, "installRelease").mockResolvedValue({ warnings: [] });
 
 		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "source");
 
@@ -633,11 +644,11 @@ describe("runAutoUpdate", () => {
 		// The companion to the source-skip test: an injected `binary` method takes
 		// the normal install path, proving the skip is specific to source installs.
 		stubRegistry(async () => releaseRedirect("v9.9.9"));
-		const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+		const install = spyOn(updateCli, "installRelease").mockResolvedValue({ warnings: [] });
 
 		const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, await statePath(), () => "binary");
 
-		expect(outcome).toEqual({ status: "updated", version: "9.9.9" });
+		expect(outcome).toEqual({ status: "updated", version: "9.9.9", warnings: [] });
 		expect(install).toHaveBeenCalledWith("9.9.9", false, updateCli.SILENT_UPDATE_REPORTER);
 	});
 
@@ -683,7 +694,7 @@ describe("runAutoUpdate", () => {
 			// every launch. It now reports once and backs off, and crucially does
 			// not spend a package-manager run reproducing the failure each time.
 			stubRegistry(async () => releaseRedirect("v9.9.9"));
-			const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+			const install = spyOn(updateCli, "installRelease").mockResolvedValue({ warnings: [] });
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.9", "EACCES", state, Date.now());
 
@@ -697,13 +708,13 @@ describe("runAutoUpdate", () => {
 			// A build that failed is not evidence the next build fails, so a new
 			// release must never be held back by the previous one's cooldown.
 			stubRegistry(async () => releaseRedirect("v9.9.9"));
-			const install = spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+			const install = spyOn(updateCli, "installRelease").mockResolvedValue({ warnings: [] });
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.8", "bad tarball", state, Date.now());
 
 			const outcome = await updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
 
-			expect(outcome).toEqual({ status: "updated", version: "9.9.9" });
+			expect(outcome).toEqual({ status: "updated", version: "9.9.9", warnings: [] });
 			expect(install).toHaveBeenCalledTimes(1);
 		});
 
@@ -711,7 +722,7 @@ describe("runAutoUpdate", () => {
 			// Otherwise a machine that recovered keeps a failure on disk that
 			// nothing removes, and a later failure is judged against a stale one.
 			stubRegistry(async () => releaseRedirect("v9.9.9"));
-			spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+			spyOn(updateCli, "installRelease").mockResolvedValue({ warnings: [] });
 			const state = await statePath();
 			await recordAutoUpdateFailure("9.9.9", "transient", state, 1_000);
 
@@ -725,17 +736,23 @@ describe("runAutoUpdate", () => {
 			// package-manager writes at the same binary. The lock makes the
 			// losers stand down instead of racing.
 			stubRegistry(async () => releaseRedirect("v9.9.9"));
+			const started = Promise.withResolvers<void>();
+			const finish = Promise.withResolvers<void>();
 			const install = spyOn(updateCli, "installRelease").mockImplementation(async () => {
-				// Hold long enough that the siblings must contend for the lock.
-				await Bun.sleep(30);
+				started.resolve();
+				await finish.promise;
+				return { warnings: [] };
 			});
 			const state = await statePath();
 
-			const outcomes = await Promise.all([
-				updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary"),
+			const first = updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
+			await started.promise;
+			const others = await Promise.all([
 				updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary"),
 				updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary"),
 			]);
+			finish.resolve();
+			const outcomes = [await first, ...others];
 
 			expect(install).toHaveBeenCalledTimes(1);
 			expect(outcomes.filter(o => o.status === "updated")).toHaveLength(1);
@@ -749,14 +766,14 @@ describe("runAutoUpdate", () => {
 			// A lock left behind by a finished install would stall updates until
 			// its staleness window elapsed, which is deliberately fifteen minutes.
 			stubRegistry(async () => releaseRedirect("v9.9.9"));
-			spyOn(updateCli, "installRelease").mockResolvedValue(undefined);
+			spyOn(updateCli, "installRelease").mockResolvedValue({ warnings: [] });
 			const state = await statePath();
 
 			await updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
 			await clearAutoUpdateFailure(state);
 			const second = await updateCli.runAutoUpdate("1.0.0", undefined, state, () => "binary");
 
-			expect(second).toEqual({ status: "updated", version: "9.9.9" });
+			expect(second).toEqual({ status: "updated", version: "9.9.9", warnings: [] });
 		});
 	});
 });

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Assert that `get.veyyon.dev` serves the install scripts in THIS repository,
- * byte for byte.
+ * Assert that every installer URL on `get.veyyon.dev` and `veyyon.dev` serves
+ * the install script in THIS repository, byte for byte.
  *
  * The release workflow already checked that the endpoint serves a shell script
  * ("does the body contain `#!/bin/sh`"). That check passes for any install.sh
@@ -35,6 +35,8 @@ export const DEPLOYED_INSTALLERS: readonly { url: string; source: string }[] = [
 	{ url: "https://get.veyyon.dev", source: "scripts/install.sh" },
 	{ url: "https://get.veyyon.dev/install.sh", source: "scripts/install.sh" },
 	{ url: "https://get.veyyon.dev/install.ps1", source: "scripts/install.ps1" },
+	{ url: "https://veyyon.dev/install.sh", source: "scripts/install.sh" },
+	{ url: "https://veyyon.dev/install.ps1", source: "scripts/install.ps1" },
 ];
 
 /** How long to keep retrying a mismatch before calling it a stale deploy. */

@@ -1,15 +1,14 @@
-# Cut a release from CI, so nothing about a release depends on one person's
-# workstation. This does everything `bun run release` used to do locally: bump
-# every version, regenerate lockfiles, finalize changelogs, run checks, then
-# commit, tag and push.
+# Cut a release in CI, so nothing depends on a maintainer workstation. This
+# bumps every version, regenerates lockfiles, finalizes changelogs, runs checks,
+# commits, and atomically pushes main plus the tag.
 #
 # Two triggers, one job:
-#   - workflow_run on a completed main CI run: auto-release, but only off a GREEN
-#     run. Releasing on raw push tagged shas whose tests then failed: v1.0.28
+#   - workflow_run on a completed main CI, Checks, or Security run. The gate
+#     queries all three workflows and releases only when each is green for the
+#     SHA. Releasing on raw push tagged shas whose tests then failed: v1.0.28
 #     through v1.0.35 were each tagged before ci.yml had tested the sha, two red
 #     packages/utils tests killed every publish downstream, and `releases/latest`
-#     sat at v1.0.27 while the tags marched on. Gating on the CI conclusion means
-#     a red main can never grow a release tag. The gate below then cuts a `patch`
+#     sat at v1.0.27 while the tags marched on. The gate then cuts a `patch`
 #     release whenever a publishable package has an `## [Unreleased]` changelog
 #     bullet waiting (see scripts/release-gate-decision.ts). It is self-limiting:
 #     release.ts empties the Unreleased section when it cuts the release, so the
@@ -23,17 +22,18 @@
 #     bounded so it cannot inflate versions: two stranded tags stop it and ask for
 #     a person instead of cutting a third.
 #   - workflow_dispatch: manual release of an explicit version (major/minor/patch
-#     or x.y.z), bypassing both the green-CI gate and the releasable gate.
+#     or x.y.z), after proving the same exact-main-SHA CI, Checks, and Security gates.
 #
-# The push is where this workflow stops. `ci.yml` recognizes the release commit
-# and tag and owns everything downstream: the platform binaries, the GitHub
-# release (the only publish target), and the website deploys that refresh
-# veyyon.dev/changelog and the get.veyyon.dev install + auto-update endpoint.
+# After the atomic bump/tag push, this workflow dispatches `ci.yml` explicitly
+# at the new tag. `workflow_dispatch` is one of GitHub's documented exceptions
+# that still creates a run when called with `GITHUB_TOKEN`, so the release needs
+# no personal access token and no workstation. `ci.yml` owns every downstream
+# build, manifest check, GitHub release, and production site deployment.
 name: Release
 
 on:
    workflow_run:
-      workflows: [CI]
+      workflows: [CI, Checks, Security]
       types: [completed]
       branches: [main]
    workflow_dispatch:
@@ -52,18 +52,19 @@ concurrency:
    cancel-in-progress: false
 
 permissions:
-   contents: write
+   contents: read
+   actions: read
 
 jobs:
-   # Decide whether this event should cut a release, and which version. A manual
-   # dispatch always releases the requested version. A push releases `patch` only
-   # when there is something unreleased to ship. Kept as its own tiny job so the
-   # expensive toolchain setup in `release` runs only when a release is happening.
+   # Decide whether this event should cut a release, and which version. Both
+   # automatic workflow completions and manual dispatches must prove that CI,
+   # Checks, and Security succeeded for the exact checked-out main SHA. Keeping this separate
+   # avoids expensive toolchain setup when there is nothing releasable.
    gate:
       name: Decide release
       runs-on: ubuntu-22.04
-      # Only a GREEN CI run may auto-release. A failed/cancelled run ends here;
-      # ci.yml's release_train_alert owns making that failure loud.
+      # A failed triggering workflow can never release. The decision script also
+      # verifies the other required workflows for this exact SHA.
       if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
       outputs:
          should-release: ${{ steps.decide.outputs.should-release }}
@@ -74,57 +75,48 @@ jobs:
               ref: main
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
            with:
-              bun-version: "1.3"
+              bun-version: "1.3.14"
          - id: decide
            env:
               EVENT_NAME: ${{ github.event_name }}
               DISPATCH_VERSION: ${{ inputs.version }}
               # Only defined for workflow_run events; empty on dispatch.
               HEAD_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
-              CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-              # The gate now also asks GitHub whether a previous cut was stranded (a tag newer than the
-              # latest published release whose CI failed). Without a token that query fails, and the
-              # script says so and falls back to the changelog signal alone rather than freezing releases.
+              TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: |
               set -euo pipefail
+              main_head=$(git rev-parse HEAD)
+              if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$TRIGGER_HEAD_SHA" != "$main_head" ]; then
+                echo "green workflow run is for $TRIGGER_HEAD_SHA but main is at $main_head; deferring to the newer exact-SHA gates."
+                echo "should-release=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+
+              # Manual dispatch chooses the version, not the evidence standard.
+              # It fails rather than returning a green no-op when any exact-SHA
+              # source workflow or GitHub publication state cannot be proved.
               if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-                echo "manual dispatch: releasing '${DISPATCH_VERSION}'"
+                bun scripts/release-gate-decision.ts --green-only >/dev/null
+                echo "manual dispatch: exact-SHA CI, Checks, and Security are green; releasing '${DISPATCH_VERSION}'"
                 echo "should-release=true" >> "$GITHUB_OUTPUT"
                 echo "version=${DISPATCH_VERSION}" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
-              # The gate releases main HEAD, so the green CI run must BE main
-              # HEAD. If main advanced past the run's sha, a newer CI run is
-              # already in flight and its completion will re-enter this gate;
-              # releasing here would ship commits CI has not finished testing.
-              main_head=$(git rev-parse HEAD)
-              if [ "$CI_HEAD_SHA" != "$main_head" ]; then
-                echo "green CI run is for $CI_HEAD_SHA but main is at $main_head; deferring to the newer run's gate."
-                echo "should-release=false" >> "$GITHUB_OUTPUT"; exit 0
-              fi
-              # Never release the release script's own bump commit
-              # (it empties Unreleased, so the releasable check below would also
-              # say no — this is the explicit, documented guard against a loop).
+
+              # Never release the release script's own bump commit.
               subject="$(printf '%s' "$HEAD_COMMIT_MESSAGE" | head -n1)"
               case "$subject" in
                 "chore: bump version to "*)
                   echo "head is the release bump commit; not releasing (no loop)."
                   echo "should-release=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
               esac
-              # An explicit opt-out for a user-facing change you do not want to
-              # ship yet.
               case "$HEAD_COMMIT_MESSAGE" in
                 *"[skip release]"*)
                   echo "[skip release] marker present; not releasing."
                   echo "should-release=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
               esac
-              # Two signals, not one. A waiting `## [Unreleased]` bullet cuts, as it always has. In
-              # addition, a tag NEWER than the latest published release whose CI definitively failed
-              # means a previous cut was stranded: `release.ts` consumed `## [Unreleased]` at cut time,
-              # so the changelog signal alone can never recover it. The script bounds the recovery (main
-              # must have moved past the failed tag, and two stranded tags stop it and ask for a person)
-              # and prints its reasoning to stderr, which lands in this log either way.
+
               releasable="$(bun scripts/release-gate-decision.ts)"
               if [ "$releasable" = "true" ]; then
                 echo "should-release=true" >> "$GITHUB_OUTPUT"
@@ -139,25 +131,11 @@ jobs:
       if: ${{ needs.gate.outputs.should-release == 'true' }}
       runs-on: ubuntu-22.04
       env:
-         # secrets cannot be read in a step-level `if:`, so hoist presence here.
-         HAS_RELEASE_PAT: ${{ secrets.RELEASE_PAT != '' }}
          RELEASE_VERSION: ${{ needs.gate.outputs.version }}
+      permissions:
+         contents: write
+         actions: write
       steps:
-         # Fail before touching anything if the push cannot trigger the release.
-         # Reached only when the gate said a release should happen, so it fails
-         # only when there was genuinely something to ship but no way to publish
-         # it — never as noise on an ordinary main push.
-         #
-         # GitHub deliberately does not start workflow runs for pushes made with
-         # the built-in GITHUB_TOKEN. This job's whole purpose is that its tagged
-         # push starts the ci.yml release run, so with only GITHUB_TOKEN it would
-         # bump versions, commit, tag and push, report success, and publish
-         # nothing. That silent half-release is worse than refusing to start.
-         - name: Require a push token that can trigger the release run
-           if: ${{ env.HAS_RELEASE_PAT != 'true' }}
-           run: |
-              echo "::error::RELEASE_PAT is not set. A push made with the built-in GITHUB_TOKEN does not start a workflow run, so the release would be tagged but never published. Create a fine-grained PAT with Contents: read/write on this repo and store it as the RELEASE_PAT secret."
-              exit 1
 
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
            with:
@@ -166,13 +144,10 @@ jobs:
               # version against `git describe`, which a shallow clone cannot see.
               fetch-depth: 0
               fetch-tags: true
-              # Persist the PAT as the credential `git push` uses, so the release
-              # commit and tag arrive as a normal push and ci.yml picks them up.
-              token: ${{ secrets.RELEASE_PAT }}
 
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
            with:
-              bun-version: "1.3"
+              bun-version: "1.3.14"
 
          # `release.ts` runs `bun run check`, whose `check:rs` half is
          # `cargo fmt --check` + `cargo clippy -D warnings`. Both need the
@@ -185,11 +160,6 @@ jobs:
               toolchain: nightly-2026-04-29
               components: rustfmt,clippy
 
-
-         # `release.ts` rewrites the Rust workspace version and the natives
-         # version sentinel with `sd`.
-         - name: Install sd
-           run: cargo install sd --locked
 
          - name: Install dependencies
            run: bun install --frozen-lockfile
@@ -205,24 +175,72 @@ jobs:
          - name: Cut the release
            env:
               VEYYON_RELEASE_IN_CI: "1"
-              # Read-only `gh` use (resolving the origin slug); the push itself
-              # goes through the checkout credential above.
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: bun scripts/release.ts "$RELEASE_VERSION"
 
-         - name: Summary
+         # Pushes made with GITHUB_TOKEN do not recursively start ordinary push
+         # workflows. workflow_dispatch is the documented exception. Gate the
+         # exact bump SHA through Checks and Security first, then start publication
+         # only after both runs are green. The immutable tag avoids a moving-main
+         # dispatch race.
+         - name: Gate the bump and dispatch the publish pipeline
+           id: dispatch
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           shell: bash
            run: |
-              echo "### Released \`$RELEASE_VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+              set -euo pipefail
+              release_tag=$(git tag --points-at HEAD | grep -E '^v[0-9]' | head -n1)
+              release_sha=$(git rev-parse HEAD)
+              if [ -z "$release_tag" ]; then
+                echo "::error::release.ts returned without leaving a v* tag at HEAD"
+                exit 1
+              fi
+
+              dispatch_and_wait() {
+                workflow="$1"
+                label="$2"
+                gh workflow run "$workflow" --ref "$release_tag"
+                run_id=""
+                for attempt in $(seq 1 30); do
+                  run_id=$(gh run list --workflow "$workflow" --commit "$release_sha" \
+                    --event workflow_dispatch --json databaseId --limit 1 \
+                    --jq '.[0].databaseId // empty')
+                  if [ -n "$run_id" ]; then break; fi
+                  sleep $(( attempt < 5 ? attempt : 5 ))
+                done
+                if [ -z "$run_id" ]; then
+                  echo "::error::$label did not start for $release_tag ($release_sha)"
+                  exit 1
+                fi
+                run_sha=$(gh run view "$run_id" --json headSha --jq '.headSha')
+                if [ "$run_sha" != "$release_sha" ]; then
+                  echo "::error::$label run $run_id targets $run_sha, expected $release_sha"
+                  exit 1
+                fi
+                gh run watch "$run_id" --exit-status
+              }
+
+              dispatch_and_wait checks.yml Checks
+              dispatch_and_wait security.yml Security
+              gh workflow run ci.yml --ref "$release_tag"
+              echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+         - name: Summary
+           env:
+              RELEASE_TAG: ${{ steps.dispatch.outputs.tag }}
+           run: |
+              echo "### Release \`$RELEASE_TAG\` dispatched" >> "$GITHUB_STEP_SUMMARY"
               echo "" >> "$GITHUB_STEP_SUMMARY"
-              echo "The tagged push starts the CI release run, which publishes the" >> "$GITHUB_STEP_SUMMARY"
-              echo "binaries, the GitHub release, and the website changelog." >> "$GITHUB_STEP_SUMMARY"
+              echo "Exact-tag Checks and Security passed. The tagged CI run now builds and verifies" >> "$GITHUB_STEP_SUMMARY"
+              echo "every artifact, publishes the GitHub release, and deploys production." >> "$GITHUB_STEP_SUMMARY"
 
    # A red cut is as silent as a red publish was (v1.0.28-35): the preflight
    # check can fail, the atomic bump push can be rejected when main advances
-   # mid-cut, or RELEASE_PAT can be missing — and none of that reaches ci.yml's
-   # release_train_alert, which only watches the publish path. File/update the
-   # same pinned `release-train` issue here; the next green PUBLISH closes it
-   # (ci.yml side), so one issue tracks the whole train.
+   # mid-cut, or the explicit publish dispatch can fail. None of that reaches
+   # ci.yml's release_train_alert, which only watches the publish path. File or
+   # update the same pinned `release-train` issue here; the next green publish
+   # closes it, so one issue tracks the whole train.
    cut_failed_alert:
       name: Alert on failed release cut
       needs: [gate, release]

@@ -91,20 +91,31 @@ export function rebrand(text) {
 	);
 }
 
-/** Escape HTML, then re-render `inline code` and [text](url) links. */
+/** Escape HTML, then re-render strong emphasis, `inline code`, and [text](url) links. */
 export function renderInline(text) {
-	let out = text
+	const codeSpans = [];
+	let out = text.replace(/`([^`]+)`/g, (_match, code) => {
+		const index = codeSpans.push(code) - 1;
+		return `\0${index}\0`;
+	});
+	out = out
 		.replace(/&/g, "&amp;")
 		.replace(/</g, "&lt;")
 		.replace(/>/g, "&gt;");
+	// **text** → strong. Code spans are held aside so their literal Markdown stays literal.
+	out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 	// [text](url) → anchor (upstream oh-my-pi links already stripped by rebrand).
 	out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (_m, label, url) => {
 		const safeUrl = url.replace(/"/g, "&quot;");
 		return `<a href="${safeUrl}">${label}</a>`;
 	});
-	// `code` → <span class="inline">
-	out = out.replace(/`([^`]+)`/g, '<span class="inline">$1</span>');
-	return out;
+	return out.replace(/\0(\d+)\0/g, (_match, index) => {
+		const code = codeSpans[Number(index)]
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;");
+		return `<span class="inline">${code}</span>`;
+	});
 }
 
 /**
@@ -184,8 +195,7 @@ export function normalizeVersion(v) {
 /**
  * Fetch published GitHub Releases for `owner/repo`. Public repos need no auth.
  * Returns the raw release objects (tag_name, published_at, html_url, draft,
- * prerelease). Throws on network/HTTP failure so the caller can decide whether
- * to fall back loudly — never a silent empty list.
+ * prerelease) and throws on network, HTTP, or payload failure.
  */
 export async function fetchGitHubReleases(repo, { fetchImpl = fetch, timeoutMs = 12000 } = {}) {
 	const url = `https://api.github.com/repos/${repo}/releases?per_page=100`;
@@ -205,15 +215,36 @@ export async function fetchGitHubReleases(repo, { fetchImpl = fetch, timeoutMs =
 }
 
 /**
+ * Establish the publication record used by a deploy build. `--no-github` is an
+ * explicit offline rendering mode; every normal build fails closed when GitHub
+ * cannot say which versions are actually published.
+ */
+export async function resolvePublicationState(
+	repo,
+	{ noGithub = false, fetchReleases = fetchGitHubReleases } = {},
+) {
+	if (noGithub) return null;
+	try {
+		return await fetchReleases(repo);
+	} catch (error) {
+		throw new Error(
+			`changelog: could not establish GitHub publication state for ${repo}: ${error.message}. ` +
+				"Refusing to generate deployable release metadata; use --no-github only for an intentional offline build.",
+			{ cause: error },
+		);
+	}
+}
+
+/**
  * Reconcile parsed CHANGELOG releases against published GitHub Releases.
  * Annotates each release with `{ published, githubUrl, publishedDate }` and
  * returns `{ releases, unmatchedPublished }` where `unmatchedPublished` is any
  * published GitHub release with no CHANGELOG entry (a coherence bug to surface
  * loudly, never drop).
  *
- * @param ghReleases raw GitHub release objects, or `null` when the lookup was
- *   skipped/failed — in that mode nothing is marked published or pending, so the
- *   page never falsely claims (or denies) availability from missing data.
+ * @param ghReleases raw GitHub release objects, or `null` only when an explicit
+ *   offline build skipped lookup. Normal deploy builds never reconcile unknown
+ *   publication state.
  */
 export function reconcile(releases, ghReleases) {
 	if (ghReleases == null) {
@@ -642,15 +673,8 @@ async function main() {
 	if (noGithub) {
 		console.warn("changelog: --no-github set — building from CHANGELOG only; no publish dates or GitHub links.");
 	} else {
-		try {
-			ghReleases = await fetchGitHubReleases(repo);
-			console.log(`changelog: fetched ${ghReleases.length} GitHub release(s) from ${repo}`);
-		} catch (err) {
-			// LOUD, recall-preserving fallback (never silent): the page still builds
-			// from the CHANGELOG, but without publish dates/links, and we say so.
-			console.warn(`changelog: WARNING — could not reach GitHub releases for ${repo} (${err.message}). ` + "Building from CHANGELOG only; publish dates and 'View on GitHub' links are omitted. " + "Pass --no-github to silence this intentionally.");
-			ghReleases = null;
-		}
+		ghReleases = await resolvePublicationState(repo);
+		console.log(`changelog: fetched ${ghReleases.length} GitHub release(s) from ${repo}`);
 	}
 
 	const { releases, unmatchedPublished } = reconcile(all, ghReleases);

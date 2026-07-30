@@ -412,10 +412,11 @@ cut after its own gates pass. The workflow then dispatches `checks.yml` at the
 immutable tag, verifies the bump SHA is green, and dispatches `ci.yml` for binaries,
 the GitHub release, and production site deployment.
 
-For an explicitly approved major, minor, or exact-version cut, run the Release
-workflow from Actions. The equivalent command is
-`gh workflow run release.yml --ref main -f version=<major|minor|patch|X.Y.Z>`.
-No personal access token or maintainer workstation is part of the release path.
+For an explicitly approved major, minor, or exact-version cut, run
+`bun run release [major|minor|patch|X.Y.Z]`. With no argument, the command requests
+a patch release. It verifies the local release candidate and designated GitHub
+identity, then dispatches the Release workflow. No build, version bump, tag, or
+publication depends on the maintainer workstation.
 
 ### The veyyon release line starts at `1.0.0`
 

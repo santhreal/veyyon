@@ -541,10 +541,28 @@ rc_candidates() {
         "$HOME/.config/fish/config.fish"
 }
 
+# Whether a colon-delimited PATH contains one exact directory entry.
+#
+# A case pattern such as `*":$dir:"*` treats `*`, `?`, and `[` inside $dir as
+# pattern syntax. Those are legal filename characters, so an install directory
+# such as `/opt/*/bin` could falsely match `/opt/other/bin` and skip PATH setup.
+# Peel entries off as strings instead; no pathname expansion or pattern built
+# from user input is involved.
+path_contains_dir() {
+    _pcd_path="${1}:"
+    _pcd_want="$2"
+    while [ -n "$_pcd_path" ]; do
+        _pcd_entry="${_pcd_path%%:*}"
+        [ "$_pcd_entry" = "$_pcd_want" ] && return 0
+        _pcd_path="${_pcd_path#*:}"
+    done
+    return 1
+}
+
 # ---- ensure the install dir is actually on PATH (binary mode) ----
 ensure_on_path() {
     dir="$1"
-    case ":$PATH:" in *":$dir:"*) return 0 ;; esac
+    path_contains_dir "$PATH" "$dir" && return 0
     # Add to the user's shell rc, idempotently, and announce it.
     rc=""
     case "${SHELL##*/}" in
@@ -864,6 +882,30 @@ version_from_output() {
     return 1
 }
 
+# Require a staged release binary to identify as the release being installed.
+#
+# The checksum proves only that the downloaded bytes match the published asset.
+# It cannot catch a release that attached an older, otherwise valid executable.
+# This gate runs while the old executable is still in place, so a bad release
+# costs only the installer-owned staging file.
+require_release_version() {
+    _rrv_bin="$1"; _rrv_tag="$2"; _rrv_phase="${3:-downloaded}"
+    if _rrv_out=$("$_rrv_bin" --version); then
+        :
+    else
+        _rrv_status=$?
+        die "the $_rrv_phase $BIN_NAME did not report its version: \`$_rrv_bin --version\` exited $_rrv_status"
+    fi
+    _rrv_got=$(version_from_output "$_rrv_out") \
+        || die "could not read a version from \`$_rrv_bin --version\` output: $_rrv_out"
+    _rrv_want="${_rrv_tag#v}"
+    if [ "$_rrv_got" = "$_rrv_want" ]; then
+        ok "downloaded binary reports the $_rrv_tag release version"
+    else
+        die "the $_rrv_phase $BIN_NAME reports $_rrv_got but the $_rrv_tag release was requested — refusing to replace the existing executable"
+    fi
+}
+
 # ---- post-install self-check: prove the thing actually runs ----
 # $2 (optional) is the release tag that was installed. When given, the binary
 # must report exactly that version.
@@ -1014,11 +1056,11 @@ staging_path() {
 # Removing files is a visible change to a directory the user owns, so every
 # removal is announced (Law 10: no quiet cleanup).
 sweep_stale_staging() {
-    for _ss_path in "$(install_dir)/.$BIN_NAME".*; do
+    for _ss_path in "$(install_dir)/.$BIN_NAME.download."* "$(install_dir)/.$BIN_NAME.local."*; do
         [ -e "$_ss_path" ] || continue
         _ss_pid=${_ss_path##*.}
-        # Anything that is not `<name>.<phase>.<pid>` was not written by
-        # staging_path; leave it alone rather than guess.
+        # Only the two phases staging_path writes belong to this installer.
+        # A numeric suffix alone is not ownership; foreign phases survive.
         case "$_ss_pid" in
             "" | *[!0-9]*) continue ;;
         esac
@@ -1744,14 +1786,13 @@ install_binary() {
 
     verify_release_binary "$tmpbin" "$BINARY_URL" "$BINARY" "$LATEST"
 
-    # Prove the download RUNS before it is allowed to touch anything. The
-    # checksum proves the bytes match what was published; it cannot tell you the
-    # release has no build for this platform. Failing here costs the user a
-    # temp file the trap already removes. Failing after finalize_binary would
-    # leave them an installed binary that starts, a `vey` alias, an edited
-    # shell profile and completion files, all for a veyyon that dies on their
-    # first real command.
+    # Prove the download is the requested release and can run a native search
+    # before it is allowed to touch anything. The checksum proves the bytes
+    # match what was published, but not that the published asset carries the
+    # tag's version or has a working build for this platform. Failing either
+    # gate costs only the temp file the trap already removes.
     chmod +x "$tmpbin" || die "could not make the staged download at $tmpbin executable"
+    require_release_version "$tmpbin" "$LATEST" "downloaded"
     doctor_natives "$tmpbin" "downloaded"
 
     finalize_binary "$tmpbin" "$(install_dir)/$BIN_NAME" "the download did not complete — retry, or use --source"

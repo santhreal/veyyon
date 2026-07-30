@@ -328,6 +328,31 @@ h="$(eop_home unknown-shell)"
 run_eop Linux /usr/bin/somesh "/opt/unknown-bin" "$h"
 check "an unrecognized shell falls back to ~/.profile" "$(rc_has_dir "$h/.profile" /opt/unknown-bin)" "yes"
 
+# PATH membership is literal, not a shell pattern. The old case-pattern check
+# interpolated the install directory into `*":$dir:"*`, so legal `*`, `?`, or
+# `[` characters became wildcards. Here `/opt/*/bin` is absent, but it used to
+# match `/opt/somewhere/bin` and make ensure_on_path silently skip the rc edit.
+h="$(eop_home literal-path)"
+mkdir -p "$h"
+( PATH="/opt/somewhere/bin:/usr/bin"
+  HOME="$h"; SHELL=/bin/bash
+  uname() { printf 'Linux\n'; }
+  ensure_on_path "/opt/*/bin" >/dev/null 2>&1 )
+check "a glob character in the install dir does not match another PATH entry" \
+    "$(rc_has_dir "$h/.bashrc" "/opt/*/bin")" "yes"
+
+# The literal spelling still counts when it really is present. This also proves
+# the fix did not regress the ordinary already-on-PATH fast path into always
+# editing the shell rc.
+h="$(eop_home literal-path-present)"
+mkdir -p "$h"
+( PATH="/opt/*/bin:/usr/bin"
+  HOME="$h"; SHELL=/bin/bash
+  uname() { printf 'Linux\n'; }
+  ensure_on_path "/opt/*/bin" >/dev/null 2>&1 )
+check "the exact PATH entry containing a glob character is recognized" \
+    "$( [ -e "$h/.bashrc" ] && echo written || echo absent )" "absent"
+
 # --- ensure_on_path: a reinstall must not tell you to do it yourself ---
 # The three outcomes (no rc, already configured, freshly written) used to
 # collapse into two, so a REINSTALL — where the rc already carries the line —
@@ -1250,6 +1275,69 @@ write_stub_binary() {
     chmod +x "$_sb_path"
 }
 
+# --- verified release transaction: version is a pre-replacement gate ---
+# A checksum-valid asset can still be the wrong executable when a release
+# attaches a stale build. The version and native-search preflights must both run
+# against the real staged executable before finalize_binary can replace the old
+# one. These fixtures execute every gate and move against real temporary files.
+( _d="$SANDBOX/version-transaction-match"
+  mkdir -p "$_d"
+  _old="$_d/veyyon"; _staged="$_d/.veyyon.download.$$"
+  write_stub_binary "$_old" 0.9.0
+  write_stub_binary "$_staged" 1.2.3
+  if command -v sha256sum >/dev/null 2>&1; then _sum=$(sha256sum "$_staged" | awk '{print $1}')
+  else _sum=$(shasum -a 256 "$_staged" | awk '{print $1}'); fi
+  trap 'rm -f "$_staged"' EXIT
+  verify_sha256 "$_staged" "$_sum" >/dev/null 2>&1
+  require_release_version "$_staged" "v1.2.3" "downloaded" >/dev/null 2>&1
+  doctor_natives "$_staged" "downloaded" >/dev/null 2>&1
+  finalize_binary "$_staged" "$_old" "unused test hint" >/dev/null 2>&1
+  check "a checksum-valid staged binary with the requested version replaces the old executable" \
+      "$("$_old" --version)" "veyyon/1.2.3"
+  check "the matching transaction consumes its staging file" \
+      "$( [ -e "$_staged" ] && echo present || echo absent )" "absent" )
+
+# This is the destructive regression: the old implementation discovered the
+# mismatch only in post-install doctor, after replacing the executable and
+# rewriting the alias, completion, and shell-profile metadata. A failed gate now
+# removes only its owned staging path; every pre-existing byte remains intact.
+( _d="$SANDBOX/version-transaction-mismatch"
+  mkdir -p "$_d/completions"
+  _old="$_d/veyyon"; _staged="$_d/.veyyon.download.$$"
+  _alias="$_d/vey"; _completion="$_d/completions/veyyon"; _profile="$_d/profile"
+  write_stub_binary "$_old" 0.9.0
+  write_stub_binary "$_staged" 7.7.7
+  ln -s "$_old" "$_alias"
+  printf 'owned completion bytes\n' > "$_completion"
+  printf '# added by the veyyon installer\nexport PATH=owned\n' > "$_profile"
+  if command -v sha256sum >/dev/null 2>&1; then _sum=$(sha256sum "$_staged" | awk '{print $1}')
+  else _sum=$(shasum -a 256 "$_staged" | awk '{print $1}'); fi
+  ( trap 'rm -f "$_staged"' EXIT
+    verify_sha256 "$_staged" "$_sum" >/dev/null 2>&1
+    require_release_version "$_staged" "v1.2.3" "downloaded" >/dev/null 2>&1
+    doctor_natives "$_staged" "downloaded" >/dev/null 2>&1
+    finalize_binary "$_staged" "$_old" "unused test hint" >/dev/null 2>&1 )
+  check "a checksum-valid wrong-version binary aborts before replacement" "$?" "1"
+  check "the wrong-version transaction leaves the previous executable runnable" \
+      "$("$_old" --version)" "veyyon/0.9.0"
+  check "the wrong-version transaction cleans its owned staging file" \
+      "$( [ -e "$_staged" ] && echo present || echo absent )" "absent"
+  check "the installer-owned alias is untouched on a version mismatch" \
+      "$(readlink "$_alias")" "$_old"
+  check "installer-owned completion bytes are untouched on a version mismatch" \
+      "$(cat "$_completion")" "owned completion bytes"
+  check "installer-owned profile metadata is untouched on a version mismatch" \
+      "$(cat "$_profile")" "# added by the veyyon installer
+export PATH=owned" )
+
+# A prefix match is not equality: v1.2.30 must never satisfy v1.2.3. This guards
+# against loosening the parser/comparison into a substring or regex check.
+( _d="$SANDBOX/version-transaction-adversarial"
+  mkdir -p "$_d"
+  write_stub_binary "$_d/staged" 1.2.30
+  require_release_version "$_d/staged" "v1.2.3" "downloaded" >/dev/null 2>&1 )
+check "a version sharing the requested prefix is still rejected" "$?" "1"
+
 # --- a $HOME with a space in it ---
 # Every path in this suite is space-free, so an unquoted expansion anywhere in
 # the uninstall path would pass all of it and break for a real user whose home
@@ -2019,6 +2107,44 @@ if command -v git >/dev/null 2>&1; then
     check "the stop links where to get git-lfs" "$(printf '%s' "$_out" | grep -c 'https://git-lfs.com')" "1" )
 fi
 
+# --- install_binary: each supported uname pair selects its published asset ---
+# Drive the real platform mapping up to the network boundary. curl records the
+# requested URL and then fails deliberately, so these are behavioral installer
+# checks without downloading a release or mutating a real HOME.
+record_selected_asset() { # os, arch, capture file
+    _rsa_os="$1"; _rsa_arch="$2"; _rsa_capture="$3"
+    _rsa_home="$SANDBOX/asset-${_rsa_os}-${_rsa_arch}"
+    mkdir -p "$_rsa_home"
+    ( uname() {
+          case "$1" in
+              (-s) printf '%s\n' "$_rsa_os" ;;
+              (-m) printf '%s\n' "$_rsa_arch" ;;
+              (*) return 1 ;;
+          esac
+      }
+      require_supported_libc() { return 0; }
+      resolve_latest_tag() { printf 'v9.9.9\n'; }
+      curl() { printf '%s\n' "$*" > "$_rsa_capture"; return 22; }
+      HOME="$_rsa_home"
+      VEYYON_INSTALL_DIR="$_rsa_home/bin"
+      IS_TTY=0
+      install_binary >/dev/null 2>&1 )
+}
+
+asset_capture="$SANDBOX/selected-asset"
+record_selected_asset Linux x86_64 "$asset_capture"
+check "Linux x86_64 selects the linux-x64 release asset" \
+    "$(grep -c '/veyyon-linux-x64 ' "$asset_capture")" "1"
+record_selected_asset Linux aarch64 "$asset_capture"
+check "Linux aarch64 selects the linux-arm64 release asset" \
+    "$(grep -c '/veyyon-linux-arm64 ' "$asset_capture")" "1"
+record_selected_asset Darwin x86_64 "$asset_capture"
+check "macOS x86_64 selects the darwin-x64 release asset" \
+    "$(grep -c '/veyyon-darwin-x64 ' "$asset_capture")" "1"
+record_selected_asset Darwin arm64 "$asset_capture"
+check "macOS arm64 selects the darwin-arm64 release asset" \
+    "$(grep -c '/veyyon-darwin-arm64 ' "$asset_capture")" "1"
+
 # --- detect_libc / require_supported_libc: refuse a binary that cannot run ---
 # The published Linux binaries are bun's glibc targets. On musl (Alpine) `uname
 # -s` still says Linux, so the installer downloaded one, verified its checksum,
@@ -2233,14 +2359,20 @@ check "pid_is_running fails safe to running when ps is unavailable" "$?" "0"
   export HOME="$_h"
   mkdir -p "$_h/bin"
   export VEYYON_INSTALL_DIR="$_h/bin"
-  # Only `.<bin>.<phase>.<pid>` is ours. A user's own dotfile in their own bin
-  # directory, the natives cache, and the installed binary itself all stay.
+  # Only `.veyyon.download.<pid>` and `.veyyon.local.<pid>` are ours. A
+  # numeric suffix does not make another phase installer-owned: the broad
+  # `.veyyon.*.<pid>` sweep used to delete such foreign files after that pid
+  # exited. Ordinary dotfiles and the installed binary stay too.
+  sh -c 'exit 0' & _foreign_dead_pid=$!; wait "$_foreign_dead_pid" 2>/dev/null
   printf 'user' > "$_h/bin/.someone-elses-file"
   printf 'natives' > "$_h/bin/.veyyon.notapid"
+  printf 'foreign numeric suffix' > "$_h/bin/.veyyon.cache.$_foreign_dead_pid"
   printf 'bin' > "$_h/bin/veyyon"
   sweep_stale_staging >/dev/null 2>&1
   check "an unrelated dotfile is not swept" "$(cat "$_h/bin/.someone-elses-file")" "user"
   check "a name whose last token is not a pid is not swept" "$(cat "$_h/bin/.veyyon.notapid")" "natives"
+  check "a foreign phase with a dead numeric pid suffix survives" \
+      "$(cat "$_h/bin/.veyyon.cache.$_foreign_dead_pid")" "foreign numeric suffix"
   check "the installed binary is not swept" "$(cat "$_h/bin/veyyon")" "bin" )
 
 ( _h="$SANDBOX/sweep-empty-dir"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { bumpVersion, parseVersion } from "./release.ts";
+import { bumpVersion, parseVersion, rewriteCargoWorkspaceVersion, rewritePackageVersion } from "./release.ts";
 
 // The version-bump arithmetic decides the number of EVERY release cut by
 // release.ts. A regression here does not fail loudly — it silently publishes the
@@ -66,5 +66,41 @@ describe("bumpVersion", () => {
 	it("carries across a 9 boundary without lexical surprises", () => {
 		expect(bumpVersion("1.0.9", "patch")).toBe("1.0.10");
 		expect(bumpVersion("1.9.9", "minor")).toBe("1.10.0");
+	});
+});
+
+describe("release metadata rewriting", () => {
+	/** A package bump changes its own version without touching dependency ranges or formatting. */
+	it("rewrites only the manifest version field", () => {
+		const before =
+			'{\n  "name": "@veyyon/example",\n  "version": "1.2.3",\n  "dependencies": { "other": "1.2.3" }\n}\n';
+
+		expect(rewritePackageVersion(before, "1.2.4")).toBe(
+			'{\n  "name": "@veyyon/example",\n  "version": "1.2.4",\n  "dependencies": { "other": "1.2.3" }\n}\n',
+		);
+	});
+
+	/** A malformed public manifest must stop a cut instead of silently retaining its old version. */
+	it("refuses a package manifest without a version", () => {
+		expect(() => rewritePackageVersion('{"name":"@veyyon/broken"}', "1.2.4")).toThrow(
+			'Package manifest has no top-level "version" field.',
+		);
+	});
+
+	/** The Rust bump targets workspace.package even when another version appears earlier. */
+	it("rewrites only the Cargo workspace version", () => {
+		const before =
+			'[package]\nname = "decoy"\nversion = "9.9.9"\n\n[workspace.package]\nversion = "1.2.3"\nedition = "2024"\n';
+
+		expect(rewriteCargoWorkspaceVersion(before, "1.2.4")).toBe(
+			'[package]\nname = "decoy"\nversion = "9.9.9"\n\n[workspace.package]\nversion = "1.2.4"\nedition = "2024"\n',
+		);
+	});
+
+	/** A missing workspace package section cannot produce a partially versioned release. */
+	it("refuses Cargo metadata without a workspace version", () => {
+		expect(() => rewriteCargoWorkspaceVersion("[workspace]\nmembers = []\n", "1.2.4")).toThrow(
+			"Cargo.toml has no [workspace.package] version.",
+		);
 	});
 });

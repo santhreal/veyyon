@@ -578,12 +578,27 @@ function Configure-BashShell {
 # Matched on the forwarded path rather than on the whole file, so a shim written
 # by an older installer version (different header, same target) is still
 # recognized as ours instead of being orphaned on the user's PATH forever.
+# True only when one command line in a cmd shim is the exact forwarding line
+# this installer writes. A substring is not ownership: a user's script may log,
+# compare, or comment on our binary path while launching something else.
+function Test-AliasBodyForTarget {
+    param([string]$Body, [string]$Target)
+    if ([string]::IsNullOrEmpty($Body) -or [string]::IsNullOrEmpty($Target)) {
+        return $false
+    }
+    $forward = "`"$Target`" %*"
+    foreach ($line in ($Body -split '\r?\n')) {
+        if ($line.Trim() -ieq $forward) { return $true }
+    }
+    return $false
+}
+
 function Test-AliasShimIsOurs {
     param([string]$ShimPath, [string]$BinDir)
     $body = Get-Content -Raw -LiteralPath $ShimPath -ErrorAction SilentlyContinue
     if (-not $body) { return $false }
     foreach ($target in @((Join-Path $BinDir "$BinName.exe"), (Join-Path $BinDir "$BinName.cmd"))) {
-        if ($body.Contains($target)) { return $true }
+        if (Test-AliasBodyForTarget -Body $body -Target $target) { return $true }
     }
     return $false
 }
@@ -605,7 +620,7 @@ function Install-Alias {
                 Write-Host "OK  '$AliasName' already points at $BinName" -ForegroundColor Green
                 return
             }
-            if (-not ($existing -and $existing.Contains($Target))) {
+            if (-not (Test-AliasBodyForTarget -Body $existing -Target $Target)) {
                 Write-Host "!  left '$AliasName' alone: $shim already exists and was not created by this installer. Remove it yourself if you want '$AliasName' to launch $BinName; meanwhile launch with '$BinName'." -ForegroundColor Yellow
                 return
             }
@@ -819,13 +834,20 @@ function Write-NextSteps {
 # when a new entry was added (so the caller can tell the user to restart).
 function Add-ToPath {
     $UserPath = (Get-RawUserPath).Value
+    $addedForFutureSessions = $false
     if (-not (Test-PathContainsDir $UserPath $InstallDir)) {
         Write-Host "Adding $InstallDir to PATH..."
         Set-RawUserPath (Get-PathWithDir $UserPath $InstallDir)
-        $env:Path = Get-PathWithDir $env:Path $InstallDir
-        return $true
+        $addedForFutureSessions = $true
     }
-    return $false
+    # The registry and this process can disagree. This happens when a prior
+    # file-based install updated HKCU, then the user reruns the documented
+    # `irm | iex` command from the still-open parent terminal. Keep that caller
+    # usable even when no persistent PATH write is needed this time.
+    if (-not (Test-PathContainsDir $env:Path $InstallDir)) {
+        $env:Path = Get-PathWithDir $env:Path $InstallDir
+    }
+    return $addedForFutureSessions
 }
 
 # Post-install self-check: prove the thing actually runs. Fails loud (throws) if
@@ -842,6 +864,49 @@ function ConvertFrom-VersionOutput {
         if ($cand -match '^\d+\.\d+\.\d+') { return $cand }
     }
     return $null
+}
+
+# Require the still-staged executable to identify as the resolved release tag.
+# A valid checksum cannot catch a release that published an older executable;
+# this check runs before the existing executable or installer-owned metadata is
+# touched, so rejecting that release is non-destructive.
+function Assert-ReleaseVersion {
+    param(
+        [string]$Command,
+        [string]$ExpectedTag,
+        [string]$Phase = "downloaded"
+    )
+    $ver = $null
+    $why = ""
+    $status = $null
+    $errFile = Join-Path ([System.IO.Path]::GetTempPath()) ("veyyon-release-version-" + [guid]::NewGuid().ToString("N") + ".err")
+    try {
+        $ver = (& $Command --version 2>$errFile | Out-String).Trim()
+        $status = $LASTEXITCODE
+        if (Test-Path $errFile) {
+            $raw = Get-Content -Raw $errFile
+            if ($null -ne $raw) { $why = $raw.Trim() }
+        }
+    } catch {
+        $ver = $null
+        $why = "$_"
+    } finally {
+        Remove-Item -Force $errFile -ErrorAction SilentlyContinue
+    }
+    if ($status -ne 0 -or -not $ver) {
+        $exit = if ($null -eq $status) { "no exit code (the process could not be started)" } else { "exit $status" }
+        $detail = if ($why) { " It said: $why" } else { " It printed nothing." }
+        throw "the $Phase $BinName did not report its version: '$Command --version' gave $exit.$detail"
+    }
+    $want = $ExpectedTag -replace '^v', ''
+    $got = ConvertFrom-VersionOutput -Text ([string]$ver)
+    if (-not $got) {
+        throw "could not read a version from '$Command --version' output: $ver"
+    }
+    if ($got -ne $want) {
+        throw "the $Phase $BinName reports $got but the $ExpectedTag release was requested - refusing to replace the existing executable"
+    }
+    Write-Host "OK  downloaded binary reports the $ExpectedTag release version" -ForegroundColor Green
 }
 
 # Prove the native addon loads, not just that the binary starts. Mirrors
@@ -971,7 +1036,7 @@ function Test-AliasPointsAtUs {
     $shim = Join-Path (Split-Path -Parent $BinPath) "$AliasName.cmd"
     if (-not (Test-Path $shim)) { return $false }
     $existing = (Get-Content -Raw -Path $shim -ErrorAction SilentlyContinue)
-    return [bool]($existing -and $existing.Contains($BinPath))
+    return [bool](Test-AliasBodyForTarget -Body $existing -Target $BinPath)
 }
 
 # Report whether `$Name` on PATH is the copy just installed into `$WantDir`.
@@ -1408,11 +1473,13 @@ function Install-Binary {
         Write-Host "OK  checksum verified" -ForegroundColor Green
     }
 
-    # Prove the download RUNS before it is allowed to touch anything. The
-    # checksum proves the bytes match what was published; it cannot tell you the
-    # release has no build for this architecture. Failing here costs a staged
-    # file that is removed on the way out.
+    # Prove the download is the requested release and can run a native search
+    # before it is allowed to touch anything. The checksum proves the bytes
+    # match what was published, but not that the published asset carries the
+    # tag's version or has a working build for this platform. A rejection costs
+    # only the staged file, which this catch removes.
     try {
+        Assert-ReleaseVersion -Command $StagingPath -ExpectedTag $Latest -Phase "downloaded"
         Test-NativeAddon -Command $StagingPath -Phase "downloaded"
     } catch {
         Remove-Item $StagingPath -ErrorAction SilentlyContinue

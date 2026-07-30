@@ -68,10 +68,10 @@ everything that leaves the machine is gated on explicit per-action approval.
 
 | Autonomous (no approval needed) | Human-gated (explicit approval, every time) |
 | --- | --- |
-| Reading, editing, staging exact paths | `git commit` / `git push` to any remote |
-| Local typecheck, tests, `bun run check` | Cutting a release (`bun run release …`) |
+| Reading, editing, staging exact paths | `git commit` / `git push` to any remote (a releasable `main` push may release automatically) |
+| Local typecheck, tests, `bun run check` | Manually dispatching the Release workflow |
 | Background builds, benches, local installs | Website deploys (`bun run site:deploy`, both Pages projects) |
-| Ledger + changelog `[Unreleased]` upkeep | npm publish, Homebrew, GitHub Releases (CI does these, but the tag push that triggers them is human-gated) |
+| Ledger + changelog `[Unreleased]` upkeep | npm publish, Homebrew, or direct GitHub release mutation |
 | Docs under `docs/` and handbook sources | Opening/commenting on GitHub issues & PRs, any `gh` call against a public repo |
 
 Approval is **per action**, not per session, one approved push does not
@@ -80,26 +80,27 @@ account only (verify with `gh auth status` first).
 
 ## Shipping an update to production
 
-Production is two independent surfaces (see [`deployment.md`](./deployment.md)):
+Production has three coordinated surfaces (see [`deployment.md`](./deployment.md)):
 
-**CLI binaries**, the agent's steady-state job is keeping `main` *release-ready*:
-green `bun run check`, changelogs current under `[Unreleased]`, ledger drained.
-The actual cut is one human-approved command:
+**CLI binaries**, keep `main` release-ready: `bun run check` green and each
+publishable change documented under its package's `[Unreleased]` section. After an
+approved push, the Release workflow waits for exact-SHA CI and Checks. If there is
+something releasable, it cuts the patch automatically, gates the bump commit through
+Checks, and dispatches the tagged publish pipeline.
 
+For an approved manual cut, use the one operator command. It defaults to a patch
+and accepts `major`, `minor`, or an explicit `x.y.z`:
+
+```sh
+bun run release
+bun run release minor
 ```
-bun run release <version|major|minor|patch>
-```
 
-`release.ts` bumps, finalizes changelogs, checks, commits
-`chore: bump version to vX.Y.Z`, tags, atomically pushes, and watches CI.
-Release-shaped runs route to GitHub-hosted runners, so the cut does not depend on
-the self-hosted fleet. If the watch is interrupted, `bun run release watch`
-re-attaches to CI for the current commit.
-
-**Website**, `bun run site:build` locally at will (the brand check is part of the
-gate); `bun run site:deploy` only with approval. If handbook sources changed,
-`mdbook build` in `docs/handbook` first; if the install scripts changed, deploy
-the `veyyon-get` project too.
+**Website and install scripts**, `bun run site:build` locally at will because the
+brand check is part of the gate. A matching push to `main`, and every release,
+deploys both `veyyon.dev` and `get.veyyon.dev`. Run `bun run site:deploy` with
+approval only for an out-of-band deployment. If handbook sources changed, run
+`mdbook build` in `docs/handbook` first.
 
 ## Verify like a user, not like a builder
 
@@ -113,7 +114,7 @@ a ledger row like any other bug.
 
 ## When something breaks
 
-- Release CI failures: re-attach with `bun run release watch`; the recovery
+- Release failures: open the Release or tagged CI run in Actions; the recovery
   procedures live in [`docs/internal/runbooks/`](./runbooks/README.md).
 - A bad deploy or release is rolled forward (fix + new cut), not force-pushed
   away, tags and published assets are immutable once installers can see them.
@@ -121,4 +122,4 @@ a ledger row like any other bug.
   account-level Cloudflare/GitHub state) is a human-blocker: record it in the
   ledger with what was tried, and continue on other rows rather than stopping.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*

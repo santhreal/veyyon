@@ -22,7 +22,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { installRelease } from "@veyyon/coding-agent/cli/update-cli";
+import { type InstallReleaseResult, installRelease } from "@veyyon/coding-agent/cli/update-cli";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import * as veyUtils from "@veyyon/utils";
@@ -93,7 +93,7 @@ interface InstallHarness {
 	targetPath: string;
 	reported: string[];
 	fetched: string[];
-	run(version: string): Promise<void>;
+	run(version: string): Promise<InstallReleaseResult>;
 }
 
 /**

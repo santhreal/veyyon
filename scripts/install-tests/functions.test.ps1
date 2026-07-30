@@ -1,6 +1,6 @@
-# Behavior tests for scripts/install.ps1 helper functions — the PATH-wiring path
-# a Windows install depends on, run without any real install and without mutating
-# the machine's environment (only the pure helpers are exercised).
+# Behavior tests for scripts/install.ps1 helper functions — including PATH
+# wiring and transactional replacement — run against isolated temporary files
+# without mutating the machine's persistent environment.
 #
 # Dot-sources install.ps1 with VEYYON_INSTALL_SOURCED=1 so its Main logic does
 # not run. Run: pwsh -File scripts/install-tests/functions.test.ps1
@@ -116,6 +116,50 @@ Check "already-present dir leaves PATH unchanged" (Get-PathWithDir "C:\x;C:\a\bi
 Check "a prefix-substring entry does NOT block the add" `
     (Get-PathWithDir "C:\a\bin2" "C:\a\bin") "C:\a\bin;C:\a\bin2"
 Check "empty entries are cleaned out" (Get-PathWithDir "C:\x;;C:\y" "C:\a\bin") "C:\a\bin;C:\x;C:\y"
+
+# --- Add-ToPath: persistent and current-session PATH are independent ---
+# A previous file-based install can update HKCU while its parent terminal keeps
+# an old process PATH. Rerunning through `irm | iex` happens in that still-open
+# process. The old code saw HKCU already configured, skipped every write, and
+# then said this window was ready even though `veyyon` was not a command there.
+# Mock the registry helpers so this stays a pure in-process behavior test.
+$originalGetRawUserPath = ${function:Get-RawUserPath}
+$originalSetRawUserPath = ${function:Set-RawUserPath}
+$originalProcessPath = $env:Path
+$originalPathInstallDir = $InstallDir
+try {
+    $script:MockUserPath = "C:\Veyyon;C:\Future"
+    $script:MockUserPathWrites = 0
+    function Get-RawUserPath { return @{ Value = $script:MockUserPath; Kind = $null } }
+    function Set-RawUserPath {
+        param([string]$Value)
+        $script:MockUserPath = $Value
+        $script:MockUserPathWrites++
+    }
+    $InstallDir = "C:\Veyyon"
+    $env:Path = "C:\Windows"
+    $needsRestart = Add-ToPath
+    Check "an already-persistent PATH entry needs no registry rewrite" $script:MockUserPathWrites "0"
+    Check "an already-persistent PATH entry needs no restart after in-process repair" $needsRestart "False"
+    Check "a stale current session is repaired even when HKCU already contains the dir" `
+        (Test-PathContainsDir $env:Path $InstallDir) "True"
+
+    # The inverse state is possible in an explicitly edited process PATH. It
+    # still needs a persistent write, but must not duplicate the process entry.
+    $script:MockUserPath = "C:\Future"
+    $script:MockUserPathWrites = 0
+    $env:Path = "C:\Veyyon;C:\Windows"
+    $needsRestart = Add-ToPath
+    Check "an absent persistent entry is written once" $script:MockUserPathWrites "1"
+    Check "a new persistent entry reports that future sessions need the update" $needsRestart "True"
+    Check "an existing process entry is not duplicated" `
+        (@(Split-PathEntries $env:Path | Where-Object { $_ -ieq $InstallDir }).Count) "1"
+} finally {
+    Set-Item -Path Function:\Get-RawUserPath -Value $originalGetRawUserPath
+    Set-Item -Path Function:\Set-RawUserPath -Value $originalSetRawUserPath
+    $env:Path = $originalProcessPath
+    $InstallDir = $originalPathInstallDir
+}
 
 # --- checksum verification (mirrors install.sh verify_sha256) ---
 # The binary install fails closed on a missing/empty/unparseable sidecar and on a
@@ -459,6 +503,7 @@ try {
 # false, because no vey was installed at all. Mirrors alias_points_at_us in
 # install.sh. Pure filesystem, no install performed.
 $aliasSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-alias-$PID"
+$originalAliasInstallDir = $InstallDir
 if (Test-Path $aliasSandbox) { Remove-Item -Recurse -Force $aliasSandbox }
 try {
     New-Item -ItemType Directory -Force -Path $aliasSandbox | Out-Null
@@ -472,10 +517,23 @@ try {
     "@echo off`r`n`"C:\their\tool.exe`" %*" | Set-Content -Path $shim -Encoding ASCII
     Check "a shim forwarding elsewhere is not ours" (Test-AliasPointsAtUs -BinPath $ourBin) "False"
 
+    # Merely mentioning our path is not forwarding to it. The previous
+    # substring check claimed this user-owned shim, so Install-Alias overwrote
+    # it, doctor called it ours, and uninstall later deleted it.
+    $userShim = "@echo off`r`nrem diagnostic path: $ourBin`r`n`"C:\their\tool.exe`" %*"
+    $userShim | Set-Content -Path $shim -Encoding ASCII
+    Check "a user shim that only mentions our binary is not ours" (Test-AliasPointsAtUs -BinPath $ourBin) "False"
+    $InstallDir = $aliasSandbox
+    Install-Alias -Target $ourBin | Out-Null
+    Check "Install-Alias does not overwrite a user shim that mentions our binary" `
+        ((Get-Content -Raw -Path $shim).Trim()) $userShim.Trim()
+    Check "declining the user shim leaves alias ownership false" $Script:AliasIsOurs "False"
+
     # The shim Install-Alias itself writes.
     "@echo off`r`n`"$ourBin`" %*" | Set-Content -Path $shim -Encoding ASCII
     Check "a shim forwarding to our binary is ours" (Test-AliasPointsAtUs -BinPath $ourBin) "True"
 } finally {
+    $InstallDir = $originalAliasInstallDir
     Remove-Item -Recurse -Force $aliasSandbox -ErrorAction SilentlyContinue
 }
 
@@ -556,6 +614,11 @@ try {
     # installation's to remove.
     Set-Content -LiteralPath $shim -Value "@echo off`r`n`"C:\elsewhere\veyyon.exe`" %*"
     Check "a shim pointing at another install is not ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "False"
+
+    $mentionedTarget = Join-Path $aliasSandbox 'veyyon.exe'
+    Set-Content -LiteralPath $shim -Value "@echo off`r`nrem diagnostic path: $mentionedTarget`r`n`"C:\their\tool.exe`" %*"
+    Check "a user shim that only mentions our exe is not removable as ours" `
+        (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "False"
 
     Remove-Item -Force $shim
     Check "a missing shim is not ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "False"
@@ -643,6 +706,86 @@ try {
     Check "the staged file is gone after a successful move" (Test-Path $staging) "False"
 } finally {
     Remove-Item -Recurse -Force $stageSandbox -ErrorAction SilentlyContinue
+}
+
+# --- verified release transaction: version is a pre-replacement gate ---
+# A published checksum can be valid while the attached executable is stale. Run
+# the real staged commands and move helper against temporary files so matching,
+# mismatch, and adversarial version behavior cannot regress into a source-text
+# ordering assertion that passes while the transaction is destructive.
+$versionTransactionSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-version-transaction-$PID"
+New-Item -ItemType Directory -Force -Path $versionTransactionSandbox | Out-Null
+try {
+    function New-ReleaseStub {
+        param([string]$Path, [string]$Version)
+        Set-Content -LiteralPath $Path -Value @"
+@echo off
+if "%1"=="--version" (
+  echo veyyon/$Version
+  exit /b 0
+)
+if "%1"=="grep" if "%2"=="--help" exit /b 0
+if "%1"=="grep" (
+  echo %3\probe.txt:1: %2
+  exit /b 0
+)
+exit /b 2
+"@
+    }
+
+    $target = Join-Path $versionTransactionSandbox "veyyon.cmd"
+    $matching = Join-Path $versionTransactionSandbox ".veyyon.$PID.download.cmd"
+    New-ReleaseStub -Path $target -Version "0.9.0"
+    New-ReleaseStub -Path $matching -Version "1.2.3"
+    $matchingHash = (Get-FileHash -Path $matching -Algorithm SHA256).Hash.ToLower()
+    Check "the matching transaction starts from a checksum-valid staged file" `
+        (Test-FileSha256 -Path $matching -Expected $matchingHash) "True"
+    Assert-ReleaseVersion -Command $matching -ExpectedTag "v1.2.3" -Phase "downloaded" *> $null
+    Test-NativeAddon -Command $matching -Phase "downloaded" *> $null
+    Move-StagedBinaryIntoPlace -StagingPath $matching -TargetPath $target
+    $installedVersion = (& $target --version | Out-String).Trim()
+    Check "a staged binary with the requested version replaces the old executable" $installedVersion "veyyon/1.2.3"
+    Check "the matching transaction consumes its staging file" (Test-Path $matching) "False"
+
+    # This locks the destructive failure: post-install version checking replaced
+    # a working binary before discovering the wrong release and had already
+    # reached installer-owned alias, completion, and profile metadata.
+    $wrong = Join-Path $versionTransactionSandbox ".veyyon.$PID.wrong.cmd"
+    $alias = Join-Path $versionTransactionSandbox "vey.cmd"
+    $completion = Join-Path $versionTransactionSandbox "veyyon-completions.ps1"
+    $profileMetadata = Join-Path $versionTransactionSandbox "profile.ps1"
+    New-ReleaseStub -Path $target -Version "0.9.0"
+    New-ReleaseStub -Path $wrong -Version "7.7.7"
+    Set-Content -LiteralPath $alias -Value "owned alias bytes"
+    Set-Content -LiteralPath $completion -Value "owned completion bytes"
+    Set-Content -LiteralPath $profileMetadata -Value "# added by the veyyon installer"
+    $wrongHash = (Get-FileHash -Path $wrong -Algorithm SHA256).Hash.ToLower()
+    Check "the wrong-version fixture is checksum-valid before the version gate" `
+        (Test-FileSha256 -Path $wrong -Expected $wrongHash) "True"
+    $wrongError = ""
+    try {
+        Assert-ReleaseVersion -Command $wrong -ExpectedTag "v1.2.3" -Phase "downloaded" *> $null
+        Test-NativeAddon -Command $wrong -Phase "downloaded" *> $null
+        Move-StagedBinaryIntoPlace -StagingPath $wrong -TargetPath $target
+    } catch {
+        $wrongError = $_.Exception.Message
+        Remove-Item $wrong -Force -ErrorAction SilentlyContinue
+    }
+    Check "a checksum-valid wrong version is rejected before replacement" ([bool]($wrongError -match "refusing to replace")) "True"
+    Check "the previous executable survives a version mismatch" ((& $target --version | Out-String).Trim()) "veyyon/0.9.0"
+    Check "the rejected installer-owned staging file is cleaned" (Test-Path $wrong) "False"
+    Check "installer-owned alias metadata is untouched on mismatch" (Get-Content -Raw $alias).Trim() "owned alias bytes"
+    Check "installer-owned completion metadata is untouched on mismatch" (Get-Content -Raw $completion).Trim() "owned completion bytes"
+    Check "installer-owned profile metadata is untouched on mismatch" (Get-Content -Raw $profileMetadata).Trim() "# added by the veyyon installer"
+
+    # Equality, not a prefix/substring match: v1.2.30 is not release v1.2.3.
+    $adversarial = Join-Path $versionTransactionSandbox ".veyyon.$PID.adversarial.cmd"
+    New-ReleaseStub -Path $adversarial -Version "1.2.30"
+    $adversarialError = ""
+    try { Assert-ReleaseVersion -Command $adversarial -ExpectedTag "v1.2.3" *> $null } catch { $adversarialError = $_.Exception.Message }
+    Check "a version sharing the requested prefix is still rejected" ([bool]($adversarialError -match "refusing to replace")) "True"
+} finally {
+    Remove-Item -Recurse -Force $versionTransactionSandbox -ErrorAction SilentlyContinue
 }
 
 # --- PowerShell completions: the profile edit is surgical and reversible ---

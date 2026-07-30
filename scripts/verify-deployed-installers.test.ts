@@ -26,11 +26,13 @@ describe("the endpoint list", () => {
 	 * index.html was published at the get root), so checking only /install.sh would
 	 * leave the documented one-liner unverified.
 	 */
-	it("covers the bare host, /install.sh, and /install.ps1", () => {
+	it("covers every installer endpoint on both deployed domains", () => {
 		expect(DEPLOYED_INSTALLERS.map(entry => entry.url)).toEqual([
 			"https://get.veyyon.dev",
 			"https://get.veyyon.dev/install.sh",
 			"https://get.veyyon.dev/install.ps1",
+			"https://veyyon.dev/install.sh",
+			"https://veyyon.dev/install.ps1",
 		]);
 	});
 
@@ -39,9 +41,13 @@ describe("the endpoint list", () => {
 	 * ever pointed the root at a different script, comparing each endpoint against
 	 * its own source would call that correct.
 	 */
-	it("holds the root and /install.sh to the same source file", () => {
+	it("holds every shell endpoint to the same source file", () => {
 		const bySource = DEPLOYED_INSTALLERS.filter(entry => entry.source === "scripts/install.sh");
-		expect(bySource.map(entry => entry.url)).toEqual(["https://get.veyyon.dev", "https://get.veyyon.dev/install.sh"]);
+		expect(bySource.map(entry => entry.url)).toEqual([
+			"https://get.veyyon.dev",
+			"https://get.veyyon.dev/install.sh",
+			"https://veyyon.dev/install.sh",
+		]);
 	});
 
 	/** A source file the gate names but the repository does not ship is a gate that always fails. */
@@ -120,15 +126,14 @@ describe("the workflows that run the gate", () => {
 	const workflow = (name: string) => fs.readFileSync(path.join(repoRoot, ".github", "workflows", name), "utf8");
 
 	/**
-	 * site.yml triggers on `scripts/install.sh` and used to deploy only veyyon.dev,
-	 * so an installer change updated the docs about the installer and left the
-	 * installer itself on whatever the last release published. That is the root
-	 * cause of the drift; this pins the missing deploy in place.
+	 * `site.yml` used to publish only veyyon.dev, so installer changes left
+	 * get.veyyon.dev serving an older tree. Both projects now use the canonical
+	 * deployer; the project environment selects the installer tree.
 	 */
-	it("site.yml deploys the get tree, not only the marketing site", () => {
+	it("site.yml deploys both Pages projects through the canonical deployer", () => {
 		const site = workflow("site.yml");
-		expect(site).toContain("pages deploy website-get --project-name veyyon-get");
-		expect(site).toContain("pages deploy website --project-name veyyon");
+		expect(site.match(/run: node website\/deploy\.mjs --skip-build/g)).toHaveLength(2);
+		expect(site).toContain("VEYYON_PAGES_PROJECT: veyyon-get");
 	});
 
 	/** Both workflows that publish the endpoint must verify what it then serves. */

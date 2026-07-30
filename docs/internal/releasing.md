@@ -81,20 +81,22 @@ A tag whose CI is still running is left alone, and a tag whose CI SUCCEEDED with
 producing a release is reported rather than cut over: that is a publish step that
 claimed success, and a new version would bury it.
 
-**Manual (an explicit version).** Run the **Release** workflow from the Actions
-tab and give it a version: `major`, `minor`, `patch`, or an explicit `x.y.z`.
-This bypasses the releasable gate and releases exactly what you asked for.
-Nothing about a release depends on your machine.
+**Manual (an explicit version).** Run the repository release command with
+`major`, `minor`, `patch`, or an explicit `x.y.z`. With no argument, it requests
+a patch release:
 
-The workflow needs a `RELEASE_PAT` secret: a fine-grained personal access token
-with Contents read/write on this repository. GitHub does not start workflow runs
-for pushes made with the built-in `GITHUB_TOKEN`, so a release pushed with it
-would be tagged and never published. The workflow checks for the token first and
-refuses to start without it, rather than producing a half-release.
+```sh
+bun run release
+bun run release minor
+bun run release 2.0.0
+```
 
-You can still run the same script locally when you need to (`bun run release
-<version|major|minor|patch>` from a clean `main`); the workflow runs exactly this
-script, and the only difference is that a local run also watches CI afterwards.
+The command requires a clean `main` checkout synchronized with `origin/main` and
+the `santhsecurity` GitHub account active in `gh`. It only dispatches the remote
+Release workflow. The workflow proves CI, Checks, and Security are green for that
+exact main SHA before it changes a version, creates a commit, tags, or publishes.
+The workflow uses the repository-scoped `GITHUB_TOKEN`; no workstation credential
+performs the release itself.
 
 `scripts/release.ts` runs, in order:
 
@@ -115,24 +117,23 @@ script, and the only difference is that a local run also watches CI afterwards.
 4. Run `bun run check`.
 5. Commit `chore: bump version to X.Y.Z` (bare version, no `v`): CI keys the
    never-cancel release concurrency group off the `chore: bump version to ` subject
-   prefix, so the subject **must** stay exactly that shape. Reword the body, never
-   the subject, on a retry.
-6. Tag and atomically push `main` + the tag (pushed by commit sha so background tag
-   pruning can't lose it).
-7. Watch CI until the release jobs finish. Skipped when the script is running as the
-   Release workflow (`VEYYON_RELEASE_IN_CI=1`), since the push is what starts the
-   release run and the workflow reports its own outcome. `bun run release watch`
-   re-attaches to CI for the current commit from a workstation.
+   prefix, so the subject stays exactly that shape.
+6. Tag and atomically push `main` plus the tag (pushed by commit SHA so background
+   tag pruning cannot lose it). If main advanced, the push fails without rebasing.
+   The newer main SHA gets a fresh cut only after its own CI and Checks runs pass.
+7. Dispatch `checks.yml` at the immutable tag and verify its run targets the bump
+   SHA. Only after it passes, dispatch `ci.yml` at the same tag for publication.
 
 ## What CI does with the tag
 
-The tagged push triggers `ci.yml`. Seeing a release tag at `HEAD`, it builds every
-platform binary and then publishes to GitHub only. There is no npm or Homebrew
-step; the GitHub release is the one publish target (see the Distribution section
-in the repo `AGENTS.md`):
+The dispatched `ci.yml` run checks out the immutable release tag, builds every
+platform binary, and publishes the binary and native-addon assets only to GitHub.
+There is no npm or Homebrew publish step. After `release_github` succeeds,
+`release_site` deploys the two Cloudflare Pages projects:
 
-- the **GitHub release**: all `veyyon-*` binaries + `.sha256` checksums (this is
-  what the `curl | sh` installer and the binary self-updater resolve);
+- the **GitHub release**: all `veyyon-*` binaries, native addons, and `.sha256`
+  checksums. This is what the `curl | sh` installer, source installs that fetch a
+  prebuilt native addon, and the binary self-updater resolve;
 - the **website** (`veyyon.dev`), which regenerates `website/changelog.html` from
   `packages/coding-agent/CHANGELOG.md` (reconciled against the live GitHub Releases
   for real dates and permalinks) and deploys it to Cloudflare Pages. This is what
@@ -196,4 +197,4 @@ Pushes to other branches keep cancel-on-newer-push for fast feedback.
 `scripts/ci-concurrency.test.ts` locks the group and cancel expressions
 against regressions.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `2be25bb55e8fdcdafdd98ab8fccb47a8f34c4bcc` on 2026-07-29.*

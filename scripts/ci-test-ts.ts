@@ -227,8 +227,9 @@ export const repoScriptTests = [
 	"scripts/ci-build-native.test.ts",
 	"scripts/ci-release-notes.test.ts",
 	"scripts/ci-release-build-binaries.test.ts",
-	"scripts/release-watch.test.ts",
+	"scripts/release-push.test.ts",
 	"scripts/release-version.test.ts",
+	"scripts/trigger-release.test.ts",
 	"scripts/has-releasable-changes.test.ts",
 	"scripts/release-gate-decision.test.ts",
 	"scripts/link-veyyon.test.ts",
@@ -593,6 +594,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 						"scripts/release-sentinel.test.ts",
 						"scripts/release-changelog.test.ts",
 						"scripts/release-version.test.ts",
+						"scripts/trigger-release.test.ts",
 					],
 				},
 			];
@@ -1106,10 +1108,81 @@ const LIVE_APP_CHURN = ["logs", path.join("agent", "sessions"), "cache", path.jo
 export function isLiveAppChurn(target: string, root: string = REAL_CONFIG_ROOT): boolean {
 	const rel = path.relative(root, target);
 	const posix = rel.split(path.sep).join("/");
+	if (/^profiles\/[^/]+\/run\/daemons(?:\/|$)/.test(posix)) return true;
 	return LIVE_APP_CHURN.some(segment => {
 		const seg = segment.split(path.sep).join("/");
 		return posix === seg || posix.startsWith(`${seg}/`) || posix.includes(`/${seg}/`) || posix.endsWith(`/${seg}`);
 	});
+}
+
+export interface LiveVeyyonProcessOwnership {
+	pid: number;
+	openRealPaths: ReadonlySet<string>;
+}
+
+export interface LiveVeyyonOwnershipSnapshot {
+	supported: boolean;
+	external: readonly LiveVeyyonProcessOwnership[];
+	testOwned: readonly LiveVeyyonProcessOwnership[];
+}
+
+interface RealConfigDiffOptions {
+	/** Boundary snapshots used to prove exact external ownership of SQLite sidecars. */
+	ownership?: readonly LiveVeyyonOwnershipSnapshot[];
+}
+
+type RealConfigChange = {
+	kind: "CREATED" | "DELETED" | "MODIFIED";
+	target: string;
+};
+
+function sqliteDatabaseForSidecar(target: string): string | undefined {
+	const match = /^(.*\.db)-(?:journal|shm|wal)$/.exec(target);
+	return match?.[1];
+}
+
+function processOwnsDatabaseSidecar(process: LiveVeyyonProcessOwnership, target: string): boolean {
+	const database = sqliteDatabaseForSidecar(target);
+	return database !== undefined && process.openRealPaths.has(target) && process.openRealPaths.has(database);
+}
+
+/**
+ * True only when an external Veyyon process held both the exact changed SQLite
+ * sidecar and its primary database at a run boundary, with no test-owned process
+ * holding the same pair.
+ */
+export function isExternallyOwnedDatabaseSidecar(
+	target: string,
+	ownership: readonly LiveVeyyonOwnershipSnapshot[],
+): boolean {
+	if (ownership.some(snapshot => snapshot.testOwned.some(process => processOwnsDatabaseSidecar(process, target)))) {
+		return false;
+	}
+	return ownership.some(snapshot => snapshot.external.some(process => processOwnsDatabaseSidecar(process, target)));
+}
+
+function collectRealConfigChanges(
+	before: Map<string, string>,
+	after: Map<string, string>,
+	options: RealConfigDiffOptions = {},
+): RealConfigChange[] {
+	const changes: RealConfigChange[] = [];
+	for (const [target, fingerprint] of after) {
+		const previous = before.get(target);
+		if (previous === undefined) changes.push({ kind: "CREATED", target });
+		else if (previous !== fingerprint) changes.push({ kind: "MODIFIED", target });
+	}
+	for (const target of before.keys()) {
+		if (!after.has(target)) changes.push({ kind: "DELETED", target });
+	}
+	return changes
+		.filter(change => !options.ownership || !isExternallyOwnedDatabaseSidecar(change.target, options.ownership))
+		.sort((left, right) => formatRealConfigChange(left).localeCompare(formatRealConfigChange(right)));
+}
+
+function formatRealConfigChange(change: RealConfigChange): string {
+	const separator = change.kind === "MODIFIED" ? " " : "  ";
+	return `${change.kind}${separator}${change.target}`;
 }
 
 /**
@@ -1148,63 +1221,108 @@ export function snapshotRealConfigRoot(root: string = REAL_CONFIG_ROOT): Map<str
 	return snapshot;
 }
 
+function readProcFields(target: string): string[] | undefined {
+	try {
+		return nodeFs.readFileSync(target, "utf8").split("\0").filter(Boolean);
+	} catch {
+		return undefined;
+	}
+}
+
+function isVeyyonCommand(args: readonly string[]): boolean {
+	return args.some(arg => {
+		const basename = path.basename(arg).toLowerCase();
+		const normalized = arg.split(path.sep).join("/");
+		return (
+			basename === "vey" ||
+			basename === "veyyon" ||
+			normalized.endsWith("/coding-agent/scripts/veyyon.ts") ||
+			normalized.endsWith("/coding-agent/src/cli.ts")
+		);
+	});
+}
+
+function openRealPaths(procDir: string, pid: number, root: string): ReadonlySet<string> {
+	const paths = new Set<string>();
+	let descriptors: string[];
+	try {
+		descriptors = nodeFs.readdirSync(path.join(procDir, String(pid), "fd"));
+	} catch {
+		return paths;
+	}
+	let cwd: string | undefined;
+	try {
+		cwd = nodeFs.readlinkSync(path.join(procDir, String(pid), "cwd"));
+	} catch {
+		cwd = undefined;
+	}
+	for (const descriptor of descriptors) {
+		let target: string;
+		try {
+			target = nodeFs.readlinkSync(path.join(procDir, String(pid), "fd", descriptor));
+		} catch {
+			continue;
+		}
+		if (target.endsWith(" (deleted)")) target = target.slice(0, -" (deleted)".length);
+		if (!path.isAbsolute(target)) {
+			if (!cwd) continue;
+			target = path.resolve(cwd, target);
+		}
+		const rel = path.relative(root, target);
+		if (rel === "" || (!path.isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${path.sep}`))) {
+			paths.add(path.resolve(target));
+		}
+	}
+	return paths;
+}
+
 /**
- * Whether another veyyon is running right now, other than this test runner.
+ * Capture exact real-data files held by external Veyyon and test-owned processes.
  *
- * This exists because the snapshot diff below cannot tell WHO wrote a file. A
- * developer running the suite while their own veyyon session is open will see
- * that session refresh a token or record usage mid-run, and the diff reports it
- * as a test writing to real data. That happened, and a detector that cries wolf
- * is a detector people learn to ignore, which would cost far more than it saves.
- *
- * The result is never used to skip the check, only to describe it honestly: a
- * diff found while another veyyon was live is reported as UNATTRIBUTABLE rather
- * than as a violation. With no live session the diff is unambiguous and stays a
- * hard failure.
- *
- * Detection is deliberately conservative. Anything that cannot be read is
- * treated as "a session might be running", because reporting a real violation as
- * unattributable is a far cheaper mistake than the reverse.
+ * Test ownership comes from the runner's exact environment markers, never from a
+ * substring in argv. An unreadable `/proc` yields no ownership proof.
  */
-export function liveVeyyonProcessCount(procDir = "/proc", selfPid = process.pid): number {
+export function scanLiveVeyyonOwnership(
+	procDir = "/proc",
+	root: string = REAL_CONFIG_ROOT,
+	selfPid = process.pid,
+	sandboxHome: string = SANDBOX_HOME,
+): LiveVeyyonOwnershipSnapshot {
 	let entries: string[];
 	try {
 		entries = nodeFs.readdirSync(procDir);
 	} catch {
-		// No /proc (macOS, Windows): assume a session could be live rather than
-		// claiming an attribution this platform cannot support.
-		return 1;
+		return { supported: false, external: [], testOwned: [] };
 	}
-	let count = 0;
+	const external: LiveVeyyonProcessOwnership[] = [];
+	const testOwned: LiveVeyyonProcessOwnership[] = [];
 	for (const entry of entries) {
 		const pid = Number(entry);
 		if (!Number.isInteger(pid) || pid === selfPid) continue;
-		let cmdline: string;
-		try {
-			cmdline = nodeFs.readFileSync(path.join(procDir, entry, "cmdline"), "utf8");
-		} catch {
-			continue;
-		}
-		// The runner and its children all carry the sandbox HOME, so they are
-		// excluded by the test-process marker rather than by name.
-		if (cmdline.includes(SANDBOX_HOME)) continue;
-		if (/veyyon|\bvey\b/.test(cmdline)) count += 1;
+		const args = readProcFields(path.join(procDir, entry, "cmdline"));
+		const environment = readProcFields(path.join(procDir, entry, "environ")) ?? [];
+		const ownedByTest =
+			environment.includes(`HOME=${sandboxHome}`) || environment.includes(`VEYYON_TEST_REAL_CONFIG_ROOT=${root}`);
+		if (!ownedByTest && (!args || !isVeyyonCommand(args))) continue;
+		const process = { pid, openRealPaths: openRealPaths(procDir, pid, root) };
+		(ownedByTest ? testOwned : external).push(process);
 	}
-	return count;
+	return { supported: true, external, testOwned };
 }
 
-/** Every path added, removed or modified between two snapshots. */
-export function diffRealConfigRoot(before: Map<string, string>, after: Map<string, string>): string[] {
-	const changes: string[] = [];
-	for (const [target, fingerprint] of after) {
-		const previous = before.get(target);
-		if (previous === undefined) changes.push(`CREATED  ${target}`);
-		else if (previous !== fingerprint) changes.push(`MODIFIED ${target}`);
-	}
-	for (const target of before.keys()) {
-		if (!after.has(target)) changes.push(`DELETED  ${target}`);
-	}
-	return changes.sort();
+/** Number of external Veyyon processes visible to the ownership scanner. */
+export function liveVeyyonProcessCount(procDir = "/proc", selfPid = process.pid): number {
+	const ownership = scanLiveVeyyonOwnership(procDir, REAL_CONFIG_ROOT, selfPid);
+	return ownership.supported ? ownership.external.length : 1;
+}
+
+/** Every relevant path added, removed or modified between two snapshots. */
+export function diffRealConfigRoot(
+	before: Map<string, string>,
+	after: Map<string, string>,
+	options: RealConfigDiffOptions = {},
+): string[] {
+	return collectRealConfigChanges(before, after, options).map(formatRealConfigChange);
 }
 
 // Skipped when imported (e.g. by the runner's own unit tests), where
@@ -1223,11 +1341,11 @@ if (import.meta.main) {
 	// Third protection layer: PROOF. Layers one and two (a sandboxed HOME for every
 	// child, and the tripwire preload) are meant to make real-data writes
 	// impossible, but a safety mechanism believed to work and never checked is how
-	// the original incident happened. So record exactly what the real veyyon
-	// directory contains before the suite runs and verify afterwards that nothing
-	// moved. Any change FAILS the run even when every test passed: a green suite
-	// that modified real credentials is the worst possible thing to report as
-	// success.
+	// the original incident happened. Record the real Veyyon directory before the
+	// suite and compare it afterwards. Only SQLite sidecars exactly owned by an
+	// external Veyyon process at a boundary are attributable. Every other change
+	// remains a failure or an explicit unattributable result.
+	const ownershipBefore = scanLiveVeyyonOwnership();
 	const before = snapshotRealConfigRoot();
 
 	try {
@@ -1241,22 +1359,31 @@ if (import.meta.main) {
 	} finally {
 		// In `finally` on purpose: a failing or interrupted run is exactly when a
 		// half-finished suite is most likely to have left damage behind.
-		const changes = diffRealConfigRoot(before, snapshotRealConfigRoot());
+		const ownershipAfter = scanLiveVeyyonOwnership();
+		const ownershipEvidenceAvailable = ownershipBefore.supported && ownershipAfter.supported;
+		const liveProcessCount = Math.max(
+			ownershipBefore.supported ? ownershipBefore.external.length : 1,
+			ownershipAfter.supported ? ownershipAfter.external.length : 1,
+		);
+		const changes = diffRealConfigRoot(before, snapshotRealConfigRoot(), {
+			ownership: [ownershipBefore, ownershipAfter],
+		});
 		if (changes.length > 0) {
 			const listing = changes.map(change => `  ${change}\n`).join("");
-			if (liveVeyyonProcessCount() > 0) {
-				// Another veyyon was running, so these writes cannot be attributed to the
-				// tests. Reported in full and NOT failed: the alternative is a red run
-				// every time a developer keeps their own session open, which trains
-				// people to ignore the one check that would catch real damage. The
-				// tripwire preload remains the enforcing layer and is unaffected.
+			if (liveProcessCount > 0) {
+				// Exact externally owned SQLite sidecars have already been removed.
+				// Anything left cannot be attributed safely, so report it in full
+				// without blaming the tests. The preload remains the enforcing layer
+				// for writes attempted by a test process.
 				process.stderr.write(
 					`\nREAL-DATA DIFF (UNATTRIBUTABLE): ${changes.length} path(s) inside ${REAL_CONFIG_ROOT} changed ` +
-						`while another veyyon session was running.\n${listing}` +
-						`These are most likely that session's own writes (a token refresh, usage recording). ` +
-						`To get an authoritative check, close every veyyon session and re-run. ` +
-						`A test that genuinely wrote here would also have tripped the preload guard ` +
-						`(packages/utils/test/helpers/real-data-tripwire.ts) and failed loudly.\n`,
+						(ownershipEvidenceAvailable
+							? "while another Veyyon session was running.\n"
+							: "and exact process ownership is unavailable on this platform.\n") +
+						`${listing}These paths were not exactly owned by an external Veyyon process. ` +
+						`Close every Veyyon session and re-run to make the writer unambiguous. ` +
+						`A test write through a guarded API also fails immediately in ` +
+						`packages/utils/test/helpers/real-data-tripwire.ts.\n`,
 				);
 			} else {
 				process.exitCode = 1;

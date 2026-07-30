@@ -45,6 +45,62 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
  */
 export const MAX_STRANDED_TAGS = 2;
 
+/** Every independently scheduled public source gate must be green for the exact main commit. */
+export const REQUIRED_SOURCE_WORKFLOWS = ["CI", "Checks", "Security"] as const;
+
+export interface SourceWorkflowRun {
+	name: string;
+	headSha: string;
+	status: string;
+	conclusion: string | null;
+}
+
+const RELEASE_ARTIFACTS = [
+	"veyyon-linux-x64",
+	"veyyon-linux-arm64",
+	"veyyon-darwin-x64",
+	"veyyon-darwin-arm64",
+	"veyyon-windows-x64.exe",
+	"veyyon_natives.linux-x64-baseline.node",
+	"veyyon_natives.linux-x64-modern.node",
+	"veyyon_natives.linux-arm64.node",
+	"veyyon_natives.darwin-x64-baseline.node",
+	"veyyon_natives.darwin-arm64.node",
+	"veyyon_natives.win32-x64-baseline.node",
+] as const;
+
+/** Exact distribution manifest: every binary/native artifact and its installer checksum sidecar. */
+export const REQUIRED_RELEASE_ASSET_NAMES: readonly string[] = Object.freeze(
+	RELEASE_ARTIFACTS.flatMap(name => [name, `${name}.sha256`]),
+);
+const REQUIRED_RELEASE_ASSET_LOOKUP: Readonly<Record<string, true>> = Object.freeze(
+	Object.fromEntries(REQUIRED_RELEASE_ASSET_NAMES.map(name => [name, true] as const)),
+);
+
+export interface PublishedAssetVerification {
+	ok: boolean;
+	missing: string[];
+	unexpected: string[];
+}
+
+/** Compare GitHub's published asset names with the complete release manifest. */
+export function verifyPublishedReleaseAssets(actualNames: readonly string[]): PublishedAssetVerification {
+	const actual = new Set(actualNames);
+	const missing = REQUIRED_RELEASE_ASSET_NAMES.filter(name => !actual.has(name));
+	const unexpected = [...actual].filter(name => !REQUIRED_RELEASE_ASSET_LOOKUP[name]).sort();
+	return { ok: missing.length === 0 && unexpected.length === 0, missing, unexpected };
+}
+
+export function assertPublishedReleaseAssets(actualNames: readonly string[]): void {
+	const result = verifyPublishedReleaseAssets(actualNames);
+	if (result.ok) return;
+	const details = [
+		result.missing.length ? `missing: ${result.missing.join(", ")}` : "",
+		result.unexpected.length ? `unexpected: ${result.unexpected.join(", ")}` : "",
+	].filter(Boolean);
+	throw new Error(`published release asset manifest is incomplete or incoherent (${details.join("; ")})`);
+}
+
 /** A CI conclusion, as the GitHub API reports it. `null` means the run has not finished. */
 export type CiConclusion = "success" | "failure" | "cancelled" | "timed_out" | "skipped" | "neutral" | null;
 
@@ -65,6 +121,8 @@ export interface ReleaseGateFacts {
 	silentTags: SilentTag[];
 	/** The commit the gate would release. */
 	mainHeadSha: string;
+	/** Workflow runs observed for this exact main commit, newest run first. */
+	sourceWorkflowRuns: SourceWorkflowRun[];
 }
 
 export interface ReleaseGateDecision {
@@ -82,16 +140,50 @@ export interface ReleaseGateDecision {
 }
 
 /** CI conclusions that mean the run is over and did not publish. */
-const FAILED_CONCLUSIONS: ReadonlySet<string> = new Set(["failure", "cancelled", "timed_out"]);
+const FAILED_CONCLUSIONS: Readonly<Record<string, true>> = Object.freeze({
+	failure: true,
+	cancelled: true,
+	timed_out: true,
+});
 
 /**
- * Decide the gate from facts alone.
- *
- * Order matters. The ordinary path is checked first and is untouched by any of this: a waiting
- * `## [Unreleased]` bullet cuts, exactly as before. Everything after it only runs when the changelog
- * says there is nothing to ship, which is the state a stranded cut leaves behind.
+ * Decide the gate from facts alone. Exact-SHA CI, Checks, and Security evidence
+ * is always evaluated first; changelog and stranded-tag signals may choose
+ * whether to cut only after all source gates are green.
  */
+export function requiredSourceGate(facts: ReleaseGateFacts): ReleaseGateDecision | undefined {
+	for (const name of REQUIRED_SOURCE_WORKFLOWS) {
+		const run = facts.sourceWorkflowRuns.find(
+			candidate => candidate.name === name && candidate.headSha === facts.mainHeadSha,
+		);
+		if (!run) {
+			return {
+				cut: false,
+				reason: `${name} has no run for exact main SHA ${facts.mainHeadSha}; waiting rather than releasing an unproved tree.`,
+				needsAttention: false,
+			};
+		}
+		if (run.status !== "completed") {
+			return {
+				cut: false,
+				reason: `${name} is ${run.status} for exact main SHA ${facts.mainHeadSha}; waiting for a green result.`,
+				needsAttention: false,
+			};
+		}
+		if (run.conclusion !== "success") {
+			return {
+				cut: false,
+				reason: `${name} concluded ${run.conclusion ?? "without a conclusion"} for exact main SHA ${facts.mainHeadSha}; release is blocked.`,
+				needsAttention: true,
+			};
+		}
+	}
+	return undefined;
+}
+
 export function decideReleaseGate(facts: ReleaseGateFacts): ReleaseGateDecision {
+	const sourceGate = requiredSourceGate(facts);
+	if (sourceGate) return sourceGate;
 	if (facts.hasUnreleasedBullets) {
 		return {
 			cut: true,
@@ -131,9 +223,8 @@ export function decideReleaseGate(facts: ReleaseGateFacts): ReleaseGateDecision 
 		};
 	}
 
-	if (!FAILED_CONCLUSIONS.has(newest.conclusion)) {
+	if (!FAILED_CONCLUSIONS[newest.conclusion]) {
 		// CI succeeded and yet no release exists for the tag. Cutting a new version would not fix that
-		// and would bury the evidence, so this is reported and left alone.
 		return {
 			cut: false,
 			reason:
@@ -202,11 +293,60 @@ function compareVersions(a: string, b: string): number {
 	return 0;
 }
 
-/** Gather the facts from git and the GitHub API. `undefined` when the API could not be reached. */
+/** Resolve the exact tree whose changelogs the gate read. */
+async function checkedOutHeadSha(): Promise<string | undefined> {
+	const proc = Bun.spawn(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" });
+	const [stdout, stderr, exitCode] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]);
+	if (exitCode !== 0) {
+		console.error(`git rev-parse HEAD failed (exit ${exitCode}): ${stderr.trim()}`);
+		return undefined;
+	}
+	return stdout.trim();
+}
+
+/** Gather exact-tree workflow, changelog, tag, and publication facts. */
 async function gatherFacts(): Promise<ReleaseGateFacts | undefined> {
 	const hasUnreleasedBullets = hasReleasableChanges(await readReleasableChangelogs(REPO_ROOT));
-	const mainHeadSha = (await gh(["api", "repos/{owner}/{repo}/commits/main", "--jq", ".sha"]))?.trim();
-	if (mainHeadSha === undefined) return undefined;
+	const localHeadSha = await checkedOutHeadSha();
+	if (localHeadSha === undefined) return undefined;
+	const remoteMainSha = (await gh(["api", "repos/{owner}/{repo}/commits/main", "--jq", ".sha"]))?.trim();
+	if (remoteMainSha === undefined) return undefined;
+	if (remoteMainSha !== localHeadSha) {
+		console.error(
+			`checked-out main is ${localHeadSha}, but GitHub main is ${remoteMainSha}; exact-SHA gate is stale`,
+		);
+		return undefined;
+	}
+	const mainHeadSha = localHeadSha;
+
+	const workflowRunsOutput = await gh([
+		"api",
+		`repos/{owner}/{repo}/actions/runs?head_sha=${mainHeadSha}&per_page=100`,
+		"--jq",
+		'.workflow_runs[] | [.name, .head_sha, .status, (.conclusion // "")] | @tsv',
+	]);
+	if (workflowRunsOutput === undefined) return undefined;
+	const sourceWorkflowRuns: SourceWorkflowRun[] = [];
+	const seenWorkflows = new Set<string>();
+	for (const line of workflowRunsOutput.split("\n")) {
+		const [name, headSha, status, conclusion = ""] = line.split("\t");
+		if (
+			!name ||
+			!headSha ||
+			!status ||
+			!REQUIRED_SOURCE_WORKFLOWS.includes(name as (typeof REQUIRED_SOURCE_WORKFLOWS)[number])
+		) {
+			continue;
+		}
+		// The endpoint is newest-first. A successful rerun supersedes an older failed attempt.
+		if (seenWorkflows.has(name)) continue;
+		seenWorkflows.add(name);
+		sourceWorkflowRuns.push({ name, headSha, status, conclusion: conclusion || null });
+	}
 
 	// The latest PUBLISHED release, which is the line a silent tag is above.
 	const latestPublished = (
@@ -214,16 +354,32 @@ async function gatherFacts(): Promise<ReleaseGateFacts | undefined> {
 	)?.trim();
 	if (latestPublished === undefined) return undefined;
 
+	const releasedTagsOutput = await gh([
+		"release",
+		"list",
+		"--limit",
+		"50",
+		"--json",
+		"tagName",
+		"--jq",
+		".[].tagName",
+	]);
+	if (releasedTagsOutput === undefined) return undefined;
 	const releasedTags = new Set(
-		((await gh(["release", "list", "--limit", "50", "--json", "tagName", "--jq", ".[].tagName"])) ?? "")
+		releasedTagsOutput
 			.split("\n")
 			.map(line => line.trim())
 			.filter(line => line.length > 0),
 	);
 
-	const tagLines = (
-		(await gh(["api", "repos/{owner}/{repo}/tags?per_page=50", "--jq", '.[] | .name + " " + .commit.sha'])) ?? ""
-	)
+	const tagOutput = await gh([
+		"api",
+		"repos/{owner}/{repo}/tags?per_page=50",
+		"--jq",
+		'.[] | .name + " " + .commit.sha',
+	]);
+	if (tagOutput === undefined) return undefined;
+	const tagLines = tagOutput
 		.split("\n")
 		.map(line => line.trim())
 		.filter(line => line.length > 0);
@@ -235,14 +391,14 @@ async function gatherFacts(): Promise<ReleaseGateFacts | undefined> {
 		if (!/^v\d+\.\d+\.\d+$/.test(tag)) continue;
 		if (releasedTags.has(tag)) continue;
 		if (latestPublished.length > 0 && compareVersions(tag, latestPublished) <= 0) continue;
-		const conclusion = (
-			await gh([
-				"api",
-				`repos/{owner}/{repo}/actions/runs?head_sha=${sha}&per_page=1`,
-				"--jq",
-				".workflow_runs[0].conclusion",
-			])
-		)?.trim();
+		const conclusionOutput = await gh([
+			"api",
+			`repos/{owner}/{repo}/actions/runs?head_sha=${sha}&per_page=1`,
+			"--jq",
+			".workflow_runs[0].conclusion",
+		]);
+		if (conclusionOutput === undefined) return undefined;
+		const conclusion = conclusionOutput.trim();
 		silentTags.push({
 			tag,
 			sha,
@@ -251,23 +407,53 @@ async function gatherFacts(): Promise<ReleaseGateFacts | undefined> {
 	}
 	silentTags.sort((a, b) => compareVersions(b.tag, a.tag));
 
-	return { hasUnreleasedBullets, silentTags, mainHeadSha };
+	return { hasUnreleasedBullets, silentTags, mainHeadSha, sourceWorkflowRuns };
+}
+
+async function verifyPublishedAssetManifest(tag: string): Promise<void> {
+	const output = await gh(["release", "view", tag, "--json", "assets", "--jq", ".assets[].name"]);
+	if (output === undefined) throw new Error(`could not establish publication state for ${tag}`);
+	const names = output
+		.split("\n")
+		.map(name => name.trim())
+		.filter(Boolean);
+	assertPublishedReleaseAssets(names);
+	console.log(`verified ${names.length} exact release assets for ${tag}`);
 }
 
 if (import.meta.main) {
-	const facts = await gatherFacts();
-	if (!facts) {
-		// Fall back to the changelog signal alone, LOUDLY. The alternative is refusing every release
-		// whenever the API is unreachable, which turns a transient outage into a release freeze.
-		const hasUnreleasedBullets = hasReleasableChanges(await readReleasableChangelogs(REPO_ROOT));
-		console.error(
-			"could not reach the GitHub API; deciding on the changelog alone, so a stranded tag will not be recovered.",
-		);
-		console.log(hasUnreleasedBullets ? "true" : "false");
-		process.exit(0);
-	}
+	if (process.argv[2] === "verify-assets") {
+		const tag = process.argv[3];
+		if (!tag) {
+			console.error("usage: release-gate-decision.ts verify-assets <tag>");
+			process.exit(1);
+		}
+		try {
+			await verifyPublishedAssetManifest(tag);
+		} catch (error) {
+			console.error(`release asset verification failed: ${(error as Error).message}`);
+			process.exit(1);
+		}
+	} else {
+		const facts = await gatherFacts();
+		if (!facts) {
+			console.error(
+				"could not establish exact-SHA CI/Checks/Security or GitHub publication state; release selection fails closed.",
+			);
+			process.exit(1);
+		}
 
-	const decision = decideReleaseGate(facts);
-	console.error(decision.needsAttention ? `RELEASE NEEDS ATTENTION: ${decision.reason}` : decision.reason);
-	console.log(decision.cut ? "true" : "false");
+		if (process.argv.includes("--green-only")) {
+			const sourceGate = requiredSourceGate(facts);
+			if (sourceGate) {
+				console.error(`release source gate failed: ${sourceGate.reason}`);
+				process.exit(1);
+			}
+			console.log("true");
+		} else {
+			const decision = decideReleaseGate(facts);
+			console.error(decision.needsAttention ? `RELEASE NEEDS ATTENTION: ${decision.reason}` : decision.reason);
+			console.log(decision.cut ? "true" : "false");
+		}
+	}
 }

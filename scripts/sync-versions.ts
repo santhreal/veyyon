@@ -7,9 +7,9 @@
  * Run:
  *     bun scripts/sync-versions.ts
  *
- * Hand-run after a version bump that `bun run release` did not perform, which is
- * the only case it is for: the release pipeline already rewrites these ranges, so
- * running this during a release would be redoing its work. It edits every
+ * Hand-run after a version bump that the Release workflow did not perform, which
+ * is the only case it is for: the release cutter already rewrites these ranges, so
+ * running this during a release would redo its work. It edits every
  * package manifest under `packages/` in place and prints what it changed.
  *
  * This is about the INTERNAL `@veyyon/*` ranges only. Third-party versions have a
@@ -62,9 +62,8 @@ for (const [name, version] of Object.entries(versionMap).sort()) {
 const versions = new Set(Object.values(versionMap));
 if (versions.size > 1) {
 	console.error("\n❌ ERROR: Not all packages have the same version!");
-	console.error("Expected lockstep versioning. Run the release script with the next version:");
-	console.error("  bun scripts/release.ts <version>");
-	console.error("Or update all package versions consistently before running this script.");
+	console.error("Expected lockstep versioning. Version changes are owned by the Release workflow.");
+	console.error("Restore the package versions, then trigger the workflow with: bun run release [version]");
 
 	process.exit(1);
 }

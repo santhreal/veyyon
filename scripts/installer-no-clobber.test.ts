@@ -56,8 +56,8 @@ describe("the alias is never written over a file the installer did not create", 
 		expect(shLinkAlias).toContain('[ "$(readlink "$link" 2>/dev/null)" = "$target" ]');
 	});
 
-	it("install.ps1 rewrites only a shim that already forwards to our binary", () => {
-		expect(ps1InstallAlias).toContain("$existing.Contains($Target)");
+	it("install.ps1 rewrites only a shim with its exact forwarding command", () => {
+		expect(ps1InstallAlias).toContain("Test-AliasBodyForTarget -Body $existing -Target $Target");
 		expect(ps1InstallAlias).toContain("already points at $BinName");
 	});
 
@@ -222,12 +222,16 @@ describe("uninstall does not delete an alias the install refused to create", () 
 		expect(body).toContain('"$BinName.cmd"');
 	});
 
-	it("install.ps1 matches the forwarded path, not the whole file", () => {
-		// A shim written by an older installer version has a different header and
-		// the same target; a whole-file comparison would refuse to reclaim it.
+	it("install.ps1 matches an exact forwarding line, not a path substring", () => {
+		// A shim written by an older installer can have a different header and
+		// the same forwarding line. A user's script that only mentions our path
+		// must not become installer-owned.
+		const helper = fnBody(installPs1, "function Test-AliasBodyForTarget {", "\n}\n");
+		expect(helper).toContain("$line.Trim() -ieq $forward");
+		expect(helper).not.toContain(".Contains(");
 		const fn = installPs1.slice(installPs1.indexOf("function Test-AliasShimIsOurs {"));
 		const body = fn.slice(0, fn.indexOf("\nfunction "));
-		expect(body).toContain("$body.Contains($target)");
+		expect(body).toContain("Test-AliasBodyForTarget -Body $body -Target $target");
 	});
 });
 

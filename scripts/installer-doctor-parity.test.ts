@@ -55,10 +55,8 @@ describe("doctor verifies where the command resolves, not merely that it exists"
 	it("shadowing warns but never aborts the install", () => {
 		// The installed binary is fine; only PATH order is wrong, and that is the
 		// user's to fix. `die`/`throw` here would fail an otherwise good install.
-		const shFn = installSh.slice(
-			installSh.indexOf("check_not_shadowed() {"),
-			installSh.indexOf("# ---- post-install"),
-		);
+		const shFrom = installSh.indexOf("check_not_shadowed() {");
+		const shFn = installSh.slice(shFrom, installSh.indexOf("\n}\n", shFrom));
 		expect(shFn).toContain("warn ");
 		expect(shFn).not.toContain("die ");
 		const psFn = installPs1.slice(installPs1.indexOf("function Test-NotShadowed {"));
@@ -75,17 +73,18 @@ describe("doctor verifies where the command resolves, not merely that it exists"
 	});
 });
 
-describe("doctor verifies the installed binary is the version the release claims", () => {
-	it("both installers compare the reported version against the release tag", () => {
+describe("a release binary is the version its tag claims before replacement", () => {
+	it("both installers run the staged executable's version gate", () => {
 		// The checksum only proves the bytes match the published asset. It cannot
 		// catch a release that uploaded the wrong binary for its tag, or a stale
-		// cached download — both install "successfully" and then run the wrong
-		// version forever. The self-updater already gated on this; the installers
-		// did not, and that asymmetry is what these lock shut.
+		// cached download. This must be checked on the staged path while the
+		// previous executable and installer metadata are still untouched.
 		expect(installSh).toContain("version_from_output() {");
-		expect(installSh).toContain('doctor "$(install_dir)/$BIN_NAME" "$LATEST"');
+		expect(installSh).toContain('require_release_version "$tmpbin" "$LATEST" "downloaded"');
 		expect(installPs1).toContain("function ConvertFrom-VersionOutput {");
-		expect(installPs1).toContain("Invoke-Doctor -Command $OutPath -ExpectedTag $Latest");
+		expect(installPs1).toContain(
+			'Assert-ReleaseVersion -Command $StagingPath -ExpectedTag $Latest -Phase "downloaded"',
+		);
 	});
 
 	it("both strip a leading v from the tag before comparing", () => {
@@ -210,17 +209,15 @@ describe("doctor proves the native addon loads", () => {
 
 /**
  * A checksum proves the bytes are the ones that were published. It cannot tell
- * you the release has no build for this platform.
+ * whether the release published the tag's version or whether the native build
+ * works for this platform.
  *
- * That gap is the musl case and every architecture-mismatch case: the download
- * verifies, installs, starts, answers `--version` from the JS entry point, and
- * dies on the user's first real command. The post-install doctor catches it,
- * but only after the binary is in place, the `vey` alias is linked, the shell
- * profile is edited and the completion files are written. Probing the STAGED
- * download instead costs a temp file the trap already removes and leaves the
- * system untouched.
+ * Either gap must be rejected while the download is STAGED. Discovering it
+ * after the move destroys the previous executable and can rewrite the `vey`
+ * alias, shell profile, and completions before reporting failure. Staging makes
+ * both checks transactional: rejection costs only the owned temporary file.
  */
-describe("a release that cannot run is refused before it touches the system", () => {
+describe("an invalid release is refused before it touches the system", () => {
 	/** The body of one shell function, so ordering is asserted inside the caller
 	 * that matters rather than against the first match anywhere in the file. */
 	function shFn(name: string): string {
@@ -230,27 +227,30 @@ describe("a release that cannot run is refused before it touches the system", ()
 		return installSh.slice(from, to === -1 ? undefined : to);
 	}
 
-	it("install.sh probes the staged download, not just the installed binary", () => {
+	it("install.sh checks version and native search on the staged download", () => {
+		expect(installSh).toContain('require_release_version "$tmpbin" "$LATEST" "downloaded"');
 		expect(installSh).toContain('doctor_natives "$tmpbin" "downloaded"');
 	});
 
-	it("the probe runs after the checksum and before the binary is moved into place", () => {
-		// Order is the whole point. After finalize_binary this is a report; before
-		// it, it is a gate.
+	it("both staged gates run after the checksum and before the move", () => {
+		// Order is the whole point. After finalize_binary these are reports;
+		// before it, they preserve the working executable.
 		const body = shFn("install_binary");
 		const checksum = body.indexOf('verify_release_binary "$tmpbin"');
-		const preflight = body.indexOf('doctor_natives "$tmpbin" "downloaded"');
+		const version = body.indexOf('require_release_version "$tmpbin" "$LATEST" "downloaded"');
+		const natives = body.indexOf('doctor_natives "$tmpbin" "downloaded"');
 		const finalize = body.indexOf('finalize_binary "$tmpbin"');
 		expect(checksum).toBeGreaterThan(-1);
-		expect(preflight).toBeGreaterThan(checksum);
-		expect(finalize).toBeGreaterThan(preflight);
+		expect(version).toBeGreaterThan(checksum);
+		expect(natives).toBeGreaterThan(version);
+		expect(finalize).toBeGreaterThan(natives);
 	});
 
-	it("nothing the user can see is written before the probe", () => {
-		// The alias, the PATH edit and the completions all follow finalize_binary,
-		// so pinning the probe ahead of finalize pins it ahead of all three.
+	it("nothing the user can see is written before the version gate", () => {
+		// The alias, PATH edit, and completions all follow finalize_binary, so the
+		// earliest gate must precede every one of them.
 		const body = shFn("install_binary");
-		const preflight = body.indexOf('doctor_natives "$tmpbin" "downloaded"');
+		const preflight = body.indexOf('require_release_version "$tmpbin" "$LATEST" "downloaded"');
 		expect(preflight).toBeGreaterThan(-1);
 		for (const mutation of [
 			'link_alias "$(install_dir)"',
@@ -261,14 +261,15 @@ describe("a release that cannot run is refused before it touches the system", ()
 		}
 	});
 
-	it("the staged file is made executable before it is probed", () => {
-		// curl writes it 0644; running it without this fails on permissions and
-		// reads as a broken addon.
+	it("the staged file is executable before either gate runs", () => {
+		// curl writes it 0644; both --version and the native probe must execute it.
 		const body = shFn("install_binary");
 		const chmod = body.indexOf('chmod +x "$tmpbin"');
-		const preflight = body.indexOf('doctor_natives "$tmpbin" "downloaded"');
+		const version = body.indexOf('require_release_version "$tmpbin" "$LATEST" "downloaded"');
+		const natives = body.indexOf('doctor_natives "$tmpbin" "downloaded"');
 		expect(chmod).toBeGreaterThan(-1);
-		expect(chmod).toBeLessThan(preflight);
+		expect(chmod).toBeLessThan(version);
+		expect(chmod).toBeLessThan(natives);
 	});
 
 	it("the two runs are the same function, told which phase they are in", () => {
@@ -280,37 +281,44 @@ describe("a release that cannot run is refused before it touches the system", ()
 		expect(installSh).toContain('ok "native addon loads ($_dn_phase)');
 	});
 
-	it("install.ps1 gates the same way, on the staged download", () => {
+	it("install.ps1 applies both gates to the staged download", () => {
 		// Windows had the identical ordering gap: verified, moved into place,
-		// aliased, PATH-edited, and only then asked whether it runs.
+		// aliased, PATH-edited, and only then asked whether it was the right build.
+		expect(installPs1).toContain(
+			'Assert-ReleaseVersion -Command $StagingPath -ExpectedTag $Latest -Phase "downloaded"',
+		);
 		expect(installPs1).toContain('Test-NativeAddon -Command $StagingPath -Phase "downloaded"');
-		expect(installPs1).toContain('param([string]$Command, [string]$Phase = "installed")');
-		expect(installPs1).toContain("native addon loads ($Phase)");
 	});
 
-	it("install.ps1 probes before the move, the alias and the PATH edit", () => {
-		// Scoped to Install-Binary: the source-install branch calls the same
-		// helpers, and matching those instead would prove nothing about ordering.
+	it("install.ps1 gates version and native search before every mutation", () => {
+		// Scoped to Install-Binary: the source-install branch calls some of the
+		// same helpers and matching those would prove nothing about ordering.
 		const from = installPs1.indexOf("function Install-Binary {");
 		expect(from).toBeGreaterThan(-1);
 		const body = installPs1.slice(from);
-		const preflight = body.indexOf('Test-NativeAddon -Command $StagingPath -Phase "downloaded"');
-		expect(preflight).toBeGreaterThan(-1);
+		const version = body.indexOf(
+			'Assert-ReleaseVersion -Command $StagingPath -ExpectedTag $Latest -Phase "downloaded"',
+		);
+		const natives = body.indexOf('Test-NativeAddon -Command $StagingPath -Phase "downloaded"');
+		expect(version).toBeGreaterThan(-1);
+		expect(natives).toBeGreaterThan(version);
 		for (const mutation of [
 			"Move-StagedBinaryIntoPlace -StagingPath $StagingPath -TargetPath $OutPath",
 			"Install-Alias -Target $OutPath",
 			"$needsRestart = Add-ToPath",
 			"Install-Completions -BinPath $OutPath",
 		]) {
-			expect(body.indexOf(mutation), mutation).toBeGreaterThan(preflight);
+			expect(body.indexOf(mutation), mutation).toBeGreaterThan(natives);
 		}
 	});
 
-	it("install.ps1 removes the staged file when the probe rejects it", () => {
+	it("install.ps1 removes the staged file when either gate rejects it", () => {
 		// A rejected download must not sit in the install directory waiting to be
 		// mistaken for a partial install.
 		const body = installPs1.slice(installPs1.indexOf("function Install-Binary {"));
-		const preflight = body.indexOf('Test-NativeAddon -Command $StagingPath -Phase "downloaded"');
+		const preflight = body.indexOf(
+			'Assert-ReleaseVersion -Command $StagingPath -ExpectedTag $Latest -Phase "downloaded"',
+		);
 		const cleanup = body.indexOf("Remove-Item $StagingPath -ErrorAction SilentlyContinue", preflight);
 		const move = body.indexOf("Move-StagedBinaryIntoPlace -StagingPath $StagingPath");
 		expect(cleanup).toBeGreaterThan(preflight);

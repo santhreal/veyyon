@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { __tripwire, REAL_CONFIG_ROOT_ENV } from "./helpers/real-data-tripwire";
 
 /**
@@ -83,6 +84,92 @@ describe("the real-data tripwire refuses writes into the real veyyon directory",
 	});
 
 	/**
+	 * Keeps copy sources readable while still protecting the destination argument.
+	 * A missing protected source must reach native ENOENT rather than the tripwire.
+	 */
+	it("allows a protected copy source but refuses a protected copy destination", () => {
+		const destination = path.join(os.tmpdir(), `tripwire-copy-${process.pid}`);
+		try {
+			fs.copyFileSync(probe("copy-source"), destination);
+			throw new Error("copy from nonexistent source unexpectedly succeeded");
+		} catch (error) {
+			expect(String(error)).not.toContain("REAL-DATA TRIPWIRE");
+			expect((error as NodeJS.ErrnoException).code).toBe("ENOENT");
+		}
+		expect(() => fs.copyFileSync(destination, probe("copy-destination"))).toThrow(/REAL-DATA TRIPWIRE/);
+	});
+
+	describe("guarded open contracts", () => {
+		/**
+		 * Proves every open variant carries the same active-binding marker as the
+		 * other mutators. A late preload must never look guarded when it is not.
+		 */
+		it("marks callback, synchronous, and promise open bindings as guarded", () => {
+			expect(__tripwire.isGuarded(fs.open)).toBe(true);
+			expect(__tripwire.isGuarded(fs.openSync)).toBe(true);
+			expect(__tripwire.isGuarded(fs.promises.open)).toBe(true);
+		});
+
+		/**
+		 * Locks out write, create, and truncate modes across string and numeric
+		 * flags, including the O_RDONLY|O_TRUNC edge that can still truncate.
+		 */
+		it("refuses every mutating open variant before the native syscall", () => {
+			expect(() => fs.openSync(probe("open-sync.db"), "w")).toThrow(/REAL-DATA TRIPWIRE/);
+			expect(() => fs.open(probe("open-callback.db"), "r+", () => {})).toThrow(/REAL-DATA TRIPWIRE/);
+			expect(() => fs.promises.open(probe("open-promise.db"), fs.constants.O_RDONLY | fs.constants.O_TRUNC)).toThrow(
+				/REAL-DATA TRIPWIRE/,
+			);
+		});
+
+		/**
+		 * Preserves legitimate read access. The safe nonexistent probe must reach
+		 * the operating system and return ENOENT rather than a tripwire refusal.
+		 */
+		it("delegates read-only open variants to the native filesystem", async () => {
+			const syncTarget = probe("read-sync.db");
+			try {
+				fs.openSync(syncTarget, "r");
+				throw new Error("read-only open unexpectedly succeeded");
+			} catch (error) {
+				expect(String(error)).not.toContain("REAL-DATA TRIPWIRE");
+				expect((error as NodeJS.ErrnoException).code).toBe("ENOENT");
+			}
+
+			const callbackResult = Promise.withResolvers<NodeJS.ErrnoException | null>();
+			fs.open(probe("read-callback.db"), "r", error => callbackResult.resolve(error));
+			const callbackError = await callbackResult.promise;
+			expect(String(callbackError)).not.toContain("REAL-DATA TRIPWIRE");
+			expect(callbackError?.code).toBe("ENOENT");
+
+			await expect(fs.promises.open(probe("read-promise.db"), "r")).rejects.toMatchObject({ code: "ENOENT" });
+		});
+
+		/**
+		 * Prevents the mutator registry from silently turning directory reads into
+		 * forbidden writes.
+		 */
+		it("delegates synchronous and promise opendir reads", async () => {
+			expect(__tripwire.isGuarded(fs.opendirSync)).toBe(false);
+			expect(__tripwire.isGuarded(fs.promises.opendir)).toBe(false);
+			try {
+				const directory = fs.opendirSync(probe("read-dir"));
+				directory.closeSync();
+			} catch (error) {
+				expect(String(error)).not.toContain("REAL-DATA TRIPWIRE");
+				expect((error as NodeJS.ErrnoException).code).toBe("ENOENT");
+			}
+			try {
+				const directory = await fs.promises.opendir(probe("read-dir-promise"));
+				await directory.close();
+			} catch (error) {
+				expect(String(error)).not.toContain("REAL-DATA TRIPWIRE");
+				expect((error as NodeJS.ErrnoException).code).toBe("ENOENT");
+			}
+		});
+	});
+
+	/**
 	 * The case the whole mechanism exists for. The incident's damage was SQLite
 	 * `INSERT`s through a native handle: no `node:fs` call was ever made, so an
 	 * fs-only tripwire would have sat and watched. Opening the database is the point
@@ -111,6 +198,115 @@ describe("the real-data tripwire refuses writes into the real veyyon directory",
 		if (!root) throw new Error("no forbidden root");
 		// The proof that these probes are themselves safe: nothing was created.
 		expect(fs.existsSync(path.join(root, "__tripwire_probe__"))).toBe(false);
+	});
+
+	describe("canonical path containment", () => {
+		/**
+		 * Reproduces the bypass: the write is lexically under a temp alias but the
+		 * alias resolves into the protected tree. A missing leaf must not hide it.
+		 */
+		it("detects an outside directory symlink into a protected root", () => {
+			const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "tripwire-alias-"));
+			const protectedRoot = path.join(fixture, "protected");
+			const alias = path.join(fixture, "alias");
+			fs.mkdirSync(protectedRoot);
+			fs.symlinkSync(protectedRoot, alias, process.platform === "win32" ? "junction" : "dir");
+			try {
+				expect(__tripwire.isInsideResolved(path.join(alias, "missing", "agent.db"), protectedRoot)).toBe(true);
+			} finally {
+				fs.rmSync(fixture, { recursive: true, force: true });
+			}
+		});
+
+		/**
+		 * Guards the subtle dangling-alias case. `realpath` fails because the target
+		 * leaf is absent, but the symlink still identifies the protected destination.
+		 */
+		it("detects a dangling symlink aimed at a missing protected descendant", () => {
+			const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "tripwire-dangling-"));
+			const protectedRoot = path.join(fixture, "protected");
+			const future = path.join(protectedRoot, "future");
+			const alias = path.join(fixture, "alias");
+			fs.mkdirSync(future, { recursive: true });
+			fs.symlinkSync(future, alias, process.platform === "win32" ? "junction" : "dir");
+			fs.rmdirSync(future);
+			try {
+				expect(__tripwire.isInsideResolved(path.join(alias, "agent.db"), protectedRoot)).toBe(true);
+			} finally {
+				fs.rmSync(fixture, { recursive: true, force: true });
+			}
+		});
+
+		/**
+		 * Makes resolution errors fail closed instead of allowing the original
+		 * mutation after an ambiguous symlink cycle.
+		 */
+		it("rejects a symlink cycle instead of returning a safe-looking path", () => {
+			if (process.platform === "win32") return;
+			const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "tripwire-cycle-"));
+			const first = path.join(fixture, "first");
+			const second = path.join(fixture, "second");
+			fs.symlinkSync(second, first);
+			fs.symlinkSync(first, second);
+			try {
+				expect(() => __tripwire.resolveForContainment(path.join(first, "agent.db"))).toThrow();
+			} finally {
+				fs.rmSync(fixture, { recursive: true, force: true });
+			}
+		});
+
+		/**
+		 * Preserves lexical protection when neither the root nor its descendant
+		 * exists yet, which is the safe shape used by direct real-root probes.
+		 */
+		it("keeps wholly missing protected descendants inside their root", () => {
+			const root = path.join(os.tmpdir(), `tripwire-missing-${process.pid}`, "protected");
+			expect(__tripwire.isInsideResolved(path.join(root, "one", "two", "agent.db"), root)).toBe(true);
+			expect(__tripwire.isInsideResolved(`${root}-other`, root)).toBe(false);
+		});
+
+		/**
+		 * Ensures Buffer and encoded file URL PathLike values resolve to the same
+		 * decoded path the filesystem will mutate.
+		 */
+		it("resolves Buffer and encoded file URL targets before containment", () => {
+			const target = probe("encoded path #.db");
+			const url = pathToFileURL(target);
+			expect(url.href).toContain("%20");
+			expect(url.href).toContain("%23");
+			expect(__tripwire.resolveTarget(Buffer.from(target))).toBe(target);
+			expect(__tripwire.resolveTarget(url)).toBe(target);
+			expect(() => __tripwire.assertNotRealData("buffer probe", Buffer.from(target))).toThrow(/REAL-DATA TRIPWIRE/);
+			expect(() => __tripwire.assertNotRealData("URL probe", url)).toThrow(/REAL-DATA TRIPWIRE/);
+		});
+
+		/**
+		 * Prevents an invalid encoded path separator from being reinterpreted as
+		 * harmless percent text when the native filesystem rejects its meaning.
+		 */
+		it("fails closed for an encoded file URL separator", () => {
+			const invalid = new URL("file:///tmp/tripwire%2Fagent.db");
+			expect(() => __tripwire.assertNotRealData("encoded URL probe", invalid)).toThrow(/REAL-DATA TRIPWIRE/);
+		});
+
+		/**
+		 * Extends canonical containment to protected `.veyyon*` siblings in the
+		 * real home, even when a temp-directory alias hides the lexical path.
+		 */
+		it("blocks an outside symlink into a protected real-home sibling", () => {
+			if (process.platform === "win32") return;
+			const root = __tripwire.FORBIDDEN[0];
+			if (!root) throw new Error("no forbidden root");
+			const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "tripwire-sibling-alias-"));
+			const alias = path.join(fixture, "alias");
+			const protectedSibling = path.join(path.dirname(root), `.veyyon-tripwire-${process.pid}-${Date.now()}`);
+			fs.symlinkSync(protectedSibling, alias, "dir");
+			try {
+				expect(() => fs.writeFileSync(path.join(alias, "agent.db"), "nope")).toThrow(/REAL-DATA TRIPWIRE/);
+			} finally {
+				fs.rmSync(fixture, { recursive: true, force: true });
+			}
+		});
 	});
 
 	describe("what it deliberately allows", () => {
@@ -143,6 +339,7 @@ describe("the real-data tripwire refuses writes into the real veyyon directory",
 			if (!root) throw new Error("no forbidden root");
 			expect(__tripwire.isInside(root, root)).toBe(true);
 			expect(__tripwire.isInside(path.join(root, "shared-auth", "agent.db"), root)).toBe(true);
+			expect(__tripwire.isInside(path.join(root, "..not-a-parent", "agent.db"), root)).toBe(true);
 			// A sibling whose name merely starts with the root's name must NOT be caught.
 			expect(__tripwire.isInside(`${root}-other`, root)).toBe(false);
 		});

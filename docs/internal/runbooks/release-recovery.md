@@ -1,28 +1,28 @@
 # Runbook: release recovery
 
 A release is a tagged commit **and** a published GitHub release the install script reads from
-(`releases/latest`). `bun run release` cuts the tag locally and pushes; `ci.yml` builds the binaries
-and publishes on the tagged push. Recovery depends on where it stopped.
+(`releases/latest`). The Release workflow cuts the tag remotely, gates the exact bump SHA through
+Checks, then dispatches `ci.yml` at the immutable tag. Recovery depends on where it stopped.
 
 ## 1. It failed before the tag was pushed
 
-Symptom: `scripts/release.ts` aborted during `bun run check`, changelog finalize, or the commit step.
-Nothing was pushed.
+Symptom: the Release workflow failed during preparation, checks, commit, or the atomic push. No
+remote tag exists.
 
-- The working tree has a local release commit and possibly a local tag. Inspect: `git log -1`,
-  `git tag --points-at HEAD`.
-- Fix the underlying failure (usually a failing `bun run check`).
-- If a local tag was created but not pushed, delete it (`git tag -d <tag>`) and re-run
-  `bun run release <version>`, do not hand-push a half-made tag.
+- Open the failed Release run. Its failing step is authoritative.
+- Fix the underlying failure on `main` and push. The newer SHA gets its own CI and Checks evidence,
+  then the automatic gate cuts again.
+- Do not hand-push a local bump or tag. For an explicit retry, dispatch the Release workflow from
+  Actions with the intended version.
 
 ## 2. The tag pushed but CI never published
 
 Symptom: the tag is on `origin/main` but there is no matching GitHub release, or the release has no
 binaries.
 
-1. Check CI: `bun run release watch` re-attaches to the release run, or open the Actions tab.
-2. If the run never started, open the Actions tab and check for a queued job or a workflow
-   syntax error. Release jobs use GitHub-hosted runners, so a missing runner is never the cause.
+1. Open the tagged CI run from the Actions tab.
+2. If the run never started, inspect the Release run's exact-tag Checks gate and publish-dispatch
+   step. Release jobs use GitHub-hosted runners, so a missing runner is never the cause.
 3. If the run failed on the macOS signing step, the `APPLE_*` secrets are missing or invalid: see
    [secret-rotation.md](secret-rotation.md) and [macOS signing](../macos-signing-notarization.md).
 4. After fixing the cause, re-trigger the release jobs by re-running the failed CI workflow for that
@@ -45,6 +45,20 @@ Symptom: `curl -fsSL https://get.veyyon.dev | sh` fails, or fails a checksum.
   regenerates and re-uploads the assets and checksums.
 - If the release itself is bad and users are already hitting it, follow
   [install-rollback.md](install-rollback.md).
+
+## 4. The release published but production deployment failed
+
+Symptom: the GitHub release and assets exist, but `release_site` is red or either
+Cloudflare Pages project is stale.
+
+1. Open `release_site` in the tagged CI run. It requires both
+   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, and deliberately fails when
+   `SITE_AUTODEPLOY=off`.
+2. Repair the credential or policy failure, then re-run the failed job. It rebuilds
+   and deploys both `veyyon.dev` and `get.veyyon.dev`; do not cut another tag.
+3. Run `bun scripts/verify-deployed-installers.ts` to prove the served installer
+   bytes match `scripts/install.sh` and `scripts/install.ps1`. See
+   [deployment.md](../deployment.md) for the Pages projects and manual override.
 
 ## Verify
 

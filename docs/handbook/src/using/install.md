@@ -1,6 +1,6 @@
 # Install
 
-Veyyon installs as a single self-contained binary. The installer downloads it, links a short `vey` launch command next to it, and runs a quick self-check. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and tree-sitter block resolution for hashline block edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.
+Veyyon installs as a single self-contained binary. The release installer stages the download and proves it has the published checksum, the requested version, and working native support before it changes the active install or your shell. It then links a short `vey` launch command next to `veyyon`. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and tree-sitter block resolution for hashline block edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.
 
 ## Install on Linux or macOS
 
@@ -8,9 +8,13 @@ Veyyon installs as a single self-contained binary. The installer downloads it, l
 $ curl -fsSL https://get.veyyon.dev | sh
 ```
 
-That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and runs a `doctor:` self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because `veyyon --version` answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command.
+That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and runs a `doctor:` self-check. Before it replaces an existing binary, creates the alias, edits a shell profile, or writes completions, it checks the staged download in this order:
 
-That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no `vey` alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When `~/.local/bin` is not on your `PATH` yet, the installer adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer in has already started, so `veyyon` is not a command in it yet. The closing steps say so, and reloading is the first of them:
+1. Its SHA-256 digest matches the release sidecar.
+2. `veyyon --version` reports the exact release tag you requested.
+3. A real `veyyon grep` finds a known file, proving the native addon loads on this platform.
+
+The checksum proves which bytes you received, but it cannot prove that the release uploaded the right version or a usable native build. If any preflight fails, the installer removes the staged file when it can and leaves the active binary and shell files unchanged. After the verified file moves into place, `doctor:` repeats the version and native checks from the final path. When `~/.local/bin` is not on your `PATH` yet, the installer then adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer from has already started, so the final message gives you the exact reload command before the normal next steps:
 
 ```console
 Next steps:
@@ -35,6 +39,20 @@ That works in both shells Windows ships: Windows PowerShell 5.1, which is what `
 
 Like the Unix installer, it never calls the GitHub API, and it puts the install directory at the front of your user `PATH`. The one-liner above runs in the window you typed it in, so `veyyon` works there straight away, with no restart. A `PATH` entry reaches every other program when that program starts, so terminals you already have open elsewhere will not see it until they restart. The closing steps say which case you are in: run the installer as a file (`pwsh -File install.ps1`) and it is a separate process whose `PATH` change cannot reach your shell, so the first step is to open a new window.
 
+## Prebuilt release platforms
+
+GitHub Releases publishes these application binaries:
+
+| Operating system | Architecture | Release binary |
+| --- | --- | --- |
+| Linux (glibc) | x64 | `veyyon-linux-x64` |
+| Linux (glibc) | arm64 | `veyyon-linux-arm64` |
+| macOS | x64 (Intel) | `veyyon-darwin-x64` |
+| macOS | arm64 (Apple silicon) | `veyyon-darwin-arm64` |
+| Windows | x64 | `veyyon-windows-x64.exe` |
+
+There is no native Windows arm64 release. On Windows arm64, run the Windows x64 binary under emulation. Linux release binaries require glibc. On a musl system such as Alpine, the installer stops before downloading and tells you to install from source.
+
 ## After install
 
 ```console
@@ -45,15 +63,15 @@ The first interactive `vey` opens the first-run setup, which moves through a spl
 
 Your configuration home is `~/.veyyon`, and the default profile keeps its agent directory at `~/.veyyon/profiles/default/agent/`.
 
-If an install is interrupted, run it again. The installer stages the binary beside its final path and moves it into place only once the file is complete, so a cancelled install never leaves you with a half-written `veyyon`. Cancelling with Ctrl-C removes the staged file on the way out; a kill the process cannot catch leaves it behind, and the next install reclaims it and names it:
+If an install is interrupted before the final replacement, run it again. The installer stages the binary beside its final path, so a partial download never overwrites an existing `veyyon`. On Linux and macOS, the verified file takes the live path with one same-filesystem rename. On Windows, the installer moves the old binary aside immediately before replacement and restores it if moving the staged file fails.
+
+Ctrl-C removes the staged file on the way out. A kill the process cannot catch can leave that staged file behind, and the next install reclaims it and names it:
 
 ```console
   ok  removed /home/you/.local/bin/.veyyon.download.48213 left by an interrupted install (pid 48213)
 ```
 
 A staged file belonging to an installer that is still running is left alone, so two installs at once cannot delete each other's download.
-
-On Linux the installer checks which C library your system uses before it downloads anything. The published binaries are built against glibc, so on a musl system (Alpine and similar) the installer stops and tells you to install from source instead. It stops rather than continuing because a musl system would install the binary cleanly and then fail to start it, with a "not found" error from the dynamic loader about a file that is plainly there.
 
 ## Install a specific version, or from source
 
@@ -106,23 +124,11 @@ $ vey plugin doctor --fix
 
 `vey plugin doctor` checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks live in `vey setup status`. For interactive diagnostics, use `/debug` in the TUI. See [Diagnostics](../features/doctor.md).
 
-### When the installer says the binary would not run
+### When the staged binary would not run
 
-The installer runs the binary it just placed before it reports success, and refuses if
-that fails. The message names the exit status and repeats, verbatim, whatever the system
-said:
+The preflight runs from the staging path inside the install directory. If the binary cannot start or its native search fails, the error includes the exit status and repeats what the system said. A missing shared library means the machine needs that package. A permission error usually means the install directory is mounted `noexec`, so choose another with `VEYYON_INSTALL_DIR`. A native-addon load error usually means the release does not support that platform, so use the source installer.
 
-```
-veyyon did not run after install: `~/.local/bin/veyyon --version` exited 127.
-It said: libstdc++.so.6: cannot open shared object file: No such file or directory
-```
-
-That second line is the part to act on. A missing shared library means the machine needs
-that package; a permission error usually means the install directory is mounted `noexec`,
-so choose another with `VEYYON_INSTALL_DIR`. The check runs last, after the completions
-and the PATH line, so those are already in place; once you have fixed the cause, run the
-installer again rather than trying to finish by hand. If you would rather start clean,
-[Uninstall](#uninstall) reclaims everything the installer added.
+This failure occurs before the active binary, alias, `PATH`, and completion files change. Fix the reported cause and run the installer again rather than trying to finish by hand.
 
 To ask the same questions later, on the machine as it is now, run `veyyon setup status`.
 It repeats the install checks and adds the two the installer cannot make: whether a second
@@ -277,36 +283,34 @@ install that can actually perform the move, so you will not see it on a source
 checkout.
 
 Veyyon is distributed only two ways, and it updates the way it was installed. A
-binary install (the `curl` installer from veyyon.dev) replaces its own binary
-with the newer one it fetches from GitHub Releases, the same place the
-installer's download comes from; veyyon.dev hosts only the installer script, so GitHub Releases is the only
-place a binary ever comes from. Before it keeps the new binary it runs the same
-two checks the installer runs: the binary reports the version the release
-claims, and a real search confirms the native addon loads. The search check is
-skipped only for a version old enough not to have `veyyon grep` at all, which is
-possible when you roll back, and Veyyon confirms that is the reason by asking the
-binary for its own `--help` first. A binary that cannot answer that either is
-broken, not old, and is treated as a failure. If either check fails the
-previous binary goes back in place and the update reports why, so a release with
-no build for your platform cannot leave you with a binary that starts and then
-fails on your first command. "Why" is the binary's own words: if the new binary
-will not start, the update quotes what the system said and the exit code it gave,
-rather than saying only that it could not be verified. That is what tells apart a
-release that is wrong for your platform from an install directory mounted
-`noexec`, where the file is perfect and the mount refuses to run it. A source
-checkout updates in its own terms:
-`veyyon update` fast-forwards the checkout, reinstalls dependencies, and
-regenerates build artifacts, and refreshes the native addon, all in one command.
-It then reads the checkout's own version back and refuses to report success
-unless the checkout really is at the new release. A fast-forward only advances
-the branch you are on, so a checkout on a feature branch, or on a fork whose
-upstream lags, can merge cleanly and stay behind; Veyyon tells you that instead
-of claiming a version you do not have. The background updater leaves
-source checkouts alone (it never runs git against your working tree); it tells
-you a version exists and you run `veyyon update` when you want it. There is no
-npm, Homebrew, or other package-manager channel to go through. If an update
-fails, Veyyon says so and tells you to retry with `veyyon update`; it never
-fails quietly and leaves you on an old version without a word.
+binary install fetches its replacement from GitHub Releases. The updater stages
+the download beside the live executable, then performs the same ordered
+preflight as the installer: published SHA-256 checksum, exact release version,
+and a real native-backed search. The search is skipped only when rolling back to
+an old version that has no `veyyon grep` command, which the staged binary must
+confirm through its own `--help`. If any preflight fails, the staged file is
+removed and the binary you started with stays live.
+
+After preflight, Veyyon preserves the current executable as a backup without
+removing its live path, using a hard link where the filesystem permits it and a
+completed copy otherwise. One atomic rename then switches the live path to the
+verified replacement. A hard kill can therefore leave the old binary or the new
+one at that path, but never no binary. If the final installed check fails, the
+backup is atomically restored. A backup that is still locked on Windows, or is
+left by a hard kill, is reclaimed by a later update.
+
+A source checkout updates in its own terms: `veyyon update` fast-forwards the
+checkout, reinstalls dependencies, regenerates build artifacts, and refreshes
+the native addon, all in one command. It then reads the checkout's own version
+back and refuses to report success unless the checkout really is at the new
+release. A fast-forward only advances the branch you are on, so a checkout on a
+feature branch, or on a fork whose upstream lags, can merge cleanly and stay
+behind; Veyyon tells you that instead of claiming a version you do not have. The
+background updater leaves source checkouts alone and never runs git against your
+working tree. It tells you a version exists, and you run `veyyon update` when
+you want it. There is no npm, Homebrew, or other package-manager channel to go
+through. If an update fails, Veyyon says so and tells you to retry with `veyyon
+update`; it never fails quietly and leaves you on an old version without a word.
 
 Veyyon works out which of the two you have by following the `veyyon` on your
 PATH to what it really runs. A symlink is followed, and so is a small wrapper
@@ -330,14 +334,15 @@ ignores the pause entirely, so you can always ask to see the error again:
 $ veyyon update
 ```
 
-An update also rewrites the shell completion files you already have, so
-tab completion knows about the subcommands and flags the new version added. It
-rewrites only files that are already there. It never creates one, because
-choosing which shells get completions is the installer's job, not an update's.
-If a completion cannot be rewritten, Veyyon names the file and tells you it
-still describes the previous version; the update itself is unaffected. Both
-install channels do this: a binary update regenerates from the new binary, a
-source update from the checkout's launcher.
+An update also rewrites the shell completion files you already have, so tab
+completion knows about the new version's subcommands and flags. It rewrites only
+files that are already there because the installer owns the choice of shells.
+If a file cannot be rewritten, a manual update names the path and says it still
+describes the previous version. A background automatic update adds a visible
+warning to the TUI update notice, counts the stale completion files, and tells
+you to re-run the installer to rewrite them. The binary update remains
+installed. A binary update generates completions from the new binary; a source
+update generates them from the checkout's launcher.
 
 The native addon is cached per version under `~/.veyyon/natives/<version>/`,
 around 150MB each. When a new version stages its own cache, the previous

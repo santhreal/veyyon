@@ -8,5 +8,6 @@
   <url><loc>https://veyyon.dev/docs/</loc><priority>0.7</priority></url>
   <!--BLOG:START-->
   <url><loc>https://veyyon.dev/blog/</loc><priority>0.6</priority></url>
+  <url><loc>https://veyyon.dev/blog/secrets</loc><priority>0.6</priority></url>
   <!--BLOG:END-->
 </urlset>
