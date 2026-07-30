@@ -73,7 +73,11 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 			cwd: "/tmp",
 			hasUI: false,
 			suppressSpawnAdvisory: suppress,
-			settings: Settings.isolated({ "subagent.isolation.mode": "none", "subagent.batch": true }),
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"subagent.isolation.mode": "none",
+				"subagent.batch": true,
+			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
 		});
