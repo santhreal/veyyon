@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-29f264e3.js";
+            window.path_to_searchindex_js = "../searchindex-8d909778.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -312,8 +312,9 @@ you (“use the scout agent to map the parser”).</p>
       model: anthropic/claude-opus-4-5 # except this one
 </code></pre>
 <p>No bundled agent pins a model, so layer 4 is the normal case and <code>subagent.model</code>
-moves all of them together. <code>subagent.thinkingLevel</code> does the same for effort, and an
-explicit <code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
+moves all of them together. <code>subagent.thinkingLevel</code> does the same for effort. <strong>Inherit</strong> passes the
+current session’s effective effort into the child, while an explicit <code>auto</code> asks the provider to
+choose. An explicit <code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
 <h3 id="fallback-models"><a class="header" href="#fallback-models">Fallback models</a></h3>
 <p>Every one of those four places takes a list, not just one model:</p>
 <pre><code class="language-yaml">subagent:
@@ -335,8 +336,8 @@ configuration mistake, so veyyon refuses to spawn the agent and names the settin
 quietly running it on the next entry: a typo must not silently downgrade every subagent you spawn.</p>
 <p>In the <code>Subagents</code> block above the composer, an agent that fell back is marked with <code>↓</code> before its
 model badge, so you can tell a deliberate model from a retried one at a glance.</p>
-<p>Effort is chosen from a list — <code>off</code>, <code>minimal</code> through <code>max</code>, <code>auto</code>, or <code>Inherit</code> —
-in both places, so you cannot set a level that does not exist. If a hand-written config
+<p>Effort is chosen from a list: <code>off</code>, <code>minimal</code> through <code>max</code>, <code>auto</code>, or <code>Inherit</code>.
+The same list appears in both places, so you cannot set a level that does not exist. If a hand-written config
 holds one that does not, veyyon says so and names the levels that work, rather than
 treating it as <code>Inherit</code> and leaving you with a setting that reads as configured and
 changes nothing.</p>
@@ -347,10 +348,24 @@ surfaces show, for the selected agent, the pattern, the model it resolves to, an
 which of the four layers decided.</p>
 <h2 id="limits-and-isolation"><a class="header" href="#limits-and-isolation">Limits and isolation</a></h2>
 <p>The remaining groups in the tab are operational: how many subagents run at once
-(<code>subagent.maxConcurrency</code>), how deep they may spawn their own (<code>maxRecursionDepth</code>),
+(<code>subagent.maxConcurrency</code>), how deeply they may nest (<code>subagent.maxNestedSpawnDepth</code>),
 per-run wall clock and request budgets, how long an idle subagent stays in memory
 before being parked to disk (<code>idleTtlMs</code>), and whether their edits land in an isolated
 copy of the tree first (<code>subagent.isolation.*</code>, see <a href="../using/safety.html">Safety</a>).</p>
+<p><code>subagent.maxNestedSpawnDepth</code> is inclusive. The default is <code>0</code>: the top-level session,
+at depth 0, may spawn direct subagents, but those children are leaves and cannot spawn
+more subagents. A value of <code>1</code> also lets direct children spawn, producing children at
+depth 2. Higher values extend the same rule, and <code>-1</code> allows nesting without a depth
+limit.</p>
+<p>An agent-specific value takes precedence over the blanket value:</p>
+<pre><code class="language-yaml">subagent:
+  maxNestedSpawnDepth: 0
+  agents:
+    reviewer:
+      maxNestedSpawnDepth: 1
+</code></pre>
+<p>Here ordinary direct subagents remain leaves. A direct <code>reviewer</code> may spawn its own
+children because its effective limit is 1.</p>
 <p>A subagent’s working directory is its own. If a subagent calls <code>set_cwd</code>, only that
 subagent moves: its tool paths resolve against the new directory and its system prompt
 is rebuilt for it, while your session and every other subagent stay where they were.</p>
