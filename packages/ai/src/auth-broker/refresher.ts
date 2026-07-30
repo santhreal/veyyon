@@ -11,7 +11,7 @@
  * the next snapshot pull surfaces a clean delete on the client.
  */
 import * as logger from "@veyyon/utils/logger";
-import { type AuthStorage, isDefinitiveOAuthFailure } from "../auth-storage";
+import { type AuthStorage, isDefinitiveOAuthFailure, withAuthHttpConcurrency } from "../auth-storage";
 import { DEFAULT_REFRESH_INTERVAL_MS, DEFAULT_REFRESH_SKEW_MS } from "./types";
 
 export interface AuthBrokerRefresherOptions {
@@ -92,7 +92,7 @@ export class AuthBrokerRefresher {
 				if (expires > deadline) continue;
 				targets.push(entry.id);
 			}
-			await Promise.all(targets.map(id => this.#refreshOne(id)));
+			await Promise.all(targets.map(id => withAuthHttpConcurrency(() => this.#refreshOne(id))));
 		} finally {
 			this.#running = false;
 			this.#nextSweepAt = this.#now() + this.#refreshIntervalMs;

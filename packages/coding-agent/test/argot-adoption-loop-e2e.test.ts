@@ -211,9 +211,14 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 			},
 			convertToLlm,
 			streamFn: mock.stream,
-			// The REAL seam 1, one line mirroring sdk.ts's transformToolCallArguments:
-			// expansion runs before the tool executes, identity until a dict loads.
-			transformToolCallArguments: args => (argot.loaded ? expandToolArguments(argot, args) : args),
+			// The REAL seam 1, mirroring sdk.ts's transformToolCallArguments: expansion
+			// runs before the tool executes, identity until a dict loads. A handle is
+			// safe to reveal, so — unlike a secret placeholder — the expansion goes to
+			// BOTH audiences: the operator must never be shown a raw §handle.
+			transformToolCallArguments: args => {
+				const expanded = argot.loaded ? expandToolArguments(argot, args) : args;
+				return { execution: expanded, display: expanded };
+			},
 			// On, as sdk.ts has it by default, so the intent a model writes is lifted
 			// out of the arguments here the same way it is in production. The intent
 			// is an operator-visible string that does NOT travel with the arguments,

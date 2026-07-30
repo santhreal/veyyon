@@ -1,38 +1,40 @@
 import { describe, expect, it } from "bun:test";
-import type { Settings } from "@veyyon/coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { isIrcEnabled } from "@veyyon/coding-agent/tools/irc-enabled";
 
 /**
  * isIrcEnabled decides whether the IRC tool is offered: IRC needs a peer to talk to.
- * Any subagent (taskDepth > 0) always has a parent, so it is always enabled without
- * consulting settings. A top-level session (taskDepth 0) has peers only if it can
- * still spawn subagents, so it reuses the SAME spawn-capacity gate the task tool uses
- * (canSpawnAtDepth over task.maxRecursionDepth, default 2) rather than a second copy
- * that could drift. This locks: subagents always on, a top-level session on only while
- * it can spawn, off once the depth budget is exhausted, and the default of 2.
+ * Any subagent (taskDepth > 0) always has a parent, so it remains enabled even when
+ * that child is a leaf. A root session has potential peers only when delegation is
+ * enabled and the same inclusive spawn-capacity gate as the task tool permits it.
+ * The default cap is zero: the root may spawn direct children, while depth-one
+ * children cannot spawn again.
  */
 
-const settings = (maxRecursionDepth: number | undefined): Settings =>
-	({ get: () => maxRecursionDepth }) as unknown as Settings;
+const settings = (maxNestedSpawnDepth?: number, enabled = true): Settings =>
+	Settings.isolated({
+		"subagent.enabled": enabled,
+		...(maxNestedSpawnDepth === undefined ? {} : { "subagent.maxNestedSpawnDepth": maxNestedSpawnDepth }),
+	});
 
 describe("isIrcEnabled subagents", () => {
-	it("is always enabled for a subagent regardless of the depth cap", () => {
+	it("is always enabled for a subagent regardless of the depth cap or master switch", () => {
 		expect(isIrcEnabled(settings(0), 1)).toBe(true);
-		expect(isIrcEnabled(settings(2), 2)).toBe(true);
+		expect(isIrcEnabled(settings(0, false), 1)).toBe(true);
 	});
 });
 
 describe("isIrcEnabled top-level session", () => {
-	it("is enabled when it can still spawn subagents", () => {
-		expect(isIrcEnabled(settings(2), 0)).toBe(true);
+	it("is enabled at the default zero cap because the root can spawn direct children", () => {
+		expect(isIrcEnabled(settings(0), 0)).toBe(true);
 	});
 
-	it("is disabled when the depth budget forbids spawning", () => {
-		expect(isIrcEnabled(settings(0), 0)).toBe(false);
+	it("is disabled when delegation is switched off", () => {
+		expect(isIrcEnabled(settings(0, false), 0)).toBe(false);
 	});
 
-	it("uses a default max recursion depth of 2 when unset", () => {
-		expect(isIrcEnabled(settings(undefined), 0)).toBe(true);
+	it("uses a default maximum nested spawn depth of zero when unset", () => {
+		expect(isIrcEnabled(settings(), 0)).toBe(true);
 	});
 
 	it("is enabled for a negative (unlimited) depth cap", () => {

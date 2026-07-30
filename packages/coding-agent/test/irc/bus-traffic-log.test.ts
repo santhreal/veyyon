@@ -13,10 +13,13 @@
  * log bounded, and a broken listener never taking delivery down with it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { IrcBus, type IrcLogEntry, type IrcMessage } from "@veyyon/coding-agent/irc/bus";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 /** A recipient that accepts delivery and reports the outcome the test asks for. */
 function fakeSession(options: { outcome?: "injected" | "woken"; throws?: Error } = {}): AgentSession {
@@ -244,5 +247,260 @@ describe("IrcBus traffic log", () => {
 		expect(log[0]?.message.to).toBe("Worker");
 		expect(log[0]?.outcome).toBe("failed");
 		expect(log[0]?.error).toContain("registry mirror is unreadable");
+	});
+
+	describe("delivery telemetry", () => {
+		it("records no agent-communication telemetry below the canonical rich threshold", async () => {
+			registry.register({ id: "0-Sub", displayName: "reviewer", kind: "sub", session: fakeSession() });
+
+			for (const level of ["off", "basic"] as const) {
+				const instrumented = new IrcBus(registry, undefined, () => level);
+				await instrumented.send({ from: "Main", to: "0-Sub", body: "minimal mode" });
+				expect(instrumented.log()[0]?.telemetry).toBeUndefined();
+			}
+		});
+
+		it("keeps rich telemetry to safe outcome and byte-count facts without duplicating content", async () => {
+			registry.register({ id: "0-Sub", displayName: "reviewer", kind: "sub", session: fakeSession() });
+			const instrumented = new IrcBus(registry, undefined, () => "rich");
+			const body = "hé";
+
+			await instrumented.send({ from: "Main", to: "0-Sub", body });
+
+			const telemetry = instrumented.log()[0]?.telemetry;
+			expect(telemetry).toEqual({ level: "rich", outcome: "injected", payloadBytes: 3 });
+			expect(telemetry).not.toHaveProperty("sender");
+			expect(telemetry).not.toHaveProperty("route");
+			expect(JSON.stringify(telemetry)).not.toContain(body);
+		});
+
+		it("adds content-free route, identity class, kind, and millisecond latency facts at ultra", async () => {
+			registry.register({ id: "0-Sub", displayName: "reviewer", kind: "sub", session: fakeSession() });
+			const instrumented = new IrcBus(registry, undefined, () => "ultra");
+
+			await instrumented.send({
+				from: "Main",
+				to: "0-Sub",
+				body: "review this",
+				replyTo: "earlier-message",
+			});
+
+			const telemetry = instrumented.log()[0]?.telemetry;
+			expect(telemetry).toMatchObject({
+				level: "ultra",
+				outcome: "injected",
+				payloadBytes: 11,
+				sender: "Main",
+				recipientClass: "sub",
+				route: "injected",
+				revived: false,
+				messageKind: "reply",
+			});
+			expect(telemetry?.deliveryLatencyMs).toBeGreaterThanOrEqual(0);
+			expect(telemetry).not.toHaveProperty("body");
+			expect(JSON.stringify(telemetry)).not.toContain("review this");
+		});
+
+		it("distinguishes wake and waiter-satisfied delivery paths", async () => {
+			registry.register({
+				id: "0-Woken",
+				displayName: "sleeper",
+				kind: "sub",
+				session: fakeSession({ outcome: "woken" }),
+			});
+			registry.register({ id: "0-Waiter", displayName: "waiter", kind: "sub", session: fakeSession() });
+			const instrumented = new IrcBus(registry, undefined, () => "ultra");
+			const waiting = instrumented.wait("0-Waiter", { from: "Main" }, 100, undefined, { drainPending: false });
+
+			await instrumented.send({ from: "Main", to: "0-Woken", body: "wake" });
+			await instrumented.send({ from: "Main", to: "0-Waiter", body: "satisfy" });
+
+			expect((await waiting)?.body).toBe("satisfy");
+			expect(instrumented.log().map(entry => entry.telemetry?.route)).toEqual(["wake", "waiter"]);
+			expect(instrumented.log().map(entry => entry.telemetry?.outcome)).toEqual(["woken", "injected"]);
+		});
+
+		it("records revival separately from the underlying wake hand-off", async () => {
+			const session = fakeSession({ outcome: "woken" });
+			registry.register({
+				id: "0-Parked",
+				displayName: "parked",
+				kind: "sub",
+				session: null,
+				status: "parked",
+			});
+			const lifecycle = AgentLifecycleManager.global();
+			lifecycle.adopt("0-Parked", { idleTtlMs: 0, revive: async () => session });
+			const instrumented = new IrcBus(registry, lifecycle, () => "ultra");
+
+			await instrumented.send({ from: "Main", to: "0-Parked", body: "resume" });
+
+			expect(instrumented.log()[0]?.telemetry).toMatchObject({
+				outcome: "revived",
+				route: "wake",
+				revived: true,
+				recipientClass: "sub",
+			});
+		});
+
+		it("records refusals and buffered retry paths without adding a second delivery event", async () => {
+			const instrumented = new IrcBus(registry, undefined, () => "ultra");
+			await instrumented.send({ from: "Main", to: "ghost", body: "refused" });
+
+			registry.register({
+				id: "0-Flaky",
+				displayName: "flaky",
+				kind: "sub",
+				session: fakeSession({ throws: new Error("not ready") }),
+			});
+			await instrumented.send({ from: "Main", to: "0-Flaky", body: "retry me" });
+
+			expect(instrumented.log().map(entry => entry.telemetry?.route)).toEqual(["refused", "buffered"]);
+			expect(instrumented.log().map(entry => entry.telemetry?.outcome)).toEqual(["failed", "failed"]);
+			const retried = await instrumented.wait("0-Flaky", {}, 10);
+			expect(retried?.body).toBe("retry me");
+			expect(instrumented.log()).toHaveLength(2);
+		});
+
+		it("persists sent and received rich events with one shared id across JSONL reloads", async () => {
+			const tempDir = TempDir.createSync("@veyyon-irc-telemetry-");
+			try {
+				const senderManager = SessionManager.create(tempDir.path(), tempDir.path());
+				const recipientManager = SessionManager.create(tempDir.path(), tempDir.path());
+				await Promise.all([senderManager.ensureOnDisk(), recipientManager.ensureOnDisk()]);
+				const richSettings = Settings.isolated({ "session.instrumentation": "rich" });
+				const sender = Object.assign(fakeSession(), {
+					settings: richSettings,
+					sessionManager: senderManager,
+					recordIrcDeliveryTelemetry: AgentSession.prototype.recordIrcDeliveryTelemetry,
+				});
+				const recipient = Object.assign(fakeSession(), {
+					settings: richSettings,
+					sessionManager: recipientManager,
+					recordIrcDeliveryTelemetry: AgentSession.prototype.recordIrcDeliveryTelemetry,
+				});
+				registry.register({ id: "Main", displayName: "main", kind: "main", session: sender });
+				registry.register({ id: "0-Sub", displayName: "reviewer", kind: "sub", session: recipient });
+				const instrumented = new IrcBus(registry, undefined, () => "rich");
+				const body = "persist no body";
+
+				await instrumented.send({ from: "Main", to: "0-Sub", body });
+				await Promise.all([senderManager.flush(), recipientManager.flush()]);
+
+				const senderFile = senderManager.getSessionFile();
+				const recipientFile = recipientManager.getSessionFile();
+				if (!senderFile || !recipientFile) throw new Error("Expected both IRC telemetry session files");
+				const [senderReloaded, recipientReloaded] = await Promise.all([
+					SessionManager.open(senderFile, tempDir.path()),
+					SessionManager.open(recipientFile, tempDir.path()),
+				]);
+				const senderPersisted = senderReloaded
+					.getEntries()
+					.find(entry => entry.type === "custom" && entry.customType === "irc:delivery-telemetry");
+				const recipientPersisted = recipientReloaded
+					.getEntries()
+					.find(entry => entry.type === "custom" && entry.customType === "irc:delivery-telemetry");
+				expect(senderPersisted).toMatchObject({
+					type: "custom",
+					customType: "irc:delivery-telemetry",
+					data: {
+						level: "rich",
+						direction: "sent",
+						outcome: "injected",
+						payloadBytes: 15,
+					},
+				});
+				expect(recipientPersisted).toMatchObject({
+					type: "custom",
+					customType: "irc:delivery-telemetry",
+					data: {
+						level: "rich",
+						direction: "received",
+						outcome: "injected",
+						payloadBytes: 15,
+					},
+				});
+				const senderData =
+					senderPersisted?.type === "custom" ? (senderPersisted.data as { messageId?: unknown }) : undefined;
+				const recipientData =
+					recipientPersisted?.type === "custom" ? (recipientPersisted.data as { messageId?: unknown }) : undefined;
+				expect(typeof senderData?.messageId).toBe("string");
+				expect(recipientData?.messageId).toBe(senderData?.messageId);
+				expect(JSON.stringify([senderPersisted, recipientPersisted])).not.toContain(body);
+				expect(senderReloaded.buildSessionContext().messages.some(message => message.role === "custom")).toBe(
+					false,
+				);
+				expect(recipientReloaded.buildSessionContext().messages.some(message => message.role === "custom")).toBe(
+					false,
+				);
+			} finally {
+				await tempDir.remove();
+			}
+		});
+
+		/**
+		 * Each participant owns its instrumentation policy. A process-global
+		 * level must neither leak metadata into an off session nor suppress an
+		 * enabled peer's directional record.
+		 */
+		it("persists IRC telemetry independently for mixed participant policies", async () => {
+			using tempDir = TempDir.createSync("@veyyon-irc-mixed-policy-");
+			const senderManager = SessionManager.create(tempDir.path(), tempDir.path());
+			const recipientManager = SessionManager.create(tempDir.path(), tempDir.path());
+			const sender = Object.assign(fakeSession(), {
+				settings: Settings.isolated({ "session.instrumentation": "off" }),
+				sessionManager: senderManager,
+				recordIrcDeliveryTelemetry: AgentSession.prototype.recordIrcDeliveryTelemetry,
+			});
+			const recipient = Object.assign(fakeSession(), {
+				settings: Settings.isolated({ "session.instrumentation": "ultra" }),
+				sessionManager: recipientManager,
+				recordIrcDeliveryTelemetry: AgentSession.prototype.recordIrcDeliveryTelemetry,
+			});
+			registry.register({ id: "Main", displayName: "main", kind: "main", session: sender });
+			registry.register({ id: "0-Sub", displayName: "reviewer", kind: "sub", session: recipient });
+			const globallyOff = new IrcBus(registry, undefined, () => "off");
+
+			await globallyOff.send({ from: "Main", to: "0-Sub", body: "policy-owned" });
+
+			expect(globallyOff.log()[0]?.telemetry).toBeUndefined();
+			expect(
+				senderManager
+					.getEntries()
+					.find(entry => entry.type === "custom" && entry.customType === "irc:delivery-telemetry"),
+			).toBeUndefined();
+			expect(
+				recipientManager
+					.getEntries()
+					.find(entry => entry.type === "custom" && entry.customType === "irc:delivery-telemetry"),
+			).toMatchObject({
+				type: "custom",
+				customType: "irc:delivery-telemetry",
+				data: {
+					level: "ultra",
+					direction: "received",
+					outcome: "injected",
+					payloadBytes: 12,
+					sender: "Main",
+					recipientClass: "sub",
+					route: "injected",
+				},
+			});
+		});
+
+		it("writes only one sent record when sender and recipient are the same session", async () => {
+			const session = fakeSession();
+			const persisted = vi.fn(() => {});
+			session.recordIrcDeliveryTelemetry = persisted;
+			registry.register({ id: "Main", displayName: "main", kind: "main", session });
+			const instrumented = new IrcBus(registry, undefined, () => "rich");
+
+			await instrumented.send({ from: "Main", to: "Main", body: "self note" });
+
+			expect(persisted).toHaveBeenCalledTimes(1);
+			expect(persisted).toHaveBeenCalledWith(
+				expect.objectContaining({ direction: "sent", messageId: expect.any(String) }),
+			);
+		});
 	});
 });

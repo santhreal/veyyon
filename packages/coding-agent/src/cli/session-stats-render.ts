@@ -80,6 +80,127 @@ export function formatSessionStats(report: SessionStatsReport): string {
 	lines.push(`  queue wait     ${formatDuration(totals.queueWaitMs)}`);
 	lines.push(`  result weight  ${formatNumber(totals.resultTokens)} tokens, ${formatBytes(totals.resultBytes)}`);
 	lines.push("");
+	if (report.lifecycle) {
+		const lifecycle = report.lifecycle;
+		lines.push("Lifecycle");
+		lines.push(`  journal        ${lifecycle.transitions} transitions, ${lifecycle.checkpoints} checkpoints`);
+		if (lifecycle.sequence) {
+			lines.push(
+				`  sequence       ${lifecycle.sequence.entries} entries · ` +
+					`${lifecycle.sequence.first} → ${lifecycle.sequence.last} · high ${lifecycle.sequence.highest}`,
+			);
+		}
+		if (lifecycle.latestState) {
+			lines.push(`  latest state   ${lifecycle.latestState.state} (${lifecycle.latestState.reason})`);
+		}
+		if (lifecycle.latestCheckpoint) {
+			lines.push(
+				`  checkpoint     ${lifecycle.latestCheckpoint.id} · prefix ${lifecycle.latestCheckpoint.prefixSequence}`,
+			);
+		}
+		lines.push("");
+	}
+
+	if (report.context) {
+		const context = report.context;
+		lines.push("Context attribution");
+		lines.push(
+			`  prompt         ${formatNumber(context.promptTokens.total)} total · ` +
+				`${formatNumber(context.promptTokens.max)} max`,
+		);
+		lines.push(
+			`  non-message    ${formatNumber(context.nonMessageTokens.total)} total · ` +
+				`${formatNumber(context.nonMessageTokens.max)} max`,
+		);
+		if (context.storedMessagesTokens) {
+			lines.push(
+				`  stored         ${formatNumber(context.storedMessagesTokens.total)} total · ` +
+					`${formatNumber(context.storedMessagesTokens.max)} max`,
+			);
+		}
+		if (context.tailTokens) {
+			lines.push(
+				`  request tail   ${formatNumber(context.tailTokens.total)} total · ` +
+					`${formatNumber(context.tailTokens.max)} max`,
+			);
+		}
+		if (context.compactionEntries) {
+			const latest = context.compactionEntryIds?.at(-1);
+			lines.push(
+				`  compactions    ${context.compactionEntries.toLocaleString("en-US")} unique${latest === undefined ? "" : ` · latest ${latest}`}`,
+			);
+		}
+		lines.push("");
+	}
+
+	if (report.toolSpans) {
+		const spans = report.toolSpans;
+		const statuses = Object.entries(spans.statuses)
+			.filter(([, count]) => count > 0)
+			.map(([status, count]) => `${status} ${count}`)
+			.join(", ");
+		lines.push("Tool spans");
+		lines.push(`  outcomes       ${statuses}`);
+		if (spans.rich) {
+			lines.push(
+				`  scheduling     ${formatDuration(spans.rich.queuedMs)} queued · ` +
+					`${spans.rich.shared} shared · ${spans.rich.exclusive} exclusive · ${spans.rich.batches} batches`,
+			);
+			lines.push(`  result blocks  ${spans.rich.resultBlocks} total · ${spans.rich.resultImages} images`);
+		}
+		if (spans.ultra) {
+			lines.push(`  arguments      ${formatBytes(spans.ultra.argsBytes)} · ${spans.ultra.uniqueArgs} unique hashes`);
+		}
+		lines.push("");
+	}
+
+	if (report.ircDelivery) {
+		lines.push("IRC delivery");
+		for (const direction of ["sent", "received"] as const) {
+			const delivery = report.ircDelivery[direction];
+			const outcomes = Object.entries(delivery.outcomes)
+				.filter(([, count]) => count > 0)
+				.map(([outcome, count]) => `${outcome} ${count}`)
+				.join(", ");
+			lines.push(
+				`  ${direction.padEnd(14)}${delivery.count} · ${formatBytes(delivery.payloadBytes)}` +
+					(outcomes ? ` · ${outcomes}` : ""),
+			);
+			if (delivery.routes) {
+				const routes = Object.entries(delivery.routes)
+					.sort(([a], [b]) => a.localeCompare(b))
+					.map(([route, count]) => `${route} ${count}`)
+					.join(", ");
+				lines.push(`  ${`${direction} routes`.padEnd(14)}${routes}`);
+			}
+		}
+		lines.push("");
+	}
+
+	if (report.taskState) {
+		const tasks = report.taskState;
+		const operations = Object.entries(tasks.byOperation)
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([operation, count]) => `${operation} ${count}`)
+			.join(", ");
+		lines.push("Task state");
+		if (tasks.latest) {
+			lines.push(
+				`  latest         ${tasks.latest.total} total · ${tasks.latest.open} open · ` +
+					`${tasks.latest.inProgress} in progress · ${tasks.latest.completed} completed · ` +
+					`${tasks.latest.dropped} dropped`,
+			);
+		} else {
+			lines.push("  latest         no task state on active branch");
+		}
+		lines.push(`  operations     ${tasks.operations} (${operations})`);
+		lines.push(
+			`  transitions    ${tasks.transitions.total} total · ${tasks.transitions.added} added · ` +
+				`${tasks.transitions.removed} removed · ${tasks.transitions.toCompleted} completed · ` +
+				`${tasks.transitions.toDropped} dropped`,
+		);
+		lines.push("");
+	}
 
 	if (report.toolLatency.length > 0) {
 		lines.push("Tool latency (slowest first)");

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
+import { AUTH_HTTP_CONCURRENCY_LIMIT, AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { AuthBrokerRefresher } from "@veyyon/ai/auth-broker";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
 import { removeWithRetries } from "../../utils/src/temp";
@@ -195,5 +195,89 @@ describe("AuthBrokerRefresher", () => {
 		if (rows[0]?.credential.type === "oauth") {
 			expect(rows[0].credential.refresh).toBe("fresh-refresh-from-peer");
 		}
+	});
+	/**
+	 * A large sweep previously started one refresh promise per row at once. The
+	 * shared auth HTTP policy must cap the exact aggregate peak, keep draining
+	 * after a transient failure, attempt every row, and retain both tick-level
+	 * and per-row single-flight while the first sweep is still running.
+	 */
+	test("bounds adversarial refresh sweeps and preserves overlapping single-flight", async () => {
+		const now = 1_700_000_000_000;
+		const credentialCount = AUTH_HTTP_CONCURRENCY_LIMIT * 3 + 5;
+		for (let index = 0; index < credentialCount; index += 1) {
+			store!.saveOAuth("anthropic", {
+				access: `old-${index}`,
+				refresh: `refresh-${index}`,
+				expires: now + 60_000,
+				accountId: `account-${index}`,
+			});
+		}
+
+		storage = new AuthStorage(store!);
+		await storage.reload();
+		const snapshot = storage.exportSnapshot();
+		expect(snapshot.credentials).toHaveLength(credentialCount);
+		const firstTarget = snapshot.credentials[0]!;
+		if (firstTarget.credential.type !== "oauth") throw new Error("expected OAuth target");
+		const failingAccountId = firstTarget.credential.accountId;
+		const failFirst = Promise.withResolvers<void>();
+		const releaseRemaining = Promise.withResolvers<void>();
+		const firstWaveFull = Promise.withResolvers<void>();
+		const queuedAfterFailure = Promise.withResolvers<void>();
+		const attempts: string[] = [];
+		let active = 0;
+		let peak = 0;
+		let failureSettled = false;
+		let laterRowStartedAfterFailure = false;
+
+		const refreshSpy = vi.spyOn(oauthUtils, "refreshOAuthToken").mockImplementation(async (_provider, credential) => {
+			const accountId = credential.accountId ?? "missing";
+			attempts.push(accountId);
+			if (attempts.length === AUTH_HTTP_CONCURRENCY_LIMIT + 1) queuedAfterFailure.resolve();
+			active += 1;
+			peak = Math.max(peak, active);
+			if (active === AUTH_HTTP_CONCURRENCY_LIMIT) firstWaveFull.resolve();
+			try {
+				if (accountId === failingAccountId) {
+					await failFirst.promise;
+					failureSettled = true;
+					throw new Error("fetch failed: ECONNRESET");
+				}
+				if (failureSettled) laterRowStartedAfterFailure = true;
+				await releaseRemaining.promise;
+				return {
+					...credential,
+					access: `fresh-${accountId}`,
+					expires: now + 2 * 60 * 60_000,
+				};
+			} finally {
+				active -= 1;
+			}
+		});
+
+		const refresher = new AuthBrokerRefresher({
+			storage,
+			refreshSkewMs: 5 * 60_000,
+			now: () => now,
+		});
+		const firstTick = refresher.tick();
+		await firstWaveFull.promise;
+
+		// The overlapping sweep returns instead of scheduling a duplicate batch.
+		await refresher.tick();
+		// A direct request for the active first row must join its existing refresh.
+		const sameRowRefresh = storage.refreshCredentialById(firstTarget.id).catch(() => undefined);
+
+		failFirst.resolve();
+		await queuedAfterFailure.promise;
+		releaseRemaining.resolve();
+		await Promise.all([firstTick, sameRowRefresh]);
+
+		expect(peak).toBe(AUTH_HTTP_CONCURRENCY_LIMIT);
+		expect(refreshSpy).toHaveBeenCalledTimes(credentialCount);
+		expect(attempts).toHaveLength(credentialCount);
+		expect(new Set(attempts).size).toBe(credentialCount);
+		expect(laterRowStartedAfterFailure).toBe(true);
 	});
 });

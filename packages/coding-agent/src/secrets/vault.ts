@@ -1397,6 +1397,37 @@ function noteUnreadableVault(scope: VaultScope, vaultPath: string, error: unknow
 }
 
 /**
+ * Report a vault that could not be loaded at all, and say how to repair it from where you are.
+ *
+ * SEPARATE FROM {@link noteUnreadableVault} because the two conditions differ in what still works.
+ * That one skips ONE scope and keeps the rest, so it can promise the other scopes loaded normally.
+ * This one is the whole vault: nothing stored is available, every placeholder is refused, and the
+ * only thing still masking is what came from the environment and `secrets.yml`. Promising more than
+ * that would be wrong, and saying less would leave the operator thinking their secrets are still
+ * covering the session.
+ *
+ * It names the scopes that actually have a file, so the repair it prints is one the operator can run.
+ * The refusal that produced this used to be fatal, which meant the message recommending
+ * `/secret discard` was printed by a surface that then exited before the command could be typed.
+ */
+function noteFailedVaultLoad(locations: VaultLocations, unreadable: readonly VaultScope[], error: unknown): void {
+	const repair =
+		unreadable.length === 0
+			? `No vault file was found to move aside, so this is a fault in the key or the vault directory rather than in a stored file.`
+			: `Run ${unreadable.map(scope => `/secret discard --scope ${scope}`).join(" and ")} to move the ` +
+				`unreadable file aside, then re-add the secrets it held with /secret add. That works here, ` +
+				`not only in the full-screen interface.`;
+	const where = unreadable.map(scope => `${scope} (${safeText(vaultPathFor(locations, scope))})`).join(", ");
+	noteSecretsCondition(
+		`Your vault could not be read, so this session started WITHOUT it: nothing you have stored is ` +
+			`available, and every #NAME# placeholder it held will be refused rather than sent as literal ` +
+			`text. Masking of secrets from your environment and secrets.yml is unaffected and still ` +
+			`running.${unreadable.length === 0 ? "" : ` Affected: ${where}.`} ${repair} The reason it could ` +
+			`not be read was ${safeError(error)}`,
+	);
+}
+
+/**
  * Forget any unreadable-vault complaint recorded for a path, because it just read cleanly.
  *
  * Called for a vault that is absent as well as one that parsed, since absent is not unreadable: a
@@ -1563,6 +1594,43 @@ export class SecretVault {
 	 */
 	unreadableScopes(): readonly VaultScope[] {
 		return [...this.#unreadableScopes];
+	}
+
+	/**
+	 * Record that a whole {@link load} failed, so the session can start without the vault.
+	 *
+	 * WHY THIS IS NOT A WIDER CATCH IN `load()`. The narrow catch there is correct and must stay:
+	 * skipping a scope that failed a provenance or integrity check turns each of this file's security
+	 * refusals into "that scope has no secrets", and an attacker who tampers with a vault gets its
+	 * entries silently dropped from the obfuscator. So `load()` still refuses, and the failure is
+	 * absorbed one level up, where the answer is different: the ENTIRE vault is unavailable, and no
+	 * caller can mistake that for a vault that is merely empty.
+	 *
+	 * The distinction is the whole point, and it is why this marks scopes UNREADABLE rather than
+	 * returning nothing. An unreadable scope makes the spend seam refuse every placeholder it owns,
+	 * with the repair; a scope believed empty makes `#NAME#` resolve to nothing and pass through. The
+	 * failure aborts `load()`'s loop, so scopes that had already read cleanly are discarded too and
+	 * must be marked alongside the one that threw: their entries are equally absent from the
+	 * obfuscator, and leaving them unmarked is exactly the silent hole this avoids.
+	 *
+	 * Only scopes with a file present are named, so every `/secret discard --scope X` the operator is
+	 * told to run has a file to move aside. A scope with no vault would refuse that command.
+	 */
+	async noteFailedLoad(error: unknown): Promise<readonly VaultScope[]> {
+		const unreadable = new Set<VaultScope>();
+		for (const scope of VAULT_SCOPES) {
+			try {
+				// `lstat`, not a pin: this runs when the vault is already known to be broken, and the
+				// question is only "is there a file here to move aside".
+				await fs.lstat(vaultPathFor(this.#locations, scope));
+				unreadable.add(scope);
+			} catch {
+				// Absent, so there is nothing to refuse and nothing to repair for this scope.
+			}
+		}
+		this.#unreadableScopes = unreadable;
+		noteFailedVaultLoad(this.#locations, [...unreadable], error);
+		return [...unreadable];
 	}
 
 	/**

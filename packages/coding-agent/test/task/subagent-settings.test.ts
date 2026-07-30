@@ -649,7 +649,7 @@ describe("subagent effort choices", () => {
 			expect(option.description.length).toBeGreaterThan(0);
 		}
 		const minimal = configuredThinkingLevelOptions().find(option => option.value === ThinkingLevel.Minimal);
-		expect(minimal?.label).toBe("min");
+		expect(minimal?.label).toBe("minimal");
 	});
 
 	/**

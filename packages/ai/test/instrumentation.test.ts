@@ -3,6 +3,8 @@ import type { ImageContent, TextContent, Usage } from "@veyyon/ai";
 import {
 	type AssistantTurnMetricsInput,
 	type AssistantTurnRequestInput,
+	assistantTurnMetricsForPersistence,
+	assistantTurnRequestForPersistence,
 	atLeast,
 	captureAssistantTurnMetrics,
 	captureAssistantTurnRequest,
@@ -66,6 +68,7 @@ describe("captureToolCallMetrics gating", () => {
 		const m = captureToolCallMetrics(baseInput({ level: "basic" }));
 		expect(m).toEqual({
 			level: "basic",
+			timeUnit: "ms",
 			startedAt: 1_000,
 			endedAt: 1_250,
 			durationMs: 250,
@@ -98,6 +101,8 @@ describe("captureToolCallMetrics gating", () => {
 		expect(m.resultTokens).toBe(3);
 		expect(m.argsBytes).toBe(JSON.stringify({ limit: 10, path: "/tmp/x" }).length);
 		expect(m.argsHash).toMatch(/^[0-9a-f]{8}$/);
+		expect(m.argsDigest).toMatch(/^[0-9a-f]{32}$/);
+		expect(m.argsDigestAlgorithm).toBe("sha256-128");
 		expect(m.interruptible).toBe(true);
 		expect(m.signalAborted).toBe(false);
 	});
@@ -108,6 +113,35 @@ describe("captureToolCallMetrics gating", () => {
 		expect(a?.argsHash).toBe(b?.argsHash);
 		const c = captureToolCallMetrics(baseInput({ args: { path: "/tmp/y", limit: 10 } }));
 		expect(c?.argsHash).not.toBe(a?.argsHash);
+	});
+
+	/**
+	 * These argument objects collide under the retired 32-bit FNV fingerprint.
+	 * A study must never merge them into one repeated-call bucket.
+	 */
+	it("keeps a known 32-bit collision distinct", () => {
+		const first = captureToolCallMetrics(baseInput({ args: { x: "3116761226-2766675789" } }));
+		const second = captureToolCallMetrics(baseInput({ args: { x: "502004359-3005425825" } }));
+		expect(first?.argsHash).toBe(second?.argsHash);
+		expect(first?.argsDigest).not.toBe(second?.argsDigest);
+		expect(first?.argsDigestAlgorithm).toBe("sha256-128");
+		expect(second?.argsDigestAlgorithm).toBe("sha256-128");
+	});
+
+	/**
+	 * Hooks can mutate originally valid JSON arguments after parsing. Ultra
+	 * fingerprinting must omit unsupported values rather than fail the tool turn.
+	 */
+	it("omits argument fingerprints for cyclic and bigint values without throwing", () => {
+		const cyclic: Record<string, unknown> = {};
+		cyclic.self = cyclic;
+		for (const args of [cyclic, { count: 1n }]) {
+			const metrics = captureToolCallMetrics(baseInput({ args }));
+			expect(metrics?.argsBytes).toBeUndefined();
+			expect(metrics?.argsHash).toBeUndefined();
+			expect(metrics?.status).toBe("ok");
+			expect(metrics?.argsDigest).toBeUndefined();
+		}
 	});
 
 	it("clamps a negative span to zero rather than reporting a backwards duration", () => {
@@ -261,6 +295,27 @@ describe("captureAssistantTurnMetrics gating", () => {
 });
 
 /**
+ * Persistence applies the live setting again because a turn can finish after
+ * the operator downgraded instrumentation.
+ */
+it("re-projects captured turn metrics at the current persistence level", () => {
+	const ultra = captureAssistantTurnMetrics(turnInput({ level: "ultra" }));
+	expect(assistantTurnMetricsForPersistence(ultra, "off")).toBeUndefined();
+	expect(assistantTurnMetricsForPersistence(ultra, "basic")).toEqual({
+		level: "basic",
+		startedAt: 10_000,
+		endedAt: 12_000,
+		durationMs: 2_000,
+		status: "ok",
+		ttftMs: 500,
+	});
+	expect(assistantTurnMetricsForPersistence(ultra, "rich")).not.toHaveProperty("cacheReadTokens");
+	expect(assistantTurnMetricsForPersistence(ultra, "ultra")?.cacheReadTokens).toBe(20);
+	const basic = captureAssistantTurnMetrics(turnInput({ level: "basic" }));
+	expect(assistantTurnMetricsForPersistence(basic, "ultra")).toEqual(basic);
+});
+
+/**
  * GRAN-6: exact per-turn request parameters AS SENT.
  *
  * Why: `model_change` recorded provider/model/role but never the sampling knobs,
@@ -328,5 +383,15 @@ describe("captureAssistantTurnRequest gating", () => {
 
 	it("returns undefined for an all-default turn so no empty object is recorded", () => {
 		expect(captureAssistantTurnRequest({ level: "ultra" })).toBeUndefined();
+	});
+
+	/**
+	 * Request parameters captured before an in-flight downgrade must not cross
+	 * the off persistence boundary.
+	 */
+	it("drops captured request parameters when persistence is off", () => {
+		const request = captureAssistantTurnRequest(requestInput());
+		expect(assistantTurnRequestForPersistence(request, "off")).toBeUndefined();
+		expect(assistantTurnRequestForPersistence(request, "basic")).toEqual(request);
 	});
 });

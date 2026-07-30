@@ -3398,6 +3398,7 @@ describe("tool-call instrumentation", () => {
 		const metrics = toolResult.metrics;
 		if (!metrics) throw new Error("expected metrics");
 		expect(metrics.level).toBe("basic");
+		expect(metrics.timeUnit).toBe("ms");
 		expect(metrics.status).toBe("ok");
 		expect(metrics.endedAt).toBe(toolResult.timestamp);
 		expect(metrics.startedAt).toBeLessThanOrEqual(metrics.endedAt);
@@ -3418,11 +3419,139 @@ describe("tool-call instrumentation", () => {
 		expect(metrics.resultImages).toBe(0);
 		expect(metrics.resultBytes).toBe("echoed: hello world".length);
 		expect(metrics.resultTokens).toBeGreaterThan(0);
+		expect(metrics.batchId).toBeString();
 		expect(metrics.batchSize).toBe(1);
 		expect(metrics.batchIndex).toBe(0);
 		expect(metrics.concurrency).toBe("shared");
 		// rich tier stops before the args fingerprint
 		expect(metrics.argsHash).toBeUndefined();
+	});
+
+	it("correlates the persisted result with its execution start by tool-call id", async () => {
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [echoTool] };
+		const mock = createMockModel({
+			responses: [
+				{ content: [{ type: "toolCall", id: "span-correlation", name: "echo", arguments: { value: "x" } }] },
+				{ content: ["done"] },
+			],
+		});
+		const events: AgentEvent[] = [];
+		for await (const event of agentLoop(
+			[createUserMessage("run echo")],
+			context,
+			{ model: mock.model, convertToLlm: identityConverter, instrumentation: "rich" },
+			undefined,
+			mock.stream,
+		)) {
+			events.push(event);
+		}
+		const start = events.find(event => event.type === "tool_execution_start");
+		const resultEvent = events.find(event => event.type === "message_end" && event.message.role === "toolResult");
+		if (start?.type !== "tool_execution_start") throw new Error("expected tool start");
+		if (resultEvent?.type !== "message_end" || resultEvent.message.role !== "toolResult") {
+			throw new Error("expected tool result");
+		}
+		expect(start.toolCallId).toBe("span-correlation");
+		expect(resultEvent.message.toolCallId).toBe(start.toolCallId);
+		expect(resultEvent.message.metrics).toMatchObject({
+			timeUnit: "ms",
+			status: "ok",
+		});
+	});
+
+	it("distinguishes errors and tool-declared useless results", async () => {
+		const errorTool: AgentTool<typeof toolSchema, Record<string, never>> = {
+			name: "fails",
+			label: echoTool.label,
+			description: echoTool.description,
+			parameters: toolSchema,
+			async execute() {
+				return { content: [{ type: "text", text: "failed" }], details: {}, isError: true };
+			},
+		};
+		const uselessTool: AgentTool<typeof toolSchema, Record<string, never>> = {
+			name: "empty",
+			label: echoTool.label,
+			description: echoTool.description,
+			parameters: toolSchema,
+			async execute() {
+				return { content: [{ type: "text", text: "no matches" }], details: {}, useless: true };
+			},
+		};
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [errorTool, uselessTool] };
+		const mock = createMockModel({
+			responses: [
+				{
+					content: [
+						{ type: "toolCall", id: "failed-call", name: "fails", arguments: { value: "x" } },
+						{ type: "toolCall", id: "useless-call", name: "empty", arguments: { value: "x" } },
+					],
+				},
+				{ content: ["done"] },
+			],
+		});
+		const messages = await agentLoop(
+			[createUserMessage("run")],
+			context,
+			{ model: mock.model, convertToLlm: identityConverter, instrumentation: "basic" },
+			undefined,
+			mock.stream,
+		).result();
+		const results = messages.filter((message): message is ToolResultMessage => message.role === "toolResult");
+		expect(results.find(result => result.toolCallId === "failed-call")?.metrics?.status).toBe("error");
+		expect(results.find(result => result.toolCallId === "useless-call")?.metrics).toMatchObject({
+			status: "ok",
+			uselessReason: "tool-declared",
+		});
+	});
+
+	it("records cancellation separately from an ordinary tool error", async () => {
+		const controller = new AbortController();
+		const started = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		const tool: AgentTool<typeof toolSchema, Record<string, never>> = {
+			name: echoTool.name,
+			label: echoTool.label,
+			description: echoTool.description,
+			parameters: toolSchema,
+			async execute() {
+				started.resolve();
+				await release.promise;
+				throw new DOMException("cancelled", "AbortError");
+			},
+		};
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [tool] };
+		const mock = createMockModel({
+			responses: [
+				{ content: [{ type: "toolCall", id: "cancelled-call", name: "echo", arguments: { value: "x" } }] },
+			],
+		});
+		const events: AgentEvent[] = [];
+		const stream = agentLoop(
+			[createUserMessage("run")],
+			context,
+			{ model: mock.model, convertToLlm: identityConverter, instrumentation: "basic" },
+			controller.signal,
+			mock.stream,
+		);
+		const consuming = (async () => {
+			for await (const event of stream) events.push(event);
+		})();
+		await started.promise;
+		controller.abort("cancelled by user");
+		release.resolve();
+		await consuming;
+
+		const resultEvent = events.find(
+			event =>
+				event.type === "message_end" &&
+				event.message.role === "toolResult" &&
+				event.message.toolCallId === "cancelled-call",
+		);
+		if (resultEvent?.type !== "message_end" || resultEvent.message.role !== "toolResult") {
+			throw new Error("expected cancelled tool result");
+		}
+		expect(resultEvent.message.metrics?.status).toBe("aborted");
 	});
 
 	it("ultra records the args fingerprint and signal state", async () => {

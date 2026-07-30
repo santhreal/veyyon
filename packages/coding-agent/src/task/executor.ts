@@ -68,7 +68,7 @@ import type { AuthStorage } from "../session/auth-storage";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
 import { truncateTail } from "../session/streaming-output";
-import type { ConfiguredThinkingLevel } from "../thinking";
+import { type ConfiguredThinkingLevel, parseThinkingLevel } from "../thinking";
 import type { ContextFileEntry, ToolSession } from "../tools";
 import { resolveEvalBackends } from "../tools/eval-backends";
 import { isIrcEnabled } from "../tools/irc";
@@ -98,10 +98,12 @@ import type { EventBus } from "../utils/event-bus";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";
 import { generateTaskLabel } from "./label";
+import { resolveSubagentMaxNestedSpawnDepth } from "./subagent-settings";
 import { subprocessToolRegistry, YIELD_TOOL_NAME } from "./subprocess-tool-registry";
 import {
 	type AgentDefinition,
 	type AgentProgress,
+	canSpawnAtDepth,
 	MAX_OUTPUT_BYTES,
 	MAX_OUTPUT_LINES,
 	type ReviewFinding,
@@ -171,6 +173,25 @@ export function resolveEffectiveSubagentThinkingLevel(
 	configuredThinkingLevel: ConfiguredThinkingLevel | undefined,
 ): ConfiguredThinkingLevel | undefined {
 	return explicitThinkingLevel ? resolvedThinkingLevel : (configuredThinkingLevel ?? resolvedThinkingLevel);
+}
+
+/**
+ * The effort a subagent inherits from the session, read off the parent's active model selector.
+ *
+ * Reached only when nothing in the agent's own chain named a level, which is the DEFAULT state: a
+ * stock agent sets neither a row effort nor a blanket one, so it runs at whatever the session runs
+ * at. That is a definite effort and the operator should see it. Without this the HUD showed a bare
+ * model id for every default agent and an effort only for the rare one carrying an explicit
+ * suffix, so the surface implied the defaults had no effort at all.
+ *
+ * A model id may itself contain a colon (`qwen3:14b`), so the tail counts only when it parses as a
+ * level, the same rule {@link modelBadgeFromSelector} applies when it splits the badge back apart.
+ */
+function inheritedThinkingLevel(parentActiveModelPattern: string | undefined): ConfiguredThinkingLevel | undefined {
+	if (!parentActiveModelPattern) return undefined;
+	const colon = parentActiveModelPattern.lastIndexOf(":");
+	if (colon < 0) return undefined;
+	return parseThinkingLevel(parentActiveModelPattern.slice(colon + 1));
 }
 
 /** Agent event types to forward for progress tracking. */
@@ -267,21 +288,6 @@ function installSubagentRetryFallbackChain(args: {
 	}
 	settings.override("retry.fallbackChains", fallbackChains);
 	return role;
-}
-
-function renderIrcPeerRoster(selfId: string): string {
-	const peers = AgentRegistry.global()
-		.list()
-		.filter(ref => ref.id !== selfId && ref.status !== "aborted" && ref.kind !== "advisor");
-	if (peers.length === 0) return "- (no other agents)";
-	const lines = peers.map(
-		peer =>
-			`- \`${peer.id}\` — ${peer.displayName} (${peer.kind}, ${peer.status})${peer.activity ? `: ${peer.activity}` : ""}`,
-	);
-	if (peers.some(peer => peer.status === "idle" || peer.status === "parked")) {
-		lines.push("Idle/parked peers are not gone: messaging them wakes (or revives) them.");
-	}
-	return lines.join("\n");
 }
 
 function withAbortTimeout<T>(
@@ -2480,7 +2486,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	// Every executor decision below is part of the child's runtime contract, so
 	// it reads the destination-scoped view rather than the parent's project.
 	const settings = subagentSettings;
-	const maxRecursionDepth = settings.get("subagent.maxRecursionDepth") ?? 2;
+	const maxNestedSpawnDepth = resolveSubagentMaxNestedSpawnDepth(settings, agent.name);
 	const maxRuntimeMs = Math.max(
 		0,
 		Math.trunc(Number(options.maxRuntimeMs ?? settings.get("subagent.maxRuntimeMs") ?? 0) || 0),
@@ -2497,7 +2503,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	const softRequestBudgetNotice = settings.get("subagent.softRequestBudgetNotice") ?? false;
 	const parentDepth = options.taskDepth ?? 0;
 	const childDepth = parentDepth + 1;
-	const atMaxDepth = maxRecursionDepth >= 0 && childDepth >= maxRecursionDepth;
+	const atMaxDepth = !canSpawnAtDepth(maxNestedSpawnDepth, childDepth);
 
 	// Add tools if specified
 	let toolNames: string[] | undefined;
@@ -2543,7 +2549,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				: agent.spawns.join(",");
 
 	const lspEnabled = enableLsp ?? true;
-	const ircEnabled = isIrcEnabled(subagentSettings, childDepth);
+	const ircEnabled = isIrcEnabled(subagentSettings, childDepth, maxNestedSpawnDepth);
 	const skipPythonPreflight = Array.isArray(toolNames) && !toolNames.includes("eval");
 
 	const monitor = createSubagentRunMonitor({
@@ -2690,16 +2696,27 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			if (model?.contextWindow && model.contextWindow > 0) {
 				progress.contextWindow = model.contextWindow;
 			}
-			if (model) {
-				progress.resolvedModel = explicitThinkingLevel
-					? formatModelSelectorValue(formatModelStringWithRouting(model), resolvedThinkingLevel)
-					: formatModelStringWithRouting(model);
-			}
-			const effectiveThinkingLevel = resolveEffectiveSubagentThinkingLevel(
+			const selectedThinkingLevel = resolveEffectiveSubagentThinkingLevel(
 				explicitThinkingLevel,
 				resolvedThinkingLevel,
 				thinkingLevel,
 			);
+			const effectiveThinkingLevel =
+				selectedThinkingLevel === undefined || selectedThinkingLevel === "inherit"
+					? inheritedThinkingLevel(options.parentActiveModelPattern)
+					: selectedThinkingLevel;
+			if (model) {
+				// The badge carries the effort this agent ACTUALLY runs at, not only an effort somebody
+				// typed as a `:level` suffix. Effort inherits on its own axis (this agent's row, then the
+				// blanket subagent effort, then frontmatter, then the session), so the ordinary case is an
+				// agent running at a perfectly definite effort that no suffix names. The badge printed the
+				// bare model for exactly those, which reads as "this one has no effort level" next to a
+				// sibling that shows one, when both have one and they may well differ.
+				const badgeLevel = effectiveThinkingLevel;
+				progress.resolvedModel = badgeLevel
+					? formatModelSelectorValue(formatModelStringWithRouting(model), badgeLevel)
+					: formatModelStringWithRouting(model);
+			}
 			resolvedAt = performance.now();
 
 			// sessionFile is always durable — a subagent never runs in-memory (GRAN-1).
@@ -2790,8 +2807,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 						worktree: worktree ?? "",
 						outputSchema: normalizedOutputSchema,
 						outputSchemaOverridesAgent: options.outputSchemaOverridesAgent === true,
-						ircPeers: ircEnabled ? renderIrcPeerRoster(id) : "",
-						ircSelfId: ircEnabled ? id : "",
+						ircEnabled,
 					});
 					return defaultPrompt.length === 0
 						? [subagentPrompt]
@@ -2801,6 +2817,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				hasUI: false,
 				spawns: spawnsEnv,
 				taskDepth: childDepth,
+				maxNestedSpawnDepth,
 				parentHindsightSessionState: options.parentHindsightSessionState,
 				parentMnemopiSessionState: options.parentMnemopiSessionState,
 				parentArgot: options.parentArgot,
@@ -2901,6 +2918,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				tools: session.getActiveToolNames(),
 				spawns: spawnsEnv,
 				readSummarize: agent.readSummarize,
+				maxNestedSpawnDepth,
 				outputSchema,
 			});
 

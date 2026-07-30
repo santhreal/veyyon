@@ -15,7 +15,8 @@
 import { type AgentMessage, countTokens } from "@veyyon/agent-core";
 import type { CompactionSettings } from "@veyyon/agent-core/compaction";
 import { estimateTokens } from "@veyyon/agent-core/compaction";
-import type { Tool as AiTool, Model } from "@veyyon/ai";
+import type { Tool as AiTool, ContextSnapshot, Model } from "@veyyon/ai";
+import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 // Imported from their owners rather than the `@veyyon/utils` barrel: this module is
 // on `tools/read.ts`'s reach graph through `session/agent-session.ts`, and
@@ -27,6 +28,65 @@ import { resolveContextLimit } from "../config/compaction-strategy";
 import type { Skill } from "../extensibility/skills";
 import type { Tool } from "../tools";
 import type { AgentSession } from "./agent-session";
+
+export interface ContextSnapshotAttribution {
+	storedMessagesTokens: number;
+	tailTokens: number;
+	promptTokensSource: "provider" | "estimate";
+	compactionEntryId?: string;
+}
+/**
+ * Split an already-computed prompt total into stored-message and request-tail
+ * estimates. Clamping the tail to the message subtotal makes the relationship
+ * additive even after compaction rebases a pending snapshot.
+ */
+export function estimateContextSnapshotAttribution(
+	promptTokens: number,
+	nonMessageTokens: number,
+	tailTokens: number,
+	promptTokensSource: ContextSnapshotAttribution["promptTokensSource"],
+	compactionEntryId?: string,
+): ContextSnapshotAttribution {
+	const messageTokens = Math.max(0, promptTokens - nonMessageTokens);
+	const normalizedTailTokens = Math.min(messageTokens, Math.max(0, tailTokens));
+	return {
+		storedMessagesTokens: messageTokens - normalizedTailTokens,
+		tailTokens: normalizedTailTokens,
+		promptTokensSource,
+		compactionEntryId,
+	};
+}
+
+/**
+ * Build the persisted per-turn context record at the canonical telemetry detail.
+ *
+ * The caller supplies totals it already computed for request accounting. This
+ * boundary deliberately does no tokenization: richer session data must not add
+ * another walk over the prompt hot path.
+ */
+export function buildContextSnapshot(
+	promptTokens: number,
+	nonMessageTokens: number,
+	detail: SessionTelemetryDetail,
+	attribution: ContextSnapshotAttribution,
+): ContextSnapshot {
+	if (detail !== "rich" && detail !== "ultra") return { promptTokens, nonMessageTokens };
+
+	const snapshot: ContextSnapshot = {
+		promptTokens,
+		nonMessageTokens,
+		storedMessagesTokens: attribution.storedMessagesTokens,
+		tailTokens: attribution.tailTokens,
+		promptTokensSource: attribution.promptTokensSource,
+		nonMessageTokensEstimated: true,
+		storedMessagesTokensEstimated: true,
+		tailTokensEstimated: true,
+	};
+	if (detail === "ultra" && attribution.compactionEntryId) {
+		snapshot.compactionEntryId = attribution.compactionEntryId;
+	}
+	return snapshot;
+}
 
 export type CategoryId = "systemPrompt" | "systemContext" | "systemTools" | "skills" | "messages";
 

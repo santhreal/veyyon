@@ -71,6 +71,9 @@ function createReplaySession(events: AgentSessionEvent[], header?: unknown): Age
 	return {
 		dispose: async () => {},
 		displayAssistantContent: (content: AssistantMessage["content"]) => content,
+		// The seam `--mode json` re-redacts through. Identity, for the same reason as
+		// the display seam above: these tests are about the SHAPE print mode emits.
+		obfuscateProviderText: (text: string) => text,
 		extensionRunner: undefined,
 		prompt: async () => {
 			for (const event of events) emit?.(event);

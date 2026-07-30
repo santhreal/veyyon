@@ -36,8 +36,8 @@ import { declareWorkerHostEntry, installWorkerInbox } from "@veyyon/utils/worker
 import { EXIT_FAILURE, EXIT_USAGE } from "./cli/exit-codes";
 import { installProfileAlias, resolveProfileAliasCommandFromProcess } from "./cli/profile-alias";
 import { extractProfileFlags } from "./cli/profile-bootstrap";
-import { DAEMON_BROKER_WORKER_ARG } from "./launch/protocol";
 import { CliUsageError } from "./cli/usage-error";
+import { DAEMON_BROKER_WORKER_ARG } from "./launch/protocol";
 import {
 	JS_EVAL_PROCESS_ARG,
 	JS_EVAL_WORKER_ARG,

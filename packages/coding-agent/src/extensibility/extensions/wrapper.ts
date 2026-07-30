@@ -8,7 +8,7 @@ import type { Settings } from "../../config/settings";
 import type { Theme } from "../../modes/theme/theme";
 import {
 	type ApprovalMode,
-	formatApprovalPrompt,
+	formatApprovalCard,
 	requiresApproval,
 	resolveEffectiveApprovalMode,
 } from "../../tools/approval";
@@ -17,7 +17,23 @@ import { secretUseApprovalReason } from "../../tools/secret-use-boundary";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import { applyToolProxy } from "../tool-proxy";
 import type { ExtensionRunner } from "./runner";
-import type { RegisteredTool, ToolCallEventResult, ToolRenderResultOptions } from "./types";
+import type {
+	ExtensionUIDialogOptions,
+	ExtensionUISelectItem,
+	RegisteredTool,
+	ToolCallEventResult,
+	ToolRenderResultOptions,
+} from "./types";
+
+/** Shared presentation contract for interactive one-call tool approval. */
+export const APPROVAL_SELECT_OPTIONS: ExtensionUISelectItem[] = [
+	{ label: "Approve", description: "Run this call once. No policy is saved." },
+	{ label: "Deny", description: "Do not run this call." },
+];
+export const APPROVAL_DIALOG_OPTIONS: ExtensionUIDialogOptions = {
+	selectionMarker: "radio",
+	helpText: "↑/↓ navigate  enter confirm  esc cancel",
+};
 
 /**
  * Adapts a RegisteredTool into an AgentTool.
@@ -218,10 +234,11 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			const uiContext = this.runner.getUIContext();
 			let choice: string | undefined;
 			try {
-				choice = await uiContext.select(formatApprovalPrompt(this.tool, params, approvalReason), [
-					"Approve",
-					"Deny",
-				]);
+				choice = await uiContext.select(
+					formatApprovalCard(this.tool, params, approvalReason),
+					APPROVAL_SELECT_OPTIONS,
+					APPROVAL_DIALOG_OPTIONS,
+				);
 			} catch (err) {
 				await resolveApproval(false, err instanceof Error ? err.message : "approval aborted");
 				throw err;

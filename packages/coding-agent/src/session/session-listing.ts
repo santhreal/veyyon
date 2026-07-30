@@ -628,7 +628,14 @@ export async function recoverOrphanedBackups(sessionDir: string, storage: Sessio
 	let backups: string[];
 	try {
 		backups = storage.listFilesSync(sessionDir, `*${SESSION_BACKUP_EXTENSION}`);
-	} catch {
+	} catch (error) {
+		// A genuinely absent directory is the ordinary first-run case. Any other
+		// enumeration failure means backups may be stranded outside the primary
+		// `*.jsonl` listing, so expose it through the directory-scan reporting
+		// owner while still allowing safe primary files to be listed.
+		if (!isEnoent(error)) {
+			recordUnreadableSessionDir(sessionDir, toError(error).message);
+		}
 		return;
 	}
 	if (backups.length === 0) return;

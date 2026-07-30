@@ -1,24 +1,16 @@
 /**
  * report_tool_issue — automated QA tool for tracking unexpected tool behavior.
  *
- * Enabled by default; gated behind VEYYON_AUTO_QA=1 / `dev.autoqa` so a user
- * who flips the setting off short-circuits injection entirely.
- * Always injected into every agent (including subagents) regardless of tool selection.
- * Records grievances to a local SQLite database; never throws.
+ * Enabled only by VEYYON_AUTO_QA=1 or the per-profile `dev.autoqa` setting.
+ * When enabled, every agent records grievances in the profile's local SQLite
+ * database. Recording never waits for or depends on the network.
  *
- * Before the first record lands, the user's consent is checked. If they've
- * never been asked (`dev.autoqa.consent === "unset"`) the process-global
- * consent handler — wired by `InteractiveMode` to a Yes/No popup — is
- * invoked exactly once and the decision is persisted. Subsequent calls
- * (including from subagents) read the cached decision without prompting.
- *
- * When the user grants consent, push is automatically active against
- * `dev.autoqaPush.endpoint` — unset by default (no bundled endpoint; see
- * `settings-schema.ts`), so push is a no-op until an operator sets it. Each
- * insert schedules a background flush that POSTs pending rows and deletes
- * them on HTTP 2xx. `VEYYON_AUTO_QA_PUSH=1` forces push in non-interactive
- * environments where the consent dialog never fires. Tool execution is
- * never blocked on the network and never throws.
+ * Automatic upload is a separate per-profile opt-in:
+ * `dev.autoqaPush.enabled`, which defaults to false. The bundled endpoint is
+ * https://veyyon.dev/api/grievances. Each insert schedules a background flush
+ * only when that toggle is on. `VEYYON_AUTO_QA_PUSH=1` remains the explicit
+ * headless override, and `veyyon grievances push` remains the explicit
+ * one-shot command. Tool execution never blocks on the network and never throws.
  */
 import { Database } from "bun:sqlite";
 import type { AgentTool } from "@veyyon/agent-core";
@@ -53,145 +45,6 @@ function buildReportToolIssueParams(activeBuiltinNames: readonly string[]) {
 
 export function isAutoQaEnabled(settings?: Settings): boolean {
 	return $flag("VEYYON_AUTO_QA", !!settings?.get("dev.autoqa"));
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Consent gate
-// ───────────────────────────────────────────────────────────────────────────
-
-/**
- * Resolver for the user's "share grievances?" consent.
- *
- * Return values:
- *   - `true`  — user agreed; record + ship for this run and persist.
- *   - `false` — user declined; suppress for this run and persist.
- *   - `null`  — user dismissed the dialog (ESC, click-away, …) without
- *               picking an option. The decision is NOT cached or persisted,
- *               so the next `report_tool_issue` invocation re-prompts.
- *
- * Persistence is the tool's job (so subagent invocations can persist into
- * the disk-backed `Settings` instance the host registered alongside the
- * handler), not the handler's. Implementations live in hosts that have UI
- * affordances — today only `InteractiveMode`. When no handler is
- * registered (CLI subcommands, tests, non-interactive runs) consent
- * defaults to `false` — the explicit "don't collect by default" stance.
- */
-export type AutoQaConsentHandler = () => Promise<boolean | null>;
-
-let consentHandler: AutoQaConsentHandler | null = null;
-/**
- * Persistent settings instance supplied by the consent-handler registrant.
- * Subagents have in-memory `Settings` snapshots that don't write to disk;
- * we persist the decision through this disk-backed reference so a grant
- * survives across runs even when triggered from a subagent tool call.
- */
-let persistentConsentSettings: Settings | null = null;
-/**
- * Process-global cache of the resolved consent decision. Survives across
- * subagent boundaries (subagents share this module instance), so a grant
- * in the parent applies immediately to children — including children that
- * spawned BEFORE the grant and would otherwise see a stale snapshot of
- * `dev.autoqa.consent` in their isolated `Settings`.
- *
- * `null` = never asked, never cached.
- */
-let cachedConsent: boolean | null = null;
-/**
- * Single-flight in-flight consent request. While the dialog is open, every
- * concurrent `report_tool_issue` call (main + every subagent) awaits this
- * promise instead of stacking duplicate popups.
- */
-let consentInFlight: Promise<boolean> | null = null;
-
-/**
- * Register the consent handler and the persistent {@link Settings} instance
- * the decision should be written to. Passing `null` clears the handler
- * (e.g. on `InteractiveMode` teardown). Re-registration is authoritative.
- */
-export function setAutoQaConsentHandler(
-	handler: AutoQaConsentHandler | null,
-	persistentSettings: Settings | null = null,
-): void {
-	consentHandler = handler;
-	persistentConsentSettings = persistentSettings;
-}
-
-/** Test-only: clear consent cache + handler. Never call from production code. */
-export function __resetAutoQaConsentForTests(): void {
-	consentHandler = null;
-	persistentConsentSettings = null;
-	cachedConsent = null;
-	consentInFlight = null;
-}
-
-function readPersistedConsent(settings: Settings | undefined): boolean | null {
-	if (!settings) return null;
-	const stored = settings.get("dev.autoqa.consent");
-	if (stored === "granted") return true;
-	if (stored === "denied") return false;
-	return null;
-}
-
-function persistConsent(localSettings: Settings | undefined, granted: boolean): void {
-	const value = granted ? "granted" : "denied";
-	// Write on every settings instance we know about. The local one keeps
-	// the in-memory snapshot consistent for the current subagent; the
-	// persistent one (registered by the host) is what actually lands on disk.
-	for (const target of [localSettings, persistentConsentSettings]) {
-		if (!target) continue;
-		try {
-			target.set("dev.autoqa.consent", value);
-		} catch (error) {
-			logger.debug("autoqa consent persist failed", { error: String(error) });
-		}
-	}
-}
-
-/**
- * Resolve the user's consent for `report_tool_issue` grievances.
- *
- * Precedence (highest first):
- *   1. Process-global cache (set on first successful resolution).
- *   2. Persistent setting (`dev.autoqa.consent` on the supplied `Settings`).
- *   3. Persistent setting on the registered host `Settings`.
- *   4. Consent handler popup (single-flight; persists the answer).
- *   5. Default-deny when no handler is registered.
- *
- * Never throws — handler errors degrade to "denied for this call" without
- * caching, so a subsequent invocation can re-prompt instead of being
- * permanently locked into the false branch.
- */
-export async function resolveAutoQaConsent(settings: Settings | undefined): Promise<boolean> {
-	if (cachedConsent !== null) return cachedConsent;
-	const persisted = readPersistedConsent(settings) ?? readPersistedConsent(persistentConsentSettings ?? undefined);
-	if (persisted !== null) {
-		cachedConsent = persisted;
-		return persisted;
-	}
-	if (!consentHandler) return false;
-	if (consentInFlight) return consentInFlight;
-	const handler = consentHandler;
-	consentInFlight = (async () => {
-		try {
-			const granted = await handler();
-			if (granted === null) {
-				// User dismissed the dialog (ESC) without picking. Treat as
-				// "skip this call" but don't cache or persist — the next
-				// invocation gets to re-prompt so a stray ESC isn't a
-				// permanent opt-out.
-				return false;
-			}
-			cachedConsent = granted;
-			persistConsent(settings, granted);
-			return granted;
-		} catch (error) {
-			logger.warn("autoqa consent handler threw", { error: String(error) });
-			return false;
-		} finally {
-			consentInFlight = null;
-		}
-	})();
-	return consentInFlight;
 }
 
 let cachedDb: Database | null = null;
@@ -264,23 +117,20 @@ export interface FlushResult {
 
 /**
  * Optional per-flush controls. Used by `veyyon grievances push` to surface
- * progress to a TTY and to skip the user-facing consent gate (manual
- * pushes are the user's explicit intent, not a side effect of a tool call).
+ * progress to a TTY and to override the per-profile automatic-upload toggle.
  */
 export type AutoQaSanitizer = (text: string) => string;
 
 export interface FlushOptions {
 	/**
-	 * Skip the `dev.autoqa.consent === "granted"` gate in
-	 * {@link resolvePushConfig}. Endpoint configuration is still required.
-	 * Reserved for explicit user-driven pushes (CLI `grievances push`,
-	 * future debug recipes); never set from the tool's auto-flush path.
+	 * Upload even when `dev.autoqaPush.enabled` is false. Endpoint configuration
+	 * is still required. Reserved for explicit user-driven pushes.
 	 */
-	bypassConsent?: boolean;
+	forceUpload?: boolean;
 	/**
 	 * Resolve the current provider-bound sanitizer immediately before each
-	 * physical POST. Auto-flush supplies a live session resolver so a consent
-	 * delay or runtime refresh cannot leave a stale transform in the queue.
+	 * physical POST. Auto-flush supplies a live session resolver so a queued
+	 * upload cannot use a stale transform after the provider state refreshes.
 	 *
 	 * Explicit manual pushes without a session intentionally omit this: the
 	 * user's command is an explicit request to ship the locally stored rows.
@@ -337,16 +187,14 @@ function envOverrideString(name: string): string | undefined {
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function resolvePushConfig(settings: Settings | undefined, bypassConsent: boolean): PushConfig | null {
-	if (!isAutoQaEnabled(settings)) return null;
+function resolvePushConfig(settings: Settings | undefined, forceUpload: boolean): PushConfig | null {
+	if (!forceUpload && !isAutoQaEnabled(settings)) return null;
 
-	// Consent IS the push opt-in for the auto-flush path. `bypassConsent`
-	// covers explicit user-driven pushes (`veyyon grievances push`) where the
-	// user clearly intends to ship regardless of dialog state. The
-	// `VEYYON_AUTO_QA_PUSH` env flag stays as a CI/headless override too.
-	if (!bypassConsent) {
-		const consented = settings?.get("dev.autoqa.consent") === "granted";
-		if (!consented && !$flag("VEYYON_AUTO_QA_PUSH")) return null;
+	// The profile toggle is the ordinary network boundary. The environment
+	// override exists for headless QA runs, while `forceUpload` is used only by
+	// the operator's explicit `veyyon grievances push` command.
+	if (!forceUpload && settings?.get("dev.autoqaPush.enabled") !== true && !$flag("VEYYON_AUTO_QA_PUSH")) {
+		return null;
 	}
 
 	const endpoint = envOverrideString("VEYYON_AUTO_QA_PUSH_URL") ?? settings?.get("dev.autoqaPush.endpoint");
@@ -503,13 +351,12 @@ export async function flushGrievances(
 	settings?: Settings,
 	options: FlushOptions = {},
 ): Promise<FlushResult> {
-	const config = resolvePushConfig(settings, options.bypassConsent === true);
+	const config = resolvePushConfig(settings, options.forceUpload === true);
 	if (!config) return { pushed: 0, ok: false, skipped: true };
 
-	// `bypassConsent` is the user's explicit "ship NOW" intent — skip the
-	// 30s cooldown window so they're not stuck looking at "skipped" after a
-	// transient failure. Auto-flush calls still cool off.
-	const bypass = options.bypassConsent === true;
+	// An explicit "ship now" skips the automatic retry cooldown so the command
+	// can immediately retry a transient failure.
+	const bypass = options.forceUpload === true;
 	if (!bypass && inFlightFlush) return inFlightFlush;
 
 	if (!bypass && lastFailureAt > 0 && Date.now() - lastFailureAt < FAILURE_COOLDOWN_MS) {
@@ -553,12 +400,10 @@ export function createReportToolIssueTool(session: ToolSession, activeBuiltinNam
 		parameters: buildReportToolIssueParams(activeBuiltinNames),
 		intent: "omit",
 		async execute(_toolCallId, rawParams) {
-			// Save is unconditional: the row lives in the user's own SQLite
-			// at ~/.veyyon/agent/autoqa.db regardless of consent — they always
-			// own their local data and can inspect or wipe it via `veyyon grievances`.
-			// Consent only gates whether the row is *shipped* to the shared
-			// backend; that decision rides on `dev.autoqa.consent` and is
-			// enforced inside `flushGrievances` via `resolvePushConfig`.
+			// Save is unconditional: the row lives in this profile's local
+			// autoqa.db. The operator owns it and can inspect or remove it through
+			// `veyyon grievances`. The profile's separate auto-upload toggle is
+			// enforced inside `flushGrievances`.
 			try {
 				const params = rawParams as { tool: string; report: string };
 				// Some models emit `proxy_<name>` for tools routed through a
@@ -567,7 +412,7 @@ export function createReportToolIssueTool(session: ToolSession, activeBuiltinNam
 				const canonicalTool = params.tool.startsWith("proxy_") ? params.tool.slice("proxy_".length) : params.tool;
 				// Silently drop reports targeting tools that aren't shipped built-ins
 				// (MCP servers, extensions that overrode a built-in name, typos).
-				// Not the model's fault — no error, no DB row, just acknowledge.
+				// Not the model's fault: no error, no DB row, just acknowledge.
 				// Empty allowlist means the factory was called without a known active
 				// set, so behave as before and record everything.
 				if (allowedToolNames.size > 0 && !allowedToolNames.has(canonicalTool)) {
@@ -581,26 +426,12 @@ export function createReportToolIssueTool(session: ToolSession, activeBuiltinNam
 						canonicalTool,
 						params.report,
 					);
-					// Fire-and-forget background pipeline:
-					//   1. Trigger the consent popup if it hasn't been answered
-					//      (single-flight inside `resolveAutoQaConsent`; subagents
-					//      share the same module-level state).
-					//   2. Attempt a flush — `resolvePushConfig` no-ops when consent
-					//      isn't granted, so a "no" leaves the row local for later
-					//      `veyyon grievances push` or a future consent change.
-					// Tool execution returns immediately; the model never waits
-					// on the dialog.
-					void (async () => {
-						try {
-							await resolveAutoQaConsent(session.settings);
-							await flushGrievances(db, session.settings, {
-								resolveSanitizer: () => session.obfuscateProviderText,
-							});
-						} catch {
-							// Sanitizer/network errors can carry request material.
-							logger.debug("autoqa post-insert pipeline failed");
-						}
-					})();
+					// Fire and forget. A disabled toggle returns before network I/O;
+					// an enabled one drains all queued rows through the live secret
+					// sanitizer. The tool response never waits for either branch.
+					void flushGrievances(db, session.settings, {
+						resolveSanitizer: () => session.obfuscateProviderText,
+					});
 				}
 			} catch (error) {
 				logger.error("Failed to record tool issue", { error });

@@ -15,7 +15,10 @@ import { logger } from "@veyyon/utils";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import type { SubagentAgentSettings } from "../config/settings-domains/subagents";
-import { DEFAULT_ENABLED_BUNDLED_AGENT } from "../config/settings-domains/subagents";
+import {
+	DEFAULT_ENABLED_BUNDLED_AGENT,
+	DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH,
+} from "../config/settings-domains/subagents";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
 import type { AgentDefinition } from "./types";
 
@@ -141,6 +144,37 @@ export function subagentSettingsFor(settings: Settings, name: string): SubagentA
 	const table = settings.get("subagent.agents") as Record<string, SubagentAgentSettings> | undefined;
 	const row = table?.[name];
 	return row && typeof row === "object" ? row : {};
+}
+
+function parseMaxNestedSpawnDepth(setting: string, value: unknown): number {
+	if (typeof value === "number" && Number.isInteger(value) && value >= -1) return value;
+	throw new Error(`${setting} must be -1 (unlimited) or a non-negative integer; received ${String(value)}`);
+}
+
+/**
+ * Resolve the absolute task depth at which `agentName` may still spawn.
+ * A per-agent row wins over the blanket limit. Zero means the root may spawn
+ * direct children, while a child at task depth 1 cannot spawn again.
+ */
+export function resolveSubagentMaxNestedSpawnDepth(settings: Settings, agentName?: string): number {
+	const rowValue = agentName === undefined ? undefined : subagentSettingsFor(settings, agentName).maxNestedSpawnDepth;
+	if (rowValue !== undefined) {
+		return parseMaxNestedSpawnDepth(`subagent.agents.${agentName}.maxNestedSpawnDepth`, rowValue);
+	}
+	const blanket = settings.get("subagent.maxNestedSpawnDepth");
+	return blanket === undefined
+		? DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH
+		: parseMaxNestedSpawnDepth("subagent.maxNestedSpawnDepth", blanket);
+}
+
+/**
+ * Resolve this live session's cap. Child sessions receive the already-resolved
+ * per-agent value without overwriting the blanket setting descendants inherit.
+ */
+export function resolveSessionMaxNestedSpawnDepth(settings: Settings, override?: number): number {
+	return override === undefined
+		? resolveSubagentMaxNestedSpawnDepth(settings)
+		: parseMaxNestedSpawnDepth("session maxNestedSpawnDepth", override);
 }
 
 /**

@@ -717,6 +717,17 @@ export interface AssistantRetryRecovery {
 export interface ContextSnapshot {
 	promptTokens: number; // authoritative provider prompt/input tokens
 	nonMessageTokens: number; // estimated non-message total at send time
+	/** Estimated stored conversation messages included in the request. Rich session telemetry only. */
+	storedMessagesTokens?: number;
+	/** Estimated not-yet-stored request tail included alongside the stored conversation. Rich telemetry only. */
+	tailTokens?: number;
+	/** Whether the prompt total came from provider usage or a local preflight estimate. */
+	promptTokensSource?: "provider" | "estimate";
+	nonMessageTokensEstimated?: boolean;
+	storedMessagesTokensEstimated?: boolean;
+	tailTokensEstimated?: boolean;
+	/** Latest compaction entry governing this request, when recorded at ultra detail. */
+	compactionEntryId?: string;
 	lastMessageTimestamp?: number;
 }
 

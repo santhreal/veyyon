@@ -265,12 +265,13 @@ export function oneLineLabel(text: string, max = LABEL_MAX): string {
 }
 
 /**
- * Whether an agent at `taskDepth` may still spawn children — i.e. it currently
- * holds the `task` tool. Mirrors the task-tool availability gate;
- * `maxRecursionDepth < 0` disables the cap entirely.
+ * Whether an agent at `taskDepth` may still spawn children. The configured
+ * value counts nested subagent levels, so zero allows the root session at depth
+ * zero to spawn direct children, but those children at depth one are leaves.
+ * `maxNestedSpawnDepth < 0` disables the cap entirely.
  */
-export function canSpawnAtDepth(maxRecursionDepth: number, taskDepth: number): boolean {
-	return maxRecursionDepth < 0 || taskDepth < maxRecursionDepth;
+export function canSpawnAtDepth(maxNestedSpawnDepth: number, taskDepth: number): boolean {
+	return maxNestedSpawnDepth < 0 || taskDepth <= maxNestedSpawnDepth;
 }
 
 /** A code review finding reported by the reviewer agent */
@@ -366,7 +367,14 @@ export interface AgentProgress {
 	cost: number;
 	durationMs: number;
 	modelOverride?: string | string[];
-	/** Resolved model display string in the form `<provider>/<id>`, optionally suffixed with `:<thinkingLevel>` when the level was set explicitly. Undefined when the model could not be resolved. */
+	/**
+	 * Resolved model display string in the form `<provider>/<id>`, suffixed with `:<thinkingLevel>`
+	 * whenever the effort this agent runs at is known. That includes an effort it INHERITED, not
+	 * only one typed as an explicit suffix: effort resolves on its own axis (the agent's row, the
+	 * blanket subagent effort, frontmatter, then the session), so an agent with no suffix still runs
+	 * at a definite effort and the badge built from this string has to be able to say which.
+	 * Undefined when the model could not be resolved.
+	 */
 	resolvedModel?: string;
 	/**
 	 * The model this agent STARTED on, set only once it has fallen back to
@@ -435,7 +443,7 @@ export interface SingleResult {
 	/** Model's context window in tokens, when known. */
 	contextWindow?: number;
 	modelOverride?: string | string[];
-	/** Resolved model display string in the form `<provider>/<id>`, optionally suffixed with `:<thinkingLevel>` when the level was set explicitly. Omitted from tool-result JSON when undefined to keep wire payloads small. */
+	/** Resolved model display string in the form `<provider>/<id>`, suffixed with `:<thinkingLevel>` whenever the effort the agent runs at is known, including an inherited one. Omitted from tool-result JSON when undefined to keep wire payloads small. */
 	resolvedModel?: string;
 	error?: string;
 	aborted?: boolean;

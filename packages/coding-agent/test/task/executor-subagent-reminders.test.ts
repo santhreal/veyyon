@@ -168,6 +168,9 @@ describe("runSubprocess yield reminders", () => {
 		expect(systemPrompt?.[0]).toBe("system");
 		expect(systemPrompt?.[1]).toBe("project");
 		expect(systemPrompt?.[2]).toMatch(/ROLE\n=+\n\ntest/);
+		expect(systemPrompt?.[2]).toContain("# IRC Coordination");
+		expect(systemPrompt?.[2]).toContain('call `irc` with `op:"list"`');
+		expect(systemPrompt?.[2]).not.toContain("subagent-context-system");
 		// The parent-conversation CONTEXT section is gone: subagents get their
 		// background inside the assignment (or a local:// file), never a dump.
 		expect(systemPrompt?.[2]).not.toMatch(/CONTEXT\n=+/);

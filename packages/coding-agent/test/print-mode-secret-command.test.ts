@@ -86,6 +86,11 @@ function createHarness(): PrintHarness {
 		prompt,
 		dispose: vi.fn(async () => {}),
 		displayAssistantContent: (content: unknown) => content,
+		// `--mode json` re-redacts every stdout line through this. Identity here on
+		// purpose: these tests assert that a credential passed as a COMMAND ARGUMENT is
+		// refused before it is ever stored, so nothing in them has a placeholder to
+		// redact back and an identity keeps the refusal the only thing under test.
+		obfuscateProviderText: (text: string) => text,
 		state: { messages: [] },
 		sessionManager,
 		settings,

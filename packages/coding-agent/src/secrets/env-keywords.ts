@@ -25,7 +25,7 @@
  * everyone who opens it, which is the wrong direction for a security control to be configurable in.
  */
 import * as path from "node:path";
-import { isEnoent, isRecord } from "@veyyon/utils";
+import { CONFIG_DIR_NAME, isEnoent, isRecord } from "@veyyon/utils";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { parse as parseYaml } from "yaml";
 import bundledYaml from "./env-keywords.yml" with { type: "text" };
@@ -123,7 +123,7 @@ export async function loadEnvSecretKeywords(options: { cwd: string; agentDir: st
 	const keywords = new Set(BUNDLED_ENV_KEYWORDS);
 	for (const filePath of [
 		path.join(options.agentDir, ENV_KEYWORDS_FILENAME),
-		path.join(options.cwd, ".veyyon", ENV_KEYWORDS_FILENAME),
+		path.join(options.cwd, CONFIG_DIR_NAME, ENV_KEYWORDS_FILENAME),
 	]) {
 		let text: string;
 		try {

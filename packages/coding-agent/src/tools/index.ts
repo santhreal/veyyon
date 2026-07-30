@@ -22,7 +22,7 @@ import type { CustomMessage } from "../session/messages";
 import type { SubagentSpawnRecord, UsageStatistics } from "../session/session-entries";
 import type { ToolChoiceQueue } from "../session/tool-choice-queue";
 import type { AgentOutputManager } from "../task/output-manager";
-import { delegationEnabled } from "../task/subagent-settings";
+import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/subagent-settings";
 import { canSpawnAtDepth } from "../task/types";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
 import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
@@ -158,6 +158,8 @@ export interface ToolSession {
 	requireYieldTool?: boolean;
 	/** Task recursion depth (0 = top-level, 1 = first child, etc.) */
 	taskDepth?: number;
+	/** Resolved absolute spawn-depth cap for this session's agent type. */
+	maxNestedSpawnDepth?: number;
 	/** Get shared eval executor session ID. Subagents inherit this to share JS/Python/Ruby/Julia state. */
 	getEvalSessionId?: () => string | null;
 	/** Get session file */
@@ -635,7 +637,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		if (name === TOOL.ask) return session.settings.get("ask.enabled");
 		if (name === TOOL.browser) return session.settings.get("browser.enabled");
 		if (name === TOOL.checkpoint || name === TOOL.rewind) return session.settings.get("checkpoint.enabled");
-		if (name === TOOL.irc) return isIrcEnabled(session.settings, session.taskDepth ?? 0);
+		if (name === TOOL.irc) return isIrcEnabled(session.settings, session.taskDepth ?? 0, session.maxNestedSpawnDepth);
 		if (name === TOOL.retain || name === TOOL.recall || name === TOOL.reflect) {
 			return ["hindsight", "mnemopi"].includes(session.settings.get("memory.backend") ?? "");
 		}
@@ -654,7 +656,10 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 			// prompt that says "do not spawn subagents" while still shipping the tool
 			// description spends tokens describing something the operator turned off.
 			if (!delegationEnabled(session.settings)) return false;
-			return canSpawnAtDepth(session.settings.get("subagent.maxRecursionDepth") ?? 2, session.taskDepth ?? 0);
+			return canSpawnAtDepth(
+				resolveSessionMaxNestedSpawnDepth(session.settings, session.maxNestedSpawnDepth),
+				session.taskDepth ?? 0,
+			);
 		}
 		return true;
 	};

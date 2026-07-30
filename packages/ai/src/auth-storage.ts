@@ -81,6 +81,72 @@ import {
 	resolveRegisteredUsageProvider,
 } from "./usage/registry";
 
+/**
+ * Process-wide cap for background authentication HTTP work. Broker refresh
+ * sweeps and usage probes share this policy so overlapping callers cannot
+ * multiply their individual fan-out into an unbounded aggregate burst.
+ */
+export const AUTH_HTTP_CONCURRENCY_LIMIT = 8;
+
+type PendingAuthHttpOperation = () => void;
+
+class AuthHttpConcurrencyPolicy {
+	#active = 0;
+	#queue: PendingAuthHttpOperation[] = [];
+	#queueHead = 0;
+
+	run<T>(operation: () => Promise<T>): Promise<T> {
+		const { promise, resolve, reject } = Promise.withResolvers<T>();
+		const start = () => {
+			this.#active += 1;
+			let pending: Promise<T>;
+			try {
+				pending = operation();
+			} catch (error) {
+				this.#release();
+				reject(error);
+				return;
+			}
+			void pending.then(
+				value => {
+					this.#release();
+					resolve(value);
+				},
+				error => {
+					this.#release();
+					reject(error);
+				},
+			);
+		};
+
+		if (this.#active < AUTH_HTTP_CONCURRENCY_LIMIT) {
+			start();
+		} else {
+			this.#queue.push(start);
+		}
+		return promise;
+	}
+
+	#release(): void {
+		this.#active -= 1;
+		const next = this.#queue[this.#queueHead];
+		if (!next) return;
+		this.#queueHead += 1;
+		if (this.#queueHead === this.#queue.length) {
+			this.#queue = [];
+			this.#queueHead = 0;
+		}
+		next();
+	}
+}
+
+const authHttpConcurrencyPolicy = new AuthHttpConcurrencyPolicy();
+
+/** Runs one refresh or usage request under the shared authentication HTTP cap. */
+export function withAuthHttpConcurrency<T>(operation: () => Promise<T>): Promise<T> {
+	return authHttpConcurrencyPolicy.run(operation);
+}
+
 const USAGE_RANKING_METRIC_EPSILON = 1e-9;
 /**
  * Primary (short, e.g. 5h) window used-fraction at or above which a candidate
@@ -3209,7 +3275,7 @@ export class AuthStorage {
 
 		const usageCacheEpoch = this.#usageCacheEpoch;
 		const promise = (async () => {
-			const report = await this.#fetchUsageUncached(request, timeoutMs);
+			const report = await withAuthHttpConcurrency(() => this.#fetchUsageUncached(request, timeoutMs));
 			if (usageCacheEpoch !== this.#usageCacheEpoch) return report;
 			const ttlJitter = USAGE_REPORT_TTL_MS * (Math.random() * 0.5 - 0.25);
 			if (report !== null) {
@@ -3669,7 +3735,7 @@ export class AuthStorage {
 		if (credential.type === "oauth") {
 			const storeHook = this.#store.getUsageReport?.bind(this.#store);
 			if (storeHook) {
-				const report = await storeHook(provider, credential, options?.signal);
+				const report = await withAuthHttpConcurrency(() => storeHook(provider, credential, options?.signal));
 				if (report) {
 					this.#reconcileCodexUsageBlock(
 						this.#buildUsageRequestForOauth(provider, credential, options?.baseUrl),
@@ -3725,7 +3791,7 @@ export class AuthStorage {
 			if (!shared) {
 				// Don't forward the caller signal into the shared fetch — first caller's
 				// abort would otherwise cancel the upstream for every peer.
-				shared = override().finally(() => {
+				shared = withAuthHttpConcurrency(override).finally(() => {
 					this.#usageReportsInFlight.delete(OVERRIDE_KEY);
 				});
 				this.#usageReportsInFlight.set(OVERRIDE_KEY, shared);

@@ -1,0 +1,13 @@
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"name": "veyyon",
+	"pages_build_output_dir": ".",
+	"compatibility_date": "2026-07-28",
+	"d1_databases": [
+		{
+			"binding": "GRIEVANCES_DB",
+			"database_name": "veyyon-grievances",
+			"database_id": "8ef22448-b0f4-49ca-9117-bb4b03994a9e"
+		}
+	]
+}

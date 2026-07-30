@@ -35,6 +35,25 @@ describe("SessionManager close() drops empty metadata-only sessions", () => {
 		expect(await fileExists(sessionFile)).toBe(false);
 	});
 
+	/**
+	 * Basic instrumentation writes lifecycle entries before draft restoration.
+	 * Those additive records must not turn an abandoned draft into a zombie session.
+	 */
+	it("drops a basic-instrumented session after its only draft is consumed", async () => {
+		using tempDir = TempDir.createSync("@pi-session-close-drop-basic-lifecycle-");
+		const session = SessionManager.create(tempDir.path(), tempDir.path(), undefined, {
+			instrumentation: "basic",
+		});
+		await session.saveDraft("unsent");
+
+		const sessionFile = session.getSessionFile();
+		if (!sessionFile) throw new Error("Expected persistent session file");
+		expect(await session.consumeDraft()).toBe("unsent");
+		await session.close();
+
+		expect(await fileExists(sessionFile)).toBe(false);
+	});
+
 	// `plan.defaultOnStartup` records a `mode_change` before the composer
 	// restores its draft. Clearing that draft and closing must still drop the
 	// otherwise metadata-only file — mode changes are startup selector state,

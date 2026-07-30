@@ -747,6 +747,30 @@ describe("wave 3 commands", () => {
 		expect(output[0]).toContain("Unknown /todo subcommand");
 	});
 
+	/**
+	 * Locks out the disagreement where the "Unknown /todo subcommand" message listed
+	 * append/start/done/drop/rm/copy/export/import but omitted `edit` and `help`,
+	 * both of which the dispatcher accepts. Omitting `help` was self-defeating: the
+	 * one verb that prints the full usage was absent from the message telling the
+	 * user what is valid. Asserts the exact bytes, then proves every verb the
+	 * message names is really accepted.
+	 */
+	it("/todo unknown: names every accepted verb, and every named verb is accepted", async () => {
+		const { output, runtime } = createRuntime();
+		const result = await executeAcpBuiltinSlashCommand("/todo halp", runtime);
+		expect(result).toEqual({ consumed: true });
+		expect(output[0]).toBe(
+			"Unknown /todo subcommand.\nUse append, start, done, drop, rm, copy, export, import, edit, or help.",
+		);
+
+		const named = ["append", "start", "done", "drop", "rm", "copy", "export", "import", "edit", "help"];
+		for (const verb of named) {
+			const probe = createRuntime();
+			await executeAcpBuiltinSlashCommand(`/todo ${verb}`, probe.runtime);
+			expect(probe.output[0] ?? "").not.toContain("Unknown /todo subcommand");
+		}
+	});
+
 	// /move
 	it("/move: returns usage when no arg", async () => {
 		const { output, runtime } = createRuntime();

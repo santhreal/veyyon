@@ -52,7 +52,7 @@ function insertReport(db: Database, report: string): void {
 function reportSettings(): Settings {
 	return Settings.isolated({
 		"dev.autoqa": true,
-		"dev.autoqa.consent": "granted",
+		"dev.autoqaPush.enabled": true,
 		"dev.autoqaPush.endpoint": "https://collector.invalid/grievances",
 	});
 }

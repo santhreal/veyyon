@@ -1,5 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
+import { type SessionTelemetryDetail, sessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
@@ -37,12 +38,69 @@ export interface TodoCompletionTransition {
 	content: string;
 }
 
+/** Measurable task-state totals after a todo operation. `open` includes pending and in-progress work. */
+export interface TodoTaskStateCounts {
+	total: number;
+	open: number;
+	inProgress: number;
+	dropped: number;
+	completed: number;
+}
+
+/** Aggregate mutations caused by one operation, including automatic in-progress normalization. */
+export interface TodoTaskTransitionCounts {
+	total: number;
+	added: number;
+	removed: number;
+	toPending: number;
+	toInProgress: number;
+	toDropped: number;
+	toCompleted: number;
+}
+
+/**
+ * Reference into the existing todo representation. Phase/task text is the
+ * stable identity already used by todo operations; ordinals are supplemental
+ * snapshot positions and are not identity.
+ */
+export interface TodoTaskReference {
+	phase: string;
+	task?: string;
+	phaseOrdinal?: number;
+	taskOrdinal?: number;
+}
+
+export interface TodoTaskTransition {
+	ref: TodoTaskReference;
+	from?: TodoStatus;
+	to?: TodoStatus;
+}
+
+/**
+ * Additive task-state telemetry. The canonical goal-verification policy gates
+ * this entire record and progressively richer fields within it.
+ */
+export interface TodoTaskTelemetry {
+	operation: TodoOperation;
+	counts: TodoTaskStateCounts;
+	transitions: TodoTaskTransitionCounts;
+	/** Rich+: state before the operation. */
+	before?: TodoTaskStateCounts;
+	/** Rich+: references for phases changed directly or by normalization. */
+	affectedPhases?: TodoTaskReference[];
+	/** Rich+: references for tasks changed directly or by normalization. */
+	affectedTasks?: TodoTaskReference[];
+	/** Ultra only: individual added, removed, and status transitions. */
+	taskTransitions?: TodoTaskTransition[];
+}
+
 export interface TodoToolDetails {
 	/** Operation that produced this snapshot; absent on legacy transcript entries. */
 	op?: TodoOperation;
 	phases: TodoPhase[];
 	storage: "session" | "memory";
 	completedTasks?: TodoCompletionTransition[];
+	telemetry?: TodoTaskTelemetry;
 }
 
 // =============================================================================
@@ -119,6 +177,150 @@ function getCompletionTransitions(previous: TodoPhase[], updated: TodoPhase[]): 
 		}
 	}
 	return transitions;
+}
+
+interface IndexedTodoTask {
+	ref: TodoTaskReference;
+	status: TodoStatus;
+}
+
+function countTodoTaskStates(phases: readonly TodoPhase[]): TodoTaskStateCounts {
+	const counts: TodoTaskStateCounts = {
+		total: 0,
+		open: 0,
+		inProgress: 0,
+		dropped: 0,
+		completed: 0,
+	};
+	for (const phase of phases) {
+		for (const task of phase.tasks) {
+			counts.total++;
+			switch (task.status) {
+				case "pending":
+					counts.open++;
+					break;
+				case "in_progress":
+					counts.open++;
+					counts.inProgress++;
+					break;
+				case "abandoned":
+					counts.dropped++;
+					break;
+				case "completed":
+					counts.completed++;
+					break;
+			}
+		}
+	}
+	return counts;
+}
+
+function indexTodoTasks(phases: readonly TodoPhase[]): Map<string, IndexedTodoTask> {
+	const indexed = new Map<string, IndexedTodoTask>();
+	for (const [phaseIndex, phase] of phases.entries()) {
+		for (const [taskIndex, task] of phase.tasks.entries()) {
+			indexed.set(todoTransitionKey(phase.name, task.content), {
+				ref: {
+					phase: phase.name,
+					task: task.content,
+					phaseOrdinal: phaseIndex + 1,
+					taskOrdinal: taskIndex + 1,
+				},
+				status: task.status,
+			});
+		}
+	}
+	return indexed;
+}
+
+function getTaskTransitions(previous: readonly TodoPhase[], updated: readonly TodoPhase[]): TodoTaskTransition[] {
+	const before = indexTodoTasks(previous);
+	const after = indexTodoTasks(updated);
+	const transitions: TodoTaskTransition[] = [];
+	for (const [key, task] of before) {
+		const next = after.get(key);
+		if (!next) {
+			transitions.push({ ref: task.ref, from: task.status });
+		} else if (next.status !== task.status) {
+			transitions.push({ ref: next.ref, from: task.status, to: next.status });
+		}
+	}
+	for (const [key, task] of after) {
+		if (!before.has(key)) transitions.push({ ref: task.ref, to: task.status });
+	}
+	return transitions;
+}
+
+function countTaskTransitions(transitions: readonly TodoTaskTransition[]): TodoTaskTransitionCounts {
+	const counts: TodoTaskTransitionCounts = {
+		total: transitions.length,
+		added: 0,
+		removed: 0,
+		toPending: 0,
+		toInProgress: 0,
+		toDropped: 0,
+		toCompleted: 0,
+	};
+	for (const transition of transitions) {
+		if (transition.from === undefined) {
+			counts.added++;
+			continue;
+		}
+		if (transition.to === undefined) {
+			counts.removed++;
+			continue;
+		}
+		switch (transition.to) {
+			case "pending":
+				counts.toPending++;
+				break;
+			case "in_progress":
+				counts.toInProgress++;
+				break;
+			case "abandoned":
+				counts.toDropped++;
+				break;
+			case "completed":
+				counts.toCompleted++;
+				break;
+		}
+	}
+	return counts;
+}
+
+function uniqueTaskReferences(
+	transitions: readonly TodoTaskTransition[],
+	phaseOnly: boolean,
+): TodoTaskReference[] | undefined {
+	const unique = new Map<string, TodoTaskReference>();
+	for (const { ref } of transitions) {
+		const key = phaseOnly ? ref.phase : todoTransitionKey(ref.phase, ref.task ?? "");
+		if (!unique.has(key)) {
+			unique.set(key, phaseOnly ? { phase: ref.phase, phaseOrdinal: ref.phaseOrdinal } : ref);
+		}
+	}
+	return unique.size > 0 ? [...unique.values()] : undefined;
+}
+
+function buildTodoTelemetry(
+	operation: TodoOperation,
+	previous: readonly TodoPhase[],
+	effective: readonly TodoPhase[],
+	detail: Exclude<SessionTelemetryDetail, "none">,
+): TodoTaskTelemetry {
+	const taskTransitions = getTaskTransitions(previous, effective);
+	const telemetry: TodoTaskTelemetry = {
+		operation,
+		counts: countTodoTaskStates(effective),
+		transitions: countTaskTransitions(taskTransitions),
+	};
+	if (detail === "rich" || detail === "ultra") {
+		telemetry.before = countTodoTaskStates(previous);
+		telemetry.affectedPhases = uniqueTaskReferences(taskTransitions, true);
+		telemetry.affectedTasks = uniqueTaskReferences(taskTransitions, false);
+	}
+	if (detail === "ultra" && taskTransitions.length > 0) telemetry.taskTransitions = taskTransitions;
+	return telemetry;
 }
 
 function normalizeInProgressTask(phases: TodoPhase[]): void {
@@ -645,6 +847,13 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 		const storage = this.session.getSessionFile() ? "session" : "memory";
 		const details: TodoToolDetails = { op: params.op, phases: effective, storage };
 		if (completedTasks.length > 0) details.completedTasks = completedTasks;
+		const telemetryDetail = sessionTelemetryDetail(
+			this.session.settings.get("session.instrumentation"),
+			"goal-verification",
+		);
+		if (telemetryDetail !== "none") {
+			details.telemetry = buildTodoTelemetry(params.op, previousPhases, effective, telemetryDetail);
+		}
 
 		return {
 			content: [{ type: "text", text: formatSummary(effective, errors, readOnly, params.op) }],
