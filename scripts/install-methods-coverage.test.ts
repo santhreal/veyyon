@@ -102,11 +102,24 @@ describe("the release gate covers both shipped install channels", () => {
 	 * A broken artifact already in production must stay visible without blocking the source-built release that repairs it.
 	 */
 	it("keeps published-release monitors non-blocking while candidate installer jobs remain release gates", async () => {
-		const workflow = Bun.YAML.parse(await Bun.file(path.join(repoRoot, ".github", "workflows", "ci.yml")).text()) as {
-			jobs: Record<string, { "continue-on-error"?: boolean; needs?: string[] }>;
+		type WorkflowJob = {
+			"continue-on-error"?: boolean;
+			needs?: string[];
+			steps?: Array<{ name?: string; "continue-on-error"?: boolean }>;
 		};
-		expect(workflow.jobs.install_binary_posix?.["continue-on-error"]).toBe(true);
-		expect(workflow.jobs.install_ps1_binary?.["continue-on-error"]).toBe(true);
+		const workflow = Bun.YAML.parse(await Bun.file(path.join(repoRoot, ".github", "workflows", "ci.yml")).text()) as {
+			jobs: Record<string, WorkflowJob>;
+		};
+		const posixMonitor = workflow.jobs.install_binary_posix?.steps?.find(
+			step => step.name === "install.sh end-to-end against the published release",
+		);
+		const windowsMonitor = workflow.jobs.install_ps1_binary?.steps?.find(
+			step => step.name === "install.ps1 end-to-end against the published release",
+		);
+		expect(workflow.jobs.install_binary_posix?.["continue-on-error"]).toBeUndefined();
+		expect(workflow.jobs.install_ps1_binary?.["continue-on-error"]).toBeUndefined();
+		expect(posixMonitor?.["continue-on-error"]).toBe(true);
+		expect(windowsMonitor?.["continue-on-error"]).toBe(true);
 		expect(workflow.jobs.install_methods?.["continue-on-error"]).toBeUndefined();
 		expect(workflow.jobs.install_ps1_e2e?.["continue-on-error"]).toBeUndefined();
 		expect(workflow.jobs.release_binary?.needs).toContain("install_methods");

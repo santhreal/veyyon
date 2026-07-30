@@ -590,7 +590,6 @@ jobs:
       # This monitor describes the release already in production. Keep its
       # failed step visible, but do not let yesterday's broken artifact block
       # the source-built release that repairs it.
-      continue-on-error: true
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       strategy:
          fail-fast: false
@@ -602,6 +601,7 @@ jobs:
          - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - name: install.sh end-to-end against the published release
            shell: bash
+           continue-on-error: true
            run: bash scripts/install-tests/published-release-e2e.sh
 
    install_ps1_e2e:
@@ -651,7 +651,6 @@ jobs:
       # This monitor describes the release already in production. Keep its
       # failed step visible, but do not let yesterday's broken artifact block
       # the source-built release that repairs it.
-      continue-on-error: true
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       runs-on: windows-latest
       timeout-minutes: 30
@@ -659,6 +658,7 @@ jobs:
          - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - name: install.ps1 end-to-end against the published release
            shell: pwsh
+           continue-on-error: true
            env:
               VEYYON_INSTALL_E2E: "1"
            run: pwsh -File scripts/install-tests/e2e.test.ps1 -Mode Binary
