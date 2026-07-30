@@ -1862,7 +1862,9 @@ function mergeLlmCompactionPreserveData(
  */
 export function obfuscateProviderPayload(value: unknown, obfuscator: SecretObfuscator | undefined): unknown {
 	if (!obfuscator?.hasSecrets()) return value;
-	return transformProviderPayload(value, text => obfuscator.obfuscate(text), "AgentSession provider payload");
+	return transformProviderPayload(value, text => obfuscator.obfuscate(text), "AgentSession provider payload", {
+		safeFailureDetails: true,
+	});
 }
 
 type MessageEndPersistenceSlot = {

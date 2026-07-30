@@ -56,6 +56,39 @@ export const MAX_JSON_TRANSFORM_KEYS = 100_000;
 /** Maximum cumulative UTF-8 bytes in input or transformed JSON strings and keys. */
 export const MAX_JSON_TRANSFORM_STRING_BYTES = 16 * 1024 * 1024;
 
+/** Payload-independent failure categories safe to expose at confidentiality boundaries. */
+export type JsonTransformFailureCode =
+	| "accessor"
+	| "array-items"
+	| "cycle"
+	| "depth"
+	| "input-bytes"
+	| "input-utf16"
+	| "internal"
+	| "key-collision"
+	| "keys"
+	| "nodes"
+	| "non-json-value"
+	| "non-plain-object"
+	| "output-bytes"
+	| "output-text"
+	| "symbol-key";
+
+/** A bounded-walker refusal whose code never contains payload data. */
+export class JsonTransformError extends Error {
+	constructor(
+		readonly code: JsonTransformFailureCode,
+		message: string,
+	) {
+		super(message);
+		this.name = "JsonTransformError";
+	}
+}
+
+function refuse(code: JsonTransformFailureCode, message: string): never {
+	throw new JsonTransformError(code, message);
+}
+
 interface JsonWalkFrame {
 	original: unknown[] | Record<string, unknown>;
 	kind: "array" | "object";
@@ -96,19 +129,19 @@ export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 
 	const mapString = (input: string): string => {
 		if (!isWellFormedUtf16(input)) {
-			throw new Error("Refusing ill-formed UTF-16 in JSON transformation data.");
+			refuse("input-utf16", "Refusing ill-formed UTF-16 in JSON transformation data.");
 		}
 		inputStringBytes += utf8ByteLength(input);
 		if (inputStringBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
-			throw new Error("Refusing a JSON transformation above the cumulative input string-byte limit.");
+			refuse("input-bytes", "Refusing a JSON transformation above the cumulative input string-byte limit.");
 		}
 		const output = fn(input);
 		if (typeof output !== "string" || !isWellFormedUtf16(output)) {
-			throw new Error("Refusing an ill-formed string produced by a JSON transformation.");
+			refuse("output-text", "Refusing an ill-formed string produced by a JSON transformation.");
 		}
 		outputStringBytes += utf8ByteLength(output);
 		if (outputStringBytes > MAX_JSON_TRANSFORM_STRING_BYTES) {
-			throw new Error("Refusing a JSON transformation above the cumulative output string-byte limit.");
+			refuse("output-bytes", "Refusing a JSON transformation above the cumulative output string-byte limit.");
 		}
 		return output;
 	};
@@ -147,7 +180,7 @@ export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 				}
 				assign(frame.target, result);
 				const memoEntry = memo.get(frame.original);
-				if (memoEntry === undefined) throw new Error("JSON transformation memo state was lost.");
+				if (memoEntry === undefined) refuse("internal", "JSON transformation memo state was lost.");
 				memoEntry.status = "done";
 				memoEntry.result = result;
 				continue;
@@ -157,7 +190,7 @@ export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 			for (let index = 0; index < frame.keys.length; index++) {
 				const mappedKey = frame.mappedKeys[index];
 				if (seenKeys.has(mappedKey)) {
-					throw new Error("Refusing to rewrite two JSON object fields as the same protected key.");
+					refuse("key-collision", "Refusing to rewrite two JSON object fields as the same protected key.");
 				}
 				seenKeys.add(mappedKey);
 				if (mappedKey !== frame.keys[index] || frame.mappedValues[index] !== frame.sourceValues[index]) {
@@ -179,7 +212,7 @@ export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 			}
 			assign(frame.target, result);
 			const memoEntry = memo.get(frame.original);
-			if (memoEntry === undefined) throw new Error("JSON transformation memo state was lost.");
+			if (memoEntry === undefined) refuse("internal", "JSON transformation memo state was lost.");
 			memoEntry.status = "done";
 			memoEntry.result = result;
 			continue;
@@ -188,7 +221,7 @@ export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 		const current = event.value;
 		if (typeof current === "string") {
 			if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
-				throw new Error("Refusing a JSON transformation above the node limit.");
+				refuse("nodes", "Refusing a JSON transformation above the node limit.");
 			}
 			assign(event.target, mapString(current));
 			continue;
@@ -200,44 +233,44 @@ export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 			(typeof current === "number" && Number.isFinite(current))
 		) {
 			if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
-				throw new Error("Refusing a JSON transformation above the node limit.");
+				refuse("nodes", "Refusing a JSON transformation above the node limit.");
 			}
 			assign(event.target, current);
 			continue;
 		}
 		if (typeof current !== "object") {
-			throw new Error("Refusing a non-JSON value in secret transformation data.");
+			refuse("non-json-value", "Refusing a non-JSON value in secret transformation data.");
 		}
 		if (event.depth > MAX_JSON_TRANSFORM_DEPTH) {
-			throw new Error("Refusing a JSON transformation above the depth limit.");
+			refuse("depth", "Refusing a JSON transformation above the depth limit.");
 		}
 		const existingMemo = memo.get(current);
 		if (existingMemo?.status === "visiting") {
-			throw new Error("Refusing a cyclic JSON transformation graph.");
+			refuse("cycle", "Refusing a cyclic JSON transformation graph.");
 		}
 		if (existingMemo?.status === "done") {
 			assign(event.target, existingMemo.result);
 			continue;
 		}
 		if (++visitedNodes > MAX_JSON_TRANSFORM_NODES) {
-			throw new Error("Refusing a JSON transformation above the node limit.");
+			refuse("nodes", "Refusing a JSON transformation above the node limit.");
 		}
 
 		const isArray = Array.isArray(current);
 		const prototype = Object.getPrototypeOf(current);
 		if (!isArray && prototype !== Object.prototype && prototype !== null) {
-			throw new Error("Refusing a non-plain object in JSON transformation data.");
+			refuse("non-plain-object", "Refusing a non-plain object in JSON transformation data.");
 		}
 		const keys: string[] = [];
 		const sourceValues: unknown[] = [];
 		if (isArray) {
 			if (current.length > MAX_JSON_TRANSFORM_NODES - visitedNodes) {
-				throw new Error("Refusing a JSON transformation above the array-item limit.");
+				refuse("array-items", "Refusing a JSON transformation above the array-item limit.");
 			}
 			for (let index = 0; index < current.length; index++) {
 				const descriptor = Object.getOwnPropertyDescriptor(current, String(index));
 				if (descriptor !== undefined && !("value" in descriptor)) {
-					throw new Error("Refusing an accessor property in JSON transformation data.");
+					refuse("accessor", "Refusing an accessor property in JSON transformation data.");
 				}
 				keys.push(String(index));
 				sourceValues.push(descriptor?.value);
@@ -249,16 +282,16 @@ export function mapJsonStrings<T>(value: T, fn: (s: string) => string): T {
 					symbol => Object.getOwnPropertyDescriptor(record, symbol)?.enumerable,
 				)
 			) {
-				throw new Error("Refusing an enumerable symbol key in JSON transformation data.");
+				refuse("symbol-key", "Refusing an enumerable symbol key in JSON transformation data.");
 			}
 			for (const key in record) {
 				if (!Object.hasOwn(record, key)) continue;
 				if (++visitedKeys > MAX_JSON_TRANSFORM_KEYS) {
-					throw new Error("Refusing a JSON transformation above the object-key limit.");
+					refuse("keys", "Refusing a JSON transformation above the object-key limit.");
 				}
 				const descriptor = Object.getOwnPropertyDescriptor(record, key);
 				if (descriptor === undefined || !("value" in descriptor)) {
-					throw new Error("Refusing an accessor property in JSON transformation data.");
+					refuse("accessor", "Refusing an accessor property in JSON transformation data.");
 				}
 				keys.push(key);
 				sourceValues.push(descriptor.value);
