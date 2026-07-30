@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-29f264e3.js";
+            window.path_to_searchindex_js = "searchindex-8d909778.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5cf6de48.js"></script>
@@ -305,24 +305,25 @@ points you at.</p>
 <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
 <p>This chapter maps the mechanisms that shape Veyyon’s behavior. It separates source provenance from the current product contract. The operator how-tos live under <a href="#getting-started">Using</a> and <a href="#approvals">Features</a>.</p>
 <h2 id="provenance-boundary"><a class="header" href="#provenance-boundary">Provenance boundary</a></h2>
-<p>Veyyon is a source fork of oh-my-pi. It retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native hot-path helpers. This is the foundation Veyyon started from, not a claim about what current oh-my-pi does today.</p>
-<h2 id="veyyon-owned-contracts"><a class="header" href="#veyyon-owned-contracts">Veyyon-owned contracts</a></h2>
+<p>Veyyon is a source fork of oh-my-pi. It retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native grep, PTY, and tree-sitter hot-path foundations. After the fork, Veyyon extracted reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Those crate boundaries and their current contracts are post-fork work. The underlying grep and tree-sitter mechanisms are not Veyyon inventions.</p>
+<h2 id="current-contracts-and-proof-entry-points"><a class="header" href="#current-contracts-and-proof-entry-points">Current contracts and proof entry points</a></h2>
+<p>The table names the current product contract. A link in the <strong>Recorded proof</strong> column demonstrates only its link text, not every mechanism in that row. The provenance boundary above still applies to inherited mechanisms.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Area</th><th>Current Veyyon contract</th></tr>
+<tr><th>Area</th><th>Current Veyyon contract</th><th>Recorded proof</th></tr>
 </thead>
 <tbody>
-<tr><td>Prompt and context</td><td>Statement-owned prompt assembly, layered <code>AGENTS.md</code>, validated <code>PROMPT_SECTIONS/</code>, and transactional context reload when the working directory moves</td></tr>
-<tr><td>Models and compaction</td><td>Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass</td></tr>
-<tr><td>Credentials and sessions</td><td>Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling</td></tr>
-<tr><td>Tools and workers</td><td>One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center</td></tr>
-<tr><td>Native runtime</td><td>Reusable Rust kernels for glob, keys, text, diff, grep, and directory walking</td></tr>
-<tr><td>Argot</td><td>Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it</td></tr>
+<tr><td>Prompt and context</td><td>Statement-owned prompt assembly, layered <code>AGENTS.md</code>, validated <code>PROMPT_SECTIONS/</code>, and transactional context reload when the working directory moves</td><td><a href="../../../assets/demo-prompt-architecture.gif">Section byte costs and the conditional section registry</a></td></tr>
+<tr><td>Models and compaction</td><td>Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass</td><td><a href="../../../assets/model-effort-controls.gif">Model-specific effort menus and before-and-after chain editing</a> and <a href="../../../assets/demo-context-compaction.gif">manual compaction status with before-and-after context usage</a></td></tr>
+<tr><td>Credentials and sessions</td><td>Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling</td><td><a href="../../../assets/demo-secret-boundary.gif">A project secret listed by placeholder, spent through bash, and recorded once in the value-free use log</a></td></tr>
+<tr><td>Tools and workers</td><td>One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center</td><td><a href="../../../assets/demo-lsp-refactor.gif">An LSP reference lookup and subsequent test output</a> and <a href="../../../assets/demo-agent-control-center.gif">parallel worker progress with live and idle Agent Control Center rows</a></td></tr>
+<tr><td>Native runtime</td><td>Inherited native grep and tree-sitter foundations, plus post-fork reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking</td><td>No recording. See the <a href="#performance">architecture and provenance reference</a>.</td></tr>
+<tr><td>Argot</td><td>Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it</td><td><a href="../../../assets/argot-settings-off.png">One disabled Argot setting</a> and <a href="../../../assets/argot-settings-on.png">six enabled Argot settings</a></td></tr>
 </tbody>
 </table>
 </div>
-<p>The detailed contract for these changes is in the README section <a href="../../../README.html#what-veyyon-adds">What Veyyon adds</a>. The repository’s <a href="../../../UPSTREAM.html">upstream provenance</a> explains the fork boundary, and the <a href="../../internal/porting-from-pi-mono.html#15-intentional-divergences">intentional-divergence ledger</a> records port-sensitive implementation differences.</p>
+<p>The README section <a href="../../../README.html#what-veyyon-changes">What Veyyon changes</a> shows these contracts first. The repository’s <a href="../../../UPSTREAM.html">upstream provenance</a> explains the fork boundary, and the <a href="../../internal/porting-from-pi-mono.html#15-intentional-divergences">intentional-divergence ledger</a> records port-sensitive implementation differences.</p>
 <h2 id="shared-and-evolved-mechanisms"><a class="header" href="#shared-and-evolved-mechanisms">Shared and evolved mechanisms</a></h2>
 <p>The sections below describe the current product. Some mechanisms began in the fork baseline, and some have changed since. Their behavior here is authoritative for Veyyon.</p>
 <h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>
@@ -531,8 +532,8 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 <p>A tool call or edit that fails schema or apply verification usually costs another model turn. Schema repair (tool arguments) and hashline verification (edits) reduce those failures. Implementation: <code>packages/coding-agent/src/repair/</code>, <code>@veyyon/hashline</code>.</p>
 <h2 id="edit-path"><a class="header" href="#edit-path">Edit path</a></h2>
 <p>Hashline avoids re-emitting large surrounding context when anchors are available. Apply cost scales with patch size, not with re-serializing the full file for every change. See <a href="#the-hashline-edit-engine">Hashline engine</a>.</p>
-<h2 id="harness-overhead"><a class="header" href="#harness-overhead">Harness overhead</a></h2>
-<p>CLI/TUI and session loop: TypeScript on Bun. Grep, glob, PTY/shell, and tree-sitter parsing: Rust natives in <code>@veyyon/natives</code>; hashline apply is TypeScript in <code>@veyyon/hashline</code>. Streaming returns tokens as they arrive.</p>
+<h2 id="harness-overhead-and-provenance"><a class="header" href="#harness-overhead-and-provenance">Harness overhead and provenance</a></h2>
+<p>The CLI, TUI, and session loop run as TypeScript on Bun. Native grep, PTY and shell support, and tree-sitter parsing came from the oh-my-pi fork foundation. Veyyon later extracted reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. The crate boundaries and their current contracts are post-fork work, but the inherited grep and tree-sitter mechanisms are not Veyyon inventions. Hashline apply remains TypeScript in <code>@veyyon/hashline</code>. Streaming returns tokens as they arrive.</p>
 <h2 id="measurement"><a class="header" href="#measurement">Measurement</a></h2>
 <p>Hot-path changes are covered by package tests and criteria where present. Do not treat marketing numbers as SLAs without the linked method and host.</p>
 <h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
@@ -619,12 +620,17 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>Veyyon installs as a single self-contained binary. The installer downloads it, links a short <code>vey</code> launch command next to it, and runs a quick self-check. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and tree-sitter block resolution for hashline block edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.</p>
+<p>Veyyon installs as a single self-contained binary. The release installer stages the download and proves it has the published checksum, the requested version, and working native support before it changes the active install or your shell. It then links a short <code>vey</code> launch command next to <code>veyyon</code>. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and tree-sitter block resolution for hashline block edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.</p>
 <h2 id="install-on-linux-or-macos"><a class="header" href="#install-on-linux-or-macos">Install on Linux or macOS</a></h2>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and runs a <code>doctor:</code> self-check. The self-check does two things: it confirms the binary starts and reports the version the release claims, and it runs a real search to confirm the native addon loads. The second check matters because <code>veyyon --version</code> answers without the addon, so a binary built for the wrong architecture starts cleanly and then fails on your first real command.</p>
-<p>That search runs twice. The first time is on the downloaded file, before anything is installed: the checksum proves the bytes are the ones that were published, but it cannot tell you the release has no build for your platform. If the download cannot run a search, the installer stops there and your machine is untouched, with no binary installed, no <code>vey</code> alias, no change to your shell profile and no completion files. The second run proves the finished install works from where it now lives. Each message says which of the two it is. Either way, when the search fails the installer tells you to install from source. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer in has already started, so <code>veyyon</code> is not a command in it yet. The closing steps say so, and reloading is the first of them:</p>
+<p>That installs the <code>veyyon</code> binary to <code>~/.local/bin</code>, links <code>vey</code> beside it, and runs a <code>doctor:</code> self-check. Before it replaces an existing binary, creates the alias, edits a shell profile, or writes completions, it checks the staged download in this order:</p>
+<ol>
+<li>Its SHA-256 digest matches the release sidecar.</li>
+<li><code>veyyon --version</code> reports the exact release tag you requested.</li>
+<li>A real <code>veyyon grep</code> finds a known file, proving the native addon loads on this platform.</li>
+</ol>
+<p>The checksum proves which bytes you received, but it cannot prove that the release uploaded the right version or a usable native build. If any preflight fails, the installer removes the staged file when it can and leaves the active binary and shell files unchanged. After the verified file moves into place, <code>doctor:</code> repeats the version and native checks from the final path. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer then adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer from has already started, so the final message gives you the exact reload command before the normal next steps:</p>
 <pre><code class="language-console">Next steps:
   1. Reload your shell:        exec $SHELL -l
      (or, without a new shell: source /home/you/.bashrc)
@@ -639,16 +645,33 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 </code></pre>
 <p>That works in both shells Windows ships: Windows PowerShell 5.1, which is what <code>powershell.exe</code> opens on a stock machine, and PowerShell 7. The installer enables TLS 1.2 before it fetches anything, because 5.1 still offers SSL 3.0 and TLS 1.0 by default and GitHub has required TLS 1.2 since 2018.</p>
 <p>Like the Unix installer, it never calls the GitHub API, and it puts the install directory at the front of your user <code>PATH</code>. The one-liner above runs in the window you typed it in, so <code>veyyon</code> works there straight away, with no restart. A <code>PATH</code> entry reaches every other program when that program starts, so terminals you already have open elsewhere will not see it until they restart. The closing steps say which case you are in: run the installer as a file (<code>pwsh -File install.ps1</code>) and it is a separate process whose <code>PATH</code> change cannot reach your shell, so the first step is to open a new window.</p>
+<h2 id="prebuilt-release-platforms"><a class="header" href="#prebuilt-release-platforms">Prebuilt release platforms</a></h2>
+<p>GitHub Releases publishes these application binaries:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operating system</th><th>Architecture</th><th>Release binary</th></tr>
+</thead>
+<tbody>
+<tr><td>Linux (glibc)</td><td>x64</td><td><code>veyyon-linux-x64</code></td></tr>
+<tr><td>Linux (glibc)</td><td>arm64</td><td><code>veyyon-linux-arm64</code></td></tr>
+<tr><td>macOS</td><td>x64 (Intel)</td><td><code>veyyon-darwin-x64</code></td></tr>
+<tr><td>macOS</td><td>arm64 (Apple silicon)</td><td><code>veyyon-darwin-arm64</code></td></tr>
+<tr><td>Windows</td><td>x64</td><td><code>veyyon-windows-x64.exe</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>There is no native Windows arm64 release. On Windows arm64, run the Windows x64 binary under emulation. Linux release binaries require glibc. On a musl system such as Alpine, the installer stops before downloading and tells you to install from source.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
 <pre><code class="language-console">$ vey --version
 </code></pre>
 <p>The first interactive <code>vey</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
 <p>Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
-<p>If an install is interrupted, run it again. The installer stages the binary beside its final path and moves it into place only once the file is complete, so a cancelled install never leaves you with a half-written <code>veyyon</code>. Cancelling with Ctrl-C removes the staged file on the way out; a kill the process cannot catch leaves it behind, and the next install reclaims it and names it:</p>
+<p>If an install is interrupted before the final replacement, run it again. The installer stages the binary beside its final path, so a partial download never overwrites an existing <code>veyyon</code>. On Linux and macOS, the verified file takes the live path with one same-filesystem rename. On Windows, the installer moves the old binary aside immediately before replacement and restores it if moving the staged file fails.</p>
+<p>Ctrl-C removes the staged file on the way out. A kill the process cannot catch can leave that staged file behind, and the next install reclaims it and names it:</p>
 <pre><code class="language-console">  ok  removed /home/you/.local/bin/.veyyon.download.48213 left by an interrupted install (pid 48213)
 </code></pre>
 <p>A staged file belonging to an installer that is still running is left alone, so two installs at once cannot delete each other’s download.</p>
-<p>On Linux the installer checks which C library your system uses before it downloads anything. The published binaries are built against glibc, so on a musl system (Alpine and similar) the installer stops and tells you to install from source instead. It stops rather than continuing because a musl system would install the binary cleanly and then fail to start it, with a “not found” error from the dynamic loader about a file that is plainly there.</p>
 <h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
 <h3 id="linux-or-macos"><a class="header" href="#linux-or-macos">Linux or macOS</a></h3>
 <p>The POSIX installer takes long options. Pass them after <code>-- </code> when you pipe the script:</p>
@@ -680,19 +703,9 @@ $ vey plugin doctor
 $ vey plugin doctor --fix
 </code></pre>
 <p><code>vey plugin doctor</code> checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks live in <code>vey setup status</code>. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="#diagnostics-and-health">Diagnostics</a>.</p>
-<h3 id="when-the-installer-says-the-binary-would-not-run"><a class="header" href="#when-the-installer-says-the-binary-would-not-run">When the installer says the binary would not run</a></h3>
-<p>The installer runs the binary it just placed before it reports success, and refuses if
-that fails. The message names the exit status and repeats, verbatim, whatever the system
-said:</p>
-<pre><code>veyyon did not run after install: `~/.local/bin/veyyon --version` exited 127.
-It said: libstdc++.so.6: cannot open shared object file: No such file or directory
-</code></pre>
-<p>That second line is the part to act on. A missing shared library means the machine needs
-that package; a permission error usually means the install directory is mounted <code>noexec</code>,
-so choose another with <code>VEYYON_INSTALL_DIR</code>. The check runs last, after the completions
-and the PATH line, so those are already in place; once you have fixed the cause, run the
-installer again rather than trying to finish by hand. If you would rather start clean,
-<a href="#uninstall">Uninstall</a> reclaims everything the installer added.</p>
+<h3 id="when-the-staged-binary-would-not-run"><a class="header" href="#when-the-staged-binary-would-not-run">When the staged binary would not run</a></h3>
+<p>The preflight runs from the staging path inside the install directory. If the binary cannot start or its native search fails, the error includes the exit status and repeats what the system said. A missing shared library means the machine needs that package. A permission error usually means the install directory is mounted <code>noexec</code>, so choose another with <code>VEYYON_INSTALL_DIR</code>. A native-addon load error usually means the release does not support that platform, so use the source installer.</p>
+<p>This failure occurs before the active binary, alias, <code>PATH</code>, and completion files change. Fix the reported cause and run the installer again rather than trying to finish by hand.</p>
 <p>To ask the same questions later, on the machine as it is now, run <code>veyyon setup status</code>.
 It repeats the install checks and adds the two the installer cannot make: whether a second
 copy of <code>veyyon</code> earlier on your <code>PATH</code> is shadowing this one, and whether the completion
@@ -808,36 +821,31 @@ the install and read anything it has to tell you. The row appears only on an
 install that can actually perform the move, so you will not see it on a source
 checkout.</p>
 <p>Veyyon is distributed only two ways, and it updates the way it was installed. A
-binary install (the <code>curl</code> installer from veyyon.dev) replaces its own binary
-with the newer one it fetches from GitHub Releases, the same place the
-installer’s download comes from; veyyon.dev hosts only the installer script, so GitHub Releases is the only
-place a binary ever comes from. Before it keeps the new binary it runs the same
-two checks the installer runs: the binary reports the version the release
-claims, and a real search confirms the native addon loads. The search check is
-skipped only for a version old enough not to have <code>veyyon grep</code> at all, which is
-possible when you roll back, and Veyyon confirms that is the reason by asking the
-binary for its own <code>--help</code> first. A binary that cannot answer that either is
-broken, not old, and is treated as a failure. If either check fails the
-previous binary goes back in place and the update reports why, so a release with
-no build for your platform cannot leave you with a binary that starts and then
-fails on your first command. “Why” is the binary’s own words: if the new binary
-will not start, the update quotes what the system said and the exit code it gave,
-rather than saying only that it could not be verified. That is what tells apart a
-release that is wrong for your platform from an install directory mounted
-<code>noexec</code>, where the file is perfect and the mount refuses to run it. A source
-checkout updates in its own terms:
-<code>veyyon update</code> fast-forwards the checkout, reinstalls dependencies, and
-regenerates build artifacts, and refreshes the native addon, all in one command.
-It then reads the checkout’s own version back and refuses to report success
-unless the checkout really is at the new release. A fast-forward only advances
-the branch you are on, so a checkout on a feature branch, or on a fork whose
-upstream lags, can merge cleanly and stay behind; Veyyon tells you that instead
-of claiming a version you do not have. The background updater leaves
-source checkouts alone (it never runs git against your working tree); it tells
-you a version exists and you run <code>veyyon update</code> when you want it. There is no
-npm, Homebrew, or other package-manager channel to go through. If an update
-fails, Veyyon says so and tells you to retry with <code>veyyon update</code>; it never
-fails quietly and leaves you on an old version without a word.</p>
+binary install fetches its replacement from GitHub Releases. The updater stages
+the download beside the live executable, then performs the same ordered
+preflight as the installer: published SHA-256 checksum, exact release version,
+and a real native-backed search. The search is skipped only when rolling back to
+an old version that has no <code>veyyon grep</code> command, which the staged binary must
+confirm through its own <code>--help</code>. If any preflight fails, the staged file is
+removed and the binary you started with stays live.</p>
+<p>After preflight, Veyyon preserves the current executable as a backup without
+removing its live path, using a hard link where the filesystem permits it and a
+completed copy otherwise. One atomic rename then switches the live path to the
+verified replacement. A hard kill can therefore leave the old binary or the new
+one at that path, but never no binary. If the final installed check fails, the
+backup is atomically restored. A backup that is still locked on Windows, or is
+left by a hard kill, is reclaimed by a later update.</p>
+<p>A source checkout updates in its own terms: <code>veyyon update</code> fast-forwards the
+checkout, reinstalls dependencies, regenerates build artifacts, and refreshes
+the native addon, all in one command. It then reads the checkout’s own version
+back and refuses to report success unless the checkout really is at the new
+release. A fast-forward only advances the branch you are on, so a checkout on a
+feature branch, or on a fork whose upstream lags, can merge cleanly and stay
+behind; Veyyon tells you that instead of claiming a version you do not have. The
+background updater leaves source checkouts alone and never runs git against your
+working tree. It tells you a version exists, and you run <code>veyyon update</code> when
+you want it. There is no npm, Homebrew, or other package-manager channel to go
+through. If an update fails, Veyyon says so and tells you to retry with <code>veyyon update</code>; it never fails quietly and leaves you on an old version without a word.</p>
 <p>Veyyon works out which of the two you have by following the <code>veyyon</code> on your
 PATH to what it really runs. A symlink is followed, and so is a small wrapper
 script that hands off to something else: if what it hands off to is a checkout’s
@@ -856,14 +864,15 @@ newer release is never held back by an older one’s failure, and <code>veyyon u
 ignores the pause entirely, so you can always ask to see the error again:</p>
 <pre><code class="language-console">$ veyyon update
 </code></pre>
-<p>An update also rewrites the shell completion files you already have, so
-tab completion knows about the subcommands and flags the new version added. It
-rewrites only files that are already there. It never creates one, because
-choosing which shells get completions is the installer’s job, not an update’s.
-If a completion cannot be rewritten, Veyyon names the file and tells you it
-still describes the previous version; the update itself is unaffected. Both
-install channels do this: a binary update regenerates from the new binary, a
-source update from the checkout’s launcher.</p>
+<p>An update also rewrites the shell completion files you already have, so tab
+completion knows about the new version’s subcommands and flags. It rewrites only
+files that are already there because the installer owns the choice of shells.
+If a file cannot be rewritten, a manual update names the path and says it still
+describes the previous version. A background automatic update adds a visible
+warning to the TUI update notice, counts the stale completion files, and tells
+you to re-run the installer to rewrite them. The binary update remains
+installed. A binary update generates completions from the new binary; a source
+update generates them from the checkout’s launcher.</p>
 <p>The native addon is cached per version under <code>~/.veyyon/natives/&lt;version&gt;/</code>,
 around 150MB each. When a new version stages its own cache, the previous
 version’s copy is removed: it can never be loaded again, because Veyyon looks
@@ -1843,14 +1852,16 @@ $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
   approvalMode: ask
 </code></pre>
 <h2 id="the-approval-prompt"><a class="header" href="#the-approval-prompt">The approval prompt</a></h2>
-<p>When the active mode requires approval for a tool call, the TUI shows a selector titled
-<code>Allow tool: &lt;name&gt;</code> with the reason and the tool’s detail lines, and waits on two options:</p>
+<p>When the active mode requires approval for a tool call, the TUI shows a <strong>Permission required</strong>
+card. The card names the tool, states that the decision applies to this call only, separates the
+reason from the requested command or file operation, and waits on two options:</p>
 <ul>
-<li><strong>Approve</strong>: the call runs.</li>
-<li><strong>Deny</strong>: the call is refused and the model receives <code>Tool call denied by user: &lt;name&gt;</code>.</li>
+<li><strong>Approve</strong>: run this call once without saving a policy.</li>
+<li><strong>Deny</strong>: refuse this call and return <code>Tool call denied by user: &lt;name&gt;</code> to the model.</li>
 </ul>
-<p>Navigate with the usual list keys (<code>up</code>/<code>down</code>, <code>enter</code> to confirm, <code>esc</code> to cancel; cancelling
-counts as a denial). Denied actions return an error to the model, and permissions are never widened.</p>
+<p>The selected option uses a radio marker and includes a short description. Navigate with the usual
+list keys (<code>up</code>/<code>down</code>, <code>enter</code> to confirm, <code>esc</code> to cancel; cancelling counts as a denial).
+Denied actions return an error to the model, and permissions are never widened.</p>
 <h2 id="headless"><a class="header" href="#headless">Headless</a></h2>
 <p><code>veyyon --print</code> has no terminal to prompt in. If the mode would ask for approval, the tool call
 fails with an error that explains the required setting or override (set <code>tools.approvalMode: yolo</code>,
@@ -1934,7 +1945,7 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 </code></pre>
 <p>The setting takes effect in the current session. Veyyon reloads environment variables, <code>secrets.yml</code>, and the vault when you toggle protection or run a <code>/secret</code> command. Moving to another working directory loads that project’s scope and drops the source project’s mappings.</p>
 <h2 id="your-first-secret"><a class="header" href="#your-first-secret">Your first secret</a></h2>
-<p>If the credential is already an environment variable, you have nothing to declare. Veyyon treats an environment variable as secret when its value is 8 characters or longer and its name ends with, or has an underscore after, one of <code>KEY</code>, <code>SECRET</code>, <code>TOKEN</code>, <code>PASSWORD</code>, <code>PASS</code>, <code>PASSPHRASE</code>, <code>AUTH</code>, <code>CREDENTIAL</code>, <code>PRIVATE</code>, or <code>OAUTH</code>.</p>
+<p>If the credential is already an environment variable, you have nothing to declare to keep its value out of provider requests. Veyyon treats an environment variable as secret when its value is 8 characters or longer and its name ends with, or has an underscore after, one of <code>KEY</code>, <code>SECRET</code>, <code>TOKEN</code>, <code>PASSWORD</code>, <code>PASS</code>, <code>PASSPHRASE</code>, <code>AUTH</code>, <code>CREDENTIAL</code>, <code>PRIVATE</code>, or <code>OAUTH</code>.</p>
 <p>That boundary matters, so read each keyword as a whole word rather than a substring:</p>
 <div class="table-wrapper">
 <table>
@@ -1975,7 +1986,12 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <p>So a shell that already has this:</p>
 <pre><code class="language-bash">export DEPLOY_TOKEN=ghp_R2d2c3poIHRva2VuIGV4YW1wbGU
 </code></pre>
-<p>needs no configuration. Start veyyon and that value is protected.</p>
+<p>needs no configuration for defensive protection. Start Veyyon and that value is
+replaced whenever it appears in provider-bound text. Environment detection does
+not give the agent a readable inventory name. When the agent must choose and
+spend the credential deliberately, store the same value in the vault:</p>
+<pre><code class="language-text">/secret add deploy-token --from-env DEPLOY_TOKEN
+</code></pre>
 <h2 id="what-the-model-sees"><a class="header" href="#what-the-model-sees">What the model sees</a></h2>
 <p>Every occurrence of a known value is replaced before provider dispatch. This boundary covers messages, dynamic system prompts, tool descriptions and schemas, resumed assistant text, replay payloads, and nested model calls such as title generation, image analysis, memory summaries, and speech rewriting.</p>
 <p>The replacement happens from raw text before trimming, truncation, JSON serialization, or other lossy preparation. Veyyon resolves the live profile, project, environment, and vault runtime again for each physical provider attempt. This includes authentication retries, fallback models, delayed queues, compaction, commit analysis, evaluation, benchmarks, memory services, TTS, and image tools. A refresh cannot leave a retry using an old set of secret values.</p>
@@ -1987,7 +2003,7 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <pre><code class="language-text">DEPLOY_TOKEN=#0A1B2C3D4E5F678901234567#
 </code></pre>
 <p>The placeholder is stable across restarts on the same machine. It contains a keyed HMAC rather than a load-order index, so seeing it does not give the provider an offline dictionary test for the value. A named vault entry instead uses its readable name, such as <code>#GITHUB_TOKEN#</code>, so the model can choose the right credential.</p>
-<p>The model is told two things about a placeholder: that putting one where a credential belongs is expected and works, and that it is opaque otherwise. It does not know the value and cannot ask for it.</p>
+<p>The model is told two things about a placeholder: that putting one where a credential belongs is expected and works, and that it is opaque otherwise. It does not know the value and cannot ask for it. For named vault entries it is told one more thing, which credentials it currently has, covered under <a href="#what-the-agent-knows-and-when">What the agent knows, and when</a>.</p>
 <h2 id="using-a-secret-in-a-command"><a class="header" href="#using-a-secret-in-a-command">Using a secret in a command</a></h2>
 <p>This is the part that makes the feature useful rather than merely defensive. The model can put a placeholder into a command, and veyyon substitutes the real value before the command runs.</p>
 <p>The model writes:</p>
@@ -1995,6 +2011,25 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 </code></pre>
 <p>The command that actually executes carries the real token. The substitution happens locally, after the model has produced the command and before the shell sees it. The model never learns the value, and the request still authenticates.</p>
 <p>The substituted command is not written down. Veyyon records one diagnostic entry per tool call so that a session interrupted mid-call can tell you on resume what was running, and that entry stores the placeholder form, not the substituted one. This matters because <code>/share</code> uploads the session file and backups copy it. What the command prints is a separate question, covered under <a href="#what-this-does-not-protect">What this does not protect</a>.</p>
+<h2 id="what-the-agent-knows-and-when"><a class="header" href="#what-the-agent-knows-and-when">What the agent knows, and when</a></h2>
+<p>Store <code>GITHUB_TOKEN</code> today, quit, and start a new session tomorrow. Ask for your open pull requests, and the agent writes <code>#GITHUB_TOKEN#</code> into the <code>curl</code> command without you mentioning the credential again.</p>
+<p>It can do that because the system prompt carries an <strong>inventory</strong>: the placeholders the agent is able to spend at that moment, listed by name and sorted. The inventory is built from the live secret runtime rather than from the conversation, and that is the whole reason it survives a restart. The vault is stored on disk; a conversation is not. Knowledge kept only in the transcript went away with the transcript, while the credential it described stayed exactly where it was.</p>
+<p>The inventory holds names, and nothing else. No value appears in it in any state, and the agent has no way to ask for one. Around the list the agent is told what the list is for: write the placeholder where the credential belongs, the real value is substituted locally just before the tool runs, and a name that is not listed is not available.</p>
+<p>Only vault entries are listed, because only they have readable names. A value detected in your environment, or declared in <code>secrets.yml</code>, becomes a machine-keyed placeholder instead, which the agent meets where the value would have appeared rather than in a list.</p>
+<p>When protection is off, or when nothing is stored, the section is absent rather than empty. An empty heading reads as “you have no credentials”, and that is a different statement from “this session cannot spend any”. Removing the last credential takes the whole section away again, heading included.</p>
+<p>Four moments, and what the agent learns at each:</p>
+<p><strong>At session start, or on resume.</strong> The inventory, rebuilt from whatever the vault holds right then. Nothing else is needed. A credential you stored last week does not have to be introduced again.</p>
+<p><strong>When you add one.</strong> The inventory is rebuilt so the new name is in it, and the agent is told directly, in that turn, that the credential now exists and where its placeholder goes.</p>
+<p><strong>When you remove or extend one.</strong> Both again: the inventory is rebuilt, and the agent is told what changed. <code>/secret rm</code> says the placeholder is revoked and must not be used. <code>/secret extend</code> says the credential is still available under the same placeholder. Neither notice quotes a lifetime, because a duration written into the history is wrong a minute later, and your terminal already shows you the exact time left.</p>
+<p><strong>When a lifetime runs out on its own.</strong> Substitution stops at the deadline itself, not a moment after, and the name leaves the inventory on the next rebuild. There is no notice on this path, because no command ran and so there is no turn to put one in. You are warned twice before it happens, which is covered under <a href="#lifetimes">Lifetimes</a>.</p>
+<p>In none of these does the agent learn a value.</p>
+<h3 id="why-a-removal-is-stated-rather-than-left-to-the-list"><a class="header" href="#why-a-removal-is-stated-rather-than-left-to-the-list">Why a removal is stated rather than left to the list</a></h3>
+<p>Dropping the name from the inventory would be the quieter design, and on paper it says the same thing. It does not work. Noticing that something has stopped being present in a long prompt is the kind of thing a model reliably fails at, so it goes on writing a placeholder that worked ten minutes ago.</p>
+<p>The failure is not quiet either. A revoked placeholder is no longer substituted, so <code>#GITHUB_TOKEN#</code> reaches the command as that literal text:</p>
+<pre><code class="language-text">Authorization: Bearer #GITHUB_TOKEN#
+</code></pre>
+<p>The server rejects it, and the agent sees an authentication error with no stated cause. From there it is as likely to conclude the credential is wrong and retry as it is to work out that you took it away. Saying the revocation out loud turns that into a fact it can act on.</p>
+<p>For the same reason, the removal notice is delivered even when secret protection is off. The add and extend notices are not: with protection off there is no working placeholder to advertise. A revoked one is different, because it is already sitting in the agent’s history, and the agent needs to hear that it stopped working whatever the setting says.</p>
 <h2 id="the-vault-storing-a-credential-with-secret"><a class="header" href="#the-vault-storing-a-credential-with-secret">The vault: storing a credential with <code>/secret</code></a></h2>
 <p>Environment detection covers credentials that are already in your shell. For anything else, hand it to the vault. A vault entry is encrypted on disk, has a name, and expires.</p>
 <p>Name it and veyyon asks for the value with a field that shows nothing as you type:</p>
@@ -2015,15 +2050,95 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <p>The inline form preserves the credential bytes exactly, including trailing whitespace. Once credential data has started, a later word that looks like an option is refused instead of being silently discarded. Use the masked prompt or <code>--from-env</code> when a value could be mistaken for command syntax.</p>
 <p>Any of the three shows the model a placeholder built from the name:</p>
 <pre><code class="language-text">Stored GITHUB_TOKEN in the profile vault, 1d left.
-The model sees #GITHUB_TOKEN# and never the value.
+The model sees #GITHUB_TOKEN# and never the value. Write that placeholder where the credential goes.
 </code></pre>
-<p>The agent is told, in that same turn, that a credential exists and that it should write <code>#GITHUB_TOKEN#</code> where the value belongs. It is never told the value and cannot ask for it.</p>
+<p>The agent is told at once that a credential exists and that it should write <code>#GITHUB_TOKEN#</code> where the value belongs. It is never told the value and cannot ask for it. It also keeps knowing after this session ends, because the inventory in the system prompt is rebuilt from the vault rather than remembered from the conversation. See <a href="#what-the-agent-knows-and-when">What the agent knows, and when</a>.</p>
 <h3 id="seeing-and-removing-what-you-stored"><a class="header" href="#seeing-and-removing-what-you-stored">Seeing and removing what you stored</a></h3>
-<pre><code class="language-text">/secret list                      names, scopes and lifetimes, never values
+<pre><code class="language-text">/secret list                      what is stored, never a value
 /secret rm github-token           remove it
 /secret extend github-token --ttl 7d
 </code></pre>
-<p><code>list</code> shows no part of any value. A prefix of a credential is still a disclosure.</p>
+<p>You do not have to remember how you spelled a name. Type <code>/secret rm </code> and veyyon offers the
+credentials you have stored, so you can pick one instead of recalling it:</p>
+<pre><code class="language-text">/secret rm git
+  GITHUB_TOKEN   stop this secret being spendable
+  GITLAB_TOKEN   stop this secret being spendable
+</code></pre>
+<p>The list narrows as you type and ignores case, so <code>git</code> finds <code>GITHUB_TOKEN</code>. <code>extend</code> completes the
+same way and leaves the cursor after the name, ready for <code>--ttl</code>. Only names appear, which is the
+same thing <code>list</code> shows you.</p>
+<p><code>add</code> does not complete existing names. The name you give it is one you are inventing, and offering
+the stored ones there would read as a list of things to overwrite.</p>
+<p>Completion reads the names from the running redaction engine rather than from the vault on disk, so
+it needs secret protection to be on. With protection off the names are not offered, and <code>rm</code> still
+works when you type one in full.</p>
+<p><code>list</code> prints a table:</p>
+<pre><code class="language-text">2 active secrets. The agent spends one by writing its placeholder; the value is never shown.
+  PLACEHOLDER         SCOPE    EXPIRES  STATUS
+  #GITHUB_TOKEN#      profile  6d left
+  #PROD_DB_PASSWORD#  project  1d left  expires soon
+Extend one before it lapses: /secret extend &lt;name&gt; --ttl 7d.
+</code></pre>
+<p>No part of any value appears there. A prefix of a credential is still a disclosure, and one on screen is one in a screenshot.</p>
+<p>The <code>STATUS</code> column and the closing line appear only when at least one entry has crossed a warning threshold, so a table of healthy entries is one column narrower. A cell reads <code>past halfway</code> or <code>expires soon</code>, and those are the same two thresholds that raise the warnings described under <a href="#lifetimes">Lifetimes</a>. The table and the warnings cannot disagree about which entry is in trouble.</p>
+<p>With nothing stored, <code>list</code> says so and shows you the two ways to store something rather than printing an empty table.</p>
+<p><code>rm</code> and <code>extend</code> each tell the agent what changed, so a placeholder you revoked stops being used instead of arriving at a command as literal text. See <a href="#what-the-agent-knows-and-when">What the agent knows, and when</a>.</p>
+<h3 id="when-a-vault-file-cannot-be-read"><a class="header" href="#when-a-vault-file-cannot-be-read">When a vault file cannot be read</a></h3>
+<p>Sometimes a vault file survives on disk and stops being readable: a disk filled up mid-write, a
+backup tool restored half of it, a sync client merged two copies. Veyyon tells you which scope, and
+what to run:</p>
+<pre><code class="language-text">Your profile vault at /home/you/.veyyon/profiles/work/agent/vault.json exists but could not be
+read, so it was skipped and the secrets stored in it are unavailable for the rest of this session:
+their placeholders will NOT expand. Every OTHER scope loaded normally, and masking of known secret
+values is unaffected. The vault is encrypted, so a hand edit cannot repair it: run
+/secret discard --scope profile to move the unreadable file aside, then re-add the secrets it held
+with /secret add.
+</code></pre>
+<p>A vault can also fail in a way Veyyon cannot step around, where nothing in it can be read: the key
+is gone, the key is not the one the vault was sealed with, or the file is truncated. The session
+still starts, and says so:</p>
+<pre><code class="language-text">Your vault could not be read, so this session started WITHOUT it: nothing you have stored is
+available, and every #NAME# placeholder it held will be refused rather than sent as literal text.
+Masking of secrets from your environment and secrets.yml is unaffected and still running.
+Affected: project (/home/you/work/repo/.veyyon/vault.json). Run /secret discard --scope project to
+move the unreadable file aside, then re-add the secrets it held with /secret add.
+</code></pre>
+<p>Read the second sentence carefully, because it is the part that keeps a broken vault from becoming
+a leak. A scope Veyyon could not read is treated as unreadable, never as empty. <code>#NAME#</code> in a
+prompt is refused rather than passed through as the literal text <code>#NAME#</code>, and Veyyon will not act
+as though you had stored nothing.</p>
+<p>The session starts because the repair is a command inside it. If a vault that would not open also
+stopped Veyyon from launching, the only way out would be deleting the file by hand, which is the
+one thing an encrypted store exists to stop you doing casually.</p>
+<p>That is what <code>discard</code> is for:</p>
+<pre><code class="language-text">/secret discard --scope profile
+</code></pre>
+<pre><code class="language-text">Moved the unreadable profile vault to
+/home/you/.veyyon/profiles/work/agent/vault.json.unreadable-1753660800000-8e3a8d58, so that scope
+works again. The file still holds your sealed entries, so re-add the secrets it held rather than
+assuming they are gone.
+</code></pre>
+<p>The scope keeps working from there. You can store secrets in it again immediately, and the other two
+scopes were never affected: only the file you named moved.</p>
+<p><strong>Your file is moved, not deleted.</strong> The name it moved to is in the message because that file is the
+only route back to what it held. It is still encrypted with a key that is still on disk, so if the
+damage is a truncated tail, the entries before the damage are still in there. Veyyon will not destroy
+a credential store to make itself usable again, so the cleanup is yours to do once you are sure you
+no longer need it.</p>
+<p><strong>You have to name the scope.</strong> Every other command that takes <code>--scope</code> defaults to <code>profile</code>,
+because there it chooses where to put something and <code>/secret list</code> shows you the result. Here it
+chooses a file to move aside, so a default would let a bare <code>/secret discard</code> move a working vault
+out from under the session you are sitting in. A bare invocation is refused and tells you the flag.</p>
+<p>Two things it refuses, both on purpose:</p>
+<ul>
+<li><strong>A scope that reads normally.</strong> This is not a second way to delete secrets. Use <code>/secret rm &lt;name&gt;</code> for that, which can tell you what it removed. The check happens at the moment you run the
+command rather than from the earlier warning, so a file that was repaired in between is left alone.</li>
+<li><strong>A scope that shares its file with another scope.</strong> If your profile directory is your config
+root, the profile and global vaults are one file, and moving it aside as one would take the other
+with it. The refusal names the other scope so you can decide which you meant.</li>
+</ul>
+<p><code>discard</code> works from any client, not only the TUI, because a broken vault is most likely to turn up
+in a headless run.</p>
 <h3 id="lifetimes"><a class="header" href="#lifetimes">Lifetimes</a></h3>
 <p>Every entry expires. The default is one day, which you can change in <code>/settings</code> under Secret Lifetime, or per entry:</p>
 <pre><code class="language-text">/secret add deploy-key --from-env DEPLOY_KEY --ttl 30m
@@ -2053,7 +2168,7 @@ vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
 </thead>
 <tbody>
 <tr><td><code>profile</code> (default)</td><td>the active profile’s agent directory</td><td>credentials for one line of work</td></tr>
-<tr><td><code>project</code></td><td><code>&lt;project&gt;/.veyyon/vault.json</code></td><td>credentials for one repository</td></tr>
+<tr><td><code>project</code></td><td><code>&lt;project&gt;/.veyyon/vault.json</code>, kept out of your commits</td><td>credentials for one repository</td></tr>
 <tr><td><code>global</code></td><td><code>~/.veyyon/vault.json</code></td><td>credentials you want everywhere</td></tr>
 </tbody>
 </table>
@@ -2072,7 +2187,8 @@ vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
 <h3 id="encryption-and-what-it-does-not-do"><a class="header" href="#encryption-and-what-it-does-not-do">Encryption, and what it does not do</a></h3>
 <p>Vault files use AES-256-GCM. Each write uses a fresh 12 byte nonce and the full 16 byte authentication tag. The key is a 32 byte file at <code>~/.veyyon/vault.key</code>, created on first use. It never lives inside a project directory.</p>
 <p>On POSIX, the key is mode 0600. Its directory must be owned by you and not writable by another user. On Windows, Veyyon applies and verifies a protected owner-only ACL. Existing vault files receive the same platform permission checks before they are read.</p>
-<p>A project-scoped vault can sit in a directory you commit or export. The ciphertext is unusable without the machine key, but it is not a portable backup. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. If you move or recreate that directory, re-add the entries with <code>/secret add</code>.</p>
+<p>A project-scoped vault lives inside the repository you are working in, so Veyyon keeps it out of your commits. The first time it stores a project secret, it writes <code>.veyyon/.gitignore</code> covering <code>vault.json</code> and the <code>vault.json.unreadable-*</code> file that <code>/secret discard</code> renames a broken vault to. If that file already exists, Veyyon adds the two rules and leaves your own lines alone. Only the vault is ignored, so anything else you keep in <code>.veyyon/</code>, such as skills or project settings, stays trackable. Commit the generated <code>.veyyon/.gitignore</code> along with the rest of your project.</p>
+<p>Committing a vault would not expose the credentials directly, because the ciphertext is unusable without the machine key. It would still put a credential store in your history, and nobody who clones the repository can open it, including you on another machine. A vault is not a portable backup. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. If you move or recreate that directory, re-add the entries with <code>/secret add</code>.</p>
 <p>Updates use a synchronized owner-only temporary file. Kernel no-replace and exchange operations publish the synced inode without overwriting a destination that appeared after the last check. Veyyon holds the scope directory open during the transaction, so replacing the lexical parent cannot redirect the read or write.</p>
 <p>Veyyon refuses symlinks, hard-linked files, directories, devices, insecure permissions, and paths whose resolved parent crosses the requested scope. It also refuses ciphertext copied to a different scope or physical directory.</p>
 <p>The sealed descriptor is limited to 8 MiB before it is read into memory. Writes enforce a separate 6,291,402-byte encoded plaintext limit before serialization, encryption, or Base64 expansion. A legacy version 1 envelope is refused because it is not bound to its scope and path. Re-add those entries with <code>/secret add</code> so they use the current authenticated format.</p>
@@ -2183,7 +2299,7 @@ Set "minLength" on the entry if short matches are real secrets, or tighten the p
 <tr><td>The vault file on disk</td><td>No, encrypted</td></tr>
 <tr><td>The secret-use log</td><td>No, a placeholder</td></tr>
 <tr><td><code>secrets.yml</code> on disk</td><td>Yes, it is a plain file you wrote</td></tr>
-<tr><td>Your terminal</td><td>Yes, local display restores live placeholders</td></tr>
+<tr><td>Your terminal</td><td>Only a <code>type: regex</code> pattern you declared in <code>secrets.yml</code>. A vault entry, a detected environment variable, and a plain declaration stay masked on screen.</td></tr>
 <tr><td>A command the agent runs</td><td>Yes, substituted before execution</td></tr>
 </tbody>
 </table>
@@ -2610,8 +2726,9 @@ you (“use the scout agent to map the parser”).</p>
       model: anthropic/claude-opus-4-5 # except this one
 </code></pre>
 <p>No bundled agent pins a model, so layer 4 is the normal case and <code>subagent.model</code>
-moves all of them together. <code>subagent.thinkingLevel</code> does the same for effort, and an
-explicit <code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
+moves all of them together. <code>subagent.thinkingLevel</code> does the same for effort. <strong>Inherit</strong> passes the
+current session’s effective effort into the child, while an explicit <code>auto</code> asks the provider to
+choose. An explicit <code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
 <h3 id="fallback-models"><a class="header" href="#fallback-models">Fallback models</a></h3>
 <p>Every one of those four places takes a list, not just one model:</p>
 <pre><code class="language-yaml">subagent:
@@ -2633,8 +2750,8 @@ configuration mistake, so veyyon refuses to spawn the agent and names the settin
 quietly running it on the next entry: a typo must not silently downgrade every subagent you spawn.</p>
 <p>In the <code>Subagents</code> block above the composer, an agent that fell back is marked with <code>↓</code> before its
 model badge, so you can tell a deliberate model from a retried one at a glance.</p>
-<p>Effort is chosen from a list — <code>off</code>, <code>minimal</code> through <code>max</code>, <code>auto</code>, or <code>Inherit</code> —
-in both places, so you cannot set a level that does not exist. If a hand-written config
+<p>Effort is chosen from a list: <code>off</code>, <code>minimal</code> through <code>max</code>, <code>auto</code>, or <code>Inherit</code>.
+The same list appears in both places, so you cannot set a level that does not exist. If a hand-written config
 holds one that does not, veyyon says so and names the levels that work, rather than
 treating it as <code>Inherit</code> and leaving you with a setting that reads as configured and
 changes nothing.</p>
@@ -2645,10 +2762,24 @@ surfaces show, for the selected agent, the pattern, the model it resolves to, an
 which of the four layers decided.</p>
 <h2 id="limits-and-isolation"><a class="header" href="#limits-and-isolation">Limits and isolation</a></h2>
 <p>The remaining groups in the tab are operational: how many subagents run at once
-(<code>subagent.maxConcurrency</code>), how deep they may spawn their own (<code>maxRecursionDepth</code>),
+(<code>subagent.maxConcurrency</code>), how deeply they may nest (<code>subagent.maxNestedSpawnDepth</code>),
 per-run wall clock and request budgets, how long an idle subagent stays in memory
 before being parked to disk (<code>idleTtlMs</code>), and whether their edits land in an isolated
 copy of the tree first (<code>subagent.isolation.*</code>, see <a href="#safety-1">Safety</a>).</p>
+<p><code>subagent.maxNestedSpawnDepth</code> is inclusive. The default is <code>0</code>: the top-level session,
+at depth 0, may spawn direct subagents, but those children are leaves and cannot spawn
+more subagents. A value of <code>1</code> also lets direct children spawn, producing children at
+depth 2. Higher values extend the same rule, and <code>-1</code> allows nesting without a depth
+limit.</p>
+<p>An agent-specific value takes precedence over the blanket value:</p>
+<pre><code class="language-yaml">subagent:
+  maxNestedSpawnDepth: 0
+  agents:
+    reviewer:
+      maxNestedSpawnDepth: 1
+</code></pre>
+<p>Here ordinary direct subagents remain leaves. A direct <code>reviewer</code> may spawn its own
+children because its effective limit is 1.</p>
 <p>A subagent’s working directory is its own. If a subagent calls <code>set_cwd</code>, only that
 subagent moves: its tool paths resolve against the new directory and its system prompt
 is rebuilt for it, while your session and every other subagent stay where they were.</p>
@@ -4187,7 +4318,7 @@ $ veyyon profile default work
 <li><code>new</code> creates <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> with the expected identity dirs (<code>skills/</code>, <code>commands/</code>, …).</li>
 <li><code>--from default</code> (default) seeds <code>config.yml</code>, keybindings, MCP, skills, and other identity files from the default profile. Sessions, blobs, and databases are <strong>not</strong> copied.</li>
 <li><code>--from blank</code> creates an empty agent tree.</li>
-<li><code>--from dev</code> seeds a blank tree, then turns on the study features: <code>session.instrumentation</code> is set to <code>ultra</code> (dense study records on the session file) and Argot, the experimental token-shorthand codec, is enabled. Both are safe with any model, so a fresh <code>dev</code> profile runs without extra configuration. Use it when you want to study how a session spends its time and backtest it. The <code>ultra</code> level records two kinds of record: per tool call (start and end time, execution duration, queue wait, the result’s byte and token weight, and a fingerprint of the arguments) and per model turn (request-start and finalize time, time-to-first-token, output/throughput in tokens per second, cache read/write and reasoning tokens, and the exact sampling and reasoning parameters the turn sent). Lower levels record less: <code>basic</code> is wall-clock only, <code>rich</code> adds output weight and throughput, <code>ultra</code> adds the fingerprint, cache, and provenance detail. See the session instrumentation reference in <code>docs/internal/session.md</code> (the “Session Instrumentation” section) for the on-disk fields and analysis recipes.</li>
+<li><code>--from dev</code> seeds a blank tree, then enables the study features. It sets <code>session.instrumentation</code> to <code>ultra</code> and enables Argot, the experimental token-shorthand codec. Use this profile when you want to run <code>veyyon session stats</code> or backtest a stored session. Instrumentation records structured, redacted session data: lifecycle and checkpoints, task transitions, tool and model timing, context attribution, agent-message delivery, and analysis rollups. <code>basic</code> keeps the elementary timing and state records, <code>rich</code> adds context and communication weight, and <code>ultra</code> adds fingerprints, links, routes, and provider provenance. See <a href="#studying-a-session">Studying a session</a> for the complete level behavior.</li>
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>. If you remove the profile that is set as the launch default, its <code>defaultProfile</code> pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.</li>
 <li><code>default [name]</code> shows or sets the global <code>defaultProfile</code> (which profile a bare <code>vey</code> launches); <code>default --clear</code> removes it.</li>
 </ul>
@@ -5181,20 +5312,26 @@ $ veyyon session stats --json
 </code></pre>
 <p>It reports, in one pass:</p>
 <ul>
-<li><strong>Totals</strong>: wall clock, turn and tool-call counts, token usage, request time, tool execution time, queue wait, and the weight tool results added to context.</li>
-<li><strong>Tool latency</strong>: per tool, the call count and the p50, p95, and max execution time, plus total scheduler wait, slowest tool first.</li>
-<li><strong>Tool cost</strong>: per tool, the tokens and bytes its results returned into context, most expensive first.</li>
-<li><strong>Repeated identical calls</strong>: tools called more than once with byte-identical arguments, keyed by an arguments fingerprint.</li>
+<li><strong>Totals</strong>: wall clock, turn and tool-call counts, token usage, request time, tool execution time, queue wait, and tool-result weight.</li>
+<li><strong>Lifecycle</strong>: sequence coverage, checkpoints, and the latest running or ended state.</li>
+<li><strong>Context</strong>: prompt, non-message, stored-message, and tail-token attribution when recorded.</li>
+<li><strong>Agent communication</strong>: sent and received message counts, payload bytes, outcomes, and delivery routes.</li>
+<li><strong>Task state</strong>: latest open, active, dropped, and completed counts plus recorded transitions.</li>
+<li><strong>Tool latency and cost</strong>: per-tool execution percentiles, scheduler wait, returned tokens, and returned bytes.</li>
+<li><strong>Repeated argument fingerprints</strong>: tools called more than once with the same collision-resistant argument digest. Older sessions with only 32-bit fingerprints are analyzed in a separate legacy namespace.</li>
 <li><strong>Per-turn</strong>: each assistant turn’s model, request time, tool calls, and token usage.</li>
 </ul>
-<p>The timing and weight fields come from the per-tool-call records that
-instrumentation writes. How much is recorded depends on the <code>session.instrumentation</code>
-setting: <code>off</code> records nothing (the command still reports turns and usage from the
-assistant’s own accounting, but tool timing reads as zero), <code>basic</code> records
-wall-clock, <code>rich</code> adds output weight, and <code>ultra</code> adds the arguments fingerprint
-that powers repeated-call detection. Turn on <code>ultra</code> for a session you want to
-study in full, or create a ready-made study profile with <code>veyyon profile new dev --from dev</code>. See <a href="#profiles-1">Profiles</a> and the <code>session.instrumentation</code>
-setting for the level details.</p>
+<p>The <code>session.instrumentation</code> setting controls the stored detail:</p>
+<ul>
+<li><code>off</code> stores the normal resumable conversation and tool history without extra telemetry. Stats still use normal assistant usage and messages.</li>
+<li><code>basic</code> adds lifecycle and checkpoints, task-state transitions, tool wall-clock and status, and model request timing.</li>
+<li><code>rich</code> adds context attribution, agent-message delivery, tool scheduling and result weight, model token throughput, and richer rollups.</li>
+<li><code>ultra</code> adds argument fingerprints, abort state, compaction links, directional agent routes, per-task transitions, cache and reasoning detail, and upstream-provider provenance.</li>
+</ul>
+<p>The setting applies immediately. A new level starts a new measured lifecycle interval. A turn already in flight keeps the lower of its dispatch level and the current level when it is stored. If you turn instrumentation off before that turn finishes, its added study fields are omitted. Normal conversation and tool history remain resumable.</p>
+<p>Use <code>ultra</code> for a session you want to study in full, or create a study profile with
+<code>veyyon profile new dev --from dev</code>. See <a href="#profiles-1">Profiles</a> for the
+setting and profile behavior.</p>
 <p><code>--json</code> prints the complete report, including every turn; the text view caps the
 longest tables and says so when it does.</p>
 <p>There are no <code>veyyon app-server</code>, <code>exec-server</code>, <code>execpolicy</code>, or <code>responses-api-proxy</code> subcommands,

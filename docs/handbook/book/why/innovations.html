@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-29f264e3.js";
+            window.path_to_searchindex_js = "../searchindex-8d909778.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -198,24 +198,25 @@
                         <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
 <p>This chapter maps the mechanisms that shape Veyyon’s behavior. It separates source provenance from the current product contract. The operator how-tos live under <a href="../using/getting-started.html">Using</a> and <a href="../features/sandbox.html">Features</a>.</p>
 <h2 id="provenance-boundary"><a class="header" href="#provenance-boundary">Provenance boundary</a></h2>
-<p>Veyyon is a source fork of oh-my-pi. It retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native hot-path helpers. This is the foundation Veyyon started from, not a claim about what current oh-my-pi does today.</p>
-<h2 id="veyyon-owned-contracts"><a class="header" href="#veyyon-owned-contracts">Veyyon-owned contracts</a></h2>
+<p>Veyyon is a source fork of oh-my-pi. It retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native grep, PTY, and tree-sitter hot-path foundations. After the fork, Veyyon extracted reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Those crate boundaries and their current contracts are post-fork work. The underlying grep and tree-sitter mechanisms are not Veyyon inventions.</p>
+<h2 id="current-contracts-and-proof-entry-points"><a class="header" href="#current-contracts-and-proof-entry-points">Current contracts and proof entry points</a></h2>
+<p>The table names the current product contract. A link in the <strong>Recorded proof</strong> column demonstrates only its link text, not every mechanism in that row. The provenance boundary above still applies to inherited mechanisms.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Area</th><th>Current Veyyon contract</th></tr>
+<tr><th>Area</th><th>Current Veyyon contract</th><th>Recorded proof</th></tr>
 </thead>
 <tbody>
-<tr><td>Prompt and context</td><td>Statement-owned prompt assembly, layered <code>AGENTS.md</code>, validated <code>PROMPT_SECTIONS/</code>, and transactional context reload when the working directory moves</td></tr>
-<tr><td>Models and compaction</td><td>Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass</td></tr>
-<tr><td>Credentials and sessions</td><td>Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling</td></tr>
-<tr><td>Tools and workers</td><td>One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center</td></tr>
-<tr><td>Native runtime</td><td>Reusable Rust kernels for glob, keys, text, diff, grep, and directory walking</td></tr>
-<tr><td>Argot</td><td>Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it</td></tr>
+<tr><td>Prompt and context</td><td>Statement-owned prompt assembly, layered <code>AGENTS.md</code>, validated <code>PROMPT_SECTIONS/</code>, and transactional context reload when the working directory moves</td><td><a href="../../../../assets/demo-prompt-architecture.gif">Section byte costs and the conditional section registry</a></td></tr>
+<tr><td>Models and compaction</td><td>Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass</td><td><a href="../../../../assets/model-effort-controls.gif">Model-specific effort menus and before-and-after chain editing</a> and <a href="../../../../assets/demo-context-compaction.gif">manual compaction status with before-and-after context usage</a></td></tr>
+<tr><td>Credentials and sessions</td><td>Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling</td><td><a href="../../../../assets/demo-secret-boundary.gif">A project secret listed by placeholder, spent through bash, and recorded once in the value-free use log</a></td></tr>
+<tr><td>Tools and workers</td><td>One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center</td><td><a href="../../../../assets/demo-lsp-refactor.gif">An LSP reference lookup and subsequent test output</a> and <a href="../../../../assets/demo-agent-control-center.gif">parallel worker progress with live and idle Agent Control Center rows</a></td></tr>
+<tr><td>Native runtime</td><td>Inherited native grep and tree-sitter foundations, plus post-fork reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking</td><td>No recording. See the <a href="performance.html">architecture and provenance reference</a>.</td></tr>
+<tr><td>Argot</td><td>Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it</td><td><a href="../../../../assets/argot-settings-off.png">One disabled Argot setting</a> and <a href="../../../../assets/argot-settings-on.png">six enabled Argot settings</a></td></tr>
 </tbody>
 </table>
 </div>
-<p>The detailed contract for these changes is in the README section <a href="../../../../README.html#what-veyyon-adds">What Veyyon adds</a>. The repository’s <a href="../../../../UPSTREAM.html">upstream provenance</a> explains the fork boundary, and the <a href="../../../internal/porting-from-pi-mono.html#15-intentional-divergences">intentional-divergence ledger</a> records port-sensitive implementation differences.</p>
+<p>The README section <a href="../../../../README.html#what-veyyon-changes">What Veyyon changes</a> shows these contracts first. The repository’s <a href="../../../../UPSTREAM.html">upstream provenance</a> explains the fork boundary, and the <a href="../../../internal/porting-from-pi-mono.html#15-intentional-divergences">intentional-divergence ledger</a> records port-sensitive implementation differences.</p>
 <h2 id="shared-and-evolved-mechanisms"><a class="header" href="#shared-and-evolved-mechanisms">Shared and evolved mechanisms</a></h2>
 <p>The sections below describe the current product. Some mechanisms began in the fork baseline, and some have changed since. Their behavior here is authoritative for Veyyon.</p>
 <h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>

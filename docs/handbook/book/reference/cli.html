@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-29f264e3.js";
+            window.path_to_searchindex_js = "../searchindex-8d909778.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -281,20 +281,26 @@ $ veyyon session stats --json
 </code></pre>
 <p>It reports, in one pass:</p>
 <ul>
-<li><strong>Totals</strong>: wall clock, turn and tool-call counts, token usage, request time, tool execution time, queue wait, and the weight tool results added to context.</li>
-<li><strong>Tool latency</strong>: per tool, the call count and the p50, p95, and max execution time, plus total scheduler wait, slowest tool first.</li>
-<li><strong>Tool cost</strong>: per tool, the tokens and bytes its results returned into context, most expensive first.</li>
-<li><strong>Repeated identical calls</strong>: tools called more than once with byte-identical arguments, keyed by an arguments fingerprint.</li>
+<li><strong>Totals</strong>: wall clock, turn and tool-call counts, token usage, request time, tool execution time, queue wait, and tool-result weight.</li>
+<li><strong>Lifecycle</strong>: sequence coverage, checkpoints, and the latest running or ended state.</li>
+<li><strong>Context</strong>: prompt, non-message, stored-message, and tail-token attribution when recorded.</li>
+<li><strong>Agent communication</strong>: sent and received message counts, payload bytes, outcomes, and delivery routes.</li>
+<li><strong>Task state</strong>: latest open, active, dropped, and completed counts plus recorded transitions.</li>
+<li><strong>Tool latency and cost</strong>: per-tool execution percentiles, scheduler wait, returned tokens, and returned bytes.</li>
+<li><strong>Repeated argument fingerprints</strong>: tools called more than once with the same collision-resistant argument digest. Older sessions with only 32-bit fingerprints are analyzed in a separate legacy namespace.</li>
 <li><strong>Per-turn</strong>: each assistant turn’s model, request time, tool calls, and token usage.</li>
 </ul>
-<p>The timing and weight fields come from the per-tool-call records that
-instrumentation writes. How much is recorded depends on the <code>session.instrumentation</code>
-setting: <code>off</code> records nothing (the command still reports turns and usage from the
-assistant’s own accounting, but tool timing reads as zero), <code>basic</code> records
-wall-clock, <code>rich</code> adds output weight, and <code>ultra</code> adds the arguments fingerprint
-that powers repeated-call detection. Turn on <code>ultra</code> for a session you want to
-study in full, or create a ready-made study profile with <code>veyyon profile new dev --from dev</code>. See <a href="../features/profiles.html">Profiles</a> and the <code>session.instrumentation</code>
-setting for the level details.</p>
+<p>The <code>session.instrumentation</code> setting controls the stored detail:</p>
+<ul>
+<li><code>off</code> stores the normal resumable conversation and tool history without extra telemetry. Stats still use normal assistant usage and messages.</li>
+<li><code>basic</code> adds lifecycle and checkpoints, task-state transitions, tool wall-clock and status, and model request timing.</li>
+<li><code>rich</code> adds context attribution, agent-message delivery, tool scheduling and result weight, model token throughput, and richer rollups.</li>
+<li><code>ultra</code> adds argument fingerprints, abort state, compaction links, directional agent routes, per-task transitions, cache and reasoning detail, and upstream-provider provenance.</li>
+</ul>
+<p>The setting applies immediately. A new level starts a new measured lifecycle interval. A turn already in flight keeps the lower of its dispatch level and the current level when it is stored. If you turn instrumentation off before that turn finishes, its added study fields are omitted. Normal conversation and tool history remain resumable.</p>
+<p>Use <code>ultra</code> for a session you want to study in full, or create a study profile with
+<code>veyyon profile new dev --from dev</code>. See <a href="../features/profiles.html">Profiles</a> for the
+setting and profile behavior.</p>
 <p><code>--json</code> prints the complete report, including every turn; the text view caps the
 longest tables and says so when it does.</p>
 <p>There are no <code>veyyon app-server</code>, <code>exec-server</code>, <code>execpolicy</code>, or <code>responses-api-proxy</code> subcommands,

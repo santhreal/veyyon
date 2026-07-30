@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-29f264e3.js";
+            window.path_to_searchindex_js = "../searchindex-8d909778.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -240,14 +240,16 @@ $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
   approvalMode: ask
 </code></pre>
 <h2 id="the-approval-prompt"><a class="header" href="#the-approval-prompt">The approval prompt</a></h2>
-<p>When the active mode requires approval for a tool call, the TUI shows a selector titled
-<code>Allow tool: &lt;name&gt;</code> with the reason and the tool’s detail lines, and waits on two options:</p>
+<p>When the active mode requires approval for a tool call, the TUI shows a <strong>Permission required</strong>
+card. The card names the tool, states that the decision applies to this call only, separates the
+reason from the requested command or file operation, and waits on two options:</p>
 <ul>
-<li><strong>Approve</strong>: the call runs.</li>
-<li><strong>Deny</strong>: the call is refused and the model receives <code>Tool call denied by user: &lt;name&gt;</code>.</li>
+<li><strong>Approve</strong>: run this call once without saving a policy.</li>
+<li><strong>Deny</strong>: refuse this call and return <code>Tool call denied by user: &lt;name&gt;</code> to the model.</li>
 </ul>
-<p>Navigate with the usual list keys (<code>up</code>/<code>down</code>, <code>enter</code> to confirm, <code>esc</code> to cancel; cancelling
-counts as a denial). Denied actions return an error to the model, and permissions are never widened.</p>
+<p>The selected option uses a radio marker and includes a short description. Navigate with the usual
+list keys (<code>up</code>/<code>down</code>, <code>enter</code> to confirm, <code>esc</code> to cancel; cancelling counts as a denial).
+Denied actions return an error to the model, and permissions are never widened.</p>
 <h2 id="headless"><a class="header" href="#headless">Headless</a></h2>
 <p><code>veyyon --print</code> has no terminal to prompt in. If the mode would ask for approval, the tool call
 fails with an error that explains the required setting or override (set <code>tools.approvalMode: yolo</code>,
