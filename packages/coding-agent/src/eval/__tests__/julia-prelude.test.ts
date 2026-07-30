@@ -2,7 +2,10 @@ import { afterEach, expect, it } from "bun:test";
 import * as path from "node:path";
 import { TempDir } from "@veyyon/utils";
 import { describeRequiringTool } from "../../../../utils/test/helpers/requires-tool";
+import { useIsolatedAgentDir } from "../../../test/helpers/isolated-agent-dir";
 import { disposeJuliaKernelSessionsByOwner, executeJulia } from "../jl/executor";
+
+useIsolatedAgentDir();
 
 const OWNER_ID = "julia-prelude-tests";
 
