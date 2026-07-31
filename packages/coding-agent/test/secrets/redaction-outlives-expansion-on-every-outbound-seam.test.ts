@@ -36,7 +36,7 @@ import * as path from "node:path";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
-import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
+import { deobfuscateToolArguments, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession, SecretRuntimeLease } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
@@ -142,6 +142,11 @@ describe("a lease whose expansion authority has been revoked", () => {
 				JSON.stringify(lease.obfuscateMessages([{ role: "user", content: `token=${A_VALUE}`, timestamp: 1 }])),
 			).not.toContain(A_VALUE);
 			expect(fixture.session.obfuscateProviderText(`token=${A_VALUE}`)).not.toContain(A_VALUE);
+			const retiredAuthority = lease.redactionObfuscator;
+			if (!retiredAuthority) throw new Error("Expected the redaction-only secret authority");
+			expect(() => deobfuscateToolArguments(retiredAuthority, { command: "use #A_TOKEN#" })).toThrow(
+				/Stored secret #A_TOKEN# is no longer available/,
+			);
 		} finally {
 			await dispose(fixture);
 		}
