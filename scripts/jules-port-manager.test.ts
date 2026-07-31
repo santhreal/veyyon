@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
 	auditPortFiles,
+	blockMarker,
 	buildPortPrompt,
 	classifyHarvest,
 	classifyPrOpen,
@@ -137,6 +138,34 @@ describe("session markers", () => {
 			]),
 		).toBe(2);
 		expect(countFailures([])).toBe(0);
+	});
+
+	/**
+	 * Removing the blocked label is the documented retry action, so the manager's block comment
+	 * must close the old budget while later failures still count toward the fresh one.
+	 */
+	it("counts only failures after the latest blocked-attempt boundary", () => {
+		const comments = [
+			failMarker("sessions/one"),
+			failMarker("sessions/two"),
+			failMarker("sessions/three"),
+			`${blockMarker()}\n3 Jules sessions failed on this port; blocking it for a human.`,
+			"human fixed the merge conflict and removed port-blocked",
+			failMarker("sessions/four"),
+		];
+
+		expect(countFailures(comments)).toBe(1);
+	});
+
+	/** Issues blocked before the marker shipped must recover through the same label-removal workflow. */
+	it("recognizes the legacy manager block comment as an attempt boundary", () => {
+		expect(
+			countFailures([
+				failMarker("sessions/one"),
+				failMarker("sessions/two"),
+				"2 Jules sessions failed on this port; blocking it for a human. Remove the `port-blocked` label.",
+			]),
+		).toBe(0);
 	});
 });
 

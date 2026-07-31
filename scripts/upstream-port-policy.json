@@ -21,7 +21,7 @@
 		},
 		{
 			"name": "session, model-control, and instrumentation lifecycle",
-			"paths": ["packages/coding-agent/src/session/", "packages/coding-agent/src/auto-thinking/", "packages/ai/src/instrumentation/"],
+			"paths": ["packages/coding-agent/src/session/", "packages/coding-agent/src/auto-thinking/", "packages/ai/src/instrumentation.ts"],
 			"note": "veyyon owns session persistence, resumability, model controls, and fail-closed instrumentation. Adapt fixes without weakening those invariants.",
 			"blocksCleanFeatures": true
 		},

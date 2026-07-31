@@ -9,6 +9,7 @@ import {
 	isPortWorthy,
 	loadPolicy,
 	type PortPolicy,
+	planIssueCreation,
 	portCandidateKind,
 	renderPortIssue,
 	titleType,
@@ -163,6 +164,25 @@ describe("GitHub pagination and file completeness", () => {
 	});
 });
 
+describe("issue creation batching", () => {
+	/** A burst above the advisory threshold must still create every issue before candidates age out. */
+	it("keeps every eligible candidate in the current run", () => {
+		const candidates = Array.from({ length: 11 }, (_, index) => ({ number: index + 1 }));
+
+		const plan = planIssueCreation(candidates, 10);
+
+		expect(plan.batch).toEqual(candidates);
+		expect(plan.aboveAdvisoryLimit).toBe(1);
+	});
+
+	/** An invalid operational threshold must fail loud instead of accidentally producing an empty batch. */
+	it("refuses zero, fractional, and non-numeric thresholds", () => {
+		for (const value of [0, 1.5, Number.NaN]) {
+			expect(() => planIssueCreation([1], value)).toThrow(/RADAR_MAX_ISSUES must be a positive integer/);
+		}
+	});
+});
+
 describe("divergedMatches + divergenceWarning", () => {
 	it("flags a PR touching a diverged surface by path prefix and names it in the warning", () => {
 		const surfaces = divergedMatches(["packages/catalog/src/model-manager.ts", "packages/ai/src/stream.ts"], policy);
@@ -228,6 +248,7 @@ describe("shipped upstream-port-policy.json", () => {
 			"packages/catalog/",
 			"packages/ai/src/auth-broker/",
 			"packages/coding-agent/src/session/",
+			"packages/ai/src/instrumentation.ts",
 			"packages/coding-agent/src/tools/",
 			"packages/coding-agent/src/modes/",
 			"crates/",
@@ -237,5 +258,9 @@ describe("shipped upstream-port-policy.json", () => {
 			expect(surface, `${path} must remain a declared divergence`).toBeDefined();
 			expect(surface?.blocksCleanFeatures, `${path} must block automatic feature candidates`).toBe(true);
 		}
+		const instrumentation = divergedMatches(["packages/ai/src/instrumentation.ts"], shipped);
+		expect(instrumentation.map(surface => surface.name)).toContain(
+			"session, model-control, and instrumentation lifecycle",
+		);
 	});
 });
