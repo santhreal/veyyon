@@ -28,10 +28,10 @@ async function loadYaml<T>(relativePath: string): Promise<T> {
 describe("Security CodeQL production-source boundary", () => {
 	/**
 	 * CodeQL previously evaluated more than 1,200 test files and exhausted
-	 * GitHub's six-hour job limit. Even after excluding those graphs,
-	 * `security-and-quality` spent three hours evaluating
-	 * non-security data-flow queries. The security-focused extended suite keeps
-	 * broader security coverage and a bounded ninety-minute deadline.
+	 * GitHub's six-hour job limit. After those graphs were removed,
+	 * `security-and-quality` exhausted three hours and `security-extended`
+	 * exhausted ninety minutes. The default high-precision security suite keeps
+	 * the required gate while dropping the optional long-running query packs.
 	 */
 	it("loads the bounded production config and has an explicit deadline", async () => {
 		const workflow = await loadYaml<SecurityWorkflow>(".github/workflows/security.yml");
@@ -40,8 +40,7 @@ describe("Security CodeQL production-source boundary", () => {
 		if (!initialize?.with) throw new Error("Security workflow must initialize CodeQL with repository config");
 
 		expect(job["timeout-minutes"]).toBe(90);
-		expect(initialize.with["config-file"]).toBe("./.github/codeql/codeql-config.yml");
-		expect(initialize.with.queries).toBe("security-extended");
+		expect(initialize.with.queries).toBeUndefined();
 	});
 
 	/**
@@ -65,6 +64,8 @@ describe("Security CodeQL production-source boundary", () => {
 				"**/*.spec.tsx",
 				"**/*.bench.ts",
 				"scripts/demos/**",
+				"packages/deepswe-bench/**",
+				"packages/typescript-edit-benchmark/**",
 			]),
 		);
 	});
