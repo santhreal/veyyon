@@ -50,9 +50,10 @@ export type SessionTelemetryCategory =
 	| "lifecycle"
 	| "context-breakdown"
 	| "tool-span"
+	| "model-turn"
+	| "model-request"
 	| "agent-communication"
-	| "goal-verification"
-	| "analytics-rollup";
+	| "goal-verification";
 
 export type SessionTelemetryDetail = "none" | Exclude<InstrumentationLevel, "off">;
 
@@ -64,9 +65,10 @@ export type SessionTelemetryDetail = "none" | Exclude<InstrumentationLevel, "off
  * | lifecycle | none | basic | rich | ultra |
  * | context-breakdown | none | none | rich | ultra |
  * | tool-span | none | basic | rich | ultra |
+ * | model-turn | none | basic | rich | ultra |
+ * | model-request | none | basic | rich | ultra |
  * | agent-communication | none | none | rich | ultra |
  * | goal-verification | none | basic | rich | ultra |
- * | analytics-rollup | none | none | rich | ultra |
  *
  * Permission is only the first boundary. Persistors must still store structured,
  * redacted data: raw secrets and unredacted tool arguments are never permitted
@@ -76,9 +78,10 @@ export const SESSION_TELEMETRY_POLICY = {
 	lifecycle: "basic",
 	"context-breakdown": "rich",
 	"tool-span": "basic",
+	"model-turn": "basic",
+	"model-request": "basic",
 	"agent-communication": "rich",
 	"goal-verification": "basic",
-	"analytics-rollup": "rich",
 } as const satisfies Record<SessionTelemetryCategory, Exclude<InstrumentationLevel, "off">>;
 
 /**
@@ -501,8 +504,11 @@ export function assistantTurnMetricsForPersistence(
 	metrics: AssistantTurnMetrics | undefined,
 	level: InstrumentationLevel | undefined,
 ): AssistantTurnMetrics | undefined {
-	if (!metrics || level === undefined || level === "off" || metrics.level === "off") return undefined;
-	const persistedLevel = instrumentationRank(metrics.level) < instrumentationRank(level) ? metrics.level : level;
+	if (!metrics || metrics.level === "off") return undefined;
+	const permittedDetail = sessionTelemetryDetail(level, "model-turn");
+	if (permittedDetail === "none") return undefined;
+	const persistedLevel =
+		instrumentationRank(metrics.level) < instrumentationRank(permittedDetail) ? metrics.level : permittedDetail;
 	const persisted: AssistantTurnMetrics = {
 		level: persistedLevel,
 		startedAt: metrics.startedAt,
@@ -601,7 +607,7 @@ export function assistantTurnRequestForPersistence(
 	request: AssistantTurnRequest | undefined,
 	level: InstrumentationLevel | undefined,
 ): AssistantTurnRequest | undefined {
-	return level === undefined || level === "off" ? undefined : request;
+	return allowsSessionTelemetry(level, "model-request") ? request : undefined;
 }
 
 /**

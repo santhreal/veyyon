@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added one canonical session-telemetry policy for `off`, `basic`, `rich`, and `ultra`, plus additive context-snapshot and tool-span types. Hosts can now gate lifecycle, task, context, agent-communication, tool, and analytics data through one fail-closed contract without persisting raw arguments or message bodies.
+- Added one canonical session-telemetry policy for `off`, `basic`, `rich`, and `ultra`, plus additive context-snapshot and tool-span types. Hosts can now gate lifecycle, task, context, agent-communication, tool, model-turn, and request data through one fail-closed contract without persisting raw arguments or message bodies.
 
 ### Changed
 
@@ -96,6 +96,7 @@
 - The cancelled-request error is `RequestAbortError`, not `AbortError`. It shared the name with two unrelated classes in `@veyyon/utils` (a cancelled operation and a killed child process), which made an `instanceof` check read as a question about cancellation when it was really a question about which layer raised it. `name` is still `"AbortError"` and the default message is still `"Request was aborted"`, so name-based and text-based matchers, and the auth gateway's 499 classification, are unchanged.
 
 ### Fixed
+- Assistant-turn timing and effective request parameters now pass through the canonical session-telemetry policy at persistence time. A live downgrade to `off` therefore removes both families through the same closed policy as every other study field, and the inert `analytics-rollup` permission no longer claims to govern data no recorder emits.
 - Background OAuth refreshes and usage-report reads now cap aggregate credential concurrency instead
   of opening one simultaneous provider request for every stored account. Large credential fleets
   still attempt every eligible row, preserve report ordering, and retain per-credential

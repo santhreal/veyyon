@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	allowsSessionTelemetry,
 	type InstrumentationLevel,
+	SESSION_TELEMETRY_POLICY,
 	type SessionTelemetryCategory,
 	sessionTelemetryDetail,
 } from "@veyyon/ai/instrumentation";
@@ -12,16 +13,17 @@ const categories = [
 	"lifecycle",
 	"context-breakdown",
 	"tool-span",
+	"model-turn",
+	"model-request",
 	"agent-communication",
 	"goal-verification",
-	"analytics-rollup",
 ] as const satisfies readonly SessionTelemetryCategory[];
 
 const expectedDetail = {
-	off: ["none", "none", "none", "none", "none", "none"],
-	basic: ["basic", "none", "basic", "none", "basic", "none"],
-	rich: ["rich", "rich", "rich", "rich", "rich", "rich"],
-	ultra: ["ultra", "ultra", "ultra", "ultra", "ultra", "ultra"],
+	off: ["none", "none", "none", "none", "none", "none", "none"],
+	basic: ["basic", "none", "basic", "basic", "basic", "none", "basic"],
+	rich: ["rich", "rich", "rich", "rich", "rich", "rich", "rich"],
+	ultra: ["ultra", "ultra", "ultra", "ultra", "ultra", "ultra", "ultra"],
 } as const satisfies Record<InstrumentationLevel, readonly string[]>;
 
 describe("session instrumentation policy", () => {
@@ -42,6 +44,11 @@ describe("session instrumentation policy", () => {
 			);
 		});
 	}
+
+	/** Every policy row must correspond to a persisted family; dead permissions make the vocabulary lie. */
+	it("keeps the closed policy identical to the persisted category vocabulary", () => {
+		expect(Object.keys(SESSION_TELEMETRY_POLICY)).toEqual([...categories]);
+	});
 
 	it("fails closed for absent and unknown runtime levels", () => {
 		for (const category of categories) {
