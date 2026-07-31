@@ -24,6 +24,7 @@ import type { ToolChoiceQueue } from "../session/tool-choice-queue";
 import type { AgentOutputManager } from "../task/output-manager";
 import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/subagent-settings";
 import { canSpawnAtDepth } from "../task/types";
+import type { ConfiguredThinkingLevel } from "../thinking";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
 import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
 import type { EventBus } from "../utils/event-bus";
@@ -238,6 +239,8 @@ export interface ToolSession {
 	getModelString?: () => string | undefined;
 	/** Get the current session model string, regardless of how it was chosen */
 	getActiveModelString?: () => string | undefined;
+	/** Get the current session's configured effort (`auto` remains `auto`) for subagent inheritance. */
+	getActiveThinkingLevel?: () => ConfiguredThinkingLevel | undefined;
 	/** Get the current session model object (provider/api capabilities), regardless of how it was chosen. */
 	getActiveModel?: () => Model | undefined;
 	/** Get the session's live per-family service tiers (undefined = none). Source of truth for subagent `tier.subagent: inherit`. */

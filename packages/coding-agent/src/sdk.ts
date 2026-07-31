@@ -2385,6 +2385,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			getSessionSpawns: () => options.spawns ?? "*",
 			getModelString: () => (hasExplicitModel && model ? formatModelString(model) : undefined),
 			getActiveModelString,
+			getActiveThinkingLevel: () => session?.configuredThinkingLevel() ?? options.thinkingLevel,
 			getActiveModel: () => agent?.state.model ?? model,
 			getServiceTierByFamily: () => session?.serviceTierByFamily,
 			getImageAttachments: () => session?.getImageAttachments() ?? [],

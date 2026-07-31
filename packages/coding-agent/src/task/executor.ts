@@ -68,7 +68,7 @@ import type { AuthStorage } from "../session/auth-storage";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
 import { truncateTail } from "../session/streaming-output";
-import { type ConfiguredThinkingLevel, parseThinkingLevel } from "../thinking";
+import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ContextFileEntry, ToolSession } from "../tools";
 import { resolveEvalBackends } from "../tools/eval-backends";
 import { isIrcEnabled } from "../tools/irc";
@@ -173,25 +173,6 @@ export function resolveEffectiveSubagentThinkingLevel(
 	configuredThinkingLevel: ConfiguredThinkingLevel | undefined,
 ): ConfiguredThinkingLevel | undefined {
 	return explicitThinkingLevel ? resolvedThinkingLevel : (configuredThinkingLevel ?? resolvedThinkingLevel);
-}
-
-/**
- * The effort a subagent inherits from the session, read off the parent's active model selector.
- *
- * Reached only when nothing in the agent's own chain named a level, which is the DEFAULT state: a
- * stock agent sets neither a row effort nor a blanket one, so it runs at whatever the session runs
- * at. That is a definite effort and the operator should see it. Without this the HUD showed a bare
- * model id for every default agent and an effort only for the rare one carrying an explicit
- * suffix, so the surface implied the defaults had no effort at all.
- *
- * A model id may itself contain a colon (`qwen3:14b`), so the tail counts only when it parses as a
- * level, the same rule {@link modelBadgeFromSelector} applies when it splits the badge back apart.
- */
-function inheritedThinkingLevel(parentActiveModelPattern: string | undefined): ConfiguredThinkingLevel | undefined {
-	if (!parentActiveModelPattern) return undefined;
-	const colon = parentActiveModelPattern.lastIndexOf(":");
-	if (colon < 0) return undefined;
-	return parseThinkingLevel(parentActiveModelPattern.slice(colon + 1));
 }
 
 /** Agent event types to forward for progress tracking. */
@@ -377,6 +358,8 @@ export interface ExecutorOptions {
 	 * if the resolved subagent model has no working credentials. See #985.
 	 */
 	parentActiveModelPattern?: string;
+	/** Configured effort of the parent session, used when this subagent has no explicit effort. */
+	parentThinkingLevel?: ConfiguredThinkingLevel;
 	thinkingLevel?: ConfiguredThinkingLevel;
 	outputSchema?: unknown;
 	/**
@@ -2703,7 +2686,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			);
 			const effectiveThinkingLevel =
 				selectedThinkingLevel === undefined || selectedThinkingLevel === "inherit"
-					? inheritedThinkingLevel(options.parentActiveModelPattern)
+					? options.parentThinkingLevel
 					: selectedThinkingLevel;
 			if (model) {
 				// The badge carries the effort this agent ACTUALLY runs at, not only an effort somebody
