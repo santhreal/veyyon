@@ -41,8 +41,9 @@ A call whose arguments carry a real credential also needs approval, in the same 
 working-directory boundary: `plan`, `ask`, and `auto-edit`. The prompt names the secret and never
 shows its value, and it is added to whatever the tier already required, so it can only ask for more
 approval and never less. `yolo` opts out of all permission and opts out of this with it, so the
-shipped default asks nothing extra. A call that mentions a placeholder without expanding it, such
-as one made while `secrets.enabled` is false, carries no credential and does not ask. See
+shipped default asks nothing extra. An unknown placeholder carries no credential and does not ask.
+If the name was advertised earlier in this process and expansion is later removed or disabled, the
+tool call is refused before approval instead of running with stale literal text. See
 [Approval modes](approval-mode.md).
 
 ### What the session file records about the call
@@ -194,7 +195,7 @@ It belongs in the prompt rather than in the conversation because the vault outli
 
 **The notice** is a `developer` message. `runSecretCommand` returns `agentNotice` for `add`, `rm` and `extend`; `list`, `log` and `help` return none. `tellTheAgent` (`slash-commands/helpers/secret.ts`) appends it to the live agent and to the session file, because only the first leaves a resumed session holding a placeholder it was never introduced to, and only the second withholds the news until the next restart.
 
-`rm` states the revocation rather than leaving it to the name's disappearance from the inventory. A model does not reliably notice an absence, and the consequence here is not benign: expansion has already been revoked, so the literal `#NAME#` reaches the tool argument and the operator gets an authentication failure with no stated cause. The removal notice is therefore delivered even when `secrets.enabled` is off, where the `add` and `extend` notices are suppressed. A revoked placeholder is already in the history; a new one with protection off has nothing to expand into.
+`rm` states the revocation rather than leaving it to the name's disappearance from the inventory. A model does not reliably notice an absence. The tool boundary also keeps the exact retired placeholder name in memory and refuses a later attempt to spend it, while unknown text such as `#TODO#` remains ordinary input. The removal notice is still delivered even when `secrets.enabled` is off because it reaches the model and persists in resumable history; the boundary is the local backstop that prevents an ignored notice from becoming a confusing remote authentication failure. A revoked placeholder is already in the history; a new one with protection off has nothing to expand into.
 
 No notice carries a lifetime. A duration is accurate when written and wrong afterwards, and the operator reads the exact time left from the terminal confirmation instead.
 

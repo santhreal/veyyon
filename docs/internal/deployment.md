@@ -288,6 +288,8 @@ dispatches `ci.yml` at that immutable tag. CI builds every platform binary and
 publishes the GitHub release with all assets and checksums. The install scripts
 then pick it up through `releases/latest` with no further action.
 
+Publication does not complete when the GitHub API first reports the release. The release train polls the public `releases/latest` redirect with cache-busting requests until it resolves to the exact new tag. It then drives the production installer on Linux x64, Linux arm64, macOS x64, macOS arm64, and Windows x64. Each transactional run requires the installed binary to report that same tag before reinstall and uninstall checks can pass.
+
 > Every `ci.yml` job runs on GitHub-hosted runners, so a release never depends
 > on a self-hosted fleet: see [releasing.md](./releasing.md) §Runners and
 > concurrency.

@@ -16,6 +16,8 @@ That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and 
 
 The checksum proves which bytes you received, but it cannot prove that the release uploaded the right version or a usable native build. If any preflight fails, the installer removes the staged file when it can and leaves the active binary and shell files unchanged. After the verified file moves into place, `doctor:` repeats the version and native checks from the final path. When `~/.local/bin` is not on your `PATH` yet, the installer then adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer from has already started, so the final message gives you the exact reload command before the normal next steps:
 
+The installer records a small ownership receipt beside each binary and completion file it creates. A reinstall or uninstall changes only receipt-backed files. An older Veyyon install is adopted when its exact launcher or generated completion signature identifies it. If another executable or completion already occupies a target path, the installer leaves it byte-for-byte unchanged and tells you to move it yourself before retrying.
+
 ```console
 Next steps:
   1. Reload your shell:        exec $SHELL -l
@@ -102,6 +104,8 @@ You cannot append parameters to `irm ... | iex`. Use the script-block form above
 Release tags carry a leading `v`, and `--ref 1.0.11` on POSIX or `-Ref 1.0.11` on Windows works as well as the leading-`v` form. The installer looks for the tag you named, then for the `v` form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version, so a branch or commit is looked up once and refused once.
 
 Source mode is for running an unreleased branch or contributing. It keeps a real checkout under `~/.veyyon/src`, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs **Bun** and **Git**; the installer installs Bun for you when it is missing. It also needs **[git-lfs](https://git-lfs.com)** when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. Use `-Local` on Windows or `--local` on POSIX to install a binary the checkout already built instead of downloading a release.
+
+The source directory is not ownership proof. Before updating or uninstalling `~/.veyyon/src`, the installer verifies that its `origin` is the Veyyon repository. It moves any unrelated checkout to a timestamped backup path instead of resetting or deleting it. Local changes and unpushed branches in a Veyyon checkout receive the same preservation treatment.
 
 If you would rather clone and drive the workspace yourself:
 
@@ -212,6 +216,8 @@ The last line is the same changelog link `veyyon rollback` prints, so however yo
 change version you are told where to read what changed. If an update fails,
 Veyyon points you at `veyyon rollback` in the same breath, since a failed update
 is the moment you most want the way back.
+
+A source install uses the same recoverable contract. Before it fast-forwards, Veyyon requires a clean tracked tree and records the current Git revision. If dependency installation, generated artifacts, native provisioning, version verification, or the runtime search probe fails after the merge, it resets to that revision, restores the old dependencies and generated artifacts, and proves the restored launcher runs before it reports the failure.
 
 ### Going back to an older version
 

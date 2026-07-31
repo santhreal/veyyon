@@ -225,6 +225,10 @@ global entry with the same name, removing the project entry reveals the entry
 under it. Run `/secret list` again and remove the name once more if you intend to
 revoke every layer.
 
+During the running process, a tool call that still carries the retired placeholder
+is refused before execution. The error names the placeholder and never the value.
+Text that was never a stored credential, such as `#TODO#`, is unaffected.
+
 Rotate a credential by adding the same name again in the same scope. Veyyon
 replaces the old value atomically.
 
@@ -311,6 +315,10 @@ The relevant settings are:
 - `secrets.defaultTtl`, default `1d`: controls a new vault entry when `--ttl` is absent.
 - `secrets.auditLog`, default `true`: records placeholder use without recording values.
 - `share.redactSecrets`, default `true`: keeps known values out of a shared session.
+
+If you turn protection off after using stored names, those names remain retired
+for tool execution until the process exits. A stale command is refused rather
+than run with a literal placeholder.
 
 ## Know the execution boundary
 
