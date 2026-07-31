@@ -40,6 +40,8 @@ The release installer stages one self-contained binary, then checks its SHA-256 
 
 Self-updates use the same preflight. They preserve the previous binary and atomically switch the live path, so a hard kill leaves either the old or new binary available, never a missing command. If an installed completion file cannot be refreshed, the automatic-update notice in the TUI tells you to re-run the installer. Veyyon ships through GitHub Releases and source checkouts only. There is no npm, Homebrew, or crates.io distribution for the application.
 
+Install and uninstall operations use sidecar ownership receipts. They refuse to overwrite or remove an unrelated executable or completion file that already occupies a Veyyon target path. Source updates also verify the checkout remote and restore the previous clean revision if post-merge provisioning or runtime verification fails.
+
 To build from source:
 
 ```sh

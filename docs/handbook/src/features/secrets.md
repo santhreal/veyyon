@@ -137,15 +137,20 @@ In none of these does the agent learn a value.
 
 Dropping the name from the inventory would be the quieter design, and on paper it says the same thing. It does not work. Noticing that something has stopped being present in a long prompt is the kind of thing a model reliably fails at, so it goes on writing a placeholder that worked ten minutes ago.
 
-The failure is not quiet either. A revoked placeholder is no longer substituted, so `#GITHUB_TOKEN#` reaches the command as that literal text:
+A revoked placeholder cannot reach a tool during the running process. Veyyon remembers the exact name it retired and refuses the call before execution:
 
 ```text
-Authorization: Bearer #GITHUB_TOKEN#
+Stored secret #STRIPE_TEST_KEY# is no longer available. Store the credential again and update the command.
 ```
 
-The server rejects it, and the agent sees an authentication error with no stated cause. From there it is as likely to conclude the credential is wrong and retry as it is to work out that you took it away. Saying the revocation out loud turns that into a fact it can act on.
+Text that was never a live credential, such as `#TODO#`, remains ordinary input. The revocation notice gives the agent the same fact before it tries the call; the refusal is the backstop when the agent keeps using stale history.
 
 For the same reason, the removal notice is delivered even when secret protection is off. The add and extend notices are not: with protection off there is no working placeholder to advertise. A revoked one is different, because it is already sitting in the agent's history, and the agent needs to hear that it stopped working whatever the setting says.
+
+Turning secret protection off also marks every name advertised in the running
+process as retired for tool execution. Redaction keeps using the same readable
+placeholders in provider-bound text, but a stale tool call cannot spend or send
+them after expansion has been disabled.
 
 ## The vault: storing a credential with `/secret`
 
@@ -344,7 +349,7 @@ vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
 
 The hot-path expiry check does not write to the vault. The encrypted entry remains on disk until the next successful vault refresh prunes it. It remains encrypted and cannot be expanded after the deadline.
 
-If a command still refers to an expired secret, the placeholder stays visible instead of becoming an empty string. This fails loudly rather than sending an empty `Authorization` header. Old transcript text containing the raw value remains covered by the forward-only redaction tombstone for the life of the same working-directory runtime.
+If a command still refers to an expired secret, Veyyon refuses it before the tool starts and names only the retired placeholder. It does not send an empty header or the literal placeholder to a remote service. Old transcript text containing the raw value remains covered by the forward-only redaction tombstone for the life of the same working-directory runtime.
 
 ### Scope
 

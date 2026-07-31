@@ -4,7 +4,7 @@
 
 ### Added
 
-- Expanded `session.instrumentation` into a complete session-study record. `basic` adds lifecycle checkpoints, task transitions, and tool timing; `rich` adds context attribution, directional agent-message delivery, result weight, and analytics rollups; `ultra` adds compaction links, per-task transitions, routes, fingerprints, and provider provenance. `veyyon session stats` reports each available family. `off` adds no telemetry but still stores the normal conversation and tool history required to resume.
+- Expanded `session.instrumentation` into a complete session-study record. `basic` adds lifecycle checkpoints, task transitions, tool and model timing, and effective model request parameters; `rich` adds context attribution, directional agent-message delivery, result weight, and model throughput; `ultra` adds compaction links, per-task transitions, routes, fingerprints, and provider provenance. `veyyon session stats` reports each available family. `off` adds no telemetry but still stores the normal conversation and tool history required to resume.
 - First-run setup now includes a **Choose subagents** step. Only the general `task`
   worker starts enabled; bundled specialists and user or project agent definitions
   require an explicit grant there or in **Settings → Subagents → Agents**. Delegation
@@ -106,6 +106,10 @@
 - `release`: derive commit-history notes + gate the generator on CI.
 
 ### Fixed
+- The Linux, macOS, and Windows installers now record ownership receipts for binaries and completion files. Reinstall and uninstall preserve unrelated files at those paths, while exact legacy Veyyon launchers and generated completions migrate without manual cleanup. Source installs also verify the checkout's `origin` before updating or deleting it, so an unrelated pristine repository is moved aside rather than reset or removed.
+- Source self-update now requires a clean tracked checkout and records the current Git revision before fast-forwarding. If dependency installation, generated-artifact regeneration, native provisioning, version verification, or the runtime probe fails after the merge, Veyyon restores the previous revision and its runnable artifacts before reporting the failed update.
+- The release train now waits until the public `releases/latest` redirect resolves to the exact release tag, verifies the installed version against that tag, and runs the production installer round trip on Linux x64, Linux arm64, macOS x64, macOS arm64, and Windows x64 before reporting success.
+- Tool calls now refuse an expired or removed secret placeholder before execution and name only the retired placeholder in the error. Turning protection off also retires every name advertised by the running process while preserving stable redaction output. Retired names cross secret-runtime refreshes, a replacement stored under the same name clears the refusal, and ordinary text such as `#TODO#` remains untouched.
 - The Windows installer now accepts a healthy release binary that writes a native-variant warning
   to stderr while its search self-test succeeds. Windows PowerShell 5.1 promoted that warning to a
   terminating `NativeCommandError`, so a bytecode-free Windows build passed `--version` and
