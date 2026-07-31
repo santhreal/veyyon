@@ -1413,6 +1413,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// configured-but-unresolvable pattern refuses the spawn instead of quietly
 		// running whatever the next layer names.
 		const parentActiveModelPattern = this.session.getActiveModelString?.();
+		const parentThinkingLevel = this.session.getActiveThinkingLevel?.();
 		const resolvedModel = resolveSubagentModel({
 			settings: this.session.settings,
 			agentName,
@@ -1579,6 +1580,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				acquiredAt: launchTiming?.acquiredAt,
 				modelOverride,
 				parentActiveModelPattern,
+				parentThinkingLevel,
 				thinkingLevel: thinkingLevelOverride,
 				outputSchema: effectiveOutputSchema,
 				sessionFile,

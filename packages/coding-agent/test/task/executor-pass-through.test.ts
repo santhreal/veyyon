@@ -184,22 +184,24 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 
 	/**
 	 * Regression guard: Subagent Effort = Inherit (and the equivalent unset value)
-	 * must become the parent session's effective effort before child construction,
-	 * rather than leaving the provider to default the child to `auto`. The same
-	 * effective value drives the progress/result badge.
+	 * must become the parent session's configured effort before child construction,
+	 * rather than letting child initialization read the global default and choose
+	 * `auto`. The active model string intentionally has no effort suffix, so only
+	 * the dedicated parent-effort channel can preserve the session override.
 	 */
-	it("passes the parent effective effort through when subagent effort inherits", async () => {
+	it("passes the parent configured effort through when subagent effort inherits", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!model) throw new Error("Expected claude-sonnet-4-5 model to exist");
 		const spy = vi.spyOn(sdkModule, "createAgentSession");
-		const parentSelector = `${model.provider}/${model.id}:medium`;
+		const parentSelector = `${model.provider}/${model.id}`;
 
 		for (const [index, inherited] of [ThinkingLevel.Inherit, undefined].entries()) {
 			spy.mockResolvedValueOnce(createSessionResult(yieldEmittingSession()));
 			const result = await runSubprocess({
 				...baseOptions,
-				modelOverride: [`${model.provider}/${model.id}`],
+				modelOverride: [parentSelector],
 				parentActiveModelPattern: parentSelector,
+				parentThinkingLevel: ThinkingLevel.Medium,
 				id: `subagent-thinking-inherit-${index}`,
 				modelRegistry: createModelRegistry(model),
 				thinkingLevel: inherited,
@@ -209,7 +211,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 			const childOptions = spy.mock.calls[index]?.[0];
 			if (!childOptions) throw new Error(`Expected child session options for inherited case ${index}`);
 			expect(childOptions.thinkingLevel).toBe(ThinkingLevel.Medium);
-			expect(result.resolvedModel).toBe(parentSelector);
+			expect(result.resolvedModel).toBe(`${parentSelector}:medium`);
 		}
 	});
 
@@ -228,7 +230,8 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 		const result = await runSubprocess({
 			...baseOptions,
 			modelOverride: [`${model.provider}/${model.id}`],
-			parentActiveModelPattern: `${model.provider}/${model.id}:medium`,
+			parentActiveModelPattern: `${model.provider}/${model.id}`,
+			parentThinkingLevel: ThinkingLevel.Medium,
 			id: "subagent-thinking-auto",
 			modelRegistry: createModelRegistry(model),
 			thinkingLevel: AUTO_THINKING,

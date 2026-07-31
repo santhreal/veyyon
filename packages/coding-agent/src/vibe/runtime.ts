@@ -551,6 +551,7 @@ export class VibeSessionRegistry {
 			detached: true,
 			modelOverride: record.modelOverride,
 			parentActiveModelPattern: session.getActiveModelString?.(),
+			parentThinkingLevel: session.getActiveThinkingLevel?.(),
 			thinkingLevel: record.thinkingLevel,
 			sessionFile,
 			persistArtifacts: Boolean(sessionFile),

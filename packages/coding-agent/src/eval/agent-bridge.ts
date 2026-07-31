@@ -352,6 +352,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 
 	const effectiveAgent = agent;
 	const parentActiveModelPattern = options.session.getActiveModelString?.();
+	const parentThinkingLevel = options.session.getActiveThinkingLevel?.();
 	// An explicit `agent(..., { model })` call is the caller speaking for this one
 	// spawn, so it outranks the settings layers; everything else goes through the
 	// one owner (row -> blanket -> frontmatter -> inherit).
@@ -443,6 +444,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		taskDepth: options.session.taskDepth ?? 0,
 		modelOverride,
 		parentActiveModelPattern,
+		parentThinkingLevel,
 		// Through the one owner, like the model above. Passing the frontmatter level
 		// straight through made an eval `agent()` spawn ignore both `subagent.thinkingLevel`
 		// and this agent's own `thinkingLevel` row.
