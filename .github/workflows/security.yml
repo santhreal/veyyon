@@ -149,9 +149,19 @@ jobs:
         run: bun audit --audit-level=high
 
   codeql:
-    name: SAST (CodeQL JS/TS)
+    name: "SAST (CodeQL JS/TS, ${{ matrix.scope }})"
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: application
+            paths: '["packages/coding-agent"]'
+          - scope: libraries
+            paths: '["packages/agent", "packages/ai", "packages/argot", "packages/catalog", "packages/hashline", "packages/mnemopi", "packages/natives", "packages/stats", "packages/swarm-extension", "packages/tool-render", "packages/tui", "packages/utils", "packages/wire"]'
+          - scope: operations
+            paths: '["packages/collab-web", "packages/metaharness", "scripts", "tools", "types", "website"]'
     permissions:
       contents: read
       security-events: write
@@ -162,10 +172,23 @@ jobs:
         uses: github/codeql-action/init@4187e74d05793876e9989daffde9c3e66b4acd07 # v3.37.3
         with:
           languages: javascript-typescript
-          config-file: ./.github/codeql/codeql-config.yml
+          config: |
+            name: "Veyyon ${{ matrix.scope }} JavaScript and TypeScript"
+            paths: ${{ matrix.paths }}
+            paths-ignore:
+              - "**/test/**"
+              - "**/tests/**"
+              - "**/__tests__/**"
+              - "**/fixtures/**"
+              - "**/*.test.ts"
+              - "**/*.test.tsx"
+              - "**/*.spec.ts"
+              - "**/*.spec.tsx"
+              - "**/*.bench.ts"
+              - "scripts/demos/**"
       - name: Autobuild
         uses: github/codeql-action/autobuild@4187e74d05793876e9989daffde9c3e66b4acd07 # v3.37.3
       - name: Analyze
         uses: github/codeql-action/analyze@4187e74d05793876e9989daffde9c3e66b4acd07 # v3.37.3
         with:
-          category: "/language:javascript-typescript"
+          category: "/language:javascript-typescript/${{ matrix.scope }}"
