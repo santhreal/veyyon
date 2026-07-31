@@ -402,6 +402,27 @@ describe("required publication artifacts", () => {
 		);
 	});
 
+	/** API publication is incomplete until the public selector used by installers resolves this exact tag. */
+	it("waits for public latest propagation on fresh publication and idempotent retries", async () => {
+		const wf = await loadYaml("workflows/ci.yml");
+		const publish = wf.jobs.release_github_publish.steps.find(
+			(step: { name?: string }) => step.name === "Publish the exact verified draft",
+		);
+
+		expect(publish.run).toContain("https://github.com/$GITHUB_REPOSITORY/releases/latest?veyyon-proof=");
+		expect(publish.run).toContain("Cache-Control: no-cache");
+		expect(publish.run).toContain("--connect-timeout 10 --max-time 30");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell parameter expansion from the workflow fixture
+		expect(publish.run).toContain('effective_without_query="${effective%%\\?*}"');
+		expect(publish.run).toContain('"https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG"');
+		expect(publish.run.indexOf("latest_ok=false")).toBeGreaterThan(
+			publish.run.indexOf('if [ "$ALREADY_PUBLISHED" = true ]'),
+		);
+		expect(publish.run).not.toContain(
+			'echo "Published release $RELEASE_TAG was already byte-identical; nothing changed."\\n                exit 0',
+		);
+	});
+
 	/** Publishing changes changelog reconciliation, so the final deploy must rebuild and prove the live link. */
 	it("rebuilds and verifies the website after GitHub publication", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
@@ -429,6 +450,7 @@ describe("required publication artifacts", () => {
 		expect(verify.needs).toContain("release_site_finalize");
 		expect(verify.strategy.matrix.include.map((entry: { name: string }) => entry.name)).toEqual([
 			"linux-x64",
+			"linux-arm64",
 			"macos-arm64",
 			"macos-x64",
 			"windows-x64",
@@ -436,6 +458,12 @@ describe("required publication artifacts", () => {
 		for (const step of verify.steps.filter((entry: { run?: string }) => entry.run)) {
 			expect(step["continue-on-error"]).toBeUndefined();
 		}
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub Actions expression from the parsed workflow
+		const expectedTag = "${{ needs.release_metadata.outputs.release-tag }}";
+		const posix = verify.steps.find((entry: { name?: string }) => entry.name?.includes("POSIX"));
+		const windows = verify.steps.find((entry: { name?: string }) => entry.name?.includes("Windows"));
+		expect(posix.env.VEYYON_EXPECTED_RELEASE_TAG).toBe(expectedTag);
+		expect(windows.env.VEYYON_EXPECTED_RELEASE_TAG).toBe(expectedTag);
 		expect(alertNeeds).toContain("release_site_finalize");
 		expect(alertNeeds).toContain("release_install_verify");
 	});

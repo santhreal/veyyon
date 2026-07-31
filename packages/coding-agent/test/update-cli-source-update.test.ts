@@ -53,6 +53,8 @@ const readsVersion =
 	async () =>
 		version;
 
+const PREVIOUS_REVISION = "1".repeat(40);
+
 function recordingExec(failOnLabel?: string): {
 	calls: { label: string; command: string[]; cwd: string }[];
 	exec: SourceUpdateExec;
@@ -60,8 +62,13 @@ function recordingExec(failOnLabel?: string): {
 	const calls: { label: string; command: string[]; cwd: string }[] = [];
 	const exec: SourceUpdateExec = async step => {
 		calls.push({ label: step.label, command: step.command, cwd: step.cwd });
-		if (step.label === failOnLabel) return { exitCode: 128, stderr: "fatal: not a git repository" };
-		return { exitCode: 0, stderr: "" };
+		if (step.label === failOnLabel) {
+			return { exitCode: 128, stdout: "", stderr: "fatal: not a git repository" };
+		}
+		if (step.label === "Recording current revision") {
+			return { exitCode: 0, stdout: PREVIOUS_REVISION, stderr: "" };
+		}
+		return { exitCode: 0, stdout: "", stderr: "" };
 	};
 	return { calls, exec };
 }
@@ -80,6 +87,8 @@ describe("updateViaSourceAt (source-install update steps)", () => {
 		);
 
 		expect(calls.map(c => c.command.join(" "))).toEqual([
+			"git status --porcelain --untracked-files=no",
+			"git rev-parse --verify HEAD",
 			"git fetch --tags origin",
 			"git merge --ff-only @{u}",
 			"bun install",
@@ -105,18 +114,49 @@ describe("updateViaSourceAt (source-install update steps)", () => {
 		await expect(updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec)).rejects.toThrow(
 			/git merge --ff-only.*exited 128.*git pull && bun install/s,
 		);
-		expect(calls.map(c => c.label)).toEqual(["Fetching", "Fast-forwarding checkout"]);
+		expect(calls.map(c => c.label)).toEqual([
+			"Checking source checkout",
+			"Recording current revision",
+			"Fetching",
+			"Fast-forwarding checkout",
+		]);
 	});
 
 	/** The dependency reinstall is NOT optional: a pulled checkout without it
 	 * can fail to boot (gitignored generated artifacts). Its failure must be as
 	 * loud as a git failure. */
-	it("surfaces a bun install failure with the step's stderr", async () => {
-		const { exec } = recordingExec("Installing dependencies");
+	it("restores the previous revision when dependency installation fails after the merge", async () => {
+		const { calls, exec } = recordingExec("Installing dependencies");
+
+		await expect(
+			updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec, readsVersion("2.0.0"), checkoutRuns),
+		).rejects.toThrow(/Installing dependencies failed.*Restored the previous source revision 111111111111/s);
+		expect(calls.map(call => call.label)).toEqual([
+			"Checking source checkout",
+			"Recording current revision",
+			"Fetching",
+			"Fast-forwarding checkout",
+			"Installing dependencies",
+			"Restoring previous revision",
+			"Restoring dependencies",
+			"Restoring build artifacts",
+			"Restoring native addon",
+		]);
+	});
+
+	it("refuses a dirty tracked checkout before fetching or recording a rollback point", async () => {
+		const { calls, exec: baseExec } = recordingExec();
+		const exec: SourceUpdateExec = async step => {
+			const result = await baseExec(step);
+			return step.label === "Checking source checkout"
+				? { ...result, stdout: " M packages/coding-agent/package.json" }
+				: result;
+		};
 
 		await expect(updateViaSourceAt(LAUNCHER, "2.0.0", () => {}, exec)).rejects.toThrow(
-			/Installing dependencies failed.*not a git repository/s,
+			/has tracked or staged changes.*Nothing was changed|has tracked or staged changes/s,
 		);
+		expect(calls.map(call => call.label)).toEqual(["Checking source checkout"]);
 	});
 });
 
@@ -185,7 +225,11 @@ describe("updateViaSourceAt verifies the checkout actually reached the release",
 		const order: string[] = [];
 		const exec: SourceUpdateExec = async step => {
 			order.push(step.label);
-			return { exitCode: 0, stderr: "" };
+			return {
+				exitCode: 0,
+				stdout: step.label === "Recording current revision" ? PREVIOUS_REVISION : "",
+				stderr: "",
+			};
 		};
 		await updateViaSourceAt(
 			LAUNCHER,
@@ -332,9 +376,9 @@ describe("updateViaSourceAt proves the checkout actually runs", () => {
 		expect(seen[0]?.label).toContain("2.0.0");
 	});
 
-	it("does not probe when the version check already failed", async () => {
-		// The version mismatch is the actionable error; a probe failure stacked on
-		// top would point at the addon when the branch is the problem.
+	it("probes the restored checkout after a version mismatch", async () => {
+		// The new checkout is not probed after the version mismatch. Recovery
+		// resets first, then the shared probe proves the previous install still runs.
 		const { exec } = recordingExec();
 		let probes = 0;
 		await expect(
@@ -350,14 +394,18 @@ describe("updateViaSourceAt proves the checkout actually runs", () => {
 				},
 			),
 		).rejects.toThrow(/is at 1\.9\.3/);
-		expect(probes).toBe(0);
+		expect(probes).toBe(1);
 	});
 
 	it("probes after every step, never against a half-updated checkout", async () => {
 		const order: string[] = [];
 		const exec: SourceUpdateExec = async step => {
 			order.push(step.label);
-			return { exitCode: 0, stderr: "" };
+			return {
+				exitCode: 0,
+				stdout: step.label === "Recording current revision" ? PREVIOUS_REVISION : "",
+				stderr: "",
+			};
 		};
 		await updateViaSourceAt(
 			LAUNCHER,

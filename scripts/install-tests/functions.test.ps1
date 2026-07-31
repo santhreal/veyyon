@@ -325,6 +325,15 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     New-ClonedRepo $pristine
     Check "pristine pushed checkout reports no local work" (Test-SrcHasLocalWork $pristine) "False"
 
+    # Ownership comes from the configured origin, not from directory location or
+    # cleanliness. This prevents update and uninstall from claiming a foreign
+    # checkout merely because it occupies VEYYON_SRC_DIR.
+    $savedRepoUrl = $RepoUrl
+    $RepoUrl = "$pristine.origin"
+    Check "the configured source origin is recognized as installer-owned" (Test-SrcRemoteIsOurs $pristine) "True"
+    $RepoUrl = $savedRepoUrl
+    Check "an unrelated pristine origin is not treated as installer-owned" (Test-SrcRemoteIsOurs $pristine) "False"
+
     $dirtywork = Join-Path $sandbox "dirtywork"
     New-ClonedRepo $dirtywork
     "MY EDIT" | Set-Content -NoNewline -Path (Join-Path $dirtywork "AGENTS.md")
@@ -354,6 +363,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Pop-Location
     $SrcDir = $us
     $InstallDir = Join-Path $sandbox "nowhere-bin"
+    $RepoUrl = "$us.origin"
     Uninstall-Veyyon | Out-Null
     Check "uninstall did NOT delete a checkout holding unpushed work" (Test-Path $us) "False"
     $usbak = @(Get-ChildItem -Path $sandbox -Directory -Filter "uninstall-src.bak-*")[0]
@@ -367,9 +377,28 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     $up = Join-Path $sandbox "uninstall-pristine"
     New-ClonedRepo $up
     $SrcDir = $up
+    $RepoUrl = "$up.origin"
     Uninstall-Veyyon | Out-Null
     Check "uninstall removes a pristine pushed checkout outright" (Test-Path $up) "False"
     Check "pristine uninstall left no move-aside backup" (@(Get-ChildItem -Path $sandbox -Directory -Filter "uninstall-pristine.bak-*").Count) "0"
+
+    # A pristine checkout from another repository is still user-owned. The old
+    # cleanliness-only rule deleted it outright, losing every remote ref.
+    $foreign = Join-Path $sandbox "uninstall-foreign"
+    New-ClonedRepo $foreign
+    Push-Location $foreign
+    $foreignRemote = (git remote get-url origin 2>$null).Trim()
+    Pop-Location
+    $RepoUrl = $savedRepoUrl
+    $SrcDir = $foreign
+    Uninstall-Veyyon | Out-Null
+    Check "uninstall never deletes an unrelated pristine checkout" (Test-Path $foreign) "False"
+    $foreignBak = @(Get-ChildItem -Path $sandbox -Directory -Filter "uninstall-foreign.bak-*")[0]
+    Check "uninstall moves an unrelated pristine checkout aside" (Test-Path (Join-Path $foreignBak.FullName ".git")) "True"
+    Push-Location $foreignBak.FullName
+    $preservedRemote = (git remote get-url origin 2>$null).Trim()
+    Pop-Location
+    Check "the preserved checkout keeps its exact origin" $preservedRemote $foreignRemote
 
     Remove-Item -Recurse -Force $sandbox -ErrorAction SilentlyContinue
 } else {
@@ -699,11 +728,23 @@ try {
     try { Move-StagedBinaryIntoPlace -StagingPath (Join-Path $stageSandbox "absent") -TargetPath $target } catch { $stageError = $_.Exception.Message }
     Check "a missing staged file is refused too" ([bool]($stageError -match "is empty")) "True"
 
+    # A non-empty download is still not allowed to claim a foreign target. The
+    # staged bytes are discarded and the existing file remains byte-identical.
+    Set-Content -LiteralPath $staging -Value "untrusted replacement"
+    $ownershipError = ""
+    try { Move-StagedBinaryIntoPlace -StagingPath $staging -TargetPath $target } catch { $ownershipError = $_.Exception.Message }
+    Check "a foreign target is refused before replacement" ([bool]($ownershipError -match "not created by this installer")) "True"
+    Check "foreign target bytes survive the refusal" (Get-Content -Raw $target).Trim() "previous working binary"
+    Check "the rejected staging file is removed" (Test-Path $staging) "False"
+
+    # Receipt-bearing targets are safe to update and receive a renewed receipt.
+    Set-ArtifactOwned $target
     # The good path still works: a non-empty staged file replaces the target.
     Set-Content -LiteralPath $staging -Value "new binary"
     Move-StagedBinaryIntoPlace -StagingPath $staging -TargetPath $target
     Check "a non-empty staged file replaces the target" (Get-Content -Raw $target).Trim() "new binary"
     Check "the staged file is gone after a successful move" (Test-Path $staging) "False"
+    Check "successful replacement records installer ownership" (Test-ArtifactHasOwnerReceipt $target) "True"
 
     # A staged executable can remain locked for a fraction of a second after its
     # preflight process exits. Hold the source with FileShare.None in another
@@ -776,6 +817,7 @@ exit /b 2
     $target = Join-Path $versionTransactionSandbox "veyyon.cmd"
     $matching = Join-Path $versionTransactionSandbox ".veyyon.$PID.download.cmd"
     New-ReleaseStub -Path $target -Version "0.9.0"
+    Set-ArtifactOwned $target
     New-ReleaseStub -Path $matching -Version "1.2.3"
     $matchingHash = (Get-FileHash -Path $matching -Algorithm SHA256).Hash.ToLower()
     Check "the matching transaction starts from a checksum-valid staged file" `
@@ -900,6 +942,32 @@ try {
         (Split-Path -Leaf (Get-CompletionScriptPath)) "veyyon-completions.ps1"
 } finally {
     Remove-Item -Recurse -Force $completionSandbox -ErrorAction SilentlyContinue
+}
+
+# --- installer ownership receipts: foreign artifacts survive install/uninstall ---
+# File location is not ownership. These pure checks lock the cross-platform
+# receipt contract without invoking an untrusted executable to identify it.
+$ownershipSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ownership-$PID"
+New-Item -ItemType Directory -Force -Path $ownershipSandbox | Out-Null
+try {
+    $foreignBinary = Join-Path $ownershipSandbox "veyyon.exe"
+    Set-Content -LiteralPath $foreignBinary -Value "another tool"
+    Check "an unreceipted executable is foreign" (Test-BinaryArtifactIsOurs $foreignBinary) "False"
+    Set-ArtifactOwned $foreignBinary
+    Check "a receipt identifies the executable as installer-owned" (Test-BinaryArtifactIsOurs $foreignBinary) "True"
+    Remove-ArtifactOwnerReceipt $foreignBinary
+    Check "removing the receipt returns the executable to foreign ownership" (Test-BinaryArtifactIsOurs $foreignBinary) "False"
+
+    $foreignCompletion = Join-Path $ownershipSandbox "veyyon-completions.ps1"
+    Set-Content -LiteralPath $foreignCompletion -Value "# user's own completion"
+    Check "an unrelated completion script is foreign" (Test-CompletionArtifactIsOurs $foreignCompletion) "False"
+    Set-ArtifactOwned $foreignCompletion
+    Check "a receipt identifies the completion as installer-owned" (Test-CompletionArtifactIsOurs $foreignCompletion) "True"
+    Remove-ArtifactOwnerReceipt $foreignCompletion
+    Set-Content -LiteralPath $foreignCompletion -Value "# PowerShell completion for veyyon - generated by veyyon completions powershell"
+    Check "a legacy generated completion is adopted without running code" (Test-CompletionArtifactIsOurs $foreignCompletion) "True"
+} finally {
+    Remove-Item -Recurse -Force $ownershipSandbox -ErrorAction SilentlyContinue
 }
 
 # --- Test-NativeAddon: the phase label, and what it refuses ---

@@ -1282,13 +1282,22 @@ interface SourceUpdateStep {
  * Run one source-update step; injectable so tests exercise the sequencing and
  * failure surfaces without a real git checkout or network.
  */
-export type SourceUpdateExec = (step: SourceUpdateStep) => Promise<{ exitCode: number; stderr: string }>;
+export interface SourceUpdateStepResult {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+}
+
+export type SourceUpdateExec = (step: SourceUpdateStep) => Promise<SourceUpdateStepResult>;
 
 const defaultSourceUpdateExec: SourceUpdateExec = async step => {
-	const proc = Bun.spawn(step.command, { cwd: step.cwd, stdout: "ignore", stderr: "pipe" });
-	const stderr = await readPipeText(proc.stderr);
-	const exitCode = await proc.exited;
-	return { exitCode, stderr };
+	const proc = Bun.spawn(step.command, { cwd: step.cwd, stdout: "pipe", stderr: "pipe" });
+	const [stdout, stderr, exitCode] = await Promise.all([
+		readPipeText(proc.stdout),
+		readPipeText(proc.stderr),
+		proc.exited,
+	]);
+	return { exitCode, stdout, stderr };
 };
 
 /**
@@ -1313,78 +1322,153 @@ export async function updateViaSourceAt(
 	// launcher = <checkout>/packages/coding-agent/scripts/veyyon
 	const resolvedLauncher = tryRealpath(launcherPath) ?? launcherPath;
 	const checkoutRoot = path.join(path.dirname(resolvedLauncher), "..", "..", "..");
-	const steps: SourceUpdateStep[] = [
+	const stepError = (step: SourceUpdateStep, result: SourceUpdateStepResult): Error => {
+		const detail = result.stderr.trim().length > 0 ? `: ${result.stderr.trim()}` : "";
+		return new Error(
+			`${step.label} failed (\`${step.command.join(" ")}\` exited ${result.exitCode})${detail}. ` +
+				sourceInstallUpdateGuidance(launcherPath),
+		);
+	};
+
+	// A hard reset is safe only after proving the tracked tree and index are
+	// clean. Untracked files are deliberately ignored: Git refuses a merge that
+	// would overwrite one, and reset --hard does not delete them.
+	const cleanlinessStep: SourceUpdateStep = {
+		label: "Checking source checkout",
+		command: ["git", "status", "--porcelain", "--untracked-files=no"],
+		cwd: checkoutRoot,
+	};
+	report(`Updating source checkout at ${checkoutRoot} to ${version}`);
+	report(`${cleanlinessStep.label}...`);
+	const cleanliness = await exec(cleanlinessStep);
+	if (cleanliness.exitCode !== 0) throw stepError(cleanlinessStep, cleanliness);
+	if (cleanliness.stdout.trim().length > 0) {
+		throw new Error(
+			`The source checkout at ${checkoutRoot} has tracked or staged changes, so it cannot be updated safely. ` +
+				`Commit or move those changes, then retry. ${sourceInstallUpdateGuidance(launcherPath)}`,
+		);
+	}
+
+	const revisionStep: SourceUpdateStep = {
+		label: "Recording current revision",
+		command: ["git", "rev-parse", "--verify", "HEAD"],
+		cwd: checkoutRoot,
+	};
+	report(`${revisionStep.label}...`);
+	const revision = await exec(revisionStep);
+	if (revision.exitCode !== 0) throw stepError(revisionStep, revision);
+	const previousRevision = revision.stdout.trim();
+	if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(previousRevision)) {
+		throw new Error(
+			`Could not record the current Git revision in ${checkoutRoot}; got ${JSON.stringify(previousRevision)}. ` +
+				`Nothing was changed. ${sourceInstallUpdateGuidance(launcherPath)}`,
+		);
+	}
+
+	const updateSteps: SourceUpdateStep[] = [
 		{ label: "Fetching", command: ["git", "fetch", "--tags", "origin"], cwd: checkoutRoot },
 		{ label: "Fast-forwarding checkout", command: ["git", "merge", "--ff-only", "@{u}"], cwd: checkoutRoot },
 		{ label: "Installing dependencies", command: ["bun", "install"], cwd: checkoutRoot },
-		// Bun runs NO root lifecycle scripts on workspace installs (verified
-		// empirically 2026-07-24: neither prepare nor postinstall fire), so the
-		// gitignored build artifacts must be regenerated explicitly — a pulled
-		// checkout keeps a STALE tool-views bundle otherwise, and a fresh one
-		// has none and cannot boot.
 		{
 			label: "Regenerating build artifacts",
 			command: ["bun", "--cwd=packages/collab-web", "run", "gen:tool-views"],
 			cwd: checkoutRoot,
 		},
-		// The native addon is version-sentinel-checked at boot, so an advanced
-		// checkout with the previous release's addon dies just like a missing
-		// one. `ensure` is the single owner of provisioning (skip if current,
-		// else prebuilt release download, else cargo build, else fail closed).
 		{
 			label: "Ensuring native addon",
 			command: ["bun", "--cwd=packages/natives", "run", "ensure"],
 			cwd: checkoutRoot,
 		},
 	];
-	report(`Updating source checkout at ${checkoutRoot} to ${version}`);
-	for (const step of steps) {
-		report(`${step.label}...`);
-		const { exitCode, stderr } = await exec(step);
-		if (exitCode !== 0) {
-			const detail = stderr.trim().length > 0 ? `: ${stderr.trim()}` : "";
+	const recoverySteps: SourceUpdateStep[] = [
+		{
+			label: "Restoring previous revision",
+			command: ["git", "reset", "--hard", previousRevision],
+			cwd: checkoutRoot,
+		},
+		{ label: "Restoring dependencies", command: ["bun", "install"], cwd: checkoutRoot },
+		{
+			label: "Restoring build artifacts",
+			command: ["bun", "--cwd=packages/collab-web", "run", "gen:tool-views"],
+			cwd: checkoutRoot,
+		},
+		{
+			label: "Restoring native addon",
+			command: ["bun", "--cwd=packages/natives", "run", "ensure"],
+			cwd: checkoutRoot,
+		},
+	];
+
+	const recoverPreviousRevision = async (original: Error): Promise<never> => {
+		report(`Update failed; restoring ${previousRevision.slice(0, 12)}...`);
+		for (const step of recoverySteps) {
+			report(`${step.label}...`);
+			const result = await exec(step);
+			if (result.exitCode !== 0) {
+				const recoveryError = stepError(step, result);
+				throw new Error(
+					`${original.message} Automatic recovery also failed: ${recoveryError.message} ` +
+						`Your previous revision is ${previousRevision}; restore it with ` +
+						`\`git -C ${checkoutRoot} reset --hard ${previousRevision}\`, then run \`bun install\`.`,
+					{ cause: original },
+				);
+			}
+		}
+		const restoredBrokenReason = await probe(
+			launcherPath,
+			`The restored checkout at ${checkoutRoot}, revision ${previousRevision.slice(0, 12)},`,
+		);
+		if (restoredBrokenReason !== undefined) {
 			throw new Error(
-				`${step.label} failed (\`${step.command.join(" ")}\` exited ${exitCode})${detail}. ` +
+				`${original.message} The updater reset to ${previousRevision}, but recovery verification failed: ` +
+					`${restoredBrokenReason} Run \`bun install\` in ${checkoutRoot} and retry.`,
+				{ cause: original },
+			);
+		}
+		throw new Error(
+			`${original.message} Restored the previous source revision ${previousRevision.slice(0, 12)}; ` +
+				`the existing installation remains usable.`,
+			{ cause: original },
+		);
+	};
+
+	let checkoutAdvanced = false;
+	for (const step of updateSteps) {
+		report(`${step.label}...`);
+		const result = await exec(step);
+		if (result.exitCode !== 0) {
+			const error = stepError(step, result);
+			if (checkoutAdvanced) return recoverPreviousRevision(error);
+			throw error;
+		}
+		if (step.label === "Fast-forwarding checkout") checkoutAdvanced = true;
+	}
+
+	try {
+		const actual = await readCheckoutVersion(checkoutRoot);
+		if (actual === undefined) {
+			throw new Error(
+				`Could not read ${SOURCE_VERSION_FILE} in ${checkoutRoot} after updating, ` +
+					`so the checkout's version is unverified. ${sourceInstallUpdateGuidance(launcherPath)}`,
+			);
+		}
+		if (actual !== version) {
+			throw new Error(
+				`The checkout at ${checkoutRoot} is at ${actual}, not ${version}, after fast-forwarding. ` +
+					`Its branch probably does not track the branch the ${version} release was cut from. ` +
 					sourceInstallUpdateGuidance(launcherPath),
 			);
 		}
+		report("Verifying the updated checkout runs...");
+		const brokenReason = await probe(launcherPath, `The checkout at ${checkoutRoot}, now at ${version},`);
+		if (brokenReason !== undefined) {
+			throw new Error(`${brokenReason} ${sourceInstallUpdateGuidance(launcherPath)}`);
+		}
+	} catch (err) {
+		const error = err instanceof Error ? err : new Error(errorMessage(err));
+		return recoverPreviousRevision(error);
 	}
-	// Every step exiting 0 proves the commands RAN, not that the checkout reached
-	// the release. `git merge --ff-only @{u}` fast-forwards to whatever the branch
-	// tracks, which is not necessarily the tag `update` went looking for: a user
-	// on a feature branch, or on a fork whose upstream lags, ends up advanced but
-	// still behind. Reporting "Updated to 1.0.38" there is exactly the silent
-	// wrong-version success the installers' doctor gate closes, so read the
-	// checkout back and refuse to claim a version it does not have.
-	const actual = await readCheckoutVersion(checkoutRoot);
-	if (actual === undefined) {
-		throw new Error(
-			`Could not read ${SOURCE_VERSION_FILE} in ${checkoutRoot} after updating, ` +
-				`so the checkout's version is unverified. ` +
-				sourceInstallUpdateGuidance(launcherPath),
-		);
-	}
-	if (actual !== version) {
-		throw new Error(
-			`The checkout at ${checkoutRoot} is at ${actual}, not ${version}, after fast-forwarding. ` +
-				`Its branch probably does not track the branch the ${version} release was cut from. ` +
-				sourceInstallUpdateGuidance(launcherPath),
-		);
-	}
-	// A version file says what the checkout claims, not that it runs. Every step
-	// above can exit 0 and still leave a checkout that does not boot: `bun
-	// install` can land a partial tree, the regen step writes an artifact nobody
-	// loaded yet, and `natives ensure` stages an addon it never dlopens. The
-	// binary path proves the same thing the same way; a source install is a
-	// first-class consumer path and gets the same proof.
-	report("Verifying the updated checkout runs...");
-	const brokenReason = await probe(launcherPath, `The checkout at ${checkoutRoot}, now at ${version},`);
-	if (brokenReason !== undefined) {
-		throw new Error(`${brokenReason} ${sourceInstallUpdateGuidance(launcherPath)}`);
-	}
-	// Same reason as the binary path: the completion scripts on disk describe the
-	// version the checkout just left. The launcher is what the installer put on
-	// PATH, so it is what regenerates them.
+
 	const completionResult = await refreshCompletionsForInstalledBinary(launcherPath, report);
 	report(`Updated source checkout to ${version}. Restart ${APP_NAME} to run it.`);
 	return { warnings: completionResult.failed.map(formatCompletionRefreshWarning) };

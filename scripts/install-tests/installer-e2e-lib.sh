@@ -63,6 +63,26 @@ installer_end_to_end() {
    expect_exists "$installer_bin/vey" "the vey launch alias"
    [ -L "$installer_bin/vey" ] || { echo "installer end-to-end: vey should be a symlink to the binary"; exit 1; }
 
+   # The release transaction supplies the immutable tag it just published. A
+   # healthy previous release is not evidence for the new one, so require the
+   # installed binary to report that exact tag before reinstall or uninstall.
+   local installed_version
+   installed_version="$(installer_env "$installer_bin/veyyon" --version)"
+   if [ -n "${VEYYON_EXPECTED_RELEASE_TAG:-}" ]; then
+      case "$VEYYON_EXPECTED_RELEASE_TAG" in
+         v[0-9]*.[0-9]*.[0-9]*) ;;
+         *)
+            echo "installer end-to-end: invalid VEYYON_EXPECTED_RELEASE_TAG '$VEYYON_EXPECTED_RELEASE_TAG'"
+            exit 1
+            ;;
+      esac
+      local expected_version="veyyon/${VEYYON_EXPECTED_RELEASE_TAG#v}"
+      [ "$installed_version" = "$expected_version" ] || {
+         echo "installer end-to-end: installed '$installed_version', expected '$expected_version'"
+         exit 1
+      }
+   fi
+
    # Completions: one file per shell, plus the alias's own file for the two shells
    # that key autoload on the command name.
    expect_exists "$installer_home/.local/share/bash-completion/completions/veyyon" "bash completions"

@@ -125,7 +125,11 @@ describe("a source update refreshes completions too", () => {
 				launcher,
 				"1.2.3",
 				line => reported.push(line),
-				async () => ({ exitCode: 0, stderr: "" }),
+				async step => ({
+					exitCode: 0,
+					stdout: step.label === "Recording current revision" ? "1".repeat(40) : "",
+					stderr: "",
+				}),
 				async () => "1.2.3",
 				// The launcher does not exist here, which the real probe now refuses
 				// outright; this test is about the refresh that runs after it.

@@ -1249,20 +1249,44 @@ jobs:
                   echo "::error::release changed back to draft after byte comparison"
                   exit 1
                 fi
-                echo "Published release $RELEASE_TAG was already byte-identical; nothing changed."
-                exit 0
+                echo "Published release $RELEASE_TAG was already byte-identical; publication is unchanged."
+              else
+                if [ "$is_draft" != true ]; then
+                  echo "::error::verified release $RELEASE_ID is no longer a draft"
+                  exit 1
+                fi
+                published="$(gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false)"
+                if [ "$(jq -r '.id' <<<"$published")" != "$RELEASE_ID" ] ||
+                   [ "$(jq -r '.draft' <<<"$published")" != false ]; then
+                  echo "::error::GitHub did not publish the verified draft $RELEASE_ID"
+                  exit 1
+                fi
+                echo "Published verified draft $RELEASE_ID as $RELEASE_TAG."
               fi
-              if [ "$is_draft" != true ]; then
-                echo "::error::verified release $RELEASE_ID is no longer a draft"
+
+              # Fresh publication and byte-identical retries converge here. The
+              # installers and self-updater resolve releases/latest, so API state
+              # alone is not delivery proof: wait until that public selector names
+              # this exact tag before the site and installer gates can continue.
+              latest_ok=false
+              for attempt in $(seq 1 30); do
+                proof="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+                effective="$(curl -fsSL --connect-timeout 10 --max-time 30 \
+                  -H 'Cache-Control: no-cache' -o /dev/null -w '%{url_effective}' \
+                  "https://github.com/$GITHUB_REPOSITORY/releases/latest?veyyon-proof=$proof" || true)"
+                effective_without_query="${effective%%\?*}"
+                if [ "$effective_without_query" = "https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG" ]; then
+                  latest_ok=true
+                  echo "Public releases/latest resolves to $RELEASE_TAG."
+                  break
+                fi
+                echo "releases/latest attempt $attempt resolved to '${effective:-<request failed>}'; waiting for $RELEASE_TAG"
+                sleep 10
+              done
+              if [ "$latest_ok" != true ]; then
+                echo "::error::public releases/latest did not resolve to $RELEASE_TAG within 5 minutes"
                 exit 1
               fi
-              published="$(gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false)"
-              if [ "$(jq -r '.id' <<<"$published")" != "$RELEASE_ID" ] ||
-                 [ "$(jq -r '.draft' <<<"$published")" != false ]; then
-                echo "::error::GitHub did not publish the verified draft $RELEASE_ID"
-                exit 1
-              fi
-              echo "Published verified draft $RELEASE_ID as $RELEASE_TAG."
 
 
    release_site_finalize:
@@ -1324,6 +1348,7 @@ jobs:
          matrix:
             include:
                - { name: linux-x64, os: ubuntu-22.04, kind: posix }
+               - { name: linux-arm64, os: ubuntu-24.04-arm, kind: posix }
                - { name: macos-arm64, os: macos-14, kind: posix }
                - { name: macos-x64, os: macos-15-intel, kind: posix }
                - { name: windows-x64, os: windows-latest, kind: windows }
@@ -1334,12 +1359,15 @@ jobs:
          - name: Install through the published POSIX release
            if: matrix.kind == 'posix'
            shell: bash
+           env:
+              VEYYON_EXPECTED_RELEASE_TAG: ${{ needs.release_metadata.outputs.release-tag }}
            run: bash scripts/install-tests/published-release-e2e.sh
          - name: Install through the published Windows release
            if: matrix.kind == 'windows'
            shell: pwsh
            env:
               VEYYON_INSTALL_E2E: "1"
+              VEYYON_EXPECTED_RELEASE_TAG: ${{ needs.release_metadata.outputs.release-tag }}
            run: pwsh -File scripts/install-tests/e2e.test.ps1 -Mode Binary
 
    release_train_alert:
