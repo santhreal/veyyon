@@ -176,7 +176,10 @@ try {
 
     # No staging litter: the installer stages beside the target and moves into
     # place, and a failed or interrupted move must not leave the staged file.
-    $litter = @(Get-ChildItem -Path $installDir -Force -File | Where-Object { $_.Name -like ".veyyon.*" -or $_.Name -like "*.old" })
+    # Match only installer staging names. The `.veyyon.exe.veyyon-owner` receipt
+    # is durable ownership metadata and must remain beside the installed binary.
+    $litterPattern = '^(?:\.veyyon\.\d+\.(?:download|local)(?:\.exe)?|veyyon\.exe\.\d+\.old)$'
+    $litter = @(Get-ChildItem -Path $installDir -Force -File | Where-Object { $_.Name -match $litterPattern })
     Check "no staging files were left behind" ($litter.Count -eq 0)
 
     Write-Host ""
