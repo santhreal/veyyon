@@ -22,3 +22,5 @@ paths-ignore:
   - "**/*.spec.tsx"
   - "**/*.bench.ts"
   - "scripts/demos/**"
+  - "packages/deepswe-bench/**"
+  - "packages/typescript-edit-benchmark/**"
