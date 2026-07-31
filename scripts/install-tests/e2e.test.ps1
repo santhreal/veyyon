@@ -151,6 +151,13 @@ try {
     # checking would catch.
     $version = (& $binPath --version | Out-String).Trim()
     Check "the installed binary reports a version" ($LASTEXITCODE -eq 0 -and $version.Length -gt 0)
+    if ($env:VEYYON_EXPECTED_RELEASE_TAG) {
+        if ($env:VEYYON_EXPECTED_RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "invalid VEYYON_EXPECTED_RELEASE_TAG '$($env:VEYYON_EXPECTED_RELEASE_TAG)'"
+        }
+        $expectedVersion = "veyyon/" + $env:VEYYON_EXPECTED_RELEASE_TAG.Substring(1)
+        Check "the installer selected the exact release under verification" ($version -eq $expectedVersion)
+    }
     & $binPath --smoke-test | Out-Null
     Check "the installed binary passes --smoke-test" ($LASTEXITCODE -eq 0)
 

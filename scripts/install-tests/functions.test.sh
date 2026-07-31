@@ -444,7 +444,7 @@ check "the alias uses the same per-shell convention (fish)" "$(completion_file_f
 complete -c vey -w veyyon"
   check "fish completion installed for the vey alias" "$(cat "$fishdir/vey.fish" 2>/dev/null)" "complete -c veyyon -w veyyon
 complete -c vey -w veyyon"
-  check "no temp completion files were left behind" "$(ls -A "$bashdir" | grep -c '^\.')" "0"
+  check "no temp completion files were left behind" "$(ls -A "$bashdir" | grep -Ec '^\.[^.]+[.][0-9]+$')" "0"
 
   # The positive twin of the no-alias rule: an alias this installer owns MUST be
   # bound by the generated scripts, or the name the docs tell users to type has
@@ -453,15 +453,27 @@ complete -c vey -w veyyon"
   check "an owned alias is bound by the zsh script" "$(grep -c 'veyyon vey$' "$zshdir/_veyyon")" "1"
   check "an owned alias is bound by the fish script" "$(grep -c 'complete -c vey ' "$fishdir/veyyon.fish")" "1"
 
+  # A completion file without a receipt or a legacy Veyyon registration belongs
+  # to the user. Reinstall must keep its exact bytes and report the refusal.
+  printf 'user-owned completion\n' > "$bashdir/veyyon"
+  remove_owner_receipt "$bashdir/veyyon"
+  out=$(install_completions "$fakebin" 2>&1)
+  check "reinstall preserves a foreign completion file byte-for-byte" "$(cat "$bashdir/veyyon")" "user-owned completion"
+  check "reinstall reports the foreign completion was left alone" "$(printf '%s' "$out" | grep -c 'not created by this installer')" "1"
+  rm -f "$bashdir/veyyon"
+  install_completions "$fakebin" >/dev/null 2>&1
+
   # A failing generator must leave NO file at the final path — not an empty one,
   # and not a stale partial. This is the atomic-write half of the contract.
   failbin="$_h/veyyon-failing"
   printf '#!/bin/sh\n[ "$1 $2" = "completions --help" ] && exit 0\nexit 7\n' > "$failbin"
   chmod +x "$failbin"
   rm -f "$bashdir/veyyon" "$bashdir/vey"
+  remove_owner_receipt "$bashdir/veyyon"
+  remove_owner_receipt "$bashdir/vey"
   install_completions "$failbin" >/dev/null 2>&1
   check "a failing generator installs no bash completion" "$( [ -e "$bashdir/veyyon" ] && echo present || echo absent )" "absent"
-  check "a failing generator leaves no temp file" "$(ls -A "$bashdir" | wc -l | tr -d ' ')" "0"
+  check "a failing generator leaves no temp file" "$(ls -A "$bashdir" | grep -Evc '\.veyyon-owner$' | tr -d ' ')" "0"
 
   # Uninstall reclaims every file install wrote, alias included.
   install_completions "$fakebin" >/dev/null 2>&1
@@ -1121,6 +1133,7 @@ check "uninstall removes our binary but keeps a foreign vey" \
   mkdir -p "$(install_dir)"
   printf '#!/bin/sh\necho veyyon\n' > "$(install_dir)/veyyon"
   printf '#!/bin/sh\necho their tool\n' > "$(install_dir)/vey"
+  mark_artifact_owned "$(install_dir)/veyyon"
   do_uninstall >/dev/null 2>&1
   echo "$( [ -e "$(install_dir)/veyyon" ] && echo bin-present || echo bin-gone ) $(tail -1 "$(install_dir)/vey" 2>/dev/null)" ) )" \
     "bin-gone echo their tool"
@@ -1132,8 +1145,19 @@ check "uninstall says it left a foreign vey alone" \
   export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
   mkdir -p "$(install_dir)"
   printf '#!/bin/sh\necho veyyon\n' > "$(install_dir)/veyyon"
+  mark_artifact_owned "$(install_dir)/veyyon"
   printf '#!/bin/sh\necho their tool\n' > "$(install_dir)/vey"
   do_uninstall 2>&1 | grep -c "left $(install_dir)/vey alone" ) )" "1"
+
+# The canonical filename alone is not ownership. A foreign `veyyon` with no
+# receipt and no installer alias must survive uninstall byte-for-byte.
+check "uninstall keeps an unreceipted foreign veyyon executable" \
+    "$( ( _h="$SANDBOX/uninst-foreign-binary"
+  export HOME="$_h"; export VEYYON_INSTALL_DIR="$_h/bin"
+  mkdir -p "$(install_dir)"
+  printf 'foreign executable bytes\n' > "$(install_dir)/veyyon"
+  do_uninstall >/dev/null 2>&1
+  cat "$(install_dir)/veyyon" ) )" "foreign executable bytes"
 
 # A symlink pointing somewhere ELSE is not ours either: link_alias only ever
 # writes one pointing at the binary beside it.
@@ -1362,6 +1386,9 @@ check "a version sharing the requested prefix is still rejected" "$?" "1"
   ln -sf "$_sp/bin/veyyon" "$_sp/bin/vey"
   printf 'c' > "$(completions_dir_for bash)/veyyon"
   printf 'c' > "$(completions_dir_for fish)/veyyon.fish"
+  mark_artifact_owned "$_sp/bin/veyyon"
+  mark_artifact_owned "$(completions_dir_for bash)/veyyon"
+  mark_artifact_owned "$(completions_dir_for fish)/veyyon.fish"
   printf '%s\n%s\n' "# added by the veyyon installer" "export PATH=\"$_sp/bin:\$PATH\"" > "$_sp/.bashrc"
 
   # The INSTALL half first, against the same spaced home: these are the units
@@ -1438,6 +1465,7 @@ check "an uninstall acts on the VEYYON_INSTALL_DIR set at call time" \
     "$( ( _sand="$SANDBOX/bindir-sandbox"
   mkdir -p "$_sand/bin"
   printf '#!/bin/sh\necho veyyon\n' > "$_sand/bin/veyyon"
+  mark_artifact_owned "$_sand/bin/veyyon"
   ( HOME="$_sand" VEYYON_INSTALL_DIR="$_sand/bin" do_uninstall >/dev/null 2>&1 )
   [ -e "$_sand/bin/veyyon" ] && echo left || echo removed ) )" "removed"
 
@@ -1703,12 +1731,24 @@ check "the empty-file message names the staged path" \
 check "the empty-file message no longer hardcodes a download" \
     "$( finalize_binary "$empty" "$VEYYON_INSTALL_DIR/veyyon-empty-dest" "rebuild it with X" 2>&1 | grep -c 'downloaded binary is empty' )" "0"
 
+# A valid staged binary still cannot claim a foreign target. The refusal removes
+# only this installer's staging file and preserves the existing bytes exactly.
+foreign_dest="$VEYYON_INSTALL_DIR/veyyon-foreign-dest"
+foreign_stage="$VEYYON_INSTALL_DIR/.veyyon.foreign-stage"
+printf 'foreign executable bytes\n' > "$foreign_dest"
+printf '#!/bin/sh\necho replacement\n' > "$foreign_stage"
+( finalize_binary "$foreign_stage" "$foreign_dest" "unused hint" >/dev/null 2>&1 )
+check "finalize_binary refuses an unreceipted foreign target" "$?" "1"
+check "the foreign target remains byte-identical" "$(cat "$foreign_dest")" "foreign executable bytes"
+check "the rejected staging file is removed" "$( [ -e "$foreign_stage" ] && echo present || echo gone )" "gone"
+
 good="$VEYYON_INSTALL_DIR/.veyyon.good"
 dest="$VEYYON_INSTALL_DIR/veyyon-good-dest"
 printf '#!/bin/sh\necho ok\n' > "$good"
 ( finalize_binary "$good" "$dest" "unused hint" >/dev/null 2>&1 ); check "finalize_binary installs a good download" "$?" "0"
 check "finalize_binary moved the temp file away" "$( [ -e "$good" ] && echo present || echo gone )" "gone"
 check "finalize_binary made the dest executable" "$( [ -x "$dest" ] && echo yes || echo no )" "yes"
+check "finalize_binary records ownership of the installed path" "$(artifact_has_owner_receipt "$dest" && echo yes || echo no)" "yes"
 
 # --- install_local: the --local path gets the same cleanup and honesty as --binary ---
 # install_binary traps EXIT/INT/TERM to remove its staging file; install_local
@@ -1736,7 +1776,7 @@ check "install_local leaves no staging file behind on success" "$( ( _h="$SANDBO
   printf '#!/bin/sh\necho local-build\n' > "$_h/work/dist/vey"
   cd "$_h/work"
   install_local >/dev/null 2>&1
-  ls -A "$VEYYON_INSTALL_DIR" | tr '\n' ' ' ) )" "veyyon "
+  ls -A "$VEYYON_INSTALL_DIR" | grep -v '\.veyyon-owner$' | tr '\n' ' ' ) )" "veyyon "
 
 # An empty build must abort AND clean up. Without the trap the staging file
 # survived, and a later uninstall had to sweep somebody else's mess.
@@ -2025,6 +2065,13 @@ if command -v git >/dev/null 2>&1; then
 
     make_cloned_repo "$SANDBOX/pristine"
     ( src_has_local_work "$SANDBOX/pristine" ); check "pristine pushed checkout reports no local work" "$?" "1"
+    # Ownership comes from the configured origin, not from directory location or
+    # cleanliness. This prevents update and uninstall from claiming a foreign
+    # checkout merely because it occupies VEYYON_SRC_DIR.
+    ( REPO_URL="$SANDBOX/pristine.origin"; src_remote_is_ours "$SANDBOX/pristine" )
+    check "the configured source origin is recognized as installer-owned" "$?" "0"
+    ( src_remote_is_ours "$SANDBOX/pristine" )
+    check "an unrelated pristine origin is not treated as installer-owned" "$?" "1"
 
     make_cloned_repo "$SANDBOX/dirtywork"
     printf 'MY EDIT\n' > "$SANDBOX/dirtywork/AGENTS.md"
@@ -2047,7 +2094,7 @@ if command -v git >/dev/null 2>&1; then
     ( cd "$us" && git checkout -q -b veyyon-local-keep \
         && printf 'RECOVER ME\n' > AGENTS.md && git add -A && git commit -qm wip \
         && git checkout -q main )
-    ( VEYYON_SRC_DIR="$us" VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+    ( REPO_URL="$us.origin" VEYYON_SRC_DIR="$us" VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
     check "uninstall did NOT delete a checkout holding unpushed work" "$( [ -e "$us" ] && echo present || echo gone )" "gone"
     usbak=$(ls -d "$us".bak-* 2>/dev/null | head -1)
     check "uninstall moved the checkout aside instead of deleting" "$( [ -d "$usbak/.git" ] && echo yes || echo no )" "yes"
@@ -2057,9 +2104,20 @@ if command -v git >/dev/null 2>&1; then
     # A pristine, fully-pushed checkout is removed outright (normal uninstall).
     up="$SANDBOX/uninstall-pristine"
     make_cloned_repo "$up"
-    ( VEYYON_SRC_DIR="$up" VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+    ( REPO_URL="$up.origin" VEYYON_SRC_DIR="$up" VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
     check "uninstall removes a pristine pushed checkout outright" "$( [ -e "$up" ] && echo present || echo gone )" "gone"
     check "pristine uninstall left no move-aside backup" "$( ls -d "$up".bak-* 2>/dev/null | wc -l | tr -d ' ' )" "0"
+
+    # A pristine checkout from another repository is still user-owned. The old
+    # cleanliness-only rule deleted it outright, losing every remote ref.
+    foreign="$SANDBOX/uninstall-foreign"
+    make_cloned_repo "$foreign"
+    foreign_remote=$( cd "$foreign" && git remote get-url origin )
+    ( VEYYON_SRC_DIR="$foreign" VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+    check "uninstall never deletes an unrelated pristine checkout" "$( [ -e "$foreign" ] && echo present || echo gone )" "gone"
+    foreign_bak=$(ls -d "$foreign".bak-* 2>/dev/null | head -1)
+    check "uninstall moves an unrelated pristine checkout aside" "$( [ -d "$foreign_bak/.git" ] && echo yes || echo no )" "yes"
+    check "the preserved checkout keeps its exact origin" "$( cd "$foreign_bak" && git remote get-url origin )" "$foreign_remote"
 else
     printf 'SKIP: git not available; src_has_local_work/uninstall tests skipped\n' >&2
 fi
@@ -2402,6 +2460,7 @@ export VEYYON_INSTALL_DIR="$SANDBOX/bin"
   mkdir -p "$_h/bin"
   export VEYYON_INSTALL_DIR="$_h/bin"
   printf 'binary' > "$_h/bin/veyyon"
+  mark_artifact_owned "$_h/bin/veyyon"
   printf 'staged' > "$_h/bin/veyyon.new"
   printf 'previous' > "$_h/bin/veyyon.1753660000.4242.bak"
   printf 'legacy' > "$_h/bin/veyyon.bak"

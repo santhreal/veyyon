@@ -779,6 +779,65 @@ completions_enable_hint() {
     esac
 }
 
+# A sidecar receipt distinguishes files this installer owns from unrelated files
+# that happen to use the same name. It is deliberately content-stable: binary
+# self-updates replace the executable in place, but ownership of that path does
+# not change. Legacy installs are adopted only through installer-specific
+# evidence below, then receive receipts on the next install.
+owner_marker_for() {
+    _owner_path="$1"
+    printf '%s/.%s.veyyon-owner' "$(dirname "$_owner_path")" "$(basename "$_owner_path")"
+}
+
+artifact_has_owner_receipt() {
+    _owner_marker=$(owner_marker_for "$1")
+    [ -f "$_owner_marker" ] && grep -Fqx 'veyyon-installer-v1' "$_owner_marker" 2>/dev/null
+}
+
+mark_artifact_owned() {
+    _owner_marker=$(owner_marker_for "$1")
+    _owner_tmp="$_owner_marker.$$"
+    printf '%s\n' 'veyyon-installer-v1' > "$_owner_tmp" || return 1
+    mv -f "$_owner_tmp" "$_owner_marker" || { rm -f "$_owner_tmp"; return 1; }
+}
+
+remove_owner_receipt() {
+    _owner_marker=$(owner_marker_for "$1")
+    rm -f "$_owner_marker" 2>/dev/null || true
+}
+
+legacy_completion_is_ours() {
+    _completion_path="$1"; _completion_shell="$2"
+    [ -f "$_completion_path" ] || return 1
+    case "$_completion_shell" in
+        bash) grep -Eq 'complete .*(^|[[:space:]])veyyon([[:space:]]|$)' "$_completion_path" 2>/dev/null ;;
+        zsh) grep -Eq '^#compdef([[:space:]]+[^[:space:]]+)*[[:space:]]+veyyon([[:space:]]|$)|^#compdef[[:space:]]+veyyon([[:space:]]|$)' "$_completion_path" 2>/dev/null ;;
+        fish) grep -Eq '^complete[[:space:]]+-c[[:space:]]+veyyon([[:space:]]|$)' "$_completion_path" 2>/dev/null ;;
+        *) return 1 ;;
+    esac
+}
+
+completion_artifact_is_ours() {
+    artifact_has_owner_receipt "$1" || legacy_completion_is_ours "$1" "$2"
+}
+
+# Existing binary ownership is receipt-first. The two legacy forms are exact
+# artifacts old installers created: the source launcher link, or a canonical
+# binary paired with this installer's exact `vey -> veyyon` alias.
+binary_artifact_is_ours() {
+    _binary_path="$1"
+    artifact_has_owner_receipt "$_binary_path" && return 0
+    if [ -L "$_binary_path" ]; then
+        [ "$(readlink "$_binary_path" 2>/dev/null)" = "$(src_dir)/packages/coding-agent/scripts/$BIN_NAME" ] && return 0
+    fi
+    alias_in_dir_is_ours "$(dirname "$_binary_path")"
+}
+
+binary_path_is_replaceable() {
+    [ ! -e "$1" ] && [ ! -L "$1" ] && return 0
+    binary_artifact_is_ours "$1"
+}
+
 install_completions() {
     bin="$1"
     "$bin" completions --help >/dev/null 2>&1 || {
@@ -801,7 +860,18 @@ install_completions() {
         # install killed mid-write) breaks every new shell the user opens. The
         # binary path gets the same treatment in finalize_binary.
         tmp="$out/.$name.$$"
-        if "$bin" completions "$sh" $alias_flag > "$tmp" 2>/dev/null && [ -s "$tmp" ] && mv -f "$tmp" "$out/$name"; then
+        if "$bin" completions "$sh" $alias_flag > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+            if [ -e "$out/$name" ] && ! completion_artifact_is_ours "$out/$name" "$sh"; then
+                rm -f "$tmp"
+                warn "left $out/$name alone (not created by this installer)"
+                continue
+            fi
+            if ! mv -f "$tmp" "$out/$name"; then
+                rm -f "$tmp"
+                warn "could not install $sh completions (skipped)"
+                continue
+            fi
+            mark_artifact_owned "$out/$name" || warn "could not record ownership of $out/$name"
             ok "installed $sh completions"
             # A written file that the shell never reads is not a working
             # completion, so say so here rather than letting the user discover
@@ -817,7 +887,10 @@ install_completions() {
             # (zsh needs none: the generated script's `#compdef` line names both).
             alias_name=$(completion_file_for "$sh" "$ALIAS_NAME")
             if [ -n "$alias_name" ] && [ "$sh" != "zsh" ] && [ "$ALIAS_IS_OURS" = 1 ]; then
-                if cp -f "$out/$name" "$out/$alias_name" 2>/dev/null; then
+                if [ -e "$out/$alias_name" ] && ! completion_artifact_is_ours "$out/$alias_name" "$sh"; then
+                    warn "left $out/$alias_name alone (not created by this installer)"
+                elif cp -f "$out/$name" "$out/$alias_name" 2>/dev/null; then
+                    mark_artifact_owned "$out/$alias_name" || warn "could not record ownership of $out/$alias_name"
                     ok "installed $sh completions for '$ALIAS_NAME'"
                 else
                     warn "could not install $sh completions for '$ALIAS_NAME' (tab completion for '$ALIAS_NAME' unavailable)"
@@ -1104,8 +1177,13 @@ finalize_binary() {
     # which sent a --local user chasing a network problem they never had.
     tmp="$1"; dest="$2"; empty_hint="$3"
     [ -s "$tmp" ] || die "the binary staged at $tmp is empty — refusing to install; $empty_hint"
+    if ! binary_path_is_replaceable "$dest"; then
+        rm -f "$tmp"
+        die "refusing to replace $dest because it was not created by this installer; move it aside, then re-run the installer"
+    fi
     chmod +x "$tmp" || die "could not make $tmp executable"
     mv -f "$tmp" "$dest" || die "could not move binary into place at $dest"
+    mark_artifact_owned "$dest" || die "installed $dest but could not record its ownership; check permissions and re-run the installer"
 }
 
 # ---- checksum verification (fail closed on mismatch) ----
@@ -1285,6 +1363,10 @@ do_uninstall() {
     removed=0; _rc_line_removed=0
     canonical_dir=$(install_dir)
     for d in "$canonical_dir" "$HOME/.bun/bin"; do
+        _canonical_binary_owned=0
+        if [ "$d" = "$canonical_dir" ] && binary_artifact_is_ours "$d/$BIN_NAME"; then
+            _canonical_binary_owned=1
+        fi
         # The alias is checked BEFORE the binary is removed, and it is checked at
         # all because install refuses to overwrite a `vey` the user already has.
         # Uninstall deleted it anyway, so removing veyyon destroyed the user's own
@@ -1297,10 +1379,10 @@ do_uninstall() {
             fi
         fi
         if [ -e "$d/$BIN_NAME" ] || [ -L "$d/$BIN_NAME" ]; then
-            # The canonical binary is unambiguously ours. The legacy Bun path is
-            # shared user space, so reclaim only Bun's exact Veyyon package link.
-            if [ "$d" = "$canonical_dir" ] || legacy_bun_launcher_is_ours "$d/$BIN_NAME"; then
-                rm -f "$d/$BIN_NAME" && { ok "removed $d/$BIN_NAME"; removed=1; }
+            # The canonical path still needs ownership proof. Legacy Bun space
+            # remains governed by its exact package-link shape.
+            if { [ "$d" = "$canonical_dir" ] && [ "$_canonical_binary_owned" = 1 ]; } || legacy_bun_launcher_is_ours "$d/$BIN_NAME"; then
+                rm -f "$d/$BIN_NAME" && { remove_owner_receipt "$d/$BIN_NAME"; ok "removed $d/$BIN_NAME"; removed=1; }
             else
                 ok "left $d/$BIN_NAME alone (not created by this installer)"
             fi
@@ -1338,11 +1420,17 @@ do_uninstall() {
     done
     src=$(src_dir)
     if [ -d "$src" ]; then
-        # Never rm -rf a checkout that holds uncommitted edits or unpushed local
-        # branches (e.g. a `veyyon-local-*` preservation branch carrying the
-        # user's AGENTS.md). Move it aside so uninstall can never destroy work
-        # the installer did not create; only a pristine tree is deleted outright.
-        if src_has_local_work "$src"; then
+        # A checkout from another repository is foreign even when pristine.
+        # Never remove it merely because it occupies the configured source path.
+        # Move it aside exactly as the install path does, preserving every ref.
+        if [ -d "$src/.git" ] && ! src_remote_is_ours "$src"; then
+            warn "source checkout at $src does not track $REPO_URL; preserving it"
+            move_aside_existing_src "$src"
+            removed=1
+        # Never rm -rf a Veyyon checkout that holds uncommitted edits or
+        # unpushed local branches. Move it aside so uninstall cannot destroy work
+        # the installer did not create; only our own pristine tree is removed.
+        elif src_has_local_work "$src"; then
             move_aside_existing_src "$src"
             removed=1
         else
@@ -1356,18 +1444,22 @@ do_uninstall() {
         # through, so an alias completion can never be orphaned by an uninstall.
         name=$(completion_file_for "$sh" "$BIN_NAME")
         alias_name=$(completion_file_for "$sh" "$ALIAS_NAME")
-        # The alias file is a byte copy of ours, so identical content is the only
-        # proof we wrote it. If the user has their own `vey`, install declined to
-        # write this file and uninstall has no business deleting it.
+        # Receipts are authoritative. Legacy generated files are recognized by
+        # their shell-specific Veyyon registration so existing users migrate
+        # without losing completions on the first receipt-aware upgrade.
         if [ -n "$alias_name" ] && [ -e "$out/$alias_name" ]; then
-            if [ -n "$name" ] && cmp -s "$out/$name" "$out/$alias_name" 2>/dev/null; then
-                rm -f "$out/$alias_name" && { ok "removed $sh completion for '$ALIAS_NAME'"; removed=1; }
+            if completion_artifact_is_ours "$out/$alias_name" "$sh"; then
+                rm -f "$out/$alias_name" && { remove_owner_receipt "$out/$alias_name"; ok "removed $sh completion for '$ALIAS_NAME'"; removed=1; }
             else
                 ok "left $sh completion for '$ALIAS_NAME' alone (not written by this installer)"
             fi
         fi
         if [ -n "$name" ] && [ -e "$out/$name" ]; then
-            rm -f "$out/$name" && { ok "removed $sh completion for '$BIN_NAME'"; removed=1; }
+            if completion_artifact_is_ours "$out/$name" "$sh"; then
+                rm -f "$out/$name" && { remove_owner_receipt "$out/$name"; ok "removed $sh completion for '$BIN_NAME'"; removed=1; }
+            else
+                ok "left $sh completion for '$BIN_NAME' alone (not written by this installer)"
+            fi
         fi
     done
     # Remove the per-version native addon cache a binary install stages there
@@ -1572,8 +1664,25 @@ src_has_local_work() {
     return 1
 }
 
+# A source checkout is installer-owned only when `origin` names the Veyyon
+# repository. Directory location and a clean worktree are not ownership proof:
+# a user may already have an unrelated pristine checkout at VEYYON_SRC_DIR.
+# The exact REPO_URL arm keeps local installer tests and mirrors usable; the
+# GitHub spellings cover source installs made through HTTPS and SSH.
+src_remote_is_ours() {
+    src="${1:-$(src_dir)}"
+    [ -d "$src/.git" ] || return 1
+    remote=$( cd "$src" 2>/dev/null && git remote get-url origin 2>/dev/null ) || return 1
+    case "$remote" in
+        "$REPO_URL"|"https://github.com/$REPO"|"https://github.com/$REPO.git"|"git@github.com:$REPO"|"git@github.com:$REPO.git"|"ssh://git@github.com/$REPO"|"ssh://git@github.com/$REPO.git")
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 fetch_source_tree() {
-    if [ -d "$(src_dir)/.git" ]; then
+    if [ -d "$(src_dir)/.git" ] && src_remote_is_ours "$(src_dir)"; then
         say "updating veyyon source in $(src_dir)..."
         # Commit local edits to a backup branch before resetting. If that fails,
         # refuse the update rather than destroy uncommitted work.
@@ -1588,6 +1697,9 @@ fetch_source_tree() {
         ( cd "$(src_dir)" && git checkout --force "$ref" && { git reset --hard "origin/$ref" 2>/dev/null || git reset --hard "$ref"; } ) \
             || die "failed to check out '$ref' in $(src_dir)"
     else
+        if [ -d "$(src_dir)/.git" ]; then
+            warn "existing checkout at $(src_dir) does not track $REPO_URL; moving it aside"
+        fi
         say "cloning veyyon source into $(src_dir)..."
         mkdir -p "$(dirname "$(src_dir)")"
         # Never rm -rf an existing tree: move it aside so nothing is lost.
@@ -1674,7 +1786,11 @@ install_via_bun() {
     ( cd "$(src_dir)" && bun --cwd=packages/natives run ensure ) \
         || die "failed to provision the native addon (bun --cwd=packages/natives run ensure)"
     mkdir -p "$(install_dir)"
+    if ! binary_path_is_replaceable "$(install_dir)/$BIN_NAME"; then
+        die "refusing to replace $(install_dir)/$BIN_NAME because it was not created by this installer; move it aside, then re-run with --source"
+    fi
     ln -sfn "$launcher" "$(install_dir)/$BIN_NAME" || die "failed to link $BIN_NAME into $(install_dir)"
+    mark_artifact_owned "$(install_dir)/$BIN_NAME" || die "installed the source launcher but could not record its ownership; check permissions and re-run the installer"
     ok "installed $BIN_NAME (source) -> $launcher"
     link_alias "$(install_dir)"
     install_completions "$(install_dir)/$BIN_NAME"
