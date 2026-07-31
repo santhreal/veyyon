@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Added
 
 - Expanded `session.instrumentation` into a complete session-study record. `basic` adds lifecycle checkpoints, task transitions, tool and model timing, and effective model request parameters; `rich` adds context attribution, directional agent-message delivery, result weight, and model throughput; `ultra` adds compaction links, per-task transitions, routes, fingerprints, and provider provenance. `veyyon session stats` reports each available family. `off` adds no telemetry but still stores the normal conversation and tool history required to resume.
@@ -619,6 +621,8 @@
 - `hashline`: guard NodeFilesystem.move against deleting the file it just wrote.
 - `hashline`: guard the production move adapter against deleting the file it just wrote.
 - `hashline`: guard InMemoryFilesystem.move against dropping a same-key move.
+- `coding-agent`: make the recent-sessions recency order deterministic.
+- `ci`: restore collab:web:build root script (unblocks release check gate).
 - Compaction and branch summaries now enter the provider request as agent-owned developer context, not as synthetic user turns. Their persisted `compactionSummary` and `branchSummary` roles remain unchanged. New context contains no private `<summary>` delimiters for a model to echo.
 - `AgentLoopConfig.pauseGate` can scope pause state to one execution domain while retaining the process-wide gate by default. Parallel and independently embedded loops no longer inherit another domain's test or host pause, so aborts still become completed `aborted` messages with their exact reason instead of escaping as rejected streams.
 - A turn that ends in an error builds its message with the shared `errorMessage` helper. The two tail branches were that helper written out by hand, and the local `const errorMessage` holding the result shadowed the import, so the hand-rolled copy was the only version reachable in that scope. The local is named `failureMessage` now.
@@ -710,8 +714,6 @@
 - The Windows binary is now built as a modern (AVX2) Bun target instead of baseline. Baseline Windows standalone builds crash in the Bun runtime at startup before any Veyyon code runs (oven-sh/bun#32684), which made every published `veyyon-windows-x64.exe` exit with a segmentation fault on launch. The modern target requires a CPU with AVX2 (Intel Haswell 2013 / AMD Excavator 2015 or newer).
 - `REM` no longer deletes a file whose content drifted from the section tag. A whole-file delete is now the strictest op about the content tag (it was the most lenient: empty edits took the position-stable path and deleted through drift with only a soft warning), so a stale or fabricated tag can no longer discard edits the model never saw. The delete is refused with a mismatch error that forces a re-read, matching how an anchored edit on a drifted file behaves.
 - `MV DEST` no longer silently overwrites an existing destination file. A move onto a different existing file is refused during prepare (aborting the whole batch before any write), so a wrong or hallucinated destination can no longer destroy the user's work. A rename that only respells one file (case-only on a case-insensitive volume, or through a symlink) is still allowed, matched by device+inode identity rather than by path string.
-
-## [1.0.36] - 2026-07-24
 
 ## [1.0.35] - 2026-07-24
 
@@ -961,7 +963,6 @@
 
 - `smoke`: force core native-addon load in --smoke-test.
 - `ai`: create the config dir before writing the Kimi device-id file.
-- `coding-agent`: make the recent-sessions recency order deterministic.
 - Applying a large-range edit (a `DEL` or `SWAP` spanning thousands of lines) is now linear in the file size instead of quadratic. A range delete over 30000 lines of a 60000-line file dropped from ~160ms to ~21ms; the output is unchanged.
 
 ## [1.0.18] - 2026-07-23
@@ -1557,8 +1558,6 @@
 
 - `stats`: deep-import format helpers + lock browser bundles off the Bun-mixed utils barrel.
 
-## [1.0.2] - 2026-07-17
-
 ## [1.0.1] - 2026-07-17
 
 ### Changed
@@ -1569,7 +1568,6 @@
 ### Fixed
 
 - `branding`: user-visible .omp/OMP leaks -> CONFIG_DIR_NAME/.veyyon (menus, ssh list, ttsr help, mcp schema, autolearn prompt).
-- `ci`: restore collab:web:build root script (unblocks release check gate).
 
 ## [1.0.0] - 2026-07-17
 

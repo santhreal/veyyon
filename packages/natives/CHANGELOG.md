@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Changed
 
 - Two search tools stopped walking a tree they cannot match into. A walk-relative glob compiles with `literal_separator(true)`, so `*`, `?` and `[...]` never cross a `/` and a pattern with two segments cannot match anything three components deep. The glob tool bounded its walk on that; `grep --glob 'src/*.ts'` and `astGrep` did not, and traversed every directory in the repository to filter everything below depth two back out. The results were right and the cost was a full traversal, with nothing reporting it. Each tool had hand-assembled the same three steps (normalize the pattern, compile it, choose a depth) and only one of them took the third. `CompiledWalkGlob::compile` is the one entry point now and the depth comes off the compiled glob through `depth_bound()`, so the bound can no longer be measured from a different pattern than the one that was compiled.

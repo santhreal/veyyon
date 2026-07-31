@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Changed
 
 - The browser socket and the dev relay take the fatal close codes and the reconnect send bound from `@veyyon/wire/relay` instead of each declaring them. The dev relay mattered most: it is what PRODUCES the codes, and it spelled the four reason strings inline as it closed sockets, so a relay and a client could disagree about the reason for a code with nothing to catch it.
