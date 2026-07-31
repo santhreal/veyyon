@@ -267,6 +267,26 @@ async function loadPullEvidence(prNumber: number): Promise<PullEvidence> {
 
 const marker = (n: number) => `<!-- upstream-pr: ${n} -->`;
 
+/**
+ * Plan issue creation without dropping an eligible candidate.
+ *
+ * The limit is an operational warning threshold, not a truncation boundary. A scheduled runner has
+ * no durable queue outside the issues it creates, so slicing here can let deferred PRs age past the
+ * moving lookback window and disappear permanently.
+ */
+export function planIssueCreation<T>(
+	fresh: readonly T[],
+	advisoryLimit: number,
+): { batch: readonly T[]; aboveAdvisoryLimit: number } {
+	if (!Number.isSafeInteger(advisoryLimit) || advisoryLimit < 1) {
+		throw new Error(`upstream-radar: RADAR_MAX_ISSUES must be a positive integer, got ${advisoryLimit}`);
+	}
+	return {
+		batch: fresh,
+		aboveAdvisoryLimit: Math.max(0, fresh.length - advisoryLimit),
+	};
+}
+
 if (import.meta.main) {
 	if (!TOKEN) {
 		console.error(
@@ -326,11 +346,10 @@ if (import.meta.main) {
 	await ensureLabel(PORT_LABEL, "b06000", "Mirrored from a merged upstream oh-my-pi PR; awaiting port triage");
 	await ensureLabel(AGENT_LABEL, "5319e7", "Assigned to the Jules async coding agent");
 
-	const batch = fresh.slice(0, MAX_NEW_ISSUES_PER_RUN);
-	if (batch.length < fresh.length) {
-		// Loud cap, never a silent one: the remainder is picked up next run.
+	const { batch, aboveAdvisoryLimit } = planIssueCreation(fresh, MAX_NEW_ISSUES_PER_RUN);
+	if (aboveAdvisoryLimit > 0) {
 		console.log(
-			`upstream-radar: capping at ${MAX_NEW_ISSUES_PER_RUN} new issues this run; ${fresh.length - batch.length} deferred to the next scheduled run.`,
+			`upstream-radar: ${fresh.length} new issues exceed the ${MAX_NEW_ISSUES_PER_RUN}-issue advisory threshold by ${aboveAdvisoryLimit}; processing every candidate so none can age out of the lookback window.`,
 		);
 	}
 

@@ -20,15 +20,18 @@ import { readFileSync } from "node:fs";
  *   + jules-dispatched               a Jules session is in flight
  *   + port-pr-open                   the session opened a port PR; awaiting review
  *   + port-review                    session ended without a PR; needs a human look
- *   + port-blocked                   MAX_ATTEMPTS sessions failed; needs a human
+ *   + port-blocked                   MAX_ATTEMPTS sessions failed; remove after a human fix to grant a fresh budget
  *
  * Markers (in issue comments):
  *   <!-- jules-session: sessions/<id> key:<fp8> -->   dispatch record; fp8 names
  *                                                     the API key (sha256 prefix,
  *                                                     never the key itself)
- *   <!-- jules-failed: sessions/<id> -->              one per failed attempt;
- *                                                     the count is the retry budget
- *   <!-- jules-nudged: sessions/<id> -->              one per autonomy answer sent
+ *   <!-- jules-failed: sessions/<id> -->              one per failed attempt since
+ *                                                     the latest budget boundary
+ *   <!-- jules-attempt-budget-reset -->                manager-authored block boundary;
+ *                                                     removing port-blocked after a
+ *                                                     human fix starts a fresh budget
+ *   <!-- jules-nudged: sessions/<id> -->               one per autonomy answer sent
  *                                                     to a session that paused to
  *                                                     ask for input (cap MAX_NUDGES)
  *
@@ -125,6 +128,7 @@ export function keyFingerprint(key: string): string {
 
 export const sessionMarker = (session: string, fp: string) => `<!-- jules-session: ${session} key:${fp} -->`;
 export const failMarker = (session: string) => `<!-- jules-failed: ${session} -->`;
+export const blockMarker = () => "<!-- jules-attempt-budget-reset -->";
 
 /** Latest dispatch record in an issue's comments, or null if never dispatched. */
 export function latestSessionMarker(commentBodies: string[]): { session: string; fp: string } | null {
@@ -136,9 +140,28 @@ export function latestSessionMarker(commentBodies: string[]): { session: string;
 	return found;
 }
 
-/** Failed-attempt count: one jules-failed marker is appended per dead session. */
+/**
+ * A manager-authored block comment is the boundary between attempt budgets.
+ *
+ * Removing `port-blocked` is an explicit human retry decision. The issue comments are the durable
+ * database, so the block comment itself closes the previous budget and lets the next dispatch count
+ * only failures that happened after it. The text predicate preserves recovery for issues blocked
+ * before the marker existed.
+ */
+function isAttemptBudgetBoundary(body: string): boolean {
+	return body.includes(blockMarker()) || body.includes("Jules sessions failed on this port; blocking it for a human.");
+}
+/** Failed attempts since the latest manager-authored block boundary. */
 export function countFailures(commentBodies: string[]): number {
-	return commentBodies.filter(b => /<!-- jules-failed: sessions\/\S+ -->/.test(b)).length;
+	let failures = 0;
+	for (const body of commentBodies) {
+		if (isAttemptBudgetBoundary(body)) {
+			failures = 0;
+			continue;
+		}
+		if (/<!-- jules-failed: sessions\/\S+ -->/.test(body)) failures += 1;
+	}
+	return failures;
 }
 
 export const nudgeMarker = (session: string) => `<!-- jules-nudged: ${session} -->`;
@@ -644,7 +667,7 @@ async function dispatch(): Promise<void> {
 			await addLabels(issue.number, [BLOCKED_LABEL]);
 			await comment(
 				issue.number,
-				`${failures} Jules sessions failed on this port; blocking it for a human. Remove the \`${BLOCKED_LABEL}\` label (and the failure comments' weight, by closing/reopening intent) after resolving.`,
+				`${blockMarker()}\n${failures} Jules sessions failed on this port; blocking it for a human. Resolve the cause, then remove the \`${BLOCKED_LABEL}\` label to grant a fresh ${MAX_ATTEMPTS}-attempt budget.`,
 			);
 			console.log(`dispatch: #${issue.number} blocked after ${failures} failed attempts.`);
 			continue;

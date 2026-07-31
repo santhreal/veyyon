@@ -101,6 +101,13 @@ means queued, `jules-dispatched` means a session is in flight,
 status` prints the live picture; the script's header comment documents the
 commands, knobs, and markers.
 
+`RADAR_MAX_ISSUES` is an advisory burst threshold, not a truncation limit.
+The runner creates every eligible issue it found in the current lookback window
+because it has no separate durable queue for deferred PRs. When a port reaches
+the Jules attempt budget, the manager adds `port-blocked` and closes that
+attempt epoch in its comment history. Resolve the cause and remove the label to
+grant a fresh budget; closing and reopening the issue is not required.
+
 ### Why landing is local
 
 Your working tree is the canonical copy of veyyon and GitHub mirrors it, so
