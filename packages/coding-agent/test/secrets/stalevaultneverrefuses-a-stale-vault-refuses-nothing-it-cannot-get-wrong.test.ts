@@ -296,13 +296,12 @@ describe("a tool call from a session whose vault revision has moved", () => {
 	});
 
 	/**
-	 * The boundary between "carries a placeholder" and "carries a LIVE placeholder". An expired entry
-	 * is retired from the substitution map, so the text expands to itself and the stale revision is
-	 * irrelevant to it. The vault still holds a live secret, so the session-wide `hasSecrets()`
-	 * shortcut is true and cannot be what saves the call. Regression guarded: treating any
-	 * placeholder-shaped token as something worth refusing over.
+	 * Expiry is a revocation, not permission to send the old placeholder literally. The name once
+	 * represented a credential, so the tool boundary must refuse it even when the vault revision is
+	 * moving and the expired value is absent from the substitution map. Regression guarded: leaking
+	 * a retired placeholder to the tool because only currently expandable names were considered.
 	 */
-	it("runs a call naming an expired secret rather than refusing over a placeholder nothing would expand", async () => {
+	it("refuses a call naming an expired secret without exposing its former value", async () => {
 		const { observed, toolResultTexts, spendMessages } = await runProbe({
 			seed: [...liveSecret, { name: EXPIRING_NAME, value: EXPIRING_VALUE, ttlMs: EXPIRING_TTL_MS }],
 			note: `token=#${EXPIRING_NAME}#`,
@@ -310,9 +309,13 @@ describe("a tool call from a session whose vault revision has moved", () => {
 			staleness: "unending-churn",
 		});
 
-		expect(observed).toEqual([{ sawRotatedValue: false, sawStartupValue: false, verbatim: true }]);
-		expect(toolResultTexts).toEqual(["probed"]);
+		expect(observed).toEqual([]);
 		expect(spendMessages).toEqual([]);
+		expect(toolResultTexts).toHaveLength(1);
+		const refusal = toolResultTexts[0];
+		expect(refusal).toContain(`Stored secret #${EXPIRING_NAME}# is no longer available`);
+		expect(refusal).toContain("Store the credential again");
+		expect(refusal).not.toContain(EXPIRING_VALUE);
 	});
 
 	/**
