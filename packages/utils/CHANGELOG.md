@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Added
 
 - `string-length.ts` owns two more measurements beside `codePointLength`: `utf8ByteLength(value,

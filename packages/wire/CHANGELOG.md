@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Added
 
 - `src/relay.ts` owns the collab relay protocol: the control-message types that used to sit at the bottom of `index.ts`, the fatal close-code table, the `isRelayFatalCloseCode` / `relayFatalCloseReason` predicates, and the client-side reconnect send bound. Three programs speak this protocol, the relay and two independent clients, and each client carried its own copy of the table character for character, doc comment included, plus its own `MAX_PENDING_SENDS = 256`. A code the table does not list is TRANSIENT, so a client retries: add a fatal code to the relay, teach one client, and the other reconnects in a loop against a condition that will never clear, backing off to thirty seconds and staying there without throwing or logging an error. The module has no imports, so a client pays one module for the protocol rather than the 900-line message barrel it sits beside, which is why the constants were copied instead of imported before. `index.ts` re-exports everything, so anything that already took the relay types from `@veyyon/wire` is unchanged.
