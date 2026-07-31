@@ -151,7 +151,7 @@ jobs:
   codeql:
     name: SAST (CodeQL JS/TS)
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
     permissions:
       contents: read
       security-events: write
@@ -163,9 +163,10 @@ jobs:
         with:
           languages: javascript-typescript
           config-file: ./.github/codeql/codeql-config.yml
-          # security-and-quality adds maintainability/correctness queries on top
-          # of the default security suite.
-          queries: security-and-quality
+          # security-extended keeps the gate focused on security findings.
+          # security-and-quality spent three hours in non-security data-flow
+          # queries even after tests and fixtures were excluded.
+          queries: security-extended
       - name: Autobuild
         uses: github/codeql-action/autobuild@4187e74d05793876e9989daffde9c3e66b4acd07 # v3.37.3
       - name: Analyze

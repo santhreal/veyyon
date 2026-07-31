@@ -27,11 +27,11 @@ async function loadYaml<T>(relativePath: string): Promise<T> {
 
 describe("Security CodeQL production-source boundary", () => {
 	/**
-	 * CodeQL previously evaluated data-flow queries across more than 1,200 test
-	 * files and exhausted GitHub's six-hour job limit. The production-only graph
-	 * still needs more than 55 minutes for the full security-and-quality suite,
-	 * so the workflow keeps a three-hour hard deadline without aborting a healthy
-	 * analysis halfway through its data-flow queries.
+	 * CodeQL previously evaluated more than 1,200 test files and exhausted
+	 * GitHub's six-hour job limit. Even after excluding those graphs,
+	 * `security-and-quality` spent three hours evaluating
+	 * non-security data-flow queries. The security-focused extended suite keeps
+	 * broader security coverage and a bounded ninety-minute deadline.
 	 */
 	it("loads the bounded production config and has an explicit deadline", async () => {
 		const workflow = await loadYaml<SecurityWorkflow>(".github/workflows/security.yml");
@@ -39,9 +39,9 @@ describe("Security CodeQL production-source boundary", () => {
 		const initialize = job.steps.find(step => step.name === "Initialize CodeQL");
 		if (!initialize?.with) throw new Error("Security workflow must initialize CodeQL with repository config");
 
-		expect(job["timeout-minutes"]).toBe(180);
+		expect(job["timeout-minutes"]).toBe(90);
 		expect(initialize.with["config-file"]).toBe("./.github/codeql/codeql-config.yml");
-		expect(initialize.with.queries).toBe("security-and-quality");
+		expect(initialize.with.queries).toBe("security-extended");
 	});
 
 	/**
