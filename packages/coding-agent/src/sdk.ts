@@ -2182,9 +2182,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				if (!isAuthoritative()) return undefined;
 
 				if (next.obfuscator && redactionObfuscator) {
-					// Expansion never crosses snapshots, but redaction tombstones cross
-					// every refresh, cwd move, and disable replacement.
+					// Expansion never crosses snapshots, but redaction tombstones and retired-name
+					// refusals cross every refresh and cwd move.
 					next.obfuscator.retainRedactionsFrom(redactionObfuscator);
+				} else if (redactionObfuscator) {
+					// Disabling expansion does not erase the names already advertised in this process.
+					// Mark them on the redaction-only authority so stale tool calls fail before execution.
+					redactionObfuscator.markAllPlaceholdersRetired();
 				}
 				await secretAuditLog?.flush();
 				if (!isAuthoritative()) return undefined;
@@ -3936,6 +3940,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				let execution = display;
 				const requestRuntime = activeMainRequestRuntime;
 				const requestObfuscator = requestRuntime.expansionObfuscator;
+				if (requestObfuscator === undefined && requestRuntime.redactionObfuscator) {
+					mapJsonStrings(display as JsonWithOptionalFields, text => {
+						requestRuntime.redactionObfuscator?.assertNoRetiredPlaceholder(text);
+						return text;
+					});
+				}
 				// Before the `hasSecrets()` gate on purpose: when the unreadable scope was
 				// the only source of secrets there is nothing in the obfuscator and that
 				// gate is false, which is exactly the case this has to catch.
