@@ -463,6 +463,15 @@ export class SecretObfuscator {
 	#deobfuscateMap = new Map<string, string>();
 
 	/**
+	 * Placeholders that this process used to expand and must now refuse at the tool boundary.
+	 *
+	 * Names stay only in memory. They cross refreshes through {@link retainRedactionsFrom}, but
+	 * are never persisted after removal. This is precise enough to distinguish a stale credential
+	 * such as `#DEPLOY_TOKEN#` from ordinary placeholder-shaped text such as `#TODO#`.
+	 */
+	#retiredPlaceholders = new Set<string>();
+
+	/**
 	 * Placeholders that MAY be expanded again for local display.
 	 *
 	 * A subset of {@link #deobfuscateMap}, never a parallel copy of it: membership here only ever
@@ -801,6 +810,7 @@ export class SecretObfuscator {
 		this.#assertValidExpiry(expiresAt);
 		const existing = this.#deobfuscateMap.get(placeholder);
 		if (existing !== undefined && existing !== secret) this.#forgetPlaceholder(placeholder);
+		this.#retiredPlaceholders.delete(placeholder);
 		this.#knownSecretValues.add(secret);
 		this.#plainMappings.set(secret, placeholder);
 		this.#deobfuscateMap.set(placeholder, secret);
@@ -845,11 +855,15 @@ export class SecretObfuscator {
 	}
 
 	/**
-	 * Carry forward only the previous obfuscator's redaction knowledge.
+	 * Carry forward the previous obfuscator's redaction and retirement knowledge.
 	 *
 	 * Expansion rights are deliberately not copied. Call this only when refreshing the same
 	 * workspace scope. A removed or expired value remains hidden, while its old readable
-	 * placeholder cannot spend it.
+	 * placeholder is remembered only as a name the tool boundary must refuse.
+	 *
+	 * A readable placeholder that was live in `previous` and is absent here was revoked by the
+	 * refresh, so it joins the previously retired set. A placeholder still live here is skipped;
+	 * storing a replacement under the same name deliberately grants a fresh expansion right.
 	 *
 	 * WHY A STILL-COVERED VALUE IS SKIPPED. {@link obfuscate} applies plain rules BEFORE the regex
 	 * pass, so a redact-only plain mapping installed here rewrites the value before its own rule can
@@ -879,6 +893,12 @@ export class SecretObfuscator {
 			if (this.#regexRuleCoversWholeValue(value)) continue;
 			this.#plainMappings.set(value, this.#buildValuePlaceholder(value));
 			this.#hasAny = true;
+		}
+		for (const placeholder of previous.#retiredPlaceholders) {
+			if (!this.#deobfuscateMap.has(placeholder)) this.#retiredPlaceholders.add(placeholder);
+		}
+		for (const placeholder of previous.#deobfuscateMap.keys()) {
+			if (!this.#deobfuscateMap.has(placeholder)) this.#retiredPlaceholders.add(placeholder);
 		}
 		this.#plainMatcherDirty = true;
 	}
@@ -984,9 +1004,24 @@ export class SecretObfuscator {
 		this.#forgetPlaceholder(buildNamePlaceholder(name));
 	}
 
+	/**
+	 * Mark every advertised placeholder as invalid for tools without changing redaction output.
+	 *
+	 * Used when protection is disabled. The surviving obfuscator is redaction-only, and keeping its
+	 * readable forward mappings stable prevents a prompt from changing names merely because spending
+	 * was turned off. The runtime no longer exposes it as expansion authority; this set supplies the
+	 * separate stale-name refusal.
+	 */
+	markAllPlaceholdersRetired(): void {
+		for (const placeholder of this.#deobfuscateMap.keys()) {
+			this.#retiredPlaceholders.add(placeholder);
+		}
+	}
+
 	#forgetPlaceholder(placeholder: string, recomputeExpiry = true): void {
 		const value = this.#deobfuscateMap.get(placeholder);
 		if (value === undefined) return;
+		this.#retiredPlaceholders.add(placeholder);
 		this.#deobfuscateMap.delete(placeholder);
 		this.#displayRestorable.delete(placeholder);
 		const removedExpiry = this.#expiryByPlaceholder.get(placeholder);
@@ -1347,6 +1382,28 @@ export class SecretObfuscator {
 		return false;
 	}
 
+	/**
+	 * Refuse a tool argument that tries to spend a placeholder retired in this process.
+	 *
+	 * Unknown tokens remain ordinary text. A stale credential name is actionable only because
+	 * this obfuscator remembers granting, then revoking, that exact expansion right.
+	 */
+	assertNoRetiredPlaceholder(text: string): void {
+		if (!this.#hasAny || !text.includes("#")) return;
+		this.#forgetExpired();
+		if (this.#retiredPlaceholders.size === 0) return;
+		PLACEHOLDER_RE.lastIndex = 0;
+		for (;;) {
+			const match = PLACEHOLDER_RE.exec(text);
+			if (match === null) return;
+			if (!this.#retiredPlaceholders.has(match[0])) continue;
+			PLACEHOLDER_RE.lastIndex = 0;
+			throw new Error(
+				`Stored secret ${match[0]} is no longer available. Store the credential again and update the command.`,
+			);
+		}
+	}
+
 	/** Deobfuscate live reversible placeholders. Retired and expired placeholders stay opaque. */
 	deobfuscate(text: string): string {
 		return this.#expandPlaceholders(text, placeholder => this.#deobfuscateMap.get(placeholder));
@@ -1630,7 +1687,10 @@ export function deobfuscateToolArguments(
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
 	if (!obfuscator.hasSecrets()) return args;
-	return mapJsonStrings(args as JsonWithOptionalFields, s => obfuscator.deobfuscate(s)) as Record<string, unknown>;
+	return mapJsonStrings(args as JsonWithOptionalFields, value => {
+		obfuscator.assertNoRetiredPlaceholder(value);
+		return obfuscator.deobfuscate(value);
+	}) as Record<string, unknown>;
 }
 
 /** Redact secrets inside a tool call's arguments (same JSON-walk exception as {@link deobfuscateToolArguments}). */

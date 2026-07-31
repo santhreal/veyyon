@@ -240,20 +240,19 @@ describe("forgetting a secret", () => {
 	});
 
 	/**
-	 * A stale placeholder resolves to NOTHING rather than to whatever took the name.
+	 * A command carrying a forgotten placeholder is refused before execution.
 	 *
-	 * The dangerous case. A transcript written while the old secret was live still contains
-	 * `#DEPLOY_TOKEN#`; if a new credential reused that name and the old token resolved to it,
-	 * resuming an old session would silently spend the new credential.
+	 * Leaving the token in the command made a remote authentication failure look like an ordinary
+	 * bad credential. The refusal names only the retired placeholder and tells the operator to
+	 * store it again, while the raw value remains unavailable.
 	 */
-	it("does not resolve a forgotten placeholder to a later secret of the same name", () => {
+	it("refuses a forgotten placeholder at the tool boundary", () => {
 		const obfuscator = new SecretObfuscator([]);
 		obfuscator.addNamedSecret("DEPLOY_TOKEN", GITHUB);
 		obfuscator.forgetNamedSecret("DEPLOY_TOKEN");
 
-		// The name is free again, and re-adding is a deliberate act.
-		expect(deobfuscateToolArguments(obfuscator, { command: "use #DEPLOY_TOKEN#" }).command).toBe(
-			"use #DEPLOY_TOKEN#",
+		expect(() => deobfuscateToolArguments(obfuscator, { command: "use #DEPLOY_TOKEN#" })).toThrow(
+			/Stored secret #DEPLOY_TOKEN# is no longer available/,
 		);
 	});
 
