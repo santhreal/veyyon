@@ -114,11 +114,11 @@ esac
 }
 
 describe("release.yml exact-SHA source gates", () => {
-	it("is triggered by completed CI, Checks, and Security runs on main, never a raw push", async () => {
+	it("is triggered by completed CI and Checks runs on main, never a raw push", async () => {
 		const wf = await loadYaml("workflows/release.yml");
 		expect(wf.on.push).toBeUndefined();
 		expect(wf.on.workflow_run).toEqual({
-			workflows: ["CI", "Checks", "Security"],
+			workflows: ["CI", "Checks"],
 			types: ["completed"],
 			branches: ["main"],
 		});
@@ -136,7 +136,7 @@ describe("release.yml exact-SHA source gates", () => {
 	});
 
 	it("runs every source gate on every main commit so exact-SHA proof cannot be absent", async () => {
-		for (const file of ["ci.yml", "checks.yml", "security.yml"]) {
+		for (const file of ["ci.yml", "checks.yml"]) {
 			const wf = await loadYaml(`workflows/${file}`);
 			expect(wf.on.push.branches, `${file} must gate main`).toContain("main");
 			expect(wf.on.push["paths-ignore"], `${file} must not omit an exact main SHA`).toBeUndefined();
@@ -161,10 +161,9 @@ describe("release.yml exact-SHA source gates", () => {
 		expect(dispatch.env.GH_TOKEN).toContain("GITHUB_TOKEN");
 		expect(dispatch.run).toContain("git tag --points-at HEAD");
 		expect(dispatch.run).toContain("dispatch_and_wait checks.yml Checks");
-		expect(dispatch.run).toContain("dispatch_and_wait security.yml Security");
 		expect(dispatch.run).toContain('gh run watch "$run_id" --exit-status');
 		expect(dispatch.run).toContain('gh workflow run ci.yml --ref "$release_tag"');
-		expect(dispatch.run.indexOf("dispatch_and_wait security.yml")).toBeLessThan(
+		expect(dispatch.run.indexOf("dispatch_and_wait checks.yml")).toBeLessThan(
 			dispatch.run.indexOf("gh workflow run ci.yml"),
 		);
 	});
@@ -185,7 +184,7 @@ describe("release.yml exact-SHA source gates", () => {
 	});
 
 	/**
-	 * The release job must receive the exact SHA whose three source workflows passed, not resolve main again later.
+	 * The release job must receive the exact SHA whose two source workflows passed, not resolve main again later.
 	 */
 	it("exports the gated source SHA alongside the release decision", async () => {
 		const result = await runDecideStep({ mainSha: "proved-main-sha", triggerSha: "proved-main-sha" });

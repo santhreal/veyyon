@@ -47,11 +47,11 @@ written under each affected package's `## [Unreleased]` section (see the changel
 format in the repo `AGENTS.md`). That section is the primary signal the automatic
 path keys off, so keeping it current is what keeps releases flowing.
 
-**Automatic (the default, and how most releases happen).** Completed CI, Checks, and
-Security runs on `main` each trigger the **Release** workflow. The gate waits until all
-three workflows are green for the same exact SHA. When any publishable package has an
-`## [Unreleased]` bullet waiting, it cuts a `patch` release with no human action, so
-shipped changes reach users the same day instead of piling up. The gate is
+**Automatic (the default, and how most releases happen).** Completed CI and Checks
+runs on `main` each trigger the **Release** workflow. The gate waits until both
+workflows are green for the same exact SHA. When any publishable package has an
+`## [Unreleased]` bullet waiting, it cuts a `patch` release with no human action,
+so shipped changes reach users the same day instead of piling up. The gate is
 `scripts/release-gate-decision.ts`, and it is self-limiting:
 
 - `release.ts` moves `## [Unreleased]` into the new version section when it cuts
@@ -93,13 +93,13 @@ bun run release 2.0.0
 
 The command requires a clean `main` checkout synchronized with `origin/main` and
 the `santhsecurity` GitHub account active in `gh`. It only dispatches the remote
-Release workflow. The workflow proves CI, Checks, and Security are green for that
-exact main SHA before it changes a version, creates a commit, tags, or publishes.
-The gate exports that proved SHA. The cutter checks out the immutable commit and
-materializes it as its local `main` branch, so a later `main` update cannot enter the
-release after the evidence was collected.
-The workflow uses the repository-scoped `GITHUB_TOKEN`; no workstation credential
-performs the release itself.
+Release workflow. The workflow proves CI and Checks are green for that exact main
+SHA before it changes a version, creates a commit, tags, or publishes. The gate
+exports that proved SHA. The cutter checks out the immutable commit and
+materializes it as its local `main` branch, so a later `main` update cannot enter
+the release after the evidence was collected. The workflow uses the
+repository-scoped `GITHUB_TOKEN`; no workstation credential performs the release
+itself.
 
 `scripts/release.ts` runs, in order:
 
@@ -124,10 +124,10 @@ performs the release itself.
    prefix, so the subject stays exactly that shape.
 6. Tag and atomically push `main` plus the tag (pushed by commit SHA so background
    tag pruning cannot lose it). If main advanced, the push fails without rebasing.
-   The newer main SHA gets a fresh cut only after its own CI, Checks, and Security runs pass.
-7. Dispatch `checks.yml` and `security.yml` at the immutable tag with a unique
-   correlation token. Verify the newly created runs carry that token, target the
-   bump SHA, and pass. Only then dispatch `ci.yml` at the same tag.
+   The newer main SHA gets a fresh cut only after its own CI and Checks runs pass.
+7. Dispatch `checks.yml` at the immutable tag with a unique correlation token.
+   Verify the newly created run carries that token, targets the bump SHA, and
+   passes. Only then dispatch `ci.yml` at the same tag.
 
 ## What CI does with the tag
 

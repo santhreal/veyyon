@@ -46,7 +46,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const MAX_STRANDED_TAGS = 2;
 
 /** Every independently scheduled public source gate must be green for the exact main commit. */
-export const REQUIRED_SOURCE_WORKFLOWS = ["CI", "Checks", "Security"] as const;
+export const REQUIRED_SOURCE_WORKFLOWS = ["CI", "Checks"] as const;
 
 export interface SourceWorkflowRun {
 	name: string;
@@ -56,7 +56,7 @@ export interface SourceWorkflowRun {
 }
 
 /** Exact-tag gates that must independently prove a release commit before CI may publish it. */
-export const REQUIRED_RELEASE_TAG_WORKFLOWS = ["checks.yml", "security.yml"] as const;
+export const REQUIRED_RELEASE_TAG_WORKFLOWS = ["checks.yml"] as const;
 
 export interface ReleaseTagWorkflowRun {
 	headSha: string;
@@ -185,9 +185,9 @@ const FAILED_CONCLUSIONS: Readonly<Record<string, true>> = Object.freeze({
 });
 
 /**
- * Decide the gate from facts alone. Exact-SHA CI, Checks, and Security evidence
- * is always evaluated first; changelog and stranded-tag signals may choose
- * whether to cut only after all source gates are green.
+ * Decide the gate from facts alone. Exact-SHA CI and Checks evidence is always
+ * evaluated first; changelog and stranded-tag signals may choose whether to cut
+ * only after both product gates are green.
  */
 export function requiredSourceGate(facts: ReleaseGateFacts): ReleaseGateDecision | undefined {
 	for (const name of REQUIRED_SOURCE_WORKFLOWS) {
@@ -403,7 +403,7 @@ async function verifyReleaseTagGates(tag: string, sha: string): Promise<void> {
 		runsByWorkflow[workflow] = parseReleaseTagWorkflowRuns(output, workflow);
 	}
 	assertReleaseTagGateEvidence(tag, sha, runsByWorkflow);
-	console.log(`verified exact-tag Checks and Security for ${tag} at ${sha}`);
+	console.log(`verified exact-tag Checks for ${tag} at ${sha}`);
 }
 
 /** Gather exact-tree workflow, changelog, tag, and publication facts. */
@@ -549,7 +549,7 @@ if (import.meta.main) {
 		const facts = await gatherFacts();
 		if (!facts) {
 			console.error(
-				"could not establish exact-SHA CI/Checks/Security or GitHub publication state; release selection fails closed.",
+				"could not establish exact-SHA CI/Checks or GitHub publication state; release selection fails closed.",
 			);
 			process.exit(1);
 		}

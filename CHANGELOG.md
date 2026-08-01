@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The Agent Control Center now confirms subagent termination instead of aborting immediately on `x`. You can also hover a terminable row and click its `[x]`; both paths open the same **Dismiss** or **Yes, terminate** card, and the transcript remains on disk. The hover target overlays the row's final cells only while visible, so an idle row keeps its model and activity details.
+
+## [1.0.38] - 2026-07-31
+
 ### Added
 
 - Expanded `session.instrumentation` into a complete session-study record. `basic` adds lifecycle checkpoints, task transitions, tool and model timing, and effective model request parameters; `rich` adds context attribution, directional agent-message delivery, result weight, and model throughput; `ultra` adds compaction links, per-task transitions, routes, fingerprints, and provider provenance. `veyyon session stats` reports each available family. `off` adds no telemetry but still stores the normal conversation and tool history required to resume.
@@ -620,6 +626,8 @@
 - `hashline`: guard NodeFilesystem.move against deleting the file it just wrote.
 - `hashline`: guard the production move adapter against deleting the file it just wrote.
 - `hashline`: guard InMemoryFilesystem.move against dropping a same-key move.
+- `coding-agent`: make the recent-sessions recency order deterministic.
+- `ci`: restore collab:web:build root script (unblocks release check gate).
 - Compaction and branch summaries now enter the provider request as agent-owned developer context, not as synthetic user turns. Their persisted `compactionSummary` and `branchSummary` roles remain unchanged. New context contains no private `<summary>` delimiters for a model to echo.
 - `AgentLoopConfig.pauseGate` can scope pause state to one execution domain while retaining the process-wide gate by default. Parallel and independently embedded loops no longer inherit another domain's test or host pause, so aborts still become completed `aborted` messages with their exact reason instead of escaping as rejected streams.
 - A turn that ends in an error builds its message with the shared `errorMessage` helper. The two tail branches were that helper written out by hand, and the local `const errorMessage` holding the result shadowed the import, so the hand-rolled copy was the only version reachable in that scope. The local is named `failureMessage` now.
@@ -713,6 +721,10 @@
 - `MV DEST` no longer silently overwrites an existing destination file. A move onto a different existing file is refused during prepare (aborting the whole batch before any write), so a wrong or hallucinated destination can no longer destroy the user's work. A rename that only respells one file (case-only on a case-insensitive volume, or through a symlink) is still allowed, matched by device+inode identity rather than by path string.
 
 ## [1.0.36] - 2026-07-24
+
+### Fixed
+
+- Error messages no longer show a doubled `Error:` prefix. A failure while adding, removing, updating, installing, uninstalling, linking, or toggling a plugin or marketplace, applying a personality, or changing the Mermaid rendering setting now reads `Failed to …: <reason>` instead of `Failed to …: Error: <reason>`.
 
 ## [1.0.35] - 2026-07-24
 
@@ -962,7 +974,6 @@
 
 - `smoke`: force core native-addon load in --smoke-test.
 - `ai`: create the config dir before writing the Kimi device-id file.
-- `coding-agent`: make the recent-sessions recency order deterministic.
 - Applying a large-range edit (a `DEL` or `SWAP` spanning thousands of lines) is now linear in the file size instead of quadratic. A range delete over 30000 lines of a 60000-line file dropped from ~160ms to ~21ms; the output is unchanged.
 
 ## [1.0.18] - 2026-07-23
@@ -1558,8 +1569,6 @@
 
 - `stats`: deep-import format helpers + lock browser bundles off the Bun-mixed utils barrel.
 
-## [1.0.2] - 2026-07-17
-
 ## [1.0.1] - 2026-07-17
 
 ### Changed
@@ -1570,7 +1579,6 @@
 ### Fixed
 
 - `branding`: user-visible .omp/OMP leaks -> CONFIG_DIR_NAME/.veyyon (menus, ssh list, ttsr help, mcp schema, autolearn prompt).
-- `ci`: restore collab:web:build root script (unblocks release check gate).
 
 ## [1.0.0] - 2026-07-17
 

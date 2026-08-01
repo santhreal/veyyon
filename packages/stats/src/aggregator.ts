@@ -160,10 +160,9 @@ function dispatch(handle: WorkerHandle, request: SyncWorkerRequest): Promise<Par
  * dedicated probe is the only reliable signal.
  *
  * No-op on darwin: `syncAllSessions` keeps macOS on the serial parser path
- * (see {@link defaultWorkerCount}) so the worker spawn surface is unreachable
- * from the CLI, and probing it under the hardened runtime in
- * `scripts/ci-macos-sign.sh` would re-enter the Bun-worker abort surface that
- * motivated the darwin serial default in the first place.
+ * (see {@link defaultWorkerCount}), so the worker spawn surface is unreachable
+ * from the CLI. Probing it directly would re-enter the Bun-worker abort surface
+ * that motivated the darwin serial default in the first place.
  *
  * Rejects on transport error, error response, or timeout.
  */

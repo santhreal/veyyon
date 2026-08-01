@@ -368,10 +368,10 @@ class LiveRosterPane implements Component {
 		now: number,
 	): string {
 		const terminable = this.canTerminate(agent);
-		// Every terminable row reserves the action's four cells even before hover,
-		// so revealing [x] never shifts or re-wraps the activity under the pointer.
-		const actionWidth = terminable ? 4 : 0;
-		const contentWidth = Math.max(1, width - actionWidth);
+		// Give an idle row its whole width. Hover overlays [x] on the final four
+		// cells instead of permanently evicting the model or activity, and the
+		// prefix stays fixed while the pointer target appears.
+		const contentWidth = width;
 		const extras = this.extrasFor(agent);
 		const sign = truncateToWidth(replaceTabs(agent.callSign), columns.sign);
 		const name = theme.bold(sign) + padding(Math.max(0, columns.sign - visibleWidth(sign)));
@@ -428,8 +428,13 @@ class LiveRosterPane implements Component {
 				: head;
 		const contentPadded =
 			truncateToWidth(content, contentWidth) + padding(Math.max(0, contentWidth - visibleWidth(content)));
-		const action = terminable ? ` ${hovered ? theme.fg("error", "[x]") : "   "}` : "";
-		const line = `${contentPadded}${action}`;
+		const actionWidth = 4;
+		const prefixWidth = Math.max(0, width - actionWidth);
+		const actionPrefix = truncateToWidth(content, prefixWidth);
+		const line =
+			terminable && hovered
+				? `${actionPrefix}${padding(Math.max(0, prefixWidth - visibleWidth(actionPrefix)))} ${theme.fg("error", "[x]")}`
+				: contentPadded;
 		if (!selected) return line;
 		// `width` here is the view's content width, so the band stops exactly where
 		// the scrollbar gutter starts.
@@ -1438,6 +1443,10 @@ export class AgentDashboard extends Container {
 	#isTerminationActionAt(index: number, col: number): boolean {
 		const agent = this.#liveAgents[index];
 		if (!agent || !this.#canTerminate(agent)) return false;
+		// The width the roster actually drew, reported by the pane itself. Do not
+		// re-derive it here by predicting the scrollbar: `sv.contentWidth` already
+		// owns that rule, and a second copy of it drifts the [x] hit box off the
+		// glyph the moment the two disagree.
 		const actionStart = this.#bodyColStart + this.#rosterContentWidth - 3;
 		return col >= actionStart && col < actionStart + 3;
 	}

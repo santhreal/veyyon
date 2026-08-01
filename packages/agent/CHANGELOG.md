@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Breaking Changes
 
 - `AgentLoopConfig.transformToolCallArguments` returns two forms of the arguments, `{ execution, display }`, instead of one record. The two exist because argument expansions disagree about their audience: a codec handle must be expanded before a person reads it, and a secret placeholder must not be, because the expanded form is a live credential and a display or a session file is exactly where it must never appear. One shared form cannot satisfy both, so the transform states which form each audience gets and the loop routes them. `execution` reaches `tool.execute` and `beforeToolCall`; `display` is what is shown, streamed, traced and recorded. A host that returned a single record returns it as both fields to keep the previous behavior.

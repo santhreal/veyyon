@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Changed
 
 - Class privacy is `#` throughout `core/`. Sixty-seven fields and methods carried a `private` or

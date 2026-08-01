@@ -118,7 +118,6 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | Doc | Covers |
 | --- | --- |
 | [auth-broker-gateway.md](auth-broker-gateway.md) | The auth-broker and auth-gateway services. |
-| [macos-signing-notarization.md](macos-signing-notarization.md) | Signing and notarizing the macOS binaries. |
 | [install-id.md](install-id.md) | The install-ID mechanism. |
 | [blob-artifact-architecture.md](blob-artifact-architecture.md) | Blob and artifact storage. |
 
