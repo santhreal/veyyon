@@ -71,8 +71,7 @@ worse than a red one, because the next person trusts it.
   the `Diff audit:` line of your closing comment.
 - NEVER commit lockfiles (`bun.lock`, `Cargo.lock`), `.gitignore`, workflows
   under `.github/`, generated `docs/handbook/book/`, `docs/internal/`, or the
-  port pipeline's own `scripts/upstream-*`, `scripts/jules-port-manager*`, and
-  `python/veybot/` files.
+  port pipeline's own `scripts/upstream-*` and `python/veybot/` files.
 - Delete scratch files before committing: `patch_*.ts`, `test_*.ts`, downloaded
   `*.diff` or `*.patch` files, logs, and backups.
 

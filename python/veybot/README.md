@@ -304,12 +304,6 @@ would fight it.
 - veybot never weakens a test, a gate, or a workflow to make CI green.
 - veybot opens exactly one candidate per tracking issue.
 
-### Do not run the predecessor at the same time
-
-`scripts/jules-port-manager.ts` targets the same queue of `upstream-port`
-issues. Running it alongside veybot gives some issues two candidate pull
-requests. Stop one before you start the other.
-
 ## Tests
 
 ```bash

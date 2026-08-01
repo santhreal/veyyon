@@ -105,7 +105,7 @@ describe("port candidate policy", () => {
 		expect(cleanFeatureBlockers(["docs/providers.md"], policy)).toEqual([]);
 	});
 
-	/** Features whose entire diff is prose must not consume a Jules implementation lane. */
+	/** Features whose entire diff is prose must not consume a porting lane. */
 	it("rejects typed and unprefixed documentation-only features by file surface", () => {
 		expect(isPortWorthy("feat(docs): add deployment guide", ["docs/deployment.md"], policy)).toBe(false);
 		expect(isPortWorthy("Add deployment documentation", ["README.md", "docs/deployment.md"], policy)).toBe(false);
@@ -207,10 +207,11 @@ describe("divergedMatches + divergenceWarning", () => {
 
 describe("port issue evidence", () => {
 	/**
-	 * The tracking issue must supply evidence without competing with the manager's
-	 * single outcome protocol, or Jules receives contradictory close/PR commands.
+	 * The tracking issue must supply evidence without competing with the porting
+	 * agent's single outcome protocol, or the agent receives contradictory
+	 * close/PR commands.
 	 */
-	it("renders a feature brief without instructing Jules to close the issue or open a PR", () => {
+	it("renders a feature brief without instructing the agent to close the issue or open a PR", () => {
 		const body = renderPortIssue({
 			marker: "<!-- upstream-pr: 7007 -->",
 			kind: "clean-feature",
@@ -224,7 +225,7 @@ describe("port issue evidence", () => {
 			bodyExcerpt: "Adds provider behavior.",
 		});
 		expect(body).toContain("<!-- upstream-port-kind: clean-feature -->");
-		expect(body).toContain("manager's static Jules prompt owns applicability");
+		expect(body).toContain("porting agent's own prompt owns applicability");
 		expect(body).toContain("Do not close this tracking issue directly");
 		expect(body).not.toContain("Open a PR");
 		expect(body).not.toContain("close the issue");
