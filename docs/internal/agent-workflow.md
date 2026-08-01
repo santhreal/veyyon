@@ -89,9 +89,9 @@ Production has three coordinated surfaces (see [`deployment.md`](./deployment.md
 
 **CLI binaries**, keep `main` release-ready: `bun run check` green and each
 publishable change documented under its package's `[Unreleased]` section. After an
-approved push, the Release workflow waits for exact-SHA CI, Checks, and Security.
-If there is something releasable, it cuts the patch automatically, gates the bump
-commit through Checks and Security, and dispatches the tagged publish pipeline.
+approved push, the Release workflow waits for exact-SHA CI and Checks. If there is
+something releasable, it cuts the patch automatically, gates the bump commit
+through Checks, and dispatches the tagged publish pipeline.
 
 For an approved manual cut, use the one operator command. It defaults to a patch
 and accepts `major`, `minor`, or an explicit `x.y.z`:

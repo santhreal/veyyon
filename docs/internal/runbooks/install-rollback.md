@@ -37,7 +37,7 @@ Rolling the binary back does not remove any of these paths:
 
 ## Ship the fix
 
-1. Land the fix on `main`. Green CI, Checks, and Security runs for that SHA trigger the next automatic patch release:
+1. Land the fix on `main`. Green CI and Checks runs for that SHA trigger the next automatic patch release:
    see [releasing](../releasing.md).
 2. Once the new release publishes and verifies, it becomes `latest` automatically.
 3. Only then delete the bad release + tag if you want it gone.

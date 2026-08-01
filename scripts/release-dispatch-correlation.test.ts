@@ -33,7 +33,6 @@ interface RunEvidence {
 
 interface FixtureOptions {
 	checksDelayPolls?: number;
-	securityDelayPolls?: number;
 	failRunId?: string;
 	checksCollision?: boolean;
 	checksEvidence?: RunEvidence;
@@ -100,7 +99,6 @@ case "$1" in
   workflow)
     case "$*" in
       "workflow run checks.yml --ref v1.2.3 -f release_nonce=9001-2-checks" | \
-      "workflow run security.yml --ref v1.2.3 -f release_nonce=9001-2-security" | \
       "workflow run ci.yml --ref v1.2.3") ;;
       *) printf 'unexpected gh workflow invocation: %s\\n' "$*" >&2; exit 88 ;;
     esac
@@ -110,14 +108,8 @@ case "$1" in
       *"/actions/workflows/checks.yml/runs?head_sha=release-sha&event=workflow_dispatch&per_page=100")
         emit_run_ids checks 101 201 "$CHECKS_DELAY_POLLS"
         ;;
-      *"/actions/workflows/security.yml/runs?head_sha=release-sha&event=workflow_dispatch&per_page=100")
-        emit_run_ids security 102 202 "$SECURITY_DELAY_POLLS"
-        ;;
       *"/actions/runs/201")
         printf '%s|%s|%s|%s|%s\\n' "$CHECKS_PATH" "$CHECKS_EVENT" "$CHECKS_BRANCH" "$CHECKS_SHA" "$CHECKS_TITLE"
-        ;;
-      *"/actions/runs/202")
-        printf '.github/workflows/security.yml|workflow_dispatch|v1.2.3|release-sha|Security release gate 9001-2-security\\n'
         ;;
       *"/actions/runs/301")
         printf '.github/workflows/checks.yml|workflow_dispatch|v1.2.3|release-sha|Checks release gate competing-dispatch\\n'
@@ -157,7 +149,6 @@ esac
 			GITHUB_RUN_ATTEMPT: "2",
 			GH_TOKEN: "test-token",
 			CHECKS_DELAY_POLLS: String(options.checksDelayPolls ?? 1),
-			SECURITY_DELAY_POLLS: String(options.securityDelayPolls ?? 1),
 			FAIL_RUN_ID: options.failRunId ?? "",
 			CHECKS_COLLISION: options.checksCollision ? "1" : "0",
 			CHECKS_PATH: evidence.path ?? ".github/workflows/checks.yml",
@@ -191,25 +182,20 @@ describe("release dispatch run correlation", () => {
 		expect(result.exitCode).toBe(23);
 		expect(result.calls.filter(call => call === "run watch 201 --exit-status")).toHaveLength(1);
 		expect(result.calls).not.toContain("run watch 101 --exit-status");
-		expect(result.calls.some(call => call.startsWith("workflow run security.yml"))).toBe(false);
 		expect(result.calls).not.toContain("workflow run ci.yml --ref v1.2.3");
 		expect(result.output).toBe("");
 	});
 
-	/** Delayed successful runs are each watched once before the single tagged CI dispatch. */
-	it("preserves sequential Checks, Security, then CI dispatch for new successful runs", async () => {
-		const result = await runFixture({ checksDelayPolls: 2, securityDelayPolls: 1 });
+	/** A delayed successful Checks run is watched once before the single tagged CI dispatch. */
+	it("preserves sequential Checks, then CI dispatch for a new successful run", async () => {
+		const result = await runFixture({ checksDelayPolls: 2 });
 
 		expect(result.exitCode).toBe(0);
 		expect(result.calls.filter(call => call.startsWith("workflow run "))).toEqual([
 			"workflow run checks.yml --ref v1.2.3 -f release_nonce=9001-2-checks",
-			"workflow run security.yml --ref v1.2.3 -f release_nonce=9001-2-security",
 			"workflow run ci.yml --ref v1.2.3",
 		]);
-		expect(result.calls.filter(call => call.startsWith("run watch "))).toEqual([
-			"run watch 201 --exit-status",
-			"run watch 202 --exit-status",
-		]);
+		expect(result.calls.filter(call => call.startsWith("run watch "))).toEqual(["run watch 201 --exit-status"]);
 		expect(result.output).toBe("tag=v1.2.3\n");
 	});
 	/** A concurrent exact-SHA dispatch cannot steal correlation without the cutter's unique nonce. */
@@ -227,7 +213,7 @@ describe("release dispatch run correlation", () => {
 	/** Every immutable-run identity field is mandatory and is validated before any watch or later dispatch. */
 	it("fails closed on wrong workflow, event, tag ref, or SHA evidence", async () => {
 		const cases: Array<[string, RunEvidence]> = [
-			["workflow", { path: ".github/workflows/security.yml" }],
+			["workflow", { path: ".github/workflows/ci.yml" }],
 			["event", { event: "push" }],
 			["tag ref", { branch: "main" }],
 			["SHA", { sha: "older-sha" }],
@@ -241,28 +227,24 @@ describe("release dispatch run correlation", () => {
 				result.calls.filter(call => call.startsWith("run watch ")),
 				field,
 			).toEqual([]);
-			expect(
-				result.calls.some(call => call.startsWith("workflow run security.yml")),
-				field,
-			).toBe(false);
 			expect(result.calls, field).not.toContain("workflow run ci.yml --ref v1.2.3");
 		}
 	});
 
-	/** The nonce is usable only when both dispatched gate workflows bind it into their run identity. */
-	it("declares the correlation input and run name on every release gate", async () => {
-		for (const file of ["checks.yml", "security.yml"]) {
-			const workflow = Bun.YAML.parse(await Bun.file(path.join(repoRoot, ".github", "workflows", file)).text()) as {
-				"run-name": string;
-				on: { workflow_dispatch: { inputs: { release_nonce: { required: boolean; type: string } } } };
-			};
+	/** The nonce is usable only when the dispatched Checks workflow binds it into its run identity. */
+	it("declares the correlation input and run name on the release gate", async () => {
+		const workflow = Bun.YAML.parse(
+			await Bun.file(path.join(repoRoot, ".github", "workflows", "checks.yml")).text(),
+		) as {
+			"run-name": string;
+			on: { workflow_dispatch: { inputs: { release_nonce: { required: boolean; type: string } } } };
+		};
 
-			expect(workflow.on.workflow_dispatch.inputs.release_nonce).toMatchObject({
-				required: false,
-				type: "string",
-			});
-			expect(workflow["run-name"]).toContain("inputs.release_nonce");
-			expect(workflow["run-name"]).toContain("format('{0} release gate {1}'");
-		}
+		expect(workflow.on.workflow_dispatch.inputs.release_nonce).toMatchObject({
+			required: false,
+			type: "string",
+		});
+		expect(workflow["run-name"]).toContain("inputs.release_nonce");
+		expect(workflow["run-name"]).toContain("format('{0} release gate {1}'");
 	});
 });

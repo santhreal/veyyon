@@ -3,9 +3,9 @@
 # commits, and atomically pushes main plus the tag.
 #
 # Two triggers, one job:
-#   - workflow_run on a completed main CI, Checks, or Security run. The gate
-#     queries all three workflows and releases only when each is green for the
-#     SHA. Releasing on raw push tagged shas whose tests then failed: v1.0.28
+#   - workflow_run on a completed main CI or Checks run. The gate queries both
+#     product workflows and releases only when each is green for the SHA.
+#     Releasing on raw push tagged shas whose tests then failed: v1.0.28
 #     through v1.0.35 were each tagged before ci.yml had tested the sha, two red
 #     packages/utils tests killed every publish downstream, and `releases/latest`
 #     sat at v1.0.27 while the tags marched on. The gate then cuts a `patch`
@@ -22,7 +22,7 @@
 #     bounded so it cannot inflate versions: two stranded tags stop it and ask for
 #     a person instead of cutting a third.
 #   - workflow_dispatch: manual release of an explicit version (major/minor/patch
-#     or x.y.z), after proving the same exact-main-SHA CI, Checks, and Security gates.
+#     or x.y.z), after proving the same exact-main-SHA CI and Checks gates.
 #
 # After the atomic bump/tag push, this workflow dispatches `ci.yml` explicitly
 # at the new tag. `workflow_dispatch` is one of GitHub's documented exceptions
@@ -33,7 +33,7 @@ name: Release
 
 on:
    workflow_run:
-      workflows: [CI, Checks, Security]
+      workflows: [CI, Checks]
       types: [completed]
       branches: [main]
    workflow_dispatch:
@@ -61,8 +61,8 @@ permissions:
 
 jobs:
    # Decide whether this event should cut a release, and which version. Both
-   # automatic workflow completions and manual dispatches must prove that CI,
-   # Checks, and Security succeeded for the exact checked-out main SHA. Keeping this separate
+   # automatic workflow completions and manual dispatches must prove that CI and
+   # Checks succeeded for the exact checked-out main SHA. Keeping this separate
    # avoids expensive toolchain setup when there is nothing releasable.
    gate:
       name: Decide release
@@ -114,7 +114,7 @@ jobs:
                   exit 1
                 fi
                 bun scripts/release-gate-decision.ts --green-only >/dev/null
-                echo "manual dispatch: exact-SHA CI, Checks, and Security are green for $EXPECTED_SHA; releasing '${DISPATCH_VERSION}'"
+                echo "manual dispatch: exact-SHA CI and Checks are green for $EXPECTED_SHA; releasing '${DISPATCH_VERSION}'"
                 echo "should-release=true" >> "$GITHUB_OUTPUT"
                 echo "version=${DISPATCH_VERSION}" >> "$GITHUB_OUTPUT"
                 exit 0
@@ -208,9 +208,8 @@ jobs:
 
          # Pushes made with GITHUB_TOKEN do not recursively start ordinary push
          # workflows. workflow_dispatch is the documented exception. Gate the
-         # exact bump SHA through Checks and Security first, then start publication
-         # only after both runs are green. The immutable tag avoids a moving-main
-         # dispatch race.
+         # exact bump SHA through Checks, then start publication. The immutable
+         # tag avoids a moving-main dispatch race.
          - name: Gate the bump and dispatch the publish pipeline
            id: dispatch
            env:
@@ -265,7 +264,6 @@ jobs:
               }
 
               dispatch_and_wait checks.yml Checks
-              dispatch_and_wait security.yml Security
               gh workflow run ci.yml --ref "$release_tag"
               echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
 
@@ -275,7 +273,7 @@ jobs:
            run: |
               echo "### Release \`$RELEASE_TAG\` dispatched" >> "$GITHUB_STEP_SUMMARY"
               echo "" >> "$GITHUB_STEP_SUMMARY"
-              echo "Exact-tag Checks and Security passed. The tagged CI run now builds and verifies" >> "$GITHUB_STEP_SUMMARY"
+              echo "Exact-tag Checks passed. The tagged CI run now builds and verifies" >> "$GITHUB_STEP_SUMMARY"
               echo "every artifact, publishes the GitHub release, and deploys production." >> "$GITHUB_STEP_SUMMARY"
 
    # A red cut is as silent as a red publish was (v1.0.28-35): the preflight

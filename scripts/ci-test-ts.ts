@@ -235,7 +235,6 @@ export const repoScriptTests = [
 	"scripts/trigger-release.test.ts",
 	"scripts/has-releasable-changes.test.ts",
 	"scripts/release-gate-decision.test.ts",
-	"scripts/security-codeql-contracts.test.ts",
 	"scripts/link-veyyon.test.ts",
 	"scripts/docs-book-pin.test.ts",
 	"scripts/handbook-summary-covers-every-page.test.ts",

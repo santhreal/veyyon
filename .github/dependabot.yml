@@ -1,7 +1,6 @@
-# Dependency-update automation for veyyon. Complements security.yml (which only
-# audits advisories) by actually opening the bump PRs. Three ecosystems, weekly,
-# with minor+patch grouped into one PR each to keep the queue small; majors come
-# as individual PRs so their breaking changes get reviewed in isolation.
+# Dependency-update automation for veyyon. Three ecosystems run weekly, with
+# minor and patch updates grouped into one PR each. Major updates remain
+# individual so their breaking changes can be reviewed in isolation.
 version: 2
 updates:
   # JS/TS graph — the bun workspace root (package.json workspaces: packages/*,

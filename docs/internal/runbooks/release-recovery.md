@@ -1,9 +1,9 @@
 # Runbook: release recovery
 
 A release is a tagged commit **and** a published GitHub release the install script reads from
-(`releases/latest`). The Release workflow waits for CI, Checks, and Security on the exact `main` SHA,
-cuts the tag remotely, gates the exact bump SHA through Checks and Security, then dispatches `ci.yml`
-at the immutable tag. Recovery depends on where it stopped.
+(`releases/latest`). The Release workflow waits for CI and Checks on the exact `main` SHA, cuts the
+tag remotely, dispatches Checks for the exact bump SHA, and dispatches `ci.yml` at that immutable
+tag only after `checks.yml` passes. Recovery depends on where it stopped.
 
 ## 1. It failed before the tag was pushed
 
@@ -11,8 +11,8 @@ Symptom: the Release workflow failed during preparation, checks, commit, or the 
 remote tag exists.
 
 - Open the failed Release run. Its failing step is authoritative.
-- Fix the underlying failure on `main` and push. The newer SHA gets its own CI, Checks, and Security
-  evidence, then the automatic gate cuts again.
+- Fix the underlying failure on `main` and push. The newer SHA gets its own CI and Checks evidence,
+  then the automatic gate cuts again.
 - Do not hand-push a local bump or tag. For an explicit retry, dispatch the Release workflow from
   Actions with the intended version.
 
@@ -22,14 +22,12 @@ Symptom: the tag is on `origin/main` but there is no matching GitHub release, or
 binaries.
 
 1. Open the tagged CI run from the Actions tab.
-2. If the run never started, inspect the Release run's exact-tag Checks and Security gates and its
-   publish-dispatch step. Release jobs use GitHub-hosted runners, so a missing runner is never the cause.
-3. If the run failed on the macOS signing step, the `APPLE_*` secrets are missing or invalid: see
-   [secret-rotation.md](secret-rotation.md) and [macOS signing](../macos-signing-notarization.md).
-4. After fixing the cause, re-run failed jobs when a tagged CI run exists.
-5. If the tagged CI run never started, dispatch `ci.yml` at the existing immutable tag, or re-run the
-   failed Release publish-dispatch job. Verify that the new CI run targets the tag SHA. Do not cut a
-   second tag for the same version.
+2. If the run never started, inspect the Release run's exact-tag Checks gate and publish-dispatch
+   step. Release jobs use GitHub-hosted runners, so a missing runner is never the cause.
+3. After fixing the cause, re-run failed jobs when a tagged CI run exists.
+4. If the tagged CI run never started, dispatch `ci.yml` at the existing immutable tag, or re-run
+   the failed Release publish-dispatch job. Verify that the new CI run targets the tag SHA. Do not
+   cut a second tag for the same version.
 
 ## 3. The release published but binaries are incomplete or corrupt
 
