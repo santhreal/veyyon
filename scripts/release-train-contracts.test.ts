@@ -495,18 +495,29 @@ describe("required publication artifacts", () => {
 	/** Drafts are hidden from tag lookup, so verification must download assets through the draft ID. */
 	it("downloads draft assets through the release asset API", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
-		for (const job of [
+		const jobs = [
 			wf.jobs.release_github_verify,
 			wf.jobs.release_github_verify_linux,
 			wf.jobs.release_github_verify_windows,
-		]) {
+		];
+		for (const [index, job] of jobs.entries()) {
 			const download = job.steps.find((step: { name?: string }) => step.name?.startsWith("Download draft"));
+			expect(job.permissions.contents).toBe("read");
 			expect(download).toBeDefined();
+			expect(download.env.GH_TOKEN).toBeDefined();
 			expect(download.env.RELEASE_ID).toBe("${{ needs.release_github.outputs.release-id }}");
 			expect(download.run).toMatch(/releases\/\$(?:env:)?RELEASE_ID\/assets/);
 			expect(download.run).toContain("releases/assets/$asset");
 			expect(download.run).toContain("application/octet-stream");
+			expect(download.run).toContain("has no asset named");
 			expect(download.run).not.toContain("gh release download");
+			if (index === 2) {
+				expect(download.run).toContain("-OutFile $Name");
+				expect(download.run).toContain("$LASTEXITCODE -ne 0");
+			} else {
+				expect(download.run).toContain('> "$name"');
+				expect(download.run).toContain("set -euo pipefail");
+			}
 		}
 	});
 
