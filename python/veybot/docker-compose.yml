@@ -99,7 +99,14 @@ services:
       - ${HOME}/.agent/AGENT.md:/srv/agent-home-stage/.agent/AGENTS.md:ro
       - ${HOME}/.agent/rules:/srv/agent-home-stage/.agent/rules:ro
     ports:
-      - "0.0.0.0:6543:8080"
+      # Loopback ONLY. The container must bind 0.0.0.0 internally (that is the
+      # container's own interface), but the HOST publish is what decides who can
+      # reach it, and `/` plus the issue-browser API carry no authentication --
+      # only the webhook route is HMAC-verified. Published on 0.0.0.0 this hands
+      # the dashboard, the run logs and the issue browser to anyone on the LAN or
+      # the tailnet. Reach it over an SSH tunnel (`ssh -L 6543:127.0.0.1:6543`).
+      # Do not widen this without putting real auth in front of the app first.
+      - "127.0.0.1:6543:8080"
 
   # ───────────────────────────────────────────────────────────────────────────
   # gh-proxy
