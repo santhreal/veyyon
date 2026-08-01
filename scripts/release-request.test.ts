@@ -1,52 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import {
-	hasRequiredActiveGitHubAccount,
-	parseReleaseRequest,
-	type ReleaseTriggerOperations,
-	triggerRelease,
-} from "./release";
+import { parseReleaseRequest } from "./release";
 
-function operations(overrides: Partial<ReleaseTriggerOperations> = {}): {
-	operations: ReleaseTriggerOperations;
-	events: string[];
-} {
-	const events: string[] = [];
-	return {
-		events,
-		operations: {
-			currentBranch: async () => {
-				events.push("branch");
-				return "main";
-			},
-			workingTreeStatus: async () => {
-				events.push("status");
-				return "";
-			},
-			fetchMain: async () => {
-				events.push("fetch");
-			},
-			localHead: async () => {
-				events.push("local-head");
-				return "approved-sha";
-			},
-			originMainHead: async () => {
-				events.push("remote-head");
-				return "approved-sha";
-			},
-			authStatus: async () => {
-				events.push("auth");
-				return "✓ Logged in to github.com account santhsecurity (keyring)\n  - Active account: true";
-			},
-			dispatch: async (version, expectedSha) => {
-				events.push(`dispatch:${version}:${expectedSha}`);
-			},
-			...overrides,
-		},
-	};
-}
-
-describe("operator release request", () => {
-	/** A bare command is the one-step patch-release path rather than a usage failure. */
+describe("release version argument", () => {
+	/** A bare version argument is the patch release the Release workflow defaults to. */
 	it("defaults to a patch release", () => {
 		expect(parseReleaseRequest([])).toBe("patch");
 	});
@@ -63,75 +19,6 @@ describe("operator release request", () => {
 		expect(() => parseReleaseRequest(["v2.4.0"])).toThrow("Invalid release version");
 		expect(() => parseReleaseRequest(["2.4"])).toThrow("Invalid release version");
 		expect(() => parseReleaseRequest(["patch", "minor"])).toThrow("accepts one version");
-	});
-});
-
-describe("release trigger safety boundary", () => {
-	/** The command dispatches only after local main, origin/main, and the required identity agree. */
-	it("dispatches the requested workflow for the exact synchronized main SHA", async () => {
-		const fixture = operations();
-
-		expect(await triggerRelease("minor", fixture.operations)).toEqual({ version: "minor", sha: "approved-sha" });
-		expect(fixture.events).toEqual([
-			"branch",
-			"status",
-			"fetch",
-			"local-head",
-			"remote-head",
-			"auth",
-			"dispatch:minor:approved-sha",
-		]);
-	});
-
-	/** A feature branch must never be mistaken for the main release candidate. */
-	it("refuses a non-main checkout before fetching or dispatching", async () => {
-		const fixture = operations({ currentBranch: async () => "feature" });
-
-		await expect(triggerRelease("patch", fixture.operations)).rejects.toThrow('checkout is on "feature"');
-		expect(fixture.events).toEqual([]);
-	});
-
-	/** Uncommitted bytes are not represented by the remote workflow and must not appear to ship. */
-	it("refuses a dirty working tree before fetching or dispatching", async () => {
-		const fixture = operations({ workingTreeStatus: async () => " M packages/ai/src/auth-storage.ts\n" });
-
-		await expect(triggerRelease("patch", fixture.operations)).rejects.toThrow("clean working tree");
-		expect(fixture.events).toEqual(["branch"]);
-	});
-
-	/** A local-only or remote-only commit lacks one shared release identity and must stop the command. */
-	it("refuses when local main and origin main name different commits", async () => {
-		const fixture = operations({ originMainHead: async () => "newer-remote-sha" });
-
-		await expect(triggerRelease("patch", fixture.operations)).rejects.toThrow("does not match origin/main");
-		expect(fixture.events).not.toContain("dispatch:patch:newer-remote-sha");
-	});
-
-	/** Public release actions must never run through one of the workstation's unrelated GitHub accounts. */
-	it("requires santhsecurity to be the active gh login", async () => {
-		const fixture = operations({
-			authStatus: async () =>
-				"✓ Logged in to github.com account santhsecurity (keyring)\n  - Active account: false\n" +
-				"✓ Logged in to github.com account another-user (keyring)\n  - Active account: true",
-		});
-
-		await expect(triggerRelease("patch", fixture.operations)).rejects.toThrow("santhsecurity must be active");
-		expect(fixture.events).not.toContain("dispatch:patch:approved-sha");
-	});
-
-	/** The status parser must bind the active marker to its own account block, not a later account. */
-	it("recognizes the required active account without accepting a cross-account marker", () => {
-		expect(
-			hasRequiredActiveGitHubAccount(
-				"✓ Logged in to github.com account santhsecurity (keyring)\n  - Active account: true",
-			),
-		).toBe(true);
-		expect(
-			hasRequiredActiveGitHubAccount(
-				"✓ Logged in to github.com account santhsecurity (keyring)\n  - Active account: false\n" +
-					"✓ Logged in to github.com account anionicsanth (keyring)\n  - Active account: true",
-			),
-		).toBe(false);
 	});
 });
 
