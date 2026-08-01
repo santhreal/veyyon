@@ -330,7 +330,7 @@ export class ChildProcess<In extends InMask = InMask> {
 			exitError = new NonZeroExitError(this.exitCode, this.#stderrTail);
 		}
 
-		const exitCode = this.exitCode ?? (exitError && !exitError.aborted ? exitError.exitCode : null);
+		const exitCode = exitError?.aborted ? null : (this.exitCode ?? exitError?.exitCode ?? null);
 		const ok = exitCode === 0;
 
 		if (exitError) {
