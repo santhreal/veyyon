@@ -104,6 +104,25 @@ export function rewriteCargoWorkspaceVersion(content: string, version: string): 
 	return content.replace(pattern, `$1${version}"`);
 }
 
+/**
+ * The release bump commit's subject, which is a contract and not a message.
+ *
+ * Five workflows key their never-cancel release concurrency group off this
+ * subject (`ci.yml`, `checks.yml`, `docs.yml`, `security.yml`), and
+ * `release.yml` uses it to refuse to release its own bump commit and loop. They
+ * all match the PREFIX `chore: bump version to `, so the version that follows
+ * must never be allowed to drift into a form the prefix stops covering.
+ *
+ * The `v` is the part that was wrong. AGENTS.md mandates
+ * `chore: bump version to vX.Y.Z` and every release through v1.0.38 committed
+ * the bare `X.Y.Z`, because nothing here or in CI compared the two: the
+ * workflows only ever test the prefix, so the missing `v` was invisible to
+ * them and shipped for the whole tag history.
+ */
+export function releaseBumpSubject(version: string): string {
+	return `chore: bump version to v${version.replace(/^v/, "")}`;
+}
+
 /** The `__veyyonNativesV…` sentinel export name for a version (non-alphanumerics -> `_`). */
 export function sentinelExportName(version: string): string {
 	return `__veyyonNativesV${version.replace(/^v/, "").replace(/[^A-Za-z0-9]/g, "_")}`;
@@ -552,7 +571,7 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	if (!hasReleaseCommit) {
 		console.log(`  nothing to commit (a prior cut of v${version} already landed the bump); tagging HEAD`);
 	} else {
-		await git(["commit", "-m", `chore: bump version to ${version}`]);
+		await git(["commit", "-m", releaseBumpSubject(version)]);
 	}
 	console.log();
 
