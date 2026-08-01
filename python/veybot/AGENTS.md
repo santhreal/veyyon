@@ -4,6 +4,8 @@
 
 `veybot` is a self-hosted GitHub triage-and-fix bot that drives [`veyyon --mode rpc`](https://github.com/santhreal/veyyon) as a subprocess. On every issue opened in an allowlisted repository it classifies the issue, applies labels, then branches into one of: reproduce → fix → PR (`bug` / `documentation`), single-comment answer (`question`), single thoughtful comment (`enhancement` / `proposal`), or brief comment (`invalid` / `duplicate`). Follow-up comments and PR review comments resume the same veyyon session so the agent keeps its prior reasoning. If the orchestrator restarts mid-task, the dispatcher resumes the same session via `veyyon --continue` from the per-issue `session_dir`, so an interrupted task re-enters its prior reasoning instead of restarting from scratch. The orchestrator runs as a single FastAPI process inside Docker with SQLite-backed durable event state.
 
+Two task kinds run without a live webhook behind them. `port_upstream` turns one `upstream-port` tracking issue, filed by `scripts/upstream-radar.ts`, into one candidate pull request adapted to veyyon's diverged architecture. `ci_repair` fixes a candidate whose checks went red, on the same branch, at most `VEYBOT_CI_MAX_REPAIRS` times per head commit. Both stop at the candidate. **There is no merge path anywhere in this tree and there must never be one.** Its absence is a load-bearing guarantee, not an oversight: a human reviews and merges every candidate. See "Upstream port pipeline" below and `README.md` for the operator view.
+
 ## Architecture & Data Flow
 
 Webhook → durable queue → async dispatcher → per-issue git worktree → veyyon RPC subprocess + host tools.
@@ -17,10 +19,28 @@ Webhook → durable queue → async dispatcher → per-issue git worktree → ve
 7. Inside the subprocess the agent uses **built-in veyyon tools** (read/edit/write/bash/lsp, scoped to the worktree) and **host tools** from `host_tools.py` (the only surface allowed to mutate GitHub or write audit rows).
 8. Success → event `state='done'`. Exception → `state='failed'` with a credential-redacted traceback in `events.last_error`. The `_inflight` slot is released either way.
 
+## Upstream Port Pipeline
+
+Two task kinds have no live webhook behind them.
+
+**`port_upstream`.** `scripts/upstream-radar.ts` mirrors every newly merged `can1357/oh-my-pi` PR that survives `scripts/upstream-port-policy.json` into ONE issue on `santhreal/veyyon` labeled `VEYBOT_PORT_LABEL` (default `upstream-port`). veybot turns each into ONE candidate PR adapted to veyyon's diverged architecture. Prompts: `kickoff_port_upstream.md`, with `{{kind_guidance}}` filled from `port_guidance_fix.md` or `port_guidance_feature.md` and `{{prior_failure_block}}` filled from `port_prior_failure.md` or the empty string. The fix arm requires a failing negative control before implementation and a reverted-fix check after; the feature arm requires an off-versus-on differential through the real operator path. Not applicable ends at `mark_unable_to_reproduce`, not at a comment.
+
+**`ci_repair`.** A candidate whose checks go red is repaired in place on the same branch, at most `VEYBOT_CI_MAX_REPAIRS` times per head commit (default 3). A new push resets the counter. Prompt: `kickoff_ci_repair.md`; the give-up comment is `ci_repair_exhausted.md`. Weakening a gate is never an acceptable outcome, and the prompt says so explicitly: if the only way to pass is to weaken the gate, the task reports failure and pushes nothing.
+
+**Backlog drain.** The radar issues predate the bot, so `route()` will never see them. `manual_triage.enqueue_port_backlog` lists open labeled issues and writes synthetic `issues.labeled` rows straight into the events table, exactly as `enqueue_manual_triage` does for `issues.opened`. Delivery ids come from `port_backlog_delivery_id(repo, number)`, so re-running is idempotent; an issue already in the events table is skipped whether a prior drain or a live webhook put it there. CLI: `veybot port-backlog owner/repo [--limit N] [--dry-run]`, or `bun run veybot:backlog`.
+
+**Kill switches.** `VEYBOT_PORT_UPSTREAM_ENABLED` and `VEYBOT_CI_REPAIR_ENABLED`, both default `True`, following the `pr_review_enabled` pattern (`config.py` -> `server.py` -> `route()`). `VEYBOT_AGENT_PROFILE` (default empty) appends `--profile <value>` to the veyyon invocation.
+
+<critical>
+- **NEVER add a merge or auto-merge capability.** Not a host tool, not a task, not a CLI flag, not a "just for candidates that are green" special case. Its absence is the guarantee that makes an unattended port bot safe to run, and the prompts promise the reviewer it does not exist.
+- **NEVER teach a prompt to weaken a gate.** No skip, no threshold drop, no lint ignore, no `.github/` edit. A green check bought that way is worse than a red one.
+- `scripts/jules-port-manager.ts` is the predecessor worker and targets the same queue. It must not run while veybot does, or issues get two candidates.
+</critical>
+
 ## Key Directories
 
 - `src/` — package (see "Important Files").
-- `src/prompts/` — Mustache-style `{{var}}` templates loaded by `persona.py` via `@cache` and `importlib.resources`. Shipped as package data (`pyproject.toml` `package-data`).
+- `src/prompts/` holds the `{{dotted.path}}` templates `persona.py` loads via `@cache` and `importlib.resources`. Shipped as package data (`pyproject.toml` `package-data`). **Substitution only.** `persona._PLACEHOLDER` matches `[a-zA-Z0-9_.]` and nothing else, so there are no conditionals, no loops, and no filters. A `{{#if}}` or `{{& raw}}` survives rendering verbatim and reaches the model as literal template syntax. An unresolvable path renders as the empty string, never an error, so a renamed field ships a prompt with a silent hole. Branching is precomputed in Python and passed in as a ready-made block string; `kickoff_port_upstream.md`'s `{{kind_guidance}}` and `{{prior_failure_block}}` are the worked examples. Lists join with `", "`, so a bullet list must arrive pre-rendered (`{{failing_list}}`).
 - `tests/` — pytest suite. `test_worker_smoke.py` is gated on `VEYBOT_INTEGRATION=1`.
 - `data/` — runtime state (sqlite + WAL, `workspaces/`, `logs/`). Never committed.
 - `/Dockerfile` (repo root) — produces `veyyon:dev` (veyyon runtime image: python + bun + rustup + veyyon-natives + veyyon_rpc + `/usr/local/bin/veyyon` shim + the full veyyon source under `/veyyon`). Stages: `natives-builder` → `wheel-builder` → `base` → `runtime` (default). Built via `bun run docker:build`. Veybot's image extends `base` via `FROM ${VEYYON_BASE}` in `/Dockerfile.veybot`.
@@ -62,6 +82,7 @@ docker compose --project-directory python/veybot exec veybot veybot triage owner
 docker compose --project-directory python/veybot exec veybot veybot replay <delivery_id>
 docker compose --project-directory python/veybot exec veybot veybot status
 docker compose --project-directory python/veybot exec veybot veybot cleanup owner/repo#N
+docker compose --project-directory python/veybot exec veybot veybot port-backlog owner/repo --limit 10
 ```
 
 HTTP / sqlite / webhook inspection is unaliased — use `curl http://localhost:${VEYBOT_BIND_PORT:-8080}/{healthz,readyz,events,issues}` and `docker compose --project-directory python/veybot exec veybot sqlite3 /data/veybot.sqlite` directly.
@@ -86,7 +107,7 @@ Lint + format: TypeScript via Biome (config in `biome.json`), Python via Ruff (c
 
 - `src/server.py` — FastAPI app, `/webhook/github`, `/healthz`, `/readyz`, `/events`, `/issues`, manual triage/replay endpoints, dashboard at `/`.
 - `src/queue.py` — `WorkerPool` dispatcher and `_inflight` serialization.
-- `src/tasks.py` — the five task entry points the dispatcher calls.
+- `src/tasks.py` holds the task entry points the dispatcher calls. A dispatchable task is `async def name(*, settings, db, github, sandbox, git_transport, payload, delivery_id, attempts=0, slot_uid=None) -> None`; its return value is discarded and raising is the only failure channel.
 - `src/worker.py` — synchronous veyyon RPC driver, prompt assembly via `persona`.
 - `src/host_tools.py` — agent's GitHub surface; tool list: `classify_issue`, `set_issue_labels`, `gh_post_comment`, `repro_record`, `gh_push_branch`, `gh_open_pr`, `gh_request_review`, `mark_unable_to_reproduce`, `abort_task`, `fetch_issue_thread`.
 - `src/sandbox.py` — clone pool + worktree lifecycle, `GitCommandError`, credential redaction.
@@ -94,7 +115,8 @@ Lint + format: TypeScript via Biome (config in `biome.json`), Python via Ruff (c
 - `src/github_events.py` — routing and HMAC verification.
 - `src/db.py` — sqlite schema and DAOs (`record_event`, `claim_next_event`, `upsert_issue`, `log_tool_call`).
 - `src/config.py` — `Settings` model and `get_settings()`.
-- `src/cli.py` — Click CLI (`serve`, `triage`, `replay`, `status`, `cleanup`).
+- `src/cli.py` is the Click CLI (`serve`, `triage`, `replay`, `status`, `cleanup`, `port-backlog`).
+- `src/manual_triage.py` synthesizes webhook payloads and writes them straight into the events table, bypassing `route()`. `enqueue_manual_triage` backs `veybot triage`; `enqueue_port_backlog` backs `veybot port-backlog`. This is the template for enqueueing work no live webhook will ever deliver.
 - `src/dashboard.py` — single-page HTML dashboard served from `/`.
 - `pyproject.toml` — packaging + pytest config (`asyncio_mode = "auto"`, `testpaths = ["tests"]`).
 - `/Dockerfile.veybot` (repo root) — veybot's image. `FROM ${VEYYON_BASE}` (default `veyyon:dev`), adds the SolidJS dashboard bundle, the veybot Python package, and the `veybot-entrypoint` shim. Tini entrypoint, exposes `8080`, `VOLUME /data`. The toolchain (python + bun + rustup + veyyon-natives + veyyon_rpc + `veyyon` shim) comes from `base` — no duplication in this file.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 
 import click
@@ -18,6 +19,7 @@ from veybot.manual_triage import (
     ManualTriageTimeout,
     await_terminal_state,
     enqueue_manual_triage,
+    enqueue_port_backlog,
     parse_issue_ref,
 )
 from veybot.proxy_client import GitHubProxyClient
@@ -134,6 +136,75 @@ def triage(issue_ref: str, wait_timeout: float | None) -> None:
                 indent=2,
             )
         )
+
+    asyncio.run(_go())
+
+
+_REPO_FULL = re.compile(r"^[^/\s#]+/[^/\s#]+$")
+
+
+@main.command("port-backlog")
+@click.argument("repo_full")
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1),
+    default=10,
+    show_default=True,
+    help="Maximum number of issues this run may queue.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="List what would be queued and write nothing.",
+)
+def port_backlog(repo_full: str, limit: int, dry_run: bool) -> None:
+    """Queue the open upstream-port issues that predate the webhook.
+
+    REPO_FULL is `owner/repo`. The label comes from VEYBOT_PORT_LABEL.
+    Re-running is safe: an issue already in the events table is skipped.
+    """
+    cfg = _settings_or_die()
+    configure_logging(cfg.log_dir)
+    cfg.ensure_paths()
+    repo_full = repo_full.strip()
+    if _REPO_FULL.match(repo_full) is None:
+        click.echo(f"expected owner/repo, got {repo_full!r}", err=True)
+        sys.exit(2)
+    if not cfg.allows(repo_full):
+        click.echo(f"refusing: {repo_full} not in VEYBOT_REPO_ALLOWLIST", err=True)
+        sys.exit(2)
+    if not cfg.port_upstream_enabled:
+        click.echo("refusing: VEYBOT_PORT_UPSTREAM_ENABLED is off", err=True)
+        sys.exit(2)
+
+    async def _go() -> None:
+        github = _build_github(cfg)
+        db = get_database(cfg.sqlite_path)
+        result = await enqueue_port_backlog(
+            db=db,
+            github=github,
+            repo_full=repo_full,
+            label=cfg.port_label,
+            limit=limit,
+            dry_run=dry_run,
+        )
+        verb = "would queue" if dry_run else "queued"
+        for entry in result.enqueued:
+            click.echo(f"{verb} {repo_full}#{entry.number} [{entry.delivery_id}] {entry.title}")
+        # Three separate numbers. `matched` is what the repository holds,
+        # `enqueued` is what --limit allowed this run, `skipped` is what earlier
+        # runs already own. Printing one of them as all three is how a 200-issue
+        # backlog looked drained at 90.
+        line = (
+            f"{result.matched} open {cfg.port_label} issue(s) match; "
+            f"{verb} {len(result.enqueued)}; {result.skipped} already tracked"
+        )
+        if result.scan_truncated:
+            line += (
+                f"; scan stopped at the {result.scan_limit}-issue ceiling, "
+                "so the match count is a floor and more remain unseen"
+            )
+        click.echo(line)
 
     asyncio.run(_go())
 
