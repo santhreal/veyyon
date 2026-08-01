@@ -11,19 +11,21 @@
  *
  * Usage:
  *
- *     bun scripts/demos/render-agent-control-center.ts --view live [--rows 34] [--theme titanium]
- *       | bun scripts/demos/render-proof.ts --out /tmp/proof/acc-live --width 120
+ *     bun scripts/demos/render-agent-control-center.ts --view termination [--rows 34] [--theme titanium]
+ *       | bun scripts/demos/render-proof.ts --out /tmp/proof/acc-termination --width 120
  *
- * Views: `live` (the roster) and `comms` (the message stream). Those are the two
- * the card has. It used to carry a third, a configuration list of the agent
- * TYPES a stock install ships, which said nothing about what was running and
- * could not be opened; `/settings` -> Subagents owns that table.
+ * Views: `live` (the roster), `live-hover` (the roster's pointer affordance),
+ * `termination` (the confirmation reached through that affordance), and `comms`
+ * (the message stream). The card used to carry a configuration list of the
+ * agent TYPES a stock install ships, which said nothing about what was running
+ * and could not be opened; `/settings` -> Subagents owns that table.
  */
 import { IrcBus } from "../../packages/coding-agent/src/irc/bus";
 import { AgentDashboard } from "../../packages/coding-agent/src/modes/components/agent-dashboard";
 import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../packages/coding-agent/src/registry/agent-registry";
 import type { AgentSession } from "../../packages/coding-agent/src/session/agent-session";
+import type { Component, TUI } from "../../packages/tui/src";
 import { flag, renderWidth } from "./render-args";
 
 const view = flag("view", "live");
@@ -128,11 +130,52 @@ for (const [index, entry] of log.entries()) {
 	if (age !== undefined) entry.message.ts = now - age;
 }
 
-const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
+const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
+
+/** Locate text in a rendered frame and return one-based SGR coordinates. */
+function positionOf(lines: readonly string[], needle: string): { row: number; col: number } {
+	const plain = lines.map(line => line.replace(ANSI_PATTERN, ""));
+	const row = plain.findIndex(line => line.includes(needle));
+	if (row < 0) throw new Error(`Agent Control Center proof could not find ${JSON.stringify(needle)}`);
+	return { row: row + 1, col: plain[row]!.indexOf(needle) + 1 };
+}
+
+let overlay: Component | undefined;
+const ui = {
+	requestRender: () => {},
+	requestComponentRender: () => {},
+	showOverlay: (component: Component) => {
+		overlay = component;
+		return {
+			hide: () => {
+				if (overlay === component) overlay = undefined;
+			},
+		};
+	},
+	setFocus: () => {},
+} as unknown as TUI;
+
+const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true, ui });
 
 // `\x1b[C` is right-arrow: the card opens on Live, so Comms is one step from it.
 if (view === "comms") dashboard.handleInput("\x1b[C");
 
-process.stdout.write(`${dashboard.render(width).join("\n")}\n`);
+let lines = dashboard.render(width);
+if (view === "live-hover" || view === "termination") {
+	const scout = positionOf(lines, "scout");
+	dashboard.handleInput(`\x1b[<35;${scout.col};${scout.row}M`);
+	lines = dashboard.render(width);
+}
+if (view === "termination") {
+	const scout = positionOf(lines, "scout");
+	const scoutLine = lines[scout.row - 1]!.replace(ANSI_PATTERN, "");
+	const terminateCol = scoutLine.lastIndexOf("[x]") + 1;
+	if (terminateCol === 0) throw new Error("Agent Control Center proof did not reveal the row termination action");
+	dashboard.handleInput(`\x1b[<0;${terminateCol};${scout.row}M`);
+	if (!overlay) throw new Error("Agent Control Center proof did not mount the termination confirmation");
+	lines = overlay.render(width);
+}
+
+process.stdout.write(`${lines.join("\n")}\n`);
 
 dashboard.dispose();
