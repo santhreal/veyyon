@@ -26,8 +26,8 @@
  *    panic into an error" crashes the fuzzer while behaving correctly. That is a
  *    property of the harness. Signatures known to be that are listed in
  *    `fuzz/known-harness-signatures.toml` and reported separately rather than
- *    filed, because dispatching an agent at one produces a PR that breaks
- *    working code to silence a false alarm.
+ *    filed, because an issue for one asks somebody to break working code to
+ *    silence a false alarm.
  *
  * NOTHING HERE TOUCHES GITHUB ON ITS OWN. `report` and `issues` are read-only.
  * `file` is the only command that reaches the network, it is never invoked by a
@@ -53,15 +53,6 @@ export class UsageError extends Error {}
 export const COMMANDS = ["report", "issues", "file"] as const;
 export type Command = (typeof COMMANDS)[number];
 
-/**
- * The mention that hands an issue to Jules.
- *
- * Posted as a comment rather than folded into the issue body, so the issue reads
- * the same whether or not anybody dispatched an agent at it, and so a human can
- * decide to dispatch later on an issue that was filed without one.
- */
-export const JULES_MENTION = "@jules";
-
 export const USAGE = `Usage: bun scripts/fuzz-triage.ts <command> [options]
 
 Commands:
@@ -72,7 +63,6 @@ Commands:
 Options:
   --target=<name>       Only triage this target. Repeatable.
   --keep-stale          Report artifacts that no longer reproduce instead of skipping them.
-  --dispatch            With 'file': also post a '${JULES_MENTION}' comment on each issue created.
   --repo=<owner/name>   With 'file': the repository. Defaults to the checkout's origin.
 `;
 
@@ -372,12 +362,8 @@ export function parseRepoFromRemote(remote: string): string | undefined {
 }
 
 /** The commands `file` would run for one finding, in order. Rendered rather than run, so they can be shown before anything happens. */
-export function renderFileCommands(
-	finding: Finding,
-	repo: string,
-	dispatch: boolean,
-): { label: string; argv: string[] }[] {
-	const commands = [
+export function renderFileCommands(finding: Finding, repo: string): { label: string; argv: string[] }[] {
+	return [
 		{
 			label: "create the issue",
 			argv: [
@@ -392,13 +378,6 @@ export function renderFileCommands(
 			],
 		},
 	];
-	if (dispatch) {
-		commands.push({
-			label: `dispatch ${JULES_MENTION}`,
-			argv: ["issue", "comment", "--repo", repo, "--body", `${JULES_MENTION} please take this one.`],
-		});
-	}
-	return commands;
 }
 
 /** Render the issue title. Kept short and identifying, since it is the dedup key humans read. */
@@ -412,7 +391,6 @@ export function parseArgs(argv: readonly string[]): {
 	command: Command;
 	targets: string[];
 	keepStale: boolean;
-	dispatch: boolean;
 	repo?: string;
 } {
 	const [command, ...rest] = argv;
@@ -421,15 +399,10 @@ export function parseArgs(argv: readonly string[]): {
 	}
 	const targets: string[] = [];
 	let keepStale = false;
-	let dispatch = false;
 	let repo: string | undefined;
 	for (const arg of rest) {
 		if (arg === "--keep-stale") {
 			keepStale = true;
-			continue;
-		}
-		if (arg === "--dispatch") {
-			dispatch = true;
 			continue;
 		}
 		const repoFlag = arg.match(/^--repo=(.+)$/);
@@ -441,10 +414,7 @@ export function parseArgs(argv: readonly string[]): {
 		if (!match) throw new UsageError(`Unknown option: ${arg}`);
 		targets.push(match[1]!);
 	}
-	if (dispatch && command !== "file") {
-		throw new UsageError("--dispatch only applies to the 'file' command");
-	}
-	return { command: command as Command, targets, keepStale, dispatch, repo };
+	return { command: command as Command, targets, keepStale, repo };
 }
 
 /** Format the human-readable report. */
@@ -527,7 +497,7 @@ export function main(argv: readonly string[]): number {
 		return 0;
 	}
 
-	return fileIssues(actionable, { repo: parsed.repo, dispatch: parsed.dispatch });
+	return fileIssues(actionable, { repo: parsed.repo });
 }
 
 /**
@@ -546,7 +516,7 @@ export function main(argv: readonly string[]): number {
  */
 export function fileIssues(
 	findings: readonly Finding[],
-	options: { repo?: string; dispatch: boolean },
+	options: { repo?: string },
 	deps: {
 		confirm?: (question: string) => boolean;
 		gh?: (argv: string[]) => { status: number; output: string };
@@ -572,7 +542,7 @@ export function fileIssues(
 	}
 
 	for (const finding of findings) {
-		const commands = renderFileCommands(finding, repo, options.dispatch);
+		const commands = renderFileCommands(finding, repo);
 		say(`\n${renderIssueTitle(finding)}`);
 		say(renderIssueBody(finding));
 		say(`\nWould run against ${repo}: ${commands.map(entry => entry.label).join(", ")}`);
@@ -588,17 +558,6 @@ export function fileIssues(
 		}
 		const url = created.output.trim().split("\n").pop() ?? "";
 		say(url);
-
-		if (options.dispatch) {
-			// The comment targets the issue that was just created, which is why the
-			// URL is appended here rather than baked into the rendered command.
-			const comment = gh([...commands[1]!.argv, url]);
-			if (comment.status !== 0) {
-				warn(`gh issue comment failed:\n${comment.output}`);
-				return 1;
-			}
-			say(`dispatched ${JULES_MENTION}`);
-		}
 	}
 	return 0;
 }
