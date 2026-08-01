@@ -535,6 +535,8 @@ describe("required publication artifacts", () => {
 			expect(step.run).toContain("ref_sha=\"$(jq -r '.object.sha'");
 			expect(step.run).not.toContain("target_commitish");
 		}
+		expect(publish.run).toContain('releases/$RELEASE_ID")');
+		expect(publish.run).not.toContain("releases/tags/$RELEASE_TAG");
 	});
 
 	/** A draft asset mutation after platform verification must be caught before the publish PATCH. */
@@ -552,9 +554,15 @@ describe("required publication artifacts", () => {
 
 		expect(preserved).toBeDefined();
 		expect(downloaded).toBeDefined();
+		expect(publish.run).toContain("releases/$RELEASE_ID/assets");
+		expect(publish.run).toContain("releases/assets/$asset_id");
+		expect(publish.run).toContain("Accept: application/octet-stream");
+		expect(publish.run).toContain('> "$remote_dir/$name"');
+		expect(publish.run).toContain("release asset has unsafe name");
+		expect(publish.run).not.toContain("gh release download");
 		expect(publish.run).toContain("diff -u release-proof/local-assets.sha256 remote-assets.sha256");
 		expect(publish.run.indexOf("diff -u release-proof/local-assets.sha256")).toBeLessThan(
-			publish.run.indexOf("releases/$RELEASE_ID"),
+			publish.run.indexOf('gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"'),
 		);
 	});
 

@@ -1252,7 +1252,23 @@ jobs:
            run: |
               set -euo pipefail
               remote_dir="$(mktemp -d)"
-              gh release download "$RELEASE_TAG" --dir "$remote_dir"
+              remote_assets="$(mktemp)"
+              gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+                --jq '.[] | [.id, .name] | @tsv' > "$remote_assets"
+              if [ ! -s "$remote_assets" ]; then
+                echo "::error::verified release $RELEASE_ID has no downloadable assets"
+                exit 1
+              fi
+              while IFS=$'\t' read -r asset_id name; do
+                case "$name" in
+                  ""|"."|".."|*/*)
+                    echo "::error::release asset has unsafe name '$name'"
+                    exit 1
+                    ;;
+                esac
+                gh api "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+                  -H "Accept: application/octet-stream" > "$remote_dir/$name"
+              done < "$remote_assets"
               (
                 cd "$remote_dir"
                 for asset in *; do
@@ -1264,7 +1280,7 @@ jobs:
                 echo "::error::draft release assets changed after verification; refusing publication"
                 exit 1
               fi
-              release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+              release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
               ref_json="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")"
               actual_id="$(jq -r '.id' <<<"$release_json")"
               actual_tag="$(jq -r '.tag_name' <<<"$release_json")"
