@@ -273,7 +273,13 @@ async function disposeBrowserHandle(handle: BrowserHandle, opts: { kill: boolean
 			logger.debug("Failed to disconnect from spawned browser", { error: (err as Error).message });
 		}
 	}
-	if (opts.kill && handle.pid !== undefined) await gracefulKillTreeOnce(handle.pid);
+	// Kill only what WE spawned. `pid` is also set when `findReusableCdp` attached
+	// to an instance the user already had running (see the reuse branch above),
+	// and `{ kill: true }` arrives from session dispose — so keying off `pid`
+	// SIGKILLs the user's own Chrome/Electron on `/exit`. `subprocess` is set on
+	// the spawn path only, which is the same distinction `puppeteer.connect`'s
+	// failure handler already makes.
+	if (opts.kill && handle.subprocess !== undefined) await gracefulKillTreeOnce(handle.subprocess.pid);
 }
 
 /** Test-only accessor for the module-global browsers map. */

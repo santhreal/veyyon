@@ -8,7 +8,7 @@ import { enforceInlineByteCap } from "../session/streaming-output";
 import { truncateForPrompt } from "./approval";
 import { resolveCmuxKind } from "./browser/cmux/rpc";
 import { acquireBrowser, type BrowserHandle, type BrowserKind, type BrowserKindTag } from "./browser/registry";
-import type { Observation, ScreenshotResult } from "./browser/tab-protocol";
+import type { BrowserRunError, Observation, RunResultOk, ScreenshotResult } from "./browser/tab-protocol";
 import { acquireTab, dropHeadlessTabs, getTab, releaseAllTabs, releaseTab, runInTab } from "./browser/tab-supervisor";
 import { inlineOutputPricing, saveOutputArtifact } from "./output-artifact";
 import type { OutputMeta } from "./output-meta";
@@ -325,12 +325,31 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			details.url = tab.info.url;
 		}
 
-		const { displays, returnValue, screenshots } = await runInTab(name, {
-			code: params.code,
-			timeoutMs,
-			signal,
-			session: this.session,
-		});
+		let run: RunResultOk;
+		try {
+			run = await runInTab(name, {
+				code: params.code,
+				timeoutMs,
+				signal,
+				session: this.session,
+			});
+		} catch (error) {
+			// A failed run still reports what it managed to produce. The displayed lines are folded
+			// into the error text because that is the only channel a thrown tool error has, and the
+			// screenshots go onto `details` so they still render. An abort is left alone: the
+			// operator cancelled, so there is no failure to explain.
+			const partial = error instanceof ToolAbortError ? undefined : (error as BrowserRunError).partialRunOutput;
+			if (partial !== undefined && error instanceof Error) {
+				if (partial.screenshots.length) details.screenshots = partial.screenshots;
+				const produced = partial.displays
+					.filter((entry): entry is { type: "text"; text: string } => entry.type === "text")
+					.map(entry => entry.text)
+					.join("\n");
+				if (produced) error.message = `${produced}\n\n${error.message}`;
+			}
+			throw error;
+		}
+		const { displays, returnValue, screenshots } = run;
 
 		if (screenshots.length) details.screenshots = screenshots;
 

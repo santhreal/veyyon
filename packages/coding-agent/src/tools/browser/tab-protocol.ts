@@ -95,11 +95,30 @@ export interface TabRunErrorPayload {
 	isAbort: boolean;
 }
 
+/**
+ * What a run had already produced when it failed.
+ *
+ * A failing run is exactly the run whose output you need: the `display()` calls and screenshots
+ * taken before the throw are the evidence for WHY it threw. The worker used to discard them and
+ * report only the error, so a cell that dumped an observation and then timed out came back with a
+ * bare "timed out" and nothing to read. There is no `returnValue` here because a run that threw
+ * never produced one.
+ */
+export interface RunResultPartial {
+	displays: Array<TextContent | ImageContent>;
+	screenshots: ScreenshotResult[];
+}
+
+/** An error from a failed run, carrying whatever that run managed to produce first. */
+export interface BrowserRunError extends Error {
+	partialRunOutput?: RunResultPartial;
+}
+
 export type TabWorkerOutbound =
 	| { type: "ready"; info: ReadyInfo }
 	| { type: "init-failed"; error: TabRunErrorPayload }
 	| { type: "result"; id: string; ok: true; payload: RunResultOk }
-	| { type: "result"; id: string; ok: false; error: TabRunErrorPayload }
+	| { type: "result"; id: string; ok: false; error: TabRunErrorPayload; partial?: RunResultPartial }
 	| { type: "tool-call"; id: string; runId: string; name: string; args: unknown }
 	| { type: "log"; level: "debug" | "warn" | "error"; msg: string; meta?: Record<string, unknown> }
 	| { type: "closed" };

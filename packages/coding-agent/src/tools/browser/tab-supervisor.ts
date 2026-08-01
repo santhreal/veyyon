@@ -21,6 +21,7 @@ import {
 	releaseBrowser,
 } from "./registry";
 import type {
+	BrowserRunError,
 	ReadyInfo,
 	RunResultOk,
 	SessionSnapshot,
@@ -188,6 +189,10 @@ async function acquireTabImpl(
 	// chain; honor an abort at dequeue instead of spawning a worker and
 	// browser hold nobody is waiting for.
 	if (opts.signal?.aborted) {
+		// The caller acquired (and published) the browser handle before queueing this
+		// open, so an abort at dequeue must drop it too — otherwise a live Chromium
+		// sits in `browsers` at refCount 0 with no tab pointing at it.
+		if (browser.refCount === 0) await releaseBrowser(browser, { kill: false }).catch(() => undefined);
 		throw new ToolAbortError("Browser tab open aborted");
 	}
 	killedTabs.delete(name);
@@ -306,7 +311,10 @@ async function acquireTabImpl(
 		await terminateWorker(worker, "open-aborted");
 		// The browser release runs while an abort is already being raised; its own failure must not
 		// replace `ToolAbortError`, and the refCount it adjusts is dropped with the browser anyway.
-		if (tempHold) await releaseBrowser(browser, { kill: false }).catch(() => undefined);
+		// `|| browser.refCount === 0` matches every sibling error path above (:257, :269,
+		// :281, :292). Without it, an abort here strands the handle `acquireBrowser`
+		// already published at refCount 0 — and nothing walks `browsers`, only `tabs`.
+		if (tempHold || browser.refCount === 0) await releaseBrowser(browser, { kill: false }).catch(() => undefined);
 		throw new ToolAbortError("Browser tab open aborted");
 	}
 
@@ -483,12 +491,21 @@ async function runInTabWithSnapshot(
 		}
 	}
 	const abort = (): void => {
-		tab.worker.send({ type: "abort", id });
+		// `safeSend`, not `tab.worker.send`: this runs from an `abort` event listener, so a
+		// throw from a worker terminated by a concurrent recycle/force-kill would escape
+		// with nowhere to go. Every other post-init send in this file is already guarded.
+		safeSend(tab, { type: "abort", id });
 		for (const ctrl of pending.toolCalls.values()) ctrl.abort(opts.signal?.reason);
 	};
-	if (opts.signal?.aborted) abort();
-	else opts.signal?.addEventListener("abort", abort, { once: true });
+	opts.signal?.addEventListener("abort", abort, { once: true });
 	try {
+		// An already-aborted signal must NOT send `abort` and then `run`: the worker drops
+		// the abort (`#active` is still null, so `case "abort"`'s id check fails), the run
+		// then executes to completion, and the caller blocks the full timeout on a
+		// cancellation it already requested. Throw instead of sending anything — and throw
+		// INSIDE the try, because the `finally` below deletes the pending entry. Leaking it
+		// would leave `tab.pending.size > 0` forever, making the tab permanently "busy".
+		if (opts.signal?.aborted) throw new ToolAbortError("Browser run aborted");
 		tab.worker.send({
 			type: "run",
 			id,
@@ -670,7 +687,11 @@ function handleTabMessage(tab: WorkerTabSession, msg: TabWorkerOutbound): void {
 			pending.resolve(msg.payload);
 			return;
 		}
-		pending.reject(errorFromPayload(msg.error));
+		const failure: BrowserRunError = errorFromPayload(msg.error);
+		// Carried on the error rather than resolved separately: the run DID fail, so the caller must
+		// still see a rejection, and the output it produced first is context for that rejection.
+		if (msg.partial) failure.partialRunOutput = msg.partial;
+		pending.reject(failure);
 		return;
 	}
 	if (msg.type === "ready") {
