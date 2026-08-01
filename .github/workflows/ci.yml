@@ -900,11 +900,13 @@ jobs:
                   exit "$api_status"
                 fi
                 # ci-release-notes.ts already includes every commit and enforces
-                # GitHub's body limit. Appending generated notes duplicates that
-                # history and can push an otherwise valid draft over the limit.
-                gh release create "$tag" --draft --verify-tag --target "$RELEASE_SHA" \
-                  --title "$tag" --notes-file release-notes.md
-                release_json="$(gh api "repos/$repo/releases/tags/$tag")"
+                # GitHub's body limit. Create through REST so the response is the
+                # draft JSON itself; the tag lookup endpoint does not expose drafts.
+                release_json="$(
+                  gh api --method POST "repos/$repo/releases" \
+                    -f tag_name="$tag" -f name="$tag" \
+                    -F draft=true -F prerelease=false -F body=@release-notes.md
+                )"
               fi
 
               release_id="$(jq -r '.id' <<<"$release_json")"
