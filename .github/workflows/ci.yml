@@ -1049,7 +1049,7 @@ jobs:
       needs: [release_metadata, release_github]
       runs-on: macos-14
       permissions:
-         contents: read
+         contents: write
       steps:
          - name: Download draft macOS arm64 binary and checksum sidecar
            env:
@@ -1105,7 +1105,7 @@ jobs:
       needs: [release_metadata, release_github]
       runs-on: ubuntu-22.04
       permissions:
-         contents: read
+         contents: write
       steps:
          - name: Download draft linux-x64 binary and checksum sidecar
            env:
@@ -1166,7 +1166,7 @@ jobs:
       # fails the transaction quickly instead of holding the draft indefinitely.
       timeout-minutes: 15
       permissions:
-         contents: read
+         contents: write
       steps:
          - name: Download draft windows-x64 binary and checksum sidecar
            shell: pwsh
