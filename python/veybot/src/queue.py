@@ -15,7 +15,14 @@ from veybot.cancellation import clear_current_event, set_current_event
 from veybot.config import Settings
 from veybot.db import Database, EventRow
 from veybot.github_backend import GitHubBackend
-from veybot.github_events import is_port_upstream_event, is_triage_label_event
+from veybot.github_events import (
+    ci_repair_event,
+    is_port_upstream_event,
+    is_pr_comment_event,
+    is_pr_conversation_event,
+    is_triage_label_event,
+    pull_request_close_state,
+)
 from veybot.sandbox import GitTransport, SandboxManager, _reap_slot
 from veybot.slot_pool import SlotPool
 
@@ -394,14 +401,52 @@ class WorkerPool:
             await self._release(row)
             clear_current_event(token)
 
+    def _resolve_issue_from_pr(self, repo: str, pr_number: int) -> str | None:
+        """PR number -> tracking-issue key: the mapping `route()` is handed.
+
+        `server.py` gives `route()` a closure over the request's `Database`;
+        `github_events.ci_repair_event` needs the same lookup on this side, and
+        the pool owns a `Database` directly. Same query, same answer — which is
+        the point: a shared filter is only honest if BOTH sides can run all of
+        it, and dropping the issue-mapping step here to keep the signature
+        clean would have left the dispatcher weaker than the router again.
+        """
+        row = self.db.find_issue_by_pr(repo, pr_number)
+        return row.key if row else None
+
+    def _filtered(self, row: EventRow, *, event: str, action: str, reason: str) -> str:
+        """Record that a claimed row failed a filter `route()` already applies.
+
+        Returned up to `_dispatch_and_mark`, which parks the row in `skipped`
+        with this text in `events.last_error`. `skipped` is exactly what the
+        webhook path writes for a routing skip, so the events table reads the
+        same whether the filter fired at receipt or at replay — and it is
+        distinct from `done` (a task ran to completion) and from `failed` (a
+        task raised). No task runs, and nothing about the row looks like
+        success.
+        """
+        log.info(
+            "dispatch filtered",
+            extra={
+                "event": event,
+                "action": action,
+                "delivery": row.delivery_id,
+                "key": row.issue_key,
+                "reason": reason,
+            },
+        )
+        return reason
+
     async def _dispatch_and_mark(self, row: EventRow, *, slot_uid: int | None = None) -> None:
-        await self._dispatch(row, slot_uid=slot_uid)
+        filtered = await self._dispatch(row, slot_uid=slot_uid)
         if row.delivery_id in self._cancelled:
             self.db.mark_event(row.delivery_id, "failed", error="cancelled by operator")
+        elif filtered is not None:
+            self.db.mark_event(row.delivery_id, "skipped", error=filtered)
         else:
             self.db.mark_event(row.delivery_id, "done")
 
-    async def _dispatch(self, row: EventRow, *, slot_uid: int | None = None) -> None:
+    async def _dispatch(self, row: EventRow, *, slot_uid: int | None = None) -> str | None:
         event = row.event_type
         action = str(row.payload.get("action") or "")
         log.info(
@@ -456,6 +501,20 @@ class WorkerPool:
                 slot_uid=slot_uid,
             )
         elif event == "check_suite" and action == "completed":
+            # The router's whole `ci_repair` filter chain — failing conclusion,
+            # bot-authored branch, resolvable tracking issue — re-applied to the
+            # stored row. Only rows the router queued ever land in the events
+            # table, so this matters on the REPLAY paths (`veybot replay`, and
+            # the restart re-queue): a replayed row must not get LESS filtering
+            # than the live one did.
+            verdict = ci_repair_event(
+                row.payload,
+                bot_login=self.settings.bot_login,
+                resolve_issue_from_pr=self._resolve_issue_from_pr,
+                ci_repair_enabled=self.settings.ci_repair_enabled,
+            )
+            if not verdict.admitted:
+                return self._filtered(row, event=event, action=action, reason=verdict.reason)
             await tasks.ci_repair(
                 settings=self.settings,
                 db=self.db,
@@ -468,8 +527,13 @@ class WorkerPool:
                 slot_uid=slot_uid,
             )
         elif event == "issue_comment" and action == "created":
-            issue = row.payload.get("issue") or {}
-            if "pull_request" in issue:
+            if is_pr_comment_event(row.payload):
+                if not is_pr_conversation_event(row.payload, bot_login=self.settings.bot_login):
+                    # Verbatim the router's skip reason. This side used to
+                    # select on `is_pr_comment_event` alone, so a replayed
+                    # comment on a contributor's PR resumed an amend-and-push
+                    # agent on a branch nobody asked us to touch.
+                    return self._filtered(row, event=event, action=action, reason="incoming PR comments ignored")
                 await tasks.handle_pr_conversation(
                     settings=self.settings,
                     db=self.db,
@@ -526,17 +590,19 @@ class WorkerPool:
                 target_state="closed",
             )
         elif event == "pull_request" and action == "closed":
-            pr = row.payload.get("pull_request") or {}
-            target_state = "merged" if bool(pr.get("merged")) else "closed"
+            # Same function `route()` uses to word the queue reason, so the
+            # dashboard's issue state and the event's reason can never disagree
+            # about whether the candidate shipped.
             await tasks.cleanup_workspace(
                 settings=self.settings,
                 db=self.db,
                 sandbox=self.sandbox,
                 payload=row.payload,
-                target_state=target_state,
+                target_state=pull_request_close_state(row.payload),
             )
         else:
             log.info("no-op dispatch", extra={"event": event, "action": action})
+        return None
 
 
 __all__ = ["WorkerPool"]

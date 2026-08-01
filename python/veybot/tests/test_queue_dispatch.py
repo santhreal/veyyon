@@ -9,6 +9,7 @@ others (a `synchronize`, say, must not silently spawn a review).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
@@ -41,6 +42,93 @@ def _make_pool(settings: Settings, db: Database) -> WorkerPool:
         git_transport=_StubGitTransport(),  # type: ignore[arg-type]
         slot_pool=SlotPool(),
     )
+
+
+_BOT = "robveybot"
+_REPO = {"full_name": "octo/widget"}
+_TRACKED_KEY = "octo/widget#42"
+
+
+def _appender(sink: list[str], name: str) -> Callable[..., object]:
+    """A stand-in task that only records the fact that it ran."""
+
+    async def _fake(**_kwargs) -> None:
+        sink.append(name)
+
+    return _fake
+
+
+def _seed_pr_mapping(db: Database, pr_number: int, *, key: str = _TRACKED_KEY) -> None:
+    """Register the PR -> tracking-issue row the check_suite filter resolves through.
+
+    Production writes this when the candidate PR is opened. Without it a
+    `check_suite` event is not actionable at all, on either side.
+    """
+    repo, _, number = key.partition("#")
+    db.upsert_issue(key=key, repo=repo, number=int(number), state="opened", pr_number=pr_number)
+
+
+def _pr_issue_resolver(db: Database) -> Callable[[str, int], str | None]:
+    """The resolver `server.py` injects into `route()`, over the test Database.
+
+    `WorkerPool._resolve_issue_from_pr` is the same `find_issue_by_pr` lookup.
+    Handing `route()` a hardcoded stub instead would let the two sides consult
+    different mappings, which is the drift these tests exist to catch.
+    """
+
+    def _resolve(repo_full: str, pr_number: int) -> str | None:
+        row = db.find_issue_by_pr(repo_full, pr_number)
+        return row.key if row else None
+
+    return _resolve
+
+
+def _route(settings: Settings, db: Database, event_type: str, payload: dict, **overrides):
+    """`route()` wired exactly as `server.py` wires it for this Settings/Database."""
+    kwargs: dict = {
+        "allowlist": settings.repo_allowlist,
+        "bot_login": settings.bot_login,
+        "port_label": settings.port_label,
+        "triage_trigger": settings.triage_trigger,
+        "triage_label": settings.triage_label,
+        "resolve_issue_from_pr": _pr_issue_resolver(db),
+    }
+    kwargs.update(overrides)
+    return route(event_type, payload, **kwargs)
+
+
+def _stored_row(delivery: str, event_type: str, payload: dict, issue_key: str | None) -> EventRow:
+    """An `EventRow` shaped the way the events table hands one to the dispatcher."""
+    return EventRow(
+        delivery_id=delivery,
+        event_type=event_type,
+        repo="octo/widget",
+        issue_key=issue_key,
+        payload=payload,
+        received_at="2026-01-01T00:00:00Z",
+        state="running",
+        attempts=1,
+        last_error=None,
+    )
+
+
+async def _replay(settings: Settings, db: Database, row: EventRow) -> EventRow:
+    """Insert the row, drive the REAL dispatcher, return its terminal DB state.
+
+    `_dispatch_and_mark` rather than `_dispatch`, so the assertion is about the
+    outcome an operator reads out of the events table.
+    """
+    db.record_event(
+        delivery_id=row.delivery_id,
+        event_type=row.event_type,
+        repo=row.repo,
+        issue_key=row.issue_key,
+        payload=row.payload,
+    )
+    await _make_pool(settings, db)._dispatch_and_mark(row)  # noqa: SLF001
+    stored = db.get_event(row.delivery_id)
+    assert stored is not None
+    return stored
 
 
 def _pr_row(action: str, *, delivery: str = "pr1") -> EventRow:
@@ -260,32 +348,186 @@ async def test_dispatch_check_suite_completed_reaches_ci_repair(
     settings: Settings, db: Database, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`check_suite` is a new event type entirely; without a dispatch branch the
-    row is claimed, marked done, and the red candidate is never repaired."""
+    row is claimed, marked done, and the red candidate is never repaired.
+
+    The payload is one `route` genuinely queues — failing conclusion,
+    bot-authored candidate, PR mapped to a tracking issue — because `_dispatch`
+    now re-applies that whole filter chain before it runs the repair.
+    """
     seen: list[str] = []
 
     async def fake_ci_repair(*, payload, **_kwargs) -> None:
         seen.append(str(payload.get("check_suite", {}).get("head_sha")))
 
     monkeypatch.setattr(tasks, "ci_repair", fake_ci_repair)
+    _seed_pr_mapping(db, 90)
 
-    row = EventRow(
-        delivery_id="cs1",
-        event_type="check_suite",
-        repo="octo/widget",
-        issue_key="octo/widget#42",
-        payload={
-            "action": "completed",
-            "check_suite": {"conclusion": "failure", "head_sha": "deadbeef", "pull_requests": [{"number": 90}]},
-            "repository": {"full_name": "octo/widget"},
+    payload = {
+        "action": "completed",
+        "check_suite": {
+            "conclusion": "failure",
+            "head_sha": "deadbeef",
+            "pull_requests": [{"number": 90, "user": {"login": settings.bot_login}}],
         },
-        received_at="2026-01-01T00:00:00Z",
-        state="running",
-        attempts=1,
-        last_error=None,
-    )
-    await _make_pool(settings, db)._dispatch(row)  # noqa: SLF001
+        "repository": _REPO,
+    }
+    decision = _route(settings, db, "check_suite", payload)
+    assert decision.task == "ci_repair"
+
+    row = _stored_row("cs1", "check_suite", payload, decision.issue_key)
+    assert await _make_pool(settings, db)._dispatch(row) is None  # noqa: SLF001
 
     assert seen == ["deadbeef"]
+
+
+@pytest.mark.asyncio
+async def test_replayed_green_check_suite_never_reaches_ci_repair(
+    settings: Settings, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A green `check_suite.completed` row can only reach `_dispatch` by REPLAY
+    — `veybot replay <delivery>`, or the restart re-queue of an in-flight row —
+    because only rows `route()` queued are ever written to the events table,
+    and `route()` refuses this one at the webhook. That is precisely why the
+    router's filter alone was not enough: `_dispatch` re-derived the handler
+    from `(check_suite, completed)` and ran `ci_repair` applying NONE of the
+    router's conditions, so the replayed row got LESS filtering than the live
+    one did.
+
+    If this regresses, a passing candidate gets a repair agent pointed at it,
+    burning one of `VEYBOT_CI_MAX_REPAIRS` attempts and a concurrency lane to
+    fix nothing.
+    """
+    ran: list[str] = []
+    monkeypatch.setattr(tasks, "ci_repair", _appender(ran, "ci_repair"))
+    _seed_pr_mapping(db, 90)
+
+    payload = {
+        "action": "completed",
+        "check_suite": {
+            "conclusion": "success",
+            "head_sha": "deadbeef",
+            "pull_requests": [{"number": 90, "user": {"login": settings.bot_login}}],
+        },
+        "repository": _REPO,
+    }
+    decision = _route(settings, db, "check_suite", payload)
+    assert not decision.should_queue
+
+    stored = await _replay(settings, db, _stored_row("replay-green", "check_suite", payload, _TRACKED_KEY))
+
+    assert ran == []
+    assert stored.state == "skipped"
+    assert "is not a failure" in (stored.last_error or "")
+
+
+@pytest.mark.asyncio
+async def test_replayed_check_suite_on_a_human_pull_request_never_reaches_ci_repair(
+    settings: Settings, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failing `check_suite` on a CONTRIBUTOR's pull request can only reach
+    `_dispatch` by REPLAY: `route()` skips it at the webhook with "not authored
+    by bot", so no such row is ever queued live. The router's filter alone was
+    not enough because `_dispatch` applied none of the router's conditions to
+    the stored row — a replayed row therefore got LESS filtering than the live
+    one, which is the opposite of safe.
+
+    The PR here IS mapped to a tracking issue, so bot-authorship is the only
+    filter under test. If this regresses, veybot pushes repair commits onto a
+    human's branch nobody asked it to touch.
+    """
+    ran: list[str] = []
+    monkeypatch.setattr(tasks, "ci_repair", _appender(ran, "ci_repair"))
+    _seed_pr_mapping(db, 90)
+
+    payload = {
+        "action": "completed",
+        "check_suite": {
+            "conclusion": "failure",
+            "head_sha": "deadbeef",
+            "pull_requests": [{"number": 90, "user": {"login": "contributor"}}],
+        },
+        "repository": _REPO,
+    }
+    decision = _route(settings, db, "check_suite", payload)
+    assert not decision.should_queue
+
+    stored = await _replay(settings, db, _stored_row("replay-human", "check_suite", payload, _TRACKED_KEY))
+
+    assert ran == []
+    assert stored.state == "skipped"
+    assert "not authored by bot" in (stored.last_error or "")
+
+
+@pytest.mark.asyncio
+async def test_replayed_comment_on_a_contributor_pull_request_never_reaches_a_task(
+    settings: Settings, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An `issue_comment.created` on a CONTRIBUTOR's pull request can only reach
+    `_dispatch` by REPLAY: `route()` skips it with "incoming PR comments
+    ignored" and only queued rows land in the events table. The router's filter
+    alone was not enough because `_dispatch` selected `handle_pr_conversation`
+    on `"pull_request" in issue` ALONE — no bot-authorship check — so the
+    replayed row dispatched exactly where the router had refused.
+
+    `handle_comment` is stubbed too: the router queued NO task for this row, so
+    falling through to the plain-comment handler would be just as wrong as
+    running the PR one. If this regresses, veybot resumes an amend-and-push
+    session against a branch it does not own.
+    """
+    ran: list[str] = []
+    monkeypatch.setattr(tasks, "handle_pr_conversation", _appender(ran, "handle_pr_conversation"))
+    monkeypatch.setattr(tasks, "handle_comment", _appender(ran, "handle_comment"))
+
+    payload = {
+        "action": "created",
+        "issue": {"number": 90, "user": {"login": "contributor"}, "pull_request": {"url": "x"}},
+        "comment": {"body": "please rebase", "user": {"login": "alice"}},
+        "repository": _REPO,
+    }
+    decision = _route(settings, db, "issue_comment", payload)
+    assert not decision.should_queue
+
+    stored = await _replay(settings, db, _stored_row("replay-contrib", "issue_comment", payload, decision.issue_key))
+
+    assert ran == []
+    assert stored.state == "skipped"
+    assert "incoming PR comments ignored" in (stored.last_error or "")
+
+
+@pytest.mark.parametrize(("merged", "expected"), [(True, "merged"), (False, "closed")])
+@pytest.mark.asyncio
+async def test_pull_request_closed_cleanup_state_matches_the_router_reason(
+    settings: Settings, db: Database, monkeypatch: pytest.MonkeyPatch, merged: bool, expected: str
+) -> None:
+    """`route()` worded its queue reason from `pull_request.merged`, and
+    `_dispatch` computed `cleanup_workspace`'s target issue state from the same
+    field independently. They agreed by construction, not by contract: either
+    could be refined without the other. Both now call `pull_request_close_state`
+    and this pins one output to the other.
+
+    If this regresses, a merged candidate is filed under `closed` and a shipped
+    PR reads as abandoned on the dashboard.
+    """
+    states: list[str] = []
+
+    async def fake_cleanup(*, target_state, **_kwargs) -> None:
+        states.append(target_state)
+
+    monkeypatch.setattr(tasks, "cleanup_workspace", fake_cleanup)
+
+    payload = {
+        "action": "closed",
+        "pull_request": {"number": 91, "merged": merged, "user": {"login": "alice"}},
+        "repository": _REPO,
+    }
+    decision = _route(settings, db, "pull_request", payload)
+    assert decision.task == "cleanup_workspace"
+
+    row = _stored_row(f"prclose-{expected}", "pull_request", payload, decision.issue_key)
+    await _make_pool(settings, db)._dispatch(row)  # noqa: SLF001
+
+    assert states == [expected]
+    assert decision.reason == f"pull_request.{states[0]}"
 
 
 TRIAGE_LABEL = "veybot"
@@ -404,8 +646,6 @@ async def test_dispatch_labeled_row_with_an_unrelated_label_is_still_a_noop(
 
 # ---- route() <-> _dispatch() coverage of every queueable (event, action) pair ----
 
-_BOT = "robveybot"
-_REPO = {"full_name": "octo/widget"}
 _TASK_NAMES = (
     "triage_issue",
     "port_upstream",
@@ -546,40 +786,209 @@ async def test_every_queueable_event_reaches_the_task_route_named(
     new queueable pair without a dispatch branch fails here.
     """
     reached: list[str] = []
-
-    def _recorder(name: str):
-        async def _fake(**_kwargs) -> None:
-            reached.append(name)
-
-        return _fake
-
     for name in _TASK_NAMES:
-        monkeypatch.setattr(tasks, name, _recorder(name))
+        monkeypatch.setattr(tasks, name, _appender(reached, name))
+    # The check_suite entry is only actionable because its PR maps to a tracked
+    # issue, and BOTH sides resolve that mapping out of this Database now.
+    _seed_pr_mapping(db, 93)
 
-    decision = route(
+    decision = _route(
+        settings,
+        db,
         event_type,
         payload,
-        allowlist=settings.repo_allowlist,
-        bot_login=settings.bot_login,
-        port_label=settings.port_label,
         triage_trigger="auto" if label == "issues.opened" else settings.triage_trigger,
-        triage_label=settings.triage_label,
-        resolve_issue_from_pr=lambda _r, _n: "octo/widget#42",
     )
     assert decision.should_queue, f"{label} no longer queues: {decision.reason}"
     assert decision.task in _TASK_NAMES, f"{label} names an unknown task {decision.task!r}"
 
-    row = EventRow(
-        delivery_id=f"cover-{label}",
-        event_type=event_type,
-        repo="octo/widget",
-        issue_key=decision.issue_key,
-        payload=payload,
-        received_at="2026-01-01T00:00:00Z",
-        state="running",
-        attempts=1,
-        last_error=None,
-    )
+    row = _stored_row(f"cover-{label}", event_type, payload, decision.issue_key)
     await _make_pool(settings, db)._dispatch(row)  # noqa: SLF001
 
     assert reached == [decision.task], f"{label} routed to {decision.task} but dispatched to {reached}"
+
+
+# ---- the same coverage from the other side: payloads route() REFUSES ----
+
+# (label, event_type, payload). Every entry MUST make `route` SKIP. Labels name
+# the queueable pair each entry is the refused counterpart of, so the table is
+# readable as "one or more skips per queueable pair".
+_ROUTER_SKIPS: list[tuple[str, str, dict]] = [
+    (
+        "issues.opened -> reopened",
+        "issues",
+        {"action": "reopened", "issue": {"number": 4, "user": {"login": "alice"}, "labels": []}, "repository": _REPO},
+    ),
+    (
+        "issues.opened[port] -> reopened",
+        "issues",
+        {
+            "action": "reopened",
+            "issue": {"number": 4, "user": {"login": "radar"}, "labels": [{"name": PORT_LABEL}]},
+            "repository": _REPO,
+        },
+    ),
+    (
+        "issues.labeled[triage] -> unrelated label",
+        "issues",
+        {
+            "action": "labeled",
+            "label": {"name": "wontfix"},
+            "issue": {"number": 4, "user": {"login": "alice"}, "labels": [{"name": "wontfix"}]},
+            "repository": _REPO,
+        },
+    ),
+    (
+        "issues.labeled[port] -> unrelated label",
+        "issues",
+        {
+            "action": "labeled",
+            "label": {"name": "wontfix"},
+            "issue": {"number": 4, "user": {"login": "radar"}, "labels": [{"name": "wontfix"}]},
+            "repository": _REPO,
+        },
+    ),
+    (
+        "issues.closed -> deleted",
+        "issues",
+        {"action": "deleted", "issue": {"number": 4, "user": {"login": "alice"}, "labels": []}, "repository": _REPO},
+    ),
+    (
+        "issue_comment.created -> edited",
+        "issue_comment",
+        {
+            "action": "edited",
+            "issue": {"number": 4, "user": {"login": "alice"}},
+            "comment": {"body": "ping", "user": {"login": "alice"}},
+            "repository": _REPO,
+        },
+    ),
+    (
+        "issue_comment.created[bot PR] -> contributor PR",
+        "issue_comment",
+        {
+            "action": "created",
+            "issue": {"number": 90, "user": {"login": "contributor"}, "pull_request": {"url": "x"}},
+            "comment": {"body": "ping", "user": {"login": "alice"}},
+            "repository": _REPO,
+        },
+    ),
+    (
+        "pull_request.opened -> synchronize",
+        "pull_request",
+        {
+            "action": "synchronize",
+            "pull_request": {"number": 91, "state": "open", "draft": False, "user": {"login": "alice"}},
+            "repository": _REPO,
+        },
+    ),
+    (
+        "pull_request.closed -> locked",
+        "pull_request",
+        {
+            "action": "locked",
+            "pull_request": {"number": 91, "merged": False, "user": {"login": "alice"}},
+            "repository": _REPO,
+        },
+    ),
+    (
+        "pull_request_review_comment.created -> edited",
+        "pull_request_review_comment",
+        {
+            "action": "edited",
+            "pull_request": {"number": 92, "user": {"login": _BOT}},
+            "comment": {"body": "nit", "user": {"login": "alice"}},
+            "repository": _REPO,
+        },
+    ),
+    (
+        "check_suite.completed -> green suite",
+        "check_suite",
+        {
+            "action": "completed",
+            "check_suite": {
+                "conclusion": "success",
+                "head_sha": "deadbeef",
+                "pull_requests": [{"number": 93, "user": {"login": _BOT}}],
+            },
+            "repository": _REPO,
+        },
+    ),
+    (
+        "check_suite.completed -> human-authored PR",
+        "check_suite",
+        {
+            "action": "completed",
+            "check_suite": {
+                "conclusion": "failure",
+                "head_sha": "deadbeef",
+                "pull_requests": [{"number": 93, "user": {"login": "contributor"}}],
+            },
+            "repository": _REPO,
+        },
+    ),
+    (
+        "check_suite.completed -> PR maps to no tracked issue",
+        "check_suite",
+        {
+            "action": "completed",
+            "check_suite": {
+                "conclusion": "failure",
+                "head_sha": "deadbeef",
+                "pull_requests": [{"number": 404, "user": {"login": _BOT}}],
+            },
+            "repository": _REPO,
+        },
+    ),
+]
+
+
+@pytest.mark.parametrize(("label", "event_type", "payload"), _ROUTER_SKIPS, ids=[e[0] for e in _ROUTER_SKIPS])
+@pytest.mark.asyncio
+async def test_no_payload_route_skips_is_dispatched_to_a_task(
+    settings: Settings,
+    db: Database,
+    monkeypatch: pytest.MonkeyPatch,
+    label: str,
+    event_type: str,
+    payload: dict,
+) -> None:
+    """FILTER agreement, the sibling of
+    `test_every_queueable_event_reaches_the_task_route_named`.
+
+    That test proves a queued pair reaches the task `route` named. It says
+    nothing about the payloads `route` REFUSES, and that omission is the hole
+    the check_suite and PR-comment divergences lived in: `_dispatch` re-derives
+    the handler from `(event_type, action)` off a stored row, so the router's
+    filters were the ONLY thing standing between a replayed row and a task.
+    Every entry below is a payload `route` skips; none may reach a task through
+    the REAL `_dispatch`.
+
+    Coverage is at least one entry per queueable `(event_type, action)` pair,
+    spanning both action-level refusals (catching a dispatch arm widened to an
+    action `route` never queues) and the shared predicates
+    `is_port_upstream_event`, `is_triage_label_event`, `is_pr_conversation_event`
+    and `ci_repair_event`.
+
+    Deliberately NOT covered, because the dispatcher is not contracted to
+    re-apply them: receipt-time policy (`repo_allowlist`, per-user rate
+    limiting, the `port_upstream`/`pr_review` kill switches) and
+    `triage_trigger` — `manual_triage.enqueue_manual_triage` writes synthetic
+    `issues.opened` rows precisely so the dispatcher WILL run them under
+    `triage_trigger=label`, which
+    `test_dispatch_manual_issues_opened_row_triages_even_in_label_mode` pins.
+    """
+    reached: list[str] = []
+    for name in _TASK_NAMES:
+        monkeypatch.setattr(tasks, name, _appender(reached, name))
+    # PR 93 is tracked, PR 404 is not: the "maps to no tracked issue" entry has
+    # to fail on the mapping and nothing else.
+    _seed_pr_mapping(db, 93)
+
+    decision = _route(settings, db, event_type, payload)
+    assert not decision.should_queue, f"{label} no longer skips; move it to _QUEUEABLE_EVENTS"
+
+    row = _stored_row(f"skip-{label}", event_type, payload, decision.issue_key)
+    await _make_pool(settings, db)._dispatch(row)  # noqa: SLF001
+
+    assert reached == [], f"{label} was skipped by route ({decision.reason}) but dispatched to {reached}"
