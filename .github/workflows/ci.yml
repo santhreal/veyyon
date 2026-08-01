@@ -903,8 +903,11 @@ jobs:
                   cat "$api_error" >&2
                   exit "$api_status"
                 fi
+                # ci-release-notes.ts already includes every commit and enforces
+                # GitHub's body limit. Appending generated notes duplicates that
+                # history and can push an otherwise valid draft over the limit.
                 gh release create "$tag" --draft --verify-tag --target "$RELEASE_SHA" \
-                  --title "$tag" --notes-file release-notes.md --generate-notes
+                  --title "$tag" --notes-file release-notes.md
                 release_json="$(gh api "repos/$repo/releases/tags/$tag")"
               fi
 
