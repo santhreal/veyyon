@@ -50,9 +50,54 @@ services:
       VEYBOT_PR_REVIEW_ENABLED: ${VEYBOT_PR_REVIEW_ENABLED:-true}
 
       # --- model selection ---
-      VEYBOT_MODEL: ${VEYBOT_MODEL:-anthropic/claude-sonnet-4-6}
+      VEYBOT_MODEL: ${VEYBOT_MODEL:-gemini-3.6-flash-medium}
       VEYBOT_PROVIDER: ${VEYBOT_PROVIDER:-}
-      VEYBOT_THINKING: ${VEYBOT_THINKING:-high}
+      VEYBOT_THINKING: ${VEYBOT_THINKING:-off}
+
+      # --- agent provider routing ---
+      # veybot generates ~/.veyyon/agent/models.yml from these (src/agent_models.py).
+      # VEYBOT_LLM_API_KEY must reach the container: the generated file names this
+      # variable rather than storing the secret, and veyyon reads it from the env.
+      # In the container the gateway is always the host proxy (see extra_hosts),
+      # so that is the default rather than the "unmanaged routing" empty value.
+      VEYBOT_LLM_BASE_URL: ${VEYBOT_LLM_BASE_URL:-http://llm-gateway.internal:4000/v1}
+      VEYBOT_LLM_API_KEY: ${VEYBOT_LLM_API_KEY:-}
+      VEYBOT_LLM_API: ${VEYBOT_LLM_API:-openai-completions}
+      VEYBOT_LLM_PROVIDER_ID: ${VEYBOT_LLM_PROVIDER_ID:-veybot-gateway}
+
+      # --- triage / port / CI-repair switches ---
+      VEYBOT_TRIAGE_TRIGGER: ${VEYBOT_TRIAGE_TRIGGER:-label}
+      VEYBOT_TRIAGE_LABEL: ${VEYBOT_TRIAGE_LABEL:-veybot}
+      VEYBOT_PORT_UPSTREAM_ENABLED: ${VEYBOT_PORT_UPSTREAM_ENABLED:-true}
+      VEYBOT_PORT_LABEL: ${VEYBOT_PORT_LABEL:-upstream-port}
+      VEYBOT_CI_REPAIR_ENABLED: ${VEYBOT_CI_REPAIR_ENABLED:-true}
+      VEYBOT_CI_MAX_REPAIRS: ${VEYBOT_CI_MAX_REPAIRS:-3}
+      VEYBOT_AGENT_PROFILE: ${VEYBOT_AGENT_PROFILE:-veybot}
+
+      # --- project adaptation ---
+      # These are what let veybot service a project whose toolchain is not bun.
+      # Stranding them here silently pins the container to this repo's defaults.
+      VEYBOT_PROJECT_MARKERS: ${VEYBOT_PROJECT_MARKERS:-package.json,bun.lock}
+      VEYBOT_WORKSPACE_BOOTSTRAP_COMMAND: ${VEYBOT_WORKSPACE_BOOTSTRAP_COMMAND:-bun install --frozen-lockfile --ignore-scripts}
+      VEYBOT_WORKSPACE_BOOTSTRAP_TIMEOUT_SECONDS: ${VEYBOT_WORKSPACE_BOOTSTRAP_TIMEOUT_SECONDS:-300}
+      VEYBOT_PRE_PR_FIX_COMMAND: ${VEYBOT_PRE_PR_FIX_COMMAND:-bun run fix}
+      VEYBOT_PRE_PR_CHECK_COMMAND: ${VEYBOT_PRE_PR_CHECK_COMMAND:-bun check}
+      VEYBOT_SLOT_EXTRA_GROUP: ${VEYBOT_SLOT_EXTRA_GROUP:-veyyon}
+
+      # --- event retry / shutdown / reminders ---
+      VEYBOT_EVENT_MAX_RETRIES: ${VEYBOT_EVENT_MAX_RETRIES:-3}
+      VEYBOT_EVENT_RETRY_DELAYS_SECONDS: ${VEYBOT_EVENT_RETRY_DELAYS_SECONDS:-30,120,600}
+      VEYBOT_QUESTION_AUTOCLOSE_MAX_RETRIES: ${VEYBOT_QUESTION_AUTOCLOSE_MAX_RETRIES:-5}
+      VEYBOT_TASK_COMPLETION_MAX_REMINDERS: ${VEYBOT_TASK_COMPLETION_MAX_REMINDERS:-2}
+      VEYBOT_SHUTDOWN_DRAIN_TIMEOUT_SECONDS: ${VEYBOT_SHUTDOWN_DRAIN_TIMEOUT_SECONDS:-25}
+      VEYBOT_SHUTDOWN_KILL_TIMEOUT_SECONDS: ${VEYBOT_SHUTDOWN_KILL_TIMEOUT_SECONDS:-5}
+
+      # --- veyyon-natives build cache ---
+      VEYBOT_NATIVES_CACHE_ENABLED: ${VEYBOT_NATIVES_CACHE_ENABLED:-true}
+      VEYBOT_NATIVES_CACHE_ROOT: ${VEYBOT_NATIVES_CACHE_ROOT:-/data/cache/veyyon-natives}
+      VEYBOT_NATIVES_CACHE_MAX_BYTES: ${VEYBOT_NATIVES_CACHE_MAX_BYTES:-4294967296}
+      VEYBOT_NATIVES_CACHE_MAX_ENTRIES_PER_REPO: ${VEYBOT_NATIVES_CACHE_MAX_ENTRIES_PER_REPO:-8}
+      VEYBOT_NATIVES_CACHE_GC_INTERVAL_SECONDS: ${VEYBOT_NATIVES_CACHE_GC_INTERVAL_SECONDS:-3600}
 
       # --- runtime tuning ---
       VEYBOT_MAX_CONCURRENCY: ${VEYBOT_MAX_CONCURRENCY:-8}
@@ -95,7 +140,10 @@ services:
       # root-owned, world-readable files under /srv/agent-home; the agent
       # subprocess runs with HOME=/srv/agent-home, so ~/.veyyon and ~/.agent
       # resolve there without exposing mutable host mounts.
-      - ${HOME}/.veyyon/agent/models.container.yml:/srv/agent-home-stage/.veyyon/agent/models.yml:ro
+      #
+      # models.yml is NOT mounted: veybot generates it into the runtime HOME
+      # from VEYBOT_LLM_* in .env (see src/agent_models.py), so provider routing
+      # is one config surface and a fresh machine needs no hand-written file.
       - ${HOME}/.agent/AGENT.md:/srv/agent-home-stage/.agent/AGENTS.md:ro
       - ${HOME}/.agent/rules:/srv/agent-home-stage/.agent/rules:ro
     ports:
@@ -135,6 +183,10 @@ services:
       # Bind on the internal network only.
       VEYBOT_GH_PROXY_BIND_HOST: 0.0.0.0
       VEYBOT_GH_PROXY_BIND_PORT: 8081
+      # Proxy-side limits. Stranded, these silently pinned the container to the
+      # code defaults no matter what the operator wrote in `.env`.
+      VEYBOT_GH_PROXY_GIT_TIMEOUT_SECONDS: ${VEYBOT_GH_PROXY_GIT_TIMEOUT_SECONDS:-60}
+      VEYBOT_GH_PROXY_MAX_BODY_BYTES: ${VEYBOT_GH_PROXY_MAX_BODY_BYTES:-1048576}
       # Settings still requires these on construction; the proxy never uses
       # them but the validator runs the same code path as the orchestrator.
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:?GITHUB_WEBHOOK_SECRET must be set in .env}
