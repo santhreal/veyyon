@@ -6,9 +6,13 @@ import hmac
 import pytest
 
 from veybot.github_events import (
+    ci_repair_event,
     extract_mention,
     is_implementation_authorizer,
     is_maintainer,
+    is_pr_comment_event,
+    is_pr_conversation_event,
+    pull_request_close_state,
     rate_limit_cap,
     route,
     verify_signature,
@@ -1554,3 +1558,193 @@ def test_label_triggered_triage_carries_the_author_association() -> None:
         )
         is None
     )
+
+
+# ---- predicates shared with queue.WorkerPool._dispatch ----
+#
+# `route` and the dispatcher derive their handler independently; these three
+# predicates are the only copy of the filters that used to exist twice. The
+# tests below pin each predicate's own contract AND pin `route`'s decision to
+# the predicate's verdict, so re-inlining a condition on either side shows up
+# here rather than as a replayed row getting less filtering than a live one.
+
+
+def _tracked(repo_full: str, pr_number: int) -> str | None:
+    """Stand-in for `db.find_issue_by_pr`: only PR #90 has a tracking issue."""
+    return f"{repo_full}#42" if pr_number == 90 else None
+
+
+def _pr_comment(author: str, *, on_pull_request: bool = True) -> dict:
+    issue: dict = {"number": 90, "user": {"login": author}}
+    if on_pull_request:
+        issue["pull_request"] = {"url": "https://api.github.com/repos/octo/widget/pulls/90"}
+    return {
+        "action": "created",
+        "issue": issue,
+        "comment": {"body": "please rebase", "user": {"login": "alice"}},
+        "repository": {"full_name": "octo/widget"},
+    }
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_reason"),
+    [
+        (_check_suite_payload(conclusion="success"), "check_suite conclusion success is not a failure"),
+        (_check_suite_payload(conclusion=""), "check_suite conclusion (none) is not a failure"),
+        (_check_suite_payload(author_name="contributor"), "check_suite PR #90 not authored by bot"),
+        (_check_suite_payload(pull_requests=({"number": 404},)), "check_suite PR #404 maps to no tracked issue"),
+        ({"action": "completed", "repository": {"full_name": "octo/widget"}}, "check_suite payload has no suite"),
+    ],
+)
+def test_ci_repair_event_rejects_with_the_reason_that_names_the_filter(payload: dict, expected_reason: str) -> None:
+    """`reason` is not decoration: the dispatcher writes it into
+    `events.last_error` when it parks a replayed row as `skipped`. If every
+    rejection returned the same text, an operator reading the events table
+    could not tell a green suite from a repair aimed at a stranger's branch.
+    """
+    verdict = ci_repair_event(payload, bot_login=BOT, resolve_issue_from_pr=_tracked)
+    assert not verdict.admitted
+    assert verdict.issue_key is None
+    assert verdict.reason == expected_reason
+
+
+def test_ci_repair_event_admits_a_red_bot_suite_with_the_resolved_tracking_issue() -> None:
+    """The admitted verdict carries the TRACKING issue, never `repo#<pr>`: the
+    repair counts attempts against that issue and reuses its workspace. A
+    guessed fallback key would invent a row and silently reset the attempt
+    budget, so `VEYBOT_CI_MAX_REPAIRS` would stop capping anything.
+    """
+    verdict = ci_repair_event(_check_suite_payload(), bot_login=BOT, resolve_issue_from_pr=_tracked)
+    assert verdict.admitted
+    assert verdict.issue_key == "octo/widget#42"
+    assert verdict.reason == "check_suite.completed failure on PR #90"
+
+
+def test_ci_repair_event_admits_nothing_without_a_resolver() -> None:
+    """The issue mapping is a hard dependency of the filter, not an optional
+    enrichment. A caller that cannot resolve gets a skip — this is what stops a
+    second caller from "sharing" the chain while quietly dropping its last step
+    to keep the signature tidy.
+    """
+    verdict = ci_repair_event(_check_suite_payload(), bot_login=BOT, resolve_issue_from_pr=None)
+    assert not verdict.admitted
+    assert verdict.reason == "check_suite PR #90 maps to no tracked issue"
+
+
+_CHECK_SUITE_CASES = [
+    ("red bot suite", _check_suite_payload()),
+    ("green suite", _check_suite_payload(conclusion="success")),
+    ("human-authored PR", _check_suite_payload(author_name="contributor")),
+    ("unmapped PR", _check_suite_payload(pull_requests=({"number": 404},))),
+    ("no suite", {"action": "completed", "repository": {"full_name": "octo/widget"}}),
+]
+
+
+@pytest.mark.parametrize(("label", "payload"), _CHECK_SUITE_CASES, ids=[c[0] for c in _CHECK_SUITE_CASES])
+def test_route_check_suite_decision_is_exactly_the_shared_verdict(label: str, payload: dict) -> None:
+    """`route` and `queue.WorkerPool._dispatch` must reach the same answer on
+    the same row, and they only can while `route` delegates instead of keeping
+    a second copy of the chain. Re-inlining any condition — or giving one side
+    a filter the other lacks — shows up here.
+    """
+    verdict = ci_repair_event(payload, bot_login=BOT, resolve_issue_from_pr=_tracked)
+    decision = route("check_suite", payload, allowlist=ALLOWLIST, bot_login=BOT, resolve_issue_from_pr=_tracked)
+    assert decision.should_queue is verdict.admitted, label
+    assert decision.reason == verdict.reason
+    assert decision.issue_key == verdict.issue_key
+
+
+def test_ci_repair_kill_switch_lives_inside_the_shared_predicate() -> None:
+    """`VEYBOT_CI_REPAIR_ENABLED=false` has to hold on both sides, or replaying
+    a row queued before the switch was thrown restarts the very task the
+    operator turned off.
+    """
+    payload = _check_suite_payload()
+    verdict = ci_repair_event(payload, bot_login=BOT, resolve_issue_from_pr=_tracked, ci_repair_enabled=False)
+    decision = route(
+        "check_suite",
+        payload,
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        resolve_issue_from_pr=_tracked,
+        ci_repair_enabled=False,
+    )
+    assert not verdict.admitted
+    assert verdict.reason == "CI repair disabled"
+    assert decision.reason == verdict.reason
+
+
+def test_is_pr_conversation_event_requires_a_bot_authored_pull_request() -> None:
+    """The dispatcher selects `handle_pr_conversation` off this predicate and
+    nothing else. True on a contributor's PR resumes an amend-and-push session
+    against a branch veybot does not own.
+    """
+    assert is_pr_conversation_event(_pr_comment(BOT), bot_login=BOT)
+    assert not is_pr_conversation_event(_pr_comment("contributor"), bot_login=BOT)
+
+
+def test_is_pr_conversation_event_normalizes_the_bot_suffix_and_case() -> None:
+    """GitHub App installs deliver `veybot[bot]`, and login case is not
+    guaranteed. A literal comparison would make the bot ignore comments on its
+    own pull requests, so every follow-up on a candidate would fall silent.
+    """
+    assert is_pr_conversation_event(_pr_comment("RobVeybot[bot]"), bot_login=BOT)
+
+
+def test_is_pr_conversation_event_is_false_for_a_plain_issue_comment() -> None:
+    """Plain issue comments belong to `handle_comment`. True here would route
+    them into the PR workflow, which has no candidate branch to push to.
+    """
+    payload = _pr_comment(BOT, on_pull_request=False)
+    assert not is_pr_comment_event(payload)
+    assert not is_pr_conversation_event(payload, bot_login=BOT)
+
+
+def test_is_pr_comment_event_tolerates_a_malformed_issue() -> None:
+    """This runs on the webhook request path. A payload whose `issue` is not an
+    object must degrade to "not a PR comment" rather than raise, or one
+    malformed delivery 500s the endpoint and takes the batch with it.
+    """
+    assert not is_pr_comment_event({"issue": "nope"})
+    assert not is_pr_comment_event({})
+
+
+@pytest.mark.parametrize("author", [BOT, "contributor"])
+def test_route_pr_comment_decision_follows_the_shared_predicate(author: str) -> None:
+    """Pins `route`'s admit/skip on a PR comment to the predicate the
+    dispatcher uses, so the two cannot disagree about whose pull request this
+    is.
+    """
+    payload = _pr_comment(author)
+    decision = route("issue_comment", payload, allowlist=ALLOWLIST, bot_login=BOT)
+    assert decision.should_queue is is_pr_conversation_event(payload, bot_login=BOT)
+    if decision.should_queue:
+        assert decision.task == "handle_pr_conversation"
+    else:
+        assert decision.reason == "incoming PR comments ignored"
+
+
+@pytest.mark.parametrize(("merged", "expected"), [(True, "merged"), (False, "closed")])
+def test_pull_request_close_state_is_the_state_named_in_the_router_reason(merged: bool, expected: str) -> None:
+    """`route` words its queue reason from this and `_dispatch` derives
+    `cleanup_workspace`'s target issue state from it. One function, so a merged
+    candidate can never be filed as `closed` on one side only — which is how a
+    shipped PR would read as abandoned on the dashboard.
+    """
+    payload = {
+        "action": "closed",
+        "pull_request": {"number": 91, "merged": merged},
+        "repository": {"full_name": "octo/widget"},
+    }
+    assert pull_request_close_state(payload) == expected
+    decision = route("pull_request", payload, allowlist=ALLOWLIST, bot_login=BOT)
+    assert decision.reason == f"pull_request.{expected}"
+
+
+def test_pull_request_close_state_falls_back_to_closed() -> None:
+    """Fails toward `closed`: claiming a merge we cannot actually see would
+    mark an abandoned issue as shipped, and there is no merge path in this tree
+    that could have produced one.
+    """
+    assert pull_request_close_state({"action": "closed"}) == "closed"
+    assert pull_request_close_state({"action": "closed", "pull_request": "nope"}) == "closed"

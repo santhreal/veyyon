@@ -281,6 +281,73 @@ def is_triage_label_event(payload: Mapping[str, Any], *, triage_trigger: str, tr
     return _added_label_name(payload) == triage_label
 
 
+def _comment_issue(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The `issue` object on an `issue_comment` payload, or an empty mapping.
+
+    A malformed `issue` degrades to "no issue" rather than raising: this runs
+    on the webhook request path, where a `TypeError` would 500 the endpoint
+    and take every other event down with it.
+    """
+    issue = payload.get("issue")
+    return issue if isinstance(issue, Mapping) else {}
+
+
+def is_pr_comment_event(payload: Mapping[str, Any]) -> bool:
+    """Whether this `issue_comment` payload is a comment on a pull request.
+
+    GitHub delivers PR conversation comments as `issue_comment`; the only
+    discriminator is the `pull_request` stub hung off the issue object. `route`
+    and `queue.WorkerPool._dispatch` both need it to choose between
+    `handle_comment` and `handle_pr_conversation`, so both call this.
+    """
+    return "pull_request" in _comment_issue(payload)
+
+
+def is_pr_conversation_event(payload: Mapping[str, Any], *, bot_login: str) -> bool:
+    """Whether this `issue_comment` payload resumes a BOT-AUTHORED pull request.
+
+    `route` asks this to admit the comment; `queue.WorkerPool._dispatch` asks
+    it again to pick the handler off the stored EventRow, because the
+    dispatcher re-derives from `(event_type, action)` and never sees the
+    `RouteDecision`. They MUST agree — and they did not. The dispatcher used
+    to select `handle_pr_conversation` on `is_pr_comment_event` ALONE, so a
+    REPLAYED comment on a contributor's pull request started an
+    amend-and-push agent on a branch we do not own, on a row the router had
+    already refused with "incoming PR comments ignored".
+
+    Conversation comments on incoming contributor PRs are intentionally
+    ignored for now: the one-shot review runs on open, and re-review
+    directives are not wired yet. Only bot-authored PRs resume a live
+    amend-and-push workflow, and on an `issue_comment` payload `issue.user` is
+    the pull request's author.
+    """
+    issue = _comment_issue(payload)
+    if "pull_request" not in issue:
+        return False
+    user = issue.get("user")
+    login = str(user.get("login") or "") if isinstance(user, Mapping) else ""
+    return _login_matches_bot(login, bot_login)
+
+
+PullRequestCloseState = Literal["merged", "closed"]
+
+
+def pull_request_close_state(payload: Mapping[str, Any]) -> PullRequestCloseState:
+    """How a `pull_request.closed` payload ended: merged, or closed unmerged.
+
+    `route` turns this into the queue reason (`pull_request.merged` versus
+    `pull_request.closed`); `queue.WorkerPool._dispatch` turns it into the
+    `cleanup_workspace` target issue state. Both used to recompute
+    `bool(pull_request.merged)` on their own and agreed only by construction.
+    One function makes them agree by contract, so a future refinement cannot
+    land on one side only and file a shipped candidate under `closed` — which
+    is how a merged PR would come to look abandoned on the dashboard.
+    """
+    pr = payload.get("pull_request")
+    merged = bool(pr.get("merged")) if isinstance(pr, Mapping) else False
+    return "merged" if merged else "closed"
+
+
 def _check_suite_bot_authored(suite: Mapping[str, Any], pr: Mapping[str, Any], bot_login: str) -> bool:
     """Whether the branch this check suite ran on belongs to the bot.
 
@@ -306,6 +373,78 @@ def _check_suite_bot_authored(suite: Mapping[str, Any], pr: Mapping[str, Any], b
         if _login_matches_bot(str(author.get(field) or ""), bot_login):
             return True
     return False
+
+
+@dataclass(slots=True, frozen=True)
+class CiRepairEvent:
+    """The verdict of the `check_suite.completed` -> `ci_repair` filter chain.
+
+    `issue_key` is the tracking issue the repair runs against, and is set
+    exactly when every filter passed. `reason` is always populated: `route`
+    uses it as the skip reason or the queue reason, and the dispatcher writes
+    it into `events.last_error` when it skips a replayed row.
+    """
+
+    issue_key: str | None
+    reason: str
+
+    @property
+    def admitted(self) -> bool:
+        """Whether `ci_repair` may run on this payload."""
+        return self.issue_key is not None
+
+
+def ci_repair_event(
+    payload: Mapping[str, Any],
+    *,
+    bot_login: str,
+    resolve_issue_from_pr: PrIssueResolver,
+    ci_repair_enabled: bool = True,
+) -> CiRepairEvent:
+    """Whether a `check_suite.completed` payload warrants a `ci_repair` run.
+
+    `route` asks this to admit the event; `queue.WorkerPool._dispatch` asks it
+    again to pick the handler off the stored EventRow, because the dispatcher
+    re-derives from `(event_type, action)` and never sees the `RouteDecision`.
+    They MUST agree — and they did not. The dispatcher used to run `ci_repair`
+    on EVERY stored `(check_suite, completed)` row, applying none of these
+    filters, so a REPLAYED green suite — or one on a human contributor's pull
+    request — reached the repair agent that the router had refused.
+
+    `resolve_issue_from_pr` is a hard dependency, not a nicety, and both sides
+    supply the real one: the webhook path closes over the request's
+    `Database`, and the dispatcher passes `WorkerPool._resolve_issue_from_pr`.
+    Both are `db.find_issue_by_pr`. There is deliberately no
+    `issue_key(repo, pr)` fallback — that invents `repo#<pr>` for a PR we have
+    no row for, and a repair needs the real tracking issue to count its
+    attempts against and to reuse the candidate's workspace.
+
+    The repository is read back out of the payload instead of being passed in,
+    so the two callers cannot disagree about which repo a PR number belongs to.
+    """
+    if not ci_repair_enabled:
+        return CiRepairEvent(None, "CI repair disabled")
+    suite = payload.get("check_suite")
+    if not isinstance(suite, Mapping):
+        return CiRepairEvent(None, "check_suite payload has no suite")
+    conclusion = str(suite.get("conclusion") or "")
+    if conclusion not in FAILING_CHECK_CONCLUSIONS:
+        return CiRepairEvent(None, f"check_suite conclusion {conclusion or '(none)'} is not a failure")
+    raw_prs = suite.get("pull_requests")
+    prs = raw_prs if isinstance(raw_prs, (list, tuple)) else ()
+    pr = prs[0] if prs and isinstance(prs[0], Mapping) else None
+    if pr is None:
+        return CiRepairEvent(None, "check_suite has no pull requests")
+    number = pr.get("number")
+    if not isinstance(number, int):
+        return CiRepairEvent(None, "check_suite PR missing number")
+    if not _check_suite_bot_authored(suite, pr, bot_login):
+        return CiRepairEvent(None, f"check_suite PR #{number} not authored by bot")
+    repo = _repo_full_name(payload)
+    key = resolve_issue_from_pr(repo, number) if resolve_issue_from_pr is not None and repo else None
+    if not key:
+        return CiRepairEvent(None, f"check_suite PR #{number} maps to no tracked issue")
+    return CiRepairEvent(key, f"check_suite.completed {conclusion} on PR #{number}")
 
 
 def _pr_review_pr(pr: Mapping[str, Any], repo: str, action: str, bot_login: str) -> RouteDecision:
@@ -486,7 +625,7 @@ def route(
         number = issue.get("number")
         if not isinstance(number, int):
             return RouteDecision("skip", None, repo, None, "comment missing issue number")
-        if "pull_request" in issue:
+        if is_pr_comment_event(payload):
             # Conversation comments on incoming contributor PRs are intentionally
             # ignored for now: the one-shot review runs on open, and re-review
             # directives are not wired yet. Only bot-authored PRs resume a live
@@ -494,9 +633,7 @@ def route(
             key = _resolve_pr_key(number)
             login, assoc = _submitter_info(comment)
             assoc = _effective_association(login, assoc, payload.get("repository"), repo)
-            issue_user_raw = issue.get("user")
-            issue_user = issue_user_raw if isinstance(issue_user_raw, Mapping) else {}
-            if _login_matches_bot(str(issue_user.get("login") or ""), bot_login):
+            if is_pr_conversation_event(payload, bot_login=bot_login):
                 return RouteDecision(
                     "queue",
                     "handle_pr_conversation",
@@ -559,39 +696,21 @@ def route(
         number = pr.get("number")
         if not isinstance(number, int):
             return RouteDecision("skip", None, repo, None, "PR missing number")
-        reason = "pull_request.merged" if bool(pr.get("merged")) else "pull_request.closed"
+        reason = f"pull_request.{pull_request_close_state(payload)}"
         return RouteDecision("queue", "cleanup_workspace", repo, _resolve_pr_key(number), reason)
 
     if event_type == "check_suite" and action == "completed":
-        if not ci_repair_enabled:
-            return RouteDecision("skip", None, repo, None, "CI repair disabled")
-        suite = payload.get("check_suite")
-        if not isinstance(suite, Mapping):
-            return RouteDecision("skip", None, repo, None, "check_suite payload has no suite")
-        conclusion = str(suite.get("conclusion") or "")
-        if conclusion not in FAILING_CHECK_CONCLUSIONS:
-            return RouteDecision(
-                "skip", None, repo, None, f"check_suite conclusion {conclusion or '(none)'} is not a failure"
-            )
-        raw_prs = suite.get("pull_requests")
-        prs = raw_prs if isinstance(raw_prs, (list, tuple)) else ()
-        pr = prs[0] if prs and isinstance(prs[0], Mapping) else None
-        if pr is None:
-            return RouteDecision("skip", None, repo, None, "check_suite has no pull requests")
-        number = pr.get("number")
-        if not isinstance(number, int):
-            return RouteDecision("skip", None, repo, None, "check_suite PR missing number")
-        if not _check_suite_bot_authored(suite, pr, bot_login):
-            return RouteDecision("skip", None, repo, None, f"check_suite PR #{number} not authored by bot")
-        # No `_resolve_pr_key` fallback here: that invents `repo#<pr>` for a PR
-        # we have no row for, and a repair needs the real tracking issue to
-        # count its attempts against and to reuse the candidate's workspace.
-        key = resolve_issue_from_pr(repo, number) if resolve_issue_from_pr is not None else None
-        if not key:
-            return RouteDecision("skip", None, repo, None, f"check_suite PR #{number} maps to no tracked issue")
+        verdict = ci_repair_event(
+            payload,
+            bot_login=bot_login,
+            resolve_issue_from_pr=resolve_issue_from_pr,
+            ci_repair_enabled=ci_repair_enabled,
+        )
+        if not verdict.admitted:
+            return RouteDecision("skip", None, repo, None, verdict.reason)
         # Lifecycle event, not a user submission: no rate-limit subject, same
         # as `cleanup_workspace`.
-        return RouteDecision("queue", "ci_repair", repo, key, f"check_suite.completed {conclusion} on PR #{number}")
+        return RouteDecision("queue", "ci_repair", repo, verdict.issue_key, verdict.reason)
 
     return RouteDecision("skip", None, repo, None, f"{event_type}.{action} not handled")
 
@@ -625,15 +744,21 @@ def rate_limit_cap(
 
 
 __all__ = [
+    "CiRepairEvent",
     "Decision",
     "FAILING_CHECK_CONCLUSIONS",
+    "PullRequestCloseState",
     "RouteDecision",
     "TRUSTED_ASSOCIATIONS",
+    "ci_repair_event",
     "extract_mention",
     "is_maintainer",
     "is_implementation_authorizer",
     "is_port_upstream_event",
+    "is_pr_comment_event",
+    "is_pr_conversation_event",
     "is_triage_label_event",
+    "pull_request_close_state",
     "rate_limit_cap",
     "route",
     "verify_signature",
