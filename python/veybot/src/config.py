@@ -109,6 +109,24 @@ class Settings(BaseSettings):
     provider: str | None = Field(None, alias="VEYBOT_PROVIDER")
     thinking_level: ThinkingLevel = Field("off", alias="VEYBOT_THINKING")
 
+    # Agent provider routing. The agent reads its providers from
+    # `~/.veyyon/agent/models.yml`; veybot GENERATES that file from these keys
+    # (see `agent_models.py`) rather than requiring a hand-written second config
+    # file bind-mounted from the host. That file was undeclared, unvalidated,
+    # missing on a fresh machine (so compose failed on the mount source), and
+    # free to disagree with `VEYBOT_MODEL` after a model change.
+    #
+    # Leave `llm_base_url` EMPTY to say "veybot does not manage routing", which
+    # is right for a native run on a machine whose veyyon profile is already
+    # configured. Set it and veybot owns the file.
+    llm_base_url: str = Field("", alias="VEYBOT_LLM_BASE_URL")
+    # NOTE: the generated yaml stores the NAME of this variable, never its
+    # value, so the credential stays in the process environment (where the agent
+    # needs it anyway) instead of landing on disk.
+    llm_api_key: SecretStr | None = Field(None, alias="VEYBOT_LLM_API_KEY")
+    llm_api: str = Field("openai-completions", alias="VEYBOT_LLM_API")
+    llm_provider_id: str = Field("veybot-gateway", alias="VEYBOT_LLM_PROVIDER_ID")
+
     # Runtime
     max_concurrency: int = Field(8, alias="VEYBOT_MAX_CONCURRENCY")
     task_timeout_seconds: float = Field(2400.0, alias="VEYBOT_TASK_TIMEOUT_SECONDS")

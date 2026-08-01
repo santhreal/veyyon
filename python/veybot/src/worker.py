@@ -31,6 +31,7 @@ from veyyon_rpc import (
 )
 
 from veybot import host_tools, persona, pragmas
+from veybot.agent_models import write_agent_models_config
 from veybot.cancellation import register_cancel_hook, unregister_cancel_hook
 from veybot.config import Settings
 from veybot.db import Database, issue_key
@@ -247,12 +248,15 @@ def _build_extra_env(settings: Settings) -> dict[str, str]:
     strings for the sensitive keys is what actually masks them in the
     child — `del` on the parent's env would not help us here.
     """
-    del settings  # kept for future hooks (model-specific env, etc.)
     _stage_agent_home()
     _ensure_agent_run_dir()
     env = dict.fromkeys(_SCRUBBED_ENV_KEYS, "")
     if _AGENT_HOME.is_dir():
         env["HOME"] = str(_AGENT_HOME)
+        # Generated AFTER staging so it wins over any stale copied file, and
+        # every launch so a `VEYBOT_MODEL` change cannot leave the agent
+        # routing to a model the pool no longer contains.
+        write_agent_models_config(settings, _AGENT_HOME)
     return env
 
 
