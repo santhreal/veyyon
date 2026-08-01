@@ -478,8 +478,12 @@ describe("required publication artifacts", () => {
 		const step = wf.jobs.release_github.steps.find(
 			(candidate: { name?: string }) => candidate.name === "Verify the exact draft asset manifest",
 		);
+		const draft = wf.jobs.release_github.steps.find((candidate: { id?: string }) => candidate.id === "draft");
 		expect(step).toBeDefined();
 		expect(step.env.GH_TOKEN).toBeDefined();
+		expect(draft.run).toContain('gh api --method POST "repos/$repo/releases"');
+		expect(draft.run).toContain("-F draft=true -F prerelease=false -F body=@release-notes.md");
+		expect(draft.run).not.toContain("gh release create");
 	});
 
 	/** Existing release metadata is mutable; only the Git tag ref proves the immutable SHA. */
