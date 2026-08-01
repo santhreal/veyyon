@@ -7,8 +7,8 @@
  * history, because the only machine readers of this subject are five workflows
  * that test the PREFIX `chore: bump version to ` — a prefix both forms satisfy.
  * So the defect was invisible to CI and visible only to a human reading a tag
- * list, and `scripts/release.sh verify` now reports it as a hard FAIL on both
- * v1.0.37 and v1.0.38.
+ * list, and nothing in the pipeline compared the committed subject against the
+ * mandated one. This file is that comparison.
  *
  * These tests pin both halves of the contract at once: the exact mandated form,
  * and the prefix property the workflows actually depend on. Pinning only the
@@ -77,7 +77,8 @@ describe("release bump commit subject", () => {
 	/**
 	 * Multi-digit and multi-component versions keep the exact shape, so the
 	 * version is recoverable from the subject by stripping the prefix and one
-	 * leading `v` — which is what a reader and `release.sh verify` both do.
+	 * leading `v` — which is what a human reading a tag list does, and what any
+	 * consumer of `releaseBumpSubject` in `scripts/release.ts` may rely on.
 	 */
 	it("round-trips the version back out of the subject", () => {
 		for (const version of ["1.0.39", "10.20.30", "2.0.0"]) {
