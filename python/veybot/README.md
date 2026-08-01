@@ -102,9 +102,51 @@ request review comments*. GitHub's `ping` should produce
 
 ### Configuration
 
-See `.env.example` for the authoritative variable list. The shipped
-`docker-compose.yml` uses per-service `environment:` allowlists rather
-than `env_file:`, so `GITHUB_TOKEN` only reaches the gh-proxy container.
+`.env` is the single configuration surface, and it is gitignored. Every key
+veybot reads is declared as a field in `src/config.py`; `.env.example` lists all
+of them with their real defaults. Nothing else in the tree reads the
+environment, so there is exactly one file to write and one file to read when you
+want to know how a deployment is set up.
+
+A key in `.env` that matches no declared field is a startup error naming the
+key. That is deliberate. Unknown keys used to be ignored, so a typo such as
+`VEYBOT_MAX_CONCURENCY=2` parsed cleanly, did nothing, and left you reading a
+file that disagreed with the running process.
+
+The shipped `docker-compose.yml` uses per-service `environment:` allowlists
+rather than `env_file:`, so `GITHUB_TOKEN` only reaches the gh-proxy container.
+
+### Pointing veybot at another project
+
+veybot's toolchain steps are configuration, not code, so it can service a
+repository built with anything. Five keys describe the shape of the repo:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `VEYBOT_PROJECT_MARKERS` | `package.json,bun.lock` | Files that must all exist at the repo root for the dependency bootstrap to apply. This is the "is this repo my kind of project" test, which is what lets one veybot serve an allowlist holding several different projects. Empty matches every repo. |
+| `VEYBOT_WORKSPACE_BOOTSTRAP_COMMAND` | `bun install --frozen-lockfile --ignore-scripts` | Dependency install, run before the agent starts. |
+| `VEYBOT_WORKSPACE_BOOTSTRAP_TIMEOUT_SECONDS` | `300` | Budget for that install. |
+| `VEYBOT_PRE_PR_FIX_COMMAND` | `bun run fix` | Formatter run before a push or PR; what it changes is amended into the agent's HEAD commit. |
+| `VEYBOT_PRE_PR_CHECK_COMMAND` | `bun check` | Gate run before a push or PR. A non-zero exit refuses the publish. |
+
+Each is a command line with shell-style quoting, run without a shell. An empty
+value disables that step. A malformed one (an unbalanced quote) fails at
+startup rather than hours later, mid-task.
+
+A Rust project, for example, sets `VEYBOT_PROJECT_MARKERS=Cargo.toml,Cargo.lock`
+with `cargo fetch`, `cargo fmt`, and `cargo clippy --workspace`.
+
+Two properties are worth keeping when you replace the bootstrap default. A
+frozen or locked install leaves no spurious lockfile diff for the agent to
+commit. Skipping lifecycle scripts is a security property rather than a speed
+one: it stops an untrusted pull request's `postinstall` executing as the slot
+user.
+
+The pre-publish gate is deliberately not filtered by the markers. The markers
+include a lockfile, so gating on them would let a repo with a manifest and no
+lockfile skip the gate entirely and silently, and a bot PR would be pushed with
+no check having run. A gate may refuse, and you may switch it off in config, but
+it must never quietly not happen.
 
 ## CLI
 
@@ -327,6 +369,13 @@ The integration test spawns a real `veyyon --mode rpc` against an
 - gh-proxy has no host port. The `veybot_internal` network is
   `internal: true` (no ingress, no egress); gh-proxy joins `default`
   only to reach `api.github.com`.
+- The orchestrator's dashboard is published on `127.0.0.1:6543` only. The
+  webhook route verifies its HMAC, but `/`, the static bundle and the
+  issue-browser API carry no authentication, so a wider publish would hand the
+  dashboard, the run logs and the issue browser to anyone who can reach the
+  port, including everyone on the LAN or a tailnet. Reach it over an SSH tunnel
+  (`ssh -L 6543:127.0.0.1:6543 <host>`). Do not widen the mapping without
+  putting real authentication in front of the app first.
 - Agent subprocess env is scrubbed of `GITHUB_TOKEN` /
   `VEYBOT_GH_PROXY_HMAC_KEY` / friends via `worker._SCRUBBED_ENV_KEYS`.
 - Webhook signatures: bad sig → `401` (so GitHub stops retrying), never
