@@ -239,7 +239,8 @@ Argot is the codec that lets the model write short `§handle` tokens; veyyon exp
 
 ## Commands
 
-- NEVER commit unless asked.
+- Commit frequently. Land each logical chunk as its own commit as soon as it stands on its own and its gate is green, rather than accumulating a large uncommitted tree. Waiting to be asked is not the rule; the working tree is not a staging area. Pushing is separate and still needs explicit approval.
+- Stage only the paths you changed. This tree routinely carries other people's in-flight work, so `git add -A` is banned; a commit that sweeps up an unrelated lane is worse than no commit.
 - Never use `tsc`/`npx tsc` — always `bun check`.
 
 **Gate scripts** (defined in the root `package.json`; run the narrowest one that covers your change):
@@ -257,7 +258,7 @@ Argot is the codec that lets the model write short `§handle` tokens; veyyon exp
 
 `suspicious/noTemplateCurlyInString` flags a plain string containing `${...}`, on the theory you meant a template literal. A test that quotes source text from another language (`install.sh`, the generated PowerShell completions, a GitHub Actions expression) trips it on bytes that are the fixture itself. Suppress those one site at a time with a `biome-ignore` line naming what the `${...}` really is, rather than turning the rule off for tests: the rule still catches a genuinely missed template in the test's own code.
 
-**Commit conventions** (only when the user asks you to commit):
+**Commit conventions:**
 - Commit in **logical chunks**, one concern per commit — never one giant `git add -A`. Stage only the paths you changed.
 - Subject line is imperative and scoped, e.g. `polish(onboarding): …`, `fix: …`, `ci: …`, `test(agent): …`.
 - Do not add AI/assistant attribution trailers (no `Co-Authored-By: <model>`, no `Generated with …`). Commit as the configured git user only.
