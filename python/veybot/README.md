@@ -52,8 +52,19 @@ into the `tool_calls` table with credential-redacted args and results.
 
 ## Setup
 
-Requires Docker Compose v2 and a LiteLLM-style proxy on the host that your
-`~/.veyyon/agent/models.container.yml` points at (mounted into the container as `models.yml`; kept under a separate filename on the host so the host veyyon doesn't route through the gateway). veybot lives inside the veyyon
+Requires Docker Compose v2 and a LiteLLM-style proxy on the host. You point
+veybot at that proxy with `VEYBOT_LLM_BASE_URL` in `.env`, and veybot generates
+the agent's `~/.veyyon/agent/models.yml` from it on every agent launch. There is
+no host file to write and nothing to mount: provider routing lives in the same
+single config surface as everything else, so it cannot drift out of agreement
+with `VEYBOT_MODEL`. The credential is read from the `VEYBOT_LLM_API_KEY`
+environment variable and is never written into the generated file.
+
+Leave `VEYBOT_LLM_BASE_URL` empty to say veybot does not manage routing, which
+is what you want for a native run on a machine whose own veyyon profile already
+has providers configured.
+
+veybot lives inside the veyyon
 monorepo at `python/veybot/`; both the docker build context and the
 `/work/veyyon` bind mount default to the parent monorepo (`../..`). Override
 `VEYYON_ROOT` only if you want a different veyyon checkout backing the build
@@ -433,7 +444,7 @@ The integration test spawns a real `veyyon --mode rpc` against an
 | `refusing to push: working tree is dirty` | Uncommitted agent edits. Or just call `gh_open_pr`, which auto-commits `bun run fix` output. |
 | `bun check failed before PR creation` | Fix the reported failure and retry `gh_open_pr`. |
 | `Failed to load veyyon_natives` | Wrong arch / missing native. `bun run docker:build` then `bun run veybot:build`. |
-| `No API key found for <provider>` | `~/.veyyon/agent/models.container.yml` mount missing or provider id mismatch with `VEYBOT_MODEL`. |
+| `No API key found for <provider>` | `VEYBOT_LLM_API_KEY` unset in `.env`, or `VEYBOT_LLM_PROVIDER_ID` disagrees with the provider prefix in `VEYBOT_MODEL`. Read the generated `/srv/agent-home/.veyyon/agent/models.yml` in the container to see what veybot published. |
 
 ## Layout
 
