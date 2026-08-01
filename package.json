@@ -168,6 +168,7 @@
 		"test:py": "python3 -m pytest -x python/veyyon-rpc/tests && python3 -m pytest -x python/veybot/tests",
 		"veybot:install": "pip install -e 'python/veybot[dev]'",
 		"veybot:serve": "python3 -m veybot serve",
+		"veybot:backlog": "python3 -m veybot port-backlog santhreal/veyyon",
 		"veybot:test:integration": "VEYBOT_INTEGRATION=1 python3 -m pytest -x python/veybot/tests/test_worker_smoke.py",
 		"docker:build": "docker build -t \"${VEYYON_IMAGE:-veyyon:dev}\" .",
 		"docker:run": "docker run --rm -it \"${VEYYON_IMAGE:-veyyon:dev}\"",

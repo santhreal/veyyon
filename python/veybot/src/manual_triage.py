@@ -1,6 +1,7 @@
 """Manually enqueue an issue as if a webhook arrived.
 
-Shared by the `veybot triage` CLI and the dashboard's POST /api/trigger.
+Shared by the `veybot triage` / `veybot port-backlog` CLI commands and the
+dashboard's POST /api/trigger.
 """
 
 from __future__ import annotations
@@ -8,10 +9,12 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from veybot.db import INACTIVE_EVENT_STATES, Database, EventRow, issue_key
 from veybot.github_backend import GitHubBackend
+from veybot.github_client import IssueInfo, RepoInfo
 
 _ISSUE_REF = re.compile(r"^(?P<owner>[^/\s]+)/(?P<repo>[^#\s]+)#(?P<number>\d+)$")
 _ISSUE_URL = re.compile(
@@ -62,6 +65,26 @@ def manual_delivery_id(repo_full: str, number: int) -> str:
     return f"manual-{repo_full.replace('/', '__')}-{number}"
 
 
+def _issue_block(issue: IssueInfo) -> dict[str, Any]:
+    return {
+        "number": issue.number,
+        "title": issue.title,
+        "body": issue.body,
+        "state": issue.state,
+        "user": {"login": issue.author},
+        "labels": [{"name": lbl} for lbl in issue.labels],
+    }
+
+
+def _repository_block(repo: RepoInfo) -> dict[str, Any]:
+    return {
+        "full_name": repo.full_name,
+        "default_branch": repo.default_branch,
+        "clone_url": repo.clone_url,
+        "private": repo.private,
+    }
+
+
 async def build_issues_opened_payload(github: GitHubBackend, repo_full: str, number: int) -> dict[str, Any]:
     """Fetch the issue + repo metadata and synthesize an `issues.opened` payload."""
     issue = await github.get_issue(repo_full, number)
@@ -70,20 +93,8 @@ async def build_issues_opened_payload(github: GitHubBackend, repo_full: str, num
     repo = await github.get_repo(repo_full)
     return {
         "action": "opened",
-        "issue": {
-            "number": issue.number,
-            "title": issue.title,
-            "body": issue.body,
-            "state": issue.state,
-            "user": {"login": issue.author},
-            "labels": [{"name": lbl} for lbl in issue.labels],
-        },
-        "repository": {
-            "full_name": repo.full_name,
-            "default_branch": repo.default_branch,
-            "clone_url": repo.clone_url,
-            "private": repo.private,
-        },
+        "issue": _issue_block(issue),
+        "repository": _repository_block(repo),
     }
 
 
@@ -114,6 +125,134 @@ async def enqueue_manual_triage(*, db: Database, github: GitHubBackend, repo_ful
         state = current.state if current is not None else "active"
         raise ManualTriageConflict(delivery, state)
     return delivery
+
+
+# The drain asks GitHub for the label directly and walks every page of the
+# answer, so this is a safety stop against an unbounded repository, not a
+# window onto a recent slice. Hitting it is reported, never swallowed.
+_BACKLOG_SCAN_CEILING = 2000
+
+
+def port_backlog_delivery_id(repo_full: str, number: int) -> str:
+    """Stable delivery id for a backlog-drained port issue. Re-runs reuse it."""
+    return f"port-backlog-{repo_full.replace('/', '__')}-{number}"
+
+
+@dataclass(slots=True, frozen=True)
+class PortBacklogEntry:
+    """One issue the drain queued, or would queue under `dry_run`."""
+
+    number: int
+    title: str
+    delivery_id: str
+
+
+@dataclass(slots=True, frozen=True)
+class PortBacklogResult:
+    enqueued: tuple[PortBacklogEntry, ...]
+    skipped: int
+    matched: int
+    # True when `scan_limit` stopped the scan, so `matched` is a floor on the
+    # open labeled issues rather than the total.
+    scan_truncated: bool = False
+    scan_limit: int = _BACKLOG_SCAN_CEILING
+
+
+def _already_tracked(db: Database, delivery_id: str, repo_full: str, number: int) -> bool:
+    """True when this issue already has work in flight or behind it.
+
+    Two guards, because an issue can enter the queue by two doors. The stable
+    delivery id catches a previous drain. The per-issue lookup catches a live
+    webhook that arrived first under GitHub's own delivery id, which would
+    otherwise give one issue two candidate PRs. `skipped` rows are webhook
+    noise (`issues.labeled ignored`) and do not count as work.
+    """
+    if db.get_event(delivery_id) is not None:
+        return True
+    return db.latest_event_for_issue(issue_key(repo_full, number)) is not None
+
+
+async def enqueue_port_backlog(
+    *,
+    db: Database,
+    github: GitHubBackend,
+    repo_full: str,
+    label: str,
+    limit: int = 10,
+    dry_run: bool = False,
+    scan_limit: int = _BACKLOG_SCAN_CEILING,
+) -> PortBacklogResult:
+    """Queue open `label` issues as synthetic `issues.labeled` events.
+
+    `scripts/upstream-radar.ts` filed the port backlog before veybot existed,
+    so no webhook will ever fire for those issues and the daemon starts idle.
+    This walks the open issues carrying `label` and writes one event row each,
+    exactly as `enqueue_manual_triage` does, bypassing `route()`.
+
+    Re-running is idempotent: an issue that already has an event row is
+    skipped, never queued a second time. `dry_run` writes nothing and performs
+    no per-issue fetch.
+
+    Two numbers, deliberately kept apart. `limit` bounds the rows this run
+    creates and nothing else; the scan keeps going past it so `matched` stays
+    the true count of open labeled issues. `scan_limit` bounds how deep the
+    listing may read, and `PortBacklogResult.scan_truncated` reports when it
+    bit. Conflating the two is what let a 200-issue backlog report itself as
+    90 issues, all of them already queued.
+    """
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    if scan_limit <= 0:
+        raise ValueError(f"scan_limit must be positive, got {scan_limit}")
+
+    # `labels` filters server side, so every page of the answer is candidates.
+    listing = await github.list_issues(repo_full, state="open", labels=label, limit=scan_limit)
+    repository: dict[str, Any] | None = None
+    enqueued: list[PortBacklogEntry] = []
+    skipped = 0
+    matched = 0
+
+    for summary in listing:
+        if label not in summary.labels:
+            continue
+        matched += 1
+        delivery = port_backlog_delivery_id(repo_full, summary.number)
+        if _already_tracked(db, delivery, repo_full, summary.number):
+            skipped += 1
+            continue
+        if len(enqueued) >= limit:
+            # Budget spent, but keep counting: the operator asked how much work
+            # is out there, not how much fits in one run.
+            continue
+        if dry_run:
+            enqueued.append(PortBacklogEntry(summary.number, summary.title, delivery))
+            continue
+
+        issue = await github.get_issue(repo_full, summary.number)
+        if issue.is_pull_request:
+            continue
+        if repository is None:
+            repository = _repository_block(await github.get_repo(repo_full))
+        payload = {
+            "action": "labeled",
+            "label": {"name": label},
+            "issue": _issue_block(issue),
+            "repository": repository,
+        }
+        inserted = db.record_event(
+            delivery_id=delivery,
+            event_type="issues",
+            repo=repo_full,
+            issue_key=issue_key(repo_full, summary.number),
+            payload=payload,
+        )
+        if not inserted:
+            # Lost a race with a concurrent drain. The other run owns the row.
+            skipped += 1
+            continue
+        enqueued.append(PortBacklogEntry(summary.number, summary.title, delivery))
+
+    return PortBacklogResult(tuple(enqueued), skipped, matched, listing.truncated, scan_limit)
 
 
 _TERMINAL_STATES: tuple[str, ...] = ("done", "failed", "skipped")
@@ -153,12 +292,16 @@ async def await_terminal_state(
 
 __all__ = [
     "InvalidIssueRef",
-    "ManualTriageError",
     "ManualTriageConflict",
+    "ManualTriageError",
     "ManualTriageTimeout",
+    "PortBacklogEntry",
+    "PortBacklogResult",
     "await_terminal_state",
     "build_issues_opened_payload",
     "enqueue_manual_triage",
+    "enqueue_port_backlog",
     "manual_delivery_id",
     "parse_issue_ref",
+    "port_backlog_delivery_id",
 ]
