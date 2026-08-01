@@ -74,9 +74,17 @@
 				<span class="pill pending">next release</span>
 			</div>
 			<div class="sec">
+				<span class="tag chg">Changed</span>
+				<ul class="notes">
+				<li><span class="inline">/secret add</span> with no name now asks what to call the secret in a visible field before the masked one opens. One masked prompt had to carry both questions in its wording, and the wording lost: "Paste the secret" was read as "name the secret", and the name was stored as the credential under an invented <span class="inline">SECRET_1</span>. Nothing downstream can catch that, because a name is a perfectly well-formed secret value and a shape check would refuse real credentials. The new field is optional, so leaving it empty still generates a name for you, and an unusable name fails before the masked field opens rather than after you have pasted a live credential.</li>
+				</ul>
+			</div>
+			<div class="sec">
 				<span class="tag fix">Fixed</span>
 				<ul class="notes">
 				<li>The Agent Control Center now confirms subagent termination instead of aborting immediately on <span class="inline">x</span>. You can also hover a terminable row and click its <span class="inline">[x]</span>; both paths open the same <strong>Dismiss</strong> or <strong>Yes, terminate</strong> card, and the transcript remains on disk. The hover target overlays the row's final cells only while visible, so an idle row keeps its model and activity details.</li>
+				<li>A browser <span class="inline">run</span> that throws now reports what the code printed before it failed. The displayed lines are folded into the error text and any screenshots it took still render, so a failing script tells you where it got to instead of only that it stopped. Cancelling a run is left alone, since you already know why it ended.</li>
+				<li>The Agent Control Center card is centred against the terminal rather than sized against the text it happens to contain, so it no longer sits off to one side. Its per-row <span class="inline">[x]</span> hit box is measured from the width the roster actually drew, which keeps the clickable region on the glyph when a scrollbar appears. The roster also holds a minimum height, so the card stops twitching as agents come and go.</li>
 				</ul>
 			</div>
 		</article>
