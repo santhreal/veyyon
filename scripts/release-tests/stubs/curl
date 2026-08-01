@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Stubbed `curl` for scripts/release-tests/release-sh.test.sh.
+#
+# Serves the fixture world under $FIXTURE. A URL with no fixture behind it fails
+# the way curl -f does (exit 22), so a missing fixture reads as a real 404 and
+# never as a silent empty body.
+set -uo pipefail
+
+printf 'curl %s\n' "$*" >>"$FIXTURE/actions.log"
+
+url=""
+out=""
+want_effective=0
+prev=""
+for arg in "$@"; do
+	case "$prev" in
+	-o)
+		out="$arg"
+		prev=""
+		continue
+		;;
+	-w)
+		want_effective=1
+		prev=""
+		continue
+		;;
+	esac
+	case "$arg" in
+	-o | -w)
+		prev="$arg"
+		continue
+		;;
+	http*) url="$arg" ;;
+	esac
+	prev=""
+done
+
+# The fixture file backing a URL, or nothing.
+source_for() {
+	case "$1" in
+	"https://github.com/santhreal/veyyon/releases/latest") printf '%s' "$FIXTURE/latest-url" ;;
+	"https://get.veyyon.dev") printf '%s' "$FIXTURE/endpoint-install" ;;
+	"https://veyyon.dev/changelog.html") printf '%s' "$FIXTURE/changelog" ;;
+	https://assets.test/*) printf '%s' "$FIXTURE/assets/${1##*/}" ;;
+	https://raw.githubusercontent.com/santhreal/veyyon/*)
+		rest="${1#https://raw.githubusercontent.com/santhreal/veyyon/}"
+		ref="${rest%%/*}"
+		path="${rest#*/}"
+		case "$path" in
+		packages/coding-agent/package.json) printf '%s' "$FIXTURE/raw-$ref-pkg" ;;
+		scripts/install.sh) printf '%s' "$FIXTURE/raw-$ref-install" ;;
+		esac
+		;;
+	esac
+}
+
+src="$(source_for "$url")"
+
+if [ "$want_effective" = 1 ]; then
+	# -I -L: report where the redirect chain ended.
+	[ -n "$src" ] && [ -f "$src" ] || exit 22
+	printf '%s' "$(cat "$src")"
+	exit 0
+fi
+
+[ -n "$src" ] && [ -f "$src" ] || exit 22
+
+if [ -n "$out" ]; then
+	cp -- "$src" "$out"
+	exit 0
+fi
+cat -- "$src"

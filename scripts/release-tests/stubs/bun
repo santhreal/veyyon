@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Stubbed `bun` for scripts/release-tests/release-sh.test.sh: records the call
+# and applies the fixture's declared effect instead of cutting a real release.
+set -uo pipefail
+printf 'bun %s\n' "$*" >>"$FIXTURE/actions.log"
+if [ "${1:-}" = "run" ] && [ "${2:-}" = "release" ] && [ -f "$FIXTURE/cut-effect" ]; then
+	# shellcheck source=/dev/null
+	. "$FIXTURE/cut-effect"
+fi
+exit 0
