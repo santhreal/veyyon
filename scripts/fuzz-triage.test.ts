@@ -9,7 +9,6 @@ import {
 	fileIssues,
 	HARNESS_SIGNATURES_PATH,
 	isHarnessSignature,
-	JULES_MENTION,
 	listArtifacts,
 	normalizeLocation,
 	parseArgs,
@@ -374,22 +373,12 @@ describe("parseRepoFromRemote", () => {
 });
 
 describe("renderFileCommands", () => {
-	/** Filing alone posts no mention: dispatch is a separate opt-in. */
-	it("creates only the issue by default", () => {
-		const commands = renderFileCommands(finding(), "santhreal/veyyon", false);
+	/** Filing creates the issue and nothing else. */
+	it("creates the issue", () => {
+		const commands = renderFileCommands(finding(), "santhreal/veyyon");
 
 		expect(commands).toHaveLength(1);
 		expect(commands[0]!.argv.slice(0, 4)).toEqual(["issue", "create", "--repo", "santhreal/veyyon"]);
-	});
-
-	/** With dispatch, the mention is a comment on the issue, not part of its body. */
-	it("adds a mention comment when dispatching", () => {
-		const commands = renderFileCommands(finding(), "santhreal/veyyon", true);
-
-		expect(commands).toHaveLength(2);
-		expect(commands[1]!.argv).toContain("comment");
-		expect(commands[1]!.argv.join(" ")).toContain(JULES_MENTION);
-		expect(renderIssueBody(finding())).not.toContain(JULES_MENTION);
 	});
 });
 
@@ -428,7 +417,7 @@ describe("fileIssues", () => {
 		const questions: string[] = [];
 		const status = fileIssues(
 			[finding()],
-			{ dispatch: false },
+			{},
 			{
 				confirm: question => {
 					questions.push(question);
@@ -457,7 +446,7 @@ describe("fileIssues", () => {
 		const out = sink();
 		fileIssues(
 			[finding(), finding({ artifacts: ["crash-b"] })],
-			{ dispatch: false },
+			{},
 			{
 				confirm: () => true,
 				gh: argv => {
@@ -481,33 +470,14 @@ describe("fileIssues", () => {
 	 * The preview names the repository and every command, before the prompt.
 	 *
 	 * This line is the last thing a reader sees before answering, so it decides
-	 * whether they can tell `santhreal/veyyon` from a fork and a plain filing from
-	 * one that also summons an agent. It was printed and unasserted.
+	 * whether they can tell `santhreal/veyyon` from a fork. It was printed and
+	 * unasserted.
 	 */
 	it("previews the repository and the commands before asking", () => {
 		const out = sink();
 		fileIssues(
 			[finding()],
-			{ dispatch: true },
-			{
-				confirm: () => false,
-				gh: () => ({ status: 0, output: "" }),
-				originRemote: () => ORIGIN,
-				...out,
-			},
-		);
-
-		expect(out.said).toContain(`\nWould run against santhreal/veyyon: create the issue, dispatch ${JULES_MENTION}`);
-		expect(out.said.some(line => line.includes("fuzz_targets/keys_parse.rs:96:9"))).toBe(true);
-		expect(out.said.at(0)).toBe(`\n${renderIssueTitle(finding())}`);
-	});
-
-	/** Without dispatch the preview says so, so the two runs are distinguishable. */
-	it("previews only the create command when not dispatching", () => {
-		const out = sink();
-		fileIssues(
-			[finding()],
-			{ dispatch: false },
+			{},
 			{
 				confirm: () => false,
 				gh: () => ({ status: 0, output: "" }),
@@ -517,40 +487,17 @@ describe("fileIssues", () => {
 		);
 
 		expect(out.said).toContain("\nWould run against santhreal/veyyon: create the issue");
-		expect(out.said.some(line => line.includes(JULES_MENTION))).toBe(false);
+		expect(out.said.some(line => line.includes("fuzz_targets/keys_parse.rs:96:9"))).toBe(true);
+		expect(out.said.at(0)).toBe(`\n${renderIssueTitle(finding())}`);
 	});
 
-	/** The dispatch comment targets the issue that was just created. */
-	it("comments on the created issue when dispatching", () => {
-		const calls: string[][] = [];
-		const out = sink();
-		fileIssues(
-			[finding()],
-			{ dispatch: true },
-			{
-				confirm: () => true,
-				gh: argv => {
-					calls.push(argv);
-					return { status: 0, output: "https://github.com/santhreal/veyyon/issues/7\n" };
-				},
-				originRemote: () => ORIGIN,
-				...out,
-			},
-		);
-
-		expect(calls).toHaveLength(2);
-		expect(calls[1]!.at(-1)).toBe("https://github.com/santhreal/veyyon/issues/7");
-		expect(calls[1]!.join(" ")).toContain(JULES_MENTION);
-		expect(out.said.at(-1)).toBe(`dispatched ${JULES_MENTION}`);
-	});
-
-	/** A failed create stops the run rather than dispatching an agent at nothing. */
+	/** A failed create stops the run and says why. */
 	it("stops when the issue could not be created", () => {
 		const calls: string[][] = [];
 		const out = sink();
 		const status = fileIssues(
 			[finding()],
-			{ dispatch: true },
+			{},
 			{
 				confirm: () => true,
 				gh: argv => {
@@ -567,38 +514,6 @@ describe("fileIssues", () => {
 		// The failure carries `gh`'s own words, because "it failed" without them
 		// sends the reader to re-run the command by hand to find out why.
 		expect(out.warned).toEqual(["gh issue create failed:\ngh: not authenticated"]);
-		expect(out.said.some(line => line.includes("dispatched"))).toBe(false);
-	});
-
-	/**
-	 * A failed comment is reported too, and does not read as a success.
-	 *
-	 * The issue exists at this point, so silence here would leave a filed issue
-	 * that no agent was ever asked to look at, with nothing saying so.
-	 */
-	it("reports a failed dispatch comment after the issue was created", () => {
-		const out = sink();
-		let call = 0;
-		const status = fileIssues(
-			[finding()],
-			{ dispatch: true },
-			{
-				confirm: () => true,
-				gh: () => {
-					call += 1;
-					return call === 1
-						? { status: 0, output: "https://github.com/santhreal/veyyon/issues/9\n" }
-						: { status: 1, output: "gh: could not comment" };
-				},
-				originRemote: () => ORIGIN,
-				...out,
-			},
-		);
-
-		expect(status).toBe(1);
-		expect(out.warned).toEqual(["gh issue comment failed:\ngh: could not comment"]);
-		expect(out.said).toContain("https://github.com/santhreal/veyyon/issues/9");
-		expect(out.said.some(line => line.includes("dispatched"))).toBe(false);
 	});
 
 	/** Without a determinable repository it refuses rather than guessing one. */
@@ -606,7 +521,7 @@ describe("fileIssues", () => {
 		const out = sink();
 		const status = fileIssues(
 			[finding()],
-			{ dispatch: false },
+			{},
 			{
 				confirm: () => true,
 				gh: () => ({ status: 0, output: "" }),
@@ -633,7 +548,7 @@ describe("fileIssues", () => {
 		const calls: string[][] = [];
 		const status = fileIssues(
 			[],
-			{ dispatch: false },
+			{},
 			{
 				confirm: () => true,
 				gh: argv => {
@@ -666,15 +581,6 @@ describe("parseArgs", () => {
 
 	it("rejects an unknown option rather than ignoring it", () => {
 		expect(() => parseArgs(["report", "--yes"])).toThrow(UsageError);
-	});
-
-	/**
-	 * `--dispatch` on a read-only command would read as "this dispatched" when it
-	 * did nothing, so it is an error rather than a no-op.
-	 */
-	it("refuses --dispatch on a command that files nothing", () => {
-		expect(() => parseArgs(["report", "--dispatch"])).toThrow(UsageError);
-		expect(parseArgs(["file", "--dispatch"]).dispatch).toBe(true);
 	});
 
 	it("collects repeated --target flags", () => {

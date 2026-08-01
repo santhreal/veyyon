@@ -409,11 +409,10 @@ stop is to stop checking for it.
 Filing is a separate command and never runs on its own:
 
 ```bash
-bun scripts/fuzz-triage.ts file --dispatch
+bun scripts/fuzz-triage.ts file
 ```
 
-It asks before each issue and there is no flag to skip the prompt. With `--dispatch` it also posts an
-`@jules` comment on each issue it creates, which hands the fix to an agent. The resulting PR is never
+It asks before each issue and there is no flag to skip the prompt. The PR that fixes one is never
 merged automatically; the issue body says so, and it is the reason the constraints are written into
 it rather than left to convention.
 
