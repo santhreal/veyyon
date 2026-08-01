@@ -10,16 +10,31 @@ from __future__ import annotations
 
 import re
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from functools import cache
 from importlib import resources
 from typing import Any
 
+from veybot.ci_state import trim_failure_log
 from veybot.git_ops import DirtyState
 from veybot.github_client import CommentInfo, IssueInfo, PullRequestInfo, RepoInfo
 from veybot.sandbox import Workspace
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}")
+
+_PORT_KIND_MARKER = re.compile(r"<!--\s*upstream-port-kind:\s*([A-Za-z0-9_-]+)\s*-->")
+"""Canonical header `scripts/upstream-radar.ts` stamps into every tracking issue."""
+
+_PORT_GUIDANCE_TEMPLATES: Mapping[str, str] = {
+    "fix": "port_guidance_fix.md",
+    "clean-feature": "port_guidance_feature.md",
+}
+
+# Ceilings applied before substitution. A prior traceback or a job log is
+# attacker-adjacent unbounded text; one runaway value would otherwise crowd the
+# instructions it is supposed to support out of the context window.
+_PRIOR_FAILURE_MAX_CHARS = 4000
+_LOG_EXCERPT_MAX_CHARS = 12000
 
 
 def _lookup(path: str, scope: Mapping[str, Any]) -> str:
@@ -148,6 +163,96 @@ def kickoff(*, repo: RepoInfo, issue: IssueInfo, workspace: Workspace) -> str:
 
 def kickoff_pr_review(*, repo: RepoInfo, pr: PullRequestInfo, workspace: Workspace) -> str:
     return render(_load("kickoff_pr_review.md"), {"repo": repo, "pr": pr, "workspace": workspace})
+
+
+def port_candidate_kind(body: str | None) -> str:
+    """The candidate kind the radar recorded in a tracking issue body.
+
+    Defaults to `fix` when the marker is absent, so a hand-filed tracking issue
+    still renders. An unrecognized value is returned as-is and resolved to the
+    fix guidance downstream.
+    """
+    if not body:
+        return "fix"
+    match = _PORT_KIND_MARKER.search(body)
+    return match.group(1) if match else "fix"
+
+
+def kickoff_port_upstream(
+    *,
+    repo: RepoInfo,
+    issue: IssueInfo,
+    workspace: Workspace,
+    kind: str,
+    prior_failure: str | None,
+) -> str:
+    """Kickoff for an `upstream-port` tracking issue.
+
+    The template engine substitutes and nothing else — no conditionals, no
+    loops — so both branches are resolved here and passed in as ready-made
+    blocks. An unrecognized `kind` takes the fix guidance rather than raising:
+    a prompt that fails to render loses the whole task, and the fix path is the
+    stricter of the two (it demands a failing negative control).
+    """
+    guidance = _load(_PORT_GUIDANCE_TEMPLATES.get(kind, "port_guidance_fix.md"))
+    prior_block = ""
+    if prior_failure and prior_failure.strip():
+        prior_block = render(
+            _load("port_prior_failure.md"),
+            {"prior_failure": trim_failure_log(prior_failure, _PRIOR_FAILURE_MAX_CHARS)},
+        )
+    return render(
+        _load("kickoff_port_upstream.md"),
+        {
+            "repo": repo,
+            "issue": issue,
+            "workspace": workspace,
+            "kind_guidance": guidance,
+            "prior_failure_block": prior_block,
+        },
+    )
+
+
+def kickoff_ci_repair(
+    *,
+    repo: RepoInfo,
+    issue: IssueInfo,
+    workspace: Workspace,
+    pr_number: int,
+    attempt: int,
+    max_attempts: int,
+    failing: Sequence[str],
+    log_excerpt: str,
+) -> str:
+    """Kickoff for one bounded repair attempt on a red candidate pull request.
+
+    `failing` is formatted into a bullet list here: `_lookup` joins a sequence
+    with `", "`, which would collapse the check names onto a single line where
+    the template promises a list.
+    """
+    failing_list = "\n".join(f"- `{name}`" for name in failing)
+    return render(
+        _load("kickoff_ci_repair.md"),
+        {
+            "repo": repo,
+            "issue": issue,
+            "workspace": workspace,
+            "pr_number": pr_number,
+            "attempt": attempt,
+            "max_attempts": max_attempts,
+            "failing_list": failing_list or "- (the check suite reported no check names)",
+            "log_excerpt": (
+                trim_failure_log(log_excerpt, _LOG_EXCERPT_MAX_CHARS)
+                if log_excerpt.strip()
+                else "(no job log could be retrieved for this run)"
+            ),
+        },
+    )
+
+
+def ci_repair_exhausted_comment(*, attempts: int) -> str:
+    """Hand-off comment posted when a candidate PR's repair budget runs out."""
+    return render(_load("ci_repair_exhausted.md").strip(), {"attempts": attempts})
 
 
 def resume_triage(*, repo: RepoInfo, issue: IssueInfo, workspace: Workspace) -> str:
@@ -385,6 +490,7 @@ def question_autoclose_suffix(hours: float) -> str:
 
 
 __all__ = [
+    "ci_repair_exhausted_comment",
     "classify_next_step",
     "directive",
     "finalized_issue_comment",
@@ -394,8 +500,11 @@ __all__ = [
     "host_tool_description",
     "host_tool_parameter_description",
     "kickoff",
+    "kickoff_ci_repair",
     "kickoff_directive",
+    "kickoff_port_upstream",
     "kickoff_pr_review",
+    "port_candidate_kind",
     "render",
     "completion_reminder",
     "review_completion_reminder",

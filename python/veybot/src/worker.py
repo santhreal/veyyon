@@ -90,6 +90,21 @@ class DirectiveInfo:
     authorizes_impl: bool = False
 
 
+@dataclass(slots=True, frozen=True)
+class CiRepairContext:
+    """Everything a `ci_repair` turn needs that is not already in `TaskInputs`.
+
+    Assembled by `tasks.ci_repair` from the check payload plus the backend's
+    CI reads, so the worker never talks to GitHub to build its own prompt.
+    """
+
+    pr_number: int
+    attempt: int
+    max_attempts: int
+    failing: tuple[str, ...]
+    log_excerpt: str
+
+
 def _resolve_pragma_overrides(
     directive: DirectiveInfo | None,
     settings: Settings,
@@ -198,7 +213,7 @@ def _ensure_agent_run_dir() -> None:
         return
     try:
         run_dir.mkdir(parents=True, exist_ok=True)
-        for root, dirs, files in os.walk(run_dir):
+        for root, _dirs, files in os.walk(run_dir):
             root_path = Path(root)
             os.chown(root_path, -1, gid)
             root_path.chmod(0o2770)
@@ -228,7 +243,21 @@ def _build_extra_env(settings: Settings) -> dict[str, str]:
 
 _TERMINAL_TRIAGE_TOOLS: frozenset[str] = frozenset({"gh_open_pr", "mark_unable_to_reproduce", "abort_task"})
 _TERMINAL_REVIEW_TOOLS: frozenset[str] = frozenset({"submit_pr_review", "abort_task"})
+# A port turn ends by publishing the candidate, declaring the port not
+# applicable, or aborting. A repair turn ends by pushing the fix to the
+# candidate branch or aborting — it never opens anything.
+_TERMINAL_PORT_TOOLS: frozenset[str] = frozenset({"gh_open_pr", "mark_unable_to_reproduce", "abort_task"})
+_TERMINAL_CI_REPAIR_TOOLS: frozenset[str] = frozenset({"gh_push_branch", "abort_task"})
 _PR_REQUIRING_CLASSIFICATIONS: frozenset[str] = frozenset({"bug", "documentation"})
+# Task kinds whose authorization comes from the work item itself rather than
+# from a maintainer mention: an `upstream-port` tracking issue is a standing
+# instruction to produce a candidate, and a repair only touches a branch the
+# bot already owns.
+_IMPL_AUTHORIZED_TASK_KINDS: frozenset[str] = frozenset({"port_upstream", "ci_repair"})
+# Kinds that OPEN a session with a full plan. `ci_repair` is deliberately not
+# one: it reuses the port task's workspace and session, so its phases append
+# to the plan already there instead of clobbering it.
+_KICKOFF_TASK_KINDS: frozenset[str] = frozenset({"triage_issue", "review_pr", "port_upstream"})
 
 
 def _needs_completion_reminder(
@@ -243,6 +272,10 @@ def _needs_completion_reminder(
         return False
     if task_kind == "review_pr":
         return not (tools_called & _TERMINAL_REVIEW_TOOLS)
+    if task_kind == "port_upstream":
+        return not (tools_called & _TERMINAL_PORT_TOOLS)
+    if task_kind == "ci_repair":
+        return not (tools_called & _TERMINAL_CI_REPAIR_TOOLS)
     if task_kind != "triage_issue":
         return False
     row = inputs.db.get_issue(bindings.issue_key)
@@ -401,6 +434,21 @@ def _has_prior_session(session_dir: Path) -> bool:
         return False
 
 
+def _prior_failure(inputs: TaskInputs) -> str | None:
+    """The recorded failure from this delivery's previous attempt, if any.
+
+    A task that raises is re-queued against the SAME delivery row, whose
+    `last_error` holds the redacted traceback. Feeding it back into the next
+    kickoff keeps the agent from walking into the same wall twice.
+    """
+    if inputs.attempts <= 0:
+        return None
+    row = inputs.db.get_event(inputs.delivery_id)
+    if row is None or not row.last_error or not row.last_error.strip():
+        return None
+    return row.last_error
+
+
 def _build_prompt(
     task_kind: str,
     inputs: TaskInputs,
@@ -411,6 +459,7 @@ def _build_prompt(
     pr: PullRequestInfo | None = None,
     directive: DirectiveInfo | None = None,
     thread: tuple[ThreadMessage, ...] = (),
+    ci: CiRepairContext | None = None,
     resuming: bool = False,
 ) -> str:
     if task_kind == "triage_issue":
@@ -427,6 +476,26 @@ def _build_prompt(
     if task_kind == "review_pr":
         assert pr is not None
         return persona.kickoff_pr_review(repo=inputs.repo, pr=pr, workspace=inputs.workspace)
+    if task_kind == "port_upstream":
+        return persona.kickoff_port_upstream(
+            repo=inputs.repo,
+            issue=inputs.issue,
+            workspace=inputs.workspace,
+            kind=persona.port_candidate_kind(inputs.issue.body),
+            prior_failure=_prior_failure(inputs),
+        )
+    if task_kind == "ci_repair":
+        assert ci is not None
+        return persona.kickoff_ci_repair(
+            repo=inputs.repo,
+            issue=inputs.issue,
+            workspace=inputs.workspace,
+            pr_number=ci.pr_number,
+            attempt=ci.attempt,
+            max_attempts=ci.max_attempts,
+            failing=ci.failing,
+            log_excerpt=ci.log_excerpt,
+        )
     if task_kind == "handle_comment":
         assert comment is not None
         issue_row = inputs.db.get_issue(issue_key(inputs.repo.full_name, inputs.issue.number))
@@ -525,6 +594,10 @@ def _run_rpc_blocking(
     host_tools.ensure_workspace_dependencies(bindings)
     resuming = _has_prior_session(bindings.workspace.session_dir)
     extra_args: tuple[str, ...] = ("--continue",) if resuming else ()
+    if settings.agent_profile:
+        # Pins which veyyon profile (model routing, agent config) the
+        # subprocess runs under. Empty means "whatever veyyon defaults to".
+        extra_args += ("--profile", settings.agent_profile)
     log.info(
         "rpc_resume",
         extra={
@@ -619,10 +692,10 @@ def _run_rpc_blocking(
             phases = persona.seed_phases(task_kind)
             if phases:
                 try:
-                    if task_kind in ("triage_issue", "review_pr") and not resuming:
+                    if task_kind in _KICKOFF_TASK_KINDS and not resuming:
                         # Fresh kickoff tasks seed the full plan.
                         client.set_todos(phases)
-                    elif task_kind in ("triage_issue", "review_pr"):
+                    elif task_kind in _KICKOFF_TASK_KINDS:
                         # Resumed kickoff tasks keep prior todo state from the
                         # JSONL transcript; re-seeding would clobber progress.
                         log.info(
@@ -722,6 +795,7 @@ async def run_task(
     pr: PullRequestInfo | None = None,
     directive: DirectiveInfo | None = None,
     thread: tuple[ThreadMessage, ...] = (),
+    ci: CiRepairContext | None = None,
 ) -> str | None:
     """Async wrapper that runs the synchronous RPC driver on a worker thread."""
     review_mode = task_kind == "review_pr" or inputs.workspace.branch.startswith("review/pr-")
@@ -740,7 +814,13 @@ async def run_task(
         inbound_thread_number=pr_number,
         inbound_is_pr=pr_number is not None,
         review_mode=review_mode,
-        impl_authorized=bool(directive is not None and directive.authorizes_impl),
+        # An `upstream-port` tracking issue IS the authorization: it was filed
+        # by the radar against a reviewed policy, and a port candidate is
+        # classified neither `bug` nor `documentation`, so without this
+        # `_enforce_impl_authorization` would refuse every candidate PR.
+        impl_authorized=(
+            task_kind in _IMPL_AUTHORIZED_TASK_KINDS or bool(directive is not None and directive.authorizes_impl)
+        ),
         slot_uid=inputs.slot_uid,
         abort=AbortController(),
     )
@@ -754,6 +834,7 @@ async def run_task(
         pr=pr,
         directive=directive,
         thread=thread,
+        ci=ci,
         resuming=resuming,
     )
     try:
@@ -821,4 +902,4 @@ def _capture_natives_cache(inputs: TaskInputs) -> None:
     )
 
 
-__all__ = ["DirectiveInfo", "TaskInputs", "ThreadMessage", "run_task"]
+__all__ = ["CiRepairContext", "DirectiveInfo", "TaskInputs", "ThreadMessage", "run_task"]

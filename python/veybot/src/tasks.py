@@ -7,20 +7,23 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import Any, TypeVar
 
-from veybot import persona
+from veybot import ci_state, persona
 from veybot.config import Settings
 from veybot.db import Database, IssueRow, IssueState, issue_key
 from veybot.github_backend import GitHubBackend
 from veybot.github_client import (
+    IGNORED_CHECK_CONCLUSIONS,
+    PASSING_CHECK_CONCLUSIONS,
     CommentInfo,
     GitHubError,
     IssueInfo,
     PullRequestInfo,
     RepoInfo,
+    WorkflowRunInfo,
     parse_issue_payload,
 )
 from veybot.sandbox import GitTransport, SandboxManager
-from veybot.worker import DirectiveInfo, TaskInputs, ThreadMessage, run_task
+from veybot.worker import CiRepairContext, DirectiveInfo, TaskInputs, ThreadMessage, run_task
 
 log = logging.getLogger(__name__)
 
@@ -339,6 +342,286 @@ async def triage_issue(
         natives_cache=sandbox.natives_cache,
     )
     await run_task(task_kind="triage_issue", inputs=inputs)
+
+
+async def port_upstream(
+    *,
+    settings: Settings,
+    db: Database,
+    github: GitHubBackend,
+    sandbox: SandboxManager,
+    git_transport: GitTransport,
+    payload: Mapping[str, Any],
+    delivery_id: str,
+    attempts: int = 0,
+    slot_uid: int | None = None,
+) -> None:
+    """Turn one `upstream-port` tracking issue into ONE candidate pull request.
+
+    The agent opens the PR and stops. Nothing in this pipeline merges, approves,
+    or enables auto-merge on it — a human reviews every candidate.
+    """
+    repo, issue = await _resolve_repo_and_issue(github, payload)
+    if issue.is_pull_request:
+        log.info("skip: port on PR-like issue", extra={"repo": repo.full_name, "n": issue.number})
+        return
+    key = issue_key(repo.full_name, issue.number)
+    if settings.port_label not in issue.labels:
+        # The live label is the authorization. It can be removed between the
+        # webhook and the claim, and a replayed delivery can arrive long after.
+        log.info(
+            "skip: issue no longer carries the port label",
+            extra={"key": key, "label": settings.port_label, "labels": list(issue.labels)},
+        )
+        return
+    # Re-entry guard. The label can be re-added by hand, a delivery can be
+    # replayed, and the daemon can restart mid-flight — the same issue reaches
+    # us twice and would otherwise spend a second agent on a duplicate
+    # candidate for a PR that already exists.
+    if db.has_successful_tool_call(key, "gh_open_pr"):
+        log.info("skip: candidate PR already opened for this issue", extra={"key": key})
+        return
+    row = db.get_issue(key)
+    if row is not None and row.pr_number is not None:
+        try:
+            existing = await github.get_pull_request(repo.full_name, row.pr_number)
+        except GitHubError as exc:
+            # Fail open: a transient lookup failure must not strand the issue.
+            log.warning(
+                "candidate PR lookup failed; proceeding",
+                extra={"key": key, "pr": row.pr_number, "err": str(exc)},
+            )
+        else:
+            if existing.state == "open":
+                log.info("skip: candidate PR still open", extra={"key": key, "pr": existing.number})
+                return
+    db.upsert_issue(key=key, repo=repo.full_name, number=issue.number, state="fixing")
+    workspace = await _run_workspace_op(
+        sandbox.ensure_workspace,
+        repo=repo.full_name,
+        number=issue.number,
+        title=issue.title,
+        clone_url=repo.clone_url,
+        default_branch=repo.default_branch,
+        author_name=settings.resolved_author_name,
+        author_email=settings.git_author_email,
+        slot_uid=slot_uid,
+    )
+    db.upsert_issue(
+        key=key,
+        repo=repo.full_name,
+        number=issue.number,
+        state="fixing",
+        branch=workspace.branch,
+        session_dir=str(workspace.session_dir),
+    )
+    inputs = TaskInputs(
+        settings=settings,
+        db=db,
+        github=github,
+        git_transport=git_transport,
+        repo=repo,
+        issue=issue,
+        workspace=workspace,
+        delivery_id=delivery_id,
+        attempts=attempts,
+        slot_uid=slot_uid,
+        natives_cache=sandbox.natives_cache,
+    )
+    await run_task(task_kind="port_upstream", inputs=inputs)
+
+
+def _check_suite_pr_number(suite: Mapping[str, Any]) -> int:
+    """The PR a check suite ran for, or 0 when the payload names none."""
+    raw = suite.get("pull_requests")
+    prs = raw if isinstance(raw, (list, tuple)) else ()
+    if not prs or not isinstance(prs[0], Mapping):
+        return 0
+    number = prs[0].get("number")
+    return number if isinstance(number, int) and number > 0 else 0
+
+
+def _workflow_run_failed(run: WorkflowRunInfo) -> bool:
+    """Whether an Actions run reported a failure worth reading logs for.
+
+    A run with no conclusion has not finished; it is not a failure.
+    """
+    conclusion = run.conclusion
+    if conclusion is None:
+        return False
+    return conclusion not in PASSING_CHECK_CONCLUSIONS and conclusion not in IGNORED_CHECK_CONCLUSIONS
+
+
+async def _failing_job_logs(github: GitHubBackend, repo_full: str, head_sha: str) -> str:
+    """Concatenated logs of every failed job across this commit's Actions runs.
+
+    Best effort: the log is evidence for the agent, not a precondition. A
+    failure to fetch it degrades the prompt, it does not cancel the repair.
+    """
+    try:
+        runs = await github.list_workflow_runs_for_sha(repo_full, head_sha)
+    except GitHubError as exc:
+        log.warning("workflow run list failed", extra={"repo": repo_full, "sha": head_sha, "err": str(exc)})
+        return ""
+    sections: list[str] = []
+    for run in runs:
+        if not _workflow_run_failed(run):
+            continue
+        try:
+            raw = await github.get_failed_job_logs(repo_full, run.id)
+        except GitHubError as exc:
+            log.warning("job log fetch failed", extra={"repo": repo_full, "run": run.id, "err": str(exc)})
+            continue
+        if raw.strip():
+            sections.append(raw)
+    return "\n".join(sections)
+
+
+async def ci_repair(
+    *,
+    settings: Settings,
+    db: Database,
+    github: GitHubBackend,
+    sandbox: SandboxManager,
+    git_transport: GitTransport,
+    payload: Mapping[str, Any],
+    delivery_id: str,
+    attempts: int = 0,
+    slot_uid: int | None = None,
+) -> None:
+    """Repair a candidate PR whose checks went red, in place on its own branch.
+
+    Bounded by `settings.ci_max_repairs` attempts per head commit; once the
+    budget is gone the PR is left red and handed to a human. The only
+    acceptable repair is correct code — never a weakened gate — and this task
+    cannot merge anything either way.
+    """
+    repo_payload = payload.get("repository") or {}
+    repo_full = str(repo_payload.get("full_name") or "")
+    if not repo_full:
+        log.info("skip: check_suite without repo")
+        return
+    suite = payload.get("check_suite")
+    if not isinstance(suite, Mapping):
+        log.info("skip: check_suite payload has no suite", extra={"repo": repo_full})
+        return
+    pr_number = _check_suite_pr_number(suite)
+    if pr_number <= 0:
+        log.info("skip: check_suite names no pull request", extra={"repo": repo_full})
+        return
+    head_sha = str(suite.get("head_sha") or "")
+    if not head_sha:
+        log.info("skip: check_suite without head sha", extra={"repo": repo_full, "pr": pr_number})
+        return
+    issue_row, _pr_info = await _resolve_issue_row_for_pr(
+        db=db,
+        github=github,
+        repo_full=repo_full,
+        pr_number=pr_number,
+    )
+    if issue_row is None:
+        log.info("skip: check_suite PR maps to no tracked issue", extra={"repo": repo_full, "pr": pr_number})
+        return
+    key = issue_row.key
+    if issue_row.branch is None:
+        log.info("skip: candidate PR missing branch mapping", extra={"key": key, "pr": pr_number})
+        return
+    spent = db.ci_repair_attempts(key, head_sha)
+    if spent >= settings.ci_max_repairs:
+        # The counter is its own latch: only one caller can ever observe
+        # `max + 1`, so a restarted daemon replaying this delivery finds a
+        # larger count and stays quiet instead of re-posting the hand-off.
+        if db.bump_ci_repair(key, head_sha) == settings.ci_max_repairs + 1:
+            try:
+                await github.post_comment(
+                    repo_full,
+                    pr_number,
+                    persona.ci_repair_exhausted_comment(attempts=settings.ci_max_repairs),
+                )
+            except GitHubError as exc:
+                log.warning("CI repair hand-off comment failed", extra={"key": key, "err": str(exc)})
+        log.info(
+            "skip: CI repair budget exhausted",
+            extra={"key": key, "pr": pr_number, "sha": head_sha, "spent": spent},
+        )
+        return
+    try:
+        runs = await github.list_check_runs(repo_full, head_sha)
+        statuses = await github.list_commit_statuses(repo_full, head_sha)
+    except GitHubError as exc:
+        log.warning("check state fetch failed", extra={"key": key, "sha": head_sha, "err": str(exc)})
+        return
+    summary = ci_state.summarize_checks(runs, statuses)
+    if ci_state.is_green(summary):
+        # The suite that fired has already been superseded by a green one.
+        log.info("skip: checks are green", extra={"key": key, "pr": pr_number, "sha": head_sha})
+        return
+    if summary.pending:
+        # A run still in progress is not a failure. Dispatching on it burns a
+        # concurrency lane and races the very checks we would be reading.
+        log.info(
+            "skip: checks still running",
+            extra={"key": key, "pr": pr_number, "sha": head_sha, "pending": summary.pending},
+        )
+        return
+    # Charge the budget only now. A superseded-green or still-running suite
+    # costs nothing: three of those on one commit must not consume the repair
+    # allowance the next genuine failure needs. The queue serializes by issue
+    # key, so no second worker can race between this read and the bump.
+    attempt = db.bump_ci_repair(key, head_sha)
+    log_excerpt = ci_state.trim_failure_log(await _failing_job_logs(github, repo_full, head_sha))
+    try:
+        repo = await github.get_repo(repo_full)
+        issue = await github.get_issue(repo_full, issue_row.number)
+    except GitHubError as exc:
+        log.warning("CI repair metadata fetch failed", extra={"key": key, "err": str(exc)})
+        return
+    workspace = await _run_workspace_op(
+        sandbox.ensure_workspace,
+        repo=repo.full_name,
+        number=issue.number,
+        title=issue.title,
+        clone_url=repo.clone_url,
+        default_branch=repo.default_branch,
+        existing_branch=issue_row.branch,
+        author_name=settings.resolved_author_name,
+        author_email=settings.git_author_email,
+        slot_uid=slot_uid,
+    )
+    db.upsert_issue(
+        key=key,
+        repo=repo.full_name,
+        number=issue.number,
+        state="fixing",
+        branch=workspace.branch,
+        session_dir=str(workspace.session_dir),
+        pr_number=pr_number,
+    )
+    inputs = TaskInputs(
+        settings=settings,
+        db=db,
+        github=github,
+        git_transport=git_transport,
+        repo=repo,
+        issue=issue,
+        workspace=workspace,
+        delivery_id=delivery_id,
+        attempts=attempts,
+        slot_uid=slot_uid,
+        natives_cache=sandbox.natives_cache,
+    )
+    await run_task(
+        task_kind="ci_repair",
+        inputs=inputs,
+        pr_number=pr_number,
+        ci=CiRepairContext(
+            pr_number=pr_number,
+            attempt=attempt,
+            max_attempts=settings.ci_max_repairs,
+            failing=summary.failing,
+            log_excerpt=log_excerpt,
+        ),
+    )
 
 
 async def review_pr(
@@ -849,10 +1132,12 @@ async def cleanup_workspace(
 
 
 __all__ = [
+    "ci_repair",
     "cleanup_workspace",
     "handle_comment",
     "handle_pr_conversation",
     "handle_review",
+    "port_upstream",
     "review_pr",
     "triage_issue",
 ]

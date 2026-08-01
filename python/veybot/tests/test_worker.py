@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from veybot import worker
-from veybot.config import Settings
+from veybot.config import Settings, reset_settings_cache
 from veybot.git_ops import DirtyState
 
 
@@ -446,7 +446,9 @@ async def test_run_rpc_merges_todos_on_followup_with_resume(tmp_path: Path, sett
 
 
 @pytest.mark.asyncio
-async def test_run_rpc_passes_slot_uid_user_slot_group_and_veybot_extra_group(tmp_path: Path, settings: Settings) -> None:
+async def test_run_rpc_passes_slot_uid_user_slot_group_and_veybot_extra_group(
+    tmp_path: Path, settings: Settings
+) -> None:
     inputs, bindings = _make_inputs(tmp_path, settings, session_has_jsonl=False, slot_uid=2001)
     loop = asyncio.new_event_loop()
     try:
@@ -983,3 +985,152 @@ def test_capture_natives_cache_records_on_success(
     assert repo == "acme/widgets"
     assert key == "cafef00d"
     assert native_dir == inputs.workspace.repo_dir / "packages" / "natives" / "native"
+
+
+# ---- agent profile pinning ----
+
+
+def _settings_with_profile(monkeypatch: pytest.MonkeyPatch, profile: str) -> Settings:
+    monkeypatch.setenv("VEYBOT_AGENT_PROFILE", profile)
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    cfg.ensure_paths()
+    return cfg
+
+
+@pytest.mark.asyncio
+async def test_configured_agent_profile_reaches_the_rpc_client(
+    tmp_path: Path, env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The operator pins the veyyon profile through config; if it never reaches
+    `extra_args` the subprocess silently runs under the default profile with
+    the wrong model routing, and nothing anywhere reports the mismatch. It must
+    also survive alongside `--continue` rather than replacing it."""
+    cfg = _settings_with_profile(monkeypatch, "work")
+    inputs, bindings = _make_inputs(tmp_path, cfg, session_has_jsonl=True)
+    loop = asyncio.new_event_loop()
+    try:
+        worker._run_rpc_blocking(inputs, task_kind="triage_issue", prompt="x", loop=loop, bindings=bindings)
+    finally:
+        loop.close()
+
+    assert _FakeRpcClient.instances[0].kwargs["extra_args"] == ("--continue", "--profile", "work")
+
+
+@pytest.mark.asyncio
+async def test_blank_agent_profile_passes_no_profile_flag(
+    tmp_path: Path, env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset means "let veyyon choose". Passing `--profile ''` would make the
+    subprocess fail to resolve a profile at startup instead of defaulting."""
+    cfg = _settings_with_profile(monkeypatch, "   ")
+    inputs, bindings = _make_inputs(tmp_path, cfg, session_has_jsonl=False)
+    loop = asyncio.new_event_loop()
+    try:
+        worker._run_rpc_blocking(inputs, task_kind="triage_issue", prompt="x", loop=loop, bindings=bindings)
+    finally:
+        loop.close()
+
+    assert _FakeRpcClient.instances[0].kwargs["extra_args"] == ()
+
+
+# ---- port_upstream / ci_repair wiring ----
+
+
+@pytest.mark.parametrize("task_kind", ["port_upstream", "ci_repair"])
+@pytest.mark.asyncio
+async def test_port_and_repair_kinds_are_implementation_authorized(
+    tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch, task_kind: str
+) -> None:
+    """`gh_open_pr` refuses a first publish unless the issue is classified
+    `bug`/`documentation` or the bindings say authorized. A port candidate is
+    classified as neither, so without this every one of the 200 candidates
+    would be refused at the moment it tried to publish."""
+    inputs, _bindings = _make_inputs(tmp_path, settings, session_has_jsonl=False)
+    captured: dict[str, bool] = {}
+
+    monkeypatch.setattr(worker, "_build_prompt", lambda *args, **kwargs: "prompt")
+
+    def fake_run_rpc_blocking(_inputs, *, bindings, **_kwargs) -> str:
+        captured["impl_authorized"] = bindings.impl_authorized
+        return "ok"
+
+    monkeypatch.setattr(worker, "_run_rpc_blocking", fake_run_rpc_blocking)
+
+    await worker.run_task(task_kind=task_kind, inputs=inputs)
+
+    assert captured == {"impl_authorized": True}
+
+
+def _port_inputs(tmp_path: Path, settings: Settings, *, attempts: int, last_error: str | None):
+    inputs, _bindings = _make_inputs(tmp_path, settings, session_has_jsonl=False)
+    inputs.attempts = attempts
+    inputs.issue = SimpleNamespace(
+        repo="acme/widgets",
+        number=42,
+        title="Port upstream #9",
+        body="<!-- upstream-port-kind: clean-feature -->\nupstream evidence",
+    )
+    inputs.db = SimpleNamespace(
+        set_event_model=lambda _d, _m: None,
+        get_issue=lambda _k: None,
+        get_event=lambda _d: SimpleNamespace(last_error=last_error),
+    )
+    return inputs
+
+
+def test_build_prompt_renders_the_port_kickoff_with_no_prior_failure(tmp_path: Path, settings: Settings) -> None:
+    """An unregistered kind makes `_build_prompt` raise `ValueError`, which
+    kills the task before the agent starts. A first attempt must also carry no
+    retry preamble."""
+    inputs = _port_inputs(tmp_path, settings, attempts=0, last_error=None)
+    prompt = worker._build_prompt(
+        "port_upstream",
+        inputs,
+        comment=None,
+        pr_number=None,
+        review_payload=None,
+    )
+    assert "veybot/issue-1" in prompt
+    assert "Previous attempt failed" not in prompt
+
+
+def test_build_prompt_feeds_the_prior_failure_back_on_a_retry(tmp_path: Path, settings: Settings) -> None:
+    """A re-queued delivery reuses the same event row, whose `last_error` holds
+    why the previous attempt died. Dropping it makes the retry walk into the
+    same wall and spend a second agent learning what the first already knew."""
+    inputs = _port_inputs(tmp_path, settings, attempts=1, last_error="GitCommandError: rebase conflict in foo.ts")
+    prompt = worker._build_prompt(
+        "port_upstream",
+        inputs,
+        comment=None,
+        pr_number=None,
+        review_payload=None,
+    )
+    assert "Previous attempt failed" in prompt
+    assert "rebase conflict in foo.ts" in prompt
+
+
+def test_build_prompt_renders_the_ci_repair_kickoff_from_its_context(tmp_path: Path, settings: Settings) -> None:
+    """The repair prompt is the only place the agent learns which attempt it is
+    on and what actually failed; a missing branch would render a prompt telling
+    it to work on nothing."""
+    inputs = _port_inputs(tmp_path, settings, attempts=0, last_error=None)
+    prompt = worker._build_prompt(
+        "ci_repair",
+        inputs,
+        comment=None,
+        pr_number=90,
+        review_payload=None,
+        ci=worker.CiRepairContext(
+            pr_number=90,
+            attempt=2,
+            max_attempts=3,
+            failing=("Lint & type check",),
+            log_excerpt="error TS2345: nope",
+        ),
+    )
+    assert "2 of 3" in prompt
+    assert "- `Lint & type check`" in prompt
+    assert "error TS2345: nope" in prompt
+    assert "veybot/issue-1" in prompt

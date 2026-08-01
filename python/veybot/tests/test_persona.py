@@ -226,3 +226,143 @@ def test_system_append_pr_review_renders_configured_bot_login() -> None:
     )
     assert "You are **@Svitter**" in out
     assert "**veybot**" not in out
+
+
+# ---- upstream-port / CI-repair prompts ----
+
+_PORT_BODY_FIX = "<!-- upstream-port-kind: fix -->\nUpstream merged PR: https://example.invalid/9"
+_PORT_BODY_FEATURE = "<!-- upstream-port-kind: clean-feature -->\nUpstream merged PR: https://example.invalid/9"
+
+
+def test_port_candidate_kind_reads_the_radar_marker() -> None:
+    """`scripts/upstream-radar.ts` stamps the kind into the issue body as an
+    HTML comment; that marker is the ONLY trustworthy source for the fix/feature
+    branch (the issue prose is untrusted evidence). Misreading it hands a fix a
+    feature protocol, which has no failing-negative-control requirement."""
+    assert persona.port_candidate_kind(_PORT_BODY_FEATURE) == "clean-feature"
+    assert persona.port_candidate_kind(_PORT_BODY_FIX) == "fix"
+    # A hand-filed tracking issue with no marker must still render, as a fix.
+    assert persona.port_candidate_kind("no marker here") == "fix"
+    assert persona.port_candidate_kind(None) == "fix"
+
+
+def test_port_kickoff_fix_and_feature_guidance_actually_differ() -> None:
+    """The template engine has no conditionals, so the branch is resolved in
+    Python. If both kinds rendered the same block the whole fix/feature
+    distinction would be silently inert while still looking wired."""
+    fix = persona.kickoff_port_upstream(
+        repo=_Repo(), issue=_Issue(body=_PORT_BODY_FIX), workspace=_Workspace(), kind="fix", prior_failure=None
+    )
+    feature = persona.kickoff_port_upstream(
+        repo=_Repo(),
+        issue=_Issue(body=_PORT_BODY_FEATURE),
+        workspace=_Workspace(),
+        kind="clean-feature",
+        prior_failure=None,
+    )
+    assert fix != feature
+    # The fix path demands a failing negative control; the feature path demands
+    # an off-versus-on differential. Neither may leak into the other.
+    assert "negative control" in fix
+    assert "off-versus-on differential" not in fix
+    assert "off-versus-on differential" in feature
+
+
+def test_port_kickoff_unknown_kind_falls_back_to_fix_guidance() -> None:
+    """A prompt that fails to render loses the whole task, so an unrecognized
+    marker must degrade to the stricter path rather than raise."""
+    unknown = persona.kickoff_port_upstream(
+        repo=_Repo(), issue=_Issue(body=_PORT_BODY_FIX), workspace=_Workspace(), kind="mystery", prior_failure=None
+    )
+    fix = persona.kickoff_port_upstream(
+        repo=_Repo(), issue=_Issue(body=_PORT_BODY_FIX), workspace=_Workspace(), kind="fix", prior_failure=None
+    )
+    assert unknown == fix
+
+
+def test_port_kickoff_without_prior_failure_leaves_no_placeholder_text() -> None:
+    """`prior_failure_block` is substituted unconditionally. If the empty case
+    leaked the raw `{{...}}` token, or the retry heading with nothing under it,
+    the agent would read a truncated instruction as its kickoff."""
+    out = persona.kickoff_port_upstream(
+        repo=_Repo(), issue=_Issue(body=_PORT_BODY_FIX), workspace=_Workspace(), kind="fix", prior_failure=None
+    )
+    assert "{{" not in out
+    assert "}}" not in out
+    assert "Previous attempt failed" not in out
+    assert "prior_failure" not in out
+
+
+def test_port_kickoff_with_prior_failure_renders_the_retry_preamble() -> None:
+    """The retry needs the previous failure verbatim, above the protocol."""
+    out = persona.kickoff_port_upstream(
+        repo=_Repo(),
+        issue=_Issue(body=_PORT_BODY_FIX),
+        workspace=_Workspace(),
+        kind="fix",
+        prior_failure="GitCommandError: rebase conflict in packages/tui/src/render.ts",
+    )
+    assert "Previous attempt failed" in out
+    assert "rebase conflict in packages/tui/src/render.ts" in out
+    assert out.index("Previous attempt failed") < out.index("## Execution protocol")
+
+
+def test_port_kickoff_caps_a_runaway_prior_failure() -> None:
+    """One pathological traceback must not crowd the instructions out of the
+    context window; the tail is kept because that is where the cause is."""
+    tail = "FINAL LINE: the real cause"
+    out = persona.kickoff_port_upstream(
+        repo=_Repo(),
+        issue=_Issue(body=_PORT_BODY_FIX),
+        workspace=_Workspace(),
+        kind="fix",
+        prior_failure="\n".join(["noise line"] * 20_000) + "\n" + tail,
+    )
+    assert tail in out
+    assert "earlier lines omitted" in out
+    assert out.count("noise line") < 20_000
+
+
+def test_ci_repair_kickoff_renders_failing_checks_as_a_bullet_list() -> None:
+    """`_lookup` joins a sequence with ", ", which would collapse the check
+    names onto one line under a heading that promises a list. The names are
+    what the agent greps the log for, so they must stay individually legible."""
+    out = persona.kickoff_ci_repair(
+        repo=_Repo(),
+        issue=_Issue(),
+        workspace=_Workspace(),
+        pr_number=90,
+        attempt=2,
+        max_attempts=3,
+        failing=("Lint & type check", "TypeScript tests"),
+        log_excerpt="error TS2345: nope",
+    )
+    assert "- `Lint & type check`\n- `TypeScript tests`" in out
+    assert "Lint & type check, TypeScript tests" not in out
+    assert "2 of 3" in out
+    assert "error TS2345: nope" in out
+    assert "{{" not in out
+
+
+def test_ci_repair_kickoff_caps_a_runaway_log_excerpt() -> None:
+    """A CI log is unbounded and untrusted; the prompt keeps its tail only."""
+    out = persona.kickoff_ci_repair(
+        repo=_Repo(),
+        issue=_Issue(),
+        workspace=_Workspace(),
+        pr_number=90,
+        attempt=1,
+        max_attempts=3,
+        failing=("Tests",),
+        log_excerpt="\n".join(["filler"] * 50_000) + "\nAssertionError: expected 3, got 4",
+    )
+    assert "AssertionError: expected 3, got 4" in out
+    assert len(out) < 40_000
+
+
+def test_ci_repair_exhausted_comment_names_the_attempt_budget() -> None:
+    """The hand-off comment is the only signal a human gets that automation
+    stopped; without the count it reads as a transient failure to wait out."""
+    out = persona.ci_repair_exhausted_comment(attempts=3)
+    assert "3" in out
+    assert "{{" not in out

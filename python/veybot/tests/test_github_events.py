@@ -678,13 +678,16 @@ def test_route_issue_opened_recovers_owner_association_without_author_associatio
     assert decision.submitter == "can1357"
     assert decision.association == "OWNER"
     # OWNER is a trusted association -> unlimited submission cap.
-    assert rate_limit_cap(
-        decision.submitter or "",
-        decision.association,
-        unlimited=frozenset(),
-        default=3,
-        contributor=10,
-    ) is None
+    assert (
+        rate_limit_cap(
+            decision.submitter or "",
+            decision.association,
+            unlimited=frozenset(),
+            default=3,
+            contributor=10,
+        )
+        is None
+    )
 
 
 def test_route_directive_does_not_authorize_org_owner_name_without_author_association() -> None:
@@ -1004,3 +1007,281 @@ def test_route_ignores_pull_request_labeled() -> None:
         bot_login=BOT,
     )
     assert not decision.should_queue
+
+
+# ---- upstream-port routing ----
+
+PORT_LABEL = "upstream-port"
+
+
+def _issue_payload(action: str, *, labels: object, number: int = 4) -> dict:
+    return {
+        "action": action,
+        "issue": {"number": number, "user": {"login": "radar-bot"}, "labels": labels},
+        "repository": {"full_name": "octo/widget"},
+    }
+
+
+def test_route_issue_opened_already_labeled_goes_to_port_upstream() -> None:
+    """The radar files the tracking issue ALREADY labeled, so the label arrives
+    on `issues.opened`. Routing that to `triage_issue` would classify a port
+    candidate as a bug report and run the wrong pipeline on all 200 of them."""
+    decision = route(
+        "issues",
+        _issue_payload("opened", labels=[{"name": "enhancement"}, {"name": PORT_LABEL}]),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        port_label=PORT_LABEL,
+    )
+    assert decision.task == "port_upstream"
+    assert decision.issue_key == "octo/widget#4"
+    # Backlog drain, not a user submission: a rate-limit subject would throttle
+    # the whole backlog against whichever account the radar files under.
+    assert decision.submitter is None
+
+
+def test_route_issue_opened_without_port_label_still_triages() -> None:
+    """An ordinary labeled issue must keep its existing behavior; the port
+    branch must not swallow every `issues.opened` that carries any label."""
+    decision = route(
+        "issues",
+        _issue_payload("opened", labels=[{"name": "bug"}]),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        port_label=PORT_LABEL,
+    )
+    assert decision.task == "triage_issue"
+    assert decision.submitter == "radar-bot"
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [None, "upstream-port", 7, [None, 5, {}, {"name": ""}, {"name": 3}]],
+)
+def test_route_issue_opened_survives_malformed_labels(labels: object) -> None:
+    """`route` runs on the webhook request path: a `TypeError` reading labels
+    would 500 `/webhook/github` and take every other event down with it. Every
+    malformed shape must read as 'no port label' and fall through to triage."""
+    decision = route(
+        "issues",
+        _issue_payload("opened", labels=labels),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        port_label=PORT_LABEL,
+    )
+    assert decision.task == "triage_issue"
+
+
+def test_route_issue_payload_without_labels_key_still_triages() -> None:
+    """A payload with no `labels` key at all (older delivery, hand-built
+    replay) must route, not raise."""
+    decision = route(
+        "issues",
+        {
+            "action": "opened",
+            "issue": {"number": 4, "user": {"login": "alice"}},
+            "repository": {"full_name": "octo/widget"},
+        },
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        port_label=PORT_LABEL,
+    )
+    assert decision.task == "triage_issue"
+
+
+def test_route_issue_labeled_with_port_label_queues_port_upstream() -> None:
+    """A human adding the label later is the second way work arrives. Without
+    this branch `issues.labeled` falls through to `issues.<action> ignored` and
+    the issue is never picked up at all."""
+    decision = route(
+        "issues",
+        {
+            "action": "labeled",
+            "label": {"name": PORT_LABEL},
+            "issue": {"number": 11, "user": {"login": "alice"}, "labels": [{"name": PORT_LABEL}]},
+            "repository": {"full_name": "octo/widget"},
+        },
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        port_label=PORT_LABEL,
+    )
+    assert decision.task == "port_upstream"
+    assert decision.issue_key == "octo/widget#11"
+
+
+def test_route_issue_labeled_with_other_label_skips() -> None:
+    """Adding any other label must stay inert — every `labeled` webhook on the
+    repo would otherwise spawn a port agent."""
+    decision = route(
+        "issues",
+        {
+            "action": "labeled",
+            "label": {"name": "good first issue"},
+            "issue": {"number": 11, "user": {"login": "alice"}, "labels": [{"name": PORT_LABEL}]},
+            "repository": {"full_name": "octo/widget"},
+        },
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        port_label=PORT_LABEL,
+    )
+    assert decision.task is None
+    assert not decision.should_queue
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        _issue_payload("opened", labels=[{"name": PORT_LABEL}]),
+        {
+            "action": "labeled",
+            "label": {"name": PORT_LABEL},
+            "issue": {"number": 4, "user": {"login": "alice"}},
+            "repository": {"full_name": "octo/widget"},
+        },
+    ],
+)
+def test_route_port_upstream_disabled_skips_both_arrival_paths(payload: dict) -> None:
+    """The kill switch must stop BOTH paths. A labeled `issues.opened` falling
+    back to `triage_issue` while the switch is off would be worse than doing
+    nothing: the operator turned the port pipeline off, not on to bug triage."""
+    decision = route(
+        "issues",
+        payload,
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        port_label=PORT_LABEL,
+        port_upstream_enabled=False,
+    )
+    assert decision.task is None
+    assert "disabled" in decision.reason
+
+
+# ---- CI repair routing ----
+
+
+def _check_suite_payload(
+    *,
+    conclusion: str = "failure",
+    pull_requests: object = ({"number": 90},),
+    author_name: str = BOT,
+) -> dict:
+    return {
+        "action": "completed",
+        "check_suite": {
+            "conclusion": conclusion,
+            "head_sha": "abc123",
+            "pull_requests": list(pull_requests) if isinstance(pull_requests, tuple) else pull_requests,
+            "head_commit": {"id": "abc123", "author": {"name": author_name, "email": "x@example.invalid"}},
+        },
+        "repository": {"full_name": "octo/widget"},
+    }
+
+
+def test_route_failing_check_suite_on_bot_pr_queues_ci_repair() -> None:
+    """The whole CI-babysitting feature hangs off this branch, and the issue key
+    MUST be the tracking issue the resolver returns — the repair budget and the
+    candidate's workspace are both keyed on it, not on the PR number."""
+    decision = route(
+        "check_suite",
+        _check_suite_payload(),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        resolve_issue_from_pr=lambda _r, _n: "octo/widget#42",
+    )
+    assert decision.task == "ci_repair"
+    assert decision.issue_key == "octo/widget#42"
+    # Lifecycle event, not a submission: rate limiting a repair would strand a
+    # red candidate PR behind an unrelated user's quota.
+    assert decision.submitter is None
+
+
+@pytest.mark.parametrize("conclusion", ["success", "cancelled", "neutral", "skipped", ""])
+def test_route_non_failing_check_suite_skips_with_reason(conclusion: str) -> None:
+    """Only a real failure may spend an attempt. A `cancelled` or superseded
+    suite says nothing about the code, and repairing on one burns budget the
+    genuine failure will need."""
+    decision = route(
+        "check_suite",
+        _check_suite_payload(conclusion=conclusion),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        resolve_issue_from_pr=lambda _r, _n: "octo/widget#42",
+    )
+    assert decision.task is None
+    assert "not a failure" in decision.reason
+
+
+def test_route_check_suite_on_contributor_pr_skips() -> None:
+    """Repairing a PR we did not author would push commits onto a contributor's
+    branch nobody asked us to touch."""
+    decision = route(
+        "check_suite",
+        _check_suite_payload(author_name="alice"),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        resolve_issue_from_pr=lambda _r, _n: "octo/widget#42",
+    )
+    assert decision.task is None
+    assert "not authored by bot" in decision.reason
+
+
+def test_route_check_suite_prefers_pr_author_over_head_commit_author() -> None:
+    """When the payload names the PR's own author, that wins. A contributor PR
+    whose branch happens to carry a bot-authored commit (a cherry-pick, a
+    merged-in fix) is still not ours to push to."""
+    decision = route(
+        "check_suite",
+        _check_suite_payload(pull_requests=({"number": 90, "user": {"login": "alice", "type": "User"}},)),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        resolve_issue_from_pr=lambda _r, _n: "octo/widget#42",
+    )
+    assert decision.task is None
+    assert "not authored by bot" in decision.reason
+
+
+@pytest.mark.parametrize("pull_requests", [[], None, "nope", [7]])
+def test_route_check_suite_without_pull_requests_skips(pull_requests: object) -> None:
+    """A check suite on a plain branch push carries no pull requests. That is
+    the common case, and it must be a stated skip rather than an exception on
+    the webhook path."""
+    decision = route(
+        "check_suite",
+        _check_suite_payload(pull_requests=pull_requests),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        resolve_issue_from_pr=lambda _r, _n: "octo/widget#42",
+    )
+    assert decision.task is None
+    assert "pull request" in decision.reason
+
+
+def test_route_check_suite_with_unresolvable_issue_skips() -> None:
+    """No tracked issue means no repair budget to charge and no candidate
+    workspace to reuse. Inventing `octo/widget#90` here would open a phantom
+    issue row and repair a PR veybot never opened."""
+    decision = route(
+        "check_suite",
+        _check_suite_payload(),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        resolve_issue_from_pr=lambda _r, _n: None,
+    )
+    assert decision.task is None
+    assert decision.issue_key is None
+    assert "no tracked issue" in decision.reason
+
+
+def test_route_ci_repair_disabled_skips() -> None:
+    """The kill switch must land before any payload parsing so an operator can
+    stop repairs on a repo whose webhooks are already in flight."""
+    decision = route(
+        "check_suite",
+        _check_suite_payload(),
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        resolve_issue_from_pr=lambda _r, _n: "octo/widget#42",
+        ci_repair_enabled=False,
+    )
+    assert decision.task is None
+    assert "disabled" in decision.reason
