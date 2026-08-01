@@ -2,9 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `/secret add` with no name now asks what to call the secret in a visible field before the masked one opens. One masked prompt had to carry both questions in its wording, and the wording lost: "Paste the secret" was read as "name the secret", and the name was stored as the credential under an invented `SECRET_1`. Nothing downstream can catch that, because a name is a perfectly well-formed secret value and a shape check would refuse real credentials. The new field is optional, so leaving it empty still generates a name for you, and an unusable name fails before the masked field opens rather than after you have pasted a live credential.
+
 ### Fixed
 
 - The Agent Control Center now confirms subagent termination instead of aborting immediately on `x`. You can also hover a terminable row and click its `[x]`; both paths open the same **Dismiss** or **Yes, terminate** card, and the transcript remains on disk. The hover target overlays the row's final cells only while visible, so an idle row keeps its model and activity details.
+- A browser `run` that throws now reports what the code printed before it failed. The displayed lines are folded into the error text and any screenshots it took still render, so a failing script tells you where it got to instead of only that it stopped. Cancelling a run is left alone, since you already know why it ended.
+- The Agent Control Center card is centred against the terminal rather than sized against the text it happens to contain, so it no longer sits off to one side. Its per-row `[x]` hit box is measured from the width the roster actually drew, which keeps the clickable region on the glyph when a scrollbar appears. The roster also holds a minimum height, so the card stops twitching as agents come and go.
 
 ## [1.0.38] - 2026-07-31
 
