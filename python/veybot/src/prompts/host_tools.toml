@@ -30,10 +30,10 @@ body = "Markdown review summary. Required even when there are no inline comments
 event = "Ignored except for schema compatibility; the orchestrator always sends `COMMENT`."
 
 [gh_post_comment]
-description = "Post a comment on the inbound thread (PR for PR conversations/reviews, originating issue otherwise). Pass `number` ONLY to post elsewhere."
+description = "Post a comment on the inbound thread (PR for PR conversations/reviews, originating issue otherwise). Pass `number` ONLY to post elsewhere. On a `bug`/`documentation` issue the orchestrator REFUSES a body that names nothing from the codebase, and refuses the first comment after a `repro_record` unless it carries the verbatim failure, a `path/to/file.ext:LINE`, a `Cause:` line and a `Next:` line."
 
 [gh_post_comment.parameters]
-body = "Markdown comment body."
+body = "Markdown comment body. Evidence first: name the file, symbol, or verbatim output you are talking about, in backticks. Never a bare status update."
 number = "Optional issue/PR override. Defaults to the inbound thread."
 
 [gh_push_branch]
@@ -47,7 +47,7 @@ skip_checks = "Bypass `bun run fix` + `bun check`. Use ONLY after verifying (e.g
 description = "Open a PR from the workspace branch using the four-section body template. Same pre-publish gate as `gh_push_branch`: `bun run fix` → amend formatter diff into HEAD → `bun check`. On failure, fix and retry. Pre-existing `main` breakage NOT caused by your diff → `skip_checks=true` and document the bypass in the PR's `## Verification` section."
 
 [gh_open_pr.parameters]
-body = "Markdown body. MUST contain the four template sections in order: `## Repro`, `## Cause`, `## Fix`, `## Verification`."
+body = "Markdown body. MUST contain the four template sections in order: `## Repro`, `## Cause`, `## Fix`, `## Verification`. On a `bug`/`documentation` issue `## Fix` MUST also carry a `Mirrors:` line naming the existing pattern in this repo the fix copies (or `Mirrors: none - <why this is the first of its kind>`)."
 base = "Optional base branch override (default: repo default)."
 skip_checks = "Bypass `bun run fix` + `bun check`. Use ONLY after verifying the failure exists on `main` and is NOT caused by your diff. When set, document in `## Verification` (e.g. ``Skipped pre-publish gate: `bun check` fails on `main` due to <link>``). Dirty-tree gate still runs."
 
@@ -55,7 +55,7 @@ skip_checks = "Bypass `bun run fix` + `bun check`. Use ONLY after verifying the 
 description = "Request reviewers and/or add assignees on the open PR."
 
 [repro_record]
-description = "Persist a reproduction transcript (command, output, exit code) for the issue."
+description = "Persist a reproduction transcript (command, output, exit code) for the issue. On the triage path this is the evidence your next comment quotes verbatim, and `gh_open_pr` refuses a `bug`/`documentation` PR with no record behind it."
 
 [repro_record.parameters]
 reproduced = "True when the recorded run demonstrates the bug."
@@ -91,9 +91,9 @@ rationale = "One sentence explaining the classification."
 branch_slug = "Kebab-case slug, 1-50 chars `[a-z0-9-]`, no leading/trailing/double hyphen. Replaces the auto-generated slug in the working branch name. Provide for `bug`/`documentation`. Omit for non-PR workflows (`question`, `enhancement`, `proposal`, `wontfix`, `invalid`, `duplicate`)."
 
 [classify_issue.next_steps]
-bug = "reproduce → diagnose → fix → PR"
+bug = "read the failing code path, then ack naming the file and mechanism; reproduce and post the evidence (fenced failure, path:line, Cause:, Next:); fix; gh_open_pr with a Mirrors: line naming the existing pattern it copies; one closing comment. Three comments total"
 wontfix = "post one gh_post_comment explaining the design rationale and what evidence would change the assessment; no repro, no PR; the maintainer decides whether to close"
-documentation = "fix the docs and open a PR using the four-section template"
+documentation = "same three-comment cadence as bug: ack naming the wrong doc and why, reproduce the wrong instruction and post the evidence, then fix and open a PR with the four-section template and a Mirrors: line"
 question = "answer in a single gh_post_comment; no PR, no repro"
 enhancement = "post one thoughtful gh_post_comment on feasibility/scope; no PR"
 proposal = "post one thoughtful gh_post_comment on feasibility/scope; no PR"

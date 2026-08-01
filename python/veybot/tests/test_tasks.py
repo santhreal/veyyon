@@ -1,12 +1,25 @@
+from __future__ import annotations
+
 import asyncio
+import dataclasses
+import json
 import logging
+import os
+import re
+import subprocess
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from veyyon_rpc import HostToolContext, RpcCommandError
 
-from veybot import tasks
-from veybot.github_client import CheckRunInfo, IssueInfo, PullRequestInfo, RepoInfo, WorkflowRunInfo
+from veybot import persona, tasks, worker
+from veybot.config import Settings, reset_settings_cache
+from veybot.db import Database
+from veybot.github_client import CheckRunInfo, GitHubClient, IssueInfo, PullRequestInfo, RepoInfo, WorkflowRunInfo
+from veybot.sandbox import LocalGitTransport, SandboxManager
 
 
 async def test_triage_issue_keeps_event_loop_live_while_workspace_setup_blocks(db, settings, monkeypatch, tmp_path):
@@ -579,3 +592,630 @@ async def test_ci_repair_skips_a_pull_request_with_no_tracked_issue(db, settings
     )
 
     assert recorder.calls == []
+
+
+# ---------------------------------------------------------------------------
+# Triage comment cadence
+# ---------------------------------------------------------------------------
+#
+# These drive the REAL `tasks.triage_issue` — real sandbox worktree off a real
+# local bare repo, real `host_tools`, real audit rows, real `git push` — with
+# only the veyyon subprocess replaced by a script of host-tool calls. What the
+# script asks for and what actually reaches GitHub are therefore two different
+# things, which is the whole point: the cadence gate sits between them.
+
+_CADENCE_REPO = "octo/widget"
+_CADENCE_KEY = "octo/widget#1"
+_COMMENTS_PATH_RE = re.compile(rf"/repos/{_CADENCE_REPO}/issues/(?P<number>\d+)/comments")
+
+_ACK_BODY = (
+    "`src/dialog.ts:14` builds the prompt straight from the raw payload, so it "
+    "never runs the normalization `normalizeRenderQuestions` already applies on "
+    "the transcript side. Reproducing now."
+)
+
+_REPRO_BODY = """Reproduced with `bun test dialog.test.ts`:
+
+```
+TypeError: questions.map is not a function
+    at askDialog (src/dialog.ts:14:22)
+```
+
+**Cause:** `src/dialog.ts:14` passes the raw payload to `askDialog`, bypassing normalization.
+**Next:** normalize at dialog entry, mirroring the transcript renderer.
+"""
+
+_PR_BODY = """## Repro
+`bun test dialog.test.ts` throws on a payload with a bare-string question.
+
+## Cause
+`src/dialog.ts:14` hands the raw payload to `askDialog`.
+
+## Fix
+- normalize at dialog entry
+Mirrors: `render.ts` — the transcript renderer's `normalizeRenderQuestions`.
+
+## Verification
+`bun test dialog.test.ts` passes. Fixes #1
+"""
+
+_LINK_BODY = "Fix opened in #7 — `normalizeDialogQuestions` at dialog entry, mirroring `normalizeRenderQuestions`."
+
+
+def _git_seed(cwd, *args: str) -> None:
+    env = os.environ | {
+        "GIT_AUTHOR_NAME": "seed",
+        "GIT_AUTHOR_EMAIL": "seed@example.invalid",
+        "GIT_COMMITTER_NAME": "seed",
+        "GIT_COMMITTER_EMAIL": "seed@example.invalid",
+    }
+    subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True, text=True, env=env)
+
+
+def _seed_upstream(root: Path) -> Path:
+    """A local bare repo standing in for `origin`, with a pattern to mirror."""
+    root.mkdir(parents=True, exist_ok=True)
+    bare = root / "upstream.git"
+    bare.mkdir()
+    _git_seed(root, "init", "--initial-branch=main", "--bare", str(bare))
+    seed = root / "seed"
+    seed.mkdir()
+    _git_seed(seed, "init", "--initial-branch=main")
+    (seed / "render.ts").write_text("export function normalizeRenderQuestions() {}\n", encoding="utf-8")
+    (seed / "dialog.ts").write_text("export function askDialog() {}\n", encoding="utf-8")
+    _git_seed(seed, "add", ".")
+    _git_seed(seed, "commit", "-m", "init")
+    _git_seed(seed, "remote", "add", "origin", str(bare))
+    _git_seed(seed, "push", "origin", "main")
+    return bare
+
+
+def _land_fix(repo_dir: Path) -> None:
+    """Script step: edit + commit as the bot, so the push gate is satisfied."""
+    (repo_dir / "dialog.ts").write_text(
+        "export function normalizeDialogQuestions() {}\nexport function askDialog() {}\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "commit", "-m", "fix(dialog): normalize questions at entry", "-m", "Fixes #1"],
+        cwd=str(repo_dir),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+class _FakeGitHubApi:
+    """Records every write the triage path makes; serves the reads it needs."""
+
+    def __init__(self, bare: Path) -> None:
+        self.bare = bare
+        self.comments: list[dict] = []
+        self.prs: list[dict] = []
+        self.labels: list[str] = []
+        self._next_comment_id = 100
+
+    @property
+    def comment_bodies(self) -> list[str]:
+        return [c["body"] for c in self.comments]
+
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self._handle)
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        path, method = request.url.path, request.method
+        if method == "GET" and path == f"/repos/{_CADENCE_REPO}":
+            return httpx.Response(200, json=self._repo())
+        if method == "GET" and path == f"/repos/{_CADENCE_REPO}/issues/1":
+            return httpx.Response(200, json=self._issue())
+        if method == "GET" and path == f"/repos/{_CADENCE_REPO}/issues/1/timeline":
+            return httpx.Response(200, json=[])
+        if method == "GET" and path == f"/repos/{_CADENCE_REPO}/issues/1/comments":
+            return httpx.Response(200, json=self.comments)
+        posted = _COMMENTS_PATH_RE.fullmatch(path)
+        if method == "POST" and posted is not None:
+            self._next_comment_id += 1
+            comment = {
+                "id": self._next_comment_id,
+                "number": int(posted.group("number")),
+                "user": {"login": "robveybot"},
+                "body": json.loads(request.content)["body"],
+                "created_at": "2026-05-14T20:00:00Z",
+            }
+            self.comments.append(comment)
+            return httpx.Response(201, json=comment)
+        if method == "POST" and path == f"/repos/{_CADENCE_REPO}/issues/1/labels":
+            self.labels.extend(json.loads(request.content)["labels"])
+            return httpx.Response(200, json=[{"name": name} for name in self.labels])
+        if method == "POST" and path == f"/repos/{_CADENCE_REPO}/pulls":
+            body = json.loads(request.content)
+            pr = {
+                "number": 7,
+                "html_url": "https://example.invalid/octo/widget/pull/7",
+                "head": {"ref": body["head"]},
+                "base": {"ref": body["base"]},
+                "state": "open",
+                "title": body["title"],
+                "body": body["body"],
+            }
+            self.prs.append(pr)
+            return httpx.Response(201, json=pr)
+        return httpx.Response(404, json={"message": f"unmocked {method} {path}"})
+
+    def _repo(self) -> dict:
+        return {
+            "full_name": _CADENCE_REPO,
+            "default_branch": "main",
+            "clone_url": str(self.bare),
+            "private": False,
+        }
+
+    def _issue(self) -> dict:
+        return {
+            "number": 1,
+            "title": "askDialog crashes on a bare-string question",
+            "body": "`bun test dialog.test.ts` throws TypeError.",
+            "state": "open",
+            "user": {"login": "alice"},
+            "labels": [],
+        }
+
+    def payload(self) -> dict:
+        return {"action": "opened", "issue": self._issue(), "repository": self._repo()}
+
+
+class _ScriptedRpcClient:
+    """Stand-in for `veyyon --mode rpc` that replays a fixed host-tool script.
+
+    `worker._run_rpc_blocking` hands the client every real host tool as
+    `custom_tools`, so replaying through them exercises the genuine tool
+    bodies, the genuine audit rows, and the genuine backend the task installed.
+    Only the model's choice of what to call is scripted.
+    """
+
+    def __init__(self, session: _ScriptedSession, kwargs: dict) -> None:
+        self._session = session
+        self._tools = {tool.name: tool for tool in kwargs.get("custom_tools", ())}
+        self._cwd = Path(kwargs["cwd"])
+        self._on_tool_end = None
+
+    def __enter__(self) -> _ScriptedRpcClient:
+        return self
+
+    def __exit__(self, *_exc) -> bool:
+        return False
+
+    def install_headless_ui(self) -> None: ...
+
+    def on_message_update(self, _cb) -> None: ...
+
+    def on_tool_execution_end(self, cb) -> None:
+        self._on_tool_end = cb
+
+    def set_todos(self, phases) -> None:
+        self._session.todo_phases = phases
+
+    def get_todos(self):
+        return ()
+
+    def stop(self) -> None: ...
+
+    def _mark_closed(self, _error) -> None: ...
+
+    def prompt_and_wait(self, prompt, timeout):
+        self._session.prompts.append(prompt)
+        if len(self._session.prompts) == 1:
+            self._replay()
+        return SimpleNamespace(messages=[], events=[], assistant_text="done", assistant_message=None)
+
+    def _replay(self) -> None:
+        ctx = HostToolContext(tool_call_id="tc-1", _cancel_event=threading.Event(), _send_update=lambda _p: None)
+        for step in self._session.script:
+            if callable(step):
+                step(self._cwd)
+                continue
+            name, args = step
+            try:
+                result = self._tools[name].execute(dict(args), ctx)
+            except RpcCommandError as exc:
+                self._session.refusals.append((name, str(exc)))
+                if self._on_tool_end is not None:
+                    self._on_tool_end(SimpleNamespace(tool_name=name, result=None))
+                continue
+            self._session.accepted.append(name)
+            if self._on_tool_end is not None:
+                self._on_tool_end(SimpleNamespace(tool_name=name, result=result))
+
+
+class _ScriptedSession:
+    """One scripted agent turn plus everything it did."""
+
+    def __init__(self, script) -> None:
+        self.script = script
+        self.prompts: list[str] = []
+        self.accepted: list[str] = []
+        self.refusals: list[tuple[str, str]] = []
+        self.todo_phases: list = []
+
+    def client(self, **kwargs) -> _ScriptedRpcClient:
+        return _ScriptedRpcClient(self, kwargs)
+
+    def refusal_for(self, tool: str) -> str:
+        matches = [msg for name, msg in self.refusals if name == tool]
+        assert matches, f"{tool} was not refused; refusals={self.refusals}"
+        return matches[0]
+
+
+@dataclasses.dataclass(slots=True)
+class _CadenceRun:
+    session: _ScriptedSession
+    api: _FakeGitHubApi
+    audit: list[tuple[str, bool]]
+    """(tool, succeeded) for every audit row, in write order."""
+    issue_state: str | None
+    issue_pr: int | None
+
+    def accepted_audit(self) -> list[str]:
+        return [tool for tool, ok in self.audit if ok]
+
+
+async def _run_cadence_triage(tmp_path: Path, monkeypatch, script, *, seed_comment: bool = False) -> _CadenceRun:
+    monkeypatch.setenv("VEYBOT_TASK_COMPLETION_MAX_REMINDERS", "0")
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    cfg.ensure_paths()
+
+    api = _FakeGitHubApi(_seed_upstream(tmp_path / "git"))
+    session = _ScriptedSession(script)
+    monkeypatch.setattr(worker, "RpcClient", session.client)
+
+    database = Database(cfg.sqlite_path)
+    try:
+        if seed_comment:
+            # Stands in for an earlier attempt that already spoke to the reporter.
+            database.log_tool_call(
+                issue_key=_CADENCE_KEY, tool="gh_post_comment", args={"body": "x"}, result={"comment_id": 1}
+            )
+        await tasks.triage_issue(
+            settings=cfg,
+            db=database,
+            github=GitHubClient("ghp_test", transport=api.transport()),
+            sandbox=SandboxManager(cfg.workspace_root),
+            git_transport=LocalGitTransport(token=None),
+            payload=api.payload(),
+            delivery_id="d-cadence",
+        )
+        rows = database._conn.execute(  # noqa: SLF001 - test-only audit inspection
+            "SELECT tool, error FROM tool_calls WHERE issue_key=? ORDER BY id",
+            (_CADENCE_KEY,),
+        ).fetchall()
+        issue_row = database.get_issue(_CADENCE_KEY)
+        return _CadenceRun(
+            session=session,
+            api=api,
+            audit=[(row["tool"], row["error"] is None) for row in rows],
+            issue_state=issue_row.state if issue_row else None,
+            issue_pr=issue_row.pr_number if issue_row else None,
+        )
+    finally:
+        database.close()
+
+
+def _classify_step() -> tuple[str, dict]:
+    return (
+        "classify_issue",
+        {
+            "primary": "bug",
+            "priority": "prio:p1",
+            "rationale": "crash on a documented payload shape",
+            "branch_slug": "normalize-dialog-questions",
+        },
+    )
+
+
+def _repro_step() -> tuple[str, dict]:
+    return (
+        "repro_record",
+        {
+            "title": "askDialog throws on bare-string question",
+            "command": "bun test dialog.test.ts",
+            "output": "TypeError: questions.map is not a function\n    at askDialog (src/dialog.ts:14:22)",
+            "exit_code": 1,
+            "reproduced": True,
+        },
+    )
+
+
+def _open_pr_step(body: str = _PR_BODY) -> tuple[str, dict]:
+    return ("gh_open_pr", {"title": "fix(dialog): normalize questions at entry", "body": body})
+
+
+def _full_cadence_script() -> list:
+    return [
+        _classify_step(),
+        ("gh_post_comment", {"body": _ACK_BODY}),
+        _repro_step(),
+        ("gh_post_comment", {"body": _REPRO_BODY}),
+        _land_fix,
+        _open_pr_step(),
+        ("gh_post_comment", {"body": _LINK_BODY}),
+    ]
+
+
+async def test_triage_cadence_posts_three_evidence_bearing_comments_in_order(env, tmp_path, monkeypatch):
+    """Locks the roboomp three-beat shape end to end: classify, then an ack that
+    already names code, then the reproduction report, then the PR, then the
+    link. Before this the prompt asked for a canned "looking into this" ack and
+    nothing correlated any comment with evidence, so the issue went dark from
+    label to PR. If the ordering or the beat count regresses, the reporter is
+    back to nine minutes of silence followed by a pull request."""
+    run = await _run_cadence_triage(tmp_path, monkeypatch, _full_cadence_script())
+
+    assert run.session.refusals == []
+    # Exact audit order. `gh_open_pr` audits twice: once for the push preflight
+    # it performs itself, once for the PR.
+    assert run.accepted_audit() == [
+        "classify_issue",
+        "gh_post_comment",
+        "repro_record",
+        "gh_post_comment",
+        "gh_open_pr",
+        "gh_open_pr",
+        "gh_post_comment",
+    ]
+
+    assert len(run.api.comments) == 3
+    ack, repro, link = run.api.comment_bodies
+    assert "src/dialog.ts:14" in ack
+    assert "```" in repro and "src/dialog.ts:14" in repro
+    assert "Cause:" in repro and "Next:" in repro
+    assert "#7" in link and "normalizeRenderQuestions" in link
+
+    assert run.api.prs and "Mirrors:" in run.api.prs[0]["body"]
+    assert run.issue_state == "opened"
+    assert run.issue_pr == 7
+    refs = subprocess.run(
+        ["git", "-C", str(run.api.bare), "for-each-ref", "--format=%(refname)"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert any(ref.startswith("refs/heads/farm/") for ref in refs), refs
+
+
+async def test_triage_cadence_refuses_a_contentless_ack(env, tmp_path, monkeypatch):
+    """The exact ack the old prompt asked for by example. A comment that names
+    nothing from the codebase must never reach the reporter: it spends their
+    attention and buys them nothing. If this regresses, veybot is back to
+    announcing itself before it has read a line of code."""
+    script = [
+        _classify_step(),
+        ("gh_post_comment", {"body": "Looking into this, will report back with a repro."}),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.api.comments == []
+    assert "names nothing from the codebase" in run.session.refusal_for("gh_post_comment")
+    assert run.accepted_audit() == ["classify_issue"]
+
+
+async def test_triage_cadence_lets_the_same_ack_through_once_it_names_code(env, tmp_path, monkeypatch):
+    """The gate measures evidence, not length or tone. The same sentence with a
+    real citation attached is exactly the beat we want, so it must pass — a gate
+    that also rejected this would push the agent into silence instead of
+    substance."""
+    body = "Looking at `src/dialog.ts:14` — it skips the normalization `normalizeRenderQuestions` does."
+    run = await _run_cadence_triage(tmp_path, monkeypatch, [_classify_step(), ("gh_post_comment", {"body": body})])
+
+    assert run.session.refusals == []
+    assert run.api.comment_bodies == [body]
+
+
+async def test_triage_cadence_refuses_a_pull_request_with_no_reproduction(env, tmp_path, monkeypatch):
+    """A run that never reproduced anything cannot open a PR as though it had.
+    `repro_record` is the only evidence that the bug was ever observed rather
+    than inferred from reading source; without it the PR body's `## Repro`
+    section is fiction and a reviewer has no way to tell."""
+    script = [
+        _classify_step(),
+        ("gh_post_comment", {"body": _ACK_BODY}),
+        _land_fix,
+        _open_pr_step(),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.api.prs == []
+    assert "nothing was reproduced" in run.session.refusal_for("gh_open_pr")
+    assert run.issue_pr is None
+
+
+async def test_triage_cadence_refuses_a_pull_request_that_skipped_the_reproduction_report(env, tmp_path, monkeypatch):
+    """Recording a reproduction privately and going straight to the PR is the
+    "goes dark" failure this cadence exists to remove: the reporter watches the
+    label land and then nothing until a pull request appears."""
+    script = [
+        _classify_step(),
+        ("gh_post_comment", {"body": _ACK_BODY}),
+        _repro_step(),
+        _land_fix,
+        _open_pr_step(),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.api.prs == []
+    assert "reproduction was never reported" in run.session.refusal_for("gh_open_pr")
+
+
+async def test_triage_cadence_refuses_a_reproduction_comment_without_evidence(env, tmp_path, monkeypatch):
+    """The comment after `repro_record` is the one moment the agent is holding
+    the verbatim failure, its origin, and the cause. "Reproduced, working on a
+    fix in `src/dialog.ts`" clears the names-code floor but throws that evidence
+    away, which is exactly the padded beat this cadence forbids."""
+    script = [
+        _classify_step(),
+        _repro_step(),
+        ("gh_post_comment", {"body": "Reproduced. Working on a fix in `src/dialog.ts`."}),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.api.comments == []
+    refusal = run.session.refusal_for("gh_post_comment")
+    assert "verbatim failure" in refusal
+    assert "Cause:" in refusal
+    assert "Next:" in refusal
+
+
+async def test_triage_cadence_refuses_a_pull_request_body_without_a_mirrors_line(env, tmp_path, monkeypatch):
+    """The `Mirrors:` line is the beat that makes a fix read as native: it says
+    the change copies a shape this repo already uses. Dropping it is how bots
+    ship plausible-looking foreign code, so the PR must not open without it."""
+    body = _PR_BODY.replace("Mirrors: `render.ts` — the transcript renderer's `normalizeRenderQuestions`.\n", "")
+    script = [
+        _classify_step(),
+        ("gh_post_comment", {"body": _ACK_BODY}),
+        _repro_step(),
+        ("gh_post_comment", {"body": _REPRO_BODY}),
+        _land_fix,
+        _open_pr_step(body),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.api.prs == []
+    assert "Mirrors:" in run.session.refusal_for("gh_open_pr")
+    assert len(run.api.comments) == 2
+
+
+async def test_triage_cadence_leaves_the_needs_info_exit_open(env, tmp_path, monkeypatch):
+    """`mark_unable_to_reproduce` posts veybot's own template through the same
+    backend call the agent's comments use. Judging that template against the
+    agent's evidence contract would lock the agent out of its only honest exit
+    when a report cannot be reproduced."""
+    script = [
+        _classify_step(),
+        _repro_step(),
+        (
+            "mark_unable_to_reproduce",
+            {"diagnosis": "the payload shape is not in the report", "info_needed": "paste the failing payload"},
+        ),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.session.refusals == []
+    assert len(run.api.comments) == 1
+    assert run.api.comment_bodies[0].startswith("## Could not reproduce")
+    assert run.issue_state == "needs_info"
+
+
+async def test_triage_cadence_does_not_re_demand_a_report_the_reporter_already_read(env, tmp_path, monkeypatch):
+    """A resumed or re-triggered run must not force a duplicate reproduction
+    comment. Re-posting evidence the reporter already has is precisely the
+    padding this cadence removes, so a prior recorded comment satisfies the
+    beat."""
+    script = [
+        _classify_step(),
+        _repro_step(),
+        _land_fix,
+        _open_pr_step(),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script, seed_comment=True)
+
+    assert run.session.refusals == []
+    assert run.api.prs and run.issue_pr == 7
+
+
+async def test_triage_cadence_ignores_a_question_classification(env, tmp_path, monkeypatch):
+    """The cadence belongs to `bug` / `documentation`. A `question` answer is
+    one comment of prose and frequently cites nothing; gating it would block the
+    single output that workflow is allowed to produce."""
+    script = [
+        ("classify_issue", {"primary": "question", "rationale": "how-to about config"}),
+        ("gh_post_comment", {"body": "Set the option in your config file and restart."}),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.session.refusals == []
+    assert len(run.api.comments) == 1
+
+
+async def test_triage_cadence_covers_the_documentation_classification(env, tmp_path, monkeypatch):
+    """`documentation` takes the same reproduce-fix-PR route as `bug`, so it
+    owes the same cadence. Gating only `bug` would leave the doc path free to
+    post the canned ack the rest of this change removes."""
+    script = [
+        ("classify_issue", {"primary": "documentation", "rationale": "setup doc names a removed flag"}),
+        ("gh_post_comment", {"body": "On it, will report back shortly."}),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.api.comments == []
+    assert "names nothing from the codebase" in run.session.refusal_for("gh_post_comment")
+
+
+async def test_triage_cadence_accepts_mirrors_none_with_a_reason(env, tmp_path, monkeypatch):
+    """Not every fix has a precedent, and a forced choice with no working escape
+    is a deadlock. `Mirrors: none` plus a reason is the documented way out and
+    must actually open the PR — otherwise the agent's only option is to invent a
+    precedent that does not exist."""
+    body = _PR_BODY.replace(
+        "Mirrors: `render.ts` — the transcript renderer's `normalizeRenderQuestions`.",
+        "Mirrors: none - dialog entry is the first call site to normalize its own input.",
+    )
+    script = [
+        _classify_step(),
+        ("gh_post_comment", {"body": _ACK_BODY}),
+        _repro_step(),
+        ("gh_post_comment", {"body": _REPRO_BODY}),
+        _land_fix,
+        _open_pr_step(body),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.session.refusals == []
+    assert run.api.prs and run.issue_pr == 7
+
+
+async def test_triage_cadence_only_governs_the_reporters_own_thread(env, tmp_path, monkeypatch):
+    """`gh_post_comment` takes an explicit `number`, so the agent can leave a
+    note on a linked or duplicate issue. The cadence is a promise to the person
+    who filed *this* issue; applying it to a cross-reference would forbid
+    "duplicate of #1" — a comment that is complete precisely because it is
+    short."""
+    script = [
+        _classify_step(),
+        ("gh_post_comment", {"number": 42, "body": "Tracking this in #1, which has the reproduction."}),
+    ]
+    run = await _run_cadence_triage(tmp_path, monkeypatch, script)
+
+    assert run.session.refusals == []
+    assert [c["number"] for c in run.api.comments] == [42]
+
+
+async def test_triage_cadence_stops_demanding_evidence_after_the_pull_request(env, tmp_path, monkeypatch):
+    """The third beat is a short link comment, not a second report. Once the PR
+    exists the reproduction is already on the issue and in the PR body, so
+    re-imposing the fenced-block contract would force the agent to paste the
+    same trace a third time — the padding this cadence removes."""
+    run = await _run_cadence_triage(tmp_path, monkeypatch, _full_cadence_script())
+
+    assert run.session.refusals == []
+    link = run.api.comment_bodies[-1]
+    assert "```" not in link
+    assert persona.triage_reproduction_gaps(link), "link comment would fail the reproduction contract"
+    assert persona.triage_ack_gaps(link) == ()
+
+
+async def test_triage_todo_plan_gives_each_beat_its_own_phase(env, tmp_path, monkeypatch):
+    """The plan `run_task` pushes into the live session is what the agent works
+    from, and the gate only refuses — it cannot tell the agent that a beat
+    exists. Without a phase of its own the reproduction report has no slot in
+    the plan, so the agent walks from classify to fix and only discovers the
+    second beat by being refused, burning a turn every run."""
+    run = await _run_cadence_triage(tmp_path, monkeypatch, [_classify_step()])
+
+    phases = run.session.todo_phases
+    assert [phase["name"] for phase in phases] == ["Classify", "Respond", "Reproduce", "Fix and publish"]
+    assert all(phase["tasks"] for phase in phases)
+    reproduce = next(phase for phase in phases if phase["name"] == "Reproduce")
+    assert any("repro_record" in task for task in reproduce["tasks"])
+    assert any("gh_post_comment" in task for task in reproduce["tasks"])

@@ -366,3 +366,231 @@ def test_ci_repair_exhausted_comment_names_the_attempt_budget() -> None:
     out = persona.ci_repair_exhausted_comment(attempts=3)
     assert "3" in out
     assert "{{" not in out
+
+
+# ---------------------------------------------------------------------------
+# Triage cadence evidence predicates
+# ---------------------------------------------------------------------------
+#
+# These decide whether a comment reaches a human, so a false refusal costs the
+# reporter an answer and a false pass costs them their attention. Both
+# directions are held down here; `tests/test_tasks.py` drives them through the
+# real task.
+
+
+def test_ack_gate_refuses_every_shape_of_contentless_status() -> None:
+    """The whole point of the first beat. Each of these is a real thing a model
+    writes when told to acknowledge an issue, and every one of them tells the
+    reporter nothing they did not already know. If the gate stops refusing
+    them, veybot is back to announcing itself before reading any code."""
+    for body in (
+        "Looking into this, will report back with a repro.",
+        "On it!",
+        "Thanks for the report. I'll take a look and get back to you shortly.",
+        "I have started working on this issue and will open a pull request soon.",
+        "Investigating now. This looks like a real bug and I should have a fix today.",
+        "",
+        "   \n\n  ",
+    ):
+        assert persona.triage_ack_gaps(body), f"accepted contentless ack: {body!r}"
+
+
+def test_ack_gate_accepts_a_comment_that_actually_names_code() -> None:
+    """The floor is evidence, not length, tone, or structure. A one-line ack
+    that cites a real path is exactly the beat we want; a gate that also
+    rejected these would push the agent toward silence instead of substance."""
+    for body in (
+        "`src/dialog.ts:14` builds the prompt from the raw payload.",
+        "The live path in `AskDialogComponent` skips normalization.",
+        "`normalizeRenderQuestions` already does this on the transcript side.",
+        "Cause is in `render_questions()`.",
+        "Reproduced:\n\n```\nTypeError: questions.map is not a function\n```\n",
+        "The regression is in `packages/core/src/dialog.ts`.",
+        "`repro_record` shows the same failure on main.",
+    ):
+        assert persona.triage_ack_gaps(body) == (), f"refused a real citation: {body!r}"
+
+
+def test_ack_gate_is_not_fooled_by_backticks_around_english() -> None:
+    """Backticks are cheap. A model told "cite something in backticks" will
+    quote its own prose first; if that passes, the gate buys nothing and the
+    canned ack comes back wearing code formatting."""
+    for body in (
+        "Working on it, this is `broken` and I will `fix` it.",
+        "Status: `investigating`.",
+        "This is `a real bug` and I am `on it`.",
+        "`TODO`",
+        "`ok`",
+    ):
+        assert persona.triage_ack_gaps(body), f"backticked prose passed: {body!r}"
+
+
+def test_reproduction_gate_names_each_missing_piece_separately() -> None:
+    """The refusal is the agent's only instruction for the retry. Collapsing it
+    to one generic complaint makes the agent guess which of the four pieces it
+    owes, and the usual guess is to pad the same comment with more prose."""
+    gaps = persona.triage_reproduction_gaps("Reproduced. Working on a fix.")
+    assert len(gaps) == 4
+    joined = " ".join(gaps)
+    assert "fenced" in joined
+    assert "file.ext:LINE" in joined
+    assert "`Cause:`" in joined
+    assert "`Next:`" in joined
+
+
+def test_reproduction_gate_accepts_the_complete_report() -> None:
+    """The positive control. A comment carrying the verbatim failure, its
+    origin, the cause, and the next action is the second roboomp beat; if this
+    ever fails the agent cannot report a reproduction at all."""
+    body = (
+        "Reproduced with `bun test dialog.test.ts`:\n\n"
+        "```\nTypeError: questions.map is not a function\n"
+        "    at askDialog (src/dialog.ts:14:22)\n```\n\n"
+        "**Cause:** the raw payload never gets normalized.\n"
+        "**Next:** normalize at dialog entry.\n"
+    )
+    assert persona.triage_reproduction_gaps(body) == ()
+
+
+def test_reproduction_gate_accepts_the_decorations_agents_actually_write() -> None:
+    """`Cause:` shows up as `**Cause:**`, `- Cause:`, `#### Cause:` and inside
+    blockquotes. Refusing a complete report over its bullet style teaches the
+    agent to fight the formatter instead of gathering evidence, and the retry
+    burns a full agent turn."""
+    trace = "```\nboom\n```\n\nsrc/dialog.ts:14 is the origin.\n"
+    for cause, nxt in (
+        ("Cause: x", "Next: y"),
+        ("**Cause:** x", "**Next:** y"),
+        ("- Cause: x", "- Next: y"),
+        ("#### Cause: x", "#### Next: y"),
+        ("> Cause: x", "> Next: y"),
+        ("  cause: x", "  NEXT: y"),
+    ):
+        assert persona.triage_reproduction_gaps(f"{trace}\n{cause}\n{nxt}\n") == (), cause
+
+
+def test_reproduction_gate_requires_a_line_number_not_just_a_path() -> None:
+    """ "Somewhere in `src/dialog.ts`" is the vague pointer this beat replaces.
+    The reporter should be able to open the file at the line the agent means,
+    which is the difference between evidence and a gesture."""
+    body = "```\nboom\n```\n\nCause: something in src/dialog.ts\nNext: fix it\n"
+    gaps = persona.triage_reproduction_gaps(body)
+    assert len(gaps) == 1
+    assert "file.ext:LINE" in gaps[0]
+
+
+def test_reproduction_gate_requires_the_block_to_be_fenced() -> None:
+    """Retyped or paraphrased output is not the failure. The fence is what
+    proves the agent pasted what the command printed rather than describing
+    what it thinks the command prints."""
+    body = "Output was TypeError: questions.map is not a function\n\nCause: src/dialog.ts:14 skips it\nNext: fix\n"
+    gaps = persona.triage_reproduction_gaps(body)
+    assert len(gaps) == 1
+    assert "fenced" in gaps[0]
+
+
+def test_reproduction_gate_accepts_a_tilde_fence() -> None:
+    """Tildes are valid CommonMark fences and the natural choice when the
+    pasted output itself contains backticks. Refusing them would push the agent
+    to mangle the very output it is quoting verbatim."""
+    body = "~~~\nTypeError at src/dialog.ts:14\n~~~\n\nCause: no normalization\nNext: add it\n"
+    assert persona.triage_reproduction_gaps(body) == ()
+
+
+def test_pr_body_gate_requires_a_mirrors_line() -> None:
+    """A PR body with no `Mirrors:` line is the pre-change default and the way
+    a bot ships plausible-looking foreign code: nothing ever made it check
+    whether this repo already solved the same problem."""
+    gaps = persona.triage_pr_body_gaps("## Fix\n- normalize at dialog entry\n")
+    assert len(gaps) == 1
+    assert "Mirrors:" in gaps[0]
+
+
+def test_pr_body_gate_accepts_a_mirrors_line_citing_real_code() -> None:
+    """The third roboomp beat verbatim. This is the shape the whole gate exists
+    to produce, so it must pass in every decoration the agent writes it in."""
+    for line in (
+        "Mirrors: `render.ts` — the transcript renderer's `normalizeRenderQuestions`.",
+        "**Mirrors:** `src/render/transcript.ts` normalizes the same way.",
+        "- Mirrors: `normalizeRenderQuestions`",
+        "mirrors: `packages/core/src/render.ts`",
+    ):
+        assert persona.triage_pr_body_gaps(f"## Fix\n- change\n{line}\n") == (), line
+
+
+def test_pr_body_gate_refuses_a_mirrors_line_that_names_nothing() -> None:
+    """`Mirrors: the existing pattern` satisfies the letter of the template and
+    none of its purpose. If hand-waving passes, the line degrades into
+    boilerplate and the reviewer loses the comparison it was meant to hand
+    them."""
+    for line in (
+        "Mirrors: the existing pattern elsewhere in the codebase",
+        "Mirrors: similar handling in the renderer",
+        "Mirrors: `the transcript renderer`",
+        "Mirrors:",
+        "Mirrors: n/a",
+    ):
+        assert persona.triage_pr_body_gaps(f"## Fix\n- change\n{line}\n"), line
+
+
+def test_pr_body_gate_accepts_mirrors_none_with_a_reason_and_refuses_it_bare() -> None:
+    """Some fixes genuinely have no precedent, so the escape must work — a
+    forced choice with no way out just teaches the agent to invent a precedent.
+    A bare `none` is not that escape: it is the same hand-wave with fewer
+    words, so it still has to carry the reason."""
+    for line in (
+        "Mirrors: none - dialog entry is the first call site to normalize its own input.",
+        "Mirrors: none — nothing else parses this payload shape.",
+        "**Mirrors:** none, this is the first validator of its kind.",
+        "**Mirrors**: none - nothing else parses this shape.",
+        "- **Mirrors:** none - first of its kind.",
+        "Mirrors: None: no existing code touches the dialog entry path.",
+    ):
+        assert persona.triage_pr_body_gaps(f"## Fix\n- change\n{line}\n") == (), line
+    for line in (
+        "Mirrors: none",
+        "Mirrors: none.",
+        "Mirrors: None",
+        "Mirrors: none -",
+        "**Mirrors:** none",
+        "Mirrors: none ()",
+    ):
+        gaps = persona.triage_pr_body_gaps(f"## Fix\n- change\n{line}\n")
+        assert len(gaps) == 1 and "no reason" in gaps[0], line
+
+
+def test_orchestrator_comment_detection_tracks_the_template_it_guards() -> None:
+    """`mark_unable_to_reproduce` posts veybot's own rendered template through
+    the same backend call the agent's comments use. If the opener drifts out of
+    lockstep with `unable_to_reproduce_comment.md`, the cadence gate starts
+    judging veybot's template against the agent's contract and locks the agent
+    out of its only honest needs-info exit."""
+    rendered = persona.unable_to_reproduce_comment(
+        diagnosis="the payload shape is not in the report",
+        info_needed="paste the failing payload",
+    )
+    assert persona.is_orchestrator_comment(rendered)
+    assert not persona.is_orchestrator_comment("Looking into this.")
+    assert not persona.is_orchestrator_comment("I could not reproduce this yet.")
+
+
+def test_comment_evidence_reports_each_dimension_independently() -> None:
+    """The gates compose these five flags, so a flag that silently implies
+    another turns one missing piece into a misleading refusal. A fenced block
+    counts as naming code — pasted output is the strongest citation there
+    is — but must not backfill the origin, cause, or next-action flags."""
+    fenced_only = persona.comment_evidence("```\nboom\n```\n")
+    assert fenced_only.verbatim_block
+    assert fenced_only.names_code
+    assert not fenced_only.file_line
+    assert not fenced_only.cause
+    assert not fenced_only.next_action
+
+    prose = persona.comment_evidence("Cause: it broke\nNext: fix it\n")
+    assert prose.cause and prose.next_action
+    assert not prose.verbatim_block
+    assert not prose.names_code
+
+    located = persona.comment_evidence("see src/dialog.ts:14 for details")
+    assert located.file_line
+    assert not located.verbatim_block

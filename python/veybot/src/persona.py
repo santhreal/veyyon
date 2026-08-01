@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import tomllib
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from functools import cache
 from importlib import resources
 from typing import Any
@@ -489,6 +490,200 @@ def question_autoclose_suffix(hours: float) -> str:
     return render(_load("question_autoclose_suffix.md").rstrip(), {"hours": rendered})
 
 
+# ---------------------------------------------------------------------------
+# Triage comment cadence
+# ---------------------------------------------------------------------------
+#
+# A `bug` / `documentation` issue owes the reporter three comments and no more:
+# an ack that proves the code was read, a reproduction carrying the evidence
+# the run actually produced, and the fix announcement naming the existing
+# pattern in this repo that the change mirrors. Everything below is the
+# machine-checkable half of that contract. It only ever measures mechanical
+# properties of a markdown body — does it cite a path or symbol, does it quote
+# verbatim output, does it carry the labels — and never tries to judge prose.
+# `tasks._TriageCadenceGate` turns a non-empty gap tuple into a refusal the
+# agent reads and retries.
+
+TRIAGE_CADENCE_CLASSIFICATIONS: frozenset[str] = frozenset({"bug", "documentation"})
+"""Classifications whose issues owe the reporter the three-beat cadence."""
+
+_ORCHESTRATOR_COMMENT_OPENERS: tuple[str, ...] = ("## Could not reproduce",)
+"""Openers of comment bodies veybot composes itself rather than the agent.
+
+Kept in lockstep with the first heading of `unable_to_reproduce_comment.md`.
+"""
+
+_FENCED_BLOCK_RE = re.compile(r"^[ \t]{0,3}(?:```|~~~)", re.MULTILINE)
+_INLINE_SPAN_RE = re.compile(r"`([^`\n]+)`")
+_FILE_LINE_RE = re.compile(r"[A-Za-z0-9_./+-]*[A-Za-z0-9_+-]\.[A-Za-z][A-Za-z0-9]{0,9}:\d+")
+_EXTENSION_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,9}\b")
+_CAMEL_HUMP_RE = re.compile(r"[a-z0-9][A-Z]")
+_LETTER_RE = re.compile(r"[A-Za-z]")
+
+
+def _label_re(label: str) -> re.Pattern[str]:
+    """Match a line of markdown opening with `<label>:`.
+
+    Tolerates every decoration an agent writing prose puts around it —
+    `**Cause:**`, `**Cause**:`, `- Cause:`, `> Cause:`, `#### Cause:` — because
+    the contract is "say which line names the cause", not "fill in this form".
+    The trailing `\\*{0,2}` matters: with `**Mirrors:** none - <reason>` the
+    closing emphasis would otherwise land at the head of `rest` and hide the
+    `none` escape behind a stray `**`.
+    """
+    return re.compile(
+        rf"^[ \t]*(?:[>*+-]\s*)*(?:\#{{1,6}}\s*)?\*{{0,2}}{label}\*{{0,2}}\s*:\*{{0,2}}(?P<rest>.*)$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+
+
+_CAUSE_LABEL_RE = _label_re("Cause")
+_NEXT_LABEL_RE = _label_re("Next")
+_MIRRORS_LABEL_RE = _label_re("Mirrors")
+_LEADING_NONE_RE = re.compile(r"^none\b[\s:.,;)\u2013\u2014-]*", re.IGNORECASE)
+
+
+def _names_code(text: str) -> bool:
+    """Whether `text` reads like a path or symbol rather than an English word.
+
+    Deliberately conservative in both directions. `src/foo.ts:41`,
+    `AskDialogComponent`, `normalizeRenderQuestions`, and `repro_record` all
+    pass; `soon`, `undefined`, and `it works` all fail. Nothing here can tell a
+    real citation from a plausible-looking one — it only separates "named
+    something from the codebase" from "named nothing at all".
+    """
+    token = text.strip()
+    if len(token) < 3 or not _LETTER_RE.search(token):
+        return False
+    if "/" in token or "::" in token or "(" in token or "_" in token:
+        return True
+    if _EXTENSION_RE.search(token):
+        return True
+    return bool(_CAMEL_HUMP_RE.search(token))
+
+
+@dataclass(slots=True, frozen=True)
+class CommentEvidence:
+    """Mechanical properties of one comment body on the triage path."""
+
+    names_code: bool
+    """Cites a path, a symbol, or verbatim output — proof the code was read."""
+    verbatim_block: bool
+    """Carries a fenced block: the failure as it actually printed."""
+    file_line: bool
+    """Points at a `path.ext:LINE` origin."""
+    cause: bool
+    """Opens a line with a `Cause:` label."""
+    next_action: bool
+    """Opens a line with a `Next:` label."""
+
+
+def comment_evidence(body: str) -> CommentEvidence:
+    """Measure what `body` demonstrably carries."""
+    fenced = bool(_FENCED_BLOCK_RE.search(body))
+    spans = _INLINE_SPAN_RE.findall(body)
+    return CommentEvidence(
+        names_code=fenced or any(_names_code(span) for span in spans),
+        verbatim_block=fenced,
+        file_line=bool(_FILE_LINE_RE.search(body)),
+        cause=bool(_CAUSE_LABEL_RE.search(body)),
+        next_action=bool(_NEXT_LABEL_RE.search(body)),
+    )
+
+
+def is_orchestrator_comment(body: str) -> bool:
+    """True for a comment body veybot composed rather than the agent.
+
+    `mark_unable_to_reproduce` renders `unable_to_reproduce_comment.md` and
+    posts it through the same backend call `gh_post_comment` uses. Without this
+    exemption the cadence gate would judge veybot's own template against the
+    agent's evidence contract and could lock the agent out of its own
+    needs-info exit.
+    """
+    stripped = body.lstrip()
+    return any(stripped.startswith(opener) for opener in _ORCHESTRATOR_COMMENT_OPENERS)
+
+
+def triage_ack_gaps(body: str) -> tuple[str, ...]:
+    """Why `body` fails the floor every comment on the triage path clears.
+
+    The floor is one thing: the comment names something from the codebase. It
+    exists so "Looking into this, will report back with a repro" cannot be
+    posted at all. A comment with no technical content is worse than silence —
+    it spends the reporter's attention and buys them nothing.
+    """
+    if comment_evidence(body).names_code:
+        return ()
+    return (
+        "it names nothing from the codebase: cite the file, symbol, or verbatim "
+        "output you are talking about in backticks, or post nothing until you can",
+    )
+
+
+def triage_reproduction_gaps(body: str) -> tuple[str, ...]:
+    """Why `body` fails the reproduction beat's evidence contract.
+
+    Applied to the first comment after a recorded `repro_record` and before the
+    pull request exists. At that moment the agent is holding the verbatim
+    failure, the line it came from, and the cause, so a comment carrying none
+    of them is a status update wearing a report's clothes.
+    """
+    evidence = comment_evidence(body)
+    gaps: list[str] = []
+    if not evidence.verbatim_block:
+        gaps.append("no fenced block carrying the verbatim failure you just recorded")
+    if not evidence.file_line:
+        gaps.append("no `path/to/file.ext:LINE` naming where that failure came from")
+    if not evidence.cause:
+        gaps.append("no `Cause:` line naming the root cause")
+    if not evidence.next_action:
+        gaps.append("no `Next:` line stating what you are about to do about it")
+    return tuple(gaps)
+
+
+MISSING_REPRODUCTION_GAP = (
+    "nothing was reproduced for this issue: call `repro_record` with the failing "
+    "command and its verbatim output, or `mark_unable_to_reproduce` and open nothing"
+)
+"""Refusal reason when a PR is attempted with no `repro_record` behind it."""
+
+MISSING_REPRODUCTION_COMMENT_GAP = (
+    "the reproduction was never reported to the issue: post it first — fenced "
+    "verbatim failure, `path/to/file.ext:LINE`, a `Cause:` line, a `Next:` line"
+)
+"""Refusal reason when the second beat was skipped on the way to the PR."""
+
+
+def triage_pr_body_gaps(body: str) -> tuple[str, ...]:
+    """Why a `bug`/`documentation` PR body fails the third beat.
+
+    The beat that decides whether the fix reads as native is naming the
+    existing pattern in this repo that the change copies. Forcing a `Mirrors:`
+    line — with `none` plus a reason as the explicit way out — makes the agent
+    go look for that pattern, and hands the reviewer the comparison for free.
+    """
+    match = _MIRRORS_LABEL_RE.search(body)
+    if match is None:
+        return (
+            "no `Mirrors:` line in `## Fix`: name the existing pattern in this repo "
+            "the fix copies, or write `Mirrors: none - <why this is the first of its kind>`",
+        )
+    rest = match.group("rest").strip()
+    without_none = _LEADING_NONE_RE.sub("", rest)
+    if without_none != rest:
+        # A residue of pure punctuation (`none ()`, `none --`) is the same
+        # empty answer with more characters, so the reason has to be worded.
+        if _LETTER_RE.search(without_none):
+            return ()
+        return ("`Mirrors: none` gives no reason: say why nothing in this repo already solves this",)
+    if not any(_names_code(span) for span in _INLINE_SPAN_RE.findall(rest)):
+        return (
+            "`Mirrors:` names no existing code: cite in backticks the file or symbol "
+            "the fix copies, or write `Mirrors: none - <reason>`",
+        )
+    return ()
+
+
 __all__ = [
     "ci_repair_exhausted_comment",
     "classify_next_step",
@@ -516,4 +711,13 @@ __all__ = [
     "unable_to_reproduce_comment",
     "bare_mention_reply",
     "question_autoclose_suffix",
+    "CommentEvidence",
+    "MISSING_REPRODUCTION_COMMENT_GAP",
+    "MISSING_REPRODUCTION_GAP",
+    "TRIAGE_CADENCE_CLASSIFICATIONS",
+    "comment_evidence",
+    "is_orchestrator_comment",
+    "triage_ack_gaps",
+    "triage_pr_body_gaps",
+    "triage_reproduction_gaps",
 ]
