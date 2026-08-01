@@ -1054,11 +1054,24 @@ jobs:
          - name: Download draft macOS arm64 binary and checksum sidecar
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              RELEASE_ID: ${{ needs.release_github.outputs.release-id }}
            run: |
-              gh release download "${{ needs.release_metadata.outputs.release-tag }}" \
-                --repo "$GITHUB_REPOSITORY" \
-                --pattern veyyon-darwin-arm64 \
-                --pattern veyyon-darwin-arm64.sha256
+              set -euo pipefail
+              download_asset() {
+                name="$1"
+                asset_id="$(
+                  gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+                    --jq ".[] | select(.name == \"$name\") | .id"
+                )"
+                if [ -z "$asset_id" ]; then
+                  echo "::error::draft release $RELEASE_ID has no asset named $name"
+                  exit 1
+                fi
+                gh api "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+                  -H "Accept: application/octet-stream" > "$name"
+              }
+              download_asset veyyon-darwin-arm64
+              download_asset veyyon-darwin-arm64.sha256
               chmod +x veyyon-darwin-arm64
          - name: Verify the published .sha256 sidecar (install.sh fails closed without it)
            run: |
@@ -1097,11 +1110,24 @@ jobs:
          - name: Download draft linux-x64 binary and checksum sidecar
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              RELEASE_ID: ${{ needs.release_github.outputs.release-id }}
            run: |
-              gh release download "${{ needs.release_metadata.outputs.release-tag }}" \
-                --repo "$GITHUB_REPOSITORY" \
-                --pattern veyyon-linux-x64 \
-                --pattern veyyon-linux-x64.sha256
+              set -euo pipefail
+              download_asset() {
+                name="$1"
+                asset_id="$(
+                  gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+                    --jq ".[] | select(.name == \"$name\") | .id"
+                )"
+                if [ -z "$asset_id" ]; then
+                  echo "::error::draft release $RELEASE_ID has no asset named $name"
+                  exit 1
+                fi
+                gh api "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+                  -H "Accept: application/octet-stream" > "$name"
+              }
+              download_asset veyyon-linux-x64
+              download_asset veyyon-linux-x64.sha256
               chmod +x veyyon-linux-x64
          - name: Verify the published .sha256 sidecar (install.sh fails closed without it)
            run: |
@@ -1146,11 +1172,26 @@ jobs:
            shell: pwsh
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              RELEASE_ID: ${{ needs.release_github.outputs.release-id }}
            run: |
-              gh release download "${{ needs.release_metadata.outputs.release-tag }}" `
-                --repo "$env:GITHUB_REPOSITORY" `
-                --pattern veyyon-windows-x64.exe `
-                --pattern veyyon-windows-x64.exe.sha256
+              function Get-DraftAsset([string] $Name) {
+                $assetId = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID/assets" `
+                  --jq ".[] | select(.name == `"$Name`") | .id"
+                if ($LASTEXITCODE -ne 0) { throw "failed to list assets for draft release $env:RELEASE_ID" }
+                if ([string]::IsNullOrWhiteSpace($assetId)) {
+                  throw "draft release $env:RELEASE_ID has no asset named $Name"
+                }
+                $headers = @{
+                  Authorization = "Bearer $env:GH_TOKEN"
+                  Accept = "application/octet-stream"
+                  "X-GitHub-Api-Version" = "2022-11-28"
+                }
+                Invoke-WebRequest `
+                  -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/assets/$assetId" `
+                  -Headers $headers -OutFile $Name
+              }
+              Get-DraftAsset veyyon-windows-x64.exe
+              Get-DraftAsset veyyon-windows-x64.exe.sha256
          - name: Verify the published .sha256 sidecar (install.ps1 fails closed without it)
            shell: pwsh
            run: |
