@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Stubbed `gh` for scripts/release-tests/release-sh.test.sh.
+#
+# It does not implement jq: it returns the canned answer for each distinct query
+# release.sh makes, keyed off the jq expression. Fixture world lives in
+# $FIXTURE; every invocation is logged to $FIXTURE/actions.log.
+set -uo pipefail
+
+printf 'gh %s\n' "$*" >>"$FIXTURE/actions.log"
+
+# Which release document to answer from. `gh workflow run` flips the world to
+# the "after CI succeeded" state, the way a real dispatch eventually would.
+release_file() {
+	local tag="$1"
+	if [ -f "$FIXTURE/published-flag" ] && [ -f "$FIXTURE/release-$tag.after" ]; then
+		printf '%s' "$FIXTURE/release-$tag.after"
+		return 0
+	fi
+	printf '%s' "$FIXTURE/release-$tag"
+}
+
+not_found() {
+	printf 'gh: Not Found (HTTP 404)\n' >&2
+	exit 1
+}
+case "${1:-}" in
+workflow)
+	# `gh workflow run ci.yml --repo … --ref vX.Y.Z`: CI eventually publishes.
+	: >"$FIXTURE/published-flag"
+	if [ -f "$FIXTURE/publish-effect" ]; then
+		# shellcheck source=/dev/null
+		. "$FIXTURE/publish-effect"
+	fi
+	exit 0
+	;;
+api) ;;
+*) exit 0 ;;
+esac
+
+endpoint="$2"
+jq=""
+for ((i = 3; i <= $#; i++)); do
+	if [ "${!i}" = "--jq" ]; then
+		n=$((i + 1))
+		jq="${!n}"
+	fi
+done
+
+case "$endpoint" in
+user)
+	cat "$FIXTURE/gh-login" 2>/dev/null || printf 'santhsecurity\n'
+	exit 0
+	;;
+*/releases/tags/*)
+	tag="${endpoint##*/releases/tags/}"
+	doc="$(release_file "$tag")"
+	[ -f "$doc" ] || not_found
+	case "$jq" in
+	*".draft"*) sed -n 's/^flags //p' "$doc" ;;
+	*"assets"*) sed -n 's/^asset //p' "$doc" ;;
+	*".id"*) sed -n 's/^id //p' "$doc" ;;
+	*) cat "$doc" ;;
+	esac
+	exit 0
+	;;
+*/compare/*)
+	rest="${endpoint##*/compare/}"
+	base="${rest%%...*}"
+	[ -f "$FIXTURE/compare-$base" ] || not_found
+	cat "$FIXTURE/compare-$base"
+	exit 0
+	;;
+*/commits/*)
+	sha="${endpoint##*/commits/}"
+	[ -f "$FIXTURE/commit-$sha" ] || not_found
+	head -1 "$FIXTURE/commit-$sha"
+	exit 0
+	;;
+esac
+not_found
