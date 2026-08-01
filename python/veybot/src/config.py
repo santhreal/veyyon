@@ -11,6 +11,13 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ThinkingLevel = Literal["off", "low", "medium", "high", "xhigh", "max"]
+TriageTrigger = Literal["auto", "label", "mention", "off"]
+"""What admits an issue to the triage pipeline.
+
+`auto` runs an agent on every `issues.opened`; `label` waits for
+`Settings.triage_label`; `mention` waits for a maintainer to `@` the bot in a
+comment; `off` never triages from an issues event at all.
+"""
 
 
 class Settings(BaseSettings):
@@ -40,6 +47,14 @@ class Settings(BaseSettings):
     # Master switch for PR review. When enabled, veybot reviews incoming PRs on
     # opened/reopened/ready_for_review.
     pr_review_enabled: bool = Field(True, alias="VEYBOT_PR_REVIEW_ENABLED")
+
+    # Triage opt-in. One triage is one real agent run against a real model, so
+    # firing on every `issues.opened` bills the operator for every drive-by
+    # report. `triage_trigger` decides what admits an issue to the pipeline and
+    # ships as `label`: veybot stays quiet until a human asks for it by adding
+    # `triage_label`. Set it to `auto` to restore fire-on-open.
+    triage_trigger: TriageTrigger = Field("label", alias="VEYBOT_TRIAGE_TRIGGER")
+    triage_label: str = Field("veybot", alias="VEYBOT_TRIAGE_LABEL")
 
     # Upstream-port backlog drain. `scripts/upstream-radar.ts` mirrors every
     # newly merged upstream PR into ONE tracking issue labeled `port_label`;
@@ -183,7 +198,7 @@ class Settings(BaseSettings):
             raise ValueError("VEYBOT_BOT_LOGIN must be a non-empty GitHub login")
         return cleaned
 
-    @field_validator("port_label", "agent_profile", mode="after")
+    @field_validator("port_label", "triage_label", "agent_profile", mode="after")
     @classmethod
     def _strip_plain_string(cls, value: str) -> str:
         # A stray space in `.env` would make the port label never match a real
@@ -197,6 +212,18 @@ class Settings(BaseSettings):
         # `port_upstream_enabled` still reports True. Refuse it at startup.
         if not value:
             raise ValueError("VEYBOT_PORT_LABEL must not be empty")
+        return value
+
+    @field_validator("triage_trigger", mode="before")
+    @classmethod
+    def _normalize_triage_trigger(cls, value: object) -> object:
+        # Only normalizes shape (`" Label\n"` -> `"label"`). Anything outside
+        # the four modes still trips the `TriageTrigger` literal and refuses to
+        # start: a typo'd `VEYBOT_TRIAGE_TRIGGER=lable` must never fall back to
+        # a default, because both plausible fallbacks are wrong — `auto` bills
+        # the operator for every drive-by issue and `off` makes the bot inert.
+        if isinstance(value, str):
+            return value.strip().lower()
         return value
 
     @field_validator("replay_token", mode="before")
@@ -271,6 +298,19 @@ class Settings(BaseSettings):
                 "no GitHub access configured: set GITHUB_TOKEN, or set "
                 "VEYBOT_GH_PROXY_URL + VEYBOT_GH_PROXY_HMAC_KEY to use gh-proxy."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _require_triage_label(self) -> Settings:
+        """Refuse an empty triage label in the one mode that reads it.
+
+        Mirrors `_require_port_label`: in `label` mode an empty label matches
+        no `issues.labeled` event, so triage would be silently dead while
+        `triage_trigger` still reports `label`. The other three modes never
+        consult it, so an empty value there is merely unused, not a trap.
+        """
+        if self.triage_trigger == "label" and not self.triage_label:
+            raise ValueError("VEYBOT_TRIAGE_LABEL must not be empty when VEYBOT_TRIAGE_TRIGGER=label")
         return self
 
     @field_validator("repo_allowlist_raw", mode="before")

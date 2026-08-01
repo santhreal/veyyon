@@ -1285,3 +1285,272 @@ def test_route_ci_repair_disabled_skips() -> None:
     )
     assert decision.task is None
     assert "disabled" in decision.reason
+
+
+# ---- Triage opt-in routing ----
+
+TRIAGE_LABEL = "veybot"
+ALL_TRIGGERS = ("auto", "label", "mention", "off")
+
+
+def _opened(labels: list[dict] | None = None, *, number: int = 4, author: str = "alice") -> dict:
+    return {
+        "action": "opened",
+        "issue": {"number": number, "user": {"login": author}, "labels": labels or []},
+        "repository": {"full_name": "octo/widget"},
+    }
+
+
+def _labeled(name: str, *, number: int = 4, author: str = "alice", association: str | None = None) -> dict:
+    issue: dict = {"number": number, "user": {"login": author}, "labels": [{"name": name}]}
+    if association is not None:
+        issue["author_association"] = association
+    return {
+        "action": "labeled",
+        "label": {"name": name},
+        "issue": issue,
+        "repository": {"full_name": "octo/widget"},
+    }
+
+
+def _route(payload: dict, *, trigger: str, label: str = TRIAGE_LABEL, **kwargs: object):
+    return route(
+        "issues",
+        payload,
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        port_label=PORT_LABEL,
+        triage_trigger=trigger,
+        triage_label=label,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def test_auto_trigger_queues_triage_on_issue_opened() -> None:
+    """`auto` is the pre-opt-in behavior and must survive verbatim: operators
+    who want fire-on-open set it explicitly, and if it silently stopped
+    queueing they would have no working mode at all."""
+    decision = _route(_opened(), trigger="auto")
+    assert decision.should_queue
+    assert decision.task == "triage_issue"
+    assert decision.submitter == "alice"
+
+
+@pytest.mark.parametrize("trigger", ["label", "mention", "off"])
+def test_opt_in_triggers_skip_issue_opened(trigger: str) -> None:
+    """The whole point of the slice: an opened issue must NOT spawn an agent
+    under any opt-in mode. A regression here spends real model budget on every
+    drive-by report in an allowlisted repo, gated only by the rate limiter."""
+    decision = _route(_opened(), trigger=trigger)
+    assert not decision.should_queue
+    assert decision.task is None
+    assert trigger in decision.reason
+
+
+def test_label_trigger_queues_triage_when_the_label_is_added() -> None:
+    """`label` mode's only entry point. If `issues.labeled` did not queue,
+    the shipped default would be a bot that can never be asked to do anything."""
+    decision = _route(_labeled(TRIAGE_LABEL), trigger="label")
+    assert decision.should_queue
+    assert decision.task == "triage_issue"
+    assert decision.issue_key == "octo/widget#4"
+    assert TRIAGE_LABEL in decision.reason
+
+
+def test_label_trigger_honors_a_custom_label() -> None:
+    """`VEYBOT_TRIAGE_LABEL` must actually select; a hardcoded `veybot` would
+    make every custom-label deployment inert."""
+    queued = _route(_labeled("please-veybot"), trigger="label", label="please-veybot")
+    ignored = _route(_labeled(TRIAGE_LABEL), trigger="label", label="please-veybot")
+    assert queued.task == "triage_issue"
+    assert ignored.task is None
+
+
+@pytest.mark.parametrize("added", ["bug", "good first issue", "veybot-ignore", "Veybot", "veybot "])
+def test_label_trigger_ignores_an_unrelated_added_label(added: str) -> None:
+    """Every label add on the repo is a webhook. Matching loosely (prefix,
+    case-insensitively, or on the issue's whole label set instead of the one
+    just added) turns routine triage housekeeping into an agent run each time.
+    GitHub label names are case-sensitive and exact."""
+    decision = _route(_labeled(added), trigger="label")
+    assert not decision.should_queue
+    assert decision.task is None
+
+
+@pytest.mark.parametrize("trigger", ["auto", "mention", "off"])
+def test_only_label_mode_reacts_to_the_triage_label(trigger: str) -> None:
+    """Adding the label under any other mode is not consent. Under `auto` the
+    issue was already admitted on `opened`, so reacting again would double-run
+    it; under `mention` and `off` a label must not be a back door."""
+    decision = _route(_labeled(TRIAGE_LABEL), trigger=trigger)
+    assert not decision.should_queue
+    assert decision.task is None
+
+
+@pytest.mark.parametrize("trigger", ALL_TRIGGERS)
+@pytest.mark.parametrize("added", ["", "bug", "veybot", "  "])
+def test_empty_triage_label_never_matches(trigger: str, added: str) -> None:
+    """An empty configured label must admit NOTHING, not everything.
+
+    `Settings` refuses an empty label in `label` mode, but `route` is also
+    called by tools and tests that build arguments by hand. If the equality
+    check ever ran against a label add that could itself be empty, an operator
+    who blanked `VEYBOT_TRIAGE_LABEL` would get an agent on every label add on
+    the repo — the exact runaway this slice exists to prevent.
+    """
+    decision = _route(_labeled(added), trigger=trigger, label="")
+    assert not decision.should_queue
+    assert decision.task is None
+
+
+@pytest.mark.parametrize("trigger", ALL_TRIGGERS)
+def test_port_label_wins_over_every_triage_trigger_on_opened(trigger: str) -> None:
+    """The port check runs FIRST and is independent of triage. If a trigger
+    mode could suppress it, `VEYBOT_TRIAGE_TRIGGER=off` would silently kill the
+    200-issue upstream backlog drain — a pipeline the operator never turned
+    off."""
+    decision = _route(_opened([{"name": PORT_LABEL}]), trigger=trigger)
+    assert decision.should_queue
+    assert decision.task == "port_upstream"
+    assert decision.submitter is None
+
+
+@pytest.mark.parametrize("trigger", ALL_TRIGGERS)
+def test_port_label_wins_over_every_triage_trigger_on_labeled(trigger: str) -> None:
+    """Same guarantee on the other arrival path: a human adding
+    `upstream-port` later must still reach `port_upstream`, including under
+    `off`, and must never be re-read as a triage opt-in."""
+    decision = _route(_labeled(PORT_LABEL), trigger=trigger)
+    assert decision.should_queue
+    assert decision.task == "port_upstream"
+
+
+@pytest.mark.parametrize("trigger", ALL_TRIGGERS)
+def test_port_label_equal_to_triage_label_still_routes_to_port(trigger: str) -> None:
+    """A misconfiguration that points both settings at one label must resolve
+    deterministically to the port pipeline, not race on branch order. Ordering
+    is the contract: the port check is first and untouched."""
+    decision = _route(_labeled(PORT_LABEL), trigger=trigger, label=PORT_LABEL)
+    assert decision.task == "port_upstream"
+
+
+@pytest.mark.parametrize("trigger", ALL_TRIGGERS)
+def test_issue_closed_cleanup_is_independent_of_the_trigger(trigger: str) -> None:
+    """Cleanup is lifecycle, not work admission. Gating it on the trigger would
+    leak a worktree per closed issue on every opt-in deployment."""
+    payload = _opened() | {"action": "closed"}
+    decision = _route(payload, trigger=trigger)
+    assert decision.should_queue
+    assert decision.task == "cleanup_workspace"
+
+
+@pytest.mark.parametrize("trigger", ALL_TRIGGERS)
+def test_comment_path_is_untouched_by_the_trigger(trigger: str) -> None:
+    """`mention` mode leans on the comment path being the way in, and the other
+    modes must not disable it either — a follow-up on a live task has to resume
+    the session regardless of how that task was admitted."""
+    decision = route(
+        "issue_comment",
+        {
+            "action": "created",
+            "issue": {"number": 4, "user": {"login": "alice"}},
+            "comment": {"body": f"@{BOT} please look", "user": {"login": "alice"}, "author_association": "OWNER"},
+            "repository": {"full_name": "octo/widget"},
+        },
+        allowlist=ALLOWLIST,
+        bot_login=BOT,
+        maintainers=frozenset({"alice"}),
+        triage_trigger=trigger,
+        triage_label=TRIAGE_LABEL,
+    )
+    assert decision.should_queue
+    assert decision.task == "handle_comment"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "action": "labeled",
+            "issue": {"number": 4, "user": {"login": "a"}},
+            "repository": {"full_name": "octo/widget"},
+        },
+        {
+            "action": "labeled",
+            "label": None,
+            "issue": {"number": 4, "user": {"login": "a"}},
+            "repository": {"full_name": "octo/widget"},
+        },
+        {
+            "action": "labeled",
+            "label": {"name": 7},
+            "issue": {"number": 4, "user": {"login": "a"}},
+            "repository": {"full_name": "octo/widget"},
+        },
+        {
+            "action": "labeled",
+            "label": "veybot",
+            "issue": {"number": 4, "user": {"login": "a"}},
+            "repository": {"full_name": "octo/widget"},
+        },
+    ],
+)
+def test_malformed_labeled_payload_skips_instead_of_raising(payload: dict) -> None:
+    """`route` runs on the webhook request path: a `TypeError` here 500s
+    `/webhook/github` and takes every unrelated event down with it. Every
+    malformed `label` shape must read as 'not the triage label'."""
+    decision = _route(payload, trigger="label")
+    assert not decision.should_queue
+
+
+def test_label_triggered_triage_stays_rate_limited() -> None:
+    """The limiter must still guard the path users actually run.
+
+    `test_server.rate_limited_settings` pins `VEYBOT_TRIAGE_TRIGGER=auto` for
+    historical reasons — those tests drive `issues.opened` — so every
+    rate-limit test in that file now exercises a mode nobody ships. This is the
+    test that proves label-mode triage did not become an unmetered back door.
+
+    `server.py` gates on exactly two things: a truthy `decision.submitter`, and
+    the cap `rate_limit_cap` returns for it. `port_upstream` deliberately
+    carries no submitter, so copying that shape onto the triage branch is a
+    one-word regression that would silently un-meter every labeled issue.
+    """
+    decision = _route(_labeled(TRIAGE_LABEL, author="drive-by"), trigger="label")
+    assert decision.task == "triage_issue"
+    assert decision.submitter == "drive-by"
+    cap = rate_limit_cap(
+        decision.submitter,
+        decision.association,
+        unlimited=frozenset(),
+        default=2,
+        contributor=4,
+    )
+    assert cap == 2
+
+
+def test_label_triggered_triage_credits_the_issue_author_not_the_labeler() -> None:
+    """The labeler is a maintainer clicking a button; the cost belongs to the
+    reporter. Crediting the labeler would let one maintainer's unlimited tier
+    launder an unbounded number of runs for a throttled reporter."""
+    payload = _labeled(TRIAGE_LABEL, author="reporter")
+    payload["sender"] = {"login": "maintainer"}
+    decision = _route(payload, trigger="label")
+    assert decision.submitter == "reporter"
+
+
+def test_label_triggered_triage_carries_the_author_association() -> None:
+    """Without the association the limiter drops a trusted reporter to the
+    default tier, throttling a maintainer's own issue after two labels."""
+    decision = _route(_labeled(TRIAGE_LABEL, association="OWNER"), trigger="label")
+    assert decision.association == "OWNER"
+    assert (
+        rate_limit_cap(
+            decision.submitter or "",
+            decision.association,
+            unlimited=frozenset(),
+            default=2,
+            contributor=4,
+        )
+        is None
+    )
