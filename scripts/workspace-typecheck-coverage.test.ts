@@ -116,9 +116,9 @@ describe("the workspace typecheck covers every package", () => {
  * six real ones missing. That is a compile error the moment anything checks it.
  * Unchecked, the lookup returned `undefined` and the shipped settings reference
  * carried six headings reading `## undefined`. Running the check then found five
- * more, including `jules-port-manager.ts` fingerprinting a `{name, key}` object
- * as if it were the API key and passing that object as the credential — a lane
- * path that could never have authenticated.
+ * more, including a since-removed port manager fingerprinting a `{name, key}`
+ * object as if it were the API key and passing that object as the credential,
+ * a lane path that could never have authenticated.
  */
 describe("the typecheck covers scripts/ as well as the workspaces", () => {
 	const rootScripts = (): Record<string, string> =>
