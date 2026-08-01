@@ -505,14 +505,23 @@ def create_proxy_app(settings: Settings) -> FastAPI:
         return JSONResponse({"items": [_serialize(item) for item in items]})
 
     @app.get("/gh/v1/issues")
-    async def list_issues(request: Request, repo: str, state: str = "open", limit: int = 30) -> JSONResponse:
+    async def list_issues(
+        request: Request,
+        repo: str,
+        state: str = "open",
+        limit: int = 30,
+        labels: str | None = None,
+    ) -> JSONResponse:
         await _authenticate(request)
         github: GitHubClient = request.app.state.github
         try:
-            items = await github.list_issues(repo, state=state, limit=limit)
+            items = await github.list_issues(repo, state=state, labels=labels, limit=limit)
         except GitHubError as exc:
             return _gh_error_response(exc)
-        return JSONResponse({"items": [_serialize(s) for s in items]})
+        # `truncated` travels with the items: the proxy is the only side that
+        # can see the ceiling bite, and a caller that never hears about it
+        # reads a partial scan as the whole backlog.
+        return JSONResponse({"items": [_serialize(s) for s in items], "truncated": items.truncated})
 
     @app.get("/gh/v1/comments")
     async def list_comments(request: Request, repo: str, number: int) -> JSONResponse:
@@ -543,6 +552,52 @@ def create_proxy_app(settings: Settings) -> FastAPI:
         except GitHubError as exc:
             return _gh_error_response(exc)
         return JSONResponse({"items": [_serialize(r) for r in items]})
+
+    # ---- CI state ----
+    # These four are the whole CI surface the orchestrator is allowed to reach,
+    # and every one of them is a GET. No merge, auto-merge, approve, or
+    # review-approval endpoint is exposed here, and none may be added: the
+    # sidecar holds the PAT, so this allowlist is the last place a merge could
+    # be reached from even if the agent asked for one.
+    @app.get("/gh/v1/check_runs")
+    async def list_check_runs(request: Request, repo: str, sha: str) -> JSONResponse:
+        await _authenticate(request)
+        github: GitHubClient = request.app.state.github
+        try:
+            items = await github.list_check_runs(repo, sha)
+        except GitHubError as exc:
+            return _gh_error_response(exc)
+        return JSONResponse({"items": [_serialize(item) for item in items]})
+
+    @app.get("/gh/v1/commit_statuses")
+    async def list_commit_statuses(request: Request, repo: str, sha: str) -> JSONResponse:
+        await _authenticate(request)
+        github: GitHubClient = request.app.state.github
+        try:
+            items = await github.list_commit_statuses(repo, sha)
+        except GitHubError as exc:
+            return _gh_error_response(exc)
+        return JSONResponse({"items": [_serialize(item) for item in items]})
+
+    @app.get("/gh/v1/workflow_runs")
+    async def list_workflow_runs(request: Request, repo: str, sha: str) -> JSONResponse:
+        await _authenticate(request)
+        github: GitHubClient = request.app.state.github
+        try:
+            items = await github.list_workflow_runs_for_sha(repo, sha)
+        except GitHubError as exc:
+            return _gh_error_response(exc)
+        return JSONResponse({"items": [_serialize(item) for item in items]})
+
+    @app.get("/gh/v1/failed_job_logs")
+    async def failed_job_logs(request: Request, repo: str, run_id: int) -> JSONResponse:
+        await _authenticate(request)
+        github: GitHubClient = request.app.state.github
+        try:
+            logs = await github.get_failed_job_logs(repo, run_id)
+        except GitHubError as exc:
+            return _gh_error_response(exc)
+        return JSONResponse({"logs": logs})
 
     # ---- writes ----
     async def _json_body(request: Request) -> dict[str, Any]:

@@ -692,3 +692,93 @@ def test_finalize_closure_noop_when_reschedule_stole_the_claim(db: Database) -> 
     assert row.state == "pending"
     assert row.comment_id == 4321
     assert row.close_at == "2999-01-01T00:00:00.000000Z"
+
+
+# ---- ci_repairs ----
+
+
+def test_ci_repair_attempts_defaults_to_zero_for_unseen_sha(db: Database) -> None:
+    """An untried head commit reports zero attempts, not an error.
+
+    Locks out a `None`/missing-row leak into the caller: the repair task
+    compares this against the attempt budget, and anything but 0 on the first
+    look either skips a repairable PR or raises inside the dispatcher.
+    """
+    assert db.ci_repair_attempts(issue_key("octo/widget", 5), "a" * 40) == 0
+
+
+def test_bump_ci_repair_counts_per_head_sha(db: Database) -> None:
+    """The attempt budget is keyed on the head commit, not on the issue.
+
+    Two attempts against sha A must not consume the budget for sha B. Locks out
+    keying on `issue_key` alone, which would leave an exhausted PR permanently
+    unrepairable even after a human pushed a fix — a new push is a new state.
+    """
+    key = issue_key("octo/widget", 12)
+    sha_a = "a" * 40
+    sha_b = "b" * 40
+
+    assert db.bump_ci_repair(key, sha_a) == 1
+    assert db.bump_ci_repair(key, sha_a) == 2
+    assert db.bump_ci_repair(key, sha_b) == 1
+
+    assert db.ci_repair_attempts(key, sha_a) == 2
+    assert db.ci_repair_attempts(key, sha_b) == 1
+
+
+def test_bump_ci_repair_isolates_issues_sharing_a_sha(db: Database) -> None:
+    """Two issues that happen to point at the same commit keep separate budgets.
+
+    Locks out a primary key on `head_sha` alone, which would let one PR's
+    exhausted attempts silently block another's first try.
+    """
+    sha = "c" * 40
+    assert db.bump_ci_repair(issue_key("octo/widget", 1), sha) == 1
+    assert db.bump_ci_repair(issue_key("octo/widget", 2), sha) == 1
+    assert db.ci_repair_attempts(issue_key("octo/widget", 1), sha) == 1
+
+
+def test_migration_adds_ci_repairs_to_existing_db(tmp_path: Path) -> None:
+    """A deployment predating `ci_repairs` gains the table on open, rows intact.
+
+    Locks out shipping the table only in the fresh-install path: an in-place
+    upgrade would otherwise crash on the first repair, and locks out a
+    destructive "recreate the schema" migration that discards live `issues`.
+    """
+    path = tmp_path / "legacy.sqlite"
+    conn = sqlite3.connect(str(path))
+    conn.executescript(
+        """
+        CREATE TABLE events (delivery_id TEXT PRIMARY KEY, event_type TEXT, payload_json TEXT,
+          received_at TEXT, state TEXT CHECK(state IN ('queued','running','done','failed','skipped')),
+          attempts INTEGER DEFAULT 0, last_error TEXT, repo TEXT, issue_key TEXT,
+          started_at TEXT, finished_at TEXT);
+        CREATE TABLE issues (key TEXT PRIMARY KEY, repo TEXT, number INTEGER, branch TEXT,
+          session_dir TEXT, pr_number INTEGER, state TEXT, updated_at TEXT);
+        CREATE TABLE tool_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, issue_key TEXT,
+          tool TEXT, args_json TEXT, result_json TEXT, error TEXT, ts TEXT);
+        INSERT INTO issues VALUES ('octo/widget#9', 'octo/widget', 9, 'farm/ab/port', '/tmp/s', 77,
+          'opened', '2026-01-01T00:00:00Z');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    database = Database(path)
+    try:
+        preserved = database.get_issue("octo/widget#9")
+        assert preserved is not None
+        assert preserved.pr_number == 77
+        assert preserved.branch == "farm/ab/port"
+
+        assert database.ci_repair_attempts("octo/widget#9", "d" * 40) == 0
+        assert database.bump_ci_repair("octo/widget#9", "d" * 40) == 1
+    finally:
+        database.close()
+
+    # Re-opening runs the migration a second time: it must not reset the count.
+    reopened = Database(path)
+    try:
+        assert reopened.ci_repair_attempts("octo/widget#9", "d" * 40) == 1
+    finally:
+        reopened.close()
