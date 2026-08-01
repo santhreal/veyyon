@@ -50,6 +50,14 @@ describe("exec — nonzero exit", () => {
 		expect(r.exitError?.aborted).toBe(false);
 	});
 
+	/** A normal exit code that resembles SIGTERM must remain observable when no abort occurred. */
+	it("retains exit code 143 for an ordinary nonzero exit", async () => {
+		const r = await exec(["sh", "-c", "exit 143"], { allowNonZero: true });
+		expect(r.exitCode).toBe(143);
+		expect(r.exitError).toBeInstanceOf(NonZeroExitError);
+		expect(r.exitError?.aborted).toBe(false);
+	});
+
 	it("throws NonZeroExitError by default", async () => {
 		let caught: unknown;
 		try {
@@ -96,6 +104,7 @@ describe("exec — cancellation", () => {
 		expect(r.exitError).toBeInstanceOf(TimeoutError);
 		expect(r.exitError?.aborted).toBe(true);
 		expect(r.ok).toBe(false);
+		expect(r.exitCode).toBeNull();
 	});
 
 	it("aborts mid-flight when a live signal fires", async () => {
@@ -105,6 +114,7 @@ describe("exec — cancellation", () => {
 		const r = await promise;
 		expect(r.exitError).toBeInstanceOf(ProcessAbortError);
 		expect(r.exitError?.aborted).toBe(true);
+		expect(r.exitCode).toBeNull();
 	});
 });
 

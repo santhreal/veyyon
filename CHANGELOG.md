@@ -13,6 +13,7 @@
 - The Agent Control Center now confirms subagent termination instead of aborting immediately on `x`. You can also hover a terminable row and click its `[x]`; both paths open the same **Dismiss** or **Yes, terminate** card, and the transcript remains on disk. The hover target overlays the row's final cells only while visible, so an idle row keeps its model and activity details.
 - A browser `run` that throws now reports what the code printed before it failed. The displayed lines are folded into the error text and any screenshots it took still render, so a failing script tells you where it got to instead of only that it stopped. Cancelling a run is left alone, since you already know why it ended.
 - The Agent Control Center card is centred against the terminal rather than sized against the text it happens to contain, so it no longer sits off to one side. Its per-row `[x]` hit box is measured from the width the roster actually drew, which keeps the clickable region on the glyph when a scrollbar appears. The roster also holds a minimum height, so the card stops twitching as agents come and go.
+- Process cancellation results now keep `exitCode` at `null` when the operating system reports a signal-derived status such as `143`. You can distinguish an intentional abort from an ordinary child process that exits with the same numeric code on every supported host.
 
 ## [1.0.38] - 2026-07-31
 
