@@ -669,9 +669,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.4"
+version = "4.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
+checksum = "301b56658598e48f3648647ac6fc887be7e7108eddfa4e9b63fcf3ec58c0cadf"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -679,9 +679,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.6.2"
+version = "4.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f09628afdcc538b57f3c6341e9c8e9970f18e4a481690a64974d7023bd33548b"
+checksum = "94a65403d1a1bd28f7dc68eb8506e8874808ee5eecb59298de588e2e1407a078"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1781,9 +1781,9 @@ dependencies = [
 
 [[package]]
 name = "html-escape"
-version = "0.2.14"
+version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c1ff2d1cbf39efe5af0900ced8a069b5e61557a17544eb0c4a50239937389e"
+checksum = "c9356095b4b41197bba32173600e1582792cda618f65d12f68e2e77d273413c5"
 
 [[package]]
 name = "html-to-markdown-rs"
@@ -2668,9 +2668,9 @@ checksum = "5282704fbe8d49b0cf8b08e3f33233416a528658f205c7e5ace63b582de0b11c"
 
 [[package]]
 name = "napi-derive"
-version = "3.6.1"
+version = "3.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d5c9c02556ea6dc99dffd36c1ce60141411657438501a125b675776d011ce92"
+checksum = "6d9002b2940f0184444754546e0fcd15182f56948e6f381968b019d549387c42"
 dependencies = [
  "convert_case",
  "ctor",
@@ -2682,9 +2682,9 @@ dependencies = [
 
 [[package]]
 name = "napi-derive-backend"
-version = "6.1.0"
+version = "6.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a9d8365cf97f54d9b6d6dbf83a25ca227ad7d6e920717426c599225aca6740b"
+checksum = "d60b5d773ad46c698c8cc2cd9fde0b283d39cbb7f71c04bee633c7bdba4423bd"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3840,9 +3840,9 @@ dependencies = [
 
 [[package]]
 name = "serial2"
-version = "0.2.37"
+version = "0.2.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9eb6ea5562eeaed6936b8b54e086aa0f88b9e5b1bef45beb038e2519fa1185b1"
+checksum = "b16809bc35793b19ce4e0c53924bc0dce3937f15487997cfdaed936004180730"
 dependencies = [
  "cfg-if",
  "libc",
@@ -5823,7 +5823,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "veyyon-ast"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -5892,21 +5892,21 @@ dependencies = [
 
 [[package]]
 name = "veyyon-diff-kernel"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "similar 3.1.1",
 ]
 
 [[package]]
 name = "veyyon-glob"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "globset",
 ]
 
 [[package]]
 name = "veyyon-grep-kernel"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "grep-matcher",
  "grep-pcre2",
@@ -5917,7 +5917,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-iso"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "async-trait",
  "libc",
@@ -5930,14 +5930,14 @@ dependencies = [
 
 [[package]]
 name = "veyyon-keys"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "phf 0.13.1",
 ]
 
 [[package]]
 name = "veyyon-natives"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5994,7 +5994,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-shell"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "anyhow",
  "brush-builtins",
@@ -6072,11 +6072,11 @@ dependencies = [
 
 [[package]]
 name = "veyyon-test-scratch"
-version = "1.0.38"
+version = "1.0.39"
 
 [[package]]
 name = "veyyon-text"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "smallvec",
  "unicode-segmentation",
@@ -6085,7 +6085,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-diff"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "clap",
  "parking_lot",
@@ -6096,7 +6096,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-grep"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "clap",
  "clap_complete",
@@ -6120,7 +6120,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uutils-ctx"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "libc",
  "veyyon-test-scratch",
@@ -6128,7 +6128,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-walker"
-version = "1.0.38"
+version = "1.0.39"
 dependencies = [
  "dashmap",
  "globset",
