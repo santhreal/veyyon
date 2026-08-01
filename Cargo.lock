@@ -5216,7 +5216,7 @@ dependencies = [
  "clap",
  "faccess",
  "filetime",
- "nix 0.29.0",
+ "nix 0.31.3",
  "onig",
  "parking_lot",
  "regex",
