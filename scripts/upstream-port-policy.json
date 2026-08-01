@@ -57,7 +57,7 @@
 		}
 	],
 	"neverPorted": {
-		"_doc": "Paths a port PR may not author, enforced by `jules-port-manager.ts land`. A port of one upstream bug fix touches the source that holds the bug, its test, and its changelog entry, so anything listed here came from the session's environment rather than from the fix. What a stray path proves depends on its tier. `quarantine` paths are always noise: every Jules session runs an older bun that strips `configVersion` from bun.lock, and sessions leave scratch helpers at the repo root (#201 shipped 14 beside a good one-file fix). Those are reset to main's content inside the merge commit, named in the log, and the fix still lands. `owned` paths belong to main and a port has no business rewriting them, but a single hit is usually harmless drift such as the `Verified against <sha>` freshness stamp #196 refreshed in docs/internal/releasing.md, so one or two are quarantined the same way. `refuseThreshold` or more of them at once means something else entirely: the branch is a whole-tree revert, which is what a stale Jules clone produces when it resolves `merge main` in its own favour. #184/#186/#187 hit 183, 248 and 183 owned paths, and #195/#199/#200 hit 66 each. Such a diff is refused outright rather than filtered, because the same staleness that reverted the docs also reverted source files that no path list can recognise: #184 quietly reverted packages/argot and packages/catalog too. Note that crates/vendor/ is deliberately absent. veyyon carries uu-rm as vendored source, so a real fix can and does live there (#185).",
+		"_doc": "Paths a port PR may not author. veybot's port and ci_repair prompts carry these constraints; the post-hoc `land` audit that used to verify them was retired with the Jules manager, so a stray path is now caught by the human who reviews the candidate rather than by a program. A port of one upstream bug fix touches the source that holds the bug, its test, and its changelog entry, so anything listed here came from the agent's environment rather than from the fix. What a stray path proves depends on its tier. `quarantine` paths are always noise: an agent running an older bun rewrites `configVersion` in bun.lock, and agents leave scratch helpers at the repo root (#201 shipped 14 beside a good one-file fix); the fix still lands once they are dropped. `owned` paths belong to main and a port has no business rewriting them, but a single hit is usually harmless drift such as the `Verified against <sha>` freshness stamp #196 refreshed in docs/internal/releasing.md, so one or two are treated the same way. `refuseThreshold` or more of them at once means something else entirely: the branch is a whole-tree revert, which is what a stale clone produces when it resolves `merge main` in its own favour. #184/#186/#187 hit 183, 248 and 183 owned paths, and #195/#199/#200 hit 66 each. Such a diff must be refused outright rather than filtered, because the same staleness that reverted the docs also reverted source files that no path list can recognise: #184 quietly reverted packages/argot and packages/catalog too. Note that crates/vendor/ is deliberately absent. veyyon carries uu-rm as vendored source, so a real fix can and does live there (#185).",
 		"refuseThreshold": 3,
 		"owned": {
 			"prefixes": [
@@ -65,13 +65,13 @@
 				"docs/internal/",
 				".github/workflows/",
 				"packages/deepswe-bench/dicts/",
-				".veyyon/skills/"
+				".veyyon/skills/",
+				"python/veybot/"
 			],
 			"exact": [
 				".gitignore",
 				"UPSTREAM.md",
-				"scripts/jules-port-manager.ts",
-				"scripts/jules-port-manager.test.ts",
+				"scripts/upstream-port-issue.md",
 				"scripts/upstream-port-policy.json",
 				"scripts/upstream-radar.ts",
 				"scripts/upstream-radar.test.ts"

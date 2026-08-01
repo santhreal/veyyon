@@ -4,25 +4,25 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 /**
  * Upstream radar: mirror every newly MERGED oh-my-pi PR into one porting issue
- * on this repo, labeled for the Jules async coding agent to pick up.
+ * on this repo for the porting agent to pick up.
  *
  * Why: veyyon forked can1357/oh-my-pi and has diverged (~500 commits), but
  * upstream ships real-world bug fixes at a pace veyyon cannot manually track
  * (30 releases in 3 days). Each merged upstream PR becomes an issue carrying
- * the diff surface and porting instructions; scripts/jules-port-manager.ts
- * dispatches each issue as a Jules session via the REST API (the GitHub-app
- * `jules` label trigger never fired; the label is kept as a human-readable
- * tag only), and the session opens an adapted port PR, which autoreview.yml
- * and a human then gate. Dedup is by an HTML-comment marker
- * (`upstream-pr: <number>`) in the issue body, so re-runs are idempotent and
- * concurrent runs converge.
+ * the diff surface and porting instructions, labeled `upstream-port`. veybot
+ * (python/veybot) watches that label, prepares the change on a branch, and
+ * opens a candidate port PR that closes the issue. It never merges:
+ * autoreview.yml and a human gate every one. Dedup is by an HTML-comment
+ * marker (`upstream-pr: <number>`) in the issue body, so re-runs are
+ * idempotent and concurrent runs converge.
  *
  * What gets mirrored is policy, not everything: veyyon ports upstream fixes
  * and performance corrections, plus feature additions whose file surface does
  * not cross a known architectural divergence. The clean-feature screen is
- * deliberately conservative and only creates a review candidate; Jules still
- * has to establish product fit, tests, and local architecture before opening
- * a PR. The policy is data, not code: scripts/upstream-port-policy.json.
+ * deliberately conservative and only creates a review candidate; the porting
+ * agent still has to establish product fit, tests, and local architecture
+ * before opening a PR. The policy is data, not code:
+ * scripts/upstream-port-policy.json.
  *
  * Runs from .github/workflows/upstream-radar.yml on a schedule; also runnable
  * locally with GH_TOKEN set. Fails closed: any API error aborts the run with a
@@ -38,7 +38,6 @@ const TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
 const LOOKBACK_DAYS = Number(process.env.RADAR_LOOKBACK_DAYS ?? "3");
 const MAX_NEW_ISSUES_PER_RUN = Number(process.env.RADAR_MAX_ISSUES ?? "10");
 const PORT_LABEL = "upstream-port";
-const AGENT_LABEL = "jules";
 
 export interface DivergedSurface {
 	name: string;
@@ -178,7 +177,7 @@ export interface PortIssueBrief {
 	bodyExcerpt: string;
 }
 
-/** Render the evidence-only tracking issue that the manager embeds in Jules's prompt. */
+/** Render the evidence-only tracking issue the porting agent reads as its brief. */
 export function renderPortIssue(brief: PortIssueBrief): string {
 	return prompt.render(
 		PORT_ISSUE_TEMPLATE,
@@ -344,7 +343,6 @@ if (import.meta.main) {
 	if (fresh.length === 0) process.exit(0);
 
 	await ensureLabel(PORT_LABEL, "b06000", "Mirrored from a merged upstream oh-my-pi PR; awaiting port triage");
-	await ensureLabel(AGENT_LABEL, "5319e7", "Assigned to the Jules async coding agent");
 
 	const { batch, aboveAdvisoryLimit } = planIssueCreation(fresh, MAX_NEW_ISSUES_PER_RUN);
 	if (aboveAdvisoryLimit > 0) {
@@ -382,7 +380,7 @@ if (import.meta.main) {
 			body: JSON.stringify({
 				title: `[upstream #${pr.number}] ${pr.title}`,
 				body,
-				labels: [PORT_LABEL, AGENT_LABEL],
+				labels: [PORT_LABEL],
 			}),
 		});
 		console.log(`upstream-radar: filed #${issue.number} for upstream #${pr.number}: ${pr.title}`);

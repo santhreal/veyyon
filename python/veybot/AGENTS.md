@@ -34,7 +34,7 @@ Two task kinds have no live webhook behind them.
 <critical>
 - **NEVER add a merge or auto-merge capability.** Not a host tool, not a task, not a CLI flag, not a "just for candidates that are green" special case. Its absence is the guarantee that makes an unattended port bot safe to run, and the prompts promise the reviewer it does not exist.
 - **NEVER teach a prompt to weaken a gate.** No skip, no threshold drop, no lint ignore, no `.github/` edit. A green check bought that way is worse than a red one.
-- `scripts/jules-port-manager.ts` is the predecessor worker and targets the same queue. It must not run while veybot does, or issues get two candidates.
+- **veybot is the only worker on the `upstream-port` queue.** Its predecessor, a Jules-driven manager, was retired for exactly this reason: two workers on one queue give an issue two candidates. Do not add a second one.
 </critical>
 
 ## Key Directories
