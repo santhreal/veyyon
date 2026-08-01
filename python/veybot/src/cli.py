@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 import sys
+from pathlib import Path
 
 import click
 import uvicorn
@@ -22,7 +23,8 @@ from veybot.manual_triage import (
     enqueue_port_backlog,
     parse_issue_ref,
 )
-from veybot.proxy_client import GitHubProxyClient
+from veybot.proxy_client import GitHubProxyClient, ProxyGitTransport
+from veybot.rehearse import RehearsalError, render, run_rehearsal
 from veybot.sandbox import SandboxManager
 from veybot.server import create_app
 
@@ -52,6 +54,11 @@ def _require_proxy_mode(cfg: Settings) -> tuple[str, bytes]:
 def _build_github(cfg: Settings) -> GitHubProxyClient:
     base_url, key = _require_proxy_mode(cfg)
     return GitHubProxyClient(base_url=base_url, hmac_key=key)
+
+
+def _build_git_transport(cfg: Settings) -> ProxyGitTransport:
+    base_url, key = _require_proxy_mode(cfg)
+    return ProxyGitTransport(base_url=base_url, hmac_key=key)
 
 
 def _default_wait_timeout(cfg: Settings) -> float:
@@ -136,6 +143,86 @@ def triage(issue_ref: str, wait_timeout: float | None) -> None:
                 indent=2,
             )
         )
+
+    asyncio.run(_go())
+
+
+@main.command()
+@click.argument("issue_ref")
+@click.option(
+    "--task",
+    type=click.Choice(["triage", "port"]),
+    default=None,
+    help="Force a task kind. Default: port when the issue carries VEYBOT_PORT_LABEL, else triage.",
+)
+@click.option(
+    "--workspace-root",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Where the rehearsal worktree lives (default: <VEYBOT_WORKSPACE_ROOT>/_rehearse).",
+)
+@click.option(
+    "--resume",
+    is_flag=True,
+    help="Reuse an existing rehearsal worktree and veyyon session instead of starting clean.",
+)
+@click.option(
+    "--out",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Also write the transcript to this file.",
+)
+def rehearse(issue_ref: str, task: str | None, workspace_root: Path | None, resume: bool, out: Path | None) -> None:
+    """Dry-run an issue and print what veybot WOULD post. Writes nothing to GitHub.
+
+    ISSUE_REF is `owner/repo#NN`. The agent, the prompts, the worktree and
+    every GitHub READ are real; every GitHub WRITE is intercepted at the host
+    tool boundary, recorded, and answered with a plausible success so the run
+    reaches its natural end.
+    """
+    cfg = _settings_or_die()
+    configure_logging(cfg.log_dir)
+    cfg.ensure_paths()
+    try:
+        repo_full, number = parse_issue_ref(issue_ref)
+    except InvalidIssueRef as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(2)
+    if not cfg.allows(repo_full):
+        click.echo(f"refusing: {repo_full} not in VEYBOT_REPO_ALLOWLIST", err=True)
+        sys.exit(2)
+    root = workspace_root if workspace_root is not None else cfg.workspace_root / "_rehearse"
+    # Scratch database. A rehearsal upserts issue rows, records a synthetic PR
+    # number and audits every tool call exactly as a live run does; none of
+    # that belongs in the operational sqlite file.
+    db_path = root / "rehearsal.sqlite"
+
+    async def _go() -> None:
+        github = _build_github(cfg)
+        git_transport = _build_git_transport(cfg)
+        try:
+            result = await run_rehearsal(
+                settings=cfg,
+                github=github,
+                git_transport=git_transport,
+                repo_full=repo_full,
+                number=number,
+                workspace_root=root,
+                db_path=db_path,
+                task=task,
+                fresh=not resume,
+            )
+        except (ManualTriageError, RehearsalError) as exc:
+            click.echo(f"refusing: {exc}", err=True)
+            sys.exit(2)
+        transcript = render(result)
+        click.echo(transcript)
+        if out is not None:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(transcript, encoding="utf-8")
+            click.echo(f"transcript written to {out}", err=True)
+        if result.outcome != "completed":
+            sys.exit(1)
 
     asyncio.run(_go())
 
