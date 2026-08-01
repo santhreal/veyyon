@@ -13,6 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from veybot import worker
 from veybot.config import Settings, reset_settings_cache
@@ -294,6 +295,59 @@ def test_build_extra_env_stages_agent_home(tmp_path: Path, settings: Settings, m
     assert (agent_home / ".agent" / "rules" / "rule.md").stat().st_mode & 0o777 == 0o644
     assert (agent_home / ".veyyon" / "agent").stat().st_mode & 0o777 == 0o755
     assert (agent_home / ".veyyon" / "agent" / "models.yml").stat().st_mode & 0o777 == 0o644
+
+
+def test_build_extra_env_generates_agent_models_config(
+    tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The generator must actually run on the agent-launch path.
+
+    `agent_models.py` can be perfectly correct and still never be reached; that
+    failure mode looks exactly like "the agent cannot resolve VEYBOT_MODEL" and
+    is invisible until a live run. This drives the real `_build_extra_env`, the
+    one seam every launch goes through, rather than calling the writer directly.
+    """
+    agent_home = tmp_path / "agent-home"
+    agent_home.mkdir()
+    monkeypatch.setattr(worker, "_AGENT_HOME_STAGE", tmp_path / "absent-stage")
+    monkeypatch.setattr(worker, "_AGENT_HOME", agent_home)
+    configured = settings.model_copy(
+        update={"llm_base_url": "http://llm-gateway.internal:4000/v1", "model": "gen-model"}
+    )
+
+    worker._build_extra_env(configured)
+
+    written = agent_home / ".veyyon" / "agent" / "models.yml"
+    document = yaml.safe_load(written.read_text(encoding="utf-8"))
+    assert document["providers"][configured.llm_provider_id]["models"] == [
+        {"id": "gen-model", "name": "gen-model"}
+    ]
+
+
+def test_build_extra_env_regenerates_over_stale_staged_models_config(
+    tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Generation must happen AFTER staging, or the stale copy wins.
+
+    An operator upgrading from the bind-mounted file can still have one staged.
+    If the copy landed last, the agent would keep routing by the old file while
+    `.env` said otherwise, which is the exact silent disagreement this change
+    exists to remove.
+    """
+    stage_home = tmp_path / "agent-home-stage"
+    agent_home = tmp_path / "agent-home"
+    staged_agent_dir = stage_home / ".veyyon" / "agent"
+    staged_agent_dir.mkdir(parents=True)
+    (staged_agent_dir / "models.yml").write_text("providers: {stale: {}}\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "_AGENT_HOME_STAGE", stage_home)
+    monkeypatch.setattr(worker, "_AGENT_HOME", agent_home)
+    configured = settings.model_copy(update={"llm_base_url": "http://llm-gateway.internal:4000/v1"})
+
+    worker._build_extra_env(configured)
+
+    document = yaml.safe_load((agent_home / ".veyyon" / "agent" / "models.yml").read_text(encoding="utf-8"))
+    assert "stale" not in document["providers"]
+    assert configured.llm_provider_id in document["providers"]
 
 
 @pytest.mark.asyncio
