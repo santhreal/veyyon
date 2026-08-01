@@ -475,12 +475,18 @@ describe("required publication artifacts", () => {
 	});
 	it("draft asset verification is part of the GitHub preparation job", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
-		const step = wf.jobs.release_github.steps.find(
+		const steps = wf.jobs.release_github.steps;
+		const install = steps.find(
+			(candidate: { name?: string }) => candidate.name === "Install release tooling dependencies",
+		);
+		const step = steps.find(
 			(candidate: { name?: string }) => candidate.name === "Verify the exact draft asset manifest",
 		);
-		const draft = wf.jobs.release_github.steps.find((candidate: { id?: string }) => candidate.id === "draft");
+		const draft = steps.find((candidate: { id?: string }) => candidate.id === "draft");
 		expect(step).toBeDefined();
 		expect(step.env.GH_TOKEN).toBeDefined();
+		expect(install.run).toBe("bun install --frozen-lockfile");
+		expect([...steps].indexOf(install)).toBeLessThan([...steps].indexOf(step));
 		expect(draft.run).toContain('gh api --method POST "repos/$repo/releases"');
 		expect(draft.run).toContain("-F draft=true -F prerelease=false -F body=@release-notes.md");
 		expect(draft.run).not.toContain("gh release create");
