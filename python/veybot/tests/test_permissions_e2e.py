@@ -279,7 +279,7 @@ def test_slot_workspace_runs_bun_biome_cargo_and_git_after_root_reentry(
     _run_ok(bindings, ["bun", "install", "--no-progress"], timeout=300.0)
     _run_ok(bindings, ["bun", "run", "check:ts"], timeout=180.0)
     _run_ok(bindings, ["cargo", "check", "--workspace"], timeout=600.0)
-    host_tools._run_pre_publish_bun_check(bindings, {}, tool_name="gh_push_branch", stage="push")
+    host_tools._run_pre_publish_check(bindings, {}, tool_name="gh_push_branch", stage="push")
 
     runtime_env = host_tools._repo_command_env(bindings)
     bun_cache = Path(runtime_env["BUN_INSTALL_CACHE_DIR"])

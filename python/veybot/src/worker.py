@@ -225,6 +225,21 @@ def _ensure_agent_run_dir() -> None:
         log.warning("Failed to prepare agent run dir %s: %s", run_dir, exc)
 
 
+def _slot_extra_groups(settings: Settings, slot_uid: int | None) -> list[str] | None:
+    """Supplementary groups for the agent subprocess, or None when not slotted.
+
+    The group name is `VEYBOT_SLOT_EXTRA_GROUP` rather than a literal, because
+    it names a group that has to exist in the image veybot runs in. A different
+    deployment builds a different image, and a hardcoded name there fails at
+    process spawn, well after the config it should have been declared in.
+    Configured empty means no supplementary group at all.
+    """
+    if slot_uid is None:
+        return None
+    group = settings.slot_extra_group.strip()
+    return [group] if group else None
+
+
 def _build_extra_env(settings: Settings) -> dict[str, str]:
     """Build the env overlay passed to the veyyon subprocess.
 
@@ -657,7 +672,7 @@ def _run_rpc_blocking(
         extra_args=extra_args,
         user=inputs.slot_uid,
         group=inputs.slot_uid if inputs.slot_uid is not None else None,
-        extra_groups=["veyyon"] if inputs.slot_uid is not None else None,
+        extra_groups=_slot_extra_groups(settings, inputs.slot_uid),
     ) as client:
         # Arm cancellation: from this point the API can kill the veyyon subprocess
         # out from under us, which makes `prompt_and_wait` raise an `RpcError`

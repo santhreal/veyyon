@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import shlex
 from functools import cache
 from pathlib import Path
 from typing import Literal
@@ -29,7 +30,16 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore",
+        # A key in `.env` that matches no field below is a HARD ERROR, not a
+        # shrug. Under `ignore` a typo (`VEYBOT_MAX_CONCURENCY=2`) parsed fine
+        # and silently did nothing, so the operator got the default while the
+        # file said otherwise -- the exact silent-fallback failure this project
+        # bans. Forbidding extras makes `.env` the single authoritative config
+        # surface: every key in it is declared here, and anything else stops
+        # startup with the offending name. Note this constrains the `.env` FILE
+        # only; pydantic-settings looks up process env per-field, so unrelated
+        # environment variables (PATH, HOME) are never treated as extras.
+        extra="forbid",
         case_sensitive=False,
     )
 
@@ -88,10 +98,16 @@ class Settings(BaseSettings):
     # by gh-proxy. Bounds how long a hung git can pin a request handler.
     gh_proxy_git_timeout_seconds: float = Field(60.0, alias="VEYBOT_GH_PROXY_GIT_TIMEOUT_SECONDS")
 
-    # Model selection
-    model: str = Field("anthropic/claude-sonnet-4-6", alias="VEYBOT_MODEL")
+    # Model selection. The default is the model this deployment actually runs;
+    # anyone running their own veybot overrides it in their `.env`, which is the
+    # only place a model id should ever appear. `VEYBOT_MODEL` also accepts a
+    # comma-separated pool (see `pick_model`), so the default is the pool of one.
+    # `thinking` is `off` on purpose for this model: gemini-3.6-flash-medium
+    # carries its reasoning effort in the model id, so a separate thinking level
+    # fights it.
+    model: str = Field("gemini-3.6-flash-medium", alias="VEYBOT_MODEL")
     provider: str | None = Field(None, alias="VEYBOT_PROVIDER")
-    thinking_level: ThinkingLevel = Field("high", alias="VEYBOT_THINKING")
+    thinking_level: ThinkingLevel = Field("off", alias="VEYBOT_THINKING")
 
     # Runtime
     max_concurrency: int = Field(8, alias="VEYBOT_MAX_CONCURRENCY")
@@ -128,6 +144,55 @@ class Settings(BaseSettings):
     # next start. Sum of both MUST stay below the compose `stop_grace_period`.
     shutdown_drain_timeout_seconds: float = Field(25.0, alias="VEYBOT_SHUTDOWN_DRAIN_TIMEOUT_SECONDS")
     shutdown_kill_timeout_seconds: float = Field(5.0, alias="VEYBOT_SHUTDOWN_KILL_TIMEOUT_SECONDS")
+
+    # ── Project adaptation ────────────────────────────────────────────────
+    # Everything veybot knows about the *shape* of the repository it services.
+    # These were hardcoded to this workspace's bun toolchain, which is what
+    # stopped veybot from being pointed at any other project. Each is a command
+    # line parsed with `shlex`; an EMPTY value disables that step outright, and
+    # the step is also skipped when `bootstrap_markers` says the repo is not of
+    # the matching kind. A repo that needs none of them (say a plain Python
+    # library) sets all three empty and veybot drives it fine.
+    #
+    # Dependency bootstrap, run before the agent starts. A per-issue worktree is
+    # a bare checkout with no installed dependencies, so without this the first
+    # test the agent runs fails instantly and it reports it could not verify.
+    # `--ignore-scripts` in the default matters for safety, not speed: it stops
+    # an untrusted PR's `postinstall` executing as the slot user.
+    workspace_bootstrap_command: str = Field(
+        "bun install --frozen-lockfile --ignore-scripts",
+        alias="VEYBOT_WORKSPACE_BOOTSTRAP_COMMAND",
+    )
+    # Comma-separated filenames that must ALL exist at the repo root for ANY of
+    # the three toolchain steps to run. This is the "is this repo of my kind"
+    # test, and it is what lets one veybot serve an allowlist holding several
+    # different projects: a repo that does not match is left entirely alone
+    # rather than having a foreign toolchain run against it. A Cargo project
+    # would use `Cargo.toml,Cargo.lock` with `cargo fetch` / `cargo fmt` /
+    # `cargo clippy`. Empty means "every repo matches".
+    project_markers_raw: str = Field(
+        "package.json,bun.lock",
+        alias="VEYBOT_PROJECT_MARKERS",
+    )
+    workspace_bootstrap_timeout_seconds: float = Field(
+        300.0, alias="VEYBOT_WORKSPACE_BOOTSTRAP_TIMEOUT_SECONDS"
+    )
+    # Formatter run before a push or PR; whatever it changes is amended into the
+    # agent's HEAD commit so the bot never opens an unformatted PR.
+    pre_pr_fix_command: str = Field("bun run fix", alias="VEYBOT_PRE_PR_FIX_COMMAND")
+    # Gate run before a push or PR. A non-zero exit REFUSES the publish; that
+    # refusal is the whole point, so this must stay a real gate. Weakening it to
+    # get a green PR is never an acceptable repair.
+    pre_pr_check_command: str = Field("bun check", alias="VEYBOT_PRE_PR_CHECK_COMMAND")
+    # Supplementary group granted to each slot user, used to share the agent's
+    # runtime files across slots. Empty means "no supplementary group".
+    slot_extra_group: str = Field("veyyon", alias="VEYBOT_SLOT_EXTRA_GROUP")
+    # Where the agent's own source lives INSIDE the container. The `veyyon` shim
+    # baked into the image execs `$VEYYON_ROOT/packages/coding-agent/src/cli.ts`,
+    # and compose mounts the host checkout there read-only. Declared here (rather
+    # than left as a bare compose variable) so that `extra="forbid"` accepts it
+    # and so the single config surface documents every key `.env` may carry.
+    agent_source_root: Path = Field(Path("/work/veyyon"), alias="VEYYON_ROOT")
 
     # Paths
     workspace_root: Path = Field(Path("./data/workspaces"), alias="VEYBOT_WORKSPACE_ROOT")
@@ -393,6 +458,49 @@ class Settings(BaseSettings):
         """Random selection from the pool (uniform). One-element pools return that one."""
         return random.choice(self.model_pool)
 
+    @property
+    def workspace_bootstrap_argv(self) -> tuple[str, ...]:
+        """Parsed dependency-bootstrap command; empty tuple disables the step."""
+        return tuple(shlex.split(self.workspace_bootstrap_command))
+
+    @property
+    def project_markers(self) -> tuple[str, ...]:
+        """Filenames that must all exist at the repo root for the toolchain
+        steps to apply to a repo. Empty means every repo matches."""
+        return tuple(p.strip() for p in self.project_markers_raw.split(",") if p.strip())
+
+    @property
+    def pre_pr_fix_argv(self) -> tuple[str, ...]:
+        """Parsed pre-publish formatter; empty tuple disables the step."""
+        return tuple(shlex.split(self.pre_pr_fix_command))
+
+    @property
+    def pre_pr_check_argv(self) -> tuple[str, ...]:
+        """Parsed pre-publish gate; empty tuple disables the step."""
+        return tuple(shlex.split(self.pre_pr_check_command))
+
+    @field_validator(
+        "workspace_bootstrap_command",
+        "pre_pr_fix_command",
+        "pre_pr_check_command",
+        mode="after",
+    )
+    @classmethod
+    def _parseable_command(cls, value: str) -> str:
+        """Reject a command line `shlex` cannot parse, at startup.
+
+        An unbalanced quote otherwise survives config load and only raises
+        when the step runs, which for `pre_pr_check_command` is at the moment
+        the agent tries to publish -- hours into a task, on a code path the
+        operator is not watching. Failing here turns it into a startup error
+        naming the setting.
+        """
+        try:
+            shlex.split(value)
+        except ValueError as exc:
+            raise ValueError(f"not a parseable command line ({exc}): {value!r}") from exc
+        return value
+
     @field_validator("event_retry_delays_raw", mode="before")
     @classmethod
     def _coerce_retry_delays(cls, v: object) -> str:
@@ -462,6 +570,13 @@ class _ProxyEnvLoader(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
+        # Stays `ignore` where the orchestrator `Settings` forbids extras, and
+        # the asymmetry is deliberate: this loader declares only the handful of
+        # fields gh-proxy needs, but it reads the SAME shared `.env`, which is
+        # full of orchestrator keys. Forbidding extras here would reject every
+        # one of them and no proxy could ever start. The orchestrator is the
+        # side that validates the file completely; the proxy deliberately looks
+        # at its own slice.
         extra="ignore",
         case_sensitive=False,
     )

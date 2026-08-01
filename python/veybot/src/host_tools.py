@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import time
 from collections.abc import Callable, Mapping
@@ -41,10 +42,88 @@ from veybot.sandbox import (
 )
 
 log = logging.getLogger(__name__)
-_PRE_PR_FIX_COMMAND = ("bun", "run", "fix")
-_PRE_PR_CHECK_COMMAND = ("bun", "check")
-_BUN_INSTALL_COMMAND = ("bun", "install", "--frozen-lockfile", "--ignore-scripts")
-_BUN_INSTALL_TIMEOUT_SECONDS = 300.0
+
+
+def _configured(bindings: ToolBindings, field: str) -> str:
+    """Read a project-adaptation setting, falling back to its declared default.
+
+    `ToolBindings.settings` is optional and several callers (including test
+    doubles) pass a duck-typed object without the attribute at all, so a caller
+    that built bindings without a `Settings` still needs an answer. Rather than
+    repeat the command literals here (two sources of truth that drift), take the
+    default straight off the field declaration in `Settings`, so config.py stays
+    the only place any toolchain command is written down.
+    """
+    settings = getattr(bindings, "settings", None)
+    if settings is not None:
+        return str(getattr(settings, field))
+    return str(Settings.model_fields[field].default)
+
+
+def _configured_argv(bindings: ToolBindings, field: str) -> tuple[str, ...]:
+    """Parsed argv for a configured command; empty tuple means "step disabled"."""
+    return tuple(shlex.split(_configured(bindings, field)))
+
+
+def _project_matches(bindings: ToolBindings) -> bool:
+    """Whether the checkout looks like the kind of project this veybot services.
+
+    Every toolchain step is gated on this. One veybot can serve an allowlist
+    holding several projects, and running a bun install against a Cargo repo is
+    worse than doing nothing, so a repo that does not match is left alone.
+    """
+    markers = [m.strip() for m in _configured(bindings, "project_markers_raw").split(",") if m.strip()]
+    repo_dir = bindings.workspace.repo_dir
+    return all((repo_dir / marker).is_file() for marker in markers)
+
+
+def _named_manifest_script(argv: tuple[str, ...]) -> str | None:
+    """The `package.json` script a command invokes, or None if it names none.
+
+    Two shapes count. `<runner> run <script>` is the explicit form every JS
+    runner accepts. `bun <script>` is bun's two-token shorthand, and it has to
+    be recognised separately or the default `bun check` would look like a bun
+    subcommand and skip the probe -- which is exactly the case that matters,
+    since `check` is a package script and not a builtin.
+    """
+    if len(argv) >= 3 and argv[1] == "run":
+        return argv[2]
+    if len(argv) == 2 and argv[0] == "bun":
+        return argv[1]
+    return None
+
+
+def _publish_step_argv(bindings: ToolBindings, field: str) -> tuple[str, ...]:
+    """Argv for a pre-publish step, or an empty tuple when it does not apply.
+
+    Two ways a step can be inapplicable, and neither is a failure: the operator
+    disabled it by configuring it empty, or the command names a package script
+    this repo's manifest does not define.
+
+    That second case is the reason this is not just "is the command non-empty".
+    A repo can carry a `package.json` and simply have no `fix` script; invoking
+    it anyway exits non-zero, and for the check step a non-zero exit REFUSES the
+    publish, so a missing optional script would block every PR on that repo.
+    The manifest probe is bun/npm-shaped on purpose and only engages for that
+    command shape; any other runner falls through and is invoked as written.
+
+    Deliberately NOT gated on `_project_matches`, unlike the bootstrap. The
+    markers include a lockfile, so gating here would let a repo with a manifest
+    but no lockfile skip the pre-publish gate entirely and silently: a bot PR
+    would then be pushed with no check having run, which is precisely the
+    failure this gate exists to prevent. A gate may refuse, and it may be turned
+    off deliberately in config, but it must never quietly not happen.
+    """
+    argv = _configured_argv(bindings, field)
+    if not argv:
+        return ()
+    script = _named_manifest_script(argv)
+    if script is not None and not _has_manifest_script(bindings.workspace.repo_dir, script):
+        return ()
+    return argv
+
+
+_BOOTSTRAP_TIMEOUT_FIELD = "workspace_bootstrap_timeout_seconds"
 _REPO_COMMAND_SCRUBBED_ENV_KEYS: tuple[str, ...] = (
     "GITHUB_TOKEN",
     "GITHUB_WEBHOOK_SECRET",
@@ -245,11 +324,11 @@ def _run_repo_command(
     )
 
 
-def _has_bun_script(repo_dir: Path, name: str) -> bool:
+def _has_manifest_script(repo_dir: Path, name: str) -> bool:
     """Return True iff `package.json` defines a `scripts.<name>` entry.
 
     A malformed or unreadable `package.json` is treated as "present" so the
-    repository-native error surfaces from `bun` instead of being silently
+    repository-native error surfaces from the runner instead of being silently
     swallowed here.
     """
     package_json = repo_dir / "package.json"
@@ -290,59 +369,71 @@ def _format_process_output(stdout: Any, stderr: Any) -> str:
 
 
 def ensure_workspace_dependencies(bindings: ToolBindings) -> None:
-    """Bootstrap ``node_modules`` so the agent can resolve workspace packages.
+    """Install the repo's dependencies so the agent can actually run its tests.
 
-    A per-issue worktree is a bare source checkout (``git worktree add`` off
-    the shared clone pool): it has the repo's ``package.json``/``bun.lock`` but
-    no ``node_modules``. With bun's ``hoisted`` linker the workspace links
-    (``@veyyon/*``) only exist after an install, so without one any
-    ``bun test``/``bun check`` the agent runs fails instantly with "Cannot find
-    package" — the agent then reports it could not verify. We install before
-    the agent starts, mirroring how the natives cache pre-populates ``.node``
-    artifacts. The links resolve into *this* worktree's ``packages/*`` (not the
-    orchestrator's read-only ``/work/veyyon``), so tests exercise the PR's edited
-    source.
+    A per-issue worktree is a bare source checkout (``git worktree add`` off the
+    shared clone pool): it has the manifests but nothing installed. Without this
+    the first test the agent runs fails instantly on a missing package and it
+    reports that it could not verify its own change, which is the worst possible
+    outcome: a confident PR with no evidence behind it. So the install happens
+    before the agent starts, mirroring how the natives cache pre-populates build
+    artifacts. Dependencies resolve into *this* worktree, so tests exercise the
+    PR's edited source rather than the orchestrator's read-only copy.
 
-    ``--frozen-lockfile`` keeps the lockfile pristine (no spurious diff for the
-    agent to commit) and ``--ignore-scripts`` skips lifecycle scripts so an
-    untrusted PR's ``postinstall``/``prepare`` cannot execute as the slot and
-    the cached native build is not redone. Runs with the same scrubbed,
-    slot-owned env as the other repo-owned bun commands (``bun run fix`` /
-    ``bun check``).
+    The command, the timeout, and the marker files that decide whether it
+    applies all come from config (`VEYBOT_WORKSPACE_BOOTSTRAP_COMMAND`,
+    `VEYBOT_WORKSPACE_BOOTSTRAP_TIMEOUT_SECONDS`, `VEYBOT_PROJECT_MARKERS`), so
+    veybot can service a project with any toolchain. The default is bun's
+    ``install --frozen-lockfile --ignore-scripts``; if you replace it, keep the
+    two properties that matter. A frozen/locked install keeps the lockfile
+    pristine, so there is no spurious diff for the agent to commit. Skipping
+    lifecycle scripts is a SECURITY property, not a speed one: it stops an
+    untrusted PR's ``postinstall`` executing as the slot user.
 
-    Skips non-bun repos. Otherwise runs unconditionally on every launch
-    (including ``--continue`` resumes): a frozen install verifies an intact
-    tree in ~20ms and re-links anything missing, so a previous install that
-    timed out or crashed half-way self-heals instead of being skipped forever
-    on a mere ``node_modules/`` directory existing. Best-effort: any failure
-    (offline, or a PR that bumped deps so the frozen lockfile is stale) is
-    logged and swallowed — the agent can still install itself or report the gap.
+    Runs on every launch including ``--continue`` resumes, because a frozen
+    install verifies an intact tree in about 20ms and re-links anything missing,
+    so an install that timed out or crashed half-way self-heals instead of being
+    skipped forever because a directory happens to exist. Best-effort: any
+    failure (offline, or a PR that bumped deps so the lockfile is stale) is
+    logged and swallowed, since the agent can still install itself or report the
+    gap. The pre-publish gate is the step that refuses; this one only helps.
     """
-    repo_dir = bindings.workspace.repo_dir
-    if not (repo_dir / "package.json").is_file() or not (repo_dir / "bun.lock").is_file():
+    if not _project_matches(bindings):
         return
+    argv = _configured_argv(bindings, "workspace_bootstrap_command")
+    if not argv:
+        return
+    timeout = float(_configured(bindings, _BOOTSTRAP_TIMEOUT_FIELD))
+    label = argv[0]
     try:
-        proc = _run_repo_command(bindings, _BUN_INSTALL_COMMAND, timeout=_BUN_INSTALL_TIMEOUT_SECONDS)
+        proc = _run_repo_command(bindings, argv, timeout=timeout)
     except FileNotFoundError:
-        log.warning("bun_install bootstrap skipped: bun not on PATH", extra={"issue": bindings.issue_key})
+        log.warning(
+            "bootstrap skipped: command not on PATH",
+            extra={"issue": bindings.issue_key, "command": label},
+        )
         return
     except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("bun_install bootstrap failed", extra={"issue": bindings.issue_key, "err": str(exc)})
+        log.warning(
+            "bootstrap failed",
+            extra={"issue": bindings.issue_key, "command": label, "err": str(exc)},
+        )
         return
     if proc.returncode != 0:
         log.warning(
-            "bun_install bootstrap nonzero exit",
+            "bootstrap nonzero exit",
             extra={
                 "issue": bindings.issue_key,
+                "command": label,
                 "code": proc.returncode,
                 "output": _format_process_output(proc.stdout, proc.stderr),
             },
         )
         return
-    log.info("bun_install bootstrap ok", extra={"issue": bindings.issue_key})
+    log.info("bootstrap ok", extra={"issue": bindings.issue_key, "command": label})
 
 
-def _run_pre_publish_bun_fix(
+def _run_pre_publish_fix(
     bindings: ToolBindings,
     args: Mapping[str, Any],
     *,
@@ -350,10 +441,12 @@ def _run_pre_publish_bun_fix(
     stage: str,
     skip_checks: bool = False,
 ) -> None:
-    """Run `bun run fix` then amend any working-tree diff into HEAD.
+    """Run the configured formatter, then amend any diff into HEAD.
 
-    Silently no-ops when the repository does not define a `scripts.fix`
-    entry. Anything the formatter touches gets amended into the agent's HEAD
+    The command is `VEYBOT_PRE_PR_FIX_COMMAND` (default `bun run fix`).
+    Silently no-ops when the repo is not this veybot's kind of project, when
+    the command is configured empty, or when it names a package script this
+    repo does not define. Anything the formatter touches gets amended into the agent's HEAD
     commit so the downstream cleanliness gate sees a pristine worktree
     without littering PR history with standalone `style:` commits. Amending
     an already-pushed HEAD is safe: the push transport uses
@@ -373,8 +466,10 @@ def _run_pre_publish_bun_fix(
     doesn't strand the push forever. The dirty-tree gate still runs — we
     never let uncommitted changes leak into a remote ref.
     """
-    if not _has_bun_script(bindings.workspace.repo_dir, "fix"):
+    argv = _publish_step_argv(bindings, "pre_pr_fix_command")
+    if not argv:
         return
+    label = shlex.join(argv)
     # Dirty-tree gate BEFORE the formatter so any pre-existing uncommitted
     # edit isn't silently swept into the formatter amend by the
     # `git add -A` below. The agent owns the worktree end-to-end; any diff
@@ -384,7 +479,7 @@ def _run_pre_publish_bun_fix(
     if pre_status.stdout.strip():
         dirty = "\n  ".join(pre_status.stdout.strip().splitlines())
         msg = (
-            f"refusing to {stage}: dirty worktree before `bun run fix`.\n  "
+            f"refusing to {stage}: dirty worktree before `{label}`.\n  "
             f"{dirty}\n"
             "Commit (or `git stash`) every change before invoking the formatter — "
             "anything left uncommitted would be amended into your HEAD commit "
@@ -397,19 +492,19 @@ def _run_pre_publish_bun_fix(
             bindings,
             tool_name,
             args,
-            result={"skipped": "bun_run_fix", "reason": "skip_checks=true"},
+            result={"skipped": "pre_pr_fix", "reason": "skip_checks=true"},
         )
         return
     try:
-        proc = _run_repo_command(bindings, _PRE_PR_FIX_COMMAND, timeout=_PRE_PR_FIX_TIMEOUT_SECONDS)
+        proc = _run_repo_command(bindings, argv, timeout=_PRE_PR_FIX_TIMEOUT_SECONDS)
     except FileNotFoundError:
-        msg = f"refusing to {stage}: `bun run fix` is required before {stage}, but `bun` is not on PATH."
+        msg = f"refusing to {stage}: `{label}` is required before {stage}, but `{argv[0]}` is not on PATH."
         _audit(bindings, tool_name, args, error=msg)
         _raise_command(msg)
     except subprocess.TimeoutExpired as exc:
         output = _format_process_output(exc.stdout, exc.stderr)
         msg = (
-            f"refusing to {stage}: `bun run fix` timed out before {stage}.\n"
+            f"refusing to {stage}: `{label}` timed out before {stage}.\n"
             f"{output}\n\n"
             f"Investigate the hang, rerun the formatter, commit any resulting changes, "
             f"and retry."
@@ -419,9 +514,9 @@ def _run_pre_publish_bun_fix(
     if proc.returncode != 0:
         output = _format_process_output(proc.stdout, proc.stderr)
         msg = (
-            f"refusing to {stage}: `bun run fix` failed before {stage} (exit {proc.returncode}).\n"
+            f"refusing to {stage}: `{label}` failed before {stage} (exit {proc.returncode}).\n"
             f"{output}\n\n"
-            f"Resolve the formatter failure, rerun `bun run fix` successfully, commit any "
+            f"Resolve the formatter failure, rerun `{label}` successfully, commit any "
             f"resulting changes, and retry."
         )
         _audit(bindings, tool_name, args, error=msg)
@@ -440,7 +535,7 @@ def _run_pre_publish_bun_fix(
     ahead = _run_repo_command(bindings, ["git", "rev-list", "-n", "1", f"origin/{base}..HEAD"])
     if ahead.returncode != 0 or not ahead.stdout.strip():
         msg = (
-            f"refusing to {stage}: `bun run fix` changed files, but there is no commit of "
+            f"refusing to {stage}: `{label}` changed files, but there is no commit of "
             f"yours to fold them into — the checkout matches `origin/{base}`, so the "
             f"formatter drift pre-exists on `{base}`. Inspect with `git status` / `git diff`; "
             "either commit the formatter output yourself or discard it "
@@ -456,7 +551,7 @@ def _run_pre_publish_bun_fix(
     ]:
         author = head_identity.stdout.strip("\n").replace("\x1f", " <") + ">"
         msg = (
-            f"refusing to {stage}: `bun run fix` changed files, but HEAD is authored by "
+            f"refusing to {stage}: `{label}` changed files, but HEAD is authored by "
             f"{author} — refusing to fold the formatter diff into a foreign commit. "
             "Fix the identity first (`git commit --amend --reset-author --no-edit`) and retry."
         )
@@ -466,18 +561,18 @@ def _run_pre_publish_bun_fix(
     add = _run_repo_command(bindings, ["git", "add", "-A"])
     if add.returncode != 0:
         err = (add.stderr or add.stdout).strip()
-        msg = f"refusing to {stage}: `git add -A` failed after `bun run fix`: {err}"
+        msg = f"refusing to {stage}: `git add -A` failed after `{label}`: {err}"
         _audit(bindings, tool_name, args, error=msg)
         _raise_command(msg)
     commit = _run_repo_command(bindings, ["git", "commit", "--amend", "--no-edit"])
     if commit.returncode != 0:
         err = (commit.stderr or commit.stdout).strip()
-        msg = f"refusing to {stage}: failed to amend `bun run fix` changes into HEAD: {err}"
+        msg = f"refusing to {stage}: failed to amend `{label}` changes into HEAD: {err}"
         _audit(bindings, tool_name, args, error=msg)
         _raise_command(msg)
 
 
-def _run_pre_publish_bun_check(
+def _run_pre_publish_check(
     bindings: ToolBindings,
     args: Mapping[str, Any],
     *,
@@ -485,32 +580,39 @@ def _run_pre_publish_bun_check(
     stage: str,
     skip_checks: bool = False,
 ) -> None:
-    """Run `bun check` before publishing. When `skip_checks=True` the check
-    is not invoked — used to escape pre-existing breakage on `main` that
-    the agent's diff did not cause.
+    """Run the configured gate before publishing, and REFUSE on failure.
+
+    The command is `VEYBOT_PRE_PR_CHECK_COMMAND` (default `bun check`). A
+    non-zero exit stops the push or PR: that refusal is the whole point of
+    the step, and weakening the gate is never an acceptable way to get past
+    it. When `skip_checks=True` the gate is not invoked at all, which exists
+    to escape pre-existing breakage on `main` that the agent's diff did not
+    cause; the caller records that it was skipped.
     """
     if skip_checks:
         _audit(
             bindings,
             tool_name,
             args,
-            result={"skipped": "bun_check", "reason": "skip_checks=true"},
+            result={"skipped": "pre_pr_check", "reason": "skip_checks=true"},
         )
         return
-    if not _has_bun_script(bindings.workspace.repo_dir, "check"):
+    argv = _publish_step_argv(bindings, "pre_pr_check_command")
+    if not argv:
         return
+    label = shlex.join(argv)
     try:
-        proc = _run_repo_command(bindings, _PRE_PR_CHECK_COMMAND, timeout=_PRE_PR_CHECK_TIMEOUT_SECONDS)
+        proc = _run_repo_command(bindings, argv, timeout=_PRE_PR_CHECK_TIMEOUT_SECONDS)
     except FileNotFoundError:
-        msg = f"refusing to {stage}: `bun check` is required before {stage}, but `bun` is not on PATH."
+        msg = f"refusing to {stage}: `{label}` is required before {stage}, but `{argv[0]}` is not on PATH."
         _audit(bindings, tool_name, args, error=msg)
         _raise_command(msg)
     except subprocess.TimeoutExpired as exc:
         output = _format_process_output(exc.stdout, exc.stderr)
         msg = (
-            f"refusing to {stage}: `bun check` timed out before {stage}.\n"
+            f"refusing to {stage}: `{label}` timed out before {stage}.\n"
             f"{output}\n\n"
-            f"Fix the check hang/failure, rerun `bun check`, commit any resulting changes, "
+            f"Fix the check hang/failure, rerun `{label}`, commit any resulting changes, "
             f"and retry."
         )
         _audit(bindings, tool_name, args, error=msg)
@@ -518,9 +620,9 @@ def _run_pre_publish_bun_check(
     if proc.returncode != 0:
         output = _format_process_output(proc.stdout, proc.stderr)
         msg = (
-            f"refusing to {stage}: `bun check` failed before {stage} (exit {proc.returncode}).\n"
+            f"refusing to {stage}: `{label}` failed before {stage} (exit {proc.returncode}).\n"
             f"{output}\n\n"
-            f"Fix the reported failures, rerun `bun check` successfully, commit any resulting changes, "
+            f"Fix the reported failures, rerun `{label}` successfully, commit any resulting changes, "
             f"and retry."
         )
         _audit(bindings, tool_name, args, error=msg)
@@ -889,8 +991,8 @@ def _build_push_branch(bindings: ToolBindings) -> HostTool[Any, Any]:
         # pass auto-commits any formatter diff so the push includes it.
         # `skip_checks=true` bypasses the formatter/check (e.g. when `main`
         # itself is broken); dirty-tree gate still runs unconditionally.
-        _run_pre_publish_bun_fix(bindings, args, tool_name="gh_push_branch", stage="push", skip_checks=skip)
-        _run_pre_publish_bun_check(bindings, args, tool_name="gh_push_branch", stage="push", skip_checks=skip)
+        _run_pre_publish_fix(bindings, args, tool_name="gh_push_branch", stage="push", skip_checks=skip)
+        _run_pre_publish_check(bindings, args, tool_name="gh_push_branch", stage="push", skip_checks=skip)
         head = _guarded_push_branch(bindings, args, "gh_push_branch", branch)
         suffix = " (pre-push checks skipped)" if skip else ""
         return f"pushed {branch} at {head[:12]} as {bindings.author_name} <{bindings.author_email}>{suffix}"
@@ -947,8 +1049,8 @@ def _build_open_pr(bindings: ToolBindings) -> HostTool[Any, Any]:
                 "Verification section per the template."
             )
         skip = bool(args.get("skip_checks", False))
-        _run_pre_publish_bun_fix(bindings, args, tool_name="gh_open_pr", stage="open PR", skip_checks=skip)
-        _run_pre_publish_bun_check(bindings, args, tool_name="gh_open_pr", stage="open PR", skip_checks=skip)
+        _run_pre_publish_fix(bindings, args, tool_name="gh_open_pr", stage="open PR", skip_checks=skip)
+        _run_pre_publish_check(bindings, args, tool_name="gh_open_pr", stage="open PR", skip_checks=skip)
         # Make sure the branch is pushed (idempotent) using the same preflight as gh_push_branch.
         _guarded_push_branch(bindings, args, "gh_open_pr", bindings.workspace.branch)
         base = args.get("base") or bindings.repo.default_branch

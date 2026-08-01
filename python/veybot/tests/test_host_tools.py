@@ -2813,13 +2813,16 @@ def test_gh_push_branch_skip_checks_bypasses_failing_bun_check(
         check=True,
     )
     assert any(r.startswith("refs/heads/farm/") for r in refs.stdout.splitlines()), refs.stdout
-    # Audit row records the skip.
+    # Audit row records the skip. The keys name the STEP, not the command that
+    # implements it: both are configurable now (`VEYBOT_PRE_PR_FIX_COMMAND` /
+    # `VEYBOT_PRE_PR_CHECK_COMMAND`), so an audit trail keyed on "bun" would
+    # stop describing its own rows the moment an operator changed the toolchain.
     rows = db._conn.execute(
         "SELECT tool, result_json FROM tool_calls WHERE tool='gh_push_branch' ORDER BY id"
     ).fetchall()
     skipped = [json.loads(r["result_json"] or "{}") for r in rows]
-    assert any(s.get("skipped") == "bun_run_fix" for s in skipped)
-    assert any(s.get("skipped") == "bun_check" for s in skipped)
+    assert any(s.get("skipped") == "pre_pr_fix" for s in skipped)
+    assert any(s.get("skipped") == "pre_pr_check" for s in skipped)
 
 
 def test_gh_push_branch_skip_checks_still_refuses_dirty_worktree(
