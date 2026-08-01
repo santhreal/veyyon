@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/ai",
-  "version": "1.0.41",
+  "version": "1.0.42",
   "description": "Unified LLM API with automatic model discovery and provider configuration",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",
