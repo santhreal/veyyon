@@ -4,14 +4,6 @@
 
 ## [Unreleased]
 
-## [1.0.39] - 2026-08-01
-
-### Fixed
-
-- Process cancellation results now keep `exitCode` at `null` when the operating system reports a
-  signal-derived status such as `143`. You can distinguish an intentional abort from an ordinary
-  child process that exits with the same numeric code on every supported host.
-
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
@@ -308,6 +300,14 @@
 ### Added
 
 - Added an XDG-aware tiny-title model cache directory helper for coding-agent local title models.
+
+## [1.0.39] - 2026-08-01
+
+### Fixed
+
+- Process cancellation results now keep `exitCode` at `null` when the operating system reports a
+  signal-derived status such as `143`. You can distinguish an intentional abort from an ordinary
+  child process that exits with the same numeric code on every supported host.
 
 ## [1.0.38] - 2026-07-31
 

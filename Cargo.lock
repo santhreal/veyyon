@@ -5823,7 +5823,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "veyyon-ast"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -5892,21 +5892,21 @@ dependencies = [
 
 [[package]]
 name = "veyyon-diff-kernel"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "similar 3.1.1",
 ]
 
 [[package]]
 name = "veyyon-glob"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "globset",
 ]
 
 [[package]]
 name = "veyyon-grep-kernel"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "grep-matcher",
  "grep-pcre2",
@@ -5917,7 +5917,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-iso"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "async-trait",
  "libc",
@@ -5930,14 +5930,14 @@ dependencies = [
 
 [[package]]
 name = "veyyon-keys"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "phf 0.13.1",
 ]
 
 [[package]]
 name = "veyyon-natives"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5994,7 +5994,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-shell"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "anyhow",
  "brush-builtins",
@@ -6072,11 +6072,11 @@ dependencies = [
 
 [[package]]
 name = "veyyon-test-scratch"
-version = "1.0.39"
+version = "1.0.40"
 
 [[package]]
 name = "veyyon-text"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "smallvec",
  "unicode-segmentation",
@@ -6085,7 +6085,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-diff"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "clap",
  "parking_lot",
@@ -6096,7 +6096,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-grep"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "clap",
  "clap_complete",
@@ -6120,7 +6120,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uutils-ctx"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "libc",
  "veyyon-test-scratch",
@@ -6128,7 +6128,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-walker"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "dashmap",
  "globset",
