@@ -4,23 +4,6 @@
 
 ## [Unreleased]
 
-## [1.0.38] - 2026-07-31
-
-### Changed
-
-- The browser socket and the dev relay take the fatal close codes and the reconnect send bound from `@veyyon/wire/relay` instead of each declaring them. The dev relay mattered most: it is what PRODUCES the codes, and it spelled the four reason strings inline as it closed sockets, so a relay and a client could disagree about the reason for a code with nothing to catch it.
-- Frame sealing comes from `@veyyon/wire`. This client carried a full copy of the AES-256-GCM
-  layout, described in its own header as a browser-safe mirror of the host's, which is the shape of
-  duplication that goes wrong quietly: the host seals what this opens, and a disagreement about the
-  IV length or the order of the parts fails authentication without saying why. Only the frame type
-  binding stays here.
-- The theme store moved into `@veyyon/utils` as `createThemeStore`, shared with the stats dashboard, which carried a byte-identical copy of the same ~90 lines and neither copy had a test. Only the storage key and the React binding stay here. The two had drifted in their storage guard, and the dashboard had the broken half; this client's try/catch is the behaviour that was kept.
-- The wire envelope codec and the WebCrypto byte coercion now come from the shared packages that own them, `@veyyon/wire` and `@veyyon/utils/bytes`, instead of being restated here. The envelope matters most: the host writes the envelopes this client reads, and both sides had their own copy of the byte order and the header width. A disagreement there does not fail, because the sealed payload is untouched by it, so a frame would simply be delivered to the wrong peer. No behaviour change.
-
-### Fixed
-
-- Fixed Enter submitting the collab-web composer while an IME composition was still open, so the keystroke sent a half-composed message instead of confirming the candidate ([#6229](https://github.com/can1357/oh-my-pi/issues/6229)).
-
 ## [16.5.1] - 2026-07-14
 
 ### Fixed
@@ -197,3 +180,20 @@
 ### Security
 
 - Hardened transcript Markdown rendering by escaping embedded HTML and allowing only safe link schemes
+
+## [1.0.38] - 2026-07-31
+
+### Changed
+
+- The browser socket and the dev relay take the fatal close codes and the reconnect send bound from `@veyyon/wire/relay` instead of each declaring them. The dev relay mattered most: it is what PRODUCES the codes, and it spelled the four reason strings inline as it closed sockets, so a relay and a client could disagree about the reason for a code with nothing to catch it.
+- Frame sealing comes from `@veyyon/wire`. This client carried a full copy of the AES-256-GCM
+  layout, described in its own header as a browser-safe mirror of the host's, which is the shape of
+  duplication that goes wrong quietly: the host seals what this opens, and a disagreement about the
+  IV length or the order of the parts fails authentication without saying why. Only the frame type
+  binding stays here.
+- The theme store moved into `@veyyon/utils` as `createThemeStore`, shared with the stats dashboard, which carried a byte-identical copy of the same ~90 lines and neither copy had a test. Only the storage key and the React binding stay here. The two had drifted in their storage guard, and the dashboard had the broken half; this client's try/catch is the behaviour that was kept.
+- The wire envelope codec and the WebCrypto byte coercion now come from the shared packages that own them, `@veyyon/wire` and `@veyyon/utils/bytes`, instead of being restated here. The envelope matters most: the host writes the envelopes this client reads, and both sides had their own copy of the byte order and the header width. A disagreement there does not fail, because the sealed payload is untouched by it, so a frame would simply be delivered to the wrong peer. No behaviour change.
+
+### Fixed
+
+- Fixed Enter submitting the collab-web composer while an IME composition was still open, so the keystroke sent a half-composed message instead of confirming the candidate ([#6229](https://github.com/can1357/oh-my-pi/issues/6229)).
