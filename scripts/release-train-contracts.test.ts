@@ -381,6 +381,9 @@ describe("required publication artifacts", () => {
 		const metadata = wf.jobs.release_metadata;
 		const detect = metadata.steps.find((step: { id?: string }) => step.id === "detect");
 		const setupBun = metadata.steps.find((step: { uses?: string }) => step.uses?.startsWith("oven-sh/setup-bun@"));
+		const install = metadata.steps.find(
+			(step: { name?: string }) => step.name === "Install release controller dependencies",
+		);
 
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: exact GitHub Actions expression is the contract
 		expect(detect.env.GH_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
@@ -395,6 +398,8 @@ describe("required publication artifacts", () => {
 		);
 		expect(detect.run).not.toContain("git tag --points-at HEAD");
 		expect(setupBun.if).toBe("startsWith(github.ref, 'refs/tags/')");
+		expect(install.if).toBe("startsWith(github.ref, 'refs/tags/')");
+		expect(install.run).toBe("bun install --frozen-lockfile");
 	});
 
 	it("release Pages deployment fails when disabled or either credential is missing", async () => {
