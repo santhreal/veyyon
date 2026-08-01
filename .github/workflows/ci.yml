@@ -1056,6 +1056,7 @@ jobs:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: |
               gh release download "${{ needs.release_metadata.outputs.release-tag }}" \
+                --repo "$GITHUB_REPOSITORY" \
                 --pattern veyyon-darwin-arm64 \
                 --pattern veyyon-darwin-arm64.sha256
               chmod +x veyyon-darwin-arm64
@@ -1098,6 +1099,7 @@ jobs:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: |
               gh release download "${{ needs.release_metadata.outputs.release-tag }}" \
+                --repo "$GITHUB_REPOSITORY" \
                 --pattern veyyon-linux-x64 \
                 --pattern veyyon-linux-x64.sha256
               chmod +x veyyon-linux-x64
@@ -1146,6 +1148,7 @@ jobs:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: |
               gh release download "${{ needs.release_metadata.outputs.release-tag }}" `
+                --repo "$env:GITHUB_REPOSITORY" `
                 --pattern veyyon-windows-x64.exe `
                 --pattern veyyon-windows-x64.exe.sha256
          - name: Verify the published .sha256 sidecar (install.ps1 fails closed without it)

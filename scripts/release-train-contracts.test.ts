@@ -492,6 +492,20 @@ describe("required publication artifacts", () => {
 		expect(draft.run).not.toContain("gh release create");
 	});
 
+	/** Verification jobs run without checkout, so each gh download must name the repository explicitly. */
+	it("downloads draft assets with explicit repository context", async () => {
+		const wf = await loadYaml("workflows/ci.yml");
+		for (const job of [
+			wf.jobs.release_github_verify,
+			wf.jobs.release_github_verify_linux,
+			wf.jobs.release_github_verify_windows,
+		]) {
+			const download = job.steps.find((step: { name?: string }) => step.name?.startsWith("Download draft"));
+			expect(download).toBeDefined();
+			expect(download.run).toMatch(/--repo "\$(?:env:)?GITHUB_REPOSITORY"/);
+		}
+	});
+
 	/** Existing release metadata is mutable; only the Git tag ref proves the immutable SHA. */
 	it("resolves the release tag ref before draft preparation and publication", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
