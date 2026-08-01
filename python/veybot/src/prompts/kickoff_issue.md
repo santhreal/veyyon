@@ -24,7 +24,10 @@ the classification calls for code. Drive the todo list to completion:
 
 2. **Follow the workflow branch** the classification dictates — see the system
    prompt for the full per-type behavior:
-   - `bug` / `documentation` → ack comment → reproduce → fix → PR.
+   - `bug` / `documentation` → diagnosis ack that names the code → reproduce
+     and post the evidence → fix → PR → one closing comment. Three comments
+     total, each carrying something the last one did not; see the system
+     prompt for the required shape of each.
    - `question` → one comment, then stop.
    - `enhancement` / `proposal` → one thoughtful comment, then stop.
    - `wontfix` → one comment explaining the design rationale, then stop.

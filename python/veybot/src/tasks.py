@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Mapping
-from typing import Any, TypeVar
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, NoReturn, TypeVar, cast
+
+from veyyon_rpc import RpcCommandError
 
 from veybot import ci_state, persona
 from veybot.config import Settings
@@ -268,6 +271,116 @@ def _can_handle_pr_directly(*, settings: Settings, repo_full: str, pr: PullReque
     return True
 
 
+@dataclass(slots=True)
+class _TriageCadenceGate:
+    """Backend decorator holding the `bug`/`documentation` comment cadence.
+
+    `host_tools` is the agent's entire GitHub surface and every write in it
+    goes through the `GitHubBackend` the task handed to `TaskInputs`, so
+    decorating that one object gates the cadence without a new host tool.
+    Reads and every other write forward untouched via `__getattr__`.
+
+    Three refusals, each one something the agent can fix and retry in place:
+
+    * a comment naming nothing from the codebase — the "looking into this" ack
+      that costs the reporter attention and tells them nothing;
+    * the first comment after a recorded reproduction, when it does not carry
+      the verbatim failure, the `file:line` it came from, the named cause, and
+      the next action;
+    * a pull request with no recorded reproduction or no reported reproduction
+      behind it, or whose body never says which existing pattern it mirrors.
+
+    `reproduction_reported` is seeded from whether the issue already carries a
+    posted comment. A fresh triage starts at `False`, so the second beat is
+    mandatory before the PR. A resumed or re-triggered run starts at `True`,
+    because re-demanding a report the reporter already read would produce
+    exactly the padding this cadence exists to remove.
+    """
+
+    inner: GitHubBackend
+    db: Database
+    issue_key: str
+    issue_number: int
+    reproduction_reported: bool
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "inner":  # pre-`__init__` lookup; never recurse into ourselves
+            raise AttributeError(name)
+        return getattr(self.inner, name)
+
+    async def post_comment(self, repo: str, number: int, body: str) -> CommentInfo:
+        if not self._gated(number) or persona.is_orchestrator_comment(body):
+            return await self.inner.post_comment(repo, number, body)
+        gaps = list(persona.triage_ack_gaps(body))
+        reporting_reproduction = self._reproduction_due()
+        if reporting_reproduction:
+            gaps.extend(persona.triage_reproduction_gaps(body))
+        if gaps:
+            self._refuse("post this comment", gaps)
+        comment = await self.inner.post_comment(repo, number, body)
+        if reporting_reproduction:
+            self.reproduction_reported = True
+        return comment
+
+    async def open_pull_request(
+        self,
+        *,
+        repo: str,
+        head: str,
+        base: str,
+        title: str,
+        body: str,
+        draft: bool = False,
+        maintainer_can_modify: bool = True,
+    ) -> PullRequestInfo:
+        if self._classification() in persona.TRIAGE_CADENCE_CLASSIFICATIONS:
+            gaps: list[str] = []
+            if not self.db.has_successful_tool_call(self.issue_key, "repro_record"):
+                gaps.append(persona.MISSING_REPRODUCTION_GAP)
+            if not self.reproduction_reported:
+                gaps.append(persona.MISSING_REPRODUCTION_COMMENT_GAP)
+            gaps.extend(persona.triage_pr_body_gaps(body))
+            if gaps:
+                self._refuse("open this pull request", gaps)
+        return await self.inner.open_pull_request(
+            repo=repo,
+            head=head,
+            base=base,
+            title=title,
+            body=body,
+            draft=draft,
+            maintainer_can_modify=maintainer_can_modify,
+        )
+
+    def _classification(self) -> str | None:
+        row = self.db.get_issue(self.issue_key)
+        return row.classification if row is not None else None
+
+    def _gated(self, number: int) -> bool:
+        """Only the originating issue of a classified bug/doc carries the cadence."""
+        if number != self.issue_number:
+            return False
+        return self._classification() in persona.TRIAGE_CADENCE_CLASSIFICATIONS
+
+    def _reproduction_due(self) -> bool:
+        """Whether the comment about to be posted is the reproduction beat."""
+        if self.reproduction_reported:
+            return False
+        if not self.db.has_successful_tool_call(self.issue_key, "repro_record"):
+            return False
+        row = self.db.get_issue(self.issue_key)
+        return row is None or row.pr_number is None
+
+    def _refuse(self, action: str, gaps: Sequence[str]) -> NoReturn:
+        log.warning(
+            "triage_cadence_refused",
+            extra={"key": self.issue_key, "action": action, "gaps": list(gaps)},
+        )
+        detail = "".join(f"\n- {gap}" for gap in gaps)
+        message = f"refusing to {action}:{detail}\nFix the listed gaps and call the tool again."
+        raise RpcCommandError(message, error={"message": message})
+
+
 async def triage_issue(
     *,
     settings: Settings,
@@ -328,10 +441,20 @@ async def triage_issue(
         branch=workspace.branch,
         session_dir=str(workspace.session_dir),
     )
+    cadence = _TriageCadenceGate(
+        inner=github,
+        db=db,
+        issue_key=key,
+        issue_number=issue.number,
+        # A comment already on the record means an earlier attempt (or an
+        # earlier trigger) already spoke to the reporter; only a genuinely
+        # fresh triage owes them the reproduction beat.
+        reproduction_reported=db.has_successful_tool_call(key, "gh_post_comment"),
+    )
     inputs = TaskInputs(
         settings=settings,
         db=db,
-        github=github,
+        github=cast("GitHubBackend", cadence),
         git_transport=git_transport,
         repo=repo,
         issue=issue,

@@ -8,8 +8,24 @@ tasks = [
 [[triage_issue]]
 name = "Respond"
 tasks = [
-  "Branch on the classification (see system prompt)",
-  "Bug: repro_record, fix, open PR. Else: one gh_post_comment, stop.",
+  "Non-bug classifications: one gh_post_comment, then stop",
+  "Bug/documentation: read the failing code path, then ack naming the file and the mechanism",
+]
+
+[[triage_issue]]
+name = "Reproduce"
+tasks = [
+  "repro_record the minimal failing command and its verbatim output",
+  "gh_post_comment the evidence: fenced failure, path:line, Cause:, Next:",
+]
+
+[[triage_issue]]
+name = "Fix and publish"
+tasks = [
+  "Find the existing pattern in this repo that already solves this; copy its shape",
+  "Smallest diff at the cause, plus the test that would have caught it",
+  "gh_push_branch, then gh_open_pr with the Mirrors: line naming that pattern",
+  "One closing gh_post_comment: the PR number and the pattern the fix mirrors",
 ]
 
 [[review_pr]]
