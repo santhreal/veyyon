@@ -23,10 +23,9 @@
  * single-version mode, matching the pre-#2596 behavior). `VEYYON_REPO`
  * / `GITHUB_REPOSITORY` control the queried repo.
  *
- * Intended for the `release_github` CI job: the output is passed to
- * `softprops/action-gh-release` via `body_path:`. The action's
- * `generate_release_notes: true` still appends the auto-generated PR list
- * underneath; this only adds curated context.
+ * Intended for the `release_github` CI job: the output is the complete release
+ * body. The generator includes a grouped summary of every commit itself, so the
+ * workflow does not ask GitHub to append a second, duplicate generated list.
  */
 
 import { $, Glob } from "bun";
@@ -42,6 +41,15 @@ import { compareSemver } from "../packages/utils/src/semver.ts";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const REPO = process.env.VEYYON_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
+
+/**
+ * GitHub rejects release bodies above 125,000 characters with HTTP 422.
+ *
+ * Keep headroom for the omission notice and API-side normalization. The full
+ * notes remain in the tagged package changelogs and commit range linked by that
+ * notice; truncation never cuts through a bullet.
+ */
+export const RELEASE_NOTES_BODY_LIMIT = 120_000;
 
 // Canonical ordering used by `fix-changelogs`; unknown categories sort
 // alphabetically after these.
@@ -184,6 +192,62 @@ export function mergePackageSection(content: string, floorExclusive: string | nu
 	}
 	while (out.length > 0 && out[out.length - 1] === "") out.pop();
 	return out.join("\n");
+}
+
+export interface ReleaseNotesBoundOptions {
+	version: string;
+	floor: string | null;
+	maxChars?: number;
+}
+
+/**
+ * Bound a release body without emitting a partial changelog entry.
+ *
+ * The prefix ends immediately before the bullet that crosses the budget. Any
+ * category or package headings left with no bullet are removed. The notice then
+ * links the immutable tag and compare range, so omitted detail is discoverable
+ * rather than silently lost.
+ */
+export function boundReleaseNotesBody(body: string, options: ReleaseNotesBoundOptions): string {
+	const maxChars = options.maxChars ?? RELEASE_NOTES_BODY_LIMIT;
+	if (!Number.isSafeInteger(maxChars) || maxChars <= 0) {
+		throw new Error(`Release-notes maxChars must be a positive safe integer, received ${maxChars}.`);
+	}
+	if (body.length <= maxChars) return body;
+
+	const tag = `v${options.version.replace(/^v/, "")}`;
+	const packageUrl = `https://github.com/${REPO}/tree/${tag}/packages`;
+	const rangeUrl = options.floor
+		? `https://github.com/${REPO}/compare/v${options.floor.replace(/^v/, "")}...${tag}`
+		: `https://github.com/${REPO}/commits/${tag}`;
+	const notice =
+		`_Release notes were shortened from ${body.length.toLocaleString("en-US")} characters to fit GitHub's ` +
+		`125,000-character body limit. Read the [complete package changelogs](${packageUrl}) and ` +
+		`[full commit range](${rangeUrl})._`;
+	const prefixBudget = maxChars - notice.length - 2;
+	if (prefixBudget <= 0) {
+		throw new Error(`Release-notes maxChars ${maxChars} is too small for the ${notice.length}-character notice.`);
+	}
+
+	const bulletStarts = [...body.matchAll(/(?:^|\n)- /g)]
+		.map(match => (match.index ?? 0) + (match[0].startsWith("\n") ? 1 : 0))
+		.filter(index => index <= prefixBudget);
+	let prefix = bulletStarts.length > 0 ? body.slice(0, bulletStarts[bulletStarts.length - 1]) : "";
+	const lines = prefix.trimEnd().split("\n");
+	while (lines.length > 0) {
+		while (lines.at(-1)?.trim() === "") lines.pop();
+		if (lines.at(-1)?.match(/^#{2,3} /)) {
+			lines.pop();
+			continue;
+		}
+		break;
+	}
+	prefix = lines.join("\n").trimEnd();
+	const bounded = prefix ? `${prefix}\n\n${notice}\n` : `${notice}\n`;
+	if (bounded.length > maxChars) {
+		throw new Error(`Bounded release notes are ${bounded.length} characters, above the ${maxChars} limit.`);
+	}
+	return bounded;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -423,11 +487,18 @@ async function main(): Promise<void> {
 
 	const parts = [...sections];
 	if (commitSummary !== "") parts.push(commitSummary);
-	const body = `${parts.join("\n\n")}\n`;
+	const unboundedBody = `${parts.join("\n\n")}\n`;
+	const body = boundReleaseNotesBody(unboundedBody, { version, floor });
+	if (body.length < unboundedBody.length) {
+		console.warn(
+			`Release notes exceeded GitHub's body limit: shortened ${unboundedBody.length.toLocaleString("en-US")} ` +
+				`characters to ${body.length.toLocaleString("en-US")} at a complete bullet boundary.`,
+		);
+	}
 	await Bun.write(outputPath, body);
 	console.log(
 		`Wrote ${sections.length} package section(s)${commitSummary ? " + commit summary" : ""} to ${outputPath} ` +
-			`(version ${version}${floor ? `, floor ${floor}` : ""}).`,
+			`(version ${version}${floor ? `, floor ${floor}` : ""}, ${body.length.toLocaleString("en-US")} characters).`,
 	);
 }
 
