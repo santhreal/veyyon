@@ -492,7 +492,7 @@ describe("required publication artifacts", () => {
 		expect(draft.run).not.toContain("gh release create");
 	});
 
-	/** Drafts are hidden from tag lookup, so verification must download assets through the draft ID. */
+	/** Draft asset APIs return 403 to read-only job tokens, so isolated verification jobs require contents: write. */
 	it("downloads draft assets through the release asset API", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
 		const jobs = [
@@ -502,7 +502,7 @@ describe("required publication artifacts", () => {
 		];
 		for (const [index, job] of jobs.entries()) {
 			const download = job.steps.find((step: { name?: string }) => step.name?.startsWith("Download draft"));
-			expect(job.permissions.contents).toBe("read");
+			expect(job.permissions.contents).toBe("write");
 			expect(download).toBeDefined();
 			expect(download.env.GH_TOKEN).toBeDefined();
 			expect(download.env.RELEASE_ID).toBe("${{ needs.release_github.outputs.release-id }}");
