@@ -1,6 +1,5 @@
-# Fast checks for the veyyon harness: lint + type check and the TypeScript test
-# suite. Runs on GitHub-hosted runners. Security scanning (keyhog secret scan,
-# cargo-deny, cargo-audit, bun audit, CodeQL SAST) lives in security.yml.
+# Fast product checks for the veyyon harness: lint, type checking, changelog
+# coherence, global-state leak detection, and the TypeScript test suite.
 name: Checks
 run-name: "${{ inputs.release_nonce != '' && format('{0} release gate {1}', github.workflow, inputs.release_nonce) || github.workflow }}"
 
@@ -16,13 +15,11 @@ on:
         required: false
         type: string
 
-# Release shas must never lose their gates to branch churn: v1.0.36's Checks and
-# Security runs were literally cancelled by the next main push, so the release
-# published without lint/typecheck ever completing on the released sha. Same
-# release-detection expression ci.yml owns (see the comment there) — GitHub
-# cannot share concurrency expressions across workflow files, so this is a
-# byte-equivalent copy with a different group prefix; keep the three copies
-# (checks/security/docs) in lockstep with ci.yml when editing.
+# Release shas must never lose their gates to branch churn: v1.0.36's Checks run
+# was cancelled by the next main push, so the release published without
+# lint/typecheck completing on the released sha. This is the same release
+# detection expression ci.yml owns. GitHub cannot share concurrency expressions
+# across workflow files, so keep the checks/docs copies aligned with ci.yml.
 concurrency:
   group: "checks-${{ (startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && format('release-{0}', github.sha) || github.ref }}"
   cancel-in-progress: "${{ !(startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}"

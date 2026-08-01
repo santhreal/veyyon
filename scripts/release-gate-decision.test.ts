@@ -38,7 +38,7 @@ const MAIN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const OLDER = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-async function runTagGateCli(security: "success" | "missing" = "success") {
+async function runTagGateCli() {
 	const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT }).stdout.toString().trim();
 	const bin = mkdtempSync(join(tmpdir(), "release-tag-gate-cli-"));
 	const fakeGh = join(bin, "gh");
@@ -50,12 +50,6 @@ printf '%s\\n' "$*" >> "$CALLS_PATH"
 case "$*" in
   *"--workflow checks.yml"*)
     printf '[{"headSha":"%s","headBranch":"v1.2.3","event":"workflow_dispatch","conclusion":"success"}]\\n' "$FAKE_SHA" ;;
-  *"--workflow security.yml"*)
-    if [ "$SECURITY" = "success" ]; then
-      printf '[{"headSha":"%s","headBranch":"v1.2.3","event":"workflow_dispatch","conclusion":"success"}]\\n' "$FAKE_SHA"
-    else
-      printf '[]\\n'
-    fi ;;
   *) echo "unexpected gh invocation: $*" >&2; exit 88 ;;
 esac
 `,
@@ -68,7 +62,6 @@ esac
 			PATH: `${bin}:${process.env.PATH ?? ""}`,
 			CALLS_PATH: callsPath,
 			FAKE_SHA: sha,
-			SECURITY: security,
 		},
 		stdout: "pipe",
 		stderr: "pipe",
@@ -87,10 +80,10 @@ esac
 
 describe("exact-tag publication provenance", () => {
 	/**
-	 * Publication is allowed only after both immutable-tag workflow dispatches
+	 * Publication is allowed only after the immutable-tag Checks workflow
 	 * succeeded for the exact release commit.
 	 */
-	it("accepts exact successful Checks and Security tag runs", () => {
+	it("accepts an exact successful Checks tag run", () => {
 		const success: ReleaseTagWorkflowRun = {
 			headSha: MAIN,
 			headBranch: "v1.2.3",
@@ -101,10 +94,9 @@ describe("exact-tag publication provenance", () => {
 		expect(() =>
 			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
 				"checks.yml": [success],
-				"security.yml": [success],
 			}),
 		).not.toThrow();
-		expect(REQUIRED_RELEASE_TAG_WORKFLOWS).toEqual(["checks.yml", "security.yml"]);
+		expect(REQUIRED_RELEASE_TAG_WORKFLOWS).toEqual(["checks.yml"]);
 	});
 	/**
 	 * The production CLI must query the workflow files themselves and accept the
@@ -114,20 +106,8 @@ describe("exact-tag publication provenance", () => {
 		const result = await runTagGateCli();
 
 		expect(result.exitCode).toBe(0);
-		expect(result.output).toContain("verified exact-tag Checks and Security for v1.2.3");
+		expect(result.output).toContain("verified exact-tag Checks for v1.2.3");
 		expect(result.calls).toContain("run list --workflow checks.yml");
-		expect(result.calls).toContain("run list --workflow security.yml");
-	});
-
-	/**
-	 * Missing Security evidence must make the CLI nonzero, because release
-	 * metadata treats any verifier success as authority to publish.
-	 */
-	it("fails the real CLI boundary when Security evidence is missing", async () => {
-		const result = await runTagGateCli("missing");
-
-		expect(result.exitCode).not.toBe(0);
-		expect(result.output).toContain("security.yml has no successful workflow_dispatch run");
 	});
 
 	/**
@@ -145,7 +125,6 @@ describe("exact-tag publication provenance", () => {
 		expect(() =>
 			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
 				"checks.yml": [wrongSha],
-				"security.yml": [wrongSha],
 			}),
 		).toThrow("checks.yml has no successful workflow_dispatch run");
 	});
@@ -165,33 +144,8 @@ describe("exact-tag publication provenance", () => {
 		expect(() =>
 			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
 				"checks.yml": [mainRun],
-				"security.yml": [mainRun],
 			}),
 		).toThrow("checks.yml has no successful workflow_dispatch run");
-	});
-
-	/**
-	 * A missing, failed, or non-dispatch Security run must stop publication after
-	 * Checks passes instead of treating one workflow as proof for both.
-	 */
-	it("requires an independently successful Security workflow dispatch", () => {
-		const checks: ReleaseTagWorkflowRun = {
-			headSha: MAIN,
-			headBranch: "v1.2.3",
-			event: "workflow_dispatch",
-			conclusion: "success",
-		};
-		const failedSecurity: ReleaseTagWorkflowRun = {
-			...checks,
-			conclusion: "failure",
-		};
-
-		expect(() =>
-			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
-				"checks.yml": [checks],
-				"security.yml": [failedSecurity],
-			}),
-		).toThrow("security.yml has no successful workflow_dispatch run");
 	});
 
 	/**
@@ -205,7 +159,6 @@ describe("exact-tag publication provenance", () => {
 
 async function runGateCli(options: {
 	checks?: "success" | "failure" | "missing";
-	security?: "success" | "failure" | "missing";
 	greenOnly?: boolean;
 	failGh?: boolean;
 	silentTag?: boolean;
@@ -221,8 +174,7 @@ case "$*" in
   *"commits/main"*) printf '%s\\n' "$FAKE_SHA" ;;
   *"actions/runs?head_sha=$FAKE_SHA"*)
     printf 'CI\\t%s\\tcompleted\\tsuccess\\n' "$FAKE_SHA"
-    if [ "$CHECKS" != "missing" ]; then printf 'Checks\\t%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$CHECKS"; fi
-    if [ "$SECURITY" != "missing" ]; then printf 'Security\\t%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$SECURITY"; fi ;;
+    if [ "$CHECKS" != "missing" ]; then printf 'Checks\\t%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$CHECKS"; fi ;;
   *"actions/workflows/ci.yml/runs?head_sha=$SILENT_SHA&per_page=1"*) printf 'failure\\n' ;;
   *"release list --limit 1"*) printf 'v0.0.1\\n' ;;
   *"release list --limit 50"*) printf 'v0.0.1\\n' ;;
@@ -243,7 +195,6 @@ esac
 			PATH: `${bin}:${process.env.PATH ?? ""}`,
 			FAKE_SHA: sha,
 			CHECKS: options.checks ?? "success",
-			SECURITY: options.security ?? "success",
 			FAIL_GH: options.failGh ? "1" : "0",
 			SILENT_TAG: options.silentTag ? "1" : "0",
 			SILENT_SHA: OLDER,
@@ -290,7 +241,7 @@ function decide(
 }
 
 describe("exact-source gates", () => {
-	it("requires CI, Checks, and Security to be green for the exact main SHA", () => {
+	it("requires CI and Checks to be green for the exact main SHA", () => {
 		expect(decide({ bullets: true }).cut).toBe(true);
 
 		for (const missingName of REQUIRED_SOURCE_WORKFLOWS) {
@@ -320,12 +271,7 @@ describe("exact-source gates", () => {
 	});
 
 	it("the CLI fails closed for red, missing, or unknowable exact-SHA evidence", async () => {
-		for (const options of [
-			{ checks: "failure" },
-			{ checks: "missing" },
-			{ security: "failure" },
-			{ security: "missing" },
-		] as const) {
+		for (const options of [{ checks: "failure" }, { checks: "missing" }] as const) {
 			const automatic = await runGateCli(options);
 			expect(automatic.exitCode).toBe(0);
 			expect(automatic.stdout.trim()).toBe("false");

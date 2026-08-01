@@ -171,7 +171,6 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 ### Build, release, and porting
 - [releasing.md](../../docs/internal/releasing.md) — cut a release (versioning, `release.ts`, CI)
 - [deployment.md](../../docs/internal/deployment.md) — ship the website + binaries; install endpoints
-- [macos-signing-notarization.md](../../docs/internal/macos-signing-notarization.md)
 - [porting-from-pi-mono.md](../../docs/internal/porting-from-pi-mono.md)
 
 ### Design and brand

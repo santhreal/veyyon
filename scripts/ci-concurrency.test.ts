@@ -341,17 +341,16 @@ describe("ci.yml concurrency", () => {
 });
 
 // The same scheduling-time cancellation bug bit the SIBLING workflows on
-// 2026-07-24: checks.yml / security.yml / docs.yml still used branch-wide
-// `cancel-in-progress: true`, so the v1.0.36 release sha had its Checks and
-// Security runs cancelled by the next main push and the release published
-// without lint or secret-scan ever completing on it. The fix copies ci.yml's
-// release-detection expression into each sibling (GitHub cannot share
-// concurrency expressions across workflow files). This suite locks two
-// contracts: (1) each sibling resolves release shas to a per-sha no-cancel
-// group and normal pushes to a cancellable branch group, and (2) the copies
-// stay BYTE-IDENTICAL to ci.yml's expression, so a future edit to one file
-// cannot silently drift the others (the lockstep rule the comments demand).
-const SIBLINGS = ["checks", "security", "docs"] as const;
+// 2026-07-24: checks.yml / docs.yml still used branch-wide
+// `cancel-in-progress: true`, so the release sha's sibling runs could be
+// cancelled by the next main push. The fix copies ci.yml's release-detection
+// expression into each sibling (GitHub cannot share concurrency expressions
+// across workflow files). This suite locks two contracts: (1) each sibling
+// resolves release shas to a per-sha no-cancel group and normal pushes to a
+// cancellable branch group, and (2) the copies stay BYTE-IDENTICAL to ci.yml's
+// expression, so a future edit to one file cannot silently drift the others
+// (the lockstep rule the comments demand).
+const SIBLINGS = ["checks", "docs"] as const;
 
 function extractConcurrency(yaml: string, file: string): { group: string; cancel: string } {
 	const section = yaml.slice(yaml.indexOf("\nconcurrency:") + 1);

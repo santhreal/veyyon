@@ -69,7 +69,6 @@
 			],
 			"exact": [
 				".gitignore",
-				".keyhog-baseline.json",
 				"UPSTREAM.md",
 				"scripts/jules-port-manager.ts",
 				"scripts/jules-port-manager.test.ts",

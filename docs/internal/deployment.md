@@ -274,19 +274,25 @@ Each ships alongside a `<asset>.sha256`. `install.sh` covers linux and darwin;
 
 ### Integrity
 
-`install.sh` **fails closed** on a checksum mismatch, it downloads `<asset>.sha256`,
-compares, and refuses to install on any mismatch (override only with `--no-verify`).
-macOS binaries are additionally Developer-ID signed and notarized in CI when the
-`APPLE_*` secrets are present. A release that ships only some platforms will 404 for
-the rest, so keep the asset set complete.
+Both installers **fail closed** when SHA-256 verification fails. They download the
+matching `<asset>.sha256`, recompute the binary's digest, and refuse to install a
+missing, empty, malformed, or mismatched sidecar (with `--no-verify` / `-NoVerify`
+as the explicit override). CI creates a sidecar for every binary and native addon,
+checks the exact asset manifest, then downloads the draft Linux x64, macOS arm64,
+and Windows x64 binaries on their native runners. Each verification job recomputes
+the SHA-256 digest, checks the embedded release version, and runs `--smoke-test` in
+a clean home directory. A release that ships only some platforms will 404 for the
+rest, so keep the asset set complete.
 
 ### How binaries get published
 
-Cutting a release (see [releasing.md](./releasing.md)) tags the commit. After the
-exact tag passes `checks.yml` and the security workflow, the Release workflow
-dispatches `ci.yml` at that immutable tag. CI builds every platform binary and
-publishes the GitHub release with all assets and checksums. The install scripts
-then pick it up through `releases/latest` with no further action.
+The Release workflow starts only after the source commit passes both CI and Checks.
+It cuts the tag, dispatches Checks at that immutable tag, and dispatches `ci.yml`
+only after the exact tag passes `checks.yml`. CI compiles and smoke-tests every
+platform binary, prepares the GitHub release with all assets and SHA-256 sidecars,
+verifies the draft binaries on native runners, and publishes only after those
+runtime checks pass. The install scripts then pick it up through `releases/latest`
+with no further action.
 
 Publication does not complete when the GitHub API first reports the release. The release train polls the public `releases/latest` redirect with cache-busting requests until it resolves to the exact new tag. It then drives the production installer on Linux x64, Linux arm64, macOS x64, macOS arm64, and Windows x64. Each transactional run requires the installed binary to report that same tag before reinstall and uninstall checks can pass.
 
@@ -297,17 +303,15 @@ Publication does not complete when the GitHub API first reports the release. The
 ## Repository secrets and variables
 
 GitHub binary publication needs no repository secret. The Release workflow uses
-the built-in `GITHUB_TOKEN` to push the version bump and tag, gates that immutable
-tag through `checks.yml` and `security.yml`, then dispatches `ci.yml` for publication.
-The Cloudflare credentials are required by the production deployment that follows GitHub
-publication. Apple credentials are optional; missing any of them skips signing
-and notarization and leaves the release binaries unsigned.
+the built-in `GITHUB_TOKEN` to push the version bump and tag, dispatches and gates
+the immutable tag through `checks.yml`, then dispatches `ci.yml` for publication.
+The Cloudflare credentials are required by the production deployment that follows
+GitHub publication.
 
 | Name | Kind | Gates |
 | --- | --- | --- |
 | `CLOUDFLARE_API_TOKEN` | secret | Required by `site.yml` and `release_site` to deploy both `veyyon.dev` and `get.veyyon.dev` (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
 | `CLOUDFLARE_ACCOUNT_ID` | secret | Required by `release_site` to select the Cloudflare account |
-| `APPLE_CERTIFICATE_P12` + `APPLE_CERTIFICATE_PASSWORD` + `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER_ID` | secrets | macOS Developer-ID signing + notarization (all five or signing is skipped) |
 | `SITE_AUTODEPLOY` | repo var | Must not be `off` for a release; `off` deliberately fails `release_site` |
 
 ## Rollback and hotfix
@@ -326,9 +330,9 @@ rollback lever:
   Merely marking it as a pre-release does not: the current generator still
   renders non-draft pre-releases as published.
 
-**Hotfix flow**: fix on `main`, then let its green CI, Checks, and Security runs
-trigger the next automatic patch release. There are no release branches. If the
-bad version must stop being installed *right now*, do the pre-release flip above
+**Hotfix flow**: fix on `main`, then let its green CI and Checks runs trigger the
+next automatic patch release. There are no release branches. If the bad version
+must stop being installed *right now*, do the pre-release flip above
 first.
 
 ## Checklist for a normal site update

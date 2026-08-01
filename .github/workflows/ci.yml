@@ -80,7 +80,7 @@ jobs:
                     exit 1
                   fi
                   bun scripts/release-gate-decision.ts verify-tag-gates "$release_tag" "${{ github.sha }}"
-                  echo "Exact-tag Checks and Security are green for $release_tag; this run may publish the release."
+                  echo "Exact-tag Checks are green for $release_tag; this run may publish the release."
                   is_release=true
                   ;;
                 refs/heads/main)
@@ -749,8 +749,6 @@ jobs:
       runs-on: ${{ matrix.os }}
       permissions:
          contents: read
-      env:
-         MACOS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_API_KEY_ID != '' && secrets.APPLE_API_ISSUER_ID != '' && secrets.APPLE_API_KEY != '' }}
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -775,19 +773,6 @@ jobs:
            env:
               RELEASE_TARGETS: ${{ matrix.target_id }}
            run: bun run ci:release:build-binaries
-         - name: Sign and notarize macOS binary (Developer ID)
-           # Replaces the ad-hoc signature with a Developer ID + hardened-runtime
-           # one (+JIT/library-validation entitlements; veyyon dlopens its
-           # runtime-extracted native addon, which has a different Team ID) and
-           # notarizes. Auto-skips until the APPLE_* secrets are configured.
-           if: matrix.platform == 'darwin' && env.MACOS_SIGNING == 'true'
-           env:
-              APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-              APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-              APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-              APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-              APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-           run: bash scripts/ci-macos-sign.sh "${{ matrix.binary_path }}"
          # Windows binary is cross-built on Linux, so we have no Windows runner
          # to smoke it on. Cross-build correctness is verified via the napi
          # entry-point exports (see build-native action) and the bun
@@ -1050,8 +1035,6 @@ jobs:
       runs-on: macos-14
       permissions:
          contents: read
-      env:
-         MACOS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_API_KEY_ID != '' && secrets.APPLE_API_ISSUER_ID != '' && secrets.APPLE_API_KEY != '' }}
       steps:
          - name: Download draft macOS arm64 binary and checksum sidecar
            env:
@@ -1069,8 +1052,6 @@ jobs:
               shasum -a 256 -c veyyon-darwin-arm64.sha256
          - name: Verify published macOS arm64 binary
            run: |
-              codesign -dvvv ./veyyon-darwin-arm64
-              codesign --verify --strict --verbose=4 ./veyyon-darwin-arm64
               runtime_dir="$(mktemp -d)"
               # Assert the binary reports the version being released — a binary built
               # from the wrong commit (or a failed version-embed) would otherwise run
@@ -1080,17 +1061,6 @@ jobs:
               echo "reported: $actual (expected to contain: $expected)"
               case "$actual" in *"$expected"*) : ;; *) echo "::error::published macOS binary reports '$actual', expected '$expected'"; exit 1 ;; esac
               HOME="$runtime_dir/home" XDG_DATA_HOME="$runtime_dir/xdg" ./veyyon-darwin-arm64 --smoke-test
-         - name: Assert signed release is not ad-hoc
-           if: env.MACOS_SIGNING == 'true'
-           run: |
-              if codesign -dvvv ./veyyon-darwin-arm64 2>&1 | grep -qE "flags=.*adhoc|Signature=adhoc"; then
-                echo "published binary is still ad-hoc signed (Developer ID signing did not run)" >&2
-                exit 1
-              fi
-              # Gatekeeper assessment: a notarized Developer ID binary is accepted.
-              # Informational — a bare (unstapled) Mach-O relies on the online ticket
-              # lookup, so surface the result without gating the release on it.
-              spctl -a -t exec -vv ./veyyon-darwin-arm64 || echo "spctl non-zero (expected for unstapled bare binary; ticket served online)"
 
    release_github_verify_linux:
       # linux-x64 is the most common `curl | sh` target, but the macOS verify job
