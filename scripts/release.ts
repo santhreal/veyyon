@@ -4,9 +4,10 @@ import * as path from "node:path";
 /**
  * The one release controller.
  *
- * Operators run `bun run release [major|minor|patch|x.y.z]`. GitHub Actions calls
- * the workflow subcommands in this file for source-gate selection, the atomic
- * version cut, exact-tag Checks, tagged CI, and final publication verification.
+ * Releases are requested only through the GitHub Actions Release workflow.
+ * Actions calls the workflow subcommands in this file for source-gate selection,
+ * the atomic version cut, exact-tag Checks, tagged CI, and final publication
+ * verification.
  */
 import { isNewerVersion } from "@veyyon/utils/semver";
 import { $, Glob, JSONC } from "bun";
@@ -30,25 +31,9 @@ const packageJsonGlob = new Glob("packages/*/package.json");
 const cargoTomlGlob = new Glob("crates/*/Cargo.toml");
 const REPO_ROOT = path.join(import.meta.dir, "..");
 const RELEASE_REPOSITORY = "santhreal/veyyon";
-const RELEASE_WORKFLOW = "release.yml";
-const REQUIRED_GH_LOGIN = "santhsecurity";
 
 function git(args: readonly string[]) {
 	return $`git -c core.fsmonitor=false -c core.untrackedCache=false -c fetch.pruneTags=false ${args}`;
-}
-export interface ReleaseTriggerOperations {
-	currentBranch(): Promise<string>;
-	workingTreeStatus(): Promise<string>;
-	fetchMain(): Promise<void>;
-	localHead(): Promise<string>;
-	originMainHead(): Promise<string>;
-	authStatus(): Promise<string>;
-	dispatch(version: string, expectedSha: string): Promise<void>;
-}
-
-export interface ReleaseDispatch {
-	version: string;
-	sha: string;
 }
 
 export function parseReleaseRequest(args: readonly string[]): string {
@@ -61,66 +46,6 @@ export function parseReleaseRequest(args: readonly string[]): string {
 	}
 	throw new Error(`Invalid release version ${JSON.stringify(version)}. Use major, minor, patch, or x.y.z.`);
 }
-
-export function hasRequiredActiveGitHubAccount(status: string): boolean {
-	let account: string | undefined;
-	for (const line of status.split("\n")) {
-		const match = line.match(/Logged in to github\.com account ([^\s(]+)/);
-		if (match) account = match[1];
-		if (account === REQUIRED_GH_LOGIN && /Active account:\s*true/.test(line)) return true;
-	}
-	return false;
-}
-
-export async function triggerRelease(
-	version: string,
-	operations: ReleaseTriggerOperations = releaseTriggerOperations,
-): Promise<ReleaseDispatch> {
-	const branch = await operations.currentBranch();
-	if (branch !== "main") {
-		throw new Error(`Release must be triggered from main, but this checkout is on ${JSON.stringify(branch)}.`);
-	}
-	if ((await operations.workingTreeStatus()).trim()) {
-		throw new Error("Release requires a clean working tree. Commit the intended release candidate first.");
-	}
-	await operations.fetchMain();
-	const [localHead, originMainHead] = await Promise.all([operations.localHead(), operations.originMainHead()]);
-	if (localHead !== originMainHead) {
-		throw new Error(
-			`Local main (${localHead}) does not match origin/main (${originMainHead}). Push or update main, then wait for its exact-SHA gates.`,
-		);
-	}
-	if (!hasRequiredActiveGitHubAccount(await operations.authStatus())) {
-		throw new Error(
-			`GitHub account ${REQUIRED_GH_LOGIN} must be active. Run: gh auth switch --user ${REQUIRED_GH_LOGIN}`,
-		);
-	}
-	await operations.dispatch(version, originMainHead);
-	return { version, sha: originMainHead };
-}
-
-const releaseTriggerOperations: ReleaseTriggerOperations = {
-	currentBranch: async () => (await $`git branch --show-current`.cwd(REPO_ROOT).quiet()).text().trim(),
-	workingTreeStatus: async () => (await $`git status --porcelain`.cwd(REPO_ROOT).quiet()).text(),
-	fetchMain: async () => {
-		await $`git fetch origin main`.cwd(REPO_ROOT).quiet();
-	},
-	localHead: async () => (await $`git rev-parse HEAD`.cwd(REPO_ROOT).quiet()).text().trim(),
-	originMainHead: async () => (await $`git rev-parse origin/main`.cwd(REPO_ROOT).quiet()).text().trim(),
-	authStatus: async () => {
-		const result = await $`gh auth status --hostname github.com`
-			.cwd(REPO_ROOT)
-			.env({ ...Bun.env, NO_COLOR: "1" })
-			.quiet()
-			.nothrow();
-		return `${result.text()}\n${result.stderr.toString()}`;
-	},
-	dispatch: async (version, expectedSha) => {
-		await $`gh workflow run ${RELEASE_WORKFLOW} --repo ${RELEASE_REPOSITORY} --ref main -f version=${version} -f expected_sha=${expectedSha}`
-			.cwd(REPO_ROOT)
-			.quiet();
-	},
-};
 
 function removeEmptyVersionEntries(content: string): string {
 	// Remove version entries that have no content (just whitespace until next ## [ or EOF)
@@ -1119,12 +1044,6 @@ async function runWorkflowReleaseCommand(version: string): Promise<void> {
 async function runReleaseController(args: readonly string[]): Promise<void> {
 	const [command, ...rest] = args;
 	switch (command) {
-		case "request": {
-			const version = parseReleaseRequest(rest);
-			const release = await triggerRelease(version);
-			console.log(`Release workflow dispatched for ${release.sha}: ${release.version}.`);
-			return;
-		}
 		case "workflow-gate":
 			if (rest.length > 0) throw new Error("Usage: release.ts workflow-gate");
 			await runWorkflowGateCommand();
@@ -1150,7 +1069,7 @@ async function runReleaseController(args: readonly string[]): Promise<void> {
 		}
 		default:
 			throw new Error(
-				"Usage: release.ts request [version] | workflow-gate | workflow-release <version> | verify-tag <tag> <sha> <ci-nonce> <dispatch-actor> | verify-assets <tag>",
+				"Usage: release.ts workflow-gate | workflow-release <version> | verify-tag <tag> <sha> <ci-nonce> <dispatch-actor> | verify-assets <tag>",
 			);
 	}
 }

@@ -364,12 +364,15 @@ describe("release.yml exact-SHA source gates", () => {
 
 describe("required publication artifacts", () => {
 	/**
-	 * One local command must validate the intended main checkout and dispatch the
-	 * remote release orchestrator instead of exposing its mutating cutter.
+	 * A release is requested only by dispatching the Release workflow, so the
+	 * manifest must expose no workstation entry point into the mutating cutter.
 	 */
-	it("exposes the safe workflow dispatcher as bun run release", async () => {
+	it("exposes no workstation release entry point", async () => {
 		const manifest = await Bun.file("package.json").json();
-		expect(manifest.scripts.release).toBe("bun scripts/release.ts request");
+		expect(manifest.scripts.release).toBeUndefined();
+		expect(Object.values(manifest.scripts as Record<string, string>).some(s => s.includes("release.ts"))).toBe(
+			false,
+		);
 	});
 
 	/**

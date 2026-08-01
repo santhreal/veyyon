@@ -63,7 +63,7 @@ const versions = new Set(Object.values(versionMap));
 if (versions.size > 1) {
 	console.error("\n❌ ERROR: Not all packages have the same version!");
 	console.error("Expected lockstep versioning. Version changes are owned by the Release workflow.");
-	console.error("Restore the package versions, then trigger the workflow with: bun run release [version]");
+	console.error("Restore the package versions, then dispatch the Release workflow from GitHub Actions.");
 
 	process.exit(1);
 }
