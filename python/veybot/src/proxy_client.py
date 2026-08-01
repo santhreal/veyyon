@@ -23,9 +23,12 @@ import httpx
 
 from veybot.git_ops import GitCommandError, HeadDriftError, PushResult
 from veybot.github_client import (
+    CheckRunInfo,
     CommentInfo,
+    CommitStatusInfo,
     GitHubError,
     IssueInfo,
+    IssueListing,
     IssueSummary,
     PullRequestFileInfo,
     PullRequestInfo,
@@ -33,6 +36,7 @@ from veybot.github_client import (
     ReactionInfo,
     RepoInfo,
     ReviewCommentInfo,
+    WorkflowRunInfo,
     is_transient_retryable,
 )
 from veybot.proxy_hmac import HEADER_SIGNATURE, HEADER_TIMESTAMP, sign
@@ -201,14 +205,20 @@ class GitHubProxyClient:
         repo: str,
         *,
         state: str = "open",
+        labels: str | None = None,
         limit: int = 30,
-    ) -> list[IssueSummary]:
-        data = await self._request(
-            "GET",
-            "/gh/v1/issues",
-            params={"repo": repo, "state": state, "limit": limit},
+    ) -> IssueListing:
+        params: dict[str, Any] = {"repo": repo, "state": state, "limit": limit}
+        if labels:
+            params["labels"] = labels
+        data = await self._request("GET", "/gh/v1/issues", params=params)
+        body = data if isinstance(data, dict) else {}
+        return IssueListing(
+            (_issue_summary_from(item) for item in body.get("items") or []),
+            # The ceiling lives on the far side of the proxy, so the flag has to
+            # ride the response. Absent means the scan ran to the end.
+            truncated=bool(body.get("truncated")),
         )
-        return [_issue_summary_from(item) for item in (data.get("items") if isinstance(data, dict) else None) or []]
 
     async def list_comments(self, repo: str, number: int) -> list[CommentInfo]:
         data = await self._request("GET", "/gh/v1/comments", params={"repo": repo, "number": number})
@@ -233,6 +243,23 @@ class GitHubProxyClient:
     async def get_authenticated_login(self) -> str:
         data = await self._request("GET", "/gh/v1/authenticated_login")
         return str(data["login"]) if isinstance(data, dict) else ""
+
+    # ---- CI state (read-only; no merge/approve path exists on this client) ----
+    async def list_check_runs(self, repo: str, sha: str) -> list[CheckRunInfo]:
+        data = await self._request("GET", "/gh/v1/check_runs", params={"repo": repo, "sha": sha})
+        return [_check_run_from(item) for item in (data.get("items") if isinstance(data, dict) else None) or []]
+
+    async def list_commit_statuses(self, repo: str, sha: str) -> list[CommitStatusInfo]:
+        data = await self._request("GET", "/gh/v1/commit_statuses", params={"repo": repo, "sha": sha})
+        return [_commit_status_from(item) for item in (data.get("items") if isinstance(data, dict) else None) or []]
+
+    async def list_workflow_runs_for_sha(self, repo: str, sha: str) -> list[WorkflowRunInfo]:
+        data = await self._request("GET", "/gh/v1/workflow_runs", params={"repo": repo, "sha": sha})
+        return [_workflow_run_from(item) for item in (data.get("items") if isinstance(data, dict) else None) or []]
+
+    async def get_failed_job_logs(self, repo: str, run_id: int) -> str:
+        data = await self._request("GET", "/gh/v1/failed_job_logs", params={"repo": repo, "run_id": run_id})
+        return str(data.get("logs") or "") if isinstance(data, dict) else ""
 
     # ---- writes ----
     async def post_comment(self, repo: str, number: int, body: str) -> CommentInfo:
@@ -582,6 +609,43 @@ def _pr_from(data: Any) -> PullRequestInfo:
         head_repo=str(data.get("head_repo") or ""),
         title=str(data.get("title") or ""),
         body=str(data.get("body") or ""),
+    )
+
+
+def _check_run_from(data: Any) -> CheckRunInfo:
+    if not isinstance(data, dict):
+        raise GitHubError(500, "proxy returned malformed check_run payload")
+    conclusion = data.get("conclusion")
+    started_at = data.get("started_at")
+    details_url = data.get("details_url")
+    return CheckRunInfo(
+        name=str(data.get("name") or ""),
+        status=str(data.get("status") or ""),
+        conclusion=str(conclusion) if conclusion is not None else None,
+        started_at=str(started_at) if started_at is not None else None,
+        id=int(data.get("id") or 0),
+        details_url=str(details_url) if details_url is not None else None,
+    )
+
+
+def _commit_status_from(data: Any) -> CommitStatusInfo:
+    if not isinstance(data, dict):
+        raise GitHubError(500, "proxy returned malformed commit_status payload")
+    return CommitStatusInfo(
+        context=str(data.get("context") or ""),
+        state=str(data.get("state") or ""),
+    )
+
+
+def _workflow_run_from(data: Any) -> WorkflowRunInfo:
+    if not isinstance(data, dict):
+        raise GitHubError(500, "proxy returned malformed workflow_run payload")
+    conclusion = data.get("conclusion")
+    return WorkflowRunInfo(
+        id=int(data.get("id") or 0),
+        name=str(data.get("name") or ""),
+        status=str(data.get("status") or ""),
+        conclusion=str(conclusion) if conclusion is not None else None,
     )
 
 

@@ -17,7 +17,9 @@ from pydantic import SecretStr
 from veybot.config import Settings
 from veybot.git_ops import HeadDriftError
 from veybot.github_client import (
+    CheckRunInfo,
     CommentInfo,
+    CommitStatusInfo,
     GitHubClient,
     GitHubError,
     IssueInfo,
@@ -28,6 +30,7 @@ from veybot.github_client import (
     ReactionInfo,
     RepoInfo,
     ReviewCommentInfo,
+    WorkflowRunInfo,
 )
 from veybot.proxy.server import create_proxy_app
 from veybot.proxy_client import GitHubProxyClient, ProxyGitTransport
@@ -438,6 +441,51 @@ async def test_list_comment_reactions_round_trip(proxy_settings: Settings) -> No
     assert reactions == (ReactionInfo(content="-1", user_login="alice", user_type="User"),)
 
 
+async def test_list_issues_carries_label_filter_and_truncation_round_trip(proxy_settings: Settings) -> None:
+    """Locks out two ways the backlog drain loses information across the proxy:
+    a `labels` filter dropped on the way out (the fetch then wastes its pages on
+    unrelated issues) and a `truncated` flag dropped on the way back (a capped
+    scan then reads as the complete backlog)."""
+    app = create_proxy_app(proxy_settings)
+    app.state.settings = proxy_settings
+    seen_labels: list[str | None] = []
+
+    def gh(req: httpx.Request) -> httpx.Response:
+        if req.url.path != "/repos/octo/widget/issues":
+            return httpx.Response(404, json={"message": "unrouted"})
+        seen_labels.append(req.url.params.get("labels"))
+        page = int(req.url.params.get("page") or 1)
+        start = 1 + (page - 1) * 2
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "number": n,
+                    "title": f"port #{n}",
+                    "state": "open",
+                    "user": {"login": "santhsecurity"},
+                    "labels": [{"name": "upstream-port"}],
+                    "comments": 0,
+                    "updated_at": "2026-07-30T00:00:00Z",
+                    "created_at": "2026-07-30T00:00:00Z",
+                    "html_url": f"https://example/{n}",
+                }
+                for n in (start, start + 1)
+            ],
+        )
+
+    _attach_gh(app, gh)
+    client = GitHubProxyClient(
+        base_url="http://proxy.test",
+        hmac_key=_HMAC,
+        transport=httpx.ASGITransport(app=app),
+    )
+    issues = await client.list_issues("octo/widget", labels="upstream-port", limit=2)
+    assert seen_labels == ["upstream-port"]
+    assert [i.number for i in issues] == [1, 2]
+    assert issues.truncated is True
+
+
 async def test_close_issue_round_trip(proxy_settings: Settings) -> None:
     captured: dict[str, object] = {}
     app = create_proxy_app(proxy_settings)
@@ -457,6 +505,123 @@ async def test_close_issue_round_trip(proxy_settings: Settings) -> None:
     )
     assert await client.close_issue("octo/widget", 7) is None
     assert captured["body"] == {"state": "closed", "state_reason": "completed"}
+
+
+# ============================================================================
+# 2b. CI state round trip
+# ============================================================================
+
+
+_SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+async def test_ci_state_round_trip_through_proxy(proxy_settings: Settings) -> None:
+    """Check runs, statuses, workflow runs and job logs survive the proxy hop
+    as the same typed records the direct client returns.
+
+    Locks out a proxy-mode blind spot: the CI-repair task must see identical
+    data whichever backend is configured, and a silently-empty envelope on the
+    proxy path would read as "nothing failed".
+    """
+    app = create_proxy_app(proxy_settings)
+    app.state.settings = proxy_settings
+
+    def gh(req: httpx.Request) -> httpx.Response:
+        path = req.url.path
+        if path == f"/repos/octo/widget/commits/{_SHA}/check-runs":
+            return httpx.Response(
+                200,
+                json={
+                    "total_count": 2,
+                    "check_runs": [
+                        {
+                            "id": 11,
+                            "name": "build",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "started_at": "2026-01-01T00:00:00Z",
+                            "details_url": "https://example/run/11",
+                        },
+                        {"id": 12, "name": "lint", "status": "queued", "conclusion": None, "started_at": None},
+                    ],
+                },
+            )
+        if path == f"/repos/octo/widget/commits/{_SHA}/status":
+            return httpx.Response(
+                200,
+                json={"state": "failure", "statuses": [{"context": "ci/travis", "state": "failure"}]},
+            )
+        if path == "/repos/octo/widget/actions/runs":
+            assert req.url.params.get("head_sha") == _SHA
+            return httpx.Response(
+                200,
+                json={
+                    "total_count": 1,
+                    "workflow_runs": [{"id": 555, "name": "checks", "status": "completed", "conclusion": "failure"}],
+                },
+            )
+        if path == "/repos/octo/widget/actions/runs/555/jobs":
+            return httpx.Response(
+                200,
+                json={
+                    "total_count": 2,
+                    "jobs": [
+                        {"id": 1, "name": "unit", "conclusion": "success"},
+                        {"id": 2, "name": "build", "conclusion": "failure"},
+                    ],
+                },
+            )
+        if path == "/repos/octo/widget/actions/jobs/2/logs":
+            return httpx.Response(200, text="assertion failed\n")
+        return httpx.Response(404, json={"message": f"unrouted {req.method} {path}"})
+
+    _attach_gh(app, gh)
+    client = GitHubProxyClient(
+        base_url="http://proxy.test",
+        hmac_key=_HMAC,
+        transport=httpx.ASGITransport(app=app),
+    )
+
+    runs = await client.list_check_runs("octo/widget", _SHA)
+    assert runs == [
+        CheckRunInfo(
+            name="build",
+            status="completed",
+            conclusion="failure",
+            started_at="2026-01-01T00:00:00Z",
+            id=11,
+            details_url="https://example/run/11",
+        ),
+        CheckRunInfo(name="lint", status="queued", conclusion=None, started_at=None, id=12, details_url=None),
+    ]
+
+    statuses = await client.list_commit_statuses("octo/widget", _SHA)
+    assert statuses == [CommitStatusInfo(context="ci/travis", state="failure")]
+
+    workflow_runs = await client.list_workflow_runs_for_sha("octo/widget", _SHA)
+    assert workflow_runs == [WorkflowRunInfo(id=555, name="checks", status="completed", conclusion="failure")]
+
+    logs = await client.get_failed_job_logs("octo/widget", 555)
+    assert logs == "=== build ===\nassertion failed\n"
+
+
+async def test_ci_state_error_propagates_instead_of_empty_list(proxy_settings: Settings) -> None:
+    """A GitHub-side failure reaches the caller as `GitHubError` through the proxy.
+
+    Locks out the proxy swallowing the error into an empty `items` envelope,
+    which the summarizer cannot distinguish from a commit with no failures.
+    """
+    app = create_proxy_app(proxy_settings)
+    app.state.settings = proxy_settings
+    _attach_gh(app, lambda _: httpx.Response(503, json={"message": "unavailable"}))
+    client = GitHubProxyClient(
+        base_url="http://proxy.test",
+        hmac_key=_HMAC,
+        transport=httpx.ASGITransport(app=app),
+    )
+    with pytest.raises(GitHubError) as exc:
+        await client.list_check_runs("octo/widget", _SHA)
+    assert exc.value.status == 503
 
 
 # ============================================================================

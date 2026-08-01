@@ -367,6 +367,47 @@ async def test_list_issues(proxy_settings: Settings) -> None:
     assert items[0]["number"] == 1
 
 
+async def test_list_issues_forwards_labels_to_github(proxy_settings: Settings) -> None:
+    """The route must hand `labels` to GitHub instead of dropping it at the
+    boundary. A dropped filter turns each page of 100 into 100 arbitrary issues
+    of which a handful match, which is how the port backlog stayed unreachable."""
+    seen: list[str | None] = []
+
+    def gh(req: httpx.Request) -> httpx.Response:
+        assert req.url.path == "/repos/octo/widget/issues"
+        seen.append(req.url.params.get("labels"))
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "number": 11,
+                    "title": "port me",
+                    "state": "open",
+                    "user": {"login": "santhsecurity"},
+                    "labels": [{"name": "upstream-port"}],
+                    "comments": 0,
+                    "updated_at": "2026-07-30T00:00:00Z",
+                    "created_at": "2026-07-30T00:00:00Z",
+                    "html_url": "https://example/11",
+                }
+            ],
+        )
+
+    params = {"repo": "octo/widget", "labels": "upstream-port", "limit": "50"}
+    app = _build_app(proxy_settings, gh)
+    async with await _async_client(app) as client:
+        resp = await client.get(
+            "/gh/v1/issues",
+            params=params,
+            headers=_signed("GET", "/gh/v1/issues", params=params),
+        )
+    assert resp.status_code == 200
+    assert seen == ["upstream-port"]
+    body = resp.json()
+    assert [item["number"] for item in body["items"]] == [11]
+    assert body["truncated"] is False
+
+
 async def test_list_comments(proxy_settings: Settings) -> None:
     def gh(req: httpx.Request) -> httpx.Response:
         assert req.url.path == "/repos/octo/widget/issues/1/comments"
@@ -1254,3 +1295,173 @@ async def test_git_fetch_ref_allows_slashy_branch_name(proxy_settings: Settings,
             headers={**_signed("POST", "/gh/v1/git/fetch_ref", body), "Content-Type": "application/json"},
         )
     assert resp.status_code == 200, resp.text
+
+
+# ============================================================================
+# CI state endpoints
+# ============================================================================
+
+_SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+async def test_check_runs_endpoint_serializes_records(proxy_settings: Settings) -> None:
+    """A signed GET returns the check runs as JSON records under `items`.
+
+    Locks out the endpoint forwarding GitHub's raw envelope, which the proxy
+    client parses as `items` and would silently read as an empty list.
+    """
+    app = _build_app(
+        proxy_settings,
+        lambda req: httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "check_runs": [
+                    {
+                        "id": 11,
+                        "name": "build",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "started_at": "2026-01-01T00:00:00Z",
+                        "details_url": "https://example/run/11",
+                    }
+                ],
+            },
+        ),
+    )
+    params = {"repo": "octo/widget", "sha": _SHA}
+    async with await _async_client(app) as client:
+        resp = await client.get(
+            "/gh/v1/check_runs",
+            params=params,
+            headers=_signed("GET", "/gh/v1/check_runs", params=params),
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {
+        "items": [
+            {
+                "name": "build",
+                "status": "completed",
+                "conclusion": "failure",
+                "started_at": "2026-01-01T00:00:00Z",
+                "id": 11,
+                "details_url": "https://example/run/11",
+            }
+        ]
+    }
+
+
+async def test_commit_statuses_and_workflow_runs_endpoints(proxy_settings: Settings) -> None:
+    """Both remaining list endpoints answer under `items` with typed fields."""
+
+    def gh(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/status"):
+            return httpx.Response(200, json={"statuses": [{"context": "ci/travis", "state": "failure"}]})
+        assert req.url.params.get("head_sha") == _SHA
+        return httpx.Response(
+            200,
+            json={"workflow_runs": [{"id": 555, "name": "checks", "status": "completed", "conclusion": "failure"}]},
+        )
+
+    app = _build_app(proxy_settings, gh)
+    params = {"repo": "octo/widget", "sha": _SHA}
+    async with await _async_client(app) as client:
+        statuses = await client.get(
+            "/gh/v1/commit_statuses",
+            params=params,
+            headers=_signed("GET", "/gh/v1/commit_statuses", params=params),
+        )
+        runs = await client.get(
+            "/gh/v1/workflow_runs",
+            params=params,
+            headers=_signed("GET", "/gh/v1/workflow_runs", params=params),
+        )
+    assert statuses.json() == {"items": [{"context": "ci/travis", "state": "failure"}]}
+    assert runs.json() == {"items": [{"id": 555, "name": "checks", "status": "completed", "conclusion": "failure"}]}
+
+
+async def test_failed_job_logs_endpoint_returns_text(proxy_settings: Settings) -> None:
+    """Job logs come back as a `logs` string, not a JSON-parsed body.
+
+    The per-job endpoint serves plain text; locks out the proxy trying to
+    `resp.json()` it and 500-ing on every real repair.
+    """
+
+    def gh(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/repos/octo/widget/actions/runs/555/jobs":
+            return httpx.Response(200, json={"jobs": [{"id": 2, "name": "build", "conclusion": "failure"}]})
+        return httpx.Response(200, text="assertion failed\n")
+
+    app = _build_app(proxy_settings, gh)
+    params = {"repo": "octo/widget", "run_id": 555}
+    async with await _async_client(app) as client:
+        resp = await client.get(
+            "/gh/v1/failed_job_logs",
+            params=params,
+            headers=_signed("GET", "/gh/v1/failed_job_logs", params=params),
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"logs": "=== build ===\nassertion failed\n"}
+
+
+async def test_ci_endpoints_reject_unsigned_requests(proxy_settings: Settings) -> None:
+    """Every CI endpoint sits behind the same HMAC gate as the rest.
+
+    Locks out a new route being registered without `_authenticate`, which would
+    let anything that can reach the sidecar read repository CI state.
+    """
+    app = _build_app(proxy_settings, lambda _: httpx.Response(200, json={}))
+    async with await _async_client(app) as client:
+        for path, params in (
+            ("/gh/v1/check_runs", {"repo": "octo/widget", "sha": _SHA}),
+            ("/gh/v1/commit_statuses", {"repo": "octo/widget", "sha": _SHA}),
+            ("/gh/v1/workflow_runs", {"repo": "octo/widget", "sha": _SHA}),
+            ("/gh/v1/failed_job_logs", {"repo": "octo/widget", "run_id": 1}),
+        ):
+            resp = await client.get(path, params=params)
+            assert resp.status_code == 401, path
+
+
+async def test_check_runs_endpoint_propagates_github_error(proxy_settings: Settings) -> None:
+    """A GitHub failure surfaces as an error response, never an empty `items`.
+
+    An empty list is indistinguishable from a green commit, so degrading here
+    would let a red PR be reported as passing.
+    """
+    app = _build_app(proxy_settings, lambda _: httpx.Response(503, json={"message": "unavailable"}))
+    params = {"repo": "octo/widget", "sha": _SHA}
+    async with await _async_client(app) as client:
+        resp = await client.get(
+            "/gh/v1/check_runs",
+            params=params,
+            headers=_signed("GET", "/gh/v1/check_runs", params=params),
+        )
+    assert resp.status_code == 503
+    assert resp.json()["error"]["status"] == 503
+
+
+def test_proxy_exposes_no_merge_or_approve_route(proxy_settings: Settings) -> None:
+    """The sidecar holds the PAT, so its route table is the last place a merge
+    could be reached from — and there is deliberately no route that can land a
+    pull request.
+
+    veybot opens candidate PRs for a human to review and merge; an auto-merge
+    path would turn an unreviewed port into a push to `main`. Locks out one
+    arriving alongside a future read endpoint.
+    """
+    app = _build_app(proxy_settings)
+    paths = {route.path for route in app.routes}
+    assert not [p for p in paths if any(word in p for word in ("merge", "approve"))]
+
+    ci_routes = {
+        route.path: set(route.methods)
+        for route in app.routes
+        if route.path
+        in {"/gh/v1/check_runs", "/gh/v1/commit_statuses", "/gh/v1/workflow_runs", "/gh/v1/failed_job_logs"}
+    }
+    assert ci_routes == {
+        "/gh/v1/check_runs": {"GET"},
+        "/gh/v1/commit_statuses": {"GET"},
+        "/gh/v1/workflow_runs": {"GET"},
+        "/gh/v1/failed_job_logs": {"GET"},
+    }

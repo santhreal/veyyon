@@ -114,6 +114,14 @@ CREATE TABLE IF NOT EXISTS pending_closures (
 );
 CREATE INDEX IF NOT EXISTS pending_closures_state_close_at
   ON pending_closures(state, close_at);
+
+CREATE TABLE IF NOT EXISTS ci_repairs (
+  issue_key   TEXT NOT NULL,
+  head_sha    TEXT NOT NULL,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (issue_key, head_sha)
+);
 """
 
 
@@ -255,6 +263,25 @@ class Database:
         closure_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(pending_closures)").fetchall()}
         if "attempts" not in closure_cols:
             self._conn.execute("ALTER TABLE pending_closures ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+        # `SCHEMA` above runs on every open, so its `CREATE TABLE IF NOT EXISTS`
+        # is what actually upgrades an existing deployment in place. This guard
+        # is the belt to that braces: it keeps `ci_repairs` in the forward-
+        # migration list where the next schema change will look for it, and it
+        # still creates the table if the SCHEMA execution above is ever split or
+        # reordered. Idempotent either way.
+        tables = {row[0] for row in self._conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "ci_repairs" not in tables:
+            self._conn.execute(
+                """
+                CREATE TABLE ci_repairs (
+                  issue_key   TEXT NOT NULL,
+                  head_sha    TEXT NOT NULL,
+                  attempts    INTEGER NOT NULL DEFAULT 0,
+                  updated_at  TEXT NOT NULL,
+                  PRIMARY KEY (issue_key, head_sha)
+                )
+                """
+            )
 
     def close(self) -> None:
         with self._lock:
@@ -859,6 +886,42 @@ class Database:
                 ).fetchall()
                 out.update(r["key"] for r in rows)
         return out
+
+    # ---- ci_repairs ----
+    def ci_repair_attempts(self, issue_key: str, head_sha: str) -> int:
+        """How many repair attempts this issue has already spent on `head_sha`."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT attempts FROM ci_repairs WHERE issue_key=? AND head_sha=?",
+                (issue_key, head_sha),
+            ).fetchone()
+            return int(row["attempts"]) if row is not None else 0
+
+    def bump_ci_repair(self, issue_key: str, head_sha: str) -> int:
+        """Charge one repair attempt against `head_sha` and return the new count.
+
+        The budget is keyed on the head commit, not the issue, on purpose. A new
+        push is a new state: once the agent (or a human) actually changes the
+        branch, the attempts spent on the old tree say nothing about the new one.
+        Keying on the issue alone would leave an exhausted PR permanently
+        unrepairable even after someone pushed the fix.
+        """
+        now = _utcnow()
+        with self._txn() as conn:
+            conn.execute(
+                """
+                INSERT INTO ci_repairs (issue_key, head_sha, attempts, updated_at)
+                VALUES (?, ?, 1, ?)
+                ON CONFLICT(issue_key, head_sha) DO UPDATE
+                  SET attempts = attempts + 1, updated_at = excluded.updated_at
+                """,
+                (issue_key, head_sha, now),
+            )
+            row = conn.execute(
+                "SELECT attempts FROM ci_repairs WHERE issue_key=? AND head_sha=?",
+                (issue_key, head_sha),
+            ).fetchone()
+            return int(row["attempts"])
 
     # ---- tool_calls ----
     def log_tool_call(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
@@ -118,6 +118,23 @@ class IssueSummary:
     html_url: str
 
 
+class IssueListing(list[IssueSummary]):
+    """Everything one `list_issues` scan reached, plus whether it saw the end.
+
+    This is a plain list, so every caller that just iterates keeps working. The
+    one extra fact is `truncated`: True when the caller's ceiling stopped the
+    page walk before GitHub reported a short page. Without that flag a capped
+    scan looks exactly like a complete one, which is how a backlog drain comes
+    to believe a 200-issue repository holds 90 issues.
+    """
+
+    __slots__ = ("truncated",)
+
+    def __init__(self, items: Iterable[IssueSummary] = (), *, truncated: bool = False) -> None:
+        super().__init__(items)
+        self.truncated = truncated
+
+
 @dataclass(slots=True, frozen=True)
 class ReactionInfo:
     """A reaction on an issue/comment.
@@ -130,6 +147,72 @@ class ReactionInfo:
     content: str
     user_login: str
     user_type: str
+
+
+@dataclass(slots=True, frozen=True)
+class CheckRunInfo:
+    """One entry from `GET /repos/{repo}/commits/{sha}/check-runs`.
+
+    `status` is `queued` / `in_progress` / `completed`; `conclusion` only
+    carries meaning once `status == "completed"`. GitHub reports a rerun as a
+    *separate* record with the same `name`, so consumers must de-duplicate by
+    name and keep the newest — see `ci_state.summarize_checks`.
+    """
+
+    name: str
+    status: str
+    conclusion: str | None
+    started_at: str | None
+    id: int
+    details_url: str | None
+
+
+@dataclass(slots=True, frozen=True)
+class CommitStatusInfo:
+    """One entry from the legacy combined-status endpoint.
+
+    `state` is `success` / `pending` / `failure` / `error`. Third-party CI that
+    predates the Checks API still reports only here.
+    """
+
+    context: str
+    state: str
+
+
+@dataclass(slots=True, frozen=True)
+class WorkflowRunInfo:
+    """One entry from `GET /repos/{repo}/actions/runs?head_sha=…`."""
+
+    id: int
+    name: str
+    status: str
+    conclusion: str | None
+
+
+# GitHub's check-run conclusion vocabulary. It lives here beside `CheckRunInfo`
+# because it is the REST API's enum, not veybot policy — `ci_state` imports it
+# and decides from it what "green" means.
+PASSING_CHECK_CONCLUSIONS = frozenset({"success", "neutral", "skipped"})
+"""Conclusions that clear a check. `neutral` and `skipped` never block a merge."""
+
+IGNORED_CHECK_CONCLUSIONS = frozenset({"stale"})
+"""`stale` means GitHub superseded the run before it reported. It carries no
+verdict either way, so it must not count for or against the commit."""
+
+_JOB_LOG_MAX_BYTES = 1_000_000
+"""Ceiling on the bytes `get_failed_job_logs` will hold in memory per run."""
+
+
+def _is_failed_conclusion(conclusion: str | None) -> bool:
+    """Whether a workflow *job* conclusion counts as a failure.
+
+    A `None` conclusion means the job has not finished, which is not a failure.
+    (`ci_state` treats a *completed* check run with no conclusion as failing —
+    a different question about a different record.)
+    """
+    if conclusion is None:
+        return False
+    return conclusion not in PASSING_CHECK_CONCLUSIONS and conclusion not in IGNORED_CHECK_CONCLUSIONS
 
 
 def _parse_retry_after(resp: httpx.Response) -> float | None:
@@ -330,11 +413,62 @@ class GitHubClient:
         """GET every page of a list endpoint until a short (`< page_size`) page
         signals the end. The single home for full-list pagination.
 
-        Endpoints that intentionally return only a recent slice (`list_issues`,
-        the issue timeline) deliberately do NOT use this — see their docstrings.
-        Everything that feeds the agent's thread context (comments, review
-        comments, reviews, changed files) MUST, so a >`page_size` thread never
-        silently drops its newest page.
+        The issue timeline intentionally returns only a recent slice and
+        deliberately does NOT use this — see its docstring. Everything that
+        feeds the agent's thread context (comments, review comments, reviews,
+        changed files) MUST, so a >`page_size` thread never silently drops its
+        newest page.
+        """
+        items, _ = await self._get_paginated_capped(path, params=params, page_size=page_size, max_items=None)
+        return items
+
+    async def _get_paginated_capped(
+        self,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        page_size: int = 100,
+        max_items: int | None,
+    ) -> tuple[list[Any], bool]:
+        """The page walk itself, bounded by `max_items` when the caller sets one.
+
+        Returns the items and whether the ceiling cut the walk short. Truncation
+        has to travel back out: a caller that only ever sees `max_items` items
+        cannot distinguish "that is the whole list" from "there was more and we
+        stopped", and guessing the first is how a partial scan gets reported as
+        a complete one.
+
+        `page` is omitted on the first request because GitHub defaults it to 1,
+        so a list that fits on one page costs exactly the same request it did
+        before pagination existed.
+        """
+        items: list[Any] = []
+        base = dict(params or {})
+        base["per_page"] = page_size
+        page = 1
+        while True:
+            query = base if page == 1 else {**base, "page": page}
+            data = await self.request("GET", path, params=query)
+            batch = list(data or [])
+            items.extend(batch)
+            if max_items is not None and len(items) >= max_items:
+                # More left over than asked for, or a full page that may well
+                # have a successor: either way the walk stopped early.
+                return items[:max_items], len(items) > max_items or len(batch) == page_size
+            if len(batch) < page_size:
+                return items, False
+            page += 1
+
+    async def _get_paginated_envelope(
+        self, path: str, *, key: str, params: Mapping[str, Any] | None = None, page_size: int = 100
+    ) -> list[Any]:
+        """`_get_paginated` for endpoints that wrap their list in an object.
+
+        The Checks and Actions APIs answer `{"total_count": N, "<key>": [...]}`
+        rather than a bare array, so the short-page terminator has to look inside
+        the envelope. Same full-walk guarantee, and it matters more here: a page
+        of check runs that was never fetched is indistinguishable from a commit
+        with nothing failing.
         """
         items: list[Any] = []
         base = dict(params or {})
@@ -342,11 +476,50 @@ class GitHubClient:
         page = 1
         while True:
             data = await self.request("GET", path, params={**base, "page": page})
-            batch = list(data or [])
+            batch = list(data.get(key) or []) if isinstance(data, Mapping) else []
             items.extend(batch)
             if len(batch) < page_size:
                 return items
             page += 1
+
+    async def _fetch_bytes_capped(self, path: str, *, max_bytes: int) -> bytes:
+        """Stream a non-JSON GET, stopping once `max_bytes` have been read.
+
+        `request()` buffers the whole body and parses it as JSON. Workflow job
+        logs are plain text and routinely run to tens of megabytes, so this
+        streams and stops at the cap instead of materializing the whole thing.
+        Non-2xx (and any redirect left unfollowed) maps to `GitHubError` through
+        the same `_check` every other call uses, so a failed log fetch can never
+        be mistaken for an empty log.
+        """
+        last_exc: Exception | None = None
+        for attempt, delay in enumerate((*self._TRANSIENT_RETRY_DELAYS, None)):
+            try:
+                async with self._async_client() as client, client.stream("GET", path) as resp:
+                    if resp.status_code >= 300:
+                        await resp.aread()
+                        self._check(resp)  # always raises at >= 300
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in resp.aiter_bytes():
+                        room = max_bytes - total
+                        if room <= 0:
+                            break
+                        chunks.append(chunk[:room])
+                        total += min(len(chunk), room)
+                    return b"".join(chunks)
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                if not is_transient_retryable(exc, "GET"):
+                    raise
+                last_exc = exc
+                if delay is None:
+                    break
+                log.warning(
+                    "transient error, retrying",
+                    extra={"method": "GET", "path": path, "attempt": attempt + 1, "delay": delay, "error": str(exc)},
+                )
+                await asyncio.sleep(delay)
+        raise last_exc  # type: ignore[misc]
 
     async def list_pr_files(self, repo: str, pr_number: int) -> list[PullRequestFileInfo]:
         data = await self._get_paginated(f"/repos/{repo}/pulls/{pr_number}/files")
@@ -357,21 +530,33 @@ class GitHubClient:
         repo: str,
         *,
         state: str = "open",
+        labels: str | None = None,
         limit: int = 30,
-    ) -> list[IssueSummary]:
-        """List recent issues for `repo`, newest-updated first. Excludes pull requests.
+    ) -> IssueListing:
+        """List issues for `repo`, newest-updated first. Excludes pull requests.
 
-        `state` is one of `open`, `closed`, `all`. `limit` is capped at 100 by the
-        GitHub `per_page`; we don't paginate here — the dashboard browse view shows
-        a recent slice, not every issue ever.
+        `state` is one of `open`, `closed`, `all`. `labels` is GitHub's
+        comma-separated label filter and is applied server side, so a caller
+        after one label spends its whole page budget on candidates instead of
+        on whatever happened to be updated most recently.
+
+        `limit` is the ceiling on how many issues the scan may pull, across as
+        many pages of 100 as that takes. It exists so an unbounded repository
+        cannot spin forever, and the returned `IssueListing.truncated` says
+        whether it bit. Read that flag: a truncated listing is a floor on what
+        the repository holds, never the total.
         """
         if state not in ("open", "closed", "all"):
             raise ValueError(f"invalid state: {state!r}")
-        per_page = max(1, min(int(limit), 100))
-        data = await self.request(
-            "GET",
+        ceiling = max(1, int(limit))
+        params: dict[str, Any] = {"state": state, "sort": "updated", "direction": "desc"}
+        if labels:
+            params["labels"] = labels
+        data, truncated = await self._get_paginated_capped(
             f"/repos/{repo}/issues",
-            params={"state": state, "per_page": per_page, "sort": "updated", "direction": "desc"},
+            params=params,
+            page_size=min(ceiling, 100),
+            max_items=ceiling,
         )
         out: list[IssueSummary] = []
         for item in data or []:
@@ -393,7 +578,7 @@ class GitHubClient:
                     html_url=str(item.get("html_url") or ""),
                 )
             )
-        return out
+        return IssueListing(out, truncated=truncated)
 
     async def list_comments(self, repo: str, number: int) -> list[CommentInfo]:
         # Fully paginated: comments arrive oldest-first, so a partial fetch would
@@ -443,6 +628,110 @@ class GitHubClient:
                 )
             )
         return out
+
+    # ---- CI state (read-only: there is deliberately no merge/approve path) ----
+    async def list_check_runs(self, repo: str, sha: str) -> list[CheckRunInfo]:
+        """Every check run reported against `sha`, reruns included.
+
+        Fully paginated — a matrix build easily exceeds one page, and a page of
+        failing checks that never got fetched reads exactly like a green commit.
+        """
+        data = await self._get_paginated_envelope(f"/repos/{repo}/commits/{sha}/check-runs", key="check_runs")
+        out: list[CheckRunInfo] = []
+        for item in data:
+            if not isinstance(item, Mapping):
+                continue
+            conclusion = item.get("conclusion")
+            started_at = item.get("started_at")
+            details_url = item.get("details_url")
+            out.append(
+                CheckRunInfo(
+                    name=str(item.get("name") or ""),
+                    status=str(item.get("status") or ""),
+                    conclusion=str(conclusion) if conclusion is not None else None,
+                    started_at=str(started_at) if started_at is not None else None,
+                    id=int(item.get("id") or 0),
+                    details_url=str(details_url) if details_url is not None else None,
+                )
+            )
+        return out
+
+    async def list_commit_statuses(self, repo: str, sha: str) -> list[CommitStatusInfo]:
+        """Legacy combined commit statuses for `sha`.
+
+        The combined endpoint already collapses to the newest status per
+        context; we still page it so a commit with many contexts comes back
+        whole.
+        """
+        data = await self._get_paginated_envelope(f"/repos/{repo}/commits/{sha}/status", key="statuses")
+        out: list[CommitStatusInfo] = []
+        for item in data:
+            if not isinstance(item, Mapping):
+                continue
+            out.append(
+                CommitStatusInfo(
+                    context=str(item.get("context") or ""),
+                    state=str(item.get("state") or ""),
+                )
+            )
+        return out
+
+    async def list_workflow_runs_for_sha(self, repo: str, sha: str) -> list[WorkflowRunInfo]:
+        """Actions runs whose head commit is `sha`.
+
+        This is the bridge from a failing check run to the `run_id` whose job
+        logs explain it.
+        """
+        data = await self._get_paginated_envelope(
+            f"/repos/{repo}/actions/runs", key="workflow_runs", params={"head_sha": sha}
+        )
+        out: list[WorkflowRunInfo] = []
+        for item in data:
+            if not isinstance(item, Mapping):
+                continue
+            conclusion = item.get("conclusion")
+            out.append(
+                WorkflowRunInfo(
+                    id=int(item.get("id") or 0),
+                    name=str(item.get("name") or ""),
+                    status=str(item.get("status") or ""),
+                    conclusion=str(conclusion) if conclusion is not None else None,
+                )
+            )
+        return out
+
+    async def get_failed_job_logs(self, repo: str, run_id: int) -> str:
+        """Plain-text logs of every failed job in workflow run `run_id`.
+
+        Deliberately not `GET /actions/runs/{id}/logs`: that redirects to a ZIP
+        of the *whole* run, so reaching the handful of lines that matter would
+        mean unzipping tens of megabytes of passing-job noise. Instead we list
+        the run's jobs, keep the ones whose conclusion is a failure, and fetch
+        `GET /actions/jobs/{job_id}/logs` per job — that endpoint 302s to plain
+        text on a storage host, which httpx follows (dropping `Authorization`
+        on the cross-origin hop, which the signed URL requires anyway).
+
+        Jobs are concatenated under one `=== <job name> ===` header each. The
+        run total is capped at `_JOB_LOG_MAX_BYTES` and every job is handed only
+        the budget still left, so one runaway job cannot exhaust memory.
+        """
+        jobs = await self._get_paginated_envelope(f"/repos/{repo}/actions/runs/{run_id}/jobs", key="jobs")
+        sections: list[str] = []
+        remaining = _JOB_LOG_MAX_BYTES
+        for job in jobs:
+            if not isinstance(job, Mapping):
+                continue
+            conclusion = job.get("conclusion")
+            if not _is_failed_conclusion(str(conclusion) if conclusion is not None else None):
+                continue
+            if remaining <= 0:
+                break
+            job_id = int(job.get("id") or 0)
+            name = str(job.get("name") or f"job {job_id}")
+            raw = await self._fetch_bytes_capped(f"/repos/{repo}/actions/jobs/{job_id}/logs", max_bytes=remaining)
+            remaining -= len(raw)
+            sections.append(f"=== {name} ===\n{raw.decode('utf-8', 'replace')}")
+        return "\n".join(sections)
 
     async def post_comment(self, repo: str, number: int, body: str) -> CommentInfo:
         data = await self.request(
@@ -670,16 +959,22 @@ def parse_issue_payload(payload: Mapping[str, Any]) -> tuple[RepoInfo, IssueInfo
 __all__ = [
     "ACCEPT",
     "API_VERSION",
+    "CheckRunInfo",
     "CommentInfo",
+    "CommitStatusInfo",
     "GitHubClient",
     "GitHubError",
+    "IGNORED_CHECK_CONCLUSIONS",
     "IssueInfo",
+    "IssueListing",
     "IssueSummary",
+    "PASSING_CHECK_CONCLUSIONS",
     "PullRequestFileInfo",
     "PullRequestInfo",
     "PullRequestReviewInfo",
     "ReactionInfo",
     "RepoInfo",
     "ReviewCommentInfo",
+    "WorkflowRunInfo",
     "parse_issue_payload",
 ]

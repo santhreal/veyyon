@@ -12,15 +12,18 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 from veybot.github_client import (
+    CheckRunInfo,
     CommentInfo,
+    CommitStatusInfo,
     IssueInfo,
-    IssueSummary,
+    IssueListing,
     PullRequestFileInfo,
     PullRequestInfo,
     PullRequestReviewInfo,
     ReactionInfo,
     RepoInfo,
     ReviewCommentInfo,
+    WorkflowRunInfo,
 )
 
 
@@ -43,8 +46,9 @@ class GitHubBackend(Protocol):
         repo: str,
         *,
         state: str = "open",
+        labels: str | None = None,
         limit: int = 30,
-    ) -> list[IssueSummary]: ...
+    ) -> IssueListing: ...
 
     async def list_comments(self, repo: str, number: int) -> list[CommentInfo]: ...
 
@@ -53,6 +57,18 @@ class GitHubBackend(Protocol):
     async def list_pr_reviews(self, repo: str, pr_number: int) -> list[PullRequestReviewInfo]: ...
 
     async def get_authenticated_login(self) -> str: ...
+
+    # ---- CI state ----
+    # Read-only by construction. There is no merge, auto-merge, approve, or
+    # review-submit-approval method on this protocol and there must never be
+    # one: a candidate PR is handed to a human, never landed by the bot.
+    async def list_check_runs(self, repo: str, sha: str) -> list[CheckRunInfo]: ...
+
+    async def list_commit_statuses(self, repo: str, sha: str) -> list[CommitStatusInfo]: ...
+
+    async def list_workflow_runs_for_sha(self, repo: str, sha: str) -> list[WorkflowRunInfo]: ...
+
+    async def get_failed_job_logs(self, repo: str, run_id: int) -> str: ...
 
     # ---- writes ----
     async def post_comment(self, repo: str, number: int, body: str) -> CommentInfo: ...
@@ -98,4 +114,9 @@ class GitHubBackend(Protocol):
     async def close_issue(self, repo: str, number: int, *, reason: str = "completed") -> None: ...
 
 
-__all__ = ["GitHubBackend"]
+__all__ = [
+    "CheckRunInfo",
+    "CommitStatusInfo",
+    "GitHubBackend",
+    "WorkflowRunInfo",
+]
