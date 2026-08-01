@@ -308,21 +308,32 @@ describe("tryWithFileLock", () => {
 		expect(ran).toBe(0);
 	});
 
+	/** Keeps the first winner alive until every concurrent nonblocking contender has settled. */
 	test("exactly one of many concurrent callers runs fn", async () => {
 		const root = await mkRoot();
 		const target = path.join(root, "concurrent.json");
+		const winnerStarted = Promise.withResolvers<void>();
+		const releaseWinner = Promise.withResolvers<void>();
 		let ran = 0;
 
-		const results = await Promise.all(
-			Array.from({ length: 8 }, () =>
+		const winner = tryWithFileLock(target, async () => {
+			ran += 1;
+			winnerStarted.resolve();
+			await releaseWinner.promise;
+			return ran;
+		});
+		await winnerStarted.promise;
+
+		const contenders = await Promise.all(
+			Array.from({ length: 7 }, () =>
 				tryWithFileLock(target, async () => {
 					ran += 1;
-					// Hold the lock long enough that the other callers must contend.
-					await Bun.sleep(20);
 					return ran;
 				}),
 			),
 		);
+		releaseWinner.resolve();
+		const results = [await winner, ...contenders];
 
 		expect(ran).toBe(1);
 		expect(results.filter(r => r.acquired)).toHaveLength(1);
