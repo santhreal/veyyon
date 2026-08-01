@@ -3,11 +3,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	boundReleaseNotesBody,
 	compareVersions,
 	enumerateChangelogVersions,
 	formatCommitSummary,
 	groupCommitsByType,
 	mergePackageSection,
+	RELEASE_NOTES_BODY_LIMIT,
 } from "./ci-release-notes";
 
 const FIXTURE = [
@@ -283,6 +285,52 @@ describe("formatCommitSummary", () => {
 	});
 });
 
+describe("boundReleaseNotesBody", () => {
+	/** A body already accepted by GitHub must remain byte-for-byte stable. */
+	it("leaves release notes unchanged below the limit", () => {
+		const body = "## @veyyon/coding-agent\n\n### Fixed\n\n- Fixed the release.\n";
+
+		expect(boundReleaseNotesBody(body, { version: "1.0.38", floor: "1.0.37", maxChars: 1_000 })).toBe(body);
+	});
+
+	/**
+	 * The v1.0.38 release assembled 428,651 characters and GitHub rejected the
+	 * draft with HTTP 422. The bounded body keeps only complete entries and names
+	 * the immutable sources for every omitted detail.
+	 */
+	it("shortens an oversized body only at a complete bullet boundary", () => {
+		const entries = Array.from(
+			{ length: 40 },
+			(_, index) => `- Entry ${index}: ${"x".repeat(80)}\n  continuation-${index}.`,
+		).join("\n");
+		const body = `## @veyyon/coding-agent\n\n### Fixed\n\n${entries}\n\n## @veyyon/tui\n\n### Changed\n\n- Tail entry.\n`;
+
+		const bounded = boundReleaseNotesBody(body, { version: "1.0.38", floor: "1.0.37", maxChars: 1_400 });
+		const included = [...bounded.matchAll(/^- Entry (\d+):/gm)].map(match => Number(match[1]));
+		const prefix = bounded.split("\n\n_Release notes were shortened")[0] ?? "";
+
+		expect(bounded.length).toBeLessThanOrEqual(1_400);
+		expect(included.length).toBeGreaterThan(0);
+		expect(included.length).toBeLessThan(40);
+		for (const index of included) expect(prefix).toContain(`continuation-${index}.`);
+		expect(prefix).toMatch(/continuation-\d+\.$/);
+		expect(bounded).toContain("shortened from");
+		expect(bounded).toContain("/tree/v1.0.38/packages");
+		expect(bounded).toContain("/compare/v1.0.37...v1.0.38");
+	});
+
+	/** One pathological entry larger than the whole budget is omitted, never sliced into invalid Markdown. */
+	it("emits only the source notice when the first bullet exceeds the budget", () => {
+		const body = `## @veyyon/coding-agent\n\n### Fixed\n\n- ${"secret-detail ".repeat(500)}\n`;
+
+		const bounded = boundReleaseNotesBody(body, { version: "1.0.38", floor: null, maxChars: 600 });
+
+		expect(bounded.length).toBeLessThanOrEqual(600);
+		expect(bounded).not.toContain("secret-detail");
+		expect(bounded).toContain("/commits/v1.0.38");
+	});
+});
+
 // Adversarial and boundary cases for the type parser. Commit subjects in the
 // wild are messy: uppercase types, colons inside the description, nested
 // parens in the scope, unknown-but-conventional-looking prefixes, and the
@@ -483,6 +531,35 @@ describe("ci-release-notes end-to-end against a real tagged git repo", () => {
 		expect(stderr).toContain("fetch-depth: 0"); // the actionable fix is named
 		expect(body).toContain("- A curated bullet."); // curated notes still ship
 		expect(body).not.toContain("## What changed"); // summary skipped, not faked
+	});
+
+	it("keeps the real generated file below GitHub's limit when one changelog entry is larger than the body", () => {
+		writeChangelog(
+			[
+				"# Changelog",
+				"",
+				"## [1.1.0]",
+				"",
+				"### Fixed",
+				"",
+				`- ${"oversized release detail ".repeat(7_000)}`,
+				"",
+				"## [1.0.0]",
+				"",
+			].join("\n"),
+		);
+		git(["add", "-A"], repo);
+		commit("chore: seed");
+		git(["tag", "v1.0.0"], repo);
+		commit("fix(release): bound generated notes");
+		git(["tag", "v1.1.0"], repo);
+
+		const { code, body } = runNotes("v1.1.0", "1.0.0");
+
+		expect(code).toBe(0);
+		expect(body.length).toBeLessThanOrEqual(RELEASE_NOTES_BODY_LIMIT);
+		expect(body).toContain("shortened from");
+		expect(body).not.toContain("oversized release detail");
 	});
 
 	it("writes an empty body only when there are neither changelog bullets nor commits in range", () => {
