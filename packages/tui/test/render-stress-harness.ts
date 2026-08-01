@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { __veyyonNativesV1_0_42 } from "@veyyon/natives";
+import { __veyyonNativesV1_0_43 } from "@veyyon/natives";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
 import {
 	type Component,
@@ -4027,7 +4027,7 @@ async function withPatchedPlatform<T>(platform: Scenario["platform"], run: () =>
 	// reuse the host addon instead of demanding a `.node` that cannot exist
 	// here. The patch tests JS render logic; the native width functions are
 	// platform-independent, so the host binding is correct either way.
-	__veyyonNativesV1_0_42();
+	__veyyonNativesV1_0_43();
 	platformPatchDepth += 1;
 	const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
 	Object.defineProperty(process, "platform", { configurable: true, value: platform });
