@@ -352,6 +352,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             maintainers=cfg.maintainer_logins,
             reviewer_bots=cfg.reviewer_bots,
             pr_review_enabled=cfg.pr_review_enabled,
+            port_upstream_enabled=cfg.port_upstream_enabled,
+            port_label=cfg.port_label,
+            ci_repair_enabled=cfg.ci_repair_enabled,
             resolve_issue_from_pr=_resolve,
         )
 

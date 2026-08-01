@@ -15,6 +15,7 @@ from veybot.cancellation import clear_current_event, set_current_event
 from veybot.config import Settings
 from veybot.db import Database, EventRow
 from veybot.github_backend import GitHubBackend
+from veybot.github_events import is_port_upstream_event
 from veybot.sandbox import GitTransport, SandboxManager, _reap_slot
 from veybot.slot_pool import SlotPool
 
@@ -252,9 +253,7 @@ class WorkerPool:
                 # This claim never dispatched, so roll back its attempts bump —
                 # otherwise the collision eats a real retry slot.
                 await asyncio.to_thread(
-                    lambda: self.db.requeue_event(
-                        row.delivery_id, from_states=("running",), restore_attempt=True
-                    )
+                    lambda: self.db.requeue_event(row.delivery_id, from_states=("running",), restore_attempt=True)
                 )
                 # Sleep briefly so we don't spin.
                 await asyncio.sleep(0.5)
@@ -416,8 +415,38 @@ class WorkerPool:
                 "recovered": row.attempts >= 2,
             },
         )
-        if event == "issues" and action == "opened":
+        # `route()` already made this call once, but the decision does not
+        # survive into the EventRow — the dispatcher re-derives the handler
+        # from `(event_type, action)`. Both sides ask `is_port_upstream_event`
+        # so an `issues.opened` carrying the port label can never be handled
+        # here as an ordinary bug report.
+        is_port = is_port_upstream_event(row.payload, port_label=self.settings.port_label)
+        if event == "issues" and action in ("opened", "labeled") and is_port:
+            await tasks.port_upstream(
+                settings=self.settings,
+                db=self.db,
+                github=self.github,
+                sandbox=self.sandbox,
+                git_transport=self.git_transport,
+                payload=row.payload,
+                delivery_id=row.delivery_id,
+                attempts=row.attempts,
+                slot_uid=slot_uid,
+            )
+        elif event == "issues" and action == "opened":
             await tasks.triage_issue(
+                settings=self.settings,
+                db=self.db,
+                github=self.github,
+                sandbox=self.sandbox,
+                git_transport=self.git_transport,
+                payload=row.payload,
+                delivery_id=row.delivery_id,
+                attempts=row.attempts,
+                slot_uid=slot_uid,
+            )
+        elif event == "check_suite" and action == "completed":
+            await tasks.ci_repair(
                 settings=self.settings,
                 db=self.db,
                 github=self.github,

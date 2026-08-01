@@ -179,3 +179,65 @@ def test_task_timeout_hard_grace_env_parses(monkeypatch: pytest.MonkeyPatch, env
     reset_settings_cache()
     cfg = Settings()  # type: ignore[call-arg]
     assert cfg.task_timeout_hard_grace_seconds == 12.5
+
+
+def test_port_and_ci_repair_default_to_enabled(env: dict[str, str]) -> None:
+    """The whole point of the deployment is unattended draining, so a fresh
+    install must already be draining. Defaulting these off would leave the
+    operator with a bot that starts and does nothing, with no error."""
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.port_upstream_enabled is True
+    assert cfg.ci_repair_enabled is True
+    assert cfg.ci_max_repairs == 3
+    assert cfg.port_label == "upstream-port"
+    assert cfg.agent_profile == ""
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("false", False), ("0", False), ("true", True), ("1", True)],
+)
+def test_kill_switches_parse_from_env(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], raw: str, expected: bool
+) -> None:
+    """These are the only way to stop a runaway agent without redeploying, so
+    an unparsed value that silently stayed True would be unrecoverable in the
+    moment the operator needs it."""
+    monkeypatch.setenv("VEYBOT_PORT_UPSTREAM_ENABLED", raw)
+    monkeypatch.setenv("VEYBOT_CI_REPAIR_ENABLED", raw)
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.port_upstream_enabled is expected
+    assert cfg.ci_repair_enabled is expected
+
+
+def test_port_label_and_agent_profile_are_stripped(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
+    """`VEYBOT_PORT_LABEL` is compared against GitHub's exact label text and
+    `VEYBOT_AGENT_PROFILE` becomes an argv element. A stray newline from a
+    heredoc-written `.env` would make the label never match any issue and the
+    profile never resolve, both without an error."""
+    monkeypatch.setenv("VEYBOT_PORT_LABEL", "  upstream-port\n")
+    monkeypatch.setenv("VEYBOT_AGENT_PROFILE", "  work  ")
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.port_label == "upstream-port"
+    assert cfg.agent_profile == "work"
+
+
+def test_blank_port_label_rejected(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
+    """An empty label would match nothing at all, quietly disabling the port
+    task while `port_upstream_enabled` still reports True."""
+    monkeypatch.setenv("VEYBOT_PORT_LABEL", "   ")
+    reset_settings_cache()
+    with pytest.raises(ValidationError):
+        Settings()  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("raw", ["0", "-1"])
+def test_non_positive_ci_max_repairs_rejected(monkeypatch: pytest.MonkeyPatch, env: dict[str, str], raw: str) -> None:
+    """A cap of zero or less makes the attempt arithmetic post the exhausted
+    comment on the first red suite forever; refuse the config instead."""
+    monkeypatch.setenv("VEYBOT_CI_MAX_REPAIRS", raw)
+    reset_settings_cache()
+    with pytest.raises(ValidationError):
+        Settings()  # type: ignore[call-arg]

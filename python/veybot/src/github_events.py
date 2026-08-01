@@ -193,6 +193,97 @@ def is_implementation_authorizer(
     return False
 
 
+FAILING_CHECK_CONCLUSIONS: frozenset[str] = frozenset({"failure", "timed_out", "action_required", "startup_failure"})
+"""`check_suite.conclusion` values that mean the candidate PR is red.
+
+`cancelled`, `neutral`, `skipped`, `stale` and `success` are NOT failures: a
+cancelled or superseded run says nothing about the code, and repairing on one
+would burn an attempt against a suite that never finished judging.
+"""
+
+
+def _issue_label_names(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Label names on the payload's issue, tolerating every malformed shape.
+
+    This is the only place `route` reads labels, and it runs on the webhook
+    request path: a `TypeError` here would 500 the endpoint and take every
+    other event down with it. Anything unexpected degrades to "no labels".
+    Bare strings are accepted alongside GitHub's `{"name": ...}` objects so a
+    synthesized backlog payload does not have to imitate the wire format.
+    """
+    issue = payload.get("issue")
+    if not isinstance(issue, Mapping):
+        return ()
+    raw = issue.get("labels")
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    names: list[str] = []
+    for entry in raw:
+        name = entry.get("name") if isinstance(entry, Mapping) else entry
+        if isinstance(name, str) and name:
+            names.append(name)
+    return tuple(names)
+
+
+def _added_label_name(payload: Mapping[str, Any]) -> str | None:
+    """The label an `issues.labeled` event just added, or None."""
+    label = payload.get("label")
+    if not isinstance(label, Mapping):
+        return None
+    name = label.get("name")
+    return name if isinstance(name, str) and name else None
+
+
+def is_port_upstream_event(payload: Mapping[str, Any], *, port_label: str) -> bool:
+    """Whether this `issues` payload designates upstream-port work.
+
+    `route` asks this to pick the task; `queue.WorkerPool._dispatch` asks it
+    again to pick the handler off the stored EventRow, because the dispatcher
+    re-derives from `(event_type, action)` and never sees the `RouteDecision`.
+    They MUST agree — if they drift, a tracking issue gets triaged as an
+    ordinary bug report — so both call this and nothing else.
+
+    The label arrives two ways: the radar files the issue already labeled
+    (`issues.opened` carries it in `issue.labels`), and a human may add it
+    later (`issues.labeled` carries it in `label.name`).
+    """
+    if not port_label:
+        return False
+    action = str(payload.get("action") or "")
+    if action == "opened":
+        return port_label in _issue_label_names(payload)
+    if action == "labeled":
+        return _added_label_name(payload) == port_label
+    return False
+
+
+def _check_suite_bot_authored(suite: Mapping[str, Any], pr: Mapping[str, Any], bot_login: str) -> bool:
+    """Whether the branch this check suite ran on belongs to the bot.
+
+    Repairing a suite we did not author would push commits onto a
+    contributor's branch nobody asked us to touch, so this fails closed.
+    A `check_suite` payload carries no PR author: the usable signal is
+    `head_commit.author`, which for a candidate branch is the identity veybot
+    commits under. `pull_requests[].user` is checked too because replayed and
+    synthesized payloads sometimes carry it.
+    """
+    user = pr.get("user")
+    if isinstance(user, Mapping):
+        return _is_bot_account(user, bot_login) or _login_matches_bot(str(user.get("login") or ""), bot_login)
+    head_commit = suite.get("head_commit")
+    if not isinstance(head_commit, Mapping):
+        return False
+    author = head_commit.get("author")
+    if not isinstance(author, Mapping):
+        return False
+    if _is_bot_account(author, bot_login):
+        return True
+    for field in ("login", "username", "name"):
+        if _login_matches_bot(str(author.get(field) or ""), bot_login):
+            return True
+    return False
+
+
 def _pr_review_pr(pr: Mapping[str, Any], repo: str, action: str, bot_login: str) -> RouteDecision:
     """Build a `review_pr` decision for an incoming PR, or the matching skip."""
     if str(pr.get("state") or "open") != "open":
@@ -225,6 +316,9 @@ def route(
     maintainers: frozenset[str] = frozenset(),
     reviewer_bots: frozenset[str] = frozenset(),
     resolve_issue_from_pr: PrIssueResolver = None,
+    port_upstream_enabled: bool = True,
+    port_label: str = "upstream-port",
+    ci_repair_enabled: bool = True,
     pr_review_enabled: bool = True,
 ) -> RouteDecision:
     """Decide whether and how to handle a webhook event.
@@ -300,12 +394,29 @@ def route(
         if not isinstance(number, int):
             return RouteDecision("skip", None, repo, None, "issue missing number")
         key = issue_key(repo, number)
+        # The upstream-port label reaches us two ways: the radar files the
+        # issue already labeled, and a human may add the label afterwards.
+        # Both land on `port_upstream`, and a labeled issue must NEVER fall
+        # through to `triage_issue` — a port candidate is not a bug report.
+        is_port = is_port_upstream_event(payload, port_label=port_label)
         if action == "opened":
+            if is_port:
+                if not port_upstream_enabled:
+                    return RouteDecision("skip", None, repo, key, "upstream port disabled")
+                # Backlog drain, not a user submission: no rate-limit subject,
+                # or 200 tracking issues would throttle against one filer.
+                return RouteDecision("queue", "port_upstream", repo, key, f"issues.opened [{port_label}]")
             login, assoc = _submitter_info(issue)
             assoc = _effective_association(login, assoc, payload.get("repository"), repo)
             return RouteDecision(
                 "queue", "triage_issue", repo, key, "issues.opened", submitter=login, association=assoc
             )
+        if action == "labeled":
+            if not is_port:
+                return RouteDecision("skip", None, repo, key, "issues.labeled with unrelated label")
+            if not port_upstream_enabled:
+                return RouteDecision("skip", None, repo, key, "upstream port disabled")
+            return RouteDecision("queue", "port_upstream", repo, key, f"issues.labeled [{port_label}]")
         if action == "closed":
             # Cleanup is a lifecycle event, not a user submission; no rate-limit subject.
             return RouteDecision("queue", "cleanup_workspace", repo, key, "issues.closed")
@@ -396,6 +507,37 @@ def route(
         reason = "pull_request.merged" if bool(pr.get("merged")) else "pull_request.closed"
         return RouteDecision("queue", "cleanup_workspace", repo, _resolve_pr_key(number), reason)
 
+    if event_type == "check_suite" and action == "completed":
+        if not ci_repair_enabled:
+            return RouteDecision("skip", None, repo, None, "CI repair disabled")
+        suite = payload.get("check_suite")
+        if not isinstance(suite, Mapping):
+            return RouteDecision("skip", None, repo, None, "check_suite payload has no suite")
+        conclusion = str(suite.get("conclusion") or "")
+        if conclusion not in FAILING_CHECK_CONCLUSIONS:
+            return RouteDecision(
+                "skip", None, repo, None, f"check_suite conclusion {conclusion or '(none)'} is not a failure"
+            )
+        raw_prs = suite.get("pull_requests")
+        prs = raw_prs if isinstance(raw_prs, (list, tuple)) else ()
+        pr = prs[0] if prs and isinstance(prs[0], Mapping) else None
+        if pr is None:
+            return RouteDecision("skip", None, repo, None, "check_suite has no pull requests")
+        number = pr.get("number")
+        if not isinstance(number, int):
+            return RouteDecision("skip", None, repo, None, "check_suite PR missing number")
+        if not _check_suite_bot_authored(suite, pr, bot_login):
+            return RouteDecision("skip", None, repo, None, f"check_suite PR #{number} not authored by bot")
+        # No `_resolve_pr_key` fallback here: that invents `repo#<pr>` for a PR
+        # we have no row for, and a repair needs the real tracking issue to
+        # count its attempts against and to reuse the candidate's workspace.
+        key = resolve_issue_from_pr(repo, number) if resolve_issue_from_pr is not None else None
+        if not key:
+            return RouteDecision("skip", None, repo, None, f"check_suite PR #{number} maps to no tracked issue")
+        # Lifecycle event, not a user submission: no rate-limit subject, same
+        # as `cleanup_workspace`.
+        return RouteDecision("queue", "ci_repair", repo, key, f"check_suite.completed {conclusion} on PR #{number}")
+
     return RouteDecision("skip", None, repo, None, f"{event_type}.{action} not handled")
 
 
@@ -429,11 +571,13 @@ def rate_limit_cap(
 
 __all__ = [
     "Decision",
+    "FAILING_CHECK_CONCLUSIONS",
     "RouteDecision",
     "TRUSTED_ASSOCIATIONS",
     "extract_mention",
     "is_maintainer",
     "is_implementation_authorizer",
+    "is_port_upstream_event",
     "rate_limit_cap",
     "route",
     "verify_signature",

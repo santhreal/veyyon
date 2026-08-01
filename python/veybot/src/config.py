@@ -41,6 +41,20 @@ class Settings(BaseSettings):
     # opened/reopened/ready_for_review.
     pr_review_enabled: bool = Field(True, alias="VEYBOT_PR_REVIEW_ENABLED")
 
+    # Upstream-port backlog drain. `scripts/upstream-radar.ts` mirrors every
+    # newly merged upstream PR into ONE tracking issue labeled `port_label`;
+    # veybot turns each into ONE candidate PR for a human to review. There is
+    # deliberately no merge path anywhere in this pipeline.
+    port_upstream_enabled: bool = Field(True, alias="VEYBOT_PORT_UPSTREAM_ENABLED")
+    port_label: str = Field("upstream-port", alias="VEYBOT_PORT_LABEL")
+
+    # CI babysitting for candidate PRs. A failing check suite on a bot-authored
+    # PR is repaired in place on the same branch at most `ci_max_repairs` times
+    # per head SHA, after which the PR is left red for a human. Repairs must fix
+    # the code; weakening a gate is never an acceptable outcome.
+    ci_repair_enabled: bool = Field(True, alias="VEYBOT_CI_REPAIR_ENABLED")
+    ci_max_repairs: int = Field(3, ge=1, alias="VEYBOT_CI_MAX_REPAIRS")
+
     # gh-proxy. Set BOTH to route GitHub through the proxy; leave both empty
     # to keep PAT-on-orchestrator behavior. Mixing the two (PAT + proxy) is
     # rejected to prevent silent fallback to direct GitHub access.
@@ -88,6 +102,9 @@ class Settings(BaseSettings):
     # Set to 0 to disable.
     task_completion_max_reminders: int = Field(2, alias="VEYBOT_TASK_COMPLETION_MAX_REMINDERS")
     agent_command: str = Field("veyyon", alias="VEYBOT_AGENT_COMMAND")
+    # veyyon profile pinned for every agent subprocess (`--profile <value>`).
+    # Empty means "let veyyon pick its own default profile".
+    agent_profile: str = Field("", alias="VEYBOT_AGENT_PROFILE")
 
     # Graceful shutdown (Phase B). On SIGTERM the dispatcher stops claiming
     # new work, then waits up to `drain` seconds for in-flight events to
@@ -165,6 +182,22 @@ class Settings(BaseSettings):
         if not cleaned:
             raise ValueError("VEYBOT_BOT_LOGIN must be a non-empty GitHub login")
         return cleaned
+
+    @field_validator("port_label", "agent_profile", mode="after")
+    @classmethod
+    def _strip_plain_string(cls, value: str) -> str:
+        # A stray space in `.env` would make the port label never match a real
+        # GitHub label, and `--profile " work"` never resolve a real profile.
+        return value.strip()
+
+    @field_validator("port_label", mode="after")
+    @classmethod
+    def _require_port_label(cls, value: str) -> str:
+        # An empty label matches no issue, silently disabling the drain while
+        # `port_upstream_enabled` still reports True. Refuse it at startup.
+        if not value:
+            raise ValueError("VEYBOT_PORT_LABEL must not be empty")
+        return value
 
     @field_validator("replay_token", mode="before")
     @classmethod

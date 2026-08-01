@@ -47,3 +47,55 @@ tasks = [
   "Address the requested change in the worktree",
   "gh_push_branch, then gh_post_comment reply",
 ]
+
+[[port_upstream]]
+name = "Assess"
+tasks = [
+  "Read AGENTS.md, UPSTREAM.md, and the upstream PR diff in full",
+  "Find the local owner for every affected behavior",
+  "Decide applicable or not applicable, with local evidence",
+]
+
+[[port_upstream]]
+name = "Prove"
+tasks = [
+  "Fix: produce a failing negative control on unmodified veyyon",
+  "Feature: prove the capability is absent through the operator path",
+]
+
+[[port_upstream]]
+name = "Port"
+tasks = [
+  "Implement the smallest semantic change on the checked-out branch",
+  "Add one focused contract test; keep existing coverage intact",
+  "Fix: revert the production change and prove the test fails",
+]
+
+[[port_upstream]]
+name = "Publish"
+tasks = [
+  "Run the focused suite, the type check, and Biome; record counts",
+  "gh_push_branch, then gh_open_pr with Repro/Cause/Fix/Verification",
+  "Not applicable instead: mark_unable_to_reproduce with the evidence",
+]
+
+[[ci_repair]]
+name = "Diagnose"
+tasks = [
+  "Read the failing log; never infer the cause from the check name",
+  "Reproduce the failure locally with the narrowest command",
+]
+
+[[ci_repair]]
+name = "Repair"
+tasks = [
+  "Fix the owning path, never the symptom and never the gate",
+  "Re-run the failing gate, the owning suite, the type check, and Biome",
+]
+
+[[ci_repair]]
+name = "Report"
+tasks = [
+  "Commit, then gh_push_branch to the same branch",
+  "gh_post_comment with cause, fix, verification counts, and diff audit",
+]
