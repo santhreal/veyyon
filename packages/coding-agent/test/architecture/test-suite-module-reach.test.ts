@@ -271,12 +271,13 @@ const TOTAL_CEILING = 843_000;
  * measured no change, because the re-export still carried the whole renderer. The total moved 0.8% for a
  * change that took a hot tool down by a fifth. That asymmetry is why both cases exist.
  *
- * RE-MEASURED at 385 after the 64-suite session durability, secret-boundary, and telemetry expansion
- * described on `TOTAL_CEILING`. Seventeen new suites intentionally cross this line because their
- * observable contract is the assembled SDK/session/tool path, not a leaf helper. The ceiling keeps
- * three slots of headroom, so the next accidental application-entry import still fails this shape gate.
+ * RE-MEASURED at 389 after the tool-loading differential added one deliberate
+ * `createAgentSession` boot. That suite freezes the exact active and discoverable
+ * tool lists across the loading matrix, so replacing the assembled SDK path with
+ * leaf policy imports would stop testing the behavior the model receives. The
+ * ceiling remains exact: the next accidental application-entry import still fails.
  */
-const HEAVY_FILE_CEILING = 388;
+const HEAVY_FILE_CEILING = 389;
 
 /** Above this a file is carrying most of an application entry point into its own realm. */
 const HEAVY_REACH = 800;
