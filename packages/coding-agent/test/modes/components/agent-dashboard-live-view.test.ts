@@ -253,7 +253,7 @@ describe("Card chrome", () => {
 	/**
 	 * An empty roster offers no key that does nothing.
 	 *
-	 * Navigate, open and kill all act on a selected row, and with no rows there is
+	 * Navigate, open and terminate all act on a selected row, and with no rows there is
 	 * no row to act on. The empty state already says what will appear here, so
 	 * three dead keys under it read as a broken panel rather than an idle one. The
 	 * two chips that still work stay, which is what makes this a dropped chip
@@ -265,7 +265,7 @@ describe("Card chrome", () => {
 		const shown = frameOf(dashboard);
 
 		expect(shown).toContain("Nothing running.");
-		expect(shown).not.toContain("x kill");
+		expect(shown).not.toContain("x terminate");
 		expect(shown).not.toContain("enter open agent");
 		expect(shown).not.toContain("up/down navigate");
 		expect(shown).toContain("left/right view");
@@ -282,7 +282,7 @@ describe("Card chrome", () => {
 
 		expect(shown).toContain("up/down navigate");
 		expect(shown).toContain("enter open agent");
-		expect(shown).toContain("x kill");
+		expect(shown).toContain("x terminate");
 		dashboard.dispose();
 	});
 
