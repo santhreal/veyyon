@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- The Agent Control Center now confirms subagent termination instead of aborting immediately on `x`. You can also hover a terminable row and click its `[x]`; both paths open the same **Dismiss** or **Yes, terminate** card, and the transcript remains on disk.
+- The Agent Control Center now confirms subagent termination instead of aborting immediately on `x`. You can also hover a terminable row and click its `[x]`; both paths open the same **Dismiss** or **Yes, terminate** card, and the transcript remains on disk. The hover target overlays the row's final cells only while visible, so an idle row keeps its model and activity details.
 
 ## [1.0.38] - 2026-07-31
 
