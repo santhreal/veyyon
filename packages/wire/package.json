@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/wire",
-  "version": "1.0.43",
+  "version": "1.0.44",
   "description": "Shared wire protocol types for Veyyon packages",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",
