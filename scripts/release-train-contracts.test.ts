@@ -1,253 +1,364 @@
 // Contracts for the release train's 2026-07-24 derailment fixes. Eight
-// consecutive releases (v1.0.28-v1.0.35) were tagged and never published:
-// release.yml tagged main HEAD on raw push before ci.yml had tested the sha,
-// two red packages/utils tests killed every publish downstream, and nothing
-// anywhere alerted — `releases/latest` served a stale binary for hours until a
-// manual audit found the jam. Each test here locks one structural fix so the
-// same failure mode cannot quietly return.
+// consecutive releases were tagged but never published. These tests lock the
+// exact-SHA gates, single controller, and complete publication path.
 
 import { describe, expect, it } from "bun:test";
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import {
+	decideWorkflowRelease,
+	materializeGatedReleaseSource,
+	type ReleaseTrainOperations,
+	runReleaseTrain,
+	type WorkflowGateOperations,
+} from "./release";
+import type { ReleaseGateFacts } from "./release-policy";
+
+interface WorkflowStep {
+	name: string;
+	id: string;
+	uses: string;
+	run: string;
+	if: string;
+	env: Record<string, string>;
+	with: Record<string, unknown>;
+	"working-directory"?: string;
+	"continue-on-error"?: boolean;
+}
+
+interface WorkflowSteps extends Iterable<WorkflowStep> {
+	find(predicate: (step: WorkflowStep) => unknown): WorkflowStep;
+	filter(predicate: (step: WorkflowStep) => unknown): WorkflowStep[];
+	map<Result>(callback: (step: WorkflowStep) => Result): Result[];
+}
+
+interface WorkflowJob {
+	steps: WorkflowSteps;
+	permissions: Record<string, string>;
+	outputs: Record<string, string>;
+	if: string;
+	needs: string[];
+	concurrency: unknown;
+	strategy: { matrix: { include: Array<{ name: string }> } };
+}
+
+interface WorkflowDocument {
+	on: {
+		push: { branches: string[]; "paths-ignore"?: string[] };
+		workflow_run: { workflows: string[]; types: string[]; branches: string[] };
+		workflow_dispatch: {
+			inputs: Record<string, { description: string; required: boolean; default?: string; type: string }>;
+		};
+	};
+	permissions: Record<string, string>;
+	jobs: Record<string, WorkflowJob>;
+	concurrency: unknown;
+}
 
 const workflowsDir = path.resolve(import.meta.dir, "..", ".github");
 
-async function loadYaml(rel: string): Promise<any> {
-	return Bun.YAML.parse(await Bun.file(path.join(workflowsDir, rel)).text());
+async function loadYaml(rel: string): Promise<WorkflowDocument> {
+	return Bun.YAML.parse(await Bun.file(path.join(workflowsDir, rel)).text()) as WorkflowDocument;
 }
 
-async function runDecideStep(options: {
-	eventName?: "workflow_run" | "workflow_dispatch";
-	triggerSha?: string;
-	mainSha?: string;
-	expectedSha?: string;
-	bunExit?: number;
-	bunOutput?: string;
-}) {
-	const wf = await loadYaml("workflows/release.yml");
-	const decide = wf.jobs.gate.steps.find((step: { id?: string }) => step.id === "decide");
-	const dir = mkdtempSync(path.join(tmpdir(), "release-workflow-"));
-	const output = path.join(dir, "github-output");
-	const calls = path.join(dir, "calls");
-	writeFileSync(output, "");
-	writeFileSync(calls, "");
-	const git = path.join(dir, "git");
-	const bun = path.join(dir, "bun");
-	writeFileSync(git, `#!/bin/sh\nprintf '%s\\n' '${options.mainSha ?? "main-sha"}'\n`);
-	writeFileSync(
-		bun,
-		`#!/bin/sh\nprintf '%s\\n' "$*" >> "$CALLS"\nprintf '%s\\n' '${options.bunOutput ?? "true"}'\nexit ${options.bunExit ?? 0}\n`,
-	);
-	chmodSync(git, 0o755);
-	chmodSync(bun, 0o755);
-	const proc = Bun.spawn(["bash", "-c", decide.run], {
-		cwd: path.resolve(import.meta.dir, ".."),
-		env: {
-			...process.env,
-			PATH: `${dir}:${process.env.PATH ?? ""}`,
-			CALLS: calls,
-			GITHUB_OUTPUT: output,
-			EVENT_NAME: options.eventName ?? "workflow_run",
-			DISPATCH_VERSION: "minor",
-			HEAD_COMMIT_MESSAGE: "fix: ready",
-			TRIGGER_HEAD_SHA: options.triggerSha ?? "main-sha",
-			EXPECTED_SHA: options.expectedSha ?? "main-sha",
-			GH_TOKEN: "read-only-test-token",
-		},
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+function greenFacts(mainHeadSha = "main-sha"): ReleaseGateFacts {
 	return {
-		exitCode,
-		stderr,
-		output: readFileSync(output, "utf8"),
-		calls: readFileSync(calls, "utf8"),
+		hasUnreleasedBullets: true,
+		silentTags: [],
+		mainHeadSha,
+		sourceWorkflowRuns: [
+			{ name: "CI", headSha: mainHeadSha, status: "completed", conclusion: "success" },
+			{ name: "Checks", headSha: mainHeadSha, status: "completed", conclusion: "success" },
+		],
 	};
 }
 
-async function runMaterializeGatedSha(options: { checkedOutSha: string; sourceSha: string }) {
-	const wf = await loadYaml("workflows/release.yml");
-	const step = wf.jobs.release.steps.find(
-		(candidate: { name?: string }) => candidate.name === "Materialize the gated SHA as main",
-	);
-	const dir = mkdtempSync(path.join(tmpdir(), "release-source-sha-"));
-	const calls = path.join(dir, "calls");
-	writeFileSync(calls, "");
-	const git = path.join(dir, "git");
-	writeFileSync(
-		git,
-		`#!/bin/sh
-printf '%s\n' "$*" >> "$CALLS"
-case "$*" in
-  "rev-parse HEAD") printf '%s\n' "$CHECKED_OUT_SHA" ;;
-  "switch -C main $RELEASE_SOURCE_SHA") ;;
-  *) printf 'unexpected git invocation: %s\n' "$*" >&2; exit 88 ;;
-esac
-`,
-	);
-	chmodSync(git, 0o755);
-	const proc = Bun.spawn(["bash", "-c", step.run], {
-		cwd: path.resolve(import.meta.dir, ".."),
-		env: {
-			...process.env,
-			PATH: `${dir}:${process.env.PATH ?? ""}`,
-			CALLS: calls,
-			CHECKED_OUT_SHA: options.checkedOutSha,
-			RELEASE_SOURCE_SHA: options.sourceSha,
-		},
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [exitCode, stdout, stderr] = await Promise.all([
-		proc.exited,
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
+function gateOperations(
+	options: { mainSha?: string; facts?: ReleaseGateFacts; onGather?: () => void } = {},
+): WorkflowGateOperations {
 	return {
-		exitCode,
-		stderr,
-		stdout,
-		calls: readFileSync(calls, "utf8").trim().split("\n").filter(Boolean),
+		currentSha: async () => options.mainSha ?? "main-sha",
+		gatherFacts: async () => {
+			options.onGather?.();
+			return options.facts ?? greenFacts(options.mainSha);
+		},
 	};
 }
 
 describe("release.yml exact-SHA source gates", () => {
+	/**
+	 * Raw pushes cannot cut releases. Both public source workflows must complete
+	 * on main before the controller is even eligible to evaluate a release.
+	 */
 	it("is triggered by completed CI and Checks runs on main, never a raw push", async () => {
-		const wf = await loadYaml("workflows/release.yml");
-		expect(wf.on.push).toBeUndefined();
-		expect(wf.on.workflow_run).toEqual({
+		const workflow = await loadYaml("workflows/release.yml");
+		expect(workflow.on.push).toBeUndefined();
+		expect(workflow.on.workflow_run).toEqual({
 			workflows: ["CI", "Checks"],
 			types: ["completed"],
 			branches: ["main"],
 		});
-		expect(wf.on.workflow_dispatch.inputs.version).toMatchObject({
+		expect(workflow.on.workflow_dispatch.inputs.version).toMatchObject({
 			required: true,
 			default: "patch",
 			type: "string",
 		});
-		expect(wf.on.workflow_dispatch.inputs.expected_sha).toEqual({
+		expect(workflow.on.workflow_dispatch.inputs.expected_sha).toEqual({
 			description: "Exact origin/main SHA validated by the release operator",
 			required: true,
 			type: "string",
 		});
-		expect(wf.permissions.actions).toBe("read");
+		expect(workflow.permissions.actions).toBe("read");
+		expect(workflow.concurrency).toEqual({
+			group: "release",
+			queue: "max",
+			"cancel-in-progress": false,
+		});
 	});
 
-	it("runs every source gate on every main commit so exact-SHA proof cannot be absent", async () => {
+	/**
+	 * Exact-SHA proof exists only if both source workflows run on every main
+	 * commit. A paths-ignore filter would create unprovable release candidates.
+	 */
+	it("runs every source gate on every main commit", async () => {
 		for (const file of ["ci.yml", "checks.yml"]) {
-			const wf = await loadYaml(`workflows/${file}`);
-			expect(wf.on.push.branches, `${file} must gate main`).toContain("main");
-			expect(wf.on.push["paths-ignore"], `${file} must not omit an exact main SHA`).toBeUndefined();
+			const workflow = await loadYaml(`workflows/${file}`);
+			expect(workflow.on.push.branches, `${file} must gate main`).toContain("main");
+			expect(workflow.on.push["paths-ignore"], `${file} must not omit an exact main SHA`).toBeUndefined();
 		}
 	});
 
-	it("uses the repository token and explicitly dispatches the tagged publish pipeline", async () => {
+	/**
+	 * The workflow delegates the entire mutable train to release.ts with the
+	 * repository token. It does not carry a second shell orchestrator.
+	 */
+	it("uses one controller for cutting, gating, publishing, and verification", async () => {
 		const workflowText = await Bun.file(path.join(workflowsDir, "workflows/release.yml")).text();
-		const wf = await loadYaml("workflows/release.yml");
-		const release = wf.jobs.release;
-		const checkout = release.steps.find((step: { uses?: string }) => step.uses?.startsWith("actions/checkout@"));
-		const dispatch = release.steps.find(
-			(step: { name?: string }) => step.name === "Gate the bump and dispatch the publish pipeline",
-		);
+		const workflow = await loadYaml("workflows/release.yml");
+		const release = workflow.jobs.release;
+		const checkout = release.steps.find(step => step.uses?.startsWith("actions/checkout@"));
+		const controller = release.steps.find(step => step.name === "Cut, gate, publish, and verify the release");
 
 		expect(workflowText).not.toContain("RELEASE_PAT");
-		expect(workflowText).not.toContain("cargo install sd");
 		expect(release.permissions).toEqual({ contents: "write", actions: "write" });
 		expect(checkout.with.token).toBeUndefined();
 		expect(checkout.with.ref).toContain("needs.gate.outputs.source-sha");
-		expect(wf.jobs.gate.outputs["source-sha"]).toContain("steps.decide.outputs.source-sha");
-		expect(dispatch.env.GH_TOKEN).toContain("GITHUB_TOKEN");
-		expect(dispatch.run).toContain("git tag --points-at HEAD");
-		expect(dispatch.run).toContain("dispatch_and_wait checks.yml Checks");
-		expect(dispatch.run).toContain('gh run watch "$run_id" --exit-status');
-		expect(dispatch.run).toContain('gh workflow run ci.yml --ref "$release_tag"');
-		expect(dispatch.run.indexOf("dispatch_and_wait checks.yml")).toBeLessThan(
-			dispatch.run.indexOf("gh workflow run ci.yml"),
+		expect(workflow.jobs.gate.outputs["source-sha"]).toContain("steps.decide.outputs.source-sha");
+		const gate = workflow.jobs.gate.steps.find(step => step.id === "decide");
+		expect(gate.env.RELEASE_TRIGGER_WORKFLOW_NAME).toContain("workflow_run.name");
+		expect(gate.env.RELEASE_TRIGGER_WORKFLOW_CONCLUSION).toContain("workflow_run.conclusion");
+		expect(controller.env.GH_TOKEN).toContain("GITHUB_TOKEN");
+		expect(controller.run).toBe('bun scripts/release.ts workflow-release "$RELEASE_VERSION"');
+	});
+
+	/**
+	 * A green completion for an older commit cannot make a newer main releasable
+	 * and must not query unrelated gate or publication state.
+	 */
+	it("defers stale workflow completions before gathering release facts", async () => {
+		let gathered = false;
+		const result = await decideWorkflowRelease(
+			{ eventName: "workflow_run", triggerHeadSha: "stale-sha", headCommitMessage: "fix: ready" },
+			gateOperations({ mainSha: "new-main-sha", onGather: () => (gathered = true) }),
 		);
-	});
-
-	it("defers a successful but stale workflow completion without invoking release selection", async () => {
-		const result = await runDecideStep({ triggerSha: "stale-sha", mainSha: "new-main-sha" });
-		expect(result.exitCode).toBe(0);
-		expect(result.output).toContain("should-release=false");
-		expect(result.calls).toBe("");
-	});
-
-	it("selects an automatic release only after the exact-SHA decision succeeds", async () => {
-		const result = await runDecideStep({});
-		expect(result.exitCode).toBe(0);
-		expect(result.calls.trim()).toBe("scripts/release-gate-decision.ts");
-		expect(result.output).toContain("should-release=true");
-		expect(result.output).toContain("version=patch");
+		expect(result).toMatchObject({ shouldRelease: false, sourceSha: "new-main-sha" });
+		expect(gathered).toBe(false);
 	});
 
 	/**
-	 * The release job must receive the exact SHA whose two source workflows passed, not resolve main again later.
+	 * The workflow_run event is authoritative for its own completed run. It
+	 * closes the short API visibility race without waiting for another commit.
 	 */
-	it("exports the gated source SHA alongside the release decision", async () => {
-		const result = await runDecideStep({ mainSha: "proved-main-sha", triggerSha: "proved-main-sha" });
-		expect(result.exitCode).toBe(0);
-		expect(result.output).toContain("source-sha=proved-main-sha");
-		expect(result.output).toContain("should-release=true");
-	});
-
-	/** The cutter requires a local main branch, so the immutable checkout is materialized under that exact name. */
-	it("materializes the exact gated checkout as the local main branch", async () => {
-		const result = await runMaterializeGatedSha({ checkedOutSha: "proved-main-sha", sourceSha: "proved-main-sha" });
-		expect(result.exitCode).toBe(0);
-		expect(result.calls).toEqual(["rev-parse HEAD", "switch -C main proved-main-sha"]);
-	});
-
-	/** A checkout race must stop before the workflow creates or moves its local main branch. */
-	it("refuses to materialize a checkout that differs from the gated SHA", async () => {
-		const result = await runMaterializeGatedSha({ checkedOutSha: "newer-main-sha", sourceSha: "proved-main-sha" });
-		expect(result.exitCode).not.toBe(0);
-		expect(result.stdout).toContain("expected gated SHA proved-main-sha");
-		expect(result.calls).toEqual(["rev-parse HEAD"]);
+	it("uses successful trigger evidence when the runs API has not listed it yet", async () => {
+		const facts = greenFacts();
+		facts.sourceWorkflowRuns = facts.sourceWorkflowRuns.filter(run => run.name !== "Checks");
+		const result = await decideWorkflowRelease(
+			{
+				eventName: "workflow_run",
+				triggerHeadSha: "main-sha",
+				triggerWorkflowName: "Checks",
+				triggerWorkflowConclusion: "success",
+				headCommitMessage: "fix: ready",
+			},
+			gateOperations({ facts }),
+		);
+		expect(result).toMatchObject({ shouldRelease: true, version: "patch" });
 	});
 
 	/**
-	 * A queued manual run must fail closed if main moved after local validation, while an unchanged main
-	 * proceeds with the exact expected SHA and original version selection.
+	 * A newer rerun already visible through the API supersedes the triggering
+	 * event. An in-progress rerun must keep the release blocked.
 	 */
-	it("binds manual release selection to the operator-validated main SHA", async () => {
-		const unchanged = await runDecideStep({
-			eventName: "workflow_dispatch",
-			expectedSha: "validated-sha",
-			mainSha: "validated-sha",
-		});
-		expect(unchanged.exitCode).toBe(0);
-		expect(unchanged.calls.trim()).toBe("scripts/release-gate-decision.ts --green-only");
-		expect(unchanged.output).toContain("source-sha=validated-sha");
-		expect(unchanged.output).toContain("version=minor");
-
-		const advanced = await runDecideStep({
-			eventName: "workflow_dispatch",
-			expectedSha: "validated-sha",
-			mainSha: "advanced-main-sha",
-		});
-		expect(advanced.exitCode).not.toBe(0);
-		expect(advanced.calls).toBe("");
-		expect(advanced.output).not.toContain("should-release=true");
-		expect(advanced.output).not.toContain("version=minor");
-
-		const missing = await runDecideStep({ eventName: "workflow_dispatch", expectedSha: "" });
-		expect(missing.exitCode).not.toBe(0);
-		expect(missing.calls).toBe("");
-		expect(missing.output).not.toContain("should-release=true");
+	it("does not overwrite newer API evidence with the completed trigger", async () => {
+		const facts = greenFacts();
+		facts.sourceWorkflowRuns = facts.sourceWorkflowRuns.map(run =>
+			run.name === "Checks" ? { ...run, status: "in_progress", conclusion: null } : run,
+		);
+		const result = await decideWorkflowRelease(
+			{
+				eventName: "workflow_run",
+				triggerHeadSha: "main-sha",
+				triggerWorkflowName: "Checks",
+				triggerWorkflowConclusion: "success",
+				headCommitMessage: "fix: ready",
+			},
+			gateOperations({ facts }),
+		);
+		expect(result.shouldRelease).toBe(false);
+		expect(result.reason).toContain("in_progress");
 	});
 
-	it("manual dispatch proves the same gates and fails when that proof fails", async () => {
-		const success = await runDecideStep({ eventName: "workflow_dispatch" });
-		expect(success.exitCode).toBe(0);
-		expect(success.calls.trim()).toBe("scripts/release-gate-decision.ts --green-only");
-		expect(success.output).toContain("version=minor");
+	/**
+	 * Automatic release selection cuts one patch only after CI and Checks are
+	 * green for the exact current main SHA.
+	 */
+	it("selects an automatic patch from exact-SHA green facts", async () => {
+		const result = await decideWorkflowRelease(
+			{ eventName: "workflow_run", triggerHeadSha: "main-sha", headCommitMessage: "fix: ready" },
+			gateOperations(),
+		);
+		expect(result).toMatchObject({
+			shouldRelease: true,
+			version: "patch",
+			sourceSha: "main-sha",
+		});
+	});
 
-		const failure = await runDecideStep({ eventName: "workflow_dispatch", bunExit: 1 });
-		expect(failure.exitCode).not.toBe(0);
-		expect(failure.output).not.toContain("should-release=true");
+	/**
+	 * The cutter requires a local main branch. The controller materializes the
+	 * approved immutable checkout under that exact branch before mutation.
+	 */
+	it("materializes the exact gated checkout as local main", async () => {
+		const events: string[] = [];
+		await materializeGatedReleaseSource("proved-main-sha", {
+			currentSha: async () => "proved-main-sha",
+			switchMain: async sha => {
+				events.push(`switch:${sha}`);
+			},
+			configureGitIdentity: async () => {
+				events.push("identity");
+			},
+		});
+		expect(events).toEqual(["switch:proved-main-sha", "identity"]);
+	});
+
+	/**
+	 * A checkout race must stop before the controller moves main or configures
+	 * commit identity for a different tree.
+	 */
+	it("refuses a checkout that differs from the gated SHA", async () => {
+		const events: string[] = [];
+		await expect(
+			materializeGatedReleaseSource("proved-main-sha", {
+				currentSha: async () => "newer-main-sha",
+				switchMain: async sha => {
+					events.push(`switch:${sha}`);
+				},
+				configureGitIdentity: async () => {
+					events.push("identity");
+				},
+			}),
+		).rejects.toThrow("release checkout is newer-main-sha, expected gated SHA proved-main-sha");
+		expect(events).toEqual([]);
+	});
+
+	/**
+	 * The controller executes one ordered transaction from the gated source
+	 * through the exact published release and returns all run evidence.
+	 */
+	it("runs materialization, cut, and publication in order", async () => {
+		const events: string[] = [];
+		const operations: ReleaseTrainOperations = {
+			materialize: async sha => {
+				events.push(`materialize:${sha}`);
+			},
+			cut: async version => {
+				events.push(`cut:${version}`);
+				return { tag: "v1.2.3", sha: "release-sha", version: "1.2.3" };
+			},
+			publish: async (tag, sha) => {
+				events.push(`publish:${tag}:${sha}`);
+				return {
+					checksRunId: 201,
+					ciRunId: 202,
+					url: "https://github.com/santhreal/veyyon/releases/tag/v1.2.3",
+				};
+			},
+		};
+
+		const result = await runReleaseTrain("patch", "source-sha", operations);
+		expect(events).toEqual(["materialize:source-sha", "cut:patch", "publish:v1.2.3:release-sha"]);
+		expect(result).toEqual({
+			tag: "v1.2.3",
+			sha: "release-sha",
+			version: "1.2.3",
+			checksRunId: 201,
+			ciRunId: 202,
+			url: "https://github.com/santhreal/veyyon/releases/tag/v1.2.3",
+		});
+	});
+
+	/**
+	 * A failed cut leaves no valid tag to publish. The controller must preserve
+	 * that failure and never enter either dispatched workflow.
+	 */
+	it("stops before publication when the atomic cut fails", async () => {
+		let published = false;
+		await expect(
+			runReleaseTrain("patch", "source-sha", {
+				materialize: async () => {},
+				cut: async () => {
+					throw new Error("atomic push rejected");
+				},
+				publish: async () => {
+					published = true;
+					return { checksRunId: 201, ciRunId: 202, url: "unexpected" };
+				},
+			}),
+		).rejects.toThrow("atomic push rejected");
+		expect(published).toBe(false);
+	});
+
+	/**
+	 * Manual version selection is bound to the operator-validated SHA and still
+	 * requires the same CI and Checks evidence as an automatic release.
+	 */
+	it("binds manual selection to exact main and source gates", async () => {
+		const accepted = await decideWorkflowRelease(
+			{
+				eventName: "workflow_dispatch",
+				dispatchVersion: "minor",
+				expectedSha: "validated-sha",
+			},
+			gateOperations({ mainSha: "validated-sha", facts: greenFacts("validated-sha") }),
+		);
+		expect(accepted).toMatchObject({
+			shouldRelease: true,
+			version: "minor",
+			sourceSha: "validated-sha",
+		});
+
+		await expect(
+			decideWorkflowRelease(
+				{ eventName: "workflow_dispatch", dispatchVersion: "minor", expectedSha: "validated-sha" },
+				gateOperations({ mainSha: "advanced-main-sha" }),
+			),
+		).rejects.toThrow("main is at advanced-main-sha, but the operator validated validated-sha");
+
+		const redFacts = greenFacts("validated-sha");
+		redFacts.sourceWorkflowRuns[0] = {
+			name: "CI",
+			headSha: "validated-sha",
+			status: "completed",
+			conclusion: "failure",
+		};
+		await expect(
+			decideWorkflowRelease(
+				{ eventName: "workflow_dispatch", dispatchVersion: "minor", expectedSha: "validated-sha" },
+				gateOperations({ mainSha: "validated-sha", facts: redFacts }),
+			),
+		).rejects.toThrow("release source gate failed");
 	});
 });
 
@@ -258,7 +369,7 @@ describe("required publication artifacts", () => {
 	 */
 	it("exposes the safe workflow dispatcher as bun run release", async () => {
 		const manifest = await Bun.file("package.json").json();
-		expect(manifest.scripts.release).toBe("bun scripts/trigger-release.ts");
+		expect(manifest.scripts.release).toBe("bun scripts/release.ts request");
 	});
 
 	/**
@@ -273,12 +384,14 @@ describe("required publication artifacts", () => {
 
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: exact GitHub Actions expression is the contract
 		expect(detect.env.GH_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
+		expect(detect.env.RELEASE_NONCE).toContain("inputs.release_nonce");
+		expect(detect.env.DISPATCH_ACTOR).toContain("github.actor");
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: exact GitHub Actions expression is the contract
 		expect(detect.run).toContain('if [ "${{ github.event_name }}" != "workflow_dispatch" ]');
 		expect(detect.run).toContain("grep -Eq '^v[0-9]+\\.[0-9]+\\.[0-9]+$'");
 		expect(detect.run).toContain(
 			// biome-ignore lint/suspicious/noTemplateCurlyInString: exact GitHub Actions expression is the contract
-			'bun scripts/release-gate-decision.ts verify-tag-gates "$release_tag" "${{ github.sha }}"',
+			'bun scripts/release.ts verify-tag "$release_tag" "${{ github.sha }}" "$RELEASE_NONCE" "$DISPATCH_ACTOR"',
 		);
 		expect(detect.run).not.toContain("git tag --points-at HEAD");
 		expect(setupBun.if).toBe("startsWith(github.ref, 'refs/tags/')");
@@ -529,7 +642,7 @@ describe("a red release run is loud (release_train_alert)", () => {
 		// Every job whose failure can jam or falsify a release must feed the
 		// alert; a new release_* job added without wiring it here is exactly the
 		// silent gap this suite exists to prevent.
-		for (const [id, job] of Object.entries<any>(wf.jobs)) {
+		for (const [id, job] of Object.entries(wf.jobs)) {
 			if (id === "release_train_alert") continue;
 			const releaseCritical = id.startsWith("release_")
 				? id !== "release_metadata" && id !== "release_notes_dryrun"
@@ -545,16 +658,17 @@ describe("a red release run is loud (release_train_alert)", () => {
 		expect(needs).toContain("release_github");
 	});
 
-	// The CUT side has its own failure modes that never reach ci.yml (preflight
-	// check failure, atomic bump push rejection because main advanced, or an
-	// exact-tag Checks/dispatch failure); a red cut with no alert is the same
-	// silent jam the publish alert exists to prevent.
-	it("release.yml alerts on a failed cut with the same release-train issue", async () => {
+	// The outer controller has failure modes that can precede or follow tagged
+	// CI: preflight, an atomic push race, dispatch correlation, and final
+	// publication verification. Every one must update the same pinned issue.
+	it("release.yml alerts on any failed release controller stage", async () => {
 		const wf = await loadYaml("workflows/release.yml");
-		const alert = wf.jobs.cut_failed_alert;
+		const alert = wf.jobs.release_failed_alert;
 		expect(alert).toBeDefined();
 		expect(alert.if).toContain("always()");
 		expect(alert.if).toContain("needs.release.result == 'failure'");
+		expect(alert.if).toContain("needs.gate.result == 'cancelled'");
+		expect(alert.if).toContain("needs.release.result == 'cancelled'");
 		expect(alert.permissions.issues).toBe("write");
 	});
 });

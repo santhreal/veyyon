@@ -28,15 +28,17 @@ import {
 	REQUIRED_RELEASE_ASSET_NAMES,
 	REQUIRED_RELEASE_TAG_WORKFLOWS,
 	REQUIRED_SOURCE_WORKFLOWS,
+	type ReleaseGateDecision,
 	type ReleaseTagWorkflowRun,
 	type SilentTag,
 	type SourceWorkflowRun,
 	verifyPublishedReleaseAssets,
-} from "./release-gate-decision.ts";
+} from "./release-policy.ts";
 
 const MAIN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const OLDER = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const CHECKS_TITLE = "Checks release gate 9001-2-checks";
 
 async function runTagGateCli() {
 	const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT }).stdout.toString().trim();
@@ -48,24 +50,29 @@ async function runTagGateCli() {
 		`#!/bin/sh
 printf '%s\\n' "$*" >> "$CALLS_PATH"
 case "$*" in
-  *"--workflow checks.yml"*)
-    printf '[{"headSha":"%s","headBranch":"v1.2.3","event":"workflow_dispatch","conclusion":"success"}]\\n' "$FAKE_SHA" ;;
+  *"actions/runs/9001"*)
+    printf '{"path":".github/workflows/release.yml","event":"workflow_run","status":"in_progress","conclusion":null,"runAttempt":2}\n' ;;
+  *"actions/workflows/checks.yml/runs?head_sha="*)
+    printf '[{"headSha":"%s","headBranch":"v1.2.3","event":"workflow_dispatch","conclusion":"success","displayTitle":"Checks release gate 9001-2-checks","actor":"github-actions[bot]"}]\n' "$FAKE_SHA" ;;
   *) echo "unexpected gh invocation: $*" >&2; exit 88 ;;
 esac
 `,
 	);
 	chmodSync(fakeGh, 0o755);
-	const proc = Bun.spawn(["bun", "scripts/release-gate-decision.ts", "verify-tag-gates", "v1.2.3", sha], {
-		cwd: REPO_ROOT,
-		env: {
-			...process.env,
-			PATH: `${bin}:${process.env.PATH ?? ""}`,
-			CALLS_PATH: callsPath,
-			FAKE_SHA: sha,
+	const proc = Bun.spawn(
+		["bun", "scripts/release.ts", "verify-tag", "v1.2.3", sha, "9001-2-ci", "github-actions[bot]"],
+		{
+			cwd: REPO_ROOT,
+			env: {
+				...process.env,
+				PATH: `${bin}:${process.env.PATH ?? ""}`,
+				CALLS_PATH: callsPath,
+				FAKE_SHA: sha,
+			},
+			stdout: "pipe",
+			stderr: "pipe",
 		},
-		stdout: "pipe",
-		stderr: "pipe",
-	});
+	);
 	const [stdout, stderr, exitCode] = await Promise.all([
 		new Response(proc.stdout).text(),
 		new Response(proc.stderr).text(),
@@ -89,10 +96,12 @@ describe("exact-tag publication provenance", () => {
 			headBranch: "v1.2.3",
 			event: "workflow_dispatch",
 			conclusion: "success",
+			displayTitle: CHECKS_TITLE,
+			actor: "github-actions[bot]",
 		};
 
 		expect(() =>
-			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
+			assertReleaseTagGateEvidence("v1.2.3", MAIN, CHECKS_TITLE, {
 				"checks.yml": [success],
 			}),
 		).not.toThrow();
@@ -106,8 +115,8 @@ describe("exact-tag publication provenance", () => {
 		const result = await runTagGateCli();
 
 		expect(result.exitCode).toBe(0);
-		expect(result.output).toContain("verified exact-tag Checks for v1.2.3");
-		expect(result.calls).toContain("run list --workflow checks.yml");
+		expect(result.output).toContain("verified Release controller 9001 and exact-tag Checks for v1.2.3");
+		expect(result.calls).toContain("actions/runs/9001");
 	});
 
 	/**
@@ -120,13 +129,15 @@ describe("exact-tag publication provenance", () => {
 			headBranch: "v1.2.3",
 			event: "workflow_dispatch",
 			conclusion: "success",
+			displayTitle: CHECKS_TITLE,
+			actor: "github-actions[bot]",
 		};
 
 		expect(() =>
-			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
+			assertReleaseTagGateEvidence("v1.2.3", MAIN, CHECKS_TITLE, {
 				"checks.yml": [wrongSha],
 			}),
-		).toThrow("checks.yml has no successful workflow_dispatch run");
+		).toThrow("checks.yml has no controller-correlated successful run");
 	});
 
 	/**
@@ -139,13 +150,40 @@ describe("exact-tag publication provenance", () => {
 			headBranch: "main",
 			event: "workflow_dispatch",
 			conclusion: "success",
+			displayTitle: CHECKS_TITLE,
+			actor: "github-actions[bot]",
 		};
 
 		expect(() =>
-			assertReleaseTagGateEvidence("v1.2.3", MAIN, {
+			assertReleaseTagGateEvidence("v1.2.3", MAIN, CHECKS_TITLE, {
 				"checks.yml": [mainRun],
 			}),
-		).toThrow("checks.yml has no successful workflow_dispatch run");
+		).toThrow("checks.yml has no controller-correlated successful run");
+	});
+
+	/**
+	 * A human or stale Checks dispatch can share the same tag and SHA. It cannot
+	 * authorize publication without the active controller title and bot actor.
+	 */
+	it("rejects stale titles and non-controller actors", () => {
+		const base: ReleaseTagWorkflowRun = {
+			headSha: MAIN,
+			headBranch: "v1.2.3",
+			event: "workflow_dispatch",
+			conclusion: "success",
+			displayTitle: CHECKS_TITLE,
+			actor: "github-actions[bot]",
+		};
+		for (const run of [
+			{ ...base, displayTitle: "Checks release gate 8000-1-checks" },
+			{ ...base, actor: "release-operator" },
+		]) {
+			expect(() =>
+				assertReleaseTagGateEvidence("v1.2.3", MAIN, CHECKS_TITLE, {
+					"checks.yml": [run],
+				}),
+			).toThrow("no controller-correlated successful run");
+		}
 	});
 
 	/**
@@ -153,7 +191,9 @@ describe("exact-tag publication provenance", () => {
 	 * aliases and malformed tags from choosing an ambiguous release identity.
 	 */
 	it("rejects malformed release tags before reading workflow evidence", () => {
-		expect(() => assertReleaseTagGateEvidence("v1junk", MAIN, {})).toThrow("is not strict vX.Y.Z semver");
+		expect(() => assertReleaseTagGateEvidence("v1junk", MAIN, CHECKS_TITLE, {})).toThrow(
+			"is not strict vX.Y.Z semver",
+		);
 	});
 });
 
@@ -162,20 +202,31 @@ async function runGateCli(options: {
 	greenOnly?: boolean;
 	failGh?: boolean;
 	silentTag?: boolean;
+	silentCiMissing?: boolean;
+	silentChecksMissing?: boolean;
 }) {
 	const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT }).stdout.toString().trim();
 	const bin = mkdtempSync(join(tmpdir(), "release-gate-cli-"));
 	const fakeGh = join(bin, "gh");
+	const outputPath = join(bin, "github-output");
+	const callsPath = join(bin, "calls");
+	writeFileSync(callsPath, "");
+	writeFileSync(outputPath, "");
 	writeFileSync(
 		fakeGh,
 		`#!/bin/sh
+printf '%s\n' "$*" >> "$CALLS_PATH"
 if [ "$FAIL_GH" = "1" ]; then echo unavailable >&2; exit 9; fi
 case "$*" in
   *"commits/main"*) printf '%s\\n' "$FAKE_SHA" ;;
-  *"actions/runs?head_sha=$FAKE_SHA"*)
-    printf 'CI\\t%s\\tcompleted\\tsuccess\\n' "$FAKE_SHA"
-    if [ "$CHECKS" != "missing" ]; then printf 'Checks\\t%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$CHECKS"; fi ;;
-  *"actions/workflows/ci.yml/runs?head_sha=$SILENT_SHA&per_page=1"*) printf 'failure\\n' ;;
+  *"actions/workflows/ci.yml/runs?head_sha=$FAKE_SHA&branch=main&event=push&per_page=1"*)
+    printf '%s\\tcompleted\\tsuccess\\n' "$FAKE_SHA" ;;
+  *"actions/workflows/checks.yml/runs?head_sha=$FAKE_SHA&branch=main&event=push&per_page=1"*)
+    if [ "$CHECKS" != "missing" ]; then printf '%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$CHECKS"; fi ;;
+  *"actions/workflows/ci.yml/runs?head_sha=$SILENT_SHA&branch=v0.0.2&event=workflow_dispatch&per_page=1"*)
+    if [ "$SILENT_CI_MISSING" != "1" ]; then printf 'completed\\tfailure\\n'; fi ;;
+  *"actions/workflows/checks.yml/runs?head_sha=$SILENT_SHA&branch=v0.0.2&event=workflow_dispatch&per_page=1"*)
+    if [ "$SILENT_CHECKS_MISSING" != "1" ]; then printf 'completed\\tfailure\\n'; fi ;;
   *"release list --limit 1"*) printf 'v0.0.1\\n' ;;
   *"release list --limit 50"*) printf 'v0.0.1\\n' ;;
   *"tags?per_page=50"*)
@@ -186,18 +237,26 @@ esac
 `,
 	);
 	chmodSync(fakeGh, 0o755);
-	const args = ["bun", "scripts/release-gate-decision.ts"];
-	if (options.greenOnly) args.push("--green-only");
+	const args = ["bun", "scripts/release.ts", "workflow-gate"];
 	const proc = Bun.spawn(args, {
 		cwd: REPO_ROOT,
 		env: {
 			...process.env,
 			PATH: `${bin}:${process.env.PATH ?? ""}`,
 			FAKE_SHA: sha,
+			CALLS_PATH: callsPath,
 			CHECKS: options.checks ?? "success",
 			FAIL_GH: options.failGh ? "1" : "0",
 			SILENT_TAG: options.silentTag ? "1" : "0",
 			SILENT_SHA: OLDER,
+			SILENT_CI_MISSING: options.silentCiMissing ? "1" : "0",
+			SILENT_CHECKS_MISSING: options.silentChecksMissing ? "1" : "0",
+			GITHUB_EVENT_NAME: options.greenOnly ? "workflow_dispatch" : "workflow_run",
+			GITHUB_OUTPUT: outputPath,
+			RELEASE_DISPATCH_VERSION: "patch",
+			RELEASE_EXPECTED_SHA: sha,
+			RELEASE_HEAD_COMMIT_MESSAGE: "fix: ready",
+			RELEASE_TRIGGER_HEAD_SHA: sha,
 		},
 		stdout: "pipe",
 		stderr: "pipe",
@@ -207,7 +266,13 @@ esac
 		new Response(proc.stdout).text(),
 		new Response(proc.stderr).text(),
 	]);
-	return { exitCode, stdout, stderr };
+	return {
+		exitCode,
+		stdout,
+		stderr,
+		output: await Bun.file(outputPath).text(),
+		calls: await Bun.file(callsPath).text(),
+	};
 }
 
 function greenSourceRuns(sha = MAIN): SourceWorkflowRun[] {
@@ -220,7 +285,13 @@ function greenSourceRuns(sha = MAIN): SourceWorkflowRun[] {
 }
 
 function tag(name: string, conclusion: CiConclusion, sha = OLDER): SilentTag {
-	return { tag: name, sha, conclusion };
+	return {
+		tag: name,
+		sha,
+		workflow: "CI",
+		status: conclusion === null ? "in_progress" : "completed",
+		conclusion,
+	};
 }
 
 function decide(
@@ -273,8 +344,8 @@ describe("exact-source gates", () => {
 	it("the CLI fails closed for red, missing, or unknowable exact-SHA evidence", async () => {
 		for (const options of [{ checks: "failure" }, { checks: "missing" }] as const) {
 			const automatic = await runGateCli(options);
-			expect(automatic.exitCode).toBe(0);
-			expect(automatic.stdout.trim()).toBe("false");
+			expect(automatic.exitCode, automatic.stderr).toBe(0);
+			expect(automatic.output).toContain("should-release=false");
 
 			const manual = await runGateCli({ ...options, greenOnly: true });
 			expect(manual.exitCode).not.toBe(0);
@@ -282,22 +353,55 @@ describe("exact-source gates", () => {
 
 		const unknown = await runGateCli({ failGh: true });
 		expect(unknown.exitCode).not.toBe(0);
-		expect(unknown.stderr).toContain("fails closed");
+		expect(unknown.stderr).toContain("could not establish");
 	});
 	/**
-	 * Recovery must inspect the CI workflow specifically, because another workflow on the same tag can finish later.
+	 * Recovery considers only installable published releases and only the CI
+	 * workflow_dispatch run for the exact silent tag.
 	 */
-	it("reads a silent tag conclusion from the CI workflow endpoint", async () => {
+	it("excludes drafts and prereleases and reads exact-tag CI", async () => {
 		const result = await runGateCli({ silentTag: true });
 		expect(result.exitCode).toBe(0);
-		expect(result.stdout.trim()).toBe("true");
+		expect(result.output).toContain("should-release=true");
+		expect(result.calls).toContain("release list --limit 1 --exclude-drafts --exclude-pre-releases");
+		expect(result.calls).toContain("release list --limit 50 --exclude-drafts --exclude-pre-releases");
+		expect(result.calls).toContain(
+			`actions/workflows/ci.yml/runs?head_sha=${OLDER}&branch=v0.0.2&event=workflow_dispatch&per_page=1`,
+		);
+	});
+
+	/**
+	 * A controller can fail after Checks dispatch but before CI dispatch. Recovery
+	 * must use the exact-tag Checks failure instead of treating the tag as invisible.
+	 */
+	it("recovers a failed exact-tag Checks run when CI never started", async () => {
+		const result = await runGateCli({ silentTag: true, silentCiMissing: true });
+		expect(result.exitCode).toBe(0);
+		expect(result.output).toContain("should-release=true");
+		expect(result.calls).toContain(
+			`actions/workflows/checks.yml/runs?head_sha=${OLDER}&branch=v0.0.2&event=workflow_dispatch&per_page=1`,
+		);
+	});
+
+	/**
+	 * A pushed tag with no tagged workflow run means the controller stopped
+	 * mid-transaction. Another cut would hide that failure behind a newer tag.
+	 */
+	it("raises attention when a pushed tag has no Checks or CI run", async () => {
+		const result = await runGateCli({
+			silentTag: true,
+			silentCiMissing: true,
+			silentChecksMissing: true,
+		});
+		expect(result.exitCode).not.toBe(0);
+		expect(result.stderr).toContain("has no tagged Checks or CI run");
 	});
 });
 
 describe("the ordinary path", () => {
 	/**
-	 * Unchanged, and checked first. Everything else in this file only runs when the changelog says there
-	 * is nothing to ship, so a bug in the stranded-tag logic cannot suppress a normal release.
+	 * A changelog bullet cuts only when no earlier tag is still unresolved.
+	 * Existing release work must settle before another version begins.
 	 */
 	it("cuts when a publishable package has an Unreleased bullet", () => {
 		const decision = decide({ bullets: true });
@@ -307,13 +411,18 @@ describe("the ordinary path", () => {
 		expect(decision.reason).toContain("Unreleased changelog bullet");
 	});
 
-	it("cuts on a waiting bullet even while a tag is unpublished, rather than stopping to reason about it", () => {
-		// The bullet is newer work than the stranded tag, and cutting ships both: the release-notes
-		// script rolls the silent tag's sections into the new release.
+	it("recovers a failed tag before folding in the newer bullet", () => {
 		const decision = decide({ bullets: true, silentTags: [tag("v1.0.34", "failure")] });
-
 		expect(decision.cut).toBe(true);
 		expect(decision.needsAttention).toBe(false);
+		expect(decision.reason).toContain("re-cutting");
+	});
+
+	it("does not cut over an in-progress or anomalous successful tag for a newer bullet", () => {
+		for (const conclusion of [null, "success"] as CiConclusion[]) {
+			const decision = decide({ bullets: true, silentTags: [tag("v1.0.34", conclusion)] });
+			expect(decision.cut).toBe(false);
+		}
 	});
 
 	it("does not cut when nothing is unreleased and every tag is published", () => {
@@ -404,18 +513,16 @@ describe("two stranded tags", () => {
 		expect(decision.reason).toContain("re-run the release workflow by hand");
 	});
 
-	it("refuses regardless of what the newest run concluded, because the count is the signal", () => {
+	it("never cuts while two unpublished tags remain unresolved", () => {
 		for (const conclusion of ["failure", "success", null] as CiConclusion[]) {
 			expect(decide({ silentTags: [tag("v1.0.35", conclusion), tag("v1.0.34", "failure")] }).cut).toBe(false);
 		}
 	});
 
-	it("still cuts a genuinely new Unreleased bullet, so the bound does not freeze ordinary releasing", () => {
-		// The bound stops the gate from inventing versions. It must not stop a human's new work from
-		// shipping, or one bad cut would freeze the release train until someone noticed.
+	it("does not let a new bullet bypass the two-tag recovery bound", () => {
 		const decision = decide({ bullets: true, silentTags: [tag("v1.0.34", "failure"), tag("v1.0.33", "failure")] });
-
-		expect(decision.cut).toBe(true);
+		expect(decision.cut).toBe(false);
+		expect(decision.needsAttention).toBe(true);
 	});
 
 	it("uses the documented bound rather than a literal 2 in the branch", () => {
@@ -435,7 +542,7 @@ describe("every refusal", () => {
 	 * the incident was precisely a gate reporting the second while the first was true.
 	 */
 	it("carries a reason, and only the ones needing action are flagged", () => {
-		const cases: Array<{ decision: ReturnType<typeof decide>; attention: boolean }> = [
+		const cases: Array<{ decision: ReleaseGateDecision; attention: boolean }> = [
 			{ decision: decide(), attention: false },
 			{ decision: decide({ silentTags: [tag("v1.0.34", null)] }), attention: false },
 			{ decision: decide({ silentTags: [tag("v1.0.34", "success")] }), attention: true },
@@ -489,7 +596,7 @@ describe("published asset manifest", () => {
 		writeFileSync(fakeGh, "#!/bin/sh\necho publication unavailable >&2\nexit 9\n");
 		chmodSync(fakeGh, 0o755);
 
-		const proc = Bun.spawn(["bun", "scripts/release-gate-decision.ts", "verify-assets", "v1.2.3"], {
+		const proc = Bun.spawn(["bun", "scripts/release.ts", "verify-assets", "v1.2.3"], {
 			cwd: REPO_ROOT,
 			env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
 			stdout: "pipe",

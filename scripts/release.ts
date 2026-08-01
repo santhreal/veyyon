@@ -1,27 +1,126 @@
 #!/usr/bin/env bun
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 /**
- * Workflow-internal release cutter.
+ * The one release controller.
  *
- * The Release workflow invokes:
- *   bun scripts/release.ts <version|major|minor|patch>
- *
- * Operators use `bun run release [version]`; this process does not watch,
- * rebase, retry, or depend on a maintainer workstation.
+ * Operators run `bun run release [major|minor|patch|x.y.z]`. GitHub Actions calls
+ * the workflow subcommands in this file for source-gate selection, the atomic
+ * version cut, exact-tag Checks, tagged CI, and final publication verification.
  */
 import { isNewerVersion } from "@veyyon/utils/semver";
 import { $, Glob, JSONC } from "bun";
 import { runChangelogFixer } from "./fix-changelogs";
+import {
+	checkedOutHeadSha,
+	decideReleaseGate,
+	gatherReleaseGateFacts,
+	RELEASE_BOT_LOGIN,
+	REQUIRED_SOURCE_WORKFLOWS,
+	type ReleaseGateFacts,
+	requiredSourceGate,
+	verifyPublishedAssetManifest,
+	verifyReleaseTagGates,
+} from "./release-policy";
 import { parseUnreleasedBullets } from "./require-changelog.ts";
 import { buildRootChangelog, ROOT_PATH } from "./sync-root-changelog";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const packageJsonGlob = new Glob("packages/*/package.json");
 const cargoTomlGlob = new Glob("crates/*/Cargo.toml");
+const REPO_ROOT = path.join(import.meta.dir, "..");
+const RELEASE_REPOSITORY = "santhreal/veyyon";
+const RELEASE_WORKFLOW = "release.yml";
+const REQUIRED_GH_LOGIN = "santhsecurity";
 
 function git(args: readonly string[]) {
 	return $`git -c core.fsmonitor=false -c core.untrackedCache=false -c fetch.pruneTags=false ${args}`;
 }
+export interface ReleaseTriggerOperations {
+	currentBranch(): Promise<string>;
+	workingTreeStatus(): Promise<string>;
+	fetchMain(): Promise<void>;
+	localHead(): Promise<string>;
+	originMainHead(): Promise<string>;
+	authStatus(): Promise<string>;
+	dispatch(version: string, expectedSha: string): Promise<void>;
+}
+
+export interface ReleaseDispatch {
+	version: string;
+	sha: string;
+}
+
+export function parseReleaseRequest(args: readonly string[]): string {
+	if (args.length > 1) {
+		throw new Error("Release accepts one version: major, minor, patch, or an explicit x.y.z.");
+	}
+	const version = args[0] ?? "patch";
+	if (version === "major" || version === "minor" || version === "patch" || /^\d+\.\d+\.\d+$/.test(version)) {
+		return version;
+	}
+	throw new Error(`Invalid release version ${JSON.stringify(version)}. Use major, minor, patch, or x.y.z.`);
+}
+
+export function hasRequiredActiveGitHubAccount(status: string): boolean {
+	let account: string | undefined;
+	for (const line of status.split("\n")) {
+		const match = line.match(/Logged in to github\.com account ([^\s(]+)/);
+		if (match) account = match[1];
+		if (account === REQUIRED_GH_LOGIN && /Active account:\s*true/.test(line)) return true;
+	}
+	return false;
+}
+
+export async function triggerRelease(
+	version: string,
+	operations: ReleaseTriggerOperations = releaseTriggerOperations,
+): Promise<ReleaseDispatch> {
+	const branch = await operations.currentBranch();
+	if (branch !== "main") {
+		throw new Error(`Release must be triggered from main, but this checkout is on ${JSON.stringify(branch)}.`);
+	}
+	if ((await operations.workingTreeStatus()).trim()) {
+		throw new Error("Release requires a clean working tree. Commit the intended release candidate first.");
+	}
+	await operations.fetchMain();
+	const [localHead, originMainHead] = await Promise.all([operations.localHead(), operations.originMainHead()]);
+	if (localHead !== originMainHead) {
+		throw new Error(
+			`Local main (${localHead}) does not match origin/main (${originMainHead}). Push or update main, then wait for its exact-SHA gates.`,
+		);
+	}
+	if (!hasRequiredActiveGitHubAccount(await operations.authStatus())) {
+		throw new Error(
+			`GitHub account ${REQUIRED_GH_LOGIN} must be active. Run: gh auth switch --user ${REQUIRED_GH_LOGIN}`,
+		);
+	}
+	await operations.dispatch(version, originMainHead);
+	return { version, sha: originMainHead };
+}
+
+const releaseTriggerOperations: ReleaseTriggerOperations = {
+	currentBranch: async () => (await $`git branch --show-current`.cwd(REPO_ROOT).quiet()).text().trim(),
+	workingTreeStatus: async () => (await $`git status --porcelain`.cwd(REPO_ROOT).quiet()).text(),
+	fetchMain: async () => {
+		await $`git fetch origin main`.cwd(REPO_ROOT).quiet();
+	},
+	localHead: async () => (await $`git rev-parse HEAD`.cwd(REPO_ROOT).quiet()).text().trim(),
+	originMainHead: async () => (await $`git rev-parse origin/main`.cwd(REPO_ROOT).quiet()).text().trim(),
+	authStatus: async () => {
+		const result = await $`gh auth status --hostname github.com`
+			.cwd(REPO_ROOT)
+			.env({ ...Bun.env, NO_COLOR: "1" })
+			.quiet()
+			.nothrow();
+		return `${result.text()}\n${result.stderr.toString()}`;
+	},
+	dispatch: async (version, expectedSha) => {
+		await $`gh workflow run ${RELEASE_WORKFLOW} --repo ${RELEASE_REPOSITORY} --ref main -f version=${version} -f expected_sha=${expectedSha}`
+			.cwd(REPO_ROOT)
+			.quiet();
+	},
+};
 
 function removeEmptyVersionEntries(content: string): string {
 	// Remove version entries that have no content (just whitespace until next ## [ or EOF)
@@ -512,7 +611,315 @@ export async function pushPreparedRelease(tag: string, operations: ReleasePushOp
 	await operations.atomicPush(tag, sha);
 }
 
-async function cmdRelease(versionOrBump: string): Promise<void> {
+export interface WorkflowRunEvidence {
+	path: string;
+	event: string;
+	headBranch: string;
+	headSha: string;
+	displayTitle: string;
+	actor: string;
+}
+
+export interface WorkflowDispatchRequest {
+	workflow: string;
+	label: string;
+	tag: string;
+	sha: string;
+	inputs?: Readonly<Record<string, string>>;
+	expectedTitle?: string;
+}
+
+export interface ReleaseWorkflowOperations {
+	listRunIds(workflow: string, sha: string): Promise<readonly number[]>;
+	dispatch(workflow: string, ref: string, inputs: Readonly<Record<string, string>>): Promise<void>;
+	runEvidence(id: number): Promise<WorkflowRunEvidence>;
+	watch(id: number): Promise<void>;
+	sleep(milliseconds: number): Promise<void>;
+	verifyPublished(tag: string): Promise<string>;
+}
+
+export interface ReleasePublicationResult {
+	checksRunId: number;
+	ciRunId: number;
+	url: string;
+}
+
+async function runGh(args: readonly string[]): Promise<string> {
+	const child = Bun.spawn(["gh", ...args], {
+		cwd: REPO_ROOT,
+		env: Bun.env,
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stdout, stderr, exitCode] = await Promise.all([
+		new Response(child.stdout).text(),
+		new Response(child.stderr).text(),
+		child.exited,
+	]);
+	if (exitCode !== 0) {
+		throw new Error(`gh ${args.join(" ")} failed with exit ${exitCode}: ${stderr.trim()}`);
+	}
+	return stdout.trim();
+}
+
+function workflowRunsUrl(workflow: string, sha: string): string {
+	const repository = Bun.env.GITHUB_REPOSITORY ?? RELEASE_REPOSITORY;
+	return `repos/${repository}/actions/workflows/${workflow}/runs?head_sha=${sha}&event=workflow_dispatch&per_page=100`;
+}
+
+const releaseWorkflowOperations: ReleaseWorkflowOperations = {
+	listRunIds: async (workflow, sha) => {
+		const output = await runGh(["api", workflowRunsUrl(workflow, sha), "--paginate", "--jq", ".workflow_runs[].id"]);
+		if (!output) return [];
+		return output.split("\n").map(value => {
+			const id = Number(value);
+			if (!Number.isSafeInteger(id) || id <= 0) throw new Error(`${workflow} returned invalid run id ${value}`);
+			return id;
+		});
+	},
+	dispatch: async (workflow, ref, inputs) => {
+		const args = ["workflow", "run", workflow, "--ref", ref];
+		for (const [key, value] of Object.entries(inputs)) args.push("-f", `${key}=${value}`);
+		await runGh(args);
+	},
+	runEvidence: async id => {
+		const repository = Bun.env.GITHUB_REPOSITORY ?? RELEASE_REPOSITORY;
+		const output = await runGh([
+			"api",
+			`repos/${repository}/actions/runs/${id}`,
+			"--jq",
+			"{path:.path,event:.event,headBranch:.head_branch,headSha:.head_sha,displayTitle:.display_title,actor:.actor.login}",
+		]);
+		const parsed: unknown = JSON.parse(output);
+		if (
+			typeof parsed !== "object" ||
+			parsed === null ||
+			typeof (parsed as Record<string, unknown>).path !== "string" ||
+			typeof (parsed as Record<string, unknown>).event !== "string" ||
+			typeof (parsed as Record<string, unknown>).headBranch !== "string" ||
+			typeof (parsed as Record<string, unknown>).headSha !== "string" ||
+			typeof (parsed as Record<string, unknown>).displayTitle !== "string" ||
+			typeof (parsed as Record<string, unknown>).actor !== "string"
+		) {
+			throw new Error(`GitHub run ${id} returned invalid correlation evidence`);
+		}
+		return parsed as unknown as WorkflowRunEvidence;
+	},
+	watch: async id => {
+		await runGh(["run", "watch", String(id), "--exit-status"]);
+	},
+	sleep: async milliseconds => {
+		await Bun.sleep(milliseconds);
+	},
+	verifyPublished: async tag => {
+		await verifyPublishedAssetManifest(tag);
+		const output = await runGh(["release", "view", tag, "--json", "isDraft,tagName,url"]);
+		const parsed: unknown = JSON.parse(output);
+		if (
+			typeof parsed !== "object" ||
+			parsed === null ||
+			(parsed as Record<string, unknown>).isDraft !== false ||
+			(parsed as Record<string, unknown>).tagName !== tag ||
+			typeof (parsed as Record<string, unknown>).url !== "string"
+		) {
+			throw new Error(`${tag} did not finish as a published GitHub release`);
+		}
+		const latest = await runGh(["release", "view", "--json", "tagName", "--jq", ".tagName"]);
+		if (latest !== tag)
+			throw new Error(`${tag} published, but releases/latest still resolves to ${latest || "nothing"}`);
+		return (parsed as Record<string, unknown>).url as string;
+	},
+};
+
+export async function dispatchWorkflowAndWait(
+	request: WorkflowDispatchRequest,
+	operations: ReleaseWorkflowOperations,
+): Promise<number> {
+	const baseline = new Set(await operations.listRunIds(request.workflow, request.sha));
+	await operations.dispatch(request.workflow, request.tag, request.inputs ?? {});
+	for (let attempt = 1; attempt <= 30; attempt++) {
+		const ids = await operations.listRunIds(request.workflow, request.sha);
+		for (const id of ids) {
+			if (baseline.has(id)) continue;
+			const evidence = await operations.runEvidence(id);
+			if (
+				evidence.path === `.github/workflows/${request.workflow}` &&
+				evidence.event === "workflow_dispatch" &&
+				evidence.headBranch === request.tag &&
+				evidence.headSha === request.sha &&
+				evidence.actor === RELEASE_BOT_LOGIN &&
+				(request.expectedTitle === undefined || evidence.displayTitle === request.expectedTitle)
+			) {
+				await operations.watch(id);
+				return id;
+			}
+		}
+		await operations.sleep(Math.min(attempt, 5) * 1000);
+	}
+	throw new Error(`${request.label} did not start a correlated run for ${request.tag} (${request.sha})`);
+}
+
+export async function publishPreparedRelease(
+	tag: string,
+	sha: string,
+	operations: ReleaseWorkflowOperations = releaseWorkflowOperations,
+): Promise<ReleasePublicationResult> {
+	const runId = Bun.env.GITHUB_RUN_ID;
+	const runAttempt = Bun.env.GITHUB_RUN_ATTEMPT;
+	if (!runId || !runAttempt) throw new Error("release publication requires GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT");
+	const checksNonce = `${runId}-${runAttempt}-checks`;
+	const checksRunId = await dispatchWorkflowAndWait(
+		{
+			workflow: "checks.yml",
+			label: "Checks",
+			tag,
+			sha,
+			inputs: { release_nonce: checksNonce },
+			expectedTitle: `Checks release gate ${checksNonce}`,
+		},
+		operations,
+	);
+	const ciNonce = `${runId}-${runAttempt}-ci`;
+	const ciRunId = await dispatchWorkflowAndWait(
+		{
+			workflow: "ci.yml",
+			label: "CI",
+			tag,
+			sha,
+			inputs: { release_nonce: ciNonce },
+			expectedTitle: `CI release gate ${ciNonce}`,
+		},
+		operations,
+	);
+	const url = await operations.verifyPublished(tag);
+	return { checksRunId, ciRunId, url };
+}
+
+export interface WorkflowGateInput {
+	eventName: string;
+	dispatchVersion?: string;
+	expectedSha?: string;
+	headCommitMessage?: string;
+	triggerHeadSha?: string;
+	triggerWorkflowName?: string;
+	triggerWorkflowConclusion?: string;
+}
+
+export interface WorkflowGateResult {
+	shouldRelease: boolean;
+	version: string;
+	sourceSha: string;
+	reason: string;
+}
+
+export interface WorkflowGateOperations {
+	currentSha(): Promise<string | undefined>;
+	gatherFacts(): Promise<ReleaseGateFacts | undefined>;
+}
+
+const workflowGateOperations: WorkflowGateOperations = {
+	currentSha: checkedOutHeadSha,
+	gatherFacts: gatherReleaseGateFacts,
+};
+
+function includeTriggerWorkflowEvidence(
+	facts: ReleaseGateFacts,
+	input: WorkflowGateInput,
+	sourceSha: string,
+): ReleaseGateFacts {
+	const name = input.triggerWorkflowName;
+	if (
+		!name ||
+		input.triggerWorkflowConclusion !== "success" ||
+		!REQUIRED_SOURCE_WORKFLOWS.some(required => required === name) ||
+		facts.sourceWorkflowRuns.some(run => run.name === name && run.headSha === sourceSha)
+	) {
+		return facts;
+	}
+	return {
+		...facts,
+		sourceWorkflowRuns: [
+			{ name, headSha: sourceSha, status: "completed", conclusion: "success" },
+			...facts.sourceWorkflowRuns,
+		],
+	};
+}
+
+export async function decideWorkflowRelease(
+	input: WorkflowGateInput,
+	operations: WorkflowGateOperations = workflowGateOperations,
+): Promise<WorkflowGateResult> {
+	const sourceSha = await operations.currentSha();
+	if (!sourceSha) throw new Error("could not resolve the checked-out main SHA");
+	if (input.eventName !== "workflow_dispatch" && input.triggerHeadSha !== sourceSha) {
+		return {
+			shouldRelease: false,
+			version: "",
+			sourceSha,
+			reason: `trigger SHA ${input.triggerHeadSha ?? "unknown"} is stale; main is ${sourceSha}`,
+		};
+	}
+	if (input.eventName === "workflow_dispatch") {
+		if (!input.expectedSha) throw new Error("manual release requires the exact validated main SHA");
+		if (input.expectedSha !== sourceSha) {
+			throw new Error(`main is at ${sourceSha}, but the operator validated ${input.expectedSha}`);
+		}
+		const facts = await operations.gatherFacts();
+		if (!facts) throw new Error("could not establish exact-SHA CI/Checks or GitHub publication state");
+		const gate = requiredSourceGate(facts);
+		if (gate) throw new Error(`release source gate failed: ${gate.reason}`);
+		return {
+			shouldRelease: true,
+			version: parseReleaseRequest([input.dispatchVersion ?? "patch"]),
+			sourceSha,
+			reason: "manual release request passed exact-SHA CI and Checks",
+		};
+	}
+	const subject = (input.headCommitMessage ?? "").split("\n", 1)[0] ?? "";
+	if (subject.startsWith("chore: bump version to ")) {
+		return { shouldRelease: false, version: "", sourceSha, reason: "release bump commits never trigger another cut" };
+	}
+	if ((input.headCommitMessage ?? "").includes("[skip release]")) {
+		return { shouldRelease: false, version: "", sourceSha, reason: "[skip release] marker present" };
+	}
+	const gatheredFacts = await operations.gatherFacts();
+	if (!gatheredFacts) throw new Error("could not establish exact-SHA CI/Checks or GitHub publication state");
+	const facts = includeTriggerWorkflowEvidence(gatheredFacts, input, sourceSha);
+	const sourceGate = requiredSourceGate(facts);
+	if (sourceGate) {
+		return {
+			shouldRelease: false,
+			version: "",
+			sourceSha,
+			reason: sourceGate.reason,
+		};
+	}
+	const decision = decideReleaseGate(facts);
+	if (decision.needsAttention) throw new Error(decision.reason);
+	return {
+		shouldRelease: decision.cut,
+		version: decision.cut ? "patch" : "",
+		sourceSha,
+		reason: decision.reason,
+	};
+}
+
+async function writeWorkflowGateOutputs(result: WorkflowGateResult): Promise<void> {
+	const outputPath = Bun.env.GITHUB_OUTPUT;
+	if (!outputPath) throw new Error("workflow gate requires GITHUB_OUTPUT");
+	await fs.appendFile(
+		outputPath,
+		`should-release=${result.shouldRelease}\nversion=${result.version}\nsource-sha=${result.sourceSha}\n`,
+	);
+	console.log(result.reason);
+}
+export interface PreparedRelease {
+	tag: string;
+	sha: string;
+	version: string;
+}
+
+export async function cmdRelease(versionOrBump: string): Promise<PreparedRelease> {
 	console.log("\n=== Release Script ===\n");
 
 	// 1. Pre-flight checks
@@ -553,10 +960,9 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	}
 	console.log(`  Version ${version} > ${latestTag}\n`);
 
-	// Prepare the exact tree that will be tagged. This helper is intentionally
-	// idempotent: a rejected push rebases, then runs the whole preparation again
-	// so concurrent main changes cannot bypass versioning, changelog finalization,
-	// root generation, lock refresh, or checks.
+	// Prepare the exact tree that will be tagged. The preparation is idempotent
+	// so an explicit recovery cut can rebuild every version, changelog, lockfile,
+	// and check from the approved tree without preserving partial state.
 	await prepareReleaseTree(version, latestTag);
 
 	// 7. Commit. A re-cut of a version whose bump commit already landed (dead
@@ -602,8 +1008,9 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	// leaves both remote refs untouched; the newer main workflow starts a fresh
 	// cut after its own CI and Checks runs are green.
 	await validateReleaseVersionAuthorities(".", version, tagRef);
+	const releaseSha = (await git(["rev-parse", "HEAD"]).text()).trim();
 	await pushPreparedRelease(tagRef, {
-		currentSha: async () => (await git(["rev-parse", "HEAD"]).text()).trim(),
+		currentSha: async () => releaseSha,
 		forceLocalTag: async tag => {
 			await git(["tag", "-f", tag]);
 		},
@@ -613,29 +1020,146 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	});
 	console.log();
 
-	// Publication is a separate workflow dispatch. Keeping this cutter finite
-	// means it never polls, retries a newer tree, or depends on a workstation.
-	console.log(`Pushed v${version}. The release workflow will dispatch the publish pipeline at that tag.`);
+	console.log(`Pushed ${tagRef}. Waiting for exact-tag Checks and the complete tagged CI release.`);
+	return { tag: tagRef, sha: releaseSha, version };
 }
 
-// =============================================================================
-// Main
-// =============================================================================
+async function runWorkflowGateCommand(): Promise<void> {
+	const result = await decideWorkflowRelease({
+		eventName: Bun.env.GITHUB_EVENT_NAME ?? "",
+		dispatchVersion: Bun.env.RELEASE_DISPATCH_VERSION,
+		expectedSha: Bun.env.RELEASE_EXPECTED_SHA,
+		headCommitMessage: Bun.env.RELEASE_HEAD_COMMIT_MESSAGE,
+		triggerHeadSha: Bun.env.RELEASE_TRIGGER_HEAD_SHA,
+		triggerWorkflowName: Bun.env.RELEASE_TRIGGER_WORKFLOW_NAME,
+		triggerWorkflowConclusion: Bun.env.RELEASE_TRIGGER_WORKFLOW_CONCLUSION,
+	});
+	await writeWorkflowGateOutputs(result);
+}
 
-// Guard the CLI dispatch so importing this module from tests does not cut a release.
-if (import.meta.main) {
-	if (Bun.env.VEYYON_RELEASE_IN_CI !== "1") {
-		console.error("This is the workflow-internal release cutter. Run bun run release [major|minor|patch|x.y.z].");
-		process.exit(1);
+export interface GatedReleaseSourceOperations {
+	currentSha(): Promise<string>;
+	switchMain(sha: string): Promise<void>;
+	configureGitIdentity(): Promise<void>;
+}
+
+const gatedReleaseSourceOperations: GatedReleaseSourceOperations = {
+	currentSha: async () => (await git(["rev-parse", "HEAD"]).text()).trim(),
+	switchMain: async sha => {
+		await git(["switch", "-C", "main", sha]);
+	},
+	configureGitIdentity: async () => {
+		await git(["config", "user.name", "github-actions[bot]"]);
+		await git(["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"]);
+	},
+};
+
+export async function materializeGatedReleaseSource(
+	expectedSha: string,
+	operations: GatedReleaseSourceOperations = gatedReleaseSourceOperations,
+): Promise<void> {
+	const checkedOutSha = await operations.currentSha();
+	if (checkedOutSha !== expectedSha) {
+		throw new Error(`release checkout is ${checkedOutSha}, expected gated SHA ${expectedSha}`);
 	}
+	await operations.switchMain(expectedSha);
+	await operations.configureGitIdentity();
+}
 
-	const arg = process.argv[2];
+export interface ReleaseTrainOperations {
+	materialize(sourceSha: string): Promise<void>;
+	cut(version: string): Promise<PreparedRelease>;
+	publish(tag: string, sha: string): Promise<ReleasePublicationResult>;
+}
 
-	if (arg === "major" || arg === "minor" || arg === "patch" || /^\d+\.\d+\.\d+$/.test(arg ?? "")) {
-		await cmdRelease(arg);
-	} else {
-		console.error("Usage: bun scripts/release.ts <version|major|minor|patch>");
-		console.error("This workflow-internal cutter is invoked only by .github/workflows/release.yml.");
+export interface CompletedRelease {
+	tag: string;
+	sha: string;
+	version: string;
+	checksRunId: number;
+	ciRunId: number;
+	url: string;
+}
+
+const releaseTrainOperations: ReleaseTrainOperations = {
+	materialize: materializeGatedReleaseSource,
+	cut: cmdRelease,
+	publish: publishPreparedRelease,
+};
+
+export async function runReleaseTrain(
+	version: string,
+	sourceSha: string,
+	operations: ReleaseTrainOperations = releaseTrainOperations,
+): Promise<CompletedRelease> {
+	await operations.materialize(sourceSha);
+	const prepared = await operations.cut(version);
+	const publication = await operations.publish(prepared.tag, prepared.sha);
+	return { ...prepared, ...publication };
+}
+
+async function runWorkflowReleaseCommand(version: string): Promise<void> {
+	if (Bun.env.VEYYON_RELEASE_IN_CI !== "1") throw new Error("workflow-release may run only inside Release CI");
+	const expectedSha = Bun.env.RELEASE_SOURCE_SHA;
+	if (!expectedSha) throw new Error("workflow-release requires RELEASE_SOURCE_SHA");
+	const completed = await runReleaseTrain(version, expectedSha);
+	const summaryPath = Bun.env.GITHUB_STEP_SUMMARY;
+	if (summaryPath) {
+		await fs.appendFile(
+			summaryPath,
+			`### Release \`${completed.tag}\` published\n\n` +
+				`Checks run: ${completed.checksRunId}\n\n` +
+				`CI run: ${completed.ciRunId}\n\n` +
+				`${completed.url}\n`,
+		);
+	}
+	console.log(`Published ${completed.tag}: ${completed.url}`);
+}
+
+async function runReleaseController(args: readonly string[]): Promise<void> {
+	const [command, ...rest] = args;
+	switch (command) {
+		case "request": {
+			const version = parseReleaseRequest(rest);
+			const release = await triggerRelease(version);
+			console.log(`Release workflow dispatched for ${release.sha}: ${release.version}.`);
+			return;
+		}
+		case "workflow-gate":
+			if (rest.length > 0) throw new Error("Usage: release.ts workflow-gate");
+			await runWorkflowGateCommand();
+			return;
+		case "workflow-release": {
+			const version = parseReleaseRequest(rest);
+			await runWorkflowReleaseCommand(version);
+			return;
+		}
+		case "verify-tag": {
+			const [tag, sha, ciNonce, dispatchActor, ...extra] = rest;
+			if (!tag || !sha || !ciNonce || !dispatchActor || extra.length > 0) {
+				throw new Error("Usage: release.ts verify-tag <tag> <sha> <ci-nonce> <dispatch-actor>");
+			}
+			await verifyReleaseTagGates(tag, sha, ciNonce, dispatchActor);
+			return;
+		}
+		case "verify-assets": {
+			const [tag, ...extra] = rest;
+			if (!tag || extra.length > 0) throw new Error("Usage: release.ts verify-assets <tag>");
+			await verifyPublishedAssetManifest(tag);
+			return;
+		}
+		default:
+			throw new Error(
+				"Usage: release.ts request [version] | workflow-gate | workflow-release <version> | verify-tag <tag> <sha> <ci-nonce> <dispatch-actor> | verify-assets <tag>",
+			);
+	}
+}
+
+if (import.meta.main) {
+	try {
+		await runReleaseController(process.argv.slice(2));
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
 		process.exit(1);
 	}
 }

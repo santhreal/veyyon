@@ -4,7 +4,7 @@ import {
 	parseReleaseRequest,
 	type ReleaseTriggerOperations,
 	triggerRelease,
-} from "./trigger-release";
+} from "./release";
 
 function operations(overrides: Partial<ReleaseTriggerOperations> = {}): {
 	operations: ReleaseTriggerOperations;
@@ -138,7 +138,7 @@ describe("release trigger safety boundary", () => {
 describe("workflow-internal cutter boundary", () => {
 	/** Direct local invocation must stop before release.ts can mutate, commit, tag, or push the tree. */
 	it("refuses to run the cutter outside the Release workflow", async () => {
-		const process = Bun.spawn(["bun", "scripts/release.ts", "patch"], {
+		const process = Bun.spawn(["bun", "scripts/release.ts", "workflow-release", "patch"], {
 			env: { ...Bun.env, VEYYON_RELEASE_IN_CI: "" },
 			stdout: "pipe",
 			stderr: "pipe",
@@ -146,7 +146,6 @@ describe("workflow-internal cutter boundary", () => {
 		const [exitCode, stderr] = await Promise.all([process.exited, new Response(process.stderr).text()]);
 
 		expect(exitCode).not.toBe(0);
-		expect(stderr).toContain("workflow-internal release cutter");
-		expect(stderr).toContain("bun run release");
+		expect(stderr).toContain("workflow-release may run only inside Release CI");
 	});
 });

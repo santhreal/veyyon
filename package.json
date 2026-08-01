@@ -186,7 +186,7 @@
 		"lint:py": "ruff check python && ruff format --check python",
 		"fix:py": "ruff check --fix python && ruff format python",
 		"prepare": "true",
-		"release": "bun scripts/trigger-release.ts",
+		"release": "bun scripts/release.ts request",
 		"site:build": "node website/build.mjs",
 		"site:check-blog": "bun website/tools/check-blog-publish.ts",
 		"site:deploy": "node website/deploy.mjs",

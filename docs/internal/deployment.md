@@ -288,11 +288,12 @@ rest, so keep the asset set complete.
 
 The Release workflow starts only after the source commit passes both CI and Checks.
 It cuts the tag, dispatches Checks at that immutable tag, and dispatches `ci.yml`
-only after the exact tag passes `checks.yml`. CI compiles and smoke-tests every
-platform binary, prepares the GitHub release with all assets and SHA-256 sidecars,
-verifies the draft binaries on native runners, and publishes only after those
-runtime checks pass. The install scripts then pick it up through `releases/latest`
-with no further action.
+only after the exact tag passes `checks.yml`. The controller correlates and waits
+for that exact tagged CI run. CI compiles and smoke-tests every platform binary,
+prepares the GitHub release with all assets and SHA-256 sidecars, verifies the
+draft binaries on native runners, and publishes only after those runtime checks
+pass. The Release workflow succeeds only after it verifies the final asset
+manifest, non-draft state, and `releases/latest` tag.
 
 Publication does not complete when the GitHub API first reports the release. The release train polls the public `releases/latest` redirect with cache-busting requests until it resolves to the exact new tag. It then drives the production installer on Linux x64, Linux arm64, macOS x64, macOS arm64, and Windows x64. Each transactional run requires the installed binary to report that same tag before reinstall and uninstall checks can pass.
 
@@ -303,10 +304,10 @@ Publication does not complete when the GitHub API first reports the release. The
 ## Repository secrets and variables
 
 GitHub binary publication needs no repository secret. The Release workflow uses
-the built-in `GITHUB_TOKEN` to push the version bump and tag, dispatches and gates
-the immutable tag through `checks.yml`, then dispatches `ci.yml` for publication.
-The Cloudflare credentials are required by the production deployment that follows
-GitHub publication.
+the built-in `GITHUB_TOKEN` to push the version bump and tag, dispatch and gate
+the immutable tag through `checks.yml`, dispatch and wait for `ci.yml`, then
+verify the published release. The Cloudflare credentials are required by the
+production deployment inside tagged CI.
 
 | Name | Kind | Gates |
 | --- | --- | --- |
