@@ -1,4 +1,5 @@
 name: CI
+run-name: "${{ inputs.release_nonce != '' && format('{0} release gate {1}', github.workflow, inputs.release_nonce) || github.workflow }}"
 
 on:
    push:
@@ -6,6 +7,11 @@ on:
    pull_request:
       branches: [main]
    workflow_dispatch:
+      inputs:
+         release_nonce:
+            description: "Release controller correlation token"
+            required: false
+            type: string
 
 # Release runs publish a `v*` tag pushed atomically with main HEAD; sharing
 # the cheap branch-wide `CI-refs/heads/main` group meant a later main push
@@ -64,6 +70,8 @@ jobs:
            id: detect
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              RELEASE_NONCE: ${{ inputs.release_nonce }}
+              DISPATCH_ACTOR: ${{ github.actor }}
            shell: bash
            run: |
               is_release=false
@@ -79,8 +87,8 @@ jobs:
                     echo "::error::release tag '$release_tag' is not strict vX.Y.Z semver"
                     exit 1
                   fi
-                  bun scripts/release-gate-decision.ts verify-tag-gates "$release_tag" "${{ github.sha }}"
-                  echo "Exact-tag Checks are green for $release_tag; this run may publish the release."
+                  bun scripts/release.ts verify-tag "$release_tag" "${{ github.sha }}" "$RELEASE_NONCE" "$DISPATCH_ACTOR"
+                  echo "Release controller and exact-tag Checks are verified for $release_tag."
                   is_release=true
                   ;;
                 refs/heads/main)
@@ -955,7 +963,7 @@ jobs:
            # Five platform binaries, all required native addons, and a .sha256
            # sidecar for every artifact. Any missing/extra distribution asset or
            # unknown GitHub response keeps release_github red.
-           run: bun scripts/release-gate-decision.ts verify-assets ${{ needs.release_metadata.outputs.release-tag }}
+           run: bun scripts/release.ts verify-assets ${{ needs.release_metadata.outputs.release-tag }}
          - name: Preserve the verified asset digest manifest
            uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
            with:

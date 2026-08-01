@@ -2,7 +2,7 @@
 # bumps every version, regenerates lockfiles, finalizes changelogs, runs checks,
 # commits, and atomically pushes main plus the tag.
 #
-# Two triggers, one job:
+# Two triggers, one controller:
 #   - workflow_run on a completed main CI or Checks run. The gate queries both
 #     product workflows and releases only when each is green for the SHA.
 #     Releasing on raw push tagged shas whose tests then failed: v1.0.28
@@ -10,7 +10,7 @@
 #     packages/utils tests killed every publish downstream, and `releases/latest`
 #     sat at v1.0.27 while the tags marched on. The gate then cuts a `patch`
 #     release whenever a publishable package has an `## [Unreleased]` changelog
-#     bullet waiting (see scripts/release-gate-decision.ts). It is self-limiting:
+#     bullet waiting (see scripts/release-policy.ts). It is self-limiting:
 #     release.ts empties the Unreleased section when it cuts the release, so the
 #     bump commit it pushes is not itself releasable and never loops, and a
 #     docs/chore-only merge with no bullet does not release.
@@ -24,11 +24,12 @@
 #   - workflow_dispatch: manual release of an explicit version (major/minor/patch
 #     or x.y.z), after proving the same exact-main-SHA CI and Checks gates.
 #
-# After the atomic bump/tag push, this workflow dispatches `ci.yml` explicitly
-# at the new tag. `workflow_dispatch` is one of GitHub's documented exceptions
-# that still creates a run when called with `GITHUB_TOKEN`, so the release needs
-# no personal access token and no workstation. `ci.yml` owns every downstream
-# build, manifest check, GitHub release, and production site deployment.
+# After the atomic bump/tag push, release.ts dispatches and waits for exact-tag
+# Checks, then dispatches and waits for tagged CI. `workflow_dispatch` is one of
+# GitHub's documented exceptions that still creates a run when called with
+# `GITHUB_TOKEN`, so the release needs no personal access token or workstation.
+# The controller verifies the final asset manifest, published state, and
+# `releases/latest` before this workflow reports success.
 name: Release
 
 on:
@@ -53,6 +54,7 @@ on:
 # a queued one.
 concurrency:
    group: release
+   queue: max
    cancel-in-progress: false
 
 permissions:
@@ -81,68 +83,23 @@ jobs:
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
            with:
               bun-version: "1.3.14"
-         - id: decide
+         - name: Install controller dependencies
+           run: bun install --frozen-lockfile
+         - name: Decide release
+           id: decide
            env:
-              EVENT_NAME: ${{ github.event_name }}
-              DISPATCH_VERSION: ${{ inputs.version }}
-              EXPECTED_SHA: ${{ inputs.expected_sha }}
-              # Only defined for workflow_run events; empty on dispatch.
-              HEAD_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
-              TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+              GITHUB_EVENT_NAME: ${{ github.event_name }}
+              RELEASE_DISPATCH_VERSION: ${{ inputs.version }}
+              RELEASE_EXPECTED_SHA: ${{ inputs.expected_sha }}
+              RELEASE_HEAD_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+              RELEASE_TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+              RELEASE_TRIGGER_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+              RELEASE_TRIGGER_WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-           run: |
-              set -euo pipefail
-              main_head=$(git rev-parse HEAD)
-              echo "source-sha=$main_head" >> "$GITHUB_OUTPUT"
-              if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$TRIGGER_HEAD_SHA" != "$main_head" ]; then
-                echo "green workflow run is for $TRIGGER_HEAD_SHA but main is at $main_head; deferring to the newer exact-SHA gates."
-                echo "should-release=false" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-
-              # Manual dispatch chooses the version, not the source commit or
-              # evidence standard. The operator passes the origin/main SHA it
-              # validated locally; fail closed if main advanced while this run
-              # was queued instead of silently retargeting the requested version.
-              if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-                if [ -z "$EXPECTED_SHA" ]; then
-                  echo "::error::manual release requires the exact validated main SHA"
-                  exit 1
-                fi
-                if [ "$EXPECTED_SHA" != "$main_head" ]; then
-                  echo "::error::main is at $main_head, but the operator validated $EXPECTED_SHA; dispatch a new release only after validating the new main HEAD"
-                  exit 1
-                fi
-                bun scripts/release-gate-decision.ts --green-only >/dev/null
-                echo "manual dispatch: exact-SHA CI and Checks are green for $EXPECTED_SHA; releasing '${DISPATCH_VERSION}'"
-                echo "should-release=true" >> "$GITHUB_OUTPUT"
-                echo "version=${DISPATCH_VERSION}" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-
-              # Never release the release script's own bump commit.
-              subject="$(printf '%s' "$HEAD_COMMIT_MESSAGE" | head -n1)"
-              case "$subject" in
-                "chore: bump version to "*)
-                  echo "head is the release bump commit; not releasing (no loop)."
-                  echo "should-release=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
-              esac
-              case "$HEAD_COMMIT_MESSAGE" in
-                *"[skip release]"*)
-                  echo "[skip release] marker present; not releasing."
-                  echo "should-release=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
-              esac
-
-              releasable="$(bun scripts/release-gate-decision.ts)"
-              if [ "$releasable" = "true" ]; then
-                echo "should-release=true" >> "$GITHUB_OUTPUT"
-                echo "version=patch" >> "$GITHUB_OUTPUT"
-              else
-                echo "should-release=false" >> "$GITHUB_OUTPUT"
-              fi
+           run: bun scripts/release.ts workflow-gate
 
    release:
-      name: Cut release
+      name: Run release train
       needs: gate
       if: ${{ needs.gate.outputs.should-release == 'true' }}
       runs-on: ubuntu-22.04
@@ -160,18 +117,6 @@ jobs:
               # version against `git describe`, which a shallow clone cannot see.
               fetch-depth: 0
               fetch-tags: true
-         - name: Materialize the gated SHA as main
-           env:
-              RELEASE_SOURCE_SHA: ${{ needs.gate.outputs.source-sha }}
-           run: |
-              set -euo pipefail
-              checked_out_sha=$(git rev-parse HEAD)
-              if [ "$checked_out_sha" != "$RELEASE_SOURCE_SHA" ]; then
-                echo "::error::release checkout is $checked_out_sha, expected gated SHA $RELEASE_SOURCE_SHA"
-                exit 1
-              fi
-              git switch -C main "$RELEASE_SOURCE_SHA"
-
 
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
            with:
@@ -192,100 +137,22 @@ jobs:
          - name: Install dependencies
            run: bun install --frozen-lockfile
 
-         # The release commit is authored by the workflow, not by whoever
-         # clicked run: the commit subject is what ci.yml keys its never-cancel
-         # release concurrency group off, and it must be reproducible.
-         - name: Configure git identity
-           run: |
-              git config user.name "github-actions[bot]"
-              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-         - name: Cut the release
+         - name: Cut, gate, publish, and verify the release
            env:
               VEYYON_RELEASE_IN_CI: "1"
+              RELEASE_SOURCE_SHA: ${{ needs.gate.outputs.source-sha }}
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-           run: bun scripts/release.ts "$RELEASE_VERSION"
+           run: bun scripts/release.ts workflow-release "$RELEASE_VERSION"
 
-         # Pushes made with GITHUB_TOKEN do not recursively start ordinary push
-         # workflows. workflow_dispatch is the documented exception. Gate the
-         # exact bump SHA through Checks, then start publication. The immutable
-         # tag avoids a moving-main dispatch race.
-         - name: Gate the bump and dispatch the publish pipeline
-           id: dispatch
-           env:
-              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-           shell: bash
-           run: |
-              set -euo pipefail
-              release_tag=$(git tag --points-at HEAD | grep -E '^v[0-9]' | head -n1)
-              release_sha=$(git rev-parse HEAD)
-              if [ -z "$release_tag" ]; then
-                echo "::error::release.ts returned without leaving a v* tag at HEAD"
-                exit 1
-              fi
-
-              dispatch_and_wait() {
-                workflow="$1"
-                label="$2"
-                nonce="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${workflow%.yml}"
-                expected_title="$label release gate $nonce"
-                runs_url="repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?head_sha=$release_sha&event=workflow_dispatch&per_page=100"
-                baseline_ids=$(gh api "$runs_url" --paginate --jq '.workflow_runs[].id')
-
-                gh workflow run "$workflow" --ref "$release_tag" -f release_nonce="$nonce"
-                run_id=""
-                for attempt in $(seq 1 30); do
-                  candidate_ids=$(gh api "$runs_url" --paginate --jq '.workflow_runs[].id')
-                  for candidate_id in $candidate_ids; do
-                    if printf '%s\n' "$baseline_ids" | grep -Fxq "$candidate_id"; then
-                      continue
-                    fi
-                    evidence=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_id" \
-                      --jq '[.path, .event, .head_branch, .head_sha, .display_title] | join("|")')
-                    IFS='|' read -r run_path run_event run_branch run_sha run_title <<< "$evidence"
-                    expected_path=".github/workflows/$workflow"
-                    if [ "$run_path" = "$expected_path" ] &&
-                       [ "$run_event" = workflow_dispatch ] &&
-                       [ "$run_branch" = "$release_tag" ] &&
-                       [ "$run_sha" = "$release_sha" ] &&
-                       [ "$run_title" = "$expected_title" ]; then
-                      run_id="$candidate_id"
-                      break
-                    fi
-                  done
-                  if [ -n "$run_id" ]; then break; fi
-                  sleep $(( attempt < 5 ? attempt : 5 ))
-                done
-                if [ -z "$run_id" ]; then
-                  echo "::error::$label did not start correlated run '$expected_title' for $release_tag ($release_sha)"
-                  exit 1
-                fi
-                gh run watch "$run_id" --exit-status
-              }
-
-              dispatch_and_wait checks.yml Checks
-              gh workflow run ci.yml --ref "$release_tag"
-              echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
-
-         - name: Summary
-           env:
-              RELEASE_TAG: ${{ steps.dispatch.outputs.tag }}
-           run: |
-              echo "### Release \`$RELEASE_TAG\` dispatched" >> "$GITHUB_STEP_SUMMARY"
-              echo "" >> "$GITHUB_STEP_SUMMARY"
-              echo "Exact-tag Checks passed. The tagged CI run now builds and verifies" >> "$GITHUB_STEP_SUMMARY"
-              echo "every artifact, publishes the GitHub release, and deploys production." >> "$GITHUB_STEP_SUMMARY"
-
-   # A red cut is as silent as a red publish was (v1.0.28-35): the preflight
-   # check can fail, the atomic bump push can be rejected when main advances
-   # mid-cut, or the explicit publish dispatch can fail. None of that reaches
-   # ci.yml's release_train_alert, which only watches the publish path. File or
-   # update the same pinned `release-train` issue here; the next green publish
-   # closes it, so one issue tracks the whole train.
-   cut_failed_alert:
-      name: Alert on failed release cut
+   # The controller can fail before tagged CI exists (preflight or an atomic push
+   # race), while correlating either dispatched run, or during final publication
+   # verification. File or update the same pinned `release-train` issue here.
+   # Tagged CI also reports its own failures, and the next green publication
+   # closes the shared issue.
+   release_failed_alert:
+      name: Alert on failed release train
       needs: [gate, release]
-      if: ${{ always() && (needs.gate.result == 'failure' || needs.release.result == 'failure') }}
+      if: ${{ always() && (needs.gate.result == 'failure' || needs.gate.result == 'cancelled' || needs.release.result == 'failure' || needs.release.result == 'cancelled') }}
       runs-on: ubuntu-22.04
       permissions:
          contents: read
@@ -300,8 +167,8 @@ jobs:
            shell: bash
            run: |
               set -euo pipefail
-              title="Release train red: the release cut failed (gate=$GATE_RESULT, release=$RELEASE_RESULT)"
-              body=$(printf 'The release CUT failed before any tag was published (gate=%s, release=%s).\n\nRun: %s\n\nNo new version ships until a green cut; the next successful publish closes this issue automatically.' "$GATE_RESULT" "$RELEASE_RESULT" "$RUN_URL")
+              title="Release train red (gate=$GATE_RESULT, release=$RELEASE_RESULT)"
+              body=$(printf 'The Release controller failed during source gating, the atomic cut, dispatched Checks or CI, or final publication verification (gate=%s, release=%s).\n\nRun: %s\n\nInspect the run before attempting another version. The next successful publish closes this issue automatically.' "$GATE_RESULT" "$RELEASE_RESULT" "$RUN_URL")
               # Self-heal the label: `gh issue create --label` hard-fails when the
               # label does not exist, which killed this alert on 2026-07-24 — a
               # dead alert is the worst failure mode this job can have.
@@ -314,4 +181,4 @@ jobs:
               else
                 gh issue create --repo "$GITHUB_REPOSITORY" --label release-train --title "$title" --body "$body"
               fi
-              echo "::error::release cut failed (gate=$GATE_RESULT, release=$RELEASE_RESULT); release-train issue updated"
+              echo "::error::release train failed (gate=$GATE_RESULT, release=$RELEASE_RESULT); release-train issue updated"

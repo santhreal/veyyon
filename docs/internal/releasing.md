@@ -52,7 +52,7 @@ runs on `main` each trigger the **Release** workflow. The gate waits until both
 workflows are green for the same exact SHA. When any publishable package has an
 `## [Unreleased]` bullet waiting, it cuts a `patch` release with no human action,
 so shipped changes reach users the same day instead of piling up. The gate is
-`scripts/release-gate-decision.ts`, and it is self-limiting:
+`scripts/release-policy.ts`, and it is self-limiting:
 
 - `release.ts` moves `## [Unreleased]` into the new version section when it cuts
   the release, so the `chore: bump version to X` commit it pushes has nothing
@@ -127,7 +127,9 @@ itself.
    The newer main SHA gets a fresh cut only after its own CI and Checks runs pass.
 7. Dispatch `checks.yml` at the immutable tag with a unique correlation token.
    Verify the newly created run carries that token, targets the bump SHA, and
-   passes. Only then dispatch `ci.yml` at the same tag.
+   passes. Dispatch `ci.yml` at the same tag, correlate and wait for that exact
+   run, then verify the final asset manifest, published state, and
+   `releases/latest` tag before the Release workflow succeeds.
 
 ## What CI does with the tag
 

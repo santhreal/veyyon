@@ -374,8 +374,9 @@ the root catalog, Rust workspace, native sentinel, lockfiles, and changelogs; ru
 checks; commits `chore: bump version to X.Y.Z`; and atomically pushes `main` plus the
 tag. If main advanced, the push fails without rebasing and the newer SHA gets its own
 cut after its own gates pass. The workflow then dispatches `checks.yml` at the
-immutable tag, verifies the bump SHA is green, and dispatches `ci.yml` for binaries,
-the GitHub release, and production site deployment.
+immutable tag, verifies the bump SHA is green, dispatches and waits for `ci.yml`,
+and verifies the complete published asset manifest and `releases/latest` before
+reporting success.
 
 For an explicitly approved major, minor, or exact-version cut, run
 `bun run release [major|minor|patch|X.Y.Z]`. With no argument, the command requests

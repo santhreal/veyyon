@@ -16,7 +16,7 @@ import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
 import { getBinaryName } from "../packages/coding-agent/src/cli/update-cli";
 import { targets } from "./ci-release-build-binaries";
-import { REQUIRED_RELEASE_ASSET_NAMES } from "./release-gate-decision";
+import { REQUIRED_RELEASE_ASSET_NAMES } from "./release-policy";
 
 const ciYamlPath = path.join(import.meta.dir, "..", ".github", "workflows", "ci.yml");
 const ciYaml = await Bun.file(ciYamlPath).text();
