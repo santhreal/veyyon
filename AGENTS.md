@@ -309,31 +309,26 @@ Location: `packages/*/CHANGELOG.md` (per package).
 
 ## Continuous Integration
 
-Two workflows run in `.github/workflows/`. Know which one gates your change.
+Two public workflows run in `.github/workflows/`. Both gate changes and releases.
 
-### `checks.yml` — the public gate (every push to `main` + every PR)
+### `checks.yml` — the fast public gate (every push to `main` + every PR)
 
-Runs on GitHub-hosted runners so it works on the public repo without the self-hosted
-runners the release pipeline needs. Three jobs, all of which must be green:
-
-1. **Lint & type check** — `bun run check:ts`, then `bun run lint:ts`, then `bun run check:tools` (formatting and import order).
-2. **TypeScript tests** — `bun run ci:test:ts:workspace`.
-3. **Secret scan (keyhog)** — pinned keyhog binary scans the tree; fails on any *new*
-   secret (the committed `.keyhog-baseline.json` suppresses known public OAuth client
-   IDs and test fixtures). It gates on keyhog's exit-code semantics, not a binary
-   exclude-list — see the header comment in `checks.yml`.
+Runs on GitHub-hosted runners and validates workspace type checking and linting,
+changelog coherence, changed-suite global-state isolation, and the TypeScript test
+suite.
 
 To keep it green before you push: run `bun run check` and the relevant test bucket
-locally. Never weaken a test or the baseline to pass (Laws 6 & 9).
+locally. Never weaken a test to pass (Laws 6 & 9).
 
-### `ci.yml` — the build + release pipeline (`main` pushes and release tags)
+### `ci.yml` — the public build + runtime gate (`main`, PRs, and release dispatches)
 
 Runs entirely on GitHub-hosted runners (`ubuntu-22.04`, `macos-14`, and the OS
-matrix — no self-hosted dependency). On an ordinary `main` push it builds/caches the
-native addons and runs the full test matrix. When `HEAD` carries a `v*` release tag
-(see below), the same run additionally builds the per-platform binaries, then
-publishes: the **GitHub release** (all binaries + `.sha256`) and redeploys
-`veyyon.dev/changelog`. That is the whole published surface — see Distribution.
+matrix — no self-hosted dependency). It compiles the product and native addons,
+runs the full test matrix, and exercises the installers and CLI runtime. When
+dispatched at a `v*` release tag (see below), the same workflow additionally builds
+the per-platform binaries, verifies their SHA-256 sidecars and runtime smoke tests,
+then publishes the **GitHub release** and redeploys `veyyon.dev/changelog`. That is
+the whole published surface — see Distribution.
 
 ## Distribution — GitHub only (no npm, ever; no cargo yet)
 

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Added
 
 - `GeneratedDict.breakEvenTurns` says how many turns a dictionary has to survive before it pays for itself. `estimatedSavings` alone reads as free money and is not: the dictionary is INPUT, carried on every turn of the session, while the savings are OUTPUT produced once per emission. A dictionary that saves 3,202 output tokens while carrying 2.4M input tokens across a session is a 751:1 loss, and nothing in the old result said so. `breakEvenTurns` divides the two, priced at `DEFAULT_OUTPUT_TO_INPUT_PRICE_RATIO`, and is `Infinity` when the dictionary is empty.

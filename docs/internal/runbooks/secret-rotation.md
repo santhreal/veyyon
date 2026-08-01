@@ -4,27 +4,6 @@ Production secrets and where they live. Rotate on a schedule and immediately on 
 Never commit secret values; local secrets live in `/credentials/.env` (Linux) / `C:\credentials\.env`
 (Windows).
 
-## Apple signing secrets (macOS release)
-
-Five repo secrets gate macOS signing/notarization. Missing or invalid ones fail the release's signing
-step (see [macOS signing](../macos-signing-notarization.md)).
-
-| Secret | What it is |
-| --- | --- |
-| `APPLE_CERTIFICATE_P12` | base64 of the Developer ID Application `.p12` (cert + key). |
-| `APPLE_CERTIFICATE_PASSWORD` | password set when exporting the `.p12`. |
-| `APPLE_API_KEY_ID` | App Store Connect API Key ID. |
-| `APPLE_API_ISSUER_ID` | App Store Connect API Issuer ID. |
-| `APPLE_API_KEY` | base64 of the App Store Connect `.p8` key. |
-
-Rotate:
-
-1. Regenerate the credential in the Apple developer portal (new `.p12` or new API key).
-2. Re-run `scripts/ci-macos-upload-secrets.sh <dir>`: it validates the files (opens the `.p12` with
-   the password, sanity-checks the `.p8`) and pipes each value to `gh secret set`. Dry-run first with
-   `--dry-run`.
-3. Revoke the old credential in the portal only after a test release signs cleanly.
-
 ## Cloudflare Pages token (website / install script)
 
 The website and `get.veyyon.dev` deploy with `CLOUDFLARE_API_TOKEN` (kept in `/credentials/.env` as

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Added
 
 - `DIALECTS` is exported and `Dialect` is derived from it. The union was the only statement of the set, so nothing could enumerate dialects at runtime and a check that wanted to ask whether every dialect ships a format guide had to write the twelve names out a second time.

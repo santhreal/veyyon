@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-31
+
 ### Changed
 
 - The session parser takes its service-tier helpers from `@veyyon/ai/types`, the module that declares them, rather than from the `@veyyon/ai` entry point. This package reads session files off disk; it has no use for a provider, and it was loading all 363 modules of one to normalize a tier string. `parser.ts` went from 366 modules to 103, and `db.ts` and `sync-worker.ts` followed it down to 105 and 104.
