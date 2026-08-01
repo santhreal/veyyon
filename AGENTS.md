@@ -379,11 +379,20 @@ immutable tag, verifies the bump SHA is green, dispatches and waits for `ci.yml`
 and verifies the complete published asset manifest and `releases/latest` before
 reporting success.
 
-For an explicitly approved major, minor, or exact-version cut, run
-`bun run release [major|minor|patch|X.Y.Z]`. With no argument, the command requests
-a patch release. It verifies the local release candidate and designated GitHub
-identity, then dispatches the Release workflow. No build, version bump, tag, or
-publication depends on the maintainer workstation.
+For an explicitly approved major, minor, or exact-version cut, dispatch the Release
+workflow. There is no repository release command and no release shell script: the
+release ceremony runs only in GitHub Actions, from the Actions tab or from `gh`.
+
+```sh
+gh workflow run release.yml \
+  -f version=minor \
+  -f expected_sha="$(git rev-parse origin/main)"
+```
+
+`expected_sha` is the exact `origin/main` SHA you validated. The workflow refuses to
+cut anything unless CI and Checks are both green for that precise SHA, so a stale or
+guessed value fails the gate rather than releasing the wrong tree. Nothing about a
+build, version bump, tag, or publication depends on a maintainer workstation.
 
 ### The veyyon release line starts at `1.0.0`
 

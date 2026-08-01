@@ -81,25 +81,26 @@ A tag whose CI is still running is left alone, and a tag whose CI SUCCEEDED with
 producing a release is reported rather than cut over: that is a publish step that
 claimed success, and a new version would bury it.
 
-**Manual (an explicit version).** Run the repository release command with
-`major`, `minor`, `patch`, or an explicit `x.y.z`. With no argument, it requests
-a patch release:
+**Manual (an explicit version).** Dispatch the Release workflow with `major`,
+`minor`, `patch`, or an explicit `x.y.z`. There is no repository release command
+and no release shell script; the ceremony runs only in GitHub Actions, either from
+the Actions tab or through `gh`:
 
 ```sh
-bun run release
-bun run release minor
-bun run release 2.0.0
+gh workflow run release.yml \
+  -f version=patch \
+  -f expected_sha="$(git rev-parse origin/main)"
 ```
 
-The command requires a clean `main` checkout synchronized with `origin/main` and
-the `santhsecurity` GitHub account active in `gh`. It only dispatches the remote
-Release workflow. The workflow proves CI and Checks are green for that exact main
-SHA before it changes a version, creates a commit, tags, or publishes. The gate
-exports that proved SHA. The cutter checks out the immutable commit and
+`expected_sha` is the exact `origin/main` SHA you validated, and it is the whole
+safety story for a manual cut. The workflow proves CI and Checks are green for that
+precise SHA before it changes a version, creates a commit, tags, or publishes, so a
+stale or guessed SHA fails the gate instead of releasing a tree nobody checked. The
+gate exports that proved SHA. The cutter checks out the immutable commit and
 materializes it as its local `main` branch, so a later `main` update cannot enter
 the release after the evidence was collected. The workflow uses the
 repository-scoped `GITHUB_TOKEN`; no workstation credential performs the release
-itself.
+itself, and dispatching requires the `santhsecurity` account active in `gh`.
 
 `scripts/release.ts` runs, in order:
 
