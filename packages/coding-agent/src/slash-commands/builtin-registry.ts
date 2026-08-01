@@ -50,7 +50,7 @@ import { formatDurationCoarse } from "./helpers/format";
 import { handleMcpAcp } from "./helpers/mcp";
 import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usage } from "./helpers/parse";
 import { describeRedeemOutcome, type ResetUsageAccount, toResetUsageAccounts } from "./helpers/reset-usage";
-import { maskedPromptTitle, runSecretCommandForSurface } from "./helpers/secret";
+import { maskedPromptTitle, namePromptTitle, runSecretCommandForSurface } from "./helpers/secret";
 import { handleSshAcp } from "./helpers/ssh";
 import { handleTodoAcp } from "./helpers/todo";
 import { buildUsageReportText } from "./helpers/usage-report";
@@ -797,6 +797,9 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 					agentDir: getAgentDir(),
 					promptForValue: name =>
 						ctx.showHookInput(maskedPromptTitle(name), undefined, { mask: DEFAULT_MASK_CHAR }),
+					// Deliberately unmasked: a name is not a credential, and the operator seeing this
+					// field echo while the next one hides is what distinguishes the two questions.
+					promptForName: () => ctx.showHookInput(namePromptTitle()),
 				});
 				if (!outcome.cancelled) ctx.showStatus(outcome.message);
 			} catch (error) {

@@ -25,7 +25,7 @@ import type { AgentOutputManager } from "../task/output-manager";
 import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/subagent-settings";
 import { canSpawnAtDepth } from "../task/types";
 import type { ConfiguredThinkingLevel } from "../thinking";
-import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
+import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
 import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
 import type { EventBus } from "../utils/event-bus";
 import type { WorkspaceTree } from "../workspace-tree";
@@ -33,6 +33,16 @@ import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } f
 import type { CheckpointState, CompletedRewindState } from "./checkpoint";
 import { resolveEvalBackends } from "./eval-backends";
 import { isIrcEnabled } from "./irc-enabled";
+import {
+	augmentRequestedToolNames,
+	type BuiltinToolPermissionInputs,
+	countToolsForAutoDiscovery,
+	isBuiltinToolAllowed,
+	resolveEssentialToolNames,
+	resolveEvalToolAvailability,
+	selectBaseToolNames,
+	withYieldToolAppended,
+} from "./loading";
 import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
 import type { TodoPhase } from "./todo";
@@ -47,6 +57,13 @@ export type { LspStartupServerInfo } from "../lsp";
 export type { BashToolDetails, BashToolInput } from "./bash";
 export type { GlobToolDetails, GlobToolInput } from "./glob";
 export type { GrepToolDetails, GrepToolInput } from "./grep";
+// Tool-loading rules now live in `./loading`. Re-exported here because `@veyyon/coding-agent/tools`
+// is the documented import path for them and the SDK plus several suites use it.
+export {
+	type BuiltinToolLoadMode,
+	DEFAULT_ESSENTIAL_TOOL_NAMES,
+	filterInitialToolsForDiscoveryAll,
+} from "./loading";
 export type { ReadToolDetails, ReadToolInput } from "./read";
 export type { WriteToolInput } from "./write";
 
@@ -381,62 +398,17 @@ export interface ToolSession {
 
 export type ToolFactory = (session: ToolSession) => Tool | null | Promise<Tool | null>;
 
-export type BuiltinToolLoadMode = "essential" | "discoverable";
-
-/** Default essential tool names when tools.essentialOverride is empty. */
-export const DEFAULT_ESSENTIAL_TOOL_NAMES: readonly string[] = [
-	TOOL.read,
-	TOOL.bash,
-	TOOL.launch,
-	TOOL.edit,
-	TOOL.write,
-	TOOL.glob,
-	TOOL.eval,
-] as const;
-
 /**
  * Resolve the active essential built-in tool names from settings.
- * Returns `tools.essentialOverride` if non-empty (filtered to known built-ins),
- * otherwise `DEFAULT_ESSENTIAL_TOOL_NAMES`.
+ *
+ * Settings adapter for {@link resolveEssentialToolNames}; the rule lives in `./loading/policy`
+ * with the rest of the tool-loading decisions. Kept at this name and signature because the SDK
+ * and `test/tool-discovery/initial-tools.test.ts` both call it.
  */
 export function computeEssentialBuiltinNames(settings: Settings): string[] {
-	const override = settings.get("tools.essentialOverride") ?? [];
-	const cleaned = normalizeToolNames(override.map(name => name.trim()).filter(Boolean));
-	if (cleaned.length > 0) {
-		return cleaned.filter(name => name in BUILTIN_TOOLS);
-	}
-	return [...DEFAULT_ESSENTIAL_TOOL_NAMES];
-}
-
-/**
- * Filter the initial active tool set when `tools.discoveryMode === "all"`.
- *
- * Non-essential discoverable built-ins are hidden — the model rediscovers them
- * via `search_tool_bm25` and activates them on demand. A tool survives hiding
- * when it is essential, explicitly requested, restored from a prior selection,
- * or required by a forced tool_choice feature (`forceActive`). The last case is
- * load-bearing: a named tool_choice (e.g. the eager `todo` prelude) must
- * reference a tool present in the request, or the provider rejects it with 400.
- */
-export function filterInitialToolsForDiscoveryAll(
-	initialToolNames: string[],
-	opts: {
-		loadModeOf: (name: string) => BuiltinToolLoadMode | undefined;
-		essentialNames: ReadonlySet<string>;
-		explicitlyRequested: ReadonlySet<string>;
-		restored: ReadonlySet<string>;
-		forceActive: ReadonlySet<string>;
-	},
-): string[] {
-	return initialToolNames.filter(name => {
-		const loadMode = opts.loadModeOf(name);
-		if (!loadMode) return true; // not a built-in — leave MCP/custom/extension to existing logic
-		if (loadMode === "essential") return true;
-		if (opts.essentialNames.has(name)) return true;
-		if (opts.explicitlyRequested.has(name)) return true;
-		if (opts.restored.has(name)) return true;
-		if (opts.forceActive.has(name)) return true;
-		return false;
+	return resolveEssentialToolNames({
+		override: settings.get("tools.essentialOverride"),
+		isBuiltinName: name => name in BUILTIN_TOOLS,
 	});
 }
 
@@ -510,12 +482,24 @@ export type ToolName = BuiltinToolName;
 export async function createTools(session: ToolSession, toolNames?: string[]): Promise<Tool[]> {
 	const includeYield = session.requireYieldTool === true;
 	const enableLsp = session.enableLsp ?? true;
-	let requestedTools = toolNames && toolNames.length > 0 ? normalizeToolNames(toolNames) : undefined;
+	const taskDepth = session.taskDepth ?? 0;
+	const memoryBackend = session.settings.get("memory.backend") ?? "";
 	const goalEnabled = session.settings.get("goal.enabled");
 	const goalModeActive = goalEnabled && session.getGoalModeState?.()?.enabled === true;
-	if (goalModeActive && requestedTools && !requestedTools.includes(TOOL.goal)) {
-		requestedTools = [...requestedTools, TOOL.goal];
-	}
+	// An EXPLICIT whitelist gets widened with the tools its entries imply (see
+	// `./loading/policy`). With no whitelist there is nothing to widen: the default path below
+	// enumerates every built-in and filters it by permission instead.
+	let requestedTools =
+		toolNames && toolNames.length > 0
+			? augmentRequestedToolNames(normalizeToolNames(toolNames), {
+					goalModeActive,
+					astGrepEnabled: session.settings.get("astGrep.enabled"),
+					astEditEnabled: session.settings.get("astEdit.enabled"),
+					memoryBackend,
+					autolearnEnabled: session.settings.get("autolearn.enabled"),
+					isTopLevelSession: taskDepth === 0,
+				})
+			: undefined;
 	const backends = resolveEvalBackends(session);
 	const allowPython = backends.python;
 	const allowJs = backends.js;
@@ -567,50 +551,15 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		}
 	}
 
-	const effectivePythonAllowed = allowPython && pythonAvailable;
-	const effectiveRubyAllowed = allowRuby && rubyAvailable;
-	const effectiveJuliaAllowed = allowJulia && juliaAvailable;
-	// Eval is exposed whenever any backend is reachable. A backend may be
-	// unreachable, in which case eval dispatches exclusively to the others.
-	const allowEval = effectivePythonAllowed || allowJs || effectiveRubyAllowed || effectiveJuliaAllowed;
-
-	// Auto-include AST counterparts when their text-based sibling is present
-	if (requestedTools) {
-		if (
-			requestedTools.includes(TOOL.grep) &&
-			!requestedTools.includes(TOOL.ast_grep) &&
-			session.settings.get("astGrep.enabled")
-		) {
-			requestedTools.push(TOOL.ast_grep);
-		}
-		if (
-			requestedTools.includes(TOOL.edit) &&
-			!requestedTools.includes(TOOL.ast_edit) &&
-			session.settings.get("astEdit.enabled")
-		) {
-			requestedTools.push(TOOL.ast_edit);
-		}
-		if (["hindsight", "mnemopi"].includes(session.settings.get("memory.backend") ?? "")) {
-			for (const name of [TOOL.recall, TOOL.retain, TOOL.reflect]) {
-				if (!requestedTools.includes(name)) requestedTools.push(name);
-			}
-		}
-		// Auto-learn tools are gated by `autolearn.enabled` but, like the memory
-		// tools above, must also be force-included into an explicit requestedTools
-		// list so a restricted top-level session whose controller/guidance is
-		// active still exposes the tools the nudge points at. Gated to top-level
-		// (taskDepth 0): the controller only runs there, so a subagent's explicit
-		// tool whitelist must never be silently widened with write-capable tools.
-		if (session.settings.get("autolearn.enabled") && (session.taskDepth ?? 0) === 0) {
-			if (!requestedTools.includes(TOOL.manage_skill)) requestedTools.push(TOOL.manage_skill);
-			if (
-				["hindsight", "mnemopi", "local"].includes(session.settings.get("memory.backend") ?? "") &&
-				!requestedTools.includes(TOOL.learn)
-			) {
-				requestedTools.push(TOOL.learn);
-			}
-		}
-	}
+	const allowEval = resolveEvalToolAvailability({
+		pythonAllowed: allowPython,
+		jsAllowed: allowJs,
+		rubyAllowed: allowRuby,
+		juliaAllowed: allowJulia,
+		pythonAvailable,
+		rubyAvailable,
+		juliaAvailable,
+	});
 	// Resolve effective tool discovery mode.
 	// tools.discoveryMode controls the new modes; mcp.discoveryMode remains a back-compat alias for "mcp-only".
 	const effectiveDiscoveryMode = resolveEffectiveToolDiscoveryMode(
@@ -620,67 +569,55 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	const discoveryActive = effectiveDiscoveryMode !== "off";
 
 	const allTools: Record<string, ToolFactory> = { ...BUILTIN_TOOLS, ...HIDDEN_TOOLS };
-	const isToolAllowed = (name: string) => {
-		if (name === TOOL.goal) return goalEnabled && goalModeActive;
-		if (name === TOOL.lsp) return enableLsp && session.settings.get("lsp.enabled");
-		if (name === TOOL.bash) return session.settings.get("bash.enabled");
-		if (name === TOOL.launch) return session.settings.get("launch.enabled");
-		if (name === TOOL.eval) return allowEval;
-		if (name === TOOL.debug) return session.settings.get("debug.enabled");
-		if (name === TOOL.todo) return !includeYield && session.settings.get("todo.enabled");
-		if (name === TOOL.glob) return session.settings.get("glob.enabled");
-		if (name === TOOL.grep) return session.settings.get("grep.enabled");
-		if (name === TOOL.github) return session.settings.get("github.enabled");
-		if (name === TOOL.ast_grep) return session.settings.get("astGrep.enabled");
-		if (name === TOOL.ast_edit) return session.settings.get("astEdit.enabled");
-		if (name === TOOL.inspect_image) return session.settings.get("inspect_image.enabled");
-		if (name === TOOL.web_search) return session.settings.get("web_search.enabled");
-		// search_tool_bm25 is allowed when either legacy mcp.discoveryMode or new tools.discoveryMode is active.
-		if (name === TOOL.search_tool_bm25) return discoveryActive;
-		if (name === TOOL.ask) return session.settings.get("ask.enabled");
-		if (name === TOOL.browser) return session.settings.get("browser.enabled");
-		if (name === TOOL.checkpoint || name === TOOL.rewind) return session.settings.get("checkpoint.enabled");
-		if (name === TOOL.irc) return isIrcEnabled(session.settings, session.taskDepth ?? 0, session.maxNestedSpawnDepth);
-		if (name === TOOL.retain || name === TOOL.recall || name === TOOL.reflect) {
-			return ["hindsight", "mnemopi"].includes(session.settings.get("memory.backend") ?? "");
-		}
-		if (name === TOOL.manage_skill)
-			return session.settings.get("autolearn.enabled") && (session.taskDepth ?? 0) === 0;
-		if (name === TOOL.learn) {
-			return (
-				session.settings.get("autolearn.enabled") &&
-				(session.taskDepth ?? 0) === 0 &&
-				["hindsight", "mnemopi", "local"].includes(session.settings.get("memory.backend") ?? "")
-			);
-		}
-		if (name === TOOL.task) {
-			// `subagent.delegation: off` means this session does not delegate at all,
-			// so the tool itself is absent rather than present-but-discouraged. A
-			// prompt that says "do not spawn subagents" while still shipping the tool
-			// description spends tokens describing something the operator turned off.
-			if (!delegationEnabled(session.settings)) return false;
-			return canSpawnAtDepth(
-				resolveSessionMaxNestedSpawnDepth(session.settings, session.maxNestedSpawnDepth),
-				session.taskDepth ?? 0,
-			);
-		}
-		return true;
+	// Every input the permission table reads, gathered once. The table itself is
+	// `isBuiltinToolAllowed` in `./loading/policy` — this is the only place that turns
+	// settings and session shape into its arguments.
+	const permissionInputs: BuiltinToolPermissionInputs = {
+		goalEnabled,
+		goalModeActive,
+		enableLsp,
+		lspEnabled: session.settings.get("lsp.enabled"),
+		bashEnabled: session.settings.get("bash.enabled"),
+		launchEnabled: session.settings.get("launch.enabled"),
+		evalAllowed: allowEval,
+		debugEnabled: session.settings.get("debug.enabled"),
+		requireYieldTool: includeYield,
+		todoEnabled: session.settings.get("todo.enabled"),
+		globEnabled: session.settings.get("glob.enabled"),
+		grepEnabled: session.settings.get("grep.enabled"),
+		githubEnabled: session.settings.get("github.enabled"),
+		astGrepEnabled: session.settings.get("astGrep.enabled"),
+		astEditEnabled: session.settings.get("astEdit.enabled"),
+		inspectImageEnabled: session.settings.get("inspect_image.enabled"),
+		webSearchEnabled: session.settings.get("web_search.enabled"),
+		discoveryActive,
+		askEnabled: session.settings.get("ask.enabled"),
+		browserEnabled: session.settings.get("browser.enabled"),
+		checkpointEnabled: session.settings.get("checkpoint.enabled"),
+		ircEnabled: isIrcEnabled(session.settings, taskDepth, session.maxNestedSpawnDepth),
+		memoryBackend,
+		autolearnEnabled: session.settings.get("autolearn.enabled"),
+		isTopLevelSession: taskDepth === 0,
+		delegationEnabled: delegationEnabled(session.settings),
+		canSpawnAtDepth: canSpawnAtDepth(
+			resolveSessionMaxNestedSpawnDepth(session.settings, session.maxNestedSpawnDepth),
+			taskDepth,
+		),
 	};
-	if (includeYield && requestedTools && !requestedTools.includes(TOOL.yield)) {
-		requestedTools.push(TOOL.yield);
+	const isToolAllowed = (name: string): boolean => isBuiltinToolAllowed(name, permissionInputs);
+	// AFTER the discovery-mode count above, deliberately — see `withYieldToolAppended`.
+	if (includeYield && requestedTools) {
+		requestedTools = withYieldToolAppended(requestedTools);
 	}
 
-	const filteredRequestedTools = requestedTools?.filter(name => name in allTools && isToolAllowed(name));
-	const baseEntries =
-		filteredRequestedTools !== undefined
-			? filteredRequestedTools.filter(name => name !== TOOL.resolve).map(name => [name, allTools[name]] as const)
-			: [
-					...Object.entries(BUILTIN_TOOLS)
-						.filter(([name]) => isToolAllowed(name))
-						.map(([name, factory]) => [name, factory] as const),
-					...(includeYield ? ([[TOOL.yield, HIDDEN_TOOLS.yield]] as const) : []),
-					...(goalModeActive ? ([[TOOL.goal, HIDDEN_TOOLS.goal]] as const) : []),
-				];
+	const baseEntries = selectBaseToolNames({
+		requestedToolNames: requestedTools,
+		isKnownToolName: name => name in allTools,
+		isAllowed: isToolAllowed,
+		builtinToolNames: Object.keys(BUILTIN_TOOLS),
+		requireYieldTool: includeYield,
+		goalModeActive,
+	}).map(name => [name, allTools[name]] as const);
 
 	const activeToolNames = new Set(baseEntries.map(([name]) => name));
 	if (session.setActiveToolNames) {

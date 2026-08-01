@@ -945,7 +945,17 @@ export class WorkerCore {
 				signal.removeEventListener("abort", onCancel);
 			}
 		} catch (error) {
-			this.#transport.send({ type: "result", id: msg.id, ok: false, error: errorPayload(error) });
+			// The run's own output goes back WITH the failure. `output.finish()` drains whatever
+			// `display()` produced before the throw, and those lines are usually the only evidence
+			// of why it threw; dropping them left a timed-out cell reporting a bare deadline and
+			// nothing that explains it. Screenshots ride along for the same reason.
+			this.#transport.send({
+				type: "result",
+				id: msg.id,
+				ok: false,
+				error: errorPayload(error),
+				partial: { displays: output.finish(), screenshots },
+			});
 		} finally {
 			cellTimeout.cancel();
 			if (this.#active?.id === msg.id) this.#active = null;

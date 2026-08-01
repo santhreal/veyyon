@@ -41,6 +41,17 @@ export interface SecretCommandPort {
 	 * `--from-env`", which is what {@link runSecretCommand} does.
 	 */
 	promptForValue?: (name: string | undefined) => Promise<string | undefined>;
+	/**
+	 * Ask the operator what to call the secret, before the masked field opens. Optional input:
+	 * empty means "generate one for me".
+	 *
+	 * THIS FIELD IS NOT MASKED, and that is the point. A name is not a credential, so echoing it
+	 * is safe, and the visible difference between this field and the hidden one that follows is
+	 * what tells the operator which question they are answering. A single masked prompt had to
+	 * carry that distinction in its wording alone, and wording lost: "Paste the secret" was read
+	 * as "name the secret", and the name was stored as the credential.
+	 */
+	promptForName?: () => Promise<string | undefined>;
 }
 
 /** Result of running the command, for the surface to render. */
@@ -89,6 +100,21 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		: undefined;
 
 	if (needsValuePrompt(request) && port.promptForValue !== undefined) {
+		// THE NAME IS ASKED FIRST, in its own visible field, when the command did not carry one.
+		// One prompt cannot ask two questions: the single masked field had to mean "value" by
+		// wording alone, and an operator who read it as "name" stored the name as the credential
+		// with nothing on screen to contradict them. Splitting the questions makes the mistake
+		// unavailable rather than merely discouraged, and the unmasked field is self-evidently not
+		// the one that wants a credential.
+		if (request.subcommand === "add" && request.name === undefined && port.promptForName !== undefined) {
+			const typedName = await port.promptForName();
+			if (typedName === undefined) return { message: "Cancelled. Nothing was stored.", cancelled: true };
+			// Empty keeps the generated name: the field is optional, and someone who just wants to
+			// stash a credential should not be forced to invent a label for it.
+			// `normaliseSecretName` throws on an unusable one, which still happens BEFORE the masked
+			// field opens, so a bad name never costs the operator a live credential.
+			if (typedName.trim().length > 0) request.name = normaliseSecretName(typedName.trim());
+		}
 		// The name was normalised before settings validation and before the prompt: the title must
 		// teach the placeholder the model will actually see, and every unusable input must fail
 		// before the operator pastes a live credential.
@@ -225,10 +251,33 @@ function tellTheAgent(port: SecretCommandPort, text: string): void {
 	port.sessionManager.appendMessage(message);
 }
 
-/** Prompt title for the masked field. States what is about to happen to what is typed. */
+/**
+ * Prompt title for the VISIBLE name field, shown before the masked one.
+ *
+ * Says the field is optional and says what happens if you leave it empty, so nobody has to invent
+ * a label to store a credential. It names the placeholder form too, because the name chosen here
+ * is the token the model will write.
+ */
+export function namePromptTitle(): string {
+	return "Name this secret (optional). The model spends it by writing #NAME#. Leave empty to have one generated.";
+}
+
+/**
+ * Prompt title for the masked field. States what is about to happen to what is typed.
+ *
+ * BOTH FORMS SAY "VALUE" because the field is masked: the operator cannot see what they typed, so
+ * a title they can misread is the last thing standing between them and storing the wrong string.
+ * "Paste the secret" was read as "name the secret", and `/secret add` with no name then stored the
+ * NAME as the credential under an invented `SECRET_1`. Nothing downstream can catch that: a name
+ * is a perfectly well-formed secret value, and a shape heuristic would refuse real credentials
+ * (`AKIAIOSFODNN7EXAMPLE` is a valid AWS key id and looks exactly like a name).
+ *
+ * The structural fix is the separate visible name field that now runs first; this wording is the
+ * second line of defence for surfaces that only implement the masked prompt.
+ */
 export function maskedPromptTitle(name: string | undefined): string {
 	return name === undefined
-		? "Paste the secret. It is hidden as you type and stored encrypted."
+		? "Paste the secret value, not a name. A name is generated for you. It is hidden as you type and stored encrypted."
 		: `Paste the value for ${name}. It is hidden as you type and stored encrypted.`;
 }
 

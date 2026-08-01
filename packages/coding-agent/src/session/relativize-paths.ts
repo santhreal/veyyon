@@ -15,6 +15,7 @@
 
 import type { AssistantMessage, Message, TextContent, ToolResultMessage } from "@veyyon/ai";
 import { escapeRegExp } from "@veyyon/utils";
+import { SET_CWD_TOOL_NAME } from "../tools/reroot-hint";
 
 export interface RelativizeResult {
 	messages: Message[];
@@ -151,6 +152,15 @@ function relativizeMessage(
 		return relativizeAssistant(message, roots, compiled, state);
 	}
 	if (message.role === "toolResult") {
+		// The ONE result this optimization must never touch. `set_cwd` reports the move as
+		// `Moved cwd: <from> → <to>`, and both endpoints are roots by construction: the old
+		// cwd is already a root and the new one is appended as this call's target. Rewriting
+		// them collapses the sentence to `Moved cwd: . → ..`, which names neither end and
+		// reads as if the session moved to a parent directory. The model then re-derives its
+		// own cwd with extra tool calls, or acts on the wrong one — costing far more than the
+		// prefix bytes saved. set-cwd.ts resolves both paths to absolute precisely so this
+		// message cannot degenerate; the exemption is what makes that hold end to end.
+		if (message.toolName === SET_CWD_TOOL_NAME) return message;
 		const result: ToolResultMessage = message;
 		let content: ToolResultMessage["content"] | undefined;
 		for (let i = 0; i < result.content.length; i++) {

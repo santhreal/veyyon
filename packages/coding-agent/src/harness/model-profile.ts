@@ -11,6 +11,7 @@ import { errorMessage, getAgentDir, isMissingPath, isRecord, logger, once } from
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
 import { type PromptSectionName, promptSectionNames } from "../system-prompt-builder/prompt-sections";
+import { applyHarnessToolAllowlist } from "../tools/loading";
 
 export interface HarnessModelProfile {
 	/** When false, schema repair is skipped for this model. Default: true. */
@@ -203,14 +204,18 @@ export function resolvePromptSectionOrderForModel(
 	return resolveHarnessProfileForModel(settings, model)?.promptSectionOrder;
 }
 
-/** Apply optional per-model tool allowlist from harness profile. */
+/**
+ * Apply the optional per-model tool allowlist from a harness profile.
+ *
+ * Settings adapter: the filter itself is {@link applyHarnessToolAllowlist} in
+ * `tools/loading/policy.ts`, where the SDK's initial-active-set pipeline applies it as its
+ * final stage. Kept here at this signature for callers (and its own suite) that have a
+ * `Settings` and a `Model` rather than a resolved allowlist.
+ */
 export function filterToolsByHarnessProfile(
 	toolNames: readonly string[],
 	settings: Settings,
 	model: Model | undefined,
 ): string[] {
-	const allowlist = resolveHarnessProfileForModel(settings, model)?.tools;
-	if (!allowlist || allowlist.length === 0) return [...toolNames];
-	const allowed = new Set(allowlist);
-	return toolNames.filter(name => allowed.has(name));
+	return applyHarnessToolAllowlist(toolNames, resolveHarnessProfileForModel(settings, model)?.tools);
 }

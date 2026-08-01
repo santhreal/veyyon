@@ -20,7 +20,14 @@ import {
 	waitForBrowserRun,
 } from "../run-cancellation";
 import { cloneSafe, RunOutput } from "../run-output";
-import type { Observation, ReadyInfo, RunResultOk, ScreenshotResult, SessionSnapshot } from "../tab-protocol";
+import type {
+	BrowserRunError,
+	Observation,
+	ReadyInfo,
+	RunResultOk,
+	ScreenshotResult,
+	SessionSnapshot,
+} from "../tab-protocol";
 import {
 	type CmuxEvalResult,
 	type CmuxGeometry,
@@ -1518,6 +1525,14 @@ export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promi
 			cancelRejection,
 		]);
 		return { displays: output.finish(), returnValue: cloneSafe(returnValue), screenshots };
+	} catch (error) {
+		// Parity with the worker backend: a run that threw still reports what it displayed first.
+		// This backend runs in-process and rethrows straight to the caller, so without this the
+		// cmux surface silently lost output the worker surface now keeps.
+		if (error instanceof Error) {
+			(error as BrowserRunError).partialRunOutput = { displays: output.finish(), screenshots };
+		}
+		throw error;
 	} finally {
 		runTimeout.cancel();
 		signal.removeEventListener("abort", onAbort);

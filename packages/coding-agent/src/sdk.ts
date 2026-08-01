@@ -112,7 +112,7 @@ import {
 	setActiveSkills,
 } from "./extensibility/skills";
 import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal } from "./extensibility/slash-commands";
-import { filterToolsByHarnessProfile, resolvePromptSectionOrderForModel } from "./harness/model-profile";
+import { resolveHarnessProfileForModel, resolvePromptSectionOrderForModel } from "./harness/model-profile";
 import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
 import { type JsonWithOptionalFields, mapJsonStrings } from "./json-transform";
@@ -216,12 +216,11 @@ import {
 	computeEssentialBuiltinNames,
 	createTools,
 	type DeferredDiagnosticsEntry,
-	filterInitialToolsForDiscoveryAll,
 	HIDDEN_TOOLS,
 	type Tool,
 	type ToolSession,
 } from "./tools";
-import { normalizeToolName, normalizeToolNames, TOOL } from "./tools/builtin-names";
+import { normalizeToolNames, TOOL } from "./tools/builtin-names";
 import { ToolContextStore } from "./tools/context";
 import {
 	getImageGenTools,
@@ -229,6 +228,7 @@ import {
 	isImageProviderPreference,
 	setPreferredImageProvider,
 } from "./tools/image-gen";
+import { resolveDiscoveryAllForceActive, resolveInitialActiveToolNames } from "./tools/loading";
 import { wrapToolWithMetaNotice } from "./tools/output-meta";
 import { queueResolveHandler } from "./tools/resolve";
 import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search-tool-bm25";
@@ -3607,13 +3607,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const defaultInactiveToolNames = new Set(
 			registeredTools.filter(tool => tool.definition.defaultInactive).map(tool => tool.definition.name),
 		);
-		const requestedActiveToolNames = normalizedRequested.filter(name => name !== TOOL.goal);
-		const initialRequestedActiveToolNames = options.toolNames
-			? requestedActiveToolNames
-			: requestedActiveToolNames.filter(name => !defaultInactiveToolNames.has(name));
-		const explicitlyRequestedMCPToolNames = options.toolNames
-			? requestedActiveToolNames.filter(name => name.startsWith("mcp__"))
-			: [];
 		const discoveryDefaultServers = new Set(
 			(settings.get("mcp.discoveryDefaultServers") ?? []).map(serverName => serverName.trim()).filter(Boolean),
 		);
@@ -3623,76 +3616,45 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					discoveryDefaultServers,
 				)
 			: [];
-		const normalizeRenamedBuiltinToolName = normalizeToolName;
-		let initialSelectedMCPToolNames: string[] = [];
-		let defaultSelectedMCPToolNames: string[] = [];
-		let initialToolNames = [...initialRequestedActiveToolNames];
-		if (mcpDiscoveryEnabled) {
-			const restoredSelectedMCPToolNames = existingSession.selectedMCPToolNames
-				.map(normalizeRenamedBuiltinToolName)
-				.filter(name => toolRegistry.has(name));
-			defaultSelectedMCPToolNames = [
-				...new Set([...discoveryDefaultServerToolNames, ...explicitlyRequestedMCPToolNames]),
-			];
-			initialSelectedMCPToolNames = existingSession.hasPersistedMCPToolSelection
-				? restoredSelectedMCPToolNames
-				: [...new Set([...restoredSelectedMCPToolNames, ...defaultSelectedMCPToolNames])];
-			initialToolNames = [
-				...new Set([
-					...initialRequestedActiveToolNames.filter(name => !name.startsWith("mcp__")),
-					...initialSelectedMCPToolNames,
-				]),
-			];
-		}
-
 		// Custom tools and extension-registered tools are always included regardless of toolNames filter
 		const alwaysInclude: string[] = [
 			...sdkCustomTools.map(t => (isCustomTool(t) ? t.name : t.name)),
 			...registeredTools.filter(t => !t.definition.defaultInactive).map(t => t.definition.name),
 		];
-		for (const name of alwaysInclude) {
-			if (mcpDiscoveryEnabled && name.startsWith("mcp__")) {
-				continue;
-			}
-			if (toolRegistry.has(name) && !initialToolNames.includes(name)) {
-				initialToolNames.push(name);
-			}
-		}
-
-		// When tools.discoveryMode === "all", hide non-essential discoverable tools
-		// from the initial set unless they were explicitly requested or restored.
-		// The model finds them via search_tool_bm25 and activates them on demand.
-		if (effectiveDiscoveryMode === "all") {
-			// Tools a forced tool_choice will target must stay active, or the named
-			// choice references a tool absent from the request (provider 400). Eager
-			// todos force a named `todo` choice on the first turn. `task` is also kept
-			// active under discovery-all when `task.eager` is not `default`, so eager delegation is
-			// possible and the Eager Tasks prompt section renders, even though nothing
-			// forces a `task` tool_choice.
-			const forceActive = new Set<string>();
-			if (settings.get("todo.eager") !== "default" && settings.get("todo.enabled") && toolRegistry.has(TOOL.todo)) {
-				forceActive.add(TOOL.todo);
-			}
-			// Strength alone here, deliberately: this runs before the task tool has
-			// discovered anything, so the enabled-agent set is not knowable yet.
-			// Keeping `task` active costs one tool slot and is what lets the prompt
-			// decide honestly later, once `resolveDelegation` can see both inputs.
-			const strength = delegationStrength(settings);
-			if ((strength === "preferred" || strength === "required") && toolRegistry.has(TOOL.task)) {
-				forceActive.add(TOOL.task);
-			}
-			initialToolNames = filterInitialToolsForDiscoveryAll(initialToolNames, {
-				loadModeOf: name => toolRegistry.get(name)?.loadMode,
-				essentialNames: new Set(computeEssentialBuiltinNames(settings)),
-				explicitlyRequested: new Set(options.toolNames ? normalizeToolNames(options.toolNames) : []),
-				// Back-compat: persisted activations live under selectedMCPToolNames today (built-in
-				// activation persistence is a follow-up). MCP names won't collide with built-in names.
-				restored: new Set(existingSession.selectedMCPToolNames.map(normalizeRenamedBuiltinToolName)),
-				forceActive,
-			});
-		}
-
-		initialToolNames = filterToolsByHarnessProfile(initialToolNames, settings, model);
+		// Everything above is INPUT GATHERING. The six stages that turn it into an active set —
+		// dropping `goal`, dropping `defaultInactive`, merging the MCP selection, appending
+		// `alwaysInclude`, hiding discoverables under `all`, and the harness allowlist — all live in
+		// `resolveInitialActiveToolNames` (`tools/loading/policy.ts`), together with every other
+		// tool-loading rule. Note `explicitToolNames` is the RAW `options.toolNames`, NOT
+		// `explicitlyRequestedToolNames`: the yield / auto-learn names forced into the latter are
+		// activations, not user requests, and must not exempt a tool from discovery-all hiding.
+		const {
+			initialToolNames,
+			initialSelectedMCPToolNames,
+			defaultSelectedMCPToolNames,
+			explicitlyRequestedMCPToolNames,
+		} = resolveInitialActiveToolNames({
+			explicitToolNames: options.toolNames ? normalizeToolNames(options.toolNames) : undefined,
+			requestedToolNames: normalizedRequested,
+			defaultInactiveToolNames,
+			hasRegistryTool: name => toolRegistry.has(name),
+			mcpDiscoveryEnabled,
+			discoveryDefaultServerToolNames,
+			persistedSelectedMCPToolNames: existingSession.selectedMCPToolNames,
+			hasPersistedMCPToolSelection: existingSession.hasPersistedMCPToolSelection,
+			alwaysIncludeToolNames: alwaysInclude,
+			effectiveDiscoveryMode,
+			loadModeOf: name => toolRegistry.get(name)?.loadMode,
+			essentialToolNames: computeEssentialBuiltinNames(settings),
+			forceActiveToolNames: resolveDiscoveryAllForceActive({
+				todoEager: settings.get("todo.eager"),
+				todoEnabled: settings.get("todo.enabled"),
+				hasTodoTool: toolRegistry.has(TOOL.todo),
+				delegationStrength: delegationStrength(settings),
+				hasTaskTool: toolRegistry.has(TOOL.task),
+			}),
+			harnessToolAllowlist: resolveHarnessProfileForModel(settings, model)?.tools,
+		});
 
 		// Pre-register in the global agent registry before session construction so
 		// tool routing and IRC discovery can resolve this agent immediately. The

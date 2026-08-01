@@ -315,3 +315,64 @@ describe("relativizePathsUnderRoots treats regex metacharacters in roots literal
 		expect(text.text).toBe("deep/file.ts here");
 	});
 });
+
+describe("relativizePathsUnderRoots exempts the set_cwd result", () => {
+	// Both endpoints of a re-root are roots by construction: the old cwd is already
+	// registered and the new one is appended as this call's target. Relativizing them
+	// collapsed `Moved cwd: /a/b → /a` to `Moved cwd: . → ..`, a sentence naming neither
+	// end and reading as a move to a parent directory. Observed repeatedly in real
+	// sessions: the model then re-derives its cwd with extra calls, or acts on the wrong
+	// directory. set-cwd.ts resolves both paths to absolute so the message cannot
+	// degenerate on its own; this exemption is what makes that guarantee survive the
+	// outbound rewrite.
+	const OLD_CWD = "/tmp/relativize-fixture/workspace/project";
+	const NEW_CWD = "/tmp/relativize-fixture/workspace";
+	const MOVE_TEXT = `Moved cwd: ${OLD_CWD} → ${NEW_CWD}. Relative paths now resolve from there.`;
+
+	function setCwdResult(text: string): ToolResultMessage {
+		return {
+			role: "toolResult",
+			toolCallId: "call-set-cwd",
+			toolName: "set_cwd",
+			content: [{ type: "text", text }],
+			isError: false,
+			timestamp: 1,
+		};
+	}
+
+	test("both endpoints survive byte-for-byte when both are registered roots", () => {
+		const messages: Message[] = [setCwdResult(MOVE_TEXT)];
+		const result = relativizePathsUnderRoots(messages, normalizeRoots([OLD_CWD, NEW_CWD]));
+		const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
+		expect(text.text).toBe(MOVE_TEXT);
+		expect(text.text).toContain(OLD_CWD);
+		expect(text.text).toContain(NEW_CWD);
+		// Nothing was rewritten, so nothing was "saved" and the array is returned as-is.
+		expect(result.bytesSaved).toBe(0);
+		expect(result.messages[0]).toBe(messages[0]);
+	});
+
+	test("the same text under any other tool name IS still rewritten", () => {
+		// Negative control. Without it this suite would also pass if the exemption were
+		// widened to every tool result, silently disabling the optimization repo-wide.
+		const messages: Message[] = [toolResult(MOVE_TEXT)];
+		const result = relativizePathsUnderRoots(messages, normalizeRoots([OLD_CWD, NEW_CWD]));
+		const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
+		// This exact string is the reported symptom, reproduced byte-for-byte: the second
+		// dot is the sentence's own period, which `exact`'s lookahead accepts as a right
+		// boundary, so `<new cwd>.` becomes `..` and the move reads as a step to a parent
+		// directory. Pinned deliberately — it is what the set_cwd exemption above prevents.
+		expect(text.text).toBe("Moved cwd: . → .. Relative paths now resolve from there.");
+		expect(result.bytesSaved).toBeGreaterThan(0);
+	});
+
+	test("a set_cwd result carrying no root path is still returned untouched", () => {
+		// The exemption is keyed on the tool, not on whether a rewrite would fire, so the
+		// failure branch ("could not read the rule files for ...") is equally protected.
+		const warning = `WARNING: the cwd changed, but the rule files for ${NEW_CWD} could not be read.`;
+		const messages: Message[] = [setCwdResult(warning)];
+		const result = relativizePathsUnderRoots(messages, normalizeRoots([OLD_CWD, NEW_CWD]));
+		const text = (result.messages[0] as ToolResultMessage).content[0] as { text: string };
+		expect(text.text).toBe(warning);
+	});
+});

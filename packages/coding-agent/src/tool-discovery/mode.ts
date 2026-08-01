@@ -1,24 +1,25 @@
 import type { Settings } from "../config/settings";
-import type { SettingValue } from "../config/settings-schema";
+import { type EffectiveToolDiscoveryMode, resolveToolDiscoveryMode } from "../tools/loading";
 
-export const TOOL_DISCOVERY_AUTO_THRESHOLD = 40;
-export const TOOL_DISCOVERY_SEARCH_TOOL_NAME = "search_tool_bm25";
-
-export type ToolDiscoveryModeSetting = SettingValue<"tools.discoveryMode">;
-export type EffectiveToolDiscoveryMode = Exclude<ToolDiscoveryModeSetting, "auto">;
-
-export function countToolsForAutoDiscovery(toolNames: Iterable<string>): number {
-	let count = 0;
-	for (const name of toolNames) {
-		if (name !== TOOL_DISCOVERY_SEARCH_TOOL_NAME) count++;
-	}
-	return count;
-}
+/**
+ * Settings adapter for the discovery-mode rule.
+ *
+ * The rule itself lives in `tools/loading/policy.ts` with every other tool-loading decision;
+ * this file only reads the two settings it needs and hands them over. The signature is
+ * unchanged because four call sites and two suites depend on it.
+ */
+export {
+	countToolsForAutoDiscovery,
+	type EffectiveToolDiscoveryMode,
+	TOOL_DISCOVERY_AUTO_THRESHOLD,
+	TOOL_DISCOVERY_SEARCH_TOOL_NAME,
+	type ToolDiscoveryModeSetting,
+} from "../tools/loading";
 
 export function resolveEffectiveToolDiscoveryMode(settings: Settings, toolCount: number): EffectiveToolDiscoveryMode {
-	const configuredMode = settings.get("tools.discoveryMode");
-	if (configuredMode === "all" || configuredMode === "mcp-only") return configuredMode;
-	if (settings.get("mcp.discoveryMode")) return "mcp-only";
-	if (configuredMode === "auto" && toolCount > TOOL_DISCOVERY_AUTO_THRESHOLD) return "mcp-only";
-	return "off";
+	return resolveToolDiscoveryMode({
+		configuredMode: settings.get("tools.discoveryMode"),
+		legacyMcpDiscoveryMode: settings.get("mcp.discoveryMode") === true,
+		toolCount,
+	});
 }
