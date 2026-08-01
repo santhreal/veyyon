@@ -15,7 +15,7 @@ from veybot.cancellation import clear_current_event, set_current_event
 from veybot.config import Settings
 from veybot.db import Database, EventRow
 from veybot.github_backend import GitHubBackend
-from veybot.github_events import is_port_upstream_event
+from veybot.github_events import is_port_upstream_event, is_triage_label_event
 from veybot.sandbox import GitTransport, SandboxManager, _reap_slot
 from veybot.slot_pool import SlotPool
 
@@ -421,6 +421,16 @@ class WorkerPool:
         # so an `issues.opened` carrying the port label can never be handled
         # here as an ordinary bug report.
         is_port = is_port_upstream_event(row.payload, port_label=self.settings.port_label)
+        # Same contract for the triage side: under `VEYBOT_TRIAGE_TRIGGER=label`
+        # `route` queues `triage_issue` off an `issues.labeled` event, so this
+        # side must recognize that pair too. When it did not, the row was
+        # claimed, logged "no-op dispatch", and marked done — the dashboard
+        # showed work completing while no agent ever ran.
+        is_triage_label = is_triage_label_event(
+            row.payload,
+            triage_trigger=self.settings.triage_trigger,
+            triage_label=self.settings.triage_label,
+        )
         if event == "issues" and action in ("opened", "labeled") and is_port:
             await tasks.port_upstream(
                 settings=self.settings,
@@ -433,7 +443,7 @@ class WorkerPool:
                 attempts=row.attempts,
                 slot_uid=slot_uid,
             )
-        elif event == "issues" and action == "opened":
+        elif event == "issues" and (action == "opened" or is_triage_label):
             await tasks.triage_issue(
                 settings=self.settings,
                 db=self.db,

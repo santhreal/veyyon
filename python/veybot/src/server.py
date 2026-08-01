@@ -355,6 +355,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             port_upstream_enabled=cfg.port_upstream_enabled,
             port_label=cfg.port_label,
             ci_repair_enabled=cfg.ci_repair_enabled,
+            triage_trigger=cfg.triage_trigger,
+            triage_label=cfg.triage_label,
             resolve_issue_from_pr=_resolve,
         )
 

@@ -897,6 +897,12 @@ def rate_limited_settings(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) 
     monkeypatch.setenv("VEYBOT_RATE_LIMIT_CONTRIBUTOR", "4")
     monkeypatch.setenv("VEYBOT_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setenv("VEYBOT_RATE_LIMIT_UNLIMITED", "can1357")
+    # These tests drive `issues.opened` to exercise the per-user cap, and the
+    # SHIPPED trigger is `label`, which skips `issues.opened` before the
+    # limiter is ever consulted. Pin `auto` so the subject stays the cap.
+    # Coverage of the limiter on the shipped path lives in
+    # `test_github_events.test_label_triggered_triage_stays_rate_limited`.
+    monkeypatch.setenv("VEYBOT_TRIAGE_TRIGGER", "auto")
     cfg = Settings()  # type: ignore[call-arg]
     cfg.ensure_paths()
     return cfg
@@ -2771,3 +2777,69 @@ def test_webhook_pr_conversation_does_not_cancel_pending_closure(settings: Setti
     assert row is not None
     assert row.state == "pending"
     close_database()
+
+
+def test_webhook_honors_the_configured_triage_trigger(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
+    """The handler MUST pass the configured trigger AND label through to `route`.
+
+    `route` itself is unit-tested in `test_github_events.py` with both passed as
+    arguments; this test exists solely to prove the webhook handler actually
+    hands it `cfg.triage_trigger` / `cfg.triage_label`. It therefore passes no
+    trigger argument anywhere and drives the real app off real `Settings`,
+    because a hand-passed argument is exactly what would keep passing after the
+    wiring reverts.
+
+    Hardcoding `triage_trigger="auto"` in the `route` call kept the entire
+    suite green before this test existed: the opt-in default would have shipped
+    decorative, firing an agent on every opened issue. The label is set to a
+    NON-default value here for the same reason — hardcoding the literal
+    `"veybot"` in the call is invisible to any test that also uses the default.
+    A refactor that drops either kwarg fails here.
+    """
+    monkeypatch.setenv("VEYBOT_TRIAGE_LABEL", "please-veybot")
+    reset_settings_cache()
+    settings = Settings()  # type: ignore[call-arg]
+    settings.ensure_paths()
+    assert settings.triage_trigger == "label"
+    assert settings.triage_label == "please-veybot"
+    app = create_app(settings)
+    with TestClient(app) as client:
+        opened = _post_issue_opened(client, delivery="trig-open", user="alice", number=801)
+
+        labeled_payload = {
+            "action": "labeled",
+            "label": {"name": settings.triage_label},
+            "issue": {
+                "number": 802,
+                "user": {"login": "alice"},
+                "author_association": "NONE",
+                "labels": [{"name": settings.triage_label}],
+            },
+            "repository": {"full_name": "octo/widget"},
+        }
+        body = json.dumps(labeled_payload).encode()
+        labeled = client.post(
+            "/webhook/github",
+            content=body,
+            headers=_signed_headers("test-webhook-secret", body, event="issues", delivery="trig-label"),
+        )
+
+    assert opened.json()["state"] == "skipped"
+    assert labeled.json()["state"] == "queued"
+
+    db = get_database(settings.sqlite_path)
+    skipped_row = db.get_event("trig-open")
+    queued_row = db.get_event("trig-label")
+    close_database()
+
+    assert skipped_row is not None
+    assert skipped_row.state == "skipped"
+    assert "label" in (skipped_row.last_error or "")
+    assert queued_row is not None
+    # The HTTP response above is the deterministic `queued` assertion; by the
+    # time we read the row back the live WorkerPool may already have claimed
+    # it. What must never happen is the row landing in `skipped`.
+    assert queued_row.state != "skipped"
+    assert queued_row.event_type == "issues"
+    assert queued_row.issue_key == issue_key("octo/widget", 802)
+    assert queued_row.payload["action"] == "labeled"

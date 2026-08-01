@@ -257,6 +257,30 @@ def is_port_upstream_event(payload: Mapping[str, Any], *, port_label: str) -> bo
     return False
 
 
+def is_triage_label_event(payload: Mapping[str, Any], *, triage_trigger: str, triage_label: str) -> bool:
+    """Whether this `issues` payload opts the issue into triage by label.
+
+    `route` asks this to admit an `issues.labeled` event; `queue.WorkerPool.
+    _dispatch` asks it again to pick the handler off the stored EventRow,
+    because the dispatcher re-derives from `(event_type, action)` and never
+    sees the `RouteDecision`. They MUST agree — if `route` queues a row the
+    dispatcher does not recognize, the event is claimed, marked done, and no
+    agent ever runs, which looks exactly like success from the outside — so
+    both call this and nothing else.
+
+    Only `label` mode consults the label at all: under `auto` the issue was
+    already admitted on `opened`, and under `mention`/`off` adding a label is
+    not consent. An empty `triage_label` matches nothing on its own:
+    `_added_label_name` never yields the empty string, so there is no label
+    add it could be equal to.
+    """
+    if triage_trigger != "label":
+        return False
+    if str(payload.get("action") or "") != "labeled":
+        return False
+    return _added_label_name(payload) == triage_label
+
+
 def _check_suite_bot_authored(suite: Mapping[str, Any], pr: Mapping[str, Any], bot_login: str) -> bool:
     """Whether the branch this check suite ran on belongs to the bot.
 
@@ -319,6 +343,8 @@ def route(
     port_upstream_enabled: bool = True,
     port_label: str = "upstream-port",
     ci_repair_enabled: bool = True,
+    triage_trigger: str = "auto",
+    triage_label: str = "veybot",
     pr_review_enabled: bool = True,
 ) -> RouteDecision:
     """Decide whether and how to handle a webhook event.
@@ -328,6 +354,12 @@ def route(
     that key so follow-ups serialize with the original issue. If the mapping
     is missing, the event is still actionable and falls back to the PR's own
     issue key (`octo/widget#1080`).
+
+    `triage_trigger` is what admits an issue to triage. The parameter default
+    is `auto` (fire on every `issues.opened`) because that is what every
+    caller-free unit test means by "route an issue"; the SHIPPED default lives
+    in `Settings.triage_trigger` and is `label`, so a real deployment is
+    opt-in. Do not conflate the two.
     """
     repo = _repo_full_name(payload)
     if repo is None or repo.lower() not in allowlist:
@@ -406,17 +438,40 @@ def route(
                 # Backlog drain, not a user submission: no rate-limit subject,
                 # or 200 tracking issues would throttle against one filer.
                 return RouteDecision("queue", "port_upstream", repo, key, f"issues.opened [{port_label}]")
+            if triage_trigger != "auto":
+                # Opt-in: a plain `issues.opened` is a report, not a request
+                # for an agent. `label` waits for the label, `mention` waits
+                # for a maintainer to `@` the bot on a comment, `off` never
+                # triages at all.
+                return RouteDecision(
+                    "skip", None, repo, key, f"triage trigger {triage_trigger!r} does not queue issues.opened"
+                )
             login, assoc = _submitter_info(issue)
             assoc = _effective_association(login, assoc, payload.get("repository"), repo)
             return RouteDecision(
                 "queue", "triage_issue", repo, key, "issues.opened", submitter=login, association=assoc
             )
         if action == "labeled":
-            if not is_port:
-                return RouteDecision("skip", None, repo, key, "issues.labeled with unrelated label")
-            if not port_upstream_enabled:
-                return RouteDecision("skip", None, repo, key, "upstream port disabled")
-            return RouteDecision("queue", "port_upstream", repo, key, f"issues.labeled [{port_label}]")
+            if is_port:
+                if not port_upstream_enabled:
+                    return RouteDecision("skip", None, repo, key, "upstream port disabled")
+                return RouteDecision("queue", "port_upstream", repo, key, f"issues.labeled [{port_label}]")
+            if is_triage_label_event(payload, triage_trigger=triage_trigger, triage_label=triage_label):
+                # The labeler asked for the run, but the issue AUTHOR stays the
+                # rate-limit subject: labeling twenty issues from one reporter
+                # must still hit that reporter's cap.
+                login, assoc = _submitter_info(issue)
+                assoc = _effective_association(login, assoc, payload.get("repository"), repo)
+                return RouteDecision(
+                    "queue",
+                    "triage_issue",
+                    repo,
+                    key,
+                    f"issues.labeled [{triage_label}]",
+                    submitter=login,
+                    association=assoc,
+                )
+            return RouteDecision("skip", None, repo, key, "issues.labeled with unrelated label")
         if action == "closed":
             # Cleanup is a lifecycle event, not a user submission; no rate-limit subject.
             return RouteDecision("queue", "cleanup_workspace", repo, key, "issues.closed")
@@ -578,6 +633,7 @@ __all__ = [
     "is_maintainer",
     "is_implementation_authorizer",
     "is_port_upstream_event",
+    "is_triage_label_event",
     "rate_limit_cap",
     "route",
     "verify_signature",

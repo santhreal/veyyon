@@ -241,3 +241,108 @@ def test_non_positive_ci_max_repairs_rejected(monkeypatch: pytest.MonkeyPatch, e
     reset_settings_cache()
     with pytest.raises(ValidationError):
         Settings()  # type: ignore[call-arg]
+
+
+def test_triage_trigger_ships_opt_in(env: dict[str, str]) -> None:
+    """The shipped default MUST be `label`, not `auto`.
+
+    Every triage is a real agent run against a real model. Under `auto` the
+    bot bills the operator for every drive-by issue opened in an allowlisted
+    repo, gated only by the rate limiter. This assertion is the tripwire for
+    someone "restoring" the old behavior by editing the Settings default —
+    note that `github_events.route`'s own parameter default is deliberately
+    `auto`, so an argument-passing test would not catch that.
+    """
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.triage_trigger == "label"
+    assert cfg.triage_label == "veybot"
+
+
+@pytest.mark.parametrize("mode", ["auto", "label", "mention", "off"])
+def test_every_triage_trigger_mode_loads(monkeypatch: pytest.MonkeyPatch, env: dict[str, str], mode: str) -> None:
+    """All four documented modes must actually be accepted. A mode that is
+    documented but rejected by the model is a startup crash on a config the
+    operator was told to use."""
+    monkeypatch.setenv("VEYBOT_TRIAGE_TRIGGER", mode)
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.triage_trigger == mode
+
+
+@pytest.mark.parametrize("raw", ["  AUTO ", "Label\n", "OFF", "\tMention"])
+def test_triage_trigger_is_case_and_whitespace_normalized(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], raw: str
+) -> None:
+    """`.env` files written by heredoc carry trailing newlines and operators
+    type `AUTO`. Without normalization those become hard startup failures on a
+    value the operator meant correctly."""
+    monkeypatch.setenv("VEYBOT_TRIAGE_TRIGGER", raw)
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.triage_trigger == raw.strip().lower()
+
+
+@pytest.mark.parametrize("raw", ["lable", "on", "auto,label", "true", "", "   ", "labels"])
+def test_invalid_triage_trigger_is_refused_at_load(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], raw: str
+) -> None:
+    """A typo'd trigger must crash the process, never fall back.
+
+    Both plausible fallbacks are wrong in opposite directions: silently
+    treating `lable` as `auto` spends money on every issue, and silently
+    treating it as `off` leaves a bot that starts clean and does nothing. The
+    operator gets a startup error instead.
+    """
+    monkeypatch.setenv("VEYBOT_TRIAGE_TRIGGER", raw)
+    reset_settings_cache()
+    with pytest.raises(ValidationError):
+        Settings()  # type: ignore[call-arg]
+
+
+def test_triage_label_is_stripped(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
+    """The label is compared against GitHub's exact label text, so a stray
+    newline would make `issues.labeled` never match and triage would be dead
+    with no error anywhere."""
+    monkeypatch.setenv("VEYBOT_TRIAGE_LABEL", "  needs-veybot\n")
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.triage_label == "needs-veybot"
+
+
+@pytest.mark.parametrize("raw", ["", "   ", "\n\t"])
+def test_blank_triage_label_refused_in_label_mode(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], raw: str
+) -> None:
+    """Mirrors `_require_port_label`. In `label` mode an empty label matches no
+    issue, so triage is silently disabled while `triage_trigger` still reports
+    `label` — the operator sees a healthy bot that never picks anything up."""
+    monkeypatch.setenv("VEYBOT_TRIAGE_TRIGGER", "label")
+    monkeypatch.setenv("VEYBOT_TRIAGE_LABEL", raw)
+    reset_settings_cache()
+    with pytest.raises(ValidationError, match="VEYBOT_TRIAGE_LABEL"):
+        Settings()  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("mode", ["auto", "mention", "off"])
+def test_blank_triage_label_allowed_when_the_mode_never_reads_it(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], mode: str
+) -> None:
+    """Refusing an unused empty label would make `VEYBOT_TRIAGE_TRIGGER=off`
+    unbootable for anyone who cleared the label alongside it. Only `label`
+    mode consults it, so only `label` mode may require it."""
+    monkeypatch.setenv("VEYBOT_TRIAGE_TRIGGER", mode)
+    monkeypatch.setenv("VEYBOT_TRIAGE_LABEL", "   ")
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.triage_label == ""
+    assert cfg.triage_trigger == mode
+
+
+def test_triage_label_override_survives_to_settings(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
+    """Operators pick their own label; a hardcoded `veybot` in the routing path
+    would ignore `VEYBOT_TRIAGE_LABEL` entirely."""
+    monkeypatch.setenv("VEYBOT_TRIAGE_LABEL", "please-veybot")
+    reset_settings_cache()
+    cfg = Settings()  # type: ignore[call-arg]
+    assert cfg.triage_label == "please-veybot"
+    assert cfg.triage_trigger == "label"
