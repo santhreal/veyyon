@@ -1,7 +1,7 @@
 /**
- * The two Live-view actions that are not "hand the main view over": stopping an
- * agent with `x`, and the read-only transcript the card falls back to for the
- * agents it cannot hand over at all.
+ * The two Live-view actions that are not "hand the main view over": confirmed
+ * agent termination, and the read-only transcript fallback for agents the card
+ * cannot hand over at all.
  *
  * WHY THE FALLBACK EXISTS. Enter normally focuses the agent's live session so
  * you can read it AND reply. Two agents have no such session. An advisor
@@ -28,6 +28,7 @@ import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
@@ -52,6 +53,31 @@ afterEach(() => {
 
 function frameOf(dashboard: AgentDashboard): string {
 	return dashboard.render(120).join("\n").replace(ANSI_PATTERN, "");
+}
+
+interface InputTarget {
+	handleInput(data: string): void;
+}
+
+/** Interactive overlay host that lets execution tests confirm the safety guard. */
+function terminationConfirmationHarness(): { ui: TUI; confirm: () => void } {
+	let overlay: InputTarget | undefined;
+	const ui = {
+		showOverlay: (component: InputTarget) => {
+			overlay = component;
+			return { hide: () => {} };
+		},
+		setFocus: () => {},
+		requestRender: () => {},
+		requestComponentRender: () => {},
+	} as unknown as TUI;
+	return {
+		ui,
+		confirm: () => {
+			if (!overlay) throw new Error("Expected the termination confirmation overlay to be mounted");
+			overlay.handleInput("\r");
+		},
+	};
 }
 
 /** A never-resolving-nothing session double that records the abort it was asked for. */
@@ -87,7 +113,7 @@ function recordingLifecycle(released: string[]): {
 	return { lifecycle: () => manager, firstRelease: first.promise };
 }
 
-describe("Stopping an agent with x", () => {
+describe("Confirmed agent termination", () => {
 	/**
 	 * Abort first, release second. Reversing the two leaves a provider request in
 	 * flight addressed to a session that no longer exists, and the response lands
@@ -106,9 +132,11 @@ describe("Stopping an agent with x", () => {
 			status: "running",
 		});
 		const { lifecycle, firstRelease } = recordingLifecycle(released);
-		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle });
+		const confirmation = terminationConfirmationHarness();
+		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle, ui: confirmation.ui });
 
 		dashboard.handleInput("x");
+		confirmation.confirm();
 		await firstRelease;
 
 		expect(aborts).toEqual(["Interrupted by user"]);
@@ -134,9 +162,11 @@ describe("Stopping an agent with x", () => {
 			status: "parked",
 		});
 		const { lifecycle, firstRelease } = recordingLifecycle(released);
-		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle });
+		const confirmation = terminationConfirmationHarness();
+		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle, ui: confirmation.ui });
 
 		dashboard.handleInput("x");
+		confirmation.confirm();
 		await firstRelease;
 
 		expect(released).toEqual(["Parked"]);
@@ -203,14 +233,17 @@ describe("Stopping an agent with x", () => {
 			revive: () => {},
 			readTranscript: async () => null,
 		};
+		const confirmation = terminationConfirmationHarness();
 		const dashboard = new AgentDashboard({
 			terminalHeight: 40,
 			registry,
 			remote,
 			lifecycle: recordingLifecycle(released).lifecycle,
+			ui: confirmation.ui,
 		});
 
 		dashboard.handleInput("x");
+		confirmation.confirm();
 
 		expect(killed).toEqual(["HostWorker"]);
 		expect(released).toEqual([]);
@@ -394,17 +427,23 @@ describe("What a failure says to the operator", () => {
 			} as unknown as AgentSession,
 			status: "running",
 		});
-		const dashboard = new AgentDashboard({ terminalHeight: 40 });
+		const confirmation = terminationConfirmationHarness();
+		const dashboard = new AgentDashboard({ terminalHeight: 40, ui: confirmation.ui });
+		const surfaced = Promise.withResolvers<void>();
+		dashboard.onRequestRender = () => {
+			if (frameOf(dashboard).includes("the session is already gone")) surfaced.resolve();
+		};
 		dashboard.render(120);
 
 		dashboard.handleInput("x");
-		await Bun.sleep(10);
+		confirmation.confirm();
+		await surfaced.promise;
 
 		const shown = dashboard
 			.render(120)
 			.join("\n")
 			.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
-		expect(shown).toContain("Could not stop Kestrel");
+		expect(shown).toContain("Could not terminate Kestrel");
 		expect(shown).toContain("the session is already gone");
 		dashboard.dispose();
 	});

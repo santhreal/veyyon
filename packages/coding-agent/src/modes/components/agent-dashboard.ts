@@ -36,7 +36,7 @@
  * - Up/Down or j/k: move selection (Live) or scroll (Comms)
  * - Tab / Shift+Tab or Left/Right: switch view
  * - Enter: open the selected agent (Live)
- * - x: abort and release the selected agent (Live)
+ * - x: confirm termination of the selected agent (Live)
  * - Ctrl+O: expand folded messages (Comms)
  * - Esc, or the key that opened it: close
  */
@@ -73,6 +73,7 @@ import { theme } from "../theme/theme";
 import { keyHint } from "../utils/key-hint";
 import {
 	matchesAppInterrupt,
+	matchesSelectCancel,
 	matchesSelectDown,
 	matchesSelectPageDown,
 	matchesSelectPageUp,
@@ -88,6 +89,7 @@ import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
+	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -122,7 +124,9 @@ const VIEW_ORDER: readonly ViewId[] = ["live", "comms"];
  */
 function liveShortcuts(rosterRows: number): readonly ModalShortcut[] {
 	return [
-		...(rosterRows > 0 ? [{ label: "up/down navigate" }, { label: "enter open agent" }, { label: "x kill" }] : []),
+		...(rosterRows > 0
+			? [{ label: "up/down navigate" }, { label: "enter open agent" }, { label: "x terminate" }]
+			: []),
 		{ label: "left/right view" },
 		{ label: "esc close", clickable: true, id: "close" },
 	];
@@ -250,6 +254,8 @@ class LiveRosterPane implements Component {
 		private readonly agents: readonly LiveAgent[],
 		private readonly extrasFor: (agent: LiveAgent) => RosterExtras,
 		private readonly selectedIndex: number,
+		private readonly hoveredIndex: number,
+		private readonly canTerminate: (agent: LiveAgent) => boolean,
 		private readonly scrollOffset: number,
 		private readonly maxVisible: number,
 		/**
@@ -328,7 +334,7 @@ class LiveRosterPane implements Component {
 		for (let i = start; i < end; i++) {
 			rows.push(
 				truncateToWidth(
-					this.#row(this.agents[i], i === this.selectedIndex, columns, contentWidth, now),
+					this.#row(this.agents[i], i === this.selectedIndex, i === this.hoveredIndex, columns, contentWidth, now),
 					contentWidth,
 				),
 			);
@@ -339,8 +345,20 @@ class LiveRosterPane implements Component {
 		return sv.render(width);
 	}
 
-	/** `‹glyph› ‹call sign› ‹type› ‹status› ‹age› ‹model› ‹unread› ‹what it is doing›`. */
-	#row(agent: LiveAgent, selected: boolean, columns: RosterColumns, width: number, now: number): string {
+	/** `‹glyph› ‹call sign› ‹type› ‹status› ‹age› ‹model› ‹unread› ‹activity› [x]`. */
+	#row(
+		agent: LiveAgent,
+		selected: boolean,
+		hovered: boolean,
+		columns: RosterColumns,
+		width: number,
+		now: number,
+	): string {
+		const terminable = this.canTerminate(agent);
+		// Every terminable row reserves the action's four cells even before hover,
+		// so revealing [x] never shifts or re-wraps the activity under the pointer.
+		const actionWidth = terminable ? 4 : 0;
+		const contentWidth = Math.max(1, width - actionWidth);
 		const extras = this.extrasFor(agent);
 		const sign = truncateToWidth(replaceTabs(agent.callSign), columns.sign);
 		const name = theme.bold(sign) + padding(Math.max(0, columns.sign - visibleWidth(sign)));
@@ -369,7 +387,7 @@ class LiveRosterPane implements Component {
 		// you can recognise. Below MIN_MODEL_BADGE columns the badge is dropped
 		// rather than stubbed, the same way the activity below is.
 		if (extras.model) {
-			const room = width - visibleWidth(parts.join(PART_GAP)) - PART_GAP.length;
+			const room = contentWidth - visibleWidth(parts.join(PART_GAP)) - PART_GAP.length;
 			if (room >= Math.min(visibleWidth(extras.model), MIN_MODEL_BADGE)) {
 				parts.push(truncateToWidth(extras.model, room));
 			}
@@ -390,15 +408,117 @@ class LiveRosterPane implements Component {
 		// The gist gets whatever is left of the row: it is the answer to "what is
 		// it doing", and a fixed column for it would truncate the one useful line.
 		const doing = agent.activity ?? extras.task;
-		const gistWidth = width - visibleWidth(head) - 2;
-		const line =
+		const gistWidth = contentWidth - visibleWidth(head) - 2;
+		const content =
 			doing && gistWidth >= 12
 				? `${head}  ${theme.fg("muted", truncateToWidth(sanitizeSingleLine(doing), gistWidth))}`
 				: head;
+		const contentPadded =
+			truncateToWidth(content, contentWidth) + padding(Math.max(0, contentWidth - visibleWidth(content)));
+		const action = terminable ? ` ${hovered ? theme.fg("error", "[x]") : "   "}` : "";
+		const line = `${contentPadded}${action}`;
 		if (!selected) return line;
 		// `width` here is the view's content width, so the band stops exactly where
 		// the scrollbar gutter starts.
 		return selectionBand(theme.fg("accent", line), width);
+	}
+
+	invalidate(): void {}
+}
+
+const TERMINATION_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "esc dismiss", clickable: true, id: "close" },
+	{ label: "enter yes, terminate", clickable: true, id: "confirm" },
+];
+
+/**
+ * Destructive-action guard mounted over the roster.
+ *
+ * The selected agent stays visible behind this small card, while both decisions
+ * are explicit clickable actions. Enter confirms because focus is already inside
+ * the dialog; Escape, the close glyph and click-outside all dismiss.
+ */
+class AgentTerminationDialog implements Component {
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	onRequestRender?: () => void;
+
+	constructor(
+		private readonly agent: LiveAgent,
+		private readonly terminalRows: () => number,
+		private readonly onConfirm: () => void,
+		private readonly onDismiss: () => void,
+	) {}
+
+	handleInput(data: string): void {
+		if (data.startsWith("\x1b[<")) {
+			routeSgrMouseInput(data, event => {
+				const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+					motion: event.motion,
+					leftClick: event.leftClick,
+				});
+				if (chrome.kind === "hover-shortcut") {
+					if (this.#hoveredShortcutId !== chrome.id) {
+						this.#hoveredShortcutId = chrome.id;
+						this.onRequestRender?.();
+					}
+					return true;
+				}
+				if (
+					chrome.kind === "close" ||
+					chrome.kind === "outside" ||
+					(chrome.kind === "shortcut" && chrome.id === "close")
+				) {
+					this.onDismiss();
+					return true;
+				}
+				if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+					this.onConfirm();
+				}
+				return true;
+			});
+			return;
+		}
+
+		if (matchesSelectCancel(data)) {
+			this.onDismiss();
+			return;
+		}
+		if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
+			this.onConfirm();
+		}
+	}
+
+	render(width: number): readonly string[] {
+		const height = this.terminalRows();
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, modalNeedsCompactPadding(height, MODAL_SIZING_MEDIUM));
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+
+		const kindAndStatus = `${agentType(this.agent)} · ${agentStatusWord(this.agent.status)}`;
+		const warning =
+			"This stops the current turn and removes the agent from the roster. Its transcript stays on disk.";
+		const body = [
+			`${theme.bold(replaceTabs(this.agent.callSign))}  ${theme.fg("muted", kindAndStatus)}`,
+			"",
+			...wrapTextWithAnsi(theme.fg("warning", warning), dims.contentWidth),
+		];
+		const shell = renderModalShell({
+			title: "Terminate agent?",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			preferredBodyRows: body.length,
+			shortcuts: TERMINATION_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 
 	invalidate(): void {}
@@ -539,7 +659,7 @@ export interface AgentDashboardDeps {
 	registry?: AgentRegistry;
 	/** Injectable for tests; defaults to the process-global bus. */
 	irc?: IrcBus;
-	/** Injectable for tests; defaults to the process-global lifecycle manager. Lazy: only revive/kill touch it. */
+	/** Injectable for tests; defaults to the process-global lifecycle manager. Lazy: only termination touches it. */
 	lifecycle?: () => AgentLifecycleManager;
 	/** Spawn descriptions and executor-reported models. Absent in render-only tests. */
 	observers?: SessionObserverRegistry;
@@ -575,7 +695,8 @@ export class AgentDashboard extends Container {
 	#liveAgents: LiveAgent[] = [];
 	#liveSelectedIndex = 0;
 	#liveScrollOffset = 0;
-	/** One line of feedback under the tab strip: a failed open, a kill that refused. */
+	#liveHoveredIndex = -1;
+	/** One line of feedback under the tab strip: a failed open or refused action. */
 	#notice: string | undefined;
 
 	/** Bus traffic, refreshed from the bus on every message. */
@@ -611,6 +732,9 @@ export class AgentDashboard extends Container {
 	/** Fullscreen read-only transcript overlay, when one is open. */
 	#transcriptOverlay: OverlayHandle | undefined;
 	#transcriptViewer: AgentTranscriptViewer | undefined;
+	/** Focused confirmation overlay guarding a roster termination. */
+	#terminationOverlay: OverlayHandle | undefined;
+	#terminationDialog: AgentTerminationDialog | undefined;
 
 	readonly #deps: AgentDashboardDeps;
 	readonly #registry: AgentRegistry;
@@ -635,7 +759,7 @@ export class AgentDashboard extends Container {
 		this.#registry = deps.registry ?? AgentRegistry.global();
 		this.#irc = deps.irc ?? IrcBus.global();
 		// Lazy: the lifecycle global self-constructs against the global registry,
-		// so only touch it when a kill actually needs it.
+		// so only touch it when confirmed termination actually needs it.
 		this.#lifecycle = () => (deps.lifecycle ?? AgentLifecycleManager.global)();
 		this.#observers = deps.observers;
 		this.#expandKeys = deps.expandKeys ?? [];
@@ -724,6 +848,7 @@ export class AgentDashboard extends Container {
 			this.#dataChangeTimer = undefined;
 		}
 		this.#closeTranscriptOverlay({ restoreFocus: false });
+		this.#closeTerminationOverlay({ restoreFocus: false });
 	}
 
 	#scheduleDataChange(): void {
@@ -738,6 +863,7 @@ export class AgentDashboard extends Container {
 
 	#refreshLiveAgents(): void {
 		const selectedId = this.#liveAgents[this.#liveSelectedIndex]?.id;
+		this.#liveHoveredIndex = -1;
 		this.#liveAgents = collectLiveAgents(this.#registry.list());
 		// Keep the cursor on the AGENT, not on the row number: a spawn or a park
 		// reorders the roster under an operator who is about to press Enter.
@@ -885,6 +1011,7 @@ export class AgentDashboard extends Container {
 		const index = VIEW_ORDER.indexOf(this.#activeView);
 		this.#activeView = VIEW_ORDER[(index + direction + VIEW_ORDER.length) % VIEW_ORDER.length];
 		this.#notice = undefined;
+		this.#liveHoveredIndex = -1;
 		if (this.#activeView === "live") this.#refreshLiveAgents();
 		if (this.#activeView === "comms") this.#comms = this.#irc.log();
 		this.#buildLayout();
@@ -899,6 +1026,7 @@ export class AgentDashboard extends Container {
 	 */
 	#moveSelection(delta: number): void {
 		if (this.#activeView === "live") {
+			this.#liveHoveredIndex = -1;
 			if (this.#liveAgents.length === 0) return;
 			this.#liveSelectedIndex = clampLow(this.#liveSelectedIndex + delta, 0, this.#liveAgents.length - 1);
 			const next = clampSelection(
@@ -1016,22 +1144,86 @@ export class AgentDashboard extends Container {
 		this.onRequestRender?.();
 	}
 
+	/** Whether this roster row represents a child session the operator may terminate. */
+	#canTerminate(agent: LiveAgent): boolean {
+		return agent.id !== MAIN_AGENT_ID && agent.kind !== "advisor";
+	}
+
 	/**
-	 * `x`: stop the selected agent and release it.
+	 * `x`: ask before terminating the selected agent.
 	 *
-	 * A running agent is aborted first, then released, because releasing a session
-	 * mid-turn leaves the provider request in flight with nothing to receive it.
-	 * An advisor has no session to stop, and says so rather than appearing to.
+	 * The main session owns this dashboard and cannot terminate itself here. An
+	 * advisor is a read-only transcript rather than a running peer. Every real
+	 * subagent opens the same focused confirmation card whether the request came
+	 * from the keyboard or the row-local [x].
 	 */
 	killSelectedAgent(): void {
 		const agent = this.#liveAgents[this.#liveSelectedIndex];
 		if (!agent) return;
-		if (agent.kind === "advisor") {
-			this.#notice = `"${agent.id}" is a read-only advisor transcript, so there is nothing to stop.`;
+		this.#requestTermination(agent);
+	}
+
+	#requestTermination(agent: LiveAgent): void {
+		if (agent.id === MAIN_AGENT_ID) {
+			this.#notice = "The main session cannot be terminated from its own roster.";
 			this.#rebuildAndRender();
 			return;
 		}
+		if (agent.kind === "advisor") {
+			this.#notice = `"${agent.id}" is a read-only advisor transcript, so there is nothing to terminate.`;
+			this.#rebuildAndRender();
+			return;
+		}
+		if (typeof this.#ui.showOverlay !== "function") {
+			// A destructive fallback would make the guard disappear in embedded
+			// hosts. Refuse instead, with a reason the host can render.
+			this.#notice = `Could not confirm termination of ${agent.callSign} in this non-interactive view.`;
+			this.#rebuildAndRender();
+			return;
+		}
+
 		this.#notice = undefined;
+		this.#closeTerminationOverlay({ restoreFocus: false });
+		let settled = false;
+		const dialog = new AgentTerminationDialog(
+			agent,
+			() => this.#terminalRows(),
+			() => {
+				if (settled) return;
+				settled = true;
+				this.#closeTerminationOverlay({ restoreFocus: true });
+				this.#terminateAgent(agent);
+			},
+			() => {
+				if (settled) return;
+				settled = true;
+				this.#closeTerminationOverlay({ restoreFocus: true });
+			},
+		);
+		dialog.onRequestRender = () => this.onRequestRender?.();
+		this.#terminationDialog = dialog;
+		this.#terminationOverlay = this.#ui.showOverlay(dialog, { width: "100%", margin: 0, fullscreen: true });
+		this.#ui.setFocus?.(dialog);
+		this.onRequestRender?.();
+	}
+
+	#closeTerminationOverlay(options: { restoreFocus: boolean }): void {
+		if (!this.#terminationOverlay && !this.#terminationDialog) return;
+		this.#terminationOverlay?.hide();
+		this.#terminationOverlay = undefined;
+		this.#terminationDialog = undefined;
+		if (options.restoreFocus) this.#ui.setFocus?.(this);
+		this.onRequestRender?.();
+	}
+
+	/**
+	 * Apply a confirmed termination.
+	 *
+	 * A running agent is aborted first, then released, because releasing a
+	 * session mid-turn leaves the provider request in flight with nothing to
+	 * receive it. A parked agent has no turn to abort and is released directly.
+	 */
+	#terminateAgent(agent: LiveAgent): void {
 		const remote = this.#deps.remote;
 		if (remote) {
 			remote.kill(agent.id);
@@ -1046,8 +1238,8 @@ export class AgentDashboard extends Container {
 				}
 				await this.#lifecycle().release(agent.id);
 			} catch (error) {
-				logger.warn("Agent Control Center: kill failed", { id: agent.id, error: String(error) });
-				this.#notice = actionFailedNotice("stop", agent.callSign, error);
+				logger.warn("Agent Control Center: termination failed", { id: agent.id, error: String(error) });
+				this.#notice = actionFailedNotice("terminate", agent.callSign, error);
 			}
 			this.#refreshLiveAgents();
 			this.#rebuildAndRender();
@@ -1106,6 +1298,8 @@ export class AgentDashboard extends Container {
 					this.#liveAgents,
 					agent => this.#extrasFor(agent),
 					this.#liveSelectedIndex,
+					this.#liveHoveredIndex,
+					agent => this.#canTerminate(agent),
 					this.#liveScrollOffset,
 					this.#computeBodyHeight(),
 					() => Date.now(),
@@ -1214,6 +1408,24 @@ export class AgentDashboard extends Container {
 		return index < this.#liveAgents.length ? index : -1;
 	}
 
+	/** Set the row-local hover affordance without rebuilding unchanged frames. */
+	#setHoveredRosterIndex(index: number): void {
+		if (this.#liveHoveredIndex === index) return;
+		this.#liveHoveredIndex = index;
+		this.#buildLayout();
+		this.onRequestRender?.();
+	}
+
+	/** Whether a screen column lands on the right-aligned [x] for this row. */
+	#isTerminationActionAt(index: number, col: number): boolean {
+		const agent = this.#liveAgents[index];
+		if (!agent || !this.#canTerminate(agent)) return false;
+		const hasScrollbar = this.#liveAgents.length > this.#computeBodyHeight();
+		const rosterWidth = this.#contentWidth - (hasScrollbar ? 1 : 0);
+		const actionStart = this.#bodyColStart + rosterWidth - 3;
+		return col >= actionStart && col < actionStart + 3;
+	}
+
 	/** The view whose tab is under a screen position, or undefined. */
 	#tabAt(row: number, col: number): ViewId | undefined {
 		const geometry = this.#shellGeometry;
@@ -1224,22 +1436,17 @@ export class AgentDashboard extends Container {
 
 	/**
 	 * Route an SGR mouse report against the last render's ModalShell geometry:
-	 * the chrome (close glyph, click-outside, footer chips) plus the two things
-	 * inside the card worth pointing at, a view tab and a roster row.
+	 * the chrome (close glyph, click-outside, footer chips), view tabs, roster
+	 * rows, and each terminable row's hover-only [x].
 	 *
-	 * A click on a row OPENS that agent rather than only selecting it. The row's
-	 * one action is "open this agent", so a click that merely moved the cursor
-	 * would ask for a second gesture to do the thing the first one already said,
-	 * and opening is reversible: Esc in the agent's session returns you to your
-	 * own.
+	 * Clicking a row still opens it. Clicking its [x] selects that same row and
+	 * opens the confirmation guard instead, so no pointer gesture can terminate
+	 * immediately.
 	 */
 	#handleMouse(data: string): void {
 		routeSgrMouseInput(data, event => {
 			// The wheel moves the active view, which is the roster cursor on Live and
-			// the stream on Comms, the same thing the arrow keys move. Without this a
-			// wheel report over the card was decoded, matched no chrome, and was
-			// consumed: the card ate the scroll rather than passing it on OR acting
-			// on it, so a long roster could only be moved by keyboard.
+			// the stream on Comms, the same thing the arrow keys move.
 			if (event.wheel !== null) {
 				this.#moveSelection(event.wheel);
 				this.onRequestRender?.();
@@ -1249,6 +1456,12 @@ export class AgentDashboard extends Container {
 				motion: event.motion,
 				leftClick: event.leftClick,
 			});
+			if (event.motion) {
+				const overRosterColumns =
+					event.col >= this.#bodyColStart && event.col < this.#bodyColStart + this.#contentWidth;
+				const hoveredIndex = overRosterColumns ? this.#rosterIndexAt(event.row) : -1;
+				this.#setHoveredRosterIndex(hoveredIndex);
+			}
 			if (chrome.kind === "hover-shortcut") {
 				if (this.#hoveredShortcutId !== chrome.id) {
 					this.#hoveredShortcutId = chrome.id;
@@ -1265,8 +1478,7 @@ export class AgentDashboard extends Container {
 				this.onRequestRender?.();
 				return true;
 			}
-			// `none` is a click inside the card that hit no chrome, which is the
-			// only case the card itself owns.
+			// `none` is a click or motion inside the card that hit no chrome.
 			if (chrome.kind !== "none" || !event.leftClick) return true;
 
 			const tab = this.#tabAt(event.row, event.col);
@@ -1280,7 +1492,9 @@ export class AgentDashboard extends Container {
 			if (index >= 0) {
 				this.#liveSelectedIndex = index;
 				this.#buildLayout();
-				this.openSelectedAgent();
+				const agent = this.#liveAgents[index];
+				if (agent && this.#isTerminationActionAt(index, event.col)) this.#requestTermination(agent);
+				else this.openSelectedAgent();
 				this.onRequestRender?.();
 			}
 			return true;
