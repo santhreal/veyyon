@@ -101,55 +101,48 @@ If a feature cannot meet this bar, it is experimental and must say so in its set
   History: `with { type: "file" }` only copied the entry as a raw asset (workers crashed silently in compiled binaries — issues #1011, #1027), and the later literal-path + extra-entrypoint pattern required keeping spawn literals and two build scripts in sync (issue #1150). The smoke probe below is the live validation of this contract.
   Validate any new worker with the dedicated smoke probe: `veyyon --smoke-test` spawns the stats sync worker and the tiny-model subprocess, pings them, and exits — it's wired into `ci:test:smoke` and `scripts/install-tests/run-ci.sh` so binary, source-link, and tarball installs all exercise it. Add a sibling smoke if the new worker is on a different module graph.
 
-## Bun Over Node
+## Bun (frozen surface, Rust is the direction)
 
-Use Bun APIs where they provide a cleaner alternative; fall back to `node:*` only for what Bun doesn't cover. **Never spawn shell commands for operations with proper APIs** (e.g., don't `Bun.spawnSync(["mkdir", "-p", dir])` — use `mkdirSync`).
+Bun is the runtime and the test runner today. That is a fact about the present, not a preference to build on. The long-term direction for this project's tooling is Rust and Cargo: `crates/` is where capability keeps moving, and the TypeScript that stays should be as ordinary as possible so it is cheap to port or to retire. Everything below follows from that, and it is deliberately narrow.
 
-### Quick reference
+### The rule: new code does not grow the Bun surface
 
-| Operation       | Use                                       | Not                             |
-| --------------- | ----------------------------------------- | ------------------------------- |
-| File read/write | `Bun.file()`, `Bun.write()`               | `readFileSync`, `writeFileSync` |
-| Spawn process   | `` $`cmd` ``, `Bun.spawn()`               | `child_process`                 |
-| Sleep           | `Bun.sleep(ms)`                           | `setTimeout` promise            |
-| Binary lookup   | `$which("git")` from `@veyyon/utils` | `spawnSync(["which", "git"])`   |
-| HTTP server     | `Bun.serve()`                             | `http.createServer()`           |
-| SQLite          | `bun:sqlite`                              | `better-sqlite3`                |
-| Hashing         | `Bun.hash()`, `Bun.password.*`, WebCrypto | `node:crypto`                   |
-| Path resolution | `import.meta.dir`, `import.meta.path`     | `fileURLToPath` dance           |
-| JSON5           | `Bun.JSON5.parse()` / `.stringify()`      | `json5` package                 |
-| JSONL           | `Bun.JSONL.parse()` / `.parseChunk()`     | `text.split("\n").map(JSON.parse)` |
-| String width    | `Bun.stringWidth()`                       | `get-east-asian-width`, custom  |
-| Text wrapping   | `Bun.wrapAnsi()`                          | custom ANSI-aware wrappers      |
+Avoid Bun wherever it is avoidable. In new code, reach for the portable option first, in this order: the language itself, `node:*`, POSIX tooling, then Bun. A plain bash script that works is better than a Bun script that does the same job. A standard library call is better than a Bun-specific convenience. Choose a Bun API only when there is no reasonable portable equivalent, and say in a comment which equivalent was missing.
 
-### Process execution
+| Need                  | Prefer                                                            | Not                                   |
+| --------------------- | ----------------------------------------------------------------- | ------------------------------------- |
+| Read / write a file   | `fs.readFile`, `fs.writeFile` (`node:fs/promises`)                 | `Bun.file()`, `Bun.write()`           |
+| Environment variables | `process.env`                                                      | `Bun.env`                             |
+| Run a command         | `execFile` / `spawn` from `node:child_process`, or a shell script  | `` $`cmd` ``, `Bun.spawn()`           |
+| Sleep                 | `setTimeout` from `node:timers/promises`                           | `Bun.sleep()`                         |
+| Hashing and digests   | `node:crypto`, WebCrypto                                           | `Bun.hash()`                          |
+| Module path           | `import.meta.dirname`, `import.meta.filename`                      | `import.meta.dir`, `import.meta.path` |
+| HTTP server           | `node:http`                                                        | `Bun.serve()`                         |
 
-Prefer Bun Shell (`` $`cmd` ``) for simple commands:
+Every spelling in the middle column runs unchanged on both Bun 1.3 and Node 22, so writing it that way costs nothing now and saves a rewrite later.
 
-```typescript
-import { $ } from "bun";
+When a Bun API really is the only option, keep it in one place. `$which` in `packages/utils/src/which.ts` is the pattern: `Bun.which` is called there and nowhere else, so the tree depends on one repo helper rather than on hundreds of Bun call sites.
 
-const result = await $`git status`.cwd(dir).quiet().nothrow();
-if (result.exitCode === 0) {
-	const text = result.text();
-}
+Two things this rule does not license:
 
-$`do-stuff ${tmpFile}`.quiet().nothrow(); // fire and forget
-```
+- **It is not permission to shell out.** Spawning a process for something the standard library does in memory is worse on both counts, portability and cost. Use `fs.mkdir(dir, { recursive: true })`, never `mkdir -p` through a child process, and use `$which("git")` from `@veyyon/utils`, never a spawned `which`. "Prefer a bash script" is about how you write a new tool under `scripts/`, not about how application code touches the filesystem.
+- **It is not permission to add a dependency.** `Bun.stringWidth()`, `Bun.wrapAnsi()`, `Bun.JSON5`, `Bun.JSONL`, and `bun:sqlite` have no free portable equivalent. Swapping them for npm packages trades one Bun call for supply-chain surface and, in the sqlite case, a native build. They stay.
 
-Methods: `.quiet()`, `.nothrow()`, `.text()`, `.cwd(path)`.
+### What is not changing
 
-Use `Bun.spawn`/`Bun.spawnSync` only for: long-running processes (LSP, kernels), streaming stdin/stdout/stderr (SSE, JSON-RPC), or process control (signals, kill, complex lifecycle).
+Bun appears in 5023 files: `bun:test` in 4564 of them, `Bun.env` in 1289, `Bun.file` in 1259, `Bun.write` in 1232. None of that is in scope, and the size is the reason.
 
-When using `pipe` mode, cast the stream:
-```typescript
-const child = Bun.spawn(["cmd"], { stdout: "pipe", stderr: "pipe" });
-const reader = (child.stdout as ReadableStream<Uint8Array>).getReader();
-```
+- Do not migrate existing Bun code opportunistically. A drive-by rewrite of code that works is churn, and it is a merge conflict against whoever is actually working in that file.
+- The test runner stays on `bun:test` for now. Moving off it is its own project with its own decision, not a side effect of someone else's patch.
+- None of this is a deprecation. Existing `Bun.file`, `Bun.write`, and `Bun.env` calls are correct code and stay correct.
 
-### Node module imports
+The rule governs new code, and code you are already rewriting for another reason. If you are rewriting a file anyway, use the portable spelling on the lines you touch and leave the rest alone. Do not widen a diff in order to convert a file.
 
-Always use **namespace imports** for `node:fs`, `node:path`, `node:os`:
+### Working in the Bun code that is here
+
+You will read and edit it every day, so the local conventions still matter.
+
+**Node module imports.** Namespace imports for `node:fs`, `node:path`, `node:os`:
 
 ```typescript
 import * as fs from "node:fs/promises";
@@ -157,53 +150,30 @@ import * as path from "node:path";
 import * as os from "node:os";
 ```
 
-- Async-only file → `node:fs/promises`.
-- Needs both sync and async → `node:fs`, then `fs.promises.xxx` for async.
+An async-only file imports `node:fs/promises`. A file needing both sync and async imports `node:fs` and reaches async through `fs.promises.xxx`. Keep sync APIs out of async flows; use one only when a synchronous interface forces it.
 
-### File I/O
+**Paths that are allowed to be absent.** Go through `@veyyon/utils` (`readdirIfPresent`, `statIfPresent`, `pathExists` and its strict and quiet twins), not `fs.existsSync` and not `.catch(() => [])`. Pick by what should happen to a fault; the header of `packages/utils/src/fs-optional.ts` explains the four contracts. For a plain optional read, catch rather than probe first:
 
-Prefer Bun:
 ```typescript
-const text = await Bun.file(path).text();
-const data = await Bun.file(path).json();
-await Bun.write(path, data); // auto-creates parent dirs
+import { isEnoent } from "@veyyon/utils";
+try {
+	return JSON.parse(await fs.readFile(configPath, "utf8"));
+} catch (err) {
+	if (isEnoent(err)) return null;
+	throw err;
+}
 ```
 
-Use `node:fs/promises` for directory ops (`fs.mkdir`, `fs.rm`, `fs.readdir`) — Bun has no native directory APIs. Avoid sync APIs in async flows; use sync only when forced by a synchronous interface.
+An existence check followed by a read is two syscalls and a race between them. Drop the check.
 
-**Anti-patterns:**
-- `existsSync`/`readFileSync`/`writeFileSync` in async code → `Bun.file()` APIs.
-- `mkdir(dirname(path), …)` before `Bun.write(path, …)` → redundant; `Bun.write` handles it.
-- `if (await file.exists()) { await file.json() }` → two syscalls plus race. Use try-catch with `isEnoent`:
-  ```typescript
-  import { isEnoent } from "@veyyon/utils";
-  try {
-  	return await Bun.file(path).json();
-  } catch (err) {
-  	if (isEnoent(err)) return null;
-  	throw err;
-  }
-  ```
-- Multiple `Bun.file(path)` handles for the same path (including across `checkX`/`loadX` helpers).
-- `Buffer.from(await Bun.file(x).arrayBuffer())` → `await fs.readFile(path)`.
-- Existence check + try-catch around the same read → drop the existence check.
+**Streams.** Use the readers in `@veyyon/utils`: `readPipeText` for a whole pipe, then `readLines`, `readJsonl`, `readSseEvents`. Write a manual reader loop only when the protocol needs one.
 
-### Streams
+**Spawning.** Existing call sites use Bun Shell (`` $`cmd` ``) with `.cwd(dir)`, `.quiet()`, `.nothrow()`, and `.text()`, and reach for `Bun.spawn` / `Bun.spawnSync` for the long-running and streaming cases (LSP, kernels, SSE, JSON-RPC). Leave them as they are. In pipe mode the stream needs a cast:
 
-Prefer centralized helpers:
 ```typescript
-import { readStream, readLines } from "./utils/stream";
-const text = await readStream(child.stdout);
-for await (const line of readLines(stream)) { /* ... */ }
+const child = Bun.spawn(["cmd"], { stdout: "pipe", stderr: "pipe" });
+const reader = (child.stdout as ReadableStream<Uint8Array>).getReader();
 ```
-Manual reader loops only when the protocol requires it (SSE, streaming JSON-RPC).
-
-### Misc
-
-- **Sleep**: `await Bun.sleep(ms)`, never `new Promise(r => setTimeout(r, ms))`.
-- **Password hashing**: `Bun.password.hash(pw, "bcrypt")` / `Bun.password.verify(pw, hash)`.
-- **String width**: `Bun.stringWidth(text, { countAnsiEscapeCodes?: false })`.
-- **Wrapping**: `Bun.wrapAnsi(text, width, { wordWrap, hard, trim })`.
 
 ## Generated Files
 
