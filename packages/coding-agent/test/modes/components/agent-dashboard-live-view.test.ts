@@ -47,6 +47,24 @@ function frameOf(dashboard: AgentDashboard): string {
 	return dashboard.render(120).join("\n").replace(ANSI_PATTERN, "");
 }
 
+/**
+ * Rows the CARD occupies, which is not the length of the frame.
+ *
+ * The dashboard renders into the whole terminal and floats its card in the
+ * middle of that area, the way every other modal does, so `render().length` is
+ * the viewport and says nothing about how tall the card is. Measuring the
+ * drawn extent is what these height assertions were always about; taking the
+ * array length instead made them pass for a card of any size.
+ */
+function cardRows(lines: readonly string[]): number {
+	const drawn = lines.map(line => line.replace(ANSI_PATTERN, "").trimEnd());
+	const first = drawn.findIndex(line => line.length > 0);
+	if (first < 0) return 0;
+	let last = drawn.length - 1;
+	while (last > first && drawn[last]!.length === 0) last--;
+	return last - first + 1;
+}
+
 describe("Live roster", () => {
 	/**
 	 * The call sign is memorable but arbitrary: `Kestrel` says nothing about
@@ -339,10 +357,39 @@ describe("Card chrome", () => {
 
 		const lines = dashboard.render(100);
 
-		expect(lines.length).toBeLessThan(20);
+		expect(cardRows(lines)).toBeLessThan(20);
 		const plain = lines.map(line => line.replace(ANSI_PATTERN, "")).join("\n");
 		expect(plain).toContain("Live (4)");
 		expect(plain).toContain("esc close");
+		dashboard.dispose();
+	});
+
+	/**
+	 * And the card it hugs to is CENTRED in the terminal, like every other modal
+	 * in this TUI.
+	 *
+	 * Hugging alone put the shrunken card flush against the top of the screen,
+	 * because the shell was handed the card's own height as the area to lay out
+	 * in and so had no slack to centre within. The blank rows above and below the
+	 * card are what prove it floats rather than hangs.
+	 */
+	test("floats the hugged card in the middle of the terminal", () => {
+		geo.setRows(40);
+		for (let index = 0; index < 4; index++) registerSub(`${index}-Sub`, "reviewer");
+		const dashboard = new AgentDashboard({ terminalHeight: 40 });
+
+		const drawn = dashboard.render(100).map(line => line.replace(ANSI_PATTERN, "").trimEnd());
+
+		expect(drawn.length).toBe(40);
+		const above = drawn.findIndex(line => line.length > 0);
+		let lastDrawn = drawn.length - 1;
+		while (lastDrawn > 0 && drawn[lastDrawn]!.length === 0) lastDrawn--;
+		const below = drawn.length - 1 - lastDrawn;
+		expect(above).toBeGreaterThan(0);
+		expect(below).toBeGreaterThan(0);
+		// Centred, not merely floating: the two margins differ by at most the odd
+		// row that cannot be split.
+		expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
 		dashboard.dispose();
 	});
 
@@ -354,12 +401,12 @@ describe("Card chrome", () => {
 	test("draws the same card for one agent as for four", () => {
 		geo.setRows(40);
 		registerSub("0-Sub", "reviewer");
-		const one = new AgentDashboard({ terminalHeight: 40 }).render(100).length;
+		const one = cardRows(new AgentDashboard({ terminalHeight: 40 }).render(100));
 		AgentRegistry.resetGlobalForTests();
 		for (let index = 0; index < 4; index++) registerSub(`${index}-Sub`, "reviewer");
 		const four = new AgentDashboard({ terminalHeight: 40 });
 
-		expect(four.render(100).length).toBe(one);
+		expect(cardRows(four.render(100))).toBe(one);
 		four.dispose();
 	});
 
@@ -370,11 +417,11 @@ describe("Card chrome", () => {
 	test("grows past the floor before it stops growing", () => {
 		geo.setRows(40);
 		for (let index = 0; index < 4; index++) registerSub(`${index}-Sub`, "reviewer");
-		const small = new AgentDashboard({ terminalHeight: 40 }).render(100).length;
+		const small = cardRows(new AgentDashboard({ terminalHeight: 40 }).render(100));
 		for (let index = 4; index < 16; index++) registerSub(`${index}-Sub`, "reviewer");
 		const larger = new AgentDashboard({ terminalHeight: 40 });
 
-		const grown = larger.render(100).length;
+		const grown = cardRows(larger.render(100));
 
 		expect(grown).toBeGreaterThan(small);
 		expect(grown).toBeLessThanOrEqual(40);

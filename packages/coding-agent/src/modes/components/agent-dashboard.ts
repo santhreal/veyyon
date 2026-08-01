@@ -268,6 +268,18 @@ class LiveRosterPane implements Component {
 		 * fixed cadence and the label it existed to update never moved.
 		 */
 		private readonly now: () => number,
+		/**
+		 * The width the rows were actually drawn at, reported back after the
+		 * ScrollView has decided whether to take its gutter.
+		 *
+		 * The hit test for the row-local `[x]` used to re-derive this from
+		 * `agents.length > maxVisible`, which is a GUESS at what ScrollView does.
+		 * The two disagreed at the boundary where the roster exactly fills its
+		 * window: the view still reserved a gutter, the guess said it had not, and
+		 * the click target sat one column right of the `[x]` the operator could
+		 * see. Reporting the real width keeps one source of truth.
+		 */
+		private readonly onContentWidth: (width: number) => void,
 	) {}
 
 	render(width: number): readonly string[] {
@@ -329,6 +341,7 @@ class LiveRosterPane implements Component {
 			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 		});
 		const contentWidth = sv.contentWidth(width);
+		this.onContentWidth(contentWidth);
 
 		const rows: string[] = [];
 		for (let i = start; i < end; i++) {
@@ -726,6 +739,13 @@ export class AgentDashboard extends Container {
 	#hoveredShortcutId: string | null = null;
 	/** Screen column the card's body text starts at, refreshed every render. */
 	#bodyColStart = 0;
+	/**
+	 * Width the roster rows were last drawn at, reported by the pane itself.
+	 *
+	 * This is {@link #contentWidth} minus the scrollbar gutter WHEN the view took
+	 * one, which only the view knows. It positions the row-local `[x]` hit test.
+	 */
+	#rosterContentWidth = 0;
 	/** Clickable view tabs, in columns relative to the body text. */
 	#tabHits: Array<{ id: ViewId; start: number; end: number }> = [];
 
@@ -935,12 +955,23 @@ export class AgentDashboard extends Container {
 		return process.stdout.rows || this.#terminalHeight || 24;
 	}
 
-	/** Height budget for the body, sized to the ModalShell card. */
+	/**
+	 * Rows the pane actually draws, which is also the height scrolling and click
+	 * hit-testing measure against, so all three agree.
+	 *
+	 * The Live roster hugs its content: it is a LIST whose length is known, and a
+	 * roster padded to the full budget is the empty space under one agent that
+	 * this card kept drawing. The Comms stream takes the whole budget instead,
+	 * because it is a feed whose rows depend on the width it wraps at, and a feed
+	 * that resizes its own frame as messages arrive is jitter.
+	 */
 	#computeBodyHeight(): number {
 		// Chrome inside the card: tab bar + spacer, plus the notice line when one is
 		// showing. ModalShell owns everything outside the body, and how much that is
 		// comes from {@link #bodyBudget}, which render() takes from the shell.
-		return Math.max(1, this.#bodyBudget - 2 - (this.#notice ? 2 : 0));
+		const budget = Math.max(1, this.#bodyBudget - 2 - (this.#notice ? 2 : 0));
+		if (this.#activeView !== "live") return budget;
+		return Math.min(budget, Math.max(AgentDashboard.#MIN_ROSTER_ROWS, this.#liveAgents.length));
 	}
 
 	/**
@@ -963,12 +994,17 @@ export class AgentDashboard extends Container {
 	 * alt-screen + mouse tracking stay active for the card's lifetime).
 	 */
 	override render(width: number): readonly string[] {
-		const height = this.#cardHeight(width);
-		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
-		const dims = computeModalDims(width, height, sizing);
+		// The card is laid out against the WHOLE terminal, not against its own
+		// height. Passing the card's height as the area left the shell no slack to
+		// centre in, so the card sat flush against the top of the screen while
+		// every other modal floated in the middle. The shell shrinks the card to
+		// `preferredBodyRows` below and re-centres it in this area.
+		const area = this.#terminalRows();
+		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(area, MODAL_SIZING_LARGE));
+		const dims = computeModalDims(width, area, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: height }, () => padding(width));
+			return Array.from({ length: area }, () => padding(width));
 		}
 
 		this.#contentWidth = dims.contentWidth;
@@ -981,7 +1017,7 @@ export class AgentDashboard extends Container {
 			hoveredShortcutId: this.#hoveredShortcutId,
 		}).maxBodyRows;
 		// Rebuild when terminal geometry changes so the card re-fits on resize.
-		if (height !== this.#builtRows || dims.contentWidth !== this.#builtCols) {
+		if (area !== this.#builtRows || dims.contentWidth !== this.#builtCols) {
 			this.#buildLayout();
 		}
 
@@ -990,20 +1026,23 @@ export class AgentDashboard extends Container {
 			title: "Agent Control Center",
 			sizing,
 			areaWidth: width,
-			areaHeight: height,
+			areaHeight: area,
 			body,
+			preferredBodyRows: this.#preferredBodyRows(body.length),
 			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});
 
 		this.#shellGeometry = shell.geometry;
-		// The body's left edge: the card's own left edge, its border, and the
-		// shell's horizontal padding. Taken from the shell that just rendered
-		// rather than recomputed later, because `sizing` is chosen per frame from
-		// the terminal height and a stale copy would put every click one or two
-		// columns off on a short terminal.
-		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + 1 + Math.max(1, sizing.hPad);
+		// The body's left edge: the card's border plus the ONE column `row()` in
+		// overlay-box insets every line by (`│ ` … ` │`). That inset is fixed and
+		// is NOT `sizing.hPad` — hPad narrows the content through
+		// `computeModalDims`, it does not move where the content starts. This used
+		// to add hPad and so landed one column right on any card whose padding was
+		// not compact, which put the row-local [x] permanently out of reach of the
+		// pointer while still drawing it under the cursor.
+		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + 2;
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
@@ -1303,6 +1342,9 @@ export class AgentDashboard extends Container {
 					this.#liveScrollOffset,
 					this.#computeBodyHeight(),
 					() => Date.now(),
+					width => {
+						this.#rosterContentWidth = width;
+					},
 				),
 			);
 		} else {
@@ -1328,63 +1370,39 @@ export class AgentDashboard extends Container {
 	/**
 	 * Roster rows the card keeps room for even when fewer agents exist.
 	 *
-	 * Without a floor the card would resize on every spawn, and a panel that
-	 * changes height while you are reading it is worse than a little empty space.
-	 * Eight is where a run stops feeling small: below it the card is a short strip,
-	 * and rosters that size change often.
+	 * This floor stops the first spawns from resizing the card under the cursor.
+	 * The card is CENTRED, so a resize moves it at both edges at once: a roster
+	 * that grew a row would shift the whole card up half a row while you read it.
+	 *
+	 * It was eight, on the reasoning that a resize while you read is worse than
+	 * some empty space. That reasoning does not survive the common case. The card
+	 * already grows past the floor as agents register, so it already resizes
+	 * during a run; the floor only prevented SHRINKING below eight. It bought no
+	 * stability where jitter actually happens and charged for it in the session
+	 * shape most people have, one agent, which drew a single row and then six
+	 * rows of bordered nothing.
+	 *
+	 * Four is the smallest floor that still buys the stability the floor is FOR:
+	 * a one-agent card and a four-agent card are the same card, so the batch of
+	 * subagents a run usually spawns lands without moving the panel. Below four
+	 * the card twitches on the second spawn; above four it pays in empty rows for
+	 * agents that are not there.
 	 */
-	static readonly #MIN_ROSTER_ROWS = 8;
+	static readonly #MIN_ROSTER_ROWS = 4;
 
 	/**
-	 * How tall the card should be, which is not always the whole terminal.
+	 * Body rows to ask the card for, which is the content it has plus the roster
+	 * floor when the Live view has less than the floor to show.
 	 *
-	 * It used to be `Math.max(14, terminalRows())` unconditionally, so a run with
-	 * four agents drew four rows of roster and then about twenty rows of empty card
-	 * under them, framed and bordered as though something were there. On a
-	 * forty-row terminal that is most of the screen given to nothing, and the
-	 * transcript behind the card is what it is covering.
-	 *
-	 * The Live roster hugs its content, because it is a LIST and its length is
-	 * known. The Comms stream does not: it is a feed, its rows depend on the width
-	 * it wraps at, and a feed that keeps resizing its own frame as messages arrive
-	 * is the jitter this is trying to avoid. So it keeps the full height, which is
-	 * also the height it wants.
+	 * The floor cannot come from the pane: {@link #computeBodyHeight} is a CAP on
+	 * what the roster may draw, and a roster of one agent draws one row whatever
+	 * the cap is. Asking the shell for the taller body is what actually reserves
+	 * the space, and it pads with blank rows inside the card rather than leaving
+	 * the card to hug a single row and jump on the next spawn.
 	 */
-	#cardHeight(width: number): number {
-		const available = Math.max(14, this.#terminalRows());
-		if (this.#activeView !== "live") return available;
-
-		const wantedBody = this.#paneRowOffset() + Math.max(AgentDashboard.#MIN_ROSTER_ROWS, this.#liveAgents.length);
-		if (this.#bodyRowsAt(width, available) <= wantedBody) return available;
-
-		// Smallest height whose body still holds the roster. Chrome is not a
-		// constant to subtract: the shell centers the card in the area it is given
-		// and drops to compact padding on a short one, so the body a height yields
-		// has to be measured at that height. It is monotonic, which is what makes a
-		// search valid, and a search is what keeps this to six probes rather than
-		// one per candidate row on a surface that redraws while agents work.
-		let low = 14;
-		let high = available;
-		while (low < high) {
-			const mid = Math.floor((low + high) / 2);
-			if (this.#bodyRowsAt(width, mid) >= wantedBody) high = mid;
-			else low = mid + 1;
-		}
-		return low;
-	}
-
-	/** Body rows the shell would leave at this card height, or 0 if it cannot draw. */
-	#bodyRowsAt(width: number, height: number): number {
-		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
-		const dims = computeModalDims(width, height, sizing);
-		if (!dims) return 0;
-		return planModalChrome({
-			sizing,
-			modalHeight: dims.modalHeight,
-			contentWidth: dims.contentWidth,
-			shortcuts: this.#currentShortcuts(),
-			hoveredShortcutId: this.#hoveredShortcutId,
-		}).maxBodyRows;
+	#preferredBodyRows(bodyRows: number): number {
+		if (this.#activeView !== "live") return bodyRows;
+		return Math.max(bodyRows, this.#paneRowOffset() + AgentDashboard.#MIN_ROSTER_ROWS);
 	}
 
 	/** Body rows the tab strip and any notice occupy before the pane starts. */
@@ -1420,9 +1438,7 @@ export class AgentDashboard extends Container {
 	#isTerminationActionAt(index: number, col: number): boolean {
 		const agent = this.#liveAgents[index];
 		if (!agent || !this.#canTerminate(agent)) return false;
-		const hasScrollbar = this.#liveAgents.length > this.#computeBodyHeight();
-		const rosterWidth = this.#contentWidth - (hasScrollbar ? 1 : 0);
-		const actionStart = this.#bodyColStart + rosterWidth - 3;
+		const actionStart = this.#bodyColStart + this.#rosterContentWidth - 3;
 		return col >= actionStart && col < actionStart + 3;
 	}
 
