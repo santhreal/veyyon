@@ -14,34 +14,8 @@
  * itself holds no state. Ripples (cursor/keypress flares) are passed in as data.
  */
 
-import { padLineToWidth, reopenBackgroundAfterResets } from "@veyyon/tui";
 import { SGR_RESET } from "@veyyon/tui/ansi";
 import { clamp01 } from "@veyyon/utils";
-
-/**
- * The Canvas ground (design.md "Canvas"): a surface that owns the whole
- * viewport paints pure black edge to edge. One owner for the escape so the
- * sun's under-glyph ground and the full-surface painter can never drift.
- */
-export const CANVAS_BG_ESCAPE = "\x1b[48;2;0;0;0m";
-
-/**
- * Paint a full-viewport surface's rows onto the pure-black Canvas ground.
- *
- * Each row is prefixed with the black background, padded (ANSI-aware) to the
- * full width so the ground reaches the right edge, and closed with a reset so
- * nothing leaks past the surface. A row's own `\x1b[0m` / `\x1b[49m` resets
- * would punch holes in the ground from that point on, so the ground is
- * re-armed immediately after every one. For full-viewport overlays ONLY
- * (setup wizard splash/scenes/outro); the inline transcript never paints
- * backgrounds.
- */
-export function paintCanvasBlack(lines: readonly string[], width: number): string[] {
-	return lines.map(line => {
-		const rearmed = reopenBackgroundAfterResets(line, CANVAS_BG_ESCAPE);
-		return `${CANVAS_BG_ESCAPE}${padLineToWidth(rearmed, width)}${SGR_RESET}`;
-	});
-}
 
 /**
  * The disc's shape: where it fades out, and how it dims toward the limb.
@@ -121,8 +95,6 @@ export interface SunFieldOptions {
 	time: number;
 	/** True to emit 24-bit colour; false uses the 256-colour ember ramp. */
 	trueColor: boolean;
-	/** Paint a pitch-black background behind every cell so the ground is #000 regardless of terminal theme. */
-	paintBackground?: boolean;
 	/** Active ripples that perturb the field (cursor drift, keypress flares). */
 	ripples?: readonly Ripple[];
 	/** 0..1 — scales every cell down the ember ramp (faded ghost marks). Omit for full fire. */
@@ -151,8 +123,9 @@ function fg(trueColor: boolean, band: number): string {
 
 /**
  * Render the sun as an array of `rows` strings, each `cols` cells wide. Cells
- * below the visibility threshold are spaces (black ground); everything else is
- * an ember glyph. The result is ready to drop into a component's line list.
+ * below the visibility threshold are spaces that carry no background escape, so
+ * the terminal's own ground shows through; everything else is an ember glyph.
+ * The result is ready to drop into a component's line list.
  */
 export function renderSunField(o: SunFieldOptions): string[] {
 	const { cols, rows, cx, cy, radius, time, trueColor } = o;
@@ -160,11 +133,10 @@ export function renderSunField(o: SunFieldOptions): string[] {
 	const R = Math.max(1, radius);
 	// Animation step for the dither so it shimmers without thrashing every frame.
 	const step = Math.floor(time * 5);
-	const bgPrefix = o.paintBackground ? CANVAS_BG_ESCAPE : "";
 	const out: string[] = [];
 
 	for (let y = 0; y < rows; y++) {
-		let line = bgPrefix;
+		let line = "";
 		let lastBand = -1;
 		let open = false;
 		for (let x = 0; x < cols; x++) {
@@ -211,7 +183,7 @@ export function renderSunField(o: SunFieldOptions): string[] {
 
 			if (val <= 0.12) {
 				if (open) {
-					line += SGR_RESET + bgPrefix;
+					line += SGR_RESET;
 					open = false;
 					lastBand = -1;
 				}
@@ -226,7 +198,7 @@ export function renderSunField(o: SunFieldOptions): string[] {
 			}
 			line += GLYPH[band];
 		}
-		if (open || bgPrefix) line += SGR_RESET;
+		if (open) line += SGR_RESET;
 		out.push(line);
 	}
 	return out;
@@ -241,8 +213,6 @@ export interface SunMarkOptions {
 	/** Advance for live shimmer/churn; defaults to a fixed resting seed. */
 	time?: number;
 	ripples?: readonly Ripple[];
-	/** Paint a pitch-black ground under the mark (guarantees #000 behind it). */
-	paintBackground?: boolean;
 }
 
 /**
@@ -271,7 +241,6 @@ export function sunMark(cols: number, rows: number, o: SunMarkOptions): string[]
 		time: o.time ?? 0.6,
 		trueColor: o.trueColor,
 		ripples: o.ripples,
-		paintBackground: o.paintBackground,
 	});
 }
 

@@ -1,7 +1,7 @@
 import { type SgrMouseEvent, TabBar } from "@veyyon/tui";
 import { getTabBarTheme } from "../../shared";
 import { SignInTab } from "./sign-in";
-import type { SetupScene, SetupSceneController, SetupSceneHost, SetupTab } from "./types";
+import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost, SetupTab } from "./types";
 import { WebSearchTab } from "./web-search";
 
 /**
@@ -42,6 +42,19 @@ class ProvidersSceneController implements SetupSceneController {
 
 	invalidate(): void {
 		for (const tab of this.#tabs) tab.invalidate();
+	}
+
+	/**
+	 * Tab is the key users could not find: this scene's panels are reachable
+	 * only through the tab bar, and the footer never said so. While a panel is
+	 * modal (an OAuth login in flight) tab switching is suppressed, so the hint
+	 * goes away with the behavior instead of advertising a dead key.
+	 */
+	keyHints(): readonly SetupKeyHint[] {
+		const hints: SetupKeyHint[] = [];
+		if (!this.#activeTab().modal) hints.push({ keys: "tab", label: "switch panel" });
+		hints.push({ keys: "↑↓", label: "select" }, { keys: "enter", label: "confirm" });
+		return hints;
 	}
 
 	handleInput(data: string): void {

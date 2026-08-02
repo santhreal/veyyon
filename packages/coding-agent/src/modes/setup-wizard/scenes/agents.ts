@@ -3,7 +3,7 @@ import { discoverAgents } from "../../../task/discovery";
 import { isSubagentEnabled } from "../../../task/subagent-settings";
 import type { AgentDefinition } from "../../../task/types";
 import { getSelectListTheme, theme } from "../../theme/theme";
-import type { SetupScene, SetupSceneController, SetupSceneHost } from "./types";
+import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 
 const CONTINUE_VALUE = "__continue";
 const MAX_VISIBLE = 10;
@@ -82,6 +82,15 @@ export class AgentsSceneController implements SetupSceneController {
 
 	invalidate(): void {
 		this.#list.invalidate();
+	}
+
+	/** Space is this scene's real verb: rows are toggled, not picked once. */
+	keyHints(): readonly SetupKeyHint[] {
+		return [
+			{ keys: "↑↓", label: "select" },
+			{ keys: "space", label: "toggle" },
+			{ keys: "enter", label: "confirm" },
+		];
 	}
 
 	handleInput(data: string): void {

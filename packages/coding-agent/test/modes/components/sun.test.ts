@@ -92,9 +92,22 @@ describe("renderSunField colour", () => {
 		expect(joined).not.toContain("\x1b[38;2;");
 	});
 
-	test("paintBackground lays a pitch-black ground under every row", () => {
-		const out = renderSunField({ ...BASE, paintBackground: true });
-		for (const line of out) expect(line.startsWith("\x1b[48;2;0;0;0m")).toBe(true);
+	/**
+	 * The bug this locks out: the field used to accept `paintBackground`, which
+	 * prefixed every row with a hardcoded `\x1b[48;2;0;0;0m`. No production
+	 * caller ever set it, and the one surface that did paint that ground (the
+	 * setup wizard) covered the user's terminal theme with a black slab. The
+	 * field colours glyphs and nothing else, so the terminal's own ground shows
+	 * between them.
+	 */
+	test("emits foreground escapes only, never a ground of its own", () => {
+		const sequences = [
+			...renderSunField(BASE)
+				.join("")
+				.matchAll(/\x1b\[[0-9;]*m/g),
+		].map(match => match[0]);
+		expect(sequences.filter(sequence => !/^\x1b\[(?:38;2;\d+;\d+;\d+|0)m$/.test(sequence))).toEqual([]);
+		expect(sequences).toContain(fgTrue(7));
 	});
 });
 

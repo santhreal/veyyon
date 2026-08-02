@@ -649,6 +649,81 @@ export function writeGlobalProfileSharing(shared: boolean): string {
 }
 
 /**
+ * The onboarding-generation key in the GLOBAL config.
+ *
+ * Onboarding is something a HUMAN does once per machine, so its marker belongs
+ * beside `defaultProfile` rather than inside one profile's settings file. Held
+ * per profile it made `--profile <name>` look like a brand-new install: the new
+ * profile's `agent/config.yml` has no onboarding key, the gate read the schema
+ * default, and a user who had onboarded years ago was walked through the setup
+ * wizard again. One owner for the literal so the reader, the writer, and the
+ * settings-domain binding agree.
+ */
+export const ONBOARDING_VERSION_CONFIG_KEY = "onboardingVersion";
+
+/** The machine-wide onboarding generation, and whether it could be read at all. */
+export interface GlobalOnboardingVersion {
+	/** The stored generation, or `undefined` when the key is absent. */
+	version: number | undefined;
+	/**
+	 * True when the global config is present but could not be read or parsed, so
+	 * `version` is absent because of that failure rather than because the machine
+	 * is new. A caller deciding whether to onboard MUST NOT read this case as a
+	 * first install: that is how a corrupt config re-ran the setup wizard.
+	 */
+	unreadable: boolean;
+}
+
+/**
+ * The onboarding generation this machine has completed, from the GLOBAL config.
+ * `undefined` means the key is absent (never onboarded). Throws on unreadable
+ * YAML or a non-numeric value, naming the file, matching
+ * {@link resolveGlobalDefaultProfile}'s strictness so a typo cannot silently
+ * decide whether a user is onboarded.
+ */
+export function resolveGlobalOnboardingVersion(): number | undefined {
+	const { record, filePath } = readGlobalConfigRecord();
+	const value = record[ONBOARDING_VERSION_CONFIG_KEY];
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== "number" || !Number.isFinite(value)) {
+		throw new Error(
+			`Global config ${filePath}: ${ONBOARDING_VERSION_CONFIG_KEY} must be a finite number ` +
+				`(the setup generation already completed on this machine). Got ${typeof value}.`,
+		);
+	}
+	return value;
+}
+
+/**
+ * Never-throwing variant of {@link resolveGlobalOnboardingVersion} that reports
+ * WHY the value is missing.
+ *
+ * The distinction is the whole point: the sibling `*Safe` readers can fold a
+ * failure into their default because sharing credentials or using the default
+ * profile is a safe posture either way. Onboarding is not symmetric. "Absent"
+ * means run the wizard and "unreadable" means do not, so a reader that returned
+ * one number for both would re-onboard every launch a config file was corrupt.
+ */
+export function readGlobalOnboardingVersionSafe(): GlobalOnboardingVersion {
+	try {
+		return { version: resolveGlobalOnboardingVersion(), unreadable: false };
+	} catch {
+		return { version: undefined, unreadable: true };
+	}
+}
+
+/**
+ * Record the onboarding generation in the GLOBAL config, preserving every other
+ * key; `undefined` clears it. Returns the file written. Synchronous and atomic
+ * under the shared lock, so the fact that a user completed onboarding is on disk
+ * before the call returns rather than waiting on a debounced save that a closed
+ * terminal would discard.
+ */
+export function writeGlobalOnboardingVersion(version: number | undefined): string {
+	return mutateGlobalConfigKey(ONBOARDING_VERSION_CONFIG_KEY, () => version);
+}
+
+/**
  * Directory whose `agent.db` holds the machine-wide SHARED credential store read
  * by every profile when {@link resolveGlobalProfileSharing} is on. Lives beside
  * the global `config.yml` at the base config root, under a dedicated name so it
