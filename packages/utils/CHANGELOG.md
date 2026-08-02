@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `dirs`: `resolveGlobalOnboardingVersion`, `readGlobalOnboardingVersionSafe` and `writeGlobalOnboardingVersion` read and write the setup generation in the cross-profile `~/.veyyon/config.yml`, so onboarding state belongs to the machine rather than to whichever profile happened to be active. The safe reader reports unreadable separately from absent, because for onboarding those two must not collapse into the same number: a file that cannot be read is not a fresh install, and treating it as one is what re-ran the setup wizard on every launch.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

@@ -65,7 +65,7 @@ import type { MCPManager } from "./mcp";
 import { setLaunchTip, updateInstalledTip } from "./modes/components/launch-tip";
 import type { InteractiveMode } from "./modes/interactive-mode";
 import type { PrintModeOptions } from "./modes/print-mode";
-import { CURRENT_SETUP_VERSION } from "./modes/setup-version";
+import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "./modes/setup-version";
 import { initTheme, stopThemeWatcher } from "./modes/theme/theme";
 import type { SubmittedUserInput } from "./modes/types";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
@@ -533,16 +533,21 @@ async function runInteractiveMode(
 	// to know whether the stored setup version is current. Lazy-load the wizard
 	// barrel only when setup is stale, forced, or the explicit startup splash
 	// setting needs the shared setup splash renderer.
-	const storedSetupVersion = settings.get("setupVersion");
+	// The generation is machine-wide (`~/.veyyon/config.yml`) with a one-time
+	// promotion of the retired per-profile value, and `unreadable` says the answer
+	// came from a config that could not be parsed. Neither a different profile,
+	// nor a different directory, nor a broken settings file may look like a first
+	// install.
+	const onboarding = resolveOnboardingGeneration(settings);
+	const setupStale = !onboarding.unreadable && onboarding.version < CURRENT_SETUP_VERSION;
 	const setupWizard =
-		forceSetupWizard || storedSetupVersion < CURRENT_SETUP_VERSION || showStartupSplash
-			? await import("./modes/setup-wizard")
-			: undefined;
+		forceSetupWizard || setupStale || showStartupSplash ? await import("./modes/setup-wizard") : undefined;
 	const setupScenes = setupWizard
-		? await setupWizard.selectSetupScenes(storedSetupVersion, setupWizard.ALL_SCENES, mode, {
+		? await setupWizard.selectSetupScenes(onboarding.version, setupWizard.ALL_SCENES, mode, {
 				resuming,
 				isTTY: process.stdin.isTTY && process.stdout.isTTY,
 				setupWizardEnabled: settings.get("startup.setupWizard"),
+				settingsUnreadable: onboarding.unreadable,
 				force: forceSetupWizard,
 			})
 		: [];

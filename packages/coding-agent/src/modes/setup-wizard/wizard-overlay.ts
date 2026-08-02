@@ -7,14 +7,17 @@ import {
 	routeSgrMouseInput,
 	type SgrMouseEvent,
 	TERMINAL,
+	truncateToWidth,
 } from "@veyyon/tui";
+import { SGR_RESET } from "@veyyon/tui/ansi";
 import { APP_NAME } from "@veyyon/utils";
-import { paintCanvasBlack, sunMark } from "../components/sun";
+import { sunMark } from "../components/sun";
 import { silverEscape } from "../components/welcome";
 import { theme } from "../theme/theme";
 import { renderSetupOutro, SETUP_OUTRO_MS } from "./scenes/outro";
 import { renderSetupSplash, SETUP_SPLASH_MS, SETUP_TICK_MS } from "./scenes/splash";
 import type {
+	SetupKeyHint,
 	SetupScene,
 	SetupSceneController,
 	SetupSceneHost,
@@ -28,6 +31,16 @@ const SCENE_MARGIN_X = 4;
 const MIN_CONTENT_WIDTH = 20;
 /** Cross-dissolve duration from the splash into the first scene. */
 const SCENE_TRANSITION_MS = 420;
+
+/**
+ * In-scene hints for a scene that declares none: a list you move through and
+ * confirm. Scenes with other keys declare their own through
+ * {@link SetupSceneController.keyHints}.
+ */
+const DEFAULT_SCENE_HINTS: readonly SetupKeyHint[] = [
+	{ keys: "↑↓", label: "select" },
+	{ keys: "enter", label: "confirm" },
+];
 
 function indentLine(line: string, width: number, indent: number): string {
 	const prefix = padding(Math.min(indent, Math.max(0, width - 1)));
@@ -205,11 +218,13 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		}
 		this.#lastWidth = safeWidth;
 		this.#lastHeight = height;
-		// The wizard owns the whole viewport, so it realizes the design.md Canvas
-		// rule: every row — content, dissolve frames, and the fit-to-screen filler
-		// alike — sits on the pure-black ground, edge to edge. Painted here, once,
-		// so all phases (splash/transition/scene/outro) can never drift apart.
-		return paintCanvasBlack(this.#fitToScreen(lines, safeWidth, height), safeWidth);
+		// The wizard owns the whole viewport: every row is padded to the full width
+		// so the layout stays rectangular, and closed with a reset so no styling
+		// leaks past the frame. No background escape is emitted for the ground, so
+		// the terminal's own background shows through. A hardcoded ground overrides
+		// the user's terminal theme and reads as a slab pasted over it on every
+		// terminal that is not itself pure black.
+		return this.#fitToScreen(lines, safeWidth, height).map(line => `${line}${SGR_RESET}`);
 	}
 
 	/** Step dots: solid for steps done, an ember core for the current, dots ahead.
@@ -230,6 +245,28 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			);
 		}
 		return `${dots.join(" ")}   ${theme.fg("dim", `step ${current} of ${total}`)}`;
+	}
+
+	/**
+	 * The footer's key hints for the frame being rendered.
+	 *
+	 * The active scene owns the keys that act inside it (select, toggle, switch
+	 * panel); the wizard owns the key that moves the run forward, because only
+	 * the wizard knows whether another step follows. Naming the two separately is
+	 * the point. The old fixed line read "enter confirm  ·  esc skip", which gave
+	 * the user no way to tell confirming a row from advancing the wizard, called
+	 * the forward key a skip, and never mentioned Tab even on the scene whose
+	 * panels only Tab can reach.
+	 */
+	#footerHints(): string {
+		const inScene = this.#activeScene?.keyHints?.() ?? DEFAULT_SCENE_HINTS;
+		const isLastScene = this.#sceneIndex >= this.scenes.length - 1;
+		const hints: readonly SetupKeyHint[] = [
+			...inScene,
+			{ keys: "esc", label: isLastScene ? "finish setup" : "next step" },
+			{ keys: "ctrl+c", label: "exit" },
+		];
+		return hints.map(hint => `${hint.keys} ${hint.label}`).join("  ·  ");
 	}
 
 	#renderScene(width: number, height: number): string[] {
@@ -257,10 +294,10 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		header.push("");
 		this.#bodyRowStart = header.length;
 
-		const footer = [
-			"",
-			indentLine(theme.fg("dim", "↑↓ select  ·  enter confirm  ·  esc skip  ·  ctrl+c exit"), width, marginX),
-		];
+		// One line, always: on a narrow terminal the tail is cut rather than
+		// wrapped, so the frame height does not change with the hint text.
+		const hintText = truncateToWidth(this.#footerHints(), Math.max(0, width - marginX));
+		const footer = ["", indentLine(theme.fg("dim", hintText), width, marginX)];
 		const maxBodyLines = Math.max(0, height - header.length - footer.length);
 		const body = this.#activeScene?.render(contentWidth).slice(0, maxBodyLines) ?? [];
 		const lines = [...header, ...body.map(line => indentLine(line, width, marginX))];

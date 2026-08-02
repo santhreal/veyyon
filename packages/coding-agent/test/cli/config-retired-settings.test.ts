@@ -21,6 +21,7 @@ describe("the retired-setting marker", () => {
 			"compaction.thresholdPercent",
 			"compaction.thresholdTokens",
 			"defaultThinkingLevel",
+			"setupVersion",
 		]);
 	});
 

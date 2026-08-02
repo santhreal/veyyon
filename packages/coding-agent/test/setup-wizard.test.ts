@@ -14,7 +14,9 @@ import {
 	type SetupSceneHost,
 	selectSetupScenes,
 } from "@veyyon/coding-agent/modes/setup-wizard";
+import { providersSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/providers";
 import { themeSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/theme";
+import type { SetupKeyHint } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
 import { WebSearchTab } from "@veyyon/coding-agent/modes/setup-wizard/scenes/web-search";
 import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
@@ -178,14 +180,17 @@ describe("setup wizard scene selection", () => {
 });
 
 describe("setup wizard persistence", () => {
-	it("marks the current setup version complete", async () => {
+	it("marks the current setup version complete in the machine-wide store", () => {
 		const settings = Settings.isolated();
-		await markSetupWizardComplete(settings);
-		expect(settings.get("setupVersion")).toBe(CURRENT_SETUP_VERSION);
+		expect(markSetupWizardComplete(settings)).toBe(true);
+		// `onboardingVersion`, not the retired per-profile `setupVersion`: completion
+		// is a machine fact, so a profile switch cannot un-onboard the user.
+		expect(settings.get("onboardingVersion")).toBe(CURRENT_SETUP_VERSION);
+		expect(settings.get("setupVersion")).toBe(0);
 	});
 
 	it("can run a targeted scene without setup-version or welcome-intro side effects", async () => {
-		const settings = Settings.isolated({ setupVersion: 0 });
+		const settings = Settings.isolated({ onboardingVersion: 0 });
 		const hideOverlay = mock(() => {});
 		const setFocus = mock((_component: unknown) => {});
 		const requestRender = mock(() => {});
@@ -227,7 +232,9 @@ describe("setup wizard persistence", () => {
 		component?.handleInput?.("\n");
 		await pending;
 
-		expect(settings.get("setupVersion")).toBe(0);
+		// `markComplete: false` means a targeted re-run (the provider-only flow) must
+		// not claim the machine has been onboarded, even though the overlay went up.
+		expect(settings.get("onboardingVersion")).toBe(0);
 		expect(playWelcomeIntro).not.toHaveBeenCalled();
 		expect(hideOverlay).toHaveBeenCalledTimes(1);
 		expect(setFocus).toHaveBeenCalled();
@@ -364,9 +371,8 @@ describe("setup wizard mouse routing", () => {
 			const frame = component.render(80);
 			const row = frame.findIndex(line => line.includes("MARKER-ROW"));
 			expect(row).toBeGreaterThan(0);
-			// Measure the indent on VISIBLE cells: every frame row now opens with
-			// the Canvas ground escape (paintCanvasBlack), which a raw leading-space
-			// regex would read as zero indent.
+			// Measure the indent on VISIBLE cells: frame rows carry styling escapes,
+			// which a raw leading-space regex would read as zero indent.
 			const indent = /^ */.exec(frame[row].replace(/\x1b\[[0-9;]*m/g, ""))?.[0].length ?? 0;
 			expect(indent).toBeGreaterThan(0);
 			// SGR reports are 1-based; two columns into the marker text.
@@ -387,20 +393,45 @@ describe("setup wizard mouse routing", () => {
 });
 
 describe("setup wizard scene footer copy", () => {
-	it("uses the arrow-dot hint dialect and says esc skip, never a bare 'continue'", async () => {
-		await initTheme(false, "unicode", false, "titanium", "light");
-		const scene: SetupScene = {
-			id: "scene",
-			title: "scene",
+	/**
+	 * THE BUG THIS SUITE LOCKS OUT. The footer was one fixed string,
+	 * "↑↓ select  ·  enter confirm  ·  esc skip  ·  ctrl+c exit", rendered
+	 * identically under every scene. The Providers scene reaches its two panels
+	 * only through Tab, and the footer named neither Tab nor any key that reads
+	 * as "move on", so a user watching the tab bar cycle had no way to tell how
+	 * to progress. Calling the forward key a skip made it worse: skipping is the
+	 * one thing someone trying to finish setup will not press.
+	 *
+	 * The footer is composed from the ACTIVE scene now, and the key that advances
+	 * the wizard is named apart from the key that confirms a choice inside it.
+	 */
+	/** A scene that renders nothing, so the footer is the only copy in the frame. */
+	function emptyScene(id: string, keyHints?: () => readonly SetupKeyHint[]): SetupScene {
+		return {
+			id,
+			title: id,
 			minVersion: 1,
-			mount: () => ({
-				title: "scene",
-				render: () => [],
-				invalidate: () => {},
-			}),
+			mount: () => {
+				const controller: SetupSceneController = { title: id, render: () => [], invalidate: () => {} };
+				if (keyHints) controller.keyHints = keyHints;
+				return controller;
+			},
 		};
+	}
+
+	/** Drive the wizard to its first scene and return that frame's footer row. */
+	async function footerOf(scenes: readonly SetupScene[], width = 100): Promise<string> {
+		await initTheme(false, "unicode", false, "titanium", "light");
 		const ctx = {
 			settings: Settings.isolated(),
+			// The Providers scene builds an OAuth panel from the auth storage. In
+			// login mode it reads exactly these three: whether a provider is signed
+			// in, and where its credential came from. Nothing is, so all three say no.
+			session: {
+				modelRegistry: {
+					authStorage: { hasAuth: () => false, has: () => false, getCredentialOrigin: () => undefined },
+				},
+			},
 			ui: {
 				terminal: { rows: 24 },
 				setFocus: () => {},
@@ -413,20 +444,55 @@ describe("setup wizard scene footer copy", () => {
 			refreshComposerShortcuts: vi.fn(),
 			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
-		const component = new SetupWizardComponent(ctx, [scene]);
+		const component = new SetupWizardComponent(ctx, scenes);
+		// The wizard's phase clock is its own interval plus `performance.now()`,
+		// and Bun's fake timers advance both, so the splash and the 420ms dissolve
+		// are stepped through rather than waited out.
+		vi.useFakeTimers();
 		try {
 			void component.run();
-			component.handleInput("\r"); // splash → scene
-			await Bun.sleep(500); // let the splash→scene dissolve finish
-			const frame = component
-				.render(80)
-				.map(line => stripVTControlCharacters(line))
-				.join("\n");
-			expect(frame).toContain("↑↓ select  ·  enter confirm  ·  esc skip  ·  ctrl+c exit");
-			expect(frame).not.toContain("esc continue");
+			component.handleInput("\r"); // splash → dissolve
+			vi.advanceTimersByTime(500); // dissolve (420ms) completes → scene
+			const frame = component.render(width);
+			expect(frame.length).toBe(24);
+			return stripVTControlCharacters(frame.at(-1) ?? "").trim();
 		} finally {
+			vi.useRealTimers();
 			component.dispose();
 		}
+	}
+
+	it("names the advancing key apart from the confirming key, and by how many steps are left", async () => {
+		expect(await footerOf([emptyScene("only")])).toBe(
+			"↑↓ select  ·  enter confirm  ·  esc finish setup  ·  ctrl+c exit",
+		);
+		expect(await footerOf([emptyScene("first"), emptyScene("second")])).toBe(
+			"↑↓ select  ·  enter confirm  ·  esc next step  ·  ctrl+c exit",
+		);
+	});
+
+	it("takes the in-scene keys from the active scene, so a tab bar puts Tab in the footer", async () => {
+		const tabbed = emptyScene("tabbed", () => [
+			{ keys: "tab", label: "switch panel" },
+			{ keys: "enter", label: "confirm" },
+		]);
+		expect(await footerOf([tabbed])).toBe("tab switch panel  ·  enter confirm  ·  esc finish setup  ·  ctrl+c exit");
+		// A scene that declares nothing gets the default pair and never says Tab.
+		expect(await footerOf([emptyScene("plain")])).toBe(
+			"↑↓ select  ·  enter confirm  ·  esc finish setup  ·  ctrl+c exit",
+		);
+	});
+
+	it("the real Providers scene, the one users could not get out of, names Tab first", async () => {
+		expect(await footerOf([providersSetupScene])).toBe(
+			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  esc finish setup  ·  ctrl+c exit",
+		);
+	});
+
+	it("stays one line when the hints outrun the terminal", async () => {
+		expect(await footerOf([providersSetupScene], 60)).toBe(
+			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  es…",
+		);
 	});
 });
 

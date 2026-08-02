@@ -9,7 +9,10 @@
  * `scope: "global"` path through that binding (which delegates to the canonical
  * `@veyyon/utils` global-config readers/writers) instead of the profile store.
  * That keeps exactly one owner for each value — the global config file — so the
- * settings UI and the CLI can never disagree.
+ * settings UI and the CLI can never disagree. A key here need not be a knob:
+ * `onboardingVersion` is machine-wide state the app writes, and a number with no
+ * `options` renders no control, so it gets the same one-owner guarantee without
+ * appearing in the panel.
  */
 
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
@@ -17,10 +20,12 @@ import {
 	DEFAULT_PROFILE_DIR_NAME,
 	readGlobalAuthBrokerSafe,
 	readGlobalDefaultProfileSafe,
+	readGlobalOnboardingVersionSafe,
 	readGlobalProfileSharingSafe,
 	writeGlobalAuthBrokerToken,
 	writeGlobalAuthBrokerUrl,
 	writeGlobalDefaultProfile,
+	writeGlobalOnboardingVersion,
 	writeGlobalProfileSharing,
 } from "@veyyon/utils/dirs";
 
@@ -56,6 +61,25 @@ export const GLOBAL_SETTINGS = {
 			label: "Share Credentials Across Profiles",
 			description:
 				"When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch.",
+		},
+	},
+
+	// A number with no `options` has no UI representation by design (see
+	// UiNumber), so this carries the global scope and stays out of the panel: it
+	// is written by the setup wizard, not chosen. It lives here rather than in
+	// the profile store because a human onboards once per MACHINE. Held per
+	// profile, `--profile <name>` read the schema default and re-ran onboarding
+	// for a user who had long since finished it.
+	onboardingVersion: {
+		type: "number",
+		default: 0,
+		ui: {
+			tab: "global",
+			scope: "global",
+			group: "Profiles",
+			label: "Onboarding Version",
+			description:
+				"Setup generation this machine has already completed. Stored in ~/.veyyon/config.yml, so switching profile or working directory never re-runs onboarding.",
 		},
 	},
 
@@ -118,6 +142,18 @@ export const GLOBAL_SETTING_BINDINGS: Record<string, GlobalSettingBinding> = {
 		read: () => readGlobalAuthBrokerSafe().url ?? "",
 		write: value => {
 			writeGlobalAuthBrokerUrl(typeof value === "string" ? value : undefined);
+		},
+	},
+	onboardingVersion: {
+		// Absent and unreadable both read as 0 here, because a settings VALUE has
+		// no way to say "unknown". The onboarding gate does not use this read to
+		// decide: it calls readGlobalOnboardingVersionSafe directly for the
+		// `unreadable` flag, so a corrupt global config skips onboarding instead of
+		// looking like a fresh install. This read exists so `veyyon config get` and
+		// the settings layer report the same value the gate acts on.
+		read: () => readGlobalOnboardingVersionSafe().version ?? 0,
+		write: value => {
+			writeGlobalOnboardingVersion(typeof value === "number" && Number.isFinite(value) ? value : undefined);
 		},
 	},
 	authBrokerToken: {

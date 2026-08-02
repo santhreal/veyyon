@@ -2,7 +2,7 @@ import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent, 
 import { errorMessage, getAgentDir } from "@veyyon/utils";
 import { type ImportCandidate, importForeignItems, scanForeignConfig } from "../../../discovery/import-scan";
 import { getSelectListTheme, theme } from "../../theme/theme";
-import type { SetupScene, SetupSceneController, SetupSceneHost } from "./types";
+import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 
 const CONTINUE_VALUE = "__continue";
 const MAX_VISIBLE = 10;
@@ -104,6 +104,15 @@ class ImportSceneController implements SetupSceneController {
 
 	invalidate(): void {
 		this.#list.invalidate();
+	}
+
+	/** Space is this scene's real verb: rows are toggled, not picked once. */
+	keyHints(): readonly SetupKeyHint[] {
+		return [
+			{ keys: "↑↓", label: "select" },
+			{ keys: "space", label: "toggle" },
+			{ keys: "enter", label: "confirm" },
+		];
 	}
 
 	handleInput(data: string): void {

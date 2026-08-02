@@ -24,6 +24,21 @@ export interface SetupSceneHost {
 	restoreFocus(): void;
 }
 
+/**
+ * One footer hint: a key as the user presses it, and what that key does.
+ *
+ * The wizard footer is assembled from these instead of being one fixed string,
+ * because the keys differ per scene. A tabbed scene cycles panels with Tab and
+ * a checklist scene toggles rows with Space, and a footer that named neither
+ * left the user with no way to tell how to move on.
+ */
+export interface SetupKeyHint {
+	/** The key as pressed, lower case, e.g. `tab` or `↑↓`. */
+	readonly keys: string;
+	/** What it does, lower case and short, e.g. `switch panel`. */
+	readonly label: string;
+}
+
 export interface SetupSceneController extends Component {
 	title: string;
 	subtitle?: string;
@@ -37,6 +52,13 @@ export interface SetupSceneController extends Component {
 	 * arrow keys from wheel notches.
 	 */
 	routeMouse?(event: SgrMouseEvent, line: number, col: number): void;
+	/**
+	 * The keys that act INSIDE this scene, for the wizard footer. Omit it to get
+	 * the default select/confirm pair. Do NOT include the keys that move the
+	 * wizard between steps or quit it: the overlay appends those, since only it
+	 * knows whether another step follows.
+	 */
+	keyHints?(): readonly SetupKeyHint[];
 }
 
 /**
