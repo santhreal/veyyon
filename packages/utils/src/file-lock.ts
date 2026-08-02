@@ -968,17 +968,49 @@ function releaseLockSync(lockPath: string, expected: LockLease | string): void {
 	}
 }
 
+/**
+ * Retire a lock whose owner is PROVEN gone and take it in the same breath, or
+ * `null` when the pathname is not recoverable right now.
+ *
+ * Retiring and then sleeping through the retry delay before trying again made
+ * recovery from a SIGKILLed process cost a whole extra retry interval for
+ * nothing: once the reap reports "removed" the pathname is free, and no other
+ * participant is closer to it than the process that just proved the owner dead.
+ * The reap is still authorized by inode identity and by liveness, so this only
+ * shortens the wait, it never widens who may remove a lock.
+ *
+ * Note what is NOT the fix here: `staleMs`. Abandonment is decided by
+ * {@link observationIsStale}, which proves it from the owner's process identity
+ * (immediately) or, for a torn directory with no publishable owner record, from
+ * {@link OWNER_INFO_GRACE_MS}. Neither consults `staleMs`, so no value a call site
+ * could pass for it would make an abandoned lock recoverable; the reachability had
+ * to be fixed in the acquire loop. The grace that IS consulted is 1s against a
+ * default retry window of 50 x 100ms, so it stays reachable inside one acquire.
+ */
+async function reapStaleAndAcquire(lockPath: string, opts: Required<FileLockOptions>): Promise<LockLease | null> {
+	const observation = await inspectLockDirectory(lockPath);
+	if (!observation || !observationIsStale(observation, opts.staleMs, Date.now())) return null;
+	const retired = await retireObservedLock(lockPath, observation, { kind: "stale", staleMs: opts.staleMs });
+	if (retired !== "removed") return null;
+	return await tryAcquireLock(lockPath);
+}
+
+/** Synchronous twin of {@link reapStaleAndAcquire}. */
+function reapStaleAndAcquireSync(lockPath: string, opts: Required<FileLockOptions>): LockLease | null {
+	const observation = inspectLockDirectorySync(lockPath);
+	if (!observation || !observationIsStale(observation, opts.staleMs, Date.now())) return null;
+	const retired = retireObservedLockSync(lockPath, observation, { kind: "stale", staleMs: opts.staleMs });
+	if (retired !== "removed") return null;
+	return tryAcquireLockSync(lockPath);
+}
+
 async function acquireLock(filePath: string, options: FileLockOptions = {}): Promise<() => Promise<void>> {
 	const opts = validateOptions(options);
 	const lockPath = getLockPath(filePath);
 	for (let attempt = 0; attempt < opts.retries; attempt++) {
 		await settleTransition(lockPath, opts.staleMs);
-		const lease = await tryAcquireLock(lockPath);
+		const lease = (await tryAcquireLock(lockPath)) ?? (await reapStaleAndAcquire(lockPath, opts));
 		if (lease !== null) return () => releaseLock(lockPath, lease);
-		const observation = await inspectLockDirectory(lockPath);
-		if (observation && observationIsStale(observation, opts.staleMs, Date.now())) {
-			await retireObservedLock(lockPath, observation, { kind: "stale", staleMs: opts.staleMs });
-		}
 		if (attempt + 1 < opts.retries) await Bun.sleep(opts.retryDelayMs);
 	}
 	throw new Error(`Failed to acquire lock for ${escapeTerminalText(filePath)} after ${opts.retries} attempts`);
@@ -989,12 +1021,8 @@ function acquireLockSync(filePath: string, options: FileLockOptions = {}): () =>
 	const lockPath = getLockPath(filePath);
 	for (let attempt = 0; attempt < opts.retries; attempt++) {
 		settleTransitionSync(lockPath, opts.staleMs);
-		const lease = tryAcquireLockSync(lockPath);
+		const lease = tryAcquireLockSync(lockPath) ?? reapStaleAndAcquireSync(lockPath, opts);
 		if (lease !== null) return () => releaseLockSync(lockPath, lease);
-		const observation = inspectLockDirectorySync(lockPath);
-		if (observation && observationIsStale(observation, opts.staleMs, Date.now())) {
-			retireObservedLockSync(lockPath, observation, { kind: "stale", staleMs: opts.staleMs });
-		}
 		if (attempt + 1 < opts.retries) sleepSync(opts.retryDelayMs);
 	}
 	throw new Error(`Failed to acquire lock for ${escapeTerminalText(filePath)} after ${opts.retries} attempts`);

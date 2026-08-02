@@ -216,6 +216,66 @@ describe("file-lock sync twin", () => {
 	});
 });
 
+/**
+ * A lock abandoned by a SIGKILLed process was reaped at the END of an acquire
+ * attempt and only claimed by the NEXT one, so recovery cost a whole retry
+ * interval and a single-attempt acquire threw outright even though the pathname
+ * was already free the moment the reap returned "removed". Every global-config
+ * write on a machine that had just been killed paid that latency for nothing.
+ */
+describe("file-lock recovers a lock abandoned by a dead process within one attempt", () => {
+	/** A published lock whose owner pid cannot be running: proven dead, not merely old. */
+	function seedDeadOwner(lockPath: string): void {
+		fsSync.mkdirSync(lockPath, { mode: 0o700 });
+		// 0x7fffffff is the highest pid the owner record accepts and is never a live
+		// process, so liveness PROVES abandonment rather than inferring it from age.
+		fsSync.writeFileSync(
+			path.join(lockPath, "info"),
+			JSON.stringify(ownerInfo({ pid: 0x7fffffff, processIdentity: "dead-owner-boot:1" })),
+		);
+	}
+
+	test("one sync attempt reaps the dead owner and takes the lock", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "sync-dead-owner.json");
+		const lockPath = getLockPath(target);
+		seedDeadOwner(lockPath);
+
+		// retries:1 is the whole point: a single attempt, with no later retry to hide
+		// the reap-then-sleep behind. This threw "after 1 attempts" before.
+		expect(withFileLockSync(target, () => "recovered", { retries: 1, retryDelayMs: 0 })).toBe("recovered");
+		expect(readLockInfoSync(lockPath)).toBeNull();
+	});
+
+	test("one async attempt reaps the dead owner and takes the lock", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "async-dead-owner.json");
+		const lockPath = getLockPath(target);
+		seedDeadOwner(lockPath);
+
+		expect(await withFileLock(target, async () => "recovered", { retries: 1, retryDelayMs: 0 })).toBe("recovered");
+		expect(await readLockInfo(lockPath)).toBeNull();
+	});
+
+	test("a lock held by a LIVE owner is still refused, so exclusion did not weaken", async () => {
+		const root = await mkRoot();
+		const target = path.join(root, "sync-live-owner.json");
+		const lockPath = getLockPath(target);
+
+		const lease = tryAcquireLockSync(lockPath);
+		if (lease === null) throw new Error("sync lock acquisition unexpectedly failed");
+		try {
+			expect(() => withFileLockSync(target, () => "stolen", { retries: 1, retryDelayMs: 0 })).toThrow(
+				"Failed to acquire lock",
+			);
+			// The live owner's record is untouched: nothing was retired underneath it.
+			expect(readLockInfoSync(lockPath)?.token).toBe(lease.token);
+		} finally {
+			releaseLockSync(lockPath, lease);
+		}
+	});
+});
+
 // The sync and async locks share one on-disk layout, so they mutually exclude
 // on `${path}.lock`. Live blocking contention (one waits while the other holds)
 // only works ACROSS processes: a sync waiter's sleepSync freezes its own event

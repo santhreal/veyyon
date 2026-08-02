@@ -352,56 +352,189 @@ export function writeGlobalDefaultProfile(profile: string | undefined): string {
 }
 
 /**
- * Read the whole GLOBAL config file as a parsed record plus the file it came
- * from (or `{}` and the canonical path when no file exists / it is not a YAML
- * mapping). Throws on unreadable YAML naming the file. One reader for every
- * global key so callers do not each re-implement the filename precedence; the
- * returned `filePath` lets each caller name the offending file in its own
- * value-validation errors.
+ * How one candidate config file turned out.
+ *
+ * These three states must stay distinct because two of them used to collapse
+ * into one. `readGlobalConfigRecord` returned `{}` both for "no file exists" and
+ * for "a file exists but holds no YAML mapping", so a ZERO-BYTE `config.yml` was
+ * indistinguishable from a fresh install: the onboarding gate read "no
+ * onboardingVersion", concluded nobody had ever run setup, and walked a
+ * long-onboarded user back through the wizard. That empty file is not exotic
+ * either. {@link mutateGlobalConfigKey} writes one DELIBERATELY when it cannot
+ * unlink a config it has just emptied, so this is a state the code reaches by
+ * itself and not something the user broke.
  */
-function readGlobalConfigRecord(): { record: Record<string, unknown>; filePath: string } {
-	const root = getBaseConfigRoot();
-	for (const filename of MAIN_CONFIG_FILENAMES) {
-		const filePath = path.join(root, filename);
-		let text: string | undefined;
-		for (let attempt = 0; ; attempt++) {
-			try {
-				text = fs.readFileSync(filePath, "utf8");
-				break;
-			} catch (error) {
-				// ENOENT is the ONLY error that genuinely means "no config here" — fall
-				// through to the next candidate filename (and ultimately the empty
-				// default). Every OTHER read error (EMFILE under fd pressure while many
-				// rebuilt processes start at once, EBUSY/EIO, an NFS blip) means the file
-				// is PRESENT but momentarily unreadable. Treating that as "absent" would
-				// silently default `profileSharing` and RELOCATE the credential store to
-				// the empty shared dir — logging a `profileSharing:false` user out this
-				// run and back in the next. These are transient, so retry briefly; only a
-				// persistent failure surfaces loudly, and never as a silent posture flip.
-				if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
-				if (attempt < GLOBAL_CONFIG_READ_RETRY_ATTEMPTS) {
-					sleepSync(GLOBAL_CONFIG_READ_RETRY_DELAY_MS);
-					continue;
-				}
-				throw new Error(
-					`Global config ${filePath} could not be read: ${errorMessage(error)}. ` +
-						`The credential posture was NOT changed; restore the file's readability and retry.`,
-				);
-			}
-		}
-		if (text === undefined) continue;
-		let parsed: unknown;
+type MainConfigCandidate =
+	/** Nothing at this path. The ONLY state that means "no config here". */
+	| { kind: "absent" }
+	/** Present, valid YAML, and a mapping: the one usable shape. */
+	| { kind: "map"; record: Record<string, unknown>; text: string }
+	/** Present and valid YAML but not a mapping: zero bytes, a scalar, a sequence. */
+	| { kind: "not-a-map" };
+
+/** How to name a config file in an error the user has to act on. */
+interface ConfigFileKind {
+	/** Opens the message: "Global config /home/u/.veyyon/config.yml could not be read...". */
+	subject: string;
+	/** What the user can safely do about a broken file, appended after the cause. */
+	repairHint: string;
+}
+
+const GLOBAL_CONFIG_FILE_KIND: ConfigFileKind = {
+	subject: "Global config",
+	repairHint: "Fix or remove the file (it holds only cross-profile keys like defaultProfile).",
+};
+
+/** The retired per-profile config, read only by {@link readLegacyProfileSetupVersion}. */
+const PROFILE_CONFIG_FILE_KIND: ConfigFileKind = {
+	subject: "Profile config",
+	repairHint: "Fix or remove the file.",
+};
+
+/**
+ * Read one candidate's bytes, or `undefined` when the path is not there.
+ *
+ * ONE owner for the absent-versus-unreadable split and its bounded retry,
+ * because the reader and the writer each had their own answer and the writer's
+ * was destructive. `mutateGlobalConfigKey` did `catch { continue; }`, so a single
+ * non-absence error (EMFILE under fd pressure while several rebuilt processes
+ * start at once, EACCES, EIO, an NFS blip) made a populated config look empty and
+ * the read-modify-write then emitted a file holding ONLY the key being mutated:
+ * `defaultProfile`, `profileSharing`, `onboardingVersion` and the auth-broker
+ * token all gone, with no error anywhere. A present-but-unreadable file has to
+ * ABORT the mutation; it must never shrink it.
+ *
+ * ENOENT is the obvious absence and ENOTDIR is the same fact reached differently,
+ * so absence is {@link isMissingPath} rather than a local ENOENT check that could
+ * drift from the rest of the tree. Every other code means the file IS there:
+ * treating those as "no config" is what would silently default `profileSharing`
+ * and relocate the credential store to the empty shared dir, logging a
+ * `profileSharing:false` user out this run and back in the next.
+ */
+function readConfigFileText(filePath: string, fileKind: ConfigFileKind): string | undefined {
+	for (let attempt = 0; ; attempt++) {
 		try {
-			parsed = YAML.parse(text);
+			return fs.readFileSync(filePath, "utf8");
 		} catch (error) {
+			if (isMissingPath(error)) return undefined;
+			// Present but momentarily unreadable, which is transient by nature: retry
+			// briefly so only a persistent failure surfaces, and never as a silent
+			// posture flip.
+			if (attempt < GLOBAL_CONFIG_READ_RETRY_ATTEMPTS) {
+				sleepSync(GLOBAL_CONFIG_READ_RETRY_DELAY_MS);
+				continue;
+			}
 			throw new Error(
-				`Global config ${filePath} is not valid YAML: ${errorMessage(error)}. ` +
-					`Fix or remove the file (it holds only cross-profile keys like defaultProfile).`,
+				`${fileKind.subject} ${filePath} could not be read: ${errorMessage(error)}. ` +
+					`Nothing was changed; restore the file's readability and retry.`,
 			);
 		}
-		return { record: isRecord(parsed) ? (parsed as Record<string, unknown>) : {}, filePath };
 	}
-	return { record: {}, filePath: path.join(root, MAIN_CONFIG_FILENAMES[0]) };
+}
+
+/** Classify one candidate path. Throws only for a file that is present and whose YAML does not parse. */
+function classifyConfigCandidate(filePath: string, fileKind: ConfigFileKind): MainConfigCandidate {
+	const text = readConfigFileText(filePath, fileKind);
+	if (text === undefined) return { kind: "absent" };
+	let parsed: unknown;
+	try {
+		parsed = YAML.parse(text);
+	} catch (error) {
+		throw new Error(
+			`${fileKind.subject} ${filePath} is not valid YAML: ${errorMessage(error)}. ${fileKind.repairHint}`,
+		);
+	}
+	if (isRecord(parsed)) return { kind: "map", record: parsed as Record<string, unknown>, text };
+	return { kind: "not-a-map" };
+}
+
+/** The candidate chosen out of {@link MAIN_CONFIG_FILENAMES} for one directory, and what it holds. */
+interface MainConfigSelection {
+	/** The file every reader and the writer use for this root. */
+	filePath: string;
+	candidate: MainConfigCandidate;
+}
+
+/**
+ * Apply {@link MAIN_CONFIG_FILENAMES} precedence to one directory.
+ *
+ * The first name still wins OUTRIGHT when it is usable and the files are never
+ * merged, because merging two files that disagree makes the effective config
+ * depend on a rule nobody can see. What changed is what "usable" means. A
+ * candidate that exists but holds no YAML mapping carries no keys at all, so
+ * letting it win bought nothing and cost everything: an empty `config.yml` buried
+ * a fully populated `config.yaml` permanently, with no error, no effect, and no
+ * way for the user to see why the file they edited was dead. So a usable map now
+ * beats a present-but-unusable earlier name, and the loser is still reported by
+ * {@link findShadowedGlobalConfigFiles} so the shadowing never goes silent.
+ *
+ * When NOTHING parses to a map, the first PRESENT candidate is selected and
+ * carries `not-a-map`. That is what keeps "present but unusable" tellable from
+ * "absent" one level up, and it is also the file the writer has to rewrite.
+ */
+function selectMainConfigFile(root: string, fileKind: ConfigFileKind): MainConfigSelection {
+	let firstPresent: MainConfigSelection | undefined;
+	for (const filename of MAIN_CONFIG_FILENAMES) {
+		const filePath = path.join(root, filename);
+		const candidate = classifyConfigCandidate(filePath, fileKind);
+		if (candidate.kind === "map") return { filePath, candidate };
+		if (candidate.kind === "not-a-map") firstPresent ??= { filePath, candidate };
+	}
+	return firstPresent ?? { filePath: path.join(root, MAIN_CONFIG_FILENAMES[0]), candidate: { kind: "absent" } };
+}
+
+/** The GLOBAL config as a parsed record, the file it came from, and whether that file is present but unusable. */
+interface GlobalConfigRead {
+	/** The parsed mapping, or `{}` when no file exists or the one that does holds no mapping. */
+	record: Record<string, unknown>;
+	/**
+	 * The file the record came from, or the canonical path when none exists. Lets
+	 * each caller name the offending file in its own value-validation errors.
+	 */
+	filePath: string;
+	/**
+	 * A file exists at `filePath` but holds no YAML mapping, so `record` is empty
+	 * because of THAT rather than because the machine is new. Readers whose default
+	 * is safe either way (`defaultProfile`, `profileSharing`) deliberately ignore
+	 * this and keep their default; the onboarding reader must not, because there
+	 * "absent" means run the setup wizard.
+	 */
+	presentButUnusable: boolean;
+}
+
+/**
+ * Read the whole GLOBAL config file. One reader for every global key so callers
+ * do not each re-implement the filename precedence. Throws on unreadable or
+ * unparseable YAML, naming the file.
+ */
+function readGlobalConfigRecord(): GlobalConfigRead {
+	const { filePath, candidate } = selectMainConfigFile(getBaseConfigRoot(), GLOBAL_CONFIG_FILE_KIND);
+	return {
+		record: candidate.kind === "map" ? candidate.record : {},
+		filePath,
+		presentButUnusable: candidate.kind === "not-a-map",
+	};
+}
+
+/**
+ * The GLOBAL config file that reads and writes actually use: the first name in
+ * {@link MAIN_CONFIG_FILENAMES} that parses to a YAML mapping, else the first one
+ * that merely exists, else the canonical `config.yml` that a first write creates.
+ *
+ * Never throws. Its whole job is to let a user-facing message name the file, and
+ * a notification that a save FAILED must not itself fail because the file it
+ * wants to name is the unreadable one.
+ */
+export function getGlobalConfigFilePath(): string {
+	const root = getBaseConfigRoot();
+	try {
+		return selectMainConfigFile(root, GLOBAL_CONFIG_FILE_KIND).filePath;
+	} catch {
+		// A candidate that cannot even be classified (unreadable, unparseable) is
+		// exactly the file the caller wants to talk about, and it is reached before any
+		// later name, so the canonical path is the right thing to name.
+		return path.join(root, MAIN_CONFIG_FILENAMES[0]);
+	}
 }
 
 /** A config file that exists but is ignored because a higher-precedence one does too. */
@@ -413,30 +546,51 @@ export interface ShadowedConfigFile {
 }
 
 /**
- * Config files in `root` that exist but are ignored because an earlier name in
- * {@link MAIN_CONFIG_FILENAMES} also exists.
+ * Config files in `root` that exist but are ignored because another name in
+ * {@link MAIN_CONFIG_FILENAMES} is the one being read.
  *
- * The precedence itself is deliberate and must not change: the first name wins
- * outright and the others are NOT merged, because merging two files that
- * disagree would make the effective config depend on a rule nobody can see. But
- * leaving the loser silent is its own trap. Someone who edits `config.yaml`
- * while `config.yml` exists gets no error, no effect and no clue: their file is
- * simply dead, and every symptom points at the setting they changed rather than
- * at the file they changed it in.
+ * The precedence itself is deliberate and must not change: one file wins outright
+ * and the others are NOT merged, because merging two files that disagree would
+ * make the effective config depend on a rule nobody can see. But leaving the
+ * loser silent is its own trap. Someone who edits `config.yaml` while `config.yml`
+ * exists gets no error, no effect and no clue: their file is simply dead, and
+ * every symptom points at the setting they changed rather than at the file they
+ * changed it in.
+ *
+ * The winner reported here is the one {@link selectMainConfigFile} picks, not
+ * blindly the first present name. Comparing against the first name would name the
+ * wrong file in exactly the case that hurts most: an empty `config.yml` beside a
+ * populated `config.yaml` would send the user to edit the empty file, which is no
+ * longer the file being read.
  *
  * This returns the finding instead of logging it because `dirs` sits below the
- * logger (logger imports this module for its own paths). The settings layer,
- * which has both a logger and a user-visible surface, reports it. Precedence
- * still has exactly one owner: the constant and this function live here.
+ * logger (logger imports this module for its own paths). The settings layer, which
+ * has both a logger and a user-visible surface, reports it. Precedence still has
+ * exactly one owner: the constant and this function live here.
  */
 export function findShadowedGlobalConfigFiles(root: string = getBaseConfigRoot()): ShadowedConfigFile[] {
+	// existsSync, not the classifier, decides PRESENCE: a directory named
+	// `config.yml` is not readable as a file yet really does sit where a config
+	// would, and the user still needs to be told it is not being read.
 	const present = MAIN_CONFIG_FILENAMES.filter(filename => fs.existsSync(path.join(root, filename)));
-	const winner = present[0];
+	const usable = present.find(filename => {
+		try {
+			return classifyConfigCandidate(path.join(root, filename), GLOBAL_CONFIG_FILE_KIND).kind === "map";
+		} catch {
+			// Unreadable or unparseable is exactly "not usable", and this function only
+			// ever feeds a warning: throwing here would turn a diagnostic about a dead
+			// file into a crash.
+			return false;
+		}
+	});
+	const winner = usable ?? present[0];
 	if (winner === undefined) return [];
-	return present.slice(1).map(filename => ({
-		ignored: path.join(root, filename),
-		using: path.join(root, winner),
-	}));
+	return present
+		.filter(filename => filename !== winner)
+		.map(filename => ({
+			ignored: path.join(root, filename),
+			using: path.join(root, winner),
+		}));
 }
 
 /**
@@ -454,36 +608,21 @@ function mutateGlobalConfigKey(key: string, mutate: (current: Record<string, unk
 	// filename actually exists on disk, so every writer serializes on one lock.
 	const canonicalPath = path.join(root, MAIN_CONFIG_FILENAMES[0]);
 	return withFileLockSync(canonicalPath, () => {
-		let filePath = canonicalPath;
-		let existing: Record<string, unknown> = {};
+		// The same selection the readers use, so a write can never land in a file
+		// the next read ignores. It throws for a present-but-unreadable candidate,
+		// which is the point: aborting leaves the user's other global keys intact,
+		// where swallowing the error rewrote the file with only `key` in it.
+		const { filePath, candidate } = selectMainConfigFile(root, {
+			subject: GLOBAL_CONFIG_FILE_KIND.subject,
+			repairHint: `Fix or remove the file before changing ${key}.`,
+		});
+		const existing = candidate.kind === "map" ? candidate.record : {};
 		// The file's own bytes, so the write can EDIT it rather than re-serialize it: this
 		// is a file people hand-edit, and a re-serialization discards their comments,
-		// blank lines and key order (see syncYamlTextToSettings).
-		let existingText = "";
-		for (const filename of MAIN_CONFIG_FILENAMES) {
-			const candidate = path.join(root, filename);
-			let text: string;
-			try {
-				text = fs.readFileSync(candidate, "utf8");
-			} catch {
-				continue;
-			}
-			let parsed: unknown;
-			try {
-				parsed = YAML.parse(text);
-			} catch (error) {
-				throw new Error(
-					`Global config ${candidate} is not valid YAML: ${errorMessage(error)}. ` +
-						`Fix or remove the file before changing ${key}.`,
-				);
-			}
-			if (isRecord(parsed)) {
-				existing = parsed as Record<string, unknown>;
-				existingText = text;
-			}
-			filePath = candidate;
-			break;
-		}
+		// blank lines and key order (see syncYamlTextToSettings). A candidate that is not
+		// a mapping has no keys, comments or order to keep, and splicing a key into a
+		// scalar document would not even be valid YAML, so it is rewritten from empty.
+		const existingText = candidate.kind === "map" ? candidate.text : "";
 		const next = mutate(existing);
 		if (next === undefined) delete existing[key];
 		else existing[key] = next;
@@ -677,12 +816,25 @@ export interface GlobalOnboardingVersion {
 /**
  * The onboarding generation this machine has completed, from the GLOBAL config.
  * `undefined` means the key is absent (never onboarded). Throws on unreadable
- * YAML or a non-numeric value, naming the file, matching
- * {@link resolveGlobalDefaultProfile}'s strictness so a typo cannot silently
- * decide whether a user is onboarded.
+ * YAML, on a config file that exists but holds no mapping, or on a non-numeric
+ * value, naming the file, matching {@link resolveGlobalDefaultProfile}'s
+ * strictness so a typo cannot silently decide whether a user is onboarded.
  */
 export function resolveGlobalOnboardingVersion(): number | undefined {
-	const { record, filePath } = readGlobalConfigRecord();
+	const { record, filePath, presentButUnusable } = readGlobalConfigRecord();
+	if (presentButUnusable) {
+		// The one reader that must NOT fold this into its default. A config file that
+		// exists but holds no mapping (zero bytes is the common one) carries no
+		// onboarding record, and reading that as "never onboarded" is precisely how a
+		// machine set up years ago got marched through the setup wizard again. The
+		// sibling readers keep their default here because sharing credentials or using
+		// the default profile is safe either way; re-onboarding is not.
+		throw new Error(
+			`Global config ${filePath} exists but holds no settings mapping (it is empty, or not a YAML map), ` +
+				`so whether this machine has already completed setup cannot be read. ` +
+				`Restore or delete the file; setup was NOT treated as unfinished.`,
+		);
+	}
 	const value = record[ONBOARDING_VERSION_CONFIG_KEY];
 	if (value === undefined || value === null) return undefined;
 	if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -721,6 +873,87 @@ export function readGlobalOnboardingVersionSafe(): GlobalOnboardingVersion {
  */
 export function writeGlobalOnboardingVersion(version: number | undefined): string {
 	return mutateGlobalConfigKey(ONBOARDING_VERSION_CONFIG_KEY, () => version);
+}
+
+/**
+ * The RETIRED per-profile onboarding key. Never written any more; read only so a
+ * machine onboarded before the key moved to the global config is still recognised.
+ */
+const LEGACY_PROFILE_SETUP_VERSION_KEY = "setupVersion";
+
+/** The highest retired per-profile `setupVersion` on this machine, and whether any profile hid one. */
+export interface LegacyProfileSetupVersion {
+	/** The maximum recorded generation across every profile, or `undefined` when none records one. */
+	version: number | undefined;
+	/**
+	 * A profile config exists but could not be read, parsed, or understood, so
+	 * `version` may be too low or missing entirely. A caller deciding whether to
+	 * onboard MUST treat this as "cannot tell", never as "never onboarded".
+	 */
+	unreadable: boolean;
+}
+
+/**
+ * The highest retired `setupVersion` recorded by ANY profile under `profiles/`.
+ *
+ * Onboarding is something a human does once per MACHINE, so evidence that it
+ * happened has to be read machine-wide. The promotion that fills in the global
+ * `onboardingVersion` used to fall back to the retired key through the settings
+ * layer, which resolves the ACTIVE profile only. On the reporting user's disk the
+ * record lived in `profiles/work/agent/config.yml` while `profiles/oss-work` had
+ * no config file at all, so launching `--profile oss-work` first looked in one
+ * profile, found nothing, and declared a fresh install on a machine that had been
+ * onboarded for years: the full four-step wizard, from the top.
+ *
+ * Absence contributes nothing, because a profile that never stored the key is the
+ * normal case. Anything else that stops a profile from answering sets `unreadable`
+ * instead of vanishing: a file that will not read or parse, a file that holds no
+ * mapping, and a `setupVersion` that is present but not a finite number. All three
+ * mean the profile has something to say about onboarding that could not be
+ * understood, and silently skipping them is the same "declare a fresh install"
+ * bug one level down.
+ */
+export function readLegacyProfileSetupVersion(): LegacyProfileSetupVersion {
+	const profilesRoot = path.join(getBaseConfigRoot(), PROFILES_DIR_NAME);
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(profilesRoot, { withFileTypes: true });
+	} catch (error) {
+		// No `profiles/` at all is a genuinely fresh install and contributes nothing.
+		// Any other failure HID profiles that may well record a version, so it must
+		// not read as "never onboarded".
+		return { version: undefined, unreadable: !isMissingPath(error) };
+	}
+	let version: number | undefined;
+	let unreadable = false;
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+		let candidate: MainConfigCandidate;
+		try {
+			// Same filename precedence and same read-with-retry as the global config,
+			// so a profile's `config.yml`/`config.yaml` cannot be resolved two ways.
+			candidate = selectMainConfigFile(
+				path.join(profilesRoot, entry.name, "agent"),
+				PROFILE_CONFIG_FILE_KIND,
+			).candidate;
+		} catch {
+			unreadable = true;
+			continue;
+		}
+		if (candidate.kind === "absent") continue;
+		if (candidate.kind === "not-a-map") {
+			unreadable = true;
+			continue;
+		}
+		const value = candidate.record[LEGACY_PROFILE_SETUP_VERSION_KEY];
+		if (value === undefined || value === null) continue;
+		if (typeof value !== "number" || !Number.isFinite(value)) {
+			unreadable = true;
+			continue;
+		}
+		version = version === undefined ? value : Math.max(version, value);
+	}
+	return { version, unreadable };
 }
 
 /**
