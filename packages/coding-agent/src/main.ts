@@ -558,6 +558,23 @@ async function runInteractiveMode(
 		clearInitialTerminalHistory: true,
 	});
 
+	// Subscribed BEFORE the wizard, not after it. The write-side twin of the
+	// unparseable-settings notice, and it cannot be a startup check: a save happens
+	// when the user changes a setting, which is exactly when they are looking.
+	// Until this existed a config path that could not be written left the UI
+	// showing the new value while the file kept the old one, and the setting
+	// silently reverted on the next launch.
+	//
+	// The wizard's own completion write is the loudest case, and it happens a few
+	// lines below, so subscribing after it would have missed exactly the failure
+	// that re-runs onboarding forever. The promotion in
+	// `resolveOnboardingGeneration` runs even earlier, before `mode` exists at all;
+	// `onSaveFailure` replays a failure announced before anyone was listening, so
+	// that one still reaches the user here.
+	settings.onSaveFailure(failure => {
+		mode.showSettingsSaveFailureNotification(failure);
+	});
+
 	if (setupWizard && playStartupSplash) {
 		await setupWizard.runStartupSplash(mode);
 	}
@@ -572,14 +589,6 @@ async function runInteractiveMode(
 	if (settings.quarantinedFiles.length > 0) {
 		mode.showUnparseableSettingsNotification(settings.quarantinedFiles);
 	}
-
-	// The write-side twin, and it cannot be a startup check: a save happens when the user
-	// changes a setting, which is exactly when they are looking. Until this existed a
-	// config path that could not be written left the UI showing the new value while the
-	// file kept the old one, and the setting silently reverted on the next launch.
-	settings.onSaveFailure(failure => {
-		mode.showSettingsSaveFailureNotification(failure);
-	});
 
 	// First launch after an update: one line naming the version, pointing at
 	// `/changelog` for the notes and at the controls in `/settings`. Driven by the

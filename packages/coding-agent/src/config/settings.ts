@@ -22,6 +22,7 @@ import {
 	findShadowedGlobalConfigFiles,
 	getAgentDbPath,
 	getAgentDir,
+	getGlobalConfigFilePath,
 	getLastChangelogVersionPath,
 	getProjectDir,
 	MAIN_CONFIG_FILENAMES,
@@ -428,8 +429,13 @@ export class Settings {
 	#activateProcessHooks = true;
 	/** Settings files that could not be parsed, and where their bytes were kept. */
 	#quarantined: QuarantinedSettingsFile[] = [];
-	/** Consecutive failed saves of `#configPath`, and why the last one failed. */
+	/** Consecutive failed saves of one config file, and why the last one failed. */
 	#saveFailure: { path: string; reason: string; attempts: number } | undefined;
+	/**
+	 * The failure already announced to listeners, replayed to anyone who
+	 * subscribes later. Cleared when the same file finally takes a write.
+	 */
+	#reportedSaveFailure: SettingsSaveFailure | undefined;
 	/** Told when a save has failed often enough that the user has to hear about it. */
 	#saveFailureListeners = new Set<(failure: SettingsSaveFailure) => void>();
 	/** Configured values whose type contradicts the schema, found during load. */
@@ -650,6 +656,12 @@ export class Settings {
 	 */
 	onSaveFailure(listener: (failure: SettingsSaveFailure) => void): () => void {
 		this.#saveFailureListeners.add(listener);
+		// Replay a failure announced before anyone was listening. The onboarding
+		// promotion writes the global config during startup, before the interactive
+		// mode exists to subscribe, so its refusal would otherwise be announced to an
+		// empty set and never mentioned again, which is the silence this whole path
+		// exists to end.
+		if (this.#reportedSaveFailure) this.#deliverSaveFailure(listener, this.#reportedSaveFailure);
 		return () => {
 			this.#saveFailureListeners.delete(listener);
 		};
@@ -721,8 +733,10 @@ export class Settings {
 					globalBinding.write(value);
 				} catch (error) {
 					logger.warn("Settings: global write rejected; value not saved", { path, error: String(error) });
+					this.#recordGlobalWriteFailure(error);
 					return;
 				}
+				this.#clearGlobalWriteFailure();
 			} else {
 				setByPath(this.#overrides, path.split("."), value);
 				this.#rebuildMerged();
@@ -778,8 +792,10 @@ export class Settings {
 					globalBinding.write(undefined);
 				} catch (error) {
 					logger.warn("Settings: global unset rejected; value not cleared", { path, error: String(error) });
+					this.#recordGlobalWriteFailure(error);
 					return;
 				}
+				this.#clearGlobalWriteFailure();
 			} else {
 				deleteByPath(this.#overrides, path.split("."));
 				this.#rebuildMerged();
@@ -2434,13 +2450,57 @@ export class Settings {
 		if (attempts !== SAVE_FAILURE_REPORT_AFTER) return;
 		// Exactly at the threshold, so a filesystem that stays broken reports once rather
 		// than on every retry for the rest of the session.
-		const failure: SettingsSaveFailure = { path: configPath, reason, attempts };
+		this.#announceSaveFailure({ path: configPath, reason, attempts });
+	}
+
+	/**
+	 * A refused write to the machine-wide `~/.veyyon/config.yml`, told to the same
+	 * listeners a refused profile save reaches.
+	 *
+	 * Announced on the FIRST failure rather than after a run of them, because a
+	 * global binding writes synchronously under its own lock and nothing retries
+	 * it: there is no later attempt to be quieter about, and the caller has
+	 * already given up. It swallowed the error and logged instead, so a machine
+	 * that could not persist `onboardingVersion` re-ran the whole setup wizard on
+	 * every launch and said nothing about why.
+	 *
+	 * Announced once per file: a caller that writes the same value twice after a
+	 * failure (the setup wizard marks completion again in its `finally`) reports
+	 * one message, not one per attempt.
+	 */
+	#recordGlobalWriteFailure(error: unknown): void {
+		const filePath = getGlobalConfigFilePath();
+		const reason = errorMessage(error);
+		const attempts = (this.#saveFailure?.path === filePath ? this.#saveFailure.attempts : 0) + 1;
+		this.#saveFailure = { path: filePath, reason, attempts };
+		if (attempts !== 1) return;
+		this.#announceSaveFailure({ path: filePath, reason, attempts });
+	}
+
+	/** The global config took a write, so a failure recorded against it is over. */
+	#clearGlobalWriteFailure(): void {
+		// Only when a global failure is actually pending: resolving the path costs
+		// filesystem probes, and a pending PROFILE failure must survive untouched.
+		if (!this.#saveFailure) return;
+		if (this.#saveFailure.path !== getGlobalConfigFilePath()) return;
+		this.#saveFailure = undefined;
+		this.#reportedSaveFailure = undefined;
+	}
+
+	/** Hand a failure to every listener, and keep it for anyone who subscribes later. */
+	#announceSaveFailure(failure: SettingsSaveFailure): void {
+		this.#reportedSaveFailure = failure;
 		for (const listener of this.#saveFailureListeners) {
-			try {
-				listener(failure);
-			} catch (listenerError) {
-				logger.warn("Settings: a save-failure listener threw", { error: errorMessage(listenerError) });
-			}
+			this.#deliverSaveFailure(listener, failure);
+		}
+	}
+
+	/** One listener call, isolated so a listener that throws cannot silence the rest. */
+	#deliverSaveFailure(listener: (failure: SettingsSaveFailure) => void, failure: SettingsSaveFailure): void {
+		try {
+			listener(failure);
+		} catch (listenerError) {
+			logger.warn("Settings: a save-failure listener threw", { error: errorMessage(listenerError) });
 		}
 	}
 
@@ -2484,6 +2544,7 @@ export class Settings {
 			});
 			// The file took the write, so whatever was wrong is over.
 			this.#saveFailure = undefined;
+			this.#reportedSaveFailure = undefined;
 		} catch (error) {
 			logger.warn("Settings: save failed", { error: String(error) });
 			// Re-add failed paths for retry
