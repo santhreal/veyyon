@@ -323,6 +323,9 @@ describe("required publication artifacts", () => {
 		const metadata = wf.jobs.release_metadata;
 		const detect = metadata.steps.find((step: { id?: string }) => step.id === "detect");
 		const setupBun = metadata.steps.find((step: { uses?: string }) => step.uses?.startsWith("oven-sh/setup-bun@"));
+		const install = metadata.steps.find(
+			(step: { name?: string }) => step.name === "Install release controller dependencies",
+		);
 
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: exact GitHub Actions expression is the contract
 		expect(detect.env.GH_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
@@ -337,6 +340,8 @@ describe("required publication artifacts", () => {
 		);
 		expect(detect.run).not.toContain("git tag --points-at HEAD");
 		expect(setupBun.if).toBe("startsWith(github.ref, 'refs/tags/')");
+		expect(install.if).toBe("startsWith(github.ref, 'refs/tags/')");
+		expect(install.run).toBe("bun install --frozen-lockfile");
 	});
 
 	it("release Pages deployment fails when disabled or either credential is missing", async () => {
@@ -412,11 +417,50 @@ describe("required publication artifacts", () => {
 	});
 	it("draft asset verification is part of the GitHub preparation job", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
-		const step = wf.jobs.release_github.steps.find(
+		const steps = wf.jobs.release_github.steps;
+		const install = steps.find(
+			(candidate: { name?: string }) => candidate.name === "Install release tooling dependencies",
+		);
+		const step = steps.find(
 			(candidate: { name?: string }) => candidate.name === "Verify the exact draft asset manifest",
 		);
+		const draft = steps.find((candidate: { id?: string }) => candidate.id === "draft");
 		expect(step).toBeDefined();
 		expect(step.env.GH_TOKEN).toBeDefined();
+		expect(install.run).toBe("bun install --frozen-lockfile");
+		expect([...steps].indexOf(install)).toBeLessThan([...steps].indexOf(step));
+		expect(draft.run).toContain('gh api --method POST "repos/$repo/releases"');
+		expect(draft.run).toContain("-F draft=true -F prerelease=false -F body=@release-notes.md");
+		expect(draft.run).not.toContain("gh release create");
+	});
+
+	/** Draft asset APIs return 403 to read-only job tokens, so isolated verification jobs require contents: write. */
+	it("downloads draft assets through the release asset API", async () => {
+		const wf = await loadYaml("workflows/ci.yml");
+		const jobs = [
+			wf.jobs.release_github_verify,
+			wf.jobs.release_github_verify_linux,
+			wf.jobs.release_github_verify_windows,
+		];
+		for (const [index, job] of jobs.entries()) {
+			const download = job.steps.find((step: { name?: string }) => step.name?.startsWith("Download draft"));
+			expect(job.permissions.contents).toBe("write");
+			expect(download).toBeDefined();
+			expect(download.env.GH_TOKEN).toBeDefined();
+			expect(download.env.RELEASE_ID).toBe("${{ needs.release_github.outputs.release-id }}");
+			expect(download.run).toMatch(/releases\/\$(?:env:)?RELEASE_ID\/assets/);
+			expect(download.run).toContain("releases/assets/$asset");
+			expect(download.run).toContain("application/octet-stream");
+			expect(download.run).toContain("has no asset named");
+			expect(download.run).not.toContain("gh release download");
+			if (index === 2) {
+				expect(download.run).toContain("-OutFile $Name");
+				expect(download.run).toContain("$LASTEXITCODE -ne 0");
+			} else {
+				expect(download.run).toContain('> "$name"');
+				expect(download.run).toContain("set -euo pipefail");
+			}
+		}
 	});
 
 	/** Existing release metadata is mutable; only the Git tag ref proves the immutable SHA. */
@@ -433,6 +477,8 @@ describe("required publication artifacts", () => {
 			expect(step.run).toContain("ref_sha=\"$(jq -r '.object.sha'");
 			expect(step.run).not.toContain("target_commitish");
 		}
+		expect(publish.run).toContain('releases/$RELEASE_ID")');
+		expect(publish.run).not.toContain("releases/tags/$RELEASE_TAG");
 	});
 
 	/** A draft asset mutation after platform verification must be caught before the publish PATCH. */
@@ -450,9 +496,15 @@ describe("required publication artifacts", () => {
 
 		expect(preserved).toBeDefined();
 		expect(downloaded).toBeDefined();
+		expect(publish.run).toContain("releases/$RELEASE_ID/assets");
+		expect(publish.run).toContain("releases/assets/$asset_id");
+		expect(publish.run).toContain("Accept: application/octet-stream");
+		expect(publish.run).toContain('> "$remote_dir/$name"');
+		expect(publish.run).toContain("release asset has unsafe name");
+		expect(publish.run).not.toContain("gh release download");
 		expect(publish.run).toContain("diff -u release-proof/local-assets.sha256 remote-assets.sha256");
 		expect(publish.run.indexOf("diff -u release-proof/local-assets.sha256")).toBeLessThan(
-			publish.run.indexOf("releases/$RELEASE_ID"),
+			publish.run.indexOf('gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"'),
 		);
 	});
 

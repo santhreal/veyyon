@@ -66,6 +66,9 @@ jobs:
            if: startsWith(github.ref, 'refs/tags/')
            with:
               bun-version: "1.3.14"
+         - name: Install release controller dependencies
+           if: startsWith(github.ref, 'refs/tags/')
+           run: bun install --frozen-lockfile
          - name: Detect release tag at HEAD
            id: detect
            env:
@@ -821,6 +824,8 @@ jobs:
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
            with:
               bun-version: "1.3.14"
+         - name: Install release tooling dependencies
+           run: bun install --frozen-lockfile
          - name: Generate release notes from CHANGELOGs
            env:
               # `gh release list` (used to find the latest published GitHub
@@ -897,11 +902,13 @@ jobs:
                   exit "$api_status"
                 fi
                 # ci-release-notes.ts already includes every commit and enforces
-                # GitHub's body limit. Appending generated notes duplicates that
-                # history and can push an otherwise valid draft over the limit.
-                gh release create "$tag" --draft --verify-tag --target "$RELEASE_SHA" \
-                  --title "$tag" --notes-file release-notes.md
-                release_json="$(gh api "repos/$repo/releases/tags/$tag")"
+                # GitHub's body limit. Create through REST so the response is the
+                # draft JSON itself; the tag lookup endpoint does not expose drafts.
+                release_json="$(
+                  gh api --method POST "repos/$repo/releases" \
+                    -f tag_name="$tag" -f name="$tag" \
+                    -F draft=true -F prerelease=false -F body=@release-notes.md
+                )"
               fi
 
               release_id="$(jq -r '.id' <<<"$release_json")"
@@ -1042,15 +1049,29 @@ jobs:
       needs: [release_metadata, release_github]
       runs-on: macos-14
       permissions:
-         contents: read
+         contents: write
       steps:
          - name: Download draft macOS arm64 binary and checksum sidecar
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              RELEASE_ID: ${{ needs.release_github.outputs.release-id }}
            run: |
-              gh release download "${{ needs.release_metadata.outputs.release-tag }}" \
-                --pattern veyyon-darwin-arm64 \
-                --pattern veyyon-darwin-arm64.sha256
+              set -euo pipefail
+              download_asset() {
+                name="$1"
+                asset_id="$(
+                  gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+                    --jq ".[] | select(.name == \"$name\") | .id"
+                )"
+                if [ -z "$asset_id" ]; then
+                  echo "::error::draft release $RELEASE_ID has no asset named $name"
+                  exit 1
+                fi
+                gh api "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+                  -H "Accept: application/octet-stream" > "$name"
+              }
+              download_asset veyyon-darwin-arm64
+              download_asset veyyon-darwin-arm64.sha256
               chmod +x veyyon-darwin-arm64
          - name: Verify the published .sha256 sidecar (install.sh fails closed without it)
            run: |
@@ -1084,15 +1105,29 @@ jobs:
       needs: [release_metadata, release_github]
       runs-on: ubuntu-22.04
       permissions:
-         contents: read
+         contents: write
       steps:
          - name: Download draft linux-x64 binary and checksum sidecar
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              RELEASE_ID: ${{ needs.release_github.outputs.release-id }}
            run: |
-              gh release download "${{ needs.release_metadata.outputs.release-tag }}" \
-                --pattern veyyon-linux-x64 \
-                --pattern veyyon-linux-x64.sha256
+              set -euo pipefail
+              download_asset() {
+                name="$1"
+                asset_id="$(
+                  gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+                    --jq ".[] | select(.name == \"$name\") | .id"
+                )"
+                if [ -z "$asset_id" ]; then
+                  echo "::error::draft release $RELEASE_ID has no asset named $name"
+                  exit 1
+                fi
+                gh api "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+                  -H "Accept: application/octet-stream" > "$name"
+              }
+              download_asset veyyon-linux-x64
+              download_asset veyyon-linux-x64.sha256
               chmod +x veyyon-linux-x64
          - name: Verify the published .sha256 sidecar (install.sh fails closed without it)
            run: |
@@ -1131,16 +1166,32 @@ jobs:
       # fails the transaction quickly instead of holding the draft indefinitely.
       timeout-minutes: 15
       permissions:
-         contents: read
+         contents: write
       steps:
          - name: Download draft windows-x64 binary and checksum sidecar
            shell: pwsh
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              RELEASE_ID: ${{ needs.release_github.outputs.release-id }}
            run: |
-              gh release download "${{ needs.release_metadata.outputs.release-tag }}" `
-                --pattern veyyon-windows-x64.exe `
-                --pattern veyyon-windows-x64.exe.sha256
+              function Get-DraftAsset([string] $Name) {
+                $assetId = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID/assets" `
+                  --jq ".[] | select(.name == `"$Name`") | .id"
+                if ($LASTEXITCODE -ne 0) { throw "failed to list assets for draft release $env:RELEASE_ID" }
+                if ([string]::IsNullOrWhiteSpace($assetId)) {
+                  throw "draft release $env:RELEASE_ID has no asset named $Name"
+                }
+                $headers = @{
+                  Authorization = "Bearer $env:GH_TOKEN"
+                  Accept = "application/octet-stream"
+                  "X-GitHub-Api-Version" = "2022-11-28"
+                }
+                Invoke-WebRequest `
+                  -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/assets/$assetId" `
+                  -Headers $headers -OutFile $Name
+              }
+              Get-DraftAsset veyyon-windows-x64.exe
+              Get-DraftAsset veyyon-windows-x64.exe.sha256
          - name: Verify the published .sha256 sidecar (install.ps1 fails closed without it)
            shell: pwsh
            run: |
@@ -1201,7 +1252,23 @@ jobs:
            run: |
               set -euo pipefail
               remote_dir="$(mktemp -d)"
-              gh release download "$RELEASE_TAG" --dir "$remote_dir"
+              remote_assets="$(mktemp)"
+              gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+                --jq '.[] | [.id, .name] | @tsv' > "$remote_assets"
+              if [ ! -s "$remote_assets" ]; then
+                echo "::error::verified release $RELEASE_ID has no downloadable assets"
+                exit 1
+              fi
+              while IFS=$'\t' read -r asset_id name; do
+                case "$name" in
+                  ""|"."|".."|*/*)
+                    echo "::error::release asset has unsafe name '$name'"
+                    exit 1
+                    ;;
+                esac
+                gh api "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+                  -H "Accept: application/octet-stream" > "$remote_dir/$name"
+              done < "$remote_assets"
               (
                 cd "$remote_dir"
                 for asset in *; do
@@ -1213,7 +1280,7 @@ jobs:
                 echo "::error::draft release assets changed after verification; refusing publication"
                 exit 1
               fi
-              release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+              release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
               ref_json="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")"
               actual_id="$(jq -r '.id' <<<"$release_json")"
               actual_tag="$(jq -r '.tag_name' <<<"$release_json")"
