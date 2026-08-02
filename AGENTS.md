@@ -365,23 +365,26 @@ release is only real once it is a tagged commit **and** a published GitHub relea
 
 ### How a release happens
 
+Only a deliberate dispatch releases. Nothing on `main` cuts a tag on its own: not a
+push, not a green CI run, not a waiting `## [Unreleased]` bullet.
+
 1. Ensure every publishable change sits under its package's `## [Unreleased]`
    section (`packages/*/CHANGELOG.md`).
-2. Push the change to `main` with explicit approval. After CI and Checks pass for
-   that exact SHA, the Release workflow cuts a patch automatically.
+2. Push the change to `main` with explicit approval and let CI and Checks go green
+   for that exact SHA. This publishes nothing on its own.
+3. With explicit approval for the version, dispatch the Release workflow against
+   that exact SHA. The gate refuses unless CI and Checks are both green for it.
 
 The workflow runs `scripts/release.ts` internally. It bumps public package versions,
 the root catalog, Rust workspace, native sentinel, lockfiles, and changelogs; runs
 checks; commits `chore: bump version to X.Y.Z`; and atomically pushes `main` plus the
-tag. If main advanced, the push fails without rebasing and the newer SHA gets its own
-cut after its own gates pass. The workflow then dispatches `checks.yml` at the
-immutable tag, verifies the bump SHA is green, dispatches and waits for `ci.yml`,
-and verifies the complete published asset manifest and `releases/latest` before
-reporting success.
+tag. If main advanced, the push fails without rebasing: validate the newer SHA and
+dispatch again. The workflow then dispatches `checks.yml` at the immutable tag,
+verifies the bump SHA is green, dispatches and waits for `ci.yml`, and verifies the
+complete published asset manifest and `releases/latest` before reporting success.
 
-For an explicitly approved major, minor, or exact-version cut, dispatch the Release
-workflow. There is no repository release command and no release shell script: the
-release ceremony runs only in GitHub Actions, from the Actions tab or from `gh`.
+There is no repository release command and no release shell script: the release
+ceremony runs only in GitHub Actions, from the Actions tab or from `gh`.
 
 ```sh
 gh workflow run release.yml \
