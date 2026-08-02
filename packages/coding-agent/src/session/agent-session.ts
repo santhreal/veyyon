@@ -462,7 +462,7 @@ import { formatSessionHistoryMarkdown } from "./session-history-format";
 import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
 import type { ShakeMode, ShakeResult } from "./shake-types";
 import { ToolChoiceQueue } from "./tool-choice-queue";
-import { parseTurnBudget } from "./turn-budget";
+import { parseTurnBudgetDirective } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
 import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-stop-classifier";
 import { YieldQueue } from "./yield-queue";
@@ -9700,7 +9700,7 @@ export class AgentSession {
 
 	#createMagicKeywordNotices(text: string): CustomMessage[] {
 		const timestamp = Date.now();
-		const turnBudget = parseTurnBudget(text);
+		const turnBudget = parseTurnBudgetDirective(this.settings, text);
 		this.sessionManager.beginTurnBudget(turnBudget?.total ?? null, turnBudget?.hard ?? false);
 		const keywordNotices: CustomMessage[] = [];
 		if (this.#magicKeywordEnabled("ultrathink") && containsUltrathink(text)) {

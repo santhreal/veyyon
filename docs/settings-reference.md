@@ -211,6 +211,7 @@ veyyon config get compaction.threshold
 | `magicKeywords.ultrathink` | Ultrathink Keyword | boolean | `true` | Let standalone ultrathink request maximum automatic thinking and append its hidden notice. |
 | `magicKeywords.orchestrate` | Orchestrate Keyword | boolean | `true` | Let standalone orchestrate append its hidden multi-agent orchestration notice. |
 | `magicKeywords.workflow` | Workflow Keyword | boolean | `true` | Let standalone workflowz append its hidden eval workflow notice. |
+| `magicKeywords.turnBudget` | Turn Budget Directive | boolean | `false` | Let a standalone +500k or +2m set this turn's output-token budget; when off, +Nk in a message is treated as ordinary text. |
 
 ### Startup & Updates
 
@@ -636,7 +637,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `images.blockImages` | Block Images | boolean | `false` | Prevent images from being sent to LLM providers. |
-| `secrets.enabled` | Hide Secrets | boolean | `false` | Obfuscate secrets before sending to AI providers. /secret add turns this on for you. |
+| `secrets.enabled` | Hide Secrets | boolean | `false` | Obfuscate secrets before sending to AI providers. Storing a credential with /secret turns this on for you. |
 | `secrets.defaultTtl` | Secret Lifetime | string | `1d` | How long a /secret lasts by default: 30m, 12h, 7d, 2w, or "never". |
 | `secrets.auditLog` | Record Secret Use | boolean | `true` | Append which secret was used in which command to the profile's log. Never records values. |
 
@@ -687,4 +688,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-328 settings.
+329 settings.
