@@ -42,44 +42,27 @@ their install assets are the record.
 
 ## Cutting a release
 
-Prep is the same for both paths below: every change since the last release is
-written under each affected package's `## [Unreleased]` section (see the changelog
-format in the repo `AGENTS.md`). That section is the primary signal the automatic
-path keys off, so keeping it current is what keeps releases flowing.
+Prep: every change since the last release is written under each affected package's
+`## [Unreleased]` section (see the changelog format in the repo `AGENTS.md`).
+`release.ts` rolls those sections into the new version at cut time, so a version
+whose packages have nothing under `## [Unreleased]` ships with nothing to show
+for itself.
 
-**Automatic (the default, and how most releases happen).** Completed CI and Checks
-runs on `main` each trigger the **Release** workflow. The gate waits until both
-workflows are green for the same exact SHA. When any publishable package has an
-`## [Unreleased]` bullet waiting, it cuts a `patch` release with no human action,
-so shipped changes reach users the same day instead of piling up. The gate is
-`scripts/release-policy.ts`, and it is self-limiting:
+**Nothing cuts a release on its own.** No push, no green CI run, and no waiting
+`## [Unreleased]` bullet produces a tag. Landing user-facing work on `main`
+publishes nothing at all until a person dispatches the Release workflow, which is
+the single path described below. If the changelog says a version shipped and no
+release exists for it, nobody dispatched one.
 
-- `release.ts` moves `## [Unreleased]` into the new version section when it cuts
-  the release, so the `chore: bump version to X` commit it pushes has nothing
-  unreleased and never triggers a second release. No loop.
-- A docs-, test-, or chore-only merge adds no bullet, so it does not release.
-- To land a user-facing change without shipping it yet, put `[skip release]` in
-  the commit message; the gate skips that push.
-
-That last property has a cost when a cut fails. The changelog section is already
-consumed by the time CI runs, so a failed publish leaves a tag with no release and
-nothing left to ask for: `v1.0.33` and `v1.0.34` were both tagged, both failed the
-same test, and the installable version stayed at `v1.0.27`. The gate therefore has
-a second signal. When nothing is unreleased, it looks for a tag newer than the
-latest published release, reads the CI workflow conclusion for that tag, and cuts
-again when CI definitively failed and `main` has moved on since.
-
-Two bounds keep that from inventing versions:
-
-- A re-cut needs `main` to have moved past the failed tag. Cutting the same tree
-  again would fail the same way.
-- Two unpublished tags stop the gate. A second stranded cut in a row is not a
-  flake, so it prints what needs attention and waits for you to fix the failing
-  publish and run the workflow by hand.
-
-A tag whose CI is still running is left alone, and a tag whose CI SUCCEEDED without
-producing a release is reported rather than cut over: that is a publish step that
-claimed success, and a new version would bury it.
+That was not always true, and the difference is worth knowing when you read older
+runs. Completed CI and Checks runs on `main` used to trigger the workflow, and it
+cut a `patch` release whenever any publishable package had an `## [Unreleased]`
+bullet waiting. Because `release.ts` consumes that section at cut time, a cut whose
+CI then failed left a tag with no release and nothing left to ask for, so the gate
+carried a second signal that re-cut from an unpublished tag, bounded so that two
+stranded tags stopped it and asked for a person. Both signals are gone along with
+the trigger. Recovering a failed cut is now the same act as any other release: fix
+what failed, then dispatch the version you want.
 
 **Manual (an explicit version).** Dispatch the Release workflow with `major`,
 `minor`, `patch`, or an explicit `x.y.z`. There is no repository release command
