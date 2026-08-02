@@ -1,18 +1,15 @@
 /**
- * The release gate's decision, including the case where a previous cut was stranded.
+ * The release gate's two proofs: which commit may be cut, and which tag may publish.
  *
- * WHY THIS SUITE EXISTS. The gate governs every release, so each branch is pinned by name rather than
- * covered in aggregate. The failure it recovers from happened live: `release.ts` moves
- * `## [Unreleased]` into the new version's section AT CUT TIME, before CI publishes, so a cut whose CI
- * then fails leaves a tag with no GitHub release and an empty `## [Unreleased]`. The gate then reported
- * "nothing to release" on every subsequent push, and `v1.0.33` and `v1.0.34` sat unpublished while the
- * installable version stayed at `v1.0.27`.
+ * WHY THIS SUITE EXISTS. A release is dispatched by a person, so this gate is the only thing standing
+ * between a mistyped SHA and a tag. Each branch is pinned by name rather than covered in aggregate,
+ * because the failure it prevents happened live: `v1.0.28` through `v1.0.35` were each tagged before
+ * `ci.yml` had tested their sha, two red tests killed every publish downstream, and `releases/latest`
+ * sat at `v1.0.27` while the tags marched on.
  *
- * A recovery that can bump a version is dangerous in a different direction, so both bounds are asserted
- * as hard as the recovery itself: a re-cut requires main to have MOVED past the failed tag, and two
- * stranded tags stop the gate and ask for a person. The in-progress and success cases are pinned too,
- * because cutting over a run that has not finished, or over one that succeeded, would create the very
- * silent tag this is about.
+ * The dispatch is also the ONLY trigger. A `workflow_run` completion used to cut a patch release
+ * whenever a publishable package had an `## [Unreleased]` bullet; that is gone, and the CLI must
+ * refuse a workflow_run-shaped event outright rather than quietly finding a version to cut.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -22,16 +19,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	assertReleaseTagGateEvidence,
-	type CiConclusion,
-	decideReleaseGate,
-	MAX_STRANDED_TAGS,
 	REQUIRED_RELEASE_ASSET_NAMES,
 	REQUIRED_RELEASE_TAG_WORKFLOWS,
 	REQUIRED_SOURCE_WORKFLOWS,
-	type ReleaseGateDecision,
 	type ReleaseTagWorkflowRun,
-	type SilentTag,
 	type SourceWorkflowRun,
+	sourceGateFailure,
 	verifyPublishedReleaseAssets,
 } from "./release-policy.ts";
 
@@ -51,7 +44,7 @@ async function runTagGateCli() {
 printf '%s\\n' "$*" >> "$CALLS_PATH"
 case "$*" in
   *"actions/runs/9001"*)
-    printf '{"path":".github/workflows/release.yml","event":"workflow_run","status":"in_progress","conclusion":null,"runAttempt":2}\n' ;;
+    printf '{"path":".github/workflows/release.yml","event":"workflow_dispatch","status":"in_progress","conclusion":null,"runAttempt":2}\n' ;;
   *"actions/workflows/checks.yml/runs?head_sha="*)
     printf '[{"headSha":"%s","headBranch":"v1.2.3","event":"workflow_dispatch","conclusion":"success","displayTitle":"Checks release gate 9001-2-checks","actor":"github-actions[bot]"}]\n' "$FAKE_SHA" ;;
   *) echo "unexpected gh invocation: $*" >&2; exit 88 ;;
@@ -199,11 +192,8 @@ describe("exact-tag publication provenance", () => {
 
 async function runGateCli(options: {
 	checks?: "success" | "failure" | "missing";
-	greenOnly?: boolean;
 	failGh?: boolean;
-	silentTag?: boolean;
-	silentCiMissing?: boolean;
-	silentChecksMissing?: boolean;
+	eventName?: string;
 }) {
 	const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT }).stdout.toString().trim();
 	const bin = mkdtempSync(join(tmpdir(), "release-gate-cli-"));
@@ -215,7 +205,7 @@ async function runGateCli(options: {
 	writeFileSync(
 		fakeGh,
 		`#!/bin/sh
-printf '%s\n' "$*" >> "$CALLS_PATH"
+printf '%s\\n' "$*" >> "$CALLS_PATH"
 if [ "$FAIL_GH" = "1" ]; then echo unavailable >&2; exit 9; fi
 case "$*" in
   *"commits/main"*) printf '%s\\n' "$FAKE_SHA" ;;
@@ -223,22 +213,12 @@ case "$*" in
     printf '%s\\tcompleted\\tsuccess\\n' "$FAKE_SHA" ;;
   *"actions/workflows/checks.yml/runs?head_sha=$FAKE_SHA&branch=main&event=push&per_page=1"*)
     if [ "$CHECKS" != "missing" ]; then printf '%s\\tcompleted\\t%s\\n' "$FAKE_SHA" "$CHECKS"; fi ;;
-  *"actions/workflows/ci.yml/runs?head_sha=$SILENT_SHA&branch=v0.0.2&event=workflow_dispatch&per_page=1"*)
-    if [ "$SILENT_CI_MISSING" != "1" ]; then printf 'completed\\tfailure\\n'; fi ;;
-  *"actions/workflows/checks.yml/runs?head_sha=$SILENT_SHA&branch=v0.0.2&event=workflow_dispatch&per_page=1"*)
-    if [ "$SILENT_CHECKS_MISSING" != "1" ]; then printf 'completed\\tfailure\\n'; fi ;;
-  *"release list --limit 1"*) printf 'v0.0.1\\n' ;;
-  *"release list --limit 50"*) printf 'v0.0.1\\n' ;;
-  *"tags?per_page=50"*)
-    if [ "$SILENT_TAG" = "1" ]; then printf 'v0.0.2 %s\\n' "$SILENT_SHA"; fi
-    printf 'v0.0.1 %s\\n' "$FAKE_SHA" ;;
   *) echo "unexpected gh invocation: $*" >&2; exit 88 ;;
 esac
 `,
 	);
 	chmodSync(fakeGh, 0o755);
-	const args = ["bun", "scripts/release.ts", "workflow-gate"];
-	const proc = Bun.spawn(args, {
+	const proc = Bun.spawn(["bun", "scripts/release.ts", "workflow-gate"], {
 		cwd: REPO_ROOT,
 		env: {
 			...process.env,
@@ -247,16 +227,10 @@ esac
 			CALLS_PATH: callsPath,
 			CHECKS: options.checks ?? "success",
 			FAIL_GH: options.failGh ? "1" : "0",
-			SILENT_TAG: options.silentTag ? "1" : "0",
-			SILENT_SHA: OLDER,
-			SILENT_CI_MISSING: options.silentCiMissing ? "1" : "0",
-			SILENT_CHECKS_MISSING: options.silentChecksMissing ? "1" : "0",
-			GITHUB_EVENT_NAME: options.greenOnly ? "workflow_dispatch" : "workflow_run",
+			GITHUB_EVENT_NAME: options.eventName ?? "workflow_dispatch",
 			GITHUB_OUTPUT: outputPath,
 			RELEASE_DISPATCH_VERSION: "patch",
 			RELEASE_EXPECTED_SHA: sha,
-			RELEASE_HEAD_COMMIT_MESSAGE: "fix: ready",
-			RELEASE_TRIGGER_HEAD_SHA: sha,
 		},
 		stdout: "pipe",
 		stderr: "pipe",
@@ -267,6 +241,7 @@ esac
 		new Response(proc.stderr).text(),
 	]);
 	return {
+		sha,
 		exitCode,
 		stdout,
 		stderr,
@@ -284,277 +259,92 @@ function greenSourceRuns(sha = MAIN): SourceWorkflowRun[] {
 	}));
 }
 
-function tag(name: string, conclusion: CiConclusion, sha = OLDER): SilentTag {
-	return {
-		tag: name,
-		sha,
-		workflow: "CI",
-		status: conclusion === null ? "in_progress" : "completed",
-		conclusion,
-	};
-}
-
-function decide(
-	options: {
-		bullets?: boolean;
-		silentTags?: SilentTag[];
-		mainHeadSha?: string;
-		sourceWorkflowRuns?: SourceWorkflowRun[];
-	} = {},
-) {
-	const mainHeadSha = options.mainHeadSha ?? MAIN;
-	return decideReleaseGate({
-		hasUnreleasedBullets: options.bullets ?? false,
-		silentTags: options.silentTags ?? [],
-		mainHeadSha,
-		sourceWorkflowRuns: options.sourceWorkflowRuns ?? greenSourceRuns(mainHeadSha),
-	});
-}
-
 describe("exact-source gates", () => {
-	it("requires CI and Checks to be green for the exact main SHA", () => {
-		expect(decide({ bullets: true }).cut).toBe(true);
+	/**
+	 * The dispatched commit is releasable only when every required workflow is green for that exact
+	 * sha. This is the whole safety story now that nothing cuts automatically.
+	 */
+	it("passes only when every required workflow is green for the exact main SHA", () => {
+		expect(sourceGateFailure({ mainHeadSha: MAIN, sourceWorkflowRuns: greenSourceRuns() })).toBeUndefined();
 
 		for (const missingName of REQUIRED_SOURCE_WORKFLOWS) {
 			const runs = greenSourceRuns().filter(run => run.name !== missingName);
-			const decision = decide({ bullets: true, sourceWorkflowRuns: runs });
-			expect(decision.cut).toBe(false);
-			expect(decision.reason).toContain(`${missingName} has no run`);
+			expect(sourceGateFailure({ mainHeadSha: MAIN, sourceWorkflowRuns: runs })).toBe(
+				`${missingName} has no run for exact main SHA ${MAIN}; refusing to release an unproved tree.`,
+			);
 		}
 	});
 
-	it("blocks a red or unfinished exact-SHA run even when a changelog bullet is waiting", () => {
-		for (const conclusion of ["failure", "cancelled", null]) {
+	it("blocks a red, cancelled, unfinished, or inconclusive exact-SHA run", () => {
+		const cases = [
+			{
+				run: { status: "completed", conclusion: "failure" },
+				reason: `Checks concluded failure for exact main SHA ${MAIN}; release is blocked.`,
+			},
+			{
+				run: { status: "completed", conclusion: "cancelled" },
+				reason: `Checks concluded cancelled for exact main SHA ${MAIN}; release is blocked.`,
+			},
+			{
+				run: { status: "in_progress", conclusion: null },
+				reason: `Checks is in_progress for exact main SHA ${MAIN}; there is no green result to release.`,
+			},
+			{
+				run: { status: "completed", conclusion: null },
+				reason: `Checks concluded without a conclusion for exact main SHA ${MAIN}; release is blocked.`,
+			},
+		];
+
+		for (const { run, reason } of cases) {
 			const runs = greenSourceRuns();
-			runs[1] = {
-				...runs[1]!,
-				status: conclusion === null ? "in_progress" : "completed",
-				conclusion,
-			};
-			expect(decide({ bullets: true, sourceWorkflowRuns: runs }).cut).toBe(false);
+			runs[1] = { ...runs[1]!, ...run };
+			expect(sourceGateFailure({ mainHeadSha: MAIN, sourceWorkflowRuns: runs })).toBe(reason);
 		}
 	});
 
+	/** A neighbouring commit's green run is not evidence about the tree the operator named. */
 	it("does not accept green runs from a different commit", () => {
-		const decision = decide({ bullets: true, sourceWorkflowRuns: greenSourceRuns(OLDER) });
-		expect(decision.cut).toBe(false);
-		expect(decision.reason).toContain("exact main SHA");
+		expect(sourceGateFailure({ mainHeadSha: MAIN, sourceWorkflowRuns: greenSourceRuns(OLDER) })).toBe(
+			`CI has no run for exact main SHA ${MAIN}; refusing to release an unproved tree.`,
+		);
 	});
 
-	it("the CLI fails closed for red, missing, or unknowable exact-SHA evidence", async () => {
-		for (const options of [{ checks: "failure" }, { checks: "missing" }] as const) {
-			const automatic = await runGateCli(options);
-			expect(automatic.exitCode, automatic.stderr).toBe(0);
-			expect(automatic.output).toContain("should-release=false");
+	it("emits the proved SHA and the requested version when both gates are green", async () => {
+		const result = await runGateCli({});
 
-			const manual = await runGateCli({ ...options, greenOnly: true });
-			expect(manual.exitCode).not.toBe(0);
+		expect(result.exitCode, result.stderr).toBe(0);
+		expect(result.output).toBe(`version=patch\nsource-sha=${result.sha}\n`);
+	});
+
+	/**
+	 * A dispatch that cannot be proved must fail the gate job rather than exit 0 with no release: a
+	 * person asked for this version, so silence is the wrong answer.
+	 */
+	it("the CLI fails closed for red, missing, or unknowable exact-SHA evidence", async () => {
+		for (const checks of ["failure", "missing"] as const) {
+			const result = await runGateCli({ checks });
+			expect(result.exitCode).not.toBe(0);
+			expect(result.stderr).toContain("release source gate failed");
+			expect(result.output).toBe("");
 		}
 
 		const unknown = await runGateCli({ failGh: true });
 		expect(unknown.exitCode).not.toBe(0);
 		expect(unknown.stderr).toContain("could not establish");
-	});
-	/**
-	 * Recovery considers only installable published releases and only the CI
-	 * workflow_dispatch run for the exact silent tag.
-	 */
-	it("excludes drafts and prereleases and reads exact-tag CI", async () => {
-		const result = await runGateCli({ silentTag: true });
-		expect(result.exitCode).toBe(0);
-		expect(result.output).toContain("should-release=true");
-		expect(result.calls).toContain("release list --limit 1 --exclude-drafts --exclude-pre-releases");
-		expect(result.calls).toContain("release list --limit 50 --exclude-drafts --exclude-pre-releases");
-		expect(result.calls).toContain(
-			`actions/workflows/ci.yml/runs?head_sha=${OLDER}&branch=v0.0.2&event=workflow_dispatch&per_page=1`,
-		);
+		expect(unknown.output).toBe("");
 	});
 
 	/**
-	 * A controller can fail after Checks dispatch but before CI dispatch. Recovery
-	 * must use the exact-tag Checks failure instead of treating the tag as invisible.
+	 * The auto-cut is gone. A workflow_run-shaped event must be refused before the gate resolves any
+	 * version or queries any evidence, so re-adding the trigger cannot silently start cutting again.
 	 */
-	it("recovers a failed exact-tag Checks run when CI never started", async () => {
-		const result = await runGateCli({ silentTag: true, silentCiMissing: true });
-		expect(result.exitCode).toBe(0);
-		expect(result.output).toContain("should-release=true");
-		expect(result.calls).toContain(
-			`actions/workflows/checks.yml/runs?head_sha=${OLDER}&branch=v0.0.2&event=workflow_dispatch&per_page=1`,
-		);
-	});
+	it("refuses a workflow_run-shaped event instead of choosing a version", async () => {
+		const result = await runGateCli({ eventName: "workflow_run" });
 
-	/**
-	 * A pushed tag with no tagged workflow run means the controller stopped
-	 * mid-transaction. Another cut would hide that failure behind a newer tag.
-	 */
-	it("raises attention when a pushed tag has no Checks or CI run", async () => {
-		const result = await runGateCli({
-			silentTag: true,
-			silentCiMissing: true,
-			silentChecksMissing: true,
-		});
 		expect(result.exitCode).not.toBe(0);
-		expect(result.stderr).toContain("has no tagged Checks or CI run");
-	});
-});
-
-describe("the ordinary path", () => {
-	/**
-	 * A changelog bullet cuts only when no earlier tag is still unresolved.
-	 * Existing release work must settle before another version begins.
-	 */
-	it("cuts when a publishable package has an Unreleased bullet", () => {
-		const decision = decide({ bullets: true });
-
-		expect(decision.cut).toBe(true);
-		expect(decision.needsAttention).toBe(false);
-		expect(decision.reason).toContain("Unreleased changelog bullet");
-	});
-
-	it("recovers a failed tag before folding in the newer bullet", () => {
-		const decision = decide({ bullets: true, silentTags: [tag("v1.0.34", "failure")] });
-		expect(decision.cut).toBe(true);
-		expect(decision.needsAttention).toBe(false);
-		expect(decision.reason).toContain("re-cutting");
-	});
-
-	it("does not cut over an in-progress or anomalous successful tag for a newer bullet", () => {
-		for (const conclusion of [null, "success"] as CiConclusion[]) {
-			const decision = decide({ bullets: true, silentTags: [tag("v1.0.34", conclusion)] });
-			expect(decision.cut).toBe(false);
-		}
-	});
-
-	it("does not cut when nothing is unreleased and every tag is published", () => {
-		const decision = decide();
-
-		expect(decision.cut).toBe(false);
-		expect(decision.needsAttention).toBe(false);
-		expect(decision.reason).toContain("no unpublished tag");
-	});
-});
-
-describe("one stranded tag", () => {
-	/**
-	 * THE recovery. The changelog is empty because the failed cut consumed it, so the only evidence that
-	 * work is waiting is the tag itself.
-	 */
-	it("re-cuts when its CI failed and main has moved since", () => {
-		const decision = decide({ silentTags: [tag("v1.0.34", "failure")] });
-
-		expect(decision.cut).toBe(true);
-		expect(decision.needsAttention).toBe(false);
-		expect(decision.reason).toContain("v1.0.34");
-		expect(decision.reason).toContain("re-cutting");
-	});
-
-	it("re-cuts for a cancelled run, which also published nothing", () => {
-		expect(decide({ silentTags: [tag("v1.0.34", "cancelled")] }).cut).toBe(true);
-	});
-
-	it("re-cuts for a timed-out run, for the same reason", () => {
-		expect(decide({ silentTags: [tag("v1.0.34", "timed_out")] }).cut).toBe(true);
-	});
-
-	/**
-	 * BOUND ONE. Cutting the same tree again fails the same way, so a re-cut is only recovery when main
-	 * carries something the failed tag did not. Without this, a persistent failure would bump a version
-	 * on every gate entry.
-	 */
-	it("refuses when the failed tag IS main HEAD, because the tree has not changed", () => {
-		const decision = decide({ silentTags: [tag("v1.0.34", "failure", MAIN)] });
-
-		expect(decision.cut).toBe(false);
-		expect(decision.needsAttention).toBe(true);
-		expect(decision.reason).toContain("same tree");
-	});
-
-	/** A run still going may yet publish. Cutting over it would create a second silent tag by hand. */
-	it("waits while its CI is still running", () => {
-		const decision = decide({ silentTags: [tag("v1.0.34", null)] });
-
-		expect(decision.cut).toBe(false);
-		expect(decision.needsAttention).toBe(false);
-		expect(decision.reason).toContain("still running");
-	});
-
-	/**
-	 * A green run with no release is a different bug: the publish step reported success without creating
-	 * the release. A new version would bury the evidence, so this is reported and left alone.
-	 */
-	it("reports a successful run with no release instead of cutting over it", () => {
-		const decision = decide({ silentTags: [tag("v1.0.34", "success")] });
-
-		expect(decision.cut).toBe(false);
-		expect(decision.needsAttention).toBe(true);
-		expect(decision.reason).toContain("without creating the release");
-	});
-
-	it("treats a skipped run as successful for this purpose, so it does not cut over it", () => {
-		// `skipped` and `neutral` are not failures. Neither published anything, but neither is evidence
-		// that a re-cut would help, and guessing here is how a version-inflation loop starts.
-		expect(decide({ silentTags: [tag("v1.0.34", "skipped")] }).cut).toBe(false);
-		expect(decide({ silentTags: [tag("v1.0.34", "neutral")] }).cut).toBe(false);
-	});
-});
-
-describe("two stranded tags", () => {
-	/**
-	 * BOUND TWO, and the exact incident: `v1.0.33` and `v1.0.34` both cut, both failed on the same source
-	 * lock. A third tag would have failed identically. The gate stops and says so.
-	 */
-	it("refuses to cut a third and asks for a person", () => {
-		const decision = decide({ silentTags: [tag("v1.0.34", "failure"), tag("v1.0.33", "failure")] });
-
-		expect(decision.cut).toBe(false);
-		expect(decision.needsAttention).toBe(true);
-		expect(decision.reason).toContain("v1.0.34");
-		expect(decision.reason).toContain("v1.0.33");
-		expect(decision.reason).toContain("re-run the release workflow by hand");
-	});
-
-	it("never cuts while two unpublished tags remain unresolved", () => {
-		for (const conclusion of ["failure", "success", null] as CiConclusion[]) {
-			expect(decide({ silentTags: [tag("v1.0.35", conclusion), tag("v1.0.34", "failure")] }).cut).toBe(false);
-		}
-	});
-
-	it("does not let a new bullet bypass the two-tag recovery bound", () => {
-		const decision = decide({ bullets: true, silentTags: [tag("v1.0.34", "failure"), tag("v1.0.33", "failure")] });
-		expect(decision.cut).toBe(false);
-		expect(decision.needsAttention).toBe(true);
-	});
-
-	it("uses the documented bound rather than a literal 2 in the branch", () => {
-		// Pins the constant to the behaviour: a list one short of the bound recovers, a list at the bound
-		// refuses. If someone raises MAX_STRANDED_TAGS, this test follows them instead of going stale.
-		const belowBound = Array.from({ length: MAX_STRANDED_TAGS - 1 }, (_, i) => tag(`v1.0.${40 + i}`, "failure"));
-		const atBound = Array.from({ length: MAX_STRANDED_TAGS }, (_, i) => tag(`v1.0.${40 + i}`, "failure"));
-
-		expect(decide({ silentTags: belowBound }).cut).toBe(true);
-		expect(decide({ silentTags: atBound }).cut).toBe(false);
-	});
-});
-
-describe("every refusal", () => {
-	/**
-	 * A refusal that a person needs to act on must be distinguishable from "nothing to release", because
-	 * the incident was precisely a gate reporting the second while the first was true.
-	 */
-	it("carries a reason, and only the ones needing action are flagged", () => {
-		const cases: Array<{ decision: ReleaseGateDecision; attention: boolean }> = [
-			{ decision: decide(), attention: false },
-			{ decision: decide({ silentTags: [tag("v1.0.34", null)] }), attention: false },
-			{ decision: decide({ silentTags: [tag("v1.0.34", "success")] }), attention: true },
-			{ decision: decide({ silentTags: [tag("v1.0.34", "failure", MAIN)] }), attention: true },
-			{ decision: decide({ silentTags: [tag("v1.0.34", "failure"), tag("v1.0.33", "failure")] }), attention: true },
-		];
-
-		for (const { decision, attention } of cases) {
-			expect(decision.cut).toBe(false);
-			expect(decision.reason.length).toBeGreaterThan(20);
-			expect(decision.needsAttention).toBe(attention);
-		}
+		expect(result.stderr).toContain("releases are cut only by workflow_dispatch");
+		expect(result.output).toBe("");
+		expect(result.calls).toBe("");
 	});
 });
 

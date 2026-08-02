@@ -2,27 +2,18 @@
 # bumps every version, regenerates lockfiles, finalizes changelogs, runs checks,
 # commits, and atomically pushes main plus the tag.
 #
-# Two triggers, one controller:
-#   - workflow_run on a completed main CI or Checks run. The gate queries both
-#     product workflows and releases only when each is green for the SHA.
-#     Releasing on raw push tagged shas whose tests then failed: v1.0.28
-#     through v1.0.35 were each tagged before ci.yml had tested the sha, two red
-#     packages/utils tests killed every publish downstream, and `releases/latest`
-#     sat at v1.0.27 while the tags marched on. The gate then cuts a `patch`
-#     release whenever a publishable package has an `## [Unreleased]` changelog
-#     bullet waiting (see scripts/release-policy.ts). It is self-limiting:
-#     release.ts empties the Unreleased section when it cuts the release, so the
-#     bump commit it pushes is not itself releasable and never loops, and a
-#     docs/chore-only merge with no bullet does not release.
+# One trigger: workflow_dispatch. A release happens because a person asked for
+# this exact version at this exact SHA, never because main moved. The dispatch
+# carries the version (major/minor/patch or x.y.z) and the `origin/main` SHA the
+# operator validated; the gate refuses to cut unless CI and Checks are both
+# green for that precise commit.
 #
-#     That same self-limiting property strands work when a cut FAILS: the section
-#     is already consumed, so the changelog signal can never ask for it again, and
-#     the tag sits with no published release. So the gate has a second signal —
-#     an unpublished tag whose CI definitively failed, with main moved on since —
-#     bounded so it cannot inflate versions: two stranded tags stop it and ask for
-#     a person instead of cutting a third.
-#   - workflow_dispatch: manual release of an explicit version (major/minor/patch
-#     or x.y.z), after proving the same exact-main-SHA CI and Checks gates.
+# That gate is the entire safety story, and it is not ceremony. A tag must never
+# be cut for a SHA that CI has not already tested green: v1.0.28 through v1.0.35
+# were each tagged before ci.yml had tested the sha, two red packages/utils tests
+# killed every publish downstream, and `releases/latest` sat at v1.0.27 while the
+# tags marched on. Anything that would weaken the exact-SHA proof below re-opens
+# that failure.
 #
 # After the atomic bump/tag push, release.ts dispatches and waits for exact-tag
 # Checks, then dispatches and waits for tagged CI. `workflow_dispatch` is one of
@@ -33,10 +24,6 @@
 name: Release
 
 on:
-   workflow_run:
-      workflows: [CI, Checks]
-      types: [completed]
-      branches: [main]
    workflow_dispatch:
       inputs:
          version:
@@ -62,18 +49,14 @@ permissions:
    actions: read
 
 jobs:
-   # Decide whether this event should cut a release, and which version. Both
-   # automatic workflow completions and manual dispatches must prove that CI and
-   # Checks succeeded for the exact checked-out main SHA. Keeping this separate
-   # avoids expensive toolchain setup when there is nothing releasable.
+   # Prove the dispatched SHA is releasable before paying for a toolchain. The
+   # decision script requires CI and Checks to have both succeeded for the exact
+   # checked-out main SHA, and fails this job on every refusal so the alert below
+   # fires instead of the request vanishing.
    gate:
       name: Decide release
       runs-on: ubuntu-22.04
-      # A failed triggering workflow can never release. The decision script also
-      # verifies the other required workflows for this exact SHA.
-      if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
       outputs:
-         should-release: ${{ steps.decide.outputs.should-release }}
          version: ${{ steps.decide.outputs.version }}
          source-sha: ${{ steps.decide.outputs.source-sha }}
       steps:
@@ -91,17 +74,12 @@ jobs:
               GITHUB_EVENT_NAME: ${{ github.event_name }}
               RELEASE_DISPATCH_VERSION: ${{ inputs.version }}
               RELEASE_EXPECTED_SHA: ${{ inputs.expected_sha }}
-              RELEASE_HEAD_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
-              RELEASE_TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-              RELEASE_TRIGGER_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
-              RELEASE_TRIGGER_WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: bun scripts/release.ts workflow-gate
 
    release:
       name: Run release train
       needs: gate
-      if: ${{ needs.gate.outputs.should-release == 'true' }}
       runs-on: ubuntu-22.04
       env:
          RELEASE_VERSION: ${{ needs.gate.outputs.version }}
