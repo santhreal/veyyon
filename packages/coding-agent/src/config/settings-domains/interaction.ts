@@ -279,6 +279,18 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	"magicKeywords.turnBudget": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "interaction",
+			group: "Magic Keywords",
+			label: "Turn Budget Directive",
+			description:
+				"Let a standalone +500k or +2m set this turn's output-token budget; when off, +Nk in a message is treated as ordinary text",
+		},
+	},
+
 	// Notifications
 	"completion.notify": {
 		type: "enum",

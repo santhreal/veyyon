@@ -3,6 +3,7 @@ import {
 	GoalRuntime,
 	type GoalRuntimeHost,
 	goalTokenDelta,
+	remainingTokens,
 	renderGoalPrompt,
 	renderTrustedObjective,
 } from "@veyyon/coding-agent/goals/runtime";
@@ -479,6 +480,36 @@ describe("goal runtime", () => {
 		expect(next.goal.objective).toBe("Phase 4");
 		expect(next.goal.status).toBe("active");
 		expect(next.enabled).toBe(true);
+	});
+
+	/**
+	 * Locks out: a default token budget being injected for a goal created without one.
+	 *
+	 * `token_budget` is optional on the `goal` tool and `Goal.tokenBudget` is `number |
+	 * undefined`, so "no budget" must mean genuinely unbounded: unbounded remaining, and a
+	 * status that can never flip to `budget-limited` no matter how much the goal spends. If
+	 * anything ever defaulted that field, every goal would silently acquire a ceiling and
+	 * eventually stall itself with a budget-limit steer the user never asked for.
+	 */
+	it("leaves a goal created without a token budget genuinely unbounded", async () => {
+		const harness = createHarness();
+
+		const created = await harness.runtime.createGoal({ objective: "Ship the thing" });
+		expect(created.goal.tokenBudget).toBeUndefined();
+		expect(remainingTokens(created.goal)).toBeNull();
+		expect(renderGoalPrompt("active", created.goal)).toContain("unbounded");
+
+		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.setUsage(createUsage({ output: 5_000_000 }));
+		await harness.runtime.flushUsage("allowed");
+
+		const after = harness.getState();
+		expect(after?.goal.tokensUsed).toBe(5_000_000);
+		expect(after?.goal.tokenBudget).toBeUndefined();
+		expect(after?.goal.status).toBe("active");
+		expect(remainingTokens(after?.goal)).toBeNull();
+		// A budget-limit steer is the observable consequence of a ceiling; there must be none.
+		expect(harness.hiddenMessages).toEqual([]);
 	});
 
 	it("completeGoalFromTool succeeds for a paused goal (enabled=false)", async () => {
