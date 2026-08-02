@@ -22,6 +22,11 @@ export const ALL_SCENES = [
 ] as const satisfies readonly SetupScene[];
 
 export interface SetupSceneSelectionOptions {
+	/**
+	 * True when this launch is restoring a session (`--continue`, `--resume`,
+	 * `--fork`). Defers a re-onboard, never a FIRST install; see
+	 * {@link selectSetupScenes}.
+	 */
 	resuming?: boolean;
 	isTTY?: boolean;
 	skipEnv?: string;
@@ -77,7 +82,24 @@ export async function selectSetupScenes(
 	if (!isTTY) return [];
 	const currentVersion = options.currentVersion ?? CURRENT_SETUP_VERSION;
 	if (!options.force) {
-		if (options.resuming) return [];
+		// Resuming defers a RE-onboard. It must never defer a first install.
+		//
+		// `resuming` used to skip onboarding outright, and nothing else on that
+		// launch records a generation, so a machine with an empty
+		// `~/.veyyon/config.yml` stayed byte-identical to a fresh install forever.
+		// A user who habitually launches with `-c` was never onboarded at all, and
+		// the wizard then ambushed them on whatever later launch happened to omit
+		// the flag, weeks on, with nothing to connect it to. That is the "onboarding
+		// pops up at random times" report.
+		//
+		// A machine that has never onboarded also has no session of its own to
+		// resume, so there is nothing here for the wizard to interrupt: it onboards
+		// now, and the completion is written before the restore proceeds. A machine
+		// that HAS a recorded generation is the case this guard is really for: the
+		// record already exists, the deferral lasts one launch, and dropping someone
+		// into a wholesale re-onboard while their session is being restored is worse
+		// than waiting for the next ordinary launch.
+		if (options.resuming && storedVersion > 0) return [];
 		if (options.settingsUnreadable) return [];
 		if (setupSkipEnvEnabled(options.skipEnv ?? Bun.env.VEYYON_SKIP_SETUP)) return [];
 		if (options.setupWizardEnabled === false) return [];
@@ -107,13 +129,20 @@ export async function selectSetupScenes(
  * write went to the per-profile store through the debounced save queue, so a
  * process that ended before the flush lost the fact entirely and the next launch
  * re-onboarded. Idempotent: a machine already at or past `version` is left alone.
+ *
+ * A write the filesystem refuses is not silent any more: `Settings.set` stays
+ * non-throwing for callers that cannot handle a throw, but it now announces the
+ * refusal to its save-failure listeners, which `main.ts` turns into a notice
+ * naming the unwritable file. The announcement is once per file, so the retry in
+ * {@link runSetupWizard} tells the user once rather than once per attempt. The
+ * read-back below is still what decides whether a retry is worth making.
  */
 export function markSetupWizardComplete(settings: Settings, version: number = CURRENT_SETUP_VERSION): boolean {
 	if (settings.get("onboardingVersion") >= version) return true;
 	settings.set("onboardingVersion", version);
-	// Read back rather than assume: `set` swallows a rejected global write (it
-	// logs and returns), and a caller that treats a lost write as success has no
-	// way to retry it.
+	// Read back rather than assume: `set` does not throw on a rejected global
+	// write, and a caller that treats a lost write as success has no way to retry
+	// it.
 	return settings.get("onboardingVersion") >= version;
 }
 

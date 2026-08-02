@@ -145,9 +145,23 @@ describe("setup wizard scene selection", () => {
 	it("honors hard environment gates", async () => {
 		const ctx = fakeContextWithConfiguredModel();
 		expect(await selectSetupScenes(0, ALL_SCENES, ctx, { isTTY: false })).toEqual([]);
-		expect(await selectSetupScenes(0, ALL_SCENES, ctx, { isTTY: true, resuming: true })).toEqual([]);
 		expect(await selectSetupScenes(0, ALL_SCENES, ctx, { isTTY: true, skipEnv: "1" })).toEqual([]);
 		expect(await selectSetupScenes(0, ALL_SCENES, ctx, { isTTY: true, setupWizardEnabled: false })).toEqual([]);
+	});
+
+	it("defers a re-onboard while resuming but never a first install", async () => {
+		// Resuming used to skip onboarding outright. Nothing else on that launch
+		// records a generation, so a fresh machine launched with `--continue` stayed
+		// indistinguishable from a fresh install and the wizard ambushed the user on
+		// some later launch that happened to omit the flag.
+		const ctx = fakeContextWithConfiguredModel();
+		const firstInstall = await selectSetupScenes(0, ALL_SCENES, ctx, { isTTY: true, resuming: true });
+		expect(firstInstall.map(scene => scene.id)).toEqual(ALL_SCENES.map(scene => scene.id));
+		// A machine that HAS a recorded generation already: the deferral is one launch
+		// long and the record survives it, so there is nothing to ambush.
+		expect(await selectSetupScenes(1, ALL_SCENES, ctx, { isTTY: true, resuming: true, currentVersion: 2 })).toEqual(
+			[],
+		);
 	});
 
 	it("keeps the providers scene eligible even when a model is already configured", async () => {

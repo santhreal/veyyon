@@ -808,8 +808,11 @@ export class UiHelpers {
 		// line nobody sees. Here the in-memory value DID change, so the UI already showed
 		// the new setting: without this the user only finds out on their next launch, when
 		// it silently reverts (Law 10).
+		// "1 attempt", not "1 attempts": a refused GLOBAL write is announced on the
+		// first failure (nothing retries it), so the count is routinely 1 here.
+		const attempts = `${failure.attempts} attempt${failure.attempts === 1 ? "" : "s"}`;
 		this.ctx.showError(
-			`Could not save your settings after ${failure.attempts} attempts, so this change will not survive a restart:\n` +
+			`Could not save your settings after ${attempts}, so this change will not survive a restart:\n` +
 				`  ${failure.path}\n    ${failure.reason}\n` +
 				"Check that the file and its directory are writable, then change the setting again.",
 		);

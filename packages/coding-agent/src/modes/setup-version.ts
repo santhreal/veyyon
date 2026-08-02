@@ -27,7 +27,7 @@
  * the global-config reader, which `main.ts` already pulls in.
  */
 
-import { readGlobalOnboardingVersionSafe } from "@veyyon/utils/dirs";
+import { readGlobalOnboardingVersionSafe, readLegacyProfileSetupVersion } from "@veyyon/utils/dirs";
 import type { Settings } from "../config/settings";
 
 /**
@@ -66,21 +66,41 @@ export interface OnboardingGeneration {
  * existing user exactly once, since they all hold a completed profile value and
  * an empty global one.
  *
- * Absent in BOTH is the only genuine first install.
+ * The fallback reads EVERY profile, not the active one. Onboarding is a fact
+ * about the machine, so any profile that recorded a completed setup is proof
+ * the machine was onboarded, and the answer must not depend on which
+ * `--profile` happens to be launching. Reading only the active profile is what
+ * gave a user whose `work` profile held `setupVersion: 1` the entire wizard the
+ * first time they ran `--profile oss-work`, on a machine set up long ago.
+ *
+ * Absent EVERYWHERE is the only genuine first install.
  */
 export function resolveOnboardingGeneration(settings: Settings): OnboardingGeneration {
 	// Either file can hide the answer: the profile store is quarantined on a parse
 	// failure, and the global config throws out of its own reader. Both mean "we do
 	// not know", which is not the same as "new machine".
-	const unreadable = settings.quarantinedFiles.length > 0 || readGlobalOnboardingVersionSafe().unreadable;
+	let unreadable = settings.quarantinedFiles.length > 0 || readGlobalOnboardingVersionSafe().unreadable;
 
 	const machineWide = settings.get("onboardingVersion");
 	if (machineWide > 0) return { version: machineWide, unreadable };
 
-	const perProfile = settings.get("setupVersion");
-	if (perProfile > 0) {
-		settings.set("onboardingVersion", perProfile);
-		return { version: perProfile, unreadable };
+	// The ACTIVE profile's retired value, already merged into this instance. Kept
+	// as one input among several because it is the one the cross-profile scan
+	// cannot see: an agent dir pointed outside `profiles/` (VEYYON_CODING_AGENT_DIR)
+	// or a project-scoped override is not a file the scan visits.
+	const activeProfile = settings.get("setupVersion");
+
+	// ...and every other profile on the machine. The highest wins, so the result is
+	// the same whichever profile is active. A profile whose file exists but cannot
+	// be read makes the answer untrustworthy rather than absent, exactly like an
+	// unparseable global config.
+	const acrossProfiles = readLegacyProfileSetupVersion();
+	if (acrossProfiles.unreadable) unreadable = true;
+
+	const legacy = Math.max(activeProfile, acrossProfiles.version ?? 0);
+	if (legacy > 0) {
+		settings.set("onboardingVersion", legacy);
+		return { version: legacy, unreadable };
 	}
 
 	return { version: 0, unreadable };
