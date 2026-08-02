@@ -26,6 +26,11 @@ class ProvidersSceneController implements SetupSceneController {
 			this.#tabs.map(tab => ({ id: tab.id, label: tab.label })),
 			getTabBarTheme(),
 		);
+		// No "(tab to cycle)" hint: the wizard footer names tab switching for
+		// whichever scene is on screen, and carrying it in both places states the
+		// same key twice while saying nothing about how to leave the step. The
+		// settings selector drops it for the same reason.
+		this.#tabBar.showHint = false;
 		this.#tabBar.onTabChange = () => {
 			this.#activeTab().onActivate?.();
 			host.requestRender();
