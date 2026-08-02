@@ -46,7 +46,6 @@ interface WorkflowJob {
 interface WorkflowDocument {
 	on: {
 		push: { branches: string[]; "paths-ignore"?: string[] };
-		workflow_run: { workflows: string[]; types: string[]; branches: string[] };
 		workflow_dispatch: {
 			inputs: Record<string, { description: string; required: boolean; default?: string; type: string }>;
 		};
@@ -64,8 +63,6 @@ async function loadYaml(rel: string): Promise<WorkflowDocument> {
 
 function greenFacts(mainHeadSha = "main-sha"): ReleaseGateFacts {
 	return {
-		hasUnreleasedBullets: true,
-		silentTags: [],
 		mainHeadSha,
 		sourceWorkflowRuns: [
 			{ name: "CI", headSha: mainHeadSha, status: "completed", conclusion: "success" },
@@ -74,31 +71,21 @@ function greenFacts(mainHeadSha = "main-sha"): ReleaseGateFacts {
 	};
 }
 
-function gateOperations(
-	options: { mainSha?: string; facts?: ReleaseGateFacts; onGather?: () => void } = {},
-): WorkflowGateOperations {
+function gateOperations(options: { mainSha?: string; facts?: ReleaseGateFacts } = {}): WorkflowGateOperations {
 	return {
 		currentSha: async () => options.mainSha ?? "main-sha",
-		gatherFacts: async () => {
-			options.onGather?.();
-			return options.facts ?? greenFacts(options.mainSha);
-		},
+		gatherFacts: async () => options.facts ?? greenFacts(options.mainSha),
 	};
 }
 
 describe("release.yml exact-SHA source gates", () => {
 	/**
-	 * Raw pushes cannot cut releases. Both public source workflows must complete
-	 * on main before the controller is even eligible to evaluate a release.
+	 * Releases are deliberate. The automatic `workflow_run` cut is gone, so a dispatch carrying the
+	 * version and the operator-validated SHA is the only way a tag can come into existence.
 	 */
-	it("is triggered by completed CI and Checks runs on main, never a raw push", async () => {
+	it("has exactly one trigger, an explicit workflow_dispatch", async () => {
 		const workflow = await loadYaml("workflows/release.yml");
-		expect(workflow.on.push).toBeUndefined();
-		expect(workflow.on.workflow_run).toEqual({
-			workflows: ["CI", "Checks"],
-			types: ["completed"],
-			branches: ["main"],
-		});
+		expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
 		expect(workflow.on.workflow_dispatch.inputs.version).toMatchObject({
 			required: true,
 			default: "patch",
@@ -146,83 +133,37 @@ describe("release.yml exact-SHA source gates", () => {
 		expect(checkout.with.ref).toContain("needs.gate.outputs.source-sha");
 		expect(workflow.jobs.gate.outputs["source-sha"]).toContain("steps.decide.outputs.source-sha");
 		const gate = workflow.jobs.gate.steps.find(step => step.id === "decide");
-		expect(gate.env.RELEASE_TRIGGER_WORKFLOW_NAME).toContain("workflow_run.name");
-		expect(gate.env.RELEASE_TRIGGER_WORKFLOW_CONCLUSION).toContain("workflow_run.conclusion");
+		expect(gate.env.RELEASE_DISPATCH_VERSION).toContain("inputs.version");
+		expect(gate.env.RELEASE_EXPECTED_SHA).toContain("inputs.expected_sha");
 		expect(controller.env.GH_TOKEN).toContain("GITHUB_TOKEN");
 		expect(controller.run).toBe('bun scripts/release.ts workflow-release "$RELEASE_VERSION"');
 	});
 
 	/**
-	 * A green completion for an older commit cannot make a newer main releasable
-	 * and must not query unrelated gate or publication state.
+	 * The auto-cut is gone. A workflow_run-shaped event must be refused before the gate resolves a
+	 * SHA or gathers any evidence, so an automatic patch release cannot return by accident.
 	 */
-	it("defers stale workflow completions before gathering release facts", async () => {
+	it("refuses a workflow_run-shaped event and gathers no facts", async () => {
+		let shaRead = false;
 		let gathered = false;
-		const result = await decideWorkflowRelease(
-			{ eventName: "workflow_run", triggerHeadSha: "stale-sha", headCommitMessage: "fix: ready" },
-			gateOperations({ mainSha: "new-main-sha", onGather: () => (gathered = true) }),
-		);
-		expect(result).toMatchObject({ shouldRelease: false, sourceSha: "new-main-sha" });
+
+		await expect(
+			decideWorkflowRelease(
+				{ eventName: "workflow_run", dispatchVersion: "patch", expectedSha: "main-sha" },
+				{
+					currentSha: async () => {
+						shaRead = true;
+						return "main-sha";
+					},
+					gatherFacts: async () => {
+						gathered = true;
+						return greenFacts();
+					},
+				},
+			),
+		).rejects.toThrow("releases are cut only by workflow_dispatch");
+		expect(shaRead).toBe(false);
 		expect(gathered).toBe(false);
-	});
-
-	/**
-	 * The workflow_run event is authoritative for its own completed run. It
-	 * closes the short API visibility race without waiting for another commit.
-	 */
-	it("uses successful trigger evidence when the runs API has not listed it yet", async () => {
-		const facts = greenFacts();
-		facts.sourceWorkflowRuns = facts.sourceWorkflowRuns.filter(run => run.name !== "Checks");
-		const result = await decideWorkflowRelease(
-			{
-				eventName: "workflow_run",
-				triggerHeadSha: "main-sha",
-				triggerWorkflowName: "Checks",
-				triggerWorkflowConclusion: "success",
-				headCommitMessage: "fix: ready",
-			},
-			gateOperations({ facts }),
-		);
-		expect(result).toMatchObject({ shouldRelease: true, version: "patch" });
-	});
-
-	/**
-	 * A newer rerun already visible through the API supersedes the triggering
-	 * event. An in-progress rerun must keep the release blocked.
-	 */
-	it("does not overwrite newer API evidence with the completed trigger", async () => {
-		const facts = greenFacts();
-		facts.sourceWorkflowRuns = facts.sourceWorkflowRuns.map(run =>
-			run.name === "Checks" ? { ...run, status: "in_progress", conclusion: null } : run,
-		);
-		const result = await decideWorkflowRelease(
-			{
-				eventName: "workflow_run",
-				triggerHeadSha: "main-sha",
-				triggerWorkflowName: "Checks",
-				triggerWorkflowConclusion: "success",
-				headCommitMessage: "fix: ready",
-			},
-			gateOperations({ facts }),
-		);
-		expect(result.shouldRelease).toBe(false);
-		expect(result.reason).toContain("in_progress");
-	});
-
-	/**
-	 * Automatic release selection cuts one patch only after CI and Checks are
-	 * green for the exact current main SHA.
-	 */
-	it("selects an automatic patch from exact-SHA green facts", async () => {
-		const result = await decideWorkflowRelease(
-			{ eventName: "workflow_run", triggerHeadSha: "main-sha", headCommitMessage: "fix: ready" },
-			gateOperations(),
-		);
-		expect(result).toMatchObject({
-			shouldRelease: true,
-			version: "patch",
-			sourceSha: "main-sha",
-		});
 	});
 
 	/**
@@ -321,10 +262,10 @@ describe("release.yml exact-SHA source gates", () => {
 	});
 
 	/**
-	 * Manual version selection is bound to the operator-validated SHA and still
-	 * requires the same CI and Checks evidence as an automatic release.
+	 * The dispatched version is bound to the operator-validated SHA and to CI and Checks evidence for
+	 * that exact commit. This gate is the only path to a tag.
 	 */
-	it("binds manual selection to exact main and source gates", async () => {
+	it("binds the dispatched version to exact main and source gates", async () => {
 		const accepted = await decideWorkflowRelease(
 			{
 				eventName: "workflow_dispatch",
@@ -333,10 +274,10 @@ describe("release.yml exact-SHA source gates", () => {
 			},
 			gateOperations({ mainSha: "validated-sha", facts: greenFacts("validated-sha") }),
 		);
-		expect(accepted).toMatchObject({
-			shouldRelease: true,
+		expect(accepted).toEqual({
 			version: "minor",
 			sourceSha: "validated-sha",
+			reason: "manual release request passed exact-SHA CI and Checks",
 		});
 
 		await expect(
@@ -370,9 +311,7 @@ describe("required publication artifacts", () => {
 	it("exposes no workstation release entry point", async () => {
 		const manifest = await Bun.file("package.json").json();
 		expect(manifest.scripts.release).toBeUndefined();
-		expect(Object.values(manifest.scripts as Record<string, string>).some(s => s.includes("release.ts"))).toBe(
-			false,
-		);
+		expect(Object.values(manifest.scripts as Record<string, string>).some(s => s.includes("release.ts"))).toBe(false);
 	});
 
 	/**

@@ -83,9 +83,9 @@ describe("applyReleaseToChangelog", () => {
 	});
 
 	it("creates no version entry when [Unreleased] has no bullets", () => {
-		// An empty [Unreleased] must never mint a dated section — that is exactly the
-		// phantom-version bug. has-releasable-changes gates the cut; the roll must not
-		// fabricate content when there is none.
+		// An empty [Unreleased] must never mint a dated section: that is exactly the
+		// phantom-version bug. A dispatched release rolls every package's changelog, so
+		// the roll must not fabricate content for a package that has none.
 		const before = ["# Changelog", "", "## [Unreleased]", "", "## [1.0.0] - 2026-01-01", "", "- First.", ""].join(
 			"\n",
 		);

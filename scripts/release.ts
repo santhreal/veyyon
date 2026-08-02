@@ -4,9 +4,10 @@ import * as path from "node:path";
 /**
  * The one release controller.
  *
- * Releases are requested only through the GitHub Actions Release workflow.
- * Actions calls the workflow subcommands in this file for source-gate selection,
- * the atomic version cut, exact-tag Checks, tagged CI, and final publication
+ * Releases are requested only by dispatching the GitHub Actions Release
+ * workflow: there is no automatic cut, and no workstation entry point. Actions
+ * calls the workflow subcommands in this file for source-gate selection, the
+ * atomic version cut, exact-tag Checks, tagged CI, and final publication
  * verification.
  */
 import { isNewerVersion } from "@veyyon/utils/semver";
@@ -14,12 +15,10 @@ import { $, Glob, JSONC } from "bun";
 import { runChangelogFixer } from "./fix-changelogs";
 import {
 	checkedOutHeadSha,
-	decideReleaseGate,
 	gatherReleaseGateFacts,
 	RELEASE_BOT_LOGIN,
-	REQUIRED_SOURCE_WORKFLOWS,
 	type ReleaseGateFacts,
-	requiredSourceGate,
+	sourceGateFailure,
 	verifyPublishedAssetManifest,
 	verifyReleaseTagGates,
 } from "./release-policy";
@@ -61,13 +60,11 @@ function removeEmptyVersionEntries(content: string): string {
  * `packages/hashline/CHANGELOG.md`): a title-anchored insert (`# Changelog\n\n` +
  * a fresh `## [Unreleased]`) jammed `[Unreleased]` above the fork notice and left
  * the real bullets stranded in a phantom version that never published. When
- * `[Unreleased]` has no bullets, no version entry is created — using the SAME
- * bullet-based predicate (`parseUnreleasedBullets`) the release gate
- * (`has-releasable-changes`) decides on, so the two can never disagree: a stray
- * `### Fixed` header with no bullets does not mint a hollow version section for
- * one package just because another package triggered the cut. Any pre-existing
- * empty dated section is dropped either way. Pure so the ordering contract is
- * pinned by a test rather than only observed after a real release runs.
+ * `[Unreleased]` has no bullets, no version entry is created: a stray `### Fixed`
+ * header with no bullets must not mint a hollow version section for a package
+ * that had nothing to ship in this release. Any pre-existing empty dated section
+ * is dropped either way. Pure so the ordering contract is pinned by a test rather
+ * than only observed after a real release runs.
  */
 export function applyReleaseToChangelog(content: string, version: string, date: string): string {
 	if (parseUnreleasedBullets(content).length > 0) {
@@ -724,14 +721,9 @@ export interface WorkflowGateInput {
 	eventName: string;
 	dispatchVersion?: string;
 	expectedSha?: string;
-	headCommitMessage?: string;
-	triggerHeadSha?: string;
-	triggerWorkflowName?: string;
-	triggerWorkflowConclusion?: string;
 }
 
 export interface WorkflowGateResult {
-	shouldRelease: boolean;
 	version: string;
 	sourceSha: string;
 	reason: string;
@@ -747,95 +739,44 @@ const workflowGateOperations: WorkflowGateOperations = {
 	gatherFacts: gatherReleaseGateFacts,
 };
 
-function includeTriggerWorkflowEvidence(
-	facts: ReleaseGateFacts,
-	input: WorkflowGateInput,
-	sourceSha: string,
-): ReleaseGateFacts {
-	const name = input.triggerWorkflowName;
-	if (
-		!name ||
-		input.triggerWorkflowConclusion !== "success" ||
-		!REQUIRED_SOURCE_WORKFLOWS.some(required => required === name) ||
-		facts.sourceWorkflowRuns.some(run => run.name === name && run.headSha === sourceSha)
-	) {
-		return facts;
-	}
-	return {
-		...facts,
-		sourceWorkflowRuns: [
-			{ name, headSha: sourceSha, status: "completed", conclusion: "success" },
-			...facts.sourceWorkflowRuns,
-		],
-	};
-}
-
+/**
+ * Approve the dispatched release, or throw the reason it cannot happen.
+ *
+ * There is no quiet refusal here. A release exists because a person asked for this version at this
+ * SHA, so every rejection fails the gate job and files the pinned release-train issue rather than
+ * returning a decision nobody reads. `workflow_dispatch` is the only event allowed to reach this:
+ * inferring a version from repository state is exactly the behaviour that was removed.
+ */
 export async function decideWorkflowRelease(
 	input: WorkflowGateInput,
 	operations: WorkflowGateOperations = workflowGateOperations,
 ): Promise<WorkflowGateResult> {
+	if (input.eventName !== "workflow_dispatch") {
+		throw new Error(
+			`releases are cut only by workflow_dispatch; refusing to release from ${input.eventName || "an unnamed event"}`,
+		);
+	}
+	if (!input.expectedSha) throw new Error("manual release requires the exact validated main SHA");
 	const sourceSha = await operations.currentSha();
 	if (!sourceSha) throw new Error("could not resolve the checked-out main SHA");
-	if (input.eventName !== "workflow_dispatch" && input.triggerHeadSha !== sourceSha) {
-		return {
-			shouldRelease: false,
-			version: "",
-			sourceSha,
-			reason: `trigger SHA ${input.triggerHeadSha ?? "unknown"} is stale; main is ${sourceSha}`,
-		};
+	if (input.expectedSha !== sourceSha) {
+		throw new Error(`main is at ${sourceSha}, but the operator validated ${input.expectedSha}`);
 	}
-	if (input.eventName === "workflow_dispatch") {
-		if (!input.expectedSha) throw new Error("manual release requires the exact validated main SHA");
-		if (input.expectedSha !== sourceSha) {
-			throw new Error(`main is at ${sourceSha}, but the operator validated ${input.expectedSha}`);
-		}
-		const facts = await operations.gatherFacts();
-		if (!facts) throw new Error("could not establish exact-SHA CI/Checks or GitHub publication state");
-		const gate = requiredSourceGate(facts);
-		if (gate) throw new Error(`release source gate failed: ${gate.reason}`);
-		return {
-			shouldRelease: true,
-			version: parseReleaseRequest([input.dispatchVersion ?? "patch"]),
-			sourceSha,
-			reason: "manual release request passed exact-SHA CI and Checks",
-		};
-	}
-	const subject = (input.headCommitMessage ?? "").split("\n", 1)[0] ?? "";
-	if (subject.startsWith("chore: bump version to ")) {
-		return { shouldRelease: false, version: "", sourceSha, reason: "release bump commits never trigger another cut" };
-	}
-	if ((input.headCommitMessage ?? "").includes("[skip release]")) {
-		return { shouldRelease: false, version: "", sourceSha, reason: "[skip release] marker present" };
-	}
-	const gatheredFacts = await operations.gatherFacts();
-	if (!gatheredFacts) throw new Error("could not establish exact-SHA CI/Checks or GitHub publication state");
-	const facts = includeTriggerWorkflowEvidence(gatheredFacts, input, sourceSha);
-	const sourceGate = requiredSourceGate(facts);
-	if (sourceGate) {
-		return {
-			shouldRelease: false,
-			version: "",
-			sourceSha,
-			reason: sourceGate.reason,
-		};
-	}
-	const decision = decideReleaseGate(facts);
-	if (decision.needsAttention) throw new Error(decision.reason);
+	const facts = await operations.gatherFacts();
+	if (!facts) throw new Error("could not establish exact-SHA CI and Checks state");
+	const failure = sourceGateFailure(facts);
+	if (failure) throw new Error(`release source gate failed: ${failure}`);
 	return {
-		shouldRelease: decision.cut,
-		version: decision.cut ? "patch" : "",
+		version: parseReleaseRequest([input.dispatchVersion ?? "patch"]),
 		sourceSha,
-		reason: decision.reason,
+		reason: "manual release request passed exact-SHA CI and Checks",
 	};
 }
 
 async function writeWorkflowGateOutputs(result: WorkflowGateResult): Promise<void> {
 	const outputPath = Bun.env.GITHUB_OUTPUT;
 	if (!outputPath) throw new Error("workflow gate requires GITHUB_OUTPUT");
-	await fs.appendFile(
-		outputPath,
-		`should-release=${result.shouldRelease}\nversion=${result.version}\nsource-sha=${result.sourceSha}\n`,
-	);
+	await fs.appendFile(outputPath, `version=${result.version}\nsource-sha=${result.sourceSha}\n`);
 	console.log(result.reason);
 }
 export interface PreparedRelease {
@@ -954,10 +895,6 @@ async function runWorkflowGateCommand(): Promise<void> {
 		eventName: Bun.env.GITHUB_EVENT_NAME ?? "",
 		dispatchVersion: Bun.env.RELEASE_DISPATCH_VERSION,
 		expectedSha: Bun.env.RELEASE_EXPECTED_SHA,
-		headCommitMessage: Bun.env.RELEASE_HEAD_COMMIT_MESSAGE,
-		triggerHeadSha: Bun.env.RELEASE_TRIGGER_HEAD_SHA,
-		triggerWorkflowName: Bun.env.RELEASE_TRIGGER_WORKFLOW_NAME,
-		triggerWorkflowConclusion: Bun.env.RELEASE_TRIGGER_WORKFLOW_CONCLUSION,
 	});
 	await writeWorkflowGateOutputs(result);
 }

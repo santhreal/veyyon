@@ -1,48 +1,28 @@
 /**
- * Decide whether the release gate cuts, including when a previous cut was stranded.
+ * The release gate: proof that a dispatched release may cut, and proof that a cut may publish.
  *
- * The gate's only signal used to be "a publishable package has an `## [Unreleased]` bullet". That is
- * self-limiting and correct while cuts succeed, and it strands work the moment one does not:
- * `release.ts` MOVES `## [Unreleased]` into the new version's section at cut time, before CI publishes.
- * So a cut whose CI then fails leaves a tag with no GitHub release -- a SILENT TAG -- and an empty
- * `## [Unreleased]`. The gate then says there is nothing to release, forever, and the user-facing work
- * sits in a version section nobody can install. Observed live: `v1.0.33` and `v1.0.34` were both cut,
- * both failed CI on the same source lock, and the published release stayed at `v1.0.27`.
+ * A release happens because a person dispatched one, never because repository state looked ready.
+ * What this file decides is narrower and harder than "should we release": whether the exact commit
+ * the operator named is allowed to become a tag, and whether an existing tag is allowed to become a
+ * published GitHub release.
  *
- * The release-notes script already knows silent tags happen: it rolls their sections into the next
- * published release. This is the same knowledge on the CUT side.
+ * WHY THE EXACT-SHA PROOF IS THE WHOLE STORY. `v1.0.28` through `v1.0.35` were each tagged before
+ * `ci.yml` had tested their sha. Two red `packages/utils` tests killed every publish downstream, and
+ * `releases/latest` stayed at `v1.0.27` while the tags marched on. A tag asserts that a tested tree
+ * shipped under that name, so the gate refuses any commit whose CI and Checks runs are not both green
+ * for that precise sha. A green run for a neighbouring commit is not evidence about this one.
  *
- * WHY A RE-CUT RATHER THAN A RE-RUN. Re-running the failed tag's CI reruns the same commit, and the
- * commit that fixes the failure is by definition newer than the tag, so a rerun fails exactly as it did
- * before. Recovering the stranded work means cutting a new tag from a main that contains the fix.
+ * Publication is a second, independent proof: the immutable tag ref, the release commit sha, the
+ * controller run identity, and the bot actor must all agree before CI may publish bytes.
  *
- * WHY IT CANNOT INFLATE VERSIONS. Two bounds, both required:
- *
- *  1. A re-cut needs main to have MOVED past the failed tag. Cutting the same tree again would fail the
- *     same way, and it is the case where a rerun and a re-cut are equally useless.
- *  2. At most {@link MAX_STRANDED_TAGS} silent tags may exist. A second consecutive stranded cut means
- *     the failure is not a flake and a third tag will not fix it, so the gate refuses and says so
- *     loudly. That is the exact shape of the incident this exists for, and the answer to it is a person,
- *     not another version number.
- *
- * The decision is a pure function of facts gathered elsewhere, so every branch is tested without a
+ * Both decisions are pure functions of facts gathered separately, so every branch is tested without a
  * network: see `scripts/release-policy.test.ts`.
  */
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { hasReleasableChanges } from "./has-releasable-changes.ts";
-import { discoverPackages } from "./require-changelog.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-/**
- * How many unpublished tags may exist before the gate stops cutting and asks for a person.
- *
- * Two, because one stranded tag is the flake this recovers from and two in a row is a real failure that
- * a third tag will not fix. `v1.0.33` and `v1.0.34` were exactly that pair.
- */
-export const MAX_STRANDED_TAGS = 2;
 
 /** Every independently scheduled public source gate must be green for the exact main commit. */
 export const REQUIRED_SOURCE_WORKFLOWS = ["CI", "Checks"] as const;
@@ -144,200 +124,36 @@ export function assertPublishedReleaseAssets(actualNames: readonly string[]): vo
 	throw new Error(`published release asset manifest is incomplete or incoherent (${details.join("; ")})`);
 }
 
-/** A GitHub Actions conclusion. `null` is valid only before completion. */
-export type CiConclusion =
-	| "action_required"
-	| "cancelled"
-	| "failure"
-	| "neutral"
-	| "skipped"
-	| "stale"
-	| "startup_failure"
-	| "success"
-	| "timed_out"
-	| null;
-
-/** A tag newer than the latest published release and its furthest release run. */
-export interface SilentTag {
-	tag: string;
-	sha: string;
-	workflow: "CI" | "Checks" | null;
-	status: string | null;
-	conclusion: CiConclusion;
-}
-
 export interface ReleaseGateFacts {
-	/** True when a publishable package's `## [Unreleased]` section holds a bullet. */
-	hasUnreleasedBullets: boolean;
-	/** Tags newer than the latest PUBLISHED release, newest first. Empty in the healthy case. */
-	silentTags: SilentTag[];
-	/** The commit the gate would release. */
+	/** The commit the operator asked to release. */
 	mainHeadSha: string;
 	/** Workflow runs observed for this exact main commit, newest run first. */
 	sourceWorkflowRuns: SourceWorkflowRun[];
 }
 
-export interface ReleaseGateDecision {
-	/** Whether to cut a patch release. */
-	cut: boolean;
-	/** Why, in one line, for the workflow log. Always populated, including when cutting. */
-	reason: string;
-	/**
-	 * True when the gate is refusing something a person needs to look at: work is stranded and the gate
-	 * will not recover it on its own. The workflow turns this into a visible warning rather than an
-	 * ordinary "nothing to release" line, because a silent refusal here is how `v1.0.27` stayed the
-	 * published version while two releases' worth of work sat in the changelog.
-	 */
-	needsAttention: boolean;
-}
-
-/** CI conclusions that mean the run is over and did not publish. */
-const FAILED_CONCLUSIONS: Readonly<Record<string, true>> = Object.freeze({
-	action_required: true,
-	failure: true,
-	cancelled: true,
-	timed_out: true,
-	stale: true,
-	startup_failure: true,
-});
-const KNOWN_CONCLUSIONS: Readonly<Record<string, true>> = Object.freeze({
-	action_required: true,
-	cancelled: true,
-	failure: true,
-	neutral: true,
-	skipped: true,
-	stale: true,
-	startup_failure: true,
-	success: true,
-	timed_out: true,
-});
-
 /**
- * Decide the gate from facts alone. Exact-SHA CI and Checks evidence is always
- * evaluated first; changelog and stranded-tag signals may choose whether to cut
- * only after both product gates are green.
+ * The one-line reason this tree may not be released, or `undefined` when every required source
+ * workflow is green for the exact commit.
+ *
+ * Nothing relaxes this: a missing run, an unfinished run, a run for a neighbouring commit, and a red
+ * run are all the same answer, because none of them proves the tree the operator named.
  */
-export function requiredSourceGate(facts: ReleaseGateFacts): ReleaseGateDecision | undefined {
+export function sourceGateFailure(facts: ReleaseGateFacts): string | undefined {
 	for (const name of REQUIRED_SOURCE_WORKFLOWS) {
 		const run = facts.sourceWorkflowRuns.find(
 			candidate => candidate.name === name && candidate.headSha === facts.mainHeadSha,
 		);
 		if (!run) {
-			return {
-				cut: false,
-				reason: `${name} has no run for exact main SHA ${facts.mainHeadSha}; waiting rather than releasing an unproved tree.`,
-				needsAttention: false,
-			};
+			return `${name} has no run for exact main SHA ${facts.mainHeadSha}; refusing to release an unproved tree.`;
 		}
 		if (run.status !== "completed") {
-			return {
-				cut: false,
-				reason: `${name} is ${run.status} for exact main SHA ${facts.mainHeadSha}; waiting for a green result.`,
-				needsAttention: false,
-			};
+			return `${name} is ${run.status} for exact main SHA ${facts.mainHeadSha}; there is no green result to release.`;
 		}
 		if (run.conclusion !== "success") {
-			return {
-				cut: false,
-				reason: `${name} concluded ${run.conclusion ?? "without a conclusion"} for exact main SHA ${facts.mainHeadSha}; release is blocked.`,
-				needsAttention: true,
-			};
+			return `${name} concluded ${run.conclusion ?? "without a conclusion"} for exact main SHA ${facts.mainHeadSha}; release is blocked.`;
 		}
 	}
 	return undefined;
-}
-
-export function decideReleaseGate(facts: ReleaseGateFacts): ReleaseGateDecision {
-	const sourceGate = requiredSourceGate(facts);
-	if (sourceGate) return sourceGate;
-
-	const silent = facts.silentTags;
-	if (silent.length === 0) {
-		if (facts.hasUnreleasedBullets) {
-			return {
-				cut: true,
-				reason: "an Unreleased changelog bullet is waiting; cutting a patch release.",
-				needsAttention: false,
-			};
-		}
-		return { cut: false, reason: "nothing unreleased and no unpublished tag; not releasing.", needsAttention: false };
-	}
-
-	const [newest] = silent;
-	if (!newest) {
-		return { cut: false, reason: "no unpublished tag to inspect; not releasing.", needsAttention: false };
-	}
-	const workflow = newest.workflow ?? "release workflow";
-	if (newest.status === null) {
-		return {
-			cut: false,
-			reason: `${newest.tag} has no tagged Checks or CI run; the controller stopped after pushing the tag.`,
-			needsAttention: true,
-		};
-	}
-	if (newest.status !== "completed") {
-		return {
-			cut: false,
-			reason:
-				newest.status === "in_progress"
-					? `${newest.tag} has ${workflow} still running; waiting rather than cutting over it.`
-					: `${newest.tag} has ${workflow} ${newest.status}; waiting rather than cutting over it.`,
-			needsAttention: false,
-		};
-	}
-	if (newest.conclusion === null) {
-		return {
-			cut: false,
-			reason: `${newest.tag} has completed ${workflow} without a conclusion; release state is unknowable.`,
-			needsAttention: true,
-		};
-	}
-	if (!FAILED_CONCLUSIONS[newest.conclusion]) {
-		return {
-			cut: false,
-			reason:
-				`${newest.tag} has ${workflow} concluded ${newest.conclusion} but no published release. ` +
-				"That is a publish step that reported success without creating the release; look at that run.",
-			needsAttention: true,
-		};
-	}
-	if (silent.length >= MAX_STRANDED_TAGS) {
-		return {
-			cut: false,
-			reason:
-				`${silent.length} tags are unpublished (${silent.map(tag => tag.tag).join(", ")}). ` +
-				"Two stranded cuts in a row is not a flake, and another tag will not fix it: " +
-				"fix the failing publish, then re-run the release workflow by hand.",
-			needsAttention: true,
-		};
-	}
-	if (newest.sha === facts.mainHeadSha) {
-		return {
-			cut: false,
-			reason:
-				`${newest.tag} failed ${workflow} (${newest.conclusion}) and points at main HEAD, so a re-cut would ` +
-				"test the same tree and fail the same way. Land the fix first.",
-			needsAttention: true,
-		};
-	}
-	return {
-		cut: true,
-		reason:
-			`${newest.tag} failed ${workflow} (${newest.conclusion}) with no published release, and main has moved ` +
-			"since: re-cutting to recover the stranded changelog sections.",
-		needsAttention: false,
-	};
-}
-
-/** Read every publishable package's changelog, as `has-releasable-changes` does. */
-async function readReleasableChangelogs(repoRoot: string): Promise<string[]> {
-	const packages = await discoverPackages(repoRoot);
-	const contents: string[] = [];
-	for (const pkg of packages) {
-		const file = Bun.file(join(repoRoot, pkg.dir, "CHANGELOG.md"));
-		contents.push((await file.exists()) ? await file.text() : "");
-	}
-	return contents;
 }
 
 /** Run `gh` and return stdout, or `undefined` when the call fails. */
@@ -349,60 +165,15 @@ async function gh(args: string[]): Promise<string | undefined> {
 		proc.exited,
 	]);
 	if (code !== 0) {
-		// Reported, never swallowed: a gh failure means the stranded-tag half of the gate is blind, and a
-		// blind gate that prints "nothing to release" is the exact silence this script exists to remove.
+		// Reported, never swallowed: a gh failure means the gate cannot see the evidence it exists to
+		// check, and every caller turns that blindness into a refusal rather than a release.
 		console.error(`gh ${args.join(" ")} failed (exit ${code}): ${err.trim()}`);
 		return undefined;
 	}
 	return out;
 }
 
-/** Semver-ish comparison of `vX.Y.Z` tags. Returns > 0 when `a` is newer. */
-function compareVersions(a: string, b: string): number {
-	const parse = (tag: string): number[] => tag.replace(/^v/, "").split(".").map(Number);
-	const left = parse(a);
-	const right = parse(b);
-	for (let i = 0; i < Math.max(left.length, right.length); i++) {
-		const diff = (left[i] ?? 0) - (right[i] ?? 0);
-		if (diff !== 0) return diff;
-	}
-	return 0;
-}
-
-interface ExactTagRunState {
-	workflow: "CI" | "Checks";
-	status: string;
-	conclusion: CiConclusion;
-}
-
-async function readExactTagRun(
-	workflow: "CI" | "Checks",
-	file: "ci.yml" | "checks.yml",
-	sha: string,
-	tag: string,
-): Promise<ExactTagRunState | null | undefined> {
-	const output = await gh([
-		"api",
-		`repos/{owner}/{repo}/actions/workflows/${file}/runs?head_sha=${sha}&branch=${tag}&event=workflow_dispatch&per_page=1`,
-		"--jq",
-		'.workflow_runs[0] | if . == null then "" else [.status, (.conclusion // "")] | @tsv end',
-	]);
-	if (output === undefined) return undefined;
-	const line = output.trim();
-	if (!line) return null;
-	const [status, conclusionText = ""] = line.split("\t");
-	if (!status || (conclusionText && !KNOWN_CONCLUSIONS[conclusionText])) {
-		console.error(`${file} exact-tag run evidence had an invalid state`);
-		return undefined;
-	}
-	return {
-		workflow,
-		status,
-		conclusion: conclusionText ? (conclusionText as Exclude<CiConclusion, null>) : null,
-	};
-}
-
-/** Resolve the exact tree whose changelogs the gate read. */
+/** The exact commit the controller has checked out. */
 export async function checkedOutHeadSha(): Promise<string | undefined> {
 	const proc = Bun.spawn(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" });
 	const [stdout, stderr, exitCode] = await Promise.all([
@@ -517,9 +288,8 @@ export async function verifyReleaseTagGates(
 	console.log(`verified Release controller ${runId} and exact-tag Checks for ${tag} at ${sha}`);
 }
 
-/** Gather exact-tree workflow, changelog, tag, and publication facts. */
+/** Gather the exact-commit CI and Checks evidence the dispatch gate is decided from. */
 export async function gatherReleaseGateFacts(): Promise<ReleaseGateFacts | undefined> {
-	const hasUnreleasedBullets = hasReleasableChanges(await readReleasableChangelogs(REPO_ROOT));
 	const localHeadSha = await checkedOutHeadSha();
 	if (localHeadSha === undefined) return undefined;
 	const remoteMainSha = (await gh(["api", "repos/{owner}/{repo}/commits/main", "--jq", ".sha"]))?.trim();
@@ -554,79 +324,7 @@ export async function gatherReleaseGateFacts(): Promise<ReleaseGateFacts | undef
 		sourceWorkflowRuns.push({ name, headSha, status, conclusion: conclusion || null });
 	}
 
-	// The latest PUBLISHED release, which is the line a silent tag is above.
-	const latestPublished = (
-		await gh([
-			"release",
-			"list",
-			"--limit",
-			"1",
-			"--exclude-drafts",
-			"--exclude-pre-releases",
-			"--json",
-			"tagName",
-			"--jq",
-			".[0].tagName",
-		])
-	)?.trim();
-	if (latestPublished === undefined) return undefined;
-
-	const releasedTagsOutput = await gh([
-		"release",
-		"list",
-		"--limit",
-		"50",
-		"--exclude-drafts",
-		"--exclude-pre-releases",
-		"--json",
-		"tagName",
-		"--jq",
-		".[].tagName",
-	]);
-	if (releasedTagsOutput === undefined) return undefined;
-	const releasedTags = new Set(
-		releasedTagsOutput
-			.split("\n")
-			.map(line => line.trim())
-			.filter(line => line.length > 0),
-	);
-
-	const tagOutput = await gh([
-		"api",
-		"repos/{owner}/{repo}/tags?per_page=50",
-		"--jq",
-		'.[] | .name + " " + .commit.sha',
-	]);
-	if (tagOutput === undefined) return undefined;
-	const tagLines = tagOutput
-		.split("\n")
-		.map(line => line.trim())
-		.filter(line => line.length > 0);
-
-	const silentTags: SilentTag[] = [];
-	for (const line of tagLines) {
-		const [tag, sha] = line.split(" ");
-		if (!tag || !sha) continue;
-		if (!/^v\d+\.\d+\.\d+$/.test(tag)) continue;
-		if (releasedTags.has(tag)) continue;
-		if (latestPublished.length > 0 && compareVersions(tag, latestPublished) <= 0) continue;
-		let run = await readExactTagRun("CI", "ci.yml", sha, tag);
-		if (run === undefined) return undefined;
-		if (run === null) {
-			run = await readExactTagRun("Checks", "checks.yml", sha, tag);
-			if (run === undefined) return undefined;
-		}
-		silentTags.push({
-			tag,
-			sha,
-			workflow: run?.workflow ?? null,
-			status: run?.status ?? null,
-			conclusion: run?.conclusion ?? null,
-		});
-	}
-	silentTags.sort((a, b) => compareVersions(b.tag, a.tag));
-
-	return { hasUnreleasedBullets, silentTags, mainHeadSha, sourceWorkflowRuns };
+	return { mainHeadSha, sourceWorkflowRuns };
 }
 
 export async function verifyPublishedAssetManifest(tag: string): Promise<void> {
