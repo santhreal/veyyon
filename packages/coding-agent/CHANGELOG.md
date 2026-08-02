@@ -6,6 +6,7 @@
 
 - The secret vault can rename a stored credential in place. The value, the creation time and the expiry are carried across untouched, so relabelling a secret cannot quietly move the moment it dies. A rename onto a name that is already taken is refused, naming both secrets: `/secret add` overwrites a same-named entry on purpose, because that is how a credential is rotated, but a rename carries no new value, so landing on an occupied name could only destroy the credential already there in exchange for nothing. Remove the occupant first if that is really what you want.
 - `/secret manager` opens a Secret Manager card: one row per stored credential showing its `#NAME#` placeholder, its scope and how long it has left, with `r` revoke (confirmed), `e` extend, `n` rename, `c` copy the placeholder, `q`/Esc close, and `Tab` to a second view holding the expansion log. No secret VALUE is rendered anywhere on it, and `c` copies the placeholder rather than the value, because the placeholder is the thing you paste into a prompt and copying the value would be the same disclosure by a slower route. Every change reloads the running session's secret protection immediately, and a reload that fails says so on the card instead of leaving the session quietly spending the state it captured at startup. A vault file that cannot be read no longer leaves you stuck: the affected scopes are listed with the reason and `d` moves the broken file aside — moved, not deleted, since it still holds real credentials sealed with a key that is still on disk. The log view is now the only route to the expansion record, since `/secret log` no longer parses in a terminal; with **Record Secret Use** off it names that setting rather than showing an empty table you would read as "nothing was ever used".
+## [1.0.39] - 2026-08-01
 
 ### Changed
 
@@ -174,12 +175,10 @@
 - With `tools.discoveryMode=all`, `generate_image` starts in the searchable tool inventory instead of
   sending its schema on every provider request. Explicit tool whitelists still keep it active, and
   selecting it through tool discovery persists activation for subsequent turns.
-
 - Subagents no longer embed their launch-specific id and a live peer roster in the system prompt.
   Agents discover the current roster through `irc list` only when coordination needs it. Sibling
   launches now share the same cacheable system-prompt prefix instead of invalidating it whenever an
   agent id, activity, or peer status changes.
-
 - A credential passed with `=` no longer reaches editor history or the on-disk draft. The predicate
   that decides whether a submitted slash command may be recalled and resumed tested for `--token`
   followed by whitespace or end of line, so `--token=sk-live-...` never matched: one keystroke
@@ -381,6 +380,110 @@
   precisely so they are never shown: a `secrets.yml` pattern match is still restored on screen, while
   a vault credential and an environment-derived value stay as placeholders in prose, tool arguments,
   intents, and both rendered transcripts, so they no longer reach your terminal or its scrollback.
+
+## [1.0.38] - 2026-07-31
+
+### Added
+
+- Expanded `session.instrumentation` into a complete session-study record. `basic` adds lifecycle checkpoints, task transitions, tool and model timing, and effective model request parameters; `rich` adds context attribution, directional agent-message delivery, result weight, and model throughput; `ultra` adds compaction links, per-task transitions, routes, fingerprints, and provider provenance. `veyyon session stats` reports each available family. `off` adds no telemetry but still stores the normal conversation and tool history required to resume.
+- First-run setup now includes a **Choose subagents** step. Only the general `task`
+  worker starts enabled; bundled specialists and user or project agent definitions
+  require an explicit grant there or in **Settings → Subagents → Agents**. Delegation
+  guidance now preserves each concrete agent role, uses `task` only as the
+  general-purpose fallback, keeps unmatched specialist work in the main session,
+  and collapses homogeneous triage fan-outs into one retrieval and classification operation.
+  The classifier uses the shared Unicode alphanumeric matcher, so non-ASCII labels follow the
+  same token boundaries as the rest of the CLI.
+- Auto QA can upload grievances to `https://veyyon.dev/api/grievances`, where a Cloudflare Pages
+  Function validates the batch and stores it in D1. Upload is controlled by
+  **Auto-upload Grievances** in each profile and defaults to off. Local recording remains separate,
+  and `veyyon grievances push` performs one explicit upload without changing the toggle.
+- The Subagents HUD, the `/agents` roster, and the inline task widget now show the reasoning effort each agent is actually running at, including an effort it inherited. Previously the effort appeared only when a `:level` suffix had been typed into the model pattern, so every stock agent rendered as a bare model id and two agents running at different efforts looked identical.
+- `/secret rm` and `/secret extend` complete the names of the credentials you have stored, so you no
+  longer have to recall an exact name with nothing on screen to recognise it by. That is a worse
+  position than any other command's arguments put you in, because the whole point of a stored secret
+  is that its value is never displayed, and a mistyped name is a silent no-op rather than something
+  the surface can correct: `/secret list` was the only way to recover a name. The names come from the
+  running obfuscator rather than the vault on disk, because the vault means file I/O plus a decrypt on
+  every keystroke and `load()` throws on a malformed or key-missing vault, which would turn a bad
+  vault into a dropdown that crashes as you type. `extend` completes to `extend NAME ` with the cursor
+  ready for `--ttl` while `rm` completes to a finished command, read off each subcommand's declared
+  usage rather than naming `extend` a second time in the completion code. `add` is deliberately left
+  out, since the name you give it is one you are inventing and offering existing names there would
+  read as a list of things to overwrite. No secret VALUE reaches the dropdown in any field.
+- The model is told which credentials it can spend, in an `AVAILABLE SECRETS` section rebuilt from the
+  live secret runtime every time the base system prompt is built. Storing a secret told the model
+  about it in that turn and only that turn, so a session started the next day had `GITHUB_TOKEN`
+  active and obfuscating while the model had no way to know it existed. Rebuilding from the runtime
+  rather than remembering from the conversation also fixes revocation and expiry structurally: a name
+  the runtime stops returning simply stops being rendered. Names only, sorted so the bytes are stable
+  for prompt caching, and the section is absent rather than empty when protection is off or nothing is
+  stored.
+- Both installers answer `--help` (`-Help` on Windows) with their option list. `sh install.sh --help` used to print `Unknown option: --help` and exit 1, and an unknown option printed the complaint and nothing else. The options were documented in a comment at the top of each script, which is precisely what an install run as `curl … | sh` or `irm … | iex` never shows anyone: there was no way to discover `--source`, `--ref`, `--local` or `VEYYON_INSTALL_DIR` short of opening the raw file on GitHub. Each script now has one usage printer, its header points at that printer rather than carrying a second list to go stale, and an unknown option prints the list on stderr alongside the complaint. `scripts/installer-help-parity.test.ts` runs the POSIX one for real and pins that both installers offer the same six options under their two spellings.
+- `argot.autoload` decides whether the project you launched in is loaded for the session, or every
+  load is left to the agent's `argot_load` calls. The startup load already existed and was
+  unconditional, and the handbook described the opposite behaviour ("veyyon does not guess which
+  project you mean: the agent decides"), so an operator could not predict whether their repository
+  would be walked as the session came up, and had no way to say no. The default is `true`, which is
+  the behaviour that shipped. The decision has one owner, `shouldAutoloadArgotAtStartup`, rather than
+  the conditions spelled out inline at the SDK's call site, so a second startup path cannot honour
+  the setting on one route and ignore it on another. It changes WHEN a dictionary is built and
+  nothing else: the codec is still built, the model still gets `argot_load` and `argot_unload`, and
+  expansion stays unconditional, so a handle written after an agent-driven load still expands to
+  exact bytes.
+- `veyyon prompt --statements` prints what each individual rule of the system prompt costs, with the
+  condition that decides whether it is in this prompt at all, and lists every rule this configuration
+  leaves out. The section breakdown could not answer the question an operator actually has: TOOL
+  POLICY is one row of it and 9KB of prompt, so the answer was "tool policy is large". The cost is
+  MARGINAL, meaning what the prompt would be shorter by without the rule rather than the length of the
+  rule's text, because `render` ends in a `format` pass that normalizes whitespace across statement
+  boundaries and text lengths would therefore produce a breakdown whose parts exceed the whole. The
+  parts reconcile exactly instead: section bytes equal the banner plus the sum of the statement bytes
+  plus the one separator newline, measured and pinned rather than argued.
+- `veyyon prompt --statement <id>` prints one rule's rendered text, which is the counterpart to
+  `--section` at the granularity a rule has and the next thing anyone wants after seeing a row in the
+  cost table they do not recognise. Rendered rather than the template behind it, so an interpolated rule
+  such as the personality block shows what the model receives. A rule that is not in this prompt reports
+  the condition that would include it and why it exists, and still exits 0, because a rule being off is
+  a configuration and not a failure; an unknown id exits non-zero and quotes the ids of the section it
+  named, since an empty stdout reads as an empty rule rather than as a typo. The printed text weighs
+  exactly what `--statements` charges the rule, asserted, so the two surfaces cannot disagree about the
+  same rule.
+- The bench can run a per-rule prompt experiment. `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS` had no arm
+  vehicle when it landed, so the mechanism built for the harness could not be used by it: an operator
+  would have had to set the variable outside the runner, where the single-IV guard cannot see it and two
+  different ablation arms fingerprint identically. An arm now carries `arms/<arm>.statements.yml`,
+  validated before the run (unknown statement id, a value that is neither text nor `null`, malformed
+  YAML), staged as `statements/<arm>.json`, folded into the arm fingerprint, and mounted into the
+  container the same scoped way the section override is. `arms/candidate-ablate-delegation-gates.*` is
+  the worked example, checked through the builder's own validator so it is known to load.
+
+  The fingerprint folds the new field in only when it says something, so arms without one keep the
+  fingerprints already recorded in past results and a longitudinal diff does not report every arm as
+  changed; an EMPTY override canonicalizes to `{}` and counts as absent, so an arm cannot pass the
+  single-IV guard by carrying an empty file.
+- `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS` replaces or removes ONE rule of the system prompt, which is
+  what makes an eval able to attribute a score change to a rule instead of to a section. A JSON object
+  of statement id to replacement text, or to `null` to ablate the rule. Same instrument as the
+  per-section override, one level finer, and deliberately the same shape: environment variable only,
+  no config key and no CLI flag, because a config-reachable prompt override could silently contaminate
+  a production run and a contaminated eval reports a number that looks valid. `null` and `""` are
+  different operations and both are pinned: `null` removes the row and the separation it carries, `""`
+  keeps the row present and drops only its words. Every way an override could do nothing is refused
+  loudly rather than ignored, including an unknown statement id, a value that is neither text nor
+  `null`, and malformed JSON. An override cannot resurrect a rule whose condition is false, since the
+  condition decides presence and the override decides text.
+- `system-prompt-builder/gate-registry.ts` lists every setting that changes the system prompt:
+  the setting path, the template variables it decides, what the model sees change, and whether a
+  mid-session flip reaches it. A settings-fed gate used to be declared in up to six places that
+  had to agree, and the one that failed quietly was the rebuild trigger. Frozen gates now say
+  why they are frozen, and the two reasons are kept apart, because "fixed at session start on
+  purpose" and "fixed because the read sits above the builder" call for different fixes.
+- Every package that ships prompts now has a prompt registry, and `veyyon prompt --prompts` lists all of them. Two packages had none: `@veyyon/ai` shipped fourteen prompts (a tool-call format guide per dialect, plus the tool-catalog template) next to the fourteen modules that imported them by relative path, and `@veyyon/metaharness` shipped the edit benchmark's three. That text goes into a model's system prompt, so "which prompts does veyyon send" had an answer that was short by seventeen, and the inspection command listed none of them. Prompts moved to `packages/ai/src/prompts/` and `packages/metaharness/adapters/edit/prompts/`, each with a registry beside them where the import is the registration. `veyyon prompt --prompts` now lists every id from all three product registries grouped by directory, and `veyyon prompt --prompt <id>` looks a prompt up in whichever one holds it, so `dialect/gemma` and `compaction/summarization-system` work like any coding-agent id. The benchmark harness's prompts stay out of the listing: they are asked by a measurement tool, not by the agent.
+- The auto-compaction threshold is now a two-level picker in `/settings`: **Auto-Compaction Threshold** opens to three modes (Auto, Percent, Tokens) with a green check and the current amount on the active one, and each mode drills into its own presets plus a Custom entry. The flat list it replaces mixed all 19 auto/percent/token options in one list, so the three semantics were invisible until you read every description, and a hand-edited value like `170000` showed as nothing selected. Custom values are validated and normalized on entry (`92` stores as `92%`, `170_000` as `170000`), and a stored value the parser cannot read is shown as a warning with Auto in effect instead of presenting Auto as your choice. The stored value is unchanged (`auto`, `85%`, `200000`), so existing configs, the legacy `thresholdTokens`/`thresholdPercent` fold-in, and the clamp warnings all keep working.
+- Added an **Experimental** settings tab: every experimental feature now lives in one place — Argot shorthand (five settings, moved from the Context tab's Experimental group), Tool Calling Mode, and Auto-Learn (moved from the Memory tab). The tab's name says "experimental" for everything on it, so labels no longer need an "(experimental)" suffix and the features stop pretending to be regular settings on three different tabs.
+- `update`: confirm 'Checksum verified' on a successful self-update.
+- `release`: derive commit-history notes + gate the generator on CI.
 
 ### Changed
 
@@ -946,7 +1049,6 @@
   precisely so they are never shown: a `secrets.yml` pattern match is still restored on screen, while
   a vault credential and an environment-derived value stay as placeholders in prose, tool arguments,
   intents, and both rendered transcripts, so they no longer reach your terminal or its scrollback.
-
 - `/secret rm` now tells the model the credential is gone. Only `add` ever produced an agent notice,
   and a revoked placeholder is no longer substituted, so a model still carrying "use `#GITHUB_TOKEN#`"
   wrote that literal text into the next command: the operator saw an authentication failure from the
