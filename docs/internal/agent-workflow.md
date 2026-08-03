@@ -39,10 +39,14 @@ that doesn't collide with other active sessions, and drains it.
 3. **Gate.** Run each touched package's declared `check:types` script
    (`bun --cwd=packages/<name> run check:types`),
    run the targeted test slice (`bun test <files>`), then the repo gate
-   (`bun run check`) before anything is considered done. Website changes must
-   pass `bun run site:build`'s brand check. New behavior gets proving tests that
-   assert real values; a failing contract test is a finding, never a test to
-   weaken.
+   (`bun run check`) before anything is considered done. `bun run check` is the
+   type gate only, `check:ts` plus `cargo fmt --check` and clippy; Checks runs
+   `check:ts`, `lint:ts`, and `check:tools` as three separate steps, so run
+   `bun run lint:ts` and `bun run check:tools` too or a formatting or
+   import-order drift fails CI behind a green local `check`. Website changes
+   must pass `bun run site:build`'s brand check. New behavior gets proving tests
+   that assert real values; a failing contract test is a finding, never a test
+   to weaken.
 4. **Run long gates in the background.** Fire builds/tests with the harness's
    background execution and keep editing the next non-colliding unit; reconcile
    when the result lands. A final full reconcile at the end of a drive catches
@@ -73,8 +77,8 @@ everything that leaves the machine is gated on explicit per-action approval.
 
 | Autonomous (no approval needed) | Human-gated (explicit approval, every time) |
 | --- | --- |
-| Reading, editing, staging exact paths | `git commit` / `git push` to any remote (a releasable `main` push may release automatically) |
-| Local typecheck, tests, `bun run check` | Manually dispatching the Release workflow |
+| Reading, editing, staging exact paths | `git commit` / `git push` to any remote |
+| Local typecheck, tests, `bun run check` | Dispatching the Release workflow |
 | Background builds, benches, local installs | Website deploys (`bun run site:deploy` for `veyyon` and `bun run site:deploy:get` for `veyyon-get`) |
 | Ledger + changelog `[Unreleased]` upkeep | npm publish, Homebrew, or direct GitHub release mutation |
 | Docs under `docs/` and handbook sources | Opening/commenting on GitHub issues & PRs, any `gh` call against a public repo |
@@ -88,18 +92,26 @@ account only (verify with `gh auth status` first).
 Production has three coordinated surfaces (see [`deployment.md`](./deployment.md)):
 
 **CLI binaries**, keep `main` release-ready: `bun run check` green and each
-publishable change documented under its package's `[Unreleased]` section. After an
-approved push, the Release workflow waits for exact-SHA CI and Checks. If there is
-something releasable, it cuts the patch automatically, gates the bump commit
-through Checks, and dispatches the tagged publish pipeline.
+publishable change documented under its package's `[Unreleased]` section. A push
+publishes nothing on its own, and nothing cuts a release on its own: no green run
+and no waiting `[Unreleased]` bullet produces a tag. A person dispatches the
+Release workflow against a SHA they validated, and the gate refuses to cut unless
+CI and Checks are both already green for that exact commit.
 
-For an approved manual cut, use the one operator command. It defaults to a patch
-and accepts `major`, `minor`, or an explicit `x.y.z`:
+There is no repository release command and no release shell script; the ceremony
+runs only in GitHub Actions, from the Actions tab or through `gh`. With approval
+for the version, dispatch it. `version` takes `major`, `minor`, `patch`, or an
+explicit `x.y.z`:
 
 ```sh
-bun run release
-bun run release minor
+gh workflow run release.yml \
+  -f version=minor \
+  -f expected_sha="$(git rev-parse origin/main)"
 ```
+
+The workflow bumps every version, finalizes changelogs, commits the bump, and
+atomically pushes `main` plus the tag. It then gates that bump commit through
+Checks at the immutable tag and dispatches the tagged publish pipeline.
 
 **Website and install scripts**, `bun run site:build` locally at will because the
 brand check is part of the gate. A matching push to `main`, and every release,
@@ -127,4 +139,4 @@ a ledger row like any other bug.
   account-level Cloudflare/GitHub state) is a human-blocker: record it in the
   ledger with what was tried, and continue on other rows rather than stopping.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `77074dee` on 2026-08-02.*

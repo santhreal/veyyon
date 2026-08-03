@@ -217,8 +217,11 @@ Cloudflare reads these from the deployed root:
   `application/x-sh; charset=utf-8` and `install.ps1` as
   `text/plain; charset=utf-8`, with `Cache-Control: no-cache, must-revalidate`
   on both. `/fonts/*` uses long-lived immutable caching.
-- **`website/_redirects`**: clean-URL routing. `/install` serves the install *page*;
-  the raw script lives at `/install.sh` and at `get.veyyon.dev`.
+- **`website/_redirects`**: deliberately rule-free. Pages' own clean-URL routing
+  already serves `install.html` at `/install`, and rewriting `/install` to
+  `/install.html` makes Pages redirect the target back to `/install`, so the file
+  carries only the comment recording that. The raw script stays at `/install.sh`
+  and at `get.veyyon.dev`.
 
 ### Grievance collector
 
@@ -286,10 +289,12 @@ rest, so keep the asset set complete.
 
 ### How binaries get published
 
-The Release workflow starts only after the source commit passes both CI and Checks.
-It cuts the tag, dispatches Checks at that immutable tag, and dispatches `ci.yml`
-only after the exact tag passes `checks.yml`. The controller correlates and waits
-for that exact tagged CI run. CI compiles and smoke-tests every platform binary,
+The Release workflow runs only when a person dispatches it, and its gate refuses
+to cut unless CI and Checks are both green for the exact `origin/main` SHA the
+dispatch named. It then cuts the tag, dispatches Checks at that immutable tag,
+and dispatches `ci.yml` only after the exact tag passes `checks.yml`. The
+controller correlates and waits for that exact tagged CI run. CI compiles and
+smoke-tests every platform binary,
 prepares the GitHub release with all assets and SHA-256 sidecars, verifies the
 draft binaries on native runners, and publishes only after those runtime checks
 pass. The Release workflow succeeds only after it verifies the final asset
@@ -331,10 +336,11 @@ rollback lever:
   Merely marking it as a pre-release does not: the current generator still
   renders non-draft pre-releases as published.
 
-**Hotfix flow**: fix on `main`, then let its green CI and Checks runs trigger the
-next automatic patch release. There are no release branches. If the bad version
-must stop being installed *right now*, do the pre-release flip above
-first.
+**Hotfix flow**: fix on `main`, wait for that commit's own CI and Checks runs to
+go green, then dispatch the Release workflow at that SHA (`gh workflow run
+release.yml -f version=patch -f expected_sha=<sha>`). Nothing cuts the fix for
+you. There are no release branches. If the bad version must stop being installed
+*right now*, do the pre-release flip above first.
 
 ## Checklist for a normal site update
 
@@ -353,4 +359,4 @@ merge lands:
 4. `bun run site:deploy`.
 5. If `install.sh` or `install.ps1` changed, also run `bun run site:deploy:get`.
 
-*Verified against `7815b71a84f7d4dffe5572f8cfc1e3172b8b8072` on 2026-07-30.*
+*Verified against `77074dee` on 2026-08-02.*
