@@ -3,6 +3,16 @@ import { replaceTabs, shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../
 
 export const MCP_CONNECTION_STATUS_EVENT_CHANNEL = "mcp:connection-status";
 
+/**
+ * The `serverName` a config-level MCP failure is reported under.
+ *
+ * A `.mcp.json` that cannot be parsed, or an entry the capability layer
+ * refused, never becomes a named server, so there is no real name to attach
+ * the failure to. Without a stand-in the failure has nowhere to go and the
+ * boot health zone reports a clean start while the user's servers are missing.
+ */
+export const MCP_CONFIG_STATUS_LABEL = ".mcp.json";
+
 export type McpConnectionStatusEvent =
 	| { type: "connecting"; serverNames: string[] }
 	| { type: "connected"; serverName: string }

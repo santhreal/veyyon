@@ -7,7 +7,7 @@ import * as path from "node:path";
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent, Model, TextContent, TSchema } from "@veyyon/ai";
 import type { KeyId } from "@veyyon/tui";
-import { errorMessage, hasFsCode, isEacces, isEnoent, logger } from "@veyyon/utils";
+import { errorMessage, hasFsCode, isEacces, isEnoent, logger, reportFault } from "@veyyon/utils";
 import { Type } from "arktype";
 import * as zodModule from "zod/v4";
 import { type ExtensionModule, extensionModuleCapability } from "../../capability/extension-module";
@@ -498,6 +498,25 @@ export async function discoverExtensionPaths(
 		.map(hook => hook.path)
 		.filter(hookPath => isExtensionFile(path.basename(hookPath)))) {
 		addPath(hookPath);
+	}
+
+	// Both loads above answer with `items` AND `warnings`, and only `items` was
+	// read. The warnings are not diagnostics about the scan; they are the user's
+	// own `extensions:` entries failing: `Extension path not found: <path>` for a
+	// mistyped path, `Invalid extension path in <settings>: <entry>` for a
+	// non-string. Dropping them meant a typo in settings produced a session with
+	// the extension absent and not one word about it anywhere.
+	//
+	// Through `reportFault` rather than a return value, because this is a free
+	// function with no session handle — the case `utils/fault-sink.ts` exists
+	// for. `createAgentSession` attaches a sink that lands these in the running
+	// session's operator notices.
+	for (const warning of [...discovered.warnings, ...hooks.warnings]) {
+		reportFault({
+			source: "extensions",
+			text: `${warning}. That extension is not loaded in this run.`,
+			context: { warning },
+		});
 	}
 
 	// 3. Discover extension entry points from installed plugins
