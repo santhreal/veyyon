@@ -20,9 +20,15 @@ first release cut cleanly, and it stays true if the tag set is ever rebuilt.
 The version line is continuous, but the tags are not: `v1.0.27` is followed by
 `v1.0.36`. Each of the eight versions in between has its own `chore: bump version
 to <v>` commit, all landed on 2026-07-24, so they exist in the version history.
-None of them was released. There is no tag and no GitHub release for any of them,
-and the nine published releases are `v1.0.21` through `v1.0.27`, then `v1.0.36`
-and `v1.0.37`.
+None of them was released. There is no tag and no GitHub release for any of them.
+
+The gap is not the only place tags and releases diverge, so ask `gh release list`
+what shipped instead of reading the tag list. At this verification the tags run
+`v1.0.0` through `v1.0.27`, then `v1.0.36` through `v1.0.46`, while the published
+releases are `v1.0.21` through `v1.0.27`, `v1.0.36`, `v1.0.37`, and `v1.0.46`.
+Everything else is either tagged with no release at all (`v1.0.0` to `v1.0.20`,
+`v1.0.38`, `v1.0.39`) or stalled as an unpublished draft (`v1.0.40` through
+`v1.0.45`).
 
 Do not create those tags. A tag asserts that an artifact shipped under that name,
 and nothing did: the bumps landed without a release being cut. The changelog
@@ -64,9 +70,9 @@ stranded tags stopped it and asked for a person. Both signals are gone along wit
 the trigger. Recovering a failed cut is now the same act as any other release: fix
 what failed, then dispatch the version you want.
 
-**Manual (an explicit version).** Dispatch the Release workflow with `major`,
-`minor`, `patch`, or an explicit `x.y.z`. There is no repository release command
-and no release shell script; the ceremony runs only in GitHub Actions, either from
+**Dispatch the Release workflow.** Ask for `major`, `minor`, `patch`, or an
+explicit `x.y.z`. There is no repository release command and no release shell
+script; the ceremony runs only in GitHub Actions, either from
 the Actions tab or through `gh`:
 
 ```sh
@@ -103,9 +109,12 @@ itself, and dispatching requires the `santhsecurity` account active in `gh`.
    it, and lists every entry no package claims so you can move each one to its
    package. `--force` discards them deliberately.
 4. Run `bun run check`.
-5. Commit `chore: bump version to X.Y.Z` (bare version, no `v`): CI keys the
-   never-cancel release concurrency group off the `chore: bump version to ` subject
-   prefix, so the subject stays exactly that shape.
+5. Commit `chore: bump version to vX.Y.Z`, the subject `releaseBumpSubject` in
+   `scripts/release.ts` builds: CI keys the never-cancel release concurrency
+   group off the `chore: bump version to ` subject prefix, so the subject stays
+   exactly that shape. Every release through `v1.0.38` committed the bare
+   `X.Y.Z`, which the prefix also matched, so nothing caught it;
+   `scripts/release-bump-subject.test.ts` now pins the `v`.
 6. Tag and atomically push `main` plus the tag (pushed by commit SHA so background
    tag pruning cannot lose it). If main advanced, the push fails without rebasing.
    The newer main SHA gets a fresh cut only after its own CI and Checks runs pass.
@@ -124,8 +133,9 @@ ordered transaction:
 1. Create or resume a **draft** GitHub release. Upload every `veyyon-*` binary,
    native addon, and `.sha256` sidecar. Record their exact digest manifest.
 2. Download and launch the draft macOS, Linux, and Windows binaries. Verify their
-   checksums, embedded version, signatures where configured, smoke tests, and
-   native addon load.
+   `.sha256` sidecars, embedded version, smoke tests, and native addon load.
+   Nothing is code-signed, notarized, or attested, and no workflow claims
+   provenance: the checksum sidecar is the whole integrity story.
 3. Deploy both Cloudflare Pages projects while the release is still hidden.
    Verify `get.veyyon.dev` serves the installer bytes from this tag.
 4. Re-download every draft asset and compare its digest to the preserved
@@ -211,4 +221,4 @@ Pushes to other branches keep cancel-on-newer-push for fast feedback.
 `scripts/ci-concurrency.test.ts` locks the group and cancel expressions
 against regressions.
 
-*Verified against `7815b71a84f7d4dffe5572f8cfc1e3172b8b8072` on 2026-07-30.*
+*Verified against `77074dee` on 2026-08-02.*

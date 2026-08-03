@@ -31,15 +31,21 @@ Rolling the binary back does not remove any of these paths:
    To pin an exact version regardless of `latest`:
    `curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref vX.Y.Z` (release asset download; note
    a bare `--ref` without `--binary` implies `--source`, it clones and builds that ref).
+   On Windows the same pin is
+   `& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref vX.Y.Z`, and `-Ref`
+   alone implies `-Source` there too.
 2. If the bad version wrote config keys the old binary rejects, remove or rename those keys: the error
    names the file and line. Leave agent-dir `sessions/` and SQLite stores in place.
 3. `veyyon plugin doctor` to confirm health.
 
 ## Ship the fix
 
-1. Land the fix on `main`. Green CI and Checks runs for that SHA trigger the next automatic patch release:
-   see [releasing](../releasing.md).
-2. Once the new release publishes and verifies, it becomes `latest` automatically.
+1. Land the fix on `main` and wait for CI and Checks to both go green on that exact SHA.
+   Nothing cuts a release on its own: dispatch the Release workflow yourself with the SHA you
+   validated, `gh workflow run release.yml -f version=patch -f expected_sha="$(git rev-parse origin/main)"`.
+   The gate refuses any commit those two runs have not both passed. See [releasing](../releasing.md).
+2. The tagged CI run publishes the verified draft, then polls the public `releases/latest` redirect
+   until it names the new tag, so a green release train is already proof that `latest` moved.
 3. Only then delete the bad release + tag if you want it gone.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `77074dee` on 2026-08-02.*

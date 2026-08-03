@@ -441,4 +441,4 @@ one that ships.
 The suite is not part of `bun run check` and does not gate a commit. It is a campaign you run
 deliberately, usually for hours, usually on a machine with cores to spare.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `77074dee` on 2026-08-02.*

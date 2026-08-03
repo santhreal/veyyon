@@ -11,10 +11,11 @@ Symptom: the Release workflow failed during preparation, checks, commit, or the 
 remote tag exists.
 
 - Open the failed Release run. Its failing step is authoritative.
-- Fix the underlying failure on `main` and push. The newer SHA gets its own CI and Checks evidence,
-  then the automatic gate cuts again.
-- Do not hand-push a local bump or tag. For an explicit retry, dispatch the Release workflow from
-  Actions with the intended version.
+- Fix the underlying failure on `main` and push. Nothing re-cuts on its own: the newer SHA gets
+  its own CI and Checks runs, and then you dispatch the Release workflow again. Both inputs are
+  required, the version and the exact SHA you validated:
+  `gh workflow run release.yml -f version=patch -f expected_sha="$(git rev-parse origin/main)"`.
+- Do not hand-push a local bump or tag.
 
 ## 2. The tag pushed but CI never published
 
@@ -22,21 +23,27 @@ Symptom: the tag is on `origin/main` but there is no matching GitHub release, or
 binaries.
 
 1. Open the tagged CI run from the Actions tab.
-2. If the run never started, inspect the Release run's exact-tag Checks gate and publish-dispatch
-   step. Release jobs use GitHub-hosted runners, so a missing runner is never the cause.
-3. After fixing the cause, re-run failed jobs when a tagged CI run exists.
-4. If the tagged CI run never started, dispatch `ci.yml` at the existing immutable tag, or re-run
-   the failed Release publish-dispatch job. Verify that the new CI run targets the tag SHA. Do not
-   cut a second tag for the same version.
+2. If the run never started, inspect the `Run release train` job in the Release run: it dispatches
+   exact-tag Checks first and dispatches `ci.yml` only after Checks passes. Release jobs use
+   GitHub-hosted runners, so a missing runner is never the cause.
+3. When a tagged CI run exists, fix the cause and **re-run failed jobs only**. Do not re-run all
+   jobs: that re-runs `release_metadata`, whose `verify-tag` gate demands a controller-issued nonce
+   correlated to a Release run that is still in progress, and it will refuse a second time.
+4. If no tagged CI run exists, re-run the Release workflow's `Run release train` job. Only the
+   controller can dispatch a publishing CI run: `release_metadata` refuses any tag dispatch whose
+   actor is not `github-actions[bot]` and whose nonce does not correlate to the live Release run, so
+   dispatching `ci.yml` at the tag by hand fails the gate and publishes nothing. Do not cut a second
+   tag for the same version.
 
 ## 3. The release published but binaries are incomplete or corrupt
 
 Symptom: `curl -fsSL https://get.veyyon.dev | sh` fails, or fails a checksum.
 
 - `install.sh` **fails closed** on a checksum mismatch: that is correct behavior, not a bug to work
-  around. A mismatch means the uploaded `veyyon-<target>` binary and its `.sha256` sidecar disagree.
-  It also fails closed when the sidecar is **missing or empty** (the `release_github` job generates
-  one per binary); `--no-verify` / `-NoVerify` is the explicit override for old pre-sidecar releases.
+  around. A mismatch means the uploaded `veyyon-<platform>-<arch>` binary and its `.sha256` sidecar
+  disagree. It also fails closed when the sidecar is **missing or empty** (the `release_github` job
+  generates one per binary and addon); `--no-verify` / `-NoVerify` is the explicit override for old
+  pre-sidecar releases.
   A missing sidecar on a current release means the "Generate SHA-256 sidecars" step was skipped or
   its uploads failed, re-run the publish job.
 - Confirm the `release_github` job's exact manifest check passed. The release contains five installer
@@ -48,16 +55,19 @@ Symptom: `curl -fsSL https://get.veyyon.dev | sh` fails, or fails a checksum.
 
 ## 4. The release published but production deployment failed
 
-Symptom: the GitHub release and assets exist, but `release_site` is red or either
-Cloudflare Pages project is stale.
+Symptom: the GitHub release and assets exist, but a Cloudflare Pages job is red or either
+Pages project is stale. Two jobs deploy: `release_site` runs before publication and deploys both
+`veyyon.dev` and `get.veyyon.dev`, and `release_site_finalize` runs after publication and
+redeploys `veyyon.dev` so the changelog card carries the immutable release link.
 
-1. Open `release_site` in the tagged CI run. It requires both
-   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, and deliberately fails when
-   `SITE_AUTODEPLOY=off`.
-2. Repair the credential or policy failure, then re-run the failed job. It rebuilds
-   and deploys both `veyyon.dev` and `get.veyyon.dev`; do not cut another tag.
-3. Run `bun scripts/verify-deployed-installers.ts` to prove the served installer
-   bytes match `scripts/install.sh` and `scripts/install.ps1`. See
+1. Open the red job in the tagged CI run. Both require `CLOUDFLARE_API_TOKEN` and
+   `CLOUDFLARE_ACCOUNT_ID`, and both deliberately fail when the `SITE_AUTODEPLOY` repository
+   variable is `off`.
+2. Repair the credential or policy failure, then re-run the failed job; do not cut another tag.
+3. `release_site` proves the served installer bytes match `scripts/install.sh` and
+   `scripts/install.ps1` with `bun scripts/verify-deployed-installers.ts`, and
+   `release_site_finalize` proves the deployed page links the published release with
+   `bun scripts/verify-deployed-changelog.ts <tag>`. Run either locally to confirm a repair. See
    [deployment.md](../deployment.md) for the Pages projects and manual override.
 
 ## Verify
@@ -66,4 +76,4 @@ Cloudflare Pages project is stale.
 2. `veyyon --version` reports the new version.
 3. `veyyon plugin doctor` is green.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `77074dee` on 2026-08-02.*
