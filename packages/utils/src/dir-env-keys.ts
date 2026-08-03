@@ -29,10 +29,22 @@ export const CONFIG_DIR_ENV_KEYS: readonly string[] = ["VEYYON_CONFIG_DIR"];
 export const PROFILE_ENV_KEYS: readonly string[] = ["VEYYON_PROFILE"];
 
 /**
- * The XDG base directories veyyon honours on Linux, which move the config, data, state and cache roots.
+ * The XDG base directories veyyon honours on Linux, grouped because a user who relocates one of them
+ * usually writes all four into the same `$HOME/.env`.
  *
- * `XDG_CONFIG_HOME` is included even though the resolver reads it through a different path than the other
- * three: all four decide where files go, which is the only property this list is about.
+ * Only three of them move a veyyon root. `dirs.ts` reads `XDG_DATA_HOME`, `XDG_STATE_HOME` and
+ * `XDG_CACHE_HOME`, and redirects the data, state and cache categories under `$XDG_*_HOME/veyyon` once
+ * that directory exists. `XDG_CONFIG_HOME` is NOT read by the resolver and does not move the config root:
+ * the config root is always `$HOME/<VEYYON_CONFIG_DIR or .veyyon>`. That is deliberate, not an omission.
+ * The variable is set on most Linux desktops, so honouring it would relocate the profiles, the
+ * credentials, the onboarding record and the auth-broker token of every existing user at once, and veyyon
+ * would come up looking like a fresh install.
+ *
+ * It is listed anyway because it still decides where veyyon puts files, which is the only property this
+ * list is about: the profile alias and the shell completions veyyon installs go under
+ * `$XDG_CONFIG_HOME/fish` when it is set (`packages/coding-agent/src/cli/profile-alias.ts` and
+ * `.../cli/completion-refresh.ts`). Dropping it would leave one directory-location key in a user's
+ * `$HOME/.env` arriving later than its three siblings, for no gain.
  */
 export const XDG_BASE_ENV_KEYS: readonly string[] = [
 	"XDG_CONFIG_HOME",

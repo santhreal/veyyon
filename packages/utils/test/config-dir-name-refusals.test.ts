@@ -62,9 +62,35 @@ describe("an absolute VEYYON_CONFIG_DIR", () => {
 
 	/** And it has to point at the mechanism that does accept an absolute path,
 	 * otherwise the user's actual goal is still unmet after the error. */
-	it("points at the XDG variables, which do take absolute paths", () => {
-		expect(() => nameWith("/srv/veyyon")).toThrow(/XDG_CONFIG_HOME/);
+	it("points at the XDG variables that do take absolute paths", () => {
+		expect(() => nameWith("/srv/veyyon")).toThrow(/XDG_DATA_HOME/);
 		expect(() => nameWith("/srv/veyyon")).toThrow(/XDG_STATE_HOME/);
+		expect(() => nameWith("/srv/veyyon")).toThrow(/XDG_CACHE_HOME/);
+	});
+
+	/**
+	 * THE HONESTY REGRESSION. The message used to open that list with `XDG_CONFIG_HOME` and say the
+	 * XDG variables "move the config root onto another volume". Nothing reads `XDG_CONFIG_HOME` for a
+	 * veyyon directory: `DirResolver` builds its per-category roots from `XDG_DATA_HOME`,
+	 * `XDG_STATE_HOME` and `XDG_CACHE_HOME` only, and `dirs-config-root-ignores-xdg-config-home.test.ts`
+	 * pins that on purpose. So a user who did exactly what the error said exported the variable, saw
+	 * the config root stay where it was, and was left with no next move. The message now names only
+	 * routes that work, and says plainly that the config root is not one of the things that moves.
+	 */
+	it("does not offer XDG_CONFIG_HOME as a way to move the config root", () => {
+		let message = "";
+		try {
+			nameWith("/srv/veyyon");
+		} catch (error) {
+			message = error instanceof Error ? error.message : String(error);
+		}
+
+		expect(message).toContain('VEYYON_CONFIG_DIR is set to the absolute path "/srv/veyyon"');
+		expect(message).not.toContain("XDG_CONFIG_HOME");
+		expect(message).toContain("The config root always lives under your home directory");
+		expect(message).toContain(
+			"XDG_DATA_HOME, XDG_STATE_HOME and XDG_CACHE_HOME do take absolute paths and move the data, state and cache directories.",
+		);
 	});
 
 	/** A Windows-style value on a POSIX host is not absolute to `path`, so it would
