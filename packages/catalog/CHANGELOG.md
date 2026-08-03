@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Ollama discovery reports why a model's `/api/show` lookup failed instead of silently substituting invented metadata. `/api/tags` names the models, but `/api/show` is what says whether one thinks, sees images, and how much context it really has, and every failure of it collapsed into the same `undefined`. Locally the substituted context window then OVERWROTE the real one, so a 32k model was advertised at 128k, prompts were packed to the larger size, and Ollama dropped the front of the context to make them fit: the agent lost its system prompt mid-session and looked like it forgot rather than like it failed. On Ollama Cloud the model kept its place in the picker with thinking and image input quietly stripped, which reads as veyyon not supporting them. `/api/show` gets no retry while `/api/tags` gets three, so one rate-limited request was enough. The reason now travels back through the same `onFailure` every other reader in this package already used, with the model id in the detail because the call runs once per model and "one of them lost its metadata" is not something an operator with a long `ollama list` can act on.
+- The local Ollama `/api/tags` fallback reports its own failures instead of returning a bare `null`. It is the last step before an empty picker, and a refused connection to a daemon that is not running, a 403 from a proxy in front of it, and an HTML error page were one silence. The HTML case was worse than silent: the unguarded `response.json()` threw out of the fetcher, so a captive portal became an `unhandled` stage blamed on this reader rather than a `body` failure naming the endpoint.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

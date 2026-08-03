@@ -1,6 +1,6 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import type { DiscoveryHooks } from "../discovery/failure";
+import type { DiscoveryFailure, DiscoveryHooks } from "../discovery/failure";
 import {
 	fetchOpenAICompatibleModels,
 	type OpenAICompatibleModelMapperContext,
@@ -277,32 +277,46 @@ function toOllamaNativeBaseUrl(baseUrl: string): string {
 
 async function fetchOllamaNativeModels(
 	baseUrl: string,
-	resolveMetadata: (modelId: string) => Promise<OllamaResolvedMetadata>,
+	resolveMetadata: (modelId: string, onFailure?: DiscoveryHooks["onFailure"]) => Promise<OllamaResolvedMetadata>,
 	fetchImpl: FetchImpl = discoveryFetch(),
+	onFailure?: DiscoveryHooks["onFailure"],
 ): Promise<ModelSpec<"openai-responses">[] | null> {
 	const nativeBaseUrl = toOllamaNativeBaseUrl(baseUrl);
+	const url = `${nativeBaseUrl}/api/tags`;
+	const report = (stage: DiscoveryFailure["stage"], detail: string): void => onFailure?.({ stage, url, detail });
 	let response: Response;
 	try {
-		response = await fetchImpl(`${nativeBaseUrl}/api/tags`, {
+		response = await fetchImpl(url, {
 			method: "GET",
 			headers: { Accept: "application/json" },
 		});
-	} catch {
+	} catch (error) {
 		// Null is 'this resolver produced no catalog', which the caller distinguishes from the `[]` an endpoint
-		// with no models returns. The reason is not carried back yet: `fetchOpenAICompatibleModels` takes an
-		// `onFailure` channel and these callers do not pass one through yet, which is a tracked task.
+		// with no models returns. This is the last step before an empty picker, so the reason for the `null`
+		// travels back with it: a refused connection to a local daemon and a 403 from a proxy in front of it
+		// were the same silence, and they call for entirely different things from whoever is looking.
+		report("request", errorMessage(error));
 		return null;
 	}
 	if (!response.ok) {
+		report("status", `HTTP ${response.status} ${response.statusText}`.trim());
 		return null;
 	}
-	const payload = (await response.json()) as { models?: Array<{ name?: string; model?: string }> };
+	let payload: { models?: Array<{ name?: string; model?: string }> };
+	try {
+		payload = (await response.json()) as { models?: Array<{ name?: string; model?: string }> };
+	} catch (error) {
+		// Previously this threw out of the whole fetcher rather than answering `null`, so a captive portal or
+		// an HTML proxy page turned one provider's discovery into an `unhandled` stage blamed on this reader.
+		report("body", errorMessage(error));
+		return null;
+	}
 	const entries = payload.models ?? [];
 	const resolved = await Promise.all(
 		entries.map(async (entry): Promise<ModelSpec<"openai-responses"> | null> => {
 			const id = entry.model ?? entry.name;
 			if (!id) return null;
-			const metadata = await resolveMetadata(id);
+			const metadata = await resolveMetadata(id, onFailure);
 			return {
 				id,
 				name: entry.name ?? id,
@@ -383,40 +397,61 @@ function getOllamaThinkingConfig(capabilities: string[] | undefined): ThinkingCo
  * Query Ollama's `/api/show` endpoint for a single model and pull native
  * context and capability metadata from the response. Returns `undefined` when
  * the endpoint is unavailable so callers can layer their own fallback.
+ *
+ * The fallback is not neutral, which is why every branch reports. The caller
+ * OVERWRITES the model's context window with it, so a `/api/show` that fails
+ * does not leave the bundled figure in place: it replaces a real 32k with a
+ * hardcoded 128k, prompts get packed to the larger size, and Ollama drops the
+ * front of the context to make them fit. The agent then loses its system
+ * prompt mid-session and looks like it forgot rather than like it failed.
  */
 async function fetchOllamaShowMetadata(
 	nativeBaseUrl: string,
 	modelId: string,
 	fetchImpl: FetchImpl = discoveryFetch(),
+	onFailure?: DiscoveryHooks["onFailure"],
 ): Promise<OllamaShowMetadata | undefined> {
+	const url = `${nativeBaseUrl}/api/show`;
+	// The model id is in every detail: this runs once per model, and "one of them lost its metadata" is not
+	// something an operator with a long `ollama list` can act on.
+	const report = (stage: DiscoveryFailure["stage"], detail: string): void =>
+		onFailure?.({ stage, url, detail: `${modelId}: ${detail}` });
+	let response: Response;
 	try {
-		const response = await fetchImpl(`${nativeBaseUrl}/api/show`, {
+		response = await fetchImpl(url, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Accept: "application/json" },
 			body: JSON.stringify({ model: modelId }),
 		});
-		if (!response.ok) {
-			return undefined;
-		}
-		const payload = (await response.json()) as { capabilities?: unknown; model_info?: Record<string, unknown> };
-		const capabilities = getOllamaCapabilities(payload.capabilities);
-		const contextWindow = getOllamaContextWindow(payload.model_info);
-		return {
-			contextWindow,
-			maxTokens: contextWindow ? OLLAMA_DEFAULT_MAX_TOKENS : undefined,
-			capabilities,
-			reasoning: capabilities ? capabilities.includes("thinking") : undefined,
-			thinking: getOllamaThinkingConfig(capabilities),
-			input: capabilities
-				? capabilities.includes("vision")
-					? (["text", "image"] as Array<"text" | "image">)
-					: (["text"] as Array<"text">)
-				: undefined,
-		};
-	} catch {
-		// fall through; caller decides on the fallback
+	} catch (error) {
+		report("request", errorMessage(error));
+		return undefined;
 	}
-	return undefined;
+	if (!response.ok) {
+		report("status", `HTTP ${response.status} ${response.statusText}`.trim());
+		return undefined;
+	}
+	let payload: { capabilities?: unknown; model_info?: Record<string, unknown> };
+	try {
+		payload = (await response.json()) as { capabilities?: unknown; model_info?: Record<string, unknown> };
+	} catch (error) {
+		report("body", errorMessage(error));
+		return undefined;
+	}
+	const capabilities = getOllamaCapabilities(payload.capabilities);
+	const contextWindow = getOllamaContextWindow(payload.model_info);
+	return {
+		contextWindow,
+		maxTokens: contextWindow ? OLLAMA_DEFAULT_MAX_TOKENS : undefined,
+		capabilities,
+		reasoning: capabilities ? capabilities.includes("thinking") : undefined,
+		thinking: getOllamaThinkingConfig(capabilities),
+		input: capabilities
+			? capabilities.includes("vision")
+				? (["text", "image"] as Array<"text" | "image">)
+				: (["text"] as Array<"text">)
+			: undefined,
+	};
 }
 
 /**
@@ -428,13 +463,13 @@ async function fetchOllamaShowMetadata(
 function createOllamaMetadataResolver(
 	nativeBaseUrl: string,
 	fetchImpl?: FetchImpl,
-): (modelId: string) => Promise<OllamaResolvedMetadata> {
+): (modelId: string, onFailure?: DiscoveryHooks["onFailure"]) => Promise<OllamaResolvedMetadata> {
 	const cache = new Map<string, Promise<OllamaResolvedMetadata>>();
-	return modelId => {
+	return (modelId, onFailure) => {
 		const cached = cache.get(modelId);
 		if (cached) return cached;
 		const pending = (async () => {
-			const metadata = await fetchOllamaShowMetadata(nativeBaseUrl, modelId, fetchImpl);
+			const metadata = await fetchOllamaShowMetadata(nativeBaseUrl, modelId, fetchImpl, onFailure);
 			if (!metadata) {
 				cache.delete(modelId);
 				return { contextWindow: OLLAMA_FALLBACK_CONTEXT_WINDOW, maxTokens: OLLAMA_DEFAULT_MAX_TOKENS };
@@ -2212,7 +2247,7 @@ export function ollamaModelManagerOptions(config?: OllamaModelManagerConfig): Mo
 			if (openAiCompatible && openAiCompatible.length > 0) {
 				await Promise.all(
 					openAiCompatible.map(async model => {
-						const metadata = await resolveMetadata(model.id);
+						const metadata = await resolveMetadata(model.id, hooks?.onFailure);
 						model.contextWindow = metadata.contextWindow;
 						if (metadata.reasoning !== undefined) {
 							model.reasoning = metadata.reasoning;
@@ -2225,7 +2260,12 @@ export function ollamaModelManagerOptions(config?: OllamaModelManagerConfig): Mo
 				);
 				return openAiCompatible;
 			}
-			const nativeFallback = await fetchOllamaNativeModels(baseUrl, resolveMetadata, config?.fetch);
+			const nativeFallback = await fetchOllamaNativeModels(
+				baseUrl,
+				resolveMetadata,
+				config?.fetch,
+				hooks?.onFailure,
+			);
 			if (nativeFallback && nativeFallback.length > 0) {
 				return nativeFallback;
 			}
