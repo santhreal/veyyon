@@ -237,8 +237,21 @@ const total = reaches.reduce((sum, [, count]) => sum + count, 0);
  * first proved only the one path they drove; the cold-launch replay and the startup theme resolution were
  * caught by capturing a real launch, not by a leaf import. Reaching for the seam instead of the entry
  * point here would delete exactly the property that found the bug. 797 modules, one slot.
+ *
+ * AND 846,976 across 2,112 files after the four silent-fallback suites landed, which is two costs and
+ * only one of them is suite growth. The suites themselves are 2,135 modules: an unparseable `.mcp.json`
+ * driven through the live capability providers (514), a broken agent definition (120), a host-provider
+ * isolation check (127), and an extension that throws while importing (1,374, the one that crosses 800).
+ * The other 1,044 are diffuse and are the interesting half: `test/helpers/hermetic-spawn-env.ts` went 88
+ * to 126 because the list of provider credential variables it scrubs is now DERIVED from
+ * `CATALOG_PROVIDERS` instead of hand-written, and 28 files import that helper, so one edge is paid 28
+ * times. That is exactly the "new heavy import in a shared helper" this header warns has no headroom.
+ * It is taken deliberately: a hand-written copy of that list is a list that falls behind, and the
+ * failure mode it prevents is a test spawning a CLI that reaches the developer's real credentials. The
+ * cheaper import does not exist, since the provider table is 64 modules on its own and the barrel adds
+ * only two over the descriptors it re-exports.
  */
-const TOTAL_CEILING = 843_797;
+const TOTAL_CEILING = 846_976;
 
 /**
  * Measured 2026-07-26 at 531, down from 552 with the same theme-classifier change: eleven `eval-*`
@@ -289,8 +302,15 @@ const TOTAL_CEILING = 843_797;
  * the same reason: it drives a real `InteractiveMode` over a real TUI because the defect it locks out
  * (three paths erasing the operator's saved scrollback at startup) is only visible in the bytes a real
  * launch emits. One slot, and the ceiling stays exact.
+ *
+ * RE-MEASURED at 391 after the extension-load-failure suite added one more deliberate
+ * `createAgentSession` boot (1,374 modules). The defect it locks out is that an extension which throws
+ * while importing was dropped with no word to the operator, and the quietest path was the preloaded
+ * branch the CLI actually uses. Only a real session assembles that branch, so a leaf import would
+ * assert the report exists without proving the path that loses it reaches the report. One slot, and the
+ * ceiling stays exact.
  */
-const HEAVY_FILE_CEILING = 390;
+const HEAVY_FILE_CEILING = 391;
 
 /** Above this a file is carrying most of an application entry point into its own realm. */
 const HEAVY_REACH = 800;
