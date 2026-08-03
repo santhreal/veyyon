@@ -394,6 +394,14 @@ async function getLocalModel(): Promise<LocalEmbeddingModel | null> {
 
 	const modelName = fastembedModelName(configuredModel);
 	if (modelName === null) {
+		// Not "no local model available" but "the model you named does not exist here", and the two produce
+		// the same `null` and so the same keyword-only search. Reported through the one owner because a name
+		// that resolves to nothing is a config typo the operator can fix in one line, and it is otherwise
+		// invisible: semantic recall never starts and no log at any level records why.
+		reportEmbeddingFailure(
+			`the configured local embedding model "${configuredModel}" is not one this build can load`,
+			`local:${configuredModel}`,
+		);
 		return null;
 	}
 	const cacheDir = getFastembedCacheDir();
@@ -435,6 +443,11 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 	const isCustom = !hostMatchesUrl(baseUrl, "openrouter");
 	const apiKey = embeddingApiKey();
 	if (!isCustom && !embeddingKeyConfigured(apiKey)) {
+		// Bailing before the request meant none of the reporting branches below could be reached, so the one
+		// failure with a one-step remedy -- the remedy this module's own `fix` text names -- was the only one
+		// that said nothing at all. `isCustom` keeps the check scoped to the hosted OpenRouter endpoint,
+		// because a local or proxy embeddings endpoint legitimately takes no key and must stay silent.
+		reportEmbeddingFailure("no embeddings API key is configured", baseUrl);
 		return null;
 	}
 
