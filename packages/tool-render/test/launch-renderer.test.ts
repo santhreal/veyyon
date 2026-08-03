@@ -296,7 +296,10 @@ describe("launch renderer tolerates malformed wire data", () => {
 	});
 
 	it("renders with no details at all", () => {
-		expect(() => render("Body", { args: { op: "list" } })).not.toThrow();
-		expect(() => render("Summary", { args: {} })).not.toThrow();
+		// A launch call whose result has not landed still has to say which
+		// operation is in flight; a blank card is indistinguishable from a
+		// renderer that broke.
+		expect(render("Body", { args: { op: "list" } })).toContain("list");
+		expect(render("Summary", { args: {} })).toContain("launch");
 	});
 });

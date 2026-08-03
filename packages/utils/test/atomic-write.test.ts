@@ -761,7 +761,12 @@ const HANDROLLED_ATOMIC_ALLOWED = new Map<string, string>([
 	["hashline/src/fs.ts", "lean dependency-free patch library; documented node:fs-only copy, cannot import the owner"],
 ]);
 
-const RENAME_CALL = /\brename(?:Sync)?\s*\(/;
+// A CALL to rename, not a DECLARATION of one. The lookbehinds matter: `SecretVault.rename` is a
+// method that renames a stored secret, and matching its `async rename(` signature reported a file
+// that hand-rolls nothing, purely because the same file also mentions `.tmp` somewhere else.
+// Allow-listing it would have been worse than the false positive, since an entry in the ledger
+// above claims a file DOES hand-roll a temp+rename and suppresses the check for it forever.
+const RENAME_CALL = /(?<!async )(?<!function )(?<!\* )\brename(?:Sync)?\s*\(/;
 // A `.tmp` temp-file token. The `\b` after `tmp` keeps `os.tmpdir()` (a real,
 // unrelated call in directory-migration code) from matching.
 const TEMP_TOKEN = /\.tmp\b/;

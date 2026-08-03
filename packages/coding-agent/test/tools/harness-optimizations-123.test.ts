@@ -1,11 +1,39 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
+import { AsyncJobManager } from "@veyyon/coding-agent/async";
+import { JobTool } from "@veyyon/coding-agent/tools/job";
 import { MismatchError } from "@veyyon/hashline";
 import { applyOpsToPhases, type TodoPhase } from "../../src/tools/todo";
+import { makeToolSession } from "../helpers/tool-session";
 
 describe("Harness Optimization 1: Job Uptime Formatting", () => {
-	it("includes uptime duration formatting in running job lines", () => {
-		// Tested via formatDuration integration in job tool tests
-		expect(true).toBe(true);
+	/**
+	 * A `job list` snapshot is the model's only view of how long a background
+	 * job has been alive, and "how long" is the whole reason to poll: a job that
+	 * has been up four seconds and one that has been up forty minutes read
+	 * identically without it, so the model cannot tell progress from a hang.
+	 * The clock is frozen so the assertion pins the rendered duration itself,
+	 * not just the presence of some number.
+	 */
+	it("includes uptime duration formatting in running job lines", async () => {
+		const manager = new AsyncJobManager({ onJobComplete: () => {} });
+		const session = makeToolSession({
+			getAgentId: () => "Main",
+			asyncJobManager: manager,
+		});
+		manager.register("bash", "sleep 600", () => new Promise<string>(() => {}), { id: "slow", ownerId: "Main" });
+		const startTime = manager.getJob("slow")?.startTime;
+		expect(startTime, "the registered job is missing").toBeTypeOf("number");
+
+		const clock = spyOn(Date, "now").mockReturnValue((startTime ?? 0) + 90_000);
+		try {
+			const result = await new JobTool(session).execute("call", { list: true });
+			const text = result.content.find(part => part.type === "text")?.text ?? "";
+
+			expect(text).toContain("- `slow` [bash] — sleep 600 (up 1m30s)");
+		} finally {
+			clock.mockRestore();
+			await manager.dispose({ timeoutMs: 200 });
+		}
 	});
 });
 

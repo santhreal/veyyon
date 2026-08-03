@@ -155,7 +155,10 @@ describe("argot renderers tolerate malformed wire data", () => {
 	});
 
 	it("renders with no result at all", () => {
-		expect(() => render("argot_load", "Body", { args: {} })).not.toThrow();
-		expect(() => render("argot_unload", "Body", { args: {} })).not.toThrow();
+		// The two halves must stay distinguishable with nothing but the tool
+		// name: a load that has not reported yet is not the same event as an
+		// unload, and a blank card says neither.
+		expect(render("argot_load", "Body", { args: {} })).toContain("loaded");
+		expect(render("argot_unload", "Body", { args: {} })).toContain("was not loaded");
 	});
 });

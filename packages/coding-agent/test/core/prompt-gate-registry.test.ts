@@ -462,12 +462,6 @@ describe("every gate in the template is accounted for", () => {
 
 		expect(stale, `classified but no longer gated on: ${stale.join(", ")}`).toEqual([]);
 	});
-
-	it("registers no gate whose variable the template does not test", () => {
-		// The other direction: a row naming a variable no template block reads is a gate that
-		// rebuilds the prompt and changes nothing, which looks like a working feature.
-		expect(PROMPT_GATE_VARIABLES.length).toBeGreaterThan(0);
-	});
 });
 
 /** The minimum a `WorkspaceTree` needs to satisfy the builder without discovering anything. */
