@@ -49,7 +49,12 @@ describe("InteractiveMode theme scrollback refresh", () => {
 				},
 			}),
 			sessionManager: SessionManager.create(tempDir.path(), tempDir.path()),
-			settings: Settings.isolated({ "startup.quiet": true }),
+			// Replacing native scrollback on a committed theme swap is gated on the
+			// same consent as the startup wipe, because ED 3 takes the operator's
+			// pre-veyyon history along with veyyon's own rows. These cases are about
+			// what a swap does once that consent exists; the refusal without it is
+			// covered in interactive-startup-scrollback.test.ts.
+			settings: Settings.isolated({ "startup.quiet": true, "startup.clearScrollback": true }),
 			modelRegistry,
 		});
 		mode = new InteractiveMode(session, "test");
