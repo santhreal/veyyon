@@ -1509,19 +1509,36 @@ function Get-TagFromRedirect {
     return $Matches[1]
 }
 
-# Whether a release tag is published. Tells "you asked for a tag that does not
-# exist" apart from "that release has no build for your platform", which are the
-# same download failure and very different things to be told.
-function Test-ReleaseTagExists {
+# What state a tag is in, as far as installing a prebuilt binary is concerned:
+#   "released"    a published release with downloadable assets (install can go on)
+#   "unreleased"  a real tag with no installable release (bare tag, or a draft)
+#   "missing"     no such tag
+#
+# This used to HEAD `/releases/tag/<tag>` and read a 200 as "the release is
+# published". GitHub renders that page for ANY tag that exists, with or without a
+# release object attached, and an unpublished draft is invisible there too, so
+# the check passed for tags that cannot be installed at all. The install then got
+# as far as the asset download and blamed the platform binary for a release that
+# was never cut.
+#
+# `/releases/expanded_assets/<tag>` is the fragment GitHub lazy-loads into the
+# release page's asset list, and it answers all three states in one request:
+# 404 for a tag that does not exist; for a bare tag or a draft it renders the two
+# source-archive links and nothing else; only a published release lists
+# `/releases/download/<tag>/` hrefs, and that href IS the URL the binary is
+# fetched from. github.com rather than the API, for the same rate-limit reason
+# Get-TagFromRedirect exists. Mirrors release_tag_state in install.sh.
+function Get-ReleaseTagState {
     param([string]$Tag)
     try {
-        # -Method Head: the question is whether the page is there, not what is
-        # on it, and a release page's body is a few hundred kilobytes.
-        $null = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/tag/$Tag" -Method Head -TimeoutSec 60 -UseBasicParsing
-        return $true
+        $resp = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/expanded_assets/$Tag" -TimeoutSec 60 -UseBasicParsing
     } catch {
-        return $false
+        return "missing"
     }
+    # Contains(), not -like: a literal test, so nothing in the tag is read as a
+    # wildcard. Nothing is parsed out of the HTML either, only a prefix tested for.
+    if ("$($resp.Content)".Contains("/$Repo/releases/download/$Tag/")) { return "released" }
+    return "unreleased"
 }
 
 # The published tag for a -Ref a person typed, or $null when there is none.
@@ -1534,17 +1551,43 @@ function Test-ReleaseTagExists {
 # the version on screen. Nothing wider is attempted: a branch or a commit is not
 # a version, `vmain` is a tag nobody has, and installing a version the user did
 # not name is worse than refusing. Mirrors resolve_ref_tag in install.sh.
+#
+# Returns Tag plus the State that got it there, because the two ways this fails
+# need different things said: "unreleased" is "that tag is real but has no
+# release you can install", "missing" is "there is no such tag". Collapsing them
+# is how a tag with no release spent a release cycle being reported as a missing
+# platform binary.
 function Resolve-RefTag {
     param([string]$Ref)
-    if (Test-ReleaseTagExists $Ref) { return $Ref }
-    if ($Ref -match '^\d+\.\d+\.\d+' -and (Test-ReleaseTagExists "v$Ref")) { return "v$Ref" }
-    return $null
+    $state = Get-ReleaseTagState $Ref
+    if ($state -eq "released") { return [pscustomobject]@{ Tag = $Ref; State = "released" } }
+    # A bare version is the one alternate spelling worth a second request.
+    # Already `v`-prefixed, or a branch or a sha, which are not versions: `vmain`
+    # is a tag nobody has, so it stays at "no such tag" untried.
+    $alt = "missing"
+    if ($Ref -match '^\d+\.\d+\.\d+') { $alt = Get-ReleaseTagState "v$Ref" }
+    if ($alt -eq "released") { return [pscustomobject]@{ Tag = "v$Ref"; State = "released" } }
+    # Either spelling being a real tag means the user named a version that was
+    # never released, which is a different thing to be told than a typo. The tag
+    # that DOES exist comes back with it, so the caller can name it and suggest a
+    # -Source build that will actually check out: `-Ref 1.0.39` is not a ref git
+    # can resolve. Nothing installs it, since only "released" reaches the download.
+    if ($state -eq "unreleased") { return [pscustomobject]@{ Tag = $Ref; State = "unreleased" } }
+    if ($alt -eq "unreleased") { return [pscustomobject]@{ Tag = "v$Ref"; State = "unreleased" } }
+    return [pscustomobject]@{ Tag = $null; State = "missing" }
 }
 
 function Install-Binary {
     if ($Ref) {
         Write-Host "Fetching release $Ref..."
-        $Latest = Resolve-RefTag $Ref
+        $Resolved = Resolve-RefTag $Ref
+        # The tag is real, the release is not. Say that, and say it without
+        # mentioning the platform binary: nothing is wrong with the binary, there
+        # is no release for it to be part of.
+        if ($Resolved.State -eq "unreleased") {
+            throw "No release is published for tag $($Resolved.Tag), so there is no binary to download.`nThat tag exists in the repository, but nothing was ever released from it (its release may still be an unpublished draft).`nPick a version that has a release from https://github.com/$Repo/releases, or use -Source with -Ref $($Resolved.Tag) to build that ref from source."
+        }
+        $Latest = $Resolved.Tag
         if (-not $Latest) {
             throw "Release tag not found: $Ref`nFor branch/commit installs, use -Source with -Ref."
         }

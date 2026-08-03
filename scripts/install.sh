@@ -412,16 +412,48 @@ resolve_latest_tag() {
     printf '%s\n' "$_rlt_tag"
 }
 
-# Whether a release tag is published. Used to tell "you asked for a tag that does
-# not exist" apart from "that release has no build for your platform", which are
-# the same curl failure on the asset URL and very different things to be told.
-release_tag_exists() {
-    # Headers only: the question is whether the page is there, not what is on it.
-    curl -fsSI -o /dev/null $CURL_RETRY --connect-timeout 10 --max-time 60 \
-        "https://github.com/${REPO}/releases/tag/$1" >/dev/null 2>&1
+# What state a tag is in, as far as installing a prebuilt binary is concerned:
+#   0  a published release with downloadable assets  (install can proceed)
+#   2  a real tag with no installable release        (bare tag, or a draft)
+#   1  no such tag
+#
+# This used to HEAD `/releases/tag/<tag>` and read a 200 as "the release is
+# published". GitHub renders that page for ANY tag that exists, with or without a
+# release object attached, and an unpublished draft is invisible there too, so
+# the check passed for tags that cannot be installed at all. The install then got
+# as far as the asset download and died with "not published for this release?",
+# which blames the platform binary and sends the user off to build from source
+# for a release that was never cut. The rollback runbook pins `--ref vX.Y.Z`, so
+# that misdirection landed on people already having a bad day.
+#
+# `/releases/expanded_assets/<tag>` is the fragment GitHub lazy-loads into the
+# release page's asset list, and it answers all three states in one request:
+# 404 for a tag that does not exist; for a bare tag or a draft it renders the two
+# source-archive links and nothing else; only a published release lists
+# `/releases/download/<tag>/` hrefs. The presence of one of those hrefs is
+# exactly the question the installer needs answered, and it is the same signal it
+# already trusts, since that href IS the URL the binary is fetched from.
+#
+# github.com, not the API, for the reason spelled out above resolve_latest_tag:
+# api.github.com's 60/hour unauthenticated budget is shared by everyone behind
+# one address, and an install must not be able to fail because a neighbour spent
+# it. The fragment is a few kilobytes for a tag with no release and well under a
+# tenth of the release page for one with.
+#
+# Nothing is parsed out of the HTML: the body is tested for a URL prefix, not
+# read for a value. A tag cannot contain a glob metacharacter (git refuses `*`,
+# `?` and `[`), so it is safe as the pattern it is spliced into.
+release_tag_state() {
+    _rts_body=$(curl -fsSL $CURL_RETRY --connect-timeout 10 --max-time 60 \
+        "https://github.com/${REPO}/releases/expanded_assets/$1" 2>/dev/null) || return 1
+    case "$_rts_body" in
+        *"/${REPO}/releases/download/$1/"*) return 0 ;;
+    esac
+    return 2
 }
 
-# The published tag for a `--ref` a person typed, or empty when there is none.
+# The published tag for a `--ref` a person typed. Prints nothing, and only
+# nothing, when no tag by either spelling exists at all.
 #
 # Releases are tagged `v1.0.37`, and `--ref 1.0.37` is what people type: same
 # version, one character short of a tag that exists. Refusing it names a real
@@ -433,20 +465,51 @@ release_tag_exists() {
 # Only that one spelling, and only when the request has no `v` and reads as a
 # version. A wider search would start guessing at tags the user did not ask for,
 # and installing a version nobody named is worse than refusing.
+#
+# The exit status carries which way it failed, because the two need different
+# things said: 2 is "that tag is real but has no release you can install", 1 is
+# "there is no such tag". Collapsing them is how a tag with no release spent a
+# release cycle being reported as a missing platform binary.
+#
+# On 2 the tag that DOES exist is still printed, so the caller can name it and
+# suggest a `--source` build that will actually check out: `--ref 1.0.39` is not
+# a ref git can resolve, and telling someone to retry with it is the same kind of
+# advice-that-cannot-work this whole change is about. Nothing installs it, since
+# only status 0 reaches the download.
 resolve_ref_tag() {
-    if release_tag_exists "$1"; then
+    # `|| _rrt_first=$?` rather than a bare call: a non-zero state is the normal
+    # answer here, and `set -e` would otherwise abort the whole resolution the
+    # first time a spelling came back without a release.
+    _rrt_first=0
+    release_tag_state "$1" || _rrt_first=$?
+    if [ "$_rrt_first" -eq 0 ]; then
         printf '%s\n' "$1"
         return 0
     fi
+    # A bare version is the one alternate spelling worth a second request.
+    # Already `v`-prefixed, or a branch or a sha, which are not versions:
+    # `vmain` is a tag nobody has, so it stays at "no such tag" untried.
+    _rrt_second=1
     case "$1" in
-        v*) return 1 ;;
         [0-9]*.[0-9]*.[0-9]*)
-            if release_tag_exists "v$1"; then
-                printf 'v%s\n' "$1"
-                return 0
-            fi
+            _rrt_second=0
+            release_tag_state "v$1" || _rrt_second=$?
             ;;
     esac
+    if [ "$_rrt_second" -eq 0 ]; then
+        printf 'v%s\n' "$1"
+        return 0
+    fi
+    # Either spelling being a real tag means the user named a version that was
+    # never released, which is a different thing to be told than a typo.
+    if [ "$_rrt_first" -eq 2 ]; then
+        printf '%s\n' "$1"
+        return 2
+    fi
+    if [ "$_rrt_second" -eq 2 ]; then
+        printf 'v%s\n' "$1"
+        return 2
+    fi
     return 1
 }
 
@@ -1884,8 +1947,19 @@ install_binary() {
 
     if [ -n "$REF" ]; then
         step "fetching release $REF..."
-        LATEST=$(resolve_ref_tag "$REF") \
-            || die "release tag not found: $REF (for a branch/commit, use --source --ref)"
+        _ref_status=0
+        LATEST=$(resolve_ref_tag "$REF") || _ref_status=$?
+        case "$_ref_status" in
+            0) ;;
+            # The tag is real, the release is not. Say that, and say it without
+            # mentioning the platform binary: nothing is wrong with the binary,
+            # there is no release for it to be part of.
+            # $LATEST holds the tag that exists, which is not always what was
+            # typed: `--ref 1.0.39` is not a ref git can check out, so echoing it
+            # back in a --source suggestion would be more advice that cannot work.
+            2) die "no release is published for tag $LATEST, so there is no binary to download. That tag exists in the repository, but nothing was ever released from it (its release may still be an unpublished draft). Pick a version that has a release from https://github.com/${REPO}/releases, or build this exact ref from source: curl -fsSL https://get.veyyon.dev | sh -s -- --source --ref $LATEST" ;;
+            *) die "release tag not found: $REF (for a branch/commit, use --source --ref)" ;;
+        esac
         [ "$LATEST" = "$REF" ] || step "resolved $REF to the published tag $LATEST"
     else
         step "fetching latest release..."

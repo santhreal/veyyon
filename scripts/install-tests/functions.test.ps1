@@ -1253,6 +1253,95 @@ Check "a child-process install says nothing about other terminals" `
 Check "neither form mentions restarting when PATH was untouched" `
     (@((Get-NextStepsLines -InCallersSession) | Where-Object { $_ -match 'Restart|Terminals already open' }).Count) "0"
 
+# --- Get-ReleaseTagState: a git tag is not a release --------------------------
+# THE BUG THIS PINS. The probe used to HEAD `/releases/tag/<tag>` and read
+# GitHub's 200 as "this release is published". GitHub renders that page for a
+# BARE GIT TAG with no release object, and for a tag whose only release is an
+# unpublished draft, so `-Ref v1.0.39` walked straight past this check and died
+# at the asset download blaming the platform binary for a release that was never
+# cut. The old stub here could not see any of it: it answered the same way to
+# every request, which is exactly what the real tag page does.
+#
+# Invoke-WebRequest is shadowed with github.com's real answers per tag, on BOTH
+# endpoints, so the real Get-ReleaseTagState runs and a probe that goes back to
+# the tag page fails these. Mirrors the release_tag_state block in
+# functions.test.sh.
+#
+#   released    a published release with downloadable assets
+#   unreleased  a real git tag with no release object, OR one whose release is
+#               an unpublished draft. github.com cannot tell those apart from
+#               outside, and the installer does not need it to: neither has
+#               anything to download.
+#   missing     no such tag
+#
+# v1.0.46, v1.0.39 and v1.0.42 are real tags of this repository and their states
+# here are the ones the live endpoint returns. v1.0.37 and v2.0.0-rc.1 are the
+# fixtures the `v`-spelling cases further down are written against.
+function Get-VeyTagState {
+    param([string]$Tag)
+    switch ($Tag) {
+        "v1.0.46"     { "released" }
+        "v1.0.37"     { "released" }
+        "v2.0.0-rc.1" { "released" }
+        "v1.0.39"     { "unreleased" }
+        "v1.0.42"     { "unreleased" }
+        default       { "missing" }
+    }
+}
+$Script:TagLookups = @()
+$Script:TagRequests = @()
+function Global:Invoke-WebRequest {
+    # -Method is accepted but ignored: the old probe passed `-Method Head`, and a
+    # refactor back to it must be diagnosed by the assertions below rather than
+    # dying on a parameter this stand-in refused to bind.
+    param([string]$Uri, [string]$Method, [int]$TimeoutSec, [switch]$UseBasicParsing)
+    $Script:TagRequests += $Uri
+    if ($Uri -match '/releases/expanded_assets/(.+)$') {
+        $tag = $Matches[1]
+        $endpoint = "assets"
+    } elseif ($Uri -match '/releases/tag/(.+)$') {
+        $tag = $Matches[1]
+        $endpoint = "tagpage"
+    } else {
+        throw "the probe asked for a URL nothing serves: $Uri"
+    }
+    $Script:TagLookups += $tag
+    $state = Get-VeyTagState $tag
+    if ($state -eq "missing") { throw "404 Not Found" }
+    if ($endpoint -eq "tagpage") {
+        # The 200 that started all this: a tag page renders for a tag with no
+        # release just as happily as for one with.
+        return [pscustomobject]@{ Content = "the tag page, which github.com serves for an unreleased tag too" }
+    }
+    # The asset-list fragment. Only a published release carries download hrefs; a
+    # bare tag and a draft get the two source archives and nothing else.
+    $body = "<a href=`"/$Repo/archive/refs/tags/$tag.zip`">Source code (zip)</a>"
+    if ($state -eq "released") {
+        $body = "<a href=`"/$Repo/releases/download/$tag/veyyon-windows-x64.exe`">veyyon-windows-x64.exe</a>$body"
+    }
+    return [pscustomobject]@{ Content = $body }
+}
+
+Check "a published release with assets is installable" (Get-ReleaseTagState "v1.0.46") "released"
+Check "a bare git tag with no release is NOT (the 200 that fooled the old probe)" `
+    (Get-ReleaseTagState "v1.0.39") "unreleased"
+Check "an unpublished draft is NOT either" (Get-ReleaseTagState "v1.0.42") "unreleased"
+Check "a tag that does not exist is a THIRD, distinct answer" `
+    (Get-ReleaseTagState "v9.9.9") "missing"
+# The whole point of the three-way answer: "no release here" and "no such tag"
+# must not collapse back into one, because they need different things said.
+Check "the unreleased tag and the missing tag do not report the same state" `
+    ((Get-ReleaseTagState "v1.0.39") -eq (Get-ReleaseTagState "v9.9.9")) "False"
+# It must ask the endpoint that can actually tell those apart. The tag page
+# cannot, which is the defect; a refactor back to it would pass any check that
+# only asserted a boolean.
+$Script:TagRequests = @()
+$null = Get-ReleaseTagState "v1.0.46"
+Check "the probe asks the asset-list fragment" `
+    (@($Script:TagRequests | Where-Object { $_ -match '/releases/expanded_assets/v1\.0\.46$' }).Count) "1"
+Check "and it does not ask the tag page at all" `
+    (@($Script:TagRequests | Where-Object { $_ -match '/releases/tag/' }).Count) "0"
+
 # --- Resolve-RefTag: the `v` a person leaves off a version --------------------
 # Releases are tagged `v1.0.37` and `-Ref 1.0.37` is what people type: the same
 # version, one character short of a tag that exists. Refusing it states a true
@@ -1260,46 +1349,89 @@ Check "neither form mentions restarting when PATH was untouched" `
 # The `v` form is tried as a SECOND lookup and the caller announces what it
 # resolved to, so the version being installed is the version on screen. Mirrors
 # resolve_ref_tag in install.sh.
-#
-# Test-ReleaseTagExists is shadowed here so the resolution is exercised without a
-# network: it records what it was asked for, which is how the "no second guess"
-# cases are asserted at all.
 $Script:TagLookups = @()
-function Test-ReleaseTagExists {
-    param([string]$Tag)
-    $Script:TagLookups += $Tag
-    return ($Tag -eq "v1.0.37" -or $Tag -eq "v2.0.0-rc.1")
-}
-
-$Script:TagLookups = @()
-Check "an exact tag is returned as given" (Resolve-RefTag "v1.0.37") "v1.0.37"
+Check "an exact tag is returned as given" (Resolve-RefTag "v1.0.37").Tag "v1.0.37"
 Check "an exact tag costs one lookup" ($Script:TagLookups.Count) "1"
 
 $Script:TagLookups = @()
-Check "a bare version resolves to the published v-prefixed tag" (Resolve-RefTag "1.0.37") "v1.0.37"
+Check "a bare version resolves to the published v-prefixed tag" (Resolve-RefTag "1.0.37").Tag "v1.0.37"
 Check "the bare version was tried first, then the v form" (($Script:TagLookups -join ',')) "1.0.37,v1.0.37"
 
 $Script:TagLookups = @()
-Check "a prerelease version resolves too" (Resolve-RefTag "2.0.0-rc.1") "v2.0.0-rc.1"
+Check "a prerelease version resolves too" (Resolve-RefTag "2.0.0-rc.1").Tag "v2.0.0-rc.1"
 
 $Script:TagLookups = @()
-Check "a bare version with no published v-tag is refused" (Resolve-RefTag "9.9.9") ""
+Check "a bare version with no published v-tag is refused" (Resolve-RefTag "9.9.9").Tag ""
 Check "and it stopped after the two spellings" (($Script:TagLookups -join ',')) "9.9.9,v9.9.9"
+Check "a missing tag is reported as missing" (Resolve-RefTag "9.9.9").State "missing"
+
+# A tag that exists with no release must come back as its OWN state, or the
+# caller cannot tell the user why it refused.
+Check "a tag with no release yields the tag that does exist, not a resolution" `
+    (Resolve-RefTag "v1.0.39").Tag "v1.0.39"
+Check "and reports the unreleased state, not the missing-tag one" `
+    (Resolve-RefTag "v1.0.39").State "unreleased"
+$Script:TagLookups = @()
+Check "a bare unreleased version tries both spellings" `
+    ((Resolve-RefTag "1.0.39").State + ":" + ($Script:TagLookups -join ',')) "unreleased:1.0.39,v1.0.39"
 
 # A branch or a commit is not a version, so no `v` is bolted onto it: `vmain` and
 # `vd83e6259` are tags nobody has, and asking costs a round trip before the same
 # refusal.
 $Script:TagLookups = @()
-Check "a branch name gets no v-prefixed second try" (Resolve-RefTag "main") ""
+Check "a branch name gets no v-prefixed second try" (Resolve-RefTag "main").Tag ""
 Check "the branch cost exactly one lookup" ($Script:TagLookups.Count) "1"
 
 $Script:TagLookups = @()
-Check "a commit sha gets no v-prefixed second try" (Resolve-RefTag "d83e6259") ""
+Check "a commit sha gets no v-prefixed second try" (Resolve-RefTag "d83e6259").Tag ""
 Check "the sha cost exactly one lookup" ($Script:TagLookups.Count) "1"
 
 $Script:TagLookups = @()
-Check "a v-prefixed tag that does not exist is refused without a second guess" (Resolve-RefTag "v9.9.9") ""
+Check "a v-prefixed tag that does not exist is refused without a second guess" (Resolve-RefTag "v9.9.9").Tag ""
 Check "the missing v-tag cost exactly one lookup" ($Script:TagLookups.Count) "1"
+
+# --- the message a -Ref failure actually puts on screen -----------------------
+# The state above is only half the fix: it has to reach the user as a different
+# sentence. Drives the real Install-Binary, which throws before it touches the
+# filesystem, so these assert the text a person sees.
+function Get-RefFailureMessage {
+    param([string]$TestRef)
+    $saved = $Ref
+    $Script:Ref = $TestRef
+    try {
+        Install-Binary | Out-Null
+        return "(no failure)"
+    } catch {
+        return $_.Exception.Message
+    } finally {
+        $Script:Ref = $saved
+    }
+}
+
+Check "a tag with no release is told that, in those words" `
+    ((Get-RefFailureMessage "v1.0.39") -match 'No release is published for tag v1\.0\.39') "True"
+# The regression itself: the old message named the platform asset and sent the
+# user to build from source for a release that does not exist.
+Check "and the refusal does not blame the platform binary" `
+    ((Get-RefFailureMessage "v1.0.39") -match 'veyyon-windows-x64') "False"
+Check "it points at the releases page" `
+    ((Get-RefFailureMessage "v1.0.39") -match [regex]::Escape("https://github.com/$Repo/releases")) "True"
+Check "and it offers -Source for the ref they actually asked for" `
+    ((Get-RefFailureMessage "v1.0.39") -match '-Source with -Ref v1\.0\.39') "True"
+# `-Ref 1.0.39` is not a ref git can check out, so the -Source suggestion has to
+# name the tag that exists rather than echo back what was typed.
+Check "a bare unreleased version is told about the v-spelled tag" `
+    ((Get-RefFailureMessage "1.0.39") -match '-Source with -Ref v1\.0\.39') "True"
+Check "a draft release reads the same way to the user" `
+    ((Get-RefFailureMessage "v1.0.42") -match 'No release is published for tag v1\.0\.42') "True"
+# A tag nobody ever created is a typo, not an unreleased version, and keeps the
+# message it always had.
+Check "a tag that does not exist is still named as a missing tag" `
+    ((Get-RefFailureMessage "v9.9.9") -match 'Release tag not found: v9\.9\.9') "True"
+Check "and a missing tag is not described as an unreleased one" `
+    ((Get-RefFailureMessage "v9.9.9") -match 'No release is published') "False"
+
+Remove-Item Function:Global:Invoke-WebRequest -ErrorAction SilentlyContinue
 
 # --- Get-TagFromRedirect: the release lookup no longer needs the GitHub API ---
 # api.github.com allows 60 requests an hour per IP without a token, shared by
