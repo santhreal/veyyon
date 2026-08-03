@@ -14,9 +14,13 @@ import { isNewerVersion } from "@veyyon/utils/semver";
 import { $, Glob, JSONC } from "bun";
 import { runChangelogFixer } from "./fix-changelogs";
 import {
+	assertPreparedReleaseChangelogs,
+	assertReleaseIsDocumented,
 	checkedOutHeadSha,
 	gatherReleaseGateFacts,
+	type PackageChangelog,
 	RELEASE_BOT_LOGIN,
+	RELEASE_NOTES_CHANGELOG,
 	type ReleaseGateFacts,
 	sourceGateFailure,
 	verifyPublishedAssetManifest,
@@ -87,6 +91,22 @@ async function updateChangelogsForRelease(version: string): Promise<void> {
 		await Bun.write(changelog, applyReleaseToChangelog(content, version, date));
 		console.log(`  Updated ${changelog}`);
 	}
+}
+
+/**
+ * Read every `packages/<name>/CHANGELOG.md` with the name of the package that owns it, so the
+ * gate can name the offender rather than a path the operator has to map back to a package.
+ */
+async function loadPackageChangelogs(): Promise<PackageChangelog[]> {
+	const changelogs: PackageChangelog[] = [];
+	for await (const changelog of changelogGlob.scan(".")) {
+		const posixPath = changelog.replaceAll(path.sep, "/");
+		const dir = path.dirname(changelog);
+		const manifest = Bun.file(path.join(dir, "package.json"));
+		const name = (await manifest.exists()) ? ((await manifest.json()).name ?? dir) : dir;
+		changelogs.push({ path: posixPath, name, content: await Bun.file(changelog).text() });
+	}
+	return changelogs;
 }
 
 // =============================================================================
@@ -505,6 +525,7 @@ async function prepareReleaseTree(version: string, latestTag: string): Promise<v
 		);
 	}
 	await updateChangelogsForRelease(version);
+	assertPreparedReleaseChangelogs(version, await loadPackageChangelogs());
 	await Bun.write(ROOT_PATH, buildRootChangelog());
 	console.log("  Updated CHANGELOG.md (repo root)\n");
 
@@ -825,6 +846,14 @@ export async function cmdRelease(versionOrBump: string): Promise<PreparedRelease
 		process.exit(1);
 	}
 	console.log(`  Version ${version} > ${latestTag}\n`);
+
+	// Nothing has been written yet, and nothing will be if this version is undocumented. Empty
+	// `[Unreleased]` sections used to roll into no version section at all, so v1.0.44, v1.0.45 and
+	// v1.0.46 were each cut, tagged and published with no changelog entry; the website build only
+	// noticed once those releases were already public.
+	console.log("Checking the changelog documents this version...");
+	assertReleaseIsDocumented(version, await loadPackageChangelogs());
+	console.log(`  ${RELEASE_NOTES_CHANGELOG} documents ${version}\n`);
 
 	// Prepare the exact tree that will be tagged. The preparation is idempotent
 	// so an explicit recovery cut can rebuild every version, changelog, lockfile,
