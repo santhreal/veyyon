@@ -220,6 +220,7 @@ veyyon config get compaction.threshold
 | `autoResume` | Auto Resume | boolean | `false` | Automatically resume the most recent session in the current directory. |
 | `startup.quiet` | Quiet Startup | boolean | `false` | Skip welcome screen and startup status messages. |
 | `startup.showSplash` | Show Startup Splash | boolean | `false` | Show the full animated setup splash on normal interactive startup without rerunning setup. Quiet Startup still suppresses it. |
+| `startup.clearScrollback` | Clear Scrollback on Startup | boolean | `false` | Erase the terminal's saved scrollback when veyyon starts, so the session begins on an empty terminal. This also erases what was on screen before you launched, such as your shell history and any command output, and it cannot be undone. Off still starts you on a clear screen; it just leaves your history reachable by scrolling up. |
 | `startup.setupWizard` | Setup Wizard | boolean | `true` | Run onboarding on first install only (updates never re-run it). |
 | `startup.checkUpdate` | Check for Updates | boolean | `true` | Check for Veyyon updates on startup. |
 | `marketplace.autoUpdate` | Marketplace Auto-Update | enum | `notify` | Check for plugin updates on startup. Values: `off`, `notify`, `auto`. |
@@ -674,6 +675,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `defaultProfile` | Default Profile | string | `default` | Profile used when no --profile flag or VEYYON_PROFILE is set. Stored in ~/.veyyon/config.yml. Use the profile name (`default` clears the override). Stored machine-wide, not per profile. |
+| `onboardingVersion` | Onboarding Version | number | `0` | Setup generation this machine has already completed. Stored in ~/.veyyon/config.yml, so switching profile or working directory never re-runs onboarding. Stored machine-wide, not per profile. |
 
 ### Credentials
 
@@ -688,4 +690,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-329 settings.
+331 settings.
