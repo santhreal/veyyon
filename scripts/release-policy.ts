@@ -15,12 +15,16 @@
  * Publication is a second, independent proof: the immutable tag ref, the release commit sha, the
  * controller run identity, and the bot actor must all agree before CI may publish bytes.
  *
+ * A cut carries a third proof, independent of both: the version being tagged is documented. See
+ * {@link assertReleaseIsDocumented}.
+ *
  * Both decisions are pure functions of facts gathered separately, so every branch is tested without a
  * network: see `scripts/release-policy.test.ts`.
  */
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseUnreleasedBullets } from "./require-changelog.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -336,4 +340,106 @@ export async function verifyPublishedAssetManifest(tag: string): Promise<void> {
 		.filter(Boolean);
 	assertPublishedReleaseAssets(names);
 	console.log(`verified ${names.length} exact release assets for ${tag}`);
+}
+
+// =============================================================================
+// The third proof: the version being cut is documented
+// =============================================================================
+
+/**
+ * The one changelog every published version is read back from.
+ *
+ * `website/tools/gen-changelog.mjs` reconciles published GitHub releases against this single file and
+ * `reportUndocumentedReleases` fails the website build for any published version missing from it. A
+ * package changelog that documents nothing costs nothing; this one costs a public, undocumented
+ * release, so it is the file a cut may never leave behind.
+ */
+export const RELEASE_NOTES_CHANGELOG = "packages/coding-agent/CHANGELOG.md";
+
+/** One package changelog, read as data so the gate is decided without a filesystem. */
+export interface PackageChangelog {
+	/** Repo-relative path, e.g. `packages/coding-agent/CHANGELOG.md`. */
+	path: string;
+	/** The owning package's manifest name, so an error names who has to write the entry. */
+	name: string;
+	content: string;
+}
+
+/** True when the changelog already carries a `## [version]` heading, dated or not. */
+function hasVersionSection(content: string, version: string): boolean {
+	return new RegExp(String.raw`^## \[${version.replaceAll(".", String.raw`\.`)}\]`, "m").test(content);
+}
+
+const MISSING_NOTES_FAILURE = `${RELEASE_NOTES_CHANGELOG} is missing; the release notes and the changelog page are built from it.`;
+
+function label(changelog: PackageChangelog): string {
+	return `${changelog.name} (${changelog.path})`;
+}
+
+function changelogGateError(version: string, headline: string, failures: readonly string[]): Error {
+	return new Error(
+		`${headline}\n- ${failures.join("\n- ")}\n` +
+			`Write the entry under "## [Unreleased]" in ${RELEASE_NOTES_CHANGELOG}, land it on main, then dispatch ` +
+			`the release again. There is no skip marker for this: a release publishes npm packages, a git tag and a ` +
+			`GitHub release under ${version}, and every one of them is a promise that the changelog says what changed.`,
+	);
+}
+
+/**
+ * Why this version may not be cut yet, one line per offending package.
+ *
+ * Decided BEFORE the tree is touched, off the changelogs as they sit on main. An empty
+ * `## [Unreleased]` used to be silently acceptable: `applyReleaseToChangelog` wrote no version section
+ * and the cut proceeded, which is how v1.0.44, v1.0.45 and v1.0.46 each shipped with no entry at all.
+ *
+ * A version already carrying its own section passes: re-cutting a version whose bump commit landed
+ * before a failed publish is a supported recovery, and its entry is already written.
+ */
+export function undocumentedReleaseFailures(version: string, changelogs: readonly PackageChangelog[]): string[] {
+	const notes = changelogs.find(changelog => changelog.path === RELEASE_NOTES_CHANGELOG);
+	if (!notes) return [MISSING_NOTES_FAILURE];
+	if (hasVersionSection(notes.content, version)) return [];
+	if (parseUnreleasedBullets(notes.content).length > 0) return [];
+	return [`${label(notes)} has no bullet under "## [Unreleased]" and no "## [${version}]" section.`];
+}
+
+/** Refuse to cut a version nothing describes, before any file is written. */
+export function assertReleaseIsDocumented(version: string, changelogs: readonly PackageChangelog[]): void {
+	const failures = undocumentedReleaseFailures(version, changelogs);
+	if (failures.length === 0) return;
+	throw changelogGateError(version, `Release ${version} has nothing to document:`, failures);
+}
+
+/**
+ * Why a prepared tree may not become a tag, one line per offending package.
+ *
+ * The post-condition of the changelog roll, checked against what the roll actually wrote. Two ways it
+ * can be wrong: the version has no section in the changelog the release notes are built from, or a
+ * package still holds bullets under `## [Unreleased]` (the roll found nothing to anchor to and left
+ * real entries stranded, which is how `packages/hashline` once published a phantom version).
+ */
+export function preparedReleaseChangelogFailures(version: string, changelogs: readonly PackageChangelog[]): string[] {
+	const failures: string[] = [];
+	const notes = changelogs.find(changelog => changelog.path === RELEASE_NOTES_CHANGELOG);
+	if (!notes) {
+		failures.push(MISSING_NOTES_FAILURE);
+	} else if (!hasVersionSection(notes.content, version)) {
+		failures.push(`${label(notes)} has no "## [${version}]" section after the changelog roll.`);
+	}
+	for (const changelog of changelogs) {
+		const stranded = parseUnreleasedBullets(changelog.content);
+		if (stranded.length === 0) continue;
+		failures.push(
+			`${label(changelog)} still has ${stranded.length} bullet(s) under "## [Unreleased]" after the ` +
+				`changelog roll, so they would ship inside ${version} undocumented.`,
+		);
+	}
+	return failures;
+}
+
+/** Refuse to commit, tag or push a prepared tree whose changelogs do not describe the version. */
+export function assertPreparedReleaseChangelogs(version: string, changelogs: readonly PackageChangelog[]): void {
+	const failures = preparedReleaseChangelogFailures(version, changelogs);
+	if (failures.length === 0) return;
+	throw changelogGateError(version, `Release ${version} was prepared without a changelog entry:`, failures);
 }
