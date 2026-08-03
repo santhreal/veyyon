@@ -843,24 +843,98 @@ completions_enable_hint() {
 }
 
 # A sidecar receipt distinguishes files this installer owns from unrelated files
-# that happen to use the same name. It is deliberately content-stable: binary
-# self-updates replace the executable in place, but ownership of that path does
-# not change. Legacy installs are adopted only through installer-specific
-# evidence below, then receive receipts on the next install.
+# that happen to use the same name.
+#
+# A receipt vouches for a FILE, never for a path. The v1 receipt recorded only
+# the constant `veyyon-installer-v1`, so it said "this installer owns whatever is
+# at this path". Deleting an installed binary by hand left the sidecar behind,
+# and the next unrelated file to take that name inherited the ownership: the
+# installer would overwrite, and uninstall would delete, a file it never wrote.
+#
+# v2 records the identity of the artifact it was written for and is accepted only
+# while the artifact still matches:
+#
+#     veyyon-installer-v2
+#     <kind> sha256:<64 lowercase hex>
+#
+# The identity is a sha256 rather than size-plus-inode. Inode numbers are reused
+# as soon as the slot is freed, which is exactly the moment this check has to be
+# right, and a same-size replacement defeats the size half; a digest defeats
+# both. The cost is one hash of the artifact at install and at uninstall, never
+# in a loop, on a script that already hashes the same file to verify its
+# download.
+#
+# `kind` is `file` for a regular file, whose identity is its bytes, or `link` for
+# a symlink, whose identity is the TARGET STRING it holds. A symlink's own
+# content IS that string, and it is the whole of what the installer created. The
+# destination is deliberately not hashed: `--source` links at a git checkout that
+# changes on every `git pull`, which is how a source install updates, so hashing
+# through the link would mark every source install foreign the first time it
+# advanced.
 owner_marker_for() {
     _owner_path="$1"
     printf '%s/.%s.veyyon-owner' "$(dirname "$_owner_path")" "$(basename "$_owner_path")"
 }
 
-artifact_has_owner_receipt() {
-    _owner_marker=$(owner_marker_for "$1")
-    [ -f "$_owner_marker" ] && grep -Fqx 'veyyon-installer-v1' "$_owner_marker" 2>/dev/null
+# The identity line for the artifact currently at `$1`, or nothing.
+#
+# Fails rather than guessing when the digest cannot be computed: no sha256 tool,
+# an unreadable file, a path that is neither a symlink nor a regular file. Every
+# caller treats that failure as "not ours", so an ownership question this cannot
+# answer is answered NO.
+artifact_identity() {
+    _identity_path="$1"
+    if [ -L "$_identity_path" ]; then
+        _identity_target=$(readlink "$_identity_path" 2>/dev/null) || return 1
+        _identity_hash=$(sha256_of_text "$_identity_target") || return 1
+        printf 'link sha256:%s' "$_identity_hash"
+        return 0
+    fi
+    [ -f "$_identity_path" ] || return 1
+    _identity_hash=$(sha256_of_file "$_identity_path") || return 1
+    printf 'file sha256:%s' "$_identity_hash"
 }
 
+# The identity a v2 receipt records for `$1`. Fails when there is no sidecar, or
+# when the sidecar is a v1 receipt, which records no identity at all.
+#
+# The recorded line is returned verbatim and compared as a string. A truncated or
+# corrupted sidecar therefore cannot match a computed identity, so it reads as
+# "not ours" without needing a second validator here.
+owner_receipt_identity() {
+    _receipt_file=$(owner_marker_for "$1")
+    [ -f "$_receipt_file" ] || return 1
+    awk '
+        NR == 1 && $0 != "veyyon-installer-v2" { exit 1 }
+        NR == 2 { print; exit }
+    ' "$_receipt_file" 2>/dev/null
+}
+
+artifact_has_owner_receipt() {
+    _receipt_recorded=$(owner_receipt_identity "$1") || return 1
+    [ -n "$_receipt_recorded" ] || return 1
+    _receipt_actual=$(artifact_identity "$1") || return 1
+    [ "$_receipt_recorded" = "$_receipt_actual" ]
+}
+
+# Whether `$1` carries a v1 receipt: the pre-identity format, which vouched for
+# the path alone. It proves an installer once wrote SOMETHING here and nothing
+# about what is here now, so it never decides ownership on its own. It exists so
+# the gates below can say why they refused.
+artifact_has_legacy_owner_receipt() {
+    _legacy_receipt=$(owner_marker_for "$1")
+    [ -f "$_legacy_receipt" ] && grep -Fqx 'veyyon-installer-v1' "$_legacy_receipt" 2>/dev/null
+}
+
+# Writing a receipt REQUIRES the identity. A receipt that recorded no identity
+# would be a v1 receipt under a v2 name, and would reopen the hole for that
+# artifact permanently. Callers already treat a failure here as fatal for the
+# binary and as a warning for completions.
 mark_artifact_owned() {
     _owner_marker=$(owner_marker_for "$1")
+    _owner_identity=$(artifact_identity "$1") || return 1
     _owner_tmp="$_owner_marker.$$"
-    printf '%s\n' 'veyyon-installer-v1' > "$_owner_tmp" || return 1
+    printf '%s\n%s\n' 'veyyon-installer-v2' "$_owner_identity" > "$_owner_tmp" || return 1
     mv -f "$_owner_tmp" "$_owner_marker" || { rm -f "$_owner_tmp"; return 1; }
 }
 
@@ -880,6 +954,12 @@ legacy_completion_is_ours() {
     esac
 }
 
+# A completion file needs no authoritative-mismatch rule, because its fallback is
+# already an identity check: `legacy_completion_is_ours` reads the file and
+# accepts only a Veyyon registration for that shell. A stranger's file inheriting
+# an orphaned receipt fails both halves. This is also what keeps `veyyon update`
+# from breaking completions it legitimately regenerates: the rewritten file no
+# longer matches its receipt, but it is still unmistakably ours by content.
 completion_artifact_is_ours() {
     artifact_has_owner_receipt "$1" || legacy_completion_is_ours "$1" "$2"
 }
@@ -890,10 +970,31 @@ completion_artifact_is_ours() {
 binary_artifact_is_ours() {
     _binary_path="$1"
     artifact_has_owner_receipt "$_binary_path" && return 0
+    # A v2 receipt that does NOT match is this installer's own record that the
+    # file it wrote here is gone, so it settles the question and the structural
+    # evidence below is not consulted. Falling through would undo the fix: the
+    # `vey -> veyyon` symlink survives any replacement of the file beside it, so
+    # it would hand ownership of a stranger's file straight back.
+    owner_receipt_identity "$_binary_path" >/dev/null 2>&1 && return 1
     if [ -L "$_binary_path" ]; then
         [ "$(readlink "$_binary_path" 2>/dev/null)" = "$(src_dir)/packages/coding-agent/scripts/$BIN_NAME" ] && return 0
     fi
     alias_in_dir_is_ours "$(dirname "$_binary_path")"
+}
+
+# Why a refusal happened, for the gates that have to explain themselves. An
+# ownership question the installer could not decide must never resolve to "yes",
+# but it must not be reported as "this is somebody else's file" either.
+binary_refusal_reason() {
+    if ! have_sha256_tool; then
+        printf 'no sha256 tool (sha256sum/shasum) is available, so its ownership receipt cannot be checked; install coreutils or perl, then re-run'
+    elif owner_receipt_identity "$1" >/dev/null 2>&1; then
+        printf 'it has changed since this installer wrote it, so the file there now is not the one it installed'
+    elif artifact_has_legacy_owner_receipt "$1"; then
+        printf 'its ownership receipt predates recorded file identity and cannot be confirmed against the file that is there now'
+    else
+        printf 'it was not created by this installer'
+    fi
 }
 
 binary_path_is_replaceable() {
@@ -1242,7 +1343,7 @@ finalize_binary() {
     [ -s "$tmp" ] || die "the binary staged at $tmp is empty — refusing to install; $empty_hint"
     if ! binary_path_is_replaceable "$dest"; then
         rm -f "$tmp"
-        die "refusing to replace $dest because it was not created by this installer; move it aside, then re-run the installer"
+        die "refusing to replace $dest because $(binary_refusal_reason "$dest"); move it aside, then re-run the installer"
     fi
     chmod +x "$tmp" || die "could not make $tmp executable"
     mv -f "$tmp" "$dest" || die "could not move binary into place at $dest"
@@ -1270,14 +1371,47 @@ parse_sha256_sidecar() {
         }'
 }
 
+# Whether this machine can compute a sha256 at all. Both the download integrity
+# gate and the ownership receipts need one, so a machine that cannot verify a
+# download also cannot decide who owns a file, and both say so rather than
+# proceeding on a guess.
+have_sha256_tool() {
+    has sha256sum || has shasum
+}
+
+# Lowercased sha256 of stdin, or a failure. One tool dispatch for the whole
+# script: the download gate below and the ownership receipts above both read it,
+# so the two can never disagree about what a digest is.
+#
+# The digest is pulled back out with parse_sha256_sidecar because `sha256sum`
+# emits exactly the sidecar shape ("<64-hex>  <name>"), which means the strict
+# 64-hex check already lives in one place. A tool that printed a diagnostic
+# instead of a digest therefore fails here rather than returning a non-digest.
+sha256_of_stdin() {
+    if has sha256sum; then _sha_output=$(sha256sum 2>/dev/null)
+    elif has shasum; then _sha_output=$(shasum -a 256 2>/dev/null)
+    else return 1
+    fi
+    _sha_digest=$(parse_sha256_sidecar "$_sha_output")
+    [ -n "$_sha_digest" ] || return 1
+    printf '%s' "$_sha_digest"
+}
+
+sha256_of_file() {
+    sha256_of_stdin < "$1"
+}
+
+sha256_of_text() {
+    printf '%s' "$1" | sha256_of_stdin
+}
+
 verify_sha256() {
     file="$1"; expected="$2"
-    if has sha256sum; then actual=$(sha256sum "$file" | awk '{print $1}')
-    elif has shasum; then actual=$(shasum -a 256 "$file" | awk '{print $1}')
-    else die "no sha256 tool (sha256sum/shasum) available — cannot verify download integrity (use --no-verify to override)"; fi
+    have_sha256_tool || die "no sha256 tool (sha256sum/shasum) available — cannot verify download integrity (use --no-verify to override)"
+    actual=$(sha256_of_file "$file") || die "could not compute the sha256 of $file — refusing to install an unverified binary"
     # Both sides lowercased: hex case carries no meaning, and a case-sensitive
-    # comparison reports a byte-identical file as a tampered binary.
-    actual=$(printf '%s' "$actual" | tr 'A-F' 'a-f')
+    # comparison reports a byte-identical file as a tampered binary. sha256_of_file
+    # already lowercases its side.
     expected=$(printf '%s' "$expected" | tr 'A-F' 'a-f')
     [ "$actual" = "$expected" ] || die "checksum mismatch (expected $expected, got $actual) — refusing to install a tampered binary"
     ok "verified sha256"
@@ -1448,6 +1582,18 @@ do_uninstall() {
                 rm -f "$d/$BIN_NAME" && { remove_owner_receipt "$d/$BIN_NAME"; ok "removed $d/$BIN_NAME"; removed=1; }
             else
                 ok "left $d/$BIN_NAME alone (not created by this installer)"
+                # "not created by this installer" is the honest summary but not
+                # always the whole story: a receipt that no longer matches, or a
+                # machine with no sha256 tool, both land here and both leave the
+                # user with a file to delete by hand for a reason the line above
+                # does not give them.
+                if [ "$d" = "$canonical_dir" ] && ! have_sha256_tool; then
+                    warn "    no sha256 tool (sha256sum/shasum) is available, so its ownership receipt could not be checked; install coreutils or perl and re-run to have uninstall reclaim it"
+                elif [ "$d" = "$canonical_dir" ] && owner_receipt_identity "$d/$BIN_NAME" >/dev/null 2>&1; then
+                    warn "    it carries this installer's receipt but has changed since, so the file there now is not the one that was installed"
+                elif [ "$d" = "$canonical_dir" ] && artifact_has_legacy_owner_receipt "$d/$BIN_NAME"; then
+                    warn "    its receipt predates recorded file identity, so ownership of the file there now cannot be confirmed"
+                fi
             fi
         fi
         # A compiled binary probes for a staged addon next to itself; clear any
@@ -1850,7 +1996,7 @@ install_via_bun() {
         || die "failed to provision the native addon (bun --cwd=packages/natives run ensure)"
     mkdir -p "$(install_dir)"
     if ! binary_path_is_replaceable "$(install_dir)/$BIN_NAME"; then
-        die "refusing to replace $(install_dir)/$BIN_NAME because it was not created by this installer; move it aside, then re-run with --source"
+        die "refusing to replace $(install_dir)/$BIN_NAME because $(binary_refusal_reason "$(install_dir)/$BIN_NAME"); move it aside, then re-run with --source"
     fi
     ln -sfn "$launcher" "$(install_dir)/$BIN_NAME" || die "failed to link $BIN_NAME into $(install_dir)"
     mark_artifact_owned "$(install_dir)/$BIN_NAME" || die "installed the source launcher but could not record its ownership; check permissions and re-run the installer"

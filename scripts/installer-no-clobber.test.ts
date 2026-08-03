@@ -302,3 +302,91 @@ describe("the closing advice names a command that is actually ours", () => {
 		expect(installSh).not.toContain('say "  1. Launch in any repository: $ALIAS_NAME"');
 	});
 });
+
+/**
+ * A receipt that vouches for a path is a clobber waiting to happen.
+ *
+ * The sidecar both installers write beside an artifact used to hold one constant
+ * line, so it said "this installer owns whatever is at this path". Delete the
+ * installed binary by hand and the sidecar stayed; the next unrelated file to
+ * take that name inherited the ownership, and the installer would overwrite it
+ * while uninstall deleted it. That is precisely the data loss this file exists to
+ * prevent, reached through the ownership record instead of through the alias.
+ *
+ * POSIX behaviour runs for real in scripts/install-tests/functions.test.sh and
+ * end to end in scripts/installer-environment-matrix.test.ts. This is the
+ * cross-platform half: pwsh does not exist on the Linux dev host, so the only way
+ * to keep install.ps1 from drifting back to a path-only receipt between Windows
+ * CI runs is to read the rule out of its source.
+ */
+describe("the ownership receipt identifies the file, on both platforms", () => {
+	it("both installers record an identity rather than a constant", () => {
+		expect(installSh).toContain("veyyon-installer-v2");
+		expect(installPs1).toContain("veyyon-installer-v2");
+		// The identity is derived from the artifact, so the writer must compute it
+		// at write time instead of emitting a fixed body.
+		expect(installSh).toContain('_owner_identity=$(artifact_identity "$1") || return 1');
+		expect(installPs1).toContain("$identity = Get-ArtifactIdentity $Path");
+	});
+
+	it("both refuse to write a receipt they cannot back with an identity", () => {
+		// A receipt recording nothing would be the old format under the new name,
+		// and would reopen the hole for that artifact permanently. Fail closed.
+		const shMark = fnBody(installSh, "mark_artifact_owned() {", "\n}\n");
+		expect(shMark).toContain("|| return 1");
+		const ps1Mark = fnBody(installPs1, "function Set-ArtifactOwned {", "\n}\n");
+		expect(ps1Mark).toContain("its SHA256 identity could not be computed");
+	});
+
+	it("both accept a receipt only while the artifact still matches it", () => {
+		const shCheck = fnBody(installSh, "artifact_has_owner_receipt() {", "\n}\n");
+		expect(shCheck).toContain('_receipt_actual=$(artifact_identity "$1")');
+		expect(shCheck).toContain('[ "$_receipt_recorded" = "$_receipt_actual" ]');
+		const ps1Check = fnBody(installPs1, "function Test-ArtifactHasOwnerReceipt {", "\n}\n");
+		expect(ps1Check).toContain("$actual = Get-ArtifactIdentity $Path");
+		expect(ps1Check).toContain("return $recorded -eq $actual");
+	});
+
+	it("a receipt that cannot match outranks the structural evidence beside it", () => {
+		// `vey` and `vey.cmd` survive any replacement of the binary next to them,
+		// so an installer that fell through to them on a mismatch would hand a
+		// stranger's file straight back and the identity check would buy nothing.
+		expect(installSh).toContain('owner_receipt_identity "$_binary_path" >/dev/null 2>&1 && return 1');
+		expect(installPs1).toContain("if (Get-OwnerReceiptIdentity $Path) { return $false }");
+	});
+
+	it("neither installer still treats the pre-identity body as ownership", () => {
+		// The exact shape that was wrong, so it cannot come back by copy-paste. The
+		// v1 body is still READ, by the helper that explains a refusal, so this
+		// pins the two decision points rather than the string.
+		const shCheck = fnBody(installSh, "artifact_has_owner_receipt() {", "\n}\n");
+		expect(shCheck).not.toContain("veyyon-installer-v1");
+		const ps1Check = fnBody(installPs1, "function Test-ArtifactHasOwnerReceipt {", "\n}\n");
+		expect(ps1Check).not.toContain("veyyon-installer-v1");
+	});
+
+	it("both explain a refusal instead of calling every unowned file foreign", () => {
+		// "not created by this installer" sends a user hunting for a second veyyon
+		// that does not exist when the real answer is that their binary changed, or
+		// that no sha256 tool is available to check. An undecidable question still
+		// resolves to NO; it just says which question it could not answer.
+		expect(installSh).toContain("binary_refusal_reason() {");
+		expect(installSh).toContain('die "refusing to replace $dest because $(binary_refusal_reason "$dest")');
+		expect(installPs1).toContain("function Get-BinaryRefusalReason {");
+		expect(installPs1).toContain(
+			'throw "refusing to replace $TargetPath because $(Get-BinaryRefusalReason $TargetPath)',
+		);
+	});
+
+	it("a symlink is identified by its target, not by what the target holds", () => {
+		// `--source` links at a git checkout that changes on every `git pull`,
+		// which is how a source install updates. Hashing through the link would
+		// mark every source install foreign the first time it advanced.
+		const shIdentity = fnBody(installSh, "artifact_identity() {", "\n}\n");
+		expect(shIdentity).toContain('_identity_target=$(readlink "$_identity_path" 2>/dev/null)');
+		expect(shIdentity).toContain("printf 'link sha256:%s'");
+		const ps1Identity = fnBody(installPs1, "function Get-ArtifactIdentity {", "\n}\n");
+		expect(ps1Identity).toContain("if ($item.LinkType)");
+		expect(ps1Identity).toContain('return "link sha256:$hash"');
+	});
+});

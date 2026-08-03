@@ -67,8 +67,22 @@ $MinimumBunVersion = "1.3.14"
 $Script:AliasIsOurs = $false
 
 # A sidecar receipt distinguishes artifacts this installer owns from unrelated
-# files that happen to use the same name. The receipt is content-stable because
-# self-update replaces the executable without changing ownership of the path.
+# files that happen to use the same name.
+#
+# A receipt vouches for a FILE, never for a path. The v1 receipt recorded only
+# the constant `veyyon-installer-v1`, so deleting an installed binary by hand
+# left the sidecar behind and the next unrelated file to take that name
+# inherited the ownership. v2 records the identity of the artifact it was
+# written for and is accepted only while that artifact still matches:
+#
+#     veyyon-installer-v2
+#     <kind> sha256:<64 lowercase hex>
+#
+# Byte-identical to what install.sh writes, LF-terminated, so one shared
+# definition in scripts/install-tests/installer-artifacts.ts describes both
+# platforms. Mirrors `owner_marker_for`, `artifact_identity`,
+# `owner_receipt_identity`, `artifact_has_owner_receipt` and
+# `mark_artifact_owned` there.
 function Get-OwnerMarkerPath {
     param([string]$Path)
     $parent = Split-Path -Parent $Path
@@ -76,7 +90,61 @@ function Get-OwnerMarkerPath {
     return (Join-Path $parent ".$leaf.veyyon-owner")
 }
 
+# The identity line for the artifact currently at $Path, or $null.
+#
+# `link` covers a reparse point, whose identity is the TARGET STRING it holds
+# rather than the bytes it resolves to; `file` covers everything else and is
+# identified by its bytes. Returns $null rather than guessing when the hash
+# cannot be computed, and every caller reads $null as "not ours", so an
+# ownership question this cannot answer is answered NO.
+function Get-ArtifactIdentity {
+    param([string]$Path)
+    try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        if ($item.LinkType) {
+            $target = @($item.Target)[0]
+            if (-not $target) { return $null }
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$target)
+            $sha = [System.Security.Cryptography.SHA256]::Create()
+            try { $hash = [System.BitConverter]::ToString($sha.ComputeHash($bytes)).Replace("-", "").ToLower() }
+            finally { $sha.Dispose() }
+            return "link sha256:$hash"
+        }
+        if ($item.PSIsContainer) { return $null }
+        return "file sha256:$((Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower())"
+    } catch {
+        return $null
+    }
+}
+
+# The identity a v2 receipt records for $Path. $null when there is no sidecar, or
+# when the sidecar is a v1 receipt, which records no identity at all.
+function Get-OwnerReceiptIdentity {
+    param([string]$Path)
+    $marker = Get-OwnerMarkerPath $Path
+    if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { return $null }
+    $lines = @(Get-Content -LiteralPath $marker -TotalCount 2 -ErrorAction SilentlyContinue)
+    if ($lines.Count -lt 2) { return $null }
+    if ("$($lines[0])".Trim() -ne "veyyon-installer-v2") { return $null }
+    $identity = "$($lines[1])".Trim()
+    if (-not $identity) { return $null }
+    return $identity
+}
+
 function Test-ArtifactHasOwnerReceipt {
+    param([string]$Path)
+    $recorded = Get-OwnerReceiptIdentity $Path
+    if (-not $recorded) { return $false }
+    $actual = Get-ArtifactIdentity $Path
+    if (-not $actual) { return $false }
+    return $recorded -eq $actual
+}
+
+# Whether $Path carries a v1 receipt: the pre-identity format, which vouched for
+# the path alone. It proves an installer once wrote SOMETHING here and nothing
+# about what is here now, so it never decides ownership on its own. It exists so
+# the gates below can say why they refused.
+function Test-ArtifactHasLegacyOwnerReceipt {
     param([string]$Path)
     $marker = Get-OwnerMarkerPath $Path
     if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { return $false }
@@ -84,12 +152,22 @@ function Test-ArtifactHasOwnerReceipt {
     return "$content".Trim() -eq "veyyon-installer-v1"
 }
 
+# Writing a receipt REQUIRES the identity. A receipt recording none would be a v1
+# receipt under a v2 name and would reopen the hole for that artifact
+# permanently, so an identity that cannot be computed throws here rather than
+# claiming an ownership it cannot prove.
 function Set-ArtifactOwned {
     param([string]$Path)
     $marker = Get-OwnerMarkerPath $Path
     $staging = "$marker.$PID"
+    $identity = Get-ArtifactIdentity $Path
+    if (-not $identity) {
+        throw "could not record installer ownership for $Path (its SHA256 identity could not be computed)"
+    }
     try {
-        Set-Content -LiteralPath $staging -Value "veyyon-installer-v1" -Encoding ASCII -NoNewline
+        # WriteAllText rather than Set-Content: the receipt must be the same bytes
+        # install.sh writes, and Set-Content would end the lines with CRLF here.
+        [System.IO.File]::WriteAllText($staging, "veyyon-installer-v2`n$identity`n")
         Move-Item -LiteralPath $staging -Destination $marker -Force
     } catch {
         Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue
@@ -102,6 +180,11 @@ function Remove-ArtifactOwnerReceipt {
     Remove-Item -LiteralPath (Get-OwnerMarkerPath $Path) -Force -ErrorAction SilentlyContinue
 }
 
+# A completion script needs no authoritative-mismatch rule, because its fallback
+# is already an identity check: it reads the file and accepts only a generated
+# Veyyon completion header. A stranger's file inheriting an orphaned receipt
+# fails both halves, and a script `veyyon update` legitimately regenerates still
+# passes the second.
 function Test-CompletionArtifactIsOurs {
     param([string]$Path)
     if (Test-ArtifactHasOwnerReceipt $Path) { return $true }
@@ -113,9 +196,29 @@ function Test-CompletionArtifactIsOurs {
 function Test-BinaryArtifactIsOurs {
     param([string]$Path)
     if (Test-ArtifactHasOwnerReceipt $Path) { return $true }
+    # A v2 receipt that does NOT match is this installer's own record that the
+    # file it wrote here is gone, so it settles the question and the shim
+    # evidence below is not consulted. Falling through would undo the fix: the
+    # `vey.cmd` shim survives any replacement of the binary beside it, so it
+    # would hand ownership of a stranger's file straight back.
+    if (Get-OwnerReceiptIdentity $Path) { return $false }
     $aliasShim = Join-Path (Split-Path -Parent $Path) "$AliasName.cmd"
     return (Test-Path -LiteralPath $aliasShim -PathType Leaf) -and
         (Test-AliasShimIsOurs -ShimPath $aliasShim -BinDir (Split-Path -Parent $Path))
+}
+
+# Why a refusal happened, for the gates that have to explain themselves. An
+# ownership question the installer could not decide must never resolve to "yes",
+# but it must not be reported as "this is somebody else's file" either.
+function Get-BinaryRefusalReason {
+    param([string]$Path)
+    if (Get-OwnerReceiptIdentity $Path) {
+        return "it has changed since this installer wrote it, so the file there now is not the one it installed"
+    }
+    if (Test-ArtifactHasLegacyOwnerReceipt $Path) {
+        return "its ownership receipt predates recorded file identity and cannot be confirmed against the file that is there now"
+    }
+    return "it was not created by this installer"
 }
 
 function Test-BinaryPathIsReplaceable {
@@ -311,7 +414,7 @@ function Move-StagedBinaryIntoPlace {
     }
     if ((Test-Path -LiteralPath $TargetPath) -and -not (Test-BinaryArtifactIsOurs $TargetPath)) {
         Remove-Item $StagingPath -Force -ErrorAction SilentlyContinue
-        throw "refusing to replace $TargetPath because it was not created by this installer; move it aside, then re-run the installer"
+        throw "refusing to replace $TargetPath because $(Get-BinaryRefusalReason $TargetPath); move it aside, then re-run the installer"
     }
     if (-not (Test-Path $TargetPath)) {
         Move-InstallItemWithRetry -SourcePath $StagingPath -DestinationPath $TargetPath
@@ -1405,7 +1508,7 @@ function Install-FromSource {
     # Windows analogue of the Unix symlink into the source tree).
     $shim = Join-Path $InstallDir "$BinName.cmd"
     if (-not (Test-BinaryPathIsReplaceable $shim)) {
-        throw "refusing to replace $shim because it was not created by this installer; move it aside, then re-run with -Source"
+        throw "refusing to replace $shim because $(Get-BinaryRefusalReason $shim); move it aside, then re-run with -Source"
     }
     Set-Content -Path $shim -Value "@echo off`r`n`"$launcher`" %*" -Encoding ASCII
     Set-ArtifactOwned $shim

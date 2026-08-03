@@ -1750,6 +1750,136 @@ check "finalize_binary moved the temp file away" "$( [ -e "$good" ] && echo pres
 check "finalize_binary made the dest executable" "$( [ -x "$dest" ] && echo yes || echo no )" "yes"
 check "finalize_binary records ownership of the installed path" "$(artifact_has_owner_receipt "$dest" && echo yes || echo no)" "yes"
 
+# --- ownership receipts identify the FILE, not the path ---
+# The receipt used to hold one constant line, so it vouched for a path: delete an
+# installed binary by hand and the sidecar stayed, and the next unrelated file to
+# take that name inherited the ownership. install would overwrite it and
+# uninstall would delete it. A v2 receipt records a sha256 of the artifact it was
+# written for and is accepted only while that artifact still matches.
+own="$SANDBOX/ownership"
+mkdir -p "$own"
+printf 'installed veyyon bytes\n' > "$own/$BIN_NAME"
+mark_artifact_owned "$own/$BIN_NAME"
+own_digest=$(sha256_of_file "$own/$BIN_NAME")
+check "mark_artifact_owned records the version and the file's digest" \
+  "$(cat "$own/.$BIN_NAME.veyyon-owner")" "$(printf 'veyyon-installer-v2\nfile sha256:%s' "$own_digest")"
+check "the receipt is accepted for the file it was written for" \
+  "$(artifact_has_owner_receipt "$own/$BIN_NAME" && echo yes || echo no)" "yes"
+check "a receipted binary is replaceable" \
+  "$(binary_path_is_replaceable "$own/$BIN_NAME" && echo yes || echo no)" "yes"
+
+# Re-stamping after the installer rewrites the file is what keeps reinstall working.
+printf 'reinstalled veyyon bytes\n' > "$own/$BIN_NAME"
+check "a rewritten file no longer matches the receipt it was given" \
+  "$(artifact_has_owner_receipt "$own/$BIN_NAME" && echo yes || echo no)" "no"
+mark_artifact_owned "$own/$BIN_NAME"
+check "re-stamping makes the rewritten file ours again" \
+  "$(artifact_has_owner_receipt "$own/$BIN_NAME" && echo yes || echo no)" "yes"
+
+# THE DEFECT. A receipt orphaned by a hand-deleted binary must not license a
+# clobber of whatever the user puts there next.
+orphan="$SANDBOX/orphan-v1"
+mkdir -p "$orphan"
+printf 'veyyon-installer-v1\n' > "$orphan/.$BIN_NAME.veyyon-owner"
+printf '#!/bin/sh\necho USER OWN SCRIPT\n' > "$orphan/$BIN_NAME"
+chmod 0751 "$orphan/$BIN_NAME"
+check "an orphaned v1 receipt is no longer ownership on its own" \
+  "$(binary_path_is_replaceable "$orphan/$BIN_NAME" && echo yes || echo no)" "no"
+check "the refusal names the pre-identity receipt rather than blaming the user" \
+  "$(binary_refusal_reason "$orphan/$BIN_NAME" | grep -c 'predates recorded file identity')" "1"
+
+# The same orphan under a v2 receipt, with our own alias beside it. `vey` is
+# installer-specific evidence that survives any replacement of the file next to
+# it, so a receipt we wrote and cannot match has to settle the question BEFORE
+# the alias is consulted, or the alias hands a stranger's file straight back.
+orphan2="$SANDBOX/orphan-v2"
+mkdir -p "$orphan2"
+printf 'installed veyyon bytes\n' > "$orphan2/$BIN_NAME"
+mark_artifact_owned "$orphan2/$BIN_NAME"
+ln -s "$orphan2/$BIN_NAME" "$orphan2/$ALIAS_NAME"
+printf '#!/bin/sh\necho USER OWN SCRIPT\n' > "$orphan2/$BIN_NAME"
+check "our alias is still the one this installer created" \
+  "$(alias_in_dir_is_ours "$orphan2" && echo yes || echo no)" "yes"
+check "a receipt that cannot match beats the alias evidence beside it" \
+  "$(binary_artifact_is_ours "$orphan2/$BIN_NAME" && echo yes || echo no)" "no"
+check "the refusal says the file changed rather than that it is foreign" \
+  "$(binary_refusal_reason "$orphan2/$BIN_NAME" | grep -c 'changed since this installer wrote it')" "1"
+
+# A file nobody claimed is still nobody's, and still says so in those words.
+check "a file with no receipt at all is foreign" \
+  "$(binary_artifact_is_ours "$SANDBOX/ownership-none" && echo yes || echo no)" "no"
+printf 'someone elses tool\n' > "$SANDBOX/ownership-none"
+check "the refusal for an unclaimed file keeps its original wording" \
+  "$(binary_refusal_reason "$SANDBOX/ownership-none")" "it was not created by this installer"
+
+# COMPATIBILITY. Installs up to v1.0.46 wrote a receipt with no identity in it.
+# Refusing all of them would strand every existing user, so such an install is
+# adopted through the same installer-specific evidence that adopts a pre-receipt
+# install, and the contact upgrades the sidecar to v2. That upgrade is what shuts
+# the window above for that machine.
+legacy="$SANDBOX/legacy-v1"
+mkdir -p "$legacy"
+printf 'installed veyyon bytes\n' > "$legacy/$BIN_NAME"
+ln -s "$legacy/$BIN_NAME" "$legacy/$ALIAS_NAME"
+printf 'veyyon-installer-v1\n' > "$legacy/.$BIN_NAME.veyyon-owner"
+check "a v1 receipt is recognized as the pre-identity format" \
+  "$(artifact_has_legacy_owner_receipt "$legacy/$BIN_NAME" && echo yes || echo no)" "yes"
+check "a v1 receipt carries no identity of its own" \
+  "$(artifact_has_owner_receipt "$legacy/$BIN_NAME" && echo yes || echo no)" "no"
+check "an existing install is still adopted so upgrades keep working" \
+  "$(binary_path_is_replaceable "$legacy/$BIN_NAME" && echo yes || echo no)" "yes"
+mark_artifact_owned "$legacy/$BIN_NAME"
+check "the adopting install upgrades the receipt to v2" \
+  "$(artifact_has_legacy_owner_receipt "$legacy/$BIN_NAME" && echo yes || echo no)" "no"
+check "and the upgraded receipt now identifies the file" \
+  "$(artifact_has_owner_receipt "$legacy/$BIN_NAME" && echo yes || echo no)" "yes"
+
+# A symlink is identified by the TARGET STRING it holds, not by the bytes it
+# resolves to. The `--source` launcher points into a git checkout that changes on
+# every `git pull`, which is how a source install updates, so hashing through the
+# link would mark every source install foreign the first time it advanced.
+srclink="$SANDBOX/source-launcher"
+mkdir -p "$srclink/checkout"
+printf 'launcher v1\n' > "$srclink/checkout/launcher"
+ln -s "$srclink/checkout/launcher" "$srclink/$BIN_NAME"
+mark_artifact_owned "$srclink/$BIN_NAME"
+check "a symlink records a link identity, not a file identity" \
+  "$(sed -n 2p "$srclink/.$BIN_NAME.veyyon-owner" | cut -d' ' -f1)" "link"
+printf 'launcher v2 after a git pull\n' > "$srclink/checkout/launcher"
+check "advancing the checkout the link points at leaves the link ours" \
+  "$(artifact_has_owner_receipt "$srclink/$BIN_NAME" && echo yes || echo no)" "yes"
+ln -sfn "$srclink/checkout/somebody-elses" "$srclink/$BIN_NAME"
+check "repointing the link at another target is no longer ours" \
+  "$(artifact_has_owner_receipt "$srclink/$BIN_NAME" && echo yes || echo no)" "no"
+
+# Removing the receipt returns the file to nobody, which is what stops uninstall
+# from leaving an orphan armed for the next file to take the name.
+remove_owner_receipt "$own/$BIN_NAME"
+check "removing the receipt returns the file to foreign ownership" \
+  "$(artifact_has_owner_receipt "$own/$BIN_NAME" && echo yes || echo no)" "no"
+
+# FAIL CLOSED. Ownership cannot be decided without a sha256 tool, and an
+# undecidable ownership question must never resolve to "yes". `has` is shadowed
+# rather than PATH being stripped, because stripping PATH would break `dirname`
+# and `awk` too and the refusal would prove nothing about this branch.
+notool="$SANDBOX/no-sha-tool"
+mkdir -p "$notool"
+printf 'installed veyyon bytes\n' > "$notool/$BIN_NAME"
+mark_artifact_owned "$notool/$BIN_NAME"
+ln -s "$notool/$BIN_NAME" "$notool/$ALIAS_NAME"
+check "without a sha256 tool a receipted file is not claimed" "$( (
+  has() { case "$1" in (sha256sum|shasum) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  artifact_has_owner_receipt "$notool/$BIN_NAME" && echo yes || echo no ) )" "no"
+check "without a sha256 tool the overwrite gate refuses" "$( (
+  has() { case "$1" in (sha256sum|shasum) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  binary_path_is_replaceable "$notool/$BIN_NAME" && echo yes || echo no ) )" "no"
+check "and the refusal names the missing tool instead of blaming the file" "$( (
+  has() { case "$1" in (sha256sum|shasum) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  binary_refusal_reason "$notool/$BIN_NAME" | grep -c 'no sha256 tool' ) )" "1"
+check "without a sha256 tool no receipt is written at all" "$( (
+  has() { case "$1" in (sha256sum|shasum) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
+  mark_artifact_owned "$notool/$BIN_NAME" && echo wrote || echo refused ) )" "refused"
+
 # --- install_local: the --local path gets the same cleanup and honesty as --binary ---
 # install_binary traps EXIT/INT/TERM to remove its staging file; install_local
 # had no trap at all, so an interrupted or failed local install left a

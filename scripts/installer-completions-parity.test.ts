@@ -211,8 +211,31 @@ describe("every sidecar reader agrees on what a digest is", () => {
 	it("install.sh compares both sides lowercased, so hex case is never tampering", () => {
 		// sha256sum emits lowercase; a sidecar written in uppercase hex described
 		// the same bytes and was refused as a tampered binary.
-		expect(installSh).toContain(`actual=$(printf '%s' "$actual" | tr 'A-F' 'a-f')`);
+		//
+		// The two sides are lowercased in different places, and both are pinned
+		// here. `expected` comes off the wire, so verify_sha256 folds it itself.
+		// `actual` is computed locally and now comes back through
+		// `sha256_of_file` -> `sha256_of_stdin` -> `parse_sha256_sidecar`, whose
+		// `tolower` is the SAME fold the sidecar reader applies, which is why the
+		// old explicit `tr` on `actual` was removed rather than kept as a second
+		// spelling. Pinning the call chain keeps that route asserted: reintroduce a
+		// raw `sha256sum | awk` in verify_sha256 and this fails, because the fold
+		// would then be gone with nothing naming its absence.
+		expect(installSh).toContain(`actual=$(sha256_of_file "$file")`);
+		expect(installSh).toContain('_sha_digest=$(parse_sha256_sidecar "$_sha_output")');
 		expect(installSh).toContain(`expected=$(printf '%s' "$expected" | tr 'A-F' 'a-f')`);
+	});
+
+	it("one sha256 implementation serves the download gate and the ownership receipts", () => {
+		// Ownership receipts record a digest of the artifact they describe, so the
+		// installer now hashes for two reasons. Two tool dispatches would be two
+		// chances to disagree about what a digest is, on a machine where only one
+		// of sha256sum/shasum exists. `verify_sha256` reads the shared helper, and
+		// so does `artifact_identity`.
+		expect(installSh).toContain("sha256_of_stdin() {");
+		expect(installSh).toContain(`sha256_of_file() {\n    sha256_of_stdin < "$1"\n}`);
+		expect(installSh).toContain('_identity_hash=$(sha256_of_file "$_identity_path") || return 1');
+		expect(installSh).toContain('_identity_hash=$(sha256_of_text "$_identity_target") || return 1');
 	});
 
 	it("both point at the one TypeScript owner rather than describing their own rule", () => {

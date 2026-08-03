@@ -36,6 +36,7 @@ import {
 	type EnvironmentCase,
 	INSTALLED_VERSION,
 	type InstallRun,
+	installSh,
 	PATH_MARKER,
 	pathLineFor,
 	rcTargetFor,
@@ -46,7 +47,7 @@ import {
 	UPDATED_STAND_IN_BINARY,
 	UPDATED_VERSION,
 } from "./install-tests/environment-matrix-harness";
-import { OWNER_RECEIPT_BODY, ownerReceiptFor } from "./install-tests/installer-artifacts";
+import { ownerReceiptBodyFor, ownerReceiptFor } from "./install-tests/installer-artifacts";
 
 /**
  * Exactly what a finished install owns in the install directory, sorted: the
@@ -247,14 +248,23 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 		expect(run.stdout.toString().trim()).toBe(`veyyon/${UPDATED_VERSION}`);
 	});
 
-	it("leaves no backup or staged download in the install directory, and keeps the ownership receipt", () => {
+	it("leaves no backup or staged download in the install directory, and re-stamps the ownership receipt", () => {
 		/**
 		 * CONTRACT: after an update the install directory holds exactly the three
-		 * files a finished install owns and nothing else. The staged `.new` is a
-		 * full copy of the binary and the backup is another; both sit here under
-		 * names one keystroke from the real one, and the sweep is what reclaims
-		 * them. The receipt beside the binary must SURVIVE the swap, because
-		 * `do_uninstall` refuses to remove a binary that has none.
+		 * files a finished install owns and nothing else, and the receipt beside the
+		 * binary describes the binary that is NOW there. The staged `.new` is a full
+		 * copy of the binary and the backup is another; both sit here under names
+		 * one keystroke from the real one, and the sweep is what reclaims them.
+		 *
+		 * The receipt must SURVIVE the swap, because `do_uninstall` refuses to
+		 * remove a binary that has none. It must also be REWRITTEN by it. The
+		 * receipt records a sha256 of the file it was written for, and the installer
+		 * accepts it only while the file still matches, so a swap that left the old
+		 * receipt in place would make every self-updated install unrecognisable to
+		 * its own installer: `curl | sh` would refuse to replace the binary and
+		 * `--uninstall` would refuse to remove it. Asserting the body against the
+		 * binary on disk is what proves `replaceBinaryForUpdate` re-stamped rather
+		 * than merely left the file alone.
 		 *
 		 * The previous form filtered the listing for `.bak`, `.new` and any
 		 * `.veyyon.` prefix, then required the result to be empty. That was right
@@ -271,7 +281,43 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 		 * which a filter over leftovers cannot see at all.
 		 */
 		expect(fs.readdirSync(install.installDir).sort()).toEqual(INSTALL_DIR_CONTENTS);
-		expect(fs.readFileSync(ownerReceiptFor(binary), "utf8")).toBe(OWNER_RECEIPT_BODY);
+		expect(fs.readFileSync(ownerReceiptFor(binary), "utf8")).toBe(ownerReceiptBodyFor(binary));
+	});
+
+	it("leaves a binary install.sh still recognizes as its own", () => {
+		/**
+		 * The receipt assertion above is this suite's own arithmetic. This asks the
+		 * other side of the contract, in its own words: after a real swap, does the
+		 * shipped installer still believe it owns this binary?
+		 *
+		 * That question is the whole reason the updater rewrites the sidecar. The
+		 * installer accepts a receipt only while the file still matches it, so an
+		 * updater that left the old one behind would make `curl | sh` refuse to
+		 * replace the binary and `--uninstall` refuse to remove it, for every user
+		 * who has ever auto-updated. Nothing in the updater's own suites can see
+		 * that; it is only visible by running install.sh's gate against the file
+		 * the updater produced.
+		 *
+		 * `VEYYON_INSTALL_SOURCED=1` loads the functions without running the
+		 * installer, so this reads the state and changes nothing the assertions
+		 * below still depend on. The paths go through the environment rather than
+		 * argv because a sourced install.sh parses `"$@"` as its own command line
+		 * and would reject them as bad flags.
+		 */
+		const gate = Bun.spawnSync(
+			["sh", "-c", '. "$VEYYON_GATE_SH"; binary_artifact_is_ours "$VEYYON_GATE_BIN" && echo OURS || echo FOREIGN'],
+			{
+				env: {
+					...install.env,
+					VEYYON_INSTALL_SOURCED: "1",
+					VEYYON_GATE_SH: installSh,
+					VEYYON_GATE_BIN: binary,
+				},
+				stdout: "pipe",
+				stderr: "pipe",
+			},
+		);
+		expect(`${gate.stdout.toString()}${gate.stderr.toString()}`.trim()).toBe("OURS");
 	});
 
 	if (rcRel !== undefined && rcBefore !== undefined) {
@@ -351,7 +397,15 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 		// the UPDATE left, and a rollback run while the suite is still being built
 		// would undo all of it before the first assertion executed.
 		let rollback: UpdateRun;
+		// The receipt as the UPDATE left it, captured before the rollback can touch
+		// it. Asserting the rollback's receipt against the binary alone would pass
+		// on an updater that never rewrote the sidecar at all: the install, the
+		// update and the rollback all bracket the same two versions, so a frozen
+		// receipt still describes the binary a rollback restores. Comparing against
+		// this proves it MOVED.
+		let receiptAfterUpdate: string;
 		beforeAll(() => {
+			receiptAfterUpdate = fs.readFileSync(ownerReceiptFor(binary), "utf8");
 			rollback = runUpdate(install, INSTALLED_VERSION);
 		});
 
@@ -372,14 +426,22 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 			});
 		}
 
-		it("leaves the rc and the install directory as clean as the update did, receipt intact", () => {
+		it("leaves the rc and the install directory as clean as the update did, receipt re-stamped", () => {
 			/**
 			 * CONTRACT: two swaps in a row leave the install directory holding
-			 * exactly what one finished install owns, and leave the rc untouched.
+			 * exactly what one finished install owns, leave the rc untouched, and
+			 * leave a receipt describing the binary the rollback put back.
 			 * Back-to-back swaps are where litter accumulates, because each stages a
 			 * temp and moves a backup aside, and the second is the one that finds
-			 * the first's leftovers in its way. A rollback must also carry the
-			 * ownership receipt through, or rolling back is what breaks uninstall.
+			 * the first's leftovers in its way.
+			 *
+			 * The receipt half is the direction nobody exercises by hand. A rollback
+			 * that restored the old binary and left the receipt describing the new
+			 * one is the same defect as a forward swap that never re-stamped, with
+			 * the arrow reversed, and it lands the user on a binary their own
+			 * installer will not replace or remove. Comparing the body against the
+			 * file on disk catches both directions with one assertion, and the
+			 * assertion above proves the bytes really did go back.
 			 *
 			 * The previous form filtered the listing for `.bak`, `.new` and a
 			 * `.veyyon.` prefix and required nothing to match. That caught the
@@ -388,7 +450,8 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 			 * not express: unexpected new entries, and a MISSING receipt.
 			 */
 			expect(fs.readdirSync(install.installDir).sort()).toEqual(INSTALL_DIR_CONTENTS);
-			expect(fs.readFileSync(ownerReceiptFor(binary), "utf8")).toBe(OWNER_RECEIPT_BODY);
+			expect(fs.readFileSync(ownerReceiptFor(binary), "utf8")).toBe(ownerReceiptBodyFor(binary));
+			expect(fs.readFileSync(ownerReceiptFor(binary), "utf8")).not.toBe(receiptAfterUpdate);
 			if (rcRel !== undefined && rcBefore !== undefined) {
 				expect(fs.readFileSync(rcTargetFor(testCase, rcRel, install.home), "utf8")).toBe(rcBefore);
 			}
