@@ -1879,20 +1879,157 @@ check "the lookup asks for headers only" \
 check "and still follows the redirect, which is where the answer is" \
     "$(curl_args_of_lookup | grep -c -- 'L')" "1"
 
-# --- release_tag_exists: a bad --ref is named as a bad ref ---
-# Asking for a tag that does not exist and asking for a tag with no build for
-# your platform are the same curl failure on the asset URL, and two very
-# different things to be told. The tag page answers the first question directly.
-check "a reachable tag page means the tag exists" \
-    "$( ( curl() { return 0; }; release_tag_exists v1.0.0; echo $? ) )" "0"
-check "a 404 on the tag page means it does not" \
-    "$( ( curl() { return 22; }; if release_tag_exists v0.0.0-nope; then echo exists; else echo absent; fi ) )" "absent"
-check "the existence check asks for headers only too" \
-    "$( ( curl() { printf '%s\n' "$*" > "$SANDBOX/exists-args"; }
-  release_tag_exists v1.0.0 >/dev/null 2>&1
-  grep -c -- '-fsSI' "$SANDBOX/exists-args" ) )" "1"
-check "the check is silent on both paths" \
-    "$( ( curl() { printf 'noise\n'; return 0; }; release_tag_exists v1.0.0 ) )" ""
+# --- release_tag_state: a git tag is not a release ----------------------------
+# THE BUG THIS PINS. The probe used to HEAD `/releases/tag/<tag>` and read
+# GitHub's 200 as "this release is published". GitHub renders that page for a
+# BARE GIT TAG with no release object, and for a tag whose only release is an
+# unpublished draft. So `--ref v1.0.39` walked straight past this check and died
+# at the asset download with "download failed (veyyon-linux-x64 not published for
+# this release?)": it blamed the platform binary, and told the user to build from
+# source, for a release that was never cut. 29 of the 39 tags in this repository
+# were in that state, and the rollback runbook pins `--ref vX.Y.Z`, so the
+# misdirection landed on people already having a bad day.
+#
+# The old stub here could not see any of it: it answered 200 to everything, which
+# is exactly what the real tag page does, so the bug was invisible to the suite
+# that was supposed to cover it. The stub below answers per tag the way
+# github.com really answers, on both endpoints, so a probe that goes back to the
+# tag page fails these.
+
+# What github.com reports for each tag.
+#   released    a published release with downloadable assets
+#   unreleased  a real git tag with no release object, OR one whose release is
+#               an unpublished draft. github.com cannot tell those two apart from
+#               outside, and the installer does not need it to: neither has
+#               anything to download.
+#   missing     no such tag
+#
+# v1.0.46, v1.0.39 and v1.0.42 are real tags of this repository and their states
+# here are the ones the live endpoint returns. v1.0.37 and v2.0.0-rc.1 are the
+# fixtures the `v`-spelling cases further down are written against.
+veytag_state() { # <tag>
+    case "$1" in
+        (v1.0.46|v1.0.37|v2.0.0-rc.1) printf 'released\n' ;;
+        (v1.0.39) printf 'unreleased\n' ;;  # bare tag, no release object at all
+        (v1.0.42) printf 'unreleased\n' ;;  # release exists but is still a draft
+        (*)       printf 'missing\n' ;;
+    esac
+}
+
+# Stands in for curl, answering as github.com does. Records every tag looked up
+# in $VEYTAG_LOG when that is set, which is how the "no second guess" cases below
+# are asserted at all.
+fake_github_curl() {
+    _fgc_url=""
+    for _fgc_arg in "$@"; do
+        case "$_fgc_arg" in (https://*) _fgc_url="$_fgc_arg" ;; esac
+    done
+    case "$_fgc_url" in
+        (*/releases/expanded_assets/*) _fgc_tag="${_fgc_url##*/expanded_assets/}" ;;
+        (*/releases/tag/*)             _fgc_tag="${_fgc_url##*/releases/tag/}" ;;
+        (*) return 22 ;;
+    esac
+    if [ -n "${VEYTAG_LOG:-}" ]; then printf '%s\n' "$_fgc_tag" >> "$VEYTAG_LOG"; fi
+    _fgc_state=$(veytag_state "$_fgc_tag")
+    if [ "$_fgc_state" = missing ]; then return 22; fi
+    case "$_fgc_url" in
+        (*/releases/tag/*)
+            # The 200 that started all this: a tag page renders for a tag with no
+            # release just as happily as for one with.
+            printf 'the tag page, which github.com serves for an unreleased tag too\n'
+            return 0
+            ;;
+    esac
+    # The asset-list fragment. Only a published release carries download hrefs;
+    # a bare tag and a draft get the two source archives and nothing else.
+    if [ "$_fgc_state" = released ]; then
+        printf '<a href="/%s/releases/download/%s/veyyon-linux-x64">veyyon-linux-x64</a>\n' "$REPO" "$_fgc_tag"
+    fi
+    printf '<a href="/%s/archive/refs/tags/%s.zip">Source code (zip)</a>\n' "$REPO" "$_fgc_tag"
+    return 0
+}
+
+tag_state_of() { # <tag> -> the numeric state, run against the fake github
+    ( curl() { fake_github_curl "$@"; }
+      _tso=0; release_tag_state "$1" || _tso=$?; printf '%s\n' "$_tso" )
+}
+
+check "a published release with assets is installable" "$(tag_state_of v1.0.46)" "0"
+check "a bare git tag with no release is NOT (the 200 that fooled the old probe)" \
+    "$(tag_state_of v1.0.39)" "2"
+check "an unpublished draft is NOT either" "$(tag_state_of v1.0.42)" "2"
+check "a tag that does not exist is a THIRD, distinct answer" \
+    "$(tag_state_of v9.9.9)" "1"
+# The whole point of the three-way answer: "no release here" and "no such tag"
+# must not collapse back into one, because they need different things said.
+check "the unreleased tag and the missing tag do not report the same state" \
+    "$( [ "$(tag_state_of v1.0.39)" = "$(tag_state_of v9.9.9)" ] && echo collapsed || echo distinct )" \
+    "distinct"
+# It must ask the endpoint that can actually tell those apart. The tag page
+# cannot, which is the defect; a refactor back to it would pass every check that
+# only asserted a boolean.
+check "the probe asks the asset-list fragment, not the tag page" \
+    "$( ( curl() { printf '%s\n' "$*" > "$SANDBOX/state-args"; return 22; }
+  release_tag_state v1.0.46 >/dev/null 2>&1
+  grep -c 'releases/expanded_assets/v1.0.46' "$SANDBOX/state-args" ) )" "1"
+check "and it does not ask the tag page at all" \
+    "$(grep -c 'releases/tag/' "$SANDBOX/state-args")" "0"
+# Every network call in this installer retries a transient failure; a probe that
+# quietly did not would turn one dropped packet into "that release does not exist".
+check "the probe retries like every other fetch" \
+    "$(grep -c -- '--retry ' "$SANDBOX/state-args")" "1"
+# The caller reads stdout as the tag, so the probe must not print the page it read.
+check "the probe is silent on every path" \
+    "$( ( curl() { printf 'noise\n'; return 0; }; release_tag_state v1.0.46 ) )" ""
+
+# --- the message a --ref failure actually puts on screen ----------------------
+# The verdict above is only half the fix: the three states have to reach the user
+# as three different sentences. Drives the real install_binary against the fake
+# github, so these assert the text a person sees, not an internal return code.
+ref_failure_message() { # <ref>
+    _rfm_home="$SANDBOX/ref-msg"
+    mkdir -p "$_rfm_home"
+    ( uname() {
+          case "$1" in
+              (-s) printf 'Linux\n' ;;
+              (-m) printf 'x86_64\n' ;;
+              (*) return 1 ;;
+          esac
+      }
+      require_supported_libc() { return 0; }
+      curl() { fake_github_curl "$@"; }
+      HOME="$_rfm_home"
+      VEYYON_INSTALL_DIR="$_rfm_home/bin"
+      IS_TTY=0
+      REF="$1"
+      install_binary ) 2>&1
+}
+
+check "a tag with no release is told that, in those words" \
+    "$(ref_failure_message v1.0.39 | grep -c 'no release is published for tag v1.0.39')" "1"
+# The regression itself: the old message named the platform asset and sent the
+# user to build from source for a release that does not exist.
+check "and the refusal does not blame the platform binary" \
+    "$(ref_failure_message v1.0.39 | grep -c 'veyyon-linux-x64')" "0"
+check "it points at the releases page" \
+    "$(ref_failure_message v1.0.39 | grep -c "https://github.com/$REPO/releases")" "1"
+check "and it offers --source for the ref they actually asked for" \
+    "$(ref_failure_message v1.0.39 | grep -c -- '--source --ref v1.0.39')" "1"
+check "a draft release reads the same way to the user" \
+    "$(ref_failure_message v1.0.42 | grep -c 'no release is published for tag v1.0.42')" "1"
+# A tag nobody ever created is a typo, not an unreleased version, and keeps the
+# message it always had.
+check "a tag that does not exist is still named as a missing tag" \
+    "$(ref_failure_message v9.9.9 | grep -c 'release tag not found: v9.9.9')" "1"
+check "and a missing tag is not described as an unreleased one" \
+    "$(ref_failure_message v9.9.9 | grep -c 'no release is published')" "0"
+# The case the old message was written for, which is genuinely different and must
+# survive: the release IS published, this one platform's asset is not in it.
+# Collapsing this into the message above is how the defect stayed hidden.
+check "a published release missing THIS platform's asset still blames the asset" \
+    "$(ref_failure_message v1.0.46 | grep -c 'veyyon-linux-x64 not published for this release')" "1"
+check "and that one is not reported as a missing release" \
+    "$(ref_failure_message v1.0.46 | grep -c 'no release is published')" "0"
 
 # --- require_curl: a missing fetch tool is not a network failure ---------------
 # Every fetch here is curl, so without it the first request fails the way an
@@ -1924,36 +2061,67 @@ check "the refusal does not blame the network" \
 # resolved to, so the version the install proceeds with is the version on screen.
 # Nothing wider is attempted: installing a version nobody named is worse than
 # refusing.
-check "an exact tag is returned as given, with no second lookup" \
-    "$( ( curl() { return 0; }; resolve_ref_tag v1.0.37 ) )" "v1.0.37"
+# The spellings resolve_ref_tag actually asked github.com about, in order.
+# Asserting WHICH spellings, not just how many lookups, is what makes the "no
+# second guess" contract testable.
+ref_lookups() { # <ref>
+    ( VEYTAG_LOG="$SANDBOX/ref-lookups"; : > "$VEYTAG_LOG"
+      curl() { fake_github_curl "$@"; }
+      resolve_ref_tag "$1" >/dev/null 2>&1
+      tr '\n' ',' < "$VEYTAG_LOG" | sed 's/,$//' )
+}
+resolve_ref() { # <ref> -> the tag it resolved to, or nothing
+    ( curl() { fake_github_curl "$@"; }; resolve_ref_tag "$1" )
+}
+ref_status() { # <ref> -> 0 resolved, 2 tag with no release, 1 no such tag
+    ( curl() { fake_github_curl "$@"; }
+      _rs=0; resolve_ref_tag "$1" >/dev/null 2>&1 || _rs=$?; printf '%s\n' "$_rs" )
+}
+
+check "an exact tag is returned as given" "$(resolve_ref v1.0.37)" "v1.0.37"
+check "an exact tag costs one lookup" "$(ref_lookups v1.0.37)" "v1.0.37"
 check "a bare version resolves to the published v-prefixed tag" \
-    "$( ( curl() { case "$*" in (*releases/tag/v1.0.37) return 0 ;; (*) return 22 ;; esac; }
-  resolve_ref_tag 1.0.37 ) )" "v1.0.37"
+    "$(resolve_ref 1.0.37)" "v1.0.37"
+check "the bare version was tried first, then the v form" \
+    "$(ref_lookups 1.0.37)" "1.0.37,v1.0.37"
 check "a bare version whose v-tag does not exist is still refused" \
-    "$( ( curl() { return 22; }; if resolve_ref_tag 1.0.37; then echo resolved; else echo refused; fi ) )" "refused"
+    "$( ( curl() { fake_github_curl "$@"; }
+  if resolve_ref_tag 9.9.9; then echo resolved; else echo refused; fi ) )" "refused"
 check "a v-prefixed tag that does not exist is refused without a second guess" \
-    "$( ( curl() { printf 'x\n' >> "$SANDBOX/ref-tries"; return 22; }
-  : > "$SANDBOX/ref-tries"; resolve_ref_tag v9.9.9 >/dev/null 2>&1
-  wc -l < "$SANDBOX/ref-tries" | tr -d ' ' ) )" "1"
+    "$(ref_lookups v9.9.9)" "v9.9.9"
+# A tag that exists with no release must come back as its OWN status, or the
+# caller cannot tell the user why it refused.
+check "a tag with no release yields the tag that does exist, not a resolution" \
+    "$(resolve_ref v1.0.39)" "v1.0.39"
+check "and reports the unreleased status, not the missing-tag one" \
+    "$(ref_status v1.0.39)" "2"
+check "a tag that does not exist reports the missing-tag status" \
+    "$(ref_status v9.9.9)" "1"
+# Both spellings of an unreleased version are unreleased, and the more specific
+# refusal is the one that survives.
+check "a bare unreleased version tries both spellings" \
+    "$(ref_lookups 1.0.39)" "1.0.39,v1.0.39"
+check "and still reports unreleased rather than missing" "$(ref_status 1.0.39)" "2"
 # A branch or a commit is not a version, so no `v` is bolted onto it: `vmain` and
-# `vdeadbeef` are tags nobody has, and asking for them is two wasted round trips
+# `vdeadbeef` are tags nobody has, and asking for them is a wasted round trip
 # before the same refusal.
-check "a branch name gets no v-prefixed second try" \
-    "$( ( curl() { printf 'x\n' >> "$SANDBOX/ref-branch"; return 22; }
-  : > "$SANDBOX/ref-branch"; resolve_ref_tag main >/dev/null 2>&1
-  wc -l < "$SANDBOX/ref-branch" | tr -d ' ' ) )" "1"
+check "a branch name gets no v-prefixed second try" "$(ref_lookups main)" "main"
 check "a commit sha gets no v-prefixed second try" \
-    "$( ( curl() { printf 'x\n' >> "$SANDBOX/ref-sha"; return 22; }
-  : > "$SANDBOX/ref-sha"; resolve_ref_tag d83e6259 >/dev/null 2>&1
-  wc -l < "$SANDBOX/ref-sha" | tr -d ' ' ) )" "1"
+    "$(ref_lookups d83e6259)" "d83e6259"
 # A prerelease spelled without the v is still a version.
 check "a prerelease version resolves too" \
-    "$( ( curl() { case "$*" in (*releases/tag/v2.0.0-rc.1) return 0 ;; (*) return 22 ;; esac; }
-  resolve_ref_tag 2.0.0-rc.1 ) )" "v2.0.0-rc.1"
+    "$(resolve_ref 2.0.0-rc.1)" "v2.0.0-rc.1"
 # The refusal path must print nothing: the caller reads stdout as the tag, so a
 # stray line would be installed as a version.
-check "the refusal prints no tag" \
-    "$( ( curl() { return 22; }; resolve_ref_tag 1.0.37 2>/dev/null ) )" ""
+check "the refusal prints no tag" "$(resolve_ref 9.9.9)" ""
+# The unreleased refusal DOES print, and must print the tag that exists rather
+# than what was typed: `--ref 1.0.39` is not a ref git can check out, so the
+# --source suggestion built from it would be more advice that cannot work.
+# Nothing installs it: only status 0 reaches the download.
+check "the unreleased refusal names the real tag, not the typed spelling" \
+    "$(resolve_ref 1.0.39)" "v1.0.39"
+check "and a bare unreleased version is told about the v-spelled tag" \
+    "$(ref_failure_message 1.0.39 | grep -c -- '--source --ref v1.0.39')" "1"
 
 # No API call is left anywhere in the script, which is the whole point: an
 # install must not be able to fail because somebody else on the same address
