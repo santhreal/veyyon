@@ -1,5 +1,7 @@
 import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
+import type { DiscoveryFailure, DiscoveryHooks } from "../discovery/failure";
 import { Effort } from "../effort";
 import { isGlm52ReasoningEffortModelId } from "../identity/family";
 import type { ModelManagerOptions } from "../model-manager";
@@ -68,24 +70,51 @@ function getThinkingConfig(modelId: string, capabilities: string[] | undefined):
 	}
 	return { mode: "effort", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] };
 }
+/**
+ * Read one model's capabilities and size caps from `/api/show`.
+ *
+ * `/api/tags` names the models; this call is what says whether one of them thinks, sees images, and how
+ * much context it actually has. A failure here therefore does not remove a model, it silently strips it:
+ * the caller falls back to `reasoning: false`, no thinking config, text-only input and an invented 128k
+ * window, all of which look exactly like a model that genuinely has none of those. That is why every
+ * branch reports instead of collapsing into one `undefined`, and why the model id is in the detail --
+ * this runs once per model, and there is no other way to tell which of them came back hollow.
+ */
 async function fetchShowMetadata(
 	baseUrl: string,
 	apiKey: string,
 	model: string,
 	fetchImpl: FetchImpl = discoveryFetch(),
+	onFailure?: DiscoveryHooks["onFailure"],
 ): Promise<OllamaShowResponse | undefined> {
-	const response = await fetchImpl(`${baseUrl}/api/show`, {
-		method: "POST",
-		headers: {
-			...createCloudHeaders(apiKey),
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify({ model }),
-	});
-	if (!response.ok) {
+	const url = `${baseUrl}/api/show`;
+	const report = (stage: DiscoveryFailure["stage"], detail: string): void =>
+		onFailure?.({ stage, url, detail: `${model}: ${detail}` });
+	let response: Response;
+	try {
+		response = await fetchImpl(url, {
+			method: "POST",
+			headers: {
+				...createCloudHeaders(apiKey),
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ model }),
+		});
+	} catch (error) {
+		// Unlike `/api/tags` this call gets no retry, so a single blip is the whole answer for this model.
+		report("request", errorMessage(error));
 		return undefined;
 	}
-	return (await response.json()) as OllamaShowResponse;
+	if (!response.ok) {
+		report("status", `HTTP ${response.status} ${response.statusText}`.trim());
+		return undefined;
+	}
+	try {
+		return (await response.json()) as OllamaShowResponse;
+	} catch (error) {
+		report("body", errorMessage(error));
+		return undefined;
+	}
 }
 
 export function ollamaCloudModelManagerOptions(
@@ -97,7 +126,7 @@ export function ollamaCloudModelManagerOptions(
 	const resolveReference = createReferenceResolver(providerReferences);
 	return {
 		providerId: "ollama-cloud",
-		fetchDynamicModels: async () => {
+		fetchDynamicModels: async hooks => {
 			if (!apiKey) {
 				return [];
 			}
@@ -120,12 +149,7 @@ export function ollamaCloudModelManagerOptions(
 					}
 					const providerReference = providerReferences.get(id);
 					const reference = resolveReference(id);
-					let metadata: OllamaShowResponse | undefined;
-					try {
-						metadata = await fetchShowMetadata(baseUrl, apiKey, id, config?.fetch);
-					} catch {
-						metadata = undefined;
-					}
+					const metadata = await fetchShowMetadata(baseUrl, apiKey, id, config?.fetch, hooks?.onFailure);
 					const capabilities = metadata?.capabilities;
 					const discoveredContextWindow = getContextWindow(metadata?.model_info);
 					// `/api/show` is the only trustworthy Ollama-owned source for size caps.
