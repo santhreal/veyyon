@@ -2,14 +2,16 @@
  * Render the Subagents HUD block the way the interactive mode draws it, so the effort badge can be
  * proved as an image rather than through a tmux capture.
  *
- * Pipe into `render-proof.ts` to rasterize on both grounds:
- *
- *   bun scripts/demos/render-subagent-hud-effort.ts --effort |
- *     bun scripts/demos/render-proof.ts --out /tmp/hud-after --width 100 --scale 3
- *
  * `--effort` appends the resolved effort to each agent's selector, which is what the executor now
  * does for an agent that inherits its effort instead of carrying an explicit `:level` suffix.
- * Without the flag it renders the previous behavior, so the pair is a differential.
+ * Without the flag it renders the previous behaviour, so the pair is a differential. Width comes
+ * from `--width=N` in that joined form, not `--width N`, and defaults to 100.
+ *
+ * Run:
+ *     bun scripts/demos/render-subagent-hud-effort.ts --effort --width=100 |
+ *       bun scripts/demos/render-proof.ts --out /tmp/hud-after --width 100 --scale 3
+ *
+ * Drop `--effort` and change the `--out` prefix for the before half of the pair.
  */
 
 import { renderSubagentHudLines } from "../../packages/coding-agent/src/modes/interactive-mode";

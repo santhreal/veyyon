@@ -1,3 +1,22 @@
+/**
+ * Bench for the cached model-browser projection.
+ *
+ * Projects every bundled model into settings-picker rows the slow way, building
+ * and sorting the list on each of 25 iterations, then the same 25 iterations
+ * through the cached projection, and reports both timings and the speedup. The
+ * cache is seeded first, exactly as opening the first settings picker does, so
+ * the measured arm is 25 warm hits rather than one build plus 24 hits.
+ *
+ * Timings alone would not notice the cache going stale, so it also compares the
+ * two row sets on the fields the picker actually draws: provider, id, selector,
+ * name, label colour, badge and badge colour, and the virtual label and detail.
+ * A projection that is fast and wrong throws instead of printing.
+ *
+ * Takes no arguments.
+ *
+ * Run:
+ *     bun scripts/demos/bench-model-selector.ts
+ */
 import type { Model } from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import type { ModelRegistry } from "../../packages/coding-agent/src/config/model-registry";

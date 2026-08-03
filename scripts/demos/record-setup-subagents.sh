@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
 # Record the setup wizard's default-vs-specialists selector differential.
+#
+# Runs the VHS tape for the Agents scene, which writes the two screenshots
+# assets/setup-subagents-default.png and assets/setup-subagents-specialists.png,
+# and stops with an error if either one is missing afterwards. It then renders the
+# two selector states through render-proof.ts, which regenerates the committed
+# grey and black PNG pairs that sit beside those screenshots.
+#
+# Needs vhs on PATH. VEYYON_DEMO_BUN overrides the interpreter and
+# VEYYON_DEMO_PROFILE the demo profile; both have defaults.
+#
+# Run:
+#     bash scripts/demos/record-setup-subagents.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
