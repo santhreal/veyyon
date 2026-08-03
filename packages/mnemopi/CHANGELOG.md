@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Embedding misconfiguration is reported through `reportEmbeddingFailure` instead of disabling semantic recall in silence. Two paths returned `null` before any reporting branch could run: a local embedding model name this build cannot load, and an API embedding model configured against the hosted endpoint with no key. Both left recall silently degraded to keyword-only, at no log level and with no warning, which is indistinguishable from a corpus that simply has no semantic matches. Each has a one-line remedy the operator can only apply once they know it is needed, and the local case is usually a typo in a model name.
+
 ## [16.3.9] - 2026-07-06
 
 ### Fixed
