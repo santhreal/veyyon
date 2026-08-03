@@ -219,7 +219,10 @@ describe("set_cwd renderer tolerates malformed wire data", () => {
 	});
 
 	it("renders with no details at all", () => {
-		expect(() => render("Body", { args: { path: "/work/beta" } })).not.toThrow();
-		expect(() => render("Summary", { args: {} })).not.toThrow();
+		// With nothing settled the card must still say what happened, not go
+		// blank: a reroot that did not move is a different event from a reroot
+		// whose result has not arrived, and both have to be readable.
+		expect(render("Body", { args: { path: "/work/beta" } })).toContain("unchanged");
+		expect(render("Summary", { args: {} })).toContain("cwd");
 	});
 });

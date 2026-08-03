@@ -147,7 +147,10 @@ describe("rewind renderer", () => {
 	});
 
 	it("renders with no result at all", () => {
-		expect(() => render("rewind", "Body", { args: {} })).not.toThrow();
-		expect(() => render("checkpoint", "Body", { args: {} })).not.toThrow();
+		// The pair must stay tellable apart from the badge alone. A rewind whose
+		// result never landed did NOT discard the intervening context, and a
+		// blank card would let a reader assume it did.
+		expect(render("rewind", "Body", { args: {} })).toContain("not rewound");
+		expect(render("checkpoint", "Body", { args: {} })).toContain("checkpoint");
 	});
 });

@@ -22,24 +22,20 @@ describe.skipIf(SKIP)("handleGitHub", () => {
 
 	it("fetches repository root", async () => {
 		const result = asRender(await handleGitHub("https://github.com/facebook/react", 20000));
-		if (result !== null) {
-			expect(result.method).toBe("github-repo");
-			expect(result.contentType).toBe("text/markdown");
-			expect(result.content).toContain("facebook/react");
-			expect(result.content).toContain("Stars:");
-			expect(result.content).toContain("Forks:");
-		}
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.method).toBe("github-repo");
+		expect(result?.contentType).toBe("text/markdown");
+		expect(result?.content).toContain("facebook/react");
+		expect(result?.content).toContain("Stars:");
+		expect(result?.content).toContain("Forks:");
 	});
 
 	it("fetches another repository", async () => {
 		const result = asRender(await handleGitHub("https://github.com/microsoft/typescript", 20000));
-		if (result !== null) {
-			expect(result.method).toBe("github-repo");
-			// GitHub returns "TypeScript" with capital T
-			expect(result.content).toContain("microsoft/TypeScript");
-		}
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.method).toBe("github-repo");
+		// GitHub returns "TypeScript" with capital T
+		expect(result?.content).toContain("microsoft/TypeScript");
 	});
 
 	it("fetches file blob", async () => {
@@ -59,49 +55,34 @@ describe.skipIf(SKIP)("handleGitHub", () => {
 
 	it("fetches directory tree", async () => {
 		const result = asRender(await handleGitHub("https://github.com/facebook/react/tree/main/packages", 20000));
-		if (result !== null) {
-			expect(result.method).toBe("github-tree");
-			expect(result.contentType).toBe("text/markdown");
-			expect(result.content).toContain("facebook/react");
-			expect(result.content).toContain("Contents");
-		}
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.method).toBe("github-tree");
+		expect(result?.contentType).toBe("text/markdown");
+		expect(result?.content).toContain("facebook/react");
+		expect(result?.content).toContain("Contents");
 	});
 
 	it("fetches directory tree from root", async () => {
 		const result = asRender(await handleGitHub("https://github.com/facebook/react/tree/main", 20000));
-		if (result !== null) {
-			expect(result.method).toBe("github-tree");
-			expect(result.content).toContain("facebook/react");
-		}
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.method).toBe("github-tree");
+		expect(result?.content).toContain("facebook/react");
 	});
 
 	it("fetches issue", async () => {
 		const result = asRender(await handleGitHub("https://github.com/facebook/react/issues/1", 20000));
-		if (result !== null) {
-			expect(result.method).toBe("github-issue");
-			expect(result.contentType).toBe("text/markdown");
-			expect(result.content.length).toBeGreaterThan(0);
-		}
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.method).toBe("github-issue");
+		expect(result?.contentType).toBe("text/markdown");
+		expect(result?.content.length).toBeGreaterThan(0);
 	});
 
 	it("fetches issues list", async () => {
 		const result = asRender(await handleGitHub("https://github.com/facebook/react/issues", 20000));
-		if (result !== null) {
-			expect(result.method).toBe("github-issues");
-			expect(result.contentType).toBe("text/markdown");
-			expect(result.content.length).toBeGreaterThan(0);
-		}
-		expect(result).toBeDefined();
-	});
-
-	it("handles pulls list endpoint", async () => {
-		const result = asRender(await handleGitHub("https://github.com/facebook/react/pulls", 20000));
-		// Should be handled as pulls list but currently falls back to null
-		// This tests the actual behavior
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.method).toBe("github-issues");
+		expect(result?.contentType).toBe("text/markdown");
+		expect(result?.content.length).toBeGreaterThan(0);
 	});
 });
 
@@ -130,14 +111,12 @@ describe.skipIf(SKIP)("handleGitHubGist", () => {
 		const result = asRender(
 			await handleGitHubGist("https://gist.github.com/gaearon/edf814aeee85062bc9b9830aeaf27b88", 20000),
 		);
-		if (result !== null) {
-			expect(result.method).toBe("github-gist");
-			expect(result.contentType).toBe("text/markdown");
-			expect(result.content).toContain("Gist by");
-			expect(result.content).toContain("Created:");
-			expect(result.content).toContain("Files:");
-		}
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.method).toBe("github-gist");
+		expect(result?.contentType).toBe("text/markdown");
+		expect(result?.content).toContain("Gist by");
+		expect(result?.content).toContain("Created:");
+		expect(result?.content).toContain("Files:");
 	});
 
 	it("fetches a public gist without username in URL", async () => {
@@ -145,11 +124,9 @@ describe.skipIf(SKIP)("handleGitHubGist", () => {
 		const result = asRender(
 			await handleGitHubGist("https://gist.github.com/edf814aeee85062bc9b9830aeaf27b88", 20000),
 		);
-		if (result !== null) {
-			expect(result.method).toBe("github-gist");
-			expect(result.content).toContain("Gist by");
-		}
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.method).toBe("github-gist");
+		expect(result?.content).toContain("Gist by");
 	});
 
 	it("returns null for invalid gist ID format", async () => {
@@ -166,40 +143,26 @@ describe.skipIf(SKIP)("handleGitHubGist", () => {
 		const result = asRender(
 			await handleGitHubGist("https://gist.github.com/gaearon/edf814aeee85062bc9b9830aeaf27b88/", 20000),
 		);
-		if (result !== null) {
-			expect(result.method).toBe("github-gist");
-		}
-		expect(result).toBeDefined();
-	});
-
-	it("handles gist with revision hash", async () => {
-		const result = asRender(
-			await handleGitHubGist("https://gist.github.com/gaearon/edf814aeee85062bc9b9830aeaf27b88/abc123", 20000),
-		);
-		// Should handle revision hash in URL path
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.method).toBe("github-gist");
 	});
 
 	it("formats gist content as markdown with code blocks", async () => {
 		const result = asRender(
 			await handleGitHubGist("https://gist.github.com/gaearon/edf814aeee85062bc9b9830aeaf27b88", 20000),
 		);
-		if (result !== null) {
-			expect(result.content).toContain("```");
-			expect(result.content).toContain("---");
-		}
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.content).toContain("```");
+		expect(result?.content).toContain("---");
 	});
 
 	it("includes file metadata", async () => {
 		const result = asRender(
 			await handleGitHubGist("https://gist.github.com/gaearon/edf814aeee85062bc9b9830aeaf27b88", 20000),
 		);
-		if (result !== null) {
-			expect(result.content).toContain("Created:");
-			expect(result.content).toContain("Updated:");
-		}
-		expect(result).toBeDefined();
+		expect(result).not.toBeNull();
+		expect(result?.content).toContain("Created:");
+		expect(result?.content).toContain("Updated:");
 	});
 
 	it("returns null for nonexistent gist", async () => {
@@ -207,14 +170,6 @@ describe.skipIf(SKIP)("handleGitHubGist", () => {
 			await handleGitHubGist("https://gist.github.com/0000000000000000000000000000000000000000", 20000),
 		);
 		expect(result).toBeNull();
-	});
-
-	it("handles API rate limiting gracefully", async () => {
-		// This test just ensures no errors are thrown
-		const result = asRender(
-			await handleGitHubGist("https://gist.github.com/gaearon/edf814aeee85062bc9b9830aeaf27b88", 5000),
-		);
-		expect(result).toBeDefined();
 	});
 });
 

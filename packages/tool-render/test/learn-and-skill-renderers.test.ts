@@ -200,8 +200,13 @@ describe("memory_edit renderer", () => {
 
 	/** Every one of these renders from args alone, so absent args must be survivable. */
 	it("renders with no arguments at all", () => {
-		expect(() => render("memory_edit", "Body", { args: {} })).not.toThrow();
-		expect(() => render("manage_skill", "Body", { args: {} })).not.toThrow();
-		expect(() => render("learn", "Body", { args: {} })).not.toThrow();
+		// Surviving means degrading to the identifying chip, not to a blank card.
+		expect(render("memory_edit", "Body", { args: {} })).toContain("memory");
+		expect(render("manage_skill", "Body", { args: {} })).toContain("skill");
+		// `learn` is deliberately the exception: with no lesson, no context and
+		// no skill there is nothing to expand, and the card head already names
+		// the tool. What it must never do is invent a skill chip for a call that
+		// wrote no skill, which would read as a skill having been created.
+		expect(render("learn", "Body", { args: {} })).toBe("");
 	});
 });

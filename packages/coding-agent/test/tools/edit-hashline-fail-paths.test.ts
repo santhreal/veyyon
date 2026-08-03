@@ -96,19 +96,23 @@ describe("edit hashline fail paths", () => {
 		await Bun.write(filePath, "keep\n");
 		const rel = path.relative(tmpDir, filePath);
 		const sess = session();
-		let threw = false;
+		// The edit tool may reject by throwing or by returning an error result.
+		// Both are acceptable; silently doing nothing is not, so capture whichever
+		// channel carried the rejection and assert on it.
+		let surfaced: string;
 		try {
-			await executeHashlineSingle(editOpts(sess, `[${rel}#dead]\nSWAP 1.=1:\n+NOPE\n`));
-		} catch {
-			threw = true;
+			surfaced = textOf(await executeHashlineSingle(editOpts(sess, `[${rel}#dead]\nSWAP 1.=1:\n+NOPE\n`)));
+		} catch (e) {
+			surfaced = e instanceof Error ? e.message : String(e);
 		}
-		// Either throws or returns an error result — disk must stay keep.
 		expect(await Bun.file(filePath).text()).toBe("keep\n");
-		// Prefer throw or error text.
-		if (!threw) {
-			// soft error path
-			expect(true).toBe(true);
-		}
+		// A stale tag that no-ops without saying so is the dangerous outcome: the
+		// model reads a bland result, believes the SWAP landed, and builds the next
+		// edit on content that never changed. The rejection names the tag it
+		// refused and points at a re-read.
+		expect(surfaced).toContain("Edit rejected");
+		expect(surfaced).toContain("#DEAD");
+		expect(surfaced).toContain("Re-read the file");
 	});
 
 	it("noop SWAP does not change disk bytes", async () => {

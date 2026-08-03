@@ -244,15 +244,6 @@ describe("argot bench — live certification (opt-in via ARGOT_BENCH_MODEL)", ()
 		},
 		300_000,
 	);
-
-	it("announces when the live certifier is skipped for lack of a model", () => {
-		if (!BENCH_MODEL) {
-			console.warn(
-				"[argot-bench] LIVE CERTIFIER SKIPPED: set ARGOT_BENCH_MODEL (e.g. google-antigravity/gemini-2.5-flash) to run the adoption bench. The deterministic seams above still ran.",
-			);
-		}
-		expect(true).toBe(true);
-	});
 });
 
 describe("applyArgotPhaseSettings — the phase-flip regression (ARG-BENCH-SETTINGS-SINGLETON)", () => {
