@@ -1763,9 +1763,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return {
 				authority,
 				broken,
-				repair:
-					`Open /secret manager and move the unreadable file aside, or run ${commands} in a client with ` +
-					`no terminal. Then store the secrets it held again.`,
+				repair: `Run ${commands} to move the unreadable file aside, then re-add the secrets it held with /secret add.`,
 			};
 		};
 
@@ -1870,7 +1868,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					if (settledForExpansion(text)) return;
 					const detail = reloadError === undefined ? "" : ` Reload failed: ${errorMessage(reloadError)}.`;
 					throw new Error(
-						`Secret expansion was refused: reloading the secret vault for ${normalizedCwd} did not produce a runtime that can resolve this text's placeholders, so no current value is available.${detail} Check what is stored in /secret manager, or with /secret list where there is no terminal, then retry.`,
+						`Secret expansion was refused: reloading the secret vault for ${normalizedCwd} did not produce a runtime that can resolve this text's placeholders, so no current value is available.${detail} Check the vault with /secret list, then retry.`,
 					);
 				},
 				assertFreshForExpansion: (text?: string) => {
@@ -1878,7 +1876,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					scheduleStaleSecretRefresh(normalizedCwd);
 					throw new Error(
 						path.resolve(sessionManager.getCwd()) === normalizedCwd
-							? "Secret expansion was refused because the vault on disk no longer matches the snapshot this request is pinned to, so a placeholder could resolve to a value the vault has already replaced. A reload is under way; retry this call, and check what is stored in /secret manager if it keeps failing."
+							? "Secret expansion was refused because the vault on disk no longer matches the snapshot this request is pinned to, so a placeholder could resolve to a value the vault has already replaced. A reload is under way; retry this call, and run /secret list if it keeps failing."
 							: `Secret expansion was refused because the vault changed under a lease pinned to ${normalizedCwd}, a directory the session has already left; the destination's own reload is the authority. Retry once the directory change has finished.`,
 					);
 				},
