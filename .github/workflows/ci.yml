@@ -1426,9 +1426,24 @@ jobs:
       # fails, is cancelled, or is skipped, it files (or updates) ONE pinned
       # issue labeled `release-train`; only a run where every required artifact
       # succeeded may close it. `always()` is required for incomplete upstreams.
+      #
+      # The gate is the tag ref, NOT `release_metadata`'s verdict. Keying this job
+      # off `needs.release_metadata.result == 'success'` made the monitor go quiet
+      # in one of the cases it exists to catch: v1.0.39 (run 30699220856) died
+      # inside `Resolve release metadata` itself, so this job was SKIPPED and the
+      # tag stranded with no release object and no report at all. Whether a run is
+      # a release attempt is knowable from the `github` context alone, and unlike
+      # an upstream job result it cannot be taken out by an upstream crash, so the
+      # alert now survives every upstream shape including a dead first job.
       name: Release train alert
-      if: ${{ always() && needs.release_metadata.result == 'success' && needs.release_metadata.outputs.is-release == 'true' }}
-      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows, release_github_publish, release_site_finalize, release_install_verify]
+      if: ${{ always() && startsWith(github.ref, 'refs/tags/v') }}
+      # Every job on the release path, so the alert names the ROOT cause instead
+      # of the first casualty. `native_artifact_lookup` is here because its
+      # failure skips `release_binary` and nothing publishes; watching only the
+      # casualty would report "release_binary skipped" with no cause attached.
+      # scripts/release-train-alert-watches-the-train.test.ts derives this set
+      # from the needs graph and fails when a new release job is not added here.
+      needs: [release_metadata, native_artifact_lookup, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows, release_github_publish, release_site_finalize, release_install_verify]
       runs-on: ubuntu-22.04
       permissions:
          contents: read
@@ -1436,32 +1451,100 @@ jobs:
       env:
          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
          NEEDS_JSON: ${{ toJSON(needs) }}
-         RELEASE_TAG: ${{ needs.release_metadata.outputs.release-tag }}
+         # `release-tag` is empty whenever release_metadata never got far enough to
+         # emit it, which is exactly the v1.0.39 shape this job now has to report.
+         # On a `refs/tags/v*` run the ref itself names the tag.
+         RELEASE_TAG: ${{ needs.release_metadata.outputs.release-tag || github.ref_name }}
          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       steps:
          - name: File or clear the pinned release-train issue
            shell: bash
            run: |
               set -euo pipefail
-              failed=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result != "success") | .key' | paste -sd',' -)
+
+              # A monitor that cannot deliver must never be mistaken for the thing
+              # it monitors. "Reported a red train" and "could not report at all"
+              # both surface as `Release train alert -> failure` in the run list,
+              # so the two are separated here by annotation title, job summary and
+              # exit code: 1 means the release train is red, 2 means this alert is
+              # broken and the state of the release is UNKNOWN rather than green.
+              # Every call that can fail routes here instead of letting `set -e`
+              # kill the step with no attribution.
+              alert_broken() {
+                echo "::error title=Release train alert is BROKEN::the alert could not $1, so the release-train state of $RELEASE_TAG is UNKNOWN and was never reported"
+                {
+                  echo "## Release train alert is BROKEN"
+                  echo
+                  echo "This job is the monitor, and the monitor is what failed. It could not **$1**."
+                  echo
+                  echo "Nothing here is a verdict on \`$RELEASE_TAG\`. Its release-train state is"
+                  echo "UNKNOWN, NOT green, and has to be checked by hand."
+                  echo
+                  echo "Run: $RUN_URL"
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 2
+              }
+
+              # `failure` and `cancelled` are root causes. `skipped` is collateral
+              # from an upstream that already died, but a skipped release job still
+              # means the tag did not ship, so both keep the train red. Separating
+              # them keeps the root cause readable: v1.0.45 reported three job
+              # names when only `release_github_publish` had actually failed.
+              broken=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key' | paste -sd',' -) \
+                || alert_broken "classify the upstream job results"
+              stranded=$(printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result == "skipped") | .key' | paste -sd',' -) \
+                || alert_broken "classify the upstream job results"
+
+              # Publish the verdict to the run page BEFORE touching the network, so
+              # an unreachable issue API costs the delivery but never the finding.
+              if [ -n "$broken" ] || [ -n "$stranded" ]; then
+                {
+                  echo "## Release train RED: $RELEASE_TAG"
+                  echo
+                  echo "| result | jobs |"
+                  echo "| --- | --- |"
+                  echo "| failed or cancelled | \`${broken:-none}\` |"
+                  echo "| skipped as a result | \`${stranded:-none}\` |"
+                  echo
+                  echo "Run: $RUN_URL"
+                } >> "$GITHUB_STEP_SUMMARY"
+              else
+                {
+                  echo "## Release train green: $RELEASE_TAG"
+                  echo
+                  echo "Every watched release job succeeded."
+                  echo
+                  echo "Run: $RUN_URL"
+                } >> "$GITHUB_STEP_SUMMARY"
+              fi
+
               # Self-heal the label: `gh issue create --label` hard-fails when the
               # label does not exist (killed the cut alert on 2026-07-24).
               gh label create release-train --repo "$GITHUB_REPOSITORY" \
-                --description "Pinned release-train status issue" --color D93F0B --force
-              existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label release-train --state open --json number --jq '.[0].number // empty')
-              if [ -n "$failed" ]; then
-                title="Release train red: $RELEASE_TAG failed ($failed)"
-                body=$(printf 'Release run for `%s` failed in: `%s`.\n\nRun: %s\n\nPublishing stays jammed until a green release run closes this issue automatically.' "$RELEASE_TAG" "$failed" "$RUN_URL")
+                --description "Pinned release-train status issue" --color D93F0B --force \
+                || alert_broken "create or refresh the \`release-train\` label"
+              existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label release-train --state open --json number --jq '.[0].number // empty') \
+                || alert_broken "list the open \`release-train\` issues"
+
+              if [ -n "$broken" ] || [ -n "$stranded" ]; then
+                title="Release train red: $RELEASE_TAG stalled in ${broken:-skipped release jobs}"
+                body=$(printf 'Release run for `%s` did not ship.\n\nFailed or cancelled: `%s`\nSkipped as a result: `%s`\n\nRun: %s\n\nPublishing stays jammed until a green release run closes this issue automatically.' \
+                  "$RELEASE_TAG" "${broken:-none}" "${stranded:-none}" "$RUN_URL")
                 if [ -n "$existing" ]; then
-                  gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
-                  gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --title "$title"
+                  gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body" \
+                    || alert_broken "comment the $RELEASE_TAG report onto release-train issue #$existing"
+                  gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --title "$title" \
+                    || alert_broken "retitle release-train issue #$existing"
                 else
-                  gh issue create --repo "$GITHUB_REPOSITORY" --label release-train --title "$title" --body "$body"
+                  gh issue create --repo "$GITHUB_REPOSITORY" --label release-train --title "$title" --body "$body" \
+                    || alert_broken "open a new release-train issue"
                 fi
-                echo "::error::release train red for $RELEASE_TAG: $failed (release-train issue updated)"
+                echo "::error title=Release train is RED::$RELEASE_TAG stalled in ${broken:-skipped release jobs} (release-train issue updated)"
                 exit 1
               fi
+
               if [ -n "$existing" ]; then
-                gh issue close "$existing" --repo "$GITHUB_REPOSITORY" --comment "Green release run for \`$RELEASE_TAG\` published: $RUN_URL"
+                gh issue close "$existing" --repo "$GITHUB_REPOSITORY" --comment "Green release run for \`$RELEASE_TAG\` published: $RUN_URL" \
+                  || alert_broken "close release-train issue #$existing"
               fi
               echo "release train green for $RELEASE_TAG"
