@@ -223,6 +223,7 @@ export const workspaceTestPackages = [
 // unmatched filters when at least one other filter matches.)
 export const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
+	"scripts/every-workflow-pipeline-sets-pipefail.test.ts",
 	"scripts/release-train-contracts.test.ts",
 	"scripts/release-dispatch-correlation.test.ts",
 	"scripts/gh-repo-context.test.ts",
