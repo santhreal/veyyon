@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { writeOwnerReceipt } from "./install-tests/installer-artifacts";
 
 const installSh = path.join(import.meta.dir, "install.sh");
 const tempRoots: string[] = [];
@@ -13,6 +14,8 @@ interface Sandbox {
 	installDir: string;
 	bashrc: string;
 	completionFiles: string[];
+	/** Receipt sidecars seeded beside each completion, one per entry above. */
+	completionReceipts: string[];
 	env: Record<string, string>;
 }
 
@@ -32,7 +35,15 @@ function createSandbox(): Sandbox {
 	fs.chmodSync(canonicalBinary, 0o755);
 	fs.symlinkSync(canonicalBinary, path.join(installDir, "vey"));
 
+	// A completion file the installer wrote comes with the ownership receipt
+	// `mark_artifact_owned` leaves beside it, and `completion_artifact_is_ours`
+	// reads that receipt to decide whether uninstall may delete the file. Seeding
+	// the files WITHOUT receipts, as this fixture used to, modelled an installer
+	// that never ran: the placeholder body matches no shell's Veyyon registration
+	// either, so the script correctly read all six as somebody else's and left
+	// them, and the suite blamed uninstall for obeying its own ownership rule.
 	const completionFiles: string[] = [];
+	const completionReceipts: string[] = [];
 	for (const [directory, binaryName, aliasName] of [
 		[path.join(home, "data/bash-completion/completions"), "veyyon", "vey"],
 		[path.join(home, "data/zsh/site-functions"), "_veyyon", "_vey"],
@@ -44,6 +55,7 @@ function createSandbox(): Sandbox {
 		fs.writeFileSync(binaryCompletion, "installer completion\n");
 		fs.copyFileSync(binaryCompletion, aliasCompletion);
 		completionFiles.push(binaryCompletion, aliasCompletion);
+		completionReceipts.push(writeOwnerReceipt(binaryCompletion), writeOwnerReceipt(aliasCompletion));
 	}
 
 	const bashrc = path.join(home, ".bashrc");
@@ -58,6 +70,7 @@ function createSandbox(): Sandbox {
 		installDir,
 		bashrc,
 		completionFiles,
+		completionReceipts,
 		env: {
 			...process.env,
 			HOME: home,
@@ -92,10 +105,24 @@ function pathExists(pathname: string): boolean {
 	}
 }
 
+/**
+ * CONTRACT: a completed uninstall leaves none of the surfaces this installer
+ * manages behind. The binary, the `vey` alias, every completion file, AND the
+ * ownership receipt beside each completion, plus the PATH line in the rc.
+ *
+ * The receipt sweep is the part that was missing. `do_uninstall` calls
+ * `remove_owner_receipt` on every successful removal, so a receipt outliving the
+ * file it describes is a real defect and not cosmetic: the sidecar is what
+ * `artifact_has_owner_receipt` reads, so an orphan makes the NEXT unrelated file
+ * to take that name read as installer-owned, and a later install would overwrite
+ * a stranger's file it should have refused to touch. The suite could not see
+ * that before, because its fixture wrote no receipts at all.
+ */
 function expectManagedSurfacesRemoved(sandbox: Sandbox): void {
 	expect(fs.existsSync(path.join(sandbox.installDir, "veyyon"))).toBe(false);
 	expect(pathExists(path.join(sandbox.installDir, "vey"))).toBe(false);
 	for (const completion of sandbox.completionFiles) expect(fs.existsSync(completion)).toBe(false);
+	for (const receipt of sandbox.completionReceipts) expect(pathExists(receipt)).toBe(false);
 	expect(fs.readFileSync(sandbox.bashrc, "utf8")).toBe("user before\nuser after\n");
 }
 

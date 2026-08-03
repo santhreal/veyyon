@@ -126,12 +126,31 @@ describe("declining the alias also declines its completion file", () => {
 		expect(installPs1).toContain("is not ours - launch with '$BinName'");
 	});
 
-	it("uninstall removes the alias completion only when it is a copy of ours", () => {
-		// install writes the alias file as a byte copy, so identical content is the
-		// signature. Without this check an uninstall deletes the completion file of
-		// a `vey` the installer was careful never to touch on the way in.
-		expect(installSh).toContain('cmp -s "$out/$name" "$out/$alias_name"');
+	it("uninstall removes the alias completion only when it can prove it wrote it", () => {
+		/**
+		 * CONTRACT: uninstall deletes `completions/vey` only when that file is
+		 * ours, and reports leaving it when it is not. Without the gate,
+		 * uninstalling veyyon deletes the completion file of a `vey` the install
+		 * was careful never to touch on the way in.
+		 *
+		 * The previous form pinned `cmp -s "$out/$name" "$out/$alias_name"`, the
+		 * byte-compare that used to serve as the signature. That spelling is gone,
+		 * and it was the weaker of the two checks. Byte equality is a coincidence,
+		 * not ownership: it answers "not ours" for an alias completion we wrote and
+		 * later regenerated at a different version, stranding the file forever, and
+		 * it answers "ours" for a stranger's file that happens to match ours. It
+		 * also required `$out/$name` to still exist, so a binary completion already
+		 * removed by hand orphaned the alias completion permanently.
+		 *
+		 * `completion_artifact_is_ours` decides on the durable receipt instead, and
+		 * falls back to the shell-specific Veyyon registration so completions
+		 * written before receipts existed are still reclaimed. Asserting the gate
+		 * AND the absence of any byte-compare keeps the weaker signature from
+		 * quietly returning.
+		 */
+		expect(installSh).toContain('completion_artifact_is_ours "$out/$alias_name" "$sh"');
 		expect(installSh).toContain("left $sh completion for '$ALIAS_NAME' alone");
+		expect(installSh).not.toContain("cmp -s");
 	});
 });
 
@@ -201,10 +220,35 @@ describe("uninstall does not delete an alias the install refused to create", () 
 		expect(installSh).toContain('ok "left $d/$ALIAS_NAME alone (not created by this installer)"');
 	});
 
-	it("install.sh still removes the binary unconditionally", () => {
-		// Only the alias is ambiguous. `veyyon` is our name, and leaving it would
-		// be a failed uninstall.
-		expect(installSh).toContain('rm -f "$d/$BIN_NAME" && { ok "removed $d/$BIN_NAME"; removed=1; }');
+	it("install.sh removes the binary only when it can prove it installed it", () => {
+		/**
+		 * CONTRACT: uninstall reclaims a `veyyon` this installer put in place, and
+		 * leaves a `veyyon` it did not create alone, announcing which it chose.
+		 *
+		 * The previous form asserted the opposite, under the title "still removes
+		 * the binary unconditionally", reasoning that `veyyon` is our name and
+		 * leaving one behind is a failed uninstall. That was wrong on this suite's
+		 * own premise: the installer may never destroy a file it did not create,
+		 * and `finalize_binary` already REFUSES to overwrite a foreign `veyyon` on
+		 * the way in. An unconditional delete on the way out meant install left the
+		 * user's file alone and uninstall destroyed it, which is the data loss this
+		 * file exists to prevent, reached by a longer route.
+		 *
+		 * It also pinned the pre-receipt spelling of the removal line, which now
+		 * clears the ownership sidecar with `remove_owner_receipt`. Leaving that
+		 * receipt behind would make the next unrelated file to take the name read
+		 * as installer-owned, so the sweep is part of the contract, not tidiness.
+		 *
+		 * Both arms are pinned so neither can be dropped silently. The behavioural
+		 * proof runs in scripts/installer-legacy-bun-uninstall.test.ts, which
+		 * drives the real script and checks a foreign binary survives byte-for-byte
+		 * while an owned one is reclaimed.
+		 */
+		expect(installSh).toContain(
+			'rm -f "$d/$BIN_NAME" && { remove_owner_receipt "$d/$BIN_NAME"; ok "removed $d/$BIN_NAME"; removed=1; }',
+		);
+		expect(installSh).toContain('ok "left $d/$BIN_NAME alone (not created by this installer)"');
+		expect(installSh).toContain("binary_artifact_is_ours() {");
 	});
 
 	it("install.ps1 applies the same gate to the vey.cmd shim", () => {
