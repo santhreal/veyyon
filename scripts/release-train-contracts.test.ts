@@ -621,12 +621,23 @@ case "$*" in *"issue list"*) printf '\\n' ;; esac
 });
 
 describe("a red release run is loud (release_train_alert)", () => {
-	it("ci.yml has an always()-guarded alert job with issues:write", async () => {
+	/**
+	 * The trigger must survive the failure it exists to report.
+	 *
+	 * This assertion used to require `is-release`, which read the alert's arming condition off
+	 * `release_metadata`'s OUTPUT. That is what stranded v1.0.39 in silence: `release_metadata` died
+	 * resolving the tag, so it emitted no `is-release`, so the monitor was skipped by the very failure
+	 * that needed reporting, producing a job with zero steps and zero output. Whether a run is a
+	 * release attempt is knowable from the `github` context alone, and no upstream crash can take that
+	 * away, so the tag ref is the trigger and the old condition is now the thing this test forbids.
+	 */
+	it("arms off the tag ref, not off a job whose death it must report", async () => {
 		const wf = await loadYaml("workflows/ci.yml");
 		const alert = wf.jobs.release_train_alert;
 		expect(alert).toBeDefined();
 		expect(alert.if).toContain("always()");
-		expect(alert.if).toContain("is-release");
+		expect(alert.if).toContain("refs/tags/v");
+		expect(alert.if).not.toContain("needs.release_metadata");
 		expect(alert.permissions.issues).toBe("write");
 	});
 
