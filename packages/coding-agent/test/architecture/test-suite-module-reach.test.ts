@@ -229,8 +229,16 @@ const total = reaches.reduce((sum, [, count]) => sum + count, 0);
  * boundary; the net heavy-file count is 385, seven above the previous ceiling. The new bounds restore
  * about one percent aggregate headroom and three heavy-file slots, rather than hiding the measured
  * baseline behind a broad round number.
+ *
+ * AND 843,797 across 2,108 files after the startup scrollback suite landed. This is one file, and it is
+ * deliberately heavy for the same reason the `createAgentSession` boot below is: it starts a REAL
+ * `InteractiveMode` over a real TUI and asserts on the bytes that reach the terminal. Three separate
+ * paths were erasing the operator's saved scrollback on every launch, and the two lighter suites written
+ * first proved only the one path they drove; the cold-launch replay and the startup theme resolution were
+ * caught by capturing a real launch, not by a leaf import. Reaching for the seam instead of the entry
+ * point here would delete exactly the property that found the bug. 797 modules, one slot.
  */
-const TOTAL_CEILING = 843_000;
+const TOTAL_CEILING = 843_797;
 
 /**
  * Measured 2026-07-26 at 531, down from 552 with the same theme-classifier change: eleven `eval-*`
@@ -276,8 +284,13 @@ const TOTAL_CEILING = 843_000;
  * tool lists across the loading matrix, so replacing the assembled SDK path with
  * leaf policy imports would stop testing the behavior the model receives. The
  * ceiling remains exact: the next accidental application-entry import still fails.
+ *
+ * RE-MEASURED at 390 after the startup scrollback suite added one more deliberate real-launch boot, for
+ * the same reason: it drives a real `InteractiveMode` over a real TUI because the defect it locks out
+ * (three paths erasing the operator's saved scrollback at startup) is only visible in the bytes a real
+ * launch emits. One slot, and the ceiling stays exact.
  */
-const HEAVY_FILE_CEILING = 389;
+const HEAVY_FILE_CEILING = 390;
 
 /** Above this a file is carrying most of an application entry point into its own realm. */
 const HEAVY_REACH = 800;
