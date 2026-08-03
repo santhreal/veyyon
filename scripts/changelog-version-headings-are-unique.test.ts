@@ -49,9 +49,7 @@ export function duplicateVersionHeadings(markdown: string): Duplicate[] {
 		if (lines) lines.push(index + 1);
 		else seen.set(version, [index + 1]);
 	});
-	return [...seen]
-		.filter(([, lines]) => lines.length > 1)
-		.map(([version, lines]) => ({ version, lines }));
+	return [...seen].filter(([, lines]) => lines.length > 1).map(([version, lines]) => ({ version, lines }));
 }
 
 /** Every package changelog (`CHANGELOG.md` directly under a `packages/` entry), repo-relative. */
