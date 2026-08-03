@@ -395,9 +395,34 @@ describe("install.sh reports what it removed, in the shell that tracks it", () =
 		expect(installSh).toContain('ok "removed the veyyon PATH line from $rc"\n            removed=1');
 	});
 
-	it("removing either completion file counts toward the verdict", () => {
-		expect(installSh).toContain(`{ ok "removed $sh completion for '$ALIAS_NAME'"; removed=1; }`);
-		expect(installSh).toContain(`{ ok "removed $sh completion for '$BIN_NAME'"; removed=1; }`);
+	it("removing either completion file counts toward the verdict, and clears its receipt", () => {
+		/**
+		 * CONTRACT: each completion removal sets `removed`, so the closing verdict
+		 * reports what actually happened, and clears the ownership receipt in the
+		 * SAME success group, so the sidecar never outlives the file it describes.
+		 *
+		 * The previous form pinned the group as `{ ok ...; removed=1; }`. That
+		 * spelling predates ownership receipts and the group now opens with
+		 * `remove_owner_receipt`, so the assertion matched nothing and defended
+		 * nothing. Pinning the whole current group keeps the verdict guarantee the
+		 * old form was written for and adds the receipt sweep to it, which belongs
+		 * in the same contract: an orphaned `.<name>.veyyon-owner` makes the next
+		 * unrelated file to take that name read as installer-owned, so a later
+		 * install would overwrite a stranger's file it should have refused to
+		 * touch.
+		 *
+		 * Source-level on purpose, like the rest of this parity suite: it exists to
+		 * compare the two installers where pwsh cannot run. The behavioural proof
+		 * that the receipts are actually gone after an uninstall lives in
+		 * scripts/installer-legacy-bun-uninstall.test.ts, which drives the real
+		 * script.
+		 */
+		expect(installSh).toContain(
+			`{ remove_owner_receipt "$out/$alias_name"; ok "removed $sh completion for '$ALIAS_NAME'"; removed=1; }`,
+		);
+		expect(installSh).toContain(
+			`{ remove_owner_receipt "$out/$name"; ok "removed $sh completion for '$BIN_NAME'"; removed=1; }`,
+		);
 	});
 });
 
