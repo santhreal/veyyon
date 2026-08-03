@@ -18,8 +18,9 @@
 // before and after every test. A file that leaks against its own process baseline
 // leaks wherever it is scheduled, so the answer does not depend on run order.
 //
-// Exit code is 1 when any file leaks, so this can be a gate once the tree is
-// clean.
+// Exit code is 1 when any file leaks OR when any file could not be run, and 2
+// when the walk found nothing to check, so this can be a gate: a run that
+// measured nothing must never read as a clean tree.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -141,6 +142,16 @@ if (import.meta.main) {
 	}
 
 	const files = targets.flatMap(target => testFilesUnder(REPO_ROOT, target));
+	// A walk that found nothing measured nothing. The sweep runs `packages scripts`,
+	// so a SKIP_DIRS entry that grows too far, a gitignore change, or a moved tree
+	// collapses the file list, and reporting "checked 0 file(s)" with exit 0 says the
+	// tree is clean when nothing was looked at. Explicit file targets always yield a
+	// file, so this only fires on a directory that really holds no suites.
+	if (files.length === 0) {
+		console.error(`no test files under ${targets.join(", ")}: this run checked nothing`);
+		process.exit(2);
+	}
+
 	const results: FileResult[] = [];
 	for (const [index, file] of files.entries()) {
 		const result = traceFile(REPO_ROOT, file);
@@ -174,5 +185,11 @@ if (import.meta.main) {
 		for (const result of failed) console.log(`\ncould not run (no leak verdict): ${result.file}`);
 	}
 
-	process.exit(leaking.length > 0 ? 1 : 0);
+	// A file that could not RUN has no leak verdict, and the exit code used to call
+	// that clean: a suite with an import error printed "1 failed to run" and exited
+	// 0. Both gates built on this script, checks.yml's per-commit `test-leaks` and the
+	// nightly sweep, therefore reported green for a tree where the suites never loaded,
+	// which is precisely the state the sweep exists to notice. `runnerFailed` is
+	// already computed and already printed; the exit code just has to agree.
+	process.exit(leaking.length > 0 || failed.length > 0 ? 1 : 0);
 }

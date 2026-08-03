@@ -17,7 +17,8 @@
  * purpose.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import * as path from "node:path";
 import {
 	__clearLeakProbesForTests,
@@ -407,5 +408,66 @@ describe("driving the real runner", () => {
 		expect(result.leaks).toHaveLength(1);
 		expect(result.leaks[0].diffs.map(diff => diff.key)).toContain("state.activeProfile");
 		expect(result.leaks[0].diffs.find(diff => diff.key === "state.activeProfile")?.after).toBe("leaky");
+	}, 60_000);
+});
+
+/**
+ * The exit code, which is the only part of this script CI reads.
+ *
+ * `checks.yml` runs the gate on every commit and `leak-sweep.yml` runs it nightly,
+ * and both decide pass or fail from the status alone. It used to return 0 whenever
+ * no leak was FOUND, which is not the same as there being none: a file whose import
+ * throws never produces a verdict, so a run printed "1 failed to run" and exited
+ * clean. A tree whose suites stopped loading is exactly the state the sweep exists
+ * to notice, and it read as green on both gates.
+ */
+describe("the gate's exit code", () => {
+	function runGate(target: string): { exitCode: number; out: string } {
+		const gate = Bun.spawnSync({
+			cmd: ["bun", path.join(REPO_ROOT, "scripts/find-test-leaks.ts"), target],
+			cwd: REPO_ROOT,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+
+		return { exitCode: gate.exitCode, out: `${gate.stdout.toString()}${gate.stderr.toString()}` };
+	}
+
+	function withTempDir(files: Record<string, string>, check: (dir: string) => void): void {
+		const dir = mkdtempSync(path.join(tmpdir(), "veyyon-leak-gate-"));
+		try {
+			for (const [name, body] of Object.entries(files)) writeFileSync(path.join(dir, name), body);
+			check(dir);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	}
+
+	it("fails when a suite could not be run at all", () => {
+		withTempDir({ "a.test.ts": 'import { missing } from "./nowhere";\nmissing();\n' }, dir => {
+			const gate = runGate(dir);
+
+			expect(gate.out).toContain("1 failed to run");
+			expect(gate.exitCode).toBe(1);
+		});
+	}, 60_000);
+
+	/** A walk that found nothing measured nothing, so it cannot report a clean tree. */
+	it("fails when the walk found no test files", () => {
+		withTempDir({}, dir => {
+			expect(runGate(dir).exitCode).toBe(2);
+		});
+	}, 60_000);
+
+	/** And it still passes when nothing is wrong, or the two above would be satisfied
+	 *  by a script that failed unconditionally. */
+	it("passes on a suite that runs and leaves nothing behind", () => {
+		const clean = 'import { expect, test } from "bun:test";\ntest("clean", () => expect(1).toBe(1));\n';
+		withTempDir({ "a.test.ts": clean }, dir => {
+			const gate = runGate(dir);
+
+			expect(gate.out).toContain("0 leaking, 0 failed to run");
+			expect(gate.exitCode).toBe(0);
+		});
 	}, 60_000);
 });
