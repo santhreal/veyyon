@@ -177,11 +177,12 @@ export const fastWorkspacePackages = [
 	// embedding suites depend on a ~270MB fastembed model absent from CI runners".
 	// That was a property of a subset, recorded as a property of the package, and
 	// never checked against the suites. Every one of them passes with the model
-	// cache empty and the network unreachable: each injects a fake provider or a
-	// fake initializer, and `getLocalModel` returns null outright under the test
-	// runner. So the triple store, the schema, the migrations, the query paths and
-	// the recall ranking were all skipped for a hazard none of them run into, and
-	// 1041 assertions ran nowhere while the buckets reported green.
+	// cache empty and the network unreachable: most never produce a vector at all,
+	// the ones that do inject a fake provider or a fake initializer, and
+	// `getLocalModel` returns null outright under the test runner. So the triple
+	// store, the schema, the migrations, the query paths and the recall ranking
+	// were all skipped for a hazard none of them run into, and 1041 tests ran
+	// nowhere while the buckets reported green.
 	//
 	// The hazard was real, so it is refused at the download instead of by omitting
 	// a package: `packages/mnemopi/test/helpers/fastembed-model-tripwire.ts` is

@@ -7,6 +7,7 @@
 ### Fixed
 
 - Embedding misconfiguration is reported through `reportEmbeddingFailure` instead of disabling semantic recall in silence. Two paths returned `null` before any reporting branch could run: a local embedding model name this build cannot load, and an API embedding model configured against the hosted endpoint with no key. Both left recall silently degraded to keyword-only, at no log level and with no warning, which is indistinguishable from a corpus that simply has no semantic matches. Each has a one-line remedy the operator can only apply once they know it is needed, and the local case is usually a typo in a model name.
+- The mnemopi test suite runs in CI. The package was listed as local-only in `scripts/ci-test-ts.ts` and was named by no CI job at all, on the recorded grounds that its embedding suites need a ~270MB fastembed model the runners do not have. That is true of no suite here: every one injects a fake provider or a fake initializer, and the local model path returns null outright under the test runner, so all of them pass with the model cache empty and the network unreachable. A property of a subset had been recorded as a property of the package, and the triple store, the schema, the migrations, the query paths and the recall ranking went unrun in CI for as long as it stood. The download itself is now refused rather than avoided by omission: a preload throws from `FlagEmbedding.init`, so a suite that starts needing the real weights fails by name instead of pulling them into a runner.
 
 ## [16.3.9] - 2026-07-06
 
