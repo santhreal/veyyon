@@ -96,6 +96,49 @@ const SOURCES = new Map<string, string>(
 );
 
 /**
+ * Every `"token"` or `/token"` in the tree's TypeScript and JavaScript, mapped to the files that
+ * spell it, built once.
+ *
+ * This used to be a `git grep` per script. The comment below reasoned that the search runs only for
+ * scripts the cheap corpus misses, "a handful rather than all of them", but the handful is large
+ * enough to cost about 4.6 seconds in serial subprocess spawns. Alone that fit inside bun's 5 second
+ * limit. Run in the scripts bucket under `--parallel=4`, it did not, and the suite failed on a
+ * timeout rather than on anything it checks. A gate that goes red when the machine is busy teaches
+ * people to rerun CI until it is green, which is worse than no gate.
+ *
+ * One pass answers every lookup. The generic token pattern is the per-stem pattern with the stem
+ * replaced by a character class covering what a filename stem can hold, so it yields the same
+ * (file, token) pairs the individual searches did. `/` is deliberately outside the token class, so
+ * `"./scripts/foo"` yields `foo` and not `scripts/foo`, which is what an import specifier ending in
+ * the stem means.
+ */
+let referenceIndex: Map<string, string[]> | undefined;
+
+async function referencesByToken(): Promise<Map<string, string[]>> {
+	if (referenceIndex) return referenceIndex;
+	const found = new Map<string, string[]>();
+	const out = await $`git -C ${REPO_ROOT} grep -oE ${`["'./][A-Za-z0-9_.-]+["']`} -- ${"*.ts"} ${"*.js"}`
+		.nothrow()
+		.text();
+	for (const line of out.split("\n")) {
+		const split = line.indexOf(":");
+		if (split <= 0) continue;
+		const source = line.slice(0, split).trim();
+		const token = line
+			.slice(split + 1)
+			.trim()
+			.replace(/^["'./]/, "")
+			.replace(/["']$/, "");
+		if (!token) continue;
+		const sources = found.get(token);
+		if (sources) sources.push(source);
+		else found.set(token, [source]);
+	}
+	referenceIndex = found;
+	return found;
+}
+
+/**
  * Is this script named by a manifest recipe, a workflow, another script, or a
  * suite anywhere in the tree?
  *
@@ -103,9 +146,7 @@ const SOURCES = new Map<string, string>(
  * LIBRARY: `workspace-manifests.ts` exports the rules its own suite asserts, and
  * `ensure-tool-views.ts` exports a path that a coding-agent test helper imports.
  * Both are owned, and both are imported as `./workspace-manifests` with no
- * extension, so a filename match never finds them. The search runs only after
- * the cheap corpus misses, which is a handful of scripts rather than all of
- * them.
+ * extension, so a filename match never finds them.
  */
 async function hasAutomatedCaller(file: string): Promise<boolean> {
 	const base = path.basename(file);
@@ -115,15 +156,11 @@ async function hasAutomatedCaller(file: string): Promise<boolean> {
 	const peers = await peerText(file);
 	if (peers.includes(file) || peers.includes(base)) return true;
 
-	// The extensionless stem, as an import specifier ends in it. Anchored on a
-	// path separator or a quote so a stem like `release` cannot match the word in
-	// a sentence.
+	// The extensionless stem, as an import specifier ends in it. A file naming
+	// itself is not a caller.
 	const stem = base.replace(/\.[^.]+$/, "");
-	const hits = await $`git -C ${REPO_ROOT} grep -lE ${`["'./]${stem}["']`} -- ${"*.ts"} ${"*.js"}`.nothrow().text();
-	return hits
-		.split("\n")
-		.map(line => line.trim())
-		.some(hit => hit.length > 0 && hit !== file);
+	const index = await referencesByToken();
+	return (index.get(stem) ?? []).some(source => source !== file);
 }
 
 /**
