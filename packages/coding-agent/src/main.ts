@@ -555,7 +555,6 @@ async function runInteractiveMode(
 
 	await mode.init({
 		suppressWelcomeIntro: resuming || setupScenes.length > 0 || playStartupSplash,
-		clearInitialTerminalHistory: true,
 	});
 
 	// Subscribed BEFORE the wizard, not after it. The write-side twin of the
@@ -655,12 +654,17 @@ async function runInteractiveMode(
 			logger.warn("Startup update check failed", { error: errorMessage(error) });
 		});
 
-	// Cold-launch cleanup: the first paint already clears native history, and this
-	// replay replaces the welcome/startup frame with the resumed/new transcript.
-	// Every in-process session load also uses `clearTerminalHistory`; cold launch
-	// follows the same clean-cutover path instead of preserving a previous run's
-	// transcript above the fresh one.
-	mode.renderInitialMessages({ preserveExistingChat: true, clearTerminalHistory: true });
+	// Cold-launch cleanup: this replay replaces the welcome/startup frame with the
+	// resumed/new transcript. It does NOT erase native history unless the operator
+	// asked for it. `clearTerminalHistory` here means ED 3, which is not selective:
+	// it takes the terminal's whole saved scrollback, including everything on screen
+	// before veyyon started. The in-process session loads that share this flag are
+	// mid-session acts the operator just requested; a cold launch is not, and
+	// deleting the history they launched from was never part of starting up.
+	mode.renderInitialMessages({
+		preserveExistingChat: true,
+		clearTerminalHistory: settings.get("startup.clearScrollback"),
+	});
 
 	for (const notify of notifs) {
 		if (!notify) {
