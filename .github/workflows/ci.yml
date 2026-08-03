@@ -207,6 +207,7 @@ jobs:
               linux_x64_run_id=""
               cross_platform_run_id=""
               for candidate in $(gh run list \
+                  --repo "${{ github.repository }}" \
                   --workflow=ci.yml --branch=main --status=success --event=push \
                   --limit=20 --json databaseId --jq='.[].databaseId'); do
                 names=$(gh api "/repos/${{ github.repository }}/actions/runs/$candidate/artifacts?per_page=100" \
@@ -939,7 +940,7 @@ jobs:
                 fi
                 remote_dir="$(mktemp -d)"
                 while IFS= read -r name; do
-                  gh release download "$tag" --pattern "$name" --dir "$remote_dir"
+                  gh release download "$tag" --repo "$repo" --pattern "$name" --dir "$remote_dir"
                   if ! cmp -s "$binaries/$name" "$remote_dir/$name"; then
                     echo "::error::published asset $name differs byte-for-byte; refusing overwrite"
                     exit 1
@@ -959,7 +960,7 @@ jobs:
                 while IFS= read -r asset_id; do
                   [ -z "$asset_id" ] || gh api --method DELETE "repos/$repo/releases/assets/$asset_id"
                 done
-              gh release upload "$tag" "${assets[@]}"
+              gh release upload "$tag" --repo "$repo" "${assets[@]}"
               {
                 echo "release-id=$release_id"
                 echo "already-published=false"
