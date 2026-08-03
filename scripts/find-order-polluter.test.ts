@@ -358,6 +358,43 @@ describe("reading the target's failures out of a run", () => {
 	it("matches a target written with a leading ./", () => {
 		expect(parseTargetFailures(output, "./packages/x/test/z-victim.test.ts")).toEqual(["sees a clean global"]);
 	});
+
+	/**
+	 * An absolute target against bun's cwd-relative header, which is one file written two ways.
+	 *
+	 * THE BUG THIS LOCKS OUT, measured 2026-08-03. The parser compared the two spellings with
+	 * `endsWith`, and bun spells the header relative to the run's cwd however the caller spelled
+	 * the target. That agreed only by luck: a target outside the cwd gets a header that climbs out
+	 * with `../`, and `../../tmp/x/z.test.ts` still ends with `/tmp/x/z.test.ts`. Put the target
+	 * UNDER the cwd (which is all `TMPDIR` inside the repo does, and CI runners set `TMPDIR`) and
+	 * the header loses its leading slash, no section ever matches the target, every run parses as
+	 * zero failures, and the tool reports that the ordering does not reproduce the failure. That
+	 * is a clean bill of health for a suite whose polluter is sitting in the candidate list, which
+	 * is the exact wrong answer this whole suite exists to prevent.
+	 */
+	it("matches an absolute target against a header spelled relative to the run", () => {
+		const relative =
+			"tmpprobe/run/a-candidate.test.ts:\n(fail) a candidate of its own accord\n" +
+			"tmpprobe/run/z-victim.test.ts:\n(fail) sees a clean global\n";
+
+		expect(parseTargetFailures(relative, "/repo/tmpprobe/run/z-victim.test.ts", undefined, "/repo")).toEqual([
+			"sees a clean global",
+		]);
+	});
+
+	/**
+	 * A filename is not a suffix match.
+	 *
+	 * The other direction of the same bug. `--dir` exists so the target can be named by filename
+	 * alone, and `z-victim.test.ts` IS a string suffix of `my-z-victim.test.ts`, so the parser read
+	 * the neighbour's failures as the target's. The search then bisects toward whatever makes the
+	 * neighbour red and names an innocent file as the polluter.
+	 */
+	it("does not mistake a file whose name merely ends with the target's", () => {
+		const neighbour = "my-z-victim.test.ts:\n(fail) not the target at all\n";
+
+		expect(parseTargetFailures(neighbour, "z-victim.test.ts", undefined, "/repo/run")).toEqual([]);
+	});
 });
 
 describe("the arguments", () => {

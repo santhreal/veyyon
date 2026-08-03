@@ -33,6 +33,7 @@
  * that capture the real order from a junit report and feed it back through `--order`.
  */
 
+import * as path from "node:path";
 import { $ } from "bun";
 
 export interface Options {
@@ -121,19 +122,41 @@ export type RunFiles = (files: string[]) => Promise<string>;
  * Bun prints a `path/to/file.test.ts:` header before each file's output, so the section boundaries
  * are in the text.
  *
+ * THE HEADER IS SPELLED RELATIVE TO THE RUN'S CWD, whatever spelling the caller used for `target`.
+ * Hand the script an absolute path (which is what tab completion and an editor's "copy path" both
+ * give you) and bun answers with `../../../tmp/x/z.test.ts:`, so comparing the two as strings
+ * compares two spellings of one file. It only ever agreed by luck: a relative spelling that
+ * happens to climb out with `../` still ends with `/tmp/x/z.test.ts`, and the luck runs out the
+ * moment the target sits UNDER the cwd, which is what `TMPDIR` inside the repo does. The parser
+ * then finds no section for the target, reports zero failures for every run the search makes, and
+ * the tool announces that the ordering does not reproduce the failure -- a clean bill of health
+ * for a suite whose polluter is sitting right there. So both sides are resolved to one absolute
+ * path and compared as paths.
+ *
+ * Resolving also ends the suffix match, which was wrong in the other direction: `z.test.ts` is a
+ * suffix of `my-z.test.ts`, so a bare filename would have read a DIFFERENT file's failures as the
+ * target's and sent the reader to an innocent file.
+ *
  * `--test-name-pattern` is deliberately NOT used to narrow this. A candidate whose own tests are
  * all filtered out may never have its module body executed, and module-level state is exactly
  * where leaks live -- filtering the run would hide the very thing being searched for. The name
  * narrows the PARSED result instead, so every candidate runs exactly as it does in the real suite.
+ *
+ * `from` is the directory the run's paths are relative to, which is the cwd the run happened in.
  */
-export function parseTargetFailures(text: string, target: string, name?: string): string[] {
-	const targetSuffix = target.replace(/^\.\//, "");
+export function parseTargetFailures(
+	text: string,
+	target: string,
+	name?: string,
+	from: string = process.cwd(),
+): string[] {
+	const targetPath = path.resolve(from, target);
 	let inTarget = false;
 	const failures: string[] = [];
 	for (const line of text.split("\n")) {
 		const header = line.trim();
 		if (header.endsWith(".test.ts:")) {
-			inTarget = header.slice(0, -1).endsWith(targetSuffix);
+			inTarget = path.resolve(from, header.slice(0, -1)) === targetPath;
 			continue;
 		}
 		if (!inTarget) continue;
