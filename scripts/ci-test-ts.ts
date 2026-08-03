@@ -286,6 +286,7 @@ export const repoScriptTests = [
 	"scripts/release-binaries-bytecode.test.ts",
 	"scripts/fix-changelogs.test.ts",
 	"scripts/require-changelog.test.ts",
+	"scripts/changelog-version-headings-are-unique.test.ts",
 	"scripts/run-rs-task.test.ts",
 	"scripts/verify-deployed-installers.test.ts",
 	"scripts/verify-deployed-changelog.test.ts",
