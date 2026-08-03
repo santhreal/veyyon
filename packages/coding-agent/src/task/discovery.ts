@@ -20,7 +20,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { logger, readdirIfPresent } from "@veyyon/utils";
+import { readdirIfPresent, reportFault } from "@veyyon/utils";
 import { isProviderEnabled } from "../capability";
 import { findAllNearestProjectConfigDirs, getConfigDirs } from "../config";
 import { listClaudePluginRoots } from "../discovery/helpers";
@@ -53,7 +53,17 @@ async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<Agen
 				.readFile(filePath, "utf-8")
 				.then(content => parseAgent(filePath, content, source, "warn"))
 				.catch(error => {
-					logger.warn("Failed to read agent file", { filePath, error });
+					// A FILE that exists and cannot be read or parsed is the same loss as the directory
+					// case above, one agent at a time: the user wrote `.veyyon/agents/reviewer.md`, it is
+					// absent from `/agents` and from `task`, and the run reports nothing. This used to be
+					// a `logger.warn`, which the default transport set writes to a file and nowhere else
+					// (see `utils/fault-sink.ts`), so the sibling failure five lines up reached an
+					// operator and this one did not. Still soft: the remaining agents load.
+					reportFault({
+						source: "agents",
+						text: `${filePath} could not be read as an agent definition, so that agent is not available in this run. Check its permissions and its YAML frontmatter, which must set both name and description.`,
+						context: { filePath, error: String(error) },
+					});
 					return null;
 				});
 		});

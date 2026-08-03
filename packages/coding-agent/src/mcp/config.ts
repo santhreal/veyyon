@@ -33,6 +33,19 @@ export interface LoadMCPConfigsResult {
 	exaApiKeys: string[];
 	/** Source metadata for each server */
 	sources: Record<string, SourceMeta>;
+	/**
+	 * Provider-level problems found while reading the MCP config files: a
+	 * `.mcp.json` that is not valid JSON, an entry with neither `command` nor
+	 * `url`, a provider that threw mid-scan.
+	 *
+	 * These used to be read off the capability result and dropped on the floor
+	 * here, which is the one outcome the config layer must never produce: a
+	 * server the user configured is missing from `configs`, so nothing
+	 * downstream has a name to report a failure against, and the session boots
+	 * claiming every configured server connected. The caller forwards these to
+	 * the same `onStatus` failure channel a refused server config uses.
+	 */
+	warnings: string[];
 }
 
 /**
@@ -141,7 +154,7 @@ export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOpt
 		sources = browserResult.sources;
 	}
 
-	return { configs, exaApiKeys, sources };
+	return { configs, exaApiKeys, sources, warnings: result.warnings };
 }
 
 /** Pattern to match Exa MCP servers */

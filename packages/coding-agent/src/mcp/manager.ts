@@ -39,7 +39,7 @@ import {
 	selectMcpOAuthRefreshMaterial,
 } from "./oauth-credentials";
 import { type MCPStoredOAuthCredential, refreshMCPOAuthToken } from "./oauth-flow";
-import type { McpConnectionStatusEvent } from "./startup-events";
+import { MCP_CONFIG_STATUS_LABEL, type McpConnectionStatusEvent } from "./startup-events";
 import type { MCPToolDetails } from "./tool-bridge";
 import { DeferredMCPTool, MCPTool, mcpToolNamePrefix } from "./tool-bridge";
 import type { MCPToolCache } from "./tool-cache";
@@ -349,12 +349,25 @@ export class MCPManager {
 			});
 		} catch (error) {
 			const message = errorMessage(error);
-			options?.onStatus?.({ type: "failed", serverName: ".mcp.json", error: message });
+			options?.onStatus?.({ type: "failed", serverName: MCP_CONFIG_STATUS_LABEL, error: message });
 			throw error;
 		}
-		const { configs, exaApiKeys, sources } = loadedConfigs;
+		const { configs, exaApiKeys, sources, warnings } = loadedConfigs;
 		const result = await this.connectServers(configs, sources, options?.onStatus);
 		result.exaApiKeys = exaApiKeys;
+		// AFTER `connectServers`, not before: its `connecting` event resets the
+		// subscriber's failed-server map, so a warning emitted first is wiped
+		// before anyone renders it.
+		//
+		// A config the loader could not read produces no server name at all, so
+		// the per-server failure path above can never speak for it and the boot
+		// health zone would report a clean start with the user's servers simply
+		// gone. Reported under the same pseudo-server label the whole-load
+		// failure already uses.
+		for (const warning of warnings) {
+			this.#lastErrors.set(MCP_CONFIG_STATUS_LABEL, warning);
+			options?.onStatus?.({ type: "failed", serverName: MCP_CONFIG_STATUS_LABEL, error: warning });
+		}
 		return result;
 	}
 

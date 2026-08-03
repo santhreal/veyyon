@@ -856,10 +856,31 @@ export async function loadSessionExtensions(
 ): Promise<LoadExtensionsResult> {
 	const paths = await discoverSessionExtensionPaths(options, cwd, settings);
 	const result = await logger.time("loadExtensions", loadExtensions, paths, cwd, eventBus);
+	reportExtensionLoadFailures(result);
+	return result;
+}
+
+/**
+ * Say out loud that an extension the user asked for is not running.
+ *
+ * `logger.error` alone was the whole report, and the default transport set is
+ * `{ file: true }` with no console transport — see the header of
+ * `session/operator-notices.ts`, which names this exact channel as the one that
+ * reaches nobody. So an extension with a syntax error, a bad import, or a
+ * throwing factory was dropped, the session started clean, and the operator's
+ * only symptom was that its tools, commands and flags were absent with no
+ * explanation. Skill-loading failures three hundred lines below already go to
+ * the operator channel; this is the same failure of the same kind and now
+ * reports the same way.
+ *
+ * The file log keeps the record either way: raising a notice adds reach and
+ * never removes it.
+ */
+function reportExtensionLoadFailures(result: LoadExtensionsResult, operatorNotices?: OperatorNotices): void {
 	for (const { path, error } of result.errors) {
 		logger.error("Failed to load extension", { path, error });
+		operatorNotices?.error("extensions", `${path}: ${error}`);
 	}
-	return result;
 }
 
 /**
@@ -1742,7 +1763,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return {
 				authority,
 				broken,
-				repair: `Run ${commands} to move the unreadable file aside, then re-add the secrets it held with /secret add.`,
+				repair:
+					`Open /secret manager and move the unreadable file aside, or run ${commands} in a client with ` +
+					`no terminal. Then store the secrets it held again.`,
 			};
 		};
 
@@ -1847,7 +1870,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					if (settledForExpansion(text)) return;
 					const detail = reloadError === undefined ? "" : ` Reload failed: ${errorMessage(reloadError)}.`;
 					throw new Error(
-						`Secret expansion was refused: reloading the secret vault for ${normalizedCwd} did not produce a runtime that can resolve this text's placeholders, so no current value is available.${detail} Check the vault with /secret list, then retry.`,
+						`Secret expansion was refused: reloading the secret vault for ${normalizedCwd} did not produce a runtime that can resolve this text's placeholders, so no current value is available.${detail} Check what is stored in /secret manager, or with /secret list where there is no terminal, then retry.`,
 					);
 				},
 				assertFreshForExpansion: (text?: string) => {
@@ -1855,7 +1878,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					scheduleStaleSecretRefresh(normalizedCwd);
 					throw new Error(
 						path.resolve(sessionManager.getCwd()) === normalizedCwd
-							? "Secret expansion was refused because the vault on disk no longer matches the snapshot this request is pinned to, so a placeholder could resolve to a value the vault has already replaced. A reload is under way; retry this call, and run /secret list if it keeps failing."
+							? "Secret expansion was refused because the vault on disk no longer matches the snapshot this request is pinned to, so a placeholder could resolve to a value the vault has already replaced. A reload is under way; retry this call, and check what is stored in /secret manager if it keeps failing."
 							: `Secret expansion was refused because the vault changed under a lease pinned to ${normalizedCwd}, a directory the session has already left; the destination's own reload is the authority. Retry once the directory change has finished.`,
 					);
 				},
@@ -2716,20 +2739,20 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			extensionPaths = extensionsResult.extensions
 				.map(ext => ext.resolvedPath)
 				.filter(p => !p.startsWith("<inline"));
+			// The caller loaded these (the CLI resolves extension flags before a
+			// session exists), so the failures came with them. This session is
+			// the one that has a surface, so it is the one that reports them.
+			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		} else if (options.preloadedExtensionPaths) {
 			extensionPaths = options.preloadedExtensionPaths;
 			extensionsResult = await logger.time("loadExtensions", loadExtensions, extensionPaths, cwd, eventBus);
-			for (const { path, error } of extensionsResult.errors) {
-				logger.error("Failed to load extension", { path, error });
-			}
+			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		} else {
 			extensionPaths = await logger.time("discoverSessionExtensionPaths", () =>
 				discoverSessionExtensionPaths(options, cwd, settings),
 			);
 			extensionsResult = await logger.time("loadExtensions", loadExtensions, extensionPaths, cwd, eventBus);
-			for (const { path, error } of extensionsResult.errors) {
-				logger.error("Failed to load extension", { path, error });
-			}
+			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		}
 		// Forward the source-path list (NOT the loaded instances) so subagents
 		// rebuild their own session-scoped extensions.
