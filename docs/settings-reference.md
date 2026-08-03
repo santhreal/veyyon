@@ -638,7 +638,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `images.blockImages` | Block Images | boolean | `false` | Prevent images from being sent to LLM providers. |
-| `secrets.enabled` | Hide Secrets | boolean | `false` | Obfuscate secrets before sending to AI providers. /secret add turns this on for you. |
+| `secrets.enabled` | Hide Secrets | boolean | `false` | Obfuscate secrets before sending to AI providers. Storing a credential with /secret turns this on for you. |
 | `secrets.defaultTtl` | Secret Lifetime | string | `1d` | How long a /secret lasts by default: 30m, 12h, 7d, 2w, or "never". |
 | `secrets.auditLog` | Record Secret Use | boolean | `true` | Append which secret was used in which command to the profile's log. Never records values. |
 
