@@ -1148,9 +1148,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Load initial todos
 		await this.#loadTodoList();
 
-		// Start the UI. Cold `veyyon` launch opts into clearing on the first paint so
-		// the initial welcome frame does not append over the previous run's scrollback.
-		this.ui.start({ clearScrollback: options.clearInitialTerminalHistory === true });
+		// Start the UI. The first paint always clears the viewport (ED 2), so the
+		// welcome frame never appends over the previous run's frame. Erasing the
+		// terminal's saved scrollback (ED 3) is a separate, unrecoverable act that
+		// also takes whatever the operator had on screen before launch, so it
+		// happens only when they asked for it.
+		this.ui.start({ clearScrollback: this.settings.get("startup.clearScrollback") });
 		// The first paint used an estimated fill (no composed frame existed yet);
 		// now the exact composed height is known, so re-anchor precisely. It only
 		// re-renders if the estimate was off, so there is usually no visible reflow.
@@ -1263,9 +1266,17 @@ export class InteractiveMode implements InteractiveModeContext {
 					this.ui.requestRender();
 					return;
 				}
-				// Rows already committed to native scrollback are immutable; replay them
-				// after a theme swap so a reader scrolled up sees the same palette.
-				this.ui.requestRender(true, { clearScrollback: true });
+				// Rows already committed to native scrollback are immutable, so a swap
+				// cannot recolor them without ED 3. ED 3 is not selective: it erases the
+				// terminal's whole saved history, including everything the operator had
+				// on screen before veyyon started, which veyyon never wrote and cannot
+				// replay. Recoloring our own transcript is not worth deleting theirs, so
+				// the wipe needs the same consent the startup one does. At startup it is
+				// worse than a bad trade: the appearance probe resolves a variant before
+				// anything is committed, so it recolors nothing and destroys everything.
+				// Without consent, force the repaint and leave scrolled-back rows on the
+				// old palette.
+				this.ui.requestRender(true, { clearScrollback: this.settings.get("startup.clearScrollback") });
 				// A committed theme swap changes the ground the terminal should show;
 				// preview (ephemeral) swaps returned above so a hover does not flicker
 				// the terminal background.

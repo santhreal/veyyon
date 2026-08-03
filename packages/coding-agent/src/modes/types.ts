@@ -89,7 +89,6 @@ export type { TodoItem, TodoPhase, TodoStatus } from "../tools/todo";
 
 export interface InteractiveModeInitOptions {
 	suppressWelcomeIntro?: boolean;
-	clearInitialTerminalHistory?: boolean;
 }
 
 export type InteractiveSelectorDialogOptions = ExtensionUIDialogOptions & Pick<HookSelectorOptions, "disabledIndices">;

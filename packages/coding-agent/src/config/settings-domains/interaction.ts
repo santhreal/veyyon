@@ -168,6 +168,23 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	// Off by default on purpose. The on state emits ED 3, which erases the
+	// terminal's saved scrollback: not just what veyyon drew, but the shell
+	// history and command output that were there before launch, with no undo.
+	// A cleared viewport is enough for the welcome frame to look right, and the
+	// first paint already does that (ED 2) whatever this is set to.
+	"startup.clearScrollback": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "interaction",
+			group: "Startup & Updates",
+			label: "Clear Scrollback on Startup",
+			description:
+				"Erase the terminal's saved scrollback when veyyon starts, so the session begins on an empty terminal. This also erases what was on screen before you launched, such as your shell history and any command output, and it cannot be undone. Off still starts you on a clear screen; it just leaves your history reachable by scrolling up.",
+		},
+	},
+
 	"startup.setupWizard": {
 		type: "boolean",
 		default: true,
