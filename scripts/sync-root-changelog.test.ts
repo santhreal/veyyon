@@ -407,12 +407,53 @@ describe("unreleasedBullets", () => {
 	 * And the banner the renderer actually emits is parsed correctly, not just a hand-written
 	 * lookalike. Asserting against the real render is what makes this a check on the pair rather
 	 * than on a fixture that can drift away from the banner it stands in for.
+	 *
+	 * This used to assert `bullets.length > 20`. That number described the repo on the day it was
+	 * written, not a contract: it passes for any parser that returns enough lines, including one
+	 * that leaks bullets out of released sections, and it fails for a correct parser as soon as a
+	 * release empties Unreleased. It did exactly that, and sat red on main unnoticed because this
+	 * suite runs in a bucket CI never invoked.
+	 *
+	 * The replacement extracts the Unreleased region independently, by slicing the real render from
+	 * its Unreleased heading to the next version heading, and requires the parser to agree exactly.
+	 * That holds at any count, including zero right after a release, and it fails on the mistakes a
+	 * count cannot see: a slice that runs past the next heading, an off-by-one that drops the last
+	 * bullet, or a match on prose that merely looks like a list.
 	 */
 	it("reads the unreleased entries out of the real generated root", () => {
-		const bullets = unreleasedBullets(buildRootChangelog());
+		const rendered = buildRootChangelog();
+		const lines = rendered.split("\n");
+		const start = lines.findIndex(line => /^##\s*\[Unreleased\]/i.test(line));
+		expect(start).toBeGreaterThanOrEqual(0);
+		const rest = lines.slice(start + 1);
+		const end = rest.findIndex(line => /^##\s/.test(line));
+		const section = end === -1 ? rest : rest.slice(0, end);
+		const expected = section
+			.filter(line => line.startsWith("- "))
+			.map(line => line.slice(2).trim())
+			.filter(bullet => !bullet.includes("Generated file."));
 
-		expect(bullets.length).toBeGreaterThan(20);
-		expect(bullets.every(bullet => !bullet.includes("Generated file."))).toBe(true);
+		expect(unreleasedBullets(rendered)).toEqual(expected);
+	});
+
+	/**
+	 * The half of the contract an equality check against a possibly empty section cannot reach. The
+	 * released sections below Unreleased are full of bullets, and a parser that forgot to stop at
+	 * the next heading would return them while still looking plausible.
+	 */
+	it("stops at the first released version and returns none of its entries", () => {
+		const rendered = buildRootChangelog();
+		const lines = rendered.split("\n");
+		const firstRelease = lines.findIndex(line => /^##\s*\[\d/.test(line));
+		expect(firstRelease).toBeGreaterThanOrEqual(0);
+		const releasedBullets = lines
+			.slice(firstRelease)
+			.filter(line => line.startsWith("- "))
+			.map(line => line.slice(2).trim());
+		expect(releasedBullets.length).toBeGreaterThan(0);
+
+		const parsed = new Set(unreleasedBullets(rendered));
+		expect(releasedBullets.filter(bullet => parsed.has(bullet))).toEqual([]);
 	});
 });
 
