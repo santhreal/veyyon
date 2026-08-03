@@ -225,6 +225,7 @@ export const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
 	"scripts/release-train-contracts.test.ts",
 	"scripts/release-dispatch-correlation.test.ts",
+	"scripts/gh-repo-context.test.ts",
 	"scripts/ci-build-native.test.ts",
 	"scripts/bun-install-action.test.ts",
 	"scripts/ci-release-notes.test.ts",
