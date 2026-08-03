@@ -329,6 +329,12 @@ export const repoScriptTests = [
 	// regexed the raw workflow YAML, so a path named in a COMMENT in ci.yml counted
 	// as run. Scanning the parsed document instead exposes it.
 	"scripts/release-train-alert-watches-the-train.test.ts",
+	// The two gates on the wiring itself. Registering them here is not ceremony: the
+	// first commit of them left both out, so the suites that keep every script suite
+	// running were themselves running nowhere, which is the exact hole they exist to
+	// close. script-tests-coverage caught it.
+	"scripts/every-script-suite-actually-runs.test.ts",
+	"scripts/no-install-jobs-resolve-their-imports.test.ts",
 ];
 
 /**
