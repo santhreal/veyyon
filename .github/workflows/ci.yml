@@ -1481,7 +1481,7 @@ jobs:
                   echo "UNKNOWN, NOT green, and has to be checked by hand."
                   echo
                   echo "Run: $RUN_URL"
-                } >> "$GITHUB_STEP_SUMMARY"
+                } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
                 exit 2
               }
 
@@ -1507,7 +1507,7 @@ jobs:
                   echo "| skipped as a result | \`${stranded:-none}\` |"
                   echo
                   echo "Run: $RUN_URL"
-                } >> "$GITHUB_STEP_SUMMARY"
+                } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
               else
                 {
                   echo "## Release train green: $RELEASE_TAG"
@@ -1515,7 +1515,7 @@ jobs:
                   echo "Every watched release job succeeded."
                   echo
                   echo "Run: $RUN_URL"
-                } >> "$GITHUB_STEP_SUMMARY"
+                } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
               fi
 
               # Self-heal the label: `gh issue create --label` hard-fails when the
