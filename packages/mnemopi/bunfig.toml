@@ -6,5 +6,14 @@
 # The tripwire itself lives in exactly one place
 # (packages/utils/test/helpers/real-data-tripwire.ts); only this pointer repeats,
 # because Bun offers no way to inherit a parent config. See docs/internal/testing.md.
+#
+# The second preload is mnemopi's own, and it is what lets this package run in
+# CI's workspace bucket: it refuses `FlagEmbedding.init`, the fastembed call that
+# downloads the ~270MB model, so a suite that starts needing the real weights
+# says so loudly instead of pulling them into a runner. Every suite here injects
+# its own embeddings today; the tripwire is what keeps that true.
 [test]
-preload = ["../utils/test/helpers/real-data-tripwire.ts"]
+preload = [
+  "../utils/test/helpers/real-data-tripwire.ts",
+  "./test/helpers/fastembed-model-tripwire.ts",
+]
