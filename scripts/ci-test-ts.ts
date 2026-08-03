@@ -153,9 +153,6 @@ const codingAgentBucketPlans: Record<CodingAgentBucket, { label: string; paralle
 // Smaller workspace packages stay separate from native/TUI/integration suites so
 // their short TS suites can run together. CI still downloads the Linux x64 native
 // addon before this bucket: shared utility barrels may load native-backed modules.
-// mnemopi is intentionally excluded — its embedding suites depend on a ~270MB
-// fastembed model absent from CI runners, so they flake/time out under the parallel
-// bucket; run `bun --cwd=packages/mnemopi test` locally instead.
 export const fastWorkspacePackages = [
 	"packages/hashline",
 	"packages/wire",
@@ -175,6 +172,24 @@ export const fastWorkspacePackages = [
 	"packages/tool-render",
 	"packages/swarm-extension",
 	"packages/deepswe-bench",
+	// mnemopi ran in NO CI job until this entry existed. It sat in
+	// `localOnlyWorkspacePackages` below, excluded as a whole package because "its
+	// embedding suites depend on a ~270MB fastembed model absent from CI runners".
+	// That was a property of a subset, recorded as a property of the package, and
+	// never checked against the suites. Every one of them passes with the model
+	// cache empty and the network unreachable: each injects a fake provider or a
+	// fake initializer, and `getLocalModel` returns null outright under the test
+	// runner. So the triple store, the schema, the migrations, the query paths and
+	// the recall ranking were all skipped for a hazard none of them run into, and
+	// 1041 assertions ran nowhere while the buckets reported green.
+	//
+	// The hazard was real, so it is refused at the download instead of by omitting
+	// a package: `packages/mnemopi/test/helpers/fastembed-model-tripwire.ts` is
+	// preloaded into every mnemopi test process and throws from
+	// `FlagEmbedding.init`, the call that fetches the weights. A suite that starts
+	// needing the real model fails by name, here and locally, rather than pulling
+	// 270MB into a runner and turning this bucket slow and flaky.
+	"packages/mnemopi",
 ];
 
 // These suites cover the native package, TUI/browser-ish behavior, local servers,
@@ -192,10 +207,16 @@ export const nativeAndIntegrationPackages = [
 ];
 
 // Packages the CI buckets deliberately skip but a local full run should still
-// cover. mnemopi's embedding suites need a ~270MB fastembed model absent from CI
-// runners (so it flakes/times out there); veybot-web lives under python/veybot
-// and is outside every CI TS bucket.
-export const localOnlyWorkspacePackages = ["packages/mnemopi", "python/veybot/web"];
+// cover. One entry, and its reason is structural rather than circumstantial:
+// veybot-web lives under python/veybot, outside every CI TS bucket.
+//
+// mnemopi was the other entry, and it is the warning this list carries. A whole
+// package was skipped for something true of a handful of its suites, the reason
+// read as settled, and nobody measured it again for as long as it stood. An entry
+// here costs a package its entire CI run, so it has to name a property of the
+// package. When only some suites cannot run in CI, exclude those suites by name
+// with the reason attached to them and leave the rest of the package running.
+export const localOnlyWorkspacePackages = ["python/veybot/web"];
 
 /**
  * Every package whose test suite this runner executes, across all three buckets.
@@ -341,12 +362,33 @@ export const repoScriptTests = [
  * The one command that runs every repo-level script suite. Both `local-ts` (the
  * full local run) and `scripts` (that set alone) call this, so `repoScriptTests`
  * has exactly one consumer and cannot be half-updated.
+ *
+ * The timeout is explicit because bun's 5 second default is a unit-test budget and
+ * these are not unit tests. They shell out: repo-wide git greps, and installer
+ * suites that run real installs into disposable HOMEs. Under `--parallel=4` those
+ * heavy suites saturate the machine and the light ones stall behind them.
+ * first-party-docs-are-indexed runs in 0.10 seconds on its own and still blew
+ * through 5 seconds in the bucket, which is contention, not slowness, and it
+ * failed on the clock rather than on anything it asserts.
+ *
+ * This buys patience, not leniency. Every assertion is unchanged, and a suite that
+ * genuinely hangs still fails, 30 seconds later. Raising it further would start
+ * hiding real hangs, so fix the suite rather than this number.
  */
 function scriptTestCommand(): TestCommand {
 	return {
 		label: "scripts",
 		cwd: ".",
-		command: ["bun", "test", ...preloadArgs, "--parallel=4", ...onlyFailuresArgs, ...repoScriptTests],
+		command: [
+			"bun",
+			"test",
+			...preloadArgs,
+			"--parallel=4",
+			"--timeout",
+			"30000",
+			...onlyFailuresArgs,
+			...repoScriptTests,
+		],
 	};
 }
 
@@ -638,7 +680,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 			];
 		// `local-ts` is the full local TypeScript run that root `bun run test:ts`
 		// drives: every package the old `--workspaces` fan-out covered (the CI
-		// `all` set PLUS mnemopi and veybot-web, which CI omits) and every repo
+		// `all` set PLUS veybot-web, which CI omits) and every repo
 		// script test, routed through this one quiet runner so the whole suite
 		// shares one progress stream and one failure report.
 		// `scripts` runs only the repo-level script suites. Root `test:scripts`
