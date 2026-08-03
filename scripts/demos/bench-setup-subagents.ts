@@ -1,3 +1,21 @@
+/**
+ * Bench for the setup wizard's Agents scene.
+ *
+ * Renders the scene at 100 columns twice, once with only `task` enabled and once
+ * with `task`, `reviewer`, and `scout`, then times 500 renders of each and
+ * prints both timings.
+ *
+ * The timings are the smaller half of the point. The layout check runs first:
+ * the two states must produce the same display width on every line, so ticking
+ * a specialist cannot reflow the list under the cursor. A mismatch throws before
+ * any timing is taken. The theme and the ANSI policy are pinned so those widths
+ * do not depend on the terminal you run it in.
+ *
+ * Takes no arguments.
+ *
+ * Run:
+ *     bun scripts/demos/bench-setup-subagents.ts
+ */
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
 import { AgentsSceneController } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/agents";

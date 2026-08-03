@@ -1,6 +1,20 @@
 /**
- * Regenerate the committed paired proof:
- * `env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-default-effort-ownership.ts --width 100 | bun scripts/demos/render-proof.ts --out assets/default-effort-ownership --width 100 --scale 2`
+ * Render the Default Model row when a runtime override owns the active effort.
+ *
+ * The profile has `low` saved as this model's default effort while the runtime
+ * role selector asks for `test/reasoning-model:high`, so two settings disagree
+ * about the effort in force. The proof is the Model tab opened on the Default
+ * Model row, whose help text has to say which of the two is active and which one
+ * this row would change.
+ *
+ * Takes `--width` and nothing else.
+ *
+ * Run:
+ *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-default-effort-ownership.ts --width 100 |
+ *       bun scripts/demos/render-proof.ts --out assets/default-effort-ownership --width 100 --scale 2
+ *
+ * That regenerates the committed pair `assets/default-effort-ownership-grey.png`
+ * and `assets/default-effort-ownership-black.png`.
  */
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";

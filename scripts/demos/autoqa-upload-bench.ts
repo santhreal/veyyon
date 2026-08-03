@@ -1,3 +1,20 @@
+/**
+ * Differential bench for the Auto QA grievance uploader.
+ *
+ * Seeds one grievance row in an in-memory database and flushes it twice: once
+ * with `dev.autoqaPush.enabled` off, once on, against a stub fetch that counts
+ * requests. Off must send nothing and leave the row queued. On must send one
+ * request and mark the row pushed. Both arms must leave the stored report text
+ * unchanged, because the upload is a copy and not a move, and a queue that
+ * loses its own rows to the uploader is the failure worth catching. Any other
+ * shape throws instead of printing, so the JSON it emits is only ever a passing
+ * result.
+ *
+ * Takes no arguments.
+ *
+ * Run:
+ *     bun scripts/demos/autoqa-upload-bench.ts
+ */
 import { Database } from "bun:sqlite";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { __resetAutoQaFlushStateForTests, flushGrievances } from "@veyyon/coding-agent/tools/report-tool-issue";

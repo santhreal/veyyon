@@ -1,8 +1,21 @@
 /**
- * Regenerate the committed paired proofs:
- * `env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-effort-variants.ts --width 100 | bun scripts/demos/render-proof.ts --out assets/effort-variants --width 100 --scale 2`
- * Add `--two-tier-only` and use `assets/model-effort-two-tier`, or add `--wide-only`
- * and use `assets/model-effort-wide-ladder`, for the model-specific pairs.
+ * Render the effort picker for both shapes of ladder.
+ *
+ * A two-tier Google model offers low and high, a five-step OpenAI model offers
+ * minimal through xhigh, and the step control has to read correctly at both
+ * extremes. Both pickers go into one render, stacked with a gap, so the pair is
+ * comparable in a single image.
+ *
+ * Flags: `--width`, plus `--two-tier-only` or `--wide-only` to drop the other
+ * model when you want a proof of one ladder alone.
+ *
+ * Run:
+ *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-effort-variants.ts --width 100 |
+ *       bun scripts/demos/render-proof.ts --out assets/effort-variants --width 100 --scale 2
+ *
+ * The committed single-model pairs come from the same command with
+ * `--two-tier-only` and `--out assets/model-effort-two-tier`, or `--wide-only`
+ * and `--out assets/model-effort-wide-ladder`.
  */
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
