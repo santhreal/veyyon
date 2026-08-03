@@ -1165,9 +1165,10 @@ export function getConfigDirName(): string {
 		throw new Error(
 			`${key} is set to the absolute path "${override}", but it names the config directory under your home ` +
 				`directory rather than replacing it, so veyyon would have created ` +
-				`"${path.join(resolveHomeDirOrThrow(), override)}" instead of what you asked for. Set it to a name such ` +
-				`as ".veyyon", or to move the config root onto another volume use the XDG variables ` +
-				`(XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME, XDG_CACHE_HOME), which do take absolute paths.`,
+				`"${path.join(resolveHomeDirOrThrow(), override)}" instead of what you asked for. Set it to a directory ` +
+				`name such as ".veyyon". The config root always lives under your home directory; if what you need is to ` +
+				`keep the bulky directories on another volume, XDG_DATA_HOME, XDG_STATE_HOME and XDG_CACHE_HOME do take ` +
+				`absolute paths and move the data, state and cache directories.`,
 		);
 	}
 	return override;
