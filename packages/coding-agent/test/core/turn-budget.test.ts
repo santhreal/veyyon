@@ -3,10 +3,9 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { parseTurnBudget } from "@veyyon/coding-agent/session/turn-budget";
 
 describe("parseTurnBudget", () => {
-	it("parses k/m multipliers, plain counts, and decimals", () => {
+	it("parses k/m multipliers and decimals", () => {
 		expect(parseTurnBudget("+500k")).toEqual({ total: 500_000, hard: false });
 		expect(parseTurnBudget("+2m")).toEqual({ total: 2_000_000, hard: false });
-		expect(parseTurnBudget("+1500")).toEqual({ total: 1_500, hard: false });
 		expect(parseTurnBudget("+1.5k")).toEqual({ total: 1_500, hard: false });
 	});
 
@@ -26,6 +25,11 @@ describe("parseTurnBudget", () => {
 		expect(parseTurnBudget("c++ stuff")).toBeNull();
 		// `+` glued to a non-numeric or trailing garbage must not match.
 		expect(parseTurnBudget("+500kfoo")).toBeNull();
+		// The k/m unit is MANDATORY, which is why a bare `+1500` is junk here rather
+		// than a 1,500 token ceiling. An unsuffixed `+<digits>` is overwhelmingly
+		// ordinary prose (a diff stat, a version, a score), and reading it as a
+		// directive silently capped turns nobody meant to budget.
+		expect(parseTurnBudget("+1500")).toBeNull();
 	});
 });
 
