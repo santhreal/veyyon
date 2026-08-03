@@ -39,11 +39,36 @@ export function workflowFiles(): string[] {
 	}
 }
 
-/** The text of every workflow, plus the root `package.json`. */
+/**
+ * The part of a workflow a runner actually executes, with every comment gone.
+ *
+ * A YAML comment is documentation, not a command, and reading a workflow as raw
+ * bytes cannot tell the two apart. That is not hypothetical: ci.yml's
+ * `release_train_alert` job carries a comment naming
+ * `scripts/release-train-alert-watches-the-train.test.ts`, and that one mention
+ * was enough to make both coverage locks report the suite as run. It was run by
+ * nothing, not `repoScriptTests` and not any `bun test` argument, so the test
+ * that pins the release monitor's contract executed nowhere while two gates
+ * agreed it was covered.
+ *
+ * Parsing keeps everything the raw-text approach was right about. Every shape a
+ * path can appear in (`bun test a.test.ts b.test.ts`, a shell variable, a matrix
+ * entry, a `with:` input) is a VALUE in the document, and serializing the parsed
+ * document preserves all of them verbatim. Only the comments, the one thing no
+ * runner executes, are dropped.
+ *
+ * Takes the text rather than a path so the lock on this contract can hand it a
+ * fixture and watch a commented-out command stop counting.
+ */
+export function commandText(workflowYaml: string): string {
+	return JSON.stringify(Bun.YAML.parse(workflowYaml));
+}
+
+/** Every workflow's commands, plus the root `package.json`. */
 export function runnerSources(): string[] {
 	const sources = [readFileSync(path.join(repoRoot, "package.json"), "utf8")];
 	for (const workflow of workflowFiles()) {
-		sources.push(readFileSync(path.join(repoRoot, workflow), "utf8"));
+		sources.push(commandText(readFileSync(path.join(repoRoot, workflow), "utf8")));
 	}
 	return sources;
 }
@@ -51,16 +76,14 @@ export function runnerSources(): string[] {
 /**
  * Every `*.test.ts` path any workflow passes to a test command.
  *
- * Extracted by pattern rather than by parsing the YAML, because what matters is
- * that the path appears in a command a runner executes, and the shapes it can
- * appear in (`bun test a.test.ts b.test.ts`, a shell variable, a matrix entry)
- * all put the literal path in the file.
+ * Matched by pattern over the commands rather than over the file, for the reason
+ * `commandText` records: a path in a comment is not a path in a command.
  */
 export function workflowTestPaths(): string[] {
 	const found: string[] = [];
 	for (const workflow of workflowFiles()) {
-		const text = readFileSync(path.join(repoRoot, workflow), "utf8");
-		for (const match of text.matchAll(/[\w./-]+\.test\.ts/g)) found.push(match[0]);
+		const commands = commandText(readFileSync(path.join(repoRoot, workflow), "utf8"));
+		for (const match of commands.matchAll(/[\w./-]+\.test\.ts/g)) found.push(match[0]);
 	}
 	return found;
 }

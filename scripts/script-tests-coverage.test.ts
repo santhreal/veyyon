@@ -26,7 +26,7 @@ import { describe, expect, it } from "bun:test";
 import { readdirSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { repoScriptTests } from "./ci-test-ts";
-import { workflowFiles, workflowTestPaths } from "./runner-references";
+import { commandText, workflowFiles, workflowTestPaths } from "./runner-references";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -105,5 +105,70 @@ describe("the repo-level test list", () => {
 		const duplicates = listed.filter((file, index) => listed.indexOf(file) !== index);
 
 		expect(duplicates).toEqual([]);
+	});
+});
+
+/**
+ * A path in a comment is not a path in a command.
+ *
+ * The extraction used to read each workflow as raw bytes, so a `.test.ts` named in
+ * a YAML comment counted as a runner reference. ci.yml's `release_train_alert` job
+ * carries exactly such a comment, and
+ * `scripts/release-train-alert-watches-the-train.test.ts` was therefore reported as
+ * run by this suite and by `workspace-typecheck-coverage.test.ts` while no runner
+ * named it. The lock on the release monitor executed nowhere, and the two gates whose
+ * job is to notice that agreed it was fine.
+ *
+ * Checked against fixtures rather than against the checked-in workflows, so the
+ * contract holds whatever anyone later does to that particular comment.
+ */
+describe("what counts as a runner reference", () => {
+	it("does not credit a suite named only in a comment", () => {
+		const commands = commandText(
+			[
+				"jobs:",
+				"  gate:",
+				"    steps:",
+				"      # bun test scripts/commented-out.test.ts",
+				"      - run: bun test scripts/really-run.test.ts",
+				"",
+			].join("\n"),
+		);
+
+		expect(commands).toContain("scripts/really-run.test.ts");
+		expect(commands).not.toContain("scripts/commented-out.test.ts");
+	});
+
+	/**
+	 * The other direction, so the fix cannot overshoot. A path reaches a runner as a
+	 * `run:` argument, a matrix entry, an env value or a `with:` input, and narrowing
+	 * the read to any one of those would quietly uncover the rest.
+	 */
+	it("credits every shape a runner takes its paths from", () => {
+		const commands = commandText(
+			[
+				"jobs:",
+				"  gate:",
+				"    strategy:",
+				"      matrix:",
+				"        suite: [scripts/from-matrix.test.ts]",
+				"    env:",
+				"      SUITE: scripts/from-env.test.ts",
+				"    steps:",
+				"      - uses: ./.github/actions/run-suite",
+				"        with:",
+				"          files: scripts/from-input.test.ts",
+				"      - run: bun test scripts/from-run.test.ts",
+				"",
+			].join("\n"),
+		);
+		const found = [...commands.matchAll(/[\w./-]+\.test\.ts/g)].map(match => match[0]);
+
+		expect(found.sort()).toEqual([
+			"scripts/from-env.test.ts",
+			"scripts/from-input.test.ts",
+			"scripts/from-matrix.test.ts",
+			"scripts/from-run.test.ts",
+		]);
 	});
 });
