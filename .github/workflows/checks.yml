@@ -133,11 +133,18 @@ jobs:
           LEAK_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -euo pipefail
-          mapfile -t changed < <(git diff --name-only --diff-filter=d "$LEAK_BASE"...HEAD -- '*.test.ts')
-          if [ ${#changed[@]} -eq 0 ]; then
+          # `mapfile ... < <(git ...)` reports the exit status of mapfile, never of
+          # the process substitution, so neither `-e` nor `pipefail` sees a failing
+          # git. An unreachable LEAK_BASE then produced an empty array, the gate
+          # printed "No test files changed" and exited 0, and a push whose suites
+          # were never leak-checked reported green. Capture first: a plain
+          # assignment is a status `-e` does see.
+          changed_list="$(git diff --name-only --diff-filter=d "$LEAK_BASE"...HEAD -- '*.test.ts')"
+          if [ -z "$changed_list" ]; then
             echo "No test files changed; nothing to leak-check."
             exit 0
           fi
+          mapfile -t changed <<<"$changed_list"
           printf 'Leak-checking %d changed test file(s):\n' "${#changed[@]}"
           printf '  %s\n' "${changed[@]}"
           bun scripts/find-test-leaks.ts "${changed[@]}"

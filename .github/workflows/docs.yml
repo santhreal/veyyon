@@ -175,6 +175,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install mdbook
+        # `shell: bash` rather than the default: an unspecified shell runs
+        # `bash -e {0}` with no `-o pipefail`, so the download below is the only
+        # step in this repo whose pipeline could report the exit status of `tar`
+        # while `curl` failed. Naming the shell is what turns `-o pipefail` on.
+        shell: bash
         run: |
           mkdir -p "$HOME/.local/bin"
           curl -fsSL https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-x86_64-unknown-linux-musl.tar.gz \
@@ -184,7 +189,15 @@ jobs:
         run: mdbook build docs/handbook
       - name: Committed book matches sources
         run: |
-          if ! git diff --exit-code --stat -- docs/handbook/book; then
+          # `git diff` compares the index and the working tree, and an untracked
+          # file is in neither: a handbook page added to SUMMARY.md and rebuilt,
+          # then committed with `git commit -a`, leaves book/<page>.html untracked
+          # and the gate read that as "the book is fresh" while veyyon.dev served
+          # a 404 for the page every sidebar links to. Ask for the working-tree
+          # status of the directory instead, untracked files included.
+          drift="$(git status --porcelain --untracked-files=all -- docs/handbook/book)"
+          if [ -n "$drift" ]; then
+            printf '%s\n' "$drift"
             echo "::error::docs/handbook/book is stale — run 'mdbook build' in docs/handbook (mdbook v0.5.2) and commit the result."
             exit 1
           fi
