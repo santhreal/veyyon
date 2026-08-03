@@ -47,6 +47,12 @@ import {
 	runInstall,
 	STAND_IN_BINARY,
 } from "./install-tests/environment-matrix-harness";
+import {
+	halfWrittenTempsFor,
+	OWNER_RECEIPT_BODY,
+	OWNER_RECEIPT_SUFFIX,
+	ownerReceiptFor,
+} from "./install-tests/installer-artifacts";
 
 const installShSource = fs.readFileSync(installSh, "utf8");
 
@@ -83,6 +89,23 @@ describe("the stand-in binary answers every probe install.sh makes", () => {
 		// pointing it at a file, which is the failure doctor exists to catch.
 		expect(STAND_IN_BINARY).toContain('exec grep -rl -- "$2" "$3"');
 		expect(STAND_IN_BINARY).not.toContain("probe.txt");
+	});
+});
+
+describe("the ownership receipt this suite recognizes", () => {
+	/**
+	 * The assertions below let one sidecar name survive in directories they
+	 * otherwise require to hold no installer dot-file, so that name has to be the
+	 * receipt install.sh really writes. The suffix and the body are read back out
+	 * of the installer: rename either one and this fails here, naming the reason,
+	 * instead of leaving the exemption pointed at a name nothing writes. Trusting
+	 * a hand-copied name is how the assertions below went stale in the first place.
+	 */
+	it("matches the sidecar install.sh writes and uninstall reads", () => {
+		const body = OWNER_RECEIPT_BODY.trimEnd();
+		expect(installShSource).toContain(`printf '%s/.%s${OWNER_RECEIPT_SUFFIX}'`);
+		expect(installShSource).toContain(`printf '%s\\n' '${body}' > "$_owner_tmp"`);
+		expect(installShSource).toContain(`grep -Fqx '${body}' "$_owner_marker"`);
 	});
 });
 
@@ -139,11 +162,29 @@ describe.each(cases.map(c => [c.name, c] as const))("install into %s", (_name, t
 		expect(first.output).toContain("native addon loads (installed)");
 	});
 
+	/**
+	 * Each staging file is a full copy of the binary. One left behind after a
+	 * clean install means the cleanup contract is broken.
+	 *
+	 * This used to assert that nothing in the install dir starts with `.veyyon.`,
+	 * which held while staging was the only dot-file the installer could write
+	 * there. It is wrong now: `mark_artifact_owned` writes a durable
+	 * `.veyyon.veyyon-owner` receipt beside the binary, and `--uninstall` refuses
+	 * to remove a binary that has no receipt, so the old form demanded the
+	 * installer drop the one file that makes uninstall work.
+	 *
+	 * Pinning the whole listing is stronger than exempting the receipt by name. It
+	 * still fails on a leaked staging file (`.veyyon.local.<pid>`) or a leaked
+	 * receipt temp (`.veyyon.veyyon-owner.<pid>`), it fails on anything else the
+	 * installer starts leaving in a directory the user owns, and it now also fails
+	 * when the receipt is MISSING, which the old form could not tell apart from a
+	 * clean install.
+	 */
 	it("leaves no staging file behind in the install dir", () => {
-		// Each staging file is a full copy of the binary. One left behind after a
-		// clean install means the cleanup contract is broken.
-		const leftovers = fs.readdirSync(first.installDir).filter(name => name.startsWith(".veyyon."));
-		expect(leftovers).toEqual([]);
+		const receipt = ownerReceiptFor(binary);
+		expect(fs.readdirSync(first.installDir).sort()).toEqual([path.basename(receipt), "vey", "veyyon"]);
+		// Well-formed, not merely present: uninstall greps for this exact line.
+		expect(fs.readFileSync(receipt, "utf8")).toBe(OWNER_RECEIPT_BODY);
 	});
 
 	if (testCase.expect_rc) {
@@ -238,15 +279,28 @@ describe.each(cases.map(c => [c.name, c] as const))("install into %s", (_name, t
 	}
 
 	for (const rel of testCase.expect_completions ?? []) {
+		/**
+		 * A completion file at the wrong path is not a completion: the shell
+		 * autoloads by exact directory and name.
+		 *
+		 * The temp check here used to filter every sibling starting with
+		 * `.<name>.`, so it also caught `.<name>.veyyon-owner`, the ownership
+		 * receipt `mark_artifact_owned` writes AFTER the move. That receipt is what
+		 * `completion_artifact_is_ours` reads, so requiring its absence required an
+		 * uninstall that leaves the file behind as somebody else's. It is now
+		 * excluded from the temp sweep by its exact name and asserted to exist with
+		 * the body uninstall greps for, so the half-written contract still holds and
+		 * the ownership contract is pinned instead of ignored.
+		 */
 		it(`writes the completion file at ${rel}`, () => {
-			// A completion file at the wrong path is not a completion: the shell
-			// autoloads by exact directory and name.
 			const file = path.join(first.home, rel);
 			expect(fs.existsSync(file), `${file} must exist`).toBe(true);
 			expect(fs.readFileSync(file, "utf8").length).toBeGreaterThan(0);
-			// Nothing half-written: the generator writes to a temp and moves it.
-			const dir = fs.readdirSync(path.dirname(file));
-			expect(dir.filter(name => name.startsWith(`.${path.basename(file)}.`))).toEqual([]);
+			const receipt = ownerReceiptFor(file);
+			expect(fs.existsSync(receipt), `${receipt} must record our ownership`).toBe(true);
+			expect(fs.readFileSync(receipt, "utf8")).toBe(OWNER_RECEIPT_BODY);
+			// Nothing half-written: the generator writes `.<name>.<pid>` and moves it.
+			expect(halfWrittenTempsFor(file)).toEqual([]);
 		});
 	}
 
@@ -368,7 +422,13 @@ describe("an install killed mid-copy", () => {
 		const output = `${rerun.stdout.toString()}${rerun.stderr.toString()}`;
 		expect(rerun.exitCode).toBe(0);
 		expect(output).toContain(`removed ${path.join(staged.installDir, leftover)} left by an interrupted install`);
-		expect(fs.readdirSync(staged.installDir).filter(n => n.startsWith(".veyyon."))).toEqual([]);
+		// The sweep reclaimed the leftover and the finished install left exactly its
+		// own artifacts. `.veyyon.veyyon-owner` is one of them: the receipt
+		// `--uninstall` requires, not litter, which is why this no longer demands
+		// that nothing here starts with `.veyyon.`.
+		const receipt = ownerReceiptFor(path.join(staged.installDir, "veyyon"));
+		expect(fs.readdirSync(staged.installDir).sort()).toEqual([path.basename(receipt), "vey", "veyyon"]);
+		expect(fs.readFileSync(receipt, "utf8")).toBe(OWNER_RECEIPT_BODY);
 		expect(fs.readFileSync(path.join(staged.installDir, "veyyon"), "utf8")).toBe(STAND_IN_BINARY);
 	}, 30_000);
 

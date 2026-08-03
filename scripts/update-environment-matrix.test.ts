@@ -46,6 +46,20 @@ import {
 	UPDATED_STAND_IN_BINARY,
 	UPDATED_VERSION,
 } from "./install-tests/environment-matrix-harness";
+import { OWNER_RECEIPT_BODY, ownerReceiptFor } from "./install-tests/installer-artifacts";
+
+/**
+ * Exactly what a finished install owns in the install directory, sorted: the
+ * binary, the `vey` alias, and the ownership receipt beside the binary. The
+ * alias is present in every case, either as our symlink or, where the case seeds
+ * one, as the user's own file the installer refused to touch.
+ *
+ * An update changes the binary's BYTES and nothing else here, so this is equally
+ * the listing before the update, after it, and after the rollback. Assertions
+ * below pin the whole listing against it rather than filtering for known litter,
+ * so an unexpected file and a missing receipt both fail.
+ */
+const INSTALL_DIR_CONTENTS = [path.basename(ownerReceiptFor("veyyon")), "vey", "veyyon"].sort();
 
 const UPDATE_CLI = path.join(repoRoot, "packages/coding-agent/src/cli/update-cli.ts");
 
@@ -233,15 +247,31 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 		expect(run.stdout.toString().trim()).toBe(`veyyon/${UPDATED_VERSION}`);
 	});
 
-	it("leaves no backup or staged download in the install directory", () => {
-		// The staged `.new` is a full copy of the binary and the backup is
-		// another; both sit in the install directory under names one keystroke
-		// from the real one. The sweep is what reclaims them, and this is the
-		// assertion that proves the pair works rather than each alone.
-		const litter = fs
-			.readdirSync(install.installDir)
-			.filter(name => name.endsWith(".bak") || name.endsWith(".new") || name.startsWith(".veyyon."));
-		expect(litter).toEqual([]);
+	it("leaves no backup or staged download in the install directory, and keeps the ownership receipt", () => {
+		/**
+		 * CONTRACT: after an update the install directory holds exactly the three
+		 * files a finished install owns and nothing else. The staged `.new` is a
+		 * full copy of the binary and the backup is another; both sit here under
+		 * names one keystroke from the real one, and the sweep is what reclaims
+		 * them. The receipt beside the binary must SURVIVE the swap, because
+		 * `do_uninstall` refuses to remove a binary that has none.
+		 *
+		 * The previous form filtered the listing for `.bak`, `.new` and any
+		 * `.veyyon.` prefix, then required the result to be empty. That was right
+		 * before the installer wrote ownership receipts and is wrong now: the
+		 * prefix test also matches `.veyyon.veyyon-owner`, the receipt
+		 * `mark_artifact_owned` writes, so the old form demanded that an update
+		 * destroy the one file a later uninstall depends on.
+		 *
+		 * Pinning the whole sorted listing is strictly stronger than the filter it
+		 * replaces. It still fails on a leftover `.bak` or `.new`. It still fails
+		 * on a leaked staging file (`.veyyon.download.<pid>`) or a leaked receipt
+		 * temp (`.veyyon.veyyon-owner.<pid>`). It additionally fails on any new
+		 * name the updater starts leaving behind, and on a receipt that is ABSENT,
+		 * which a filter over leftovers cannot see at all.
+		 */
+		expect(fs.readdirSync(install.installDir).sort()).toEqual(INSTALL_DIR_CONTENTS);
+		expect(fs.readFileSync(ownerReceiptFor(binary), "utf8")).toBe(OWNER_RECEIPT_BODY);
 	});
 
 	if (rcRel !== undefined && rcBefore !== undefined) {
@@ -342,14 +372,23 @@ describe.each(cases.map(c => [c.name, c] as const))("update an install in %s", (
 			});
 		}
 
-		it("leaves the rc and the install directory as clean as the update did", () => {
-			// Two swaps in a row is where litter accumulates: each stages a temp and
-			// moves a backup aside, and the second is the one that finds the first's
-			// leftovers in its way.
-			const litter = fs
-				.readdirSync(install.installDir)
-				.filter(name => name.endsWith(".bak") || name.endsWith(".new") || name.startsWith(".veyyon."));
-			expect(litter).toEqual([]);
+		it("leaves the rc and the install directory as clean as the update did, receipt intact", () => {
+			/**
+			 * CONTRACT: two swaps in a row leave the install directory holding
+			 * exactly what one finished install owns, and leave the rc untouched.
+			 * Back-to-back swaps are where litter accumulates, because each stages a
+			 * temp and moves a backup aside, and the second is the one that finds
+			 * the first's leftovers in its way. A rollback must also carry the
+			 * ownership receipt through, or rolling back is what breaks uninstall.
+			 *
+			 * The previous form filtered the listing for `.bak`, `.new` and a
+			 * `.veyyon.` prefix and required nothing to match. That caught the
+			 * receipt, so it demanded the rollback delete it. Pinning the sorted
+			 * listing keeps every failure the filter had and adds the two it could
+			 * not express: unexpected new entries, and a MISSING receipt.
+			 */
+			expect(fs.readdirSync(install.installDir).sort()).toEqual(INSTALL_DIR_CONTENTS);
+			expect(fs.readFileSync(ownerReceiptFor(binary), "utf8")).toBe(OWNER_RECEIPT_BODY);
 			if (rcRel !== undefined && rcBefore !== undefined) {
 				expect(fs.readFileSync(rcTargetFor(testCase, rcRel, install.home), "utf8")).toBe(rcBefore);
 			}
