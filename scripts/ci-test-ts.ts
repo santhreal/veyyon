@@ -212,15 +212,25 @@ export const workspaceTestPackages = [
 	...localOnlyWorkspacePackages,
 ];
 
-// Repo-level script tests. CI's `workspace` bucket runs the release/merge gates
-// inline (see the `case "workspace"` list below): the concurrency regression
-// (GHA-config guard), the native-build guard, the releasable-changes gate, and
-// the install-methods dependency-coverage guard (keeps the tarball smoke's
-// hand-kept package lists in sync with coding-agent's real closure — a drift
-// there silently gates every release). A local full run also exercises the
-// release-notes, link-veyyon, and docs-book-pin tests. (A `ci-test-ts.test.ts`
-// entry used to sit here but the file never existed — bun silently ignores
-// unmatched filters when at least one other filter matches.)
+// Repo-level script tests. This is the ONE list of them, and `scriptTestCommand`
+// below is its only consumer, so it cannot be half-updated.
+//
+// It used to be two lists. `case "workspace"` carried its own hardcoded copy of 15
+// entries, and because that bucket is the only one CI ever invoked, the other 69
+// suites in this array ran nowhere. They were not skipped loudly. They were simply
+// never named by a workflow, so 79 assertions sat red on main while CI reported
+// green, including a stale installer contract and an every-script-has-an-owner
+// gate that had been failing since the demos landed. The second list is gone and a
+// dedicated `test_scripts` job now runs this one, which is the only arrangement
+// where adding an entry here means it actually runs.
+//
+// The irony is on the record two comments below: `case "scripts"` already warned
+// that two hand-maintained lists is how one goes stale, and noted the stale one
+// had 7 of 32 entries. The workspace copy was that same mistake, reintroduced.
+//
+// (A `ci-test-ts.test.ts` entry used to sit here but the file never existed. Bun
+// silently ignores unmatched filters when at least one other filter matches, so a
+// typo'd path in this array is invisible rather than fatal. Check the file exists.)
 export const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
 	"scripts/every-workflow-pipeline-sets-pipefail.test.ts",
@@ -315,6 +325,10 @@ export const repoScriptTests = [
 	// gate the TRACER, and this list is what proves no script suite runs nowhere.
 	"scripts/find-test-leaks.test.ts",
 	"scripts/find-order-polluter.test.ts",
+	// This one was in no runner. It looked covered only because the coverage lock
+	// regexed the raw workflow YAML, so a path named in a COMMENT in ci.yml counted
+	// as run. Scanning the parsed document instead exposes it.
+	"scripts/release-train-alert-watches-the-train.test.ts",
 ];
 
 /**
@@ -582,35 +596,13 @@ async function codingAgentTestCommands(bucket: CodingAgentBucket): Promise<TestC
 
 async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 	switch (mode) {
+		// `workspace` is packages only. It used to append its own hardcoded list of 15
+		// script tests, which made it the only bucket CI ran that touched scripts at all,
+		// and left the other 69 in `repoScriptTests` running nowhere. The dedicated
+		// `test_scripts` job runs the full list now, so this bucket no longer keeps a
+		// second copy to go stale.
 		case "workspace":
-			return [
-				...fastWorkspacePackages.map(pkg => workspaceTestCommand(pkg, 8)),
-				{
-					label: "scripts",
-					cwd: ".",
-					command: [
-						"bun",
-						"test",
-						"--parallel=4",
-						...onlyFailuresArgs,
-						"scripts/ci-concurrency.test.ts",
-						"scripts/ci-build-native.test.ts",
-						"scripts/ci-release-notes.test.ts",
-						"scripts/has-releasable-changes.test.ts",
-						"scripts/release-binaries-bytecode.test.ts",
-						"scripts/release-changelog.test.ts",
-						"scripts/release-dispatch-correlation.test.ts",
-						"scripts/release-policy.test.ts",
-						"scripts/release-push.test.ts",
-						"scripts/release-request.test.ts",
-						"scripts/release-sentinel.test.ts",
-						"scripts/release-train-contracts.test.ts",
-						"scripts/release-version-authorities.test.ts",
-						"scripts/release-version.test.ts",
-						"scripts/install-methods-coverage.test.ts",
-					],
-				},
-			];
+			return fastWorkspacePackages.map(pkg => workspaceTestCommand(pkg, 8));
 		case "native":
 			return nativeAndIntegrationPackages.map(pkg => workspaceTestCommand(pkg, 4, { smol: true }));
 		case "coding-agent-singleton":
@@ -628,11 +620,15 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 				...(await codingAgentTestCommands("runtime")),
 				...(await codingAgentTestCommands("native")),
 			];
+		// `all` has to mean all. It previously reached the 15 script tests only as a
+		// side effect of `workspace` carrying them, so pulling that copy out would have
+		// quietly emptied scripts from `all` as well. It names the bucket directly now.
 		case "all":
 			return [
 				...(await commandsForMode("workspace")),
 				...(await commandsForMode("native")),
 				...(await commandsForMode("coding-agent-heavy")),
+				...(await commandsForMode("scripts")),
 			];
 		// `local-ts` is the full local TypeScript run that root `bun run test:ts`
 		// drives: every package the old `--workspaces` fan-out covered (the CI
