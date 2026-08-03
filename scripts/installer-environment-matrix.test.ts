@@ -39,6 +39,7 @@ import {
 	environmentCases as cases,
 	cleanupEnvironmentMatrixTempRoots,
 	type EnvironmentCase,
+	type InstallRun,
 	installSh,
 	makeCheckout,
 	PATH_MARKER,
@@ -49,9 +50,11 @@ import {
 } from "./install-tests/environment-matrix-harness";
 import {
 	halfWrittenTempsFor,
-	OWNER_RECEIPT_BODY,
 	OWNER_RECEIPT_SUFFIX,
+	OWNER_RECEIPT_VERSION,
+	ownerReceiptBodyFor,
 	ownerReceiptFor,
+	writeLegacyOwnerReceipt,
 } from "./install-tests/installer-artifacts";
 
 const installShSource = fs.readFileSync(installSh, "utf8");
@@ -102,10 +105,33 @@ describe("the ownership receipt this suite recognizes", () => {
 	 * a hand-copied name is how the assertions below went stale in the first place.
 	 */
 	it("matches the sidecar install.sh writes and uninstall reads", () => {
-		const body = OWNER_RECEIPT_BODY.trimEnd();
 		expect(installShSource).toContain(`printf '%s/.%s${OWNER_RECEIPT_SUFFIX}'`);
-		expect(installShSource).toContain(`printf '%s\\n' '${body}' > "$_owner_tmp"`);
-		expect(installShSource).toContain(`grep -Fqx '${body}' "$_owner_marker"`);
+		expect(installShSource).toContain(`printf '%s\\n%s\\n' '${OWNER_RECEIPT_VERSION}' "$_owner_identity"`);
+		expect(installShSource).toContain(`NR == 1 && $0 != "${OWNER_RECEIPT_VERSION}" { exit 1 }`);
+	});
+
+	it("accepts the receipt only while the file it describes is still there", () => {
+		/**
+		 * CONTRACT: the receipt vouches for a FILE, not for a path, and the three
+		 * lines below are the whole of that guarantee in install.sh.
+		 *
+		 * The v1 receipt was the bare constant `veyyon-installer-v1`, so an
+		 * installed binary deleted by hand left a sidecar that handed ownership to
+		 * whatever took the name next: the installer would overwrite, and uninstall
+		 * would delete, a file it never wrote. Pinning the shape here rather than
+		 * only exercising it end to end means the recompute cannot be dropped back
+		 * to a constant comparison without a named failure, which is exactly how the
+		 * v1 form survived review.
+		 */
+		// The recorded identity is compared against one computed NOW, from the file.
+		expect(installShSource).toContain('_receipt_actual=$(artifact_identity "$1")');
+		expect(installShSource).toContain('[ "$_receipt_recorded" = "$_receipt_actual" ]');
+		// A receipt that does not match settles the question: the structural
+		// fallbacks below it must not hand ownership back.
+		expect(installShSource).toContain('owner_receipt_identity "$_binary_path" >/dev/null 2>&1 && return 1');
+		// And an identity that cannot be computed refuses to become a receipt,
+		// rather than writing one that vouches for nothing.
+		expect(installShSource).toContain('_owner_identity=$(artifact_identity "$1") || return 1');
 	});
 });
 
@@ -183,8 +209,9 @@ describe.each(cases.map(c => [c.name, c] as const))("install into %s", (_name, t
 	it("leaves no staging file behind in the install dir", () => {
 		const receipt = ownerReceiptFor(binary);
 		expect(fs.readdirSync(first.installDir).sort()).toEqual([path.basename(receipt), "vey", "veyyon"]);
-		// Well-formed, not merely present: uninstall greps for this exact line.
-		expect(fs.readFileSync(receipt, "utf8")).toBe(OWNER_RECEIPT_BODY);
+		// Well-formed, not merely present, and describing THIS binary: a receipt
+		// carrying any other file's identity is one uninstall will refuse to act on.
+		expect(fs.readFileSync(receipt, "utf8")).toBe(ownerReceiptBodyFor(binary));
 	});
 
 	if (testCase.expect_rc) {
@@ -298,7 +325,7 @@ describe.each(cases.map(c => [c.name, c] as const))("install into %s", (_name, t
 			expect(fs.readFileSync(file, "utf8").length).toBeGreaterThan(0);
 			const receipt = ownerReceiptFor(file);
 			expect(fs.existsSync(receipt), `${receipt} must record our ownership`).toBe(true);
-			expect(fs.readFileSync(receipt, "utf8")).toBe(OWNER_RECEIPT_BODY);
+			expect(fs.readFileSync(receipt, "utf8")).toBe(ownerReceiptBodyFor(file));
 			// Nothing half-written: the generator writes `.<name>.<pid>` and moves it.
 			expect(halfWrittenTempsFor(file)).toEqual([]);
 		});
@@ -428,7 +455,7 @@ describe("an install killed mid-copy", () => {
 		// that nothing here starts with `.veyyon.`.
 		const receipt = ownerReceiptFor(path.join(staged.installDir, "veyyon"));
 		expect(fs.readdirSync(staged.installDir).sort()).toEqual([path.basename(receipt), "vey", "veyyon"]);
-		expect(fs.readFileSync(receipt, "utf8")).toBe(OWNER_RECEIPT_BODY);
+		expect(fs.readFileSync(receipt, "utf8")).toBe(ownerReceiptBodyFor(path.join(staged.installDir, "veyyon")));
 		expect(fs.readFileSync(path.join(staged.installDir, "veyyon"), "utf8")).toBe(STAND_IN_BINARY);
 	}, 30_000);
 
@@ -450,4 +477,160 @@ describe("an install killed mid-copy", () => {
 		expect(fs.readFileSync(live, "utf8")).toBe("another installer's partial copy");
 		expect(output).toContain(`leaving ${live} alone`);
 	}, 20_000);
+});
+
+describe("the ownership receipt vouches for the file, not for the path", () => {
+	/**
+	 * WHY THIS EXISTS. The receipt used to hold one constant line, so it said
+	 * "this installer owns whatever is at this path". Delete an installed binary
+	 * by hand and the sidecar stayed; put your own `veyyon` at that name and it
+	 * inherited the ownership. The installer would then overwrite a file it never
+	 * wrote, and `--uninstall` would delete it, on a path the user had already
+	 * taken back.
+	 *
+	 * Every case below runs the real installer end to end, because the gate is
+	 * only worth anything where it is actually consulted: `finalize_binary` before
+	 * a replacement and `do_uninstall` before a removal. The matrix above proves
+	 * an install is well formed; this proves who it will and will not touch.
+	 */
+	const ownershipCase: EnvironmentCase = {
+		name: "ownership",
+		shell: "/bin/bash",
+		home_dir: "ownership",
+		install_dir: ".local/bin",
+	};
+
+	/** A finished install, plus the paths every case below reaches for. */
+	function freshInstall(): { run: InstallRun; binary: string; alias: string; receipt: string } {
+		const run = runInstall(ownershipCase);
+		expect(run.exitCode).toBe(0);
+		const binary = path.join(run.installDir, "veyyon");
+		return { run, binary, alias: path.join(run.installDir, "vey"), receipt: ownerReceiptFor(binary) };
+	}
+
+	function uninstall(run: InstallRun): string {
+		const done = Bun.spawnSync(["sh", installSh, "--uninstall"], {
+			cwd: run.checkout,
+			env: run.env,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		return `${done.stdout.toString()}${done.stderr.toString()}`;
+	}
+
+	/** What the user did: took the path back, keeping whatever the installer left. */
+	const FOREIGN = "#!/bin/sh\necho USER OWN SCRIPT\n";
+	function replaceBinaryByHand(binary: string): void {
+		fs.rmSync(binary);
+		fs.writeFileSync(binary, FOREIGN, { mode: 0o751 });
+	}
+
+	it("refuses to replace a file that inherited an orphaned receipt", () => {
+		// The reported defect, end to end. The receipt is downgraded to the v1 body
+		// a released installer really wrote, and the alias is removed, so what is
+		// left on disk is exactly what a user who deleted the binary by hand has:
+		// a sidecar with no file to describe.
+		const { run, binary, alias, receipt } = freshInstall();
+		fs.rmSync(alias);
+		writeLegacyOwnerReceipt(binary);
+		replaceBinaryByHand(binary);
+
+		const rerun = runInstall(ownershipCase, run);
+		expect(rerun.exitCode).not.toBe(0);
+		expect(rerun.output).toContain(`refusing to replace ${binary}`);
+		expect(rerun.output).toContain("cannot be confirmed against the file that is there now");
+		// The user's file is the whole point: byte-identical, mode intact.
+		expect(fs.readFileSync(binary, "utf8")).toBe(FOREIGN);
+		expect(fs.statSync(binary).mode & 0o777).toBe(0o751);
+		expect(fs.existsSync(receipt)).toBe(true);
+	});
+
+	it("refuses even while its own alias still points at the path", () => {
+		// The realistic shape of the same accident: `rm ~/.local/bin/veyyon` leaves
+		// our `vey` symlink behind, and `vey` is installer-specific evidence that
+		// survives any replacement of the file beside it. A receipt this installer
+		// wrote and cannot match now settles the question BEFORE that evidence is
+		// consulted, or the alias would hand a stranger's file straight back.
+		const { run, binary, alias } = freshInstall();
+		replaceBinaryByHand(binary);
+		expect(fs.lstatSync(alias).isSymbolicLink()).toBe(true);
+
+		const rerun = runInstall(ownershipCase, run);
+		expect(rerun.exitCode).not.toBe(0);
+		expect(rerun.output).toContain("it has changed since this installer wrote it");
+		expect(fs.readFileSync(binary, "utf8")).toBe(FOREIGN);
+	});
+
+	it("reinstalls over its own install and re-stamps the receipt", () => {
+		// The other half of the same rule: a gate that refuses an install over its
+		// own work is worse than the hole it closes, so the ordinary path has to
+		// stay ordinary. The receipt is compared against the binary on disk, so a
+		// reinstall that replaced the bytes without rewriting the sidecar fails
+		// here rather than at the user's next uninstall.
+		const { run, binary, receipt } = freshInstall();
+		expect(fs.readFileSync(receipt, "utf8")).toBe(ownerReceiptBodyFor(binary));
+
+		const rerun = runInstall(ownershipCase, run);
+		expect(rerun.exitCode).toBe(0);
+		expect(rerun.output).not.toContain("refusing to replace");
+		expect(fs.readFileSync(binary, "utf8")).toBe(STAND_IN_BINARY);
+		expect(fs.readFileSync(receipt, "utf8")).toBe(ownerReceiptBodyFor(binary));
+	});
+
+	it("adopts a pre-identity receipt on the next install and upgrades it", () => {
+		// The compatibility window, asserted rather than assumed. Installs up to
+		// v1.0.46 wrote a receipt with no identity in it, and refusing all of them
+		// would strand every existing user on an installer that will not replace
+		// its own binary. Such an install is adopted through the same
+		// installer-specific evidence that adopts a pre-receipt install, and the
+		// contact rewrites the sidecar to v2 — which is what closes the window
+		// above for that machine, permanently.
+		const { run, binary, receipt } = freshInstall();
+		writeLegacyOwnerReceipt(binary);
+
+		const rerun = runInstall(ownershipCase, run);
+		expect(rerun.exitCode).toBe(0);
+		expect(fs.readFileSync(receipt, "utf8")).toBe(ownerReceiptBodyFor(binary));
+		expect(fs.readFileSync(receipt, "utf8")).toContain(OWNER_RECEIPT_VERSION);
+	});
+
+	it("uninstall still removes the binary and receipt it owns", () => {
+		// An identity check that made uninstall stop reclaiming its own artifacts
+		// would trade one silent mess for another, so the removal path is asserted
+		// against the same install, not only the replacement path.
+		const { run, binary, alias, receipt } = freshInstall();
+		const output = uninstall(run);
+		expect(output).toContain(`removed ${binary}`);
+		expect(fs.existsSync(binary)).toBe(false);
+		expect(fs.existsSync(alias)).toBe(false);
+		// The sidecar goes with the file. An orphan left here is the defect above,
+		// pre-armed for whatever takes the name next.
+		expect(fs.existsSync(receipt)).toBe(false);
+	});
+
+	it("uninstall leaves a foreign file with no receipt alone", () => {
+		// Unchanged behaviour, asserted beside the new rule so a future tightening
+		// of the receipt cannot quietly turn "left alone" into "removed".
+		const { run, binary, alias, receipt } = freshInstall();
+		fs.rmSync(alias);
+		fs.rmSync(receipt);
+		replaceBinaryByHand(binary);
+
+		const output = uninstall(run);
+		expect(output).toContain(`left ${binary} alone (not created by this installer)`);
+		expect(fs.readFileSync(binary, "utf8")).toBe(FOREIGN);
+	});
+
+	it("uninstall leaves a binary that changed since the receipt, and says why", () => {
+		// The same refusal on the removal side, with the reason the summary line
+		// cannot carry: "not created by this installer" is true but would send a
+		// user hunting for a second veyyon that does not exist.
+		const { run, binary } = freshInstall();
+		replaceBinaryByHand(binary);
+
+		const output = uninstall(run);
+		expect(output).toContain(`left ${binary} alone (not created by this installer)`);
+		expect(output).toContain("has changed since, so the file there now is not the one that was installed");
+		expect(fs.readFileSync(binary, "utf8")).toBe(FOREIGN);
+	});
 });

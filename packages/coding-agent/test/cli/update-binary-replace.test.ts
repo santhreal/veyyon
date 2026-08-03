@@ -15,6 +15,7 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { existsSync, promises as fsp, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import { ownerReceiptBodyFor, ownerReceiptFor } from "../../../../scripts/install-tests/installer-artifacts";
 import { replaceBinaryForUpdate } from "../../src/cli/update-cli";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
@@ -114,6 +115,96 @@ describe("replaceBinaryForUpdate swap and rollback", () => {
 		expect(readFileSync(target, "utf8")).toBe("OLD-BINARY");
 		expect(existsSync(temp)).toBe(false);
 		expect(existsSync(backup)).toBe(false);
+	});
+});
+
+describe("replaceBinaryForUpdate keeps the installer's ownership receipt honest", () => {
+	/**
+	 * The installer's sidecar records a sha256 of the artifact it was written for,
+	 * and `install.sh` accepts it only while the file at that path still matches.
+	 * That is what stops a receipt orphaned by a hand-deleted binary from handing
+	 * ownership of the next unrelated file to take the name.
+	 *
+	 * It also makes this swap the updater's problem. There is no way to tell "the
+	 * updater replaced the file" from "the user replaced the file" from the
+	 * outside: after either one the path holds a file the installer never saw and
+	 * the sidecar is untouched. So the replacer records. Skip it and every user
+	 * who has auto-updated is refused by their own installer, which would be a
+	 * worse bug than the one the receipt closes.
+	 *
+	 * Both directions are asserted. A rollback that restored the old binary and
+	 * left a receipt describing the new one is the same defect reversed, on the
+	 * path nobody exercises by hand.
+	 */
+	// Read from the installer suites' shared definition rather than restated here.
+	// A second spelling of the format would let the updater and install.sh drift
+	// apart while both suites stayed green, which is the failure this whole block
+	// exists to prevent.
+
+	it("re-stamps the receipt to describe the binary it swapped in", async () => {
+		const { target, temp, backup } = sandbox();
+		writeFileSync(target, "OLD-BINARY");
+		writeFileSync(temp, "NEW-BINARY");
+		const stale = ownerReceiptBodyFor(target);
+		writeFileSync(ownerReceiptFor(target), stale);
+
+		await replaceBinaryForUpdate({
+			targetPath: target,
+			tempPath: temp,
+			backupPath: backup,
+			expectedVersion: "9.9.9",
+			verifyInstalledVersion: okVerifier,
+		});
+
+		expect(readFileSync(ownerReceiptFor(target), "utf8")).toBe(ownerReceiptBodyFor(target));
+		// Not merely "still a receipt": the old one described OLD-BINARY, and
+		// leaving it is exactly the state the installer refuses to act on.
+		expect(readFileSync(ownerReceiptFor(target), "utf8")).not.toBe(stale);
+	});
+
+	it("re-stamps the receipt back when verification fails and the old binary returns", async () => {
+		const { target, temp, backup } = sandbox();
+		writeFileSync(target, "OLD-BINARY");
+		writeFileSync(temp, "BROKEN-NEW-BINARY");
+		// The receipt the automatic rollback has to restore agreement with. It is
+		// seeded describing the NEW binary, which is the state a re-stamp on the
+		// way in leaves behind when the swap succeeds and verification then fails.
+		writeFileSync(ownerReceiptFor(target), ownerReceiptBodyFor(temp));
+
+		await expect(
+			replaceBinaryForUpdate({
+				targetPath: target,
+				tempPath: temp,
+				backupPath: backup,
+				expectedVersion: "9.9.9",
+				verifyInstalledVersion: failVerifier,
+			}),
+		).rejects.toThrow(/restored previous/i);
+
+		expect(readFileSync(target, "utf8")).toBe("OLD-BINARY");
+		expect(readFileSync(ownerReceiptFor(target), "utf8")).toBe(ownerReceiptBodyFor(target));
+	});
+
+	it("leaves no half-written receipt temp beside the binary", async () => {
+		// The receipt is staged as `.<name>.veyyon-owner.<pid>` and renamed, the
+		// same shape install.sh uses, so the install suites that fail on leftover
+		// installer temps also cover the updater. A surviving temp would be a full
+		// second sidecar the installer never reads.
+		const { target, temp, backup } = sandbox();
+		writeFileSync(target, "OLD-BINARY");
+		writeFileSync(temp, "NEW-BINARY");
+
+		await replaceBinaryForUpdate({
+			targetPath: target,
+			tempPath: temp,
+			backupPath: backup,
+			expectedVersion: "9.9.9",
+			verifyInstalledVersion: okVerifier,
+		});
+
+		const dir = path.dirname(target);
+		const receipt = path.basename(ownerReceiptFor(target));
+		expect((await fsp.readdir(dir)).filter(name => name.startsWith(`${receipt}.`))).toEqual([]);
 	});
 });
 

@@ -947,6 +947,11 @@ try {
 # --- installer ownership receipts: foreign artifacts survive install/uninstall ---
 # File location is not ownership. These pure checks lock the cross-platform
 # receipt contract without invoking an untrusted executable to identify it.
+#
+# The receipt used to hold one constant line, so it vouched for a PATH: delete an
+# installed veyyon.exe by hand and the sidecar stayed, and the next unrelated file
+# to take that name inherited the ownership. A v2 receipt records a SHA256 of the
+# artifact it was written for and is honoured only while that artifact matches.
 $ownershipSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ownership-$PID"
 New-Item -ItemType Directory -Force -Path $ownershipSandbox | Out-Null
 try {
@@ -958,6 +963,92 @@ try {
     Remove-ArtifactOwnerReceipt $foreignBinary
     Check "removing the receipt returns the executable to foreign ownership" (Test-BinaryArtifactIsOurs $foreignBinary) "False"
 
+    # The receipt body is the same two lines install.sh writes, LF-terminated, so
+    # a sidecar is readable by whichever installer meets it next.
+    Set-ArtifactOwned $foreignBinary
+    $receiptPath = Join-Path $ownershipSandbox ".veyyon.exe.veyyon-owner"
+    $receiptBody = [System.IO.File]::ReadAllText($receiptPath)
+    $binaryHash = (Get-FileHash -LiteralPath $foreignBinary -Algorithm SHA256).Hash.ToLower()
+    Check "the receipt records the version and the file's digest, LF-terminated" `
+        $receiptBody "veyyon-installer-v2`nfile sha256:$binaryHash`n"
+
+    # Re-stamping after the installer rewrites the file is what keeps reinstall
+    # and update working; without it every second install would refuse itself.
+    Set-Content -LiteralPath $foreignBinary -Value "a different tool"
+    Check "a rewritten file no longer matches the receipt it was given" `
+        (Test-ArtifactHasOwnerReceipt $foreignBinary) "False"
+    Set-ArtifactOwned $foreignBinary
+    Check "re-stamping makes the rewritten file ours again" `
+        (Test-ArtifactHasOwnerReceipt $foreignBinary) "True"
+
+    # THE DEFECT. A receipt orphaned by a hand-deleted binary must not license a
+    # clobber of whatever the user puts there next.
+    $orphanDir = Join-Path $ownershipSandbox "orphan-v1"
+    New-Item -ItemType Directory -Force -Path $orphanDir | Out-Null
+    $orphanBinary = Join-Path $orphanDir "veyyon.exe"
+    [System.IO.File]::WriteAllText((Join-Path $orphanDir ".veyyon.exe.veyyon-owner"), "veyyon-installer-v1`n")
+    Set-Content -LiteralPath $orphanBinary -Value "the user's own tool"
+    Check "an orphaned v1 receipt is no longer ownership on its own" `
+        (Test-BinaryPathIsReplaceable $orphanBinary) "False"
+    Check "the refusal names the pre-identity receipt rather than blaming the user" `
+        ((Get-BinaryRefusalReason $orphanBinary) -like "*predates recorded file identity*") "True"
+
+    # The same orphan under a v2 receipt, with our own shim beside it. vey.cmd is
+    # installer-specific evidence that survives any replacement of the file next
+    # to it, so a receipt we wrote and cannot match has to settle the question
+    # BEFORE the shim is consulted, or the shim hands the stranger's file back.
+    $shimDir = Join-Path $ownershipSandbox "orphan-v2"
+    New-Item -ItemType Directory -Force -Path $shimDir | Out-Null
+    $shimBinary = Join-Path $shimDir "veyyon.exe"
+    Set-Content -LiteralPath $shimBinary -Value "installed veyyon bytes"
+    Set-ArtifactOwned $shimBinary
+    Set-Content -LiteralPath (Join-Path $shimDir "vey.cmd") -Value "@echo off`r`n`"$shimBinary`" %*"
+    Check "the shim beside it is still one this installer wrote" `
+        (Test-AliasShimIsOurs -ShimPath (Join-Path $shimDir "vey.cmd") -BinDir $shimDir) "True"
+    Set-Content -LiteralPath $shimBinary -Value "the user's own tool"
+    Check "a receipt that cannot match beats the shim evidence beside it" `
+        (Test-BinaryArtifactIsOurs $shimBinary) "False"
+    Check "the refusal says the file changed rather than that it is foreign" `
+        ((Get-BinaryRefusalReason $shimBinary) -like "*changed since this installer wrote it*") "True"
+
+    # COMPATIBILITY. Installs from v1.0.38 to v1.0.46 wrote a receipt with no
+    # identity in it. Refusing all of them would strand every existing user, so
+    # such an install is adopted through the same shim evidence that adopts a
+    # pre-receipt install, and the contact upgrades the sidecar to v2. That
+    # upgrade is what shuts the window above for that machine.
+    $legacyDir = Join-Path $ownershipSandbox "legacy-v1"
+    New-Item -ItemType Directory -Force -Path $legacyDir | Out-Null
+    $legacyBinary = Join-Path $legacyDir "veyyon.exe"
+    Set-Content -LiteralPath $legacyBinary -Value "installed veyyon bytes"
+    Set-Content -LiteralPath (Join-Path $legacyDir "vey.cmd") -Value "@echo off`r`n`"$legacyBinary`" %*"
+    [System.IO.File]::WriteAllText((Join-Path $legacyDir ".veyyon.exe.veyyon-owner"), "veyyon-installer-v1`n")
+    Check "a v1 receipt is recognized as the pre-identity format" `
+        (Test-ArtifactHasLegacyOwnerReceipt $legacyBinary) "True"
+    Check "a v1 receipt carries no identity of its own" `
+        (Test-ArtifactHasOwnerReceipt $legacyBinary) "False"
+    Check "an existing install is still adopted so upgrades keep working" `
+        (Test-BinaryPathIsReplaceable $legacyBinary) "True"
+    Set-ArtifactOwned $legacyBinary
+    Check "the adopting install upgrades the receipt to v2" `
+        (Test-ArtifactHasLegacyOwnerReceipt $legacyBinary) "False"
+    Check "and the upgraded receipt now identifies the file" `
+        (Test-ArtifactHasOwnerReceipt $legacyBinary) "True"
+
+    # FAIL CLOSED. A receipt recording no identity would be a v1 receipt under a
+    # v2 name, so a file whose hash cannot be taken gets no receipt at all rather
+    # than a claim the installer cannot prove. A directory is the reachable stand
+    # in for that: Get-FileHash has nothing to hash.
+    $unhashable = Join-Path $ownershipSandbox "not-a-file"
+    New-Item -ItemType Directory -Force -Path $unhashable | Out-Null
+    Check "an artifact with no computable identity yields none" `
+        ($null -eq (Get-ArtifactIdentity $unhashable)) "True"
+    $stampError = ""
+    try { Set-ArtifactOwned $unhashable } catch { $stampError = "$($_.Exception.Message)" }
+    Check "writing a receipt without an identity throws instead of claiming ownership" `
+        ($stampError -like "*identity could not be computed*") "True"
+    Check "and no receipt is left behind for it" `
+        (Test-Path -LiteralPath (Join-Path $ownershipSandbox ".not-a-file.veyyon-owner")) "False"
+
     $foreignCompletion = Join-Path $ownershipSandbox "veyyon-completions.ps1"
     Set-Content -LiteralPath $foreignCompletion -Value "# user's own completion"
     Check "an unrelated completion script is foreign" (Test-CompletionArtifactIsOurs $foreignCompletion) "False"
@@ -966,6 +1057,13 @@ try {
     Remove-ArtifactOwnerReceipt $foreignCompletion
     Set-Content -LiteralPath $foreignCompletion -Value "# PowerShell completion for veyyon - generated by veyyon completions powershell"
     Check "a legacy generated completion is adopted without running code" (Test-CompletionArtifactIsOurs $foreignCompletion) "True"
+    # A completion regenerated by `veyyon update` no longer matches its receipt,
+    # and is still unmistakably ours by content. Refusing it would make every
+    # update leave a stale completion behind.
+    Set-ArtifactOwned $foreignCompletion
+    Set-Content -LiteralPath $foreignCompletion -Value "# PowerShell completion for veyyon - generated by veyyon completions powershell`n# regenerated"
+    Check "a regenerated completion stays ours through its content" `
+        (Test-CompletionArtifactIsOurs $foreignCompletion) "True"
 } finally {
     Remove-Item -Recurse -Force $ownershipSandbox -ErrorAction SilentlyContinue
 }

@@ -931,6 +931,74 @@ export async function sweepStaleBackups(targetPath: string): Promise<void> {
 }
 
 /**
+ * The ownership sidecar `install.sh` and `install.ps1` write beside every
+ * artifact they install: `.<basename>.veyyon-owner` in the same directory.
+ *
+ * Mirrors `owner_marker_for` in scripts/install.sh and `Get-OwnerMarkerPath` in
+ * scripts/install.ps1; `scripts/install-tests/installer-artifacts.ts` is the one
+ * definition the test suites read, and it describes this same name.
+ */
+function ownerReceiptPathFor(artifactPath: string): string {
+	return path.join(path.dirname(artifactPath), `.${path.basename(artifactPath)}.veyyon-owner`);
+}
+
+/** Streamed so a ~100 MB executable is hashed without being held in memory. */
+async function sha256OfFile(filePath: string): Promise<string> {
+	const hasher = new Bun.CryptoHasher("sha256");
+	for await (const chunk of Bun.file(filePath).stream()) hasher.update(chunk);
+	return hasher.digest("hex");
+}
+
+/**
+ * Rewrite the installer's ownership receipt so it describes the binary that is
+ * on disk NOW.
+ *
+ * WHY THIS LIVES IN THE UPDATER. The receipt records a sha256 of the artifact it
+ * was written for, and the installer accepts it only while the file still
+ * matches, because a receipt that vouched for a path alone handed ownership of
+ * whatever turned up at that path to the installer: delete the binary by hand,
+ * drop your own script in its place, and the next install would overwrite it and
+ * uninstall would delete it.
+ *
+ * That check makes this swap the updater's problem. There is no in-band way to
+ * tell "veyyon update replaced the file" from "the user replaced the file"
+ * without the replacer recording something: after either one the path holds a
+ * file the installer never saw, the sidecar is untouched, and every other
+ * artifact in the directory looks identical. Inspecting or executing the new
+ * file to identify it is not an answer, so the replacer records. Leave this out
+ * and every user who has ever auto-updated is refused by their own uninstaller.
+ *
+ * Always a regular file: {@link replaceBinaryForUpdate} refuses to swap a
+ * symlink, so the `link` identity install.sh writes for the `--source` launcher
+ * is unreachable from here.
+ *
+ * Never throws. The swap it follows has already succeeded and verified, and
+ * failing an update that produced a working binary would be worse than a stale
+ * receipt: a stale one is refused loudly by the installer, with the reason, and
+ * is repaired by the next install. Reported rather than swallowed.
+ */
+export async function restampOwnerReceipt(artifactPath: string): Promise<boolean> {
+	const receiptPath = ownerReceiptPathFor(artifactPath);
+	// Staged then renamed under the same `.<name>.veyyon-owner.<pid>` name the
+	// installers use, so an interrupted write leaves a temp the install suites
+	// already fail on rather than a new shape nothing watches.
+	const staging = `${receiptPath}.${process.pid}`;
+	try {
+		await Bun.write(staging, `veyyon-installer-v2\nfile sha256:${await sha256OfFile(artifactPath)}\n`);
+		await fs.promises.rename(staging, receiptPath);
+		return true;
+	} catch (err) {
+		await removeFileBestEffort(staging);
+		logger.warn(
+			`Could not update the installer ownership receipt at ${receiptPath}: ${errorMessage(err)}. ` +
+				`It still describes the previous binary, so the installer will refuse to replace or remove ` +
+				`${artifactPath} until you re-run the installer.`,
+		);
+		return false;
+	}
+}
+
+/**
  * Atomically replace the installed binary and roll back if version verification fails.
  */
 export async function replaceBinaryForUpdate(options: BinaryReplacementOptions): Promise<InstalledVersionVerification> {
@@ -982,6 +1050,11 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 			);
 		}
 
+		// Before the backup goes: the receipt beside the target still describes the
+		// binary that was just replaced, and every ownership decision the installer
+		// makes about this path reads it.
+		await restampOwnerReceipt(options.targetPath);
+
 		backupReady = false;
 		await removeFileBestEffort(options.backupPath);
 		return verification;
@@ -1000,6 +1073,11 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 					{ cause: err },
 				);
 			}
+			// The rename succeeded, so the path holds the PREVIOUS binary again and
+			// the receipt has to say so. A rollback that restored the old binary and
+			// left a receipt describing the new one would be the same defect with the
+			// arrow reversed, on the path nobody exercises by hand.
+			await restampOwnerReceipt(options.targetPath);
 		} else if (backupReady) {
 			// The atomic replacement itself failed, so the original target is
 			// still live and this extra recovery link/copy is no longer needed.
