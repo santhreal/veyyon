@@ -194,6 +194,10 @@ const CONDITIONS: Record<string, () => boolean> = {
 	advisorEnabled: () => whenSettingsSay(() => Settings.instance.get("advisor.enabled") === true),
 	argotEnabled: () => whenSettingsSay(() => Settings.instance.get("argot.enabled") === true),
 	autoQaEnabled: () => whenSettingsSay(() => Settings.instance.get("dev.autoqa") === true),
+	// Blocking on a rejection only makes sense while rejections are reported: a
+	// run that stopped for a reason nothing was going to tell you about is worse
+	// than one that quietly overpays.
+	cacheRejectionReported: () => whenSettingsSay(() => Settings.instance.get("cache.reportRejection") === true),
 	bashAutoBackgroundEnabled: () =>
 		whenSettingsSay(() => Settings.instance.get("bash.autoBackground.enabled") === true),
 	bashStallDetectionEnabled: () =>

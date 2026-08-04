@@ -28,20 +28,21 @@ import { type CacheVerdict, describeCacheVerdict, isCacheHealthy } from "./verdi
 export type { CacheEnforcement };
 
 /**
- * Resolve the enforcement level, defaulting to failing.
+ * Resolve the enforcement level, defaulting to reporting rather than failing.
  *
- * `error` is the default because a rejection is provable: `isEnforceableFailure`
- * admits only the one verdict that cannot occur when caching works, and a
- * provider that under-reports its writes yields `unverifiable`, which never
- * fails. The four shipped cache defects were all logging-visible and still
- * reached users, so a default that only warns is a default that keeps shipping
- * them. `VEYYON_CACHE_ENFORCEMENT=warn` (or `off`) downgrades it.
+ * `warn` is the default because the cost of the two mistakes is asymmetric. A
+ * missed rejection costs money and shows up in the record; a wrong rejection
+ * halts a session that was working. The verdict is provable, but it is proven
+ * against provider usage reporting, and a provider that changes what it reports
+ * would turn `error` into an outage. Hard blocking is therefore opt-in: set
+ * `VEYYON_CACHE_ENFORCEMENT=error`, or turn on **Settings → Context → Block On
+ * Cache Rejection**.
  */
 export function resolveCacheEnforcement(explicit?: CacheEnforcement): CacheEnforcement {
 	if (explicit) return explicit;
 	const configured = $env.VEYYON_CACHE_ENFORCEMENT?.trim().toLowerCase();
 	if (configured === "off" || configured === "warn" || configured === "error") return configured;
-	return "error";
+	return "warn";
 }
 
 /**

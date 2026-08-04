@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `AgentOptions.cacheEnforcement` (and the matching `agent.cacheEnforcement` accessor) carries the prompt-cache enforcement level onto every provider request, so a host can decide whether a turn whose cache markers were demonstrably ignored is reported or fails the run. Defaults to the provider's own default, which reports rather than fails.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

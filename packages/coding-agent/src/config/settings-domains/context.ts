@@ -38,21 +38,19 @@ export const CONTEXT_SETTINGS = {
 
 	"compaction.strategy": {
 		type: "enum",
-		values: ["handoff", "summary"] as const,
+		values: ["summary"] as const,
 		default: "summary",
 		ui: {
 			tab: "model",
 			group: "Compaction",
 			label: "Compaction Type",
-			description:
-				"Summary condenses history in place and continues the same session; Handoff generates a session transfer and continues in a new session.",
+			description: "Summary condenses history in place and continues the same session.",
 			options: [
 				{
 					value: "summary",
 					label: "Summary",
 					description: "Summarize history in place and keep working in the same session",
 				},
-				{ value: "handoff", label: "Handoff", description: "Generate a handoff and continue in a new session" },
 			],
 		},
 	},
@@ -136,7 +134,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Compaction",
 			label: "Compaction Model",
 			description:
-				"Models used for LLM compaction / handoff, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.",
+				"Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.",
 		},
 	},
 
@@ -452,6 +450,35 @@ export const CONTEXT_SETTINGS = {
 			group: "General",
 			label: "Branch Summaries",
 			description: "Prompt to summarize when leaving a branch",
+		},
+	},
+
+	// Prompt-cache enforcement. The check itself always runs and always records
+	// its verdict; these two decide how loudly a failure is treated. Blocking is a
+	// separate toggle rather than a third value of one dropdown because the two
+	// questions are different: "do I want to hear about it" is a preference, and
+	// "should a rejection stop the run" is a risk decision.
+	"cache.reportRejection": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "context",
+			group: "Prompt cache",
+			label: "Report Cache Rejections",
+			description: "Warn when a turn asked the provider to cache a prefix and the provider cached nothing",
+		},
+	},
+
+	"cache.blockOnRejection": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "context",
+			group: "Prompt cache",
+			label: "Block On Cache Rejection",
+			description:
+				"Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money",
+			condition: "cacheRejectionReported",
 		},
 	},
 
