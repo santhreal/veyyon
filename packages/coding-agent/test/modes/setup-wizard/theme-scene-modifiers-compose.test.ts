@@ -64,6 +64,7 @@ async function mount(): Promise<Driven> {
 		ctx: { settings, ui: { invalidate: () => {} } } as never,
 		requestRender: () => {},
 		finish: result => finished.push(result),
+		skipSetup: () => {},
 		setFocus: () => {},
 		restoreFocus: () => {},
 	});

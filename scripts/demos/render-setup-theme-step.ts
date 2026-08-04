@@ -51,6 +51,7 @@ try {
 		ctx: { settings, ui: { invalidate: () => {} } } as never,
 		requestRender: () => {},
 		finish: () => {},
+		skipSetup: () => {},
 		setFocus: () => {},
 		restoreFocus: () => {},
 	});
