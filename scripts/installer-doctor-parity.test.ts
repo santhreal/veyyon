@@ -109,8 +109,9 @@ describe("a release binary is the version its tag claims before replacement", ()
 	});
 
 	it("the version gate only runs when a tag is supplied", () => {
-		// A source install has no release tag to compare against, so the gate is
-		// skipped rather than fabricating an expectation.
+		// A `--local`/`-Local` install has no release tag to compare against — it
+		// installs whatever version the checkout built — so the gate is skipped
+		// rather than fabricating an expectation.
 		expect(installSh).toContain('if [ -n "$want_tag" ]; then');
 		expect(installPs1).toContain("if ($ExpectedTag) {");
 	});
@@ -195,8 +196,36 @@ describe("doctor proves the native addon loads", () => {
 	});
 
 	it("both name the platform remedy their own users can actually run", () => {
-		expect(installSh).toContain("sh -s -- --source");
-		expect(installPs1).toContain("install.ps1))) -Source");
+		// This is the one failure with no installer-side fix: the release has no
+		// build that loads here, so no flag and no retry helps. The remedy used to
+		// be "run the installer again with --source", which cloned the repository
+		// into $HOME/.veyyon/src behind the user's back; that flag is gone, and
+		// the remedy is now a checkout the USER makes. Both installers say it
+		// through one constant each, so the two cannot drift into different
+		// advice, and each doctor interpolates that constant rather than
+		// rewording it.
+		expect(installSh).toContain(
+			'MANUAL_BUILD="build it from a checkout you own: git clone https://github.com/${REPO}.git && cd veyyon && bun run setup"',
+		);
+		expect(installPs1).toContain(
+			'$ManualBuild = "build it from a checkout you own: git clone $RepoUrl && cd veyyon && bun run setup"',
+		);
+		const shNatives = installSh.slice(installSh.indexOf("doctor_natives() {"));
+		expect(shNatives.slice(0, shNatives.indexOf("\n}\n"))).toContain(
+			"No prebuilt binary works here, so $MANUAL_BUILD",
+		);
+		const psNatives = installPs1.slice(installPs1.indexOf("function Test-NativeAddon {"));
+		expect(psNatives.slice(0, psNatives.indexOf("\n}\n"))).toContain(
+			"No prebuilt binary works here, so $ManualBuild",
+		);
+	});
+
+	it("neither remedy sends the user back through an installer flag that clones", () => {
+		// The exact shapes that were wrong, so they cannot come back by copy-paste:
+		// suggesting a flag the installer no longer has would answer a broken
+		// install with "Unknown option".
+		expect(installSh).not.toContain("sh -s -- --source");
+		expect(installPs1).not.toContain("install.ps1))) -Source");
 	});
 
 	it("both remove the directory they staged, on success and on failure", () => {
@@ -291,8 +320,8 @@ describe("an invalid release is refused before it touches the system", () => {
 	});
 
 	it("install.ps1 gates version and native search before every mutation", () => {
-		// Scoped to Install-Binary: the source-install branch calls some of the
-		// same helpers and matching those would prove nothing about ordering.
+		// Scoped to Install-Binary: Install-LocalBinary calls some of the same
+		// helpers and matching those would prove nothing about ordering here.
 		const from = installPs1.indexOf("function Install-Binary {");
 		expect(from).toBeGreaterThan(-1);
 		const body = installPs1.slice(from);

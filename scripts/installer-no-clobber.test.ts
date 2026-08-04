@@ -197,12 +197,19 @@ describe("an alias the installer does not own is not completed either", () => {
 	it("install.ps1 decides the alias before it writes completions", () => {
 		// Reading the verdict before Install-Alias has run would read the initial
 		// false and drop the alias binding on every install.
-		for (const [alias, completions] of [
-			["Install-Alias -Target $shim", "Install-Completions -BinPath $shim"],
-			["Install-Alias -Target $OutPath", "Install-Completions -BinPath $OutPath"],
-		] as const) {
-			expect(installPs1.indexOf(alias)).toBeGreaterThan(-1);
-			expect(installPs1.indexOf(alias)).toBeLessThan(installPs1.indexOf(completions));
+		//
+		// Checked inside each install mode's own body. There used to be a third
+		// pair keyed on `$shim`, the path a source install linked at; that mode is
+		// gone, and both surviving modes now pass the same `$OutPath`, so a
+		// whole-file indexOf would compare the FIRST occurrence of each string and
+		// report the pair as correctly ordered even if one mode had it backwards.
+		for (const fn of ["Install-Binary", "Install-LocalBinary"] as const) {
+			const body = fnBody(installPs1, `function ${fn} {`, "\nfunction ");
+			const alias = body.indexOf("Install-Alias -Target $OutPath");
+			const completions = body.indexOf("Install-Completions -BinPath $OutPath");
+			expect(alias, `${fn} must write the alias`).toBeGreaterThan(-1);
+			expect(completions, `${fn} must write completions`).toBeGreaterThan(-1);
+			expect(alias, `${fn} must decide the alias before completing it`).toBeLessThan(completions);
 		}
 	});
 });
@@ -258,8 +265,10 @@ describe("uninstall does not delete an alias the install refused to create", () 
 	});
 
 	it("install.ps1 recognizes both shapes of shim it writes", () => {
-		// A binary install forwards to veyyon.exe, a source install to
-		// veyyon.cmd. Matching only one would orphan the other on PATH forever.
+		// A binary install forwards to veyyon.exe. An older installer's source
+		// install wrote a shim forwarding to veyyon.cmd, and those shims are still
+		// on PATH on real machines; matching only the current shape would orphan
+		// them there forever, so uninstall must keep recognizing both.
 		const fn = installPs1.slice(installPs1.indexOf("function Test-AliasShimIsOurs {"));
 		const body = fn.slice(0, fn.indexOf("\nfunction "));
 		expect(body).toContain('"$BinName.exe"');
@@ -280,7 +289,7 @@ describe("uninstall does not delete an alias the install refused to create", () 
 });
 
 /**
- * The closing "Next steps" block was pasted into all three install modes and
+ * The closing "Next steps" block was pasted into every install mode and
  * hardcoded the alias, so an install that had just printed "left 'vey' alone,
  * launch with 'veyyon'" immediately told the user to run `vey` — which runs
  * their tool, not veyyon. Contradicting your own warning two lines later is how
@@ -295,10 +304,21 @@ describe("the closing advice names a command that is actually ours", () => {
 	});
 
 	it("every install mode prints the same block, from one place", () => {
-		// Three pasted copies meant a change to the advice had to be made three
-		// times or the modes disagreed about what to tell the user.
+		// Pasted copies meant a change to the advice had to be made once per mode
+		// or the modes disagreed about what to tell the user. There were three
+		// copies because a source install was one of the modes; it is gone, and the
+		// surviving set is exactly binary and local.
+		//
+		// The set is named rather than counted: a bare count still reads right when
+		// one mode calls the block twice and another never calls it at all, which
+		// is precisely how a mode loses its closing advice unnoticed.
 		expect(installSh).toContain("print_next_steps() {");
-		expect((installSh.match(/^ {4}print_next_steps$/gm) ?? []).length).toBe(3);
+		for (const fn of ["install_binary", "install_local"] as const) {
+			const body = fnBody(installSh, `${fn}() {`, "\n}\n");
+			expect(body, `${fn} must print the closing advice`).toMatch(/^ {4}print_next_steps$/m);
+		}
+		// Exhaustive: nowhere else, so a third pasted call cannot creep back in.
+		expect((installSh.match(/^ {4}print_next_steps$/gm) ?? []).length).toBe(2);
 		expect(installSh).not.toContain('say "  1. Launch in any repository: $ALIAS_NAME"');
 	});
 });
@@ -379,9 +399,11 @@ describe("the ownership receipt identifies the file, on both platforms", () => {
 	});
 
 	it("a symlink is identified by its target, not by what the target holds", () => {
-		// `--source` links at a git checkout that changes on every `git pull`,
-		// which is how a source install updates. Hashing through the link would
-		// mark every source install foreign the first time it advanced.
+		// The installer no longer creates such a link, but an old `--source`
+		// install did: a symlink at a git checkout whose contents changed on every
+		// `git pull`. Those machines still get upgraded and uninstalled, and
+		// hashing THROUGH the link would call the binary foreign the moment the
+		// checkout advanced, so identity stays the link target.
 		const shIdentity = fnBody(installSh, "artifact_identity() {", "\n}\n");
 		expect(shIdentity).toContain('_identity_target=$(readlink "$_identity_path" 2>/dev/null)');
 		expect(shIdentity).toContain("printf 'link sha256:%s'");
