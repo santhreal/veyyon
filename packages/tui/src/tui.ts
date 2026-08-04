@@ -1241,6 +1241,14 @@ export class TUI extends Container {
 	// budget is genuinely starved. Armed in start(), disarmed in stop().
 	#watchdog: LoopWatchdog;
 
+	// Live tail of the last resident alt paint: the composed rows that had not
+	// moved onto the scroll tape yet. Together with the tape this is the whole
+	// transcript that surface holds, which is what the exit replay writes.
+	#altTailRows: string[] = [];
+	// Set once a resident paint has happened, so exit knows there is a transcript
+	// the terminal has never seen. Cleared by the replay itself, so a second stop()
+	// cannot write the conversation twice.
+	#altTranscriptReplayPending = false;
 	// Transient alternate-screen state for a fullscreen overlay. While active, the
 	// engine paints only the modal on the alt buffer and leaves every
 	// normal-screen accounting field (#previousFrameLength, #viewportTopRow, …)
@@ -2224,12 +2232,23 @@ export class TUI extends Container {
 		this.#resizeViewportActive = false;
 		this.#clearPostFullPaintSettle();
 		this.#deferredForcedClearScrollback = false;
+		// A resident alt-buffer session holds the transcript nowhere the terminal can
+		// see, so leaving the alt screen would take the whole conversation off screen
+		// with it: no scrollback to page through, nothing for the terminal's own find
+		// to search, nothing for tmux copy-mode. Replay it onto the normal screen on
+		// the way out, so the session ends with the terminal holding the transcript
+		// exactly as the native-scrollback surface would have left it.
+		//
+		// This runs before the parent-shell cursor placement below, and it deliberately
+		// re-bases that math: the replay scrolls the normal screen, so the frame length
+		// the placement reasons about is the replay's own tail, not the pre-exit frame.
+		const replayedRows = this.#replayTranscriptToNormalScreen();
 		// Place the parent shell on the first line after the rendered content. When
 		// that line is still inside the viewport, moving there and writing `\r` is
 		// enough; emitting `\r\n` would create an extra blank row. If the content
 		// already reaches the viewport bottom, scroll exactly once so the prompt
 		// lands directly below the last visible TUI row.
-		if (this.#previousFrameLength > 0) {
+		if (replayedRows === 0 && this.#previousFrameLength > 0) {
 			const targetRow = this.#previousFrameLength;
 			const viewportBottom = this.#windowTopRow + this.terminal.rows - 1;
 			const clampedCursorRow = clampLow(this.#hardwareCursorRow, this.#windowTopRow, viewportBottom);
@@ -2246,6 +2265,38 @@ export class TUI extends Container {
 		this.terminal.showCursor();
 		this.#forgetHardwareCursorState();
 		this.terminal.stop();
+	}
+
+	/**
+	 * Replay a resident alt-buffer transcript onto the normal screen, so terminal
+	 * scrollback, the terminal's own find, and tmux copy-mode can see the
+	 * conversation after veyyon exits. Returns the number of rows written, or 0 when
+	 * there was nothing to replay (the native-scrollback surface already leaves the
+	 * transcript in the terminal, so it replays nothing).
+	 *
+	 * The source is the scroll tape plus the live tail captured by the last resident
+	 * paint, which together are the full transcript this surface holds — the tape is
+	 * the only copy here rather than a mirror of terminal scrollback. It is capped
+	 * (see {@link setScrollTapeCap}), so a very long session replays its most recent
+	 * rows rather than growing without bound; the session file on disk remains the
+	 * complete record either way.
+	 *
+	 * A crash cannot run this. That is a real limit and not worth pretending
+	 * otherwise: the alt buffer restores whatever preceded launch, and the transcript
+	 * is then only in the session file.
+	 */
+	#replayTranscriptToNormalScreen(): number {
+		if (!this.#altTranscriptReplayPending) return 0;
+		this.#altTranscriptReplayPending = false;
+		const rows = [...this.#scrollTape, ...this.#altTailRows];
+		if (rows.length === 0) return 0;
+		// Written as prepared rows with an explicit terminator each, exactly like the
+		// native surface commits them, so styles and hyperlinks cannot bleed between
+		// lines once they are in the terminal's own history.
+		let buffer = "";
+		for (const row of rows) buffer += row + LINE_TERMINATOR + "\r\n";
+		this.terminal.write(buffer);
+		return rows.length;
 	}
 
 	/**
@@ -3778,6 +3829,11 @@ export class TUI extends Container {
 			this.#emitAltFrame(window, width, height, altCaret ?? undefined);
 			this.#previousWindow = window;
 			this.#previousFrameLength = frameLength;
+			// The rows the tape does not hold yet. Kept so exit can replay the whole
+			// transcript (tape + tail) onto the normal screen, since on this surface
+			// the terminal has never seen any of it.
+			this.#altTailRows = frame.slice(chunkTo);
+			this.#altTranscriptReplayPending = true;
 			this.#clearScrollbackOnNextRender = false;
 			this.#hasEverRendered = true;
 			this.#publishCommittedRows();
