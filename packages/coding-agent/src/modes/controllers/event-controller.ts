@@ -185,6 +185,11 @@ export class EventController {
 	#prevHideThinking = false;
 	#handlers: AgentSessionEventHandlers;
 	#terminalProgressActive = false;
+	// How many of the session's recorded system-prompt invalidations have already
+	// been named on a cache-miss marker. The record is cumulative, so the entries
+	// past this index are the ones that happened since the last marker and are the
+	// only ones that can explain the turn now finishing.
+	#namedCacheInvalidations = 0;
 
 	constructor(private ctx: EventControllerContext) {
 		// Enhanced speech (`speech.enhanced`) rewrites blocks through the
@@ -497,6 +502,31 @@ export class EventController {
 	#clearRetrySupersededAssistantComponents(): void {
 		this.#retrySupersededAssistantComponents.clear();
 		this.#retrySupersededAssistantQueue = [];
+	}
+
+	/**
+	 * The reason for the most recent unreported system-prompt invalidation, or
+	 * `undefined` when nothing new was recorded since the last marker.
+	 *
+	 * The session's record is cumulative and append-only, so the entries past
+	 * `#namedCacheInvalidations` are exactly the ones that happened during the turn
+	 * that just finished. The LAST of those is reported: when several land in one
+	 * turn (a cwd change also refreshes secrets, for instance) the final rebuild is
+	 * the one whose bytes the cold request actually carried. The index advances
+	 * whether or not a marker renders, so a stale reason can never be attached to a
+	 * later, unrelated cold turn.
+	 *
+	 * Optional access: controller tests build partial ctx mocks with no session.
+	 */
+	#takeCacheInvalidationCause(): string | undefined {
+		const recorded = this.ctx.session?.systemPromptInvalidations?.() ?? [];
+		if (recorded.length <= this.#namedCacheInvalidations) {
+			this.#namedCacheInvalidations = recorded.length;
+			return undefined;
+		}
+		const fresh = recorded.slice(this.#namedCacheInvalidations);
+		this.#namedCacheInvalidations = recorded.length;
+		return fresh.at(-1);
 	}
 
 	/** The prompt the running turn is working on; it carries the follow's glow
@@ -1068,11 +1098,18 @@ export class EventController {
 				this.#resolveDisplaceablePoll();
 			}
 			// Surface a prompt-cache invalidation: if the previous turn cached a
-			// meaningful prefix and this request read none of it back, flag the turn.
+			// meaningful prefix and this request read none of it back, flag the turn,
+			// and name the cause when the session recorded one. A bare token count
+			// tells an operator they just paid to re-read the conversation without
+			// saying what to stop doing.
 			const usage = event.message.usage;
 			if (usage.cacheRead + usage.cacheWrite + usage.input > 0) {
 				if (settings.get("display.cacheMissMarker")) {
-					const invalidation = detectCacheInvalidation(this.ctx.lastAssistantUsage, usage);
+					const invalidation = detectCacheInvalidation(
+						this.ctx.lastAssistantUsage,
+						usage,
+						this.#takeCacheInvalidationCause(),
+					);
 					if (invalidation) this.ctx.streamingComponent.setCacheInvalidation(invalidation);
 				}
 				this.ctx.lastAssistantUsage = usage;
@@ -1425,9 +1462,7 @@ export class EventController {
 					: event.reason === "idle"
 						? "Idle "
 						: "";
-		// Two engine actions, so two labels. A third arm for `shake` stood here
-		// after the shake engine was removed; nothing could emit it.
-		const actionLabel = event.action === "handoff" ? "Auto-handoff" : "Auto context-full maintenance";
+		const actionLabel = "Auto-compacting context";
 		this.ctx.autoCompactionLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
@@ -1449,9 +1484,8 @@ export class EventController {
 			this.ctx.autoCompactionLoader = undefined;
 			this.ctx.statusContainer.disposeChildren();
 		}
-		const isHandoffAction = event.action === "handoff";
 		if (event.aborted) {
-			this.ctx.showStatus(isHandoffAction ? "Auto-handoff cancelled" : "Auto context-full maintenance cancelled");
+			this.ctx.showStatus("Auto-compaction cancelled");
 		} else if (event.result) {
 			this.ctx.lastAssistantUsage = undefined;
 			this.ctx.rebuildChatFromMessages();
@@ -1461,9 +1495,8 @@ export class EventController {
 			// differential renderer's "duplication, never loss" resync repaints
 			// the whole collapsed transcript (welcome box included) BELOW the
 			// stale pre-compaction scrollback. Compaction is an intentional
-			// transcript replacement then — same as auto-handoff below. With
-			// collapse disabled the rebuilt transcript keeps the full history,
-			// so the resync handles it and scrollback stays.
+			// transcript replacement. With collapse disabled, the rebuilt transcript
+			// keeps the full history, so the resync handles it and scrollback stays.
 			if (settings.get("display.collapseCompacted")) {
 				this.ctx.ui.requestRender(true, { clearScrollback: true });
 			} else {
@@ -1471,19 +1504,11 @@ export class EventController {
 			}
 		} else if (event.errorMessage) {
 			this.ctx.showWarning(event.errorMessage);
-		} else if (isHandoffAction) {
-			this.ctx.clearTransientSessionUi();
-			this.ctx.lastAssistantUsage = undefined;
-			this.ctx.renderInitialMessages();
-			this.ctx.statusLine.invalidate();
-			await this.ctx.reloadTodos();
-			this.ctx.ui.requestRender(true, { clearScrollback: true });
-			this.ctx.showStatus("Auto-handoff completed");
 		} else if (event.skipped) {
 			// Benign skip: no model selected, no candidate models available, or nothing
-			// to compact yet. Not a failure — suppress the warning.
+			// to compact yet. Not a failure, so suppress the warning.
 		} else {
-			this.ctx.showWarning("Auto context-full maintenance failed; continuing without maintenance");
+			this.ctx.showWarning("Auto-compaction failed; continuing without maintenance");
 		}
 		await this.ctx.flushCompactionQueue({ willRetry: event.willRetry });
 		this.#ensureWorkingLoaderWhileStreaming();

@@ -15,6 +15,18 @@ const MIN_CACHE_FOOTPRINT = 2048;
 export interface CacheInvalidation {
 	/** Prompt tokens the cold turn had to (re)process instead of reading from cache. */
 	reprocessedTokens: number;
+	/**
+	 * Why the cache went cold, when the session knows: the reason recorded by the
+	 * subsystem that invalidated it (`cwd-change`, `setting:<id>`, `argot-arm`, …).
+	 *
+	 * The marker used to report only a token count, which tells an operator that
+	 * they just paid to re-read the conversation and nothing about what to stop
+	 * doing. A measured session showed four such rebuilds, each around 32k
+	 * characters of prompt, all of them caused by re-rooting the working directory,
+	 * and none of that was visible anywhere. Absent on a transcript rebuilt from
+	 * disk, where a recorded reason cannot be correlated to a specific turn.
+	 */
+	cause?: string;
 }
 
 /**
@@ -41,12 +53,18 @@ export interface CacheInvalidation {
  * never read a warm prefix, tiny contexts, turns that reused any cache, and —
  * crucially — turns on providers with *implicit* best-effort caching. Only an
  * explicit, prefix-controlled cache (Anthropic / Bedrock `cache_control`)
- * re-creates the prefix on a cold turn (`cacheWrite > 0`); implicit caches
- * (Google / OpenAI / Fireworks) report `cacheWrite: 0` and drop `cacheRead` to
- * zero intermittently as routine propagation noise that self-heals the next
- * turn, so flagging it would be a false positive.
+ * re-creates the prefix on a cold turn (`cacheWrite > 0`). That now includes
+ * OpenAI from the GPT-5.6 generation, which reports `cache_write_tokens` for
+ * explicit breakpoints; earlier OpenAI models and other implicit caches
+ * (Google / Fireworks) report `cacheWrite: 0` and drop `cacheRead` to zero
+ * intermittently as routine propagation noise that self-heals the next turn, so
+ * flagging those would be a false positive.
  */
-export function detectCacheInvalidation(prev: Usage | undefined, current: Usage): CacheInvalidation | undefined {
+export function detectCacheInvalidation(
+	prev: Usage | undefined,
+	current: Usage,
+	cause?: string,
+): CacheInvalidation | undefined {
 	if (!prev) return undefined;
 	// Only flag a warm→cold transition: the previous turn must have actually read
 	// a meaningful prefix from cache. A write-only predecessor (first request, or
@@ -56,13 +74,17 @@ export function detectCacheInvalidation(prev: Usage | undefined, current: Usage)
 	// Any cache reuse this turn means the prefix survived (at least partly).
 	if (current.cacheRead > 0) return undefined;
 	// Only an explicit, prefix-controlled cache re-creates the prefix on a cold
-	// turn — Anthropic/Bedrock report that as `cacheWrite`. Implicit best-effort
-	// caches (Google/OpenAI/Fireworks) report `cacheWrite: 0` and drop `cacheRead`
-	// to zero intermittently as propagation noise, not a real invalidation.
+	// turn, reported as `cacheWrite`: Anthropic and Bedrock always, and OpenAI from
+	// the 5.6 generation, which bills explicit cache writes and reports them as
+	// `cache_write_tokens`. Implicit best-effort caches report `cacheWrite: 0` and
+	// drop `cacheRead` to zero intermittently as propagation noise.
 	if (current.cacheWrite <= 0) return undefined;
 	const reprocessedTokens = current.cacheWrite + current.input;
 	if (reprocessedTokens < MIN_CACHE_FOOTPRINT) return undefined;
-	return { reprocessedTokens };
+	// A blank or whitespace cause carries no information and would render a
+	// trailing separator with nothing after it.
+	const named = cause?.trim();
+	return named ? { reprocessedTokens, cause: named } : { reprocessedTokens };
 }
 
 const CACHE_INVALIDATION_RULE_WIDTH = 10;
@@ -98,7 +120,11 @@ export class CacheInvalidationMarkerComponent implements Component {
 		const icon = theme.icon.cacheMiss;
 		const head = icon ? `${icon} cache miss` : "cache miss";
 		const tokens = this.info.reprocessedTokens;
-		const label = tokens > 0 ? `${head} ${theme.sep.dot.trim()} ${formatNumber(tokens)} tokens` : head;
+		const dot = theme.sep.dot.trim();
+		const parts = [head];
+		if (tokens > 0) parts.push(`${formatNumber(tokens)} tokens`);
+		if (this.info.cause) parts.push(this.info.cause);
+		const label = parts.join(` ${dot} `);
 		const labelWidth = Bun.stringWidth(label, { countAnsiEscapeCodes: false });
 		const ruleWidth = Math.min(CACHE_INVALIDATION_RULE_WIDTH, width - labelWidth - 1);
 		if (ruleWidth < 1) {
