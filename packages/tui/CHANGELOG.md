@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SelectList.setRowBudget(rows)` sizes a list so its whole render fits a number of terminal rows, while `setMaxVisible` keeps its item-only meaning. `render` emits the item window and, whenever the list overflows or a filter is live, one status row, so a host fitting a list into a fixed viewport had to subtract that row by hand. Three setup-wizard scenes each did it differently and one forgot it entirely, and the host then clipped a row off the bottom of the list. A budget of one row spends it on an item rather than on the status row.
+- `SelectListLayoutOptions.statusLegend` turns off the `↑↓ move · ↵ select · esc close` legend on the status row while keeping the search text. It is for a host that already names those keys and means something else by them: the setup wizard's footer names every key for the whole step, and its Esc leaves onboarding rather than closing the list, so the built-in legend contradicted the footer on the same screen.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
