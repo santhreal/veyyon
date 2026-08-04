@@ -24,6 +24,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	beginCacheTrackedRequest,
+	CACHE_TRACKER_MAX_KEYS,
 	CACHE_TTL_MS,
 	CACHE_WINDOW_GRACE,
 	type CacheExpectation,
@@ -37,6 +38,7 @@ import {
 	MIN_CACHEABLE_TOKENS,
 	recordCacheOutcome,
 	resolveCacheEnforcement,
+	takePendingCacheFailure,
 	verifyCacheUsage,
 } from "@veyyon/ai/cache";
 
@@ -427,7 +429,10 @@ describe("resolving the enforcement level", () => {
 		}
 	});
 });
+
 describe("the comparison baseline across a side request", () => {
+	const facts = { anchors: 4, retention: "short" as const, reportsCacheWrites: true, cacheKey: "session" };
+
 	/**
 	 * A side request lowers the baseline for exactly one turn and then it recovers.
 	 *
@@ -440,53 +445,124 @@ describe("the comparison baseline across a side request", () => {
 	 */
 	it("recovers on the next conversational turn", () => {
 		const state = createCacheTrackerState();
-		const facts = { anchors: 4, retention: "short" as const, reportsCacheWrites: true, cacheKey: "session" };
+		const readOf = (key: string) => state.keys.get(key)?.lastReadTokens;
 
 		// Turn 1: a warm conversational turn reading a 40k prefix.
 		const first = beginCacheTrackedRequest(state, facts, 1_000);
 		recordCacheOutcome(state, first, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
-		expect(state.lastReadTokens).toBe(40_000);
+		expect(readOf("session")).toBe(40_000);
 
 		// Turn 2: a side request — shares the prefix, carries shorter messages.
 		const side = beginCacheTrackedRequest(state, facts, 2_000);
-		expect(side.previousReadTokens).toBe(40_000);
+		expect(side.expectation.previousReadTokens).toBe(40_000);
 		const sideVerdict = recordCacheOutcome(state, side, { input: 4_000, cacheRead: 8_000, cacheWrite: 0 }, "warn");
 		expect(sideVerdict.verdict.kind).toBe("ok");
 		expect(sideVerdict.decision.report).toBe(false);
 		// The baseline followed it down, which is the one turn of blindness.
-		expect(state.lastReadTokens).toBe(8_000);
+		expect(readOf("session")).toBe(8_000);
 
 		// Turn 3: back to the conversation, reading the full prefix again. The
 		// baseline recovers, so turn 4 can detect a collapse normally.
 		const third = beginCacheTrackedRequest(state, facts, 3_000);
-		expect(third.previousReadTokens).toBe(8_000);
+		expect(third.expectation.previousReadTokens).toBe(8_000);
 		recordCacheOutcome(state, third, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
-		expect(state.lastReadTokens).toBe(40_000);
+		expect(readOf("session")).toBe(40_000);
 
 		const fourth = beginCacheTrackedRequest(state, facts, 4_000);
 		const collapse = recordCacheOutcome(state, fourth, { input: 36_000, cacheRead: 5_000, cacheWrite: 0 }, "warn");
 		expect(collapse.verdict.kind).toBe("degraded");
 	});
+});
 
-	/** A changed cache key discards the history rather than comparing across it:
-	 *  a different key has a different prefix, so every switch would look like a
-	 *  collapse. */
-	it("forgets the baseline when the cache key changes", () => {
+describe("observations are kept per cache identity", () => {
+	function factsFor(cacheKey: string) {
+		return { anchors: 4, retention: "short" as const, reportsCacheWrites: true, cacheKey };
+	}
+
+	/**
+	 * A provider-session record is scoped to an endpoint and model, and several
+	 * logical conversations share that scope: the auth gateway serves many clients
+	 * through one `streamAnthropic`. With a single slot those interleave and each
+	 * resets the other's history, so every request reports `firstRequest` and the
+	 * check silently does nothing on exactly the traffic that most needs it. Keyed
+	 * observations are what make that traffic verifiable at all.
+	 */
+	it("does not let interleaved conversations reset each other", () => {
 		const state = createCacheTrackerState();
-		const first = beginCacheTrackedRequest(
-			state,
-			{ anchors: 4, retention: "short", reportsCacheWrites: true, cacheKey: "session-a" },
-			1_000,
-		);
-		recordCacheOutcome(state, first, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
 
-		const switched = beginCacheTrackedRequest(
-			state,
-			{ anchors: 4, retention: "short", reportsCacheWrites: true, cacheKey: "session-b" },
-			2_000,
-		);
-		expect(switched.firstRequest).toBe(true);
-		expect(switched.previousReadTokens).toBeUndefined();
-		expect(switched.msSincePreviousRequest).toBeUndefined();
+		const a1 = beginCacheTrackedRequest(state, factsFor("conv-a"), 1_000);
+		expect(a1.expectation.firstRequest).toBe(true);
+		recordCacheOutcome(state, a1, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
+
+		const b1 = beginCacheTrackedRequest(state, factsFor("conv-b"), 1_100);
+		expect(b1.expectation.firstRequest).toBe(true);
+		recordCacheOutcome(state, b1, { input: 500, cacheRead: 20_000, cacheWrite: 0 }, "warn");
+
+		// Back to A. With one shared slot this was a first request again; now it
+		// carries A's own history, so a miss on it is judgeable.
+		const a2 = beginCacheTrackedRequest(state, factsFor("conv-a"), 2_000);
+		expect(a2.expectation.firstRequest).toBe(false);
+		expect(a2.expectation.previousReadTokens).toBe(40_000);
+		expect(a2.expectation.msSincePreviousRequest).toBe(1_000);
+
+		const b2 = beginCacheTrackedRequest(state, factsFor("conv-b"), 2_100);
+		expect(b2.expectation.previousReadTokens).toBe(20_000);
+		expect(b2.expectation.msSincePreviousRequest).toBe(1_000);
+	});
+
+	/**
+	 * A latched rejection belongs to the conversation that earned it. Raising it on
+	 * an unrelated conversation's next request would fail a session that never had
+	 * a cache problem — the worst possible false positive, since it is not even
+	 * about the traffic being blocked.
+	 */
+	it("scopes a latched rejection to its own conversation", () => {
+		const state = createCacheTrackerState();
+
+		const a1 = beginCacheTrackedRequest(state, factsFor("conv-a"), 1_000);
+		recordCacheOutcome(state, a1, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "error");
+		const a2 = beginCacheTrackedRequest(state, factsFor("conv-a"), 2_000);
+		const rejected = recordCacheOutcome(state, a2, { input: 50_000, cacheRead: 0, cacheWrite: 0 }, "error");
+		expect(rejected.decision.failNext).toBe(true);
+
+		// B is untouched by A's rejection.
+		expect(takePendingCacheFailure(state, "conv-b")).toBeUndefined();
+		// A still holds it, and only once.
+		expect(takePendingCacheFailure(state, "conv-a")?.kind).toBe("rejected");
+		expect(takePendingCacheFailure(state, "conv-a")).toBeUndefined();
+	});
+
+	/** A long-lived gateway's key space is its clients', so the map is bounded and
+	 *  evicts least-recently-used rather than growing without limit. */
+	it("bounds the number of remembered identities, evicting the least recent", () => {
+		const state = createCacheTrackerState();
+		for (let index = 0; index < CACHE_TRACKER_MAX_KEYS + 4; index++) {
+			const tracked = beginCacheTrackedRequest(state, factsFor(`conv-${index}`), 1_000 + index);
+			recordCacheOutcome(state, tracked, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
+		}
+		expect(state.keys.size).toBe(CACHE_TRACKER_MAX_KEYS);
+		// The first four are gone; the most recent survive.
+		expect(state.keys.has("conv-0")).toBe(false);
+		expect(state.keys.has("conv-3")).toBe(false);
+		expect(state.keys.has(`conv-${CACHE_TRACKER_MAX_KEYS + 3}`)).toBe(true);
+	});
+
+	/** Touching a key must refresh its recency, or a busy conversation is evicted
+	 *  by a burst of one-off identities around it. */
+	it("keeps a repeatedly used identity alive across a burst of new ones", () => {
+		const state = createCacheTrackerState();
+		let clock = 1_000;
+		const touch = (key: string) => {
+			clock += 1;
+			const tracked = beginCacheTrackedRequest(state, factsFor(key), clock);
+			recordCacheOutcome(state, tracked, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
+		};
+		touch("busy");
+		for (let index = 0; index < CACHE_TRACKER_MAX_KEYS - 1; index++) {
+			touch(`filler-${index}`);
+			touch("busy");
+		}
+		touch("newcomer");
+		expect(state.keys.has("busy")).toBe(true);
 	});
 });
