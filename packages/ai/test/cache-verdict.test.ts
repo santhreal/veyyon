@@ -24,8 +24,10 @@
 import { describe, expect, it } from "bun:test";
 import {
 	CACHE_TTL_MS,
+	CACHE_WINDOW_GRACE,
 	type CacheExpectation,
 	CacheRejectedError,
+	cacheWindowGraceMs,
 	decideCacheEnforcement,
 	describeCacheVerdict,
 	isCacheHealthy,
@@ -118,6 +120,51 @@ describe("a miss with an innocent explanation is never a failure", () => {
 			usage(50_000, 0, 50_000),
 		);
 		expect(longGap).toEqual({ kind: "cold", reason: "window-expired", writeTokens: 50_000 });
+	});
+
+	/**
+	 * The check stops accusing BEFORE the nominal boundary, and that margin is the
+	 * point rather than a rounding detail.
+	 *
+	 * The window belongs to the provider: it is measured on the provider's clock,
+	 * Anthropic refreshes it on every cache HIT rather than every request so its
+	 * start moves where no client can see, and an entry can be evicted early under
+	 * load. Comparing against the nominal TTL would therefore call a real expiry a
+	 * rejection near the edge — and with blocking enabled that halts a working
+	 * session for something unobservable. The margin trades a missed finding, which
+	 * the record still shows, for never doing that.
+	 */
+	it("stops accusing a fifth of the way before the nominal boundary", () => {
+		const grace = cacheWindowGraceMs("short");
+		expect(grace).toBe(CACHE_TTL_MS.short * CACHE_WINDOW_GRACE);
+		expect(grace).toBeLessThan(CACHE_TTL_MS.short);
+
+		// Just past the grace threshold but still WELL INSIDE the nominal five
+		// minutes: excused. Before the margin existed this was a `rejected`.
+		const justPastGrace = verifyCacheUsage(
+			warmRequest({ retention: "short", msSincePreviousRequest: grace + 1 }),
+			usage(50_000, 0, 0),
+		);
+		expect(justPastGrace).toEqual({ kind: "cold", reason: "window-expired", writeTokens: 0 });
+
+		// Just inside it: still judged, so the margin cannot be widened into
+		// switching the check off.
+		const justInsideGrace = verifyCacheUsage(
+			warmRequest({ retention: "short", msSincePreviousRequest: grace - 1 }),
+			usage(50_000, 0, 0),
+		);
+		expect(justInsideGrace.kind).toBe("rejected");
+	});
+
+	/** The margin scales with the retention it belongs to, so a one-hour window
+	 *  keeps judging for the first 48 minutes rather than the first four. */
+	it("scales the margin with the retention", () => {
+		expect(cacheWindowGraceMs("long")).toBe(CACHE_TTL_MS.long * CACHE_WINDOW_GRACE);
+		const insideLong = verifyCacheUsage(
+			warmRequest({ retention: "long", msSincePreviousRequest: cacheWindowGraceMs("short") + 1 }),
+			usage(50_000, 0, 0),
+		);
+		expect(insideLong.kind).toBe("rejected");
 	});
 
 	/**
