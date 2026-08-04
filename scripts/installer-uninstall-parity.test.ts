@@ -123,6 +123,122 @@ describe("uninstall clears addons staged beside the binary", () => {
 });
 
 /**
+ * Uninstall still has to clean up `$HOME/.veyyon/src`, a tree NO current
+ * installer creates.
+ *
+ * Older installers really did clone the product there (`--source` / `-Source`,
+ * and a bare `--ref` which silently implied it), and people then worked inside
+ * that checkout. Both flags are gone and an install is now a verified binary
+ * download or a hard failure — but every machine that ran an older installer
+ * still carries the checkout, so uninstall is the only code left that meets one.
+ * That makes it the most dangerous code in either script: the tree it finds may
+ * hold the only copy of somebody's work, and the original removal was a flat
+ * `rm -rf`.
+ *
+ * Five rules, and both installers obey all five:
+ *   1. a pristine checkout tracking OUR remote is removed outright,
+ *   2. one holding uncommitted edits is moved aside with the edits intact,
+ *   3. one holding a commit on a local branch that is on no remote is moved aside,
+ *   4. one tracking a foreign remote is never deleted, pristine or not,
+ *   5. what is moved aside lands at `<dir>.bak-<stamp>`, so the user can find it.
+ *
+ * Source-level, like the rest of this suite: pwsh does not exist on the Linux dev
+ * host, so reading the rule out of install.ps1 is the only thing keeping the
+ * Windows half from drifting between Windows CI runs. Both behavioural halves do
+ * exist and drive the real scripts against seeded checkouts —
+ * scripts/install-tests/functions.test.sh and functions.test.ps1 — including that
+ * the moved-aside tree still holds the uncommitted bytes and the foreign remote.
+ */
+describe("uninstall cleans up a legacy source checkout without destroying work", () => {
+	it("both remove a pristine checkout that tracks our remote", () => {
+		// The one case where deleting is right: our own tree, nothing in it that is
+		// not already on the remote. It still has to be ANNOUNCED, because the
+		// directory belongs to the user's home.
+		expect(shUninstall).toContain("src=$(src_dir)");
+		expect(shUninstall).toContain('rm -rf "$src" && { ok "removed source checkout $src"; removed=1; }');
+		expect(ps1Uninstall).toContain("if (Test-Path $SrcDir) {");
+		expect(ps1Uninstall).toContain("Remove-Item -Recurse -Force $SrcDir");
+		expect(ps1Uninstall).toContain('"OK  removed source checkout $SrcDir"');
+	});
+
+	it("both treat an uncommitted edit as work and move the tree aside", () => {
+		// `git status --porcelain` is the whole test for rule 2: a non-empty answer
+		// means bytes exist only in that working tree, so `rm -rf` would be the
+		// last thing that ever saw them.
+		expect(installSh).toContain("src_has_local_work() {");
+		expect(installPs1).toContain("function Test-SrcHasLocalWork {");
+		const shWork = fnBody(installSh, "src_has_local_work() {", "\n}\n");
+		const ps1Work = fnBody(installPs1, "function Test-SrcHasLocalWork {", "\n}\n");
+		expect(shWork).toContain("git status --porcelain");
+		expect(ps1Work).toContain("git status --porcelain");
+		// And the verdict is what routes the tree to the move, not to the delete.
+		expect(shUninstall).toContain('elif src_has_local_work "$src"; then');
+		expect(shUninstall).toContain('move_aside_existing_src "$src"');
+		expect(ps1Uninstall).toContain("} elseif (Test-SrcHasLocalWork $SrcDir) {");
+		expect(ps1Uninstall).toContain("Move-AsideExistingSrc $SrcDir");
+	});
+
+	it("both treat an unpushed local branch as work too, clean tree or not", () => {
+		// A clean worktree is not the same as nothing to lose. An older source
+		// install committed the user's edits onto a `veyyon-local-*` branch to
+		// preserve them across an update, which leaves the worktree spotless and
+		// the only copy of those edits on a branch no remote has. Checking status
+		// alone deleted exactly the work the installer had gone out of its way to
+		// save.
+		const shWork = fnBody(installSh, "src_has_local_work() {", "\n}\n");
+		const ps1Work = fnBody(installPs1, "function Test-SrcHasLocalWork {", "\n}\n");
+		expect(shWork).toContain("git log --branches --not --remotes");
+		expect(ps1Work).toContain("git log --branches --not --remotes");
+	});
+
+	it("neither deletes a checkout tracking a remote that is not ours", () => {
+		// Ownership comes from `origin`, never from the directory or from a clean
+		// worktree: a user can point VEYYON_SRC_DIR at an unrelated checkout, and
+		// the cleanliness-only rule deleted it outright, losing every remote ref.
+		// This branch is checked FIRST, so a pristine foreign tree can never reach
+		// the `rm -rf`.
+		expect(installSh).toContain("src_remote_is_ours() {");
+		expect(installPs1).toContain("function Test-SrcRemoteIsOurs {");
+		expect(shUninstall).toContain('if [ -d "$src/.git" ] && ! src_remote_is_ours "$src"; then');
+		expect(shUninstall).toContain('warn "source checkout at $src does not track $REPO_URL; preserving it"');
+		expect(ps1Uninstall).toContain(
+			'if ((Test-Path (Join-Path $SrcDir ".git")) -and -not (Test-SrcRemoteIsOurs $SrcDir)) {',
+		);
+		expect(ps1Uninstall).toContain('"source checkout at $SrcDir does not track $RepoUrl; preserving it"');
+		for (const [name, body, foreign, destroy] of [
+			["install.sh", shUninstall, 'src_remote_is_ours "$src"', 'rm -rf "$src"'],
+			["install.ps1", ps1Uninstall, "Test-SrcRemoteIsOurs $SrcDir", "Remove-Item -Recurse -Force $SrcDir"],
+		] as const) {
+			expect(body.indexOf(foreign), `${name} must decide foreignness before deleting`).toBeLessThan(
+				body.indexOf(destroy),
+			);
+		}
+	});
+
+	it("both move the tree to <dir>.bak-<stamp> and say so, and fail closed", () => {
+		// The backup path is the user's only handle on preserved work, so it is
+		// derived from the original path plus a stamp rather than a fixed name that
+		// a second uninstall would overwrite. If the move itself cannot happen,
+		// both stop: falling through to a delete is the bug, not the fallback.
+		expect(installSh).toContain("move_aside_existing_src() {");
+		expect(installPs1).toContain("function Move-AsideExistingSrc {");
+		const shMove = fnBody(installSh, "move_aside_existing_src() {", "\n}\n");
+		const ps1Move = fnBody(installPs1, "function Move-AsideExistingSrc {", "\n}\n");
+		expect(shMove).toContain('backup="$src.bak-$stamp"');
+		expect(shMove).toContain('mv "$src" "$backup" || die "refusing to continue: could not move existing $src aside');
+		expect(shMove).toContain("nothing was deleted");
+		expect(ps1Move).toContain('$backup = "$Src.bak-$stamp"');
+		expect(ps1Move).toContain("Move-Item -Path $Src -Destination $backup -ErrorAction Stop");
+		expect(ps1Move).toContain('throw "refusing to continue: could not move existing $Src aside');
+		expect(ps1Move).toContain("nothing was deleted");
+		// The move-aside path is a preservation step; neither may reach for a
+		// recursive delete of the tree it was handed.
+		expect(shMove).not.toMatch(/rm -rf "\$src"/);
+		expect(ps1Move).not.toContain("Remove-Item -Recurse -Force $backup");
+	});
+});
+
+/**
  * The Windows binary install used to download STRAIGHT ONTO the installed
  * `veyyon.exe`, which made every failure destructive: a dropped connection, a
  * missing checksum sidecar, or a mismatch each ran `Remove-Item $OutPath` and
@@ -353,8 +469,11 @@ describe("neither installer moves an empty staged file into place", () => {
 	});
 
 	it("both name the staged path and the next step in the refusal", () => {
+		// The next step used to be "retry or use -Source". There is no -Source, so
+		// the advice now points at the one manual route, held in $ManualBuild /
+		// MANUAL_BUILD so no refusal can invent its own.
 		expect(installSh).toContain("refusing to install; $empty_hint");
-		expect(installPs1).toContain("retry or use -Source");
+		expect(installPs1).toContain("refusing to install; the download did not complete. Retry, or $ManualBuild");
 	});
 });
 
