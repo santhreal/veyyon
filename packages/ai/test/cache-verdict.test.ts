@@ -31,6 +31,7 @@ import {
 	isCacheHealthy,
 	isEnforceableFailure,
 	MIN_CACHEABLE_TOKENS,
+	resolveCacheEnforcement,
 	verifyCacheUsage,
 } from "@veyyon/ai/cache";
 
@@ -290,6 +291,52 @@ describe("verdict descriptions", () => {
 			const line = describeCacheVerdict(verdict);
 			expect(line.length).toBeGreaterThan(10);
 			expect(line).not.toContain("undefined");
+		}
+	});
+});
+
+describe("resolving the enforcement level", () => {
+	/**
+	 * Reporting, not blocking, is the default. The two mistakes cost differently:
+	 * a missed rejection costs money and leaves a record, a wrong rejection stops
+	 * a session that was working. Since the verdict is proven against provider
+	 * usage REPORTING, a provider that changes what it reports would turn a
+	 * default of `error` into an outage — so blocking is opt-in.
+	 */
+	it("defaults to warn, so a new install never blocks", () => {
+		const saved = process.env.VEYYON_CACHE_ENFORCEMENT;
+		delete process.env.VEYYON_CACHE_ENFORCEMENT;
+		try {
+			expect(resolveCacheEnforcement()).toBe("warn");
+		} finally {
+			if (saved === undefined) delete process.env.VEYYON_CACHE_ENFORCEMENT;
+			else process.env.VEYYON_CACHE_ENFORCEMENT = saved;
+		}
+	});
+
+	/** An explicit per-request value wins over the environment, so a caller that
+	 *  knows better than the machine default is not overridden by it. */
+	it("prefers an explicit value over the environment", () => {
+		const saved = process.env.VEYYON_CACHE_ENFORCEMENT;
+		process.env.VEYYON_CACHE_ENFORCEMENT = "off";
+		try {
+			expect(resolveCacheEnforcement("error")).toBe("error");
+		} finally {
+			if (saved === undefined) delete process.env.VEYYON_CACHE_ENFORCEMENT;
+			else process.env.VEYYON_CACHE_ENFORCEMENT = saved;
+		}
+	});
+
+	/** A misspelled level must fall back to the safe default rather than being
+	 *  read as "off", which would silently disable the check. */
+	it("falls back to warn for an unrecognised value", () => {
+		const saved = process.env.VEYYON_CACHE_ENFORCEMENT;
+		process.env.VEYYON_CACHE_ENFORCEMENT = "block";
+		try {
+			expect(resolveCacheEnforcement()).toBe("warn");
+		} finally {
+			if (saved === undefined) delete process.env.VEYYON_CACHE_ENFORCEMENT;
+			else process.env.VEYYON_CACHE_ENFORCEMENT = saved;
 		}
 	});
 });

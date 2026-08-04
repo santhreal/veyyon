@@ -6,6 +6,7 @@ import type {
 	ApiKey,
 	AssistantMessage,
 	AssistantMessageEvent,
+	CacheEnforcement,
 	Context,
 	CursorExecHandlers,
 	CursorToolResultHandler,
@@ -214,6 +215,12 @@ export interface AgentOptions {
 	repetitionPenalty?: number;
 	serviceTier?: ServiceTier;
 	/**
+	 * What to do when a turn's prompt-cache markers demonstrably did not take
+	 * effect. Defaults to reporting; blocking is opt-in. See
+	 * `@veyyon/ai/cache` for why the failure lands on the following request.
+	 */
+	cacheEnforcement?: CacheEnforcement;
+	/**
 	 * Per-call effective service-tier resolver. When set, it authoritatively
 	 * supplies the request's tier (replacing the static `serviceTier` and its
 	 * telemetry) per model — used to scope a provider/model into a priority
@@ -397,6 +404,7 @@ export class Agent {
 	#presencePenalty?: number;
 	#repetitionPenalty?: number;
 	#serviceTier?: ServiceTier;
+	#cacheEnforcement?: CacheEnforcement;
 	#serviceTierResolver?: (model: Model) => ServiceTier | undefined;
 	#hideThinkingSummary?: boolean;
 	#maxRetryDelayMs?: number;
@@ -477,6 +485,7 @@ export class Agent {
 		this.#presencePenalty = opts.presencePenalty;
 		this.#repetitionPenalty = opts.repetitionPenalty;
 		this.#serviceTier = opts.serviceTier;
+		this.#cacheEnforcement = opts.cacheEnforcement;
 		this.#serviceTierResolver = opts.serviceTierResolver;
 		this.#hideThinkingSummary = opts.hideThinkingSummary;
 		this.#maxRetryDelayMs = opts.maxRetryDelayMs;
@@ -700,6 +709,14 @@ export class Agent {
 
 	set serviceTier(value: ServiceTier | undefined) {
 		this.#serviceTier = value;
+	}
+
+	get cacheEnforcement(): CacheEnforcement | undefined {
+		return this.#cacheEnforcement;
+	}
+
+	set cacheEnforcement(value: CacheEnforcement | undefined) {
+		this.#cacheEnforcement = value;
 	}
 
 	get serviceTierResolver(): ((model: Model) => ServiceTier | undefined) | undefined {
@@ -1192,6 +1209,7 @@ export class Agent {
 			presencePenalty: this.#presencePenalty,
 			repetitionPenalty: this.#repetitionPenalty,
 			serviceTier: this.#serviceTier,
+			cacheEnforcement: this.#cacheEnforcement,
 			hideThinkingSummary: this.#hideThinkingSummary,
 			interruptMode: this.#interruptMode,
 			sessionId: this.#sessionId,
