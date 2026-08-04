@@ -30,19 +30,49 @@ import type { Usage } from "@veyyon/catalog/types";
 import type { CacheRetention } from "../types";
 
 /**
- * How long a provider keeps a cache entry warm, by requested retention.
+ * Nominal lifetime of a cache entry, by requested retention.
  *
  * Anthropic documents 5 minutes for an ephemeral breakpoint and 1 hour with
  * `ttl: "1h"`; OpenAI's implicit prefix cache is documented as "a few minutes"
- * of inactivity, which the short window covers. These bound the window in which
- * a miss is a DEFECT rather than an ordinary expiry, so they are deliberately
- * generous: over-estimating the window would call a legitimate expiry a
- * rejection, and that is the false positive that discredits the whole check.
+ * of inactivity, which the short window covers.
+ *
+ * These are NOMINAL and must not be treated as a precise boundary. The window is
+ * measured on the provider's clock, not ours; Anthropic refreshes it on every
+ * cache HIT rather than on every request, so its start moves in a way a client
+ * cannot observe; and an entry can be evicted early under load. Compare against
+ * {@link cacheWindowGraceMs} instead of these values directly.
  */
 export const CACHE_TTL_MS: Readonly<Record<Exclude<CacheRetention, "none">, number>> = Object.freeze({
 	short: 5 * 60_000,
 	long: 60 * 60_000,
 });
+
+/**
+ * Fraction of the nominal lifetime after which a miss is treated as an ordinary
+ * expiry rather than a defect.
+ *
+ * The two errors are not symmetric. Excusing a real rejection loses a finding
+ * that the record still shows; calling a real expiry a rejection halts a session
+ * that was working, and with blocking enabled it does that for something no
+ * client can predict. So the check gives up its claim well before the nominal
+ * boundary: past this fraction it says "cold", not "rejected".
+ *
+ * At 0.8 a five-minute window stops accusing after four minutes. That leaves the
+ * last fifth unjudged, which is the price of never halting a session over a
+ * server-side eviction we cannot see.
+ */
+export const CACHE_WINDOW_GRACE = 0.8;
+
+/**
+ * How long since the previous request still counts as inside the window.
+ *
+ * Exported so a caller reasoning about the cost of a long wait uses the same
+ * threshold the verdict does, rather than re-deriving it from the nominal TTL and
+ * disagreeing with it at the edge.
+ */
+export function cacheWindowGraceMs(retention: Exclude<CacheRetention, "none">): number {
+	return CACHE_TTL_MS[retention] * CACHE_WINDOW_GRACE;
+}
 
 /**
  * Smallest prefix any supported provider will cache, in tokens.
@@ -159,9 +189,12 @@ export function verifyCacheUsage(
 		return { kind: "cold", reason: "first-request", writeTokens };
 	}
 
-	const ttl = CACHE_TTL_MS[expectation.retention];
+	// The grace threshold, not the nominal TTL: the window is the provider's, its
+	// start moves on every hit, and an entry can be evicted early. Accusing right
+	// up to the nominal boundary would fail sessions for something unobservable.
+	const graceMs = cacheWindowGraceMs(expectation.retention);
 	const elapsed = expectation.msSincePreviousRequest;
-	if (elapsed !== undefined && elapsed > ttl) {
+	if (elapsed !== undefined && elapsed > graceMs) {
 		return { kind: "cold", reason: "window-expired", writeTokens };
 	}
 
