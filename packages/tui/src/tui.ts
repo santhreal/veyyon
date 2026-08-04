@@ -121,6 +121,22 @@ const ALT_SCREEN_EXIT = "\x1b[?1049l";
 // `ScrollTransport` documents how that ambiguity is resolved.
 const ALT_SCROLL_ON = "\x1b[?1007h";
 const ALT_SCROLL_OFF = "\x1b[?1007l";
+/**
+ * Legacy cursor-key sequences mapped to a scroll direction: -1 scrolls back into
+ * history, +1 walks toward the live tail.
+ *
+ * Both the normal (`CSI A`) and application-cursor (`SS3 A`) forms appear,
+ * because the terminal synthesizes whichever the active DECCKM mode calls for and
+ * an application that set application-cursor keys would otherwise see the wheel
+ * do nothing. Exact-match only: anything carrying parameters or modifiers is a
+ * real keypress, never a synthesized wheel tick.
+ */
+const LEGACY_CURSOR_SCROLL: Readonly<Record<string, -1 | 1 | undefined>> = {
+	"\x1b[A": -1,
+	"\x1b[B": 1,
+	"\x1bOA": -1,
+	"\x1bOB": 1,
+};
 
 /**
  * How a scroll gesture reaches the engine while scroll isolation is on.
@@ -2877,6 +2893,31 @@ export class TUI extends Container {
 						this.scrollToLiveTail();
 					}
 				}
+				return;
+			}
+		}
+
+		// Alternate Scroll Mode delivers a wheel tick as a bare cursor-up/down key
+		// (xterm's `alternateScroll`: "the scroll-back and scroll-forw actions send
+		// cursor-up and -down keys"), so this is where the "alt-arrows" transport
+		// reads the wheel. Only the LEGACY forms are taken, and that is the whole
+		// disambiguation: under the kitty keyboard protocol at a level that reports
+		// event types, a key the operator actually pressed arrives as a CSI-u
+		// sequence and never matches here, so the composer keeps its arrows while the
+		// wheel still scrolls. Where the terminal does not speak that protocol the two
+		// are genuinely indistinguishable, and the chosen fallback is that arrows
+		// scroll rather than the gesture meaning different things depending on state.
+		// The cost there is concrete and worth knowing: the composer keeps every other
+		// key, but Up/Down stop moving the caret between the lines of a multi-line
+		// draft. Nothing else is lost, because arrows drive no prompt-history walk in
+		// this host — there is none to rebind.
+		//
+		// A gesture the view cannot honor (already at the oldest row, or already
+		// following the tail) is NOT consumed, so a typed arrow on a fallback
+		// terminal still reaches the focused component instead of vanishing.
+		if (this.#altActive && !this.#altOverlayBorrow && this.#altTranscriptWanted()) {
+			const scroll = LEGACY_CURSOR_SCROLL[data];
+			if (scroll !== undefined && this.scrollByRows(scroll * TUI.#WHEEL_SCROLL_ROWS)) {
 				return;
 			}
 		}

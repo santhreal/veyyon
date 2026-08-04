@@ -416,3 +416,147 @@ describe("alt-arrows residency", () => {
 		}
 	});
 });
+
+/**
+ * Which arrows are the wheel.
+ *
+ * Alternate Scroll Mode sends a wheel tick as a bare cursor key, byte-identical
+ * to a typed arrow, so something has to decide. The engine takes only the LEGACY
+ * forms: under the kitty keyboard protocol at a level that reports event types, a
+ * key the operator actually pressed arrives as CSI-u and never matches, so the
+ * composer keeps its arrows while the wheel still scrolls. On a terminal without
+ * that protocol the two are genuinely indistinguishable and arrows scroll, which
+ * is the chosen fallback rather than a gesture that means different things
+ * depending on state.
+ */
+describe("alt-arrows wheel classification", () => {
+	/** What the terminal synthesizes for a wheel tick under DECSET 1007. */
+	const LEGACY_UP = "\x1b[A";
+	const LEGACY_DOWN = "\x1b[B";
+	/** Application-cursor form, which a terminal in DECCKM sends instead. */
+	const SS3_UP = "\x1bOA";
+	/** A real keypress under the kitty protocol's event reporting. */
+	const KITTY_UP = "\x1b[1;1:1A";
+
+	class RecordingComposer implements Component, Focusable {
+		focused = false;
+		received: string[] = [];
+		invalidate(): void {}
+		setUseTerminalCursor(): void {}
+		handleInput(data: string): void {
+			this.received.push(data);
+		}
+		render(): readonly string[] {
+			return [`>${CURSOR_MARKER}`];
+		}
+	}
+
+	async function residentRig(): Promise<{
+		term: RecordingTerminal;
+		tui: TUI;
+		scheduler: StressRenderScheduler;
+		composer: RecordingComposer;
+	}> {
+		const term = new RecordingTerminal(30, 8, 5_000);
+		const scheduler = new StressRenderScheduler();
+		const tui = new TUI(term, true, { renderScheduler: scheduler });
+		const body = new Body();
+		const composer = new RecordingComposer();
+		body.rows = Array.from({ length: 40 }, (_, i) => `h${i}`);
+		tui.addChild(body);
+		tui.addChild(composer);
+		tui.setFocus(composer);
+		tui.setPinnedFooterChildCount(1);
+		tui.setScrollbackRebuild(false);
+		tui.start();
+		await scheduler.drain(term);
+		tui.setScrollTransport("alt-arrows");
+		tui.setScrollIsolation(true);
+		await scheduler.drain(term);
+		return { term, tui, scheduler, composer };
+	}
+
+	/** A synthesized wheel tick scrolls, and the composer never sees it. */
+	it.each([
+		["normal cursor form", LEGACY_UP],
+		["application cursor form", SS3_UP],
+	])("scrolls on a legacy cursor-up in %s", async (_label, sequence) => {
+		const { term, tui, scheduler, composer } = await residentRig();
+		try {
+			term.sendInput(sequence);
+			await scheduler.drain(term);
+
+			expect(tui.virtualScrollActive).toBe(true);
+			expect(composer.received).toEqual([]);
+		} finally {
+			tui.stop();
+		}
+	});
+
+	/**
+	 * The discriminator. A kitty-protocol keypress carries parameters, so it is a
+	 * typed arrow: it must reach the composer and must not scroll, which is what
+	 * lets Up/Down keep their meaning while the wheel works.
+	 */
+	it("passes a kitty-protocol arrow through to the composer", async () => {
+		const { term, tui, scheduler, composer } = await residentRig();
+		try {
+			term.sendInput(KITTY_UP);
+			await scheduler.drain(term);
+
+			expect(tui.virtualScrollActive).toBe(false);
+			expect(composer.received).toEqual([KITTY_UP]);
+		} finally {
+			tui.stop();
+		}
+	});
+
+	/**
+	 * A gesture the view cannot honor is not consumed, so on a fallback terminal a
+	 * typed Down while already following the tail still reaches the composer instead
+	 * of vanishing into a scroll that could not happen.
+	 */
+	it("passes an unhonorable legacy arrow through instead of swallowing it", async () => {
+		const { term, tui, scheduler, composer } = await residentRig();
+		try {
+			term.sendInput(LEGACY_DOWN);
+			await scheduler.drain(term);
+
+			expect(tui.virtualScrollActive).toBe(false);
+			expect(composer.received).toEqual([LEGACY_DOWN]);
+		} finally {
+			tui.stop();
+		}
+	});
+
+	/**
+	 * Under the shipped mouse transport nothing about arrows changes: they are keys,
+	 * full stop. Without this the new branch could quietly claim arrows for every
+	 * session rather than only the transport that needs them.
+	 */
+	it("leaves arrows alone under the mouse transport", async () => {
+		const term = new RecordingTerminal(30, 8, 5_000);
+		const scheduler = new StressRenderScheduler();
+		const tui = new TUI(term, true, { renderScheduler: scheduler });
+		const body = new Body();
+		const composer = new RecordingComposer();
+		body.rows = Array.from({ length: 40 }, (_, i) => `h${i}`);
+		tui.addChild(body);
+		tui.addChild(composer);
+		tui.setFocus(composer);
+		tui.setPinnedFooterChildCount(1);
+		tui.setScrollbackRebuild(false);
+		tui.setScrollIsolation(true);
+		tui.start();
+		await scheduler.drain(term);
+		try {
+			term.sendInput(LEGACY_UP);
+			await scheduler.drain(term);
+
+			expect(tui.virtualScrollActive).toBe(false);
+			expect(composer.received).toEqual([LEGACY_UP]);
+		} finally {
+			tui.stop();
+		}
+	});
+});
