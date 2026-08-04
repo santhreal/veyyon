@@ -12,7 +12,7 @@ import { WebSearchTab } from "./web-search";
  */
 class ProvidersSceneController implements SetupSceneController {
 	title = "Set up your providers";
-	subtitle = "Sign in and pick a web search provider. Press Esc when you're done.";
+	subtitle = "Connect at least one account. Tab switches panels; Enter confirms a row.";
 
 	#tabs: SetupTab[];
 	#tabBar: TabBar;
@@ -103,10 +103,12 @@ class ProvidersSceneController implements SetupSceneController {
 		}
 	}
 
-	render(width: number): readonly string[] {
+	render(width: number, rows?: number): readonly string[] {
 		const tabLines = this.#tabBar.render(width);
 		this.#tabRowCount = tabLines.length;
-		return [...tabLines, "", ...this.#activeTab().render(width)];
+		const spacerRows = 1;
+		const panelRows = rows === undefined ? undefined : Math.max(1, rows - tabLines.length - spacerRows);
+		return [...tabLines, "", ...this.#activeTab().render(width, panelRows)];
 	}
 
 	dispose(): void {
@@ -116,6 +118,7 @@ class ProvidersSceneController implements SetupSceneController {
 
 export const providersSetupScene: SetupScene = {
 	id: "providers",
+	stepLabel: "Providers",
 	title: "Set up your providers",
 	minVersion: 1,
 	mount: host => new ProvidersSceneController(host),

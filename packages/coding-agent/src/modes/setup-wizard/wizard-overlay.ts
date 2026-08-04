@@ -8,6 +8,7 @@ import {
 	type SgrMouseEvent,
 	TERMINAL,
 	truncateToWidth,
+	visibleWidth,
 } from "@veyyon/tui";
 import { SGR_RESET } from "@veyyon/tui/ansi";
 import { APP_NAME } from "@veyyon/utils";
@@ -128,12 +129,15 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			return;
 		}
 		if (this.#phase === "splash") {
-			if (
-				matchesKey(data, "enter") ||
-				matchesKey(data, "return") ||
-				matchesKey(data, "space") ||
-				matchesKey(data, "escape")
-			) {
+			// Esc means the same thing on the splash as it does on every step:
+			// leave setup. It used to START the wizard here, alongside Enter and
+			// Space, so the one key a user reaches for to get out of something was
+			// the key that walked them further into it.
+			if (matchesKey(data, "escape")) {
+				this.#beginOutro();
+				return;
+			}
+			if (matchesKey(data, "enter") || matchesKey(data, "return") || matchesKey(data, "space")) {
 				this.#beginScene();
 			}
 			return;
@@ -157,6 +161,23 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			this.#phase === "transition" &&
 			(matchesKey(data, "enter") || matchesKey(data, "return") || matchesKey(data, "space"))
 		) {
+			return;
+		}
+		// Esc leaves setup. It used to fall through to the active scene, where no
+		// scene claimed it, so the only advertised way out was ctrl+c — a key
+		// users read as "kill the program", not "I'll finish this later". Leaving
+		// is deliberately not confirmed: the complaint was that setup is hard to
+		// get out of, and a "are you sure?" step makes that worse.
+		if (matchesKey(data, "escape")) {
+			this.#beginOutro();
+			return;
+		}
+		if (matchesKey(data, "right")) {
+			this.#finishScene();
+			return;
+		}
+		if (this.#sceneIndex > 0 && matchesKey(data, "left")) {
+			this.#previousScene();
 			return;
 		}
 		this.#activeScene?.handleInput?.(data);
@@ -227,45 +248,59 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		return this.#fitToScreen(lines, safeWidth, height).map(line => `${line}${SGR_RESET}`);
 	}
 
-	/** Step dots: solid for steps done, an ember core for the current, dots ahead.
-	 *  Empty for a single-scene wizard — a lone current-step dot next to
-	 *  "step 1 of 1" reads as a stray glyph, not progress. */
-	#renderProgress(): string {
+	/**
+	 * The progress breadcrumb: every step named, the current one lit.
+	 *
+	 * It used to be `█ ▓ · · ·   step 3 of 5`, which said where you were and
+	 * nothing about where you were going: five identical marks in a private
+	 * glyph vocabulary, so the only readable part was the count. Naming the steps
+	 * means a user can see what onboarding is going to ask before it asks, and
+	 * can tell whether the thing they came for is still ahead.
+	 *
+	 * Empty for a single-scene wizard — one lone name next to "step 1 of 1" is
+	 * not progress. Falls back to the bare count when the names cannot fit, since
+	 * a breadcrumb cut mid-word is worse than a count.
+	 */
+	#renderProgress(width: number): string {
 		const total = this.scenes.length;
 		if (total <= 1) return "";
-		const current = this.#sceneIndex + 1;
-		const dots: string[] = [];
-		for (let i = 0; i < total; i++) {
-			dots.push(
-				i < current - 1
-					? theme.fg("accent", "█")
-					: i === current - 1
-						? theme.fg("accent", "▓")
-						: theme.fg("dim", "·"),
-			);
-		}
-		return `${dots.join(" ")}   ${theme.fg("dim", `step ${current} of ${total}`)}`;
+		const current = this.#sceneIndex;
+		const labels = this.scenes.map(scene => scene.stepLabel ?? scene.title);
+		const separator = theme.fg("dim", " › ");
+		const trail = labels
+			.map((label, index) =>
+				index === current
+					? theme.fg("accent", theme.bold(label))
+					: theme.fg(index < current ? "muted" : "dim", label),
+			)
+			.join(separator);
+		const count = theme.fg("dim", `${current + 1}/${total}`);
+		const line = `${count}  ${trail}`;
+		return visibleWidth(line) <= width ? line : theme.fg("dim", `step ${current + 1} of ${total}`);
 	}
 
 	/**
 	 * The footer's key hints for the frame being rendered.
 	 *
 	 * The active scene owns the keys that act inside it (select, toggle, switch
-	 * panel); the wizard owns the key that moves the run forward, because only
-	 * the wizard knows whether another step follows. Naming the two separately is
-	 * the point. The old fixed line read "enter confirm  ·  esc skip", which gave
-	 * the user no way to tell confirming a row from advancing the wizard, called
-	 * the forward key a skip, and never mentioned Tab even on the scene whose
-	 * panels only Tab can reach.
+	 * panel); the wizard owns the keys that move the run, because only the wizard
+	 * knows whether another step follows.
+	 *
+	 * The labels name what each key actually does, which the old line did not.
+	 * `→` does not apply the step: `#finishScene` advances the index and the
+	 * scene commits nothing, so it is a skip, and calling it "next" next to
+	 * "enter confirm" left no way to tell which one kept your choice. And the
+	 * only key that ended the run was advertised as "ctrl+c skip", conflating
+	 * "skip this step" with "leave setup" under the key that means "kill it".
 	 */
 	#footerHints(): string {
 		const inScene = this.#activeScene?.keyHints?.() ?? DEFAULT_SCENE_HINTS;
 		const isLastScene = this.#sceneIndex >= this.scenes.length - 1;
-		const hints: readonly SetupKeyHint[] = [
-			...inScene,
-			{ keys: "esc", label: isLastScene ? "finish setup" : "next step" },
-			{ keys: "ctrl+c", label: "exit" },
-		];
+		const hints: SetupKeyHint[] = [...inScene];
+		if (this.#sceneIndex > 0) {
+			hints.push({ keys: "←", label: "back" });
+		}
+		hints.push({ keys: "→", label: isLastScene ? "skip" : "skip step" }, { keys: "esc", label: "leave setup" });
 		return hints.map(hint => `${hint.keys} ${hint.label}`).join("  ·  ");
 	}
 
@@ -278,8 +313,8 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		this.#bodyMarginX = marginX;
 		const sun = sunMark(15, 5, { trueColor: TERMINAL.trueColor });
 		// One centered column: the sun, the wordmark in the terminal's own font,
-		// the step dots, then the scene — nothing floats, everything breathes.
-		const progress = this.#renderProgress();
+		// the breadcrumb, then the scene — nothing floats, everything breathes.
+		const progress = this.#renderProgress(contentWidth);
 		const header = [
 			"",
 			...sun.map(line => indentLine(line, width, marginX)),
@@ -299,13 +334,35 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		const hintText = truncateToWidth(this.#footerHints(), Math.max(0, width - marginX));
 		const footer = ["", indentLine(theme.fg("dim", hintText), width, marginX)];
 		const maxBodyLines = Math.max(0, height - header.length - footer.length);
-		const body = this.#activeScene?.render(contentWidth).slice(0, maxBodyLines) ?? [];
+		// The scene is told its row budget so it can size its own list to the
+		// viewport. A scene that still overruns is clipped, but never silently:
+		// the last row becomes a count of what is off-screen. Before this, the
+		// budget was applied here as a bare `slice`, so a provider list, a theme
+		// list and every wrapped description simply ended mid-row with nothing to
+		// say more existed — the "you can't see all of it" report.
+		const rendered = this.#activeScene?.render(contentWidth, maxBodyLines) ?? [];
+		const body = this.#clipBody(rendered, maxBodyLines);
 		const lines = [...header, ...body.map(line => indentLine(line, width, marginX))];
 		while (lines.length + footer.length < height) {
 			lines.push("");
 		}
 		lines.push(...footer);
 		return lines;
+	}
+
+	/**
+	 * Fit a scene's rows into its budget, replacing the last kept row with a
+	 * count when rows are dropped, so an overrun is visible instead of a frame
+	 * that just stops. A budget of one row cannot hold both content and a
+	 * notice, so it shows the notice: knowing rows are hidden matters more than
+	 * one arbitrary row of them.
+	 */
+	#clipBody(lines: readonly string[], budget: number): string[] {
+		if (budget <= 0) return [];
+		if (lines.length <= budget) return [...lines];
+		const hidden = lines.length - budget + 1;
+		const notice = theme.fg("warning", `↓ ${hidden} more ${hidden === 1 ? "row" : "rows"} below`);
+		return [...lines.slice(0, budget - 1), notice];
 	}
 
 	#fitToScreen(lines: string[], width: number, height: number): string[] {
@@ -353,6 +410,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			ctx: this.ctx,
 			requestRender: () => this.ctx.ui.requestRender(),
 			finish: (_result: SetupSceneResult) => this.#finishScene(),
+			skipSetup: () => this.#beginOutro(),
 			setFocus: component => {
 				this.#sceneFocusTarget = component ?? undefined;
 				this.ctx.ui.setFocus(component);
@@ -391,6 +449,16 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		this.#unmountActiveScene();
 		this.#sceneIndex += 1;
 		this.#mountSceneController("scene");
+	}
+
+	#previousScene(): void {
+		if ((this.#phase !== "scene" && this.#phase !== "transition") || this.#sceneIndex <= 0) return;
+		if (this.#lastWidth > 0) {
+			this.#transitionFrom = this.#renderScene(this.#lastWidth, this.#lastHeight);
+		}
+		this.#unmountActiveScene();
+		this.#sceneIndex -= 1;
+		this.#mountSceneController("transition");
 	}
 
 	#unmountActiveScene(): void {

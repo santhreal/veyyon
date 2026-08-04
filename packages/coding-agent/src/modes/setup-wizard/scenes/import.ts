@@ -1,6 +1,7 @@
 import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent, truncateToWidth } from "@veyyon/tui";
 import { errorMessage, getAgentDir } from "@veyyon/utils";
 import { type ImportCandidate, importForeignItems, scanForeignConfig } from "../../../discovery/import-scan";
+import { shortenPath } from "../../../tools/render-utils";
 import { getSelectListTheme, theme } from "../../theme/theme";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 
@@ -41,14 +42,17 @@ class ImportSceneController implements SetupSceneController {
 			label: `${this.#selected.has(candidate.sourcePath) ? theme.checkbox.checked : theme.checkbox.unchecked} ${
 				candidate.kind === "skill" ? `skill: ${candidate.name}` : candidate.name
 			}`,
-			description: `${candidate.providerName} · ${candidate.sourcePath}`,
+			// `~`-shortened: the absolute path is mostly the home prefix, which spent
+			// the description column before reaching the part that identifies the
+			// file, so every row read as the same truncated `/home/<user>/.claud`.
+			description: `${candidate.providerName} · ${shortenPath(candidate.sourcePath)}`,
 		}));
 		items.push({
 			value: CONTINUE_VALUE,
 			label: `Import ${this.#selected.size} selected`,
 			description: this.#selected.size === 0 ? "Nothing selected — continues without importing" : "",
 		});
-		const list = new SelectList(items, MAX_VISIBLE, getSelectListTheme());
+		const list = new SelectList(items, MAX_VISIBLE, getSelectListTheme(), { statusLegend: false });
 		list.setSelectedIndex(selectedIndex);
 		list.onSelect = item => this.#activate(item.value);
 		list.onCancel = () => this.host.finish("skipped");
@@ -133,12 +137,17 @@ class ImportSceneController implements SetupSceneController {
 		routeSelectListMouse(this.#list, event, line - this.#listRowStart);
 	}
 
-	render(width: number): readonly string[] {
+	render(width: number, rows?: number): readonly string[] {
 		const lines = [
-			theme.fg("muted", "Space toggles an item · imports copy into your profile; originals keep loading."),
+			theme.fg("muted", "Space toggles an item · Enter imports the checked ones."),
+			theme.fg("dim", "Importing copies into this profile; the originals are left untouched."),
 			"",
 		];
 		this.#listRowStart = lines.length;
+		if (rows !== undefined) {
+			const statusRows = this.#status.length > 0 ? this.#status.length + 1 : 0;
+			this.#list.setRowBudget(Math.max(1, rows - lines.length - statusRows));
+		}
 		lines.push(...this.#list.render(width));
 		if (this.#status.length > 0) {
 			lines.push("", ...this.#status.map(line => truncateToWidth(line, width)));
@@ -152,6 +161,7 @@ let scannedCandidates: ImportCandidate[] = [];
 
 export const importSetupScene: SetupScene = {
 	id: "import-config",
+	stepLabel: "Import",
 	title: "Import existing config",
 	// Introduced-at-major floor: ships in v1, so it is part of first-install
 	// onboarding. shouldRun still gates it on there being something to import.

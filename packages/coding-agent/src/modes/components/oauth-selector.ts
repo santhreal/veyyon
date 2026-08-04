@@ -30,6 +30,7 @@ import {
 } from "./modal-shell";
 import { renderScrollableList, selectionBand } from "./selector-helpers";
 
+/** Default visible provider rows when the host does not size the selector. */
 const OAUTH_SELECTOR_MAX_VISIBLE = 10;
 
 /**
@@ -77,6 +78,13 @@ export class OAuthSelectorComponent implements Component {
 	/** First provider index of the visible ScrollView window (last #buildBody). */
 	#scrollStart = 0;
 	#visibleCount = 0;
+	/**
+	 * Visible provider rows. Instance state, not the module constant, so a host
+	 * that owns the viewport can size the selector to it: inside the setup
+	 * wizard a fixed ten rows overran the body budget, and the wizard clipped the
+	 * tail, leaving providers below the fold unreachable during onboarding.
+	 */
+	#maxVisible = OAUTH_SELECTOR_MAX_VISIBLE;
 	#mode: "login" | "logout";
 	#authStorage: AuthStorage;
 	#onSelectCallback: (providerId: string) => void;
@@ -125,6 +133,11 @@ export class OAuthSelectorComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
+	}
+
+	/** Size the provider list to the rows the host can actually show. */
+	setMaxVisible(rows: number): void {
+		this.#maxVisible = Math.max(1, Math.floor(rows));
 	}
 
 	stopValidation(): void {
@@ -249,7 +262,7 @@ export class OAuthSelectorComponent implements Component {
 	}
 
 	#isSearchEnabled(): boolean {
-		return this.#allProviders.length > OAUTH_SELECTOR_MAX_VISIBLE;
+		return this.#allProviders.length > this.#maxVisible;
 	}
 
 	#shouldRenderSearchStatus(): boolean {
@@ -305,7 +318,7 @@ export class OAuthSelectorComponent implements Component {
 
 	#buildBody(width: number): string[] {
 		const total = this.#filteredProviders.length;
-		const maxVisible = OAUTH_SELECTOR_MAX_VISIBLE;
+		const maxVisible = this.#maxVisible;
 		const startIndex =
 			total <= maxVisible ? 0 : clampLow(this.#selectedIndex - Math.floor(maxVisible / 2), 0, total - maxVisible);
 		const endIndex = Math.min(startIndex + maxVisible, total);
@@ -403,17 +416,14 @@ export class OAuthSelectorComponent implements Component {
 		// Page up - jump up by one visible page
 		else if (matchesKey(keyData, "pageUp")) {
 			if (this.#filteredProviders.length > 0) {
-				this.#selectedIndex = Math.max(0, this.#selectedIndex - OAUTH_SELECTOR_MAX_VISIBLE);
+				this.#selectedIndex = Math.max(0, this.#selectedIndex - this.#maxVisible);
 			}
 			this.#statusMessage = undefined;
 		}
 		// Page down - jump down by one visible page
 		else if (matchesKey(keyData, "pageDown")) {
 			if (this.#filteredProviders.length > 0) {
-				this.#selectedIndex = Math.min(
-					this.#filteredProviders.length - 1,
-					this.#selectedIndex + OAUTH_SELECTOR_MAX_VISIBLE,
-				);
+				this.#selectedIndex = Math.min(this.#filteredProviders.length - 1, this.#selectedIndex + this.#maxVisible);
 			}
 			this.#statusMessage = undefined;
 		}

@@ -20,6 +20,8 @@ export interface SetupSceneHost {
 	ctx: SetupWizardContext;
 	requestRender(): void;
 	finish(result: SetupSceneResult): void;
+	/** Exit the entire onboarding run without applying any in-progress text entry. */
+	skipSetup(): void;
 	setFocus(component: Component | null): void;
 	restoreFocus(): void;
 }
@@ -42,6 +44,16 @@ export interface SetupKeyHint {
 export interface SetupSceneController extends Component {
 	title: string;
 	subtitle?: string;
+	/**
+	 * Render the scene body.
+	 *
+	 * `rows` is the number of terminal rows the wizard has left for this body
+	 * after its header and footer. A scene that shows a list MUST size the list
+	 * to it: the wizard clips an overrun and says so, but a list that asks for
+	 * more rows than exist is a list whose tail the user cannot reach. It is
+	 * optional so a fixed-height scene can ignore it.
+	 */
+	render(width: number, rows?: number): readonly string[];
 	onMount?(): void | Promise<void>;
 	onUnmount?(): void;
 	dispose?(): void;
@@ -73,7 +85,8 @@ export interface SetupTab {
 	 * login). The parent scene MUST NOT switch tabs or finish while modal.
 	 */
 	readonly modal: boolean;
-	render(width: number): readonly string[];
+	/** See {@link SetupSceneController.render}: `rows` is the panel's row budget. */
+	render(width: number, rows?: number): readonly string[];
 	handleInput(data: string): void;
 	invalidate(): void;
 	/** Called when the tab becomes active (including initial mount). */
@@ -86,6 +99,14 @@ export interface SetupTab {
 export interface SetupScene {
 	id: string;
 	title: string;
+	/**
+	 * One or two words naming this step in the wizard's progress breadcrumb.
+	 *
+	 * Separate from {@link title}, which is a sentence addressed to the user
+	 * ("Set up your providers") and too long to sit beside four siblings. Falls
+	 * back to `title` when omitted, which will be cut to fit.
+	 */
+	stepLabel?: string;
 	/**
 	 * The onboarding generation this scene was introduced in. It is a floor, not a
 	 * per-scene trigger: a scene runs whenever its floor is at or below the current
