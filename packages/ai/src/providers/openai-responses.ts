@@ -51,7 +51,14 @@ import {
 	mapToOpenAIResponsesToolChoice,
 	type OpenAIResponsesToolChoice,
 } from "../utils/tool-choice";
+import type { CacheControlEphemeral } from "./anthropic-wire";
 import { compactGrammarDefinition } from "./grammar";
+import {
+	formatOpenAIInputText,
+	isOfficialOpenAIResponsesEndpoint,
+	type OpenAIPromptCachePolicy,
+	resolveOpenAIPromptCachePolicy,
+} from "./openai-prompt-cache";
 import {
 	applyOpenAIReasoningEffortFallback,
 	clearOpenAIReasoningEffortFallbackState,
@@ -321,8 +328,6 @@ function markOpenAIResponsesChainZeroDataRetention(chain: OpenAIResponsesChainSt
 	});
 }
 
-type OpenRouterAnthropicCacheControl = { type: "ephemeral"; ttl?: "1h" };
-
 type OpenAIResponsesSamplingParams = ResponseCreateParamsStreaming & {
 	top_p?: number;
 	top_k?: number;
@@ -333,8 +338,21 @@ type OpenAIResponsesSamplingParams = ResponseCreateParamsStreaming & {
 	stream_options?: { include_obfuscation?: boolean };
 	provider?: OpenAICompat["openRouterRouting"];
 	reasoning?: { effort?: string } | { enabled: false };
-	cache_control?: OpenRouterAnthropicCacheControl;
+	cache_control?: CacheControlEphemeral;
 };
+
+function buildDeveloperSystemInput(
+	systemPrompts: readonly string[],
+	cachePolicy: OpenAIPromptCachePolicy,
+): ResponseInput[number][] {
+	return systemPrompts.map((systemPrompt, index) => {
+		const content =
+			index === 0 && cachePolicy.stablePrefixBreakpoint
+				? [formatOpenAIInputText(systemPrompt, cachePolicy)]
+				: systemPrompt;
+		return { role: "developer", content } as ResponseInput[number];
+	});
+}
 
 function maybeAddOpenRouterAnthropicCacheControl(
 	params: OpenAIResponsesSamplingParams,
@@ -757,19 +775,6 @@ const streamOpenAIResponsesOnce = (
 export const streamOpenAIResponses: StreamFunction<"openai-responses"> = (model, context, options) =>
 	withEmptyCompletionRetry(model, context, options, streamOpenAIResponsesOnce);
 
-function isOfficialOpenAIResponsesEndpoint(model: Model<"openai-responses">): boolean {
-	if (model.provider !== "openai") return false;
-	if (!model.baseUrl) return true;
-	try {
-		return new URL(model.baseUrl).hostname === "api.openai.com";
-	} catch {
-		// This asks "is this the official endpoint". A base URL we cannot parse is certainly not provably
-		// official, and false only turns OFF OpenAI-specific request shaping, which is the conservative
-		// direction for a third-party endpoint.
-		return false;
-	}
-}
-
 export function buildParams(
 	model: Model<"openai-responses">,
 	context: Context,
@@ -804,16 +809,22 @@ export function buildParams(
 		repairOrphanOutputs: true,
 	});
 
+	const cacheRetention = resolveCacheRetention(options?.cacheRetention);
+	const promptCacheKey = getOpenAIPromptCacheKey(options);
+	const cachePolicy = resolveOpenAIPromptCachePolicy({
+		model,
+		promptCacheKey,
+		cacheRetention,
+	});
 	const systemPrompts = normalizeSystemPrompts(context.systemPrompt);
 	let systemInstructions: string | undefined;
 	if (systemPrompts.length > 0) {
 		const needsDeveloperRole = policy.messages.systemRole === "developer";
 		if (needsDeveloperRole) {
 			// Reasoning models on known OpenAI-compatible endpoints require the
-			// `developer` role. Send all system prompts inline in `input`.
-			messages.unshift(
-				...systemPrompts.map(systemPrompt => ({ role: "developer" as const, content: systemPrompt })),
-			);
+			// `developer` role. The OpenAI cache boundary decides whether the
+			// stable first block can carry a generation-specific breakpoint.
+			messages.unshift(...buildDeveloperSystemInput(systemPrompts, cachePolicy));
 		} else {
 			// All other endpoints (including third-party /v1/responses proxies) use
 			// the canonical top-level `instructions` field so that proxies that
@@ -822,8 +833,6 @@ export function buildParams(
 		}
 	}
 
-	const cacheRetention = resolveCacheRetention(options?.cacheRetention);
-	const promptCacheKey = getOpenAIPromptCacheKey(options);
 	const modelId = applyWireModelIdTransform(
 		model.requestModelId ?? model.id,
 		model.compat.wireModelIdMode,
@@ -835,11 +844,7 @@ export function buildParams(
 		instructions: systemInstructions,
 		stream: true,
 		prompt_cache_key: promptCacheKey,
-		prompt_cache_retention: promptCacheKey
-			? cacheRetention === "long" && model.compat.supportsLongPromptCacheRetention
-				? "24h"
-				: undefined
-			: undefined,
+		prompt_cache_retention: cachePolicy.promptCacheRetention,
 		// Gateway routing: OpenRouter-only Responses wire field for sticky upstream
 		// routing + observability grouping; no equivalent on direct OpenAI.
 		session_id: model.compat.isOpenRouterHost ? getOpenRouterResponsesSessionId(options) : undefined,

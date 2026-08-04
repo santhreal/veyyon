@@ -169,7 +169,11 @@ Check these before adding or forwarding a field:
 - **Prompt cache/session.** OpenAI Responses uses `prompt_cache_key`.
   OpenRouter Responses uses `session_id`. Codex uses prompt cache/session ids for
   transport state. Anthropic-style cache control requires `cache_control` on a
-  text part.
+  text part. `prompt_cache_breakpoint` is narrower than the model generation
+  suggests: it is a platform API field, accepted only by `api.openai.com` on
+  GPT-5.6 and later. The ChatGPT Codex backend rejects it with
+  `prompt_cache_breakpoint is not supported on this model (invalid_parameter)`,
+  which fails the turn, so a version floor alone is never enough to send it.
 - **Stateful chaining.** Official OpenAI Responses may chain by default.
   Third-party endpoints generally should not. Codex chains only on websocket
   `response.create`.
