@@ -560,3 +560,80 @@ describe("alt-arrows wheel classification", () => {
 		}
 	});
 });
+
+/**
+ * What the terminal is left holding after a resident session exits.
+ *
+ * Residency is the one real cost of this surface: the conversation lives on the
+ * alt buffer, so leaving it would take the transcript off screen with it — nothing
+ * to scroll back through, nothing for the terminal's own find, nothing for tmux
+ * copy-mode. Exit replays the transcript onto the normal screen so the session
+ * ends the way the native-scrollback surface would have left it.
+ *
+ * A crash cannot run this, which is a stated limit rather than a covered case: the
+ * alt buffer restores whatever preceded launch and the transcript is then only in
+ * the session file.
+ */
+describe("alt-arrows exit replay", () => {
+	/**
+	 * The transcript reaches the normal screen's scrollback. Asserted on the
+	 * terminal's scroll buffer rather than on bytes, because the contract is what an
+	 * operator can scroll back to, not what we happened to write.
+	 */
+	it("leaves the transcript in the terminal after exit", async () => {
+		const { term, tui, scheduler } = await rig();
+		tui.setScrollTransport("alt-arrows");
+		tui.setScrollIsolation(true);
+		await scheduler.drain(term);
+
+		tui.stop();
+		await term.flush();
+
+		const history = term
+			.getScrollBuffer()
+			.concat(term.getViewport())
+			.map(row => Bun.stripANSI(row).trim());
+		// Rows from across the transcript, not merely the tail that was on screen.
+		expect(history).toContain("h0");
+		expect(history).toContain("h20");
+		expect(history).toContain("h39");
+	});
+
+	/**
+	 * The native surface must replay nothing: the terminal already holds its
+	 * transcript, and writing a second copy on exit would duplicate the whole
+	 * conversation in scrollback.
+	 */
+	it("replays nothing under the mouse transport", async () => {
+		const { term, tui, scheduler } = await rig();
+		tui.setScrollIsolation(true);
+		await scheduler.drain(term);
+		const mark = term.mark();
+
+		tui.stop();
+		await term.flush();
+
+		// Only teardown bytes, no row content: a replay would have written the
+		// transcript's text again.
+		expect(term.outputSince(mark)).not.toContain("h20");
+	});
+
+	/**
+	 * Stopping twice must not write the conversation twice. `stop()` is reachable
+	 * from more than one teardown path, and a duplicated transcript in scrollback is
+	 * exactly what this surface exists to avoid looking like.
+	 */
+	it("replays at most once", async () => {
+		const { term, tui, scheduler } = await rig();
+		tui.setScrollTransport("alt-arrows");
+		tui.setScrollIsolation(true);
+		await scheduler.drain(term);
+
+		tui.stop();
+		const mark = term.mark();
+		tui.stop();
+		await term.flush();
+
+		expect(term.outputSince(mark)).not.toContain("h20");
+	});
+});
