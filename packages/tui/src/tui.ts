@@ -108,6 +108,35 @@ const SCROLL_TRACK_THUMB = "█";
 const MOUSE_WHEEL_TRACKING_OFF = "\x1b[?1006l\x1b[?1000l";
 const ALT_SCREEN_ENTER = "\x1b[?1049h";
 const ALT_SCREEN_EXIT = "\x1b[?1049l";
+// Alternate Scroll Mode (xterm `alternateScroll`, DECSET 1007). While the
+// alternate screen is displayed the terminal translates wheel ticks into
+// cursor-up/down KEYS instead of mouse reports, so an application can scroll
+// its own viewport without enabling mouse tracking at all — which is the whole
+// point: mouse tracking is what takes native drag-select away (see the
+// scroll-transport note on #scrollTransport). xterm ships the resource
+// defaulting to false, but the manual states the mode is also settable by
+// control sequence, so the resource default does not decide this for us.
+//
+// The cost is that a wheel tick is byte-identical to a real arrow key press.
+// `ScrollTransport` documents how that ambiguity is resolved.
+const ALT_SCROLL_ON = "\x1b[?1007h";
+const ALT_SCROLL_OFF = "\x1b[?1007l";
+
+/**
+ * How a scroll gesture reaches the engine while scroll isolation is on.
+ *
+ * `"mouse"` grabs mouse reporting on the normal screen: the wheel is
+ * unambiguous and native drag-select is lost (Shift+drag instead), and the
+ * transcript stays in the terminal's own scrollback.
+ *
+ * `"alt-arrows"` holds the alternate screen with Alternate Scroll Mode, so the
+ * terminal converts the wheel into cursor keys and no mouse tracking is needed:
+ * native drag-select keeps working, at the cost of the transcript no longer
+ * living in terminal scrollback. Because a synthesized wheel arrow is
+ * byte-identical to a typed one, the host must tell the engine which arrows are
+ * scrolls; see {@link TUI.setScrollTransport}.
+ */
+export type ScrollTransport = "mouse" | "alt-arrows";
 
 type InputListenerResult = { consume?: boolean; data?: string } | undefined;
 type InputListener = (data: string) => InputListenerResult;
@@ -1078,6 +1107,21 @@ export class TUI extends Container {
 	// destroy the frozen view); the accumulated rows backfill through the
 	// ordinary seam rewrite on resume.
 	#scrollIsolation = false;
+	// How a scroll gesture REACHES the engine. Both transports drive the same
+	// frozen-region viewport; they differ only in what the terminal sends and in
+	// what that costs the operator.
+	//
+	// - "mouse": normal screen, mouse tracking held (1000h+1006h). The wheel
+	//   arrives as a mouse report, unambiguous, but the terminal stops selecting
+	//   on plain drag, so selection becomes Shift+drag for the session.
+	// - "alt-arrows": alternate screen with Alternate Scroll Mode (1007h) and NO
+	//   mouse tracking. The terminal translates wheel ticks into cursor-up/down
+	//   keys, so the engine scrolls from key input and the terminal keeps native
+	//   selection. The transcript lives on the alt buffer, so it is no longer in
+	//   the terminal's scrollback and the host is responsible for replaying it on
+	//   exit if that history should survive the session.
+	#scrollTransport: ScrollTransport = "mouse";
+	#altScrollActive = false;
 	#wheelTrackingActive = false;
 	// True while anything sits above the window: the composed frame overflows
 	// the viewport, OR rows have already scrolled off onto the tape. Gating on
@@ -1188,6 +1232,10 @@ export class TUI extends Container {
 	// normal screen. #altPreviousLines is the last alt frame, for repaint-skip.
 	#altActive = false;
 	#altPreviousLines: string[] = [];
+	// Caret placed by the last alt-buffer paint, or undefined when that paint
+	// left it hidden. Part of the repaint-skip test: identical rows with a moved
+	// caret still needs a paint, or the composer's cursor lags the text.
+	#altPreviousCursor: { row: number; col: number } | undefined;
 	#altEnterWidth = 0;
 	#altEnterHeight = 0;
 
@@ -1589,7 +1637,47 @@ export class TUI extends Container {
 		this.#scrollIsolation = enabled;
 		this.#resumeLiveTail();
 		this.#syncWheelTracking();
+		this.#syncAltScroll();
 		this.requestRender();
+	}
+
+	/**
+	 * Choose how scroll gestures reach the engine (default `"mouse"`).
+	 *
+	 * Switching to `"alt-arrows"` releases any mouse grab and moves the frame to
+	 * the alternate screen with Alternate Scroll Mode set, so the terminal keeps
+	 * native selection and sends wheel ticks as cursor keys. The engine cannot
+	 * tell those from typed arrows — the bytes are identical — so the host routes
+	 * them explicitly through {@link scrollByRows}, deciding from its own
+	 * keyboard state which arrows are scrolls.
+	 */
+	setScrollTransport(transport: ScrollTransport): void {
+		if (this.#scrollTransport === transport) return;
+		this.#scrollTransport = transport;
+		this.#resumeLiveTail();
+		this.#syncWheelTracking();
+		this.#syncAltScroll();
+		this.requestRender();
+	}
+
+	get scrollTransport(): ScrollTransport {
+		return this.#scrollTransport;
+	}
+
+	/**
+	 * Scroll the frozen transcript region by `rows` (negative scrolls back into
+	 * history, positive walks toward the live tail), the same movement the wheel
+	 * drives under the mouse transport.
+	 *
+	 * This is the `"alt-arrows"` entry point: the host receives a cursor-key
+	 * sequence it has decided came from the wheel rather than the keyboard and
+	 * hands the movement here. Returns true when the gesture was consumed, so a
+	 * host that guessed wrong can fall back to normal key handling.
+	 */
+	scrollByRows(rows: number): boolean {
+		if (!this.#scrollIsolation || rows === 0) return false;
+		if (!this.#frameScrollable) return false;
+		return this.#applyScrollDelta(rows);
 	}
 
 	/** Drop the frozen view and its snapshot. One owner: a frozen view that
@@ -1637,16 +1725,41 @@ export class TUI extends Container {
 
 	/** Apply or tear down wheel/button mouse tracking for scroll isolation.
 	 * Alt-screen overlays own the full tracking set while active, so this is
-	 * a no-op then; the alt-exit path re-syncs. */
+	 * a no-op then; the alt-exit path re-syncs.
+	 *
+	 * The `"alt-arrows"` transport never grabs the mouse — that grab is exactly
+	 * what it exists to avoid, since it is what takes native drag-select away.
+	 * There it gets its gestures from Alternate Scroll Mode instead. */
 	#syncWheelTracking(): void {
 		const want =
-			this.#scrollIsolation && !this.#stopped && this.#hasEverRendered && !this.#altActive && this.#frameScrollable;
+			this.#scrollTransport === "mouse" &&
+			this.#scrollIsolation &&
+			!this.#stopped &&
+			this.#hasEverRendered &&
+			!this.#altActive &&
+			this.#frameScrollable;
 		if (want === this.#wheelTrackingActive) return;
 		this.#wheelTrackingActive = want;
 		// A press whose release lands after tracking flips would pair a stale cell
 		// with an unrelated report, so the gesture never spans a mode change.
 		this.#pressCell = null;
 		this.terminal.write(want ? MOUSE_WHEEL_TRACKING_ON : MOUSE_WHEEL_TRACKING_OFF);
+	}
+
+	/**
+	 * Set or clear Alternate Scroll Mode to match the transport.
+	 *
+	 * The mode only has meaning while the alternate screen is displayed, but it is
+	 * a terminal-level flag rather than a per-buffer one, so it is written when the
+	 * transport selects it and cleared when the transport leaves or the engine
+	 * stops — never left set behind us, or the operator's next full-screen program
+	 * inherits a wheel that types arrow keys.
+	 */
+	#syncAltScroll(): void {
+		const want = this.#scrollTransport === "alt-arrows" && this.#scrollIsolation && !this.#stopped;
+		if (want === this.#altScrollActive) return;
+		this.#altScrollActive = want;
+		this.terminal.write(want ? ALT_SCROLL_ON : ALT_SCROLL_OFF);
 	}
 
 	getShowHardwareCursor(): boolean {
@@ -2061,6 +2174,10 @@ export class TUI extends Container {
 		this.#clearSixelProbeState();
 		this.#stopped = true;
 		this.#syncWheelTracking();
+		// Alternate Scroll Mode is a terminal flag, not a per-buffer one, so a
+		// stopped engine that left it set would hand the operator's next
+		// full-screen program a wheel that types arrow keys.
+		this.#syncAltScroll();
 		this.#watchdog.stop();
 		if (this.#renderTimer) {
 			this.#renderTimer.cancel();
@@ -2649,28 +2766,43 @@ export class TUI extends Container {
 		this.#lastWheelDirection = direction;
 		this.#lastWheelAtMs = now;
 		const step = TUI.#WHEEL_SCROLL_ROWS * (1 + this.#wheelStreak);
-		// Scroll-space coordinates: the tape's rows, then the frame's uncommitted
-		// rows. The live tail's view starts at #scrollSpaceLiveTop() and 0 is the
-		// oldest row the tape still holds.
+		this.#applyScrollDelta(direction === -1 ? -step : step);
+	}
+
+	/**
+	 * Move the frozen transcript view by `rows` in SCROLL-SPACE coordinates: the
+	 * tape's rows, then the frame's uncommitted rows, where 0 is the oldest row
+	 * the tape still holds and the live tail's view starts at
+	 * `#scrollSpaceLiveTop()`. Negative scrolls back into history, positive walks
+	 * toward the tail and resumes following once it reaches it.
+	 *
+	 * One owner for both transports: the wheel path applies its acceleration and
+	 * calls this, and the `"alt-arrows"` path routes host-classified cursor keys
+	 * here, so the two can never drift on where the view may stop. Returns false
+	 * when the gesture changed nothing, which is what lets a mis-classified arrow
+	 * fall back to ordinary key handling instead of being silently swallowed.
+	 */
+	#applyScrollDelta(rows: number): boolean {
 		const liveTop = this.#scrollSpaceLiveTop();
-		if (direction === -1) {
+		if (rows < 0) {
 			// Nothing above the live window at all (fresh session, short frame):
 			// stay following instead of freezing a view with nothing behind it.
-			if (liveTop === 0 && this.#virtualScrollTop === null) return;
-			const next = Math.max(0, (this.#virtualScrollTop ?? liveTop) - step);
-			if (next === this.#virtualScrollTop) return; // already at the oldest row
+			if (liveTop === 0 && this.#virtualScrollTop === null) return false;
+			const next = Math.max(0, (this.#virtualScrollTop ?? liveTop) + rows);
+			if (next === this.#virtualScrollTop) return false; // already at the oldest row
 			this.#virtualScrollTop = next;
 		} else if (this.#virtualScrollTop !== null) {
-			const next = this.#virtualScrollTop + step;
+			const next = this.#virtualScrollTop + rows;
 			if (next >= liveTop) {
 				this.#resumeLiveTail();
 			} else {
 				this.#virtualScrollTop = next;
 			}
 		} else {
-			return; // wheel-down while following: nothing to do, no repaint
+			return false; // scrolling toward the tail while already following it
 		}
 		this.requestRender();
+		return true;
 	}
 
 	#handleInput(data: string): void {
@@ -4243,9 +4375,14 @@ export class TUI extends Container {
 	 * Full per-row viewport rewrite on the alt buffer. Emits only sync-output
 	 * brackets, a cursor home, and per-row rewrites — never ED3, append-tail, or
 	 * any native-scrollback byte, so it is fully isolated from the planner and
-	 * #commit. The hardware cursor stays hidden (it is never re-shown here).
+	 * #commit.
+	 *
+	 * `cursor` places the hardware caret after the paint and shows it. A
+	 * fullscreen overlay passes nothing and keeps the caret hidden (it draws its
+	 * own in-band one), but a resident transcript surface has a live composer on
+	 * the alt buffer, and a composer with no visible caret is not a composer.
 	 */
-	#emitAltFrame(lines: string[], width: number, height: number): void {
+	#emitAltFrame(lines: string[], width: number, height: number, cursor?: { row: number; col: number }): void {
 		const fitted: string[] = new Array(height);
 		for (let r = 0; r < height; r++) fitted[r] = lines[r] ?? "";
 		// Flush queued image-data transmits (`a=t`, no visible output) before the
@@ -4263,10 +4400,19 @@ export class TUI extends Container {
 		// Skip an identical repaint (the modal is mostly static between
 		// keystrokes) — unless a forced repaint (resetDisplay,
 		// requestRender(true)) is pending: the redraw gesture must repair a
-		// corrupted modal even when our cached frame is byte-identical.
+		// corrupted modal even when our cached frame is byte-identical. A caret
+		// move alone also has to repaint: the rows can be identical while the
+		// composer's cursor moved along one of them, and skipping would leave the
+		// caret behind the text the operator is editing.
 		const force = this.#forceViewportRepaintOnNextRender;
 		this.#forceViewportRepaintOnNextRender = false;
-		if (!force && this.#altPreviousLines.length === height) {
+		const caretMoved =
+			cursor === undefined
+				? this.#altPreviousCursor !== undefined
+				: this.#altPreviousCursor === undefined ||
+					this.#altPreviousCursor.row !== cursor.row ||
+					this.#altPreviousCursor.col !== cursor.col;
+		if (!force && !caretMoved && this.#altPreviousLines.length === height) {
 			let same = true;
 			for (let r = 0; r < height; r++) {
 				if (fitted[r] !== this.#altPreviousLines[r]) {
@@ -4281,8 +4427,21 @@ export class TUI extends Container {
 			if (r > 0) buffer += "\r\n";
 			buffer += this.#lineRewriteSequence(fitted[r], width);
 		}
+		if (cursor !== undefined) {
+			// Rows/cols are 0-based internally and 1-based on the wire.
+			const row = clampLow(cursor.row + 1, 1, Math.max(1, height));
+			const col = clampLow(cursor.col + 1, 1, Math.max(1, width));
+			buffer += `\x1b[${row};${col}H`;
+		}
 		buffer += this.#paintEndSequence;
 		this.terminal.write(buffer);
+		if (cursor !== undefined) {
+			this.terminal.showCursor();
+			// Absolute placement, so the row tracker is re-based rather than nudged:
+			// this path emits CUP, never a relative move.
+			this.#recordHardwareCursorRowOnly(cursor.row, true);
+		}
+		this.#altPreviousCursor = cursor;
 		this.#altPreviousLines = fitted;
 		this.#fullRedrawCount += 1;
 	}
