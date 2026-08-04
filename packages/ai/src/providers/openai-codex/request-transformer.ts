@@ -281,6 +281,11 @@ export interface CodexLiteShapedBody {
  * developer message, then omits top-level `instructions`/`tools`. Shared by
  * normal turns and both remote-compaction paths — codex-rs routes
  * `/responses/compact` through the same builder.
+ *
+ * The developer instruction block carries no `prompt_cache_breakpoint`: the
+ * ChatGPT Codex backend rejects that field with `invalid_parameter` and fails
+ * the turn, and codex-rs never sends it. Codex caching is keyed by
+ * `prompt_cache_key` plus a byte-stable prefix, nothing else.
  */
 export function applyCodexResponsesLiteShape(body: CodexLiteShapedBody): void {
 	const input = Array.isArray(body.input) ? body.input : [];

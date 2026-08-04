@@ -5,7 +5,7 @@
 ### Changed
 
 - Anthropic requests now cache the stable Veyyon system-prompt prefix separately from changing project, assignment, and Argot blocks, preserving prefix reuse across parent and subagent turns.
-- GPT-5.6 Responses and Codex Responses Lite requests now mark Veyyon's stable harness block with an explicit OpenAI cache breakpoint, preserving prefix hits when project, task, or Argot suffixes change.
+- Official GPT-5.6 Responses requests (`api.openai.com`) now mark Veyyon's stable harness block with an explicit OpenAI cache breakpoint, preserving prefix hits when project, task, or Argot suffixes change. Codex Responses Lite is excluded: the ChatGPT Codex backend does not accept the field.
 - Model reasoning intent now resolves once before provider mapping, so effort, mandatory-thinking floors, routed model IDs, and transport-specific token budgets use one request plan.
 
 ### Fixed
@@ -13,6 +13,7 @@
 - Fixed cumulative function-call argument snapshots being appended as deltas, which repeated tool arguments in live previews even when the finalized call was correct.
 - Fixed Gemini dynamic thinking remaining active when reasoning was explicitly disabled.
 - Fixed Bedrock using different extra-high reasoning budget defaults depending on the call path.
+- Fixed Codex Responses Lite stamping `prompt_cache_breakpoint` on the developer instruction block for any 5.6+ Codex id. The ChatGPT Codex backend answers `prompt_cache_breakpoint is not supported on this model (invalid_parameter)`, which failed every turn on the Codex path and left no prefix cached. The field is an `api.openai.com` capability and the policy resolver now accepts only `Model<"openai-responses">`, so the Codex request path cannot ask for it.
 
 - OpenAI-compatible Chat Completions streams now reject EOF without an authoritative `finish_reason` as an incomplete provider stream before repairing or exposing a partial tool call.
 - Empty-completion retries now propagate cancellation during backoff instead of returning the discarded empty result. Azure Responses and Codex Responses use the same bounded empty-completion policy as the other provider adapters.
