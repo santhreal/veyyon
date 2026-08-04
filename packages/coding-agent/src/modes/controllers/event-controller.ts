@@ -9,7 +9,7 @@ import { extractTextContent } from "../../commit/utils";
 import { settings } from "../../config/settings-instance";
 import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
-import { detectCacheInvalidation } from "../../modes/components/cache-invalidation-marker";
+import { detectCacheInvalidation, usesExplicitPromptCache } from "../../modes/components/cache-invalidation-marker";
 import {
 	ReadToolGroupComponent,
 	readArgsHaveTarget,
@@ -1109,6 +1109,7 @@ export class EventController {
 						this.ctx.lastAssistantUsage,
 						usage,
 						this.#takeCacheInvalidationCause(),
+						{ explicitCache: usesExplicitPromptCache(event.message.api, event.message.model) },
 					);
 					if (invalidation) this.ctx.streamingComponent.setCacheInvalidation(invalidation);
 				}

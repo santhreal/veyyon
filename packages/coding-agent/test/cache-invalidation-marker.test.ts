@@ -3,6 +3,7 @@ import type { Usage } from "@veyyon/ai/types";
 import {
 	CacheInvalidationMarkerComponent,
 	detectCacheInvalidation,
+	usesExplicitPromptCache,
 } from "@veyyon/coding-agent/modes/components/cache-invalidation-marker";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
@@ -162,5 +163,107 @@ describe("CacheInvalidationMarkerComponent", () => {
 
 		expect(text).toContain("51K tokens");
 		expect(text.endsWith("tokens")).toBe(true);
+	});
+});
+
+/**
+ * The case the detector used to discard.
+ *
+ * `cacheWrite <= 0` returned undefined unconditionally, which is right for an
+ * implicit best-effort cache — those drop `cacheRead` to zero as propagation
+ * noise and self-heal — and exactly wrong for an explicit, prefix-controlled one.
+ * There, reading nothing AND writing nothing means the markers were sent and had
+ * no effect: nothing is cached for the next turn either, so the same full-rate
+ * cost recurs until something changes. That is the shape of every prompt-cache
+ * defect shipped so far, and it was the one state the UI never showed.
+ */
+describe("a cache the provider ignored entirely", () => {
+	const warm = usage({ cacheRead: 50_000, input: 200 });
+	const ignored = usage({ input: 50_000 });
+
+	it("stays silent on an implicit cache, where a zero-write turn is noise", () => {
+		expect(detectCacheInvalidation(warm, ignored)).toBeUndefined();
+		expect(detectCacheInvalidation(warm, ignored, undefined, { explicitCache: false })).toBeUndefined();
+	});
+
+	it("flags a rejection on an explicit cache, counting what was re-read", () => {
+		const invalidation = detectCacheInvalidation(warm, ignored, undefined, { explicitCache: true });
+		expect(invalidation).toEqual({ reprocessedTokens: 50_000, rejected: true });
+	});
+
+	it("carries the cause through when the session recorded one", () => {
+		const invalidation = detectCacheInvalidation(warm, ignored, "model-change", { explicitCache: true });
+		expect(invalidation).toEqual({ reprocessedTokens: 50_000, rejected: true, cause: "model-change" });
+	});
+
+	/** The other exemptions still apply: an explicit cache does not license
+	 *  flagging a turn that reused the prefix, or a trivially small prompt. */
+	it("keeps every existing exemption", () => {
+		expect(
+			detectCacheInvalidation(warm, usage({ cacheRead: 40_000, input: 10 }), undefined, { explicitCache: true }),
+		).toBeUndefined();
+		expect(detectCacheInvalidation(warm, usage({ input: 100 }), undefined, { explicitCache: true })).toBeUndefined();
+		expect(detectCacheInvalidation(undefined, ignored, undefined, { explicitCache: true })).toBeUndefined();
+		// A predecessor that only WROTE has not proven the cache was ever live.
+		expect(
+			detectCacheInvalidation(usage({ cacheWrite: 50_000 }), ignored, undefined, { explicitCache: true }),
+		).toBeUndefined();
+	});
+
+	/**
+	 * The marker must not call this a "miss". A miss re-reads the prompt once and
+	 * works again next turn; a rejection recurs every turn. Naming them the same
+	 * thing tells the operator to shrug at both.
+	 */
+	it("reads as a rejection, not a miss", () => {
+		const lines = new CacheInvalidationMarkerComponent({
+			reprocessedTokens: 50_999,
+			rejected: true,
+			cause: "model-change",
+		}).render(80);
+		const text = Bun.stripANSI(lines[1] ?? "");
+
+		expect(text).toContain("cache rejected");
+		expect(text).not.toContain("cache miss");
+		expect(text).toContain("51K tokens");
+		expect(text).toContain("model-change");
+	});
+
+	/** A plain miss keeps its existing wording, so this change cannot rename the
+	 *  common case out from under anyone reading transcripts. */
+	it("leaves the ordinary miss wording untouched", () => {
+		const text = Bun.stripANSI(
+			new CacheInvalidationMarkerComponent({ reprocessedTokens: 50_999 }).render(80)[1] ?? "",
+		);
+		expect(text).toContain("cache miss");
+		expect(text).not.toContain("rejected");
+	});
+});
+
+describe("usesExplicitPromptCache", () => {
+	/** Anthropic and Bedrock always report cache writes, so the write signal is
+	 *  authoritative there and a zero-write turn is provable. */
+	it("recognises the always-explicit wire formats", () => {
+		expect(usesExplicitPromptCache("anthropic-messages", "claude-sonnet-4-5")).toBe(true);
+		expect(usesExplicitPromptCache("bedrock-converse-stream", "anthropic.claude-sonnet-4-5")).toBe(true);
+	});
+
+	/**
+	 * OpenAI is explicit only from the generation that accepts breakpoints, and the
+	 * answer comes from the same catalog predicate the request builder uses to
+	 * decide whether to SEND one. Restating the version test here would let the two
+	 * drift, and a drift in this direction flags healthy turns.
+	 */
+	it("defers to the catalog for OpenAI generations", () => {
+		expect(usesExplicitPromptCache("openai-responses", "gpt-5.6")).toBe(true);
+		expect(usesExplicitPromptCache("openai-responses", "gpt-4o")).toBe(false);
+	});
+
+	/** Implicit caches must stay out, or their routine propagation noise becomes a
+	 *  stream of false rejections. */
+	it("excludes implicit caches and unknown shapes", () => {
+		expect(usesExplicitPromptCache("google-generative-ai", "gemini-3-pro")).toBe(false);
+		expect(usesExplicitPromptCache(undefined, undefined)).toBe(false);
+		expect(usesExplicitPromptCache("openai-responses", undefined)).toBe(false);
 	});
 });

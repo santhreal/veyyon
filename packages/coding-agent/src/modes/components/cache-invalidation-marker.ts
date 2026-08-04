@@ -1,4 +1,5 @@
 import type { Usage } from "@veyyon/ai";
+import { supportsOpenAIPromptCacheBreakpoints } from "@veyyon/catalog/identity";
 import type { Component } from "@veyyon/tui";
 import { formatNumber } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
@@ -16,6 +17,19 @@ export interface CacheInvalidation {
 	/** Prompt tokens the cold turn had to (re)process instead of reading from cache. */
 	reprocessedTokens: number;
 	/**
+	 * The provider neither read a cached prefix NOR wrote one, on a turn whose
+	 * predecessor demonstrably read a warm prefix from an explicit,
+	 * prefix-controlled cache.
+	 *
+	 * A different event from a cold re-write, and it reads differently to an
+	 * operator: a re-write means the prefix moved and the cache still works, while
+	 * this means the markers had no effect at all, so nothing is cached for the
+	 * next turn either and the cost repeats until something changes. It is the
+	 * shape of every prompt-cache defect shipped so far, and it used to be the one
+	 * case this detector discarded.
+	 */
+	rejected?: boolean;
+	/**
 	 * Why the cache went cold, when the session knows: the reason recorded by the
 	 * subsystem that invalidated it (`cwd-change`, `setting:<id>`, `argot-arm`, …).
 	 *
@@ -27,6 +41,27 @@ export interface CacheInvalidation {
 	 * disk, where a recorded reason cannot be correlated to a specific turn.
 	 */
 	cause?: string;
+}
+
+/**
+ * Whether a turn's provider uses an explicit, prefix-controlled prompt cache.
+ *
+ * Only these re-create the prefix on a cold turn, and only for these does "read
+ * nothing and wrote nothing" mean the markers were ignored rather than routine
+ * propagation noise. Anthropic and Bedrock always report cache writes; OpenAI
+ * does from the generation that accepts explicit breakpoints, which is the same
+ * predicate the request builder uses to decide whether to send one — asking the
+ * catalog rather than restating the version test keeps the two from drifting.
+ *
+ * Everything else (Google, Fireworks, older OpenAI) caches implicitly and drops
+ * `cacheRead` to zero intermittently, so a zero-write turn there is noise.
+ */
+export function usesExplicitPromptCache(api: string | undefined, modelId: string | undefined): boolean {
+	if (api === "anthropic-messages" || api === "bedrock-converse-stream") return true;
+	if (api === "openai-responses" || api === "openai-codex-responses") {
+		return modelId !== undefined && supportsOpenAIPromptCacheBreakpoints(modelId);
+	}
+	return false;
 }
 
 /**
@@ -64,6 +99,7 @@ export function detectCacheInvalidation(
 	prev: Usage | undefined,
 	current: Usage,
 	cause?: string,
+	options?: { explicitCache?: boolean },
 ): CacheInvalidation | undefined {
 	if (!prev) return undefined;
 	// Only flag a warm→cold transition: the previous turn must have actually read
@@ -73,12 +109,22 @@ export function detectCacheInvalidation(
 	if (prev.cacheRead < MIN_CACHE_FOOTPRINT) return undefined;
 	// Any cache reuse this turn means the prefix survived (at least partly).
 	if (current.cacheRead > 0) return undefined;
-	// Only an explicit, prefix-controlled cache re-creates the prefix on a cold
-	// turn, reported as `cacheWrite`: Anthropic and Bedrock always, and OpenAI from
-	// the 5.6 generation, which bills explicit cache writes and reports them as
-	// `cache_write_tokens`. Implicit best-effort caches report `cacheWrite: 0` and
-	// drop `cacheRead` to zero intermittently as propagation noise.
-	if (current.cacheWrite <= 0) return undefined;
+	// Neither read nor wrote. On an implicit best-effort cache that is routine
+	// propagation noise which self-heals next turn, so it stays unflagged. On an
+	// explicit, prefix-controlled cache it is the opposite of noise: the markers
+	// were sent and had no effect, nothing is cached for the next turn either, and
+	// the cost repeats. The caller supplies which kind of cache this is, because
+	// usage alone cannot tell them apart — and dropping this case unconditionally
+	// is what made every shipped cache defect invisible in the UI.
+	if (current.cacheWrite <= 0) {
+		if (options?.explicitCache !== true) return undefined;
+		const rejectedTokens = current.input;
+		if (rejectedTokens < MIN_CACHE_FOOTPRINT) return undefined;
+		const rejectedCause = cause?.trim();
+		return rejectedCause
+			? { reprocessedTokens: rejectedTokens, rejected: true, cause: rejectedCause }
+			: { reprocessedTokens: rejectedTokens, rejected: true };
+	}
 	const reprocessedTokens = current.cacheWrite + current.input;
 	if (reprocessedTokens < MIN_CACHE_FOOTPRINT) return undefined;
 	// A blank or whitespace cause carries no information and would render a
@@ -118,7 +164,12 @@ export class CacheInvalidationMarkerComponent implements Component {
 
 	#divider(width: number): string {
 		const icon = theme.icon.cacheMiss;
-		const head = icon ? `${icon} cache miss` : "cache miss";
+		// "miss" understates a rejection: a miss re-reads the prompt once and the
+		// cache works again next turn, while a rejection means nothing was cached at
+		// all, so the same cost recurs every turn until something changes. Naming
+		// them the same thing tells the operator to shrug at both.
+		const name = this.info.rejected ? "cache rejected" : "cache miss";
+		const head = icon ? `${icon} ${name}` : name;
 		const tokens = this.info.reprocessedTokens;
 		const dot = theme.sep.dot.trim();
 		const parts = [head];
