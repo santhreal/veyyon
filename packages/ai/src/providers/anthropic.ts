@@ -2605,10 +2605,21 @@ const streamAnthropicOnce = (
 					// Only a successful, untruncated turn is judged: a truncated stream
 					// reports partial usage, and judging that would report a cache defect
 					// for a dropped connection.
+					//
+					// The anchor count is re-read from `params` HERE rather than reused
+					// from the pre-request expectation, because an in-provider retry
+					// rebuilds the request: a grammar rejection drops strict tools, a
+					// fast-mode rejection drops `speed`, and each rebuild re-runs the
+					// breakpoint placement and its limit trim. The count that describes
+					// this usage is the one on the request that actually produced it, and
+					// that count is what the operator-facing message quotes. If a rebuild
+					// left no anchors at all the verdict correctly becomes
+					// `not-requested`, which the stale count would have hidden.
 					if (cacheTracker && cacheExpectation && cacheEnforcement !== "off") {
+						const sentExpectation = { ...cacheExpectation, anchors: countCacheControlBreakpoints(params) };
 						const { verdict, decision } = recordCacheOutcome(
 							cacheTracker,
-							cacheExpectation,
+							sentExpectation,
 							output.usage,
 							cacheEnforcement,
 						);
@@ -2617,7 +2628,7 @@ const streamAnthropicOnce = (
 								model: model.id,
 								provider: model.provider,
 								verdict: verdict.kind,
-								anchors: cacheExpectation.anchors,
+								anchors: sentExpectation.anchors,
 								willFailNextRequest: decision.failNext,
 							});
 						}
