@@ -216,7 +216,7 @@ describe("processInteractionUpdate args_text_delta handling", () => {
 		expect(getStreamingPartialJson(block)).toBe(cumulative[cumulative.length - 1]);
 
 		// Each cumulative snapshot only emits the new suffix as the delta event.
-		const deltas = h.captured.filter(e => e.type === "toolcall_delta").map(e => (e as { delta: string }).delta);
+		const deltas = h.captured.filter(e => e.type === "toolcall_delta").map(e => e.delta);
 		expect(deltas.join("")).toBe(cumulative[cumulative.length - 1]);
 		expect(deltas).toEqual([`{"agent":"task","tas`, `ks":[{"assignme`, `nt":"do A"},{"assignment":"do B"}]}`]);
 
@@ -282,6 +282,48 @@ describe("processInteractionUpdate args_text_delta handling", () => {
 		expect(finalBlock?.type).toBe("toolCall");
 		if (finalBlock?.type !== "toolCall") throw new Error("expected toolCall block");
 		expect(finalBlock.arguments).toEqual({ agent: "task", note: "initial", step: 12 });
+	});
+
+	/**
+	 * A completed call must release its cumulative buffer so the next tool call
+	 * cannot inherit bytes from the prior call identity.
+	 */
+	it("starts each tool call with a fresh argument buffer", () => {
+		const h = newHarness();
+		startMcpToolCall(h, "glob");
+		pushArgsTextDelta(h, `{"path":"first/**/*.ts"}`);
+		completeMcpToolCall(h, undefined);
+
+		startMcpToolCall(h, "glob");
+		pushArgsTextDelta(h, `{"path":"second/**/*.rs"}`);
+		expect(getStreamingPartialJson(h.state.currentToolCall!)).toBe(`{"path":"second/**/*.rs"}`);
+		completeMcpToolCall(h, undefined);
+
+		const second = h.output.content[1];
+		expect(second?.type).toBe("toolCall");
+		if (second?.type !== "toolCall") throw new Error("expected second toolCall block");
+		expect(second.arguments).toEqual({ path: "second/**/*.rs" });
+	});
+
+	/**
+	 * Historical glob previews received repeated cumulative prefixes while the
+	 * authoritative final path stayed correct. The stream buffer must equal the
+	 * exact 130-character path after every cumulative snapshot.
+	 */
+	it("replays a long cumulative glob path without repeated prefixes", () => {
+		const h = newHarness();
+		const path = `${"packages/coding-agent/src/".repeat(6)}**/*.ts`.slice(0, 130);
+		expect(path).toHaveLength(130);
+		const json = JSON.stringify({ path });
+		startMcpToolCall(h, "glob");
+		for (const end of [24, 61, 97, json.length]) pushArgsTextDelta(h, json.slice(0, end));
+
+		expect(getStreamingPartialJson(h.state.currentToolCall!)).toBe(json);
+		completeMcpToolCall(h, undefined);
+		const finalBlock = h.output.content[0];
+		expect(finalBlock?.type).toBe("toolCall");
+		if (finalBlock?.type !== "toolCall") throw new Error("expected glob toolCall block");
+		expect(finalBlock.arguments).toEqual({ path });
 	});
 
 	it("skips empty argsTextDelta snapshots without emitting a delta event", () => {
