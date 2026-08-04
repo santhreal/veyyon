@@ -63,6 +63,15 @@ installer_end_to_end() {
    expect_exists "$installer_bin/vey" "the vey launch alias"
    [ -L "$installer_bin/vey" ] || { echo "installer end-to-end: vey should be a symlink to the binary"; exit 1; }
 
+   # A completed install put a binary here and NOTHING under $HOME/.veyyon/src.
+   # The installer used to be able to clone the product into that directory and
+   # build it there, which left a second divergent checkout on the machine that no
+   # user asked for. It downloads a verified binary or it fails now, so the
+   # directory must not exist at all — and it is named explicitly in this sandbox
+   # HOME via VEYYON_SRC_DIR above, so an install that still cloned would land
+   # exactly here.
+   expect_absent "$installer_home/.veyyon/src" "a source checkout the installer must never create"
+
    # The release transaction supplies the immutable tag it just published. A
    # healthy previous release is not evidence for the new one, so require the
    # installed binary to report that exact tag before reinstall or uninstall.
@@ -139,6 +148,10 @@ installer_end_to_end() {
       echo "installer end-to-end: reinstall wrote the PATH line $path_lines times, expected 1"
       exit 1
    }
+
+   # An upgrade over an existing install is its own path through the script, so it
+   # gets the same question asked of the first install: no checkout, ever.
+   expect_absent "$installer_home/.veyyon/src" "a source checkout after reinstall"
 
    installer_env sh "$install_sh" --uninstall
 

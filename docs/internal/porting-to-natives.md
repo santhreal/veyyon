@@ -40,7 +40,7 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 
 - `packages/natives/scripts/build-native.ts` runs napi-rs, installs the `.node` artifact, copies generated `index.d.ts`, and regenerates explicit ESM class/function exports plus enum runtime exports in the checked-in `native/index.js`.
 - `packages/natives/native/index.js` is the ESM entrypoint: every named class/function export is a lazy accessor that runs the loader on first use, and the loader rejects install/compiled `.node` files that do not expose the package-version sentinel.
-- `packages/natives/package.json` exposes the package root (`@veyyon/natives`) as the native import surface, plus a `./sha256-sidecar` helper entry used by release provisioning. veyyon ships GitHub-only, so there is no published package layout to mirror: the compiled binary embeds the matching `.node`, and a source install provisions it into the per-version cache the loader reads. This is transparent to importers: you `import` from `@veyyon/natives`.
+- `packages/natives/package.json` exposes the package root (`@veyyon/natives`) as the native import surface, plus a `./sha256-sidecar` helper entry used by release provisioning. veyyon ships GitHub-only, so there is no published package layout to mirror: the compiled binary embeds the matching `.node`, and a build from a git checkout provisions it into the per-version cache the loader reads. This is transparent to importers: you `import` from `@veyyon/natives`.
 
 **Consumer side:**
 

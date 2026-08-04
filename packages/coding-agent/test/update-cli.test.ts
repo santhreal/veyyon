@@ -191,7 +191,7 @@ describe("resolveUpdateMethod classifies binary vs source installs", () => {
 	});
 
 	it("treats the in-checkout launcher path as a source install", () => {
-		// install.sh --source links PATH's veyyon at
+		// `bun run setup` links PATH's veyyon at
 		// <checkout>/packages/coding-agent/scripts/veyyon.
 		expect(resolveUpdateMethod("/home/u/.veyyon/src/packages/coding-agent/scripts/veyyon")).toBe("source");
 	});
@@ -366,12 +366,33 @@ describe("resolveUpdateMethod classifies binary vs source installs", () => {
 		expect(resolveUpdateMethod(near)).toBe("source");
 	});
 
+	/**
+	 * The guidance is the only thing a user gets when an automatic source update
+	 * refuses (dirty tree, diverged branch, missing git), so it must name the
+	 * launcher and a command that exists. It used to end with "re-run the
+	 * installer with `--source`", and that flag is gone: the installer only ever
+	 * installs a prebuilt binary and never clones. Advertising it would send the
+	 * user to `Unknown option: --source`.
+	 */
 	it("guidance for a source install names the launcher and the git-pull remedy", () => {
-		const launcher = "/home/u/.veyyon/src/packages/coding-agent/scripts/veyyon";
+		const launcher = "/home/u/veyyon/packages/coding-agent/scripts/veyyon";
 		const msg = updateCli.sourceInstallUpdateGuidance(launcher);
 		expect(msg).toContain(launcher);
-		expect(msg).toContain("git pull");
-		expect(msg).toContain("--source");
+		expect(msg).toContain("git pull && bun install");
+		expect(msg).not.toContain("--source");
+		expect(msg).not.toContain("install.sh");
+	});
+
+	/**
+	 * Same contract for the rollback refusal, which is a second user-visible
+	 * string that named the removed flag. It must explain the fast-forward
+	 * constraint without advertising an installer mode that no longer exists.
+	 */
+	it("rollback refusal explains the checkout constraint without naming a removed flag", () => {
+		const msg = updateCli.rollbackUnsupportedReason("source");
+		expect(msg).toContain("fast-forward");
+		expect(msg).not.toContain("--source");
+		expect(updateCli.rollbackUnsupportedReason("binary")).toBeUndefined();
 	});
 });
 

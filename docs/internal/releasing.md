@@ -153,7 +153,7 @@ or skipped required job updates the pinned `release-train` issue.
 The resulting surfaces are:
 
 - the **GitHub release**: all platform binaries, native addons, and `.sha256`
-  checksums. The `curl | sh` installer, source installs that fetch a prebuilt
+  checksums. The `curl | sh` installer, a checkout build fetching a prebuilt
   native addon, and the binary self-updater resolve these assets;
 - the **website** (`veyyon.dev`): `website/changelog.html`, regenerated from
   `packages/coding-agent/CHANGELOG.md` and reconciled against the published

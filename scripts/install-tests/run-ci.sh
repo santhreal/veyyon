@@ -5,8 +5,15 @@ set -euo pipefail
 #
 # veyyon is distributed GitHub-only, through exactly two channels:
 #   1. the prebuilt self-contained binary (`curl -fsSL https://get.veyyon.dev | sh`)
-#   2. a source checkout (`install.sh --source`), where a launcher on PATH runs
-#      veyyon straight from TypeScript
+#   2. a checkout the user clones themselves and sets up with `bun run setup`,
+#      where a launcher on PATH runs veyyon straight from TypeScript
+#
+# The installer serves channel 1 and nothing else. It downloads a verified binary
+# or it hard-fails naming channel 2 as the manual route: it never clones, never
+# runs `bun install`, and never installs bun. It used to be able to do all three
+# behind a `--source` flag, which left a second divergent checkout of the product
+# on the machine, so channel 2 is a thing the USER does and this gate drives it as
+# a checkout, never through the installer.
 #
 # There is no npm/bun registry channel and there never will be: the workspace
 # pins its own packages with `workspace:*` and `catalog:` protocols, which only
@@ -78,20 +85,21 @@ installer_end_to_end "$WORK_DIR" --local
 section "Installer end-to-end (a 'vey' the user already owns)"
 installer_no_clobber "$WORK_DIR" --local
 
-section "Source install smoke (bun link)"
-SOURCE_BUN_HOME="$WORK_DIR/bun-source"
+section "Manual-build smoke (bun link)"
+CHECKOUT_BUN_HOME="$WORK_DIR/bun-checkout"
 (
-   export BUN_INSTALL="$SOURCE_BUN_HOME"
+   export BUN_INSTALL="$CHECKOUT_BUN_HOME"
    export PATH="$BUN_INSTALL/bin:$PATH"
    bun --cwd="$ROOT_DIR/packages/coding-agent" link
    smoke_cli "$BUN_INSTALL/bin/veyyon"
 )
 
-section "Source launcher smoke (install.sh --source path)"
-# Channel 2 as the installer actually wires it: `install.sh --source` symlinks
-# PATH's veyyon at this committed launcher, so the launcher itself must run the
-# CLI from a checkout. `bun link` above does not exercise it, which is how a
-# broken launcher could pass the gate and still break every source install.
+section "Manual-build launcher smoke (what bun run setup links)"
+# Channel 2 as `bun run setup` wires it: scripts/link-veyyon.sh points the global
+# veyyon at this committed launcher, so the launcher itself must run the CLI from a
+# checkout. `bun link` above does not exercise it, which is how a broken launcher
+# could pass the gate and still break the one route the installer's hard failures
+# tell a user to take.
 LAUNCHER="$ROOT_DIR/packages/coding-agent/scripts/veyyon"
 [ -x "$LAUNCHER" ] || {
    echo "source launcher missing or not executable: $LAUNCHER"

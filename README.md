@@ -38,20 +38,25 @@ irm https://veyyon.dev/install.ps1 | iex
 
 The release installer stages one self-contained binary, then checks its SHA-256 sidecar, exact release version, and native search support before it replaces an active install or changes your shell. Prebuilt releases are Linux x64 and arm64 (glibc), macOS x64 and arm64, and Windows x64 only. Windows arm64 runs the x64 build under emulation.
 
-Self-updates use the same preflight. They preserve the previous binary and atomically switch the live path, so a hard kill leaves either the old or new binary available, never a missing command. If an installed completion file cannot be refreshed, the automatic-update notice in the TUI tells you to re-run the installer. Veyyon ships through GitHub Releases and source checkouts only. There is no npm, Homebrew, or crates.io distribution for the application.
+Self-updates use the same preflight. They preserve the previous binary and atomically switch the live path, so a hard kill leaves either the old or new binary available, never a missing command. If an installed completion file cannot be refreshed, the automatic-update notice in the TUI tells you to re-run the installer. Veyyon ships two ways: the release binary the installer downloads, or a checkout you clone and build yourself. There is no npm, Homebrew, or crates.io distribution for the application.
 
-Install and uninstall operations use sidecar ownership receipts. They refuse to overwrite or remove an unrelated executable or completion file that already occupies a Veyyon target path. Source updates also verify the checkout remote and restore the previous clean revision if post-merge provisioning or runtime verification fails.
+Install and uninstall operations use sidecar ownership receipts. They refuse to overwrite or remove an unrelated executable or completion file that already occupies a Veyyon target path. Updating an install that runs out of a git checkout also verifies the checkout remote and restores the previous clean revision if post-merge provisioning or runtime verification fails.
 
-To build from source:
+The installer downloads a verified release binary. It never clones this repository and never builds it. To run an unreleased ref, or to work on Veyyon, clone it yourself into a directory you choose:
 
 ```sh
 git clone https://github.com/santhreal/veyyon.git
 cd veyyon
-bun setup
+git checkout v1.0.46   # optional: pin a ref
+bun run setup
 bun dev
 ```
 
-See [Install Veyyon](docs/handbook/src/using/install.md) for pinned releases, source installs, updates, rollback, and uninstall commands.
+That checkout is yours. You picked the directory and you decide when it moves or goes away.
+
+To install a binary you built in that checkout, pass `--local` to the installer.
+
+See [Install Veyyon](docs/handbook/src/using/install.md) for pinned releases, developer checkouts, updates, rollback, and uninstall commands.
 
 ## What Veyyon changes
 
@@ -91,7 +96,19 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 
 ### 3. The model spends placeholders, not credentials
 
-Store a credential without typing it into the transcript:
+Store a credential in one paste. In a terminal the whole argument line is the credential, so there is no verb and no name to invent first:
+
+```text
+/secret ghp_your_token_here
+```
+
+Veyyon asks what to call it afterwards, and generates a name if you skip it. To store it without typing it at all, name the environment variable it is already in:
+
+```text
+/secret --from-env DEPLOY_TOKEN
+```
+
+A client with no terminal, such as `--print` mode or an ACP editor, has no field to hide typing in, so it keeps the verb grammar and accepts only that environment-backed form:
 
 ```text
 /secret add DEPLOY_TOKEN --from-env DEPLOY_TOKEN --scope project
@@ -237,5 +254,9 @@ bun run check
 ## License
 
 Veyyon is licensed under MIT. See [LICENSE](LICENSE).
+
+Run `veyyon licenses` to print the complete notice bundle embedded in every
+release binary. The same bundle is available as
+[`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt) in a source checkout.
 
 The project is derived from oh-my-pi. Upstream copyright and license notices are preserved in [UPSTREAM.md](UPSTREAM.md) and the source tree.

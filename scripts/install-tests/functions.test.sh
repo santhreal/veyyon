@@ -1434,7 +1434,10 @@ check "a version sharing the requested prefix is still rejected" "$?" "1"
       "$( [ -e "$(completions_dir_for bash)/veyyon" ] && echo left || echo removed )" "removed"
   check "the native cache under a spaced HOME is removed" \
       "$( [ -e "$_sp/.veyyon/natives" ] && echo left || echo removed )" "removed"
-  check "the source checkout under a spaced HOME is removed" \
+  # An older installer's source mode left a checkout at ~/.veyyon/src. Nothing
+  # creates one any more, and uninstall must still find and clear it, spaced HOME
+  # included, or the tree outlives every install that could explain it.
+  check "a legacy source checkout under a spaced HOME is removed" \
       "$( [ -e "$_sp/.veyyon/src" ] && echo left || echo removed )" "removed"
   check "the PATH line is removed from a spaced HOME's rc" \
       "$(grep -c 'veyyon' "$_sp/.bashrc" 2>/dev/null)" "0"
@@ -1529,7 +1532,13 @@ check "and it does remove the checkout under the HOME it was given" \
   out=$( doctor_natives "$_n/broken" 2>&1 || true )
   check "the failure names the exit status of the search" "$(printf '%s' "$out" | grep -c 'exited 127')" "1"
   check "the failure names the likely cause" "$(printf '%s' "$out" | grep -c 'platform mismatch')" "1"
-  check "the failure offers the source install as the remedy" "$(printf '%s' "$out" | grep -c 'sh -s -- --source')" "1"
+  # The remedy is the clone the USER runs. This used to print `sh -s -- --source`,
+  # an installer flag that cloned into ~/.veyyon/src on the installer's own
+  # initiative; the flag is gone, so no message may name one again.
+  check "the failure hands over the manual build command" \
+      "$(printf '%s' "$out" | grep -c "git clone https://github.com/$REPO.git")" "1"
+  check "and the remedy is not an installer flag that clones" \
+      "$(printf '%s' "$out" | grep -c -- '--source')" "0"
   check "the failure quotes what the binary actually said" "$(printf '%s' "$out" | grep -c 'dlopen failed')" "1"
 
   # Worse than a crash: a search that exits 0 and finds nothing. Trusting the
@@ -1581,8 +1590,8 @@ check "and it does remove the checkout under the HOME it was given" \
   # A tag without the leading v compares the same way.
   ( PATH="$_d:$PATH" doctor "$_d/veyyon" "1.0.37" >/dev/null 2>&1 ); check "a bare tag (no leading v) still matches" "$?" "0"
 
-  # No expected tag (source installs) skips the check entirely rather than
-  # inventing an expectation.
+  # No expected tag (a --local install of the binary a checkout just built) skips
+  # the check entirely rather than inventing an expectation.
   ( PATH="$_d:$PATH" doctor "$_d/veyyon" >/dev/null 2>&1 ); check "doctor without a tag skips the version gate" "$?" "0"
   out=$( PATH="$_d:$PATH" doctor "$_d/veyyon" 2>&1 )
   check "no tag means no version-match line" "$(printf '%s' "$out" | grep -c 'reported version matches')" "0"
@@ -1720,10 +1729,10 @@ empty="$VEYYON_INSTALL_DIR/.veyyon.empty"
 check "finalize_binary rejects an empty download" "$?" "1"
 check "finalize_binary left no dest for the empty case" "$( [ -e "$VEYYON_INSTALL_DIR/veyyon-empty-dest" ] && echo present || echo gone )" "gone"
 
-# The empty-file message must tell the CALLER'S user what to do. It used to say
-# "downloaded binary ... try again or use --source" for every caller, which sent
-# a `--local` user (who downloaded nothing) chasing a network problem instead of
-# rebuilding their binary.
+# The empty-file message must tell the CALLER'S user what to do. It used to be one
+# hardcoded line about a download for every caller, which sent a `--local` user
+# (who downloaded nothing) chasing a network problem instead of rebuilding their
+# binary.
 check "the empty-file message carries the caller's fix" \
     "$( finalize_binary "$empty" "$VEYYON_INSTALL_DIR/veyyon-empty-dest" "rebuild it with X" 2>&1 | grep -c 'rebuild it with X' )" "1"
 check "the empty-file message names the staged path" \
@@ -1835,9 +1844,11 @@ check "and the upgraded receipt now identifies the file" \
   "$(artifact_has_owner_receipt "$legacy/$BIN_NAME" && echo yes || echo no)" "yes"
 
 # A symlink is identified by the TARGET STRING it holds, not by the bytes it
-# resolves to. The `--source` launcher points into a git checkout that changes on
-# every `git pull`, which is how a source install updates, so hashing through the
-# link would mark every source install foreign the first time it advanced.
+# resolves to. An older installer's source mode left PATH's veyyon pointing at a
+# launcher inside a git checkout, and such a checkout advances on every `git pull`,
+# so hashing through the link would mark that install foreign the first time the
+# user pulled — and an install that reads as foreign can be neither upgraded nor
+# uninstalled.
 srclink="$SANDBOX/source-launcher"
 mkdir -p "$srclink/checkout"
 printf 'launcher v1\n' > "$srclink/checkout/launcher"
@@ -1921,7 +1932,7 @@ check "an empty local build aborts the install" "$?" "1"
 check "an aborted local install leaves no staging file" "$(ls -A "$SANDBOX/local-empty/bin" | wc -l | tr -d ' ')" "0"
 
 # The advice has to match what the user actually did. A --local user downloaded
-# nothing, so "try again or use --source" is the wrong instruction entirely.
+# nothing, so "try again" is the wrong instruction entirely.
 check "an empty local build tells the user to rebuild, not to retry a download" "$( ( _h="$SANDBOX/local-empty3"
   export VEYYON_INSTALL_DIR="$_h/bin"; mkdir -p "$VEYYON_INSTALL_DIR"
   INSTALL_DIR="$VEYYON_INSTALL_DIR"
@@ -2137,14 +2148,21 @@ ref_failure_message() { # <ref>
 
 check "a tag with no release is told that, in those words" \
     "$(ref_failure_message v1.0.39 | grep -c 'no release is published for tag v1.0.39')" "1"
-# The regression itself: the old message named the platform asset and sent the
-# user to build from source for a release that does not exist.
+# The regression itself: the old message named the platform asset and pointed at a
+# source build for a release that does not exist.
 check "and the refusal does not blame the platform binary" \
     "$(ref_failure_message v1.0.39 | grep -c 'veyyon-linux-x64')" "0"
 check "it points at the releases page" \
     "$(ref_failure_message v1.0.39 | grep -c "https://github.com/$REPO/releases")" "1"
-check "and it offers --source for the ref they actually asked for" \
-    "$(ref_failure_message v1.0.39 | grep -c -- '--source --ref v1.0.39')" "1"
+# `--source --ref v1.0.39` used to be offered right here, and taking it cloned into
+# ~/.veyyon/src behind the user's back. The way out is now the clone the user runs,
+# so the refusal hands over commands instead of a flag.
+check "and it hands over the manual clone instead of a flag" \
+    "$(ref_failure_message v1.0.39 | grep -c "git clone https://github.com/$REPO.git")" "1"
+check "the manual route names the setup command that follows the clone" \
+    "$(ref_failure_message v1.0.39 | grep -c 'bun run setup')" "1"
+check "and no refusal offers an installer flag that clones" \
+    "$(ref_failure_message v1.0.39 | grep -c -- '--source')" "0"
 check "a draft release reads the same way to the user" \
     "$(ref_failure_message v1.0.42 | grep -c 'no release is published for tag v1.0.42')" "1"
 # A tag nobody ever created is a typo, not an unreleased version, and keeps the
@@ -2157,7 +2175,7 @@ check "and a missing tag is not described as an unreleased one" \
 # survive: the release IS published, this one platform's asset is not in it.
 # Collapsing this into the message above is how the defect stayed hidden.
 check "a published release missing THIS platform's asset still blames the asset" \
-    "$(ref_failure_message v1.0.46 | grep -c 'veyyon-linux-x64 not published for this release')" "1"
+    "$(ref_failure_message v1.0.46 | grep -c 'veyyon-linux-x64 may not be published for this release')" "1"
 check "and that one is not reported as a missing release" \
     "$(ref_failure_message v1.0.46 | grep -c 'no release is published')" "0"
 
@@ -2245,13 +2263,13 @@ check "a prerelease version resolves too" \
 # stray line would be installed as a version.
 check "the refusal prints no tag" "$(resolve_ref 9.9.9)" ""
 # The unreleased refusal DOES print, and must print the tag that exists rather
-# than what was typed: `--ref 1.0.39` is not a ref git can check out, so the
-# --source suggestion built from it would be more advice that cannot work.
+# than what was typed: `1.0.39` is not a ref git can check out, so any advice
+# built from that spelling would be advice that cannot work.
 # Nothing installs it: only status 0 reaches the download.
 check "the unreleased refusal names the real tag, not the typed spelling" \
     "$(resolve_ref 1.0.39)" "v1.0.39"
-check "and a bare unreleased version is told about the v-spelled tag" \
-    "$(ref_failure_message 1.0.39 | grep -c -- '--source --ref v1.0.39')" "1"
+check "and a bare unreleased version is refused under the v-spelled tag" \
+    "$(ref_failure_message 1.0.39 | grep -c 'no release is published for tag v1.0.39')" "1"
 
 # No API call is left anywhere in the script, which is the whole point: an
 # install must not be able to fail because somebody else on the same address
@@ -2272,69 +2290,76 @@ check "no message still offers a token as the fix for a rate limit" \
 check "CURL_RETRY requests retries" "$(printf '%s' "$CURL_RETRY" | grep -c -- '--retry ')" "1"
 check "CURL_RETRY avoids the newer --retry-connrefused" "$(printf '%s' "$CURL_RETRY" | grep -c -- '--retry-connrefused')" "0"
 
-# --- preserve_local_src_changes: never reset over uncommitted edits ---
-# Locks the data-loss fix: the source update path runs `git reset --hard`, which
-# used to silently discard a user's local edits to a tracked file in
-# ~/.veyyon/src (an edited AGENTS.md vanished on every update). preserve_ now
-# commits those edits to a durable `veyyon-local-<stamp>` branch first, so the
-# reset never destroys work the installer did not create. These prove the edit
-# survives an actual hard reset, that ignored build artifacts are not swept in,
-# and that a clean tree stays a no-op.
-if command -v git >/dev/null 2>&1; then
-    make_repo() { # dir — a committed checkout with a gitignore
-        d="$1"; rm -rf "$d"; mkdir -p "$d"
-        ( cd "$d" && git init -q \
-            && git config user.name t && git config user.email t@t \
-            && printf 'committed\n' > AGENTS.md \
-            && printf 'node_modules/\n' > .gitignore \
-            && git add -A && git commit -qm init )
-    }
-    backup_branch() { ( cd "$1" && git branch --list 'veyyon-local-*' | tr -d ' *' | head -1 ); }
+# --- the installer refuses to clone, and says who does instead ----------------
+# `--source` ran `git clone` into $HOME/.veyyon/src, then `bun install` and a
+# build in there, so a curl install left a second divergent checkout of the
+# product on the machine and development started happening inside it. The flag is
+# gone. These lock the refusal on the text a user actually sees, in both spellings
+# that used to reach the clone.
+#
+# The script runs as a CHILD process here rather than through the sourced copy:
+# argument parsing and the exit status are the contract, and this file sourced
+# install.sh long after its own parsing was over.
+# Its own HOME, because the last assertion is about what the run left in it: the
+# cases above plant checkouts under this file's HOME on purpose, so asserting
+# there would report a clone somebody else made.
+source_flag_home="$SANDBOX/source-flag-home"
+mkdir -p "$source_flag_home"
+source_flag_run() { # args… — install.sh as a child, in a HOME of its own
+    env HOME="$source_flag_home" VEYYON_INSTALL_DIR="$source_flag_home/bin" \
+        sh "$INSTALL_SH" "$@"
+}
+source_flag_out=$( source_flag_run --source 2>&1 )
+source_flag_status=$( source_flag_run --source >/dev/null 2>&1; echo $? )
+check "--source is refused outright" "$source_flag_status" "1"
+check "and refused as an unknown option, naming what was passed" \
+    "$(printf '%s' "$source_flag_out" | grep -c '^Unknown option: --source$')" "1"
+# A `curl … | sh` install shows the option list nowhere else, so the complaint on
+# its own would leave the user with no way to find the flags that do exist.
+check "the refusal prints the usage text with it" \
+    "$(printf '%s' "$source_flag_out" | grep -c '^veyyon installer$')" "1"
+check "the usage text still documents the binary install" \
+    "$(printf '%s' "$source_flag_out" | grep -c -- '--binary ')" "1"
+# `--help` is that same usage with no complaint above it, so nothing here can be
+# the echoed flag: the option list must not mention a source install at all.
+check "the option list documents no source install" \
+    "$( source_flag_run --help | grep -c -- '--source' )" "0"
+# Refusing before anything happens is the point: a run that printed the usage and
+# still left a checkout behind would satisfy every assertion above.
+check "the refused flag cloned nothing" \
+    "$( [ -e "$source_flag_home/.veyyon/src" ] && echo cloned || echo nothing )" "nothing"
 
-    make_repo "$SANDBOX/clean"
-    ( preserve_local_src_changes "$SANDBOX/clean" >/dev/null 2>&1 ); check "preserve is a no-op on a clean repo" "$?" "0"
-    check "clean repo gets no backup branch" "$( cd "$SANDBOX/clean" && git branch --list 'veyyon-local-*' | wc -l | tr -d ' ' )" "0"
-
-    make_repo "$SANDBOX/dirty"
-    printf 'MY LOCAL EDIT\n' > "$SANDBOX/dirty/AGENTS.md"
-    ( preserve_local_src_changes "$SANDBOX/dirty" >/dev/null 2>&1 ); check "preserve succeeds on a modified tracked file" "$?" "0"
-    bd=$(backup_branch "$SANDBOX/dirty")
-    check "preserve created exactly one backup branch" "$( cd "$SANDBOX/dirty" && git branch --list 'veyyon-local-*' | wc -l | tr -d ' ' )" "1"
-    # Simulate the update's destructive step: a hard reset discards the working edit...
-    ( cd "$SANDBOX/dirty" && git reset -q --hard HEAD )
-    check "hard reset cleared the working-tree edit" "$(cat "$SANDBOX/dirty/AGENTS.md")" "committed"
-    # ...but the exact bytes are recoverable from the backup branch.
-    check "backup branch preserves the exact edited bytes" "$( cd "$SANDBOX/dirty" && git show "$bd:AGENTS.md" )" "MY LOCAL EDIT"
-
-    make_repo "$SANDBOX/untracked"
-    printf 'brand new\n' > "$SANDBOX/untracked/notes.txt"
-    ( preserve_local_src_changes "$SANDBOX/untracked" >/dev/null 2>&1 ); check "preserve succeeds with an untracked file" "$?" "0"
-    bu=$(backup_branch "$SANDBOX/untracked")
-    check "untracked file is captured on the backup branch" "$( cd "$SANDBOX/untracked" && git show "$bu:notes.txt" )" "brand new"
-
-    make_repo "$SANDBOX/mixed"
-    printf 'real edit\n' > "$SANDBOX/mixed/AGENTS.md"
-    mkdir -p "$SANDBOX/mixed/node_modules"; printf 'junk\n' > "$SANDBOX/mixed/node_modules/x"
-    ( preserve_local_src_changes "$SANDBOX/mixed" >/dev/null 2>&1 ); check "preserve succeeds on mixed real+ignored changes" "$?" "0"
-    bm=$(backup_branch "$SANDBOX/mixed")
-    check "backup holds the real edit" "$( cd "$SANDBOX/mixed" && git show "$bm:AGENTS.md" )" "real edit"
-    check "backup does NOT sweep in gitignored node_modules" "$( cd "$SANDBOX/mixed" && git ls-tree -r --name-only "$bm" | grep -c node_modules )" "0"
-
-    make_repo "$SANDBOX/ignored-only"
-    mkdir -p "$SANDBOX/ignored-only/node_modules"; printf 'junk\n' > "$SANDBOX/ignored-only/node_modules/x"
-    ( preserve_local_src_changes "$SANDBOX/ignored-only" >/dev/null 2>&1 ); check "ignored-only change is a no-op" "$?" "0"
-    check "no backup branch for ignored-only changes" "$( cd "$SANDBOX/ignored-only" && git branch --list 'veyyon-local-*' | wc -l | tr -d ' ' )" "0"
-else
-    printf 'SKIP: git not available; preserve_local_src_changes tests skipped\n' >&2
-fi
+# `--ref <branch>` was the other door to the same behavior: it implied --source and
+# cloned the branch. A ref is a published release tag or nothing now, and the
+# refusal has to hand over every command the user runs, checkout step included,
+# because the installer runs none of them. Driven against the fake github above,
+# so this is the text a person sees.
+branch_ref_out=$(ref_failure_message main)
+check "a branch ref is refused as a tag that does not exist" \
+    "$(printf '%s' "$branch_ref_out" | grep -c 'release tag not found: main')" "1"
+check "the refusal says only published tags are installable" \
+    "$(printf '%s' "$branch_ref_out" | grep -c 'Only published release tags are installable')" "1"
+check "it hands over the clone the user runs" \
+    "$(printf '%s' "$branch_ref_out" | grep -c "git clone https://github.com/$REPO.git")" "1"
+check "and the setup command that follows the clone" \
+    "$(printf '%s' "$branch_ref_out" | grep -c 'bun run setup')" "1"
+check "and names the checkout step for the branch that was asked for" \
+    "$(printf '%s' "$branch_ref_out" | grep -c 'git checkout main')" "1"
+check "no installer flag is offered for a branch" \
+    "$(printf '%s' "$branch_ref_out" | grep -c -- '--source')" "0"
+# The decisive one. A clone would have landed at $HOME/.veyyon/src under the
+# sandbox HOME that message ran with.
+check "a refused branch ref cloned nothing" \
+    "$( [ -e "$SANDBOX/ref-msg/.veyyon/src" ] && echo cloned || echo nothing )" "nothing"
 
 # --- move_aside_existing_src: relocate an existing tree instead of deleting it ---
-# The clone path used to `rm -rf "$VEYYON_SRC_DIR"`. A non-empty tree (user files
-# or a partial checkout with no .git) must be moved to `<dir>.bak-<stamp>`, never
-# deleted; an empty dir is simply removed so a fresh clone can proceed.
+# Uninstall's handling of the ~/.veyyon/src an older installer left behind. The
+# removal used to be `rm -rf "$VEYYON_SRC_DIR"`. A non-empty tree (user files, or a
+# partial checkout with no .git) must be moved to `<dir>.bak-<stamp>`, never
+# deleted; an empty dir carries nothing and is simply removed.
 nd="$SANDBOX/nongit"; rm -rf "$nd"; mkdir -p "$nd"; printf 'precious\n' > "$nd/keep.txt"
 ( move_aside_existing_src "$nd" >/dev/null 2>&1 ); check "move_aside relocates a non-empty dir" "$?" "0"
-check "original path is cleared for a fresh clone" "$( [ -e "$nd" ] && echo present || echo gone )" "gone"
+check "the original path is cleared" "$( [ -e "$nd" ] && echo present || echo gone )" "gone"
 ndbak=$(ls -d "$nd".bak-* 2>/dev/null | head -1)
 check "moved-aside backup keeps the file" "$( [ -f "$ndbak/keep.txt" ] && cat "$ndbak/keep.txt" )" "precious"
 
@@ -2344,12 +2369,14 @@ check "empty dir was removed" "$( [ -e "$ed" ] && echo present || echo gone )" "
 check "empty dir left no backup" "$( ls -d "$ed".bak-* 2>/dev/null | wc -l | tr -d ' ' )" "0"
 
 # --- src_has_local_work + uninstall never deletes preserved work ---
-# Locks the second half of the data-loss fix: `--uninstall` used to `rm -rf`
-# ~/.veyyon/src unconditionally, which would destroy a `veyyon-local-*`
-# preservation branch (the user's recovered AGENTS.md edits) that a prior update
-# had just saved. src_has_local_work must flag uncommitted edits, a non-git tree
-# with user files, AND unpushed local branches; uninstall must then move the tree
-# aside rather than delete it. A pristine, fully-pushed checkout is still removed.
+# Cleanup of a tree older installs created: `--uninstall` used to `rm -rf`
+# ~/.veyyon/src unconditionally, which destroyed a `veyyon-local-*` preservation
+# branch (the user's recovered AGENTS.md edits) that a prior update had just
+# saved. Nothing creates that checkout any more, and uninstall still meets it on
+# every machine that ran an older installer, so the rules stand: src_has_local_work
+# flags uncommitted edits, a non-git tree with user files, AND unpushed local
+# branches; uninstall then moves the tree aside rather than deleting it. Only a
+# pristine checkout that tracks OUR remote is removed.
 if command -v git >/dev/null 2>&1; then
     make_cloned_repo() { # dir — a checkout with an origin so pushed == on-remote
         d="$1"; rm -rf "$d" "$d.origin"
@@ -2399,6 +2426,20 @@ if command -v git >/dev/null 2>&1; then
     check "moved-aside checkout still has the recoverable edit" \
         "$( cd "$usbak" && git show veyyon-local-keep:AGENTS.md )" "RECOVER ME"
 
+    # The same rule for the commonest shape of local work: an edit that was never
+    # committed at all. The tree is ours by origin and clean of unpushed branches,
+    # so a cleanliness-blind uninstall would have deleted it and taken the edit.
+    ud="$SANDBOX/uninstall-dirty"
+    make_cloned_repo "$ud"
+    printf 'UNCOMMITTED, KEEP ME\n' > "$ud/AGENTS.md"
+    ( REPO_URL="$ud.origin" VEYYON_SRC_DIR="$ud" VEYYON_INSTALL_DIR="$SANDBOX/nowhere" do_uninstall >/dev/null 2>&1 )
+    check "uninstall did NOT delete a checkout holding an uncommitted edit" \
+        "$( [ -e "$ud" ] && echo present || echo gone )" "gone"
+    udbak=$(ls -d "$ud".bak-* 2>/dev/null | head -1)
+    check "uninstall moved the edited checkout aside" "$( [ -d "$udbak/.git" ] && echo yes || echo no )" "yes"
+    check "the moved-aside checkout still holds the uncommitted bytes" \
+        "$(cat "$udbak/AGENTS.md")" "UNCOMMITTED, KEEP ME"
+
     # A pristine, fully-pushed checkout is removed outright (normal uninstall).
     up="$SANDBOX/uninstall-pristine"
     make_cloned_repo "$up"
@@ -2418,49 +2459,6 @@ if command -v git >/dev/null 2>&1; then
     check "the preserved checkout keeps its exact origin" "$( cd "$foreign_bak" && git remote get-url origin )" "$foreign_remote"
 else
     printf 'SKIP: git not available; src_has_local_work/uninstall tests skipped\n' >&2
-fi
-
-# --- fetch_lfs_assets: LFS content is fetched or the install stops ---
-# The old line was `has git-lfs && ( cd ... && git lfs pull ) || true`. With
-# git-lfs absent, or with the pull failing, every LFS-tracked file stays a
-# ~130-byte pointer TEXT file while the installer prints success — the file
-# looks present and veyyon dies on it later. .gitattributes puts `*.wasm` under
-# LFS, so this becomes live the moment a wasm asset lands. These lock the
-# decision: no LFS content means no-op, LFS content with no git-lfs means stop.
-if command -v git >/dev/null 2>&1; then
-  ( _r="$SANDBOX/lfs-none"
-    mkdir -p "$_r" && cd "$_r" || exit 0
-    git init -q . 2>/dev/null && git config user.email t@t && git config user.name t
-    printf 'hi\n' > a.txt && git add a.txt && git commit -qm init 2>/dev/null
-
-    # A checkout with no LFS-tracked file at all.
-    check "no LFS-tracked file is reported for a plain checkout" "$(lfs_tracked_file "$_r")" ""
-    ( has() { case "$1" in (git-lfs) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
-      fetch_lfs_assets "$_r" >/dev/null 2>&1 )
-    check "a plain checkout installs fine without git-lfs" "$?" "0"
-
-    # Today's real repo state: .gitattributes DECLARES an LFS filter, but no
-    # tracked file matches it. That must not block an install, or every source
-    # install without git-lfs breaks on a rule that governs zero files.
-    printf '*.wasm filter=lfs diff=lfs merge=lfs -text\n' > .gitattributes
-    git add .gitattributes && git commit -qm attrs 2>/dev/null
-    check "a declaration matching no file is not LFS-tracked content" "$(lfs_tracked_file "$_r")" ""
-    ( has() { case "$1" in (git-lfs) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
-      fetch_lfs_assets "$_r" >/dev/null 2>&1 )
-    check "an unmatched LFS declaration does not block the install" "$?" "0"
-
-    # Now a file the filter actually matches: this checkout genuinely needs LFS.
-    printf 'pointer\n' > shipped.wasm
-    git add shipped.wasm && git commit -qm wasm 2>/dev/null
-    check "a matching file is reported as LFS-tracked" "$(lfs_tracked_file "$_r")" "shipped.wasm"
-
-    _out=$( ( has() { case "$1" in (git-lfs) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
-            fetch_lfs_assets "$_r" ) 2>&1 )
-    check "a checkout needing LFS without git-lfs stops the install" "$?" "1"
-    # The message has to name the consequence and the fix, not just say no.
-    check "the stop names git-lfs as the fix" "$(printf '%s' "$_out" | grep -c 'git-lfs is not installed')" "1"
-    check "the stop explains pointer text, not a bare failure" "$(printf '%s' "$_out" | grep -c 'pointer text')" "1"
-    check "the stop links where to get git-lfs" "$(printf '%s' "$_out" | grep -c 'https://git-lfs.com')" "1" )
 fi
 
 # --- install_binary: each supported uname pair selects its published asset ---
@@ -2545,40 +2543,14 @@ check "an unknown libc proceeds rather than blocking" "$?" "0"
 check "macOS proceeds with the binary install" "$?" "0"
 
 # The refusal has to name the cause and the way out, or the user is left with a
-# flat "no" on a machine where veyyon can in fact be installed from source.
+# flat "no" on a machine where veyyon can still be built from a checkout they own.
 _musl_msg=$( ( detect_libc() { printf 'musl'; }; require_supported_libc ) 2>&1 )
 check "the refusal names musl" "$(printf '%s' "$_musl_msg" | grep -c 'musl libc')" "1"
 check "the refusal explains the failure the user would have hit" "$(printf '%s' "$_musl_msg" | grep -c "not found")" "1"
-check "the refusal offers the source install" "$(printf '%s' "$_musl_msg" | grep -c -- '--source')" "1"
-
-# --- install_bun: never hand a shell a half-downloaded installer ---
-# This was `curl -fsSL https://bun.sh/install | bash`. A pipeline's exit status
-# is the LAST command's, so a curl that failed outright reported success: bash
-# read empty stdin, exited 0, and the install carried on to fail later somewhere
-# unrelated. Worse, a connection dropping mid-transfer executes a TRUNCATED
-# installer. It downloads to a file and checks it now, and each failure says
-# which one happened.
-( curl() { return 7; }
-  install_bun >/dev/null 2>&1 )
-check "a failed installer download stops the install" "$?" "1"
-_dl_msg=$( ( curl() { return 7; }; install_bun ) 2>&1 )
-check "a failed download names the bun installer URL" "$(printf '%s' "$_dl_msg" | grep -c 'https://bun.sh/install')" "1"
-check "a failed download offers the manual route" "$(printf '%s' "$_dl_msg" | grep -c 'install bun yourself')" "1"
-
-# An empty body is HTTP-level success with nothing in it: curl exits 0 and the
-# old pipeline fed bash zero bytes, which is a silent no-op install.
-_empty_msg=$( ( curl() { : > "${TMPDIR:-/tmp}/veyyon-bun-install.$$"; return 0; }
-                install_bun ) 2>&1 )
-check "an empty installer body is refused" "$(printf '%s' "$_empty_msg" | grep -c 'downloaded empty')" "1"
-
-# A downloaded installer that runs and fails must not be reported as installed.
-_run_msg=$( ( curl() { printf 'exit 1\n' > "${TMPDIR:-/tmp}/veyyon-bun-install.$$"; return 0; }
-              has() { [ "$1" = "bash" ] && return 1; command -v "$1" >/dev/null 2>&1; }
-              install_bun ) 2>&1 )
-check "an installer that exits non-zero stops the install" "$(printf '%s' "$_run_msg" | grep -c 'bun installer failed')" "1"
-
-# And it must not leave the downloaded script lying in the temp dir.
-check "no installer temp file is left behind" "$( [ -e "${TMPDIR:-/tmp}/veyyon-bun-install.$$" ] && echo present || echo absent )" "absent"
+check "the refusal hands over the manual build" \
+    "$(printf '%s' "$_musl_msg" | grep -c "git clone https://github.com/$REPO.git")" "1"
+check "and offers no installer flag to do it" \
+    "$(printf '%s' "$_musl_msg" | grep -c -- '--source')" "0"
 
 # --- uninstall takes the PATH line back out of the rc ---
 # Every install appended `export PATH="<dir>:$PATH"` to a shell rc and NO

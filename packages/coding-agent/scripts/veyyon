@@ -68,11 +68,11 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 # The checkout itself has to still be there. A source install puts a symlink on
-# PATH pointing into ~/.veyyon/src; if that tree is moved or partly deleted the
+# PATH pointing into the checkout; if that tree is moved or partly deleted the
 # symlink still resolves to this script, which then hands bun a path to nothing.
 if [ ! -f "$cli" ]; then
 	echo "veyyon: the source checkout this command points at is incomplete ($cli is missing)." >&2
-	echo "veyyon: reinstall it with: curl -fsSL https://get.veyyon.dev | sh -s -- --source" >&2
+	echo "veyyon: restore the checkout and re-run 'bun run setup' in it, or install the standalone binary: curl -fsSL https://get.veyyon.dev | sh" >&2
 	exit 1
 fi
 
