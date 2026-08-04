@@ -19,6 +19,17 @@ import { looksLikeFilePath } from "@veyyon/utils/path";
 import { readSseEvents } from "@veyyon/utils/stream";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
+import {
+	beginCacheTrackedRequest,
+	type CacheEnforcement,
+	CacheRejectedError,
+	type CacheTrackerState,
+	createCacheTrackerState,
+	describeCacheVerdict,
+	recordCacheOutcome,
+	resolveCacheEnforcement,
+	takePendingCacheFailure,
+} from "../cache";
 import { renderDemotedThinking } from "../dialect/demotion";
 import { XML_THINKING_CLOSE, XML_THINKING_OPEN } from "../dialect/wire-tags";
 import * as AIError from "../error";
@@ -388,6 +399,13 @@ type AnthropicProviderSessionState = ProviderSessionState & {
 	 * close.
 	 */
 	replayUnsignedThinkingDisabled: boolean;
+	/**
+	 * Prompt-cache observations for this endpoint+model, so a miss can be judged
+	 * against the previous turn rather than guessed at. Kept here because the
+	 * cache identity is the conversation prefix, which is exactly what this key
+	 * already scopes. Reset on close with everything else.
+	 */
+	cacheTracker: CacheTrackerState;
 };
 
 function createAnthropicProviderSessionState(): AnthropicProviderSessionState {
@@ -395,10 +413,12 @@ function createAnthropicProviderSessionState(): AnthropicProviderSessionState {
 		strictToolsDisabled: false,
 		fastModeDisabled: false,
 		replayUnsignedThinkingDisabled: false,
+		cacheTracker: createCacheTrackerState(),
 		close: () => {
 			state.strictToolsDisabled = false;
 			state.fastModeDisabled = false;
 			state.replayUnsignedThinkingDisabled = false;
+			state.cacheTracker = createCacheTrackerState();
 		},
 	};
 	return state;
@@ -1984,6 +2004,42 @@ const streamAnthropicOnce = (
 			};
 			let params = await prepareParams();
 
+			// Prompt-cache verification. The anchors are counted on the SERIALIZED
+			// request, after `applyPromptCaching` and the breakpoint-limit trim, so
+			// the count is what the provider actually received: the OpenRouter alias
+			// defect was an intent to cache that never became a marker, and a count
+			// taken any earlier would have agreed with the broken code.
+			//
+			// A rejection observed on the PREVIOUS turn is raised here, before this
+			// request is paid for. It cannot be raised where it is detected: usage
+			// arrives after a completed response, so throwing there would discard
+			// the assistant turn as well as the money. Latching costs one extra
+			// full-price turn and keeps the work.
+			const cacheEnforcement: CacheEnforcement = resolveCacheEnforcement(options?.cacheEnforcement);
+			const cacheTracker: CacheTrackerState | undefined = providerSessionState?.cacheTracker;
+			if (cacheTracker && cacheEnforcement !== "off") {
+				const pending = takePendingCacheFailure(cacheTracker);
+				if (pending) throw new CacheRejectedError(pending, model.provider, model.id);
+			}
+			// `msSincePreviousRequest` is measured from here rather than per attempt,
+			// so an in-provider retry reports a slightly SHORTER gap than the wire
+			// saw. That only ever makes the check more conservative: a shorter gap
+			// excuses fewer misses.
+			const cacheExpectation = cacheTracker
+				? beginCacheTrackedRequest(cacheTracker, {
+						anchors: countCacheControlBreakpoints(params),
+						// Retention is read back off the serialized markers rather than from
+						// the request options, so the TTL window used to excuse a miss is
+						// the one the provider was actually told about.
+						retention: anthropicRetentionFromParams(params),
+						// Anthropic reports `cache_creation_input_tokens`, so a cold write
+						// is distinguishable from an ignored marker and the verdict is
+						// provable on this surface.
+						reportsCacheWrites: true,
+						...(options?.promptCacheKey === undefined ? {} : { cacheKey: options.promptCacheKey }),
+					})
+				: undefined;
+
 			// Opt-in flag: the response parser only honors `fallback` content
 			// blocks and `usage.iterations` when the current request opted into
 			// the server-side-fallback beta chain. Leaving `options.fallbacks`
@@ -2543,6 +2599,28 @@ const streamAnthropicOnce = (
 							provider: model.provider,
 							kind: "output",
 						});
+					}
+
+					// The turn is complete and its usage is final, so it can be judged.
+					// Only a successful, untruncated turn is judged: a truncated stream
+					// reports partial usage, and judging that would report a cache defect
+					// for a dropped connection.
+					if (cacheTracker && cacheExpectation && cacheEnforcement !== "off") {
+						const { verdict, decision } = recordCacheOutcome(
+							cacheTracker,
+							cacheExpectation,
+							output.usage,
+							cacheEnforcement,
+						);
+						if (decision.report) {
+							logger.warn(`anthropic: ${describeCacheVerdict(verdict)}`, {
+								model: model.id,
+								provider: model.provider,
+								verdict: verdict.kind,
+								anchors: cacheExpectation.anchors,
+								willFailNextRequest: decision.failNext,
+							});
+						}
 					}
 					break;
 				} catch (streamError) {
@@ -3210,6 +3288,41 @@ function stripMessageCacheControl(
 			excessCounter.value--;
 		}
 	}
+}
+
+/**
+ * The retention the serialized request actually asked for.
+ *
+ * Read back off the markers rather than from the request options, because the
+ * options say what was INTENDED and the wire says what was sent — and the gap
+ * between those two is where every cache defect so far has lived. Any `ttl: "1h"`
+ * marker means the long window; any other marker means the short one; no marker
+ * at all means caching was not requested.
+ */
+function anthropicRetentionFromParams(params: MessageCreateParamsStreaming): CacheRetention {
+	let sawMarker = false;
+	const inspect = (cacheControl: AnthropicCacheControl | null | undefined): boolean => {
+		if (!cacheControl) return false;
+		sawMarker = true;
+		return cacheControl.ttl === "1h";
+	};
+	if (params.tools) {
+		for (const tool of params.tools as Array<AnthropicWireTool & CacheControlBlock>) {
+			if (inspect(tool.cache_control)) return "long";
+		}
+	}
+	if (Array.isArray(params.system)) {
+		for (const block of params.system as Array<AnthropicSystemBlock & CacheControlBlock>) {
+			if (inspect(block.cache_control)) return "long";
+		}
+	}
+	for (const message of params.messages) {
+		if (!Array.isArray(message.content)) continue;
+		for (const block of message.content as Array<ContentBlockParam & CacheControlBlock>) {
+			if (inspect(block.cache_control)) return "long";
+		}
+	}
+	return sawMarker ? "short" : "none";
 }
 
 function countCacheControlBreakpoints(params: MessageCreateParamsStreaming): number {
