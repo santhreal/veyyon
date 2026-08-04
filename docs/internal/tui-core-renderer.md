@@ -484,6 +484,56 @@ bottom.
   and the once-per-run policy in `modes/utils/selection-notice.ts`, and a tip
   gated on `tui.scrollIsolation` says the same thing before you hit it.
 
+### 11a. The `alt-arrows` transport (selection and a pinned composer, both)
+
+The tradeoff above is real on the normal screen and not on the alternate one.
+xterm's Alternate Scroll Mode (`DECSET 1007`) has the terminal translate wheel
+ticks into cursor-up/down **keys** while the alt buffer is displayed, so the
+engine can scroll its own viewport with no mouse reporting at all. No grab means
+plain drag-select keeps working, which is the property the mouse transport cannot
+have. `TUI.setScrollTransport("alt-arrows")` selects it;
+`VEYYON_TUI_SCROLL_TRANSPORT=alt-arrows` is the env door until it has a settings
+entry.
+
+- **Residency, not preference.** The mode is only honored while the alt buffer is
+  up, so the transcript lives there. Alt-screen residency now has two reasons: a
+  fullscreen overlay BORROWS the buffer (paints only the modal, grabs the full
+  tracking set for hit-testing), while this transport RESIDES (paints the ordinary
+  window, enables no tracking). A reason change while resident flips only the
+  tracking set, because an overlay closing used to write `1049l` unconditionally
+  and would drop the transcript back to the normal screen with 1007 still set.
+- **The paint** is a full viewport rewrite of the window the frozen-region
+  assembly already builds, so history-above-pinned-footer needs no second layout.
+  The commit ledger still advances, but it means something different here: rows
+  above the window top move onto the scroll tape and are reported committed, which
+  is what lets the virtualized container drop them. The tape is the ONLY copy on
+  this surface, not a mirror, so the prefix audit is skipped — nothing outside the
+  process can hold us to bytes we already painted.
+- **Which arrows are the wheel.** A synthesized tick is byte-identical to a typed
+  arrow, so only the bare legacy forms (`CSI A`/`CSI B` and their `SS3`
+  application-cursor twins) are read as scroll. Under the kitty keyboard protocol
+  at a level that reports event types, a real keypress arrives as CSI-u with
+  parameters and never matches, so the composer keeps its arrows. Without that
+  protocol the two cannot be told apart and arrows scroll: the documented
+  fallback, whose cost is that Up/Down stop moving the caret between lines of a
+  multi-line draft. Nothing else is lost, because arrows drive no prompt-history
+  walk in this host. A gesture the view cannot honor is not consumed, so a typed
+  arrow still reaches the focused component instead of vanishing.
+- **Exit replays the transcript** onto the normal screen (tape plus the live tail
+  of the last resident paint), so terminal scrollback, the terminal's own find and
+  tmux copy-mode can see the conversation afterwards. It is one-shot, since
+  `stop()` is reachable from several teardown paths and a duplicated conversation
+  in scrollback is what this must not look like. A crash cannot run it: the alt
+  buffer restores whatever preceded launch and the transcript is then only in the
+  session file.
+- **Still open.** No settings entry yet (adding one regenerates
+  `docs/settings-reference.md`, which currently carries unrelated pending schema
+  changes), and the engine does not yet push a kitty level that guarantees event
+  reporting, so terminals that support the protocol still take the fallback until
+  it does. `test/scroll-transport-alt-arrows.test.ts` covers the transport,
+  residency, classification, exit replay and the env door; it states the transport
+  explicitly for the same reason the suites above state `setScrollbackRebuild`.
+
 Regression coverage lives in two suites, and the split matters:
 `test/scroll-isolation.test.ts` drives a transcript that returns its whole
 history every frame, and `test/scroll-isolation-history.test.ts` drives one that

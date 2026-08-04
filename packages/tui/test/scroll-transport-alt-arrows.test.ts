@@ -25,7 +25,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { type Component, CURSOR_MARKER, type Focusable, type ScrollTransport, TUI } from "@veyyon/tui";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -95,6 +95,9 @@ async function rig(): Promise<Rig> {
 	tui.setFocus(composer);
 	tui.setPinnedFooterChildCount(1);
 	tui.setScrollbackRebuild(false); // env-derived default, stated
+	// Also env-derived (VEYYON_TUI_SCROLL_TRANSPORT), and these cases are ABOUT the
+	// transport, so inheriting it would let the environment decide what they prove.
+	tui.setScrollTransport("mouse");
 	tui.start();
 	await scheduler.drain(term);
 	return { term, tui, scheduler };
@@ -546,6 +549,7 @@ describe("alt-arrows wheel classification", () => {
 		tui.setFocus(composer);
 		tui.setPinnedFooterChildCount(1);
 		tui.setScrollbackRebuild(false);
+		tui.setScrollTransport("mouse"); // env-derived default, stated
 		tui.setScrollIsolation(true);
 		tui.start();
 		await scheduler.drain(term);
@@ -635,5 +639,39 @@ describe("alt-arrows exit replay", () => {
 		await term.flush();
 
 		expect(term.outputSince(mark)).not.toContain("h20");
+	});
+});
+
+/**
+ * The env door. `VEYYON_TUI_SCROLL_TRANSPORT` is how the surface is reachable
+ * before it has a settings entry, mirroring `VEYYON_TUI_SCROLLBACK_REBUILD`. It is
+ * an earlier door and not a substitute for the setting.
+ */
+describe("alt-arrows env selection", () => {
+	function transportFor(value: string | undefined): ScrollTransport {
+		const previous = Bun.env.VEYYON_TUI_SCROLL_TRANSPORT;
+		if (value === undefined) delete Bun.env.VEYYON_TUI_SCROLL_TRANSPORT;
+		else Bun.env.VEYYON_TUI_SCROLL_TRANSPORT = value;
+		const term = new RecordingTerminal(30, 8, 100);
+		try {
+			return new TUI(term, true, { renderScheduler: new StressRenderScheduler() }).scrollTransport;
+		} finally {
+			if (previous === undefined) delete Bun.env.VEYYON_TUI_SCROLL_TRANSPORT;
+			else Bun.env.VEYYON_TUI_SCROLL_TRANSPORT = previous;
+		}
+	}
+
+	/** The shipped default stays the mouse transport when nothing selects otherwise. */
+	it.each([undefined, "", "mouse", "1", "true", "alt", "arrows"])("defaults to mouse for %p", value => {
+		expect(transportFor(value)).toBe("mouse");
+	});
+
+	/**
+	 * Only the exact transport name opts in. A loose truthiness check would have made
+	 * `VEYYON_TUI_SCROLL_TRANSPORT=0` or a stray value move the operator's transcript
+	 * onto the alternate screen, which is not a change to make by accident.
+	 */
+	it("selects alt-arrows only for the exact name", () => {
+		expect(transportFor("alt-arrows")).toBe("alt-arrows");
 	});
 });

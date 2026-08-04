@@ -1136,7 +1136,12 @@ export class TUI extends Container {
 	//   selection. The transcript lives on the alt buffer, so it is no longer in
 	//   the terminal's scrollback and the host is responsible for replaying it on
 	//   exit if that history should survive the session.
-	#scrollTransport: ScrollTransport = "mouse";
+	//
+	// Defaulted from `VEYYON_TUI_SCROLL_TRANSPORT` (the same shape as
+	// `VEYYON_TUI_SCROLLBACK_REBUILD` below) so the surface is reachable before it
+	// has a settings entry. The settings schema is where this belongs and is where
+	// it will move; the env read is not a substitute for that, only an earlier door.
+	#scrollTransport: ScrollTransport = Bun.env.VEYYON_TUI_SCROLL_TRANSPORT === "alt-arrows" ? "alt-arrows" : "mouse";
 	#altScrollActive = false;
 	#wheelTrackingActive = false;
 	// True while anything sits above the window: the composed frame overflows
@@ -1671,14 +1676,15 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Choose how scroll gestures reach the engine (default `"mouse"`).
+	 * Choose how scroll gestures reach the engine (default `"mouse"`, or
+	 * `"alt-arrows"` when `VEYYON_TUI_SCROLL_TRANSPORT` selects it).
 	 *
-	 * Switching to `"alt-arrows"` releases any mouse grab and moves the frame to
-	 * the alternate screen with Alternate Scroll Mode set, so the terminal keeps
-	 * native selection and sends wheel ticks as cursor keys. The engine cannot
-	 * tell those from typed arrows — the bytes are identical — so the host routes
-	 * them explicitly through {@link scrollByRows}, deciding from its own
-	 * keyboard state which arrows are scrolls.
+	 * Switching to `"alt-arrows"` releases any mouse grab and moves the transcript
+	 * to the alternate screen with Alternate Scroll Mode set, so the terminal keeps
+	 * native selection and sends wheel ticks as cursor keys. The engine classifies
+	 * those itself: only bare legacy cursor sequences are read as the wheel, which a
+	 * terminal speaking the kitty keyboard protocol at a level that reports event
+	 * types never sends for a real keypress.
 	 */
 	setScrollTransport(transport: ScrollTransport): void {
 		if (this.#scrollTransport === transport) return;
@@ -1686,6 +1692,16 @@ export class TUI extends Container {
 		this.#resumeLiveTail();
 		this.#syncWheelTracking();
 		this.#syncAltScroll();
+		// Which behaviour the operator actually got, since it depends on the terminal
+		// rather than on the setting alone: without the kitty keyboard protocol a
+		// typed arrow is indistinguishable from a wheel tick and scrolls, and that is
+		// worth being able to read off a log rather than infer from surprise.
+		logger.info("tui scroll transport selected", {
+			transport,
+			nativeSelectionPreserved: transport === "alt-arrows",
+			typedArrowsReachComposer: transport === "mouse" || this.terminal.kittyProtocolActive === true,
+			kittyKeyboardProtocol: this.terminal.kittyProtocolActive === true,
+		});
 		this.requestRender();
 	}
 
