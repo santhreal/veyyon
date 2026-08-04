@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { buildTransformedCodexRequestBody } from "@veyyon/ai/providers/openai-codex-responses";
 import { buildParams } from "@veyyon/ai/providers/openai-responses";
-import type { Context, Model } from "@veyyon/ai/types";
+import type { Context, Model, ModelSpec } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel, getBundledModels } from "@veyyon/catalog/models";
 
 const directModel = getBundledModel("openai", "gpt-5.6-sol") as Model<"openai-responses">;
@@ -81,6 +82,85 @@ describe("GPT-5.6 explicit stable-prefix caching", () => {
 
 		expect(explicitBreakpoints(items)).toHaveLength(0);
 		expect(items[0]).toEqual({ role: "developer", content: "stable harness prompt" });
+	});
+
+	/**
+	 * A blank stable prefix can never reach the strict 1024-token cacheable-prefix
+	 * floor, so marking it spends a marker slot for nothing and risks the 400 for a
+	 * breakpoint on a non-cacheable block. Two layers must agree on that: prompt
+	 * normalization drops the blank prompt, and the marker lands on the first block
+	 * that actually carries text. This pins the composition of the two — if either
+	 * layer stops enforcing it, the request ships a dead or rejected marker and the
+	 * stable harness prefix goes unmarked. The request must still hold exactly one.
+	 */
+	it("marks the first non-blank system block when the leading prompt is blank", () => {
+		const { params } = buildParams(
+			directModel,
+			{ ...context, systemPrompt: ["   \n\t ", "stable harness prompt", "changing project context"] },
+			{ sessionId: "cache-route" },
+			undefined,
+		);
+		const items = inputItems(params.input);
+
+		expect(explicitBreakpoints(items)).toEqual([
+			{ type: "input_text", text: "stable harness prompt", prompt_cache_breakpoint: { mode: "explicit" } },
+		]);
+		expect(items[0]).toEqual({
+			role: "developer",
+			content: [
+				{
+					type: "input_text",
+					text: "stable harness prompt",
+					prompt_cache_breakpoint: { mode: "explicit" },
+				},
+			],
+		});
+		expect(items[1]).toEqual({ role: "developer", content: "changing project context" });
+	});
+
+	/**
+	 * `prompt_cache_retention: "24h"` is deprecated from the 5.6 generation onward.
+	 * The suppression used to also require the official endpoint while its enabling
+	 * compat flag is URL-keyed and provider-blind, so a 5.6+ id served from
+	 * `api.openai.com` under a non-`openai` provider id put the deprecated field on
+	 * the wire with no breakpoint beside it. If this regresses, that request carries
+	 * a legacy retention control into the generation that replaced it.
+	 */
+	it("sends no retention field for a 5.6 id on an unofficial provider entry", () => {
+		const compatibleHost = buildModel({
+			...directModel,
+			provider: "openai-compatible",
+			compat: directModel.compatConfig,
+		} as ModelSpec<"openai-responses">);
+
+		const { params } = buildParams(
+			compatibleHost,
+			context,
+			{ sessionId: "cache-route", cacheRetention: "long" },
+			undefined,
+		);
+
+		expect(params.prompt_cache_retention).toBeUndefined();
+		expect(explicitBreakpoints(inputItems(params.input))).toHaveLength(0);
+		expect(params.prompt_cache_key).toBe("cache-route");
+	});
+
+	/**
+	 * Boundary for the same suppression: pre-5.6 is the generation where `24h` is
+	 * still the retention control, so the field must keep reaching the wire there.
+	 * A blanket suppression would silently shorten every pre-5.6 cached prefix from
+	 * 24h to the default window and re-prefill on every cold turn.
+	 */
+	it("still sends 24h retention for a pre-5.6 official request", () => {
+		const { params } = buildParams(
+			legacyDirectModel,
+			context,
+			{ sessionId: "cache-route", cacheRetention: "long" },
+			undefined,
+		);
+
+		expect(params.prompt_cache_retention).toBe("24h");
+		expect(explicitBreakpoints(inputItems(params.input))).toHaveLength(0);
 	});
 });
 

@@ -1,11 +1,29 @@
 import { describe, expect, it } from "bun:test";
-import { formatOpenAIInputText, resolveOpenAIPromptCachePolicy } from "@veyyon/ai/providers/openai-prompt-cache";
-import type { Model } from "@veyyon/ai/types";
+import {
+	formatOpenAIInputText,
+	isOfficialOpenAIResponsesEndpoint,
+	resolveOpenAIPromptCachePolicy,
+} from "@veyyon/ai/providers/openai-prompt-cache";
+import type { Model, ModelSpec } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";
 
 const direct56 = getBundledModel("openai", "gpt-5.6-sol") as Model<"openai-responses">;
 const direct55 = getBundledModel("openai", "gpt-5.5") as Model<"openai-responses">;
+
+/**
+ * Re-point a bundled official entry at a non-`openai` provider id, keeping the
+ * `api.openai.com` base URL. `compat` is re-derived from the spec config so the
+ * URL-keyed, provider-blind `supportsLongPromptCacheRetention` detection runs
+ * again instead of inheriting the source model's resolved record.
+ */
+function unofficialProviderEntry(source: Model<"openai-responses">): Model<"openai-responses"> {
+	return buildModel({
+		...source,
+		provider: "openai-compatible",
+		compat: source.compatConfig,
+	} as ModelSpec<"openai-responses">);
+}
 
 describe("OpenAI prompt cache policy", () => {
 	/**
@@ -81,5 +99,80 @@ describe("OpenAI prompt cache policy", () => {
 		expect(legacy.stablePrefixBreakpoint).toBeUndefined();
 		expect(modern.promptCacheRetention).toBeUndefined();
 		expect(modern.stablePrefixBreakpoint).toEqual({ mode: "explicit" });
+	});
+
+	/**
+	 * Locks out the endpoint-coupled retention suppression. `24h` deprecation is a
+	 * MODEL-GENERATION fact; the previous suppression also required the official
+	 * endpoint, and `compat.supportsLongPromptCacheRetention` is URL-keyed and
+	 * provider-blind. So a 5.6+ id served from `api.openai.com` under any provider
+	 * id other than `openai` resolved `official: false`, kept the compat flag, and
+	 * shipped the deprecated `prompt_cache_retention: "24h"` with no breakpoint to
+	 * pair it with. If this regresses, that request carries an incoherent legacy
+	 * retention field into the generation that replaced it.
+	 */
+	it("suppresses deprecated retention for 5.6+ ids on unofficial provider entries", () => {
+		const compatibleHost = unofficialProviderEntry(direct56);
+
+		expect(compatibleHost.compat.supportsLongPromptCacheRetention).toBe(true);
+		expect(isOfficialOpenAIResponsesEndpoint(compatibleHost)).toBe(false);
+
+		const policy = resolveOpenAIPromptCachePolicy({
+			model: compatibleHost,
+			promptCacheKey: "route-key",
+			cacheRetention: "long",
+		});
+
+		expect(policy.promptCacheRetention).toBeUndefined();
+		expect(policy.stablePrefixBreakpoint).toBeUndefined();
+	});
+
+	/**
+	 * Boundary for the same fix: the generation floor is 5.6, so a pre-5.6 id on an
+	 * unofficial provider entry must KEEP `24h`. Suppressing by generation must not
+	 * become a blanket suppression that silently drops extended retention — that
+	 * would shorten every pre-5.6 cached prefix from 24h to the default window.
+	 */
+	it("keeps 24h retention for pre-5.6 ids on unofficial provider entries", () => {
+		const compatibleHost = unofficialProviderEntry(direct55);
+
+		const policy = resolveOpenAIPromptCachePolicy({
+			model: compatibleHost,
+			promptCacheKey: "route-key",
+			cacheRetention: "long",
+		});
+
+		expect(policy.promptCacheRetention).toBe("24h");
+		expect(policy.stablePrefixBreakpoint).toBeUndefined();
+	});
+
+	/**
+	 * A breakpoint marks the prefix ending at its own block, and the platform floor
+	 * for a cacheable prefix is 1024 tokens strictly, so a blank block can never
+	 * make its own marker eligible. Marking it spends a marker slot for nothing and
+	 * risks the documented 400 for a breakpoint on a non-cacheable block. If this
+	 * regresses, any serializer handed an empty stable prefix emits a dead marker.
+	 */
+	it("refuses the marker on text with no cacheable content", () => {
+		const policy = resolveOpenAIPromptCachePolicy({ model: direct56, promptCacheKey: "route-key" });
+
+		expect(policy.stablePrefixBreakpoint).toEqual({ mode: "explicit" });
+		expect(formatOpenAIInputText("", policy)).toEqual({ type: "input_text", text: "" });
+		expect(formatOpenAIInputText("   \n\t ", policy)).toEqual({ type: "input_text", text: "   \n\t " });
+	});
+
+	/**
+	 * Boundary for the blank-text guard: one non-whitespace character is cacheable
+	 * content and must still be marked, so the guard cannot widen into "short text
+	 * is unmarked" and silently stop marking the stable prefix.
+	 */
+	it("marks text whose only content is a single non-whitespace character", () => {
+		const policy = resolveOpenAIPromptCachePolicy({ model: direct56, promptCacheKey: "route-key" });
+
+		expect(formatOpenAIInputText(" x ", policy)).toEqual({
+			type: "input_text",
+			text: " x ",
+			prompt_cache_breakpoint: { mode: "explicit" },
+		});
 	});
 });

@@ -201,11 +201,6 @@ export function isVertexRawPredictUrl(baseUrl: string): boolean {
 	return baseUrl.includes(":streamRawPredict") || baseUrl.includes(":rawPredict");
 }
 
-/** Azure OpenAI deployment-scoped path (`…/deployments/<name>/…`). */
-export function isAzureDeploymentsUrl(baseUrl: string): boolean {
-	return baseUrl.includes("/deployments/");
-}
-
 /** Alibaba DashScope consumer `compatible-mode` endpoint (rejects multimodal arrays for some text-only SKUs). */
 export function isDashscopeCompatibleModeUrl(baseUrl: string): boolean {
 	const normalized = baseUrl.toLowerCase();
