@@ -161,6 +161,22 @@ const isOpenAIWireGen54Plus = memo((modelId: string): boolean => {
 });
 
 /**
+ * OpenAI model generations old enough to reject `prompt_cache_breakpoint`
+ * outright: 5.6 is the floor at which the field exists at all.
+ *
+ * This answers the GENERATION question only, never "may this request carry the
+ * field". The field is a platform API capability, so the endpoint decides too:
+ * `gpt-5.6-codex` clears this floor and the ChatGPT Codex backend still fails
+ * the turn with `prompt_cache_breakpoint is not supported on this model`.
+ * Callers gate on the endpoint as well; see `resolveOpenAIPromptCachePolicy`.
+ */
+export const supportsOpenAIPromptCacheBreakpoints = memo((modelId: string): boolean => {
+	const parsed = parseOpenAIModel(bareModelId(modelId));
+	if (!parsed) return false;
+	return semverGte(parsed.version, "5.6");
+});
+
+/**
  * OpenAI Codex models that honor `reasoning.context: "all_turns"` (full
  * cross-turn reasoning replay). The `reasoning.context` field itself exists for
  * the whole gpt-5/o-series family, but the `all_turns` value is only accepted
