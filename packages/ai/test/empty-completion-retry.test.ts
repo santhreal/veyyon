@@ -1,9 +1,7 @@
 /**
- * Contracts for `withEmptyCompletionRetry` (shared by the OpenAI-completions and
- * Anthropic-messages providers): a benign terminal stop with no content/usage is
- * retried a bounded number of times; once any content streams the attempt is
- * committed (no retry, no duplicate `start`); the cap delivers the empty result;
- * backoff failures surface unless the caller aborted.
+ * Behavioral contracts for the canonical empty-completion retry policy:
+ * successful retries discard stale attempts, exhaustion returns the final empty
+ * completion, and cancellation during backoff rejects instead of resolving it.
  */
 import { describe, expect, it } from "bun:test";
 import type { AssistantMessage, AssistantMessageEvent, Context, Usage } from "@veyyon/ai/types";
@@ -80,6 +78,7 @@ async function drain(stream: AssistantMessageEventStream): Promise<AssistantMess
 }
 
 describe("withEmptyCompletionRetry", () => {
+	/** Empty successes are retried until a later attempt produces visible content. */
 	it("retries past empty attempts and delivers the first non-empty one", async () => {
 		let attempts = 0;
 		const waits: number[] = [];
@@ -117,6 +116,7 @@ describe("withEmptyCompletionRetry", () => {
 		expect(result.content).toEqual([{ type: "text", text: "hello" }]);
 	});
 
+	/** The bounded policy returns the final empty completion after exhausting retries. */
 	it("delivers the empty result after exhausting the retry cap", async () => {
 		let attempts = 0;
 		const waits: number[] = [];
@@ -158,6 +158,38 @@ describe("withEmptyCompletionRetry", () => {
 		expect(waited).toBe(false);
 	});
 
+	/** Provider error terminals pass through without retrying or entering backoff. */
+	it("preserves non-retryable provider errors", async () => {
+		let attempts = 0;
+		let waited = false;
+		const errorMessage = assistant();
+		errorMessage.stopReason = "error";
+		errorMessage.errorMessage = "provider rejected the request";
+		const stream = withEmptyCompletionRetry(
+			{},
+			CTX,
+			{
+				providerRetryWait: async () => {
+					waited = true;
+				},
+			},
+			() => {
+				attempts++;
+				return streamFromEvents([
+					{ type: "start", partial: errorMessage },
+					{ type: "error", reason: "error", error: errorMessage },
+				] as unknown as AssistantMessageEvent[]);
+			},
+		);
+
+		const result = await stream.result();
+
+		expect(attempts).toBe(1);
+		expect(waited).toBe(false);
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toBe("provider rejected the request");
+	});
+
 	it("commits on streamed thinking and does not retry a thinking-only stop", async () => {
 		let attempts = 0;
 		const stream = withEmptyCompletionRetry({}, CTX, {}, () => {
@@ -197,17 +229,21 @@ describe("withEmptyCompletionRetry", () => {
 		expect((caught as Error | undefined)?.message).toBe("wait boom");
 	});
 
-	it("delivers the empty result when aborted during backoff", async () => {
+	/** Cancellation while a retry is sleeping rejects with the caller's abort reason. */
+	it("rejects instead of delivering the stale empty result when aborted during backoff", async () => {
 		const controller = new AbortController();
+		const backoffStarted = Promise.withResolvers<void>();
 		let attempts = 0;
 		const stream = withEmptyCompletionRetry(
 			{},
 			CTX,
 			{
 				signal: controller.signal,
-				providerRetryWait: async () => {
-					controller.abort();
-					throw new Error("aborted");
+				providerRetryWait: async (_delayMs, signal) => {
+					backoffStarted.resolve();
+					await new Promise<void>((_resolve, reject) => {
+						signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+					});
 				},
 			},
 			() => {
@@ -215,13 +251,13 @@ describe("withEmptyCompletionRetry", () => {
 				return emptyAttempt();
 			},
 		);
+		const result = stream.result();
+		await backoffStarted.promise;
+		const abortReason = new Error("cancelled during retry backoff");
+		controller.abort(abortReason);
 
-		const events = await drain(stream);
-		const result = await stream.result();
-
+		await expect(result).rejects.toBe(abortReason);
 		expect(attempts).toBe(1);
-		expect(events.at(-1)?.type).toBe("done");
-		expect(result.content).toEqual([]);
 	});
 
 	it("discards buffered pre-content markers from a retried empty attempt", async () => {

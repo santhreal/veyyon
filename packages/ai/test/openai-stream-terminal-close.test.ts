@@ -11,9 +11,10 @@
 // 3. openai-responses: `response.completed` → `processResponsesStream`
 //    breaks immediately; no grace window involved.
 import { describe, expect, it } from "bun:test";
+import * as AIError from "@veyyon/ai/error";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
-import type { Context, FetchImpl, Model } from "@veyyon/ai/types";
+import type { AssistantMessage, AssistantMessageEvent, Context, FetchImpl, Model } from "@veyyon/ai/types";
 import { getBundledModel } from "@veyyon/catalog/models";
 
 const completionsModel = {
@@ -53,6 +54,43 @@ function createNeverClosingFetch(events: unknown[]): FetchImpl {
 	}
 	return mockFetch as typeof fetch;
 }
+/** SSE response that reaches transport EOF immediately after `events`. */
+function createClosingSseResponse(events: unknown[]): Response {
+	const encoder = new TextEncoder();
+	const stream = new ReadableStream<Uint8Array>({
+		start(controller) {
+			for (const event of events) {
+				const data = typeof event === "string" ? event : JSON.stringify(event);
+				controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+			}
+			controller.close();
+		},
+	});
+	return new Response(stream, {
+		status: 200,
+		headers: { "content-type": "text/event-stream" },
+	});
+}
+
+function createClosingFetch(events: unknown[]): FetchImpl {
+	async function mockFetch(_input: string | URL | Request, _init?: RequestInit): Promise<Response> {
+		return createClosingSseResponse(events);
+	}
+	return mockFetch as typeof fetch;
+}
+
+async function collectClosingCompletion(events: unknown[]): Promise<{
+	events: AssistantMessageEvent[];
+	result: AssistantMessage;
+}> {
+	const stream = streamOpenAICompletions(completionsModel, baseContext(), {
+		apiKey: "test-key",
+		fetch: createClosingFetch(events),
+	});
+	const emitted: AssistantMessageEvent[] = [];
+	for await (const event of stream) emitted.push(event);
+	return { events: emitted, result: await stream.result() };
+}
 
 function completionChunk(extra: Record<string, unknown>): unknown {
 	return {
@@ -63,6 +101,127 @@ function completionChunk(extra: Record<string, unknown>): unknown {
 		...extra,
 	};
 }
+
+describe("openai-completions terminal finish reason", () => {
+	/**
+	 * The transport-level `[DONE]` sentinel is not an authoritative model
+	 * completion when no choice ever supplied a finish reason.
+	 */
+	it("rejects DONE followed by EOF without a finish_reason", async () => {
+		const { events, result } = await collectClosingCompletion([
+			completionChunk({ choices: [{ index: 0, delta: { role: "assistant" } }] }),
+			"[DONE]",
+		]);
+
+		expect(events.at(-1)?.type).toBe("error");
+		expect(events.some(event => event.type === "done")).toBe(false);
+		expect(result.stopReason).toBe("error");
+		expect(result.content).toEqual([]);
+		expect(result.errorMessage).toContain("closed before a terminal finish reason");
+		expect(AIError.is(result.errorId, AIError.Flag.Transient)).toBe(true);
+	});
+
+	/**
+	 * Text received before EOF remains attached to the error for diagnostics,
+	 * but cannot become a successful truncated assistant response.
+	 */
+	it("rejects EOF after a partial text delta and preserves the text", async () => {
+		const { events, result } = await collectClosingCompletion([
+			completionChunk({ choices: [{ index: 0, delta: { role: "assistant", content: "Partial answer" } }] }),
+		]);
+
+		expect(events.at(-1)?.type).toBe("error");
+		expect(events.some(event => event.type === "done")).toBe(false);
+		expect(result.stopReason).toBe("error");
+		expect(result.content).toEqual([{ type: "text", text: "Partial answer" }]);
+		expect(result.errorMessage).toContain("closed before a terminal finish reason");
+	});
+
+	/**
+	 * A truncated JSON argument delta must stay diagnostic partial state; EOF
+	 * cannot repair it into a successful tool-use completion.
+	 */
+	it("rejects EOF after partial tool arguments without completing tool use", async () => {
+		const partialArguments = '{"city":"Par';
+		const { events, result } = await collectClosingCompletion([
+			completionChunk({
+				choices: [
+					{
+						index: 0,
+						delta: {
+							role: "assistant",
+							tool_calls: [
+								{
+									index: 0,
+									id: "call_weather",
+									type: "function",
+									function: { name: "weather", arguments: partialArguments },
+								},
+							],
+						},
+					},
+				],
+			}),
+		]);
+
+		expect(events.at(-1)?.type).toBe("error");
+		expect(events.some(event => event.type === "done")).toBe(false);
+		expect(events.some(event => event.type === "toolcall_delta" && event.delta === partialArguments)).toBe(true);
+		expect(result.stopReason).toBe("error");
+		expect(result.content).toHaveLength(1);
+		expect(result.content[0]).toEqual(
+			expect.objectContaining({
+				type: "toolCall",
+				id: "call_weather",
+				name: "weather",
+				arguments: { city: "Par" },
+			}),
+		);
+		expect(result.errorMessage).toContain("closed before a terminal finish reason");
+	});
+
+	/**
+	 * A normal tool terminal frame remains authoritative even when the HTTP
+	 * body closes immediately afterward.
+	 */
+	it("keeps a tool_calls finish_reason as a successful tool-use completion", async () => {
+		const { events, result } = await collectClosingCompletion([
+			completionChunk({
+				choices: [
+					{
+						index: 0,
+						delta: {
+							role: "assistant",
+							tool_calls: [
+								{
+									index: 0,
+									id: "call_weather",
+									type: "function",
+									function: { name: "weather", arguments: '{"city":"Paris"}' },
+								},
+							],
+						},
+					},
+				],
+			}),
+			completionChunk({ choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }),
+		]);
+
+		expect(events.at(-1)?.type).toBe("done");
+		expect(events.some(event => event.type === "error")).toBe(false);
+		expect(result.stopReason).toBe("toolUse");
+		expect(result.content).toHaveLength(1);
+		expect(result.content[0]).toEqual(
+			expect.objectContaining({
+				type: "toolCall",
+				id: "call_weather",
+				name: "weather",
+				arguments: { city: "Paris" },
+			}),
+		);
+		expect(result.errorMessage).toBeUndefined();
+	});
+});
 
 describe("terminal frame without connection close", () => {
 	it("openai-completions: breaks immediately once finish_reason and usage arrived", async () => {
