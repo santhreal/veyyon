@@ -98,6 +98,15 @@ export interface SelectListLayoutOptions {
 	 * wrap unevenly.
 	 */
 	wrapDescription?: boolean;
+	/**
+	 * Show the key legend on the status row. Defaults to true.
+	 *
+	 * Set false when the host already names those keys and means something else
+	 * by them. The setup wizard is the case: its footer names every key for the
+	 * whole step, and its Esc leaves onboarding rather than closing the list, so
+	 * the built-in "esc close" contradicted the footer on the same screen.
+	 */
+	statusLegend?: boolean;
 }
 
 type SelectItemLayout =
@@ -129,6 +138,12 @@ export class SelectList implements Component, MouseRoutable {
 	#hoveredIndex: number | null = null;
 	/** Per-render map of 0-based output line → filtered-item index. */
 	#hitRows: (number | undefined)[] = [];
+	/**
+	 * False when the current row budget is too small to afford the status row.
+	 * Set by {@link setRowBudget}; true otherwise, so a list that was never sized
+	 * against a budget behaves exactly as it did before.
+	 */
+	#statusRowFitsBudget = true;
 
 	onSelect?: (item: SelectItem) => void;
 	onCancel?: () => void;
@@ -136,11 +151,52 @@ export class SelectList implements Component, MouseRoutable {
 
 	constructor(
 		private readonly items: ReadonlyArray<SelectItem>,
-		private readonly maxVisible: number,
+		private maxVisible: number,
 		private readonly theme: SelectListTheme,
 		private readonly layout: SelectListLayoutOptions = {},
 	) {
 		this.#filteredItems = items;
+	}
+
+	/**
+	 * Resize the item window.
+	 *
+	 * A list inside a surface that owns the whole viewport (the setup wizard) can
+	 * only know how many rows it may occupy at render time, and a budget fixed at
+	 * construction either wastes rows on a tall terminal or overflows a short
+	 * one, where the host clips the tail and the user cannot reach it. Resizing
+	 * in place rather than rebuilding the list preserves the filter query,
+	 * selection and hover across a terminal resize.
+	 *
+	 * This counts ITEM rows only. To size against a total row budget, including
+	 * the status row this list adds when it overflows, use {@link setRowBudget}.
+	 */
+	setMaxVisible(rows: number): void {
+		this.maxVisible = Math.max(1, Math.floor(rows));
+	}
+
+	/**
+	 * Size the list so its whole render fits in `rows` terminal rows.
+	 *
+	 * `render` emits the item window AND, when the list overflows or is being
+	 * filtered, one status row ("Type to search" / "Search: …"). A caller sizing
+	 * to a viewport wants that row inside its budget, and every caller that used
+	 * {@link setMaxVisible} for this had to subtract it by hand — each of them
+	 * got it wrong in a different way, and the host then clipped a row off the
+	 * bottom of the list. Deriving it here keeps the correction in one place.
+	 */
+	setRowBudget(rows: number): void {
+		const budget = Math.max(1, Math.floor(rows));
+		const searchable = this.layout.overflowSearch !== false;
+		// The status row appears when the items cannot all be shown, which is what
+		// a budget below the item count means, or while a filter is active.
+		const needsStatusRow = searchable && (this.items.length > budget || this.#filterQuery.length > 0);
+		// One row cannot hold an item AND the status row. The caller asked for a
+		// list, so the row goes to the list: a status row alone would show none of
+		// the thing being chosen, and returning two rows would break the promise
+		// this method exists to make.
+		this.#statusRowFitsBudget = budget > 1;
+		this.maxVisible = Math.max(1, needsStatusRow && budget > 1 ? budget - 1 : budget);
 	}
 
 	setFilter(filter: string): void {
@@ -557,14 +613,21 @@ export class SelectList implements Component, MouseRoutable {
 		// the live search text always survives.
 		// "esc clear" while a query is live: the cancel ladder clears the search
 		// first, so advertising "close" there would lie about what esc does next.
-		const legend = query ? " · ↑↓ move · ↵ select · esc clear" : " · ↑↓ move · ↵ select · esc close";
+		const legend =
+			this.layout.statusLegend === false
+				? ""
+				: query
+					? " · ↑↓ move · ↵ select · esc clear"
+					: " · ↑↓ move · ↵ select · esc close";
 		const statusText = (query ? `  Search: ${query}` : "  Type to search") + legend;
 		return this.theme.scrollInfo(truncateToWidth(statusText, Math.max(1, width - 2), Ellipsis.Omit));
 	}
 
 	#shouldRenderSearchStatus(): boolean {
 		return (
-			this.layout.overflowSearch !== false && (this.items.length > this.maxVisible || this.#filterQuery.length > 0)
+			this.#statusRowFitsBudget &&
+			this.layout.overflowSearch !== false &&
+			(this.items.length > this.maxVisible || this.#filterQuery.length > 0)
 		);
 	}
 
