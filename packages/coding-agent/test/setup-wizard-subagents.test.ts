@@ -37,6 +37,7 @@ function host(settings: Settings): { host: SetupSceneHost; finished: Promise<Set
 			ctx,
 			requestRender() {},
 			finish: completion.resolve,
+			skipSetup() {},
 			setFocus() {},
 			restoreFocus() {},
 		},

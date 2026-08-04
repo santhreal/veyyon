@@ -33,6 +33,7 @@ const controller = new AgentsSceneController(
 		ctx: { settings } as never,
 		requestRender: () => {},
 		finish: () => {},
+		skipSetup: () => {},
 		setFocus: () => {},
 		restoreFocus: () => {},
 	},
