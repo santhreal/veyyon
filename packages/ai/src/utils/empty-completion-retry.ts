@@ -121,20 +121,18 @@ export function withEmptyCompletionRetry<M, O extends EmptyCompletionRetryOption
 				(message.usage?.output ?? 0) <= 1 &&
 				!hasVisibleAssistantContent(message);
 
-			if (isRetryableEmpty && emptyAttempt < MAX_EMPTY_COMPLETION_RETRIES && !signal?.aborted) {
+			if (isRetryableEmpty && emptyAttempt < MAX_EMPTY_COMPLETION_RETRIES) {
 				const delayMs = EMPTY_COMPLETION_BASE_DELAY_MS * 2 ** emptyAttempt;
 				try {
+					signal?.throwIfAborted();
 					if (options?.providerRetryWait) await options.providerRetryWait(delayMs, signal);
 					else await scheduler.wait(delayMs, { signal });
+					signal?.throwIfAborted();
 				} catch (waitError) {
-					// Aborted during backoff: deliver the empty result rather than hang.
-					// Any other wait failure is a real error and must surface.
+					// Backoff is part of the operation: cancellation must reject it,
+					// never turn the stale empty attempt into a successful result.
 					flush();
-					if (signal?.aborted) {
-						if (terminal) outer.push(terminal);
-					} else {
-						outer.fail(waitError);
-					}
+					outer.fail(signal?.aborted ? signal.reason : waitError);
 					return;
 				}
 				// Discard the buffered `start` from this empty attempt and retry.

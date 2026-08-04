@@ -13,6 +13,7 @@ import type {
 	ToolChoice,
 } from "../types";
 import { createAbortSourceTracker } from "../utils/abort";
+import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import {
@@ -80,7 +81,7 @@ type AzureOpenAIResponsesSamplingParams = ResponseCreateParamsStreaming & {
 /**
  * Generate function for Azure OpenAI Responses API
  */
-export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"> = (
+const streamAzureOpenAIResponsesOnce = (
 	model: Model<"azure-openai-responses">,
 	context: Context,
 	options?: AzureOpenAIResponsesOptions,
@@ -261,6 +262,12 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 
 	return stream;
 };
+
+/**
+ * Retries Azure terminal completions that contain no visible assistant output.
+ */
+export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"> = (model, context, options) =>
+	withEmptyCompletionRetry(model, context, options, streamAzureOpenAIResponsesOnce);
 
 function resolveAzureConfig(
 	model: Model<"azure-openai-responses">,

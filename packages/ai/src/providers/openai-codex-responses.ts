@@ -50,6 +50,7 @@ import {
 	sanitizeOpenAIResponsesAssistantHistoryItemsForReplay,
 } from "../utils";
 import { clearStreamingPartialJson, kStreamingLastParseLen, kStreamingPartialJson } from "../utils/block-symbols";
+import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import {
@@ -2478,7 +2479,7 @@ class CodexStreamProcessor {
 	}
 }
 
-export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"> = (
+const streamOpenAICodexResponsesOnce = (
 	model: Model<"openai-codex-responses">,
 	context: Context,
 	options?: OpenAICodexResponsesOptions,
@@ -2576,6 +2577,12 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 
 	return stream;
 };
+
+/**
+ * Retries Codex terminal completions that contain no visible assistant output.
+ */
+export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"> = (model, context, options) =>
+	withEmptyCompletionRetry(model, context, options, streamOpenAICodexResponsesOnce);
 
 export async function prewarmOpenAICodexResponses(
 	model: Model<"openai-codex-responses">,

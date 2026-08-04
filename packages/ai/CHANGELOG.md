@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Anthropic requests now cache the stable Veyyon system-prompt prefix separately from changing project, assignment, and Argot blocks, preserving prefix reuse across parent and subagent turns.
+- GPT-5.6 Responses and Codex Responses Lite requests now mark Veyyon's stable harness block with an explicit OpenAI cache breakpoint, preserving prefix hits when project, task, or Argot suffixes change.
+- Model reasoning intent now resolves once before provider mapping, so effort, mandatory-thinking floors, routed model IDs, and transport-specific token budgets use one request plan.
+
+### Fixed
+
+- Fixed cumulative function-call argument snapshots being appended as deltas, which repeated tool arguments in live previews even when the finalized call was correct.
+- Fixed Gemini dynamic thinking remaining active when reasoning was explicitly disabled.
+- Fixed Bedrock using different extra-high reasoning budget defaults depending on the call path.
+
+- OpenAI-compatible Chat Completions streams now reject EOF without an authoritative `finish_reason` as an incomplete provider stream before repairing or exposing a partial tool call.
+- Empty-completion retries now propagate cancellation during backoff instead of returning the discarded empty result. Azure Responses and Codex Responses use the same bounded empty-completion policy as the other provider adapters.
+
 ## [16.5.2] - 2026-07-14
 
 ### Added

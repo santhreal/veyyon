@@ -1,6 +1,6 @@
 import type { Effort } from "@veyyon/catalog/effort";
 import { isKimiModelId } from "@veyyon/catalog/identity";
-import { resolveWireModelId } from "@veyyon/catalog/model-thinking";
+import { resolveReasoningSelection } from "@veyyon/catalog/model-thinking";
 import { calculateCost, emptyCost } from "@veyyon/catalog/models";
 import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
 import { $env } from "@veyyon/utils/env";
@@ -199,18 +199,6 @@ function normalizeMistralToolId(id: string, isMistral: boolean): string {
 // #1488). The default route forwards `delta.content` (including DSML
 // envelope leaks) which `StreamMarkupHealing` heals into a structured call
 // client-side.
-function resolveOpenAICompletionsRoutingEffort(
-	model: Model<"openai-completions">,
-	effort: Effort | undefined,
-): Effort | undefined {
-	if (!effort) return undefined;
-	if (model.thinking?.efforts.includes(effort)) return effort;
-	const compatMappedEffort = model.compat.reasoningEffortMap?.[effort] as Effort | undefined;
-	if (compatMappedEffort && model.thinking?.efforts.includes(compatMappedEffort)) return compatMappedEffort;
-	const thinkingMappedEffort = model.thinking?.effortMap?.[effort] as Effort | undefined;
-	if (thinkingMappedEffort && model.thinking?.efforts.includes(thinkingMappedEffort)) return thinkingMappedEffort;
-	return effort;
-}
 
 function resolveOpenAICompletionsModelId(
 	model: Model<"openai-completions">,
@@ -219,10 +207,11 @@ function resolveOpenAICompletionsModelId(
 	// Effort-tier variants route per request effort (off → bare id, efforts →
 	// the thinking backing id); catalog variants (Copilot long-context `-1m`
 	// entries) pin via `requestModelId`; everything else serializes `model.id`.
-	const requestedEffort =
-		options?.reasoning && !options.disableReasoning && model.reasoning ? (options.reasoning as Effort) : undefined;
-	const effort = resolveOpenAICompletionsRoutingEffort(model, requestedEffort);
-	const wireId = resolveWireModelId(model, effort);
+	const selection = resolveReasoningSelection(model, {
+		effort: options?.reasoning as Effort | undefined,
+		disabled: options?.disableReasoning,
+	});
+	const wireId = selection.wireModelId;
 	return applyWireModelIdTransform(wireId, model.compat.wireModelIdMode, options?.openrouterVariant);
 }
 
@@ -1294,6 +1283,24 @@ const streamOpenAICompletionsOnce = (
 				// usage details instead of finalizing the incomplete accounting.
 				if (streamFinishedAt !== undefined && sawUsagePayload && !awaitTrailingUsageDetails) break;
 			}
+			const localAbortReason = abortTracker.getLocalAbortReason();
+			if (localAbortReason) {
+				throw localAbortReason;
+			}
+			if (abortTracker.wasCallerAbort()) {
+				throw new AIError.RequestAbortError();
+			}
+
+			// A completion is authoritative only after the provider emits a
+			// finish_reason. Treat transport EOF before that terminal signal as a
+			// truncated response, before partial tool arguments can be repaired
+			// and promoted into an apparently successful tool-use turn.
+			if (streamFinishedAt === undefined) {
+				throw new AIError.ProviderResponseError(
+					"OpenAI completions stream closed before a terminal finish reason was received",
+					{ provider: model.provider, kind: "incomplete-stream" },
+				);
+			}
 
 			if (streamMarkupHealing) {
 				for (const event of streamMarkupHealing.flushEvents()) {
@@ -1339,13 +1346,6 @@ const streamOpenAICompletionsOnce = (
 			) {
 				output.stopReason = "error";
 				output.errorMessage = EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE;
-			}
-			const localAbortReason = abortTracker.getLocalAbortReason();
-			if (localAbortReason) {
-				throw localAbortReason;
-			}
-			if (abortTracker.wasCallerAbort()) {
-				throw new AIError.RequestAbortError();
 			}
 
 			if (output.stopReason === "aborted") {
