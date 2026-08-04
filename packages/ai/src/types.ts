@@ -107,6 +107,14 @@ export type ToolChoice =
 export type CacheRetention = "none" | "short" | "long";
 
 /**
+ * What to do when a request's prompt-cache markers demonstrably did not take
+ * effect. Declared here beside {@link CacheRetention} rather than in
+ * `cache/policy.ts`, which needs `CacheRetention` from this module and would
+ * otherwise form an import cycle with it.
+ */
+export type CacheEnforcement = "off" | "warn" | "error";
+
+/**
  * Service tier hint for processing priority / cost control. These are the
  * values providers consume on the wire:
  *
@@ -386,6 +394,15 @@ export interface StreamOptions {
 	signal?: AbortSignal;
 	apiKey?: string;
 	cacheRetention?: CacheRetention;
+	/**
+	 * What to do when a request's cache markers demonstrably did not take effect.
+	 *
+	 * Defaults to `error` via `VEYYON_CACHE_ENFORCEMENT`, because the verdict that
+	 * triggers it cannot occur when caching works. `warn` reports and continues;
+	 * `off` disables the check. See `cache/policy.ts` for why the failure lands on
+	 * the NEXT request rather than the one that was rejected.
+	 */
+	cacheEnforcement?: CacheEnforcement;
 	/**
 	 * Additional headers to include in provider requests.
 	 * These are merged on top of model-defined headers.
