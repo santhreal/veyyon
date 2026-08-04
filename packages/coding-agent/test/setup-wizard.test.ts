@@ -476,12 +476,16 @@ describe("setup wizard scene footer copy", () => {
 		}
 	}
 
-	it("names the advancing key apart from the confirming key, and by how many steps are left", async () => {
-		expect(await footerOf([emptyScene("only")])).toBe(
-			"↑↓ select  ·  enter confirm  ·  esc finish setup  ·  ctrl+c exit",
-		);
+	/**
+	 * The footer must name what each key DOES. `→` runs `#finishScene`, which
+	 * advances the step index and commits nothing, so it is a skip; labelling it
+	 * "next" beside "enter confirm" left no way to tell which one kept your
+	 * choice. Locks the corrected labels so the old wording cannot come back.
+	 */
+	it("names forward navigation and setup skip apart from confirming a choice", async () => {
+		expect(await footerOf([emptyScene("only")])).toBe("↑↓ select  ·  enter confirm  ·  → skip  ·  esc leave setup");
 		expect(await footerOf([emptyScene("first"), emptyScene("second")])).toBe(
-			"↑↓ select  ·  enter confirm  ·  esc next step  ·  ctrl+c exit",
+			"↑↓ select  ·  enter confirm  ·  → skip step  ·  esc leave setup",
 		);
 	});
 
@@ -490,23 +494,122 @@ describe("setup wizard scene footer copy", () => {
 			{ keys: "tab", label: "switch panel" },
 			{ keys: "enter", label: "confirm" },
 		]);
-		expect(await footerOf([tabbed])).toBe("tab switch panel  ·  enter confirm  ·  esc finish setup  ·  ctrl+c exit");
+		expect(await footerOf([tabbed])).toBe("tab switch panel  ·  enter confirm  ·  → skip  ·  esc leave setup");
 		// A scene that declares nothing gets the default pair and never says Tab.
-		expect(await footerOf([emptyScene("plain")])).toBe(
-			"↑↓ select  ·  enter confirm  ·  esc finish setup  ·  ctrl+c exit",
-		);
+		expect(await footerOf([emptyScene("plain")])).toBe("↑↓ select  ·  enter confirm  ·  → skip  ·  esc leave setup");
+	});
+
+	/**
+	 * The way out must be advertised as a key users will actually press. The only
+	 * exit used to be ctrl+c, which reads as "kill the program", so the footer
+	 * told people to abort in order to leave onboarding.
+	 */
+	it("offers Esc, not ctrl+c, as the advertised way out of setup", async () => {
+		const footer = await footerOf([emptyScene("only")]);
+		expect(footer).toContain("esc leave setup");
+		expect(footer).not.toContain("ctrl+c");
 	});
 
 	it("the real Providers scene, the one users could not get out of, names Tab first", async () => {
 		expect(await footerOf([providersSetupScene])).toBe(
-			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  esc finish setup  ·  ctrl+c exit",
+			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  → skip  ·  esc leave setup",
 		);
 	});
 
 	it("stays one line when the hints outrun the terminal", async () => {
 		expect(await footerOf([providersSetupScene], 60)).toBe(
-			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  es…",
+			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  → …",
 		);
+	});
+});
+
+describe("setup wizard navigation and skip behavior", () => {
+	function wizardContext(): InteractiveModeContext {
+		return {
+			settings: Settings.isolated(),
+			ui: {
+				terminal: { rows: 24 },
+				setFocus: () => {},
+				requestRender: () => {},
+			},
+		} as unknown as InteractiveModeContext;
+	}
+
+	function navigationScene(id: string, mounted: string[], unmounted: string[]): SetupScene {
+		return {
+			id,
+			title: id,
+			minVersion: 1,
+			mount: () => {
+				mounted.push(id);
+				return {
+					title: id,
+					render: () => [],
+					invalidate: () => {},
+					onUnmount: () => unmounted.push(id),
+				};
+			},
+		};
+	}
+
+	it("moves forward and back with the rendered arrow-key navigation", async () => {
+		await initTheme(false, "unicode", false, "titanium", "light");
+		const mounted: string[] = [];
+		const unmounted: string[] = [];
+		const component = new SetupWizardComponent(wizardContext(), [
+			navigationScene("first", mounted, unmounted),
+			navigationScene("second", mounted, unmounted),
+		]);
+		vi.useFakeTimers();
+		try {
+			void component.run();
+			component.handleInput("\r");
+			vi.advanceTimersByTime(500);
+			expect(Bun.stripANSI(component.render(100).join("\n"))).toContain("first");
+
+			component.handleInput("\x1b[C");
+			vi.advanceTimersByTime(500);
+			const secondFrame = Bun.stripANSI(component.render(100).join("\n"));
+			expect(secondFrame).toContain("second");
+			expect(secondFrame).toContain("← back");
+
+			component.handleInput("\x1b[D");
+			vi.advanceTimersByTime(500);
+			expect(Bun.stripANSI(component.render(100).join("\n"))).toContain("first");
+			expect(mounted).toEqual(["first", "second", "first"]);
+			expect(unmounted).toEqual(["first", "second"]);
+		} finally {
+			vi.useRealTimers();
+			component.dispose();
+		}
+	});
+
+	it("advertises and honors setup skip on the splash before mounting configuration scenes", async () => {
+		await initTheme(false, "unicode", false, "titanium", "light");
+		let mounts = 0;
+		const component = new SetupWizardComponent(wizardContext(), [
+			{
+				id: "configuration",
+				title: "configuration",
+				minVersion: 1,
+				mount: () => {
+					mounts += 1;
+					return { title: "configuration", render: () => [], invalidate: () => {} };
+				},
+			},
+		]);
+		const done = component.run();
+		const splash = component.render(100).map(line => Bun.stripANSI(line).trim());
+		// Esc, not ctrl+c: one key means "leave setup" on the splash and on every
+		// step. Advertising ctrl+c told a user that getting out of onboarding
+		// meant killing the program, and Esc here used to START the wizard.
+		expect(splash.at(-2)).toBe("enter start setup  ·  esc skip setup");
+
+		component.handleInput("\x1b");
+		component.handleInput("\r");
+		await done;
+		expect(mounts).toBe(0);
+		component.dispose();
 	});
 });
 
@@ -753,9 +856,10 @@ describe("setup wizard scene alignment", () => {
 				return /^ */.exec(line ?? "")?.[0].length ?? 0;
 			};
 			// Every header/body/footer row shares one left anchor — nothing floats
-			// centered above left-aligned content.
+			// centered above left-aligned content. The progress row is the
+			// breadcrumb, which leads with the `1/2` step counter.
 			const wordmark = indentOf(line => line.includes("v e y y o n"));
-			const step = indentOf(line => line.includes("step 1 of 2"));
+			const step = indentOf(line => line.includes("1/2"));
 			const title = indentOf(line => line.trimStart().startsWith("Align check"));
 			const body = indentOf(line => line.includes("BODY-MARKER"));
 			const footer = indentOf(line => line.includes("enter confirm"));

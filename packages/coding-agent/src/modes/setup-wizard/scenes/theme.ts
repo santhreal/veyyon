@@ -36,11 +36,14 @@ type ThemeMode = "curated" | "all";
  * user who wanted colourblind-safe LIGHT had no way to say so. They compose
  * with a theme, so they are toggles.
  */
+// Descriptions are kept short enough to fit the description column beside the
+// label. The wizard's content column is narrower than the settings selector's,
+// and a longer line was cut mid-word with no ellipsis ("Light in lig").
 const THEME_ITEMS: readonly SelectItem[] = [
-	{ value: "auto", label: "Match terminal", description: "Titanium in dark terminals, Light in light terminals" },
+	{ value: "auto", label: "Match terminal", description: "Follows your terminal's light or dark" },
 	{ value: "theme:titanium", label: "Titanium", description: "Default dark theme" },
 	{ value: "theme:light", label: "Light", description: "Default light theme" },
-	{ value: "browse", label: "Browse all…", description: "Show every built-in and custom theme" },
+	{ value: "browse", label: "Browse all…", description: "Every built-in and custom theme" },
 ];
 
 /** The `value` of each toggle row, so the select handler can recognise them. */
@@ -184,7 +187,7 @@ class ThemeSceneController implements SetupSceneController {
 		routeSelectListMouse(this.#selectList, event, listLine);
 	}
 
-	render(width: number): readonly string[] {
+	render(width: number, rows?: number): readonly string[] {
 		// Curated mode has no hint row — start straight at the preview so every
 		// scene keeps the same one-blank rhythm under the wizard header.
 		const lines =
@@ -195,6 +198,15 @@ class ThemeSceneController implements SetupSceneController {
 			lines.push(theme.fg("dim", "Loading themes…"));
 		} else {
 			this.#listRowStart = lines.length;
+			// The live preview above is fixed-height, so whatever it does not use is
+			// the list's. Without this the list asked for ten rows on every terminal
+			// and the wizard clipped the tail, which on the curated list meant
+			// "Browse all…" — the row that reaches every other theme — was the one
+			// row you could not see.
+			if (rows !== undefined) {
+				const messageRows = this.#message ? 2 : 0;
+				this.#selectList.setRowBudget(Math.max(1, rows - lines.length - messageRows));
+			}
 			lines.push(...this.#selectList.render(width));
 		}
 		if (this.#message) {
@@ -204,7 +216,9 @@ class ThemeSceneController implements SetupSceneController {
 	}
 
 	#createSelectList(items: readonly SelectItem[], selectedIndex: number): SelectList {
-		const list = new SelectList(items, Math.min(10, Math.max(1, items.length)), getSelectListTheme());
+		const list = new SelectList(items, Math.min(10, Math.max(1, items.length)), getSelectListTheme(), {
+			statusLegend: false,
+		});
 		list.setSelectedIndex(selectedIndex);
 		list.onSelectionChange = item => {
 			void this.#preview(item.value);
@@ -423,6 +437,7 @@ class ThemeSceneController implements SetupSceneController {
 
 export const themeSetupScene: SetupScene = {
 	id: "theme",
+	stepLabel: "Theme",
 	title: "Pick a theme",
 	minVersion: 1,
 	mount: host => new ThemeSceneController(host),

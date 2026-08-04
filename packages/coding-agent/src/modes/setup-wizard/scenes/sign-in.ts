@@ -28,7 +28,11 @@ class CopyablePromptInput implements Component, Focusable {
 	#input: Input;
 	#onCopy: () => void;
 
-	constructor(input: Input, onCopy: () => void) {
+	constructor(
+		input: Input,
+		onCopy: () => void,
+		private readonly onSkipSetup: () => void,
+	) {
 		this.#input = input;
 		this.#onCopy = onCopy;
 	}
@@ -49,7 +53,15 @@ class CopyablePromptInput implements Component, Focusable {
 		return this.#input.render(width);
 	}
 
+	pasteText(text: string): void {
+		this.#input.pasteText(text);
+	}
+
 	handleInput(data: string): void {
+		if (matchesKey(data, "ctrl+c")) {
+			this.onSkipSetup();
+			return;
+		}
 		if (matchesKey(data, "alt+c")) {
 			this.#onCopy();
 			return;
@@ -132,13 +144,36 @@ export class SignInTab implements SetupTab {
 		this.#selector.routeMouse(event, line - this.#selectorRowStart, col);
 	}
 
-	render(width: number): readonly string[] {
+	/**
+	 * Rows this panel needs besides the provider list in the current state: the
+	 * selector's own search-status row, plus the browser-login link, the code
+	 * prompt, and any status line. Reserving them keeps the list from growing
+	 * over the very text that tells you what to do next once a login is in
+	 * flight, and keeps the panel inside the wizard's body budget so the overlay
+	 * has nothing to clip.
+	 */
+	#reservedRows(): number {
+		let rows = 1;
+		if (this.#authUrl) rows += 2;
+		if (this.#authLaunchUrl) rows += 1;
+		if (this.#prompt) rows += this.#prompt.placeholder ? 3 : 2;
+		if (this.#statusLines.length > 0) rows += this.#statusLines.length;
+		return rows;
+	}
+
+	render(width: number, rows?: number): readonly string[] {
 		const lines: string[] = [];
 		if (this.#loggingInProvider) {
 			lines.push(theme.bold(`Signing in to ${providerDisplayName(this.#loggingInProvider)}`));
 		} else {
 			lines.push(theme.fg("muted", "Pick a provider to sign in — you can connect more than one."), "");
 			this.#selectorRowStart = lines.length;
+			// Size the provider list to the rows the wizard actually has. A fixed
+			// ten-row list overran the body budget, and the overlay clipped the
+			// tail, so providers past the fold could not be reached at all.
+			if (rows !== undefined) {
+				this.#selector.setMaxVisible(Math.max(1, rows - lines.length - this.#reservedRows()));
+			}
 			lines.push(...this.#selector.render(width));
 		}
 
@@ -284,9 +319,13 @@ export class SignInTab implements SetupTab {
 	#showPrompt(prompt: { message: string; placeholder?: string }): Promise<string> {
 		this.#resolvePrompt("");
 		const input = new Input();
-		const focusInput = new CopyablePromptInput(input, () => {
-			void this.#copyAuthUrl();
-		});
+		const focusInput = new CopyablePromptInput(
+			input,
+			() => {
+				void this.#copyAuthUrl();
+			},
+			() => this.host.skipSetup(),
+		);
 		const pending = Promise.withResolvers<string>();
 		this.#promptResolve = pending.resolve;
 		this.#prompt = { message: prompt.message, placeholder: prompt.placeholder, input: focusInput };

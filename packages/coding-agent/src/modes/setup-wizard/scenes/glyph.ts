@@ -57,7 +57,7 @@ class GlyphSceneController implements SetupSceneController {
 	#listRowStart = 0;
 
 	constructor(private readonly host: SetupSceneHost) {
-		this.#selectList = new SelectList(GLYPH_ITEMS, GLYPH_ITEMS.length, getSelectListTheme());
+		this.#selectList = new SelectList(GLYPH_ITEMS, GLYPH_ITEMS.length, getSelectListTheme(), { statusLegend: false });
 		const current = theme.getSymbolPreset();
 		const currentIndex = GLYPH_PRESETS.indexOf(current);
 		this.#selectList.setSelectedIndex(currentIndex >= 0 ? currentIndex : 0);
@@ -121,6 +121,7 @@ class GlyphSceneController implements SetupSceneController {
 
 export const glyphSetupScene: SetupScene = {
 	id: "glyph-mode",
+	stepLabel: "Glyphs",
 	title: "Choose glyph mode",
 	minVersion: 1,
 	mount: host => new GlyphSceneController(host),

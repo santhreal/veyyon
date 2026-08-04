@@ -7,7 +7,10 @@ import { theme } from "../../theme/theme";
 export const SETUP_SPLASH_MS = 2400;
 export const SETUP_TICK_MS = 33;
 
-const SKIP_HINT = "press enter to skip";
+// Esc, not ctrl+c: Esc leaves setup from the splash and from every step, so the
+// hint names one key for one meaning. Advertising ctrl+c told a user that
+// getting out of onboarding meant killing the program.
+const START_HINT = "enter start setup  ·  esc skip setup";
 
 /**
  * Setup splash: a miniature sunrise. The sun blooms open and rises over its
@@ -52,6 +55,6 @@ export function renderSetupSplash(width: number, height: number, elapsedMs: numb
 		const item = content[y - start];
 		lines.push(padLineToWidth(item !== undefined ? centerLine(item, w) : "", w));
 	}
-	if (h > 2) lines[h - 2] = padLineToWidth(centerLine(theme.fg("dim", SKIP_HINT), w), w);
+	if (h > 2) lines[h - 2] = padLineToWidth(centerLine(theme.fg("dim", START_HINT), w), w);
 	return lines;
 }
