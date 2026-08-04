@@ -73,6 +73,48 @@ describe("detectCacheInvalidation", () => {
 		const prev = usage({ cacheRead: 40_000, cacheWrite: 1_000 });
 		expect(detectCacheInvalidation(prev, usage({ cacheRead: 0, input: 12 }))).toBeUndefined();
 	});
+
+	/**
+	 * The cause is the actionable half of the marker. A bare token count tells an
+	 * operator that the conversation was just re-read at full rate and nothing about
+	 * what to stop doing. A measured session made that concrete: four prefix
+	 * rebuilds of roughly 32k characters each, every one of them caused by
+	 * re-rooting the working directory, and the transcript said only "cache miss".
+	 */
+	it("carries the recorded reason through to the marker", () => {
+		const prev = usage({ cacheRead: 49_837, cacheWrite: 980, output: 79 });
+		const current = usage({ cacheRead: 0, cacheWrite: 50_900, input: 99, output: 99 });
+
+		expect(detectCacheInvalidation(prev, current, "cwd-change")).toEqual({
+			reprocessedTokens: 50_999,
+			cause: "cwd-change",
+		});
+	});
+
+	/**
+	 * A blank or whitespace reason must not become a `cause`, or the divider renders
+	 * a trailing separator with nothing after it. Absent is the honest state when
+	 * the session recorded nothing for this turn, which is every turn on a
+	 * transcript rebuilt from disk.
+	 */
+	it.each([undefined, "", "   "])("omits an empty cause (%p)", cause => {
+		const prev = usage({ cacheRead: 49_837, cacheWrite: 980 });
+		const current = usage({ cacheRead: 0, cacheWrite: 50_900, input: 99 });
+
+		expect(detectCacheInvalidation(prev, current, cause)).toEqual({ reprocessedTokens: 50_999 });
+	});
+
+	/**
+	 * A cause never promotes a non-invalidation into a marker. Every suppression
+	 * rule above runs before the reason is considered, so a recorded reason on a
+	 * turn that reused its cache still renders nothing.
+	 */
+	it("does not flag a warm turn merely because a reason was recorded", () => {
+		const prev = usage({ cacheRead: 50_900, cacheWrite: 980 });
+		const current = usage({ cacheRead: 50_900, cacheWrite: 3_459, input: 2 });
+
+		expect(detectCacheInvalidation(prev, current, "cwd-change")).toBeUndefined();
+	});
 });
 
 describe("CacheInvalidationMarkerComponent", () => {
@@ -90,5 +132,35 @@ describe("CacheInvalidationMarkerComponent", () => {
 		const dividerWidth = Bun.stringWidth(lines[1]);
 		expect(dividerWidth).toBeGreaterThan(0);
 		expect(dividerWidth).toBeLessThan(80);
+	});
+
+	/**
+	 * The rendered divider must actually show the reason, in the same
+	 * separator-joined shape as the token count, since that string is the entire
+	 * operator-visible surface for a cache loss. Asserted on the stripped text
+	 * rather than the styled bytes so a theme change cannot silently drop it.
+	 */
+	it("names the cause in the divider next to the token count", () => {
+		const lines = new CacheInvalidationMarkerComponent({
+			reprocessedTokens: 50_999,
+			cause: "cwd-change",
+		}).render(80);
+		const text = Bun.stripANSI(lines[1] ?? "");
+
+		expect(text).toContain("cache miss");
+		expect(text).toContain("51K tokens");
+		expect(text).toContain("cwd-change");
+	});
+
+	/**
+	 * Without a cause the divider keeps its previous shape exactly: no dangling
+	 * separator, nothing implying a reason was known and withheld.
+	 */
+	it("keeps the token-only divider when no cause is known", () => {
+		const lines = new CacheInvalidationMarkerComponent({ reprocessedTokens: 50_999 }).render(80);
+		const text = Bun.stripANSI(lines[1] ?? "").trimEnd();
+
+		expect(text).toContain("51K tokens");
+		expect(text.endsWith("tokens")).toBe(true);
 	});
 });
