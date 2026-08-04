@@ -424,11 +424,11 @@ function isOpenAICompatMimoReasoningEffortModel<TApi extends Api>(
 	);
 }
 
-function readCompatEffortMap(compat: CompatOf<Api>): EffortMap | undefined {
-	if (compat === undefined || !("reasoningEffortMap" in compat)) {
+function readCompatEffortMap(compat: unknown): EffortMap | undefined {
+	if (typeof compat !== "object" || compat === null || !("reasoningEffortMap" in compat)) {
 		return undefined;
 	}
-	const map = compat.reasoningEffortMap;
+	const map = (compat as { reasoningEffortMap?: EffortMap }).reasoningEffortMap;
 	return map && Object.keys(map).length > 0 ? map : undefined;
 }
 
@@ -810,4 +810,123 @@ export function minimumSupportedEffort<TApi extends Api>(model: ApiModel<TApi>):
 	// Canonical order regardless of how the ladder was authored: the lowest
 	// supported effort is the first entry of the canonicalized ladder.
 	return canonicalizeEfforts(efforts)[0];
+}
+
+/** Canonical reasoning state after applying user intent to one model capability. */
+export type ReasoningSelectionState = "unsupported" | "uncontrolled" | "disabled" | "enabled";
+
+/**
+ * Provider-neutral request plan. `effort` is the supported canonical level,
+ * `wireEffort` is the model's baked provider value, and `wireModelId` covers
+ * providers that expose effort as separate model SKUs.
+ */
+export interface ReasoningSelection {
+	state: ReasoningSelectionState;
+	effort: Effort | undefined;
+	wireEffort: string | undefined;
+	wireModelId: string;
+	mode: ThinkingConfig["mode"] | undefined;
+	forcedByModel: boolean;
+	enabled: boolean;
+}
+
+export interface ReasoningSelectionIntent {
+	effort?: Effort;
+	disabled?: boolean;
+}
+
+function resolveSelectedEffort<TApi extends Api>(model: ApiModel<TApi>, requested: Effort): Effort {
+	const thinking = model.thinking;
+	if (thinking?.efforts.includes(requested)) return requested;
+	const compatMapped = readCompatEffortMap(model.compat)?.[requested];
+	if (
+		compatMapped !== undefined &&
+		THINKING_EFFORTS.includes(compatMapped as Effort) &&
+		thinking?.efforts.includes(compatMapped as Effort)
+	) {
+		return compatMapped as Effort;
+	}
+	const mapped = thinking?.effortMap?.[requested];
+	if (
+		mapped !== undefined &&
+		THINKING_EFFORTS.includes(mapped as Effort) &&
+		thinking?.efforts.includes(mapped as Effort)
+	) {
+		return mapped as Effort;
+	}
+	if (mapped !== undefined) return requested;
+	return requireSupportedEffort(model, requested);
+}
+
+/**
+ * Resolve reasoning once before provider serialization.
+ *
+ * `effort` and “thinking level” are the same user intent. Provider-specific
+ * controls (enum, token budget, adaptive output effort, or a routed model id)
+ * are facts on the returned plan, not separate settings.
+ */
+export function resolveReasoningSelection<TApi extends Api>(
+	model: ApiModel<TApi>,
+	intent: ReasoningSelectionIntent = {},
+): ReasoningSelection {
+	const fallbackWireModelId = model.requestModelId ?? model.id;
+	if (!model.reasoning) {
+		return {
+			state: "unsupported",
+			effort: undefined,
+			wireEffort: undefined,
+			wireModelId: fallbackWireModelId,
+			mode: undefined,
+			forcedByModel: false,
+			enabled: false,
+		};
+	}
+	const thinking = model.thinking;
+	if (!thinking) {
+		return {
+			state: intent.disabled ? "disabled" : "uncontrolled",
+			effort: undefined,
+			wireEffort: undefined,
+			wireModelId: resolveWireModelId(model, undefined),
+			mode: undefined,
+			forcedByModel: false,
+			enabled: false,
+		};
+	}
+	if (intent.disabled || intent.effort === undefined) {
+		if (thinking.requiresEffort && !thinking.suppressWhenOff) {
+			const floor = minimumSupportedEffort(model);
+			if (floor === undefined) {
+				throw new Error(`Model ${model.provider}/${model.id} requires thinking but declares no supported effort`);
+			}
+			return {
+				state: "enabled",
+				effort: floor,
+				wireEffort: thinking.effortMap?.[floor] ?? floor,
+				wireModelId: resolveWireModelId(model, floor),
+				mode: thinking.mode,
+				forcedByModel: true,
+				enabled: true,
+			};
+		}
+		return {
+			state: "disabled",
+			effort: undefined,
+			wireEffort: undefined,
+			wireModelId: resolveWireModelId(model, undefined),
+			mode: thinking.mode,
+			forcedByModel: false,
+			enabled: false,
+		};
+	}
+	const effort = resolveSelectedEffort(model, intent.effort);
+	return {
+		state: "enabled",
+		effort,
+		wireEffort: readCompatEffortMap(model.compat)?.[intent.effort] ?? thinking.effortMap?.[effort] ?? effort,
+		wireModelId: resolveWireModelId(model, effort),
+		mode: thinking.mode,
+		forcedByModel: false,
+		enabled: true,
+	};
 }
