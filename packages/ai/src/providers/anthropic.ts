@@ -2018,14 +2018,18 @@ const streamAnthropicOnce = (
 			const cacheEnforcement: CacheEnforcement = resolveCacheEnforcement(options?.cacheEnforcement);
 			const cacheTracker: CacheTrackerState | undefined = providerSessionState?.cacheTracker;
 			if (cacheTracker && cacheEnforcement !== "off") {
-				const pending = takePendingCacheFailure(cacheTracker);
+				// Scoped to this request's cache identity: a rejection on one
+				// conversation must not fail the next request of an unrelated one that
+				// happens to share this endpoint and model, which is the normal case
+				// behind the auth gateway.
+				const pending = takePendingCacheFailure(cacheTracker, options?.promptCacheKey);
 				if (pending) throw new CacheRejectedError(pending, model.provider, model.id);
 			}
 			// `msSincePreviousRequest` is measured from here rather than per attempt,
 			// so an in-provider retry reports a slightly SHORTER gap than the wire
 			// saw. That only ever makes the check more conservative: a shorter gap
 			// excuses fewer misses.
-			const cacheExpectation = cacheTracker
+			const cacheTracked = cacheTracker
 				? beginCacheTrackedRequest(cacheTracker, {
 						anchors: countCacheControlBreakpoints(params),
 						// Retention is read back off the serialized markers rather than from
@@ -2615,20 +2619,18 @@ const streamAnthropicOnce = (
 					// that count is what the operator-facing message quotes. If a rebuild
 					// left no anchors at all the verdict correctly becomes
 					// `not-requested`, which the stale count would have hidden.
-					if (cacheTracker && cacheExpectation && cacheEnforcement !== "off") {
-						const sentExpectation = { ...cacheExpectation, anchors: countCacheControlBreakpoints(params) };
-						const { verdict, decision } = recordCacheOutcome(
-							cacheTracker,
-							sentExpectation,
-							output.usage,
-							cacheEnforcement,
-						);
+					if (cacheTracker && cacheTracked && cacheEnforcement !== "off") {
+						const sent = {
+							key: cacheTracked.key,
+							expectation: { ...cacheTracked.expectation, anchors: countCacheControlBreakpoints(params) },
+						};
+						const { verdict, decision } = recordCacheOutcome(cacheTracker, sent, output.usage, cacheEnforcement);
 						if (decision.report) {
 							logger.warn(`anthropic: ${describeCacheVerdict(verdict)}`, {
 								model: model.id,
 								provider: model.provider,
 								verdict: verdict.kind,
-								anchors: sentExpectation.anchors,
+								anchors: sent.expectation.anchors,
 								willFailNextRequest: decision.failNext,
 							});
 						}
