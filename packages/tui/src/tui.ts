@@ -1236,6 +1236,11 @@ export class TUI extends Container {
 	// left it hidden. Part of the repaint-skip test: identical rows with a moved
 	// caret still needs a paint, or the composer's cursor lags the text.
 	#altPreviousCursor: { row: number; col: number } | undefined;
+	// True while the alt buffer is up because a fullscreen OVERLAY asked for it,
+	// as opposed to the transcript residing there for the "alt-arrows" transport.
+	// The two want different tracking, and residency has to survive an overlay
+	// opening and closing over it.
+	#altOverlayBorrow = false;
 	#altEnterWidth = 0;
 	#altEnterHeight = 0;
 
@@ -3274,24 +3279,48 @@ export class TUI extends Container {
 		const componentScopedOnly = this.#pendingRenderComponentsOnly;
 		this.#pendingRenderComponentsOnly = false;
 
-		// Fullscreen alt-screen short-circuit. While the topmost visible overlay
-		// requests it, borrow the terminal's alternate buffer and paint only the
-		// modal there; the normal screen and all accounting stay untouched.
-		const wantAlt = this.#wantsAltScreen();
+		// Alt-screen residency has two independent reasons, and they behave
+		// differently once up:
+		//
+		// - A fullscreen overlay BORROWS the buffer: the engine paints only the
+		//   modal, grabs the full mouse-tracking set for hit-testing, and the
+		//   normal screen plus all accounting stay untouched.
+		// - The `"alt-arrows"` scroll transport RESIDES there: the transcript
+		//   itself lives on the alt buffer so the terminal will translate the wheel
+		//   into cursor keys (Alternate Scroll Mode), and mouse tracking is exactly
+		//   what must NOT be enabled, since grabbing it is what breaks selection.
+		//
+		// So the enter sequence depends on the reason, and residency must survive an
+		// overlay opening and closing on top of it — an overlay's exit writing
+		// `1049l` would otherwise drop the transcript back to the normal screen with
+		// the mode still set and the wheel typing arrows into the composer.
+		const overlayWantsAlt = this.#wantsAltScreen();
+		const transcriptWantsAlt = this.#altTranscriptWanted();
+		const wantAlt = overlayWantsAlt || transcriptWantsAlt;
 		if (wantAlt && !this.#altActive) {
 			// Enhanced keyboard modes can be buffer-local: re-push the active
 			// modified-key reporting sequence on the freshly entered alternate
 			// screen, or Esc/modified keys revert to legacy encoding inside
 			// fullscreen overlays (Ghostty/kitty/iTerm2).
-			this.terminal.write(`\x1b[?1049h${this.#keyboardEnhancementEnter()}${MOUSE_TRACKING_ON}`);
+			const tracking = overlayWantsAlt ? MOUSE_TRACKING_ON : "";
+			this.terminal.write(`\x1b[?1049h${this.#keyboardEnhancementEnter()}${tracking}`);
 			setAltScreenActive(true);
 			this.terminal.hideCursor();
 			this.#forgetHardwareCursorState();
 			this.#recordHardwareCursorHidden();
 			this.#altActive = true;
 			this.#altPreviousLines = [];
+			this.#altPreviousCursor = undefined;
 			this.#altEnterWidth = width;
 			this.#altEnterHeight = height;
+			this.#syncAltScroll();
+		} else if (wantAlt && this.#altActive && overlayWantsAlt !== this.#altOverlayBorrow) {
+			// The reason changed while resident: an overlay opened over the
+			// transcript, or closed and handed the buffer back to it. Only the
+			// tracking set differs, so flip that alone and stay on the buffer.
+			this.terminal.write(overlayWantsAlt ? MOUSE_TRACKING_ON : MOUSE_TRACKING_OFF);
+			this.#altPreviousLines = [];
+			this.#altPreviousCursor = undefined;
 		} else if (!wantAlt && this.#altActive) {
 			const enhancementExit = this.#keyboardEnhancementExit();
 			this.terminal.write(`${MOUSE_TRACKING_OFF}${enhancementExit}\x1b[?1049l`);
@@ -3302,6 +3331,7 @@ export class TUI extends Container {
 			// overlay's full tracking set is torn down.
 			this.#syncWheelTracking();
 			this.#altPreviousLines = [];
+			this.#altPreviousCursor = undefined;
 			// A resize while on the alt buffer reflowed the terminal's saved
 			// normal screen; it no longer matches our accounting, so force the
 			// geometry rebuild path instead of a stale diff.
@@ -3309,7 +3339,8 @@ export class TUI extends Container {
 				this.#resizeEventPending = true;
 			}
 		}
-		if (this.#altActive) {
+		this.#altOverlayBorrow = overlayWantsAlt;
+		if (this.#altActive && overlayWantsAlt) {
 			this.#componentRenderTargets.clear();
 			this.#renderAltFrame(width, height);
 			return;
@@ -3611,6 +3642,13 @@ export class TUI extends Container {
 		}
 		const frame = this.#prepareFrame(rawFrame, width);
 		let window: string[] = new Array(height);
+		// Screen position of the caret for a resident alt-buffer paint, computed
+		// while the window is assembled because only here is it known which frame
+		// row landed on which screen row. Null means "no visible caret": in a frozen
+		// view the composer's row is still painted (it is the pinned footer), but a
+		// caret whose frame row sits in the frozen history above has no screen row
+		// at all and must not be drawn at a stale one.
+		let altCaret: { row: number; col: number } | null = null;
 		if (virtualScrollSlice) {
 			// Frozen transcript rows above, live footer rows below. The region
 			// reads the scroll-space snapshot (tape + this frame's uncommitted
@@ -3630,8 +3668,15 @@ export class TUI extends Container {
 						: (frame[frameLength - footerRows + (r - regionRows)] ?? "");
 			}
 			this.#drawScrollTrack(window, regionRows, viewTop, snapshot.length, width);
+			const footerTop = frameLength - footerRows;
+			if (cursorPos !== null && cursorPos.row >= footerTop) {
+				altCaret = { row: regionRows + (cursorPos.row - footerTop), col: cursorPos.col };
+			}
 		} else {
 			for (let r = 0; r < height; r++) window[r] = frame[windowTop + r] ?? "";
+			if (cursorPos !== null && cursorPos.row >= windowTop && cursorPos.row < windowTop + height) {
+				altCaret = { row: cursorPos.row - windowTop, col: cursorPos.col };
+			}
 		}
 		if (hasVisibleOverlay) {
 			window = this.#compositeOverlaysIntoWindow(window, width, height);
@@ -3669,6 +3714,34 @@ export class TUI extends Container {
 			this.#imageBudget.takePurgeIds();
 		}
 
+		// 6a. Resident alt-buffer paint. The transcript lives on the alternate
+		// screen for the "alt-arrows" transport, where there is no native scrollback
+		// to append to and nothing the terminal owns, so the whole
+		// commit/audit/scroll-append planner below does not apply: every frame is a
+		// full viewport rewrite of the window already assembled above.
+		//
+		// The commit ledger is still advanced, because on this surface it means
+		// something different and still necessary: rows at or above the window top
+		// are moved onto the scroll tape and reported to the root as committed, which
+		// is what lets a virtualized transcript DROP them and keeps the composed
+		// frame near the viewport height however long the session runs. Here the tape
+		// is not a mirror of terminal scrollback, it is the only copy — which is why
+		// the audit is skipped entirely: nothing outside this process can hold us to
+		// bytes we already painted, so there is no immutability to verify.
+		if (this.#altActive) {
+			this.#appendScrollTape(frame, Math.min(preCommitRows, chunkTo), chunkTo);
+			this.#committedRows = chunkTo;
+			this.#committedPrefix.length = 0;
+			this.#committedPrefixAuditRows = 0;
+			this.#windowTopRow = windowTop;
+			this.#emitAltFrame(window, width, height, altCaret ?? undefined);
+			this.#previousWindow = window;
+			this.#previousFrameLength = frameLength;
+			this.#clearScrollbackOnNextRender = false;
+			this.#hasEverRendered = true;
+			this.#publishCommittedRows();
+			return;
+		}
 		// 6. Emit.
 		if (intent.kind === "fullPaint") {
 			this.#emitFullPaint(frame, window, width, height, cursorPos, purgeSequence, imageTransmitBuffer, {
@@ -4369,6 +4442,22 @@ export class TUI extends Container {
 		this.#extractCursorMarkers(lines);
 		lines = this.#prepareLinesArray(lines, width);
 		this.#emitAltFrame(lines, width, height);
+	}
+
+	/**
+	 * Whether the transcript itself should reside on the alt buffer.
+	 *
+	 * True only for the `"alt-arrows"` transport with isolation on: that transport
+	 * gets its gestures from Alternate Scroll Mode, which the terminal honors only
+	 * while the alternate screen is displayed. Residency is therefore not a
+	 * preference but the precondition for the transport working at all.
+	 *
+	 * Gated on having rendered once so the first paint still lands on the normal
+	 * screen: entering the alt buffer before anything is composed would blank the
+	 * operator's terminal for a frame with nothing to show in its place.
+	 */
+	#altTranscriptWanted(): boolean {
+		return this.#scrollTransport === "alt-arrows" && this.#scrollIsolation && !this.#stopped && this.#hasEverRendered;
 	}
 
 	/**
