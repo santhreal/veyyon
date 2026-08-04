@@ -257,3 +257,162 @@ describe("alt-arrows scroll transport", () => {
 		}
 	});
 });
+
+/**
+ * Residency: the transcript itself lives on the alternate screen under this
+ * transport, because Alternate Scroll Mode is only honored while the alt buffer
+ * is displayed. So residency is not a preference, it is the precondition for the
+ * transport working at all.
+ *
+ * These cases assert the SCREEN, not the intent: the alt buffer's own viewport
+ * has to show history above a pinned footer, and the caret has to sit on the
+ * composer rather than wherever the last paint left it.
+ */
+describe("alt-arrows residency", () => {
+	const ALT_ENTER = "\x1b[?1049h";
+
+	/** Viewport rows, stripped, with the scroll track column dropped. */
+	function content(term: RecordingTerminal, width = 30): string[] {
+		return term.getViewport().map(row =>
+			Bun.stripANSI(row)
+				.padEnd(width, " ")
+				.slice(0, width - 1)
+				.trimEnd(),
+		);
+	}
+
+	/**
+	 * Entering the alt buffer must not bring the overlay's mouse-tracking set with
+	 * it. The overlay path enables full tracking for hit-testing; doing that here
+	 * would re-break selection on the very surface that exists to preserve it.
+	 *
+	 * Transport first, then isolation, which is the order a host configures from
+	 * settings. The reverse order momentarily arms the mouse grab and releases it on
+	 * the next call, because at that instant the transport really is `"mouse"` and
+	 * the engine cannot know a switch is coming; the case below pins that this
+	 * transient belongs to the mid-session switch and not to steady state.
+	 */
+	it("enters the alt buffer without enabling tracking", async () => {
+		const { term, tui, scheduler } = await rig();
+		try {
+			tui.setScrollTransport("alt-arrows");
+			tui.setScrollIsolation(true);
+			await scheduler.drain(term);
+
+			expect(term.output()).toContain(ALT_ENTER);
+			expect(term.output()).not.toContain(TRACKING_ENABLE_BUTTONS);
+		} finally {
+			tui.stop();
+		}
+	});
+
+	/**
+	 * Toggling isolation while the transport is already `"alt-arrows"` never touches
+	 * the mouse, in either direction. This is the steady-state property: an operator
+	 * flipping the setting on and off mid-session must not have selection taken away
+	 * even for a frame.
+	 */
+	it("never grabs the mouse when isolation is toggled under this transport", async () => {
+		const { term, tui, scheduler } = await rig();
+		try {
+			tui.setScrollTransport("alt-arrows");
+			await scheduler.drain(term);
+			const mark = term.mark();
+
+			tui.setScrollIsolation(true);
+			await scheduler.drain(term);
+			tui.setScrollIsolation(false);
+			await scheduler.drain(term);
+			tui.setScrollIsolation(true);
+			await scheduler.drain(term);
+
+			expect(term.outputSince(mark)).not.toContain(TRACKING_ENABLE_BUTTONS);
+		} finally {
+			tui.stop();
+		}
+	});
+
+	/**
+	 * The composer holds the last viewport row while the transcript fills the rows
+	 * above it. This is the property the whole change exists for, asserted on the
+	 * alt buffer's own viewport.
+	 */
+	it("paints the transcript above a pinned footer", async () => {
+		const { term, tui, scheduler } = await rig();
+		try {
+			tui.setScrollIsolation(true);
+			tui.setScrollTransport("alt-arrows");
+			await scheduler.drain(term);
+
+			const view = content(term);
+			expect(view[view.length - 1]).toBe(">");
+			// The rows above are transcript tail, not blank filler.
+			expect(view[0]).toStartWith("h");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	/**
+	 * Scrolling back freezes history above while the footer stays put — the same
+	 * contract the mouse transport has, reached through the routed gesture instead
+	 * of a wheel report.
+	 */
+	it("keeps the footer pinned while scrolled back", async () => {
+		const { term, tui, scheduler } = await rig();
+		try {
+			tui.setScrollIsolation(true);
+			tui.setScrollTransport("alt-arrows");
+			await scheduler.drain(term);
+
+			expect(tui.scrollByRows(-4)).toBe(true);
+			await scheduler.drain(term);
+
+			const view = content(term);
+			expect(tui.virtualScrollActive).toBe(true);
+			expect(view[view.length - 1]).toBe(">");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	/**
+	 * The caret lands on the composer. A resident transcript has a live composer on
+	 * the alt buffer, and the overlay emitter never showed a caret at all, so
+	 * without this the operator would type into a row with no visible cursor.
+	 */
+	it("places the caret on the composer row", async () => {
+		const { term, tui, scheduler } = await rig();
+		try {
+			tui.setScrollIsolation(true);
+			tui.setScrollTransport("alt-arrows");
+			await scheduler.drain(term);
+
+			// Last viewport row, just past the ">" the composer renders.
+			expect(term.getCursor()).toEqual({ row: 7, col: 1 });
+		} finally {
+			tui.stop();
+		}
+	});
+
+	/**
+	 * Leaving the transport hands the normal screen back, so an operator who turns
+	 * the setting off is not stranded on the alt buffer with their transcript gone.
+	 */
+	it("returns to the normal screen when the transport leaves", async () => {
+		const { term, tui, scheduler } = await rig();
+		try {
+			tui.setScrollIsolation(true);
+			tui.setScrollTransport("alt-arrows");
+			await scheduler.drain(term);
+			const mark = term.mark();
+
+			tui.setScrollTransport("mouse");
+			await scheduler.drain(term);
+
+			expect(term.outputSince(mark)).toContain("\x1b[?1049l");
+		} finally {
+			tui.stop();
+		}
+	});
+});
