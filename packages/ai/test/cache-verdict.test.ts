@@ -23,16 +23,19 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	beginCacheTrackedRequest,
 	CACHE_TTL_MS,
 	CACHE_WINDOW_GRACE,
 	type CacheExpectation,
 	CacheRejectedError,
 	cacheWindowGraceMs,
+	createCacheTrackerState,
 	decideCacheEnforcement,
 	describeCacheVerdict,
 	isCacheHealthy,
 	isEnforceableFailure,
 	MIN_CACHEABLE_TOKENS,
+	recordCacheOutcome,
 	resolveCacheEnforcement,
 	verifyCacheUsage,
 } from "@veyyon/ai/cache";
@@ -271,6 +274,43 @@ describe("a cache that got worse", () => {
 			"ok",
 		);
 	});
+
+	/**
+	 * The false positive this guard exists for, and it is not a rare edge: it is
+	 * this product's normal operation.
+	 *
+	 * `Agent#buildSideRequestContext` deliberately mirrors the main loop's system +
+	 * tools prefix so a compaction, title, advisor or `/btw` request SHARES the
+	 * prompt cache. Those requests carry different and usually much shorter
+	 * messages, so they read back only the shared prefix — a fraction of what the
+	 * previous conversational turn read. Reported as a collapse, every compaction
+	 * and every title generation would warn for behaving exactly as designed, and a
+	 * check that cries wolf on its own product gets switched off.
+	 *
+	 * A prompt smaller than the previously cached prefix cannot contain that
+	 * prefix, so reading less of it is arithmetic rather than a defect.
+	 */
+	it("does not call a side-channel request a collapse", () => {
+		// Previous conversational turn read a 40k prefix; this side request's whole
+		// prompt is 12k, of which the shared 8k prefix was served from cache.
+		const sideRequest = verifyCacheUsage(warmRequest({ previousReadTokens: 40_000 }), usage(4_000, 8_000, 0));
+		expect(sideRequest.kind).toBe("ok");
+	});
+
+	/**
+	 * And the guard must not swallow the real thing. A genuine prefix break keeps a
+	 * full-size prompt while reading almost none of it, which is distinguishable
+	 * from a side request by exactly that: the prompt still covers what was cached.
+	 */
+	it("still reports a collapse when the prompt is as large as the lost prefix", () => {
+		const atBoundary = verifyCacheUsage(warmRequest({ previousReadTokens: 40_000 }), usage(35_000, 5_000, 0));
+		expect(atBoundary.kind).toBe("degraded");
+
+		// One token short of covering the old prefix is treated as not comparable,
+		// so the boundary is pinned on both sides rather than left to drift.
+		const justUnder = verifyCacheUsage(warmRequest({ previousReadTokens: 40_000 }), usage(34_999, 5_000, 0));
+		expect(justUnder.kind).toBe("ok");
+	});
 });
 
 describe("enforcement decides what to do about a verdict", () => {
@@ -385,5 +425,68 @@ describe("resolving the enforcement level", () => {
 			if (saved === undefined) delete process.env.VEYYON_CACHE_ENFORCEMENT;
 			else process.env.VEYYON_CACHE_ENFORCEMENT = saved;
 		}
+	});
+});
+describe("the comparison baseline across a side request", () => {
+	/**
+	 * A side request lowers the baseline for exactly one turn and then it recovers.
+	 *
+	 * This is the behaviour the tracker deliberately keeps, and the reason is worth
+	 * a test because both "obvious" alternatives are worse: remembering the maximum
+	 * read makes compaction over-report forever, and refusing to update on a
+	 * non-comparable turn freezes the baseline so a collapse can never be reported
+	 * again. One self-healing turn of blindness is the smallest failure of the
+	 * three, so the sequence is pinned rather than left to a future "fix".
+	 */
+	it("recovers on the next conversational turn", () => {
+		const state = createCacheTrackerState();
+		const facts = { anchors: 4, retention: "short" as const, reportsCacheWrites: true, cacheKey: "session" };
+
+		// Turn 1: a warm conversational turn reading a 40k prefix.
+		const first = beginCacheTrackedRequest(state, facts, 1_000);
+		recordCacheOutcome(state, first, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
+		expect(state.lastReadTokens).toBe(40_000);
+
+		// Turn 2: a side request — shares the prefix, carries shorter messages.
+		const side = beginCacheTrackedRequest(state, facts, 2_000);
+		expect(side.previousReadTokens).toBe(40_000);
+		const sideVerdict = recordCacheOutcome(state, side, { input: 4_000, cacheRead: 8_000, cacheWrite: 0 }, "warn");
+		expect(sideVerdict.verdict.kind).toBe("ok");
+		expect(sideVerdict.decision.report).toBe(false);
+		// The baseline followed it down, which is the one turn of blindness.
+		expect(state.lastReadTokens).toBe(8_000);
+
+		// Turn 3: back to the conversation, reading the full prefix again. The
+		// baseline recovers, so turn 4 can detect a collapse normally.
+		const third = beginCacheTrackedRequest(state, facts, 3_000);
+		expect(third.previousReadTokens).toBe(8_000);
+		recordCacheOutcome(state, third, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
+		expect(state.lastReadTokens).toBe(40_000);
+
+		const fourth = beginCacheTrackedRequest(state, facts, 4_000);
+		const collapse = recordCacheOutcome(state, fourth, { input: 36_000, cacheRead: 5_000, cacheWrite: 0 }, "warn");
+		expect(collapse.verdict.kind).toBe("degraded");
+	});
+
+	/** A changed cache key discards the history rather than comparing across it:
+	 *  a different key has a different prefix, so every switch would look like a
+	 *  collapse. */
+	it("forgets the baseline when the cache key changes", () => {
+		const state = createCacheTrackerState();
+		const first = beginCacheTrackedRequest(
+			state,
+			{ anchors: 4, retention: "short", reportsCacheWrites: true, cacheKey: "session-a" },
+			1_000,
+		);
+		recordCacheOutcome(state, first, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
+
+		const switched = beginCacheTrackedRequest(
+			state,
+			{ anchors: 4, retention: "short", reportsCacheWrites: true, cacheKey: "session-b" },
+			2_000,
+		);
+		expect(switched.firstRequest).toBe(true);
+		expect(switched.previousReadTokens).toBeUndefined();
+		expect(switched.msSincePreviousRequest).toBeUndefined();
 	});
 });
