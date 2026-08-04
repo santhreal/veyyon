@@ -59,24 +59,40 @@ export function resolveOpenAIPromptCachePolicy({
 	const generationSupportsBreakpoints = supportsOpenAIPromptCacheBreakpoints(modelId);
 	const stablePrefixBreakpoint =
 		promptCacheKey && generationSupportsBreakpoints && official ? EXPLICIT_BREAKPOINT : undefined;
-	// `prompt_cache_retention` is deprecated from the 5.6 generation onward, where
-	// `prompt_cache_options.ttl` replaces it; sending both is contradictory.
-	const usesModernOfficialCache = generationSupportsBreakpoints && official;
+	// `prompt_cache_retention` is deprecated from the 5.6 generation onward,
+	// where request-wide `prompt_cache_options.ttl` governs lifetime and `24h`
+	// is no longer an offered value. Deprecation is a property of the MODEL
+	// GENERATION, not of the endpoint: gating the suppression on `official` too
+	// let a 5.6+ id reach `api.openai.com` under any provider id other than
+	// `openai` (custom/compatible provider entries pointed at the official host
+	// keep `compat.supportsLongPromptCacheRetention`, which is URL-keyed and
+	// provider-blind) and still carry `24h`, with no breakpoint to pair it with.
 	const promptCacheRetention =
 		promptCacheKey &&
 		cacheRetention === "long" &&
 		model.compat.supportsLongPromptCacheRetention &&
-		!usesModernOfficialCache
+		!generationSupportsBreakpoints
 			? "24h"
 			: undefined;
 	return { stablePrefixBreakpoint, promptCacheRetention };
 }
 
-/** Serialize one Responses input-text block under the resolved cache policy. */
+/**
+ * Serialize one Responses input-text block under the resolved cache policy.
+ *
+ * The marker is dropped for text with no cacheable content. A breakpoint marks
+ * the prefix ending at its own block, and the platform floor for a cacheable
+ * prefix is 1024 tokens strictly, so a blank block can never make its own
+ * marker eligible; it only spends a marker slot and risks the documented 400
+ * for a breakpoint on a non-cacheable block. `normalizeSystemPrompts` already
+ * filters blank prompts on the Responses path, but this is the module boundary
+ * every serializer goes through, so the invariant is enforced here.
+ */
 export function formatOpenAIInputText(
 	text: string,
 	policy: OpenAIPromptCachePolicy = OPENAI_PROMPT_CACHE_DISABLED,
 ): OpenAICacheableInputText {
 	const breakpoint = policy.stablePrefixBreakpoint;
-	return breakpoint ? { type: "input_text", text, prompt_cache_breakpoint: breakpoint } : { type: "input_text", text };
+	if (!breakpoint || text.trim().length === 0) return { type: "input_text", text };
+	return { type: "input_text", text, prompt_cache_breakpoint: breakpoint };
 }

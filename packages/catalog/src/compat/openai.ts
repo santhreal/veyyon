@@ -484,7 +484,14 @@ export function buildOpenAICompat(spec: ModelSpec<"openai-completions">): Resolv
 		qwenPreserveThinking:
 			(thinkingFormat === "qwen" || thinkingFormat === "qwen-chat-template") && isLocalOpenAICompatBackend,
 		requiresAssistantContentForToolCalls: isKimiModel || isDirectDeepseekReasoning,
-		cacheControlFormat: isOpenRouter && spec.id.startsWith("anthropic/") ? "anthropic" : undefined,
+		// `isAnthropicModel` (computed above), not a raw `anthropic/` prefix test.
+		// The prefix test dropped caching entirely for the `~anthropic/claude-*-latest`
+		// alias rows: the tilde sorts them to the top of the picker, so they are the
+		// likeliest Claude-on-OpenRouter selection, and `startsWith("anthropic/")` is
+		// false for every one of them. With `cacheControlFormat` undefined,
+		// `maybeAddAnthropicCacheControl` returns before writing a breakpoint and
+		// every turn is a full uncached prefill of the whole conversation.
+		cacheControlFormat: isOpenRouter && isAnthropicModel ? "anthropic" : undefined,
 		openRouterRouting: undefined,
 		vercelGatewayRouting: undefined,
 		isOpenRouterHost: isOpenRouter,
@@ -621,7 +628,13 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 		wireModelIdMode: isOpenRouter ? "openrouter" : "raw",
 		alwaysSendMaxTokens: spec.id ? isKimiModelId(spec.id) : false,
 		enableGeminiThinkingLoopGuard: modelFamilyToken(spec.id ?? "") === "gemini",
-		supportsObfuscationOptOut: isOpenAIUrl || spec.provider === "openai",
+		// `isOpenAIUrl || provider === "openai"` sent this to any host a caller
+		// re-pointed an `openai` model at, because the provider clause defeats the
+		// endpoint test it is ORed with. It cannot simply be dropped either:
+		// `isOpenAIUrl` is false for an UNSET baseUrl, which is the default for every
+		// first-party OpenAI row. `isOfficialOpenAIEndpoint` is the pair of claims
+		// actually meant here, unset-means-official and a re-pointed host means not.
+		supportsObfuscationOptOut: isOfficialOpenAIEndpoint(spec.provider, baseUrl),
 		stripDeepseekSpecialTokens:
 			Boolean(id) && isDeepseekModelIdOrName(id) && (spec.provider === "nvidia" || spec.provider === "deepseek"),
 		streamMarkupHealingPattern: id ? detectStreamMarkupHealingPattern(spec.provider, id, baseUrl) : undefined,

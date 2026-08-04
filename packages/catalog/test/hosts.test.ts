@@ -6,6 +6,7 @@ import {
 	isVertexRawPredictUrl,
 	modelMatchesHost,
 } from "@veyyon/catalog/hosts";
+import * as hosts from "@veyyon/catalog/hosts";
 
 describe("hostMatchesUrl", () => {
 	test("matches OpenRouter URLs and rejects other or missing URLs", () => {
@@ -76,5 +77,31 @@ describe("endpoint shape predicates", () => {
 		expect(isDashscopeCompatibleModeUrl("https://example.aliyuncs.com/compatible-mode/v1")).toBe(false);
 		expect(isDashscopeCompatibleModeUrl("https://dashscope.example.com/compatible-mode/v1")).toBe(false);
 		expect(isDashscopeCompatibleModeUrl("https://dashscope.aliyuncs.com/api/v1")).toBe(false);
+	});
+});
+
+/**
+ * `hosts` once exported `isAzureDeploymentsUrl`, a `baseUrl.includes("/deployments/")`
+ * one-liner with zero consumers anywhere in the tree while the only site that
+ * needs the check (`openai-shared.ts`, building the Azure chat-completions URL)
+ * inlined it. An extracted endpoint-shape predicate that nothing calls reads as
+ * the supported way to classify an Azure deployment URL and is not one: a caller
+ * reaching for it would branch on a bare path substring, so any host with a
+ * `/deployments/` segment would classify as Azure. Azure classification goes
+ * through the `azureOpenAI` host markers instead.
+ */
+describe("Azure deployment URLs classify through the azureOpenAI host, not a path predicate", () => {
+	test("exposes no standalone Azure deployments path predicate", () => {
+		expect("isAzureDeploymentsUrl" in hosts).toBe(false);
+	});
+
+	test("matches deployment-scoped Azure URLs by host marker", () => {
+		expect(hostMatchesUrl("https://my-res.openai.azure.com/openai/deployments/gpt-5", "azureOpenAI")).toBe(true);
+		expect(hostMatchesUrl("https://azure.com/openai/deployments/gpt-5", "azureOpenAI")).toBe(true);
+		// A `/deployments/` segment alone is not Azure — the trap the bare
+		// substring predicate would have set for its first caller.
+		expect(hostMatchesUrl("https://example.com/v1/deployments/gpt-5", "azureOpenAI")).toBe(false);
+		// Azure without a deployment segment still classifies.
+		expect(hostMatchesUrl("https://my-res.openai.azure.com/openai/responses", "azureOpenAI")).toBe(true);
 	});
 });

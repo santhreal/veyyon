@@ -1,8 +1,12 @@
 /**
- * Trailing-marker vocabulary shared by canonical-id resolution and
- * proxy-reference lookup. A "marker" is a routing/quantization/effort suffix
- * a reseller or aggregator appends to an upstream model id
- * (`-thinking`, `:nitro`, `-fp8`, …) that does not change model identity.
+ * Trailing-marker vocabulary for proxy-reference lookup. A "marker" is a
+ * routing/quantization/effort suffix a reseller or aggregator appends to an
+ * upstream model id (`-thinking`, `:nitro`, `-fp8`, …) that does not change
+ * model identity.
+ *
+ * Canonical-id coalescing deliberately does NOT share this module: it needs a
+ * narrower vocabulary (it must never strip `search`) and runs generator-side
+ * only, so it keeps its own copy in `scripts/equivalence.ts`.
  */
 const TRAILING_MARKERS = [
 	"thinking",
@@ -35,15 +39,8 @@ const TRAILING_MARKERS = [
  */
 const REFERENCE_ONLY_TRAILING_MARKERS = ["search"] as const;
 
-function buildTrailingMarkerPattern(markers: readonly string[]): RegExp {
-	return new RegExp(`[-:](?:${markers.join("|")})$`, "i");
-}
-
-/** Marker pattern used by canonical-id resolution (`search` excluded). */
-export const CANONICAL_TRAILING_MARKER_PATTERN = buildTrailingMarkerPattern(TRAILING_MARKERS);
-
 /** Marker pattern used by proxy-reference lookup (`search` included). */
-export const REFERENCE_TRAILING_MARKER_PATTERN = buildTrailingMarkerPattern([
-	...TRAILING_MARKERS,
-	...REFERENCE_ONLY_TRAILING_MARKERS,
-]);
+export const REFERENCE_TRAILING_MARKER_PATTERN = new RegExp(
+	`[-:](?:${[...TRAILING_MARKERS, ...REFERENCE_ONLY_TRAILING_MARKERS].join("|")})$`,
+	"i",
+);
