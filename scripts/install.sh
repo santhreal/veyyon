@@ -5,9 +5,10 @@ set -e
 # Usage: curl -fsSL https://get.veyyon.dev | sh
 #   or:  curl -fsSL https://raw.githubusercontent.com/santhreal/veyyon/main/scripts/install.sh | sh
 #
-# By default this installs the prebuilt self-contained binary: one download, no
-# toolchain, nothing from a package registry. Pass --source to build from a
-# local checkout with bun instead (needed only to run an unreleased ref).
+# This installs the prebuilt self-contained binary: one verified download, no
+# toolchain, nothing from a package registry. It NEVER clones this repository and
+# never builds from source. To run an unreleased ref, or to work on veyyon, clone
+# the repository yourself and run `bun run setup` in that checkout.
 #
 # The options live in usage() below, which is also what `--help` prints. One
 # place: a list here as well would be the copy that goes stale, and it is the
@@ -65,7 +66,6 @@ install_dir() {
     done
     printf '%s' "$_id_dir"
 }
-MIN_BUN_VERSION="1.3.14"
 
 # Retry transient network failures on every download (a dropped connection or a
 # 5xx/429 from GitHub should not fail the whole install on the first blip). Kept
@@ -77,6 +77,13 @@ MIN_BUN_VERSION="1.3.14"
 # arguments. Do not quote it (shellcheck SC2086 is wrong here): quoting passes
 # the whole string as one argument and curl rejects it.
 CURL_RETRY="--retry 3 --retry-delay 1"
+
+# What to tell someone the installer cannot serve: an unsupported platform, or a
+# ref with no published release. The user owns the checkout and runs the clone;
+# the installer does not, which is why this is prose and not a flag. It used to
+# be a `--source` suggestion, and that flag cloned into $HOME/.veyyon/src behind
+# the user's back, leaving a second divergent copy of the product on the machine.
+MANUAL_BUILD="build it from a checkout you own: git clone https://github.com/${REPO}.git && cd veyyon && bun run setup"
 
 MODE=""
 REF=""
@@ -100,15 +107,15 @@ veyyon installer
 
 Options:
   --binary          Install the prebuilt binary (the default; no toolchain needed)
-  --source          Build and run from a git checkout with bun (installs bun if needed)
   --local           Install the binary this checkout already built, from dist/vey
-  --ref <ref>       Install a specific release tag, or with --source any branch or
-                    commit. A bare version resolves to its published tag, so
-                    1.0.37 and v1.0.37 are the same release. Implies --source
-                    unless --binary is given.
+  --ref <ref>       Install a specific published release tag. A bare version
+                    resolves to its tag, so 1.0.37 and v1.0.37 are the same
+                    release. Branches and commits are not installable: clone the
+                    repository and run \`bun run setup\` in that checkout instead.
   -r <ref>          Shorthand for --ref
   --no-verify       Skip the download's checksum verification (NOT recommended)
-  --uninstall       Remove veyyon, the \`vey\` alias, completions, and any source checkout
+  --uninstall       Remove veyyon, the \`vey\` alias, completions, and any source
+                    checkout an older installer left behind
   -h, --help        Print this and exit
 
 Environment:
@@ -121,7 +128,6 @@ USAGE
 while [ $# -gt 0 ]; do
     case "$1" in
         --local) MODE="local"; shift ;;
-        --source) MODE="source"; shift ;;
         --binary) MODE="binary"; shift ;;
         --uninstall) DO_UNINSTALL=1; shift ;;
         --no-verify) VERIFY=0; shift ;;
@@ -145,8 +151,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Default to source when a ref is pinned.
-if [ -n "$REF" ] && [ -z "$MODE" ]; then MODE="source"; fi
 
 # ---- color ----
 # The install is the first thing anyone ever sees of veyyon and it rendered in
@@ -471,10 +475,10 @@ release_tag_state() {
 # "there is no such tag". Collapsing them is how a tag with no release spent a
 # release cycle being reported as a missing platform binary.
 #
-# On 2 the tag that DOES exist is still printed, so the caller can name it and
-# suggest a `--source` build that will actually check out: `--ref 1.0.39` is not
-# a ref git can resolve, and telling someone to retry with it is the same kind of
-# advice-that-cannot-work this whole change is about. Nothing installs it, since
+# On 2 the tag that DOES exist is still printed, so the caller can name it in the
+# manual-build advice: `--ref 1.0.39` is not a ref git can resolve, and telling
+# someone to check it out is the same kind of advice-that-cannot-work this whole
+# change is about. Nothing installs it, since
 # only status 0 reaches the download.
 resolve_ref_tag() {
     # `|| _rrt_first=$?` rather than a bare call: a non-zero state is the normal
@@ -867,10 +871,10 @@ completions_enable_hint() {
 # `kind` is `file` for a regular file, whose identity is its bytes, or `link` for
 # a symlink, whose identity is the TARGET STRING it holds. A symlink's own
 # content IS that string, and it is the whole of what the installer created. The
-# destination is deliberately not hashed: `--source` links at a git checkout that
-# changes on every `git pull`, which is how a source install updates, so hashing
-# through the link would mark every source install foreign the first time it
-# advanced.
+# destination is deliberately not hashed: an older source install linked at a git
+# checkout that changed on every `git pull`, so hashing through the link would
+# mark such an install foreign the first time it advanced. Those links still have
+# to be recognized here, because this installer has to be able to replace one.
 owner_marker_for() {
     _owner_path="$1"
     printf '%s/.%s.veyyon-owner' "$(dirname "$_owner_path")" "$(basename "$_owner_path")"
@@ -1187,7 +1191,7 @@ doctor_natives() {
     _dn_status=$?
     rm -rf "$_dn_dir"
     if [ "$_dn_status" -ne 0 ]; then
-        die "the $_dn_phase $BIN_NAME starts but cannot run a search: \`$BIN_NAME grep\` exited $_dn_status. The native addon did not load. This is usually a platform mismatch (a musl system, or an architecture the release does not build). Install from source instead: curl -fsSL https://get.veyyon.dev | sh -s -- --source. Output was: $_dn_out"
+        die "the $_dn_phase $BIN_NAME starts but cannot run a search: \`$BIN_NAME grep\` exited $_dn_status. The native addon did not load. This is usually a platform mismatch (a musl system, or an architecture the release does not build). No prebuilt binary works here, so $MANUAL_BUILD. Output was: $_dn_out"
     fi
     case "$_dn_out" in
         *probe.txt*) ok "native addon loads ($_dn_phase) — search returned the expected match" ;;
@@ -1337,8 +1341,8 @@ pid_is_running() {
 finalize_binary() {
     # $3 is what the user should DO about an empty staged file. It differs by
     # caller: a truncated download is retried, an empty local build is rebuilt.
-    # The message used to say "downloaded binary" and suggest --source for both,
-    # which sent a --local user chasing a network problem they never had.
+    # The message used to say "downloaded binary" and blame the network for both,
+    # which sent a --local user chasing a problem they never had.
     tmp="$1"; dest="$2"; empty_hint="$3"
     [ -s "$tmp" ] || die "the binary staged at $tmp is empty — refusing to install; $empty_hint"
     if ! binary_path_is_replaceable "$dest"; then
@@ -1729,58 +1733,12 @@ do_uninstall() {
     fi
 }
 
-# ---- bun (source) install ----
-require_bun_version() {
-    raw=$(bun --version 2>/dev/null || true)
-    [ -z "$raw" ] && die "failed to read bun version"
-    clean=${raw%%-*}
-    # numeric-ish compare major.minor.patch
-    a_major=${clean%%.*}; rest=${clean#*.}; a_minor=${rest%%.*}; a_patch=${rest#*.}; a_patch=${a_patch%%.*}
-    b_major=${MIN_BUN_VERSION%%.*}; rest=${MIN_BUN_VERSION#*.}; b_minor=${rest%%.*}; b_patch=${rest#*.}; b_patch=${b_patch%%.*}
-    if [ "$a_major" -gt "$b_major" ] || \
-       { [ "$a_major" -eq "$b_major" ] && [ "$a_minor" -gt "$b_minor" ]; } || \
-       { [ "$a_major" -eq "$b_major" ] && [ "$a_minor" -eq "$b_minor" ] && [ "$a_patch" -ge "$b_patch" ]; }; then
-        return 0
-    fi
-    die "bun $MIN_BUN_VERSION or newer is required (have $clean). Upgrade: https://bun.sh/docs/installation"
-}
 
-install_bun() {
-    step "installing bun..."
-    # Download the installer to a file, THEN run it.
-    #
-    # This used to be `curl ... | bash`, which hands the shell whatever bytes
-    # happened to arrive: a connection that drops mid-transfer executes a
-    # TRUNCATED installer, and because a pipeline's exit status is the LAST
-    # command's, a curl that failed outright reported success — bash read an
-    # empty stdin, exited 0, and the install carried on to fail later somewhere
-    # unrelated. Neither failure said anything about the download.
-    tmp_installer="${TMPDIR:-/tmp}/veyyon-bun-install.$$"
-    if ! curl -fsSL $CURL_RETRY --connect-timeout 10 --max-time 120 https://bun.sh/install -o "$tmp_installer"; then
-        rm -f "$tmp_installer"
-        die "could not download the bun installer from https://bun.sh/install — check your network, or install bun yourself (https://bun.sh) and re-run this installer"
-    fi
-    if [ ! -s "$tmp_installer" ]; then
-        rm -f "$tmp_installer"
-        die "the bun installer downloaded empty — retry, or install bun yourself (https://bun.sh) and re-run this installer"
-    fi
-    if has bash; then bun_runner=bash; else bun_runner=sh; fi
-    if ! "$bun_runner" "$tmp_installer"; then
-        rm -f "$tmp_installer"
-        die "the bun installer failed — install bun yourself (https://bun.sh) and re-run this installer"
-    fi
-    rm -f "$tmp_installer"
-    export BUN_INSTALL="$HOME/.bun"
-    export PATH="$BUN_INSTALL/bin:$PATH"
-    require_bun_version
-}
-
-# Veyyon's packages resolve one another through Bun workspace and catalog
-# protocols, which only work inside a full checkout. A source install therefore
-# keeps a real clone under $VEYYON_SRC_DIR, installs the workspace once, and
-# links the launcher (packages/coding-agent/scripts/veyyon) onto PATH. The
-# launcher runs straight from TypeScript, so there is no build step; --ref pins
-# a tag, branch, or commit.
+# Where an older installer kept its clone. Nothing creates this directory any
+# more: the source-install mode that cloned into it is gone. The path survives
+# because `--uninstall` still has to find such a tree on machines that ran the
+# old installer, and has to preserve any work in it rather than delete it.
+#
 # The source checkout, resolved on every call rather than when this file is
 # sourced.
 #
@@ -1793,55 +1751,12 @@ install_bun() {
 src_dir() { printf '%s' "${VEYYON_SRC_DIR:-$HOME/.veyyon/src}"; }
 REPO_URL="https://github.com/${REPO}.git"
 
-# Commit any uncommitted local edits in a source checkout onto a durable backup
-# branch BEFORE the update resets over them. The update path runs
-# `git reset --hard origin/<ref>`, which would otherwise silently discard a
-# user's local edits to a tracked file (this is how an edited ~/.veyyon/src
-# AGENTS.md kept vanishing on every update). Preserving-then-resetting means the
-# installer never destroys work it did not create: the edits live on branch
-# `veyyon-local-<stamp>` and are printed for recovery.
-#
-# Uses `git commit-tree` so the backup commit is built from the staged tree
-# without moving HEAD or the current branch — the checkout is left exactly as it
-# was for the reset that follows. `git add -A` honors .gitignore, so build
-# artifacts (node_modules, dist) are not swept into the backup, only real edits.
-# Identity is forced inline so this works in a checkout with no configured git
-# user. Returns non-zero if preservation cannot complete, so the caller can
-# refuse to reset rather than risk destroying the changes (fail closed).
-preserve_local_src_changes() {
-    src="${1:-$(src_dir)}"
-    [ -d "$src/.git" ] || return 0
-    [ -n "$( cd "$src" 2>/dev/null && git status --porcelain 2>/dev/null )" ] || return 0
-    # pid keeps two installer runs in the same second from colliding on the
-    # branch name (a collision would fail closed and needlessly block the update).
-    stamp=$(date -u +%Y%m%d-%H%M%S)-$$
-    branch="veyyon-local-$stamp"
-    (
-        cd "$src" || exit 1
-        git add -A || exit 1
-        tree=$(git write-tree) || exit 1
-        parent=$(git rev-parse -q --verify HEAD 2>/dev/null || true)
-        msg="veyyon: preserve local changes before update ($stamp)"
-        if [ -n "$parent" ]; then
-            commit=$(git -c user.name="veyyon-installer" -c user.email="installer@veyyon.dev" \
-                commit-tree "$tree" -p "$parent" -m "$msg") || exit 1
-        else
-            commit=$(git -c user.name="veyyon-installer" -c user.email="installer@veyyon.dev" \
-                commit-tree "$tree" -m "$msg") || exit 1
-        fi
-        git branch "$branch" "$commit" || exit 1
-    ) || { warn "could not preserve local changes in $src; refusing to reset over them"; return 1; }
-    warn "preserved your local changes on branch '$branch'"
-    warn "recover them with: git -C $src checkout $branch"
-    return 0
-}
 
-# Move an existing tree aside instead of deleting it. The clone path used to
-# `rm -rf "$(src_dir)"` before cloning, which destroys any files a user put
-# there (or a partial/corrupt checkout with no .git). Moving to
-# `<dir>.bak-<stamp>` preserves everything and lets the fresh clone proceed.
-# An empty directory is simply removed (nothing to preserve). Fail closed: if
-# the move cannot happen, die rather than fall back to a destructive delete.
+# Move an existing tree aside instead of deleting it. Uninstall uses this on a
+# legacy checkout it must not destroy: a tree holding local work, or one tracking
+# a foreign remote. An empty directory is simply removed (nothing to preserve).
+# Fail closed: if the move cannot happen, die rather than fall back to a
+# destructive delete.
 move_aside_existing_src() {
     src="${1:-$(src_dir)}"
     [ -e "$src" ] || return 0
@@ -1851,7 +1766,7 @@ move_aside_existing_src() {
     fi
     stamp=$(date -u +%Y%m%d-%H%M%S)-$$
     backup="$src.bak-$stamp"
-    mv "$src" "$backup" || die "refusing to clone: could not move existing $src aside to $backup"
+    mv "$src" "$backup" || die "refusing to continue: could not move existing $src aside to $backup"
     warn "moved existing $src aside to $backup (nothing was deleted)"
 }
 
@@ -1888,124 +1803,6 @@ src_remote_is_ours() {
             ;;
     esac
     return 1
-}
-
-fetch_source_tree() {
-    if [ -d "$(src_dir)/.git" ] && src_remote_is_ours "$(src_dir)"; then
-        say "updating veyyon source in $(src_dir)..."
-        # Commit local edits to a backup branch before resetting. If that fails,
-        # refuse the update rather than destroy uncommitted work.
-        preserve_local_src_changes "$(src_dir)" \
-            || die "refusing to update: could not preserve local changes in $(src_dir)"
-        ( cd "$(src_dir)" && git fetch --tags --force origin ) || die "failed to update $(src_dir)"
-        ref="$REF"
-        if [ -z "$ref" ]; then
-            ref=$( cd "$(src_dir)" && git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p' )
-            [ -z "$ref" ] && ref="main"
-        fi
-        ( cd "$(src_dir)" && git checkout --force "$ref" && { git reset --hard "origin/$ref" 2>/dev/null || git reset --hard "$ref"; } ) \
-            || die "failed to check out '$ref' in $(src_dir)"
-    else
-        if [ -d "$(src_dir)/.git" ]; then
-            warn "existing checkout at $(src_dir) does not track $REPO_URL; moving it aside"
-        fi
-        say "cloning veyyon source into $(src_dir)..."
-        mkdir -p "$(dirname "$(src_dir)")"
-        # Never rm -rf an existing tree: move it aside so nothing is lost.
-        move_aside_existing_src "$(src_dir)"
-        if [ -n "$REF" ]; then
-            if git clone --depth 1 --branch "$REF" "$REPO_URL" "$(src_dir)" >/dev/null 2>&1; then :; else
-                git clone "$REPO_URL" "$(src_dir)" || die "failed to clone $REPO_URL"
-                ( cd "$(src_dir)" && git checkout "$REF" ) || die "ref not found: $REF"
-            fi
-        else
-            git clone --depth 1 "$REPO_URL" "$(src_dir)" >/dev/null 2>&1 \
-                || git clone "$REPO_URL" "$(src_dir)" \
-                || die "failed to clone $REPO_URL"
-        fi
-    fi
-    fetch_lfs_assets "$(src_dir)"
-}
-
-# Does this checkout actually track any file through Git LFS?
-#
-# Prints the first such path, or nothing. `:(attr:filter=lfs)` is git's own
-# pathspec magic (git >= 2.18) and needs no git-lfs installed, so it answers the
-# question even on the machine that is missing the tool. Exit 2 means git could
-# not answer (older git): the caller must treat that as UNKNOWN, never as "no".
-lfs_tracked_file() {
-    out=$( cd "$1" 2>/dev/null && git ls-files ':(attr:filter=lfs)' 2>/dev/null ) || return 2
-    printf '%s' "$out" | head -n 1
-}
-
-# Materialize Git LFS content in a fresh or updated source checkout.
-#
-# This used to be `has git-lfs && (... git lfs pull) || true`, which is the
-# textbook silent fallback: with git-lfs missing, or with `git lfs pull` failing,
-# every LFS-tracked file stays a ~130-byte pointer TEXT file, the install
-# reports success, and veyyon fails later at runtime on a file that looks
-# present. `.gitattributes` puts `*.wasm` under LFS, so this is a live path the
-# moment a wasm asset lands.
-#
-# Fails closed when the checkout needs LFS and cannot have it, and stays silent
-# only in the one case where silence is correct: the checkout tracks nothing
-# through LFS, so there is nothing to fetch.
-fetch_lfs_assets() {
-    src="${1:-$(src_dir)}"
-    tracked=$(lfs_tracked_file "$src")
-    case "$?" in
-        0)
-            [ -n "$tracked" ] || return 0
-            ;;
-        *)
-            # git is too old to answer. Fall back to the declaration in
-            # .gitattributes: conservative (it can over-report when a pattern
-            # matches no file), and loud about why, per the no-silent-fallback
-            # rule. Never assume "no LFS" from a check that did not run.
-            grep -q 'filter=lfs' "$src/.gitattributes" 2>/dev/null || return 0
-            warn "this git cannot list LFS-tracked paths; assuming .gitattributes' LFS declaration applies"
-            ;;
-    esac
-    has git-lfs || die "this checkout tracks files with Git LFS but git-lfs is not installed — those files would be left as pointer text and veyyon would fail at runtime. Install git-lfs (https://git-lfs.com), then re-run this installer"
-    step "fetching Git LFS assets..."
-    ( cd "$src" && git lfs pull ) || die "git lfs pull failed in $src — LFS-tracked files are still pointer text. Fix the network/credential problem and re-run this installer"
-    ok "fetched Git LFS assets"
-}
-
-install_via_bun() {
-    has git || die "git is required to install veyyon from source"
-    step "installing veyyon from source (bun)..."
-    fetch_source_tree
-    [ -d "$(src_dir)/packages/coding-agent" ] || die "expected package at $(src_dir)/packages/coding-agent"
-    launcher="$(src_dir)/packages/coding-agent/scripts/$BIN_NAME"
-    [ -x "$launcher" ] || die "source launcher not found or not executable: $launcher"
-    step "installing workspace dependencies (bun install)..."
-    ( cd "$(src_dir)" && bun install ) || die "failed to install workspace dependencies"
-    # Bun runs no root lifecycle scripts on workspace installs, so gitignored
-    # build artifacts must be generated explicitly: without this, the checkout
-    # ships a stale or missing tool-views bundle (missing = launch relies on
-    # the launcher's self-heal; the installer should hand over a complete tree).
-    say "generating build artifacts (gen:tool-views)..."
-    ( cd "$(src_dir)" && bun --cwd=packages/collab-web run gen:tool-views ) \
-        || die "failed to generate build artifacts (bun --cwd=packages/collab-web run gen:tool-views)"
-    # The native addon is the other gitignored built artifact: a fresh clone has
-    # none and veyyon dies at boot without it. The ensure script provisions it
-    # (prebuilt release download, else local cargo build) or fails with the fix.
-    say "ensuring native addon (packages/natives)..."
-    ( cd "$(src_dir)" && bun --cwd=packages/natives run ensure ) \
-        || die "failed to provision the native addon (bun --cwd=packages/natives run ensure)"
-    mkdir -p "$(install_dir)"
-    if ! binary_path_is_replaceable "$(install_dir)/$BIN_NAME"; then
-        die "refusing to replace $(install_dir)/$BIN_NAME because $(binary_refusal_reason "$(install_dir)/$BIN_NAME"); move it aside, then re-run with --source"
-    fi
-    ln -sfn "$launcher" "$(install_dir)/$BIN_NAME" || die "failed to link $BIN_NAME into $(install_dir)"
-    mark_artifact_owned "$(install_dir)/$BIN_NAME" || die "installed the source launcher but could not record its ownership; check permissions and re-run the installer"
-    ok "installed $BIN_NAME (source) -> $launcher"
-    link_alias "$(install_dir)"
-    install_completions "$(install_dir)/$BIN_NAME"
-    ensure_on_path "$(install_dir)"
-    doctor "$(install_dir)/$BIN_NAME"
-    print_next_steps
 }
 
 # ---- local binary install (from local checkout build) ----
@@ -2072,7 +1869,7 @@ detect_libc() {
 # working installs to pre-empt a case that is already covered.
 require_supported_libc() {
     [ "$(detect_libc)" = "musl" ] || return 0
-    die "this system uses musl libc (Alpine and similar), and the published Linux binaries are built against glibc — the download would install cleanly and then fail to start with a misleading 'not found' from the dynamic loader. Install from source instead: curl -fsSL https://get.veyyon.dev | sh -s -- --source"
+    die "this system uses musl libc (Alpine and similar), and the published Linux binaries are built against glibc — the download would install cleanly and then fail to start with a misleading 'not found' from the dynamic loader. There is no binary for this system, so $MANUAL_BUILD"
 }
 
 # ---- prebuilt binary install ----
@@ -2081,12 +1878,12 @@ install_binary() {
     case "$OS" in
         Linux)  PLATFORM="linux" ;;
         Darwin) PLATFORM="darwin" ;;
-        *) die "unsupported OS: $OS (try --source)" ;;
+        *) die "unsupported OS: $OS. No prebuilt binary is published for it, so $MANUAL_BUILD" ;;
     esac
     case "$ARCH" in
         x86_64|amd64)  ARCH="x64" ;;
         arm64|aarch64) ARCH="arm64" ;;
-        *) die "unsupported architecture: $ARCH (try --source)" ;;
+        *) die "unsupported architecture: $ARCH. No prebuilt binary is published for it, so $MANUAL_BUILD" ;;
     esac
     require_supported_libc
     BINARY="${BIN_NAME}-${PLATFORM}-${ARCH}"
@@ -2102,15 +1899,15 @@ install_binary() {
             # there is no release for it to be part of.
             # $LATEST holds the tag that exists, which is not always what was
             # typed: `--ref 1.0.39` is not a ref git can check out, so echoing it
-            # back in a --source suggestion would be more advice that cannot work.
-            2) die "no release is published for tag $LATEST, so there is no binary to download. That tag exists in the repository, but nothing was ever released from it (its release may still be an unpublished draft). Pick a version that has a release from https://github.com/${REPO}/releases, or build this exact ref from source: curl -fsSL https://get.veyyon.dev | sh -s -- --source --ref $LATEST" ;;
-            *) die "release tag not found: $REF (for a branch/commit, use --source --ref)" ;;
+            # back would be advice that cannot work.
+            2) die "no release is published for tag $LATEST, so there is no binary to download. That tag exists in the repository, but nothing was ever released from it (its release may still be an unpublished draft). Pick a version that has a release from https://github.com/${REPO}/releases, or $MANUAL_BUILD" ;;
+            *) die "release tag not found: $REF. Only published release tags are installable; for a branch or a commit, $MANUAL_BUILD, adding \`git checkout $REF\` before the setup step" ;;
         esac
         [ "$LATEST" = "$REF" ] || step "resolved $REF to the published tag $LATEST"
     else
         step "fetching latest release..."
         LATEST=$(resolve_latest_tag) \
-            || die "could not reach https://github.com/${REPO}/releases/latest (network error, or GitHub is down — retry, or use --source)"
+            || die "could not reach https://github.com/${REPO}/releases/latest (network error, or GitHub is down) — retry once the network is back"
     fi
     step "version: $LATEST"
 
@@ -2140,7 +1937,7 @@ install_binary() {
     fi
     # -S keeps curl's own error message on failure, which `-s` alone suppresses.
     curl -fL -S $_dl_progress $CURL_RETRY --connect-timeout 10 --speed-limit 1024 --speed-time 30 "$BINARY_URL" -o "$tmpbin" \
-        || die "download failed ($BINARY not published for this release?) — try --source"
+        || die "download failed: $BINARY may not be published for this release. Check the assets on https://github.com/${REPO}/releases/tag/${LATEST}, or $MANUAL_BUILD"
 
     verify_release_binary "$tmpbin" "$BINARY_URL" "$BINARY" "$LATEST"
 
@@ -2153,7 +1950,7 @@ install_binary() {
     require_release_version "$tmpbin" "$LATEST" "downloaded"
     doctor_natives "$tmpbin" "downloaded"
 
-    finalize_binary "$tmpbin" "$(install_dir)/$BIN_NAME" "the download did not complete — retry, or use --source"
+    finalize_binary "$tmpbin" "$(install_dir)/$BIN_NAME" "the download did not complete — retry"
     trap - EXIT INT TERM
     ok "installed $BIN_NAME to $(install_dir)/$BIN_NAME"
     link_alias "$(install_dir)"
@@ -2180,7 +1977,6 @@ if [ "${VEYYON_INSTALL_SOURCED:-0}" != "1" ]; then
         require_curl
         case "$MODE" in
             local) install_local ;;
-            source) has bun || install_bun; require_bun_version; install_via_bun ;;
             binary) install_binary ;;
             *) install_binary ;;
         esac

@@ -2,13 +2,13 @@
 # Usage: irm https://veyyon.dev/install.ps1 | iex
 #   or:  irm https://raw.githubusercontent.com/santhreal/veyyon/main/scripts/install.ps1 | iex
 #
-# By default this installs the prebuilt self-contained binary
-# (veyyon-windows-x64.exe): one download, no toolchain, nothing from a package
-# registry. Pass -Source to build and run from a git checkout with bun instead
-# (needed only to run an unreleased ref).
+# This installs the prebuilt self-contained binary (veyyon-windows-x64.exe):
+# one download, no toolchain, nothing from a package registry, and nothing
+# cloned. There is no source-install mode. A release that cannot be downloaded
+# and verified is a hard failure that names the manual build instead.
 #
 # With options:
-#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Ref v1.0.37
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Help
 #
 # The full option list lives in Write-Usage below, which is what -Help prints. A
@@ -24,7 +24,6 @@
 # path runs.
 
 param(
-    [switch]$Source,
     [switch]$Binary,
     [switch]$Local,
     [string]$Ref,
@@ -57,7 +56,13 @@ $SrcDir = if ($env:VEYYON_SRC_DIR) { $env:VEYYON_SRC_DIR } else { "$env:USERPROF
 $BinName = "veyyon"
 $AliasName = "vey"
 $BinaryAsset = "veyyon-windows-x64.exe"
-$MinimumBunVersion = "1.3.14"
+# The one manual route out of every hard failure, in one place.
+#
+# The installer downloads a verified prebuilt binary or it stops: it never
+# clones and never builds. A refusal therefore has to hand the user something
+# they can run themselves, and every refusal hands them the SAME thing, so the
+# advice cannot drift between call sites. Mirrors MANUAL_BUILD in install.sh.
+$ManualBuild = "build it from a checkout you own: git clone $RepoUrl && cd veyyon && bun run setup"
 # Whether the `vey` shim next to the binary is one THIS installer owns.
 #
 # One owner: Install-Alias makes the call (it is the only code that inspects and
@@ -221,149 +226,15 @@ function Get-BinaryRefusalReason {
     return "it was not created by this installer"
 }
 
+# Whether the installer may write over what is at $Path: nothing is there, or
+# what is there is ours. Kept for the artifacts an OLD source install left in
+# the install directory, chiefly the `veyyon.cmd` shim that forwarded into
+# `<src>\packages\coding-agent\scripts\veyyon.cmd`, so a machine carrying one can
+# still be upgraded and uninstalled. Mirrors binary_path_is_replaceable in
+# install.sh.
 function Test-BinaryPathIsReplaceable {
     param([string]$Path)
     return (-not (Test-Path -LiteralPath $Path)) -or (Test-BinaryArtifactIsOurs $Path)
-}
-
-function Test-BunInstalled {
-    try {
-        $null = Get-Command bun -ErrorAction Stop
-        return $true
-    } catch {
-        return $false
-    }
-}
-
-function Get-BunVersion {
-    try {
-        $versionText = (bun --version 2>$null)
-        if (-not $versionText) {
-            return $null
-        }
-
-        $clean = $versionText.Trim().Split("-")[0]
-        return [version]$clean
-    } catch {
-        return $null
-    }
-}
-
-function Test-BunVersion {
-    param([string]$MinimumVersion)
-
-    $currentVersion = Get-BunVersion
-    if (-not $currentVersion) {
-        return $false
-    }
-
-    return $currentVersion -ge [version]$MinimumVersion
-}
-
-function Assert-BunVersion {
-    param([string]$MinimumVersion)
-
-    if (-not (Test-BunVersion $MinimumVersion)) {
-        $current = Get-BunVersion
-        $currentText = if ($current) { $current.ToString() } else { "unknown" }
-        throw "Bun $MinimumVersion or newer is required. Current version: $currentText. Upgrade Bun at https://bun.sh/docs/installation"
-    }
-}
-
-function Test-GitInstalled {
-    try {
-        $null = Get-Command git -ErrorAction Stop
-        return $true
-    } catch {
-        return $false
-    }
-}
-
-function Test-GitLfsInstalled {
-    try {
-        $null = Get-Command git-lfs -ErrorAction Stop
-        return $true
-    } catch {
-        return $false
-    }
-}
-
-# The first path this checkout tracks through Git LFS, or $null when it tracks
-# none. `:(attr:filter=lfs)` is git's own pathspec magic (git >= 2.18) and needs
-# no git-lfs installed, so it answers the question on the very machine that is
-# missing the tool. Returns the string 'unknown' when git could not answer: the
-# caller must treat that as UNKNOWN, never as "no".
-function Get-LfsTrackedFile {
-    param([Parameter(Mandatory = $true)][string]$SrcDir)
-    Push-Location $SrcDir
-    try {
-        $out = git ls-files ':(attr:filter=lfs)' 2>$null
-        if ($LASTEXITCODE -ne 0) { return 'unknown' }
-        if ($null -eq $out) { return $null }
-        return (@($out) | Where-Object { $_ -ne '' } | Select-Object -First 1)
-    } finally {
-        Pop-Location
-    }
-}
-
-# Materialize Git LFS content in a source checkout.
-#
-# This used to be `if (Test-GitLfsInstalled) { git lfs pull | Out-Null }`, whose
-# every failure mode is silent: with git-lfs missing the pull never runs, and
-# with it present a failing pull was swallowed by Out-Null and an unchecked
-# $LASTEXITCODE. Either way every LFS-tracked file stays a ~130-byte pointer
-# TEXT file, the install reports success, and veyyon fails later on a file that
-# looks present. .gitattributes puts *.wasm under LFS, so this is live the
-# moment a wasm asset lands. Mirrors fetch_lfs_assets in install.sh.
-function Get-LfsAssets {
-    param([Parameter(Mandatory = $true)][string]$SrcDir)
-    $tracked = Get-LfsTrackedFile -SrcDir $SrcDir
-    if ($tracked -eq 'unknown') {
-        # git is too old to answer. Fall back to the declaration in
-        # .gitattributes: conservative, and loud about why. Never assume "no
-        # LFS" from a check that did not run.
-        $attrs = Join-Path $SrcDir '.gitattributes'
-        if (-not (Test-Path $attrs)) { return }
-        if (-not (Select-String -Path $attrs -Pattern 'filter=lfs' -Quiet)) { return }
-        Write-Host "  !!  this git cannot list LFS-tracked paths; assuming .gitattributes' LFS declaration applies"
-    } elseif ([string]::IsNullOrEmpty($tracked)) {
-        return
-    }
-    if (-not (Test-GitLfsInstalled)) {
-        throw "this checkout tracks files with Git LFS but git-lfs is not installed - those files would be left as pointer text and veyyon would fail at runtime. Install git-lfs (https://git-lfs.com), then re-run this installer"
-    }
-    Write-Host "Fetching Git LFS assets..."
-    Push-Location $SrcDir
-    try {
-        git lfs pull | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "git lfs pull failed in $SrcDir - LFS-tracked files are still pointer text. Fix the network/credential problem and re-run this installer"
-        }
-    } finally {
-        Pop-Location
-    }
-}
-
-# The bun installer, fetched over an EXPLICIT https URL and checked before it is
-# executed.
-#
-# This was `irm bun.sh/install.ps1 | iex`. A URL with no scheme is not a URL:
-# PowerShell fills in `http://`, so the first request for a script that is about
-# to be executed went out in plaintext and depended on bun.sh's redirect to get
-# back to TLS — which is exactly the request an attacker on the path would
-# answer themselves. Nothing checked the body either, so an empty or truncated
-# response was piped into iex as a silent no-op "install".
-function Install-Bun {
-    $url = "https://bun.sh/install.ps1"
-    try {
-        $script = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 120
-    } catch {
-        throw "could not download the bun installer from $url ($($_.Exception.Message)) - check your network, or install bun yourself (https://bun.sh) and re-run this installer"
-    }
-    if ([string]::IsNullOrWhiteSpace($script)) {
-        throw "the bun installer downloaded empty from $url - retry, or install bun yourself (https://bun.sh) and re-run this installer"
-    }
-    Invoke-Expression $script
 }
 
 # A just-executed staged binary can remain image-locked briefly while Windows
@@ -410,7 +281,7 @@ function Move-StagedBinaryIntoPlace {
     $staged = Get-Item -LiteralPath $StagingPath -ErrorAction SilentlyContinue
     if (-not $staged -or $staged.Length -eq 0) {
         Remove-Item $StagingPath -Force -ErrorAction SilentlyContinue
-        throw "the binary staged at $StagingPath is empty - refusing to install; the download did not complete, retry or use -Source"
+        throw "the binary staged at $StagingPath is empty - refusing to install; the download did not complete. Retry, or $ManualBuild"
     }
     if ((Test-Path -LiteralPath $TargetPath) -and -not (Test-BinaryArtifactIsOurs $TargetPath)) {
         Remove-Item $StagingPath -Force -ErrorAction SilentlyContinue
@@ -1162,7 +1033,7 @@ function Test-NativeAddon {
         Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
     }
     if ($status -ne 0) {
-        throw "the $Phase $BinName starts but cannot run a search: '$BinName grep' exited $status. The native addon did not load, which usually means the release has no build for this architecture. Install from source instead: & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source. Output was: $out"
+        throw "the $Phase $BinName starts but cannot run a search: '$BinName grep' exited $status. The native addon did not load, which usually means the release has no build for this architecture. No prebuilt binary works here, so $ManualBuild. Output was: $out"
     }
     # Exit 0 is not enough on its own: a walker that returns nothing exits 0 too.
     if ($out -notmatch 'probe\.txt') {
@@ -1276,65 +1147,28 @@ function Test-NotShadowed {
     }
 }
 
-# Veyyon's packages resolve one another through Bun workspace and catalog
-# protocols, which only work inside a full checkout. A source install therefore
-# keeps a real clone under $SrcDir, installs the workspace once, and points a
-# veyyon.cmd shim at the committed launcher (packages\coding-agent\scripts\veyyon.cmd).
-# The launcher runs straight from TypeScript, so there is no build step; -Ref
-# pins a tag, branch, or commit.
+# ---- legacy source-checkout handling, for uninstall only ----
+#
+# An older version of this installer built from a git checkout under $SrcDir.
+# It no longer does: an install is a verified binary download or it fails. The
+# helpers below stay because those checkouts are still on people's machines, and
+# -Uninstall has to find one, refuse to destroy any work in it, and leave a
+# checkout that tracks somebody else's repository alone. Nothing in this
+# installer creates $SrcDir any more.
+
 # A stamp unique enough that two installer runs in the same second do not collide
-# on a backup branch/dir name ($PID disambiguates).
+# on a moved-aside directory name ($PID disambiguates).
 function Get-BackupStamp {
     return "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID"
 }
 
-# Commit any uncommitted local edits in a source checkout onto a durable backup
-# branch BEFORE the update resets over them. The update path runs
-# `git reset --hard origin/<ref>`, which would otherwise silently discard a
-# user's local edits to a tracked file (this is how an edited ~/.veyyon/src
-# AGENTS.md kept vanishing on every update). Uses `git commit-tree` so the backup
-# commit is built from the staged tree without moving HEAD, leaving the checkout
-# exactly as it was for the reset that follows. `git add -A` honors .gitignore, so
-# build artifacts are not swept in. Returns $true on success or when there is
-# nothing to preserve; $false if preservation cannot complete, so the caller can
-# refuse to reset rather than risk destroying the changes (fail closed).
-function Preserve-LocalSrcChanges {
-    param([string]$Src = $SrcDir)
-    if (-not (Test-Path (Join-Path $Src ".git"))) { return $true }
-    Push-Location $Src
-    try {
-        $status = git status --porcelain 2>$null
-        if ([string]::IsNullOrWhiteSpace(($status -join "`n"))) { return $true }
-        $stamp = Get-BackupStamp
-        $branch = "veyyon-local-$stamp"
-        git add -A 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) { return $false }
-        $tree = (git write-tree 2>$null)
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tree)) { return $false }
-        $parent = (git rev-parse -q --verify HEAD 2>$null)
-        $msg = "veyyon: preserve local changes before update ($stamp)"
-        if ($parent) {
-            $commit = (git -c user.name=veyyon-installer -c user.email=installer@veyyon.dev commit-tree $tree -p $parent -m $msg 2>$null)
-        } else {
-            $commit = (git -c user.name=veyyon-installer -c user.email=installer@veyyon.dev commit-tree $tree -m $msg 2>$null)
-        }
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) { return $false }
-        git branch $branch $commit 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) { return $false }
-        Write-Host "preserved your local changes on branch '$branch'" -ForegroundColor Yellow
-        Write-Host "recover them with: git -C $Src checkout $branch" -ForegroundColor Yellow
-        return $true
-    } finally {
-        Pop-Location
-    }
-}
-
-# Move an existing tree aside instead of deleting it. The clone path used to
-# `Remove-Item -Recurse -Force $SrcDir` before cloning, which destroys any files a
-# user put there (or a partial/corrupt checkout with no .git). Moving to
-# `<dir>.bak-<stamp>` preserves everything and lets the fresh clone proceed. An
-# empty directory is simply removed. Fail closed: if the move cannot happen, throw
-# rather than fall back to a destructive delete.
+# Move an existing tree aside instead of deleting it. Uninstall reaches here for
+# a checkout it must not remove: one holding uncommitted edits or unpushed
+# branches, or one tracking a repository that is not ours. Moving to
+# `<dir>.bak-<stamp>` preserves everything, including files a user put there by
+# hand and a partial checkout with no .git. An empty directory is simply removed.
+# Fail closed: if the move cannot happen, throw rather than fall back to a
+# destructive delete.
 function Move-AsideExistingSrc {
     param([string]$Src = $SrcDir)
     if (-not (Test-Path $Src)) { return }
@@ -1344,15 +1178,20 @@ function Move-AsideExistingSrc {
     }
     $stamp = Get-BackupStamp
     $backup = "$Src.bak-$stamp"
-    Move-Item -Path $Src -Destination $backup -ErrorAction Stop
+    try {
+        Move-Item -Path $Src -Destination $backup -ErrorAction Stop
+    } catch {
+        throw "refusing to continue: could not move existing $Src aside to $backup ($($_.Exception.Message))"
+    }
     Write-Host "moved existing $Src aside to $backup (nothing was deleted)" -ForegroundColor Yellow
 }
 
 # Whether a source checkout holds work the installer did not create and must not
 # delete on uninstall: uncommitted edits, commits on a local branch that live on
-# no remote (this includes `veyyon-local-*` preservation branches, so a preserved
-# AGENTS.md is never silently deleted by -Uninstall), or a non-git but non-empty
-# tree. $false means the tree is pristine and safe to remove outright.
+# no remote (this includes the `veyyon-local-*` branches an older source install
+# made to preserve edits, so a preserved AGENTS.md is never silently deleted by
+# -Uninstall), or a non-git but non-empty tree. $false means the tree is pristine
+# and safe to remove outright.
 function Test-SrcHasLocalWork {
     param([string]$Src = $SrcDir)
     if (-not (Test-Path $Src -PathType Container)) { return $false }
@@ -1399,128 +1238,6 @@ function Test-SrcRemoteIsOurs {
     } finally {
         Pop-Location
     }
-}
-
-function Fetch-SourceTree {
-    if ((Test-Path (Join-Path $SrcDir ".git")) -and (Test-SrcRemoteIsOurs $SrcDir)) {
-        Write-Host "Updating veyyon source in $SrcDir..."
-        # Commit local edits to a backup branch before resetting. If that fails,
-        # refuse the update rather than destroy uncommitted work.
-        if (-not (Preserve-LocalSrcChanges $SrcDir)) {
-            throw "refusing to update: could not preserve local changes in $SrcDir"
-        }
-        Push-Location $SrcDir
-        try {
-            git fetch --tags --force origin
-            if ($LASTEXITCODE -ne 0) { throw "failed to update $SrcDir" }
-            $ref = $Ref
-            if (-not $ref) {
-                $remoteHead = (git remote show origin 2>$null | Select-String 'HEAD branch:')
-                if ($remoteHead) { $ref = ($remoteHead -replace '.*HEAD branch:\s*', '').Trim() }
-                if (-not $ref) { $ref = "main" }
-            }
-            git checkout --force $ref
-            if ($LASTEXITCODE -ne 0) { throw "failed to check out '$ref' in $SrcDir" }
-            # `origin/$ref` is the normal case; a ref with no remote-tracking
-            # branch (a tag, a commit passed to -Ref) falls back to the ref
-            # itself. The fallback's exit code used to go unchecked, so a
-            # checkout that reset to NEITHER carried on to `bun install` and
-            # installed the old tree under the new version's name.
-            git reset --hard "origin/$ref" 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                git reset --hard $ref | Out-Null
-                if ($LASTEXITCODE -ne 0) { throw "failed to reset $SrcDir to '$ref'" }
-            }
-        } finally {
-            Pop-Location
-        }
-    } else {
-        if (Test-Path (Join-Path $SrcDir ".git")) {
-            Write-Host "existing checkout at $SrcDir does not track $RepoUrl; moving it aside" -ForegroundColor Yellow
-        }
-        Write-Host "Cloning veyyon source into $SrcDir..."
-        $parent = Split-Path -Parent $SrcDir
-        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-        # Never rm -rf an existing tree: move it aside so nothing is lost.
-        Move-AsideExistingSrc $SrcDir
-        if ($Ref) {
-            git clone --depth 1 --branch $Ref $RepoUrl $SrcDir 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                git clone $RepoUrl $SrcDir
-                if ($LASTEXITCODE -ne 0) { throw "failed to clone $RepoUrl" }
-                Push-Location $SrcDir
-                try {
-                    git checkout $Ref
-                    if ($LASTEXITCODE -ne 0) { throw "ref not found: $Ref" }
-                } finally { Pop-Location }
-            }
-        } else {
-            git clone --depth 1 $RepoUrl $SrcDir 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                git clone $RepoUrl $SrcDir
-                if ($LASTEXITCODE -ne 0) { throw "failed to clone $RepoUrl" }
-            }
-        }
-    }
-
-    Get-LfsAssets -SrcDir $SrcDir
-}
-
-function Install-FromSource {
-    if (-not (Test-GitInstalled)) {
-        throw "git is required to install veyyon from source"
-    }
-    Write-Host "Installing veyyon from source (bun)..."
-    Fetch-SourceTree
-
-    $pkgDir = Join-Path $SrcDir "packages\coding-agent"
-    if (-not (Test-Path $pkgDir)) {
-        throw "expected package at $pkgDir"
-    }
-    $launcher = Join-Path $pkgDir "scripts\veyyon.cmd"
-    if (-not (Test-Path $launcher)) {
-        throw "source launcher not found: $launcher"
-    }
-
-    Write-Host "Installing workspace dependencies (bun install)..."
-    Push-Location $SrcDir
-    try {
-        bun install
-        if ($LASTEXITCODE -ne 0) { throw "failed to install workspace dependencies" }
-        # A fresh clone lacks BOTH gitignored build artifacts, so provision them
-        # eagerly here (install.sh --source does the same, in the same order).
-        # Without this a Windows source install handed over an incomplete tree:
-        # the native addon was missing and the first launch either limped through
-        # the launcher self-heal or died at boot.
-        Write-Host "Generating tool views (packages/collab-web)..."
-        bun --cwd=packages/collab-web run gen:tool-views
-        if ($LASTEXITCODE -ne 0) { throw "failed to generate tool views (bun --cwd=packages/collab-web run gen:tool-views)" }
-        Write-Host "Ensuring native addon (packages/natives)..."
-        bun --cwd=packages/natives run ensure
-        if ($LASTEXITCODE -ne 0) { throw "failed to provision the native addon (bun --cwd=packages/natives run ensure)" }
-    } finally {
-        Pop-Location
-    }
-
-    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-
-    # Shim in the install dir that forwards to the committed launcher (the
-    # Windows analogue of the Unix symlink into the source tree).
-    $shim = Join-Path $InstallDir "$BinName.cmd"
-    if (-not (Test-BinaryPathIsReplaceable $shim)) {
-        throw "refusing to replace $shim because $(Get-BinaryRefusalReason $shim); move it aside, then re-run with -Source"
-    }
-    Set-Content -Path $shim -Value "@echo off`r`n`"$launcher`" %*" -Encoding ASCII
-    Set-ArtifactOwned $shim
-    Write-Host "OK  installed $BinName (source) -> $launcher" -ForegroundColor Green
-
-    Install-Alias -Target $shim
-    $needsRestart = Add-ToPath
-    Configure-BashShell
-    Install-Completions -BinPath $shim
-    Invoke-Doctor -Command $shim
-
-    Write-NextSteps -NeedsRestart:$needsRestart -InCallersSession:(Test-RunsInCallersSession)
 }
 
 # Parse a `.sha256` sidecar body ("<64-hex>  <filename>") into the lowercased hash.
@@ -1672,9 +1389,9 @@ function Resolve-RefTag {
     if ($alt -eq "released") { return [pscustomobject]@{ Tag = "v$Ref"; State = "released" } }
     # Either spelling being a real tag means the user named a version that was
     # never released, which is a different thing to be told than a typo. The tag
-    # that DOES exist comes back with it, so the caller can name it and suggest a
-    # -Source build that will actually check out: `-Ref 1.0.39` is not a ref git
-    # can resolve. Nothing installs it, since only "released" reaches the download.
+    # that DOES exist comes back with it, so the caller can name the tag it found
+    # rather than reporting a typo. Nothing installs it, since only "released"
+    # reaches the download.
     if ($state -eq "unreleased") { return [pscustomobject]@{ Tag = $Ref; State = "unreleased" } }
     if ($alt -eq "unreleased") { return [pscustomobject]@{ Tag = "v$Ref"; State = "unreleased" } }
     return [pscustomobject]@{ Tag = $null; State = "missing" }
@@ -1688,11 +1405,11 @@ function Install-Binary {
         # mentioning the platform binary: nothing is wrong with the binary, there
         # is no release for it to be part of.
         if ($Resolved.State -eq "unreleased") {
-            throw "No release is published for tag $($Resolved.Tag), so there is no binary to download.`nThat tag exists in the repository, but nothing was ever released from it (its release may still be an unpublished draft).`nPick a version that has a release from https://github.com/$Repo/releases, or use -Source with -Ref $($Resolved.Tag) to build that ref from source."
+            throw "No release is published for tag $($Resolved.Tag), so there is no binary to download.`nThat tag exists in the repository, but nothing was ever released from it (its release may still be an unpublished draft).`nPick a version that has a release from https://github.com/$Repo/releases, or $ManualBuild"
         }
         $Latest = $Resolved.Tag
         if (-not $Latest) {
-            throw "Release tag not found: $Ref`nFor branch/commit installs, use -Source with -Ref."
+            throw "release tag not found: $Ref. Only published release tags are installable; for a branch or a commit, $ManualBuild, adding ``git checkout $Ref`` before the setup step"
         }
         if ($Latest -ne $Ref) { Write-Host "Resolved $Ref to the published tag $Latest" }
     } else {
@@ -1701,7 +1418,7 @@ function Install-Binary {
     }
 
     if (-not $Latest) {
-        throw "Could not reach https://github.com/$Repo/releases/latest (network error, or GitHub is down). Retry, or use -Source."
+        throw "Could not reach https://github.com/$Repo/releases/latest (network error, or GitHub is down) - retry once the network is back."
     }
     Write-Host "Using version: $Latest"
 
@@ -1739,7 +1456,7 @@ function Install-Binary {
         Invoke-WebRequest -Uri $BinaryUrl -OutFile $StagingPath -TimeoutSec 900 -UseBasicParsing
     } catch {
         Remove-Item $StagingPath -ErrorAction SilentlyContinue
-        throw "download failed ($BinaryAsset not published for this release, or the connection dropped) - try -Source. ($_)"
+        throw "download failed: $BinaryAsset may not be published for this release. Check the assets on https://github.com/$Repo/releases/tag/$Latest, or $ManualBuild ($_)"
     } finally {
         $ProgressPreference = $priorProgress
     }
@@ -2050,14 +1767,13 @@ veyyon installer
 
 Options:
   -Binary           Install the prebuilt binary (the default; no toolchain needed)
-  -Source           Build and run from a git checkout with bun (installs bun if needed)
   -Local            Install the binary this checkout already built, from dist\vey.exe
-  -Ref <ref>        Install a specific release tag, or with -Source any branch or
-                    commit. A bare version resolves to its published tag, so
-                    1.0.37 and v1.0.37 are the same release. Implies -Source
-                    unless -Binary is given.
+  -Ref <tag>        Install a specific published release tag. A bare version
+                    resolves to its published tag, so 1.0.37 and v1.0.37 are the
+                    same release.
   -NoVerify         Skip the download's checksum verification (NOT recommended)
-  -Uninstall        Remove veyyon, the vey shim, completions, and any source checkout
+  -Uninstall        Remove veyyon, the vey shim, completions, and any source
+                    checkout an older installer left behind
   -Help             Print this and exit
 
 Environment:
@@ -2071,6 +1787,22 @@ After install, launch with vey in any repository.
 # the helper functions in isolation without running a real install: set
 # $env:VEYYON_INSTALL_SOURCED=1 before sourcing (mirrors install.sh).
 if (-not $env:VEYYON_INSTALL_SOURCED) {
+    # Every argument this installer has no parameter for, which now includes the
+    # source-build flag it used to carry. PowerShell does not refuse an unmatched
+    # argument to a script with a param block, it collects it in $args, so
+    # without this a removed or misspelled flag would quietly install the latest
+    # release and say nothing about the flag it ignored. Mirrors the
+    # unknown-option arm of install.sh's argument loop: print the usage, then say
+    # what was wrong with the command line.
+    #
+    # `$args -and` rather than `$args.Count` alone: under a caller's
+    # `Set-StrictMode`, and this script runs in the caller's scope under
+    # `irm | iex`, reading a property of an unset $args is itself an error.
+    if ($args -and $args.Count -gt 0) {
+        Write-Usage
+        throw "unknown option: $($args[0])"
+    }
+
     if ($Help) {
         Write-Usage
         return
@@ -2090,20 +1822,5 @@ if (-not $env:VEYYON_INSTALL_SOURCED) {
         return
     }
 
-    # Default to source when a ref is pinned.
-    if ($Ref -and -not $Source -and -not $Binary) {
-        $Source = $true
-    }
-
-    if ($Source) {
-        if (-not (Test-BunInstalled)) {
-            Write-Host "Installing bun..."
-            Install-Bun
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "Machine")
-        }
-        Assert-BunVersion $MinimumBunVersion
-        Install-FromSource
-    } else {
-        Install-Binary
-    }
+    Install-Binary
 }

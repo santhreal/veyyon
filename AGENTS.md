@@ -340,8 +340,9 @@ Veyyon ships through **exactly two** channels and no others:
    short `vey` command. veyyon.dev **propagates automatically from GitHub Releases**
    (`github.com/santhreal/veyyon/releases`), which is the upstream it mirrors; a user or
    the running binary only ever reaches veyyon.dev.
-2. **`git clone` + build from source** (`bun setup` / `bun dev`) — for contributors and
-   anyone who wants to drive the workspace.
+2. **A git checkout you clone yourself** (`git clone`, then `bun run setup` / `bun dev`)
+   for contributors and anyone who wants to drive the workspace. The installer never
+   creates this checkout. The user clones it, into a directory the user picks.
 
 There is **no npm package and there never will be**. There is **no `cargo publish`
 yet** (maybe one day; not now). Do not add, document, or assume an npm / bun-global /

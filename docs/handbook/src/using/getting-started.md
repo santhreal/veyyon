@@ -13,16 +13,16 @@ $ vey --version
 
 On Windows, run `irm https://veyyon.dev/install.ps1 | iex` instead.
 
-If you would rather build from a source checkout, clone the repository and run the setup script.
+The installer only downloads a published release binary. If you would rather build from a checkout, clone the repository yourself, into any directory you like, and run the setup script there.
 
 ```console
 $ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
-$ bun setup
+$ bun run setup
 $ bun dev --version
 ```
 
-`bun setup` installs the workspace dependencies and builds `@veyyon/natives`, the Rust addon. Your configuration lives under `~/.veyyon`, and the default profile keeps its agent state in `~/.veyyon/profiles/default/agent/`.
+`bun run setup` installs the workspace dependencies and builds `@veyyon/natives`, the Rust addon. That checkout is yours: you chose where it lives, and the installer neither creates it nor writes into it. Your configuration lives under `~/.veyyon`, and the default profile keeps its agent state in `~/.veyyon/profiles/default/agent/`.
 
 The installer sets up shell completions for you when your shell supports them. The [Install](./install.md) chapter has the full details.
 

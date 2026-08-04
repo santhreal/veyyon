@@ -17,7 +17,7 @@ If it is missing, the one-command installer wires up your PATH, shell completion
 curl -fsSL https://get.veyyon.dev | sh
 ```
 
-You can also pin a release binary with `curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11` (a bare `--ref` builds that ref from source), or build from source with `bun setup && bun dev` in the repository root. See [Install](./install.md).
+You can also pin a release binary with `curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11`. The installer only ever downloads a published release binary. To run an unreleased ref instead, clone the repository yourself and run `bun run setup && bun dev` in that checkout. See [Install](./install.md).
 
 ## Check the environment
 

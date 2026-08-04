@@ -7,7 +7,7 @@ echo "=== Testing binary build ==="
 podman build -f scripts/install-tests/binary.dockerfile -t veyyon-test-binary .
 
 echo ""
-echo "=== Testing source install ==="
+echo "=== Testing the manual build from a checkout ==="
 podman build -f scripts/install-tests/source.dockerfile -t veyyon-test-source .
 
 echo ""

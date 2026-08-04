@@ -86,8 +86,9 @@ const CHECKSUM_TIMEOUT_MS = 30_000;
 /**
  * The in-checkout launcher a source install links onto PATH.
  *
- * `install.sh --source` clones the repo under `~/.veyyon/src` and symlinks
- * `~/.local/bin/veyyon` at `<checkout>/packages/coding-agent/scripts/veyyon`.
+ * `bun run setup` in a checkout symlinks `~/.local/bin/veyyon` at
+ * `<checkout>/packages/coding-agent/scripts/veyyon` (the installer itself never
+ * creates a checkout: it only ever installs a prebuilt binary).
  * That launcher runs veyyon straight from TypeScript, so a source install
  * updates by advancing the checkout ({@link updateViaSourceAt}), never by
  * swapping in a downloaded release binary. The resolved (realpath) veyyon path
@@ -154,7 +155,8 @@ function tryRealpath(p: string): string | undefined {
  * How the veyyon on PATH was installed, which decides how it updates.
  *
  * `binary` is the `curl | sh` standalone binary: update by downloading the new
- * release binary and swapping it in place. `source` is `install.sh --source`,
+ * release binary and swapping it in place. `source` is a checkout the user owns
+ * (linked onto PATH by `bun run setup`),
  * whose PATH entry is a symlink to the in-checkout launcher: it updates by
  * advancing the checkout (fetch, ff-only merge, reinstall, regen — see
  * {@link updateViaSourceAt}), never by a binary swap that would overwrite the
@@ -263,7 +265,7 @@ export function resolveUpdateMethod(
 	if (endsWithSourceLauncher(resolved)) return "source";
 	// A source install can reach the checkout through a FORWARDING SHIM rather
 	// than a symlink, and realpath stops at the shim, so the tail never matches.
-	// On Windows that shim is what `install.sh --source` itself writes; on POSIX
+	// On Windows that shim is what `bun run setup` itself writes; on POSIX
 	// it is what a person writes when they want their own wrapper (extra env, a
 	// different interpreter) in front of the checkout. Either way the install used
 	// to be classified `binary`, and `veyyon update` would then overwrite the shim
@@ -969,7 +971,7 @@ async function sha256OfFile(filePath: string): Promise<string> {
  * and every user who has ever auto-updated is refused by their own uninstaller.
  *
  * Always a regular file: {@link replaceBinaryForUpdate} refuses to swap a
- * symlink, so the `link` identity install.sh writes for the `--source` launcher
+ * symlink, so the `link` identity the setup script writes for the source launcher
  * is unreachable from here.
  *
  * Never throws. The swap it follows has already succeeded and verified, and
@@ -1312,8 +1314,7 @@ export async function refreshCompletionsForInstalledBinary(
 export function sourceInstallUpdateGuidance(launcherPath: string): string {
 	return (
 		`${APP_NAME} is installed from source (its launcher is ${launcherPath}). ` +
-		`Update the checkout manually: cd into it and run \`git pull && bun install\`, ` +
-		`or re-run the installer with \`--source\`.`
+		`Update the checkout manually: cd into it and run \`git pull && bun install\`.`
 	);
 }
 
@@ -1556,7 +1557,7 @@ export async function updateViaSourceAt(
  * Install a specific release for the veyyon currently first in PATH.
  *
  * A binary install is updated by downloading the release binary and swapping it
- * in place. A source install (`install.sh --source`) is updated in its own
+ * in place. A source install (a checkout linked by `bun run setup`) is updated in its own
  * terms — fast-forward the checkout and reinstall dependencies — NEVER by a
  * binary swap, which would overwrite the in-checkout launcher (Law 10). This is
  * the single owner of that dispatch: both `veyyon update` and the automatic
@@ -1615,10 +1616,10 @@ export async function installRelease(
 export function rollbackUnsupportedReason(method: UpdateMethod): string | undefined {
 	if (method !== "source") return undefined;
 	return (
-		`This is a source install (\`install.sh --source\`), which updates by fast-forwarding its git checkout. ` +
-		`Fast-forward only moves forward, so there is no supported way to roll it back to an older release. ` +
-		`To run an older version, check it out yourself in the checkout, or reinstall the binary build with the ` +
-		`install script and roll back from there.`
+		`This is a source install (its launcher points into a git checkout), which updates by fast-forwarding ` +
+		`that checkout. Fast-forward only moves forward, so there is no supported way to roll it back to an ` +
+		`older release. To run an older version, check that version out yourself in the checkout, or install the ` +
+		`prebuilt binary build with the install script and roll back from there.`
 	);
 }
 
@@ -1757,7 +1758,7 @@ export type AutoUpdateOutcome =
  * that version. `recent-failure` means installing this same version failed
  * recently enough that retrying now would only reproduce it; see
  * {@link AUTO_UPDATE_FAILURE_COOLDOWN_MS}. `source-install` means veyyon runs
- * from a source checkout (`install.sh --source`), which updates with `git pull`,
+ * from a source checkout linked by `bun run setup`, which updates with `git pull`,
  * not a binary swap — attempting one would overwrite its launcher, so the
  * background updater leaves it alone instead of fail-looping.
  */

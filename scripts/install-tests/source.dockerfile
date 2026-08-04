@@ -1,4 +1,6 @@
-# Test --source install from local repo
+# Build and run veyyon from a checkout, which is the manual route every installer
+# hard failure names: `git clone … && cd veyyon && bun run setup`. The installer
+# itself never does this, so nothing here goes through install.sh.
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y curl ca-certificates unzip build-essential && rm -rf /var/lib/apt/lists/*

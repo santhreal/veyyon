@@ -29,11 +29,10 @@ Rolling the binary back does not remove any of these paths:
 1. Reinstall the previous version (now `latest` again) with the same `curl … | sh`,
    or restore a copy of the prior binary from a kept archive.
    To pin an exact version regardless of `latest`:
-   `curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref vX.Y.Z` (release asset download; note
-   a bare `--ref` without `--binary` implies `--source`, it clones and builds that ref).
+   `curl -fsSL https://get.veyyon.dev | sh -s -- --ref vX.Y.Z` (release asset download; `--ref` names a
+   published release tag and nothing else, and the installer never clones or builds).
    On Windows the same pin is
-   `& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref vX.Y.Z`, and `-Ref`
-   alone implies `-Source` there too.
+   `& ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Ref vX.Y.Z`.
 2. If the bad version wrote config keys the old binary rejects, remove or rename those keys: the error
    names the file and line. Leave agent-dir `sessions/` and SQLite stores in place.
 3. `veyyon plugin doctor` to confirm health.

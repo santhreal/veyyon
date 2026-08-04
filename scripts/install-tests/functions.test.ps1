@@ -206,35 +206,18 @@ Check "Test-FileSha256 fails closed on a wrong hash" (Test-FileSha256 -Path $has
 Check "Test-FileSha256 fails closed on an empty expected hash" (Test-FileSha256 -Path $hashFile -Expected "") "False"
 Remove-Item -Force $hashFile -ErrorAction SilentlyContinue
 
-# --- source-checkout data-loss protection (mirrors install.sh) ---
-# The update path runs `git reset --hard`, and uninstall used to rm the checkout
-# outright. Locks the Windows-side fix: a user's local edits under ~/.veyyon/src
-# (an edited AGENTS.md) must be preserved on a veyyon-local-* branch before a
-# reset, an existing tree must be moved aside rather than deleted before a fresh
-# clone, and uninstall must never delete a checkout holding unpushed work.
+# --- legacy source checkout: uninstall cleans it up and never destroys work ---
+# An older installer cloned the product into ~/.veyyon/src, updated that tree with
+# `git reset --hard`, and on uninstall removed it outright, so a user's own edits
+# in there could be lost twice over. Nothing creates that checkout any more, and
+# uninstall still meets one on every machine that ran an older installer: a tree it
+# did not create is moved aside rather than deleted, a checkout holding local work
+# is never removed, and only a pristine checkout of OUR remote is deleted.
 if (Get-Command git -ErrorAction SilentlyContinue) {
-    # Uninstall-Veyyon calls Test-BunInstalled/bun; stub it out so the src-handling
-    # branch is exercised without touching a real global install.
-    
     $sandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-$PID"
     if (Test-Path $sandbox) { Remove-Item -Recurse -Force $sandbox }
     New-Item -ItemType Directory -Force -Path $sandbox | Out-Null
 
-    function New-TestRepo {
-        param([string]$Dir)
-        if (Test-Path $Dir) { Remove-Item -Recurse -Force $Dir }
-        New-Item -ItemType Directory -Force -Path $Dir | Out-Null
-        Push-Location $Dir
-        try {
-            git -c init.defaultBranch=main init -q 2>$null
-            git config user.name t 2>$null
-            git config user.email t@t 2>$null
-            "committed" | Set-Content -NoNewline -Path (Join-Path $Dir "AGENTS.md")
-            "node_modules/" | Set-Content -NoNewline -Path (Join-Path $Dir ".gitignore")
-            git add -A 2>$null
-            git commit -qm init 2>$null
-        } finally { Pop-Location }
-    }
     function New-ClonedRepo {
         param([string]$Dir)
         foreach ($p in @($Dir, "$Dir.origin")) { if (Test-Path $p) { Remove-Item -Recurse -Force $p } }
@@ -250,61 +233,10 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
             git push -q origin HEAD:refs/heads/main 2>$null
         } finally { Pop-Location }
     }
-    # Discover preservation branches by ref (no `git branch` output parsing, which
-    # varies by leading marker/whitespace across git versions).
-    function Backup-BranchNames {
-        param([string]$Dir)
-        Push-Location $Dir
-        try { return @(git for-each-ref --format='%(refname:short)' 'refs/heads/veyyon-local-*' 2>$null | Where-Object { $_ }) }
-        finally { Pop-Location }
-    }
-    # Null-safe `git show <ref>` that returns a trimmed string, never throws on a
-    # missing object (returns "" so the Check reports a clean mismatch, not a crash).
-    function Git-ShowTrim {
-        param([string]$Dir, [string]$Ref)
-        Push-Location $Dir
-        try {
-            $o = git show $Ref 2>$null
-            if ($null -eq $o) { return "" }
-            return (($o -join "`n").Trim())
-        } finally { Pop-Location }
-    }
 
-    # Preserve on a clean repo: no-op, no backup branch.
-    $clean = Join-Path $sandbox "clean"
-    New-TestRepo $clean
-    Check "preserve returns true on a clean repo" (Preserve-LocalSrcChanges $clean) "True"
-    Check "clean repo gets no backup branch" (@(Backup-BranchNames $clean).Count) "0"
-
-    # Preserve on a dirty repo: the edit survives a hard reset via the branch.
-    $dirty = Join-Path $sandbox "dirty"
-    New-TestRepo $dirty
-    "MY LOCAL EDIT" | Set-Content -NoNewline -Path (Join-Path $dirty "AGENTS.md")
-    Check "preserve returns true on a modified tracked file" (Preserve-LocalSrcChanges $dirty) "True"
-    $bdNames = @(Backup-BranchNames $dirty)
-    Check "dirty repo gets exactly one backup branch" ($bdNames.Count) "1"
-    $bd = $bdNames[0]
-    Push-Location $dirty; git reset -q --hard HEAD 2>$null; Pop-Location
-    $afterReset = (Git-ShowTrim $dirty "HEAD:AGENTS.md")
-    $preserved = if ($bd) { Git-ShowTrim $dirty "${bd}:AGENTS.md" } else { "<no-branch>" }
-    Check "hard reset cleared the working-tree edit" $afterReset "committed"
-    Check "backup branch preserves the exact edited bytes" $preserved "MY LOCAL EDIT"
-
-    # Preserve does not sweep gitignored artifacts into the backup.
-    $mixed = Join-Path $sandbox "mixed"
-    New-TestRepo $mixed
-    "real edit" | Set-Content -NoNewline -Path (Join-Path $mixed "AGENTS.md")
-    New-Item -ItemType Directory -Force -Path (Join-Path $mixed "node_modules") | Out-Null
-    "junk" | Set-Content -NoNewline -Path (Join-Path $mixed "node_modules/x")
-    Preserve-LocalSrcChanges $mixed | Out-Null
-    $bmNames = @(Backup-BranchNames $mixed)
-    $bm = if ($bmNames.Count -gt 0) { $bmNames[0] } else { "" }
-    Push-Location $mixed
-    $nm = if ($bm) { @(git ls-tree -r --name-only $bm 2>$null | Where-Object { $_ -like "*node_modules*" }).Count } else { -1 }
-    Pop-Location
-    Check "backup does NOT sweep in gitignored node_modules" $nm "0"
-
-    # Move-aside relocates a non-empty non-git dir; keeps the file.
+    # Move-aside relocates a non-empty non-git dir and keeps the file. This is the
+    # rule for the legacy tree: what the installer did not create is moved, never
+    # deleted; an empty directory carries nothing and is simply removed.
     $nd = Join-Path $sandbox "nongit"
     New-Item -ItemType Directory -Force -Path $nd | Out-Null
     "precious" | Set-Content -NoNewline -Path (Join-Path $nd "keep.txt")
@@ -373,6 +305,21 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Pop-Location
     Check "moved-aside checkout still has the recoverable edit" $rec "RECOVER ME"
 
+    # The same rule for the commonest shape of local work: an edit never committed
+    # at all. The tree is ours by origin and carries no unpushed branch, so a
+    # cleanliness-blind uninstall deleted it and took the edit with it.
+    $ud = Join-Path $sandbox "uninstall-dirty"
+    New-ClonedRepo $ud
+    "UNCOMMITTED, KEEP ME" | Set-Content -NoNewline -Path (Join-Path $ud "AGENTS.md")
+    $SrcDir = $ud
+    $RepoUrl = "$ud.origin"
+    Uninstall-Veyyon | Out-Null
+    Check "uninstall did NOT delete a checkout holding an uncommitted edit" (Test-Path $ud) "False"
+    $udbak = @(Get-ChildItem -Path $sandbox -Directory -Filter "uninstall-dirty.bak-*")[0]
+    Check "uninstall moved the edited checkout aside" (Test-Path (Join-Path $udbak.FullName ".git")) "True"
+    Check "the moved-aside checkout still holds the uncommitted bytes" `
+        ((Get-Content -Raw -Path (Join-Path $udbak.FullName "AGENTS.md")).Trim()) "UNCOMMITTED, KEEP ME"
+
     # A pristine, fully-pushed checkout is removed outright.
     $up = Join-Path $sandbox "uninstall-pristine"
     New-ClonedRepo $up
@@ -402,7 +349,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 
     Remove-Item -Recurse -Force $sandbox -ErrorAction SilentlyContinue
 } else {
-    Write-Host "SKIP: git not available; source-checkout preservation tests skipped"
+    Write-Host "SKIP: git not available; legacy source-checkout tests skipped"
 }
 
 # --- Test-NotShadowed: an older copy earlier on PATH must be reported ---
@@ -453,7 +400,6 @@ try {
 # later reinstall silently inherited stale addons. It must reclaim the cache and
 # ONLY the cache: auth/config/sessions sit beside it under ~/.veyyon and are the
 # user's data. Mirrors the same assertions in functions.test.sh.
-function Test-BunInstalled { return $false }
 $nativesSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-natives-$PID"
 if (Test-Path $nativesSandbox) { Remove-Item -Recurse -Force $nativesSandbox }
 $origUserProfile = $env:USERPROFILE
@@ -566,60 +512,6 @@ try {
     Remove-Item -Recurse -Force $aliasSandbox -ErrorAction SilentlyContinue
 }
 
-# --- Get-LfsTrackedFile / Get-LfsAssets: LFS content is fetched or we stop ---
-# The old line was `if (Test-GitLfsInstalled) { git lfs pull | Out-Null }`: with
-# git-lfs absent the pull never ran, and with it present a failure was swallowed
-# by Out-Null and an unread $LASTEXITCODE. Either way LFS-tracked files stay
-# ~130-byte pointer TEXT files, the install reports success, and veyyon fails
-# later on a file that looks present. Mirrors fetch_lfs_assets in install.sh.
-if (Get-Command git -ErrorAction SilentlyContinue) {
-    $lfsSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-lfs-$PID"
-    if (Test-Path $lfsSandbox) { Remove-Item -Recurse -Force $lfsSandbox }
-    try {
-        New-Item -ItemType Directory -Force -Path $lfsSandbox | Out-Null
-        Push-Location $lfsSandbox
-        git init -q . 2>$null | Out-Null
-        git config user.email "t@t" | Out-Null
-        git config user.name "t" | Out-Null
-        "hi" | Set-Content -Path (Join-Path $lfsSandbox "a.txt")
-        git add a.txt | Out-Null
-        git commit -qm init 2>$null | Out-Null
-        Pop-Location
-
-        Check "a plain checkout tracks nothing through LFS" ([string]::IsNullOrEmpty((Get-LfsTrackedFile -SrcDir $lfsSandbox))) "True"
-
-        # Today's real repo state: .gitattributes DECLARES an LFS filter but no
-        # tracked file matches it. That must not block an install, or every
-        # source install without git-lfs breaks on a rule governing zero files.
-        Push-Location $lfsSandbox
-        "*.wasm filter=lfs diff=lfs merge=lfs -text" | Set-Content -Path (Join-Path $lfsSandbox ".gitattributes")
-        git add .gitattributes | Out-Null
-        git commit -qm attrs 2>$null | Out-Null
-        Pop-Location
-        Check "a declaration matching no file is not LFS content" ([string]::IsNullOrEmpty((Get-LfsTrackedFile -SrcDir $lfsSandbox))) "True"
-
-        # A file the filter actually matches: this checkout genuinely needs LFS.
-        Push-Location $lfsSandbox
-        "pointer" | Set-Content -Path (Join-Path $lfsSandbox "shipped.wasm")
-        git add shipped.wasm | Out-Null
-        git commit -qm wasm 2>$null | Out-Null
-        Pop-Location
-        Check "a matching file is reported as LFS-tracked" (Get-LfsTrackedFile -SrcDir $lfsSandbox) "shipped.wasm"
-
-        # With git-lfs unavailable, the install must stop and say why.
-        function Test-GitLfsInstalled { return $false }
-        $lfsError = ""
-        try { Get-LfsAssets -SrcDir $lfsSandbox } catch { $lfsError = $_.Exception.Message }
-        Check "a checkout needing LFS without git-lfs stops the install" ([bool]($lfsError -match "git-lfs is not installed")) "True"
-        Check "the stop explains pointer text, not a bare failure" ([bool]($lfsError -match "pointer text")) "True"
-        Check "the stop links where to get git-lfs" ([bool]($lfsError -match [regex]::Escape("https://git-lfs.com"))) "True"
-    } finally {
-        Remove-Item -Recurse -Force $lfsSandbox -ErrorAction SilentlyContinue
-    }
-} else {
-    Write-Host "SKIP: git not available; Get-LfsAssets tests skipped"
-}
-
 # --- Uninstall keeps a `vey.cmd` the installer never created ---
 # Install-Alias refuses to overwrite a vey.cmd the user already has, and says so.
 # Uninstall deleted it anyway, so removing veyyon destroyed the user's own
@@ -632,7 +524,8 @@ try {
     Set-Content -LiteralPath $shim -Value "@echo off`r`n`"$(Join-Path $aliasSandbox 'veyyon.exe')`" %*"
     Check "a shim forwarding to our exe is ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "True"
 
-    # A source install shims to veyyon.cmd instead; both are ours.
+    # An older source install shimmed to veyyon.cmd rather than veyyon.exe. That
+    # shim is still ours, so an install that predates this one can be reclaimed.
     Set-Content -LiteralPath $shim -Value "@echo off`r`n`"$(Join-Path $aliasSandbox 'veyyon.cmd')`" %*"
     Check "a shim forwarding to our cmd launcher is ours" (Test-AliasShimIsOurs -ShimPath $shim -BinDir $aliasSandbox) "True"
 
@@ -719,7 +612,10 @@ try {
     try { Move-StagedBinaryIntoPlace -StagingPath $staging -TargetPath $target } catch { $stageError = $_.Exception.Message }
     Check "an empty staged file is refused" ([bool]($stageError -match "is empty")) "True"
     Check "the refusal names the staged path" ([bool]($stageError -match [regex]::Escape($staging))) "True"
-    Check "the refusal tells the user to retry the download" ([bool]($stageError -match "retry or use -Source")) "True"
+    Check "the refusal tells the user to retry the download" ([bool]($stageError -match "Retry")) "True"
+    Check "and hands over the manual build for when retrying will not help" `
+        ([bool]($stageError -match [regex]::Escape("git clone $RepoUrl"))) "True"
+    Check "the refusal offers no installer switch that clones" ([bool]($stageError -match '-Source')) "False"
     Check "the previous binary is untouched" (Get-Content -Raw $target).Trim() "previous working binary"
     Check "the empty staged file is cleaned up" (Test-Path $staging) "False"
 
@@ -1508,18 +1404,39 @@ function Get-RefFailureMessage {
 
 Check "a tag with no release is told that, in those words" `
     ((Get-RefFailureMessage "v1.0.39") -match 'No release is published for tag v1\.0\.39') "True"
-# The regression itself: the old message named the platform asset and sent the
-# user to build from source for a release that does not exist.
+# The regression itself: the old message named the platform asset and pointed at a
+# source build for a release that does not exist.
 Check "and the refusal does not blame the platform binary" `
     ((Get-RefFailureMessage "v1.0.39") -match 'veyyon-windows-x64') "False"
 Check "it points at the releases page" `
     ((Get-RefFailureMessage "v1.0.39") -match [regex]::Escape("https://github.com/$Repo/releases")) "True"
-Check "and it offers -Source for the ref they actually asked for" `
-    ((Get-RefFailureMessage "v1.0.39") -match '-Source with -Ref v1\.0\.39') "True"
-# `-Ref 1.0.39` is not a ref git can check out, so the -Source suggestion has to
-# name the tag that exists rather than echo back what was typed.
-Check "a bare unreleased version is told about the v-spelled tag" `
-    ((Get-RefFailureMessage "1.0.39") -match '-Source with -Ref v1\.0\.39') "True"
+# `-Source with -Ref v1.0.39` used to be offered right here, and taking it cloned
+# into ~/.veyyon/src on the installer's own initiative. The way out is the clone the
+# USER runs, so the refusal hands over commands instead of a switch.
+Check "and it hands over the manual clone instead of a switch" `
+    ((Get-RefFailureMessage "v1.0.39") -match [regex]::Escape("git clone $RepoUrl")) "True"
+Check "the manual route names the setup command that follows the clone" `
+    ((Get-RefFailureMessage "v1.0.39") -match 'bun run setup') "True"
+Check "and no refusal offers an installer switch that clones" `
+    ((Get-RefFailureMessage "v1.0.39") -match '-Source') "False"
+# `-Ref 1.0.39` is not a ref git can check out, so the refusal names the tag that
+# exists rather than echoing back what was typed.
+Check "a bare unreleased version is refused under the v-spelled tag" `
+    ((Get-RefFailureMessage "1.0.39") -match 'No release is published for tag v1\.0\.39') "True"
+# `-Ref <branch>` was the other door to a clone: it implied a source build and
+# checked the branch out. A ref is a published release tag or nothing now, and the
+# refusal has to hand over every command the user runs, checkout step included,
+# because the installer runs none of them.
+Check "a branch ref is refused as a tag that does not exist" `
+    ((Get-RefFailureMessage "main") -match 'release tag not found: main') "True"
+Check "the refusal says only published tags are installable" `
+    ((Get-RefFailureMessage "main") -match 'Only published release tags are installable') "True"
+Check "it hands over the clone the user runs" `
+    ((Get-RefFailureMessage "main") -match [regex]::Escape("git clone $RepoUrl")) "True"
+Check "and names the checkout step for the branch that was asked for" `
+    ((Get-RefFailureMessage "main") -match [regex]::Escape("git checkout main")) "True"
+Check "no installer switch is offered for a branch" `
+    ((Get-RefFailureMessage "main") -match '-Source') "False"
 Check "a draft release reads the same way to the user" `
     ((Get-RefFailureMessage "v1.0.42") -match 'No release is published for tag v1\.0\.42') "True"
 # A tag nobody ever created is a typo, not an unreleased version, and keeps the
@@ -1530,6 +1447,53 @@ Check "and a missing tag is not described as an unreleased one" `
     ((Get-RefFailureMessage "v9.9.9") -match 'No release is published') "False"
 
 Remove-Item Function:Global:Invoke-WebRequest -ErrorAction SilentlyContinue
+
+# --- the installer refuses to clone, and says who does instead ----------------
+# -Source built from a git checkout: it cloned into ~/.veyyon/src, installed bun if
+# it had to, and built in there, so an `irm | iex` install could leave a second
+# divergent copy of the product on the machine and development started happening
+# inside it. The switch is gone.
+#
+# The unknown-option arm lives in the Main block, which the dot-source at the top
+# of this file deliberately skips, so this runs the installer as a CHILD process:
+# the exit status and what lands on screen are the contract here.
+$refuseSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-refuse-$PID"
+if (Test-Path $refuseSandbox) { Remove-Item -Recurse -Force $refuseSandbox }
+New-Item -ItemType Directory -Force -Path $refuseSandbox | Out-Null
+$savedUserProfile = $env:USERPROFILE
+$savedEnvInstallDir = $env:VEYYON_INSTALL_DIR
+try {
+    # Its own USERPROFILE, because the last assertion is about what the run left in
+    # it: $SrcDir defaults to %USERPROFILE%\.veyyon\src, so a run that still cloned
+    # would land exactly there.
+    $env:USERPROFILE = $refuseSandbox
+    $env:VEYYON_INSTALL_DIR = Join-Path $refuseSandbox "bin"
+    $installPs1 = Join-Path $root "scripts/install.ps1"
+    $sourceOut = (& (Get-Process -Id $PID).Path -NoProfile -File $installPs1 -Source 2>&1 | Out-String)
+    Check "-Source exits non-zero" ([bool]($LASTEXITCODE -ne 0)) "True"
+    Check "and is refused as an unknown option, naming what was passed" `
+        ([bool]($sourceOut -match 'unknown option: -Source')) "True"
+    # An `irm | iex` install shows the option list nowhere else, so the complaint on
+    # its own would leave the user with no way to find the options that do exist.
+    Check "the refusal prints the usage text with it" `
+        ([bool]($sourceOut -match 'veyyon installer')) "True"
+    # Refusing before anything happens is the point: a run that printed the usage and
+    # still left a checkout behind would satisfy every assertion above.
+    Check "the refused switch cloned nothing" `
+        (Test-Path (Join-Path $refuseSandbox ".veyyon\src")) "False"
+} finally {
+    $env:USERPROFILE = $savedUserProfile
+    $env:VEYYON_INSTALL_DIR = $savedEnvInstallDir
+    Remove-Item -Recurse -Force $refuseSandbox -ErrorAction SilentlyContinue
+}
+
+# Write-Usage owns the option list and is dot-sourced here, so the list itself is
+# asserted in-process: it documents the binary install and no source install, in
+# any spelling. A switch that no longer exists but is still advertised is the same
+# defect as a dead flag.
+$usageText = (Write-Usage 6>&1 | Out-String)
+Check "the option list documents the binary install" ([bool]($usageText -match '-Binary')) "True"
+Check "and documents no source install" ([bool]($usageText -match '-Source')) "False"
 
 # --- Get-TagFromRedirect: the release lookup no longer needs the GitHub API ---
 # api.github.com allows 60 requests an hour per IP without a token, shared by

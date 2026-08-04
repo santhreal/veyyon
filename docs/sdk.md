@@ -22,8 +22,8 @@ cd veyyon
 bun install
 ```
 
-If you already installed veyyon with `install.sh --source`, that checkout is at
-`~/.veyyon/src` and you can use it instead of cloning again.
+If you already have a Veyyon checkout, use it instead of cloning again. The
+installer does not create one, so this is a clone you made yourself.
 
 Register the package with Bun, from the checkout:
 

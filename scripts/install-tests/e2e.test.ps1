@@ -131,6 +131,13 @@ try {
     ExpectExists $aliasPath "the vey launch shim"
     ExpectExists $completionScript "the generated completion script"
 
+    # A completed install put a binary here and NOTHING under the source directory.
+    # The installer used to be able to clone the product into %USERPROFILE%\.veyyon\src
+    # and build it there, which left a second divergent checkout on the machine that
+    # no user asked for. It downloads a verified binary or it fails now, and
+    # VEYYON_SRC_DIR above names exactly where a run that still cloned would land.
+    ExpectAbsent $srcDir "a source checkout the installer must never create"
+
     # The shim must actually point at our binary, not merely exist: an empty or
     # stale vey.cmd would satisfy a presence check and fail every invocation.
     $shim = Get-Content -Raw -LiteralPath $aliasPath
