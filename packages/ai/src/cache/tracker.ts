@@ -95,6 +95,23 @@ export function beginCacheTrackedRequest(
  * The read count is remembered even when the verdict is bad, because the next
  * turn's comparison should be against what actually happened rather than
  * against the last healthy turn — otherwise one bad turn reports as bad forever.
+ *
+ * It is also remembered for a side-channel request, whose smaller read lowers the
+ * baseline for one turn. That looks like something to guard against and is not.
+ * The tempting fixes both end worse:
+ *
+ * - Keeping the MAXIMUM read makes compaction permanently over-report. After a
+ *   compaction the conversation is genuinely smaller, so every later turn reads
+ *   less than the pre-compaction peak forever.
+ * - Refusing to update on a non-comparable turn creates a permanent blind spot.
+ *   Post-compaction turns are all non-comparable against the old high baseline,
+ *   so the baseline would never move again and `degraded` could never fire on
+ *   that key.
+ *
+ * Overwriting every turn costs exactly one turn of blindness after a side
+ * request and then self-corrects, which is the smallest of the three failures.
+ * `verifyCacheUsage` is what keeps the stale baseline harmless: it only claims a
+ * collapse when the current prompt still covers the previously cached prefix.
  */
 export function recordCacheOutcome(
 	state: CacheTrackerState,

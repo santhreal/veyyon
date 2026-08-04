@@ -170,7 +170,23 @@ export function verifyCacheUsage(
 		// A key that read 40k last turn and 900 now did not "work": the prefix
 		// moved. The threshold is deliberately coarse — halving is unambiguous,
 		// while small drops are ordinary turn-to-turn movement of the window.
-		if (previous !== undefined && previous > MIN_CACHEABLE_TOKENS && readTokens < previous / 2) {
+		//
+		// Guarded on the prompt still being at least as large as what used to be
+		// cached, because a SMALLER prompt cannot contain the old prefix and reading
+		// less of it is arithmetic, not a defect. Side-channel requests are exactly
+		// that case and they are frequent: `Agent#buildSideRequestContext` mirrors
+		// the main loop's system + tools prefix on purpose so a compaction, title,
+		// advisor or `/btw` call SHARES the cache, but it carries different, usually
+		// shorter messages. Without this guard every one of those turns reported a
+		// collapse for behaving exactly as designed, and a check that cries wolf on
+		// its own product's normal operation is a check people switch off.
+		const promptStillCoversPrefix = previous !== undefined && totalInputTokens >= previous;
+		if (
+			previous !== undefined &&
+			previous > MIN_CACHEABLE_TOKENS &&
+			readTokens < previous / 2 &&
+			promptStillCoversPrefix
+		) {
 			return { kind: "degraded", readTokens, previousReadTokens: previous, shortfall: previous - readTokens };
 		}
 		return {
