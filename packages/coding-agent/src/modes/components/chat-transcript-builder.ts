@@ -42,7 +42,7 @@ import { createAdvisorMessageCard } from "./advisor-message";
 import { AssistantMessageComponent } from "./assistant-message";
 import { createBackgroundTanDispatchBlock } from "./background-tan-message";
 import { BashExecutionComponent } from "./bash-execution";
-import { detectCacheInvalidation } from "./cache-invalidation-marker";
+import { detectCacheInvalidation, usesExplicitPromptCache } from "./cache-invalidation-marker";
 import { CollabPromptMessageComponent } from "./collab-prompt-message";
 import {
 	BranchSummaryMessageComponent,
@@ -290,7 +290,9 @@ export class ChatTranscriptBuilder {
 		this.container.addChild(assistantComponent);
 
 		if (settings.get("display.cacheMissMarker")) {
-			const invalidation = detectCacheInvalidation(this.#lastAssistantUsage, message.usage);
+			const invalidation = detectCacheInvalidation(this.#lastAssistantUsage, message.usage, undefined, {
+				explicitCache: usesExplicitPromptCache(message.api, message.model),
+			});
 			if (invalidation) assistantComponent.setCacheInvalidation(invalidation);
 		}
 		if (message.usage.cacheRead + message.usage.cacheWrite + message.usage.input > 0) {

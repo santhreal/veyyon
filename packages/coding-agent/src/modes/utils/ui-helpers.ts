@@ -11,7 +11,7 @@ import { createAdvisorMessageCard } from "../../modes/components/advisor-message
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { createBackgroundTanDispatchBlock } from "../../modes/components/background-tan-message";
 import { BashExecutionComponent } from "../../modes/components/bash-execution";
-import { detectCacheInvalidation } from "../../modes/components/cache-invalidation-marker";
+import { detectCacheInvalidation, usesExplicitPromptCache } from "../../modes/components/cache-invalidation-marker";
 import { CollabPromptMessageComponent } from "../../modes/components/collab-prompt-message";
 import {
 	BranchSummaryMessageComponent,
@@ -416,7 +416,9 @@ export class UiHelpers {
 					const usage = message.usage;
 					const explained = sessionContext.cacheMissExplainedAt?.[i] ?? false;
 					if (this.ctx.settings.get("display.cacheMissMarker") && !explained) {
-						const invalidation = detectCacheInvalidation(this.ctx.lastAssistantUsage, usage);
+						const invalidation = detectCacheInvalidation(this.ctx.lastAssistantUsage, usage, undefined, {
+							explicitCache: usesExplicitPromptCache(message.api, message.model),
+						});
 						if (invalidation) assistantComponent.setCacheInvalidation(invalidation);
 					}
 					if (usage.cacheRead + usage.cacheWrite + usage.input > 0) {
