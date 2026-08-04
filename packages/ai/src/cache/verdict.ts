@@ -127,7 +127,21 @@ export type CacheVerdict =
 	/** Cache worked: the provider served a prefix from cache. */
 	| { kind: "ok"; readTokens: number; totalInputTokens: number; ratio: number }
 	/** A miss that is explained. Not a failure, but worth recording. */
-	| { kind: "cold"; reason: "first-request" | "window-expired" | "below-minimum"; writeTokens: number }
+	| {
+			kind: "cold";
+			reason: "first-request" | "window-expired" | "below-minimum";
+			writeTokens: number;
+			/**
+			 * How long since the previous request on this key, when the miss is an
+			 * expiry. This is the number that makes an expiry ACTIONABLE: without it
+			 * the operator sees a cost and cannot tell whether the session sat idle
+			 * through a long tool call, a daemon, an `irc wait` with no timeout, or a
+			 * human lunch break. With it the re-read is attributable to the gap that
+			 * caused it, which is the evidence needed to decide whether keeping the
+			 * window warm through long waits is worth paying for.
+			 */
+			elapsedMs?: number;
+	  }
 	/**
 	 * The prefix changed under us: the provider wrote a new entry instead of
 	 * reading one, inside the window and not on the first turn. Something in the
@@ -211,7 +225,7 @@ export function verifyCacheUsage(
 	const graceMs = cacheWindowGraceMs(expectation.retention);
 	const elapsed = expectation.msSincePreviousRequest;
 	if (elapsed !== undefined && elapsed > graceMs) {
-		return { kind: "cold", reason: "window-expired", writeTokens };
+		return { kind: "cold", reason: "window-expired", writeTokens, elapsedMs: elapsed };
 	}
 
 	// Inside the window, past the first turn, above the floor, and the provider
@@ -245,6 +259,21 @@ export function isCacheHealthy(verdict: CacheVerdict): boolean {
 	}
 }
 
+/**
+ * A gap in units an operator can match to what they were doing.
+ *
+ * Minutes and seconds rather than milliseconds, because the number is compared
+ * against a wall-clock wait — a tool call, a daemon, an `irc wait` — and `432107`
+ * does not read as "seven minutes" to anyone.
+ */
+function formatGapMs(elapsedMs: number): string {
+	const totalSeconds = Math.max(0, Math.round(elapsedMs / 1000));
+	if (totalSeconds < 60) return `${totalSeconds}s`;
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	return seconds === 0 ? `${minutes}m` : `${minutes}m${seconds}s`;
+}
+
 /** One line naming what happened and what it cost, for a log or an error. */
 export function describeCacheVerdict(verdict: CacheVerdict): string {
 	switch (verdict.kind) {
@@ -252,8 +281,13 @@ export function describeCacheVerdict(verdict: CacheVerdict): string {
 			return "prompt caching was not requested for this turn";
 		case "ok":
 			return `prompt cache read ${verdict.readTokens} of ${verdict.totalInputTokens} input tokens (${Math.round(verdict.ratio * 100)}%)`;
-		case "cold":
-			return `prompt cache was cold (${verdict.reason}); wrote ${verdict.writeTokens} tokens`;
+		case "cold": {
+			// An expiry names the gap that caused it. "cold (window-expired); wrote
+			// 51000 tokens" tells an operator they paid without telling them what to
+			// change; "after a 7m gap" points straight at the wait that did it.
+			const gap = verdict.elapsedMs === undefined ? "" : ` after a ${formatGapMs(verdict.elapsedMs)} gap`;
+			return `prompt cache was cold (${verdict.reason})${gap}; wrote ${verdict.writeTokens} tokens`;
+		}
 		case "invalidated":
 			return `prompt cache prefix changed: rewrote ${verdict.writeTokens} of ${verdict.totalInputTokens} input tokens instead of reading them`;
 		case "degraded":

@@ -110,7 +110,12 @@ describe("a miss with an innocent explanation is never a failure", () => {
 			warmRequest({ retention: "short", msSincePreviousRequest: CACHE_TTL_MS.short + 1 }),
 			usage(50_000, 0, 50_000),
 		);
-		expect(shortGap).toEqual({ kind: "cold", reason: "window-expired", writeTokens: 50_000 });
+		expect(shortGap).toEqual({
+			kind: "cold",
+			reason: "window-expired",
+			writeTokens: 50_000,
+			elapsedMs: CACHE_TTL_MS.short + 1,
+		});
 
 		// The same gap is well inside the long window, so it is NOT excused there:
 		// with a write it is prefix churn, which is a different finding.
@@ -124,7 +129,12 @@ describe("a miss with an innocent explanation is never a failure", () => {
 			warmRequest({ retention: "long", msSincePreviousRequest: CACHE_TTL_MS.long + 1 }),
 			usage(50_000, 0, 50_000),
 		);
-		expect(longGap).toEqual({ kind: "cold", reason: "window-expired", writeTokens: 50_000 });
+		expect(longGap).toEqual({
+			kind: "cold",
+			reason: "window-expired",
+			writeTokens: 50_000,
+			elapsedMs: CACHE_TTL_MS.long + 1,
+		});
 	});
 
 	/**
@@ -150,7 +160,14 @@ describe("a miss with an innocent explanation is never a failure", () => {
 			warmRequest({ retention: "short", msSincePreviousRequest: grace + 1 }),
 			usage(50_000, 0, 0),
 		);
-		expect(justPastGrace).toEqual({ kind: "cold", reason: "window-expired", writeTokens: 0 });
+		// The gap is reported with the verdict, because an expiry that names no
+		// duration tells an operator they paid without telling them what to change.
+		expect(justPastGrace).toEqual({
+			kind: "cold",
+			reason: "window-expired",
+			writeTokens: 0,
+			elapsedMs: grace + 1,
+		});
 
 		// Just inside it: still judged, so the margin cannot be widened into
 		// switching the check off.
@@ -564,5 +581,53 @@ describe("observations are kept per cache identity", () => {
 		}
 		touch("newcomer");
 		expect(state.keys.has("busy")).toBe(true);
+	});
+});
+describe("an expired window names the wait that cost it", () => {
+	/**
+	 * The point of the duration. A `window-expired` miss says the session paid to
+	 * re-read the whole prompt; without the gap, an operator cannot tell whether a
+	 * long tool call, a daemon, an `irc wait` with no timeout, or a lunch break did
+	 * it, so there is nothing to change. Formatted in minutes and seconds because
+	 * it is compared against a wall-clock wait, and `432107` does not read as seven
+	 * minutes to anyone.
+	 */
+	it("states the gap in minutes and seconds", () => {
+		const sevenMinutes = verifyCacheUsage(
+			warmRequest({ msSincePreviousRequest: 7 * 60_000 + 12_000 }),
+			usage(0, 0, 51_000),
+		);
+		const line = describeCacheVerdict(sevenMinutes);
+		expect(line).toContain("after a 7m12s gap");
+		expect(line).toContain("51000 tokens");
+
+		// A whole number of minutes drops the seconds rather than reading "7m0s".
+		// The prompt must clear the cacheable floor, or the floor check answers
+		// first and there is no window verdict left to describe.
+		expect(
+			describeCacheVerdict(
+				verifyCacheUsage(warmRequest({ msSincePreviousRequest: 6 * 60_000 }), usage(0, 0, 50_000)),
+			),
+		).toContain("after a 6m gap");
+
+		// Under a minute stays in seconds. This one is inside the grace window, so
+		// it is built directly rather than through a verdict that would excuse it.
+		expect(
+			describeCacheVerdict({ kind: "cold", reason: "window-expired", writeTokens: 10, elapsedMs: 45_000 }),
+		).toContain("after a 45s gap");
+	});
+
+	/** The other cold reasons have no gap to report and must not invent one, or
+	 *  every first turn would claim it expired after some duration. */
+	it("says nothing about a gap for a first request or a small prompt", () => {
+		const first = describeCacheVerdict(
+			verifyCacheUsage(warmRequest({ firstRequest: true }), usage(50_000, 0, 50_000)),
+		);
+		expect(first).toContain("first-request");
+		expect(first).not.toContain("gap");
+
+		const small = describeCacheVerdict(verifyCacheUsage(warmRequest(), usage(100, 0, 0)));
+		expect(small).toContain("below-minimum");
+		expect(small).not.toContain("gap");
 	});
 });
