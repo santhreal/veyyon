@@ -174,6 +174,19 @@ Check these before adding or forwarding a field:
   GPT-5.6 and later. The ChatGPT Codex backend rejects it with
   `prompt_cache_breakpoint is not supported on this model (invalid_parameter)`,
   which fails the turn, so a version floor alone is never enough to send it.
+- **Cache retention is credential-derived on Anthropic, and that is a billing
+  decision.** `getCacheControl` falls back to `long` for an OAuth token and to
+  `short` for an API key, so the same model on the same endpoint asks for a 1h
+  TTL under a subscription and a 5m TTL under a key. Anthropic bills a 1h cache
+  write at 2x the base input rate against 1.25x for 5m, and
+  `supportsLongCacheRetention` is keyed on the endpoint rather than the
+  credential, so the key path could ask for 1h and does not. Both defaults are
+  pinned by `packages/ai/test/anthropic-cache-retention-policy.test.ts`. Before
+  changing either, note that agent turns span tool calls and subagent batches: a
+  measured 469-turn session had gaps of 787s, 248s, 196s, 168s and 111s between
+  turns, and every gap past the TTL costs a re-read of the prefix as fresh input
+  plus another write, so 2x once can be cheaper than 1.25x repeatedly. Choose the
+  TTL from the gap distribution, not from the credential type.
 - **Stateful chaining.** Official OpenAI Responses may chain by default.
   Third-party endpoints generally should not. Codex chains only on websocket
   `response.create`.
