@@ -31,7 +31,7 @@ import { describeLoopLimitRuntime } from "../modes/loop-limit";
 import { theme } from "../modes/theme/theme";
 import type { InteractiveModeContext } from "../modes/types";
 import { extractLastCodeBlock, extractLastCommand } from "../modes/utils/copy-targets";
-import type { AgentSession, FreshSessionResult } from "../session/agent-session";
+import type { AgentSession, FreshSessionResult, HandoffResult } from "../session/agent-session";
 import { parseCompactArgs } from "../session/compact-modes";
 import { resolveResumableSession } from "../session/session-listing";
 import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
@@ -172,7 +172,7 @@ async function handleUsageResetCommand(
 		return;
 	}
 	if (accounts.length === 0) {
-		await output("No Codex accounts found. Use /login to add one.");
+		await output("No Codex accounts found. Sign in with /login in an interactive veyyon session to add one.");
 		return;
 	}
 	const targetArg = arg.trim();
@@ -1441,6 +1441,38 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		},
 	},
 	handoff: {
+		/**
+		 * The text-mode half of `/handoff`, so a client without a terminal can run the operation the
+		 * `/compact handoff` refusal points it at.
+		 *
+		 * It mirrors the TUI guard rather than the TUI presentation: the streaming refusal and the
+		 * cancellation wording are the same sentences, and what is dropped is the spinner, the
+		 * transcript repaint and the editor reset, none of which exist here. `session.handoff` throws
+		 * its preconditions ("Nothing to hand off"), so they surface as the failure line instead of
+		 * as a success the caller would have to disbelieve.
+		 */
+		handle: async (command, runtime) => {
+			if (runtime.session.isStreaming) {
+				return usage("Wait for the current response to finish or abort it before handing off.", runtime);
+			}
+			let result: HandoffResult | undefined;
+			try {
+				result = await runtime.session.handoff(command.args.trim() || undefined);
+			} catch (err) {
+				const message = errorMessage(err);
+				return usage(message === "Handoff cancelled" ? message : `Handoff failed: ${message}`, runtime);
+			}
+			if (!result) return usage("Handoff cancelled", runtime);
+			// The transcript underneath the caller's session id was replaced, so anything deriving a
+			// title from it is now stale.
+			await runtime.notifyTitleChanged?.();
+			await runtime.output(
+				result.savedPath
+					? `New session started with handoff context. Handoff document saved to: ${result.savedPath}`
+					: "New session started with handoff context.",
+			);
+			return commandConsumed();
+		},
 		handleTui: async (command, runtime) => {
 			const customInstructions = command.args || undefined;
 			runtime.ctx.editor.setText("");
@@ -1615,7 +1647,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			const current = runtime.sessionManager.getCwd();
 			if (!command.args) {
 				await runtime.output(
-					`${current}\n(session-scoped and ephemeral. For a per-profile default working directory, set session.workdir in /settings › Interaction › Profile on this profile.)`,
+					`${current}\n(session-scoped and ephemeral. For a per-profile default working directory, set session.workdir in /settings › Interaction › Profile on this profile, or run: veyyon config set session.workdir <path>.)`,
 				);
 				return commandConsumed();
 			}
@@ -1640,7 +1672,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				await runtime.output(
 					next === current
 						? `cwd unchanged: ${next}`
-						: `cwd set: ${current} → ${next}\nThis change is session-scoped and ephemeral (it does not persist). For a per-profile default, set session.workdir in /settings › Interaction › Profile on this profile.`,
+						: `cwd set: ${current} → ${next}\nThis change is session-scoped and ephemeral (it does not persist). For a per-profile default, set session.workdir in /settings › Interaction › Profile on this profile, or run: veyyon config set session.workdir <path>.`,
 				);
 				await runtime.notifyTitleChanged?.();
 				return commandConsumed();

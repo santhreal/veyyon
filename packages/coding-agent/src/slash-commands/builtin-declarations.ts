@@ -526,9 +526,17 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
+		// TEXT MODE, because the operation needs no terminal. `AgentSession.handoff` generates the
+		// document with a oneshot request and swaps the session manager onto a new transcript, and
+		// the RPC surface has always driven exactly that (`rpc-mode.ts`, command "handoff"). Only the
+		// spinner and the transcript repaint were TUI-bound. Leaving it TUI-only meant `/compact
+		// handoff` refused an ACP client by naming `/handoff`, a command that client could not reach.
 		name: "handoff",
+		textMode: true,
 		description: "Hand off session context to a new session",
+		acpDescription: "Generate a handoff document and continue in a new session",
 		inlineHint: "[focus instructions]",
+		acpInputHint: "[focus instructions]",
 		allowArgs: true,
 	},
 
