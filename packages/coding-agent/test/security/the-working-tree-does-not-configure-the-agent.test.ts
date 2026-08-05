@@ -24,7 +24,7 @@
  * hooks, its MCP servers and its SSH hosts.
  */
 
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { listCapabilities, loadCapability } from "@veyyon/coding-agent/capability";
 import type { ContextFile } from "@veyyon/coding-agent/capability/context-file";
@@ -34,7 +34,12 @@ import type { SSHHost } from "@veyyon/coding-agent/capability/ssh";
 import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import "@veyyon/coding-agent/discovery";
-import { initializeWithSettings } from "@veyyon/coding-agent/capability";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { scanForeignConfig } from "@veyyon/coding-agent/discovery/import-scan";
 import { loadSectionOverrideFiles } from "@veyyon/coding-agent/system-prompt-builder/section-overrides";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
@@ -135,11 +140,24 @@ function projectSources(items: Array<{ _source: SourceMeta }>): string[] {
 
 describe("a working tree does not configure the agent", () => {
 	let repo: HostileRepo;
+	// `openForeignGate` writes `importForeignConfig` into MODULE-GLOBAL state in
+	// capability/index.ts, and nothing put it back: this suite left the gate OPEN for
+	// every file that ran after it in the same process, so later suites ambiently
+	// loaded the CLAUDE.md and .cursor rules that veyyon is supposed to ignore by
+	// default. Worst here of all places — the suite certifying that a working tree
+	// cannot configure the agent was itself reconfiguring every later suite.
+	let registrySnapshot: RegistrySnapshot | undefined;
 
 	beforeEach(async () => {
+		registrySnapshot = captureRegistryForTests();
 		repo = hostileRepo("untrusted");
 		await openForeignGate(repo.cwd);
 		repo.resetCaches();
+	});
+
+	afterEach(() => {
+		if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+		registrySnapshot = undefined;
 	});
 
 	it("yields no project-level item for any capability except context files", async () => {

@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Effort } from "@veyyon/catalog/effort";
-import { initializeWithSettings } from "@veyyon/coding-agent/capability";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import "@veyyon/coding-agent/discovery";
 import { clearCustomApis } from "@veyyon/ai/api-registry";
 import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";
@@ -330,6 +335,21 @@ describe("Settings", () => {
 	});
 
 	describe("malformed project settings surfacing (Law 10)", () => {
+		// Both cases below open the foreign-config gate, which lands in MODULE-GLOBAL
+		// state in capability/index.ts that `resetSettingsForTest` does not touch.
+		// Unrestored, this file left the gate OPEN for every later file in the process,
+		// so they ambiently loaded other tools' config that is off by default.
+		let registrySnapshot: RegistrySnapshot | undefined;
+
+		beforeEach(() => {
+			registrySnapshot = captureRegistryForTests();
+		});
+
+		afterEach(() => {
+			if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+			registrySnapshot = undefined;
+		});
+
 		it("warns instead of silently ignoring a malformed foreign project settings file", async () => {
 			// A foreign settings provider (gemini) flags a broken .gemini/settings.json
 			// with an "Invalid JSON" warning. #loadProjectSettings used to read only
