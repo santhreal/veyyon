@@ -54,11 +54,12 @@ these primary fields:
 | Setting | Key | Values |
 | --- | --- | --- |
 | Threshold | `compaction.threshold` | `auto`, a percent of the window (`85%`), or a token amount (`170000`) |
-| Type | `compaction.strategy` | `summary` or `handoff` (schema default `summary`) |
+| Type | `compaction.strategy` | `summary`, the sole strategy |
 | Model | `compaction.model` | model id; unset uses the interactive model |
 
-`summary` rewrites old history into an in-place LLM summary; `handoff` writes a structured session transfer.
-Run on demand with `/compact`. See [Compaction and project memory](../context/compaction-memory.md).
+`summary` rewrites old history into an in-place LLM summary. Run it on demand
+with `/compact`. Use `/handoff` only when you explicitly want a new session. See
+[Compaction and project memory](../context/compaction-memory.md).
 
 ## What the model sees
 

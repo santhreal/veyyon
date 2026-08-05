@@ -4,7 +4,7 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **apply_patch**: Edit mode (`edit.mode: apply_patch`) for a Codex-style `*** Begin Patch … *** End Patch` envelope. Default edit mode is **hashline** via the `edit` tool. Apply-patch shares approval policy with other write paths.
 
-- **approval mode**: The autonomy control (`tools.approvalMode`) for tool tiers: `plan`, `ask`, `auto-edit`, `yolo` (legacy `always-ask` → `ask`, `write` → `auto-edit`). There is no OS command sandbox; the mode, per-tool `tools.approval` overrides, and hard-coded critical bash patterns are the boundary.
+- **approval mode**: The autonomy control (`tools.approvalMode`) for tool tiers: `plan`, `ask`, `ask-command`, `auto` (the default), `yolo` (legacy `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`). There is no OS command sandbox; the mode, per-tool `tools.approval` overrides, the working-directory and secret-use boundaries, and hard-coded critical bash patterns are the boundary.
 
 - **model catalog**: Bundled provider/model data plus `models.yml` / `models.yaml` custom entries. There is no separate `backends.toml` subsystem.
 

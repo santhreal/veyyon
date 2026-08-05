@@ -10,7 +10,7 @@ This page answers common questions and errors. For a guided diagnostic path, see
 
 ### Does Veyyon sandbox the commands it runs?
 
-No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is **`tools.approvalMode`** (schema default **`yolo`**) plus hard-coded critical bash patterns that prompt in non-yolo modes. See [Approvals](../features/sandbox.md).
+No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is **`tools.approvalMode`** (schema default **`auto`**), plus the working-directory and secret-use boundaries, which apply on every rung except `yolo`, and hard-coded critical bash patterns, which prompt on every rung including `yolo`. See [Approvals](../features/sandbox.md).
 
 ## Database and session locking
 
@@ -36,7 +36,7 @@ Veyyon lists models from a bundled catalog plus live discovery from providers th
 
 ### Why did my edit ask for approval?
 
-The approval mode decides when Veyyon prompts before a tool runs. In `ask`, write and exec tiers prompt. In `plan`, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `auto-edit`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
+The approval mode decides when Veyyon prompts before a tool runs. In `ask`, every tier prompts, reads included. In `ask-command`, reads and edits run and anything that executes asks. In `auto`, the default, every tier runs with the per-tool, working-directory, credential and critical-call guards still asking. In `plan`, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `ask-command`, `auto`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
 
 ### How do I resume a session?
 

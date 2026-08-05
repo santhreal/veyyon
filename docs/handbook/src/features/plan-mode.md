@@ -30,10 +30,10 @@ A **persistent objective** on a saved session, with optional auto-continuation w
 
 - Setting: `goal.enabled` (default `true`)
 - `/goal set <objective>`: create or replace
-- `/goal show`: status, tokens, budget
+- `/goal show`: status and token usage
 - `/goal pause` / `/goal resume`
 - `/goal drop`: remove
-- `/goal budget <N|off>`: token budget
+- Setting: `goal.modelBudgetsEnabled` (default `false`), controlled only from the interactive Settings UI
 - `/guided-goal`: interview flow before enabling
 
 ### Goal state
@@ -48,7 +48,7 @@ Statuses: `active`, `paused`, `budget-limited`, `complete`, `dropped`.
 
 ### Goal tool
 
-When goal mode is active, the agent can call the `goal` tool with ops: `create`, `get`, `complete`, `resume`, `drop`. Continuation prompts inject on idle turns per `goal.continuationModes`.
+When goal mode is active, the agent can call the `goal` tool with ops: `create`, `get`, `complete`, `resume`, `drop`. The tool never accepts a budget argument. The interactive Settings UI owns `goal.modelBudgetsEnabled`, which controls whether persisted budgets are exposed and enforced. Continuation prompts inject on idle turns per `goal.continuationModes`.
 
 ### Example
 

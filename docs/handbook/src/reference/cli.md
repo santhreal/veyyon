@@ -49,6 +49,7 @@ Unknown first tokens route to `launch` as a prompt:
 | `grievances` | | Internal grievance reporter |
 | `install` | | Install or link an extension package (alias of `plugin install`/`plugin link`) |
 | `join` | | Join collab session |
+| `licenses` | | Print Veyyon and third-party license notices |
 | `models` | | List models and providers |
 | `plugin` | | Plugin lifecycle (`list`, `install`, …) |
 | `profile` | `profiles` | List, create, or remove self-contained profiles |

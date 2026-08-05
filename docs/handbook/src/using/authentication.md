@@ -15,7 +15,64 @@ Use the interactive slash commands inside a session:
 - `/login <redirect-url>`: completes an OAuth flow that needs a pasted callback URL.
 - `/logout`: opens the provider selector to remove stored credentials.
 
-On first run, the first-run setup (`veyyon setup`, or `/setup` / `/providers` later) walks the same flow.
+On first run, the first-run setup (`veyyon setup`, or `/setup` later) walks the same flow.
+
+## Using several accounts for one provider
+
+You can sign in to the same provider more than once. Run `/login anthropic` twice with two different
+logins and Veyyon stores both, each with its own quota. To see them, open the account manager:
+
+```text
+/providers
+```
+
+The sidebar lists your providers and the body lists that provider's accounts, one row each, with the
+email, the plan, how the credential was supplied, and how much of its quota is spent. A row marked
+`this session` is the one serving your current session.
+
+From that card you press `enter` to use the selected account, `n` to name it, `r` to re-check its
+health, `u` to open its usage, `x` twice to log it out, and `a` to add another account for the same
+provider. `/account manager` opens the same card.
+
+Switching is **per provider**. Choosing another Anthropic account changes Anthropic and nothing else,
+because several providers serve one session at the same time: your main model, your subagent roles,
+and web search can each be a different provider. Moving between providers is a model choice, so it
+lives in `/models`.
+
+## Naming an account
+
+An email is not always the thing you recognise, especially when two subscriptions share one login.
+Give an account a name and every surface uses it:
+
+```text
+/account name work
+```
+
+The name belongs to the account, not to the stored token, so it survives a token refresh and a later
+re-login to the same account. An account you never named shows its email instead, and Veyyon tells
+you how to set one.
+
+## Which account am I using?
+
+```text
+/account
+```
+
+This reports one line per provider your session has actually routed to, with the account it is using
+and that account's remaining quota. A provider you hold credentials for but have not used this
+session is not listed.
+
+If your chosen account hits its rate limit, Veyyon moves to another one so your work continues, and
+says so:
+
+```text
+Anthropic          personal                    main model  (opus-5)
+                   pinned to work, rotated off it (usage limit)
+                   /account switch anthropic to re-pin work · 2h 14m until it unblocks
+```
+
+Your choice is kept, not discarded. Once the limit resets, traffic returns to the account you picked
+with no further action.
 
 ## Headless and remote hosts
 

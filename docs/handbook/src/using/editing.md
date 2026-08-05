@@ -40,6 +40,17 @@ The loop is short:
 
 `write` strips pasted hashline prefixes when appropriate, and can mint new tags after a whole-file write.
 
+## Verification after a mutation
+
+After `edit`, `write`, or `ast_edit` changes a path, Veyyon records the mutation.
+If the model tries to finish without a later successful `bash`, `eval`, `debug`,
+or `browser` result, Veyyon gives it one targeted continuation turn. The model
+must run the check and report what the result established.
+
+A successful command is execution evidence. It does not prove that the command
+tested the right behavior. You should still read the final verification claim
+and confirm that it matches the command or browser scenario that ran.
+
 ## Safety
 
 Edits honor the approval mode, just as `bash` does. A `tools.approval.<tool>: deny` policy keeps the tool in the model's list but refuses every call at dispatch with an error naming the policy. Tools leave the model's list via `<tool>.enabled: false`, harness-profile allowlists, `tools.discoveryMode` (BM25 hiding), extension or agent tool-set overrides, or agent definitions. Plan mode keeps the list and blocks mutations at approval time.

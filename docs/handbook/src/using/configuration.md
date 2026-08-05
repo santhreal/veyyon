@@ -150,14 +150,15 @@ and change the setting again, and nothing further is reported.
 
 ## Pick models and providers
 
-Three explicit model slots, each set on its own:
+Configure the interactive model, subagent policy, compaction model, and optional roles separately:
 
 | Goal | What to set |
 | --- | --- |
 | Choose the model you talk to | `--model` / `/model` (persisted as `modelRoles.default`) |
-| Model for spawned subagents | `subagent.model` (Subagents tab) |
-| Model for context compaction | `compaction.model` |
-| Named model assignments (optional) | `modelRoles`, per profile (settings → Model → Roles) |
+| Choose profile-wide subagent defaults | `subagent.model` and `subagent.thinkingLevel` |
+| Customize one subagent | `subagent.agents.<name>` or Settings → Subagents → Agents |
+| Choose the model for context compaction | `compaction.model` |
+| Add named model assignments | `modelRoles`, per profile (Settings → Model → Roles) |
 | Add a local or BYOK provider | a `providers:` entry in `models.yml` (see [Models](./models.md)) |
 
 ```yaml
@@ -165,9 +166,13 @@ Three explicit model slots, each set on its own:
 modelRoles:
   default: openai/gpt-5           # interactive model (persisted default)
   smol: openai/gpt-4.1-mini
-  task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat   # optional; unset means subagents inherit your model
+  model: deepseek/deepseek-chat
+  thinkingLevel: high
+  agents:
+    reviewer:
+      enabled: true
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini        # optional; else inherit interactive
 ```
@@ -178,27 +183,29 @@ compaction:
 
 | Goal | What to set |
 | --- | --- |
-| When Veyyon asks before acting | `tools.approvalMode`: `plan`, `ask`, `auto-edit`, `yolo` (default); legacy `always-ask`/`write` accepted |
+| When Veyyon asks before acting | `tools.approvalMode`: `plan`, `ask`, `ask-command`, `auto` (default), `yolo`; legacy `always-ask`/`write`/`auto-edit` accepted |
 | Per-tool policy | `tools.approval`: map a tool to `allow` / `deny` / `prompt` |
 | Advisor review pass | `advisor.enabled` + `modelRoles.advisor` |
 
 ```yaml
 tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
     read: allow
 ```
 
 Per run, `--approval-mode <mode>` and `--auto-approve` / `--yolo` override the mode. There is no
-separate OS shell sandbox, the approval mode is the only boundary; see
+OS shell sandbox. The mode is the main boundary, and three guards sit on top of it and are not
+lifted by raising the rung: the working-directory boundary, the secret-use boundary, and the
+critical-command floor in the bash guard. See
 [Approvals](../features/sandbox.md) and [Safety](./safety.md).
 
 ## Run unattended or in CI
 
 | Goal | What to pass |
 | --- | --- |
-| Non-interactive one-shot | `veyyon --approval-mode auto-edit "…"` (prompt as arg or piped stdin) |
+| Non-interactive one-shot | `veyyon --print "…"` (prompt as arg or piped stdin), on the default `auto` rung so no tier prompt can stall the run |
 | Force `tools.approvalMode: yolo` for the run | `--yolo` |
 | Temporary settings for one run | `--config ./ci-settings.yml` (repeatable) |
 
@@ -211,14 +218,14 @@ Compaction compresses older history instead of truncating it. Common keys:
 | Goal | What to set |
 | --- | --- |
 | Auto-compaction threshold | `compaction.threshold`: `auto`, a percent (`85%`), or a token amount (`170000`) |
-| Compaction type | `compaction.strategy`: `summary` or `handoff` (schema default `summary`) |
+| Compaction type | `compaction.strategy: summary`, the sole strategy |
 | Compaction model | `compaction.model` (unset = interactive model) |
 | Cross-session memory backend | `memory.backend`: `off` (default), `local`, `hindsight`, `mnemopi` |
 
 ```yaml
 compaction:
   threshold: "80%"
-  strategy: handoff
+  strategy: summary
   model: openai/gpt-5-mini
 
 memory:
@@ -530,6 +537,6 @@ Hooks: TypeScript modules under project/profile hook paths (`pi.on(...)`). See [
 
 - [Getting started](./getting-started.md)
 - [Task guides](./task-guides.md)
-- [Safety](./safety.md): `tools.approvalMode` (default `yolo`)
+- [Safety](./safety.md): `tools.approvalMode` (default `auto`)
 - [Extending](./extending.md)
 - [CLI](../reference/cli.md)

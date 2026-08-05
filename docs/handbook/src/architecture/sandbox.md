@@ -9,7 +9,8 @@ Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before d
 - Map the **approval mode** (`tools.approvalMode`) to a per-tier decision (read / write / exec) for
   `bash`, `edit`, `write`, and related tools.
 - Apply per-tool overrides (`tools.approval` → `allow` / `deny` / `prompt`) on top of the mode.
-- Force a prompt for hard-coded critical bash patterns (recursive deletion rooted at `/`, fork bombs, `curl | sh`, disk destruction) in `plan`, `ask`, and `auto-edit`; `yolo` auto-approves them unless `tools.approval.bash` is `prompt` or `deny`.
+- Apply the two argument-level boundaries the tier cannot see: a filesystem target outside the session working directory, and a call whose arguments carry a stored credential. Both prompt on every rung except `yolo`, the shipped `auto` included.
+- Force a prompt for hard-coded critical bash patterns (recursive deletion of the home directory or a system directory, fork bombs, `curl | sh`, disk destruction) on every rung, `yolo` included. This is a floor rather than an ordinary prompt: only an explicit `tools.approval.bash: allow` lifts it, and `deny` remains a hard block.
 - Surface the approval prompt in the TUI before a gated command or edit runs.
 
 ## Public boundary
@@ -23,9 +24,9 @@ exec-server process in the shipped product.
 
 | Concept | Meaning |
 | --- | --- |
-| Approval mode | Which tool tiers run without asking (`plan`, `ask`, `auto-edit`, `yolo`). |
+| Approval mode | Which tool tiers run without asking (`plan`, `ask`, `ask-command`, `auto` (default), `yolo`; legacy `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`). |
 | Per-tool policy | `tools.approval` overrides the mode for a named tool. |
-| Critical bash patterns | Hard-coded destructive-command shapes that prompt in non-yolo modes, even over a per-tool `allow`. |
+| Critical bash patterns | Hard-coded destructive-command shapes that prompt on every rung including `yolo`, even over a per-tool `allow`. |
 | Plan mode | Restricts mutating tools until the plan is approved (`/plan`). |
 
 User-facing guide: [Approvals](../features/sandbox.md).

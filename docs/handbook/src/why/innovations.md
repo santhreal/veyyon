@@ -33,7 +33,7 @@ See [Editing and repair](../using/editing.md) and [The hashline edit engine](../
 
 ## Tool approval tiers
 
-The `tools.approvalMode` setting is one of `plan`, `ask`, `auto-edit`, or `yolo`. The older aliases `always-ask` and `write` still map to `ask` and `auto-edit`. On top of the mode, per-tool `tools.approval` overrides apply. The three tiers are read, write, and exec. Bash can still force a prompt on destructive patterns through the bash interceptor (`bashInterceptor.enabled` and `bashInterceptor.patterns`).
+The `tools.approvalMode` setting is one of `plan`, `ask`, `ask-command`, `auto`, or `yolo`, and `auto` is the default. The older aliases still map onto those: `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`. The three tiers are read, write, and exec. On top of the mode sit the guards the mode does not lift: per-tool `tools.approval` overrides, the working-directory boundary, the secret-use boundary, and a built-in bash guard (`bash-guard.ts`) that forces a prompt on destructive commands such as a recursive delete of the home directory. That guard is always on and even `yolo` does not lift it. The separate bash interceptor (`bashInterceptor.enabled`, off by default, `bashInterceptor.patterns`) is an additional user-configured layer.
 
 See [Approvals](../features/sandbox.md) and `/settings` → Interaction → Approvals.
 
@@ -43,14 +43,14 @@ Veyyon separates the model you use from the job it does:
 
 - **The interactive model** is what you set with `/model` or `--model`, and it persists as `modelRoles.default`.
 - **Roles** pin a model to a kind of work, such as `smol` for cheap fast work or `advisor` for the reviewing advisor, and you can add your own in `modelRoles`. The full built-in set is listed in [Models, roles, and profiles](../using/roles-and-profiles.md).
-- **Overrides** let a slot win over a role. `compaction.model` overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles at all: they live in the Subagents settings area, which owns them alone.
+- **Overrides** are explicit subsystem policies. `compaction.model` overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles: profile-wide and per-agent policy in the Subagents settings area decides what they run.
 - **Cycling** rotates through `cycleOrder` (which defaults to `smol` then `slow`), bound to `app.model.cycleForward`, often Ctrl+P.
 
 The full contract is in [Models, roles, and profiles](../using/roles-and-profiles.md).
 
 ## Provider-neutral loop
 
-The agent loop, the TUI, the session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. You configure providers in the active profile's agent directory, through `config.yml`, `/setup`, or `/providers`.
+The agent loop, the TUI, the session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. You configure providers in the active profile's agent directory, through `config.yml` or `/setup`, and manage their accounts with `/providers`.
 
 ## Engine modes
 

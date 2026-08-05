@@ -22,22 +22,23 @@ you know which tier a tool is in, the mode tells you whether it runs.
 
 ## Modes
 
-A mode is a named choice of which tiers run without asking. There are four:
+A mode is a named choice of which tiers run without asking. There are five:
 
 | Mode | Auto-approves | Prompts for |
 | --- | --- | --- |
 | `plan` | read | write with an active plan-mode session; write and exec are otherwise denied |
-| `ask` | read | write, exec |
-| `auto-edit` | read + write | exec |
+| `ask` | nothing | read, write, exec |
+| `ask-command` | read + write | exec |
+| `auto` | all tiers | a per-tool policy, the working-directory boundary, credential use, a tool's own critical calls |
 | `yolo` | all tiers | nothing (unless a per-tool override applies) |
 
-The schema default is `yolo`. Two older names still work: `always-ask` maps to `ask`, and
-`write` maps to `auto-edit`.
+The schema default is `auto`. Three older names still work: `always-ask` maps to `ask`, and
+`write` and `auto-edit` both map to `ask-command`.
 
 Set the mode in config, or override it for one run:
 
 ```console
-$ veyyon --approval-mode auto-edit "run the tests and fix failures"
+$ veyyon --approval-mode ask-command "run the tests and fix failures"
 ```
 
 The launch flags `--yolo` and `--plan-yolo` set `yolo` and a plan-mode variant of it.
@@ -45,21 +46,22 @@ The launch flags `--yolo` and `--plan-yolo` set `yolo` and a plan-mode variant o
 ## The working-directory boundary
 
 A tier tells you what kind of thing a tool does. It does not tell you which file the
-tool is about to touch. In `auto-edit`, the `write` tier is approved, so `write` runs
-without asking whether the target is `src/main.ts` or a file in your home directory.
+tool is about to touch. In `ask-command` and `auto`, the `write` tier is approved, so
+`write` runs without asking whether the target is `src/main.ts` or a file in your home
+directory.
 
 The working-directory boundary is the second question, asked after the tier:
 
 > Does this call touch a path outside the session working directory?
 
 If it does, the call asks for approval even though its tier would have allowed it. This
-holds in `plan`, `ask`, and `auto-edit`. It does not hold in `yolo`, which turns off
-permission entirely.
+holds in `plan`, `ask`, `ask-command` and `auto`, so the shipped default is inside it. It
+does not hold in `yolo`, which turns off permission entirely.
 
 Say you launched in `~/projects/api` and the model runs this:
 
 ```console
-$ veyyon --approval-mode auto-edit "update the config"
+$ veyyon --approval-mode ask-command "update the config"
 ```
 
 Writing `~/projects/api/config.yml` runs without asking, because it is inside the
@@ -97,9 +99,9 @@ model can use a secret it never reads. That substitution used to be recorded and
 asked about: `secrets.auditLog` could tell you afterwards which credential an agent had
 spent, and nothing could ask you first.
 
-Now a call whose arguments carry a real credential asks for approval in `plan`, `ask`, and
-`auto-edit`, even when its tier would have allowed it. The prompt names the secret and
-never shows its value:
+Now a call whose arguments carry a real credential asks for approval in `plan`, `ask`,
+`ask-command` and `auto`, even when its tier would have allowed it. The prompt names the
+secret and never shows its value:
 
 ```text
 Allow tool: bash
@@ -108,9 +110,9 @@ real credential.
 ```
 
 As with the working-directory boundary, `yolo` turns permission off entirely and turns
-this off with it, so the shipped default asks nothing extra. A call that mentions a
-placeholder without expanding it, such as one made while `secrets.enabled` is false, is
-not carrying a credential and does not ask.
+this off with it. Every other rung keeps it, the shipped `auto` included. A call that
+mentions a placeholder without expanding it, such as one made while `secrets.enabled` is
+false, is not carrying a credential and does not ask.
 
 ## Per-tool overrides
 
@@ -124,19 +126,19 @@ is a hard block in every direction.
 ```yaml
 # ~/.veyyon/profiles/default/agent/config.yml
 tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
     read: allow
 ```
 
-Here the mode is `auto-edit`, so writes run without asking. The override then pulls `bash`
+Here the mode is `ask-command`, so writes run without asking. The override then pulls `bash`
 back to `prompt`, so commands still stop for your approval.
 
 ## Critical bash commands
 
 Within the exec tier, a guard (`packages/coding-agent/src/tools/bash-guard.ts`) forces a prompt in
-`plan`, `ask`, and `auto-edit`, even over a per-tool `allow`. It has two halves.
+`plan`, `ask`, `ask-command` and `auto`, even over a per-tool `allow`. It has two halves.
 
 The first half judges what a command would DELETE, and it judges the paths after expansion rather
 than the command as text. A tilde and `$HOME` are resolved, so `rm -rf ~/` and `rm -rf "$HOME"/`

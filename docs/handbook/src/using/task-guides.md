@@ -36,11 +36,11 @@ The Bun runtime imports the module at startup; restart (or `/reload-plugins`) to
 Use `veyyon --print` (`-p`) when the trigger lives outside the agent (pre-commit, CI, `entr`, `watchexec`):
 
 ```console
-$ veyyon -p --approval-mode auto-edit \
+$ veyyon -p \
     "Run the focused tests for the files changed in the last commit and fail if any regress"
 ```
 
-The prompt can be an argument or piped on stdin. `auto-edit` auto-approves writes and safe exec commands, and still prompts on critical exec; `--yolo` auto-approves all tiers (use only on disposable runners). JSON event streams: `--mode json`. For review, pass a review prompt to `-p`, or use the passive advisor (`--advisor`) in the TUI. See [Non-interactive mode](../features/exec.md).
+The prompt can be an argument or piped on stdin. Leave the rung alone unless you have a reason to move it: the default `auto` auto-approves every tier, while a target outside the working directory, a call that spends a stored credential, a per-tool `prompt`/`deny` policy, and a critical command such as a recursive delete of your home directory all still ask, and a headless run has no terminal to ask on, so each of those becomes a failed tool call rather than a silent pass. Do NOT pass `--approval-mode ask-command` here: it prompts for every exec-tier call, which in `-p` means every command fails. `--yolo` auto-approves all tiers and drops the two boundaries (use only on disposable runners). JSON event streams: `--mode json`. For review, pass a review prompt to `-p`, or use the passive advisor (`--advisor`) in the TUI. See [Non-interactive mode](../features/exec.md).
 
 ---
 
@@ -145,6 +145,29 @@ branch that works. Full behavior: [Branching](../features/branching.md) and [Ses
 - **Memory** stores durable facts across sessions when a backend is enabled.
 - **Branching** forks live transcript context for the current problem.
 - Branch to explore; use memory for decisions that should outlive one session.
+
+## Track long work without repeated reminder walls
+
+Use the `todo` tool for work that has several independent steps. The session stores every phase,
+task, and status. Compaction and handoff keep that complete structured state, including plans with
+dozens of items.
+
+When the model tries to finish with open work, Veyyon injects one continuation instruction for that
+exact todo state. The instruction says to continue, puts the active task first, shows at most five
+open items, and reports how many more remain hidden. It does not replay an unchanged state after a
+user says `continue` or after an unrelated tool call. A real todo change makes the new state eligible
+for one reminder, up to the configured limit.
+
+Model-facing todo output and the collapsed TUI use the same sanitized, width-bounded, active-first
+projection of at most five items. The complete phases, tasks, and statuses remain in machine state,
+and expanded TUI output still shows the complete plan. To clear that state intentionally, run
+`/todo rm` without a task or phase; completing or dropping items keeps their closed history until it
+is explicitly removed.
+
+Configure the behavior under **Settings → Tools → Todos**:
+
+- **Todo Reminders** enables continuation instructions for unfinished plans.
+- **Todo Reminder Limit** caps distinct todo-state reminders before reminders stay silent.
 
 ---
 
