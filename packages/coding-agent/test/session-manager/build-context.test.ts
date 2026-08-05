@@ -1,4 +1,5 @@
 import { describe, expect, it, spyOn } from "bun:test";
+import type { AgentMessage } from "@veyyon/agent-core";
 import { buildSessionContext, getLatestCompactionEntry } from "@veyyon/coding-agent/session/session-context";
 import type {
 	BranchSummaryEntry,
@@ -50,6 +51,20 @@ function compaction(id: string, parentId: string | null, summary: string, firstK
 
 function branchSummary(id: string, parentId: string | null, summary: string, fromId: string): BranchSummaryEntry {
 	return { type: "branch_summary", id, parentId, timestamp: "2025-01-01T00:00:00Z", summary, fromId };
+}
+
+/** The exact summary the removed provider-native remote path wrote. */
+const LEGACY_PLACEHOLDER_SUMMARY = "Remote compaction preserved provider-native history for this session.";
+
+/** Readable text of a rebuilt message, so assertions compare strings not shapes. */
+function messageText(message: AgentMessage): string {
+	if (message.role === "user" && typeof message.content === "string") return message.content;
+	if (message.role === "compactionSummary") return message.summary;
+	if (message.role === "assistant") {
+		const block = message.content.find(item => item.type === "text");
+		if (block?.type === "text") return block.text;
+	}
+	throw new Error(`No extractable text on a ${message.role} message`);
 }
 
 function thinkingLevel(id: string, parentId: string | null, level: string): ThinkingLevelChangeEntry {
@@ -255,19 +270,26 @@ describe("buildSessionContext", () => {
 
 		/**
 		 * Sessions compacted by the removed provider-native remote path still hold
-		 * an opaque `openaiRemoteCompaction` payload on disk. Rebuilding context
-		 * must IGNORE it rather than replay it: only OpenAI could read that blob,
-		 * replaying it re-sent it to the provider on every rebuild, and the entry's
-		 * summary is a placeholder rather than real text. Ignoring it means the
-		 * kept turns come back as real messages, which is what lets the next
-		 * compaction re-expand and summarize them locally.
+		 * an opaque `openaiRemoteCompaction` payload on disk, and their `summary`
+		 * is the fixed placeholder that path wrote ("Remote compaction preserved
+		 * provider-native history for this session."). It carries no task content:
+		 * the real history lived in the blob, which only the provider could read
+		 * and which is deliberately never replayed.
 		 *
-		 * This replaces a test that asserted the opposite (the payload replaced the
-		 * kept raw messages) and would now be pinning the removed behavior.
+		 * So such an entry must not act as a compaction boundary. Honoring its
+		 * `firstKeptEntryId` drops every pre-cut turn from context and substitutes
+		 * that one sentence, permanently, on every rebuild, resume and fork. The
+		 * raw entries are still on the branch, so ignoring the entry re-emits them
+		 * verbatim and the next compaction summarizes them locally, which is the
+		 * same ruling `hasReusableSummary` makes inside `prepareCompaction`.
+		 *
+		 * The keep point here is deliberately NOT the first entry: with
+		 * `firstKeptEntryId: "1"` the cut is degenerate and a rebuild that honors
+		 * it looks identical to one that ignores it, so the test cannot fail.
 		 */
-		it("ignores a legacy remote compaction payload and emits the kept raw messages", () => {
-			const remoteCompaction: CompactionEntry = {
-				...compaction("3", "2", "Remote summary", "1"),
+		it("does not let a legacy provider-native compaction cut history", () => {
+			const legacy: CompactionEntry = {
+				...compaction("5", "4", LEGACY_PLACEHOLDER_SUMMARY, "3"),
 				preserveData: {
 					openaiRemoteCompaction: {
 						provider: "openai",
@@ -280,22 +302,91 @@ describe("buildSessionContext", () => {
 				},
 			};
 			const entries: SessionEntry[] = [
-				msg("1", null, "user", "first"),
-				msg("2", "1", "assistant", "response"),
-				remoteCompaction,
-				msg("4", "3", "user", "after compact"),
+				msg("1", null, "user", "original requirement"),
+				msg("2", "1", "assistant", "design decision"),
+				msg("3", "2", "user", "added constraint"),
+				msg("4", "3", "assistant", "plan"),
+				legacy,
+				msg("6", "5", "user", "recent question"),
 			];
+
 			const ctx = buildSessionContext(entries);
 
-			// summary + kept (1, 2) + after (4)
+			// Every one of the five message entries, in order, with no summary
+			// message standing in for any of them. Honoring the cut would yield 4:
+			// the placeholder plus entries 3, 4 and 6.
+			expect(ctx.messages).toHaveLength(5);
+			expect(ctx.messages.map(message => message.role)).toEqual(["user", "assistant", "user", "assistant", "user"]);
+			expect(ctx.messages.map(messageText)).toEqual([
+				"original requirement",
+				"design decision",
+				"added constraint",
+				"plan",
+				"recent question",
+			]);
+		});
+
+		/**
+		 * The skip is scoped to the legacy entry, not to compaction. A real
+		 * compaction earlier on the same branch keeps its summary and its cut even
+		 * when a legacy entry follows it, so a session that was compacted properly
+		 * and then hit the old remote path once does not suddenly replay its whole
+		 * raw history.
+		 */
+		it("keeps an earlier real compaction's summary and cut when a legacy entry follows it", () => {
+			const legacy: CompactionEntry = {
+				...compaction("5", "4", LEGACY_PLACEHOLDER_SUMMARY, "4"),
+				preserveData: { compactionV2: { usedTokens: 4_000 } },
+			};
+			const entries: SessionEntry[] = [
+				msg("1", null, "user", "ancient"),
+				msg("2", "1", "assistant", "ancient reply"),
+				compaction("3", "2", "Real local summary", "2"),
+				msg("4", "3", "user", "kept question"),
+				legacy,
+				msg("6", "5", "user", "recent question"),
+			];
+
+			const ctx = buildSessionContext(entries);
+
+			// Real summary + entry 2 onward (its own cut), then 4 and 6. Entry 1 is
+			// summarized away by the real compaction and must stay away.
 			expect(ctx.messages).toHaveLength(4);
-			expect(ctx.messages[0]?.role).toBe("compactionSummary");
-			if (ctx.messages[0]?.role !== "compactionSummary") throw new Error("Expected compaction summary message");
-			// The opaque provider payload is never reconstructed.
-			expect(ctx.messages[0].providerPayload).toBeUndefined();
-			expect((ctx.messages[1] as { content: string }).content).toBe("first");
-			expect((ctx.messages[2] as { content: { text: string }[] }).content[0].text).toBe("response");
-			expect((ctx.messages[3] as { content: string }).content).toBe("after compact");
+			expect(ctx.messages.map(messageText)).toEqual([
+				"Real local summary",
+				"ancient reply",
+				"kept question",
+				"recent question",
+			]);
+		});
+
+		/**
+		 * The opaque blob itself is never turned back into provider state. This is
+		 * the separate half of the removal: the entry is skipped as a boundary AND
+		 * its payload is not reconstructed anywhere it could be re-sent.
+		 */
+		it("never reconstructs the opaque provider payload", () => {
+			const legacy: CompactionEntry = {
+				...compaction("3", "2", LEGACY_PLACEHOLDER_SUMMARY, "1"),
+				preserveData: {
+					openaiRemoteCompaction: {
+						provider: "openai",
+						compactionItem: { type: "compaction", encrypted_content: "enc_123" },
+					},
+				},
+			};
+			const entries: SessionEntry[] = [
+				msg("1", null, "user", "first"),
+				msg("2", "1", "assistant", "response"),
+				legacy,
+				msg("4", "3", "user", "after compact"),
+			];
+
+			const ctx = buildSessionContext(entries, undefined, undefined, { transcript: true });
+			const summary = ctx.messages.find(message => message.role === "compactionSummary");
+			if (summary?.role !== "compactionSummary") throw new Error("Expected the transcript to render the entry");
+			expect(summary.providerPayload).toBeUndefined();
+			expect(JSON.stringify(ctx.messages)).not.toContain("enc_123");
 		});
 
 		// Regression for #4470: a session compacted by the removed image-archive

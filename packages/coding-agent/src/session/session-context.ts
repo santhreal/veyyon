@@ -1,4 +1,8 @@
 import type { AgentMessage } from "@veyyon/agent-core";
+// Same reasoning as the line above: the zero-import leaf that owns the predicate,
+// not the compaction barrel. `legacy-provider-native.ts` imports nothing, so this
+// edge adds exactly one module to every graph this file is on.
+import { hasLegacyProviderNativeCompaction } from "@veyyon/agent-core/compaction/legacy-provider-native";
 // The owner, not the `compaction` subpath barrel. That barrel re-exports the compaction ENGINE, which
 // imports the `@veyyon/ai` barrel to summarize a conversation; this module is a self-contained reader for a
 // retired archive format and imports nothing at all. The edge cost 238 modules, and it was on the graph of
@@ -231,7 +235,23 @@ export function buildSessionContext(
 			if (!hasExplicitDefaultModel) {
 				models.default = `${entry.message.provider}/${entry.message.model}`;
 			}
-		} else if (entry.type === "compaction") {
+		} else if (entry.type === "compaction" && !hasLegacyProviderNativeCompaction(entry.preserveData)) {
+			// A compaction written by the removed provider-native remote path is
+			// NOT an effective compaction for this rebuild. Its `summary` is the
+			// fixed placeholder "Remote compaction preserved provider-native
+			// history for this session." and carries no task content: the real
+			// history lived in the opaque `preserveData` blob, which only the
+			// provider could read and which is deliberately never replayed. Honor
+			// its `firstKeptEntryId` and every entry before the cut is dropped
+			// from context and replaced by that sentence, so the operator loses
+			// the pre-cut conversation on every rebuild, resume and fork.
+			//
+			// The raw entries are still on the branch, so skipping the entry
+			// re-emits them verbatim: nothing is lost, and the next compaction
+			// summarizes them locally. This is the same ruling `hasReusableSummary`
+			// makes in `prepareCompaction`, which re-expands the messages behind
+			// exactly these entries. An earlier real compaction on the branch, if
+			// any, still wins and still applies its own cut.
 			compaction = entry;
 		} else if (entry.type === "ttsr_injection") {
 			// Collect injected TTSR rule names
