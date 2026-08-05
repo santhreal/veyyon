@@ -295,11 +295,9 @@ export const repoScriptTests = [
 	"scripts/installer-completions-parity.test.ts",
 	"scripts/installer-doctor-parity.test.ts",
 	"scripts/installer-help-parity.test.ts",
-	"scripts/installer-lfs-parity.test.ts",
+	"scripts/installer-never-clones.test.ts",
 	"scripts/installer-no-clobber.test.ts",
-	"scripts/installer-source-parity.test.ts",
 	"scripts/installer-legacy-bun-uninstall.test.ts",
-	"scripts/installer-source-checkout-parity.test.ts",
 	"scripts/installer-uninstall-parity.test.ts",
 	// Runs the installer for real, once per environment in
 	// scripts/install-tests/environments.toml, so it is slower than the parity

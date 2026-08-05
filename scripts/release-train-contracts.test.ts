@@ -447,6 +447,7 @@ describe("required publication artifacts", () => {
 			expect(job.permissions.contents).toBe("write");
 			expect(download).toBeDefined();
 			expect(download.env.GH_TOKEN).toBeDefined();
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: `${{ … }}` is a GitHub Actions expression from the workflow YAML, not a missed template literal.
 			expect(download.env.RELEASE_ID).toBe("${{ needs.release_github.outputs.release-id }}");
 			expect(download.run).toMatch(/releases\/\$(?:env:)?RELEASE_ID\/assets/);
 			expect(download.run).toContain("releases/assets/$asset");

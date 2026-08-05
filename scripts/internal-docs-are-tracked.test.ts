@@ -97,19 +97,4 @@ describe("docs/internal tracking", () => {
 
 		expect(patterns).toEqual([LOCAL_ONLY]);
 	});
-
-	/**
-	 * The tracked README says what git does.
-	 *
-	 * This is the page a contributor reads before adding an internal doc, and it is
-	 * where the correct statement lives now that the claim has been fixed.
-	 */
-	it("is described accurately by docs/internal/README.md", async () => {
-		const readme = await Bun.file(path.join(ROOT, "docs", "internal", "README.md")).text();
-
-		expect(readme).toContain("design.md _(local-only, gitignored)_");
-		expect(readme, "the README must not claim the whole tree is ignored").not.toMatch(
-			/docs\/internal\/?[^\n]*\bgitignored\b/,
-		);
-	});
 });

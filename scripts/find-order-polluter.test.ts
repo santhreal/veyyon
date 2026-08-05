@@ -18,13 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	DEFAULT_MAX_WINDOW,
-	findReproducingWindow,
-	parseArgs,
-	parseTargetFailures,
-	windowSizes,
-} from "./find-order-polluter";
+import { findReproducingWindow, parseArgs, parseTargetFailures, windowSizes } from "./find-order-polluter";
 
 const SCRIPT = path.join(import.meta.dir, "find-order-polluter.ts");
 
@@ -401,7 +395,8 @@ describe("the arguments", () => {
 	/** The cap has a default, so the common invocation stays one word long. */
 	it("defaults the window cap and derives the directory from the target", () => {
 		const options = parseArgs(["packages/x/test/z.test.ts"]);
-		expect(options.maxWindow).toBe(DEFAULT_MAX_WINDOW);
+		// Literal 200: the default window size, not whatever DEFAULT_MAX_WINDOW says.
+		expect(options.maxWindow).toBe(200);
 		expect(options.dir).toBe("packages/x/test");
 	});
 

@@ -32,6 +32,10 @@ function ps1Var(body: string, name: string): string | undefined {
 
 describe("the launch alias has one owner across the TS constant and both installers", () => {
 	it("install.sh's ALIAS_NAME is exactly APP_ALIAS", () => {
+		// The literal as well: the alias is what a user types, so a rename is a
+		// breaking change for every existing install, not a refactor. Against
+		// APP_ALIAS alone the parity check follows the rename and says nothing.
+		expect(shVar(installSh, "ALIAS_NAME")).toBe("vey");
 		expect(shVar(installSh, "ALIAS_NAME")).toBe(APP_ALIAS);
 	});
 

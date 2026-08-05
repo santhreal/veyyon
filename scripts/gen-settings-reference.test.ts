@@ -145,6 +145,37 @@ describe("settings reference", () => {
 		expect(rows).toBe(schemaUiPaths().length);
 	});
 
+	/**
+	 * LOCKS OUT: a whole tab, or a large slice of the schema, silently vanishing
+	 * from the page.
+	 *
+	 * Every other assertion in this file compares the rendered document against a
+	 * value computed with the SAME helpers the renderer uses: `schemaUiPaths()` is
+	 * literally `SETTING_TABS.flatMap(getPathsForTab)`, and the heading check
+	 * filters tabs by `getPathsForTab(tab).length > 0`. So a break in `getUi` or
+	 * `getPathsForTab` that drops a tab removes it from BOTH sides and every one of
+	 * them stays green while the page loses forty rows. That is the shape of the
+	 * defect that hid an unreachable settings group behind eleven passing tests.
+	 *
+	 * The floors below are literals taken from the committed page, so they cannot
+	 * shrink with the thing they measure. They are floors, not equalities: adding a
+	 * setting or a tab is routine and must not fail here. Losing one is not.
+	 */
+	it("never renders fewer tabs, groups or rows than the page it replaced", () => {
+		const rendered = renderReference();
+		const tabHeadings = rendered.split("\n").filter(line => line.startsWith("## "));
+		const groupHeadings = rendered.split("\n").filter(line => line.startsWith("### "));
+
+		// 13 tabs, 66 group sections, 337 rows as committed.
+		expect(tabHeadings.length).toBeGreaterThanOrEqual(13);
+		expect(groupHeadings.length).toBeGreaterThanOrEqual(66);
+		expect(documentedPaths(rendered).size).toBeGreaterThanOrEqual(337);
+
+		// And named, so losing one specific tab is a failure rather than a number
+		// absorbed by growth elsewhere. Every tab the schema declares is on the page.
+		expect(tabHeadings).toEqual(expect.arrayContaining(SETTING_TABS.map(tab => `## ${TAB_METADATA[tab].label}`)));
+	});
+
 	/** Every group heading holds rows: an empty section means a group name in
 	 * TAB_GROUPS that no setting uses, which is dead structure in the UI too. */
 	it("emits no empty group section", () => {

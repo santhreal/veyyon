@@ -79,9 +79,7 @@ describe("the manual build route is the only clone either installer mentions", (
 			// $HOME/.veyyon/src, without the user asking for a checkout. The only
 			// permitted occurrence now is the manual-path string the user runs.
 			const cloneLines = script.code.split("\n").filter(line => line.includes("git clone"));
-			expect(cloneLines, `${script.name} should mention git clone only in its manual-path constant`).toHaveLength(
-				1,
-			);
+			expect(cloneLines, `${script.name} should mention git clone only in its manual-path constant`).toHaveLength(1);
 			expect(cloneLines[0]).toMatch(/^(MANUAL_BUILD=|\$ManualBuild = )/);
 		});
 	}

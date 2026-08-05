@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Record the provider-bound secret proof against a throwaway project vault.
+# Record the provider-bound secret proof against a throwaway project and a
+# scratch credential in the demo profile's vault.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -16,8 +17,13 @@ export VEYYON_DEMO_SECRET="veyyon-demo-value-not-a-real-credential"
 
 cd "$REPO_ROOT"
 bash scripts/demos/setup-profile.sh >/dev/null
-DEMO_PROFILE_DIR="${VEYYON_HOME:-$HOME/.veyyon}/profiles/$VEYYON_DEMO_PROFILE/agent"
-rm -f -- "$DEMO_PROFILE_DIR/secret-audit.jsonl" "$DEMO_PROFILE_DIR/secret-audit.jsonl.1"
+DEMO_PROFILE_DIR="$HOME/.veyyon/profiles/$VEYYON_DEMO_PROFILE/agent"
+# A terminal has no --scope, so the tape's seed lands in the demo profile's vault.
+# Clear it on both sides of the run: before, so the manager card shows the one row
+# this demo stores, and after, so the demo profile keeps no fabricated credential.
+rm -f -- "$DEMO_PROFILE_DIR/vault.json" "$DEMO_PROFILE_DIR/secret-audit.jsonl" \
+  "$DEMO_PROFILE_DIR/secret-audit.jsonl.1"
 vhs assets/tapes/secret-boundary.tape
+rm -f -- "$DEMO_PROFILE_DIR/vault.json"
 bash scripts/demos/setup-profile.sh >/dev/null
 printf 'wrote assets/demo-secret-boundary.gif using throwaway project %s\n' "$DEMO_CWD"
