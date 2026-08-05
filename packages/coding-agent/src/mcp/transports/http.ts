@@ -19,6 +19,7 @@ import type {
 } from "../../mcp/types";
 import { toJsonRpcError } from "../../mcp/types";
 import { createMCPTimeout, getNeverAbortSignal, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
+import { mcpHttpFailureMessage } from "./http-failure";
 import { reportUndeliveredServerResponse } from "./server-response-delivery";
 
 const HTTP_SSE_CONNECT_TIMEOUT_MS = 1_000;
@@ -297,8 +298,7 @@ export class HttpTransport implements MCPTransport {
 				]
 					.filter(Boolean)
 					.join("; ");
-				const suffix = authHints ? ` [${authHints}]` : "";
-				throw new Error(`HTTP ${response.status}: ${text}${suffix}`);
+				throw new Error(mcpHttpFailureMessage(this.config.url, response.status, text, authHints || undefined));
 			}
 
 			const contentType = response.headers.get("Content-Type") ?? "";
@@ -509,7 +509,7 @@ export class HttpTransport implements MCPTransport {
 			// 202 Accepted is success for notifications
 			if (!response.ok && response.status !== 202) {
 				const text = await response.text();
-				throw new Error(`HTTP ${response.status}: ${text}`);
+				throw new Error(mcpHttpFailureMessage(this.config.url, response.status, text));
 			}
 
 			// The server may piggyback server-to-client requests or notifications

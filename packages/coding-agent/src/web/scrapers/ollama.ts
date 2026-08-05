@@ -121,7 +121,10 @@ function parseOllamaUrl(url: string): { modelRef: string; baseRef: string; pageU
 			const pageUrl = `${parsed.origin}/${buildModelPath([namespace, modelBase])}`;
 			return { modelRef, baseRef, pageUrl };
 		}
-	} catch {}
+	} catch {
+		// `new URL` / `decodeURIComponent` on operator-supplied text: a malformed
+		// URL is simply not an Ollama model link, which is the `null` below.
+	}
 
 	return null;
 }

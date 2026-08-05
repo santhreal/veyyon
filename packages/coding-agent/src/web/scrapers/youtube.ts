@@ -54,7 +54,10 @@ function parseYouTubeUrl(url: string): YouTubeUrl | null {
 				return { videoId };
 			}
 		}
-	} catch {}
+	} catch {
+		// `new URL` on operator-supplied text: unparseable means not a YouTube
+		// link, which is the `null` below.
+	}
 
 	return null;
 }

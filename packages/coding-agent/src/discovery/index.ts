@@ -33,7 +33,6 @@ import "./github";
 import "./mcp-json";
 import "./veyyon-plugins";
 import "./ssh";
-import "./vscode";
 import "./windsurf";
 
 // Re-export the main API from capability registry

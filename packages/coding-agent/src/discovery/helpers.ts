@@ -80,10 +80,6 @@ export const SOURCE_PATHS = {
 		userBase: null,
 		userAgent: null,
 	},
-	vscode: {
-		userBase: ".vscode",
-		userAgent: ".vscode",
-	},
 } as const;
 
 export type SourceId = keyof typeof SOURCE_PATHS;

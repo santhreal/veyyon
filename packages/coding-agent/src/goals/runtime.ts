@@ -5,6 +5,7 @@ import type { Goal, GoalBudgetSteering, GoalModeState, GoalRuntimeEvent, GoalTok
 export interface GoalRuntimeHost {
 	getState(): GoalModeState | undefined;
 	setState(state: GoalModeState | undefined): void;
+	budgetsEnabled(): boolean;
 	getCurrentUsage(): GoalTokenUsage;
 	emit(event: GoalRuntimeEvent): void | Promise<void>;
 	persist(mode: "goal" | "goal_paused" | "none", state?: GoalModeState): void;
@@ -74,7 +75,7 @@ export function goalTokenDelta(current: GoalTokenUsage, baseline: GoalTokenUsage
 	);
 }
 
-export function renderGoalPrompt(kind: GoalPromptKind, goal: Goal): string {
+export function renderGoalPrompt(kind: GoalPromptKind, goal: Goal, options?: { budgetsEnabled?: boolean }): string {
 	const template =
 		kind === "active"
 			? goalsPrompts["goals/goal-mode-active"].text
@@ -82,6 +83,7 @@ export function renderGoalPrompt(kind: GoalPromptKind, goal: Goal): string {
 				? goalsPrompts["goals/goal-continuation"].text
 				: goalsPrompts["goals/goal-budget-limit"].text;
 	return prompt.render(template, {
+		budgetsEnabled: options?.budgetsEnabled ?? true,
 		objective: escapeXmlText(goal.objective),
 		tokensUsed: String(goal.tokensUsed),
 		tokenBudget: budgetValue(goal),
@@ -301,6 +303,9 @@ export class GoalRuntime {
 	}
 
 	async onBudgetMutated(newBudget: number | undefined): Promise<GoalModeState | undefined> {
+		if (!this.#host.budgetsEnabled()) {
+			throw new Error("Goal budgets are disabled. Enable Model Goal Budgets in Settings.");
+		}
 		validateTokenBudget(newBudget);
 		return await this.#withAccounting(async () => {
 			this.#budgetReportedFor = undefined;
@@ -351,6 +356,7 @@ export class GoalRuntime {
 		state.goal.timeUsedSeconds += wallSeconds;
 		state.goal.updatedAt = this.#now();
 		const flippedToBudgetLimited =
+			this.#host.budgetsEnabled() &&
 			state.goal.tokenBudget !== undefined &&
 			state.goal.tokensUsed >= state.goal.tokenBudget &&
 			state.goal.status === "active";
@@ -405,6 +411,9 @@ export class GoalRuntime {
 		const objective = input.objective.trim();
 		if (!objective) throw new Error("objective is required when op=create");
 		validateTokenBudget(input.tokenBudget);
+		if (input.tokenBudget !== undefined && !this.#host.budgetsEnabled()) {
+			throw new Error("Goal budgets are disabled. Enable Model Goal Budgets in Settings.");
+		}
 		return await this.#withAccounting(async () => {
 			const existing = this.#host.getState();
 			if (existing?.goal && existing.goal.status !== "dropped" && existing.goal.status !== "complete") {
@@ -422,6 +431,9 @@ export class GoalRuntime {
 		const objective = input.objective.trim();
 		if (!objective) throw new Error("objective is required when op=replace");
 		validateTokenBudget(input.tokenBudget);
+		if (input.tokenBudget !== undefined && !this.#host.budgetsEnabled()) {
+			throw new Error("Goal budgets are disabled. Enable Model Goal Budgets in Settings.");
+		}
 		return await this.#withAccounting(async () => {
 			const existing = this.#host.getState();
 			if (!existing?.enabled || !isAccountingStatus(existing.goal)) {
@@ -517,19 +529,20 @@ export class GoalRuntime {
 
 	buildActivePrompt(): string | undefined {
 		const state = this.#host.getState();
-		return state?.enabled && state.goal && state.goal.status === "active"
-			? renderGoalPrompt("active", state.goal)
-			: undefined;
+		const budgetsEnabled = this.#host.budgetsEnabled();
+		const active = state?.goal.status === "active" || (!budgetsEnabled && state?.goal.status === "budget-limited");
+		return state?.enabled && active ? renderGoalPrompt("active", state.goal, { budgetsEnabled }) : undefined;
 	}
 
 	buildContinuationPrompt(): string | undefined {
 		const state = this.#host.getState();
-		return state?.enabled && state.goal.status === "active"
-			? renderGoalPrompt("continuation", state.goal)
-			: undefined;
+		const budgetsEnabled = this.#host.budgetsEnabled();
+		const active = state?.goal.status === "active" || (!budgetsEnabled && state?.goal.status === "budget-limited");
+		return state?.enabled && active ? renderGoalPrompt("continuation", state.goal, { budgetsEnabled }) : undefined;
 	}
 
 	async #sendBudgetLimitSteer(goal: Goal): Promise<void> {
+		if (!this.#host.budgetsEnabled()) return;
 		if (this.#budgetReportedFor === goal.id) return;
 		this.#budgetReportedFor = goal.id;
 		await this.#host.sendHiddenMessage({
