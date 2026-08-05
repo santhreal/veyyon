@@ -224,10 +224,21 @@ export interface ToolSession {
 	getHindsightSessionState?: () => HindsightSessionState | undefined;
 	/** Get this session's Argot codec, forked into subagents under `argot.subagents: inherit`. */
 	getArgotSession?: () => ArgotSession | undefined;
-	/** Rebuild the base system prompt after prompt-visible session state
-	 * changed (e.g. the argot teach set), so the next turn teaches the new
-	 * state. Optional: lighter tool sessions (tests, subagents) may omit it. */
-	refreshBaseSystemPrompt?(): Promise<void>;
+	/**
+	 * Rebuild the base system prompt after prompt-visible session state changed
+	 * (e.g. the argot teach set), so the next turn teaches the new state.
+	 * Optional: lighter tool sessions (tests, subagents) may omit it.
+	 *
+	 * `reason` is REQUIRED, mirroring `AgentSession.refreshBaseSystemPrompt`. A
+	 * rebuild here lands MID-TURN, with the whole conversation already behind the
+	 * prefix, so it is the most expensive shape this call has: the next request
+	 * re-reads every token. This signature took no argument, which let a tool
+	 * spend that re-prefill and record `reason: undefined` — exactly the
+	 * unattributed entry the required parameter on the session method exists to
+	 * prevent. Optionality is about whether the hook is wired, never about
+	 * whether the cost gets a name.
+	 */
+	refreshBaseSystemPrompt?(reason: string): Promise<void>;
 	/** Get Mnemopi runtime state for this agent session. */
 	getMnemopiSessionState?: () => MnemopiSessionState | undefined;
 	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */

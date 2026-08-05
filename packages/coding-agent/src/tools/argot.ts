@@ -141,7 +141,7 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 		// the model is told to write §handles it was never shown. Skip the
 		// rebuild for an empty dictionary (nothing new to teach).
 		if (loaded.handles > 0) {
-			await this.#session.refreshBaseSystemPrompt?.();
+			await this.#session.refreshBaseSystemPrompt?.("argot-load");
 		}
 
 		return {
@@ -203,7 +203,7 @@ export class ArgotUnloadTool implements AgentTool<typeof folderSchema, ArgotUnlo
 		// The teach set changed; rebuild the prompt so the handle table stops
 		// advertising this project's shorthand next turn.
 		if (result.changed) {
-			await this.#session.refreshBaseSystemPrompt?.();
+			await this.#session.refreshBaseSystemPrompt?.("argot-unload");
 		}
 
 		return {
