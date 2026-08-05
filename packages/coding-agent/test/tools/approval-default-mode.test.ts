@@ -17,7 +17,11 @@
  */
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { normalizeApprovalMode, resolveEffectiveApprovalMode } from "@veyyon/coding-agent/tools/approval";
+import {
+	normalizeApprovalMode,
+	requiresApproval,
+	resolveEffectiveApprovalMode,
+} from "@veyyon/coding-agent/tools/approval";
 import { DEFAULT_APPROVAL_MODE } from "@veyyon/coding-agent/tools/approval-modes";
 
 describe("the unset tools.approvalMode default", () => {
@@ -67,6 +71,22 @@ describe("the unset tools.approvalMode default", () => {
 		// apart silently: this is the ONE place the constant is read, as a subject.
 		expect(DEFAULT_APPROVAL_MODE).toBe("auto");
 	});
+
+	/**
+	 * The last inch of the installed-binary regression, pinned at the decision
+	 * the wrapper actually computes. The schema default moved to `auto` while
+	 * the normalizer had no mapping for it, so a fresh install failed closed to
+	 * `ask` and EVERY tier prompted. The resolver cases above were green the
+	 * whole time; what nobody asserted is that the resolved default APPROVES an
+	 * ordinary exec-tier call rather than merely being named "auto".
+	 */
+	it("approves an ordinary exec-tier call on the resolved default", () => {
+		const settings = Settings.isolated({});
+		const mode = resolveEffectiveApprovalMode(settings.get("tools.approvalMode"));
+		const execTool = { name: "bash", approval: "exec" as const };
+
+		expect(requiresApproval(execTool, {}, mode, {}).required).toBe(false);
+	});
 });
 
 describe("an explicitly configured rung outranks the default", () => {
@@ -104,5 +124,16 @@ describe("an explicitly configured rung outranks the default", () => {
 		expect(normalizeApprovalMode("askk")).toBe("ask");
 		expect(normalizeApprovalMode("")).toBe("ask");
 		expect(DEFAULT_APPROVAL_MODE).not.toBe("ask");
+	});
+
+	/**
+	 * The same fail-closed at the decision the wrapper computes: a typo'd stored
+	 * value must end at a rung that PROMPTS an ordinary exec-tier call, never at
+	 * one that runs it.
+	 */
+	it("prompts an ordinary exec-tier call when the stored value is a typo", () => {
+		const execTool = { name: "bash", approval: "exec" as const };
+
+		expect(requiresApproval(execTool, {}, resolveEffectiveApprovalMode("askk"), {}).required).toBe(true);
 	});
 });
