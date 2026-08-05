@@ -97,7 +97,7 @@ function harness(
 		frame: () =>
 			render().map(line => {
 				const cells = line.split("│");
-				return (cells.length >= 4 ? cells[2] : cells[1] ?? line)?.trim() ?? "";
+				return (cells.length >= 4 ? cells[2] : (cells[1] ?? line))?.trim() ?? "";
 			}),
 		card: () => render().join("\n"),
 		raw: render,

@@ -53,7 +53,6 @@ export const NO_ACCOUNTS_ANNOTATION = "—";
  * Truncation is deliberately NOT done here: the caller knows the pane width.
  */
 export function sanitizeAccountText(text: string): string {
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: collapsing C0 controls is the point.
 	return text.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
 }
 
@@ -179,7 +178,11 @@ export interface AccountHeadLine {
 export function accountHeadLine(row: AccountRow, nowMs: number): AccountHeadLine {
 	const detail = accountIdentityDetail(row)[0] ?? "";
 	let tag = "";
-	if (row.activeForSession) tag = "this session";
+	// A serving row that the user PINNED says both. `activeForSession` used to swallow the pin, so
+	// pressing enter on the account already serving changed nothing on screen: the pin was recorded
+	// and the card was byte-identical. The host's confirmation goes to the transcript, which is
+	// BEHIND this fullscreen card, so the row itself is the only place feedback can land.
+	if (row.activeForSession) tag = row.pinnedForSession ? "this session · pinned" : "this session";
 	else if (row.pinnedForSession) tag = "pinned";
 	else if (row.blockedUntilMs !== undefined && row.blockedUntilMs > nowMs) tag = "rate limited";
 	else if (row.health === "failed") tag = "needs attention";
@@ -254,10 +257,7 @@ export function accountNoticeLines(row: AccountRow, nowMs: number): string[] {
  * the user, not because of them, and a card that silently shows `personal · this session` after
  * they pinned `work` reads as their own setting having changed.
  */
-export function divergenceLines(
-	divergence: { pinned: AccountRow; serving: AccountRow },
-	nowMs: number,
-): string[] {
+export function divergenceLines(divergence: { pinned: AccountRow; serving: AccountRow }, nowMs: number): string[] {
 	const pinned = sanitizeAccountText(accountDisplayLabel(divergence.pinned));
 	const serving = sanitizeAccountText(accountDisplayLabel(divergence.serving));
 	const lines = [`pinned to ${pinned}, rotated off it onto ${serving}`];

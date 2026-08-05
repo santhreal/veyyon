@@ -9,6 +9,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import {
+	accountHeadLine,
 	accountNoticeLines,
 	accountUsageLines,
 	buildSidebarEntries,
@@ -17,6 +18,9 @@ import {
 } from "@veyyon/coding-agent/modes/components/account-manager-rows";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AccountInventory, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
+
+/** Fixed clock, so a countdown in an expectation is an exact string rather than a window. */
+const NOW = 1_760_000_000_000;
 
 beforeAll(async () => {
 	await initTheme();
@@ -152,5 +156,33 @@ describe("account row wording", () => {
 		expect(lines[0]).toBe("5h    [███████░░░] 70%   resets in 2h");
 		expect(lines[1]?.slice(0, 14)).toBe("Claude 7 Da…  ");
 		expect(lines[1]).toBe("Claude 7 Da…  [███░░░░░░░] 34%");
+	});
+});
+
+describe("the routing tag reports both facts", () => {
+	/**
+	 * The bug this locks out was found by walking the card as a user. Pressing `enter` on the
+	 * account ALREADY serving the session recorded the pin and left the card byte-identical, because
+	 * `activeForSession` owned the tag outright and never mentioned the pin. The host's confirmation
+	 * goes to the transcript, which is behind this fullscreen card, so the row is the only place
+	 * feedback can land: a primary action with no visible effect reads as a broken key.
+	 */
+	test("a serving account that was pinned says both", () => {
+		expect(
+			accountHeadLine(account("anthropic", 1, { activeForSession: true, pinnedForSession: true }), NOW).tag,
+		).toBe("this session · pinned");
+	});
+
+	/** Serving by ordinary routing, with no pin, must NOT claim the user chose it. */
+	test("a serving account that was not pinned says only that it is serving", () => {
+		expect(accountHeadLine(account("anthropic", 1, { activeForSession: true }), NOW).tag).toBe("this session");
+	});
+
+	/**
+	 * A pin whose account is not serving is the rotation case, and it must stay distinguishable from
+	 * both of the above: this is the row the divergence banner is talking about.
+	 */
+	test("a pinned account that is not serving says only that it is pinned", () => {
+		expect(accountHeadLine(account("anthropic", 1, { pinnedForSession: true }), NOW).tag).toBe("pinned");
 	});
 });
