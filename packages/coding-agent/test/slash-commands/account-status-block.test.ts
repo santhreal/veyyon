@@ -13,6 +13,7 @@
  * what a reader sees and what these tests pin.
  */
 import { describe, expect, it } from "bun:test";
+import type { AccountInventory, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
 import {
 	accountRoleAnnotations,
 	NAME_HINT,
@@ -20,14 +21,15 @@ import {
 	renderAccountStatus,
 	WEB_SEARCH_CREDENTIAL_PROVIDERS,
 } from "@veyyon/coding-agent/slash-commands/helpers/account-status";
-import type { AccountInventory, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
 import { stripAnsi } from "@veyyon/utils";
 
 const NOW = 1_800_000_000_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
-function row(overrides: Partial<AccountRow> & Pick<AccountRow, "provider" | "providerLabel" | "credentialId">): AccountRow {
+function row(
+	overrides: Partial<AccountRow> & Pick<AccountRow, "provider" | "providerLabel" | "credentialId">,
+): AccountRow {
 	return {
 		type: "oauth",
 		usage: [],
@@ -122,11 +124,14 @@ describe("the /account status block reports the accounts in use", () => {
 				"",
 				"  Google Gemini Cli  (no name set)               web search",
 				"                     second@example.com · project example-project",
-				"                     /account name <text>",
 				"",
 				"  Openai Codex       codex-main                  subagents",
 				"                     first@example.com",
 				"                     5h  [████░░░░░░] 44%   resets in 1h",
+				"",
+				// ONE hint for the block. The per-row form printed this sentence once per unnamed
+				// account, which in a real eight-provider session meant seven repetitions of it.
+				"  1 account has no name · /account name <text>",
 				"",
 				"  3 of 4 providers in use · /providers to manage accounts",
 			].join("\n"),
@@ -161,7 +166,11 @@ describe("the /account status block reports the accounts in use", () => {
 					row({ provider: "anthropic", providerLabel: "Anthropic", credentialId: 9, name: "personal" }),
 				],
 			},
-			{ provider: "google-gemini-cli", label: "Google Gemini Cli", rows: [row({ ...geminiPersonal, activeForSession: false })] },
+			{
+				provider: "google-gemini-cli",
+				label: "Google Gemini Cli",
+				rows: [row({ ...geminiPersonal, activeForSession: false })],
+			},
 			{ provider: "openai-codex", label: "Openai Codex", rows: [row({ ...codexMain, activeForSession: false })] },
 			{ provider: "xai", label: "Xai", rows: [xaiIdle] },
 		);
@@ -172,19 +181,39 @@ describe("the /account status block reports the accounts in use", () => {
 	});
 
 	/**
-	 * An account the user never named says so and says how to fix it. Rendering the email in the
-	 * name column instead would be indistinguishable from a named account called after the email,
-	 * so the placeholder and the hint are what make "you have not named this" legible — and the
-	 * account's own identity moves to the line below rather than disappearing.
+	 * An account the user never named says so, and the block offers the command ONCE.
+	 *
+	 * Rendering the email in the name column instead would be indistinguishable from a named account
+	 * called after the email, so the placeholder is what makes "you have not named this" legible, and
+	 * the account's own identity moves to the line below rather than disappearing. The hint lives at
+	 * the foot of the block rather than under each row: a real session routes several unnamed
+	 * providers, and repeating the sentence per row buried the accounts between copies of it.
 	 */
-	it("marks an unnamed account and offers the naming command", () => {
+	it("marks an unnamed account and offers the naming command once", () => {
 		const rendered = render(
 			inventory({ provider: "google-gemini-cli", label: "Google Gemini Cli", rows: [geminiPersonal] }),
 		);
 
 		expect(rendered).toContain(`  Google Gemini Cli  ${NO_NAME_PLACEHOLDER}`);
-		expect(rendered).toContain(`                     ${NAME_HINT}`);
 		expect(rendered).toContain("                     second@example.com · project example-project");
+		expect(rendered).toContain(`  1 account has no name · ${NAME_HINT}`);
+		// Not under the row: the indented per-row form is what this replaced.
+		expect(rendered).not.toContain(`                     ${NAME_HINT}`);
+	});
+
+	/**
+	 * The hint counts the accounts it applies to, and pluralises. A block saying "1 accounts" over a
+	 * list of two is the kind of detail that makes a surface feel unfinished.
+	 */
+	it("counts and pluralises the unnamed accounts in the single hint", () => {
+		const rendered = render(
+			inventory(
+				{ provider: "google-gemini-cli", label: "Google Gemini Cli", rows: [geminiPersonal] },
+				{ provider: "xai", label: "Xai", rows: [row({ ...xaiIdle, activeForSession: true, name: undefined })] },
+			),
+		);
+
+		expect(rendered).toContain(`  2 accounts have no name · ${NAME_HINT}`);
 	});
 
 	/**
