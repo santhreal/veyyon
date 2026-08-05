@@ -14,8 +14,29 @@
 			"expect": { "policy": "allow", "tier": "exec", "override": false }
 		},
 		{
+			"id": "approval-yolo-critical-still-prompts",
+			"contract": "Yolo still prompts on a critical decision when no per-tool policy is configured",
+			"surface": "resolve-approval",
+			"tags": ["adversarial", "boundary"],
+			"input": {
+				"tool": {
+					"name": "bash",
+					"approval": { "tier": "exec", "critical": true, "reason": "Destructive recursive delete" }
+				},
+				"args": {},
+				"mode": "yolo",
+				"userConfig": {}
+			},
+			"expect": {
+				"policy": "prompt",
+				"tier": "exec",
+				"override": true,
+				"reasonContains": "Destructive recursive delete"
+			}
+		},
+		{
 			"id": "approval-always-ask-write-prompt",
-			"contract": "always-ask prompts on write-tier tools",
+			"contract": "LEGACY ALIAS: always-ask normalizes to ask, which prompts on write-tier tools",
 			"surface": "resolve-approval",
 			"tags": ["positive"],
 			"input": {
@@ -27,8 +48,8 @@
 			"expect": { "policy": "prompt", "tier": "write", "override": false }
 		},
 		{
-			"id": "approval-always-ask-read-allow",
-			"contract": "always-ask allows read-tier tools without prompting",
+			"id": "approval-always-ask-read-prompt",
+			"contract": "LEGACY ALIAS: always-ask normalizes to ask, which prompts on read-tier tools too",
 			"surface": "resolve-approval",
 			"tags": ["negative"],
 			"input": {
@@ -37,7 +58,7 @@
 				"mode": "always-ask",
 				"userConfig": {}
 			},
-			"expect": { "policy": "allow", "tier": "read", "override": false }
+			"expect": { "policy": "prompt", "tier": "read", "override": false }
 		},
 		{
 			"id": "approval-user-deny-beats-yolo",
@@ -70,6 +91,20 @@
 				"override": false,
 				"reasonContains": "Plan autonomy"
 			}
+		},
+		{
+			"id": "approval-plan-autonomy-allows-read",
+			"contract": "Plan autonomy allows read-tier tools, which is the whole tier it runs unasked",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "read", "approval": "read" },
+				"args": {},
+				"mode": "plan",
+				"userConfig": {},
+				"options": { "planModeActive": false }
+			},
+			"expect": { "policy": "allow", "tier": "read", "override": false }
 		},
 		{
 			"id": "approval-plan-mode-active-write-prompts",
@@ -136,7 +171,7 @@
 		},
 		{
 			"id": "approval-auto-edit-allows-write",
-			"contract": "auto-edit autonomy allows write-tier without prompt",
+			"contract": "LEGACY ALIAS: auto-edit normalizes to ask-command, which allows write-tier without prompt",
 			"surface": "resolve-approval",
 			"tags": ["positive"],
 			"input": {
@@ -149,7 +184,7 @@
 		},
 		{
 			"id": "approval-auto-edit-prompts-exec",
-			"contract": "auto-edit still prompts (or denies) on exec-tier tools",
+			"contract": "LEGACY ALIAS: auto-edit normalizes to ask-command, which still prompts on exec-tier tools",
 			"surface": "resolve-approval",
 			"tags": ["positive"],
 			"input": {
@@ -159,6 +194,102 @@
 				"userConfig": {}
 			},
 			"expect": { "policy": "prompt", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-ask-command-allows-read",
+			"contract": "ask-command allows read-tier tools without prompting",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "read", "approval": "read" },
+				"args": {},
+				"mode": "ask-command",
+				"userConfig": {}
+			},
+			"expect": { "policy": "allow", "tier": "read", "override": false }
+		},
+		{
+			"id": "approval-ask-command-allows-write",
+			"contract": "ask-command allows write-tier tools without prompting, the twin of the auto-edit alias case",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "write", "approval": "write" },
+				"args": {},
+				"mode": "ask-command",
+				"userConfig": {}
+			},
+			"expect": { "policy": "allow", "tier": "write", "override": false }
+		},
+		{
+			"id": "approval-ask-command-prompts-exec",
+			"contract": "ask-command prompts on exec-tier tools, which is the only tier it stops for",
+			"surface": "resolve-approval",
+			"tags": ["positive", "boundary"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "ask-command",
+				"userConfig": {}
+			},
+			"expect": { "policy": "prompt", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-auto-allows-exec",
+			"contract": "auto allows exec-tier tools without prompting",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "auto",
+				"userConfig": {}
+			},
+			"expect": { "policy": "allow", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-auto-honors-tool-override",
+			"contract": "auto still prompts when the tool's own decision sets override, which is how it differs from yolo",
+			"surface": "resolve-approval",
+			"tags": ["adversarial", "boundary"],
+			"input": {
+				"tool": { "name": "bash", "approval": { "tier": "exec", "override": true, "reason": "Piped installer" } },
+				"args": {},
+				"mode": "auto",
+				"userConfig": {}
+			},
+			"expect": {
+				"policy": "prompt",
+				"tier": "exec",
+				"override": true,
+				"reasonContains": "Piped installer"
+			}
+		},
+		{
+			"id": "approval-yolo-ignores-tool-override",
+			"contract": "yolo allows a non-critical tool override that auto would have prompted for",
+			"surface": "resolve-approval",
+			"tags": ["adversarial"],
+			"input": {
+				"tool": { "name": "bash", "approval": { "tier": "exec", "override": true, "reason": "Piped installer" } },
+				"args": {},
+				"mode": "yolo",
+				"userConfig": {}
+			},
+			"expect": { "policy": "allow", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-auto-honors-user-deny",
+			"contract": "auto honors a per-tool deny policy instead of running the exec-tier call",
+			"surface": "resolve-approval",
+			"tags": ["adversarial", "negative"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "auto",
+				"userConfig": { "bash": "deny" }
+			},
+			"expect": { "policy": "deny", "tier": "exec", "override": false }
 		},
 		{
 			"id": "approval-user-allow-beats-always-ask",
@@ -188,21 +319,21 @@
 			"expect": { "policy": "allow", "tier": "exec", "override": false }
 		},
 		{
-			"id": "approval-ask-mode-read-allow",
-			"contract": "ask autonomy allows read-tier",
+			"id": "approval-ask-mode-read-prompt",
+			"contract": "ask autonomy prompts on read-tier: ask about everything includes reads",
 			"surface": "resolve-approval",
-			"tags": ["positive"],
+			"tags": ["positive", "boundary"],
 			"input": {
 				"tool": { "name": "read", "approval": "read" },
 				"args": {},
 				"mode": "ask",
 				"userConfig": {}
 			},
-			"expect": { "policy": "allow", "tier": "read", "override": false }
+			"expect": { "policy": "prompt", "tier": "read", "override": false }
 		},
 		{
 			"id": "approval-ask-mode-write-prompt",
-			"contract": "ask autonomy prompts on write-tier (twin of ask read-allow)",
+			"contract": "ask autonomy prompts on write-tier (twin of ask read-prompt)",
 			"surface": "resolve-approval",
 			"tags": ["adversarial", "positive"],
 			"input": {
@@ -212,7 +343,32 @@
 				"userConfig": {}
 			},
 			"expect": { "policy": "prompt", "tier": "write", "override": false }
+		},
+		{
+			"id": "approval-ask-mode-exec-prompt",
+			"contract": "ask autonomy prompts on exec-tier, completing the rung that runs nothing unasked",
+			"surface": "resolve-approval",
+			"tags": ["positive"],
+			"input": {
+				"tool": { "name": "bash", "approval": "exec" },
+				"args": {},
+				"mode": "ask",
+				"userConfig": {}
+			},
+			"expect": { "policy": "prompt", "tier": "exec", "override": false }
+		},
+		{
+			"id": "approval-ask-user-allow-runs-read",
+			"contract": "A per-tool allow policy is how a read-tier tool runs unasked under ask",
+			"surface": "resolve-approval",
+			"tags": ["positive", "regression"],
+			"input": {
+				"tool": { "name": "read", "approval": "read" },
+				"args": {},
+				"mode": "ask",
+				"userConfig": { "read": "allow" }
+			},
+			"expect": { "policy": "allow", "tier": "read", "override": false }
 		}
 	]
 }
-

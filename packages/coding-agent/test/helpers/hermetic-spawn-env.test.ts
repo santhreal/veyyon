@@ -26,18 +26,35 @@ const ISOLATION_MARKERS = [
 
 describe("hermetic spawn env", () => {
 	it("strips config redirects, swaps HOME, and honors extras", () => {
+		// Set, and PUT BACK, every variable this case moves. Deleting `VEYYON_PROFILE`
+		// unconditionally in the `finally` is what this used to do, and on any machine that
+		// actually runs with a named profile (which is every machine running veyyon: the
+		// harness exports `VEYYON_PROFILE`) that handed an unset profile to every test file
+		// scheduled after this one in the same process. They then resolved under
+		// `profiles/default/` instead, so a suite could pass alone and fail in a full run
+		// with nothing in its own source to blame.
+		const previous = (["VEYYON_PROFILE", "VEYYON_CONFIG_DIR"] as const).map(key => [key, process.env[key]] as const);
 		process.env.VEYYON_PROFILE = "guard-test-profile";
+		process.env.VEYYON_CONFIG_DIR = ".veyyon-guard-test";
 		try {
 			const { home, env, cleanup } = hermeticSpawnEnv({ VEYYON_CODING_AGENT_DIR: "/x/agent" });
 			expect(env.HOME).toBe(home);
 			expect(env.HOME).not.toBe(process.env.HOME);
 			expect(env.VEYYON_PROFILE).toBeUndefined();
-			expect(env.VEYYON_PROFILE).toBeUndefined();
+			// The other config-root variable, and the one the test name promises. This line was
+			// a verbatim copy of the `VEYYON_PROFILE` assertion above it, so "strips config
+			// redirects" was asserted once and counted twice, and `VEYYON_CONFIG_DIR` reaching
+			// a child would not have failed anything. Both are set above so neither assertion
+			// can pass on a variable that was absent to begin with.
+			expect(env.VEYYON_CONFIG_DIR).toBeUndefined();
 			expect(env.VEYYON_CODING_AGENT_DIR).toBe("/x/agent");
 			expect(env.NO_COLOR).toBe("1");
 			cleanup();
 		} finally {
-			delete process.env.VEYYON_PROFILE;
+			for (const [key, value] of previous) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
 		}
 	});
 

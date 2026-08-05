@@ -1,5 +1,5 @@
 import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import * as path from "node:path";
 import { CATALOG_PROVIDERS, type ProviderCatalogEntry } from "@veyyon/catalog/provider-models";
 import { removeSyncWithRetries } from "@veyyon/utils";
@@ -38,7 +38,7 @@ const CONFIG_ENV_VARS = [...CONFIG_ROOT_ENV_KEYS, ...XDG_BASE_DIRS] as const;
  * to prevent) they are left alone; the temp HOME already moves the on-disk halves of those chains
  * out of reach.
  */
-export const PROVIDER_CREDENTIAL_ENV_VARS: readonly string[] = [
+const PROVIDER_CREDENTIAL_ENV_VARS: readonly string[] = [
 	...new Set(
 		(CATALOG_PROVIDERS as readonly ProviderCatalogEntry[]).flatMap(provider => [
 			...(provider.envVars ?? []),
@@ -68,9 +68,9 @@ const CLOSED_LOOPBACK_ORIGIN = `http://${CLOSED_LOOPBACK_AUTHORITY}`;
 /**
  * Where each local-provider knob points once discovery is neutralized.
  *
- * The first four are the implicit providers above: `OLLAMA_BASE_URL` and `OLLAMA_HOST` are both
- * set because `getImplicitOllamaBaseUrl` reads them in that order and a child could otherwise be
- * steered by whichever one the developer exports. `LITELLM_BASE_URL` needs an explicit provider
+ * The first four cover the three implicit providers above. `OLLAMA_BASE_URL` and `OLLAMA_HOST` are
+ * both set because `getImplicitOllamaBaseUrl` reads them in that order and a child could otherwise
+ * be steered by whichever one the developer exports. `LITELLM_BASE_URL` needs an explicit provider
  * config to matter today, and is included so that a config which does name it still cannot reach
  * a proxy on the host. vLLM has the same shape but no env knob at all, since its base URL comes
  * only from config, so there is nothing to set for it here.
@@ -100,14 +100,40 @@ export function denyHostProviderAccess(env: Record<string, string | undefined>):
 export interface HermeticSpawnEnv {
 	/** Temp dir used as HOME for the spawned process. */
 	home: string;
-	/** Env for Bun.spawn: process.env with HOME swapped and config vars removed. */
+	/** Env for Bun.spawn: process.env with HOME swapped, config vars removed, providers denied. */
 	env: Record<string, string | undefined>;
 	/** Remove the temp HOME. Call in afterAll/afterEach or after the spawn. */
 	cleanup: () => void;
 }
 
+/**
+ * Bun's own dependency and transpile cache, pinned to where it really lives.
+ *
+ * Bun keys that cache at `$HOME/.bun/install/cache`, so a child handed a throwaway
+ * HOME finds it empty and re-transpiles the entire CLI module graph on every single
+ * spawn. Measured on the ACP smoke test: about 12s cold against about 0.4s warm. That
+ * cost is what pushed one suite into keeping the developer's real HOME, which is the
+ * defect this helper exists to prevent, so the cost has to go rather than the isolation.
+ *
+ * Sharing the real cache is safe in a way sharing the real HOME is not: it holds
+ * downloaded package tarballs and transpiler output, never a credential, a profile, a
+ * session, or a setting. Nothing under `~/.veyyon` is reachable through it. So the
+ * child gets exactly this one door back to the real home and no other.
+ *
+ * Read once at module load, before any suite installs an `os.homedir` spy, so the value
+ * is the real location rather than whatever a spy is currently reporting.
+ */
+const REAL_BUN_INSTALL = process.env.BUN_INSTALL ?? path.join(homedir(), ".bun");
+const REAL_BUN_CACHE = process.env.BUN_INSTALL_CACHE_DIR ?? path.join(REAL_BUN_INSTALL, "install", "cache");
+
+/** The two variables that keep Bun's cache reachable once HOME has moved. */
+export const BUN_CACHE_ENV: Readonly<Record<string, string>> = {
+	BUN_INSTALL: REAL_BUN_INSTALL,
+	BUN_INSTALL_CACHE_DIR: REAL_BUN_CACHE,
+};
+
 /** Build a spawn env whose HOME is a fresh temp dir and whose providers are all unreachable, so the
- * child CLI can neither read or migrate the developer's real ~/.veyyon nor borrow their models. */
+ * child CLI can neither read nor migrate the developer's real ~/.veyyon, nor borrow their models. */
 export function hermeticSpawnEnv(extra?: Record<string, string>): HermeticSpawnEnv {
 	const home = mkdtempSync(path.join(tmpdir(), "veyyon-hermetic-home-"));
 	const env: Record<string, string | undefined> = { ...process.env, HOME: home, NO_COLOR: "1" };
@@ -115,6 +141,7 @@ export function hermeticSpawnEnv(extra?: Record<string, string>): HermeticSpawnE
 		delete env[key];
 	}
 	denyHostProviderAccess(env);
+	Object.assign(env, BUN_CACHE_ENV);
 	// `extra` last, so a suite that genuinely needs one credential or one reachable endpoint can
 	// pass it in and get it. Stripping is the default, not a prohibition.
 	Object.assign(env, extra);

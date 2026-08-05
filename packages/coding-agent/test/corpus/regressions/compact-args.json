@@ -133,16 +133,16 @@
 		},
 		{
 			"id": "find-compact-mode-handoff",
-			"contract": "handoff is a live mode name",
+			"contract": "handoff is not a compaction mode, so it resolves to nothing",
 			"surface": "find-compact-mode",
 			"tags": [
-				"positive"
+				"negative"
 			],
 			"input": {
 				"name": "handoff"
 			},
 			"expect": {
-				"name": "handoff"
+				"name": null
 			}
 		},
 		{
@@ -162,16 +162,17 @@
 		},
 		{
 			"id": "compact-args-handoff-lone",
-			"contract": "A lone live mode token selects it with no instructions",
+			"contract": "A lone handoff token is refused with the command that performs the transfer, never read as focus text",
 			"surface": "parse-compact-args",
 			"tags": [
-				"positive"
+				"negative",
+				"regression"
 			],
 			"input": {
 				"args": "HANDOFF"
 			},
 			"expect": {
-				"mode": "handoff"
+				"error": "`handoff` is not a compaction mode. Use `/handoff [focus instructions]` to transfer context to a new session."
 			}
 		},
 		{

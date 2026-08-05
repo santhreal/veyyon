@@ -55,7 +55,7 @@
 			"tags": ["positive"],
 			"input": { "cwd": "/home/u/p", "escaping": ["/etc/passwd"] },
 			"expect": {
-				"text": "Path is outside the session working directory (/home/u/p): /etc/passwd. Approve to allow filesystem access outside the working directory, or set tools.approvalMode: yolo to allow it without prompting."
+				"text": "Path is outside the session working directory (/home/u/p): /etc/passwd. Approve to allow this call, move the session with set_cwd if you will keep working there, or set tools.approvalMode: yolo to stop being asked at all. Raising the rung to ask-command or auto does not lift this boundary."
 			}
 		},
 		{
@@ -65,7 +65,7 @@
 			"tags": ["positive", "boundary"],
 			"input": { "cwd": "/cwd", "escaping": ["/a", "/b"] },
 			"expect": {
-				"text": "Path is outside the session working directory (/cwd): /a, /b. Approve to allow filesystem access outside the working directory, or set tools.approvalMode: yolo to allow it without prompting."
+				"text": "Path is outside the session working directory (/cwd): /a, /b. Approve to allow this call, move the session with set_cwd if you will keep working there, or set tools.approvalMode: yolo to stop being asked at all. Raising the rung to ask-command or auto does not lift this boundary."
 			}
 		},
 		{
@@ -75,7 +75,7 @@
 			"tags": ["boundary", "adversarial"],
 			"input": { "cwd": "/cwd", "escaping": [] },
 			"expect": {
-				"text": "Path is outside the session working directory (/cwd): . Approve to allow filesystem access outside the working directory, or set tools.approvalMode: yolo to allow it without prompting."
+				"text": "Path is outside the session working directory (/cwd): . Approve to allow this call, move the session with set_cwd if you will keep working there, or set tools.approvalMode: yolo to stop being asked at all. Raising the rung to ask-command or auto does not lift this boundary."
 			}
 		}
 	]

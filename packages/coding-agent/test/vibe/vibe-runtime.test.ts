@@ -17,6 +17,7 @@
  * 5. `kill` cancels the in-flight turn job and releases the worker session.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { ThinkingLevel } from "@veyyon/agent-core";
 import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
@@ -32,7 +33,7 @@ function createSession(options: { manager?: AsyncJobManager } = {}): ToolSession
 	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
-		settings: Settings.isolated({}),
+		settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		asyncJobManager: options.manager,
@@ -193,6 +194,185 @@ describe("vibe session registry", () => {
 		VibeSessionRegistry.resetGlobalForTests();
 		AgentLifecycleManager.resetGlobalForTests();
 		AgentRegistry.resetGlobalForTests();
+	});
+
+	/**
+	 * Vibe starts children through its own executor-options builder. It must
+	 * preserve the same parent-effort inheritance contract as task and eval.
+	 */
+	it("forwards the parent effective effort into a Vibe worker", async () => {
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "idle",
+			});
+			return makeResult(options.id);
+		});
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			getActiveThinkingLevel: () => ThinkingLevel.Low,
+			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		const { jobId } = await VibeSessionRegistry.global().spawn(session, {
+			cli: "fast",
+			name: "InheritedVibe",
+			prompt: "Keep the parent effort.",
+		});
+		await manager.getJob(jobId)?.promise;
+
+		expect(spy.mock.calls[0]?.[0]?.parentThinkingLevel).toBe(ThinkingLevel.Low);
+	});
+
+	/**
+	 * LOCKS OUT: `skills: session.skills ?? []` (and the same `??` for context files, prompt
+	 * templates, and rules) in `vibe/runtime.ts#buildSpawnOptions`.
+	 *
+	 * `sdk.ts` gates discovery on PRESENCE, not on length, so an empty array is not a neutral
+	 * default: it tells the worker "already resolved, do not look". A vibe worker spawned from a
+	 * parent that had not resolved its own layers therefore ran the whole session with no skills,
+	 * no prompt templates, no rules, and no `AGENTS.md`, silently.
+	 *
+	 * IF THIS REGRESSES: every vibe worker loses the operator's configuration, and the only
+	 * visible symptom is the worker behaving as if the project had no rules.
+	 */
+	it("hands a vibe worker undefined layers when the parent resolved none, and forwards them when it did", async () => {
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "idle",
+			});
+			return makeResult(options.id);
+		});
+		const manager = createManager();
+
+		const unresolved = await VibeSessionRegistry.global().spawn(createSession({ manager }), {
+			cli: "fast",
+			name: "UnresolvedVibe",
+			prompt: "Nothing resolved upstream.",
+		});
+		await manager.getJob(unresolved.jobId)?.promise;
+
+		const bare = spy.mock.calls[0]?.[0];
+		expect(bare?.contextFiles).toBeUndefined();
+		expect(bare?.skills).toBeUndefined();
+		expect(bare?.promptTemplates).toBeUndefined();
+		expect(bare?.rules).toBeUndefined();
+
+		const contextFiles = [{ path: "/tmp/AGENTS.md", content: "# project rules\n", depth: 0 }];
+		const skills = [{ name: "review" }] as unknown as ToolSession["skills"];
+		const promptTemplates = [{ name: "brief" }] as unknown as ToolSession["promptTemplates"];
+		const rules = [{ name: "no-em-dash" }] as unknown as ToolSession["rules"];
+		const resolvedParent = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+			contextFiles,
+			skills,
+			promptTemplates,
+			rules,
+		});
+
+		const resolved = await VibeSessionRegistry.global().spawn(resolvedParent, {
+			cli: "fast",
+			name: "ResolvedVibe",
+			prompt: "Everything resolved upstream.",
+		});
+		await manager.getJob(resolved.jobId)?.promise;
+
+		const forwarded = spy.mock.calls[1]?.[0];
+		expect(forwarded?.contextFiles).toEqual(contextFiles);
+		expect(forwarded?.skills).toEqual(skills);
+		expect(forwarded?.promptTemplates).toEqual(promptTemplates);
+		expect(forwarded?.rules).toEqual(rules);
+	});
+
+	/**
+	 * Vibe used to bypass the task/eval denylist entirely. The fast worker must
+	 * now honor the same profile enabled state and avoid starting an executor.
+	 */
+	it("rejects a disabled Vibe agent before starting a worker", async () => {
+		const executorSpy = vi.spyOn(executorModule, "runSubprocess");
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({
+				"subagent.agents": { sonic: { enabled: false } },
+			}),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		await expect(
+			VibeSessionRegistry.global().spawn(session, {
+				cli: "fast",
+				name: "DisabledVibe",
+				prompt: "Do not start.",
+			}),
+		).rejects.toThrow(
+			'Agent "sonic" is disabled (subagent.agents.sonic.enabled is false). Enable it in the Subagents settings tab (/settings) before starting the "fast" vibe worker.',
+		);
+		expect(executorSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * Prevents Vibe from drifting from task/eval policy by pinning the exact
+	 * model and effort fields handed to its production executor.
+	 */
+	it("forwards canonical per-agent model and effort overrides", async () => {
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "idle",
+			});
+			return makeResult(options.id);
+		});
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({
+				"subagent.agents": {
+					sonic: { enabled: true, model: "openai/gpt-5.2-codex", thinkingLevel: "xhigh" },
+				},
+			}),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		const { jobId } = await VibeSessionRegistry.global().spawn(session, {
+			cli: "fast",
+			name: "ConfiguredVibe",
+			prompt: "Use the profile policy.",
+		});
+		await manager.getJob(jobId)?.promise;
+
+		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["openai/gpt-5.2-codex"]);
+		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.XHigh);
+		expect(spy.mock.calls[0]?.[0]?.parentThinkingLevel).toBeUndefined();
 	});
 
 	it("spawn returns immediately and self-delivers a turn result with activity trace + response", async () => {
