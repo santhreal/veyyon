@@ -209,6 +209,43 @@ export function sharedSpinnerFrame(frameCount: number, now: number = performance
 let toolExecutionInstanceSeq = 0;
 
 /**
+ * Why a tool call produced no work, in the operator's words.
+ *
+ * Two shapes reach the transcript and neither one used to say anything. The
+ * loop synthesizes a placeholder result for a call the assistant emitted but
+ * never dispatched, tagging it `__synthetic` with an `executed: false` and a
+ * `source` naming the assistant-side stop (`agent-loop.ts`
+ * `SyntheticToolResultDetails`, added by #4321 so that "UI, telemetry, and
+ * history consumers can key on `__synthetic === true` to render or classify
+ * these as 'call emitted, not executed' instead of a real local tool failure").
+ * Nothing in the transcript ever read it, so those placeholders rendered with
+ * the same red `failed` chrome as a command that ran and exited non-zero. The
+ * other shape is a block the turn `seal()`ed with no result at all, which
+ * rendered byte-identically to a call still in flight.
+ */
+function notExecutedReason(result: { details?: unknown } | undefined, sealed: boolean): string | undefined {
+	if (result === undefined) {
+		return sealed ? "no result recorded: this call was cut off before it reported back" : undefined;
+	}
+	const details = result.details;
+	if (details == null || typeof details !== "object") return undefined;
+	const record = details as Record<string, unknown>;
+	if (record.__synthetic !== true || record.executed !== false) return undefined;
+	switch (record.source) {
+		case "assistant_stop_aborted":
+			return "not executed: the turn was interrupted before this call ran";
+		case "assistant_stop_skipped":
+			return "not executed: the assistant ended its turn before this call ran";
+		case "assistant_stop_length":
+			return "not executed: the assistant hit its output limit before the arguments finished";
+		case "assistant_stop_error":
+			return "not executed: the provider stream failed before this call ran";
+		default:
+			return "not executed";
+	}
+}
+
+/**
  * Component that renders a tool call with its result (updateable)
  */
 export class ToolExecutionComponent extends Container implements NativeScrollbackLiveRegion {
@@ -217,6 +254,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#multiFileBoxes: (Box | Spacer)[] = []; // Extra boxes for multi-file edit results
 	#imageComponents: Image[] = [];
 	#imageSpacers: Spacer[] = [];
+	/** The "this call did not run" line, when one applies. Managed like the image
+	 *  children: removed and re-added by every rebuild rather than mutated. */
+	#notExecutedNotice: Text | undefined;
 	readonly #instanceId = ++toolExecutionInstanceSeq;
 	#toolName: string;
 	#toolLabel: string;
@@ -839,7 +879,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		// TUI startup, so a result rendered before it lands must re-shape once it
 		// does (it gates Image children vs text fallback in #rebuildDisplay); keyed
 		// here for the same reason markdown.ts keys its render cache on it.
-		const key = `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${this.#backgroundTaskFrozen}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}`;
+		// `#sealed` is in the key in its own right: a block sealed with no result gains
+		// the "no result recorded" notice, and `#backgroundTaskFrozen` (which `seal()`
+		// also sets) is not a substitute because `#maybeFreezeBackgroundTask` sets that
+		// one on its own for a detached task that is still going to report.
+		const key = `${this.#resultVersion}|${this.#expanded}|${this.#isPartial}|${this.#spinnerFrame ?? "-"}|${this.#showImages}|${getThemeEpoch()}|${this.#displayInputVersion}|${this.#backgroundTaskFrozen}|${this.#sealed}|${TERMINAL.imageProtocol ?? "-"}|${this.#imageSizeKey()}`;
 		if (key === this.#lastDisplayKey && this.#displayBuilt) return;
 		this.#lastDisplayKey = key;
 
@@ -1170,6 +1214,23 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					this.addChild(imageComponent);
 				}
 			}
+		}
+
+		// The "did not run" line, appended under the card so it reads as a note on the
+		// block above it rather than a second title. Re-created each rebuild, on the
+		// same remove-then-add discipline as the images.
+		if (this.#notExecutedNotice) {
+			this.removeChild(this.#notExecutedNotice);
+			this.#notExecutedNotice = undefined;
+		}
+		const reason = notExecutedReason(this.#result, this.#sealed);
+		if (reason !== undefined) {
+			this.#notExecutedNotice = new Text(
+				theme.fg("warning", `${theme.status.warning} ${reason}`),
+				COMPOSER_INSET_COLS,
+				0,
+			);
+			this.addChild(this.#notExecutedNotice);
 		}
 		this.#renderedImageCount = this.#imageComponents.length;
 	}
