@@ -748,6 +748,17 @@ export interface ContextSnapshot {
 	lastMessageTimestamp?: number;
 }
 
+/**
+ * Identity of a tool call whose arguments never finished streaming.
+ *
+ * Both fields arrive with the provider's tool-call block header, before any
+ * argument delta, so they are complete even when the arguments are not.
+ */
+export interface IncompleteToolCall {
+	id: string;
+	name: string;
+}
+
 export interface AssistantMessage {
 	role: "assistant";
 	content: (TextContent | ThinkingContent | RedactedThinkingContent | AnthropicFallbackContent | ToolCall)[];
@@ -771,6 +782,19 @@ export interface AssistantMessage {
 	errorMessage?: string;
 	/** Per-tool abort messages used when an aborted assistant turn needs different placeholder results per tool call. */
 	toolCallAbortMessages?: Record<string, string>;
+	/**
+	 * Tool calls the model began emitting whose arguments were still streaming
+	 * when the turn was cut off (a provider stream reset or an abort). Their
+	 * `toolCall` blocks are removed from {@link content}, because incomplete
+	 * arguments are unsafe to run and an unpaired `tool_use` block breaks the
+	 * provider's tool_use/tool_result pairing on replay. The identity survives
+	 * here so the harness can still tell the model the call was attempted and
+	 * never ran: without it the call vanishes with no trace anywhere, and the
+	 * model reads the turn as if it had never asked for that tool.
+	 *
+	 * Populated only on `error`/`aborted` turns that dropped at least one block.
+	 */
+	incompleteToolCalls?: IncompleteToolCall[];
 	/** HTTP status surfaced by the provider when the request failed. Populated by every provider's catch block alongside `errorMessage` so consumers (auth retry, telemetry, UI) can branch without regex-scraping the message. */
 	errorStatus?: number;
 	/** Structured machine-readable error classifier; see `utils/error-id.ts` for bit layout and helpers. */

@@ -254,14 +254,19 @@ function tryParseLeadingJsonContainer(value: string): unknown | undefined {
 			if (cleaned !== prefix) {
 				try {
 					return JSON.parse(cleaned) as unknown;
-				} catch {}
+				} catch {
+					// One rung of a repair ladder: this candidate not parsing is the normal
+					// case, and the next repair below is the answer.
+				}
 			}
 			// Try escaping raw control chars that appear inside string literals.
 			const escapedControls = escapeRawControlsInJsonStrings(prefix);
 			if (escapedControls !== prefix) {
 				try {
 					return JSON.parse(escapedControls) as unknown;
-				} catch {}
+				} catch {
+					// Same ladder: fall through to the single-character healing below.
+				}
 			}
 			// Also try single-char healing on the extracted prefix.
 			return tryHealMalformedJson(prefix);
@@ -399,7 +404,9 @@ function tryHealMalformedJson(value: string): unknown | undefined {
 	// Verify it actually fails to parse
 	try {
 		return JSON.parse(value) as unknown;
-	} catch {}
+	} catch {
+		// Expected: healing is only attempted on input that does not already parse.
+	}
 
 	// Only attempt edits within the last few characters — the error is always
 	// a bracket issue at the tail for the class of LLM mistakes this targets.
@@ -410,7 +417,9 @@ function tryHealMalformedJson(value: string): unknown | undefined {
 		const candidate = value.slice(0, i) + value.slice(i + 1);
 		try {
 			return JSON.parse(candidate) as unknown;
-		} catch {}
+		} catch {
+			// Most single-character edits produce invalid JSON; that is the search.
+		}
 	}
 
 	// Strategy 2: replace a single character in the tail with each bracket type
@@ -421,7 +430,9 @@ function tryHealMalformedJson(value: string): unknown | undefined {
 			const candidate = value.slice(0, i) + replacement + value.slice(i + 1);
 			try {
 				return JSON.parse(candidate) as unknown;
-			} catch {}
+			} catch {
+				// As above: a rejected candidate just means try the next bracket.
+			}
 		}
 	}
 
@@ -516,7 +527,10 @@ function tryParseJsonForTypes(value: string, expectedTypes: string[], depth = 0)
 					const parsed = JSON.parse(escapedControls) as unknown;
 					const accepted = acceptParsedJsonForTypes(parsed, escapedControls, expectedTypes, depth);
 					if (accepted.changed) return accepted;
-				} catch {}
+				} catch {
+					// Control-character escaping did not help; the prefix and healing
+					// attempts below are the remaining repairs.
+				}
 			}
 			// Try extracting a valid JSON prefix (handles trailing junk after balanced container)
 			const leading = tryParseLeadingJsonContainer(trimmed);
@@ -1076,17 +1090,29 @@ function trimIdentifierStringLeaf(input: unknown): unknown {
 }
 
 /**
+ * Depth ceiling for the two schema-agnostic value walks below and for the
+ * error echo. Real tool arguments are a handful of levels deep; a payload that
+ * nests past this is malformed or hostile, and recursing it overflowed the
+ * stack, so a clean `ValidationError` escaped the pipeline as a `RangeError`
+ * instead. The depth does arrive intact: `JSON.parse` accepts 100k levels of
+ * nesting without complaint. Past the ceiling a subtree is left exactly as
+ * received rather than dropped, so no argument is ever lost to the guard.
+ */
+const MAX_VALUE_WALK_DEPTH = 64;
+
+/**
  * Recursively strip trailing line terminators from string values whose property
  * key matches {@link IDENTIFIER_STRING_KEYS}. Runs by property name only
  * (schema-agnostic) so it fires uniformly across Zod, ArkType, and plain JSON
  * Schema tools while preserving nested payloads under content-carrying keys.
  */
-function normalizeIdentifierStringWhitespace(value: unknown): { value: unknown; changed: boolean } {
+function normalizeIdentifierStringWhitespace(value: unknown, depth = 0): { value: unknown; changed: boolean } {
+	if (depth >= MAX_VALUE_WALK_DEPTH) return { value, changed: false };
 	if (Array.isArray(value)) {
 		let changed = false;
 		let next = value;
 		for (let i = 0; i < value.length; i += 1) {
-			const normalized = normalizeIdentifierStringWhitespace(value[i]);
+			const normalized = normalizeIdentifierStringWhitespace(value[i], depth + 1);
 			if (!normalized.changed) continue;
 			if (!changed) {
 				next = [...value];
@@ -1109,7 +1135,7 @@ function normalizeIdentifierStringWhitespace(value: unknown): { value: unknown; 
 			const trimmed = trimIdentifierStringLeaf(entry);
 			if (trimmed !== entry) nextEntry = trimmed;
 		}
-		const nested = normalizeIdentifierStringWhitespace(nextEntry);
+		const nested = normalizeIdentifierStringWhitespace(nextEntry, depth + 1);
 		if (nested.changed) nextEntry = nested.value;
 		if (nextEntry === entry) continue;
 		if (!changed) {
@@ -1170,12 +1196,13 @@ function decodeDoubleEncodedKey(key: string): string | null {
  * differs and does not already exist on the same object — renaming would
  * otherwise clobber a sibling and silently lose data.
  */
-function normalizeDoubleEncodedKeys(value: unknown): { value: unknown; changed: boolean } {
+function normalizeDoubleEncodedKeys(value: unknown, depth = 0): { value: unknown; changed: boolean } {
+	if (depth >= MAX_VALUE_WALK_DEPTH) return { value, changed: false };
 	if (Array.isArray(value)) {
 		let changed = false;
 		let next = value;
 		for (let i = 0; i < value.length; i += 1) {
-			const normalized = normalizeDoubleEncodedKeys(value[i]);
+			const normalized = normalizeDoubleEncodedKeys(value[i], depth + 1);
 			if (!normalized.changed) continue;
 			if (!changed) {
 				next = [...value];
@@ -1192,7 +1219,7 @@ function normalizeDoubleEncodedKeys(value: unknown): { value: unknown; changed: 
 	let changed = false;
 	const out: Record<string, unknown> = {};
 	for (const [key, entry] of Object.entries(source)) {
-		const normalizedChild = normalizeDoubleEncodedKeys(entry);
+		const normalizedChild = normalizeDoubleEncodedKeys(entry, depth + 1);
 		const nextChild = normalizedChild.changed ? normalizedChild.value : entry;
 
 		const decodedKey = decodeDoubleEncodedKey(key);
@@ -1857,19 +1884,151 @@ export function validateToolCall(tools: Tool[], toolCall: ToolCall): ToolCall["a
 
 /** Cap per-field string lengths when embedding received args in an error message. */
 const MAX_ERROR_ARG_STRING_LENGTH = 256;
+/**
+ * Array elements echoed verbatim before the tail is replaced by a count.
+ *
+ * A per-string cap alone does not bound a container: eight short todo items
+ * are each far under {@link MAX_ERROR_ARG_STRING_LENGTH}, so the whole array
+ * used to round-trip into the transcript on every retry. One element is
+ * enough to show the shape the model actually sent.
+ */
+const MAX_ERROR_ARG_ARRAY_SAMPLE = 1;
+/** Object keys echoed before the rest is replaced by a count. */
+const MAX_ERROR_ARG_OBJECT_KEYS = 8;
+/** Hard ceiling on the serialized received-arguments block, after per-node bounding. */
+const MAX_ERROR_ARGS_JSON_LENGTH = 600;
+/** Cap on the raw payload echoed when the arguments were not parseable JSON. */
+const MAX_ERROR_RAW_JSON_LENGTH = 512;
+/**
+ * Nesting depth echoed before a subtree is replaced by a marker. Indentation
+ * alone makes a deep echo mostly whitespace, and the walk is recursive, so this
+ * bounds the stack as well as the bytes.
+ */
+const MAX_ERROR_ARG_DEPTH = 8;
+/**
+ * Ceiling on the joined issue lines. A validator names the rejected value
+ * inside the message (`op must be "init" | … (was "xxx…")`), so a single
+ * oversized field pushes the issue block past every per-argument cap: a 50k
+ * enum value produced a 50,437-character failure that the model re-read on
+ * every retry. Bounded separately from the echo so neither half can crowd the
+ * other out of the message.
+ */
+const MAX_ERROR_ISSUES_LENGTH = 400;
+/**
+ * Hard ceiling on the entire validation failure. The per-part caps above are
+ * expected to keep the message well under it; this exists because per-part caps
+ * do not compose into a whole-message bound on their own, and the whole message
+ * is what lands in the transcript.
+ */
+const MAX_ERROR_MESSAGE_LENGTH = 1200;
 
-function truncateArgsForError(value: unknown): unknown {
-	if (typeof value === "string") {
-		if (value.length <= MAX_ERROR_ARG_STRING_LENGTH) return value;
-		return `${value.slice(0, MAX_ERROR_ARG_STRING_LENGTH)}… [truncated ${value.length - MAX_ERROR_ARG_STRING_LENGTH} chars]`;
+/**
+ * Cut `text` so the RESULT is at most `max` characters, the "what was dropped"
+ * note included. Counting the note inside the budget is what makes `max` a
+ * ceiling on the string a caller actually emits, so nested calls compose: the
+ * outer bound holds whatever the inner ones produced. The note names the
+ * dropped count, so its own width depends on the cut; the loop settles that.
+ * Every `max` here is far wider than the note, which is the one case that
+ * could not be honored (a bare note still has to be emitted).
+ */
+function boundErrorText(text: string, max: number): string {
+	if (text.length <= max) return text;
+	const note = (keep: number): string => `… [truncated ${text.length - keep} chars]`;
+	let keep = max;
+	while (keep > 0 && keep + note(keep).length > max) keep--;
+	return `${text.slice(0, keep)}${note(keep)}`;
+}
+
+function truncateArgsForError(value: unknown, depth = 0): unknown {
+	if (typeof value === "string") return boundErrorText(value, MAX_ERROR_ARG_STRING_LENGTH);
+	if (Array.isArray(value)) {
+		if (depth >= MAX_ERROR_ARG_DEPTH) return `… ${value.length} element(s) elided below depth ${depth}`;
+		const sample: unknown[] = value
+			.slice(0, MAX_ERROR_ARG_ARRAY_SAMPLE)
+			.map(entry => truncateArgsForError(entry, depth + 1));
+		const elided = value.length - sample.length;
+		if (elided > 0) sample.push(`… ${elided} more of ${value.length} element(s) elided`);
+		return sample;
 	}
-	if (Array.isArray(value)) return value.map(truncateArgsForError);
 	if (value !== null && typeof value === "object") {
+		const entries = Object.entries(value);
+		if (depth >= MAX_ERROR_ARG_DEPTH) return `… ${entries.length} key(s) elided below depth ${depth}`;
 		const out: Record<string, unknown> = {};
-		for (const [key, entry] of Object.entries(value)) out[key] = truncateArgsForError(entry);
+		for (const [key, entry] of entries.slice(0, MAX_ERROR_ARG_OBJECT_KEYS)) {
+			out[key] = truncateArgsForError(entry, depth + 1);
+		}
+		const elided = entries.length - Math.min(entries.length, MAX_ERROR_ARG_OBJECT_KEYS);
+		if (elided > 0) out["…"] = `${elided} more of ${entries.length} key(s) elided`;
 		return out;
 	}
 	return value;
+}
+
+/** An echo that carries no information beyond "there was nothing here". */
+function isEmptyEcho(value: unknown): boolean {
+	if (value === undefined || value === null) return true;
+	if (Array.isArray(value)) return value.length === 0;
+	if (typeof value === "object") return Object.keys(value).length === 0;
+	return false;
+}
+
+/**
+ * Collect the literal values a schema node accepts, so a rejection can name
+ * them. Sourced from the tool's own schema rather than a hardcoded list, which
+ * would silently drift the first time an operation is added or renamed.
+ */
+function schemaLiteralValues(node: unknown, depth = 0): string[] | undefined {
+	if (depth > 4 || !isRecord(node)) return undefined;
+	const enumValues = node.enum;
+	if (Array.isArray(enumValues) && enumValues.length > 0) return enumValues.map(entry => String(entry));
+	if ("const" in node && node.const !== undefined) return [String(node.const)];
+	const branches = node.anyOf ?? node.oneOf;
+	if (!Array.isArray(branches)) return undefined;
+	const collected: string[] = [];
+	for (const branch of branches) {
+		const values = schemaLiteralValues(branch, depth + 1);
+		// A branch with no literals (a bare `string`) means the field is not a
+		// closed set, so naming a partial list would mislead.
+		if (!values) return undefined;
+		collected.push(...values);
+	}
+	return collected.length > 0 ? collected : undefined;
+}
+
+/** Walk a `formatIssuePath` path (`op`, `list/0/items`) down a JSON schema. */
+function schemaNodeAtIssuePath(json: unknown, path: string): unknown {
+	if (path === "root") return json;
+	let node: unknown = json;
+	for (const segment of path.split("/")) {
+		if (!isRecord(node)) return undefined;
+		const child = /^\d+$/.test(segment)
+			? node.items
+			: isRecord(node.properties)
+				? node.properties[segment]
+				: undefined;
+		if (child === undefined) return undefined;
+		node = child;
+	}
+	return node;
+}
+
+/**
+ * Append the accepted values to each issue line whose field is a closed set.
+ * Without this a rejection reads `op ... (was missing)` and the model has no
+ * way to invent a legal value, so the retry it is then told to make cannot
+ * succeed.
+ */
+function annotateIssuesWithAcceptedValues(json: unknown, messages: readonly string[]): string[] {
+	return messages.map(message => {
+		const match = /^\s*-\s([^:]+):\s/.exec(message);
+		if (!match) return message;
+		const values = schemaLiteralValues(schemaNodeAtIssuePath(json, match[1]));
+		if (!values || values.length === 0) return message;
+		// Some validators (arktype) already spell the set out. Re-listing it would
+		// double the line for no gain, so annotate only what is actually absent.
+		if (values.every(value => message.includes(value))) return message;
+		return `${message} (accepted: ${values.join(" | ")})`;
+	});
 }
 
 /**
@@ -1884,14 +2043,12 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 	const originalArgs = toolCall.arguments;
 	if (originalArgs && typeof originalArgs === "object" && "__parseError" in originalArgs) {
 		const parseError = originalArgs.__parseError;
-		const rawJson = String(originalArgs.__rawJson ?? "");
-		const maxLen = 512;
-		const truncatedRawJson =
-			rawJson.length <= maxLen
-				? rawJson
-				: `${rawJson.slice(0, maxLen)}… [truncated ${rawJson.length - maxLen} chars]`;
+		const rawJson = boundErrorText(String(originalArgs.__rawJson ?? ""), MAX_ERROR_RAW_JSON_LENGTH);
 		throw new AIError.ValidationError(
-			`Validation failed for tool "${toolCall.name}": Tool call arguments are not valid JSON.\nParse Error: ${parseError}\nRaw JSON:\n${truncatedRawJson}`,
+			boundErrorText(
+				`Validation failed for tool "${toolCall.name}": Tool call arguments are not valid JSON.\nParse Error: ${parseError}\nRaw JSON:\n${rawJson}`,
+				MAX_ERROR_MESSAGE_LENGTH,
+			),
 		);
 	}
 	const ctx = getValidationContext(tool);
@@ -1990,21 +2147,33 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): ToolCall[
 
 	// Format validation errors nicely. The header phrase is asserted by
 	// existing tests; the detailed body is informational.
-	const errors = result.messages.join("\n") || "Unknown validation error";
+	const annotated = annotateIssuesWithAcceptedValues(json, result.messages);
+	// The issue lines quote the rejected value, so they are as unbounded as the
+	// payload is until this cap.
+	const errors = boundErrorText(annotated.join("\n") || "Unknown validation error", MAX_ERROR_ISSUES_LENGTH);
 
-	// Truncate long per-field strings: the full payload (potentially hundreds
-	// of KB for write/edit-class calls) would otherwise round-trip back to the
-	// model inside the tool error.
-	const receivedArgs = changed
-		? {
-				original: truncateArgsForError(originalArgs),
-				normalized: truncateArgsForError(normalizedArgs),
-			}
-		: truncateArgsForError(originalArgs);
+	// Bound the echo hard. The message exists to name the offending field and
+	// its accepted values; reproducing the caller's payload turns every retry
+	// into another copy of the input in the transcript.
+	const originalEcho = truncateArgsForError(originalArgs);
+	const normalizedEcho = changed ? truncateArgsForError(normalizedArgs) : undefined;
+	// A normalized half that is empty, or identical to the original, is pure
+	// noise: it tells the model nothing its own arguments did not.
+	const normalizedIsInformative =
+		normalizedEcho !== undefined &&
+		!isEmptyEcho(normalizedEcho) &&
+		JSON.stringify(normalizedEcho) !== JSON.stringify(originalEcho);
+	const receivedArgs = normalizedIsInformative ? { original: originalEcho, normalized: normalizedEcho } : originalEcho;
 
-	const errorMessage = `Validation failed for tool "${
-		toolCall.name
-	}":\n${errors}\n\nReceived arguments:\n${JSON.stringify(receivedArgs, null, 2)}`;
+	const receivedJson = JSON.stringify(receivedArgs, null, 2) ?? "undefined";
+	const boundedJson = boundErrorText(receivedJson, MAX_ERROR_ARGS_JSON_LENGTH);
+
+	// Both halves are already bounded; the outer cut is the guarantee that the
+	// whole message is bounded no matter how the parts compose.
+	const errorMessage = boundErrorText(
+		`Validation failed for tool "${toolCall.name}":\n${errors}\n\nReceived arguments:\n${boundedJson}`,
+		MAX_ERROR_MESSAGE_LENGTH,
+	);
 
 	throw new AIError.ValidationError(errorMessage);
 }

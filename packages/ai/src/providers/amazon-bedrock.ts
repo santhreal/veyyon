@@ -16,6 +16,7 @@ import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/j
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import { AUTHENTICATED_API_KEY_SENTINEL } from "../provider-env-keys";
+import { BEDROCK_CLAUDE_THINKING_BUDGETS, resolveThinkingBudget } from "../reasoning-budget";
 import type {
 	Api,
 	AssistantMessage,
@@ -47,6 +48,7 @@ import { toolWireSchema } from "../utils/schema/wire";
 import { invalidateAwsCredentialCache, resolveAwsCredentials } from "./aws-credentials";
 import { decodeEventStream } from "./aws-eventstream";
 import { signRequest } from "./aws-sigv4";
+import { supportsBedrockPromptCaching } from "./bedrock-prompt-cache";
 import { transformMessages } from "./transform-messages";
 
 export type BedrockThinkingDisplay = "summarized" | "omitted";
@@ -724,32 +726,6 @@ function handleContentBlockStop(
 }
 
 /**
- * Check if the model supports prompt caching.
- * Supported: Claude 3.5 Haiku, Claude 3.7 Sonnet, Claude 4.x+ models, Haiku 4.5+
- *
- * For base models and system-defined inference profiles the model ID / ARN
- * contains the model name, so we can decide locally.
- *
- * For application inference profiles (whose ARNs don't contain the model name),
- * set AWS_BEDROCK_FORCE_CACHE=1 to enable cache points.  Amazon Nova models
- * have automatic caching and don't need explicit cache points.
- */
-function supportsPromptCaching(model: Model<"bedrock-converse-stream">): boolean {
-	if (model.cost.cacheRead || model.cost.cacheWrite) return true;
-	const id = model.id.toLowerCase();
-	// Claude 4.x models (opus-4, sonnet-4, haiku-4)
-	if (id.includes("claude") && (id.includes("-4-") || id.includes("-4."))) return true;
-	// Claude 3.5 Haiku, Claude 3.7 Sonnet (legacy naming)
-	if (id.includes("claude-3-7-sonnet") || id.includes("claude-3-5-haiku")) return true;
-	// Claude Haiku 4.5+ (new naming)
-	if (id.includes("claude-haiku")) return true;
-	// Application inference profiles don't contain the model name in the ARN.
-	// Allow users to force cache points via environment variable.
-	if (typeof process !== "undefined" && $flag("AWS_BEDROCK_FORCE_CACHE")) return true;
-	return false;
-}
-
-/**
  * Check if the model supports thinking signatures in reasoningContent.
  * Only Anthropic Claude models support the signature field.
  * Other models (Nova, Titan, Mistral, Llama, etc.) reject it with:
@@ -760,6 +736,40 @@ function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boo
 	return id.includes("anthropic.claude") || id.includes("anthropic/claude");
 }
 
+/**
+ * Serialize the system blocks, anchoring the stable prefix separately from the
+ * volatile tail.
+ *
+ * A single trailing `cachePoint` caches a prefix that ENDS at the last system
+ * block, so any edit to a later block invalidates the whole system prompt and
+ * the next turn re-reads and re-writes all of it. That is the normal shape
+ * here: the first block is the harness shared across parent and subagent
+ * prompts, and project context, the assignment and the handle table are
+ * appended after it and change constantly. The Anthropic provider anchors its
+ * own first block for exactly this reason (`applyPromptCaching`); Bedrock did
+ * not, so the two transports disagreed about the same conversation.
+ *
+ * This is AWS's own guidance, not an invention: the Bedrock prompt-caching
+ * page says to use multiple cache checkpoints "if you are caching sections
+ * that change at different frequencies", which is exactly a fixed harness
+ * followed by a handle table that changes every turn.
+ *
+ * Budget: Claude allows four cache checkpoints per request. This spends two on
+ * system (the anchor plus the trailing block) and `convertMessages` spends one
+ * on the last message, so three of four, leaving one unspent. Adding the
+ * anchor cannot break a request: per the same page, "if you try to add a cache
+ * checkpoint before meeting the minimum number of tokens, your inference will
+ * still succeed, but your prefix will not be cached", so a stable prefix under
+ * the model's floor (1024 tokens on Sonnet 4.6, 4096 on the 4.5 generation)
+ * costs an unused slot and nothing else. Both checkpoints carry the same ttl,
+ * which keeps the documented ordering rule (longer TTLs must precede shorter
+ * ones) satisfied by construction.
+ *
+ * There is no Claude Code billing layout on this path: Bedrock authenticates
+ * with AWS credentials and this function injects no blocks of its own, so
+ * index 0 is always the caller's first prompt, and the anchor index needs none
+ * of the offsetting the Anthropic path does.
+ */
 function buildSystemPrompt(
 	systemPrompt: readonly string[] | undefined,
 	model: Model<"bedrock-converse-stream">,
@@ -767,16 +777,22 @@ function buildSystemPrompt(
 ): SystemContent[] | undefined {
 	const prompts = systemPrompt?.map(prompt => prompt.toWellFormed()).filter(prompt => prompt.length > 0) ?? [];
 	if (prompts.length === 0) return undefined;
-
-	const blocks: SystemContent[] = prompts.map(prompt => ({ text: prompt }));
-
-	// Add cache point for supported Claude models
-	if (cacheRetention !== "none" && supportsPromptCaching(model)) {
-		blocks.push({
-			cachePoint: { type: "default", ...(cacheRetention === "long" ? { ttl: "1h" } : {}) },
-		});
+	if (cacheRetention === "none" || !supportsBedrockPromptCaching(model)) {
+		return prompts.map(prompt => ({ text: prompt }));
 	}
 
+	const cachePoint = (): SystemContent => ({
+		cachePoint: { type: "default", ...(cacheRetention === "long" ? { ttl: "1h" } : {}) },
+	});
+	const blocks: SystemContent[] = [];
+	for (let index = 0; index < prompts.length; index++) {
+		blocks.push({ text: prompts[index] });
+		// A single-block system prompt needs no anchor: the trailing checkpoint
+		// below already ends at that same block, and a duplicate would spend a
+		// slot to cache a prefix that is cached anyway.
+		if (index === 0 && prompts.length > 1) blocks.push(cachePoint());
+	}
+	blocks.push(cachePoint());
 	return blocks;
 }
 
@@ -915,7 +931,7 @@ function convertMessages(
 	}
 
 	// Add cache point to the last user message for supported Claude models
-	if (cacheRetention !== "none" && supportsPromptCaching(model) && result.length > 0) {
+	if (cacheRetention !== "none" && supportsBedrockPromptCaching(model) && result.length > 0) {
 		const lastMessage = result[result.length - 1];
 		if (lastMessage.role === "user" && lastMessage.content) {
 			(lastMessage.content as UserContent[]).push({
@@ -1027,15 +1043,7 @@ function buildAdditionalModelRequestFields(
 	}
 
 	const level = requireSupportedEffort(model, reasoning);
-	const defaultBudgets: Record<Effort, number> = {
-		minimal: 1024,
-		low: 2048,
-		medium: 8192,
-		high: 16384,
-		xhigh: 32768,
-		max: 32768,
-	};
-	const budget = options.thinkingBudgets?.[level] ?? defaultBudgets[level];
+	const budget = resolveThinkingBudget(level, BEDROCK_CLAUDE_THINKING_BUDGETS, options.thinkingBudgets);
 
 	const result: Record<string, unknown> = {
 		thinking: {

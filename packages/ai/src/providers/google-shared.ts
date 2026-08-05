@@ -995,9 +995,12 @@ export function buildGoogleGenerateContentParams<T extends "google-generative-ai
 		config.toolConfig = undefined;
 	}
 
-	if (options.thinking?.enabled && model.reasoning) {
-		const cfg: ThinkingConfig = { includeThoughts: !options.hideThinkingSummary };
-		if (options.thinking.level !== undefined) {
+	if (options.thinking && model.reasoning) {
+		const cfg: ThinkingConfig = { includeThoughts: options.thinking.enabled && !options.hideThinkingSummary };
+		if (!options.thinking.enabled) {
+			if (model.thinking?.mode === "google-level") cfg.thinkingLevel = "MINIMAL" as ThinkingLevel;
+			else cfg.thinkingBudget = 0;
+		} else if (options.thinking.level !== undefined) {
 			// GoogleThinkingLevel mirrors the SDK's `ThinkingLevel` string enum values 1:1.
 			cfg.thinkingLevel = options.thinking.level as ThinkingLevel;
 		} else if (options.thinking.budgetTokens !== undefined) {

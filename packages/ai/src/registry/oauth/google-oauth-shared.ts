@@ -5,6 +5,7 @@
  * credentials, scopes, endpoint constants, and project-discovery logic differ.
  */
 
+import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import * as AIError from "../../error";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../../utils/google-validation";
@@ -49,8 +50,17 @@ async function getUserEmail(accessToken: string): Promise<string | undefined> {
 			const data = (await response.json()) as { email?: string };
 			return data.email;
 		}
-	} catch {
-		// Ignore errors, email is optional
+		logger.warn("Google account email lookup was refused; the credential will be stored without an account label", {
+			status: response.status,
+		});
+	} catch (error) {
+		// The login still succeeds without an email, which is why this is not
+		// fatal. But the email is how the account picker names this credential, so
+		// discarding the reason leaves an operator with two unlabelled Google
+		// accounts and no way to learn why either one lost its name.
+		logger.warn("Google account email lookup failed; the credential will be stored without an account label", {
+			error: errorMessage(error),
+		});
 	}
 	return undefined;
 }

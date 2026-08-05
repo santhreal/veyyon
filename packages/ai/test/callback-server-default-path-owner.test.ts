@@ -65,6 +65,10 @@ describe("OAuthCallbackFlow defaults to the exported path", () => {
 	 */
 	it("uses it when the options form omits callbackPath", () => {
 		const flow = new ProbeFlow(NO_CONTROLLER, { preferredPort: 61_234 });
+		// The literal too, not only the constant: this path is half of the redirect
+		// URI registered with each provider, so changing it breaks every OAuth
+		// login, and an assertion against DEFAULT_CALLBACK_PATH would follow it.
+		expect(flow.callbackPath).toBe("/callback");
 		expect(flow.callbackPath).toBe(DEFAULT_CALLBACK_PATH);
 	});
 

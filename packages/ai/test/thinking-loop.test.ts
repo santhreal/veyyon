@@ -629,7 +629,10 @@ describe("GeminiHeaderRunDetector", () => {
 			if (tripped) break;
 		}
 		expect(tripped).toBe(true);
-		expect(detector.count).toBe(GEMINI_HEADER_RUNAWAY_THRESHOLD);
+		// Literal 24, not GEMINI_HEADER_RUNAWAY_THRESHOLD: the detector trips after
+		// 24 header-led paragraphs, and against the constant it stays green for a
+		// threshold raised past the point where the runaway is worth catching.
+		expect(detector.count).toBe(24);
 	});
 
 	test("does not trip below the threshold", () => {

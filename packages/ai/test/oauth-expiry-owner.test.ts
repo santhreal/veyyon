@@ -47,7 +47,10 @@ describe("credentialExpiryFromExpiresIn", () => {
 			// value must be exactly one skew.
 			const expiry = credentialExpiryFromExpiresIn(3600, { issuedAtMs: ISSUED });
 
-			expect(ISSUED + 3_600_000 - expiry).toBe(OAUTH_EXPIRY_SKEW_MS);
+			// Literal five minutes, not OAUTH_EXPIRY_SKEW_MS: the margin is what keeps
+			// a token from expiring mid-request, and against the constant a skew
+			// edited to zero or to an hour reads as correct.
+			expect(ISSUED + 3_600_000 - expiry).toBe(5 * 60 * 1000);
 		});
 
 		it("honours an explicit skew of zero", async () => {

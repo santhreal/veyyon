@@ -9,8 +9,9 @@ import { isVertexExpressOpenAIUrl, isVertexRawPredictUrl } from "@veyyon/catalog
 import {
 	mapEffortToAnthropicAdaptiveEffort,
 	mapEffortToGoogleThinkingLevel,
-	minimumSupportedEffort,
+	type ReasoningSelection,
 	requireSupportedEffort,
+	resolveReasoningSelection,
 	resolveWireModelId,
 } from "@veyyon/catalog/model-thinking";
 import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
@@ -67,6 +68,12 @@ import {
 	streamOpenAIResponses,
 } from "./providers/register-builtins";
 import { isSyntheticModel, streamSynthetic } from "./providers/synthetic";
+import {
+	ANTHROPIC_THINKING_BUDGETS,
+	BEDROCK_CLAUDE_THINKING_BUDGETS,
+	GOOGLE_THINKING_BUDGETS,
+	resolveThinkingBudget,
+} from "./reasoning-budget";
 import type {
 	Api,
 	AssistantMessage,
@@ -506,7 +513,16 @@ async function signalProviderInFlightWaitersInDir(dir: string): Promise<void> {
 	try {
 		await fs.mkdir(dir, { recursive: true });
 		await Bun.write(path.join(dir, ".wakeup"), String(Date.now()));
-	} catch {}
+	} catch (error) {
+		// Waiters have a fallback timer, so a dropped wakeup is not fatal, but it is
+		// not free either: every queued request for this provider then waits out
+		// PROVIDER_INFLIGHT_SIGNAL_FALLBACK_MS. A directory that is unwritable stays
+		// unwritable, so the stall repeats forever with no other trace.
+		logger.warn("Provider in-flight wakeup could not be written; queued requests will wait for the fallback timer", {
+			dir,
+			error: errorMessage(error),
+		});
+	}
 }
 
 async function signalProviderInFlightWaiters(provider: string): Promise<void> {
@@ -1259,43 +1275,6 @@ function maxTokensWithThinkingBudget(
 export const OUTPUT_FALLBACK_BUFFER = 4000;
 const ANTHROPIC_USE_INTERLEAVED_THINKING = Bun.env.VEYYON_NO_INTERLEAVED_THINKING !== "1";
 
-export const ANTHROPIC_THINKING: Record<Effort, number> = {
-	minimal: 1024,
-	low: 4096,
-	medium: 8192,
-	high: 16384,
-	xhigh: 32768,
-	max: 32768,
-};
-
-const GOOGLE_THINKING: Record<Effort, number> = {
-	minimal: 1024,
-	low: 4096,
-	medium: 8192,
-	high: 16384,
-	xhigh: 24575,
-	max: 32768,
-};
-
-const BEDROCK_CLAUDE_THINKING: Record<Effort, number> = {
-	minimal: 1024,
-	low: 2048,
-	medium: 8192,
-	high: 16384,
-	xhigh: 16384,
-	max: 32768,
-};
-
-function resolveBedrockThinkingBudget(
-	model: Model<"bedrock-converse-stream">,
-	options?: SimpleStreamOptions,
-): { budget: number; level: Effort } | null {
-	if (!options?.reasoning || !model.reasoning) return null;
-	const level = requireSupportedEffort(model, options.reasoning);
-	const budget = options.thinkingBudgets?.[level] ?? BEDROCK_CLAUDE_THINKING[level];
-	return { budget, level };
-}
-
 export function mapAnthropicToolChoice(choice?: ToolChoice): AnthropicOptions["toolChoice"] {
 	if (!choice) return undefined;
 	if (typeof choice === "string") {
@@ -1351,80 +1330,18 @@ function mapOpenAiToolChoice(choice?: ToolChoice): OpenAICompletionsOptions["too
 	return undefined;
 }
 
-type ReasoningEffortMapCompat = {
-	reasoningEffortMap?: Partial<Record<Effort, string>>;
-};
-
-function getCompatReasoningEffortMap<TApi extends Api>(
-	model: Model<TApi>,
-): Partial<Record<Effort, string>> | undefined {
-	const compat = model.compat;
-	if (compat === undefined || typeof compat !== "object" || !("reasoningEffortMap" in compat)) {
-		return undefined;
+function applyReasoningSelection(
+	options: SimpleStreamOptions | undefined,
+	selection: ReasoningSelection,
+): SimpleStreamOptions | undefined {
+	const disableReasoning = options?.disableReasoning === true && selection.state === "disabled" ? true : undefined;
+	if (options?.reasoning === selection.effort && options?.disableReasoning === disableReasoning) {
+		return options;
 	}
-	return (compat as ReasoningEffortMapCompat).reasoningEffortMap;
-}
-
-function resolveSupportedMappedReasoningEffort<TApi extends Api>(
-	model: Model<TApi>,
-	reasoning: Effort,
-): Effort | undefined {
-	const mapped = getCompatReasoningEffortMap(model)?.[reasoning];
-	if (!mapped) return undefined;
-	const mappedEffort = mapped as Effort;
-	return model.thinking?.efforts.includes(mappedEffort) ? mappedEffort : undefined;
-}
-
-function resolveOpenAiReasoningEffort<TApi extends Api>(
-	model: Model<TApi>,
-	options?: SimpleStreamOptions,
-): Effort | undefined {
-	const reasoning = options?.reasoning;
-	if (!reasoning || !model.reasoning) return undefined;
-	// Models that reason natively but expose no effort dial carry
-	// `thinking: undefined` (baked at build time from
-	// `compat.supportsReasoningEffort: false` on openai-responses*). The
-	// wire-side omitReasoningEffort gate (stream.ts) is the actual strip; returning
-	// undefined here avoids a redundant requireSupportedEffort throw that would
-	// defeat the gate and surface a confusing "Compaction failed: Thinking effort
-	// high is not supported by..." to the user.
-	if (!model.thinking) return undefined;
-	if (model.thinking.efforts.includes(reasoning)) return reasoning;
-	const mappedReasoning = resolveSupportedMappedReasoningEffort(model, reasoning);
-	if (mappedReasoning) return mappedReasoning;
-	if (getCompatReasoningEffortMap(model)?.[reasoning] !== undefined) return reasoning;
-	if (model.thinking.effortMap?.[reasoning] !== undefined) return reasoning;
-	return requireSupportedEffort(model, reasoning);
+	return { ...options, reasoning: selection.effort, disableReasoning };
 }
 
 const castApi = <TApi extends Api>(api: OptionsForApi<TApi>): OptionsForApi<Api> => api as OptionsForApi<Api>;
-
-/**
- * Mandatory-reasoning endpoints (`thinking.requiresEffort`) reject disabled
- * or omitted thinking ("Reasoning is mandatory for this endpoint and cannot
- * be disabled") — clamp to the lowest supported effort instead.
- * `suppressWhenOff` models handle off provider-side via explicit wire
- * suppression. Collapsed pairs interplay: pair derivation strips member
- * flags (off routes to a bare SKU that CAN disable), while identity backfill
- * re-flags pairs whose logical id is itself mandatory (Gemini 3.x) — there
- * the clamp wins and the floored effort routes to the thinking SKU.
- */
-function normalizeMandatoryReasoningOptions<TApi extends Api>(
-	model: Model<TApi>,
-	options?: SimpleStreamOptions,
-): SimpleStreamOptions | undefined {
-	if (
-		!model.reasoning ||
-		!model.thinking?.requiresEffort ||
-		model.thinking.suppressWhenOff ||
-		(options?.reasoning !== undefined && !options.disableReasoning)
-	) {
-		return options;
-	}
-	const floor = minimumSupportedEffort(model);
-	if (floor === undefined) return options;
-	return { ...options, reasoning: floor, disableReasoning: undefined };
-}
 
 /** Exported for tests: effort-to-wire-id routing (devin/cursor) is invisible
  *  from outside the request, so its mapping is locked at this seam. */
@@ -1433,7 +1350,11 @@ export function mapOptionsForApi<TApi extends Api>(
 	rawOptions?: SimpleStreamOptions,
 	apiKey?: string,
 ): OptionsForApi<TApi> {
-	const options = normalizeMandatoryReasoningOptions(model, rawOptions);
+	const reasoningSelection = resolveReasoningSelection(model, {
+		effort: rawOptions?.reasoning,
+		disabled: rawOptions?.disableReasoning,
+	});
+	const options = applyReasoningSelection(rawOptions, reasoningSelection);
 	const base = {
 		temperature: options?.temperature,
 		topP: options?.topP,
@@ -1467,8 +1388,8 @@ export function mapOptionsForApi<TApi extends Api>(
 	switch (model.api) {
 		case "anthropic-messages": {
 			// Explicitly disable thinking when reasoning is not specified or model doesn't support it
-			const reasoning = options?.reasoning;
-			if (!reasoning || !model.reasoning) {
+			const reasoning = reasoningSelection.effort;
+			if (!reasoningSelection.enabled || !reasoning) {
 				return castApi<"anthropic-messages">({
 					...base,
 					requestModelId: resolveWireModelId(model, undefined),
@@ -1479,7 +1400,7 @@ export function mapOptionsForApi<TApi extends Api>(
 				});
 			}
 
-			let thinkingBudget = options.thinkingBudgets?.[reasoning] ?? ANTHROPIC_THINKING[reasoning];
+			let thinkingBudget = resolveThinkingBudget(reasoning, ANTHROPIC_THINKING_BUDGETS, options?.thinkingBudgets);
 			if (thinkingBudget <= 0) {
 				return castApi<"anthropic-messages">({
 					...base,
@@ -1502,7 +1423,7 @@ export function mapOptionsForApi<TApi extends Api>(
 			if (thinkingMode === "anthropic-adaptive") {
 				return castApi<"anthropic-messages">({
 					...base,
-					requestModelId: resolveWireModelId(model, reasoning),
+					requestModelId: reasoningSelection.wireModelId,
 					thinkingEnabled: true,
 					effort,
 					toolChoice: mapAnthropicToolChoice(options?.toolChoice),
@@ -1514,7 +1435,7 @@ export function mapOptionsForApi<TApi extends Api>(
 			if (ANTHROPIC_USE_INTERLEAVED_THINKING) {
 				return castApi<"anthropic-messages">({
 					...base,
-					requestModelId: resolveWireModelId(model, reasoning),
+					requestModelId: reasoningSelection.wireModelId,
 					thinkingEnabled: true,
 					thinkingBudgetTokens: thinkingBudget,
 					effort,
@@ -1546,7 +1467,7 @@ export function mapOptionsForApi<TApi extends Api>(
 				return castApi<"anthropic-messages">({
 					...base,
 					maxTokens,
-					requestModelId: resolveWireModelId(model, reasoning),
+					requestModelId: reasoningSelection.wireModelId,
 					thinkingEnabled: true,
 					thinkingBudgetTokens: thinkingBudget,
 					effort,
@@ -1560,7 +1481,7 @@ export function mapOptionsForApi<TApi extends Api>(
 		case "bedrock-converse-stream": {
 			const bedrockBase: BedrockOptions = {
 				...base,
-				reasoning: options?.reasoning,
+				reasoning: reasoningSelection.effort,
 				thinkingBudgets: options?.thinkingBudgets,
 				toolChoice: mapAnthropicToolChoice(options?.toolChoice),
 				thinkingDisplay: options?.hideThinkingSummary ? "omitted" : undefined,
@@ -1569,22 +1490,20 @@ export function mapOptionsForApi<TApi extends Api>(
 			if (model.thinking?.mode === "anthropic-adaptive") {
 				return castApi<"bedrock-converse-stream">(bedrockBase);
 			}
-			const budgetInfo = resolveBedrockThinkingBudget(model as Model<"bedrock-converse-stream">, options);
-			if (!budgetInfo) return bedrockBase as OptionsForApi<TApi>;
+			const level = reasoningSelection.effort;
+			if (!reasoningSelection.enabled || !level) return bedrockBase as OptionsForApi<TApi>;
+			const budget = resolveThinkingBudget(level, BEDROCK_CLAUDE_THINKING_BUDGETS, options?.thinkingBudgets);
 			let maxTokens = bedrockBase.maxTokens ?? model.maxTokens ?? OUTPUT_CAP_WHEN_UNKNOWN;
 			let thinkingBudgets = bedrockBase.thinkingBudgets;
-			if (maxTokens <= budgetInfo.budget) {
-				const desiredMaxTokens = Math.min(
-					model.maxTokens ?? Number.POSITIVE_INFINITY,
-					budgetInfo.budget + MIN_OUTPUT_TOKENS,
-				);
+			if (maxTokens <= budget) {
+				const desiredMaxTokens = Math.min(model.maxTokens ?? Number.POSITIVE_INFINITY, budget + MIN_OUTPUT_TOKENS);
 				if (desiredMaxTokens > maxTokens) {
 					maxTokens = desiredMaxTokens;
 				}
 			}
-			if (maxTokens <= budgetInfo.budget) {
+			if (maxTokens <= budget) {
 				const adjustedBudget = Math.max(0, maxTokens - MIN_OUTPUT_TOKENS);
-				thinkingBudgets = { ...(thinkingBudgets ?? {}), [budgetInfo.level]: adjustedBudget };
+				thinkingBudgets = { ...(thinkingBudgets ?? {}), [level]: adjustedBudget };
 			}
 			return castApi<"bedrock-converse-stream">({ ...bedrockBase, maxTokens, thinkingBudgets });
 		}
@@ -1594,7 +1513,7 @@ export function mapOptionsForApi<TApi extends Api>(
 			if (useResponses) {
 				return castApi<"openai-responses">({
 					...base,
-					reasoning: resolveOpenAiReasoningEffort(model, options),
+					reasoning: reasoningSelection.effort,
 					toolChoice: mapOpenAiToolChoice(options?.toolChoice),
 					serviceTier: options?.serviceTier,
 					reasoningSummary: options?.hideThinkingSummary ? null : undefined,
@@ -1606,7 +1525,7 @@ export function mapOptionsForApi<TApi extends Api>(
 			}
 			return castApi<"openai-completions">({
 				...base,
-				reasoning: resolveOpenAiReasoningEffort(model, options),
+				reasoning: reasoningSelection.effort,
 				disableReasoning: options?.disableReasoning,
 				toolChoice: mapOpenAiToolChoice(options?.toolChoice),
 				serviceTier: options?.serviceTier,
@@ -1618,7 +1537,7 @@ export function mapOptionsForApi<TApi extends Api>(
 		case "openai-completions":
 			return castApi<"openai-completions">({
 				...base,
-				reasoning: resolveOpenAiReasoningEffort(model, options),
+				reasoning: reasoningSelection.effort,
 				disableReasoning: options?.disableReasoning,
 				toolChoice: mapOpenAiToolChoice(options?.toolChoice),
 				serviceTier: options?.serviceTier,
@@ -1629,7 +1548,7 @@ export function mapOptionsForApi<TApi extends Api>(
 		case "openai-responses":
 			return castApi<"openai-responses">({
 				...base,
-				reasoning: resolveOpenAiReasoningEffort(model, options),
+				reasoning: reasoningSelection.effort,
 				toolChoice: mapOpenAiToolChoice(options?.toolChoice),
 				serviceTier: options?.serviceTier,
 				reasoningSummary: options?.hideThinkingSummary ? null : undefined,
@@ -1642,7 +1561,7 @@ export function mapOptionsForApi<TApi extends Api>(
 		case "azure-openai-responses":
 			return castApi<"azure-openai-responses">({
 				...base,
-				reasoning: resolveOpenAiReasoningEffort(model, options),
+				reasoning: reasoningSelection.effort,
 				toolChoice: mapOpenAiToolChoice(options?.toolChoice),
 				serviceTier: options?.serviceTier,
 				reasoningSummary: options?.hideThinkingSummary ? null : undefined,
@@ -1651,7 +1570,7 @@ export function mapOptionsForApi<TApi extends Api>(
 		case "openai-codex-responses":
 			return castApi<"openai-codex-responses">({
 				...base,
-				reasoning: resolveOpenAiReasoningEffort(model, options),
+				reasoning: reasoningSelection.effort,
 				toolChoice: mapOpenAiToolChoice(options?.toolChoice),
 				serviceTier: options?.serviceTier,
 				preferWebsockets: options?.preferWebsockets,
@@ -1663,8 +1582,8 @@ export function mapOptionsForApi<TApi extends Api>(
 		case "google-generative-ai": {
 			// Explicitly disable thinking when reasoning is not specified or model doesn't support it
 			// This is needed because Gemini has "dynamic thinking" enabled by default
-			const reasoning = options?.reasoning;
-			if (!reasoning || !model.reasoning) {
+			const reasoning = reasoningSelection.effort;
+			if (!reasoningSelection.enabled || !reasoning) {
 				return castApi<"google-generative-ai">({
 					...base,
 					serviceTier: options?.serviceTier,
@@ -1703,16 +1622,16 @@ export function mapOptionsForApi<TApi extends Api>(
 		}
 
 		case "google-gemini-cli": {
-			const reasoning = options?.reasoning;
+			const reasoning = reasoningSelection.effort;
 			const toolChoice = mapGoogleToolChoice(options?.toolChoice);
-			if (reasoning && model.reasoning) {
+			if (reasoningSelection.enabled && reasoning) {
 				const effort = requireSupportedEffort(model, reasoning);
 
 				// Gemini 3+ models use thinkingLevel instead of thinkingBudget
 				if (model.thinking?.mode === "google-level") {
 					return castApi<"google-gemini-cli">({
 						...base,
-						requestModelId: resolveWireModelId(model, effort),
+						requestModelId: reasoningSelection.wireModelId,
 						thinking: {
 							enabled: true,
 							level: mapEffortToGoogleThinkingLevel(effort),
@@ -1723,8 +1642,12 @@ export function mapOptionsForApi<TApi extends Api>(
 					});
 				}
 
-				let thinkingBudget =
-					options.thinkingBudgets?.[effort] ?? model.thinking?.effortBudgets?.[effort] ?? GOOGLE_THINKING[effort];
+				let thinkingBudget = resolveThinkingBudget(
+					effort,
+					GOOGLE_THINKING_BUDGETS,
+					options?.thinkingBudgets,
+					model.thinking?.effortBudgets,
+				);
 
 				// Caller's maxTokens is desired output, so add thinking budget on top. With no caller/model cap, use a finite total fallback.
 				const maxTokens = maxTokensWithThinkingBudget(base.maxTokens, model.maxTokens, thinkingBudget);
@@ -1738,7 +1661,7 @@ export function mapOptionsForApi<TApi extends Api>(
 					return castApi<"google-gemini-cli">({
 						...base,
 						maxTokens,
-						requestModelId: resolveWireModelId(model, effort),
+						requestModelId: reasoningSelection.wireModelId,
 						thinking: { enabled: true, budgetTokens: thinkingBudget },
 						hideThinkingSummary: options?.hideThinkingSummary,
 						toolChoice,
@@ -1765,8 +1688,8 @@ export function mapOptionsForApi<TApi extends Api>(
 
 		case "google-vertex": {
 			// Explicitly disable thinking when reasoning is not specified or model doesn't support it
-			const reasoning = options?.reasoning;
-			if (!reasoning || !model.reasoning) {
+			const reasoning = reasoningSelection.effort;
+			if (!reasoningSelection.enabled || !reasoning) {
 				return castApi<"google-vertex">({
 					...base,
 					serviceTier: options?.serviceTier,
@@ -1807,7 +1730,7 @@ export function mapOptionsForApi<TApi extends Api>(
 		case "ollama-chat":
 			return castApi<"ollama-chat">({
 				...base,
-				reasoning: resolveOpenAiReasoningEffort(model, options),
+				reasoning: reasoningSelection.effort,
 				disableReasoning: options?.disableReasoning,
 				toolChoice: options?.toolChoice,
 			});
@@ -1817,16 +1740,11 @@ export function mapOptionsForApi<TApi extends Api>(
 			const onToolResult = options?.cursorOnToolResult ?? execHandlers?.onToolResult;
 			// Cursor carries no wire effort param: effort selects a tier-suffixed
 			// sibling model id via `thinking.effortRouting` (mirrors devin-agent).
-			const cursorModel = model as Model<"cursor-agent">;
-			const cursorEffort =
-				options?.reasoning && !options.disableReasoning
-					? requireSupportedEffort(cursorModel, options.reasoning)
-					: undefined;
 			return castApi<"cursor-agent">({
 				...base,
 				execHandlers,
 				onToolResult,
-				wireModelId: resolveWireModelId(cursorModel, cursorEffort),
+				wireModelId: reasoningSelection.wireModelId,
 			});
 		}
 
@@ -1836,17 +1754,11 @@ export function mapOptionsForApi<TApi extends Api>(
 				cwd: options?.cwd,
 				toolChoice: options?.toolChoice,
 			});
-		case "devin-agent": {
-			const devinModel = model as Model<"devin-agent">;
-			const effort =
-				options?.reasoning && !options.disableReasoning
-					? requireSupportedEffort(devinModel, options.reasoning)
-					: undefined;
+		case "devin-agent":
 			return castApi<"devin-agent">({
 				...base,
-				chatModelUid: resolveWireModelId(devinModel, effort),
+				chatModelUid: reasoningSelection.wireModelId,
 			});
-		}
 		default:
 			throw new AIError.ConfigurationError(`Unhandled API in mapOptionsForApi: ${model.api}`);
 	}

@@ -98,6 +98,10 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	#insertUsageHistoryStmt: Statement;
 	#insertUsageCostStmt: Statement;
 	#listUsageCostsStmt: Statement;
+	#getAccountNameStmt: Statement;
+	#listAccountNamesStmt: Statement;
+	#upsertAccountNameStmt: Statement;
+	#deleteAccountNameStmt: Statement;
 	#lastUsageHistoryStmt: Statement;
 	#listUsageHistoryStmt: Statement;
 	#updateUsageHistoryStmt: Statement;
@@ -239,6 +243,13 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#listUsageCostsStmt = this.#db.prepare(
 			"SELECT recorded_at, provider, account_key, cost_usd FROM usage_cost_history WHERE recorded_at >= ? AND (? IS NULL OR provider = ?) AND (? IS NULL OR account_key = ?) ORDER BY recorded_at ASC",
 		);
+		this.#getAccountNameStmt = this.#db.prepare("SELECT name FROM auth_account_names WHERE identity = ?");
+		this.#listAccountNamesStmt = this.#db.prepare("SELECT identity, name FROM auth_account_names");
+		this.#upsertAccountNameStmt = this.#db.prepare(
+			`INSERT INTO auth_account_names (identity, name, updated_at) VALUES (?, ?, ${SQLITE_NOW_EPOCH})
+			 ON CONFLICT(identity) DO UPDATE SET name = excluded.name, updated_at = ${SQLITE_NOW_EPOCH}`,
+		);
+		this.#deleteAccountNameStmt = this.#db.prepare("DELETE FROM auth_account_names WHERE identity = ?");
 	}
 
 	static async open(dbPath: string = getAgentDbPath()): Promise<SqliteAuthCredentialStore> {
@@ -344,6 +355,11 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				cost_usd REAL NOT NULL
 			);
 			CREATE INDEX IF NOT EXISTS idx_usage_cost_history_lookup ON usage_cost_history(provider, account_key, recorded_at);
+			CREATE TABLE IF NOT EXISTS auth_account_names (
+				identity TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				updated_at INTEGER NOT NULL
+			);
 			CREATE INDEX IF NOT EXISTS idx_usage_history_recorded ON usage_history(recorded_at);
 		`);
 
@@ -895,8 +911,15 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	deleteAuthCredential(id: number, disabledCause: string): void {
 		try {
 			this.#deleteStmt.run(normalizeDisabledCause(disabledCause), id);
-		} catch {
-			// Ignore delete failures
+		} catch (error) {
+			// This method returns void, so a swallowed failure told the caller the
+			// credential was disabled when it is still enabled and still in rotation.
+			// A key revoked upstream then keeps being retried on every request.
+			logger.warn("Auth credential could not be disabled; it stays in rotation", {
+				id,
+				disabledCause,
+				error: errorMessage(error),
+			});
 		}
 	}
 
@@ -929,8 +952,14 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	deleteAuthCredentialsForProvider(provider: string, disabledCause: string): void {
 		try {
 			this.#deleteByProviderStmt.run(normalizeDisabledCause(disabledCause), provider);
-		} catch {
-			// Ignore delete failures
+		} catch (error) {
+			// Same masked outcome as deleteAuthCredential, for every credential the
+			// provider owns: the caller believes the provider was signed out.
+			logger.warn("Auth credentials for provider could not be disabled; they stay in rotation", {
+				provider,
+				disabledCause,
+				error: errorMessage(error),
+			});
 		}
 	}
 
@@ -1050,6 +1079,41 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		for (const key of this.#credentialBlockReconcileAfter.keys()) {
 			if (key.startsWith(`${credentialId}\0`)) this.#credentialBlockReconcileAfter.delete(key);
 		}
+	}
+
+	/**
+	 * Read the display name a user chose for one account identity.
+	 *
+	 * Names live in their OWN table, never inside `auth_credentials.data`. That is not a
+	 * preference: several persist paths rebuild an OAuth credential from an explicit field
+	 * list (`#persistRefreshedUsageCredential` is one), so a field carried inside the blob
+	 * is silently destroyed by the next token refresh. Keeping the name out of the blob also
+	 * means renaming an account cannot rewrite token bytes at all, which is the only way to
+	 * make a rename incapable of breaking a login.
+	 */
+	getAccountName(identity: string): string | undefined {
+		const row = this.#getAccountNameStmt.get(identity) as { name?: string } | undefined;
+		const name = row?.name?.trim();
+		return name && name.length > 0 ? name : undefined;
+	}
+
+	listAccountNames(): Array<{ identity: string; name: string }> {
+		const rows = this.#listAccountNamesStmt.all() as Array<{ identity?: string; name?: string }>;
+		const names: Array<{ identity: string; name: string }> = [];
+		for (const row of rows) {
+			const identity = row.identity?.trim();
+			const name = row.name?.trim();
+			if (identity && name) names.push({ identity, name });
+		}
+		return names;
+	}
+
+	setAccountName(identity: string, name: string): void {
+		this.#upsertAccountNameStmt.run(identity, name);
+	}
+
+	deleteAccountName(identity: string): void {
+		this.#deleteAccountNameStmt.run(identity);
 	}
 
 	cleanExpiredCredentialBlocks(nowMs: number): void {
@@ -1220,8 +1284,14 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			for (const entry of entries) {
 				this.#insertUsageCostStmt.run(entry.recordedAt, entry.provider, entry.accountKey, entry.costUsd);
 			}
-		} catch {
-			// Cost history is best-effort; never break request persistence.
+		} catch (error) {
+			// Still not fatal to the request, but this is money: a dropped batch makes
+			// the cost view under-report spend, and an under-report is indistinguishable
+			// from cheap usage unless the drop is named.
+			logger.warn("Usage costs could not be recorded; the cost view will under-report this spend", {
+				entries: entries.length,
+				error: errorMessage(error),
+			});
 		}
 	}
 

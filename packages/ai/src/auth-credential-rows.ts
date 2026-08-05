@@ -187,6 +187,25 @@ export function resolveRowCredentialIdentityKey(provider: string, row: AuthRow):
 	return credential?.type === "oauth" ? resolveCredentialIdentityKey(provider, credential) : null;
 }
 
+/**
+ * Stable key a user-chosen account NAME is stored against.
+ *
+ * Keyed by the credential's IDENTITY (email / account uuid / project / org), not by its
+ * sqlite row id, so a name survives the two events that replace the row underneath it: a
+ * token rotation, and a logout followed by a fresh login to the same account. Naming an
+ * account and then re-authenticating it must not silently lose the name, because the user
+ * has no way to tell that happened other than noticing the label went blank.
+ *
+ * Rows with no recoverable identity (every api-key credential, and OAuth rows written
+ * before identity capture existed) fall back to the row id. That name does NOT survive a
+ * re-login, which is the honest outcome: nothing about such a row identifies the account
+ * it belongs to, so there is nothing to carry the name forward on.
+ */
+export function resolveAccountNameIdentity(provider: string, row: { id: number; credential: AuthCredential }): string {
+	const identityKey = row.credential.type === "oauth" ? resolveCredentialIdentityKey(provider, row.credential) : null;
+	return `${provider}|${identityKey ?? `id:${row.id}`}`;
+}
+
 export function matchesReplacementCredential(
 	provider: string,
 	existing: AuthCredential | null,

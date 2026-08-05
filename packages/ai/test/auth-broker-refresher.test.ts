@@ -274,7 +274,10 @@ describe("AuthBrokerRefresher", () => {
 		releaseRemaining.resolve();
 		await Promise.all([firstTick, sameRowRefresh]);
 
-		expect(peak).toBe(AUTH_HTTP_CONCURRENCY_LIMIT);
+		// Literal 8: the number of simultaneous provider auth requests this host is
+		// willing to make. Against AUTH_HTTP_CONCURRENCY_LIMIT the assertion passes
+		// at 8 and at 800, which is the shape of the outage it guards.
+		expect(peak).toBe(8);
 		expect(refreshSpy).toHaveBeenCalledTimes(credentialCount);
 		expect(attempts).toHaveLength(credentialCount);
 		expect(new Set(attempts).size).toBe(credentialCount);

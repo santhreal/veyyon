@@ -1,7 +1,9 @@
 import { buildModel } from "@veyyon/catalog/build";
+import { resolveReasoningSelection } from "@veyyon/catalog/model-thinking";
 import { GITLAB_SAAS_URL } from "@veyyon/catalog/provider-endpoints";
 import * as AIError from "../error";
-import { ANTHROPIC_THINKING, mapAnthropicToolChoice } from "../stream";
+import { ANTHROPIC_THINKING_BUDGETS, resolveThinkingBudget } from "../reasoning-budget";
+import { mapAnthropicToolChoice } from "../stream";
 import type { Api, Context, FetchImpl, Model, ModelSpec, SimpleStreamOptions } from "../types";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { createProviderErrorMessage } from "./error-message";
@@ -269,7 +271,11 @@ export function streamGitLabDuo(
 				...options.headers,
 			};
 
-			const reasoningEffort = options.reasoning;
+			const reasoningSelection = resolveReasoningSelection(model, {
+				effort: options.reasoning,
+				disabled: options.disableReasoning,
+			});
+			const reasoningEffort = reasoningSelection.effort;
 
 			const inner =
 				mapping.provider === "anthropic"
@@ -303,9 +309,9 @@ export function streamGitLabDuo(
 								onResponse: options.onResponse,
 								onSseEvent: options.onSseEvent,
 								fetch: options.fetch,
-								thinkingEnabled: Boolean(reasoningEffort) && model.reasoning,
+								thinkingEnabled: reasoningSelection.enabled,
 								thinkingBudgetTokens: reasoningEffort
-									? (options.thinkingBudgets?.[reasoningEffort] ?? ANTHROPIC_THINKING[reasoningEffort])
+									? resolveThinkingBudget(reasoningEffort, ANTHROPIC_THINKING_BUDGETS, options.thinkingBudgets)
 									: undefined,
 								reasoning: reasoningEffort,
 								toolChoice: mapAnthropicToolChoice(options.toolChoice),

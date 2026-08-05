@@ -374,7 +374,8 @@ describe("AuthStorage usage cache: bounded HTTP concurrency", () => {
 			const expectedOrder = rows
 				.map(row => (row.credential.type === "oauth" ? row.credential.accountId : undefined))
 				.filter((accountId): accountId is string => accountId !== undefined && accountId !== failingAccountId);
-			expect(peak).toBe(AUTH_HTTP_CONCURRENCY_LIMIT);
+			// Literal 8, not AUTH_HTTP_CONCURRENCY_LIMIT: see auth-broker-refresher.
+			expect(peak).toBe(8);
 			expect(attempts).toHaveLength(credentialCount);
 			expect(new Set(attempts).size).toBe(credentialCount);
 			expect(laterRowStartedAfterFailure).toBe(true);
