@@ -10,9 +10,11 @@
  * `@veyyon/utils` global-config readers/writers) instead of the profile store.
  * That keeps exactly one owner for each value — the global config file — so the
  * settings UI and the CLI can never disagree. A key here need not be a knob:
- * `onboardingVersion` is machine-wide state the app writes, and a number with no
- * `options` renders no control, so it gets the same one-owner guarantee without
- * appearing in the panel.
+ * `onboardingVersion` is machine-wide state the app writes, and it gets the same
+ * one-owner guarantee while staying out of the panel. It stays out because its `ui`
+ * block says `hidden: true`, not because it is a number without options: that used to
+ * hide it as a side effect of the UI adapter dropping optionless numbers, and those
+ * render now.
  */
 
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
@@ -77,6 +79,13 @@ export const GLOBAL_SETTINGS = {
 			tab: "global",
 			scope: "global",
 			group: "Profiles",
+			// Not a knob. This is what the app writes when setup finishes, and an operator
+			// editing it would either skip onboarding or re-run it. It kept itself out of
+			// the panel by being an optionless number, which the UI adapter used to drop;
+			// now that such a number renders as a text box, the intent has to be stated.
+			// The label and description stay so the generated reference still explains the
+			// key someone finds in ~/.veyyon/config.yml.
+			hidden: true,
 			label: "Onboarding Version",
 			description:
 				"Setup generation this machine has already completed. Stored in ~/.veyyon/config.yml, so switching profile or working directory never re-runs onboarding.",

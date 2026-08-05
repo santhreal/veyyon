@@ -198,6 +198,9 @@ const CONDITIONS: Record<string, () => boolean> = {
 	// run that stopped for a reason nothing was going to tell you about is worse
 	// than one that quietly overpays.
 	cacheRejectionReported: () => whenSettingsSay(() => Settings.instance.get("cache.reportRejection") === true),
+	// Both close budgets are meaningless while nothing closes, and a visible timer
+	// that does not run reads as a bug in the feature rather than an off switch.
+	subagentAutoCloseEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.autoClose.enabled") === true),
 	bashAutoBackgroundEnabled: () =>
 		whenSettingsSay(() => Settings.instance.get("bash.autoBackground.enabled") === true),
 	bashStallDetectionEnabled: () =>
@@ -236,6 +239,9 @@ function resolveOptions(ui: AnyUiMetadata): OptionList | "runtime" | undefined {
 function pathToSettingDef(path: SettingPath): SettingDef | null {
 	const ui = getUi(path);
 	if (!ui) return null;
+	// Declared state rather than a declared control. One setting uses this, and it says
+	// so; see `hidden` in settings-schema.ts.
+	if (ui.hidden) return null;
 
 	const schemaType = getType(path);
 	const condition = ui.condition ? CONDITIONS[ui.condition] : undefined;
@@ -266,8 +272,15 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	}
 
 	if (schemaType === "number") {
-		// Numbers without options are intentionally hidden from the UI.
-		if (!options || options === "runtime") return null;
+		// A number with a list picks from it; a number without one is typed, exactly as
+		// `string`, `record` and `array` already are. This used to `return null`, on the
+		// reasoning that "numbers without options are intentionally hidden from the UI".
+		// That stopped being true once fifteen of them carried a full `ui` block with a
+		// label and a description: `getPathsForTab` found the path and `getAllSettingDefs`
+		// dropped it, so the row was documented, defaulted, honored, and unreachable.
+		// Declaring a `ui` block IS the request to be shown; the number branch returning
+		// nothing was the anomaly among the scalar types, not the rule.
+		if (!options || options === "runtime") return { ...base, type: "text" };
 		return { ...base, type: "submenu", options };
 	}
 

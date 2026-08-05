@@ -139,6 +139,7 @@ export const MODEL_SETTINGS = {
 		type: "number",
 		default: 5,
 		ui: {
+			min: 1, // one identical call is the smallest run that can repeat; 0 would fire the steer on every call
 			tab: "model",
 			group: "Thinking",
 			label: "Tool-Call Loop Threshold",
@@ -465,6 +466,7 @@ export const MODEL_SETTINGS = {
 		type: "number",
 		default: 5 * 60 * 1000,
 		ui: {
+			min: 0, // a wait cannot be negative
 			tab: "model",
 			group: "Retry & Fallback",
 			label: "Max Retry Delay",

@@ -125,7 +125,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Agent",
 		"Git",
 	],
-	context: ["General", "Rules (TTSR)", "Session instrumentation"],
+	context: ["General", "Rules (TTSR)", "Prompt cache", "Session instrumentation"],
 	memory: ["General", "Mnemopi", "Hindsight"],
 	files: ["Editing", "Reading", "Read Summaries", "LSP"],
 	shell: ["Bash", "Eval & Runtimes"],
@@ -140,9 +140,9 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Developer",
 	],
 	tasks: ["Modes", "Commands & Skills"],
-	subagents: ["Delegation", "Agents", "Models", "Limits", "Isolation", "Coordination"],
+	subagents: ["Delegation", "Agents", "Models", "Limits", "Auto Close", "Isolation", "Coordination"],
 	providers: ["Services", "Discovery", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"],
-	experimental: ["Argot", "Tool Calling", "Auto-Learn", "Display"],
+	experimental: ["Argot", "Tool Calling", "Auto-Learn"],
 };
 
 /** Status line segment identifiers */
@@ -191,6 +191,23 @@ interface UiBase {
 	/** When true, the setting renders inside the tab's collapsed "Advanced" fold instead of its normal group. */
 	advanced?: boolean;
 	/**
+	 * Machine-written state that must NOT be a row, even though it declares a `ui`
+	 * block for its label, description and generated-reference entry.
+	 *
+	 * Exactly one setting needs this: `onboardingVersion`, the setup generation this
+	 * machine has completed. It was kept out of the panel by an accident instead of a
+	 * declaration: `pathToSettingDef` dropped every optionless number, and the global
+	 * domain's own header cited that drop as the reason a non-knob was safe to declare.
+	 * Once an optionless number renders, that hiding place is gone, and an operator
+	 * typing 3 into "Onboarding Version" would skip setup or re-run it.
+	 *
+	 * So the intent is written down. This is a sibling of `condition` and `advanced`,
+	 * which already decide where and whether a declared row appears; it is not a new
+	 * way to hide a knob, and the reachability contract counts a hidden row as not
+	 * claiming a place on the surface.
+	 */
+	hidden?: boolean;
+	/**
 	 * Words a user would type looking for this setting that its label does not
 	 * contain: "reasoning" for effort, "clipboard" for copy, "wrap" for soft
 	 * wrapping. Search weights these like the label, because to the person typing
@@ -217,8 +234,26 @@ interface UiEnum<T extends readonly string[]> extends UiBase {
 }
 
 interface UiNumber extends UiBase {
-	/** Submenu options. Without options, a numeric setting has no UI representation (intentional hide). */
+	/**
+	 * Submenu options. Without options the setting renders as a free text box, the
+	 * same control `string`, `record` and `array` already fall back to. It used to
+	 * render as NOTHING: `pathToSettingDef` returned null for an optionless number,
+	 * so fifteen settings carrying a full `ui` block, label and description were
+	 * unreachable from /settings while `getPathsForTab` still counted them. A `ui`
+	 * block is the declaration that a setting is meant to be shown; dropping one
+	 * silently is the bug, whatever the count of options.
+	 */
 	options?: ReadonlyArray<SubmenuOption>;
+	/**
+	 * Inclusive bounds, enforced when the value is typed into the text box.
+	 *
+	 * Declared here rather than assumed at the input, so the constraint lives with
+	 * the setting and the generated reference can print it. A setting with no bound
+	 * accepts any finite number: the input refuses `abc`, `1e400` and a blank that
+	 * is not a clear, and refuses nothing else it was not told to refuse.
+	 */
+	min?: number;
+	max?: number;
 }
 
 interface UiString extends UiBase {
@@ -234,6 +269,8 @@ interface UiString extends UiBase {
 /** Wide ui shape exposed to consumers that walk the schema generically. */
 export type AnyUiMetadata = UiBase & {
 	options?: ReadonlyArray<SubmenuOption> | "runtime";
+	min?: number;
+	max?: number;
 };
 
 /**
@@ -630,7 +667,7 @@ export type Personality = SettingValue<"personality">;
 
 export interface CompactionSettings {
 	enabled: boolean;
-	strategy: "handoff" | "summary";
+	strategy: "summary";
 	/** The one compaction-trigger value, unit included: `auto`, `85%`, or `170000`. */
 	threshold: string;
 	/** Retired; read only by `withLegacyCompactionThreshold`. */

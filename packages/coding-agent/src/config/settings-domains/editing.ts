@@ -126,6 +126,7 @@ export const EDITING_SETTINGS = {
 		type: "number",
 		default: 4,
 		ui: {
+			min: 0, // a line count cannot be negative
 			tab: "files",
 			group: "Read Summaries",
 			label: "Read Summary Body Lines",
@@ -137,6 +138,7 @@ export const EDITING_SETTINGS = {
 		type: "number",
 		default: 6,
 		ui: {
+			min: 0, // a line count cannot be negative
 			tab: "files",
 			group: "Read Summaries",
 			label: "Read Summary Comment Lines",
@@ -148,6 +150,7 @@ export const EDITING_SETTINGS = {
 		type: "number",
 		default: 100,
 		ui: {
+			min: 0, // a line count cannot be negative
 			tab: "files",
 			group: "Read Summaries",
 			label: "Read Summary Minimum File Length",
@@ -159,6 +162,7 @@ export const EDITING_SETTINGS = {
 		type: "number",
 		default: 50,
 		ui: {
+			min: 0, // a line count cannot be negative
 			tab: "files",
 			group: "Read Summaries",
 			label: "Read Summary Unfold Target",
@@ -171,6 +175,7 @@ export const EDITING_SETTINGS = {
 		type: "number",
 		default: 100,
 		ui: {
+			min: 0, // a line count cannot be negative
 			tab: "files",
 			group: "Read Summaries",
 			label: "Read Summary Unfold Ceiling",
