@@ -1,8 +1,15 @@
-import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent, truncateToWidth } from "@veyyon/tui";
+import {
+	routeSelectListMouse,
+	type SelectItem,
+	type SelectList,
+	type SgrMouseEvent,
+	truncateToWidth,
+} from "@veyyon/tui";
 import { getSearchProvider, setPreferredSearchProvider } from "../../../web/search/provider";
 import { isSearchProviderPreference, SEARCH_PROVIDER_OPTIONS, type SearchProviderId } from "../../../web/search/types";
-import { getSelectListTheme, theme } from "../../theme/theme";
-import type { SetupSceneHost, SetupTab } from "./types";
+import { theme } from "../../theme/theme";
+import type { SetupKeyHint, SetupSceneHost, SetupTab } from "./types";
+import { createWizardList, filterEscapeHint } from "./wizard-list";
 
 const MAX_VISIBLE = 8;
 
@@ -34,7 +41,7 @@ export class WebSearchTab implements SetupTab {
 	#listRowStart = 0;
 
 	constructor(private readonly host: SetupSceneHost) {
-		this.#list = new SelectList(WEB_SEARCH_ITEMS, MAX_VISIBLE, getSelectListTheme());
+		this.#list = createWizardList(WEB_SEARCH_ITEMS, MAX_VISIBLE);
 		const current = host.ctx.settings.get("providers.webSearch");
 		const index = WEB_SEARCH_ITEMS.findIndex(item => item.value === current);
 		if (index >= 0) this.#list.setSelectedIndex(index);
@@ -56,6 +63,16 @@ export class WebSearchTab implements SetupTab {
 		this.#list.handleInput(data);
 	}
 
+	/**
+	 * A dozen providers in the rows an 80x24 terminal leaves makes this list
+	 * searchable, and its Esc clears the filter. Unclaimed, that Esc reached the
+	 * wizard and ended onboarding from inside a panel the user had to press Tab
+	 * to even find.
+	 */
+	escapeAction(): SetupKeyHint | undefined {
+		return filterEscapeHint(this.#list);
+	}
+
 	/** Wheel moves the highlight; hover lights the row under the pointer; click confirms it. */
 	routeMouse(event: SgrMouseEvent, line: number, _col: number): void {
 		routeSelectListMouse(this.#list, event, line - this.#listRowStart);
@@ -69,9 +86,19 @@ export class WebSearchTab implements SetupTab {
 		this.#disposed = true;
 	}
 
-	render(width: number): readonly string[] {
+	render(width: number, rows?: number): readonly string[] {
 		const lines = [theme.fg("muted", "Choose the provider the web_search tool should prefer."), ""];
 		this.#listRowStart = lines.length;
+		// Sized to the rows the wizard has left, like every other list in setup.
+		// This one asked for eight rows regardless, and with a dozen providers plus
+		// the readiness line under it the panel overran a 24-row terminal by eight
+		// rows: the tail of the provider list was unreachable and the readiness
+		// line, the only thing that says whether a provider will actually work,
+		// was off-screen.
+		if (rows !== undefined) {
+			const trailingRows = 2 + (this.#status.length > 0 ? this.#status.length + 1 : 0);
+			this.#list.setRowBudget(Math.max(1, rows - lines.length - trailingRows));
+		}
 		lines.push(...this.#list.render(width));
 		const selected = this.#list.getSelectedItem();
 		if (selected) {

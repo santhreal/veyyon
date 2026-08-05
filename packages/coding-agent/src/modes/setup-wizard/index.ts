@@ -1,6 +1,7 @@
 import type { Settings } from "../../config/settings";
 import { CURRENT_SETUP_VERSION } from "../setup-version";
 import { agentsSetupScene } from "./scenes/agents";
+import { approvalsSetupScene } from "./scenes/approvals";
 import { glyphSetupScene } from "./scenes/glyph";
 import { importSetupScene } from "./scenes/import";
 import { providersSetupScene } from "./scenes/providers";
@@ -15,6 +16,9 @@ export { CURRENT_SETUP_VERSION };
 
 export const ALL_SCENES = [
 	providersSetupScene,
+	// Before subagents and cosmetics: it is the one answer that changes what the
+	// agent may do to the machine, and the one a user should not discover later.
+	approvalsSetupScene,
 	agentsSetupScene,
 	glyphSetupScene,
 	themeSetupScene,
