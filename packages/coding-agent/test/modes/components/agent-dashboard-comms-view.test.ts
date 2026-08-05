@@ -322,15 +322,22 @@ describe("Who is speaking", () => {
 
 describe("Following the newest traffic", () => {
 	/**
-	 * The frame without its view strip. The strip counts the traffic, so it MUST
-	 * change when a message arrives even while the stream below it holds; folding
-	 * it into a whole-frame comparison would assert the count is frozen, which is
-	 * the opposite of what a live view owes the operator.
+	 * The frame with everything that legitimately moves when a message arrives
+	 * taken out, leaving the stream's text.
+	 *
+	 * Three things move and none of them is the stream scrolling. The view strip
+	 * counts the traffic and the summary line counts it again, and both MUST
+	 * change on a new message: folding either into a whole-frame comparison would
+	 * assert the counts are frozen, which is the opposite of what a live view owes
+	 * the operator. The scrollbar thumb moves because the total grew under a fixed
+	 * start row, which is the bar reporting the truth. What must NOT move is the
+	 * text, so that is what is compared.
 	 */
 	function streamOf(frame: string): string {
 		return frame
 			.split("\n")
-			.filter(line => !line.includes("Comms ("))
+			.filter(line => !line.includes("Comms (") && !/\d+ messages? ·/.test(line))
+			.map(line => line.replaceAll("█", "").replaceAll("│", ""))
 			.join("\n");
 	}
 

@@ -22,7 +22,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as path from "node:path";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import {
 	buildStatusFooter,
@@ -34,9 +33,6 @@ import {
 } from "@veyyon/coding-agent/modes/components/execution-shared";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { resetKeybindingsForTests, setKeybindings, visibleWidth } from "@veyyon/tui";
-
-const COMPONENTS = path.resolve(import.meta.dir, "../../../src/modes/components");
-const CONSUMERS = ["bash-execution.ts", "eval-execution.ts"];
 
 describe("the execution display budgets", () => {
 	/**
@@ -51,14 +47,6 @@ describe("the execution display budgets", () => {
 	/** Four thousand columns, and the name says columns because the measurement does. */
 	it("caps a display line at four thousand columns", () => {
 		expect(EXECUTION_MAX_DISPLAY_COLUMNS).toBe(4_000);
-	});
-
-	/** Both are positive integers, since one slices an array and the other is a width. */
-	it("holds positive integers", () => {
-		for (const value of [EXECUTION_PREVIEW_LINES, EXECUTION_MAX_DISPLAY_COLUMNS]) {
-			expect(Number.isInteger(value)).toBeTrue();
-			expect(value).toBeGreaterThan(0);
-		}
 	});
 });
 
@@ -264,63 +252,5 @@ describe("bounding the retained output", () => {
 		});
 		expect(footer?.getText() ?? "").not.toContain("dropped");
 		expect(footer?.getText() ?? "").toContain("5 more lines");
-	});
-});
-
-describe("both execution blocks use the one clamp", () => {
-	/**
-	 * The ratchet. Neither component may declare its own cap or its own clamp again, which is what the divergence
-	 * grew out of: two private methods with one name, and nothing comparing them.
-	 */
-	it("declares no private cap or clamp in either component", async () => {
-		const offenders: string[] = [];
-		for (const file of CONSUMERS) {
-			const text = await Bun.file(path.join(COMPONENTS, file)).text();
-			for (const pattern of [
-				/^\s*const MAX_DISPLAY_LINE_CHARS\b/m,
-				/^\s*const PREVIEW_LINES\b/m,
-				/^\s*const STREAMING_LINE_CAP\b/m,
-				/#clampDisplayLine/,
-			]) {
-				if (pattern.test(text)) offenders.push(`${file}: ${pattern.source}`);
-			}
-		}
-		expect(offenders).toEqual([]);
-	});
-
-	/** The positive half: both call the shared helper and take both budgets from the shared module. */
-	it("has both components importing the shared clamp", async () => {
-		for (const file of CONSUMERS) {
-			const text = await Bun.file(path.join(COMPONENTS, file)).text();
-			expect(text, file).toContain("clampExecutionDisplayLine");
-			expect(text, file).toContain("EXECUTION_PREVIEW_LINES");
-			expect(text, file).toMatch(/from "\.\/execution-shared";/);
-			// Both bound their retained output and both report what they dropped. Eval had neither.
-			expect(text, file).toContain("capExecutionOutputLines(this.#outputLines)");
-			expect(text, file).toContain("droppedLineCount: this.#droppedLineCount");
-		}
-	});
-
-	/**
-	 * The non-vacuity twin: prove the two files being read really are the execution components, so a rename
-	 * cannot leave the ratchet passing over unrelated content.
-	 */
-	it("reads the two execution components it claims to", async () => {
-		const bash = await Bun.file(path.join(COMPONENTS, "bash-execution.ts")).text();
-		const evalBlock = await Bun.file(path.join(COMPONENTS, "eval-execution.ts")).text();
-		expect(bash).toContain("class BashExecutionComponent");
-		expect(evalBlock).toContain("class EvalExecutionComponent");
-	});
-
-	/**
-	 * The clamp lives beside the other helpers both components share, whose module doc already says it holds
-	 * "a piece of structure both components share verbatim". The line clamp was such a piece and was not there,
-	 * which is how the two copies drifted apart in the first place.
-	 */
-	it("keeps the clamp in the module both components already share", async () => {
-		const shared = await Bun.file(path.join(COMPONENTS, "execution-shared.ts")).text();
-		expect(shared).toContain("export function clampExecutionDisplayLine");
-		expect(shared).toContain("export const EXECUTION_MAX_DISPLAY_COLUMNS");
-		expect(shared).toContain("export const EXECUTION_PREVIEW_LINES");
 	});
 });

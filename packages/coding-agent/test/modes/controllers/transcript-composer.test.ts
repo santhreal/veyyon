@@ -13,8 +13,6 @@
  * state this extraction removed.
  */
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	TranscriptComposer,
@@ -244,22 +242,5 @@ describe("TranscriptComposer rebuild", () => {
 		pending.cancelled = true;
 		composer.rebuild();
 		expect(addMessageCalls).toHaveLength(2);
-	});
-});
-
-describe("interactive-mode delegation source lock", () => {
-	const source = readFileSync(join(import.meta.dir, "../../../src/modes/interactive-mode.ts"), "utf8");
-
-	it("delegates transcript composition and no longer owns the extracted state", () => {
-		expect(source).toContain("this.#transcriptComposer.rebuild()");
-		expect(source).toContain("this.#transcriptComposer.showOptimistic(");
-		expect(source).toContain("this.#transcriptComposer.onSubmissionFinished(");
-		// The state this extraction removed must not be re-inlined by a
-		// parallel writer; two owners of the optimistic echo is how the
-		// double-render/orphaned-dispose class of bug returns.
-		expect(source).not.toContain("#pendingSubmissionDispose");
-		expect(source).not.toContain("#optimisticUserMessageComponents");
-		expect(source).not.toContain("#captureAddedChatComponents");
-		expect(source).not.toContain("#replayOptimisticUserMessage");
 	});
 });

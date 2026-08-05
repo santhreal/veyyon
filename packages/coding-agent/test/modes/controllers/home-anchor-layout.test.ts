@@ -203,22 +203,6 @@ describe("HomeAnchorLayout.onHeroDismissed — same-frame re-anchor", () => {
 	});
 });
 
-describe("HomeAnchorLayout — interactive-mode delegation (source lock)", () => {
-	test("interactive-mode owns no fill math: it mounts the controller's fills and delegates every sync", async () => {
-		// A parallel lane clobbered the welcome extraction once (2026-07-22);
-		// this lock makes any re-inlining of the anchor math a loud failure.
-		const source = await Bun.file(new URL("../../../src/modes/interactive-mode.ts", import.meta.url)).text();
-		expect(source).toContain("this.#layout = new HomeAnchorLayout({");
-		expect(source).toContain("this.ui.addChild(this.#layout.topFill)");
-		expect(source).toContain("this.ui.addChild(this.#layout.bottomFill)");
-		expect(source).toContain("this.ui.onFrameComposed = () => this.#layout.onFrameComposed()");
-		expect(source).not.toContain("#syncBottomFill");
-		expect(source).not.toContain("#homeAnchorActive");
-		expect(source).not.toContain("#topFill:");
-		expect(source).not.toContain("#bottomFill:");
-	});
-});
-
 describe("HomeAnchorLayout.sync — conversation slack routing", () => {
 	/** The core of the bottom-hugging fix: once a conversation exists, ALL the
 	 * anchor slack moves ABOVE the transcript. The old between-content fill

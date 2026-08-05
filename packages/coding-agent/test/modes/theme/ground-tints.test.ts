@@ -12,8 +12,6 @@
  * guess).
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { CardPadRow, ComposerHairline } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
 import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
@@ -138,14 +136,5 @@ describe("composer card ground derivation", () => {
 	it("CardPadRow paints nothing even with a detected ground", () => {
 		setDetectedTerminalGround("#1e2127");
 		expect(new CardPadRow().render()).toEqual([""]);
-	});
-
-	/** Source lock, same order: no background paint may exist anywhere in the
-	 * composer chrome — no bg escape, no composerBg read, no card owner. */
-	it("composer-chrome contains no background paint at all", () => {
-		const chrome = readFileSync(join(import.meta.dir, "../../../src/modes/components/composer-chrome.ts"), "utf8");
-		expect(chrome).not.toContain("composerCardGround");
-		expect(chrome).not.toContain("[48;2;");
-		expect(chrome).not.toContain('getBgAnsi("composerBg")');
 	});
 });

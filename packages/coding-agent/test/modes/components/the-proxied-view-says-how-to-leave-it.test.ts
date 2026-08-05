@@ -68,7 +68,10 @@ function makeSession() {
 		getPrewalkState: () => undefined,
 		isAdvisorActive: () => false,
 		configuredThinkingLevel: () => "medium",
-		settings: { getGroup: () => ({ enabled: false }) },
+		// `get` as well as `getGroup`: the mode segment names the tool-approval
+		// rung, and a stub that only answers `getGroup` threw out of the whole
+		// status line rather than rendering the bar this file is about.
+		settings: { getGroup: () => ({ enabled: false }), get: () => undefined },
 		modelRegistry: { isUsingOAuth: () => false },
 		sessionManager: {
 			getSessionName: () => "parser-rewrite",

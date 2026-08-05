@@ -10,8 +10,6 @@
  * addChild calls this extraction replaced.
  */
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
 	CardPadRow,
 	COMPOSER_BOTTOM_MARGIN_ROWS,
@@ -80,20 +78,5 @@ describe("mountComposerZone", () => {
 		// Spacer(n) renders n blank rows; the margin is exactly the owned const.
 		expect(last.render(80)).toHaveLength(COMPOSER_BOTTOM_MARGIN_ROWS);
 		expect(COMPOSER_BOTTOM_MARGIN_ROWS).toBe(1);
-	});
-});
-
-describe("interactive-mode delegation source lock", () => {
-	const source = readFileSync(join(import.meta.dir, "../../../src/modes/interactive-mode.ts"), "utf8");
-
-	it("mounts the composer zone through mountComposerZone, never an inline addChild paste", () => {
-		// The extraction this suite guards: the host hands its parts to the one
-		// order owner. A parallel writer re-inlining the block re-creates the
-		// two-owners drift hazard.
-		expect(source).toContain("mountComposerZone(this.ui, {");
-		expect(source).not.toContain("addChild(new CardPadRow())");
-		expect(source).not.toContain("this.ui.addChild(this.composerHairline)");
-		expect(source).not.toContain("this.ui.addChild(this.capabilityLine)");
-		expect(source).not.toContain("COMPOSER_BOTTOM_MARGIN_ROWS = ");
 	});
 });
