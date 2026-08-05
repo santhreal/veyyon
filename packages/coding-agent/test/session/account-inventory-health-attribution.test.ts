@@ -75,7 +75,15 @@ describe("applyCredentialHealth", () => {
 	});
 
 	function failure(id: number, reason: string): CredentialHealthResult {
-		return { id, provider: PROVIDER, type: "oauth", email: SHARED_EMAIL, accountId: "account-shared", ok: false, reason };
+		return {
+			id,
+			provider: PROVIDER,
+			type: "oauth",
+			email: SHARED_EMAIL,
+			accountId: "account-shared",
+			ok: false,
+			reason,
+		};
 	}
 
 	/**
@@ -158,7 +166,14 @@ describe("applyCredentialHealth", () => {
 		const knownId = rows[1]?.id ?? 0;
 
 		const next = applyCredentialHealth(buildAccountInventory(storage), [
-			{ id: bareId, provider: PROVIDER, type: "oauth", ok: true, email: "recovered@example.com", orgName: "Recovered Org" },
+			{
+				id: bareId,
+				provider: PROVIDER,
+				type: "oauth",
+				ok: true,
+				email: "recovered@example.com",
+				orgName: "Recovered Org",
+			},
 			{ id: knownId, provider: PROVIDER, type: "oauth", ok: true, email: "probe@example.com", orgName: "Probe Org" },
 		]);
 		const [bare, known] = next.providers[0]?.rows ?? [];
