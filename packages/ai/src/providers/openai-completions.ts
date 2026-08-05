@@ -15,6 +15,7 @@ import { getKimiCommonHeaders } from "../registry/oauth/kimi";
 import { getEnvApiKey } from "../stream";
 import type {
 	AssistantMessage,
+	CacheRetention,
 	Context,
 	Message,
 	MessageAttribution,
@@ -32,7 +33,7 @@ import type {
 	ToolChoice,
 	ToolResultMessage,
 } from "../types";
-import { normalizeSystemPrompts } from "../utils";
+import { normalizeSystemPrompts, resolveCacheRetention } from "../utils";
 import { createAbortSourceTracker } from "../utils/abort";
 import { isDemotedThinking, kStreamingLastParseLen } from "../utils/block-symbols";
 import { hasVisibleAssistantContent, withEmptyCompletionRetry } from "../utils/empty-completion-retry";
@@ -55,6 +56,7 @@ import {
 	type StreamMarkupHealingEvent,
 } from "../utils/stream-markup-healing";
 import { isForcedToolChoice, mapToOpenAICompletionsToolChoice } from "../utils/tool-choice";
+import type { CacheControlEphemeral } from "./anthropic-wire";
 import type {
 	ChatCompletionAssistantMessageParam,
 	ChatCompletionChunk,
@@ -1587,7 +1589,7 @@ function buildParams(
 	});
 	const compat = finalPolicy.compat as ResolvedOpenAICompat;
 	const messages = convertMessages(model, context, compat);
-	maybeAddAnthropicCacheControl(compat, messages);
+	maybeAddAnthropicCacheControl(compat, messages, resolveCacheRetention(options?.cacheRetention));
 	params.messages = messages;
 	const outputToken = resolveOpenAIOutputTokenParam({
 		field: compat.maxTokensField,
@@ -1663,8 +1665,27 @@ export function parseChunkUsage(
 	return usage;
 }
 
-function maybeAddAnthropicCacheControl(compat: ResolvedOpenAICompat, messages: ChatCompletionMessageParam[]): void {
+/**
+ * Place the single Anthropic-style breakpoint for an OpenAI-compatible payload.
+ *
+ * `cacheRetention` is a cross-provider request option, and every other
+ * implementation of this idea consumes it: the Anthropic provider
+ * (`getCacheControl`), Bedrock (`buildSystemPrompt` / `convertMessages`), and
+ * the Responses path for the very same OpenRouter Claude rows
+ * (`maybeAddOpenRouterAnthropicCacheControl`). This path ignored it entirely,
+ * so `none` still wrote a breakpoint and paid the cache-write premium a caller
+ * had opted out of, and `long` silently degraded to the default five-minute
+ * window while the Responses path for the same model asked for an hour.
+ */
+function maybeAddAnthropicCacheControl(
+	compat: ResolvedOpenAICompat,
+	messages: ChatCompletionMessageParam[],
+	cacheRetention: CacheRetention,
+): void {
 	if (compat.cacheControlFormat !== "anthropic") return;
+	if (cacheRetention === "none") return;
+	const cacheControl: CacheControlEphemeral =
+		cacheRetention === "long" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
 	// Anthropic-style caching requires cache_control on a text part. Add a breakpoint
 	// on the last user/assistant message (walking backwards until we find text content).
 	for (let i = messages.length - 1; i >= 0; i--) {
@@ -1675,7 +1696,7 @@ function maybeAddAnthropicCacheControl(compat: ResolvedOpenAICompat, messages: C
 		if (typeof content === "string") {
 			if (content.trim().length === 0) continue;
 			msg.content = [
-				Object.assign({ type: "text" as const, text: content }, { cache_control: { type: "ephemeral" } }),
+				Object.assign({ type: "text" as const, text: content }, { cache_control: { ...cacheControl } }),
 			];
 			return;
 		}
@@ -1688,7 +1709,7 @@ function maybeAddAnthropicCacheControl(compat: ResolvedOpenAICompat, messages: C
 		for (let j = content.length - 1; j >= 0; j--) {
 			const part = content[j];
 			if (part?.type === "text" && part.text.trim().length > 0) {
-				Object.assign(part, { cache_control: { type: "ephemeral" } });
+				Object.assign(part, { cache_control: { ...cacheControl } });
 				return;
 			}
 		}
