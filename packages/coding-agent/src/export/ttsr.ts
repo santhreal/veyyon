@@ -139,7 +139,7 @@ export class TtsrManager {
 
 		const rule = this.#rules.get(ruleName)?.rule;
 		const repeatMode = rule?.repeatMode ?? this.#settings.repeatMode;
-		if (repeatMode === "once") {
+		if (repeatMode === "once" || repeatMode === "per-compact") {
 			return false;
 		}
 

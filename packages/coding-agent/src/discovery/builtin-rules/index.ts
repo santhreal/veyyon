@@ -9,6 +9,7 @@
  * user/project/tool rule with the same name overrides the bundled copy.
  */
 import argotLoadNudge from "./argot-load-nudge.md" with { type: "text" };
+import bashToolNudge from "./bash-tool-nudge.md" with { type: "text" };
 import commitDrift from "./commit-drift.md" with { type: "text" };
 import cwdReroot from "./cwd-reroot.md" with { type: "text" };
 import goAddCleanup from "./go-add-cleanup.md" with { type: "text" };
@@ -48,6 +49,7 @@ export interface BuiltinRuleSource {
 /** All bundled default rules, ordered by name. */
 export const BUILTIN_RULE_SOURCES: readonly BuiltinRuleSource[] = [
 	{ name: "argot-load-nudge", content: argotLoadNudge },
+	{ name: "bash-tool-nudge", content: bashToolNudge },
 	{ name: "commit-drift", content: commitDrift },
 	{ name: "cwd-reroot", content: cwdReroot },
 	{ name: "go-add-cleanup", content: goAddCleanup },
