@@ -42,7 +42,13 @@ function getUserClaude(ctx: LoadContext): string {
 }
 
 /**
- * Get project-level .claude path (cwd only).
+ * Get project-level `.claude` path (cwd only).
+ *
+ * The ONLY thing this still resolves is `CLAUDE.md`, which is a context file:
+ * prose the model reads. Every other `.claude` surface a repository once
+ * supplied — hooks, tools, commands, skills, extensions, MCP servers and
+ * settings — is gone, because a checked-out working tree does not configure the
+ * agent.
  */
 function getProjectClaude(ctx: LoadContext): string {
 	return path.join(ctx.cwd, CONFIG_DIR);
@@ -60,20 +66,10 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	const userClaudeJson = path.join(ctx.home, ".claude.json");
 	const userMcpJson = path.join(userBase, "mcp.json");
 
-	const projectBase = path.join(ctx.cwd, CONFIG_DIR);
-	const projectMcpJson = path.join(projectBase, ".mcp.json");
-	const projectMcpJsonAlt = path.join(projectBase, "mcp.json");
-
-	const userPaths = [
+	const allPaths = [
 		{ path: userClaudeJson, level: "user" as const },
 		{ path: userMcpJson, level: "user" as const },
 	];
-	const projectPaths = [
-		{ path: projectMcpJson, level: "project" as const },
-		{ path: projectMcpJsonAlt, level: "project" as const },
-	];
-
-	const allPaths = [...userPaths, ...projectPaths];
 	const contents = await Promise.all(allPaths.map(({ path }) => readFile(path)));
 
 	const parseMcpServers = (content: string | null, path: string, level: "user" | "project"): MCPServer[] => {
@@ -98,17 +94,8 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		});
 	};
 
-	for (let i = 0; i < userPaths.length; i++) {
-		const servers = parseMcpServers(contents[i], userPaths[i].path, userPaths[i].level);
-		if (servers.length > 0) {
-			items.push(...servers);
-			break;
-		}
-	}
-
-	const projectOffset = userPaths.length;
-	for (let i = 0; i < projectPaths.length; i++) {
-		const servers = parseMcpServers(contents[projectOffset + i], projectPaths[i].path, projectPaths[i].level);
+	for (let i = 0; i < allPaths.length; i++) {
+		const servers = parseMcpServers(contents[i], allPaths[i].path, allPaths[i].level);
 		if (servers.length > 0) {
 			items.push(...servers);
 			break;
@@ -182,31 +169,8 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	const userSkillsDir = path.join(getUserClaude(ctx), "skills");
 
-	// Walk up from cwd finding .claude/skills/ in ancestors. Skip $HOME: that path
-	// is already scanned as the Claude user source below, so scanning it again as
-	// project would double-count it. (This provider is not loaded ambiently; it
-	// feeds the onboarding import scan that copies foreign skills into the profile.)
-	const projectScans: Promise<LoadResult<Skill>>[] = [];
-	let current = ctx.cwd;
-	while (true) {
-		if (current !== ctx.home) {
-			projectScans.push(
-				scanSkillsFromDir({
-					dir: path.join(current, CONFIG_DIR, "skills"),
-					providerId: PROVIDER_ID,
-					level: "project",
-				}),
-			);
-		}
-		if (current === (ctx.repoRoot ?? ctx.home)) break;
-		const parent = path.dirname(current);
-		if (parent === current) break; // filesystem root
-		current = parent;
-	}
-
-	const [userResult, ...projectResults] = await Promise.allSettled([
+	const [userResult] = await Promise.allSettled([
 		scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" }),
-		...projectScans,
 	]);
 
 	const items: Skill[] = [];
@@ -217,15 +181,6 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 		warnings.push(...(userResult.value.warnings ?? []));
 	} else if (!isMissingPath(userResult.reason)) {
 		warnings.push(`Failed to scan Claude user skills in ${userSkillsDir}: ${String(userResult.reason)}`);
-	}
-
-	for (const projectResult of projectResults) {
-		if (projectResult.status === "fulfilled") {
-			items.push(...projectResult.value.items);
-			warnings.push(...(projectResult.value.warnings ?? []));
-		} else if (!isMissingPath(projectResult.reason)) {
-			warnings.push(`Failed to scan Claude project skills: ${String(projectResult.reason)}`);
-		}
 	}
 
 	return { items, warnings };
@@ -241,12 +196,8 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 
 	const userBase = getUserClaude(ctx);
 	const userExtensionsDir = path.join(userBase, "extensions");
-	const projectExtensionsDir = path.join(ctx.cwd, CONFIG_DIR, "extensions");
 
-	const dirsToDiscover: { dir: string; level: "user" | "project" }[] = [
-		{ dir: userExtensionsDir, level: "user" },
-		{ dir: projectExtensionsDir, level: "project" },
-	];
+	const dirsToDiscover: { dir: string; level: "user" | "project" }[] = [{ dir: userExtensionsDir, level: "user" }];
 
 	const pathsByLevel = await Promise.all(
 		dirsToDiscover.map(async ({ dir, level }) => {
@@ -315,7 +266,7 @@ function addClaudeCommandNamespaceAliases(commands: SlashCommand[], commandsDir:
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const items: SlashCommand[] = [];
 	const warnings: string[] = [];
-	const { enableUser, enableProject } = readClaudeCommandToggles();
+	const { enableUser } = readClaudeCommandToggles();
 
 	if (enableUser) {
 		const userBase = getUserClaude(ctx);
@@ -337,25 +288,6 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 		if (userResult.warnings) warnings.push(...userResult.warnings);
 	}
 
-	if (enableProject) {
-		const projectCommandsDir = path.join(ctx.cwd, CONFIG_DIR, "commands");
-
-		const projectResult = await loadFilesFromDir<SlashCommand>(projectCommandsDir, PROVIDER_ID, "project", {
-			extensions: ["md"],
-			recursive: true,
-			transform: (name, content, filePath, source) => ({
-				name: name.replace(/\.md$/, ""),
-				path: filePath,
-				content,
-				level: "project",
-				_source: source,
-			}),
-		});
-
-		items.push(...addClaudeCommandNamespaceAliases(projectResult.items, projectCommandsDir));
-		if (projectResult.warnings) warnings.push(...projectResult.warnings);
-	}
-
 	return { items, warnings };
 }
 
@@ -369,17 +301,12 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 
 	const userBase = getUserClaude(ctx);
 	const userHooksDir = path.join(userBase, "hooks");
-	const projectBase = getProjectClaude(ctx);
-	const projectHooksDir = path.join(projectBase, "hooks");
 
 	const hookTypes = ["pre", "post"] as const;
 
 	const loadTasks: { dir: string; hookType: "pre" | "post"; level: "user" | "project" }[] = [];
 	for (const hookType of hookTypes) {
 		loadTasks.push({ dir: path.join(userHooksDir, hookType), hookType, level: "user" });
-	}
-	for (const hookType of hookTypes) {
-		loadTasks.push({ dir: path.join(projectHooksDir, hookType), hookType, level: "project" });
 	}
 
 	const results = await Promise.all(
@@ -434,25 +361,6 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 
 	items.push(...userResult.items);
 	if (userResult.warnings) warnings.push(...userResult.warnings);
-
-	const projectBase = getProjectClaude(ctx);
-	const projectToolsDir = path.join(projectBase, "tools");
-
-	const projectResult = await loadFilesFromDir<DiscoveredCustomTool>(projectToolsDir, PROVIDER_ID, "project", {
-		transform: (name, _content, path, source) => {
-			const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
-			return {
-				name: toolName,
-				path,
-				description: `${toolName} custom tool`,
-				level: "project",
-				_source: source,
-			};
-		},
-	});
-
-	items.push(...projectResult.items);
-	if (projectResult.warnings) warnings.push(...projectResult.warnings);
 
 	return { items, warnings };
 }

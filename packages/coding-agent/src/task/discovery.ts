@@ -22,7 +22,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { readdirIfPresent, reportFault } from "@veyyon/utils";
 import { isProviderEnabled } from "../capability";
-import { findAllNearestProjectConfigDirs, getConfigDirs } from "../config";
+import { getConfigDirs } from "../config";
 import { listClaudePluginRoots, pluginsRootFor } from "../discovery/helpers";
 import { listVeyyonExtensionRoots } from "../discovery/veyyon-extension-roots";
 import { loadBundledAgents, parseAgent } from "./agents";
@@ -107,6 +107,12 @@ export async function discoverAgents(
 ): Promise<DiscoveryResult> {
 	const resolvedCwd = path.resolve(cwd);
 
+	// A subagent definition carries a system prompt, a tool allowlist, a model and
+	// a `spawns` field, so a repository that could supply one could SHADOW a
+	// bundled agent by name — its "reviewer" became the reviewer, and first-run
+	// onboarding then offered that role as an ordinary row and wrote it enabled
+	// into the operator's own config. `<cwd>/.veyyon/agents/` is no longer read.
+	//
 	// Named profile: resolve its `agents/` dir directly. Unnamed: keep the existing
 	// `getConfigDirs` resolution, which is home-relative and XDG-aware, rather than
 	// re-deriving it from `getAgentDir()` and changing where every current caller reads.
@@ -119,26 +125,17 @@ export async function discoverAgents(
 					path: path.resolve(entry.path),
 				}));
 
-	const projectDirs = findAllNearestProjectConfigDirs("agents", resolvedCwd)
-		.filter(entry => entry.source === TASK_AGENT_CONFIG_SOURCE)
-		.map(entry => ({
-			...entry,
-			path: path.resolve(entry.path),
-		}));
-
 	const orderedDirs: Array<{ dir: string; source: AgentSource }> = [];
-	const project = projectDirs[0];
-	if (project) orderedDirs.push({ dir: project.path, source: "project" });
 	const user = userDirs[0];
 	if (user) orderedDirs.push({ dir: user.path, source: "user" });
 
 	// veyyon extension-package agents/ dirs. `listVeyyonExtensionRoots` returns roots in
-	// source-precedence order (CLI > project `extensions:` settings > user
-	// `extensions:` settings > installed npm/link plugins, with marketplace
-	// installs already excluded by realpath) — consume that order verbatim so the
-	// `task` agent surface dedups identically to the sibling skills/hooks/tools
-	// surface in `discovery/veyyon-plugins.ts`. Gate on `veyyon-plugins` so
-	// disabledProviders suppresses the whole extension-package surface.
+	// source-precedence order (CLI > user `extensions:` settings > installed npm/link
+	// plugins, with marketplace installs already excluded by realpath) — consume that
+	// order verbatim so the `task` agent surface dedups identically to the sibling
+	// skills/hooks/tools surface in `discovery/veyyon-plugins.ts`. Gate on
+	// `veyyon-plugins` so disabledProviders suppresses the whole extension-package
+	// surface.
 	const extensionRoots = isProviderEnabled("veyyon-plugins")
 		? await listVeyyonExtensionRoots({ cwd: resolvedCwd, home, repoRoot: null }, { agentDir })
 		: [];
@@ -153,13 +150,8 @@ export async function discoverAgents(
 	const { roots: pluginRoots } = isProviderEnabled("claude-plugins")
 		? await listClaudePluginRoots(home, resolvedCwd, agentDir ? pluginsRootFor(agentDir) : undefined)
 		: { roots: [] };
-	const sortedPluginRoots = [...pluginRoots].sort((a, b) => {
-		if (a.scope === b.scope) return 0;
-		return a.scope === "project" ? -1 : 1;
-	});
-	for (const plugin of sortedPluginRoots) {
-		const agentsDir = path.join(plugin.path, "agents");
-		orderedDirs.push({ dir: agentsDir, source: plugin.scope === "project" ? "project" : "user" });
+	for (const plugin of pluginRoots.filter(root => root.scope !== "project")) {
+		orderedDirs.push({ dir: path.join(plugin.path, "agents"), source: "user" });
 	}
 
 	const seen = new Set<string>();
@@ -177,9 +169,10 @@ export async function discoverAgents(
 		return true;
 	});
 
-	const projectAgentsDir = projectDirs.length > 0 ? projectDirs[0].path : null;
-
-	return { agents: [...loadedAgents, ...bundledAgents], projectAgentsDir };
+	// Always null: there is no project agents dir any more. The field stays on
+	// `DiscoveryResult` because ~30 call sites in `task/index.ts` plumb it into
+	// `TaskToolDetails` for display; retiring it is a separate mechanical pass.
+	return { agents: [...loadedAgents, ...bundledAgents], projectAgentsDir: null };
 }
 
 /**

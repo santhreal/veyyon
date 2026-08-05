@@ -22,8 +22,11 @@ export interface ContextFile {
 	 * the one named by `LoadContext.agentDir` rather than whichever profile the
 	 * process booted with; and `project` is the one file a directory on the
 	 * repo-root-to-cwd walk contributes.
-	 * Prominence runs global (least, the baseline) → project → user (most, the most
-	 * specific).
+	 * Authority runs global (HIGHEST, the operator's own cross-profile
+	 * configuration) → user → project (LOWEST, content checked into a repository
+	 * the operator may not have written). `CONTEXT_SCOPE_AUTHORITY` in
+	 * `system-prompt.ts` owns the ranks and renders least authoritative first, so
+	 * the strongest file holds the last slot.
 	 *
 	 * Which file a project directory contributes, and how `.veyyon/AGENTS.md`,
 	 * `AGENTS.md` and `CLAUDE.md` rank against each other at one level, is owned by

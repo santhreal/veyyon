@@ -111,7 +111,20 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	const parseMcpServers = (content: string, path: string, level: "user" | "project"): MCPServer[] => {
 		const result: MCPServer[] = [];
 		const data = tryParseJson<{ mcpServers?: Record<string, unknown> }>(content);
-		if (!data?.mcpServers) return result;
+		// A file that is PRESENT but does not parse is reported, never skipped. The
+		// only provider that ever raised this was `mcp-json`, and it covered the
+		// project root alone; when project-scope MCP discovery was removed, the
+		// operator's own `<agentDir>/mcp.json` was left with no reporting path at
+		// all, so a mistyped comma there produced a session with every configured
+		// server missing and no line anywhere saying why. Same message the deleted
+		// provider used, so `/mcp list` and the boot health zone render it
+		// unchanged. `readFile` already returned null for an absent file, so
+		// reaching here means the bytes exist and are broken.
+		if (!data) {
+			warnings.push(`Failed to parse JSON in ${path}`);
+			return result;
+		}
+		if (!data.mcpServers) return result;
 
 		const expanded = expandEnvVarsDeep(data.mcpServers);
 		for (const [serverName, config] of Object.entries(expanded)) {
@@ -830,9 +843,19 @@ const PROJECT_RULE_FILE_NAMES = ["AGENTS.md", "CLAUDE.md"] as const;
  *    file a level contributes is {@link PROJECT_RULE_FILE_NAMES}; do not restate
  *    that rule here.
  *
- * Later scopes override earlier ones. This is the only provider that resolves
- * all three: the foreign-tool providers know nothing about veyyon profiles and
- * cover their own tool's conventions instead.
+ * THE NUMBERING ABOVE IS DISCOVERY ORDER, NOT AUTHORITY. A later scope does NOT
+ * override an earlier one: authority runs the other way, GLOBAL highest, then
+ * PROFILE, then PROJECT lowest, and a narrower scope may add detail it does not
+ * contradict. This doc block said "Later scopes override earlier ones" and that
+ * was read as project beating global, which is how a repository's `AGENTS.md`
+ * came to be obeyed over the operator's own configuration. A project file is
+ * content checked into a repository the operator may not have written, so it is
+ * the least authoritative of the three. The single owner of the authority rule is
+ * `prompts/session/context-file-authority.md`; the rendering order that has to
+ * agree with it is `CONTEXT_SCOPE_AUTHORITY` in `system-prompt.ts`. Do not restate the rule
+ * here beyond this correction. This is the only provider that resolves all three:
+ * the foreign-tool providers know nothing about veyyon profiles and cover their
+ * own tool's conventions instead.
  *
  * Every scope reports an unreadable-but-present file through `warnings`. A file
  * that exists and reads as empty (or as nothing but the managed guidance header)
@@ -843,7 +866,7 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
 
-	// Scope 1 (least prominent): the cross-profile global AGENTS.md.
+	// Scope 1 (discovered first, ranked HIGHEST): the cross-profile global AGENTS.md.
 	// Its managed guidance header is stripped so only real instructions load.
 	const globalPath = getGlobalAgentsPath();
 	const global = await readContextFile(globalPath);
@@ -944,16 +967,16 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	// could not recover the rules by looking. Rules that are silently absent are
 	// worse than rules that are absent loudly.
 	//
-	// EVERY ancestor is collected rather than only the nearest, because the prompt
-	// already promises "deeper rules override higher ones" and that ordering only
-	// works if the higher file is present to be overridden. The consumer sorts
-	// project files by descending depth, so recording the true depth here puts the
-	// repo-root file first and the closest one last, which is the precedence the
-	// prompt describes.
+	// EVERY ancestor is collected rather than only the nearest, because a project directory's own
+	// file refines its ancestors rather than replacing them, and that only works if the ancestor is
+	// present to be refined. The consumer sorts project files by descending depth, so recording the
+	// true depth here puts the repo-root file first and the closest one last. Both are project
+	// scope, so this is refinement WITHIN the lowest rung of the authority ladder, never a project
+	// file outranking the profile or the operator's global configuration.
 	//
 	// One walk owns both filenames on purpose. Splitting `CLAUDE.md` into the claude
 	// provider would give two independent walks that cannot order against each
-	// other, and a root `CLAUDE.md` would then be unable to override a deeper
+	// other, and a root `CLAUDE.md` would then be unable to rank against a deeper
 	// `AGENTS.md` or the reverse.
 	//
 	// Within one rung the names are a LADDER, not a list: the loop below breaks at

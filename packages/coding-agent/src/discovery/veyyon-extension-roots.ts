@@ -140,9 +140,8 @@ export interface ListVeyyonExtensionRootsOptions {
  * are dropped):
  *
  * 1. CLI roots injected via {@link injectVeyyonExtensionCliRoots}
- * 2. Project `<cwd>/.veyyon/settings.json#extensions`
- * 3. User `<agentDir>/settings.json#extensions`
- * 4. Enabled npm/link plugins installed under `<plugins>/node_modules/` (for
+ * 2. User `<agentDir>/settings.json#extensions`
+ * 3. Enabled npm/link plugins installed under `<plugins>/node_modules/` (for
  *    `veyyon install <pkg>` / `veyyon plugin install` / `veyyon plugin link`). Marketplace
  *    installs are loaded by the `claude-plugins` provider and are excluded here.
  * Only entries that resolve to a directory on disk are returned; file
@@ -151,30 +150,35 @@ export interface ListVeyyonExtensionRootsOptions {
  * `package.json`, etc.) are logged at `debug` and degrade gracefully, the
  * other sources still surface.
  *
- * Sources 3 and 4 are PROFILE scoped, so `options.agentDir` selects them. Without it
- * both resolved the process-global active profile, which is why a session rooted in
- * another agent dir loaded that profile's plugin packages instead of its own.
+ * `<cwd>/.veyyon/settings.json#extensions` used to sit above the user scope
+ * here. It was the single worst instance of the repo-configures-the-agent
+ * defect: a checked-in file naming arbitrary package roots whose `skills/`,
+ * `commands/`, `rules/`, `prompts/`, `hooks/`, `tools/` and MCP were all then
+ * scanned. It is gone, and so is the project settings layer that fed it.
+ *
+ * Both remaining file sources are PROFILE scoped, so `options.agentDir` selects
+ * them. Without it both resolved the process-global active profile, which is why
+ * a session rooted in another agent dir loaded that profile's plugin packages
+ * instead of its own.
  */
 export async function listVeyyonExtensionRoots(
 	ctx: LoadContext,
 	options: ListVeyyonExtensionRootsOptions = {},
 ): Promise<VeyyonExtensionRoot[]> {
 	const agentDir = options.agentDir ?? getAgentDir();
-	const { project, user } = scopeDirs(ctx, agentDir);
-	const [projectExtensions, userExtensions, installedPlugins] = await Promise.all([
-		readSettingsExtensions(path.join(project, "settings.json")),
+	const { user } = scopeDirs(ctx, agentDir);
+	const [userExtensions, installedPlugins] = await Promise.all([
 		readSettingsExtensions(path.join(user, "settings.json")),
 		listInstalledPluginRoots(ctx, pluginsRootFor(agentDir)),
 	]);
 
 	const candidates: InjectedRoot[] = [
 		...injectedCliRoots,
-		...projectExtensions.map((raw): InjectedRoot => ({ path: resolveAgainst(raw, ctx), level: "project" })),
 		...userExtensions.map((raw): InjectedRoot => ({ path: resolveAgainst(raw, ctx), level: "user" })),
 		...installedPlugins,
 	];
 
-	// First-seen-wins dedup preserves CLI > project-settings > user-settings > installed precedence.
+	// First-seen-wins dedup preserves CLI > user-settings > installed precedence.
 	const seen = new Set<string>();
 	const unique: InjectedRoot[] = [];
 	for (const candidate of candidates) {

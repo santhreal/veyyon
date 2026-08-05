@@ -58,7 +58,6 @@ export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
 	"agents-md",
 	"claude",
 	"claude-plugins",
-	"cline",
 	"codex",
 	"cursor",
 	"gemini",

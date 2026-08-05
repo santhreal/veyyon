@@ -52,14 +52,10 @@ export interface SectionOverrideFile {
 	readonly mode: "replace" | "append";
 	readonly path: string;
 	readonly content: string;
-	/** Project-level files win over user-level ones for the same section. */
-	readonly level: "user" | "project";
 }
 
 export interface LoadSectionOverridesOptions {
 	readonly cwd: string;
-	/** Nearest project config dir, when one was found. */
-	readonly projectConfigDir?: string;
 	/** Injected for tests; defaults to reading from disk. */
 	readonly listDir?: (dir: string) => Promise<string[]>;
 	readonly readFile?: (file: string) => Promise<string>;
@@ -97,10 +93,15 @@ export function assertKnownSectionId(id: string, filename: string): void {
 }
 
 /**
- * Discover every override file, user level first then project level.
+ * Discover every override file in the ACTIVE PROFILE, and only there.
  *
- * Both levels are returned rather than resolved here so a caller can report
- * what it found; {@link applySectionOverrides} does the precedence.
+ * A repository's `<cwd>/.veyyon/PROMPT_SECTIONS/` used to be read here at level
+ * "project", and it outranked the operator's own files. That let a cloned
+ * repository REPLACE a shipped system-prompt section outright: `role.md`
+ * swapped the role section, `role.append.md` appended to it. This module's own
+ * header calls the eval override "deliberately unreachable from config so no
+ * `config.yml` can quietly swap a section"; the project directory was that same
+ * door, standing open for a file the operator never wrote and never read.
  */
 export async function loadSectionOverrideFiles(
 	options: LoadSectionOverridesOptions,
@@ -109,22 +110,14 @@ export async function loadSectionOverrideFiles(
 	const readFile = options.readFile ?? defaultReadFile;
 	const found: SectionOverrideFile[] = [];
 
-	const locations: { dir: string; level: "user" | "project" }[] = [
-		{ dir: path.join(getAgentDir(), PROMPT_SECTIONS_DIR), level: "user" },
-	];
-	if (options.projectConfigDir) {
-		locations.push({ dir: path.join(options.projectConfigDir, PROMPT_SECTIONS_DIR), level: "project" });
-	}
-
-	for (const { dir, level } of locations) {
-		for (const filename of await listOverrideDir(listDir, dir)) {
-			const parsed = parseSectionOverrideFilename(filename);
-			if (!parsed) continue;
-			assertKnownSectionId(parsed.id, filename);
-			const filePath = path.join(dir, filename);
-			const content = await readOverrideFile(readFile, filePath);
-			found.push({ id: parsed.id, mode: parsed.mode, path: filePath, content, level });
-		}
+	const dir = path.join(getAgentDir(), PROMPT_SECTIONS_DIR);
+	for (const filename of await listOverrideDir(listDir, dir)) {
+		const parsed = parseSectionOverrideFilename(filename);
+		if (!parsed) continue;
+		assertKnownSectionId(parsed.id, filename);
+		const filePath = path.join(dir, filename);
+		const content = await readOverrideFile(readFile, filePath);
+		found.push({ id: parsed.id, mode: parsed.mode, path: filePath, content });
 	}
 	return found;
 }
@@ -190,9 +183,9 @@ async function readOverrideFile(readFile: (file: string) => Promise<string>, fil
 /**
  * Fold discovered files into an override map for `assembleDefaultTemplate`.
  *
- * Precedence is per section and mode. A project-level file beats a user-level
- * file for the same section and mode. Replace and append files compose because
- * replacement supplies the body and append extends that assembled section.
+ * Precedence is per section and mode: one file wins each `<section>:<mode>`
+ * pair. Replace and append files compose because replacement supplies the body
+ * and append extends that assembled section.
  *
  * Replacement files contain body text only. `resolveSectionOverrides` adds the
  * registry-owned banner. Append files are also body-only and follow whichever
@@ -208,10 +201,7 @@ export function applySectionOverrides(
 ): Partial<DefaultTemplateSections> {
 	const winner = new Map<string, SectionOverrideFile>();
 	for (const file of files) {
-		const key = `${file.id}:${file.mode}`;
-		const existing = winner.get(key);
-		if (existing && existing.level === "project" && file.level === "user") continue;
-		winner.set(key, file);
+		winner.set(`${file.id}:${file.mode}`, file);
 	}
 
 	const replacements: Record<string, string> = {};
