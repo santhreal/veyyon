@@ -28,7 +28,7 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
  * locally, and the dead key is dropped from the new entry rather than copied
  * forward. Keep this list — deleting it would strand those sessions.
  */
-export const LEGACY_REMOTE_PRESERVE_KEYS = ["openaiRemoteCompaction", "compactionV2"] as const;
+export * from "./legacy-provider-native";
 
 /**
  * Hard ceiling on a remote summarizer call. A hung connection or a body a
@@ -36,6 +36,18 @@ export const LEGACY_REMOTE_PRESERVE_KEYS = ["openaiRemoteCompaction", "compactio
  * forever (frozen maintenance spinner, manual `/compact` queued behind it).
  */
 export const REMOTE_COMPACTION_TIMEOUT_MS = 180_000;
+
+/**
+ * Bound the non-2xx body written into the log line below.
+ *
+ * `compaction.remoteEndpoint` points at whatever the operator configured, and a
+ * misconfigured one is the common case: a corporate proxy, a captive portal, or
+ * a plain web server in front of the intended summarizer answers with a whole
+ * HTML page. Uncapped, that page was written to `~/.veyyon/logs` in full on
+ * every compaction attempt of every turn. Matches the 4096-char cap the Google
+ * provider path uses for the same hazard.
+ */
+const MAX_REMOTE_ERROR_DETAIL_CHARS = 4096;
 
 export interface RemoteCompactionRequest {
 	systemPrompt: string;
@@ -107,10 +119,16 @@ export async function requestRemoteCompaction(
 			}
 		: { systemPrompt: request.systemPrompt, prompt: request.prompt };
 
+	// Cap first, then sanitize: the redactor scans the string it is given, so
+	// bounding the input also bounds that scan on a multi-megabyte HTML body.
 	const sanitizeErrorText = (text: string): string => {
-		if (!opts?.sanitizeErrorText) return text;
+		const capped =
+			text.length <= MAX_REMOTE_ERROR_DETAIL_CHARS
+				? text
+				: `${text.slice(0, MAX_REMOTE_ERROR_DETAIL_CHARS)} [truncated, ${text.length} chars total]`;
+		if (!opts?.sanitizeErrorText) return capped;
 		try {
-			const sanitized = opts.sanitizeErrorText(text);
+			const sanitized = opts.sanitizeErrorText(capped);
 			return typeof sanitized === "string" ? sanitized : "[redacted]";
 		} catch {
 			return "[redacted]";
@@ -167,15 +185,22 @@ export async function requestRemoteCompaction(
 					.map(part => part.text)
 					.join("");
 			}
-			if (typeof summary !== "string" || summary.length === 0) {
-				throw new Error("Remote compaction response missing choices[0].message.content");
+			// Whitespace counts as empty. The summary REPLACES the history it
+			// summarizes, so a blank one deletes the conversation and reports
+			// success. Same rule the local summarizer applies in `generateSummary`.
+			if (typeof summary !== "string" || summary.trim().length === 0) {
+				throw new Error(
+					"Remote compaction returned an empty summary in choices[0].message.content. The history was NOT compacted.",
+				);
 			}
 			return { summary };
 		}
 
 		const data = (await response.json()) as RemoteCompactionResponse | undefined;
-		if (!data || typeof data.summary !== "string") {
-			throw new Error("Remote compaction response missing summary");
+		if (!data || typeof data.summary !== "string" || data.summary.trim().length === 0) {
+			throw new Error(
+				"Remote compaction returned no usable summary text. The history was NOT compacted. Check that the endpoint returns JSON containing a non-empty `summary`.",
+			);
 		}
 
 		return data;

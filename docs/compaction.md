@@ -26,7 +26,8 @@ Compaction and branch summaries are first-class session entries, not plain assis
 
 - `CompactionEntry`
   - `type: "compaction"`
-  - `summary`, optional `shortSummary`
+  - `summary`, optional `shortSummary` (display only, and no longer produced by `compact()`: see
+    "Short summary" below)
   - `firstKeptEntryId` (compaction boundary)
   - `tokensBefore`
   - optional `details`, `preserveData`, `fromExtension`
@@ -43,15 +44,26 @@ When context is rebuilt (`buildSessionContext`):
 4. `branch_summary` entries are converted to `branchSummary` messages.
 5. `custom_message` entries are converted to `custom` messages.
 
-`convertToLlm()` transforms these custom roles into LLM-facing messages. `compactionSummary` and
-`branchSummary` become agent-attributed developer messages rendered through these static templates:
+`convertToLlm()` transforms these custom roles into LLM-facing messages, through these static
+templates:
 
 - `packages/agent/src/prompts/compaction/compaction-summary-context.md`
 - `packages/agent/src/prompts/compaction/branch-summary-context.md`
 
-The templates contain no private `<summary>` delimiters. A legacy or model-authored summary wrapper
-is removed before provider serialization. Image attachments use a user-compatible wire slot only
-when a provider rejects images in developer content. The summary text remains developer context.
+`branchSummary` becomes an agent-attributed **developer** message.
+
+`compactionSummary` becomes an agent-attributed **user** message. The role is the trust boundary: a
+compaction summary is model-generated history, so putting it in the user channel means it cannot
+outrank a live developer message that contradicts it. Any image attachments follow the summary text
+in the same message, which is also why the user slot is the safe one: every provider accepts images
+there.
+
+The compaction template wraps the summary in its own `<summary>` delimiters, so the untrusted region
+has an explicit start and end. Exactly one wrapper is ever emitted: a legacy or model-authored
+`<summary …>` wrapper persisted inside the summary text is stripped first
+(`withoutSummaryPresentationTags`), and embedded or sibling `<summary>` elements that are not one
+enclosing wrapper are left alone as content. The branch template uses no delimiters.
+
 Other `custom` messages pass through as developer messages with their raw content and no template.
 
 ## Compaction pipeline
@@ -60,7 +72,7 @@ Other `custom` messages pass through as developer messages with their raw conten
 
 Compaction/context maintenance can run in six ways:
 
-1. **Manual context compaction**: `/compact [summary|handoff] [focus]` calls `AgentSession.compact(...)`.
+1. **Manual context compaction**: `/compact [summary] [focus]` calls `AgentSession.compact(...)`.
 2. **Automatic overflow recovery**: after a same-model assistant error that matches context overflow.
 3. **Automatic incomplete-output recovery**: after a same-model assistant message ends with `stopReason === "length"` (OpenAI/Codex `response.incomplete`).
 4. **Automatic threshold maintenance**: after a successful turn when context exceeds the resolved threshold.
@@ -109,7 +121,7 @@ The automatic paths are intentionally different:
   - Trigger: current-model assistant error is detected as context overflow and the error is not older than the latest compaction.
   - The failing assistant error message is removed from active agent state before retry.
   - Context promotion is tried first; if a configured larger model is available, the agent switches model and retries without compacting.
-  - If promotion is unavailable and compaction is enabled, context-full compaction runs with `reason: "overflow"` and `willRetry: true`; handoff strategy is not used for overflow because the handoff request would reuse the overflowing input.
+  - If promotion is unavailable and compaction is enabled, in-place compaction runs with `reason: "overflow"` and `willRetry: true`.
   - On success, `agent.continue()` is scheduled to retry the turn.
 
 - **Incomplete-output recovery**
@@ -117,7 +129,6 @@ The automatic paths are intentionally different:
   - The incomplete assistant message is removed from active agent state before recovery.
   - Context promotion is tried first.
   - If promotion is unavailable and compaction is enabled, auto maintenance runs with `reason: "incomplete"` and `willRetry: true`.
-  - Unlike overflow, `compaction.strategy: "handoff"` is allowed for incomplete-output recovery because the input context is still usable.
   - On context-full success, `agent.continue()` is scheduled to retry the turn.
 
 - **Threshold maintenance**
@@ -126,30 +137,34 @@ The automatic paths are intentionally different:
   - Tool-output pruning can reduce the measured token count before threshold comparison.
   - Context promotion is tried before post-turn compaction.
   - If promotion is unavailable, auto maintenance runs with `reason: "threshold"` and `willRetry: false`.
-  - With `compaction.strategy: "handoff"`, post-turn threshold maintenance normally schedules a post-prompt auto-handoff task instead of writing a compaction entry; pre-prompt and mid-turn checks run inline to avoid racing the next turn. Mid-turn checks suppress handoff session resets and fall back to context-full compaction.
   - On success, if `compaction.autoContinue !== false`, post-turn maintenance schedules an agent-authored developer auto-continue prompt from `prompts/turn-control/auto-continue.md`; mid-turn maintenance never schedules a separate continuation because the core loop already owns the next provider request.
 
 - **Idle maintenance**
   - Trigger: `runIdleCompaction()` when not streaming or already compacting.
   - Uses `reason: "idle"` and does not auto-continue afterward.
 
-### What each strategy is for
+### Compaction and manual handoff
 
-The two strategies differ by what survives them, and their prompts say so.
+`summary` is the sole compaction strategy, and it continues the SAME session. The generated summary
+is prefixed onto a retained raw tail in one message array: `buildSessionContext` pushes the summary,
+then re-emits every entry from `firstKeptEntryId` onward verbatim. The tail is non-empty by
+construction, because `findCutPoint` walks backwards accumulating until `keepRecentTokens`
+(default 20000).
 
-`summary` continues the SAME session. The most recent turns stay in context next to the summary, so the summary covers the history it replaces and does not restate what those turns already say.
+Note that the summary prompt does not say any of that. Its opening line asks for "a structured
+handoff summary for another LLM to resume the task", which describes a cold restart that compaction
+does not perform. This is inherited from upstream, whose engine keeps the same recent tail, so the
+mismatch is upstream's rather than a fork difference. It is recorded here because a summarizer told
+it is writing for a fresh reader will restate turns that are still in context. Changing the prompt
+is an operator decision, not a fix to apply locally.
 
-`handoff` starts a NEW session. Nothing carries over except the document, so the handoff also records cold-restart state: working directory, branch, uncommitted or untracked files, the toolchain or wrapper commands the repository needs, and the exact next command to run.
+`/handoff` is a separate, explicit operation that starts a new session. Nothing carries over except
+its generated transfer document. Automatic compaction never selects or schedules a handoff.
 
-Both prompts ask for the same verification evidence, because that is the part of a transcript a paraphrase cannot reconstruct: commands run verbatim, pass/fail counts, durations, run IDs, and exact error text with file and line. The summary prompt also states the precedence between brevity and evidence. Prose is where the model is concise; evidence is where it is complete. When they conflict it drops the prose, because a command left out is a command the next turn has to rediscover by re-running it.
+### Legacy compaction strategies
 
-Both strategies end with the same deterministic `<files>` block, produced by `computeFileLists` and `upsertFileOperations` from the session's own file operations. It costs no model call and is identical whatever model ran, so it is the cheapest useful thing in either artifact.
-
-You can measure changes to any of this with `scripts/compaction-counterfactual.ts`, which replays one real session through both strategies on two models from a single shared `prepareCompaction()` result, so strategy and model are the only variables.
-
-### Legacy image-archive sessions
-
-An earlier version shipped a `snap` strategy that archived discarded history as dense bitmap images instead of an LLM summary. That engine is removed. `compaction.strategy` now offers two pure-LLM strategies, `summary` (the default) and `handoff`; any stored `snap` value normalizes to `summary` on load.
+Earlier versions offered `snap`, `handoff`, and other strategy values. They now
+migrate to `summary`. Legacy `off` also sets `compaction.enabled: false`.
 
 Sessions compacted by the old engine still open without loss. The removed engine always stored the full plaintext source alongside its image frames, so a legacy archive degrades gracefully:
 
@@ -160,9 +175,19 @@ Sessions compacted by the old engine still open without loss. The removed engine
 
 By default the live TUI collapses pre-compaction history: `display.collapseCompacted` defaults to `true`, so only the latest compacted tail renders live above the summary divider and the scrollback is cleared at the compaction point. Set `display.collapseCompacted` to `false` to keep the full **display transcript** inline instead (`buildSessionContext({ transcript: true })` / `AgentSession.buildTranscriptSessionContext()`): every path entry in chronological order, with each compaction shown as a slim divider, `── 📷 compacted · ctrl+o ──`, at the point it fired. Expanding (ctrl+o) reveals the summary. In the collapsed default the LLM context and the visible transcript reset together; in the inline mode only the LLM context resets, and the scrollback above the divider stays intact, including across session resume.
 
-### Pre-compaction pruning
+### Per-turn and pre-compaction pruning
 
-Before compaction checks, tool-result pruning may run (`pruneToolOutputs`).
+Two passes run from `AgentSession.#checkCompaction()`, after every completed turn, and both persist
+through `rewriteEntries()` so the session file matches the live context (`/fork`, `/tan` and resume
+read the file, and a divergent prefix cold-misses the provider prompt cache):
+
+1. **Stale-result pass** (`#pruneStaleToolResults` → `pruneSupersededToolResults`) runs first, before
+   any threshold gating, so it fires even with `compaction.enabled` off. It is skipped entirely when
+   both `compaction.supersedeReads` and `compaction.dropUseless` are false.
+2. **Threshold prune** (`#pruneToolOutputs` → `pruneToolOutputs`) runs only on the threshold path,
+   after the `compaction.enabled` / strategy check and after error turns are skipped, and only once
+   the turn has usable usage data. Its savings feed `postMaintenanceContextTokens`, which is the
+   trigger figure reported to the compaction it may schedule.
 
 Default prune policy:
 
@@ -175,7 +200,20 @@ Pruned tool results are replaced with:
 
 - `[Output truncated - N tokens]`
 
-If pruning changes entries, session storage is rewritten and agent message state is refreshed before compaction decisions.
+### Superseded-read elision
+
+Gated by `compaction.supersedeReads` (default on). When it is on, the stale-result pass keys every
+`read` result by `readToolSupersedeKey` (path plus selector grammar; a selector-free read supersedes
+range reads of the same base path, URL-scheme paths are exempt), and every result but the newest in
+a key group is blanked to the exact placeholder `[Superseded by a newer read of this file]`
+(`SUPERSEDED_NOTICE`). Turning the setting off passes no key function, so no read is ever grouped and
+every read result survives at full length.
+
+Blanking happens only where it is cheap: when the messages after the candidate total at most ~8k
+estimated tokens (`PRUNE_CACHE_WARM_SUFFIX_TOKENS`, the read→edit→read tail), or when the last
+message is at least 90 minutes old (`PRUNE_IDLE_FLUSH_MS`, past the 1h Anthropic "long" prompt-cache
+retention), in which case every still-sent candidate flushes at once. Entries before the latest
+compaction's `firstKeptEntryId` are summarized away and are never rewritten.
 
 ### Useless-result elision
 
@@ -187,29 +225,34 @@ Tools can flag a finished result as contextually useless, a search with zero mat
 
 The flag never reaches provider wire formats, and flagged pairs are never removed from history (only blanked in place), so tool-call/result pairing stays intact.
 
-### The overarching goal
+### What the summary prompts ask for
 
-All three compaction prompts (`compaction-summary`, `compaction-update-summary`, `handoff-document`) ask for the goal in one shape:
+`compaction-summary.md`, `compaction-update-summary.md`, and `compaction-summary-context.md` are
+oh-my-pi's text verbatim, by operator order, on the measurement that upstream scores higher on
+long-run evals. `packages/agent/test/compaction-strategy-contracts.test.ts` pins each one by
+SHA-256 and preflight runs it, so an unapproved edit fails the build instead of quietly changing
+summary quality. Approving a change means updating the digest in the same commit.
 
-```
-## Goal
-[The overarching goal for the whole session, carried forward unless the user changed it]
-Current task: [what is being worked on right now, which is allowed to change often]
-```
+Both prompts request the same ten sections, in the same order: `## Goal`,
+`## Constraints & Preferences`, `## Progress` (`### Done`, `### In Progress`, `### Blocked`),
+`## Key Decisions`, `## Next Steps`, `## Critical Context`, `## Additional Notes`. Sections may be
+omitted when they do not apply. The lists have to match, because iterative compaction feeds its own
+output back in: a section the update prompt failed to name would be dropped on every cycle.
 
-The two are separated because they move at different speeds. When they shared a single field the model wrote whichever goal was most concrete, which is always the immediate task, and the standing objective was never recorded at all. That is a defect at the first compaction rather than decay across many: once the wrong thing is written, every later cycle faithfully carries it forward.
+Both require exact file paths, function names, and error messages preserved rather than paraphrased,
+require repository state changes (branch, uncommitted changes) when mentioned, forbid any text
+outside the structured summary, and require an unanswered question to the user to survive. The
+initial prompt preserves that question verbatim; the update prompt files it into `## Critical
+Context`, replacing a previous pending question once it has been answered.
 
-Both strategies also carry a `Blocked` section. Handoff additionally carries `Pending`, for work nobody has started: summary is injected beside the live turns where that work is still visible, while handoff replaces everything and is the only one that has to carry it forward.
-
-`compaction-update-summary` is the prompt that matters most here, because it runs on every compaction after the first. It lets the model drop anything no longer relevant, and the overarching goal is carved out of that permission explicitly: it is removed only when the user replaces it.
-
-You do not need to pin the goal or store it as a field. Each compaction sees the previous summary alongside the live recent turns, so it is re-grounded against reality every cycle rather than copied blind, and a goal that is still active keeps being restated by the work itself.
+`## Goal` is a single undifferentiated field: the prompts do not separate a durable overarching goal
+from the current task, and only `handoff-document.md` still draws that line. The update prompt also
+instructs the model to preserve all information from the previous summary and permits removing only
+what is no longer relevant, so iterative compaction accumulates rather than replacing drift.
 
 ### Empty responses
 
-Neither strategy accepts an empty document. A provider can finish with `stopReason: "stop"` having spent its output budget on reasoning and emitted no text, and both call sites now raise rather than return.
-
-This matters more than an ordinary request failure. For `handoff` the caller appends the deterministic `<files>` block afterwards, so an empty document still looks like a real one and the next session starts with a file list and nothing else. For `summary` the summary replaces the history it summarizes, so storing an empty one deletes the conversation and reports success. If you hit this repeatedly, lower the compaction thinking level so the model spends its budget on the document instead of on reasoning.
+Neither a compaction summary nor an explicit handoff document may be empty. A provider can finish with `stopReason: "stop"` after spending its output budget on reasoning and emit no text. Both call sites raise instead of persisting an empty artifact. Lower the compaction thinking level if this repeats so the model spends its budget on the document.
 
 ### Boundary and cut-point logic
 
@@ -274,12 +317,22 @@ Prompt selection:
 - first compaction: `compaction-summary.md`
 - iterative compaction with prior summary: `compaction-update-summary.md`
 - split-turn second pass: `compaction-turn-prefix.md`
-- short UI summary: `compaction-short-summary.md`
-- handoff document: `handoff-document.md` (used by `generateHandoff(...)`, not serialized compaction)
+- handoff document: `handoff-document.md` (used only by explicit `generateHandoff(...)`, not serialized compaction)
+
+### Short summary
+
+`CompactionEntry.shortSummary` is a display-only, pull-request-style line. `compact()` no longer
+generates one: a second model request per compaction, spent on text the model never reads, is not
+worth the input cost. Every reader stays, because compaction hooks still set the field and sessions
+written before the change still carry it.
+
+Its one display consumer is the session-listing title fallback (`title: header.title ?? shortSummary`
+in `packages/coding-agent/src/session/session-listing.ts`), which veyyon reaches only when its own
+tiny-model titler declined: `VEYYON_NO_TITLE` set, or a first message too low-signal to title from.
+In that case the session picker falls back again to the first user message, so nothing renders blank.
 
 Remote summarizer endpoint:
 
-Compaction has two strategies, `summary` and `handoff`, and no provider gets a private compaction path. `compaction.remoteEndpoint` does not add a third strategy: it moves where the `summary` strategy's text is generated. Whatever it points at must return summary text, which veyyon stores exactly like a locally generated summary.
 
 - When `compaction.remoteEndpoint` is set, summary generation POSTs one of two wire formats:
   - custom veyyon summarizer endpoints receive `{ systemPrompt, prompt }` and must return JSON containing at least `{ summary }`.
@@ -308,7 +361,7 @@ Cumulative behavior:
 - In split turns, includes turn-prefix file ops too.
 - `details.readFiles` excludes files also modified; `details.modifiedFiles` carries the rest (persisted shape is unchanged).
 
-The file list is a grouped, prefix-folded directory tree (find-tool shape) with a per-file access marker, `(Read)` for read-only files, `(Write)` for modified files never read, `(RW)` for modified files also present in the cumulative read set. Capped at 20 files with an `[…N files elided…]` line. Both strategies append it as a `<files>` tag (via `upsertFileOperations`).
+The file list is a grouped, prefix-folded directory tree (find-tool shape) with a per-file access marker, `(Read)` for read-only files, `(Write)` for modified files never read, `(RW)` for modified files also present in the cumulative read set. Capped at 20 files with an `[…N files elided…]` line. Compaction and explicit handoff append it as a `<files>` tag (via `upsertFileOperations`).
 
 ```xml
 <files>
@@ -324,9 +377,9 @@ Legacy `<read-files>`/`<modified-files>` tags from summaries written by earlier 
 
 ### Persist and reload
 
-After summary generation (or hook-provided summary), agent session:
+After summary generation (or a hook-provided summary), agent session:
 
-1. Appends `CompactionEntry` with `appendCompaction(...)` for context-full maintenance; handoff strategy creates a new session and injects a handoff `custom_message` instead.
+1. Appends a `CompactionEntry` with `appendCompaction(...)`.
 2. Rebuilds display context from the active leaf via `buildDisplaySessionContext()`.
 3. Replaces live agent messages with rebuilt context.
 4. Synchronizes active todo phases from the rebuilt branch and closes provider sessions whose history was rewritten.
@@ -453,7 +506,7 @@ Post-navigation event exposing new/old leaf and optional summary entry.
 From `settings-schema.ts`:
 
 - `compaction.enabled` = `true`
-- `compaction.strategy` = `"summary"` (schema: `"summary"` | `"handoff"`; default `"summary"`). Summary rewrites old history into an in-place LLM summary; handoff uses an LLM transfer into a new session. A stored `snap` from the removed image-archive engine normalizes to `summary` on load.
+- `compaction.strategy` = `"summary"`, the sole strategy. Every stored legacy strategy token migrates to `summary`; legacy `off` also sets `compaction.enabled: false`. Use `/handoff` for an explicit transfer to a new session.
 - `compaction.reserveTokens` = unset (absent key). When unset the compaction layer falls back to `DEFAULT_RESERVE_TOKENS` = `16384`, and small-window recovery may substitute a proportional 15%-of-window reserve when the default does not fit the window (`resolveBudgetReserveTokens`).
 - `compaction.keepRecentTokens` = `20000`
 - `compaction.supersedeReads` = `true` (drop earlier file reads that a later read of the same file makes redundant)

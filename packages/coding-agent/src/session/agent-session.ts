@@ -79,6 +79,12 @@ import {
 	stripLegacyArchive,
 	upsertFileOperations,
 } from "@veyyon/agent-core/compaction";
+import {
+	DEFAULT_PRUNE_CONFIG,
+	pruneSupersededToolResults,
+	pruneToolOutputs,
+	readToolSupersedeKey,
+} from "@veyyon/agent-core/compaction/pruning";
 import type { ProtectedToolMatcher } from "@veyyon/agent-core/compaction/tool-protection";
 import type {
 	AssistantMessage,
@@ -324,6 +330,7 @@ import { sideChannelPrompts } from "../prompts/side-channel/rows";
 import { steeringPrompts } from "../prompts/steering/rows";
 import { turnControlPrompts } from "../prompts/turn-control/rows";
 import { transformProviderPayload } from "../provider-boundary";
+import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry } from "../registry/agent-registry";
 import { noteSecretsCondition } from "../secrets/notices";
 import {
@@ -366,7 +373,8 @@ import {
 	isMCPToolName,
 	selectDiscoverableToolNamesByServer,
 } from "../tool-discovery/tool-index";
-import { validateApprovalModeSetting } from "../tools/approval";
+import { resolveEffectiveApprovalMode, validateApprovalModeSetting } from "../tools/approval";
+import type { ApprovalMode, SessionToolApprovals } from "../tools/approval-modes";
 import { assertEditableFile } from "../tools/auto-generated-guard";
 import { normalizeToolNames, TOOL } from "../tools/builtin-names";
 import type { CheckpointState, CompletedRewindState } from "../tools/checkpoint";
@@ -377,11 +385,12 @@ import { isAutoQaEnabled } from "../tools/report-tool-issue";
 import { buildResolveReminderMessage, type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
 import {
 	boundedTodoPreviewText,
-	getLatestTodoPhasesSnapshotFromEntries,
+	getLatestTodoPhasesFromEntries,
 	prioritizeTodoItems,
 	TODO_ITEM_PREVIEW_WIDTH,
 	type TodoItem,
 	type TodoPhase,
+	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "../tools/todo";
 import { ToolAbortError, ToolError } from "../tools/tool-errors";
 import { clampTimeout } from "../tools/tool-timeouts";
@@ -405,16 +414,6 @@ import {
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
 import { findCompactMode } from "./compact-modes";
-import {
-	COMPACTION_CONTINUITY_MESSAGE_TYPE,
-	type CompactionContinuityStateV1,
-	captureContinuityStateV1,
-	inspectContinuityStateV1,
-	renderContinuityStateV1,
-	shouldRestoreContinuityTodos,
-	upsertContinuityStateV1,
-	writeContinuityStateV1,
-} from "./compaction-continuity";
 import { type ContentBlockLike, contentText } from "./content-text";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
@@ -485,7 +484,6 @@ import { YieldQueue } from "./yield-queue";
 const SESSION_STOP_CONTINUATION_CAP = 8;
 const PLAN_MODE_REMINDER_MAX = 3;
 const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
-const COMPACTION_EXCLUDED_CUSTOM_MESSAGE_TYPES: ReadonlySet<string> = new Set([COMPACTION_CONTINUITY_MESSAGE_TYPE]);
 
 /**
  * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
@@ -786,7 +784,6 @@ const COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION: CompactionCheckResult = {
 	continuationScheduled: false,
 	automaticContinuationBlocked: true,
 };
-const CONTINUITY_TEXT_CHAR_LIMIT = 12_000;
 
 /**
  * User-facing notice for a compaction dead end: maintenance freed too little
@@ -825,6 +822,23 @@ const PROMPT_AFFECTING_SETTING_PATHS: Readonly<Record<string, true>> = {
 	"subagent.maxConcurrency": true,
 	"subagent.maxNestedSpawnDepth": true,
 };
+
+/**
+ * Per-turn prune cache window. A tool result whose all-message suffix exceeds
+ * this is in the warm, already-sent prompt-cache prefix: re-writing it costs the
+ * cacheWrite premium on the whole suffix. Per-turn passes only reclaim inside
+ * this tail (matches the supersede pass's default `suffixTokenLimit`); deeper
+ * stale/age victims are left to compaction/shake, which rebuild the cache anyway.
+ */
+const PRUNE_CACHE_WARM_SUFFIX_TOKENS = 8_000;
+
+/**
+ * Idle gap after which the supersede pass may flush the whole sent region (the
+ * provider cache is cold, so re-writing it is free). MUST exceed the maximum
+ * Anthropic prompt-cache TTL: "long" retention (the OAuth default) is 1h, or a
+ * still-warm prefix is busted by the flush. 90 min leaves margin over the 1h TTL.
+ */
+const PRUNE_IDLE_FLUSH_MS = 90 * 60_000;
 /**
  * How long a headless `shutdown()` waits for `dispose()` to flush before it
  * exits anyway. Long enough for a session-log write, short enough that a wedged
@@ -1969,6 +1983,21 @@ export class AgentSession {
 	 * next tool call.
 	 */
 	#approvalBypassActive = false;
+	/**
+	 * Per-tool decisions the operator made at an interactive approval prompt and
+	 * asked to keep ("Always allow" / "Always deny").
+	 *
+	 * Session-scoped and never persisted, which is the whole point: a standing
+	 * grant written to `tools.approval` outlives the task it was granted for and
+	 * is invisible next week. This one dies with the session, so the next launch
+	 * asks again.
+	 *
+	 * Without it the `ask` ladder is unusable rather than safe: a run that edits
+	 * twenty files asks twenty times, and an operator who has to answer that many
+	 * prompts turns the whole thing off, which is how a default that "asks"
+	 * becomes a default that yolos.
+	 */
+	readonly #sessionToolApprovals = new Map<string, "allow" | "deny">();
 
 	// Context window we last reported a surprising compaction threshold for — a
 	// capped absolute amount, a value still coming from a retired key, or an
@@ -2091,6 +2120,43 @@ export class AgentSession {
 	/** Fingerprint of the last rendered incomplete state; unchanged retries omit the list. */
 	#lastTodoReminderFingerprint: string | undefined = undefined;
 	/**
+	 * Error text of the most recent `todo` result that failed, cleared by the
+	 * next one that succeeds. While it is set the board write never landed, so
+	 * the recorded phases describe a state the session cannot vouch for and no
+	 * reminder may assert a count from them.
+	 *
+	 * Cleared with the reminder counters at every lifecycle boundary that starts
+	 * a new context (new session, `/clear`, resume, handoff): the latch names one
+	 * specific write against one specific board, and those boundaries replace the
+	 * board, so carrying it across is a claim about a transcript that is gone.
+	 * Without that reset one failure disabled todo continuation pressure for the
+	 * rest of the process, and the repeated-failure instruction tells the model to
+	 * stop calling `todo`, so no later success would ever clear it.
+	 *
+	 * Deliberately NOT expired on a turn count or a timer. The latch is not a
+	 * cooldown; it records that the board is unverified, and nothing but a landed
+	 * write or a discarded board makes it verified again. Ageing it out would just
+	 * resume asserting "you stopped with N incomplete items" from the same stale
+	 * phases, which is the false statement the suppression exists to prevent.
+	 */
+	#lastTodoFailureText: string | undefined = undefined;
+	/**
+	 * Id of the newest `compaction` entry ON THE ACTIVE BRANCH at the moment a
+	 * stop-time reminder last echoed the full todo list, `null` when the branch
+	 * held none, and `undefined` before the first echo of this session.
+	 *
+	 * The compaction entry is the boundary of the model's current context
+	 * window, and every path that compacts (manual `/compact`, and idle,
+	 * threshold, overflow and incomplete auto-compaction, which all funnel
+	 * through one `appendCompaction` call) persists one, so this is the signal a
+	 * per-window latch should key off rather than a turn count. A differing id
+	 * means the previous echo scrolled out of context and the next reminder may
+	 * spend a fresh echo. Cleared with the reminder counters at every lifecycle
+	 * boundary that starts a new window (new session, handoff, reminders
+	 * re-enabled), since the latch describes one window only.
+	 */
+	#todoReminderEchoCompactionId: string | null | undefined = undefined;
+	/**
 	 * Successful mutating tool results (bash/eval/edit/write/ast_edit) since the
 	 * agent last touched the `todo` tool. Drives {@link #takeMidRunTodoNudge} so
 	 * the live HUD stays in sync with actual progress instead of flipping
@@ -2106,7 +2172,6 @@ export class AgentSession {
 	#planModeReminderCount = 0;
 	#planModeReminderAwaitingProgress = false;
 	#todoPhases: TodoPhase[] = [];
-	#hasPersistedTodoSnapshot = false;
 	#replanTitleRefreshInFlight: Promise<void> | undefined = undefined;
 	/** Resolved TITLE_SYSTEM.md override applied to every automatic session-title
 	 *  generation path. Refresh via {@link AgentSession.setTitleSystemPrompt} when
@@ -3132,8 +3197,6 @@ export class AgentSession {
 		this.agent.providerSessionState = this.#providerSessionState;
 		this.#syncAgentSessionId();
 		this.#syncTodoPhasesFromBranch();
-		const restoredContinuity = this.#latestContinuityState();
-		if (restoredContinuity) this.#restoreContinuityState(restoredContinuity, false);
 		this.#goalRuntime = new GoalRuntime({
 			getState: () => this.#goalModeState,
 			setState: state => {
@@ -3203,6 +3266,7 @@ export class AgentSession {
 				this.#todoReminderCount = 0;
 				this.#todoReminderAwaitingProgress = false;
 				this.#lastTodoReminderFingerprint = undefined;
+				this.#todoReminderEchoCompactionId = undefined;
 			}
 			if (PROMPT_AFFECTING_SETTING_PATHS[path] !== true) return;
 			this.#promptRefresh = this.#promptRefresh
@@ -3877,9 +3941,7 @@ export class AgentSession {
 			this.sessionId,
 			advisor.slug,
 		);
-		const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings), {
-			excludedCustomMessageTypes: COMPACTION_EXCLUDED_CUSTOM_MESSAGE_TYPES,
-		});
+		const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings));
 		if (!preparation) {
 			// Cannot prepare compaction, fallback to re-prime
 			return true;
@@ -4317,6 +4379,83 @@ export class AgentSession {
 		for (const descendant of AgentRegistry.global().descendantsOf(this.#agentId)) {
 			manager.cancelAll({ ownerId: descendant });
 		}
+	}
+
+	/**
+	 * Re-root this session in the agent registry after it has moved to a
+	 * different transcript, and release the subagents of the conversation it
+	 * left.
+	 *
+	 * The registry is process-global and, until this existed, nothing ever told
+	 * it that a conversation had ended. `/new` and `/resume` swap the transcript
+	 * under the same `AgentSession`, so every subagent of the previous
+	 * conversation stayed registered: the Agent Control Center listed them, `irc
+	 * list` offered them as peers, and messaging one woke an agent whose replies
+	 * were written into a transcript the operator had already left. That is the
+	 * "agents from other sessions" symptom, and it is a leak as much as a
+	 * display bug — a parked ref holds its session file, and a live one holds a
+	 * whole `AgentSession`.
+	 *
+	 * Order matters. Release the descendants BEFORE the re-scope, so they are
+	 * disposed while they still resolve as this agent's subtree; re-scoping first
+	 * would leave them parented to a scope nothing walks. Their async jobs are
+	 * already cancelled by the caller's `#cancelOwnAsyncJobs`, which walks the
+	 * same subtree.
+	 *
+	 * A release that throws is logged and skipped rather than failing the
+	 * session switch: a subagent that cannot be disposed must not strand the
+	 * operator between two conversations.
+	 */
+	async #rescopeAgentRegistry(): Promise<void> {
+		const id = this.#agentId;
+		if (!id) return;
+		const registry = AgentRegistry.global();
+		const self = registry.get(id);
+		if (!self) return;
+		const endingScope = self.scope;
+		const descendants = registry.descendantsOf(id);
+		if (descendants.length > 0) {
+			const lifecycle = AgentLifecycleManager.global();
+			await Promise.all(
+				descendants.map(async child => {
+					try {
+						await lifecycle.release(child);
+					} catch (error) {
+						logger.warn("Failed to release a subagent of the previous conversation", {
+							agentId: child,
+							error: String(error),
+						});
+					}
+				}),
+			);
+		}
+		// The traffic goes whether or not anything was still registered to release.
+		// Guarding this on `descendants.length` was wrong in the COMMON case: a
+		// subagent that finished and aged out, or was disposed, is already
+		// unregistered by the time the operator types `/new`, so the walk returns
+		// nothing and the entire previous conversation's log survived in the
+		// process-global bus. The new session's Comms pane then opened on the old
+		// one's chatter, because every one of those lines has this still-in-scope
+		// agent at one end.
+		//
+		// Forget this agent's own legs too. `forgetAgents` drops a line when
+		// EITHER endpoint is named, and every line of the conversation that just
+		// ended has either a released child or this agent on it.
+		IrcBus.global().forgetAgents([...descendants, id]);
+		// Standing approval grants die with the conversation they were given in.
+		// "Allow bash for this session" is an answer about the work in front of
+		// you, and `/new` or `/resume` replaces that work entirely; carrying the
+		// grant across meant a permission granted for one task silently governed
+		// the next one, on a store that is deliberately never persisted precisely
+		// so it cannot outlive its context.
+		this.#sessionToolApprovals.clear();
+		registry.rescope(id, this.sessionManager.getSessionId?.() ?? undefined);
+		logger.debug("Re-rooted the agent registry for a new conversation", {
+			agentId: id,
+			from: endingScope,
+			to: registry.get(id)?.scope,
+			released: descendants.length,
+		});
 	}
 
 	/**
@@ -5549,24 +5688,35 @@ export class AgentSession {
 					isError?: boolean;
 					content?: Array<TextContent | ImageContent>;
 				};
-				if (toolName === TOOL.todo && isError) {
-					const errorText = content?.find(part => part.type === "text")?.text;
-					const reminderText = [
-						"<system-reminder>",
-						"todo failed, so todo progress is not visible to the user.",
-						errorText ? `Failure: ${errorText}` : "Failure: todo returned an error.",
-						"Fix the todo payload and call todo again before continuing.",
-						"</system-reminder>",
-					].join("\n");
-					await this.sendCustomMessage(
-						{
-							customType: "todo-error-reminder",
-							content: reminderText,
-							display: false,
-							details: { toolName, errorText },
-						},
-						{ deliverAs: "nextTurn" },
-					);
+				if (toolName === TOOL.todo) {
+					const errorText = isError ? (content?.find(part => part.type === "text")?.text ?? "") : undefined;
+					if (errorText === undefined) {
+						// A landed write makes the board authoritative again.
+						this.#lastTodoFailureText = undefined;
+					} else {
+						const repeated = errorText === this.#lastTodoFailureText;
+						this.#lastTodoFailureText = errorText;
+						const reminderText = [
+							"<system-reminder>",
+							"todo failed, so todo progress is not visible to the user and the recorded board may be stale.",
+							errorText ? `Failure: ${errorText}` : "Failure: todo returned an error.",
+							// Repeating "call todo again" after an identical failure asks for a
+							// call that already proved impossible, and each attempt costs a turn.
+							repeated
+								? "This is the same failure as the previous todo call, so retrying that payload cannot succeed. Treat todo as unusable for the rest of this turn and continue the work without it."
+								: "Fix the todo payload and call todo again before continuing.",
+							"</system-reminder>",
+						].join("\n");
+						await this.sendCustomMessage(
+							{
+								customType: "todo-error-reminder",
+								content: reminderText,
+								display: false,
+								details: { toolName, errorText },
+							},
+							{ deliverAs: "nextTurn" },
+						);
+					}
 				}
 				if (toolName === TOOL.checkpoint && !isError) {
 					const checkpointEntryId = this.sessionManager.getEntries().at(-1)?.id ?? null;
@@ -8386,9 +8536,9 @@ export class AgentSession {
 	 * When the user has explicitly opted into `yolo` / auto-approve behavior (via
 	 * the SDK/CLI `autoApprove` flag or a configured `tools.approvalMode: yolo`),
 	 * skips the gate unless the per-tool policy explicitly requires a prompt or
-	 * deny. The schema default is also `yolo`, so an explicit configuration or
-	 * explicit session flag is required: default-config ACP sessions keep the
-	 * client-side permission gate.
+	 * deny. The schema default is `auto`, not `yolo`, so an explicit
+	 * configuration or explicit session flag is required: default-config ACP
+	 * sessions keep the client-side permission gate.
 	 */
 	#wrapToolForAcpPermission<T extends AgentTool>(tool: T): T {
 		const bridge = this.#clientBridge;
@@ -8497,6 +8647,28 @@ export class AgentSession {
 		);
 	}
 
+	/**
+	 * The approval rung this session is ACTUALLY enforcing, which is not always
+	 * the one stored in `tools.approvalMode`.
+	 *
+	 * Two things outrank the configured value and both are invisible to a caller
+	 * that only reads settings: `--yolo` / `--auto-approve` forces `yolo` for the
+	 * whole run, and an active plan session caps to `plan`. Every surface that
+	 * NAMES the rung to the operator has to ask this instead, or it states the
+	 * opposite of what the tool wrapper will do — `veyyon --yolo` plus
+	 * `/permissions ask` reported "Ask all" on the status line and in the command
+	 * output while every tool ran unasked.
+	 *
+	 * This is the same resolution the wrapper performs, called through the same
+	 * function, so the label and the behaviour cannot drift.
+	 */
+	effectiveApprovalMode(): ApprovalMode {
+		return resolveEffectiveApprovalMode(this.settings.get("tools.approvalMode"), {
+			planModeActive: this.getPlanModeState()?.enabled === true,
+			cliAutoApprove: this.#autoApprove,
+		});
+	}
+
 	/** Whether the `/yolo` full-bypass is currently active for this session. */
 	isApprovalBypassed(): boolean {
 		return this.#approvalBypassActive;
@@ -8511,6 +8683,24 @@ export class AgentSession {
 	setApprovalBypass(enabled: boolean): boolean {
 		this.#approvalBypassActive = enabled;
 		return this.#approvalBypassActive;
+	}
+
+	/**
+	 * The session's standing per-tool approval decisions, handed to the tool
+	 * wrapper so an "Always allow" answered once is not asked again this session.
+	 *
+	 * Returned as an accessor pair rather than the Map: the wrapper reads and
+	 * writes exactly two operations, and handing out the collection invites a
+	 * caller to clear it or iterate it into a settings file, which is the one
+	 * thing this store must never do (see `#sessionToolApprovals`).
+	 */
+	sessionToolApprovals(): SessionToolApprovals {
+		return {
+			get: toolName => this.#sessionToolApprovals.get(toolName),
+			set: (toolName, decision) => {
+				this.#sessionToolApprovals.set(toolName, decision);
+			},
+		};
 	}
 
 	async #applyActiveToolsByName(
@@ -11034,6 +11224,26 @@ export class AgentSession {
 		}
 	}
 
+	/**
+	 * Drop every piece of todo-reminder state that describes the context being
+	 * left. Called from each boundary that starts a new one: `newSession`
+	 * (`/new` and `/clear` both route through it), handoff, and resume.
+	 *
+	 * One function rather than four copies of the same five assignments, because
+	 * the copies were what let {@link #lastTodoFailureText} survive a `/new`: it
+	 * was added later and never appeared in any of them, so a single failed todo
+	 * write silenced every reminder for the rest of the process.
+	 */
+	#resetTodoReminderStateForNewContext(): void {
+		this.#todoReminderCount = 0;
+		this.#todoReminderAwaitingProgress = false;
+		this.#lastTodoReminderFingerprint = undefined;
+		this.#todoReminderEchoCompactionId = undefined;
+		this.#lastTodoFailureText = undefined;
+		this.#mutationsSinceLastTodoTouch = 0;
+		this.#midRunNudgeCount = 0;
+	}
+
 	#isTodoInitResult(details: Record<string, unknown>, toolCallId: string | undefined): boolean {
 		const detailOp = getStringProperty(details, "op");
 		if (detailOp) return detailOp === "init";
@@ -11120,9 +11330,7 @@ export class AgentSession {
 	}
 
 	#syncTodoPhasesFromBranch(): void {
-		const snapshot = getLatestTodoPhasesSnapshotFromEntries(this.sessionManager.getBranch());
-		this.#hasPersistedTodoSnapshot = snapshot.found;
-		this.setTodoPhases(snapshot.phases);
+		this.setTodoPhases(getLatestTodoPhasesFromEntries(this.sessionManager.getBranch()));
 	}
 
 	#cloneTodoPhases(phases: TodoPhase[]): TodoPhase[] {
@@ -11271,6 +11479,9 @@ export class AgentSession {
 			await this.sessionManager.flush();
 		}
 		await this.sessionManager.newSession(options);
+		// The transcript changed under this session, so its subagents belong to a
+		// conversation the operator has left. Release them and re-root this ref.
+		await this.#rescopeAgentRegistry();
 
 		this.#clearCheckpointRuntimeState();
 		this.setTodoPhases([]);
@@ -11296,10 +11507,7 @@ export class AgentSession {
 			this.#getConfiguredDefaultSelectedMCPToolNames(),
 		);
 
-		this.#todoReminderCount = 0;
-		this.#todoReminderAwaitingProgress = false;
-		this.#mutationsSinceLastTodoTouch = 0;
-		this.#midRunNudgeCount = 0;
+		this.#resetTodoReminderStateForNewContext();
 		this.#planReferenceSent = false;
 		this.#planReferencePath = DEFAULT_PLAN_FILE_URL;
 		this.#resetAdvisorSessionState();
@@ -12028,6 +12236,82 @@ export class AgentSession {
 	}
 
 	/**
+	 * Threshold-time overflow prune: blank the oldest tool results outside the
+	 * protect-recent window, plus any result its tool flagged contextually
+	 * useless. Runs before the threshold comparison so a turn that pruning alone
+	 * can bring back under the trigger never pays for a summarization request.
+	 */
+	async #pruneToolOutputs(): Promise<{ prunedCount: number; tokensSaved: number } | undefined> {
+		const branchEntries = this.sessionManager.getBranch();
+		const keepBoundaryId = getLatestCompactionEntry(branchEntries)?.firstKeptEntryId;
+		const result = pruneToolOutputs(
+			branchEntries,
+			this.#withPlanProtection({
+				...DEFAULT_PRUNE_CONFIG,
+				pruneUseless: this.settings.getGroup("compaction").dropUseless,
+				// Cache-stable boundary: never re-write the warm, already-sent prefix
+				// (deep stale/age victims) or summarized-away entries every turn.
+				keepBoundaryId,
+				cacheWarmSuffixTokens: PRUNE_CACHE_WARM_SUFFIX_TOKENS,
+			}),
+		);
+		if (result.prunedCount === 0) {
+			return undefined;
+		}
+
+		await this.sessionManager.rewriteEntries();
+		const sessionContext = this.buildDisplaySessionContext();
+		this.agent.replaceMessages(sessionContext.messages);
+		this.#resetAllAdvisorRuntimes();
+		this.#syncTodoPhasesFromBranch();
+		this.#closeCodexProviderSessionsForHistoryRewrite();
+		return result;
+	}
+
+	/**
+	 * Per-turn stale-result pass: prune older `read` results that a newer read
+	 * of the same file has made stale, plus results their tool flagged
+	 * contextually useless. Cache-aware (only fires when the suffix after a
+	 * candidate is small or the session has been idle long enough that the
+	 * provider prompt cache is cold), so it is cheap to run every turn. Gated
+	 * on the `compaction.supersedeReads` and `compaction.dropUseless` settings.
+	 *
+	 * Persists via `rewriteEntries` like every other history rewrite: the
+	 * session file must match the live (pruned) context or file-based forks
+	 * (`/fork`, `/tan`) and resume rebuild a divergent prefix and cold-miss the
+	 * provider prompt cache.
+	 */
+	async #pruneStaleToolResults(): Promise<{ prunedCount: number; tokensSaved: number } | undefined> {
+		const { supersedeReads, dropUseless } = this.settings.getGroup("compaction");
+		if (!supersedeReads && !dropUseless) return undefined;
+		const branchEntries = this.sessionManager.getBranch();
+		const keepBoundaryId = getLatestCompactionEntry(branchEntries)?.firstKeptEntryId;
+		const result = pruneSupersededToolResults(
+			branchEntries,
+			this.#withPlanProtection({
+				supersedeKey: supersedeReads ? readToolSupersedeKey : undefined,
+				pruneUseless: dropUseless,
+				protectedTools: [...DEFAULT_PRUNE_CONFIG.protectedTools],
+				// Never re-write summarized-away entries; only flush the whole sent
+				// region once the cache is genuinely cold (idle exceeds the 1h TTL).
+				keepBoundaryId,
+				idleFlushMs: PRUNE_IDLE_FLUSH_MS,
+			}),
+		);
+		if (result.prunedCount === 0) {
+			return undefined;
+		}
+
+		await this.sessionManager.rewriteEntries();
+		const sessionContext = this.buildDisplaySessionContext();
+		this.agent.replaceMessages(sessionContext.messages);
+		this.#resetAllAdvisorRuntimes();
+		this.#syncTodoPhasesFromBranch();
+		this.#closeCodexProviderSessionsForHistoryRewrite();
+		return result;
+	}
+
+	/**
 	 * Strip image content blocks from every message on the current branch and
 	 * persist the rewrite. Walks `SessionManager.getBranch()` in place — both
 	 * `SessionMessageEntry.message` and `CustomMessageEntry.content` arrays
@@ -12233,132 +12517,6 @@ export class AgentSession {
 		}
 	}
 
-	#latestContinuityState(): CompactionContinuityStateV1 | undefined {
-		const branch = this.sessionManager.getBranch();
-		for (let index = branch.length - 1; index >= 0; index--) {
-			const entry = branch[index]!;
-			if (entry.type === "compaction") {
-				const inspected = inspectContinuityStateV1(entry.preserveData);
-				if (inspected.status === "valid") return inspected.state;
-				if (inspected.status === "invalid") return undefined;
-				continue;
-			}
-			if (entry.type === "custom_message" && entry.customType === COMPACTION_CONTINUITY_MESSAGE_TYPE) {
-				const inspected = inspectContinuityStateV1(isRecord(entry.details) ? entry.details : undefined);
-				return inspected.status === "valid" ? inspected.state : undefined;
-			}
-		}
-		return undefined;
-	}
-
-	#continuityUserSources(): Array<{ text: string; entryId?: string }> {
-		const persistedSources: Array<{ text: string; entryId: string }> = [];
-		const persistedIdsByText = new Map<string, string[]>();
-		for (const entry of this.sessionManager.getBranch()) {
-			if (entry.type !== "message" || entry.message.role !== "user" || entry.message.attribution === "agent") {
-				continue;
-			}
-			const rawText = contentText(entry.message.content, { trimBlocks: true, trimString: true }).trim();
-			if (!rawText) continue;
-			const text =
-				rawText.length <= CONTINUITY_TEXT_CHAR_LIMIT
-					? rawText
-					: `${rawText.slice(0, CONTINUITY_TEXT_CHAR_LIMIT)}\n[continuity source truncated]`;
-			persistedSources.push({ text, entryId: entry.id });
-			const ids = persistedIdsByText.get(rawText);
-			if (ids) ids.push(entry.id);
-			else persistedIdsByText.set(rawText, [entry.id]);
-		}
-
-		const activeSources: Array<{ text: string; entryId?: string }> = [];
-		for (const message of this.agent.state.messages) {
-			if (message.role !== "user" || message.attribution === "agent") continue;
-			const rawText = contentText(message.content, { trimBlocks: true, trimString: true }).trim();
-			if (!rawText) continue;
-			const entryId = persistedIdsByText.get(rawText)?.shift();
-			activeSources.push({
-				text:
-					rawText.length <= CONTINUITY_TEXT_CHAR_LIMIT
-						? rawText
-						: `${rawText.slice(0, CONTINUITY_TEXT_CHAR_LIMIT)}\n[continuity source truncated]`,
-				...(entryId ? { entryId } : {}),
-			});
-		}
-		return activeSources.length > 0 ? activeSources : persistedSources;
-	}
-
-	#captureContinuityState(fileOps?: CompactionPreparation["fileOps"]): CompactionContinuityStateV1 {
-		const previous = this.#latestContinuityState();
-		const userSources = this.#continuityUserSources();
-		const firstUserSource = userSources[0];
-		const latestUserSource = userSources.at(-1);
-		const computedFileLists = fileOps ? computeFileLists(fileOps) : undefined;
-		const changedPaths = computedFileLists
-			? { read: computedFileLists.readFiles, modified: computedFileLists.modifiedFiles }
-			: (previous?.changedPaths ?? { read: [], modified: [] });
-		const activeGoal = this.#goalModeState?.goal;
-		const previousMacroContract = previous?.macroContract;
-		const macroContract =
-			previousMacroContract &&
-			(previousMacroContract.sourceEntryIds.length > 0 ||
-				!firstUserSource ||
-				previousMacroContract.text !== firstUserSource.text)
-				? previousMacroContract
-				: firstUserSource
-					? {
-							text: firstUserSource.text,
-							sourceEntryIds: firstUserSource.entryId ? [firstUserSource.entryId] : [],
-						}
-					: (previousMacroContract ?? null);
-
-		return captureContinuityStateV1({
-			activeObjective: activeGoal
-				? { text: activeGoal.objective, source: "goal" }
-				: latestUserSource
-					? {
-							text: latestUserSource.text,
-							source: "user",
-							...(latestUserSource.entryId ? { sourceEntryId: latestUserSource.entryId } : {}),
-						}
-					: (previous?.activeObjective ?? null),
-			macroContract,
-			goal: this.#goalModeState ?? previous?.goal ?? null,
-			todos: this.#todoPhases,
-			pendingBlockers: previous?.pendingBlockers ?? [],
-			changedPaths,
-			verificationEvidence: this.#verificationEvidence.snapshot(),
-			checkpoint: this.#checkpointState
-				? { kind: "active", state: this.#checkpointState, goal: activeGoal?.objective }
-				: this.#lastCompletedRewind
-					? { kind: "completed", state: this.#lastCompletedRewind }
-					: (previous?.checkpoint ?? null),
-		});
-	}
-
-	#appendContinuityMessage(state: CompactionContinuityStateV1): void {
-		this.sessionManager.appendCustomMessageEntry(
-			COMPACTION_CONTINUITY_MESSAGE_TYPE,
-			renderContinuityStateV1(state),
-			false,
-			writeContinuityStateV1(undefined, state),
-			"agent",
-		);
-	}
-
-	#restoreContinuityState(state: CompactionContinuityStateV1, overwrite: boolean): void {
-		if (overwrite || !this.#goalModeState) this.#goalModeState = state.goal ?? undefined;
-		if (shouldRestoreContinuityTodos(this.#hasPersistedTodoSnapshot)) {
-			this.#todoPhases = structuredClone(state.todos);
-		}
-		if (overwrite || (!this.#checkpointState && !this.#lastCompletedRewind)) {
-			this.#checkpointState =
-				state.checkpoint?.kind === "active" ? structuredClone(state.checkpoint.state) : undefined;
-			this.#lastCompletedRewind =
-				state.checkpoint?.kind === "completed" ? structuredClone(state.checkpoint.state) : undefined;
-		}
-		this.#verificationEvidence.restore(state.verificationEvidence);
-	}
-
 	/**
 	 * Manually compact the session context.
 	 * Aborts current agent operation first.
@@ -12391,9 +12549,7 @@ export class AgentSession {
 			const availableModels = this.#modelRegistry.getAvailable();
 			const compactionCandidates = this.#getCompactionModelCandidates(availableModels);
 			const pathEntries = this.sessionManager.getBranch();
-			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(effectiveSettings), {
-				excludedCustomMessageTypes: COMPACTION_EXCLUDED_CUSTOM_MESSAGE_TYPES,
-			});
+			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(effectiveSettings));
 			if (!preparation) {
 				// Check why we can't compact
 				const lastEntry = pathEntries[pathEntries.length - 1];
@@ -12425,9 +12581,7 @@ export class AgentSession {
 					fromExtension = true;
 				}
 			}
-
 			const compactionPrep = await this.#prepareCompactionFromHooks(preparation, hookCompaction);
-			const continuityState = this.#captureContinuityState(preparation.fileOps);
 
 			let summary: string;
 			let shortSummary: string | undefined;
@@ -12504,8 +12658,6 @@ export class AgentSession {
 				details,
 				preserveData,
 			});
-			summary = upsertContinuityStateV1(summary, continuityState);
-			preserveData = writeContinuityStateV1(preserveData, continuityState);
 			this.sessionManager.appendCompaction(
 				summary,
 				shortSummary,
@@ -12747,7 +12899,7 @@ export class AgentSession {
 				handoffFileLists.modifiedFiles,
 				handoffFileOps.read,
 			);
-			const continuityState = { ...this.#captureContinuityState(handoffFileOps), checkpoint: null };
+			const carriedTodoPhases = this.#cloneTodoPhases(this.#todoPhases);
 
 			if (handoffSignal.aborted) {
 				throw new Error("Handoff cancelled");
@@ -12772,6 +12924,10 @@ export class AgentSession {
 			await this.sessionManager.flush();
 			this.#cancelOwnAsyncJobs();
 			await this.sessionManager.newSession(previousSessionFile ? { parentSession: previousSessionFile } : undefined);
+			// A handoff continues the work in a NEW transcript. The pre-handoff
+			// subagents wrote into the old one and their jobs were just cancelled;
+			// leaving them registered would list them under the new conversation.
+			await this.#rescopeAgentRegistry();
 
 			this.#clearCheckpointRuntimeState();
 			// agent.reset() clears the core steering/follow-up queues. Preserve any queued
@@ -12792,15 +12948,16 @@ export class AgentSession {
 			this.#resetMemoryContextForNewTranscript();
 			this.#pendingNextTurnMessages = [];
 			this.#scheduledHiddenNextTurnGeneration = undefined;
-			this.#todoReminderCount = 0;
-			this.#todoReminderAwaitingProgress = false;
-			this.#mutationsSinceLastTodoTouch = 0;
-			this.#midRunNudgeCount = 0;
+			this.#resetTodoReminderStateForNewContext();
 
 			// Inject the handoff document as a custom message
 			const handoffContent = createHandoffContext(handoffText);
 			this.sessionManager.appendCustomMessageEntry("handoff", handoffContent, true, undefined, "agent");
-			this.#appendContinuityMessage(continuityState);
+			if (carriedTodoPhases.length > 0) {
+				// Todos survive a handoff through their own persisted snapshot entry, the
+				// same one `/todo` writes, so a reload of the new transcript still finds them.
+				this.sessionManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, { phases: carriedTodoPhases });
+			}
 			await this.sessionManager.ensureOnDisk();
 			let savedPath: string | undefined;
 			if (options?.autoTriggered && this.settings.get("compaction.handoffSaveToDisk")) {
@@ -12826,7 +12983,6 @@ export class AgentSession {
 			this.agent.replaceMessages(sessionContext.messages);
 			this.#resetAllAdvisorRuntimes();
 			this.#syncTodoPhasesFromBranch();
-			this.#restoreContinuityState(continuityState, true);
 			if (this.#extensionRunner) {
 				await this.#extensionRunner.emit({
 					type: "session_switch",
@@ -13155,6 +13311,11 @@ export class AgentSession {
 			return COMPACTION_CHECK_NONE;
 		}
 
+		// Stale-result pass runs every turn, before any threshold gating: it is
+		// cheap (bails when no candidate) and independent of the compaction
+		// setting.
+		const supersedeResult = await this.#pruneStaleToolResults();
+
 		const compactionSettings = this.settings.getGroup("compaction");
 		if (isThresholdCompactionDisabled(compactionSettings.enabled, compactionSettings.strategy as string))
 			return COMPACTION_CHECK_NONE;
@@ -13162,6 +13323,8 @@ export class AgentSession {
 		// Case 4: Threshold - turn succeeded but context is getting large
 		// Skip if this was an error (non-overflow errors don't have usage data)
 		if (assistantMessage.stopReason === "error") return COMPACTION_CHECK_NONE;
+		const pruneResult = await this.#pruneToolOutputs();
+		const maintenanceTokensFreed = (supersedeResult?.tokensSaved ?? 0) + (pruneResult?.tokensSaved ?? 0);
 		// `errorIsFromBeforeCompaction` (computed above) is the general
 		// "this assistant message predates the latest compaction" predicate here,
 		// not just an error-specific one; alias it locally so the threshold intent
@@ -13177,7 +13340,22 @@ export class AgentSession {
 			? 0
 			: calculateContextTokens(assistantMessage.usage);
 		const storedContextTokens = this.#estimateStoredContextTokens();
+		// Pruning frees bytes for the NEXT prompt; it does not change the size of
+		// the prompt the LLM just billed for. Earlier revisions subtracted the
+		// per-turn supersede/prune `tokensSaved` from the threshold input, which
+		// let a long-running `/goal` session sit above `compaction.threshold`
+		// indefinitely whenever per-turn pruning saved enough to drop the
+		// post-prune estimate below the user-configured trigger: the visible
+		// context (anchored to the same provider billing) still showed >threshold,
+		// but `shouldCompact` no-op'd (#3174). Anchor the initial trigger on the
+		// last turn's billed context tokens, floored by the post-prune
+		// stored-conversation estimate so a payload-compression hook still cannot
+		// deflate the trigger.
 		const contextTokens = compactionContextTokens(assistantUsageContextTokens, storedContextTokens);
+		const postMaintenanceContextTokens = compactionContextTokens(
+			Math.max(0, assistantUsageContextTokens - maintenanceTokensFreed),
+			storedContextTokens,
+		);
 		const thresholdTokens = resolveThresholdTokens(contextWindow, compactionSettings);
 		this.#noticeCompactionThresholdClamp(contextWindow, compactionSettings);
 		const shouldThresholdCompact = shouldCompact(contextTokens, contextWindow, compactionSettings);
@@ -13193,6 +13371,8 @@ export class AgentSession {
 			assistantUsageContextTokens,
 			storedContextTokens,
 			resolvedContextTokens: contextTokens,
+			postMaintenanceContextTokens,
+			maintenanceTokensFreed,
 			shouldCompact: shouldThresholdCompact,
 			contextPromotionEnabled: this.settings.get("contextPromotion.enabled") === true,
 		});
@@ -13202,7 +13382,7 @@ export class AgentSession {
 			if (!promoted) {
 				return await this.#runAutoCompaction("threshold", false, {
 					autoContinue,
-					triggerContextTokens: contextTokens,
+					triggerContextTokens: postMaintenanceContextTokens,
 					phase: "pre_turn",
 				});
 			}
@@ -14061,6 +14241,7 @@ export class AgentSession {
 			this.#todoReminderCount = 0;
 			this.#todoReminderAwaitingProgress = false;
 			this.#lastTodoReminderFingerprint = undefined;
+			this.#todoReminderEchoCompactionId = undefined;
 			return false;
 		}
 
@@ -14092,6 +14273,16 @@ export class AgentSession {
 		const remindersMax = this.settings.get("todo.reminders.max");
 		if (this.#todoReminderCount >= remindersMax) {
 			logger.debug("Todo completion: max reminders reached", { count: this.#todoReminderCount });
+			return false;
+		}
+
+		// The board is only as trustworthy as the last write that landed. After a
+		// failed `todo` call the recorded phases are whatever survived from before
+		// it, so "you stopped with N incomplete todo item(s)" would assert a count
+		// the session never recorded. The todo-error reminder already told the
+		// model the board may be stale; say nothing further.
+		if (this.#lastTodoFailureText !== undefined) {
+			logger.debug("Todo completion: last todo write failed, board state unknown; staying silent");
 			return false;
 		}
 
@@ -14133,11 +14324,26 @@ export class AgentSession {
 		}
 
 		this.#todoReminderCount++;
+		// One full-list echo per context window. The list is worth repeating once
+		// after a compaction boundary, because the model may no longer see it;
+		// repeating it on every escalation inside one window is pure duplication.
+		//
+		// Read off the ACTIVE BRANCH, not every persisted entry: a rewind leaves
+		// the abandoned path's compaction entry in the file while the model's
+		// context is rebuilt without it. Keying on the file would hold the latch
+		// at an id that is no longer in the window, and the echo would never come
+		// back for the rest of the session.
+		const compactionBoundary = getLatestCompactionEntry(this.sessionManager.getBranch())?.id ?? null;
+		const echoFullList = this.#todoReminderEchoCompactionId !== compactionBoundary;
 		const reminder = renderTodoContinuationReminder({
 			items: incomplete,
 			attempt: this.#todoReminderCount,
 			maxAttempts: remindersMax,
+			echoFullList,
 		});
+		// Spent only when a list actually goes out, so a suppressed reminder
+		// leaves the allowance intact.
+		if (echoFullList) this.#todoReminderEchoCompactionId = compactionBoundary;
 		// Reserve before awaiting event subscribers so overlapping agent_end events
 		// cannot both emit the same reminder.
 		this.#lastTodoReminderFingerprint = fingerprint;
@@ -14204,6 +14410,10 @@ export class AgentSession {
 		// guard so we never ask the model to call a tool that is not in its
 		// schema — the request would fabricate an unknown tool call.
 		if (!this.getActiveToolNames().includes(TOOL.todo)) return null;
+		// A failed `todo` write leaves the recorded board unverified, so counting
+		// "incomplete items" off it would nudge about work the session cannot
+		// confirm is outstanding. Same honesty rule as the stop-time reminder.
+		if (this.#lastTodoFailureText !== undefined) return null;
 
 		const incomplete = this.getTodoPhases()
 			.flatMap(phase => phase.tasks)
@@ -15206,9 +15416,7 @@ export class AgentSession {
 
 			const pathEntries = this.sessionManager.getBranch();
 
-			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings), {
-				excludedCustomMessageTypes: COMPACTION_EXCLUDED_CUSTOM_MESSAGE_TYPES,
-			});
+			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings));
 			if (!preparation) {
 				await this.#emitSessionEvent({
 					type: "auto_compaction_end",
@@ -15269,9 +15477,7 @@ export class AgentSession {
 					fromExtension = true;
 				}
 			}
-
 			const compactionPrep = await this.#prepareCompactionFromHooks(preparation, hookCompaction);
-			const continuityState = this.#captureContinuityState(preparation.fileOps);
 
 			let summary: string;
 			let shortSummary: string | undefined;
@@ -15448,8 +15654,6 @@ export class AgentSession {
 				details,
 				preserveData,
 			});
-			summary = upsertContinuityStateV1(summary, continuityState);
-			preserveData = writeContinuityStateV1(preserveData, continuityState);
 			this.sessionManager.appendCompaction(
 				summary,
 				shortSummary,
@@ -17510,6 +17714,10 @@ export class AgentSession {
 			this.agent.replaceMessages(sessionContext.messages);
 			this.#resetAdvisorSessionState();
 			this.#syncTodoPhasesFromBranch();
+			// The board just came back from the branch, so every latch describing
+			// the pre-switch board (including a failed write against it) is about a
+			// board this session no longer holds.
+			this.#resetTodoReminderStateForNewContext();
 			if (switchingToDifferentSession) {
 				this.#closeAllProviderSessions("session switch");
 			} else if (didReloadConversationChange) {
@@ -17606,6 +17814,7 @@ export class AgentSession {
 
 			if (switchingToDifferentSession) {
 				this.#resetMemoryContextForNewTranscript();
+				await this.#rescopeAgentRegistry();
 			}
 			this.#reconnectToAgent();
 			try {
