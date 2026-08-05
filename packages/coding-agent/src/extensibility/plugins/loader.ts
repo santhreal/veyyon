@@ -24,8 +24,10 @@ installLegacyPiSpecifierShim();
 
 const enabledPluginsCache = new Map<string, Promise<ScopedInstalledPlugin[]>>();
 
-function enabledPluginsCacheKey(cwd: string, home?: string): string {
-	return `${path.resolve(cwd)}\0${home === undefined ? "" : path.resolve(home)}`;
+function enabledPluginsCacheKey(cwd: string, home: string | undefined, pluginsRoot: string | undefined): string {
+	return `${path.resolve(cwd)}\0${home === undefined ? "" : path.resolve(home)}\0${
+		pluginsRoot === undefined ? "" : path.resolve(pluginsRoot)
+	}`;
 }
 
 function clearEnabledPluginsCache(): void {
@@ -160,28 +162,43 @@ async function collectPluginsAtRoot(
 	return plugins;
 }
 
+export interface GetEnabledPluginsOptions {
+	/**
+	 * Pins the user plugins root to a non-default home (tests with a tempdir,
+	 * discovery loaders threaded with `LoadContext.home`).
+	 */
+	home?: string;
+	/**
+	 * WHICH profile's plugins root supplies the user scope. Default:
+	 * `getPluginsDir(home)`, the process-active profile. A caller resolving a
+	 * DIFFERENT profile passes that profile's `plugins` directory, because
+	 * `getPluginsDir` reads the process-global active profile and cannot be told
+	 * to look elsewhere.
+	 */
+	pluginsRoot?: string;
+}
+
 /**
  * Get list of enabled plugins with their resolved configurations.
  *
  * Enumerates two plugin roots in order: the user root
- * (`getPluginsDir(home)`) and, when a project anchor (`.veyyon/` or `.git/`)
- * exists at or above `cwd`, the project root
+ * (`options.pluginsRoot`, else `getPluginsDir(home)`) and, when a project anchor
+ * (`.veyyon/` or `.git/`) exists at or above `cwd`, the project root
  * (`<projectAnchor>/.veyyon/plugins`). Each root contributes the union of its
  * `package.json#dependencies` and `veyyon-plugins.lock.json#plugins`. Project
  * entries shadow user entries with the same package name, matching the
  * shadow semantics of `MarketplaceManager.listInstalledPlugins`.
- *
- * The optional `home` parameter pins the user plugins root for callers that
- * need to enumerate plugins relative to a non-default home (tests with a
- * tempdir, discovery loaders threaded with `LoadContext.home`).
  */
-export async function getEnabledPlugins(cwd: string, opts: { home?: string } = {}): Promise<ScopedInstalledPlugin[]> {
-	const { home } = opts;
-	const cacheKey = enabledPluginsCacheKey(cwd, home);
+export async function getEnabledPlugins(
+	cwd: string,
+	opts: GetEnabledPluginsOptions = {},
+): Promise<ScopedInstalledPlugin[]> {
+	const { home, pluginsRoot } = opts;
+	const cacheKey = enabledPluginsCacheKey(cwd, home, pluginsRoot);
 	const cached = enabledPluginsCache.get(cacheKey);
 	if (cached) return cached;
 
-	const loadPromise = loadEnabledPlugins(cwd, home);
+	const loadPromise = loadEnabledPlugins(cwd, home, pluginsRoot);
 	enabledPluginsCache.set(cacheKey, loadPromise);
 	try {
 		return await loadPromise;
@@ -193,10 +210,10 @@ export async function getEnabledPlugins(cwd: string, opts: { home?: string } = {
 	}
 }
 
-async function loadEnabledPlugins(cwd: string, home?: string): Promise<ScopedInstalledPlugin[]> {
+async function loadEnabledPlugins(cwd: string, home?: string, pluginsRoot?: string): Promise<ScopedInstalledPlugin[]> {
 	const projectOverrides = await loadProjectOverrides(cwd);
 
-	const userRoot = getPluginsDir(home);
+	const userRoot = pluginsRoot ?? getPluginsDir(home);
 	const userPlugins = await collectPluginsAtRoot(userRoot, projectOverrides, "user");
 
 	let projectPlugins: ScopedInstalledPlugin[] = [];

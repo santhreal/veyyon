@@ -1,5 +1,4 @@
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import { getProjectDir, prompt } from "@veyyon/utils";
 import {
 	isValidManagedSkillName,
@@ -93,15 +92,12 @@ export async function loadSkillsFromDir(options: LoadSkillsFromDirOptions): Prom
 	const [rawProviderId, rawLevel] = options.source.split(":", 2);
 	const providerId = rawProviderId || "custom";
 	const level: "user" | "project" = rawLevel === "project" ? "project" : "user";
-	const result = await scanSkillsFromDir(
-		{ cwd: getProjectDir(), home: os.homedir(), repoRoot: null },
-		{
-			dir: options.dir,
-			providerId,
-			level,
-			requireDescription: true,
-		},
-	);
+	const result = await scanSkillsFromDir({
+		dir: options.dir,
+		providerId,
+		level,
+		requireDescription: true,
+	});
 
 	return {
 		skills: result.items.map(capSkill => ({
@@ -120,15 +116,34 @@ export async function loadSkillsFromDir(options: LoadSkillsFromDirOptions): Prom
 export interface LoadSkillsOptions extends SkillsSettings {
 	/** Working directory for project-local skills. Default: getProjectDir() */
 	cwd?: string;
+	/**
+	 * WHICH profile's skills to load. Default: `getAgentDir()`, the process-active
+	 * profile. Naming a different directory loads THAT directory's skills and drops the
+	 * active profile's, so a session rooted in another agent dir gets its own skill set.
+	 */
+	agentDir?: string;
 }
 
 /**
  * Load skills from all configured locations.
  * Returns skills and any validation warnings.
+ *
+ * `options.agentDir` picks WHICH profile. It is forwarded to {@link loadCapability},
+ * which puts it on the `LoadContext` every provider receives, and all three providers in
+ * the skill allowlist read it from there:
+ *
+ *   - `native`         reads `<agentDir>/skills`
+ *   - `veyyon-managed` reads `<agentDir>/managed-skills`
+ *   - `veyyon-plugins` reads `<agentDir>/settings.json#extensions` and that profile's
+ *                      installed plugins, via `listVeyyonExtensionRoots`
+ *
+ * Each of them used to call the process-global `getAgentDir()` instead, so a session
+ * rooted in another profile silently ran on the booted profile's skills.
  */
 export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadSkillsResult> {
 	const {
 		cwd = getProjectDir(),
+		agentDir,
 		enabled = true,
 		ignoredSkills = [],
 		includeSkills = [],
@@ -140,15 +155,19 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		return { skills: [], warnings: [] };
 	}
 
-	// Load skills only from the active profile's Veyyon-native providers (see
+	// Load skills only from the named profile's Veyyon-native providers (see
 	// profileSkillProviderIds). The allowlist means foreign-tool directories
 	// (`~/.claude`, `~/.codex`, `~/.agent[s]`, GitHub, OpenCode, Claude plugins)
 	// are never scanned, so there is nothing to filter out per source afterwards.
 	const result = await loadCapability<CapabilitySkill>(skillCapability.id, {
 		cwd,
+		agentDir,
 		disabledExtensions,
 		providers: [...profileSkillProviderIds()],
 	});
+
+	const loadWarnings = [...(result.warnings ?? [])];
+	const candidates: CapabilitySkill[] = result.all;
 
 	const skillMap = new Map<string, Skill>();
 	const realPathSet = new Set<string>();
@@ -171,10 +190,10 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	);
 	// Select authored skills from the pre-dedup superset. Keep same-name
 	// candidates until the map pass below: `result.items` is already deduped, but
-	// `result.all` is deliberately used so distinct files with one name can emit
-	// an operator-visible collision warning. Exact-file aliases are deduped by
-	// realpath immediately before that warning.
-	const filteredSkills = result.all.filter(capSkill => {
+	// the pre-dedup superset is deliberately used so distinct files with one name
+	// can emit an operator-visible collision warning. Exact-file aliases are
+	// deduped by realpath immediately before that warning.
+	const filteredSkills = candidates.filter(capSkill => {
 		if (capSkill._source.provider === MANAGED_SKILLS_PROVIDER_ID) return false;
 		if (disabledSkillNames.has(capSkill.name)) return false;
 		if (matchesIgnorePatterns(capSkill.name)) return false;
@@ -224,13 +243,13 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	}
 
 	// Managed (auto-learn) skills resolve dead-last with first-wins. Source from
-	// result.all (pre-dedup): capability-level dedup runs BEFORE this pass, so a
+	// the pre-dedup superset: capability-level dedup runs BEFORE this pass, so a
 	// managed skill can be shadowed by a higher-priority authored skill; managed
 	// must stay visible whenever the authored name is not actually present.
 	// Validate the on-disk name (a hand-placed managed file could carry an unsafe
 	// frontmatter name) and re-sanitize the description on read. Descriptions and
 	// names both render unescaped into the system prompt.
-	const managedCandidates = result.all.filter(
+	const managedCandidates = candidates.filter(
 		capSkill =>
 			capSkill._source.provider === MANAGED_SKILLS_PROVIDER_ID &&
 			isValidManagedSkillName(capSkill.name) &&
@@ -241,7 +260,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	// Names claimed by any authored skill (from the pre-dedup superset). Managed
 	// defers to these so it never masks an authored skill of the same name.
 	const enabledAuthoredNames = new Set(
-		result.all
+		candidates
 			.filter(capSkill => capSkill._source.provider !== MANAGED_SKILLS_PROVIDER_ID)
 			.map(capSkill => capSkill.name),
 	);
@@ -280,7 +299,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	skills.sort((a, b) => compareSkillOrder(a.name, a.filePath, b.name, b.filePath));
 	return {
 		skills,
-		warnings: [...(result.warnings ?? []).map(w => ({ skillPath: "", message: w })), ...collisionWarnings],
+		warnings: [...loadWarnings.map(w => ({ skillPath: "", message: w })), ...collisionWarnings],
 	};
 }
 

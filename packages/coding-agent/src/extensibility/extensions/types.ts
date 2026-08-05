@@ -356,8 +356,10 @@ export interface CompactOptions {
 	onError?: (error: Error) => void;
 	/**
 	 * Force a one-off compaction mode for this invocation, overriding the
-	 * configured `compaction.strategy` (the `/compact` subcommands: `summary` |
-	 * `handoff`). Omitted = configured behavior.
+	 * configured `compaction.strategy`. `summary` is the only mode `/compact`
+	 * accepts; `handoff` is a separate session-transfer operation reached by
+	 * `/handoff`, and `/compact handoff` is refused rather than summarized.
+	 * Omitted = configured behavior.
 	 */
 	mode?: CompactMode;
 	/**
