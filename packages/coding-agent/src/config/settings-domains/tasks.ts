@@ -144,17 +144,6 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
-	"commands.enableClaudeProject": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tasks",
-			group: "Commands & Skills",
-			label: "Claude Project Commands",
-			description: "Load commands from .claude/commands/",
-		},
-	},
-
 	"commands.enableOpencodeUser": {
 		type: "boolean",
 		default: true,

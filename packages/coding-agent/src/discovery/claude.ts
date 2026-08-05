@@ -225,18 +225,21 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 // =============================================================================
 
 /**
- * Read the Claude command-loading toggles from settings.
+ * Whether Claude user commands (`~/.claude/commands/`) load.
+ *
  * Falls back to true (current behavior) when settings are not initialized,
  * e.g. inside discovery unit tests that run without Settings.init().
+ *
+ * There is no project counterpart. A repo's `.claude/commands/` is repo-authored
+ * content and is not loaded at all, so a toggle for it would gate a branch that
+ * does not exist. One did: `commands.enableClaudeProject` was read here, returned,
+ * and dropped by the only caller, which destructures `enableUser` alone.
  */
-function readClaudeCommandToggles(): { enableUser: boolean; enableProject: boolean } {
+function claudeUserCommandsEnabled(): boolean {
 	try {
-		return {
-			enableUser: settings.get("commands.enableClaudeUser") ?? true,
-			enableProject: settings.get("commands.enableClaudeProject") ?? true,
-		};
+		return settings.get("commands.enableClaudeUser") ?? true;
 	} catch {
-		return { enableUser: true, enableProject: true };
+		return true;
 	}
 }
 
@@ -266,7 +269,7 @@ function addClaudeCommandNamespaceAliases(commands: SlashCommand[], commandsDir:
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const items: SlashCommand[] = [];
 	const warnings: string[] = [];
-	const { enableUser } = readClaudeCommandToggles();
+	const enableUser = claudeUserCommandsEnabled();
 
 	if (enableUser) {
 		const userBase = getUserClaude(ctx);
