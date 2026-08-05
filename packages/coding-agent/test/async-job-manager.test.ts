@@ -534,4 +534,53 @@ describe("AsyncJobManager watch windows", () => {
 
 		expect(completions).toEqual([{ jobId, text: "the child's whole report" }]);
 	});
+
+	/**
+	 * The re-arm above is what makes the ORDER at each call site the exactly-once
+	 * contract. `#enqueueDelivery` starts `#runDeliveryLoop`, which runs
+	 * synchronously to its first await, and `#deliverDelivery` invokes
+	 * `onJobComplete` before returning, so by the time `unwatchJobs` returns, a
+	 * re-armed report has ALREADY been pushed at the operator. A caller that
+	 * returns those results itself must therefore acknowledge FIRST; acknowledging
+	 * afterwards is too late to stop anything.
+	 *
+	 * IF THIS REGRESSES: a call site that reverses the two lines hands the operator
+	 * the worker's whole report twice, once as its own return value and once as an
+	 * async follow-up.
+	 */
+	test("acknowledging before lifting the watch is what keeps the settled report exactly once", async () => {
+		const runWatchWindow = async (order: "acknowledge-first" | "unwatch-first") => {
+			const pushed: string[] = [];
+			const manager = new AsyncJobManager({
+				onJobComplete: async (_jobId, text) => {
+					pushed.push(text);
+				},
+			});
+			const gate = Promise.withResolvers<string>();
+			const jobId = manager.register("task", "child", () => gate.promise);
+
+			manager.watchJobs([jobId]);
+			gate.resolve("the child's whole report");
+			await manager.waitForAll();
+
+			// The caller reads the settled result and returns it to the operator
+			// itself; that return value is the first copy.
+			const returned = manager.getJob(jobId)?.resultText;
+			if (order === "acknowledge-first") {
+				manager.acknowledgeDeliveries([jobId]);
+				manager.unwatchJobs([jobId]);
+			} else {
+				manager.unwatchJobs([jobId]);
+				manager.acknowledgeDeliveries([jobId]);
+			}
+			await manager.drainDeliveries({ timeoutMs: 2_000 });
+			return { copies: [returned, ...pushed].filter(text => text !== undefined) };
+		};
+
+		expect((await runWatchWindow("acknowledge-first")).copies).toEqual(["the child's whole report"]);
+		expect((await runWatchWindow("unwatch-first")).copies).toEqual([
+			"the child's whole report",
+			"the child's whole report",
+		]);
+	});
 });

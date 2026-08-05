@@ -1,4 +1,6 @@
-import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, expect } from "bun:test";
+import { readdirSync } from "node:fs";
+import { homedir } from "node:os";
 
 import * as Beam from "@veyyon/mnemopi/core/beam";
 import * as Embeddings from "@veyyon/mnemopi/core/embeddings";
@@ -65,6 +67,21 @@ class FakeLocalLlmBackend implements LlmBackend {
 }
 
 /**
+ * Every `.veyyon*` entry sitting DIRECTLY in the home, sorted.
+ *
+ * That is the exact shape the mistake this package's isolation replaced leaves behind:
+ * `VEYYON_CONFIG_DIR` is a directory NAME joined onto `os.homedir()`, so a fresh
+ * `.veyyon-mnemopi-profile-iso-<id>` is a config root in the home rather than out of it.
+ * Reading the directory is the only way to see it, because every path the suite resolves
+ * looks correct from inside the suite.
+ */
+function veyyonSiblingsInHome(): string[] {
+	return readdirSync(homedir())
+		.filter(entry => entry.startsWith(".veyyon"))
+		.sort();
+}
+
+/**
  * Per-file mnemopi test environment: module resets plus an isolated config root.
  *
  * Call this in every mnemopi suite. It is a FUNCTION rather than module-level hooks
@@ -86,17 +103,28 @@ class FakeLocalLlmBackend implements LlmBackend {
  * at module scope and never restored leaks `VEYYON_CONFIG_DIR` into every OTHER
  * package's suites that share the process. That was tried, and it broke a utils test
  * asserting the config-root refusal message, which then reported a mnemopi temp path.
+ *
+ * The `afterAll` assertion is the part that cannot be talked out of. Isolation that is
+ * only intended looks exactly like isolation that works from inside the suite: every
+ * path the resolver hands back is absolute, correct and consistent whether the root is a
+ * temp directory or a fresh dot-name in the operator's home. Listing the home before and
+ * after is the one question with a different answer in the two cases, and every mnemopi
+ * file gets it because the leak that produced 131 abandoned directories was in the shared
+ * setup rather than in any one suite.
  */
 export function useMnemopiTestEnv(): void {
 	let isolated: IsolatedConfigRoot | undefined;
+	let siblingsBefore: string[] = [];
 
 	beforeAll(() => {
+		siblingsBefore = veyyonSiblingsInHome();
 		isolated = enterIsolatedConfigRoot("mnemopi-suite", { defaultProfile: true });
 	});
 
 	afterAll(() => {
 		isolated?.restore();
 		isolated = undefined;
+		expect(veyyonSiblingsInHome()).toEqual(siblingsBefore);
 	});
 
 	beforeEach(() => {
