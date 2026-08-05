@@ -1,0 +1,1 @@
+- Todo calls NEVER travel alone: batch every `{{toolRefs.todo}}` op into the same message as the turn's real tool calls (`init` alongside the first reads/edits, `done` alongside the next action or final verification). An assistant turn whose only tool call is `{{toolRefs.todo}}` wastes a full round trip.
