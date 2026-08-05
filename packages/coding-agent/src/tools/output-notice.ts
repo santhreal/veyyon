@@ -178,7 +178,7 @@ export function formatTruncationMetaNotice(truncation: TruncationMeta): string {
 		// No range and no total: both would be invented. What the agent needs to
 		// know is that the tail it is reading is not the whole output, and that
 		// asking for a byte count would be answering a question nobody measured.
-		notice = `Output was truncated before veyyon received it; ${formatBytes(truncation.outputBytes)} kept, elided amount not reported`;
+		notice = `Truncated upstream: ${formatBytes(truncation.outputBytes)} kept`;
 		if (truncation.artifactId != null) {
 			notice += `. ${formatFullOutputReference(truncation.artifactId)}`;
 		}
