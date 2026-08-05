@@ -77,6 +77,20 @@ describe("parseAgentFields", () => {
 		expect(fields?.thinkingLevel).toBeUndefined();
 	});
 
+	/**
+	 * YAML null is the persisted spelling of an unset child effort. Normalizing
+	 * it to undefined lets the executor apply the omitted-level inheritance rule.
+	 */
+	test("normalizes a null thinking selector to omitted", () => {
+		const fields = parseAgentFields({
+			name: "worker",
+			description: "desc",
+			thinkingLevel: null,
+		});
+
+		expect(fields?.thinkingLevel).toBeUndefined();
+	});
+
 	test("lowercases tool names", () => {
 		const fields = parseAgentFields({
 			name: "reviewer",

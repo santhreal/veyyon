@@ -12,10 +12,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { logger } from "@veyyon/utils";
-import type { LoadContext } from "../../src/capability/types";
 import { loadFilesFromDir } from "../../src/discovery/helpers";
-
-const ctx: LoadContext = { cwd: "/", home: "/", repoRoot: null };
 
 // Root bypasses permission checks, so a chmod-000 directory is still readable
 // under uid 0 and the unreadable-directory assertions cannot hold there.
@@ -35,7 +32,7 @@ function trackedTempDir(): string {
 }
 
 async function collectText(dir: string) {
-	return loadFilesFromDir<string>(ctx, dir, "test-provider", "user", {
+	return loadFilesFromDir<string>(dir, "test-provider", "user", {
 		extensions: ["md"],
 		transform: (_name, content) => content,
 	});

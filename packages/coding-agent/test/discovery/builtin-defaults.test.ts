@@ -75,13 +75,19 @@ describe("builtin-defaults rule provider", () => {
 		// The working directory is supplied, because the rule now carries `pathScope: outside-cwd`
 		// and the whole nudge is "that path is somewhere else". A manager with no working directory
 		// cannot answer that and deliberately declines to fire (see `ttsr/path-scope.test.ts`).
-		const manager = new TtsrManager(undefined, { getCwd: () => "/media/mukund-thiru/work/veyyon" });
+		//
+		// The synthetic roots below are NOT under `/tmp`. The rule's condition excludes
+		// `/tmp/` (along with `/usr/`, `/proc/` and the rest of the system prefixes), so a
+		// `/tmp/...` fixture path can never fire it: the positive case below would fail and
+		// the in-cwd negative case further down would pass for the wrong reason, proving the
+		// exclusion list rather than the `outside-cwd` path scope it is written to test.
+		const manager = new TtsrManager(undefined, { getCwd: () => "/workspaces/veyyon-fixture" });
 		expect(manager.addRule(rule)).toBe(true);
 
 		// A read/grep/glob call carrying a deep absolute path (the shape produced only
 		// when reaching into another project) fires the nudge on each nav tool.
 		const foreign =
-			'{"path":"/media/mukund-thiru/SanthData/Santh/software/keyhog/crates/cli/src/subcommands/calibrate_autoroute.rs:1-260"}';
+			'{"path":"/workspaces/santh-fixture/software/keyhog/crates/cli/src/subcommands/calibrate_autoroute.rs:1-260"}';
 		for (const toolName of ["read", "grep", "glob", "ast_grep"]) {
 			manager.resetBuffer();
 			expect(
@@ -118,7 +124,7 @@ describe("builtin-defaults rule provider", () => {
 		// path it happens to have in absolute form.
 		manager.resetBuffer();
 		expect(
-			manager.checkDelta('{"path":"/media/mukund-thiru/work/veyyon/packages/coding-agent/src/tools/read.ts"}', {
+			manager.checkDelta('{"path":"/workspaces/veyyon-fixture/packages/coding-agent/src/tools/read.ts"}', {
 				source: "tool",
 				toolName: "read",
 			}),

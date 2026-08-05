@@ -33,6 +33,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { loadCapability } from "@veyyon/coding-agent/capability";
+import { type ContextFile, contextFileCapability } from "@veyyon/coding-agent/capability/context-file";
 import { loadProjectContextFiles } from "@veyyon/coding-agent/system-prompt";
 import { removeWithRetries } from "@veyyon/utils";
 
@@ -59,6 +61,10 @@ describe("project rule files are discovered by walking up", () => {
 		await fs.mkdir(nested, { recursive: true });
 		// A git dir makes this a repo, which is what bounds the walk.
 		await fs.mkdir(path.join(repo, ".git"), { recursive: true });
+		// Empty on purpose: `findNearestProjectConfigDir` skips an empty `.veyyon/`, so
+		// this changes no case that does not write into it, and the cases that do can
+		// write the file directly.
+		await fs.mkdir(path.join(repo, ".veyyon"), { recursive: true });
 	});
 
 	afterEach(async () => {
@@ -117,13 +123,12 @@ describe("project rule files are discovered by walking up", () => {
 	});
 
 	it("prefers AGENTS.md when one directory holds both names", async () => {
-		// NOT a list that all loads. The capability keys project items as
-		// `project:<depth>` on purpose, keeping ONE project file per directory depth so
-		// providers at the same scope shadow rather than stack. A directory holding
-		// both names therefore yields one file, and which one must be decided rather
-		// than left to directory-read order. AGENTS.md wins because it is the
-		// tool-neutral convention; a project carrying both is nearly always stating the
-		// same rules twice for two tools.
+		// NOT a list that all loads. The names are a LADDER inside one directory, and
+		// the walk stops at the first that contributes, so the CLAUDE.md beside an
+		// AGENTS.md is never read. AGENTS.md wins because it is the tool-neutral
+		// convention; a project carrying both is nearly always stating the same rules
+		// twice for two tools, and inlining both duplicates them and lets a stale
+		// CLAUDE.md contradict a maintained AGENTS.md.
 		await fs.writeFile(path.join(repo, "AGENTS.md"), "From AGENTS.");
 		await fs.writeFile(path.join(repo, "CLAUDE.md"), "From CLAUDE.");
 
@@ -131,6 +136,55 @@ describe("project rule files are discovered by walking up", () => {
 
 		expect(found.map(f => path.basename(f.path))).toEqual(["AGENTS.md"]);
 		expect(found[0].content).toBe("From AGENTS.");
+	});
+
+	it("keeps the loser's bytes out entirely when the two files DISAGREE", async () => {
+		// The identical-content case can be collapsed by a later containment dedupe and
+		// so proves nothing. Disagreeing files are the case that matters: if both were
+		// loaded, the model would receive two contradictory rules for one directory and
+		// obey whichever landed last.
+		await fs.writeFile(path.join(repo, "AGENTS.md"), "Marker AGENTS-WINS-8f21: use tabs.");
+		await fs.writeFile(path.join(repo, "CLAUDE.md"), "Marker CLAUDE-LOSES-4b07: use spaces.");
+
+		const found = projectFilesUnder(repo, await loadProjectContextFiles({ cwd: repo }));
+
+		expect(found.map(f => f.content)).toEqual(["Marker AGENTS-WINS-8f21: use tabs."]);
+		expect(found.some(f => f.content.includes("CLAUDE-LOSES-4b07"))).toBe(false);
+	});
+
+	it("resolves the fallback PER DIRECTORY across a mixed tree", async () => {
+		// The whole point of resolving per level rather than once per walk. A shallow
+		// AGENTS.md must not delete a deeper CLAUDE.md (the level has no AGENTS.md of
+		// its own), and a deeper CLAUDE.md must not outrank a shallower AGENTS.md.
+		// Exactly one file per level, each keeping its true depth.
+		await fs.writeFile(path.join(repo, "AGENTS.md"), "Root: AGENTS only.");
+		await fs.writeFile(path.join(pkg, "CLAUDE.md"), "Package: CLAUDE only.");
+		await fs.writeFile(path.join(nested, "AGENTS.md"), "Nested: AGENTS wins here.");
+		await fs.writeFile(path.join(nested, "CLAUDE.md"), "Marker NESTED-CLAUDE-LOSES-91ae.");
+
+		const found = projectFilesUnder(repo, await loadProjectContextFiles({ cwd: nested }));
+
+		// Sorted least prominent first, so repo root (depth 3) leads and cwd (depth 0)
+		// is the last word.
+		expect(found.map(f => [f.path, f.depth])).toEqual([
+			[path.join(repo, "AGENTS.md"), 3],
+			[path.join(pkg, "CLAUDE.md"), 1],
+			[path.join(nested, "AGENTS.md"), 0],
+		]);
+		expect(found.some(f => f.content.includes("NESTED-CLAUDE-LOSES-91ae"))).toBe(false);
+	});
+
+	it("falls through to CLAUDE.md when the AGENTS.md beside it is empty", async () => {
+		// A file that contributes nothing shadows nothing: the ladder stops at the first
+		// name that CONTRIBUTES, not the first that exists. An empty or unreadable
+		// AGENTS.md swallowing its level would silently delete the project's only real
+		// instructions, which is the same class of defect as the truncation below.
+		await fs.writeFile(path.join(repo, "AGENTS.md"), "");
+		await fs.writeFile(path.join(repo, "CLAUDE.md"), "Real rules live here.");
+
+		const found = projectFilesUnder(repo, await loadProjectContextFiles({ cwd: repo }));
+
+		expect(found.map(f => path.basename(f.path))).toEqual(["CLAUDE.md"]);
 	});
 
 	it("loads a CLAUDE.md at one depth alongside an AGENTS.md at another", async () => {
@@ -151,11 +205,19 @@ describe("project rule files are discovered by walking up", () => {
 		// `.git` directory created in setup is what marks the edge.
 		const outside = path.join(repo, "..", `outside-${path.basename(repo)}.md`);
 		await fs.writeFile(path.join(path.dirname(repo), "AGENTS.md"), "Rules from outside the repo.");
+		// THE POSITIVE CONTROL, in this call rather than a sibling case. A `some(...) ===
+		// false` on its own also holds when the walk returns nothing at all, so the
+		// boundary would read as enforced by a loader that had stopped working. An
+		// in-repo file the walk MUST reach is what makes the negative mean something.
+		await fs.writeFile(path.join(repo, "AGENTS.md"), "Rules from inside the repo.");
 
 		try {
 			const all = await loadProjectContextFiles({ cwd: nested });
 
+			expect(all.some(f => f.content.includes("Rules from inside the repo."))).toBe(true);
 			expect(all.some(f => f.content.includes("Rules from outside the repo."))).toBe(false);
+			// And the walk never even listed the parent directory's file.
+			expect(all.map(f => f.path)).not.toContain(path.join(path.dirname(repo), "AGENTS.md"));
 		} finally {
 			await fs.rm(path.join(path.dirname(repo), "AGENTS.md"), { force: true });
 			await fs.rm(outside, { force: true });
@@ -173,6 +235,51 @@ describe("project rule files are discovered by walking up", () => {
 		expect(found.some(f => f.content.includes("Rule from the veyyon config dir."))).toBe(true);
 	});
 
+	it("gives .veyyon/AGENTS.md the level, over a plain AGENTS.md in the same directory", async () => {
+		// The `.veyyon` config dir is the TOP candidate at its level, above both plain
+		// names. A repo that opted into the native location and also carries the
+		// tool-neutral file must not get both inlined at one depth.
+		await fs.writeFile(path.join(repo, ".veyyon", "AGENTS.md"), "Native: from the veyyon config dir.");
+		await fs.writeFile(path.join(repo, "AGENTS.md"), "Marker PLAIN-AGENTS-LOSES-5c3d.");
+
+		const found = projectFilesUnder(repo, await loadProjectContextFiles({ cwd: repo }));
+
+		expect(found.map(f => f.path)).toEqual([path.join(repo, ".veyyon", "AGENTS.md")]);
+		expect(found.some(f => f.content.includes("PLAIN-AGENTS-LOSES-5c3d"))).toBe(false);
+	});
+
+	it("gives .veyyon/AGENTS.md the level, over a plain CLAUDE.md in the same directory", async () => {
+		// Same rung, the other plain name. Claiming the rung means neither plain name
+		// at that directory is read, not just the one that happens to share a filename.
+		await fs.writeFile(path.join(repo, ".veyyon", "AGENTS.md"), "Native: from the veyyon config dir.");
+		await fs.writeFile(path.join(repo, "CLAUDE.md"), "Marker PLAIN-CLAUDE-LOSES-2e88.");
+
+		const found = projectFilesUnder(repo, await loadProjectContextFiles({ cwd: repo }));
+
+		expect(found.map(f => f.path)).toEqual([path.join(repo, ".veyyon", "AGENTS.md")]);
+		expect(found.some(f => f.content.includes("PLAIN-CLAUDE-LOSES-2e88"))).toBe(false);
+	});
+
+	it("regression: a .veyyon/AGENTS.md claims ONE rung and never truncates the walk", async () => {
+		// THE DEFECT THIS GUARDS. `loadContextFiles` once returned immediately after
+		// pushing the config-dir file, so one `.veyyon/AGENTS.md` anywhere on the walk
+		// silently discarded every other level of the project scope, with no warning.
+		// Deeper levels are the ones a monorepo actually relies on, so the loss was
+		// invisible and total. This must be impossible to reintroduce by "simplifying"
+		// the loop.
+		await fs.writeFile(path.join(repo, ".veyyon", "AGENTS.md"), "Root: from the veyyon config dir.");
+		await fs.writeFile(path.join(pkg, "AGENTS.md"), "Package rules.");
+		await fs.writeFile(path.join(nested, "CLAUDE.md"), "Nested rules.");
+
+		const found = projectFilesUnder(repo, await loadProjectContextFiles({ cwd: nested }));
+
+		expect(found.map(f => [f.path, f.depth])).toEqual([
+			[path.join(repo, ".veyyon", "AGENTS.md"), 3],
+			[path.join(pkg, "AGENTS.md"), 1],
+			[path.join(nested, "CLAUDE.md"), 0],
+		]);
+	});
+
 	it("returns no project files when the project has none", async () => {
 		// THE NEGATIVE TWIN. The walk must not invent a file, and it must not pick one
 		// up from outside the repo when the repo itself is bare.
@@ -188,5 +295,53 @@ describe("project rule files are discovered by walking up", () => {
 		const found = projectFilesUnder(repo, await loadProjectContextFiles({ cwd: repo }));
 
 		expect(found.filter(f => f.path === path.join(repo, "AGENTS.md"))).toHaveLength(1);
+	});
+});
+
+/**
+ * The same rule at the PROVIDER seam, which is where it is actually decided.
+ *
+ * `loadProjectContextFiles` has always returned one project file per depth,
+ * because the capability registry dedupes by the `project:<depth>` key and keeps
+ * the first item. That made the loader look correct while the provider was still
+ * reading and emitting the loser: it landed in `CapabilityResult.all`, flagged
+ * `_shadowed`, and the Extension Control Center rendered it as a real row for a
+ * file that contributes nothing.
+ *
+ * Resolution belongs to the walk, not to a dedupe two layers away. These cases
+ * assert the pre-dedupe superset so the rule cannot quietly move back out of the
+ * provider, and so a second registry key never resurrects the loser.
+ */
+describe("the project walk emits one candidate per directory level", () => {
+	let repo: string;
+
+	beforeEach(async () => {
+		repo = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "rulewalk-provider-")));
+		await fs.mkdir(path.join(repo, ".git"), { recursive: true });
+		await fs.mkdir(path.join(repo, ".veyyon"), { recursive: true });
+	});
+
+	afterEach(async () => {
+		await removeWithRetries(repo);
+	});
+
+	async function providerPathsUnder(cwd: string): Promise<string[]> {
+		const result = await loadCapability<ContextFile>(contextFileCapability.id, { cwd });
+		return result.all.map(file => file.path).filter(filePath => filePath.startsWith(`${repo}${path.sep}`));
+	}
+
+	it("never emits the CLAUDE.md beside an AGENTS.md, not even as a shadowed item", async () => {
+		await fs.writeFile(path.join(repo, "AGENTS.md"), "From AGENTS.");
+		await fs.writeFile(path.join(repo, "CLAUDE.md"), "From CLAUDE.");
+
+		expect(await providerPathsUnder(repo)).toEqual([path.join(repo, "AGENTS.md")]);
+	});
+
+	it("never emits a plain file beside a .veyyon/AGENTS.md that claimed the level", async () => {
+		await fs.writeFile(path.join(repo, ".veyyon", "AGENTS.md"), "Native rules.");
+		await fs.writeFile(path.join(repo, "AGENTS.md"), "Plain rules.");
+		await fs.writeFile(path.join(repo, "CLAUDE.md"), "Claude rules.");
+
+		expect(await providerPathsUnder(repo)).toEqual([path.join(repo, ".veyyon", "AGENTS.md")]);
 	});
 });

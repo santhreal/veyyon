@@ -56,7 +56,7 @@ describe("monorepo skill discovery", () => {
 		const results: LoadResult<Skill>[] = [];
 		let current = subProject;
 		while (true) {
-			const result = await scanSkillsFromDir(ctx, {
+			const result = await scanSkillsFromDir({
 				dir: path.join(current, ".veyyon", "skills"),
 				providerId: "native",
 				level: "project",
@@ -85,7 +85,7 @@ describe("monorepo skill discovery", () => {
 		const results: LoadResult<Skill>[] = [];
 		let current = subProject;
 		while (true) {
-			const result = await scanSkillsFromDir(ctx, {
+			const result = await scanSkillsFromDir({
 				dir: path.join(current, ".veyyon", "skills"),
 				providerId: "native",
 				level: "project",
@@ -110,7 +110,7 @@ describe("monorepo skill discovery", () => {
 		const results: LoadResult<Skill>[] = [];
 		let current = subProject;
 		while (true) {
-			const result = await scanSkillsFromDir(ctx, {
+			const result = await scanSkillsFromDir({
 				dir: path.join(current, ".veyyon", "skills"),
 				providerId: "native",
 				level: "project",
@@ -135,7 +135,7 @@ describe("monorepo skill discovery", () => {
 		const results: LoadResult<Skill>[] = [];
 		let current = subProject;
 		while (true) {
-			const result = await scanSkillsFromDir(ctx, {
+			const result = await scanSkillsFromDir({
 				dir: path.join(current, ".veyyon", "skills"),
 				providerId: "native",
 				level: "project",
@@ -166,7 +166,7 @@ describe("monorepo skill discovery", () => {
 		const results: LoadResult<Skill>[] = [];
 		let current = subProject;
 		while (true) {
-			const result = await scanSkillsFromDir(ctx, {
+			const result = await scanSkillsFromDir({
 				dir: path.join(current, ".veyyon", "skills"),
 				providerId: "native",
 				level: "project",
