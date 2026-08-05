@@ -136,3 +136,10 @@ bun/
 # session started in a subdirectory writes, which is where the observed debris landed.
 **/.veyyon/vault.json
 **/.veyyon/vault.json.unreadable-*
+
+# Perf-lane scratch: captured boot frames, A/B run directories and raw version probes, written
+# by the performance lane into the repo root. Two reasons it must not be committed. It is
+# regenerated debris that means nothing to anyone else, and the captured frames embed ABSOLUTE
+# paths from the machine that took them, so committing one publishes the operator's home
+# directory and username in a stack trace.
+/.perf-lane/
