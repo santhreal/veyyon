@@ -143,3 +143,11 @@ bun/
 # paths from the machine that took them, so committing one publishes the operator's home
 # directory and username in a stack trace.
 /.perf-lane/
+
+# The test sandbox's guest artifacts: a kernel image and a ~390MB initramfs, built
+# by `bash scripts/test-sandbox.sh --build` from the local docker image. They are
+# large, machine-local, and reproducible from scripts/test-vm/Dockerfile plus the
+# bun version, so there is nothing to gain from committing them. `boot-verified` is
+# a marker written only after the guest has actually booted and mounted the repo;
+# it must not travel to a machine that has not run that check.
+/scripts/test-vm/.build/

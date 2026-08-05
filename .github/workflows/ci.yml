@@ -372,6 +372,15 @@ jobs:
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
+         - name: Build the test sandbox image
+           # Every `bun test` in this repo refuses to run unless it can PROVE the
+           # operator's home is unreachable, so CI has to establish the same boundary
+           # a workstation does or the contract holds on one machine only. On a
+           # GitHub runner that is the container rung, and this builds the guest
+           # userland it runs. There is no /dev/kvm here, so the script builds the
+           # userland only and says so; the microVM rung reports itself unavailable
+           # instead of being silently swapped for something weaker.
+           run: bash scripts/test-sandbox.sh --build
          - name: Test workspace packages and repo scripts (TS)
            run: bun run ci:test:ts:workspace
 
@@ -402,6 +411,15 @@ jobs:
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
+         - name: Build the test sandbox image
+           # Every `bun test` in this repo refuses to run unless it can PROVE the
+           # operator's home is unreachable, so CI has to establish the same boundary
+           # a workstation does or the contract holds on one machine only. On a
+           # GitHub runner that is the container rung, and this builds the guest
+           # userland it runs. There is no /dev/kvm here, so the script builds the
+           # userland only and says so; the microVM rung reports itself unavailable
+           # instead of being silently swapped for something weaker.
+           run: bash scripts/test-sandbox.sh --build
          - name: Test coding-agent singleton/global-state bucket
            # Keep global Settings/env/fake-timer tests serial; native addon
            # artifacts are still available like every other coding-agent bucket.
@@ -435,6 +453,15 @@ jobs:
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
+         - name: Build the test sandbox image
+           # Every `bun test` in this repo refuses to run unless it can PROVE the
+           # operator's home is unreachable, so CI has to establish the same boundary
+           # a workstation does or the contract holds on one machine only. On a
+           # GitHub runner that is the container rung, and this builds the guest
+           # userland it runs. There is no /dev/kvm here, so the script builds the
+           # userland only and says so; the microVM rung reports itself unavailable
+           # instead of being silently swapped for something weaker.
+           run: bash scripts/test-sandbox.sh --build
          - name: Test native/TUI/browser-ish packages (TS)
            run: bun run ci:test:ts:native
 
@@ -466,6 +493,15 @@ jobs:
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
+         - name: Build the test sandbox image
+           # Every `bun test` in this repo refuses to run unless it can PROVE the
+           # operator's home is unreachable, so CI has to establish the same boundary
+           # a workstation does or the contract holds on one machine only. On a
+           # GitHub runner that is the container rung, and this builds the guest
+           # userland it runs. There is no /dev/kvm here, so the script builds the
+           # userland only and says so; the microVM rung reports itself unavailable
+           # instead of being silently swapped for something weaker.
+           run: bash scripts/test-sandbox.sh --build
          - name: Test coding-agent UI/TUI bucket
            run: bun run ci:test:coding-agent:ui
 
@@ -496,6 +532,15 @@ jobs:
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
+         - name: Build the test sandbox image
+           # Every `bun test` in this repo refuses to run unless it can PROVE the
+           # operator's home is unreachable, so CI has to establish the same boundary
+           # a workstation does or the contract holds on one machine only. On a
+           # GitHub runner that is the container rung, and this builds the guest
+           # userland it runs. There is no /dev/kvm here, so the script builds the
+           # userland only and says so; the microVM rung reports itself unavailable
+           # instead of being silently swapped for something weaker.
+           run: bash scripts/test-sandbox.sh --build
          - name: Test coding-agent runtime bucket
            # Runtime/session tests import native-backed barrels too; keep this
            # separate for concurrency, not as a native-free guardrail.
@@ -529,6 +574,15 @@ jobs:
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
+         - name: Build the test sandbox image
+           # Every `bun test` in this repo refuses to run unless it can PROVE the
+           # operator's home is unreachable, so CI has to establish the same boundary
+           # a workstation does or the contract holds on one machine only. On a
+           # GitHub runner that is the container rung, and this builds the guest
+           # userland it runs. There is no /dev/kvm here, so the script builds the
+           # userland only and says so; the microVM rung reports itself unavailable
+           # instead of being silently swapped for something weaker.
+           run: bash scripts/test-sandbox.sh --build
          - name: Test coding-agent native/unit bucket
            run: bun run ci:test:coding-agent:native
 
