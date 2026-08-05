@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "bun:test";
 import { AgentPauseGate } from "@veyyon/agent-core";
+import * as logger from "@veyyon/utils/logger";
 
 /**
  * AgentPauseGate unit contracts without spinning a full agent loop:
@@ -100,5 +101,38 @@ describe("AgentPauseGate unit adversarial", () => {
 		expect(gate.paused).toBe(true);
 		expect(() => gate.resume()).not.toThrow();
 		expect(gate.paused).toBe(false);
+	});
+
+	/**
+	 * The swallow above was silent. A listener that throws keeps its subscription
+	 * and keeps missing transitions, so a host pause indicator can sit on
+	 * "running" through an engaged gate with nothing recorded to explain it. The
+	 * dispatch must still continue, and the throw must now be named.
+	 */
+	it("reports the listener that threw, and still notifies the others", () => {
+		const warnings: Array<{ message: string; fields: Record<string, unknown> }> = [];
+		const restore = vi
+			.spyOn(logger, "warn")
+			.mockImplementation((message: string, fields?: Record<string, unknown>) => {
+				warnings.push({ message, fields: fields ?? {} });
+			});
+		const seen: boolean[] = [];
+		try {
+			gate = new AgentPauseGate();
+			gate.onChange(() => {
+				throw new Error("hostile listener");
+			});
+			gate.onChange(paused => seen.push(paused));
+
+			gate.pause();
+		} finally {
+			restore.mockRestore();
+		}
+
+		expect(seen).toEqual([true]);
+		const reported = warnings.filter(entry => entry.message.includes("pause listener threw"));
+		expect(reported).toHaveLength(1);
+		expect(reported[0]?.fields.paused).toBe(true);
+		expect(String(reported[0]?.fields.error)).toContain("hostile listener");
 	});
 });

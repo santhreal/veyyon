@@ -72,8 +72,8 @@ function contextText(context: Context): string {
 }
 
 describe("compaction provider confidentiality boundary", () => {
-	it("sanitizes hook and memory extra context on both long and short local sends while retaining safe text", async () => {
-		// WHY: extraContext is appended after conversation conversion, so both fan-out requests need a final boundary.
+	it("sanitizes hook and memory extra context on the single durable local send", async () => {
+		// WHY: extraContext is appended after conversation conversion, so the final provider boundary must sanitize it.
 		const captures: string[] = [];
 
 		const result = await compact(preparation(), modelFixture(), "test-key", undefined, undefined, {
@@ -81,12 +81,12 @@ describe("compaction provider confidentiality boundary", () => {
 			obfuscateProviderText: text => text.replaceAll(HOOK_SECRET, "#HOOK#").replaceAll(MEMORY_SECRET, "#MEMORY#"),
 			completeImpl: async (_model, context) => {
 				captures.push(contextText(context));
-				return assistant(captures.length === 1 ? "long summary" : "short summary");
+				return assistant("long summary");
 			},
 		});
 
 		expect(result.summary).toContain("long summary");
-		expect(captures).toHaveLength(2);
+		expect(captures).toHaveLength(1);
 		for (const capture of captures) {
 			expect(capture).not.toContain(HOOK_SECRET);
 			expect(capture).not.toContain(MEMORY_SECRET);
@@ -110,7 +110,7 @@ describe("compaction provider confidentiality boundary", () => {
 			},
 		});
 
-		expect(captures).toHaveLength(2);
+		expect(captures).toHaveLength(1);
 		for (const capture of captures) {
 			expect(capture).not.toContain(HOOK_SECRET);
 			expect(capture).toContain("#HOOK# safe #HOOK#");
@@ -118,7 +118,7 @@ describe("compaction provider confidentiality boundary", () => {
 		}
 	});
 
-	it("re-sanitizes remote long/short bodies after auth refresh with the current runtime", async () => {
+	it("re-sanitizes a retried remote summary body after auth refresh with the current runtime", async () => {
 		// WHY: remote withAuth awaits credential rotation between physical fetches; stale sanitized snapshots are unsafe.
 		const bodies: string[] = [];
 		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
@@ -132,7 +132,7 @@ describe("compaction provider confidentiality boundary", () => {
 					lateSecretIsLive = true;
 					return new Response(`credential rejected ${LATE_SECRET}`, { status: 401, statusText: "Unauthorized" });
 				}
-				return Response.json({ summary: bodies.length === 2 ? "remote long" : "remote short" });
+				return Response.json({ summary: "remote long" });
 			},
 		);
 
@@ -153,7 +153,7 @@ describe("compaction provider confidentiality boundary", () => {
 		);
 
 		expect(result.summary).toContain("remote long");
-		expect(bodies).toHaveLength(3);
+		expect(bodies).toHaveLength(2);
 		expect(bodies[0]).not.toContain(HOOK_SECRET);
 		expect(bodies[0]).toContain(LATE_SECRET);
 		for (const retriedBody of bodies.slice(1)) {
@@ -184,7 +184,7 @@ describe("compaction provider confidentiality boundary", () => {
 			},
 		});
 
-		expect(observedOptions).toHaveLength(2);
+		expect(observedOptions).toHaveLength(1);
 		for (const options of observedOptions) expect(options.providerSessionState).toBe(providerState);
 		expect(providerState.get("openai")).toBe(replayState);
 		expect(replayState.encryptedContent).toBe(`opaque-${HOOK_SECRET}`);
@@ -238,9 +238,9 @@ describe("compaction provider confidentiality boundary", () => {
 			},
 		});
 
-		// The replacement itself straddles the cutoff and may be truncated; the
-		// security contract is that no prefix of the original secret survives.
-		expect(captures[0]).toContain(`${"x".repeat(1997)}#CU`);
+		// Redaction runs before bounded head+tail preservation. The replacement
+		// remains visible in the retained tail and no original secret survives.
+		expect(captures[0]).toContain("#CUT#:tail");
 		expect(captures[0]).not.toContain(cutoffSecret);
 		expect(captures[0]).not.toContain(cutoffSecret.slice(0, 3));
 	});

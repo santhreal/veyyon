@@ -25,6 +25,8 @@ export * from "./thinking";
 // Tokenizer choice
 export * from "./tokenizer";
 
+// Partial-completion ledger for a batch of tool calls that was cut short
+export * from "./tool-batch-ledger";
 export * from "./tool-result-cap";
 // Types
 export * from "./types";

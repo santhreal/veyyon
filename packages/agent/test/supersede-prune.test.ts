@@ -406,6 +406,10 @@ describe("pruneSupersededToolResults — useless results", () => {
 
 		expect(result.prunedCount).toBe(1);
 		expect(result.tokensSaved).toBeGreaterThan(0);
+		// The literal bytes once, here: this notice replaces a tool result in the
+		// model's transcript, so it is text the model reads. Every other assertion
+		// in this file uses USELESS_NOTICE, which would follow the string anywhere.
+		expect(resultText(result1)).toBe("[Uneventful result elided]");
 		expect(resultText(result1)).toBe(USELESS_NOTICE);
 		expect(resultMessage(result1).prunedAt).toBeDefined();
 	});

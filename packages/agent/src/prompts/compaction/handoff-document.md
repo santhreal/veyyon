@@ -18,7 +18,7 @@ Capture exact technical state, not abstractions.
 The next session starts cold, in a fresh process, with no memory of this one. Record what it needs to resume work rather than re-derive it:
 - Working directory, and where the work is version controlled: the branch, the HEAD commit it started from, whether anything has been committed during this session, and the uncommitted or untracked files
 - Toolchain, environment, or wrapper commands this repository requires
-- Anything you started that is still running: background jobs, watches, daemons, servers, with the command and what it was checking. The next session shares this machine and will collide with a process it does not know about. If nothing is running, say nothing.
+- Session-owned async jobs are cancelled during this handoff. Record their last observed result or failure when useful, but NEVER say they remain running. List a watch, daemon, server, or detached process as still running only when you observed that it survives a session handoff.
 - The exact next command to run, ready to paste
 </restart>
 
@@ -65,7 +65,7 @@ Current task: [what is being worked on right now, which is allowed to change oft
 ## Critical Context
 - Code snippets, file paths, function/type names, error messages, data essential to continue
 - Where the work is version controlled: working directory, branch, HEAD commit, whether anything was committed this session, and each modified or untracked file with what changed in it and why
-- Anything still running, with its command
+- Only independently persistent processes observed to survive the handoff, with their command. Session-owned async jobs are cancelled and never belong here.
 
 ## Next Steps
 1. [What should happen next]

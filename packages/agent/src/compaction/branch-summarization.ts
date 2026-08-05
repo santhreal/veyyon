@@ -24,7 +24,7 @@ import { estimateTokens } from "./token-estimate";
 import {
 	computeFileLists,
 	createFileOps,
-	extractFileOpsFromMessage,
+	extractFileOpsFromMessages,
 	type FileOperations,
 	SUMMARIZATION_SYSTEM_PROMPT,
 	serializeConversationForSummary,
@@ -512,15 +512,14 @@ function prepareBranchEntriesForProvider(
 ): BranchPreparation {
 	const messages: AgentMessage[] = [];
 	const fileOps = createFileOps();
+	const fileMessages: AgentMessage[] = [];
 	let totalTokens = 0;
 
 	// First pass: collect file ops from ALL entries (even if they don't fit in token budget)
 	// This ensures we capture cumulative file tracking from nested branch summaries
 	// Only extract from pi-generated summaries (fromExtension !== true), not extension-generated ones
 	for (const entry of entries) {
-		if (entry.type === "message") {
-			extractFileOpsFromMessage(entry.message, fileOps);
-		}
+		if (entry.type === "message") fileMessages.push(entry.message);
 		if (entry.type === "branch_summary" && !entry.fromExtension && entry.details) {
 			const details = entry.details as BranchSummaryDetails;
 			if (Array.isArray(details.readFiles)) {
@@ -534,6 +533,7 @@ function prepareBranchEntriesForProvider(
 			}
 		}
 	}
+	extractFileOpsFromMessages(fileMessages, fileOps);
 
 	// Second pass: walk from newest to oldest, adding messages until token budget
 	for (let i = entries.length - 1; i >= 0; i--) {

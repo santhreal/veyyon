@@ -166,7 +166,7 @@ describe("serializeConversation — useless pairs", () => {
 		expect(out).toContain("login match in src/auth.ts");
 	});
 
-	test("dialect path truncates an oversized tool result to 2000 chars plus a marker", () => {
+	test("dialect path bounds an oversized tool result while preserving its head and tail", () => {
 		const big = "x".repeat(2500);
 		const out = serializeConversation(
 			[
@@ -175,7 +175,8 @@ describe("serializeConversation — useless pairs", () => {
 			],
 			"anthropic",
 		);
-		expect(out).toContain("[... 500 more characters truncated]");
+		expect(out).toContain("[... middle omitted; tail preserved ...]");
+		expect(out).toContain("x".repeat(900));
 		expect(out).not.toContain("x".repeat(2001));
 	});
 
@@ -201,9 +202,12 @@ describe("truncateToolResultForSummary", () => {
 		expect(truncateToolResultForSummary("short")).toBe("short");
 	});
 
-	test("truncates longer text and reports the exact dropped-character count", () => {
+	/** Tail preservation keeps final errors and summaries visible instead of silently discarding them. */
+	test("truncates only the middle of longer text within the exact character cap", () => {
 		const out = truncateToolResultForSummary("z".repeat(2000) + "q".repeat(123));
-		expect(out).toBe(`${"z".repeat(2000)}\n\n[... 123 more characters truncated]`);
-		expect(out).not.toContain("q");
+		expect(out).toHaveLength(2000);
+		expect(out).toStartWith("z".repeat(900));
+		expect(out).toContain("[... middle omitted; tail preserved ...]");
+		expect(out).toEndWith("q".repeat(123));
 	});
 });

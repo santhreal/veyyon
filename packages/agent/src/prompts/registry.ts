@@ -20,7 +20,6 @@ import compactionAutoHandoffThresholdFocus from "./compaction/auto-handoff-thres
 import compactionBranchSummary from "./compaction/branch-summary.md" with { type: "text" };
 import compactionBranchSummaryContext from "./compaction/branch-summary-context.md" with { type: "text" };
 import compactionBranchSummaryPreamble from "./compaction/branch-summary-preamble.md" with { type: "text" };
-import compactionCompactionShortSummary from "./compaction/compaction-short-summary.md" with { type: "text" };
 import compactionCompactionSummary from "./compaction/compaction-summary.md" with { type: "text" };
 import compactionCompactionSummaryContext from "./compaction/compaction-summary-context.md" with { type: "text" };
 import compactionCompactionTurnPrefix from "./compaction/compaction-turn-prefix.md" with { type: "text" };
@@ -48,10 +47,6 @@ export const agentCorePrompts = definePromptRegistry("packages/agent/src/prompts
 	"compaction/branch-summary-preamble": {
 		text: compactionBranchSummaryPreamble,
 		purpose: "introduces a branch summary in the resumed conversation",
-	},
-	"compaction/compaction-short-summary": {
-		text: compactionCompactionShortSummary,
-		purpose: "the pull-request-style short summary of a compacted session",
 	},
 	"compaction/compaction-summary": {
 		text: compactionCompactionSummary,

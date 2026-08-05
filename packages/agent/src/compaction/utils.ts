@@ -61,35 +61,117 @@ export function isUrlSchemePath(path: string): boolean {
  * Extract file operations from tool calls in an assistant message.
  */
 export function extractFileOpsFromMessage(message: AgentMessage, fileOps: FileOperations): void {
-	if (message.role !== "assistant") return;
-	if (!("content" in message) || !Array.isArray(message.content)) return;
-
+	if (message.role !== "assistant" || !Array.isArray(message.content)) return;
 	for (const block of message.content) {
-		if (typeof block !== "object" || block === null) continue;
-		if (!("type" in block) || block.type !== "toolCall") continue;
-		if (!("arguments" in block) || !("name" in block)) continue;
-
+		if (block.type !== "toolCall" || block.name !== "read") continue;
 		const args = block.arguments as Record<string, unknown> | undefined;
-		if (!args) continue;
+		const path = typeof args?.path === "string" ? args.path : undefined;
+		if (path && !isUrlSchemePath(path)) fileOps.read.add(stripReadSelector(path));
+	}
+}
 
-		const path = typeof args.path === "string" ? args.path : undefined;
-		if (!path) continue;
+/**
+ * The files one completed tool result actually mutated, and how.
+ *
+ * The ONE owner of "which paths did this tool change", because two callers need the
+ * same answer from opposite directions: compaction replays a finished transcript to
+ * build its `<files>` list, and the live session counts uncommitted drift as the edits
+ * happen. Deriving it twice would let a tool be added to one reader and missed by the
+ * other, and the reader that missed it would fail silently — a shorter list, never an
+ * error.
+ *
+ * Reads the RESULT details rather than the call arguments, so it reports what the tool
+ * did rather than what it was asked to do: `edit` writes several files from one `input`
+ * payload with no `path` argument at all, and `ast_edit` reports zero paths when it
+ * matched nothing. Returns `null` when the tool mutates nothing.
+ */
+export function mutatedPathsFromToolResult(
+	toolName: string,
+	detailsValue: unknown,
+): { kind: "written" | "edited"; paths: string[] } | null {
+	if (!detailsValue || typeof detailsValue !== "object") return null;
+	let details = detailsValue as Record<string, unknown>;
+	let effectiveTool = toolName;
+	if (toolName === "resolve" && details.action === "apply" && details.sourceToolName === "ast_edit") {
+		effectiveTool = "ast_edit";
+		if (!details.sourceResultDetails || typeof details.sourceResultDetails !== "object") return null;
+		details = details.sourceResultDetails as Record<string, unknown>;
+	}
 
-		// Internal URIs (conflict://, artifact://, local://, history://, …) and
-		// web URLs are not re-groundable files — keep them out of `<files>`.
-		if (isUrlSchemePath(path)) continue;
+	let candidates: unknown[] = [];
+	if (effectiveTool === "write") {
+		candidates = [details.resolvedPath];
+	} else if (effectiveTool === "edit") {
+		const perFileResults = Array.isArray(details.perFileResults) ? details.perFileResults : [];
+		candidates = [
+			details.path,
+			details.sourcePath,
+			...perFileResults.flatMap(value => {
+				if (!value || typeof value !== "object") return [];
+				const result = value as Record<string, unknown>;
+				return [result.path, result.sourcePath];
+			}),
+		];
+	} else if (
+		effectiveTool === "ast_edit" &&
+		details.applied === true &&
+		typeof details.totalReplacements === "number" &&
+		details.totalReplacements > 0
+	) {
+		candidates = Array.isArray(details.files) ? details.files : [];
+	} else {
+		return null;
+	}
 
-		switch (block.name) {
-			case "read":
-				fileOps.read.add(stripReadSelector(path));
-				break;
-			case "write":
-				fileOps.written.add(path);
-				break;
-			case "edit":
-				fileOps.edited.add(path);
-				break;
+	const paths: string[] = [];
+	for (const candidate of candidates) {
+		if (typeof candidate !== "string" || candidate.length === 0 || isUrlSchemePath(candidate)) continue;
+		paths.push(candidate);
+	}
+	if (paths.length === 0) return null;
+	return { kind: effectiveTool === "write" ? "written" : "edited", paths };
+}
+
+/**
+ * Extract only completed file operations from a chronological message slice.
+ * Read calls remain useful discovery evidence; mutations require a paired,
+ * successful tool result and prefer its exact affected-path details.
+ */
+export function extractFileOpsFromMessages(messages: readonly AgentMessage[], fileOps: FileOperations): void {
+	const calls = new Map<string, { name: string; arguments: Record<string, unknown> | undefined }>();
+	for (const message of messages) {
+		if (message.role !== "assistant" || !Array.isArray(message.content)) continue;
+		for (const block of message.content) {
+			if (block.type !== "toolCall") continue;
+			calls.set(block.id, {
+				name: block.name,
+				arguments:
+					block.arguments && typeof block.arguments === "object"
+						? (block.arguments as Record<string, unknown>)
+						: undefined,
+			});
+			if (block.name === "read") {
+				const path = typeof block.arguments?.path === "string" ? block.arguments.path : undefined;
+				if (path && !isUrlSchemePath(path)) fileOps.read.add(stripReadSelector(path));
+			}
 		}
+	}
+
+	for (const message of messages) {
+		if (message.role !== "toolResult" || message.isError === true) continue;
+		const call = calls.get(message.toolCallId);
+		const toolName = message.toolName || call?.name;
+		if (!toolName) continue;
+		const mutation = mutatedPathsFromToolResult(toolName, message.details);
+		if (mutation) {
+			const target = mutation.kind === "written" ? fileOps.written : fileOps.edited;
+			for (const mutated of mutation.paths) target.add(mutated);
+			continue;
+		}
+		if (toolName !== "write" && toolName !== "edit") continue;
+		const path = typeof call?.arguments?.path === "string" ? call.arguments.path : undefined;
+		if (!path || isUrlSchemePath(path)) continue;
+		(toolName === "write" ? fileOps.written : fileOps.edited).add(path);
 	}
 }
 
@@ -167,8 +249,11 @@ const TOOL_RESULT_MAX_CHARS = 2000;
  */
 export function truncateToolResultForSummary(text: string): string {
 	if (text.length <= TOOL_RESULT_MAX_CHARS) return text;
-	const truncatedChars = text.length - TOOL_RESULT_MAX_CHARS;
-	return `${text.slice(0, TOOL_RESULT_MAX_CHARS)}\n\n[... ${truncatedChars} more characters truncated]`;
+	const marker = "\n\n[... middle omitted; tail preserved ...]\n\n";
+	const retainedChars = TOOL_RESULT_MAX_CHARS - marker.length;
+	const headChars = Math.ceil(retainedChars / 2);
+	const tailChars = retainedChars - headChars;
+	return `${text.slice(0, headChars)}${marker}${text.slice(text.length - tailChars)}`;
 }
 
 type SummaryTextTransform = (text: string) => string;

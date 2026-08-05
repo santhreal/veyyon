@@ -216,11 +216,14 @@ export function convertMessageToLlm(message: AgentMessage): Message | undefined 
 				};
 			case "compactionSummary":
 				return {
-					role: "developer",
+					role: "user",
 					content:
 						message.blocks !== undefined
 							? [
-									{ type: "text" as const, text: withoutSummaryPresentationTags(message.summary) },
+									{
+										type: "text" as const,
+										text: renderCompactionSummaryContext(message.summary),
+									},
 									...message.blocks.map(block =>
 										block.type === "text"
 											? { ...block, text: withoutSummaryPresentationTags(block.text) }
