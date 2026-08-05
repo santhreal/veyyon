@@ -134,6 +134,12 @@ export class SelectList implements Component, MouseRoutable {
 	// every keystroke — the dominant cost when filtering a large candidate list.
 	#searchable?: ReadonlyArray<{ item: SelectItem; text: string }>;
 	#filterQuery = "";
+	/**
+	 * True while {@link #filterQuery} is something the user typed into this list,
+	 * as opposed to a query a host pushed in with {@link setFilter}. The two get
+	 * different cancel-key treatment; see {@link #canClearFilter}.
+	 */
+	#filterTypedByUser = false;
 	#selectedIndex: number = 0;
 	#hoveredIndex: number | null = null;
 	/** Per-render map of 0-based output line → filtered-item index. */
@@ -201,6 +207,25 @@ export class SelectList implements Component, MouseRoutable {
 
 	setFilter(filter: string): void {
 		this.#setFilter(filter, true);
+	}
+
+	/**
+	 * Whether Escape will clear a live search filter instead of closing the list.
+	 *
+	 * Exists so a host can tell "Escape means clear my filter" from "Escape means
+	 * leave". The list consumes Escape to clear an active filter, and without a
+	 * way to ask, a host had to guess: in the setup wizard that guess ended
+	 * onboarding, because typing a filter and pressing Escape to clear it was
+	 * read as quit. A host that claims Escape while this is true keeps both
+	 * meanings.
+	 *
+	 * It reports the CANCEL LADDER's own first rung, not merely "a query string
+	 * is set", so a host cannot claim Escape for a query the list would refuse to
+	 * clear (see {@link setFilter} on a list with no editable search, which
+	 * closes rather than stranding the user in a loop).
+	 */
+	hasActiveFilter(): boolean {
+		return this.#canClearFilter();
 	}
 
 	setSelectedIndex(index: number): void {
@@ -341,7 +366,7 @@ export class SelectList implements Component, MouseRoutable {
 		// browser cleared the query — the same key doing different things in two
 		// pickers.
 		if (kb.matches(keyData, "tui.select.cancel")) {
-			if (this.#filterQuery.length > 0 && this.#canEditSearch()) {
+			if (this.#canClearFilter()) {
 				this.#setFilter("", true);
 				return;
 			}
@@ -420,7 +445,13 @@ export class SelectList implements Component, MouseRoutable {
 				return rows;
 			}
 
-			const truncatedDesc = truncateToWidth(descriptionSingleLine, remainingWidth, Ellipsis.Omit);
+			// Ellipsis, not a silent cut. A description clipped with nothing to mark
+			// it read as finished copy that happened to end mid-word ("Every tool
+			// call asks first, reads in"), so the only way to notice the loss was to
+			// already know the sentence. Callers then shortened row copy by hand to
+			// stay inside a column they could not see, which is the same defect one
+			// step earlier.
+			const truncatedDesc = truncateToWidth(descriptionSingleLine, remainingWidth, Ellipsis.Unicode);
 			if (isSelected) {
 				return [this.#paintSelectedRow(prefix, `${truncatedValue}${spacing}${truncatedDesc}`)];
 			}
@@ -631,32 +662,59 @@ export class SelectList implements Component, MouseRoutable {
 		);
 	}
 
+	/**
+	 * Whether the user can type into the search.
+	 *
+	 * The status row IS the search's only user interface: it is where the query
+	 * appears. A budget too small to afford that row therefore also cannot afford
+	 * the search, and accepting keystrokes there filtered the list with nothing
+	 * on screen saying why the rows had changed. The subagents step at a short
+	 * terminal is the case: one item row for six roles, where typing silently
+	 * narrowed them with no visible cause and no visible way back.
+	 */
 	#canEditSearch(): boolean {
-		return this.layout.overflowSearch !== false && this.items.length > this.maxVisible;
+		return this.#statusRowFitsBudget && this.layout.overflowSearch !== false && this.items.length > this.maxVisible;
+	}
+
+	/**
+	 * Whether the cancel key clears the query rather than closing the list.
+	 *
+	 * A query the USER typed stays clearable even after the list stops
+	 * overflowing, which a row budget can do at any moment: the setup wizard
+	 * resizes its lists on every terminal resize, so growing the terminal while a
+	 * filter was live used to make both Escape and Backspace refuse it, leaving a
+	 * filtered list with no way back to the full one. A query a HOST set through
+	 * {@link setFilter} on a list with no editable search still closes: the user
+	 * has no search input on screen, so "clearing" it would look like a key that
+	 * does nothing.
+	 */
+	#canClearFilter(): boolean {
+		return this.#filterQuery.length > 0 && (this.#filterTypedByUser || this.#canEditSearch());
 	}
 
 	#handleSearchInput(keyData: string): boolean {
-		if (!this.#canEditSearch()) return false;
-
 		const kb = getKeybindings();
 		if (kb.matches(keyData, "tui.editor.deleteCharBackward")) {
-			if (this.#filterQuery.length === 0) return false;
+			if (!this.#canClearFilter()) return false;
 			const chars = [...this.#filterQuery];
 			chars.pop();
-			this.#setFilter(chars.join(""), true);
+			this.#setFilter(chars.join(""), true, true);
 			return true;
 		}
+
+		if (!this.#canEditSearch()) return false;
 
 		const printableText = extractPrintableText(keyData);
 		if (printableText === undefined) return false;
 		if (this.#filterQuery.length === 0 && printableText.trim().length === 0) return false;
 
-		this.#setFilter(this.#filterQuery + printableText, true);
+		this.#setFilter(this.#filterQuery + printableText, true, true);
 		return true;
 	}
 
-	#setFilter(filter: string, notify: boolean): void {
+	#setFilter(filter: string, notify: boolean, typedByUser = false): void {
 		this.#filterQuery = filter;
+		this.#filterTypedByUser = filter.length > 0 && typedByUser;
 		if (filter.trim()) {
 			// Breadcrumb the fuzzy match so the loop watchdog can attribute a
 			// large-list filter stall instead of logging it as "unknown".

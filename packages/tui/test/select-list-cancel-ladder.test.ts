@@ -128,4 +128,60 @@ describe("SelectList cancel-key ladder", () => {
 		list.handleInput(ESC);
 		expect(list.render(80).join("\n")).toContain("esc close");
 	});
+
+	/**
+	 * `hasActiveFilter()` exists for one caller shape: a host that owns Escape
+	 * asking whether the list wants it first. It therefore has to report the
+	 * LADDER'S first rung, not "a query string is set". A host that trusted the
+	 * looser reading would claim Escape for a query the list refuses to clear,
+	 * and the key would then do nothing at all.
+	 *
+	 * IF IT REGRESSES: the setup wizard claims Escape on a step where Escape
+	 * cannot clear anything, so the user's only advertised way out stops
+	 * responding.
+	 */
+	it("reports exactly whether esc will clear the filter, not merely that one is set", () => {
+		const { list, cancels } = overflowingList();
+		expect(list.hasActiveFilter()).toBe(false);
+
+		list.handleInput("i");
+		expect(list.hasActiveFilter()).toBe(true);
+
+		list.handleInput(ESC);
+		expect(list.hasActiveFilter()).toBe(false);
+		expect(cancels()).toBe(0);
+
+		// A host-pushed query on a list with no editable search is the case the
+		// ladder deliberately closes on, so this must NOT claim it.
+		const small = new SelectList([{ value: "only", label: "only" }], 5, theme);
+		small.setFilter("onl");
+		expect(small.hasActiveFilter()).toBe(false);
+	});
+
+	/**
+	 * A row budget is not fixed: the setup wizard re-sizes every list on every
+	 * terminal resize. Growing the terminal past the item count used to switch
+	 * the search off underneath a query the user had already typed, and both Esc
+	 * and Backspace then refused it, leaving a filtered list with no route back
+	 * to the full one.
+	 *
+	 * IF IT REGRESSES: resizing the terminal mid-search strands the user on a
+	 * list showing one row, with the rest of the choices unreachable.
+	 */
+	it("keeps a typed query clearable after the list stops overflowing", () => {
+		const { list, cancels } = overflowingList();
+		list.handleInput("i");
+		list.handleInput("7");
+		expect(list.render(60).join("\n")).toContain("item-7");
+
+		// The window now holds all eight items, so the search is no longer
+		// editable by the `items.length > maxVisible` rule.
+		list.setMaxVisible(20);
+		expect(list.hasActiveFilter()).toBe(true);
+
+		list.handleInput(ESC);
+		expect(cancels()).toBe(0);
+		expect(list.render(60).join("\n")).toContain("item-0");
+		expect(list.hasActiveFilter()).toBe(false);
+	});
 });

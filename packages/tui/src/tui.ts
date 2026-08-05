@@ -1137,10 +1137,10 @@ export class TUI extends Container {
 	//   the terminal's scrollback and the host is responsible for replaying it on
 	//   exit if that history should survive the session.
 	//
-	// Defaulted from `VEYYON_TUI_SCROLL_TRANSPORT` (the same shape as
-	// `VEYYON_TUI_SCROLLBACK_REBUILD` below) so the surface is reachable before it
-	// has a settings entry. The settings schema is where this belongs and is where
-	// it will move; the env read is not a substitute for that, only an earlier door.
+	// Defaulted from `VEYYON_TUI_SCROLL_TRANSPORT` so the surface is reachable
+	// before it has a settings entry. The settings schema is where this belongs and
+	// is where it will move; the env read is not a substitute for that, only an
+	// earlier door.
 	#scrollTransport: ScrollTransport = Bun.env.VEYYON_TUI_SCROLL_TRANSPORT === "alt-arrows" ? "alt-arrows" : "mouse";
 	#altScrollActive = false;
 	#wheelTrackingActive = false;
@@ -1206,8 +1206,23 @@ export class TUI extends Container {
 	#clearScrollbackOnNextRender = false;
 	#forceViewportRepaintOnNextRender = false;
 	#hasEverRendered = false;
-	#scrollbackRebuildEnabled =
-		Bun.env.VEYYON_TUI_SCROLLBACK_REBUILD === "1" || Bun.env.VEYYON_TUI_SCROLLBACK_REBUILD === "true";
+	// Erase-and-replay history when a block's final form replaces the live
+	// preview that already scrolled off.
+	//
+	// WHAT IT FIXES. Without it the engine recommits the final form BELOW the
+	// stale fragment, so the reader sees the same paragraph twice, one after the
+	// other. A streaming reply that reflows a block after part of it scrolled
+	// past the window top produces that every time, which on a long answer is
+	// most of them, and it was the most-reported rendering defect in the
+	// product.
+	//
+	// The `divergenceRebuild` condition this gates already refuses every case
+	// where erasing is unsafe: the first paint, an explicit replace, any
+	// geometry frame, and any multiplexer pane, where ED3 would eat the pane's
+	// own history and the repair-below fallback is kept on purpose. What is left
+	// is a direct terminal whose scrollback the engine itself wrote and can
+	// rewrite, so there is nothing left to opt out of.
+	#scrollbackRebuildEnabled = true;
 	// Set by the terminal resize callback; consumed by the next render. A resize
 	// event invalidates the committed screen even when the dimensions net out
 	// unchanged by render time (e.g. a 6→4→6 round trip coalesced into one frame

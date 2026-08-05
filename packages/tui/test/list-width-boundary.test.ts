@@ -25,8 +25,6 @@ const ITEMS: SelectItem[] = [
 	{ value: "1.5.2", label: "1.5.2", description: "released in June" },
 ];
 
-const PATHOLOGICAL = [0, -1, -100, Number.NaN, Number.POSITIVE_INFINITY, 1e9, 0x7fff_ffff];
-
 const plain = (line: string) => stripVTControlCharacters(line);
 
 describe("TruncatedText", () => {
@@ -54,9 +52,37 @@ describe("TruncatedText", () => {
 		expect(plain(new TruncatedText("hello", 0, 0).render(20)[0]!)).toBe("hello");
 	});
 
-	it("does not throw at any pathological width", () => {
-		for (const width of PATHOLOGICAL) {
-			expect(() => new TruncatedText("hello world", 1, 1).render(width)).not.toThrow();
+	/**
+	 * LOCKS OUT: an absurd width turning into an absurd allocation, and a padded
+	 * component drawing outside a zero-width pane.
+	 *
+	 * This replaced `expect(() => …render(width)).not.toThrow()`, which is the
+	 * assertion this file's own header calls out as blind. It hid both facts
+	 * below. `Infinity` and `0x7fffffff` do not throw; they produce a line of
+	 * 1,048,576 cells, so the contract worth pinning is that the clamp exists and
+	 * where it is. And at zero columns the padded instance emits a two-cell line,
+	 * which is a two-column overrun of the pane it was handed.
+	 */
+	it("clamps an absurd width and keeps a degenerate one from allocating", () => {
+		for (const width of [0, -1, -100, Number.NaN]) {
+			const lines = new TruncatedText("hello world", 1, 1).render(width).map(plain);
+			// Padding rows above and below, and the padded content row between them.
+			// The two cells are the left padding: no text survives at zero columns.
+			expect(lines).toEqual(["", "  ", ""]);
+		}
+		for (const width of [Number.POSITIVE_INFINITY, 1e9, 0x7fff_ffff]) {
+			const lines = new TruncatedText("hello world", 1, 1).render(width).map(plain);
+			expect(lines).toHaveLength(3);
+			// The content row stays its natural size, so the text is never padded
+			// out to the requested width.
+			expect(lines[1]).toBe(" hello world ");
+			// The blank padding rows are, and they are clamped to one mebicell
+			// rather than to the two billion columns that were asked for. Pinned
+			// because the clamp is the only thing between a bogus width and a
+			// two-gigabyte string per padding row, and `not.toThrow` saw none of it.
+			expect(visibleWidth(lines[0]!)).toBe(1_048_576);
+			expect(visibleWidth(lines[2]!)).toBe(1_048_576);
+			expect(lines[0]!.trim()).toBe("");
 		}
 	});
 
@@ -67,10 +93,46 @@ describe("TruncatedText", () => {
 });
 
 describe("SelectList", () => {
-	it("does not throw at any pathological width", () => {
-		for (const width of PATHOLOGICAL) {
-			expect(() => new SelectList(ITEMS, 5, defaultSelectListTheme).render(width)).not.toThrow();
+	/**
+	 * LOCKS OUT: a picker that silently renders nothing, or overruns, when the
+	 * width it is handed is not a sane column count.
+	 *
+	 * This replaced `expect(() => …render(width)).not.toThrow()`. Every picker in
+	 * the product is this component, and the failure that actually matters at a
+	 * bogus width is not an exception: it is a list that draws two blank rows
+	 * where the version numbers should be, which a "did not throw" test calls a
+	 * pass. `Number.POSITIVE_INFINITY` does exactly that today and is asserted
+	 * separately below so the emptiness is recorded rather than hidden.
+	 */
+	it("renders every row at an absurd but finite width, and no row overruns at any width", () => {
+		for (const width of [1e9, 0x7fff_ffff]) {
+			const lines = new SelectList(ITEMS, 5, defaultSelectListTheme).render(width).map(plain);
+			// Natural width, not the requested one: the list does not pad out to a
+			// billion columns, and both items keep their identity and description.
+			expect(lines).toEqual([
+				"> 1.6.0                           released in July",
+				"  1.5.2                           released in June",
+			]);
+			expect(lines.every(line => visibleWidth(line) === 50)).toBe(true);
 		}
+		for (const width of [0, -1, -100, Number.NaN]) {
+			// A pane with no columns draws no cells, but still one row per item, so
+			// the layout above and below it does not shift.
+			expect(new SelectList(ITEMS, 5, defaultSelectListTheme).render(width).map(plain)).toEqual(["", ""]);
+		}
+	});
+
+	/**
+	 * An unresolved terminal width arrives as `Infinity`, and the list answers with
+	 * two empty rows: the version numbers are gone, not merely truncated. Pinned
+	 * rather than asserted-away, because the previous `not.toThrow` test made this
+	 * invisible and a fix should have to change a test that says what is wrong.
+	 */
+	it("draws no content at an infinite width, which is the known gap here", () => {
+		expect(new SelectList(ITEMS, 5, defaultSelectListTheme).render(Number.POSITIVE_INFINITY).map(plain)).toEqual([
+			"",
+			"",
+		]);
 	});
 
 	it("never exceeds the width it was given, at any width a pane can shrink to", () => {

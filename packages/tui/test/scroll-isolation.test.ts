@@ -57,9 +57,8 @@ async function setup(transcriptRows: number, height = 10): Promise<Rig> {
 	const term = new VirtualTerminal(40, height, 1_000);
 	const scheduler = new StressRenderScheduler();
 	const tui = new TUI(term, true, { renderScheduler: scheduler });
-	// Shipped default, stated rather than inherited: the constructor reads
-	// VEYYON_TUI_SCROLLBACK_REBUILD, and another suite in this process sets it at
-	// module scope, which would otherwise decide this suite's behaviour.
+	// Rebuild OFF: it is on by default, and these cases assert against the
+	// append-below history it erases.
 	tui.setScrollbackRebuild(false);
 	const transcript = new Transcript();
 	const editor = new Editor();

@@ -101,11 +101,9 @@ async function session(steps = 12, height = HEIGHT): Promise<Rig> {
 	tui.setFocus(composer);
 	tui.setScrollIsolation(true);
 	tui.setPinnedFooterChildCount(1);
-	// Scrollback rebuild OFF, the shipped default, stated rather than inherited:
-	// it is read from VEYYON_TUI_SCROLLBACK_REBUILD at construction, and another
-	// suite in the same process sets that env var at module scope. Rebuild on is
-	// covered by its own case below, where erasing the terminal's history is the
-	// behaviour under test rather than a leaked default.
+	// Rebuild OFF for this case: it is on by default, and these assertions are
+	// about the append-below history the rebuild deliberately erases. The rebuild
+	// is covered by its own case below.
 	tui.setScrollbackRebuild(false);
 	transcript.all = row(0, 8);
 	tui.start();

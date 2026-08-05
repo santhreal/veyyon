@@ -2,10 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A block that reflows after part of it has scrolled off no longer appears twice. The engine had two answers for that divergence: erase history with one ED3 and replay it so the block lands exactly once, or recommit the final form below the stale fragment. The second is the right trade only inside a terminal multiplexer, where erasing would take the pane's own history with it, but it was what every terminal got, because the repair was gated behind a flag that defaulted to off. A streaming reply that reflows a block past the window top produces the duplicate every time, which on a long answer is most of them, and it was the most-reported rendering defect in the product. The repair is now the default and the `VEYYON_TUI_SCROLLBACK_REBUILD` environment variable is gone; multiplexer panes keep the append-below behaviour, which is unchanged.
+
 ### Added
 
 - `SelectList.setRowBudget(rows)` sizes a list so its whole render fits a number of terminal rows, while `setMaxVisible` keeps its item-only meaning. `render` emits the item window and, whenever the list overflows or a filter is live, one status row, so a host fitting a list into a fixed viewport had to subtract that row by hand. Three setup-wizard scenes each did it differently and one forgot it entirely, and the host then clipped a row off the bottom of the list. A budget of one row spends it on an item rather than on the status row.
 - `SelectListLayoutOptions.statusLegend` turns off the `↑↓ move · ↵ select · esc close` legend on the status row while keeping the search text. It is for a host that already names those keys and means something else by them: the setup wizard's footer names every key for the whole step, and its Esc leaves onboarding rather than closing the list, so the built-in legend contradicted the footer on the same screen.
+- `SettingItem.labelForValue` renders a stored value as the text a person reads, for the rows whose value is a machine number. It is applied at render time and nowhere else, so submenu preselection, value cycling and the `onChange` write-back all keep working from `currentValue`, and a labelled row still round-trips its real value. A mapper that returns nothing useful falls back to the value itself rather than blanking the column. The alternative, storing the display string in a second field beside the value, goes stale the moment a submenu selection writes the first one.
 
 ## [16.5.2] - 2026-07-14
 
