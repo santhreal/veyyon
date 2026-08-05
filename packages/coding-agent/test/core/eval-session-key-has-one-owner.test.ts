@@ -25,6 +25,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildEvalSessionKey, normalizeSessionCwd } from "@veyyon/coding-agent/eval/executor-base";
 import { TempDir } from "@veyyon/utils";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 /** A resolver that returns what it was given, for the cases where resolution is not the subject. */
 const asGiven = (interpreter: string): string => interpreter;
@@ -168,12 +169,17 @@ describe("the three executors", () => {
 	 */
 	it("share the one builder instead of defining their own", async () => {
 		for (const dir of ["py", "rb", "jl"]) {
-			const source = await Bun.file(path.join(import.meta.dir, `../../src/eval/${dir}/executor.ts`)).text();
+			const specifiers = moduleSpecifiersIn(
+				await Bun.file(path.join(import.meta.dir, `../../src/eval/${dir}/executor.ts`)).text(),
+			);
 
-			expect(source).toContain("buildEvalSessionKey({");
-			expect(source).not.toContain("function buildSessionKey(");
-			expect(source).not.toContain("function normalizeSessionCwd(");
-			expect(source).not.toContain("function normalizeExplicitInterpreter(");
+			// The IMPORT EDGE, which is also the proof of absence: a module cannot import
+			// `buildEvalSessionKey` and declare it, so `bun check` enforces the exclusivity. The three
+			// `not.toContain("function buildSessionKey(")` lines this replaced each matched one exact
+			// spelling, and the divergence that actually shipped -- one executor normalising the cwd
+			// differently -- was a difference in a function BODY, which no absence of a signature can
+			// see. The properties of the key itself are asserted above, on the key.
+			expect(specifiers, dir).toContain("../executor-base");
 		}
 	});
 

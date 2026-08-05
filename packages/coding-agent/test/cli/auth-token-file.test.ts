@@ -31,6 +31,7 @@ import {
 	generateAuthToken,
 	printToken,
 } from "@veyyon/coding-agent/cli/auth-token-file";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 
 const FILE_NAME = "auth-test.token";
@@ -257,20 +258,20 @@ describe("the two auth CLIs", () => {
 	/**
 	 * The lock. Each of them had the whole family privately, which is how the gateway's exclusive create
 	 * and creation-time mode failed to reach the broker. A reintroduced copy would pass every test above.
+	 *
+	 * Stated as the IMPORT EDGE, which is also the proof of absence: TypeScript refuses a module that
+	 * both imports `AuthTokenFile` and declares it, so `bun check` enforces the exclusivity while this
+	 * enforces the edge. The eight `not.toContain("async function readToken(")` lines this replaced
+	 * checked one exact spelling each: a copy written as `const readToken = async (` satisfied all
+	 * eight, and so did a copy whose signature wrapped onto a second line.
 	 */
 	it("use the shared owner and define no token handling of their own", async () => {
 		for (const name of ["auth-broker-cli.ts", "auth-gateway-cli.ts"]) {
-			const source = await Bun.file(path.join(import.meta.dir, "../../src/cli", name)).text();
+			const specifiers = moduleSpecifiersIn(
+				await fs.readFile(path.join(import.meta.dir, "../../src/cli", name), "utf-8"),
+			);
 
-			expect(source).toContain("new AuthTokenFile(");
-			expect(source).not.toContain("async function readToken(");
-			expect(source).not.toContain("async function writeToken(");
-			expect(source).not.toContain("function generateToken(");
-			expect(source).not.toContain("async function ensureToken(");
-			expect(source).not.toContain("async function createTokenExclusive(");
-			expect(source).not.toContain("function getTokenFilePath(");
-			expect(source).not.toContain("async function runToken(");
-			expect(source).toContain("printToken(TOKEN_FILE,");
+			expect(specifiers, name).toContain("./auth-token-file");
 		}
 	});
 

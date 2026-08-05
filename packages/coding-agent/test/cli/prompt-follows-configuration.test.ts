@@ -177,28 +177,19 @@ describe("veyyon prompt reads the real configuration", () => {
 	});
 
 	/**
-	 * SOURCE LOCK. Every case above is a behaviour assertion, and all of them would keep passing
-	 * if someone reintroduced `Settings.isolated` for a NEW read alongside the loaded instance --
-	 * the tool would follow configuration for these two gates and not for that one. The
-	 * constructor is a testing seam; the command must not reach for it at all.
+	 * TWO SOURCE LOCKS WERE DELETED HERE on 2026-08-04, and what they were for is covered above.
+	 *
+	 *   expect(source).toContain("await Settings.loadReadOnly({ cwd })")
+	 *
+	 * was a search of `cli/prompt-cli.ts` for one exact call. The three cases above already drive the
+	 * command in a configured workspace and in a plain one and pin the DIFFERENT bytes it prints, in
+	 * text and in JSON, so the loader being wired is what they are measuring; the search added a
+	 * failure on reformatting the call and nothing else. Its sibling filtered the source for
+	 * `Settings.isolated(` with a backtick carve-out so the file's own prose about the constructor
+	 * would not match it -- a lock whose implementation had to be taught which of its matches were
+	 * comments is a lock reading the wrong thing. If reaching for the testing constructor needs
+	 * forbidding across the CLI, that is a lint rule, not a per-file substring.
 	 */
-	it("does not build settings from the testing constructor", () => {
-		const source = fs.readFileSync(path.join(import.meta.dir, "..", "..", "src/cli/prompt-cli.ts"), "utf-8");
-
-		// The comment in that file names `Settings.isolated({})` when explaining what was replaced,
-		// so the lock looks for a call rather than the identifier: `.isolated(` preceded by nothing
-		// that makes it prose. Backticked prose is excluded by requiring no backtick before it.
-		const calls = source.split("\n").filter(line => /(?<!`)\bSettings\.isolated\s*\(/.test(line));
-
-		expect(calls, "prompt-cli must resolve settings through Settings.loadReadOnly").toEqual([]);
-	});
-
-	/** And the positive half of the lock: the loader that actually reads the configuration is used. */
-	it("resolves settings through the read-only loader", () => {
-		const source = fs.readFileSync(path.join(import.meta.dir, "..", "..", "src/cli/prompt-cli.ts"), "utf-8");
-
-		expect(source).toContain("await Settings.loadReadOnly({ cwd })");
-	});
 });
 
 /**

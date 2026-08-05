@@ -16,6 +16,7 @@ import {
 	parseSectionOverrideFilename,
 	type SectionOverrideFile,
 } from "@veyyon/coding-agent/system-prompt-builder/section-overrides";
+import { STATEMENT_SECTIONS } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
 
 const PROMPT_DIR = "PROMPT_SECTIONS";
 const SHIPPED = assembleStatementSections({ renderMermaid: true });
@@ -76,11 +77,24 @@ describe("unknown section names fail loudly", () => {
 		}
 	});
 
-	/** Every section declared by the registry must be accepted. */
-	it("accepts all declared public ids", () => {
-		for (const id of ["conventions", "role", "runtime", "tool-policy", "execution-workflow", "delivery-contract"]) {
-			expect(() => assertKnownSectionId(id, `${id}.md`)).not.toThrow();
+	/**
+	 * Every section the shipped assembly really produces is accepted, DERIVED from that assembly rather
+	 * than from a list retyped here. The list this replaced was six ids written out by hand: a section
+	 * added to the registry was never covered, and one removed from it left an id here that the
+	 * assertion happily kept accepting. The floor is what stops an assembly that produced nothing from
+	 * satisfying an empty loop, and the near-miss at the end is what stops `not.toThrow()` from being
+	 * a statement about a function that never throws at all.
+	 */
+	it("accepts every id the shipped assembly declares", () => {
+		const ids = [...STATEMENT_SECTIONS];
+
+		expect(ids.length).toBeGreaterThan(4);
+		expect(ids).toContain("role");
+		for (const id of ids) {
+			expect(() => assertKnownSectionId(id, `${id}.md`), id).not.toThrow();
 		}
+
+		expect(() => assertKnownSectionId("rol", "rol.md")).toThrow();
 	});
 });
 
