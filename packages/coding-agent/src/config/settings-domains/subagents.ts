@@ -60,6 +60,25 @@ export const DEFAULT_ENABLED_BUNDLED_AGENT = "task";
 
 export const DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH = 0;
 
+/** Default time a finished subagent remains live and immediately revivable. */
+export const DEFAULT_SUBAGENT_IDLE_TTL_MS = 5 * 60_000;
+
+/**
+ * Default time a PARKED subagent is kept in the roster before it is closed for
+ * good. Parking already released the session; this is how long the revivable ref
+ * survives after that, so a finished agent stops accumulating in `irc list` and
+ * the Control Center forever.
+ */
+export const DEFAULT_SUBAGENT_PARKED_CLOSE_MS = 5 * 60_000;
+
+/**
+ * The same budget for an agent whose last words said it was waiting on another
+ * agent. It stopped on purpose to let a peer finish, so closing it on the ordinary
+ * timer would throw away the one agent most likely to be messaged next. Six times
+ * the ordinary grace, because the thing it waits for is another agent's whole run.
+ */
+export const DEFAULT_SUBAGENT_WAITING_CLOSE_MS = 30 * 60_000;
+
 /** Shared recursion choices for the blanket setting and each per-agent override. */
 export const SUBAGENT_RECURSION_DEPTH_OPTIONS = [
 	{ value: "-1", label: "Unlimited" },
@@ -257,13 +276,75 @@ export const SUBAGENTS_SETTINGS = {
 
 	"subagent.idleTtlMs": {
 		type: "number",
-		default: 420_000,
+		default: DEFAULT_SUBAGENT_IDLE_TTL_MS,
 		ui: {
 			tab: "subagents",
 			group: "Limits",
 			label: "Idle TTL",
 			description:
-				"How long an idle subagent stays live in memory before being parked to disk (ms). Parked agents are revived automatically when messaged or resumed. 0 keeps idle agents live until exit.",
+				"How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parked agents keep their transcript and revive automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session.",
+			// A numeric setting with no option list is dropped by the UI adapter
+			// (`pathToSettingDef` treats optionless numbers as schema-only), so stage one
+			// of the park/close lifecycle was documented, defaulted and honored while
+			// being unreachable from /settings. The list is what makes the row exist, and
+			// what renders 300000 as "5 minutes" beside the close budgets below it.
+			options: [
+				{ value: "0", label: "Until exit" },
+				{ value: "60000", label: "1 minute" },
+				{ value: "300000", label: "5 minutes", description: "Default" },
+				{ value: "900000", label: "15 minutes" },
+				{ value: "1800000", label: "30 minutes" },
+			],
+		},
+	},
+
+	"subagent.autoClose.enabled": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "subagents",
+			group: "Auto Close",
+			label: "Close Parked Subagents",
+			description:
+				"Close a parked subagent for good once it has been quiet long enough, instead of keeping it in the roster for the whole session. Parking already released the session; this decides whether the revivable reference is eventually dropped too. Turn it off to keep every finished subagent listed and revivable until you exit.",
+		},
+	},
+
+	"subagent.autoClose.parkedMs": {
+		type: "number",
+		default: DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
+		ui: {
+			tab: "subagents",
+			group: "Auto Close",
+			label: "Close After",
+			description:
+				"How long a parked subagent stays listed and revivable before it is closed (ms). Counted from the moment it parked, not from when it started. Its transcript survives either way and stays readable through `history://`.",
+			options: [
+				{ value: "300000", label: "5 minutes", description: "Default" },
+				{ value: "900000", label: "15 minutes" },
+				{ value: "1800000", label: "30 minutes" },
+				{ value: "3600000", label: "1 hour" },
+			],
+			condition: "subagentAutoCloseEnabled",
+		},
+	},
+
+	"subagent.autoClose.waitingMs": {
+		type: "number",
+		default: DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
+		ui: {
+			tab: "subagents",
+			group: "Auto Close",
+			label: "Close After (Waiting)",
+			description:
+				"The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it gets a longer grace than one that simply went quiet: closing it on the ordinary timer would drop the agent you are most likely to message next. Set it equal to Close After to treat both the same.",
+			options: [
+				{ value: "900000", label: "15 minutes" },
+				{ value: "1800000", label: "30 minutes", description: "Default" },
+				{ value: "3600000", label: "1 hour" },
+				{ value: "7200000", label: "2 hours" },
+			],
+			condition: "subagentAutoCloseEnabled",
 		},
 	},
 
@@ -401,7 +482,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Isolation",
 			label: "Worktree Base Directory",
 			description:
-				"Base directory for agent-managed worktrees — subagent isolation copies, `github` PR checkouts, and `veyyon worktree` cleanup all live here. Unset uses ~/.veyyon/wt. Must be an absolute or ~-relative path; relative paths are ignored. The VEYYON_WORKTREE_DIR env var overrides this.",
+				"Base directory for agent-managed worktrees: subagent isolation copies, `github` PR checkouts, and `veyyon worktree` cleanup all live here. Unset uses the active profile's `wt/` directory (~/.veyyon/profiles/<name>/wt, or its XDG data equivalent). Must be an absolute or ~-relative path; relative paths are ignored. The VEYYON_WORKTREE_DIR env var overrides this.",
 		},
 	},
 

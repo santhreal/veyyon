@@ -1,6 +1,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { atomicWriteFileSync, getAgentDir, isEnoent, logger, pathStateSync, reportFault } from "@veyyon/utils";
+import {
+	atomicWriteFileSync,
+	getAgentDir,
+	isEnoent,
+	logger,
+	pathStateSync,
+	reportFault,
+	truncate,
+} from "@veyyon/utils";
 import { ArkErrors, type Type } from "arktype";
 import { JSONC, YAML } from "bun";
 
@@ -66,33 +74,71 @@ export interface IConfigFile<T> {
 	invalidate?(): void;
 }
 
+/**
+ * Bound on ONE issue line. ArkType writes the REJECTED VALUE into its problem
+ * text (`transport: must be "pi-native" (was "zzz…")`), so a single oversized
+ * value in the file sets the length of the message about it: a 50,000-character
+ * value measured a 50,100-character error.
+ */
+const MAX_CONFIG_ISSUE_LENGTH = 200;
+/**
+ * Issue lines listed before the rest becomes a count. Bounding each line does
+ * not bound the list: 400 short bad providers measured 25,538 characters across
+ * 401 lines, every line under the per-issue cap. Twenty is enough to see the
+ * shape of what is wrong with the file; the count says how much more there is.
+ */
+const MAX_CONFIG_ISSUES = 20;
+/**
+ * Hard ceiling on the whole message. The two caps above are expected to keep it
+ * far under this; it exists because per-part caps do not compose into a
+ * whole-message bound on their own, and this message is printed line by line by
+ * `veyyon models` and pushed into the startup notification list.
+ */
+const MAX_CONFIG_ERROR_LENGTH = 4500;
+
 export class ConfigError extends Error {
 	readonly #message: string;
+	/**
+	 * @param configPath The file that failed, so the message can name it. The old
+	 *   message named only the config ID (`models`), and an ID is not a location:
+	 *   the same ID resolves to a different file per profile, and the loader falls
+	 *   back across `.yml`, `.yaml` and `.json`, so "Failed to load config file
+	 *   models" left the reader guessing which of three names under which of
+	 *   several roots to open. The loader logged the path to the file log on the
+	 *   line below the throw and never gave it to the operator.
+	 */
 	constructor(
 		public readonly id: string,
 		public readonly schemaErrors: ConfigSchemaError[] | null | undefined,
 		public readonly other?: { err: unknown; stage: string },
+		public readonly configPath?: string,
 	) {
 		let messages: string[] | undefined;
 		let cause: Error | undefined;
 		let klass: string;
+		let elided = 0;
 
 		if (schemaErrors) {
 			klass = "Schema";
-			messages = schemaErrors.map(e => `${e.instancePath || "root"}: ${e.message}`);
+			elided = Math.max(0, schemaErrors.length - MAX_CONFIG_ISSUES);
+			messages = schemaErrors
+				.slice(0, MAX_CONFIG_ISSUES)
+				.map(e => truncate(`${e.instancePath || "root"}: ${e.message}`, MAX_CONFIG_ISSUE_LENGTH));
 		} else if (other) {
 			klass = other.stage;
 			if (other.err instanceof Error) {
-				messages = [other.err.message];
+				messages = [truncate(other.err.message, MAX_CONFIG_ISSUE_LENGTH)];
 				cause = other.err;
 			} else {
-				messages = [String(other.err)];
+				messages = [truncate(String(other.err), MAX_CONFIG_ISSUE_LENGTH)];
 			}
 		} else {
 			klass = "Unknown";
 		}
+		if (elided > 0) messages?.push(`… ${elided} more of ${schemaErrors?.length} problem(s) not shown`);
 
-		const title = `Failed to load config file ${id}, ${klass} error:`;
+		const where = configPath ? ` (${configPath})` : "";
+		const title = `Failed to load config file ${id}${where}, ${klass} error:`;
 		let message: string;
 		switch (messages?.length ?? 0) {
 			case 0:
@@ -104,6 +150,13 @@ export class ConfigError extends Error {
 			default:
 				message = `${title}\n${messages!.map(m => `  - ${m}`).join("\n")}`;
 		}
+		// The remedy is the file, because that is the only thing the reader can act
+		// on: a schema problem names the key inside it, and a parse problem names
+		// no key at all. Without this the message stated a fault and no next step.
+		if (configPath) message = `${message}\nFix: edit ${configPath}, or delete it to fall back to the defaults.`;
+		// Last, so it holds whatever the parts above produced. Per-part caps do not
+		// compose into a whole-message bound, and this string reaches a transcript.
+		message = truncate(message, MAX_CONFIG_ERROR_LENGTH);
 
 		super(message, { cause });
 		this.name = "LoadError";
@@ -287,7 +340,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 			try {
 				validate(value);
 			} catch (error) {
-				throw new ConfigError(this.id, undefined, { err: error, stage: `Validate(${name})` });
+				throw new ConfigError(this.id, undefined, { err: error, stage: `Validate(${name})` }, this.path());
 			}
 		};
 		return this;
@@ -298,10 +351,12 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		if (!(parsed instanceof Error)) return parsed as T;
 		const fallback = this.schema(undefined);
 		if (!(fallback instanceof Error)) return fallback as T;
-		throw new ConfigError(this.id, undefined, {
-			err: new Error("Schema produced no default value"),
-			stage: "createDefault",
-		});
+		throw new ConfigError(
+			this.id,
+			undefined,
+			{ err: new Error("Schema produced no default value"), stage: "createDefault" },
+			this.path(),
+		);
 	}
 
 	#storeCache(result: LoadResult<T>): LoadResult<T> {
@@ -327,7 +382,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 					instancePath: error.path.length === 0 ? "root" : error.path.join("."),
 					message: error.problem,
 				}));
-				const error = new ConfigError(this.id, schemaErrors);
+				const error = new ConfigError(this.id, schemaErrors, undefined, this.#resolveReadPath());
 				logger.warn("Failed to parse config file", { path: this.path(), error });
 				return this.#storeCache({ error, status: "error" });
 			}
@@ -338,14 +393,14 @@ export class ConfigFile<T> implements IConfigFile<T> {
 				const wrapped =
 					error instanceof ConfigError
 						? error
-						: new ConfigError(this.id, undefined, { err: error, stage: "AuxValidate" });
+						: new ConfigError(this.id, undefined, { err: error, stage: "AuxValidate" }, this.#resolveReadPath());
 				return this.#storeCache({ error: wrapped, status: "error" });
 			}
 			return this.#storeCache({ value, status: "ok" });
 		} catch (error) {
 			logger.warn("Failed to parse config file", { path: this.path(), error });
 			return this.#storeCache({
-				error: new ConfigError(this.id, undefined, { err: error, stage: "Unexpected" }),
+				error: new ConfigError(this.id, undefined, { err: error, stage: "Unexpected" }, this.#resolveReadPath()),
 				status: "error",
 			});
 		}
@@ -364,7 +419,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 			}
 			logger.warn("Failed to read config file", { path: this.path(), error });
 			return this.#storeCache({
-				error: new ConfigError(this.id, undefined, { err: error, stage: "Read" }),
+				error: new ConfigError(this.id, undefined, { err: error, stage: "Read" }, this.#resolveReadPath()),
 				status: "error",
 			});
 		}
@@ -384,7 +439,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 			}
 			logger.warn("Failed to read config file", { path: this.path(), error });
 			return this.#storeCache({
-				error: new ConfigError(this.id, undefined, { err: error, stage: "Read" }),
+				error: new ConfigError(this.id, undefined, { err: error, stage: "Read" }, this.#resolveReadPath()),
 				status: "error",
 			});
 		}

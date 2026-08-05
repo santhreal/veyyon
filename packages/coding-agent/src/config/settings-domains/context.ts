@@ -591,7 +591,8 @@ export const CONTEXT_SETTINGS = {
 	},
 
 	// Auto-Learn (experimental): post-stop nudge to capture lessons to memory
-	// and mint/enhance isolated managed skills under ~/.veyyon/profiles/default/agent/managed-skills.
+	// and mint/enhance isolated managed skills under the active profile's
+	// agent/managed-skills directory.
 	// Master flag is default-off → zero footprint; sub-flags gate behaviour.
 	"autolearn.enabled": {
 		type: "boolean",
@@ -882,7 +883,8 @@ export const CONTEXT_SETTINGS = {
 			tab: "memory",
 			group: "Hindsight",
 			label: "Hindsight Bank ID",
-			description: "Memory bank identifier (default: project name)",
+			description:
+				"Base memory bank name. Unset uses `veyyon`. Hindsight Bank Prefix is prepended when set, and Hindsight Scoping decides whether the project name is appended (per-project) or carried as a `project:` tag instead (per-project-tagged).",
 			condition: "hindsightActive",
 		},
 	},
@@ -1102,8 +1104,9 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "context",
 			group: "Rules (TTSR)",
-			label: "Disabled Rules",
-			description: "Rule names to ignore entirely (applies to bundled defaults and your own rules)",
+			label: "Rules",
+			description:
+				"Every rule this project loads, each on or off. Stores only the ones you turn off, so a rule added in a later release arrives on.",
 		},
 	},
 

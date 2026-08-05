@@ -45,7 +45,6 @@ import { type QuarantinedFile, quarantineUnparseableFile } from "@veyyon/utils/q
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
-import { type Settings as SettingsCapabilityItem, settingsCapability } from "../capability/settings";
 import type { ModelRole } from "../config/model-roles";
 // The classifier leaf, NOT `../modes/theme/theme` and NOT `../modes/theme/builtin-themes`. The barrel
 // imports `./shimmer`, which imports this file, and that cycle had to be instantiated as one unit:
@@ -129,10 +128,10 @@ export interface InvalidSettingValue {
 }
 
 /** Layer that currently supplies a setting's effective value. */
-export type SettingSource = "default" | "profile" | "project" | "config-file" | "runtime" | "global";
+export type SettingSource = "default" | "profile" | "config-file" | "runtime" | "global";
 
 export interface SettingsOptions {
-	/** Current working directory for project settings discovery */
+	/** Current working directory, used to resolve path-scoped settings */
 	cwd?: string;
 	/** Agent directory for config.yml/config.yaml storage */
 	agentDir?: string;
@@ -142,7 +141,7 @@ export interface SettingsOptions {
 	readOnly?: boolean;
 	/** Initial overrides */
 	overrides?: Partial<Record<SettingPath, unknown>>;
-	/** Extra config.yml-style overlays loaded after global/project settings */
+	/** Extra config.yml-style overlays loaded after the profile settings */
 	configFiles?: string[];
 }
 
@@ -411,20 +410,10 @@ export class Settings {
 	#configFiles: string[] = [];
 	/** Global settings from config.yml/config.yaml */
 	#global: RawSettings = {};
-	/** Project settings from .claude/settings.yml etc */
-	#project: RawSettings = {};
 	/** Extra config.yml-style overlays passed by CLI */
 	#configOverlay: RawSettings = {};
 	/** Runtime overrides (not persisted) */
 	#overrides: RawSettings = {};
-	/**
-	 * Whether clones/rescopes may discover a fresh project layer.
-	 *
-	 * This is deliberately independent of #persist. Subagent settings are
-	 * read-only forks: they must never write the parent's config, but they still
-	 * have to adopt project policy when their runtime cwd moves.
-	 */
-	#discoverProjectSettings: boolean;
 	/** Runtime forks must not apply project-scoped hooks to their parent process. */
 	#activateProcessHooks = true;
 	/** Settings files that could not be parsed, and where their bytes were kept. */
@@ -438,9 +427,10 @@ export class Settings {
 	#reportedSaveFailure: SettingsSaveFailure | undefined;
 	/** Told when a save has failed often enough that the user has to hear about it. */
 	#saveFailureListeners = new Set<(failure: SettingsSaveFailure) => void>();
+	#effectiveSettingListeners = new Set<(path: SettingPath, value: unknown, previous: unknown) => void>();
 	/** Configured values whose type contradicts the schema, found during load. */
 	#invalidValues: InvalidSettingValue[] = [];
-	/** Merged view (global + project + overrides) */
+	/** Merged view (profile + config overlays + overrides) */
 	#merged: RawSettings = {};
 	/** Cached resolved values from the merged view, including defaults/path scoping */
 	#resolvedCache = new Map<SettingPath, unknown>();
@@ -475,7 +465,6 @@ export class Settings {
 		this.#configPath = options.inMemory ? null : path.join(this.#agentDir, MAIN_CONFIG_FILENAMES[0]);
 		this.#configFiles = options.configFiles?.map(file => path.resolve(this.#cwd, expandTilde(file))) ?? [];
 		this.#persist = !options.inMemory && options.readOnly !== true;
-		this.#discoverProjectSettings = options.inMemory !== true;
 
 		if (options.overrides) {
 			for (const [key, value] of Object.entries(options.overrides)) {
@@ -667,6 +656,13 @@ export class Settings {
 		};
 	}
 
+	onEffectiveSettingChanged(listener: (path: SettingPath, value: unknown, previous: unknown) => void): () => void {
+		this.#effectiveSettingListeners.add(listener);
+		return () => {
+			this.#effectiveSettingListeners.delete(listener);
+		};
+	}
+
 	/**
 	 * Configured settings whose value does not match the schema's declared type.
 	 *
@@ -708,7 +704,6 @@ export class Settings {
 			return this.isConfigured(path as SettingPath) ? "global" : "default";
 		}
 		if (getByPath(this.#configOverlay, segments) !== undefined) return "config-file";
-		if (getByPath(this.#project, segments) !== undefined) return "project";
 		if (getByPath(this.#global, segments) !== undefined) return "profile";
 		return "default";
 	}
@@ -867,9 +862,10 @@ export class Settings {
 		this.#fireEffectiveSettingChanged(path, this.get(path), prev);
 	}
 
-	#fireEffectiveSettingChanged(path: SettingPath, value: unknown, prev: unknown): void {
-		if (!this.#activateProcessHooks) return;
+	#fireEffectiveSettingChanged(path: SettingPath, value: unknown, prev: unknown, applyProcessHooks = true): void {
 		if (Object.is(value, prev)) return;
+		for (const listener of this.#effectiveSettingListeners) listener(path, value, prev);
+		if (!applyProcessHooks || !this.#activateProcessHooks) return;
 		if (path === "statusLine.sessionAccent") {
 			statusLineSessionAccentSignal.fire();
 		}
@@ -898,9 +894,8 @@ export class Settings {
 	/**
 	 * Create a non-persisting runtime fork while retaining the provenance of
 	 * every layer. Unlike flattening get() values into Settings.isolated(), this
-	 * leaves project values in the project layer, CLI config files in the config
-	 * overlay, and genuine runtime overrides in the override layer. A later
-	 * cloneForCwd can therefore replace only the project layer.
+	 * leaves CLI config files in the config overlay and genuine runtime
+	 * overrides in the override layer.
 	 */
 	forkWithRuntimeOverrides(overrides: Partial<Record<SettingPath, unknown>> = {}): Settings {
 		const forked = new Settings({
@@ -908,11 +903,9 @@ export class Settings {
 			agentDir: this.#agentDir,
 			inMemory: true,
 		});
-		forked.#discoverProjectSettings = this.#discoverProjectSettings;
 		forked.#activateProcessHooks = false;
 		forked.#configFiles = [...this.#configFiles];
 		forked.#global = structuredClone(this.#global);
-		forked.#project = structuredClone(this.#project);
 		forked.#configOverlay = structuredClone(this.#configOverlay);
 		forked.#overrides = structuredClone(this.#overrides);
 		for (const [settingPath, value] of Object.entries(overrides)) {
@@ -931,12 +924,8 @@ export class Settings {
 		});
 		cloned.#storage = this.#storage;
 		cloned.#configPath = this.#configPath;
-		cloned.#discoverProjectSettings = this.#discoverProjectSettings;
 		cloned.#activateProcessHooks = this.#activateProcessHooks;
 		cloned.#global = structuredClone(this.#global);
-		cloned.#project = this.#discoverProjectSettings
-			? await cloned.#loadProjectSettings()
-			: structuredClone(this.#project);
 		cloned.#configFiles = [...this.#configFiles];
 		cloned.#configOverlay = structuredClone(this.#configOverlay);
 		cloned.#overrides = structuredClone(this.#overrides);
@@ -946,27 +935,27 @@ export class Settings {
 	}
 
 	/**
-	 * Re-scope this instance to a new working directory *in place*: reload the
-	 * project layer (`.claude/settings.yml` etc.) from `cwd`, re-resolve
-	 * path-scoped settings against it, and re-fire side-effect hooks (theme,
-	 * symbols, tab width, …). Global settings and runtime overrides are preserved.
+	 * Re-scope this instance to a new working directory *in place*: re-resolve
+	 * path-scoped settings against it and re-fire side-effect hooks (theme,
+	 * symbols, tab width, …). Every configured layer is preserved, because none
+	 * of them is sourced from the working tree.
 	 *
 	 * Unlike {@link cloneForCwd}, this mutates the live instance, so every holder
 	 * (the `settings` proxy, the active session, controllers) observes the new
-	 * project scope without swapping references — used when the process changes
+	 * scope without swapping references — used when the process changes
 	 * directory mid-run (`/move`, cross-project resume). No-op when `cwd` is
 	 * already the current scope.
 	 */
 	async reloadForCwd(cwd: string): Promise<void> {
 		const normalized = path.normalize(cwd);
 		if (normalized === this.#cwd) return;
-		const prevModelRoles = this.get("modelRoles");
+		const settingPaths = Object.keys(SETTINGS_SCHEMA) as SettingPath[];
+		const previousValues = new Map(settingPaths.map(settingPath => [settingPath, this.get(settingPath)]));
 		this.#cwd = normalized;
-		if (this.#discoverProjectSettings) {
-			this.#project = await this.#loadProjectSettings();
-		}
 		this.#rebuildMerged();
-		this.#fireEffectiveSettingChanged("modelRoles", this.get("modelRoles"), prevModelRoles);
+		for (const settingPath of settingPaths) {
+			this.#fireEffectiveSettingChanged(settingPath, this.get(settingPath), previousValues.get(settingPath));
+		}
 		this.#fireAllHooks();
 	}
 
@@ -1111,7 +1100,6 @@ export class Settings {
 	getModelRoleSource(role: ModelRole | string): SettingSource {
 		if (this.#modelRoleFromLayer(this.#overrides, role) !== undefined) return "runtime";
 		if (this.#modelRoleFromLayer(this.#configOverlay, role) !== undefined) return "config-file";
-		if (this.#modelRoleFromLayer(this.#project, role) !== undefined) return "project";
 		if (this.#modelRoleFromLayer(this.#global, role) !== undefined) return "profile";
 		return "default";
 	}
@@ -1212,14 +1200,6 @@ export class Settings {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	async #load(): Promise<Settings> {
-		// Project settings load (loadCapability scans cwd) is independent of the
-		// persist chain (storage open → legacy migration → global config read), so
-		// kick it off first and await after the persist chain completes. The
-		// persist steps remain sequential: existing config discovery decides
-		// whether migration may write config.yml before the global config is read;
-		// migration's db fallback needs #storage opened.
-		const projectPromise = this.#loadProjectSettings();
-
 		if (this.#persist) {
 			this.#storage = await AgentStorage.open(getAgentDbPath(this.#agentDir));
 			const existingConfig = await this.#loadExistingMainYaml();
@@ -1238,26 +1218,22 @@ export class Settings {
 			this.#pendingSentinelStrips = stripLegacyUnsetSentinels(this.#global);
 		}
 
-		this.#project = await projectPromise;
 		this.#configOverlay = await this.#loadConfigOverlays();
 		this.#collectInvalidValues(this.#global, this.#configPath ?? "");
 		this.#reportShadowedConfigFiles();
 
-		// Build merged view (global → project → overrides; project wins over global)
+		// Build merged view (profile → config overlays → overrides)
 		this.#rebuildMerged();
 		this.#fireAllHooks();
 		return this;
 	}
 
 	async #loadReadOnly(): Promise<Settings> {
-		const projectPromise = this.#loadProjectSettings();
-
 		const existingConfig = await this.#loadExistingMainYaml();
 		if (existingConfig) {
 			this.#global = existingConfig;
 		}
 
-		this.#project = await projectPromise;
 		this.#configOverlay = await this.#loadConfigOverlays();
 		this.#collectInvalidValues(this.#global, this.#configPath ?? "");
 		this.#rebuildMerged();
@@ -1381,39 +1357,6 @@ export class Settings {
 		}
 		this.#configPath = path.join(this.#agentDir, MAIN_CONFIG_FILENAMES[0]);
 		return null;
-	}
-
-	async #loadProjectSettings(): Promise<RawSettings> {
-		try {
-			// Imported here rather than at the top of the file. `../discovery`
-			// registers fourteen capability providers and is the other half of the
-			// import cycle described above, so naming it statically pulled the whole
-			// component into every module that reads a setting. This method is already
-			// async and already does file I/O, so deferring the import costs nothing.
-			const { loadCapability } = await import("../discovery");
-			const result = await loadCapability(settingsCapability.id, { cwd: this.#cwd });
-			// Surface provider-level warnings (e.g. a malformed project settings
-			// file that the capability layer flagged): dropping them silently
-			// meant a user's broken settings.json was ignored with no signal.
-			for (const warning of result.warnings) {
-				logger.warn("Settings: project settings discovery warning", { warning });
-			}
-			let merged: RawSettings = {};
-			for (const item of result.items as SettingsCapabilityItem[]) {
-				if (item.level === "project") {
-					merged = this.#deepMerge(merged, item.data as RawSettings);
-				}
-			}
-			return this.#migrateRawSettings(merged);
-		} catch (error) {
-			// Fail soft to defaults so a bad project settings file cannot block
-			// startup, but do not swallow the reason (Law 10).
-			logger.warn("Settings: failed to load project settings", {
-				cwd: this.#cwd,
-				error: String(error),
-			});
-			return {};
-		}
 	}
 
 	async #loadConfigOverlays(): Promise<RawSettings> {
@@ -1950,18 +1893,15 @@ export class Settings {
 				}
 			}
 		}
-		// compaction.strategy: collapse legacy strategies to handoff|summary; off disables compaction.
+		// compaction.strategy: collapse every legacy strategy to summary; off also disables compaction.
 		const compactionObj = raw.compaction as Record<string, unknown> | undefined;
 		const migrateStrategy = (current: unknown): CompactionStrategySetting | undefined => {
 			if (typeof current !== "string") return undefined;
-			if (current === "off") return "handoff";
 			return migrateCompactionStrategyValue(current);
 		};
 		if (compactionObj) {
-			if (compactionObj.strategy === "shake-summary") {
-				compactionObj.strategy = "handoff";
-			} else if (compactionObj.strategy === "off") {
-				compactionObj.strategy = "handoff";
+			if (compactionObj.strategy === "off") {
+				compactionObj.strategy = "summary";
 				if (compactionObj.enabled === undefined) {
 					compactionObj.enabled = false;
 				}
@@ -2562,7 +2502,7 @@ export class Settings {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	#rebuildMerged(): void {
-		this.#merged = this.#deepMerge(this.#deepMerge({}, this.#global), this.#project);
+		this.#merged = this.#deepMerge({}, this.#global);
 		this.#merged = this.#deepMerge(this.#merged, this.#configOverlay);
 		this.#merged = this.#deepMerge(this.#merged, this.#overrides);
 		this.#resolvedCache.clear();

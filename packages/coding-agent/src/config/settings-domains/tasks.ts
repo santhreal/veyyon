@@ -43,6 +43,18 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
+	"goal.modelBudgetsEnabled": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "tasks",
+			group: "Modes",
+			label: "Model Goal Budgets",
+			description:
+				"Expose and enforce persisted per-goal token budgets for the model. This control is available only in Settings.",
+		},
+	},
+
 	"goal.statusInFooter": {
 		type: "boolean",
 		default: true,
