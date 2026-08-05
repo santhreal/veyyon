@@ -216,7 +216,10 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		return {
 			message:
 				`${result.message}\n\nSecret protection is OFF, so nothing is being obfuscated yet. ` +
-				`Turn on "Hide Secrets" in /settings.`,
+				// `/secret` is a text-mode command, so this reaches ACP, where `/settings` is neither
+				// advertised nor dispatchable. The config-set spelling is what makes the sentence
+				// actionable on a surface with no settings screen.
+				`Turn on "Hide Secrets" in /settings, or run: veyyon config set secrets.enabled true.`,
 		};
 	}
 
@@ -226,7 +229,8 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 				enableSaveFailure === undefined
 					? `${result.message}\nSecret protection was off, so it is now on for this session and saved for the next one.`
 					: `${result.message}\nSecret protection was off, so it is now on for this session, but it could not be ` +
-						`saved for the next one: ${enableSaveFailure}. Turn on "Hide Secrets" in /settings so it survives a restart.`,
+						`saved for the next one: ${enableSaveFailure}. Turn on "Hide Secrets" in /settings, or run: ` +
+						`veyyon config set secrets.enabled true, so it survives a restart.`,
 		};
 	}
 
