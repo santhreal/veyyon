@@ -460,7 +460,7 @@ describe("task progress rendering", () => {
 		const progress = runningProgress({
 			id: "ModelShown",
 			description: "do work",
-			resolvedModel: "anthropic/claude-opus-4-8",
+			resolvedModel: "openai/gpt-5.6-sol:xhigh",
 		});
 		const row = Bun.stripANSI(
 			findRow(
@@ -472,8 +472,12 @@ describe("task progress rendering", () => {
 				"ModelShown",
 			),
 		);
-		// The `provider/` prefix is dropped in the badge; the id remains.
-		expect(row).toContain("claude-opus-4-8");
+		// `provider/` is dropped and the thinking level is rendered as a SEPARATE themed token, not
+		// as a `:level` suffix. `modelBadgeFromSelector` splits the selector on its last colon and
+		// reprints the level through the theme precisely because the raw `provider/id:level`
+		// spelling was the divergence it was written to remove, so asserting `:xhigh` here would
+		// pin the behaviour that was deliberately deleted.
+		expect(row).toContain("gpt-5.6-sol xhigh");
 	});
 
 	it("hides the resolved model badge when the setting is turned off", async () => {

@@ -9,9 +9,8 @@ import { assembleYieldResult } from "@veyyon/coding-agent/task/yield-assembly";
  * concrete failure it prevents:
  *   - terminal detection scans BACKWARD for the last non-incremental (untyped or string-typed) yield;
  *     an array `type` is an incremental SECTION and never terminates on its own;
- *   - an explicit terminal payload (untyped final data, or a `type: "result"` finalize carrying data)
- *     is used VERBATIM and never wrapped under a label — the bug this exists to prevent nested a
- *     finalize object one level deep and made validation report every field missing;
+ *   - an explicit terminal object merges over accumulated incremental sections, preserving collections
+ *     such as findings while letting terminal keys replace provisional scalar sections;
  *   - incremental sections come only from array-typed yields; a repeated label promotes a single value
  *     into an array, and an array-valued label force-wraps even a lone value into a list;
  *   - a data-less terminal finalize keeps the accumulated sections; only with no sections at all does
@@ -36,14 +35,54 @@ describe("assembleYieldResult terminal payloads", () => {
 		expect(result?.rawText).toBe(false);
 	});
 
-	it("lets an explicit terminal payload win over accumulated incremental sections", () => {
-		// The string-typed `result` yield is terminal and carries data, so its object is the whole
-		// result; the earlier ["findings"] section is discarded rather than nesting the finalize.
+	/**
+	 * An atomic reviewer verdict must retain findings submitted incrementally before finalization.
+	 */
+	it("merges an explicit terminal object over accumulated incremental sections", () => {
+		const result = assembleYieldResult(
+			[item({ type: ["findings"], data: "f" }), item({ type: "result", data: { a: 1 } })],
+			undefined,
+			new Set(["findings"]),
+		);
+		expect(result?.data).toEqual({ findings: ["f"], a: 1 });
+	});
+
+	/**
+	 * Omitted type is the historical atomic final-result form. Incremental
+	 * diagnostics emitted earlier must not leak stale keys into that object.
+	 */
+	it("keeps an untyped terminal object verbatim after incremental sections", () => {
 		const result = assembleYieldResult([
-			item({ type: ["findings"], data: "f" }),
-			item({ type: "result", data: { a: 1 } }),
+			item({ type: ["diagnostics"], data: { stale: true } }),
+			item({ data: { answer: 42 } }),
 		]);
-		expect(result?.data).toEqual({ a: 1 });
+		expect(result?.data).toEqual({ answer: 42 });
+	});
+
+	/**
+	 * Repeating a collection in the terminal payload replaces the accumulated copy instead of duplicating it.
+	 */
+	it("gives terminal collection keys precedence without concatenation", () => {
+		const result = assembleYieldResult(
+			[
+				item({ type: ["findings"], data: { title: "old" } }),
+				item({ type: "result", data: { findings: [{ title: "replacement" }] } }),
+			],
+			undefined,
+			new Set(["findings"]),
+		);
+		expect(result?.data).toEqual({ findings: [{ title: "replacement" }] });
+	});
+
+	/**
+	 * A corrected terminal verdict must replace a provisional invalid scalar retained for diagnosis.
+	 */
+	it("gives terminal scalar keys precedence over provisional sections", () => {
+		const result = assembleYieldResult([
+			item({ type: ["overall_correctness"], data: "Correct", schemaOverridden: true }),
+			item({ type: "result", data: { overall_correctness: "correct" } }),
+		]);
+		expect(result?.data).toEqual({ overall_correctness: "correct" });
 	});
 
 	it("marks missingData when the sole terminal yield has no data and no sections exist", () => {

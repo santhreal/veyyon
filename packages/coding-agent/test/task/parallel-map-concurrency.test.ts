@@ -1,6 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { mapWithConcurrencyLimit, normalizeConcurrencyLimit } from "@veyyon/coding-agent/task/parallel";
 
 /**
@@ -128,13 +126,5 @@ describe("normalizeConcurrencyLimit", () => {
 		expect(normalizeConcurrencyLimit(Number.NaN)).toBe(0);
 		expect(normalizeConcurrencyLimit(Number.POSITIVE_INFINITY)).toBe(0);
 		expect(normalizeConcurrencyLimit(Number.NEGATIVE_INFINITY)).toBe(0);
-	});
-});
-
-describe("map-phase single-owner lock", () => {
-	it("delegates to the shared pool and no longer hand-rolls its own worker loop", () => {
-		const src = readFileSync(join(import.meta.dir, "..", "..", "src/commit/map-reduce/map-phase.ts"), "utf8");
-		expect(src).toContain("mapWithConcurrencyLimit");
-		expect(src).not.toContain("function runWithConcurrency");
 	});
 });

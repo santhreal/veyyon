@@ -4,7 +4,7 @@
  * 1. With an AsyncJobManager wired, `execute` returns immediately (agent id +
  *    job id) while the job body is still gated; job completion delivers a
  *    result carrying the irc follow-up / `history://<id>` hint.
- * 2. The session-scoped spawn semaphore (task.maxConcurrency) serializes job
+ * 2. The session-scoped spawn semaphore (subagent.maxConcurrency) serializes job
  *    bodies: with concurrency 1 the second body does not start until the
  *    first releases.
  *
@@ -12,6 +12,7 @@
  * test/task/task-schema.test.ts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { ThinkingLevel } from "@veyyon/agent-core";
 import { type AsyncJob, AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
@@ -36,6 +37,12 @@ const taskAgent: AgentDefinition = {
 	source: "bundled",
 };
 
+const reviewerAgent: AgentDefinition = {
+	name: "reviewer",
+	description: "Review task agent",
+	systemPrompt: "You are a review agent.",
+	source: "bundled",
+};
 function createSession(options: { manager?: AsyncJobManager; settings?: Record<string, unknown> }): ToolSession {
 	return makeToolSession({
 		cwd: "/tmp",
@@ -112,6 +119,130 @@ describe("task spawn routing", () => {
 		AgentRegistry.resetGlobalForTests();
 	});
 
+	/**
+	 * Task dispatch must carry the live parent session's effective effort into
+	 * the executor. Without this bridge, an inherited child reaches model setup
+	 * as undefined and silently falls back to auto.
+	 */
+	it("forwards the parent effective effort into child execution", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+			agents: [taskAgent],
+			projectAgentsDir: null,
+		});
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockResolvedValue(makeResult("InheritedEffort"));
+		const tool = await TaskTool.create(
+			makeToolSession({
+				cwd: "/tmp",
+				getActiveThinkingLevel: () => ThinkingLevel.High,
+				settings: Settings.isolated({ "async.enabled": false }),
+				getSessionFile: () => null,
+				getSessionSpawns: () => "*",
+			}),
+		);
+
+		const result = await tool.execute("tc-inherited-effort", {
+			agent: "task",
+			name: "InheritedEffort",
+			task: "Keep the parent effort.",
+		} as TaskParams);
+
+		expect(result.details?.results[0]?.exitCode).toBe(0);
+		expect(spy.mock.calls[0]?.[0]?.parentThinkingLevel).toBe(ThinkingLevel.High);
+	});
+
+	it("rejects a disabled agent named directly without starting a child", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+			agents: [taskAgent, reviewerAgent],
+			projectAgentsDir: null,
+		});
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockResolvedValue(makeResult("DisabledReviewer", { agent: "reviewer" }));
+		const tool = await TaskTool.create(
+			createSession({
+				settings: {
+					"async.enabled": false,
+					"subagent.agents": { reviewer: { enabled: false } },
+				},
+			}),
+		);
+
+		const result = await tool.execute("tc-disabled-reviewer", {
+			agent: "reviewer",
+			name: "DisabledReviewer",
+			task: "Review this.",
+		});
+
+		expect(getFirstText(result)).toContain(
+			'Agent "reviewer" is disabled (subagent.agents.reviewer.enabled is false)',
+		);
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
+	it("spawns an enabled agent named directly", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+			agents: [taskAgent, reviewerAgent],
+			projectAgentsDir: null,
+		});
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockResolvedValue(makeResult("EnabledReviewer", { agent: "reviewer" }));
+		const tool = await TaskTool.create(
+			createSession({
+				settings: {
+					"async.enabled": false,
+					"subagent.agents": { reviewer: { enabled: true } },
+				},
+			}),
+		);
+
+		const result = await tool.execute("tc-enabled-reviewer", {
+			agent: "reviewer",
+			name: "EnabledReviewer",
+			task: "Review this.",
+		});
+
+		expect(result.details?.results[0]?.agent).toBe("reviewer");
+		expect(runSpy).toHaveBeenCalledTimes(1);
+	});
+
+	/**
+	 * Task dispatch reads profile policy at spawn time, so model and effort
+	 * changes apply to the next child without rebuilding the TaskTool.
+	 */
+	it("forwards canonical per-agent model and effort settings", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+			agents: [taskAgent],
+			projectAgentsDir: null,
+		});
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockResolvedValue(makeResult("ConfiguredTask"));
+		const settings = Settings.isolated({
+			"async.enabled": false,
+			"subagent.agents": {
+				task: { model: "openai/gpt-5.2-codex", thinkingLevel: "xhigh" },
+			},
+		});
+		const tool = await TaskTool.create(
+			makeToolSession({
+				cwd: "/tmp",
+				hasUI: false,
+				settings,
+				getSessionFile: () => null,
+				getSessionSpawns: () => "*",
+			}),
+		);
+
+		await tool.execute("tc-profile-policy", {
+			agent: "task",
+			name: "ConfiguredTask",
+			task: "Use the configured policy.",
+		} as TaskParams);
+
+		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["openai/gpt-5.2-codex"]);
+		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.XHigh);
+		expect(spy.mock.calls[0]?.[0]?.parentThinkingLevel).toBeUndefined();
+	});
+
 	it("returns immediately on spawn and delivers the follow-up hint when the job completes", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
 			agents: [taskAgent],
@@ -138,6 +269,9 @@ describe("task spawn routing", () => {
 		const jobId = result.details?.async?.jobId;
 		expect(jobId).toBeTruthy();
 		expect(text).toContain(`job \`${jobId}\``);
+		expect(text).toContain("The result will be delivered when it yields.");
+		expect(text).toContain("use `job` only to inspect (`list`), wait (`poll`), or cancel");
+		expect(text).toContain("wait (`poll`)");
 		const job = manager.getJob(jobId!);
 		expect(job?.status).toBe("running");
 		expect(job?.resultText).toBeUndefined();
@@ -305,7 +439,7 @@ describe("task spawn routing", () => {
 	});
 
 	for (const maxConcurrency of [0, 0.5]) {
-		it(`runs spawn job bodies unbounded when task.maxConcurrency is ${maxConcurrency}`, async () => {
+		it(`runs spawn job bodies unbounded when subagent.maxConcurrency is ${maxConcurrency}`, async () => {
 			vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
 				agents: [taskAgent],
 				projectAgentsDir: null,
@@ -343,7 +477,7 @@ describe("task spawn routing", () => {
 		});
 	}
 
-	it("re-reads task.maxConcurrency on each spawn so a mid-session change applies on the next acquire", async () => {
+	it("re-reads subagent.maxConcurrency on each spawn so a mid-session change applies on the next acquire", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
 			agents: [taskAgent],
 			projectAgentsDir: null,

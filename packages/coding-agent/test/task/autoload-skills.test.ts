@@ -79,7 +79,7 @@ describe("autoloadSkills in executor", () => {
 		await runSubprocess({
 			...baseOptions,
 			skills: mockSkills,
-			autoloadSkills: mockSkills,
+			autoloadSkills: { kind: "resolved", skills: mockSkills },
 		});
 
 		const sendCustomMessage = session.sendCustomMessage as Mock<any>;
@@ -172,7 +172,7 @@ describe("autoloadSkills in executor", () => {
 		await runSubprocess({
 			...baseOptions,
 			skills: [mockSkill],
-			autoloadSkills: [mockSkill],
+			autoloadSkills: { kind: "resolved", skills: [mockSkill] },
 		});
 
 		expect(callOrder).toEqual(["sendCustomMessage", "prompt"]);

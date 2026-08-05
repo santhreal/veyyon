@@ -56,7 +56,11 @@ describe("subagent cwd settings provenance", () => {
 		const childA = await createSubagentSettingsForCwd(parentB, projectA);
 		expect(childA.getCwd()).toBe(path.normalize(projectA));
 		expect(childA.get("secrets.enabled")).toBe(true);
-		expect(childA.get("tools.approvalMode")).toBe("yolo");
+		// Inherited, not overwritten: the parent explicitly asked for `ask`, so the
+		// child asks. The shipped fork hardcoded `yolo` here and silently disabled
+		// the operator's own approval setting for every spawned agent.
+		expect(childA.get("tools.approvalMode")).toBe("ask");
+		expect(childA.get("tools.approvalMode")).toBe(parentB.get("tools.approvalMode"));
 		expect(parentB.getCwd()).toBe(path.normalize(projectB));
 		expect(parentB.get("secrets.enabled")).toBe(false);
 		expect(parentB.get("tools.approvalMode")).toBe("ask");
@@ -72,7 +76,13 @@ describe("subagent cwd settings provenance", () => {
 		expect(childB.get("secrets.enabled")).toBe(false);
 		expect(childB.get("async.enabled")).toBe(false);
 		expect(childB.get("bash.autoBackground.enabled")).toBe(false);
-		expect(childB.get("tools.approvalMode")).toBe("yolo");
+		// The approval ladder must survive the fork AND the move. A hardcoded
+		// `yolo` in `createSubagentSettings` is what made the whole ladder dead
+		// code: every subagent bypassed every prompt regardless of what the
+		// operator had configured. The child's mode is the parent's resolved
+		// mode, so the assertion is the parent's value and never a literal.
+		expect(childB.get("tools.approvalMode")).toBe(parentA.get("tools.approvalMode"));
+		expect(childB.get("tools.approvalMode")).not.toBe("yolo");
 		expect(parentA.getCwd()).toBe(path.normalize(projectA));
 		expect(parentA.get("secrets.enabled")).toBe(true);
 	});
