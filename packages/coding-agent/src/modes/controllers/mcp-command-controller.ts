@@ -3,7 +3,6 @@
  *
  * Handles /mcp subcommands for managing MCP servers.
  */
-import * as path from "node:path";
 import { type Component, replaceTabs, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
@@ -60,7 +59,7 @@ import { parseCommandArgs } from "../shared";
 import { withIcon } from "../theme/icon-label";
 import { theme } from "../theme/theme";
 import type { InteractiveModeContext } from "../types";
-import { groupBySource, parseRemoveArgs, readScopeFlag, showCommandMessage } from "./command-controller-shared";
+import { groupBySource, showCommandMessage } from "./command-controller-shared";
 
 /**
  * The slice of the interactive context this controller uses: 12 members of the
@@ -249,12 +248,23 @@ export class MCPOAuthCancelledError extends Error {
 /** Reason recorded on the OAuth flow's AbortController when the user hits Esc. */
 const MCP_OAUTH_USER_CANCEL_REASON = "MCP OAuth flow cancelled by user";
 
-type MCPAddScope = "user" | "project";
 type MCPAddTransport = "http" | "sse";
+
+/**
+ * Where every `/mcp` write lands: the active profile's `<agentDir>/mcp.json`.
+ *
+ * There used to be a `--scope project|user` choice, and `project` was the
+ * DEFAULT. It wrote `<cwd>/.veyyon/mcp.json` and read `<cwd>/mcp.json` and
+ * `<cwd>/.mcp.json` alongside it. A repository is content the operator may not
+ * have written, so nothing loads those files any more; a `--scope project`
+ * write would land in a file no session ever reads, and a repo-supplied entry
+ * must never become a server `/mcp test` connects to.
+ */
+const MCP_SCOPE_REMOVED_ERROR =
+	"`--scope` is gone: MCP servers are configured per profile, never per repository, because a checked-in file must not name a server Veyyon connects to. Fix: drop the flag; the entry is written to your profile's mcp.json.";
 
 type MCPAddParsed = {
 	initialName?: string;
-	scope: MCPAddScope;
 	quickConfig?: MCPServerConfig;
 	isCommandQuickAdd?: boolean;
 	hasAuthToken?: boolean;
@@ -263,7 +273,6 @@ type MCPAddParsed = {
 
 type MCPSearchParsed = {
 	keyword: string;
-	scope: MCPAddScope;
 	limit: number;
 	semantic: boolean;
 	error?: string;
@@ -351,15 +360,15 @@ export class MCPCommandController {
 			"",
 			theme.fg("accent", "Commands:"),
 			"  /mcp add              Add a new MCP server (interactive wizard)",
-			"  /mcp add <name> [--scope project|user] [--url <url> --transport http|sse] [--token <token>] [-- <command...>]",
+			"  /mcp add <name> [--url <url> --transport http|sse] [--token <token>] [-- <command...>]",
 			"  /mcp list             List all configured MCP servers",
-			"  /mcp remove <name> [--scope project|user]    Remove an MCP server (default: project)",
+			"  /mcp remove <name>    Remove an MCP server",
 			"  /mcp test <name>      Test connection to an MCP server",
 			"  /mcp reauth <name>    Reauthorize OAuth for an MCP server",
 			"  /mcp unauth <name>    Remove OAuth auth from an MCP server",
 			"  /mcp enable <name>    Enable an MCP server",
 			"  /mcp disable <name>   Disable an MCP server",
-			"  /mcp smithery-search <keyword> [--scope project|user] [--limit <1-100>] [--semantic]",
+			"  /mcp smithery-search <keyword> [--limit <1-100>] [--semantic]",
 			"                        Search Smithery registry and deploy from picker",
 			"  /mcp smithery-login   Login to Smithery and cache API key",
 			"  /mcp smithery-logout  Remove cached Smithery API key",
@@ -379,16 +388,15 @@ export class MCPCommandController {
 		const prefixMatch = text.match(/^\/mcp\s+add\b\s*(.*)$/i);
 		const rest = prefixMatch?.[1]?.trim() ?? "";
 		if (!rest) {
-			return { scope: "project" };
+			return {};
 		}
 
 		const tokens = parseCommandArgs(rest);
 		if (tokens.length === 0) {
-			return { scope: "project" };
+			return {};
 		}
 
 		let name: string | undefined;
-		let scope: MCPAddScope = "project";
 		let url: string | undefined;
 		let transport: MCPAddTransport = "http";
 		let authToken: string | undefined;
@@ -407,18 +415,12 @@ export class MCPCommandController {
 				break;
 			}
 			if (argToken === "--scope") {
-				const r = readScopeFlag(tokens[i + 1]);
-				if (!r.ok) {
-					return { scope, error: r.error };
-				}
-				scope = r.scope;
-				i += 2;
-				continue;
+				return { error: MCP_SCOPE_REMOVED_ERROR };
 			}
 			if (argToken === "--url") {
 				const value = tokens[i + 1];
 				if (!value) {
-					return { scope, error: "Missing value for --url." };
+					return { error: "Missing value for --url." };
 				}
 				url = value;
 				i += 2;
@@ -427,7 +429,7 @@ export class MCPCommandController {
 			if (argToken === "--transport") {
 				const value = tokens[i + 1];
 				if (!value || (value !== "http" && value !== "sse")) {
-					return { scope, error: "Invalid --transport value. Use http or sse." };
+					return { error: "Invalid --transport value. Use http or sse." };
 				}
 				transport = value;
 				i += 2;
@@ -436,27 +438,27 @@ export class MCPCommandController {
 			if (argToken === "--token") {
 				const value = tokens[i + 1];
 				if (!value) {
-					return { scope, error: "Missing value for --token." };
+					return { error: "Missing value for --token." };
 				}
 				authToken = value;
 				i += 2;
 				continue;
 			}
-			return { scope, error: `Unknown option: ${argToken}` };
+			return { error: `Unknown option: ${argToken}` };
 		}
 
 		const hasQuick = Boolean(url) || Boolean(commandTokens && commandTokens.length > 0);
 		if (!hasQuick) {
-			return { scope, initialName: name };
+			return { initialName: name };
 		}
 		if (!name) {
-			return { scope, error: "Server name required for quick add. Usage: /mcp add <name> ..." };
+			return { error: "Server name required for quick add. Usage: /mcp add <name> ..." };
 		}
 		if (url && commandTokens && commandTokens.length > 0) {
-			return { scope, error: "Use either --url or -- <command...>, not both." };
+			return { error: "Use either --url or -- <command...>, not both." };
 		}
 		if (authToken && !url) {
-			return { scope, error: "--token requires --url (HTTP/SSE transport)." };
+			return { error: "--token requires --url (HTTP/SSE transport)." };
 		}
 
 		if (commandTokens && commandTokens.length > 0) {
@@ -466,7 +468,7 @@ export class MCPCommandController {
 				command,
 				args: args.length > 0 ? args : undefined,
 			};
-			return { scope, initialName: name, quickConfig: config, isCommandQuickAdd: true };
+			return { initialName: name, quickConfig: config, isCommandQuickAdd: true };
 		}
 
 		const useHttpTransport = transport === "http";
@@ -480,7 +482,6 @@ export class MCPCommandController {
 			headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
 		};
 		return {
-			scope,
 			initialName: name,
 			quickConfig: config,
 			isCommandQuickAdd: false,
@@ -495,39 +496,30 @@ export class MCPCommandController {
 		if (tokens.length === 0) {
 			return {
 				keyword: "",
-				scope: "project",
 				limit: 20,
 				semantic: false,
-				error: "Keyword required. Usage: /mcp smithery-search <keyword> [--scope project|user] [--limit <1-100>] [--semantic]",
+				error: "Keyword required. Usage: /mcp smithery-search <keyword> [--limit <1-100>] [--semantic]",
 			};
 		}
 
 		const keywordParts: string[] = [];
-		let scope: MCPAddScope = "project";
 		let limit = 20;
 		let semantic = false;
 
 		for (let i = 0; i < tokens.length; i++) {
 			const token = tokens[i];
 			if (token === "--scope") {
-				const value = tokens[i + 1];
-				if (!value || (value !== "project" && value !== "user")) {
-					return { keyword: "", scope, limit, semantic, error: "Invalid --scope value. Use project or user." };
-				}
-				scope = value;
-				i++;
-				continue;
+				return { keyword: "", limit, semantic, error: MCP_SCOPE_REMOVED_ERROR };
 			}
 			if (token === "--limit") {
 				const value = tokens[i + 1];
 				if (!value) {
-					return { keyword: "", scope, limit, semantic, error: "Missing value for --limit." };
+					return { keyword: "", limit, semantic, error: "Missing value for --limit." };
 				}
 				const parsed = Number(value);
 				if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
 					return {
 						keyword: "",
-						scope,
 						limit,
 						semantic,
 						error: "Invalid --limit value. Use an integer between 1 and 100.",
@@ -542,7 +534,7 @@ export class MCPCommandController {
 				continue;
 			}
 			if (token.startsWith("--")) {
-				return { keyword: "", scope, limit, semantic, error: `Unknown option: ${token}` };
+				return { keyword: "", limit, semantic, error: `Unknown option: ${token}` };
 			}
 			keywordParts.push(token);
 		}
@@ -551,14 +543,13 @@ export class MCPCommandController {
 		if (!keyword) {
 			return {
 				keyword: "",
-				scope,
 				limit,
 				semantic,
-				error: "Keyword required. Usage: /mcp smithery-search <keyword> [--scope project|user] [--limit <1-100>] [--semantic]",
+				error: "Keyword required. Usage: /mcp smithery-search <keyword> [--limit <1-100>] [--semantic]",
 			};
 		}
 
-		return { keyword, scope, limit, semantic };
+		return { keyword, limit, semantic };
 	}
 
 	/**
@@ -652,7 +643,7 @@ export class MCPCommandController {
 				}
 			}
 
-			await this.#handleWizardComplete(parsed.initialName, finalConfig, parsed.scope);
+			await this.#handleWizardComplete(parsed.initialName, finalConfig);
 			return;
 		}
 
@@ -665,9 +656,9 @@ export class MCPCommandController {
 
 		// Create wizard with OAuth handler and connection test
 		const wizard = new MCPAddWizard(
-			async (name: string, config: MCPServerConfig, scope: "user" | "project") => {
+			async (name: string, config: MCPServerConfig) => {
 				done();
-				await this.#handleWizardComplete(name, config, scope);
+				await this.#handleWizardComplete(name, config);
 			},
 			() => {
 				done();
@@ -977,47 +968,27 @@ export class MCPCommandController {
 		await disconnectServer(connection);
 	}
 
+	/**
+	 * Find `name` in the one MCP config file `/mcp` owns: the active profile's
+	 * `<agentDir>/mcp.json`.
+	 *
+	 * Three working-tree candidates used to sit behind that file —
+	 * `<cwd>/.veyyon/mcp.json`, `<cwd>/mcp.json` and `<cwd>/.mcp.json`, matching
+	 * the since-deleted project-scope discovery providers. Nothing loads them at
+	 * boot any more, but this function still resolved them, so `/mcp test` and
+	 * `/mcp reauth` would have CONNECTED to a server a repository declared and
+	 * `/mcp enable` would have written `enabled: true` into a repository file.
+	 * Operator-initiated is not consent: typing `/mcp test` is not agreement to
+	 * reach a server the operator never configured.
+	 */
 	async #findConfiguredServer(
 		name: string,
-	): Promise<{ filePath: string; scope: "user" | "project"; config: MCPServerConfig } | null> {
-		const cwd = getProjectDir();
-		const userPath = getMCPConfigPath("user", cwd);
-		const projectPath = getMCPConfigPath("project", cwd);
-
-		const [userConfig, projectConfig] = await Promise.all([
-			readMCPConfigFile(userPath),
-			readMCPConfigFile(projectPath),
-		]);
-
-		if (userConfig.mcpServers?.[name]) {
-			return { filePath: userPath, scope: "user", config: userConfig.mcpServers[name] };
-		}
-		if (projectConfig.mcpServers?.[name]) {
-			return { filePath: projectPath, scope: "project", config: projectConfig.mcpServers[name] };
-		}
-
-		// Check standalone fallback files (mcp.json, .mcp.json) in the project root —
-		// these match the discovery paths used by the mcp-json provider. Reads run in
-		// parallel (mirroring user/project above) but precedence is preserved by the
-		// for-loop's iteration order: mcp.json wins over .mcp.json on a same-name hit.
-		const standalonePaths = [path.join(cwd, "mcp.json"), path.join(cwd, ".mcp.json")];
-		const fallbackConfigs = await Promise.all(
-			standalonePaths.map(async fallbackPath => {
-				try {
-					return await readMCPConfigFile(fallbackPath);
-				} catch {
-					// Malformed JSON in a standalone file — skip and continue lookup.
-					return null;
-				}
-			}),
-		);
-		for (const [index, fallbackConfig] of fallbackConfigs.entries()) {
-			const config = fallbackConfig?.mcpServers?.[name];
-			if (config) {
-				return { filePath: standalonePaths[index]!, scope: "project", config };
-			}
-		}
-		return null;
+	): Promise<{ filePath: string; scope: "user"; config: MCPServerConfig } | null> {
+		const userPath = getMCPConfigPath("user", getProjectDir());
+		const userConfig = await readMCPConfigFile(userPath);
+		const config = userConfig.mcpServers?.[name];
+		if (!config) return null;
+		return { filePath: userPath, scope: "user", config };
 	}
 
 	/**
@@ -1038,7 +1009,7 @@ export class MCPCommandController {
 	 */
 	async #resolveServerForAuth(name: string): Promise<{
 		filePath: string;
-		scope: "user" | "project";
+		scope: "user";
 		config: MCPServerConfig;
 		discovered: boolean;
 	} | null> {
@@ -1163,11 +1134,9 @@ export class MCPCommandController {
 		}
 	}
 
-	async #handleWizardComplete(name: string, config: MCPServerConfig, scope: "user" | "project"): Promise<void> {
+	async #handleWizardComplete(name: string, config: MCPServerConfig): Promise<void> {
 		try {
-			// Determine file path
-			const cwd = getProjectDir();
-			const filePath = getMCPConfigPath(scope, cwd);
+			const filePath = getMCPConfigPath("user", getProjectDir());
 
 			// Add server to config
 			await addMCPServer(filePath, name, config);
@@ -1208,8 +1177,7 @@ export class MCPCommandController {
 			}
 
 			// Show success message
-			const scopeLabel = scope === "user" ? "user" : "project";
-			const lines = ["", theme.fg("success", `+ Added server "${name}" to ${scopeLabel} config`), ""];
+			const lines = ["", theme.fg("success", `+ Added server "${name}" to ${shortenPath(filePath)}`), ""];
 
 			if (isConnected) {
 				lines.push(theme.fg("success", `${theme.status.enabled} Successfully connected to server`));
@@ -1287,24 +1255,18 @@ export class MCPCommandController {
 
 	async #handleList(): Promise<void> {
 		try {
-			const cwd = getProjectDir();
-
-			// Load from both user and project configs
-			const userPath = getMCPConfigPath("user", cwd);
-			const projectPath = getMCPConfigPath("project", cwd);
-
+			// The profile's own `<agentDir>/mcp.json` is the only writable config.
+			// A second read of `<cwd>/.veyyon/mcp.json` used to render a "Project
+			// level" section here; nothing loads that file, so the section listed
+			// servers no session would ever connect to.
+			const userPath = getMCPConfigPath("user", getProjectDir());
 			const userPathLabel = shortenPath(userPath);
-			const projectPathLabel = shortenPath(projectPath);
-			const [userConfig, projectConfig] = await Promise.all([
-				readMCPConfigFile(userPath),
-				readMCPConfigFile(projectPath),
-			]);
+			const userConfig = await readMCPConfigFile(userPath);
 
 			const userServers = Object.keys(userConfig.mcpServers ?? {});
-			const projectServers = Object.keys(projectConfig.mcpServers ?? {});
 
 			// Collect runtime-discovered servers not in config files
-			const configServerNames = new Set([...userServers, ...projectServers]);
+			const configServerNames = new Set(userServers);
 			const disabledServerNames = new Set(await readDisabledServers(userPath));
 			const discoveredServers: { name: string; source: SourceMeta }[] = [];
 			if (this.ctx.mcpManager) {
@@ -1318,12 +1280,7 @@ export class MCPCommandController {
 				}
 			}
 
-			if (
-				userServers.length === 0 &&
-				projectServers.length === 0 &&
-				discoveredServers.length === 0 &&
-				disabledServerNames.size === 0
-			) {
+			if (userServers.length === 0 && discoveredServers.length === 0 && disabledServerNames.size === 0) {
 				this.#showMessage(
 					[
 						"",
@@ -1343,21 +1300,6 @@ export class MCPCommandController {
 				lines.push(theme.fg("accent", "User level") + theme.fg("muted", ` (${userPathLabel}):`));
 				for (const name of userServers) {
 					const config = userConfig.mcpServers![name];
-					const type = config.type ?? "stdio";
-					const state =
-						config.enabled === false
-							? "inactive"
-							: (this.ctx.mcpManager?.getConnectionStatus(name) ?? "disconnected");
-					lines.push(...this.#serverStatusRows(name, state, type));
-				}
-				lines.push("");
-			}
-
-			// Show project-level servers
-			if (projectServers.length > 0) {
-				lines.push(theme.fg("accent", "Project level") + theme.fg("muted", ` (${projectPathLabel}):`));
-				for (const name of projectServers) {
-					const config = projectConfig.mcpServers![name];
 					const type = config.type ?? "stdio";
 					const state =
 						config.enabled === false
@@ -1403,26 +1345,33 @@ export class MCPCommandController {
 	async #handleRemove(text: string): Promise<void> {
 		const match = text.match(/^\/mcp\s+(?:remove|rm)\b\s*(.*)$/i);
 		const rest = match?.[1]?.trim() ?? "";
-		const parsed = parseRemoveArgs(rest);
-		if (!parsed.ok) {
-			this.ctx.showError(parsed.error);
-			return;
+		let name: string | undefined;
+		for (const token of parseCommandArgs(rest)) {
+			if (token === "--scope") {
+				this.ctx.showError(MCP_SCOPE_REMOVED_ERROR);
+				return;
+			}
+			if (token.startsWith("-")) {
+				this.ctx.showError(`Unknown option: ${token}`);
+				return;
+			}
+			if (name !== undefined) {
+				this.ctx.showError(`Unexpected argument: ${token}. Usage: /mcp remove <name>`);
+				return;
+			}
+			name = token;
 		}
-		const { name, scope } = parsed.value;
 
 		if (!name) {
-			this.ctx.showError("Server name required. Usage: /mcp remove <name> [--scope project|user]");
+			this.ctx.showError("Server name required. Usage: /mcp remove <name>");
 			return;
 		}
 
 		try {
-			const cwd = getProjectDir();
-			const userPath = getMCPConfigPath("user", cwd);
-			const projectPath = getMCPConfigPath("project", cwd);
-			const filePath = scope === "user" ? userPath : projectPath;
+			const filePath = getMCPConfigPath("user", getProjectDir());
 			const config = await readMCPConfigFile(filePath);
 			if (!config.mcpServers?.[name]) {
-				this.ctx.showError(`Server "${name}" not found in ${scope} config.`);
+				this.ctx.showError(`Server "${name}" not found in ${shortenPath(filePath)}.`);
 				return;
 			}
 
@@ -1437,7 +1386,9 @@ export class MCPCommandController {
 			// Reload MCP manager
 			await this.#reloadMCP();
 
-			this.#showMessage(["", theme.fg("success", `- Removed server "${name}" from ${scope} config`), ""].join("\n"));
+			this.#showMessage(
+				["", theme.fg("success", `- Removed server "${name}" from ${shortenPath(filePath)}`), ""].join("\n"),
+			);
 		} catch (error) {
 			this.ctx.showError(`Failed to remove server: ${errorMessage(error)}`);
 		}
@@ -1562,7 +1513,16 @@ export class MCPCommandController {
 				const isDiscovered = this.ctx.mcpManager?.getSource(name);
 				const isCurrentlyDisabled = disabledServers.has(name);
 				if (!isDiscovered && !isCurrentlyDisabled) {
-					this.ctx.showError(`Server "${name}" not found.`);
+					// Naming the file is the whole point: the operator who typed this
+					// is usually looking at a `mcp.json` in the repository they are
+					// standing in, and nothing reads that. Silently reporting "not
+					// found" left them re-editing a file no session ever loads.
+					this.ctx.showError(
+						`MCP server "${name}" is not configured, so there is nothing to ${enabled ? "enable" : "disable"}. ` +
+							`Veyyon reads MCP servers from ${shortenPath(userConfigPath)} and from the editor configs ` +
+							`${theme.fg("accent", "/mcp list")} names; a repository's own mcp.json, .mcp.json or .veyyon/mcp.json is never loaded. ` +
+							`Fix: run ${theme.fg("accent", `/mcp add ${name} -- <command...>`)} to configure it for this profile.`,
+					);
 					return;
 				}
 				if (isCurrentlyDisabled === !enabled) {
@@ -2229,8 +2189,8 @@ export class MCPCommandController {
 		this.ctx.showStatus(removed ? "Smithery API key removed." : "No cached Smithery API key found.");
 	}
 
-	async #nextAvailableServerName(scope: MCPAddScope, baseName: string): Promise<string> {
-		const filePath = getMCPConfigPath(scope, getProjectDir());
+	async #nextAvailableServerName(baseName: string): Promise<string> {
+		const filePath = getMCPConfigPath("user", getProjectDir());
 		const config = await readMCPConfigFile(filePath);
 		const existingNames = new Set(Object.keys(config.mcpServers ?? {}));
 		if (!existingNames.has(baseName)) return baseName;
@@ -2241,7 +2201,7 @@ export class MCPCommandController {
 		return `${baseName}-${Date.now()}`;
 	}
 
-	async #promptDeploymentServerName(scope: MCPAddScope, defaultName: string): Promise<string | null> {
+	async #promptDeploymentServerName(defaultName: string): Promise<string | null> {
 		for (;;) {
 			const input = await this.ctx.showHookInput(`Server name for deploy (default: ${defaultName})`, defaultName);
 			if (input === undefined) return null;
@@ -2250,10 +2210,10 @@ export class MCPCommandController {
 				this.ctx.showError("Server name cannot be empty.");
 				continue;
 			}
-			const filePath = getMCPConfigPath(scope, getProjectDir());
+			const filePath = getMCPConfigPath("user", getProjectDir());
 			const config = await readMCPConfigFile(filePath);
 			if (config.mcpServers?.[proposed]) {
-				this.ctx.showError(`Server "${proposed}" already exists in ${scope} config.`);
+				this.ctx.showError(`Server "${proposed}" already exists in ${shortenPath(filePath)}.`);
 				continue;
 			}
 			return proposed;
@@ -2316,10 +2276,10 @@ export class MCPCommandController {
 		return results[index] ?? null;
 	}
 
-	async #deployRegistryResult(result: SmitherySearchResult, scope: MCPAddScope): Promise<void> {
+	async #deployRegistryResult(result: SmitherySearchResult): Promise<void> {
 		const baseName = toConfigName(result.name);
-		const defaultName = await this.#nextAvailableServerName(scope, baseName);
-		const serverName = await this.#promptDeploymentServerName(scope, defaultName);
+		const defaultName = await this.#nextAvailableServerName(baseName);
+		const serverName = await this.#promptDeploymentServerName(defaultName);
 		if (!serverName) {
 			this.ctx.showStatus("MCP deploy cancelled.");
 			return;
@@ -2330,7 +2290,7 @@ export class MCPCommandController {
 			return;
 		}
 		const config = this.#applyRegistryInputOverrides(result.config, inputValues);
-		await this.#handleWizardComplete(serverName, config, scope);
+		await this.#handleWizardComplete(serverName, config);
 	}
 
 	async #handleSearch(text: string): Promise<void> {
@@ -2367,7 +2327,7 @@ export class MCPCommandController {
 				return;
 			}
 
-			await this.#deployRegistryResult(selected, parsed.scope);
+			await this.#deployRegistryResult(selected);
 		} catch (error) {
 			const message = errorMessage(error);
 			if (/authentication was cancelled|login cancelled/i.test(message)) {

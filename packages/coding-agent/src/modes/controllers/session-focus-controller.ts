@@ -56,10 +56,31 @@ export class SessionFocusController {
 		return this.#attachedSession;
 	}
 
-	/** Focus the main view on an agent's live session. Throws an Error with a user-displayable message. */
+	/**
+	 * Focus the main view on an agent's live session. Throws an Error with a
+	 * user-displayable message.
+	 *
+	 * REFUSES an agent belonging to another conversation in this process, before
+	 * `ensureLive` runs. Refusal rather than a silent no-op because the operator
+	 * pressed a key and is owed an answer, and refusal rather than filtering
+	 * because there is nothing to filter: the caller named one agent. The order
+	 * matters more than the check: `ensureLive` REVIVES a parked ref, so an
+	 * unguarded call did not merely display a stranger's session, it restarted
+	 * one, replaying another conversation's context into this process and
+	 * pointing the transcript, the status line and the editor's interrupt at it.
+	 */
 	async focusAgent(id: string): Promise<void> {
 		if (this.ctx.collabGuest) throw new Error("Viewing agents is unavailable in a collab session.");
 		if (id === MAIN_AGENT_ID) return this.unfocus();
+		// `?.()` because a driving session need not carry a registry id at all (an
+		// embedded or render-only host); an absent id falls back to `Main`, and a
+		// scope that resolves to undefined is permissive, so a host that cannot
+		// name itself keeps working rather than being locked out of its own agents.
+		const scope = this.registry.get(this.ctx.session.getAgentId?.() ?? MAIN_AGENT_ID)?.scope;
+		const target = this.registry.get(id);
+		if (target && !AgentRegistry.sameScope(target.scope, scope)) {
+			throw new Error(`Agent ${id} belongs to a different conversation and cannot be viewed from this one.`);
+		}
 		const session = await this.lifecycle().ensureLive(id);
 		if (id === this.#focusedAgentId && session === this.#attachedSession) return;
 		this.#focusedAgentId = id;

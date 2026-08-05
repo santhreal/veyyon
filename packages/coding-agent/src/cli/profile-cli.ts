@@ -66,7 +66,14 @@ export const PROFILE_COPY_ITEMS: readonly ProfileCopyItem[] = [
 		description: "Profile-specific agent instructions",
 		files: ["AGENTS.md"],
 	},
-	{ key: "settings", label: "Settings", description: "All /settings values", files: [...MAIN_CONFIG_FILENAMES] },
+	// `veyyon profile` is a terminal command and `/settings` is TUI-only, so the
+	// row named a surface its reader is not on. `config list` is the same values.
+	{
+		key: "settings",
+		label: "Settings",
+		description: "Everything `veyyon config list` shows",
+		files: [...MAIN_CONFIG_FILENAMES],
+	},
 	{ key: "mcp", label: "MCP servers", description: "mcp.json server config", files: ["mcp.json"] },
 	{ key: "ssh", label: "SSH targets", description: "ssh.json remote targets", files: ["ssh.json"] },
 	{ key: "skills", label: "Skills", description: "skills/ directory", dirs: ["skills"] },

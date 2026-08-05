@@ -43,9 +43,27 @@ import { buildPluginId, parsePluginId } from "./types";
 const RUNTIME_PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
 const MAX_RUNTIME_PACKAGE_NAME_LENGTH = 214;
 
+/**
+ * One sentence for the three sites that could not find a configured marketplace.
+ * All three said `Marketplace "x" not found`, which the reader cannot act on:
+ * "not found" does not distinguish never-added from added-and-since-removed, and
+ * neither reading tells them how to see the list they are being measured against.
+ */
+function marketplaceNotConfiguredMessage(name: string): string {
+	return (
+		`No marketplace named "${name}" is configured, so nothing could be read from it. ` +
+		"Fix: run `veyyon plugin marketplace list` to see the configured ones, or " +
+		"`veyyon plugin marketplace add <source>` to add this one."
+	);
+}
+
 function assertRuntimePackageName(name: string): string {
 	if (name.length > MAX_RUNTIME_PACKAGE_NAME_LENGTH || !RUNTIME_PACKAGE_NAME_RE.test(name)) {
-		throw new Error(`Invalid marketplace plugin package name: ${JSON.stringify(name)}`);
+		throw new Error(
+			`${JSON.stringify(name)} is not a usable package name for a marketplace plugin, so it was not installed. ` +
+				`Fix: the marketplace's catalog has to name it in npm form (lowercase, optionally scoped, at most ` +
+				`${MAX_RUNTIME_PACKAGE_NAME_LENGTH} characters); report it to whoever publishes that marketplace.`,
+		);
 	}
 	return name;
 }
@@ -98,7 +116,11 @@ export class MarketplaceManager {
 			if (clonePath) {
 				await removeTempPath(clonePath, "marketplace-duplicate-name");
 			}
-			throw new Error(`Marketplace "${catalog.name}" already exists`);
+			throw new Error(
+				`A marketplace named "${catalog.name}" is already configured, so this one was not added. ` +
+					`Fix: run \`veyyon plugin marketplace remove ${catalog.name}\` first if you want to replace it, ` +
+					`or \`veyyon plugin marketplace update ${catalog.name}\` to refresh the one you already have.`,
+			);
 		}
 
 		// Promote the temp clone to its final cache location now that we know it's not a duplicate.
@@ -152,7 +174,7 @@ export class MarketplaceManager {
 		const reg = await readMarketplacesRegistry(this.#opts.marketplacesRegistryPath);
 		const existing = getMarketplaceEntry(reg, name);
 		if (!existing) {
-			throw new Error(`Marketplace "${name}" not found`);
+			throw new Error(marketplaceNotConfiguredMessage(name));
 		}
 
 		const { catalog, clonePath } = await fetchMarketplace(existing.sourceUri, this.#opts.marketplacesCacheDir);
@@ -215,7 +237,7 @@ export class MarketplaceManager {
 		if (marketplace !== undefined) {
 			const entry = reg.marketplaces.find(m => m.name === marketplace);
 			if (!entry) {
-				throw new Error(`Marketplace "${marketplace}" not found`);
+				throw new Error(marketplaceNotConfiguredMessage(marketplace));
 			}
 			const catalog = await this.#readCatalog(entry);
 			return catalog.plugins;
@@ -249,14 +271,17 @@ export class MarketplaceManager {
 		const mktReg = await readMarketplacesRegistry(this.#opts.marketplacesRegistryPath);
 		const mktEntry = getMarketplaceEntry(mktReg, marketplace);
 		if (!mktEntry) {
-			throw new Error(`Marketplace "${marketplace}" not found`);
+			throw new Error(marketplaceNotConfiguredMessage(marketplace));
 		}
 
 		// 2. Find plugin in catalog
 		const catalog = await this.#readCatalog(mktEntry);
 		const pluginEntry = catalog.plugins.find(p => p.name === name);
 		if (!pluginEntry) {
-			throw new Error(`Plugin "${name}" not found in marketplace "${marketplace}"`);
+			throw new Error(
+				`Marketplace "${marketplace}" has no plugin named "${name}", so nothing was installed. ` +
+					`Fix: run \`veyyon plugin discover ${marketplace}\` to list what it offers.`,
+			);
 		}
 
 		const pluginId = buildPluginId(name, marketplace);
@@ -265,7 +290,11 @@ export class MarketplaceManager {
 		const instReg = await readInstalledPluginsRegistry(registryPath);
 		const existing = getInstalledPlugin(instReg, pluginId);
 		if (existing && existing.length > 0 && !force) {
-			throw new Error(`Plugin "${pluginId}" is already installed. Use force option to reinstall.`);
+			throw new Error(
+				`Plugin "${pluginId}" is already installed, so it was left alone. ` +
+					`Fix: run \`veyyon plugin install ${name}@${marketplace} --force\` to reinstall it over the top, ` +
+					`or \`veyyon plugin uninstall ${pluginId}\` first.`,
+			);
 		}
 
 		// 4. Resolve source path.
@@ -613,10 +642,15 @@ export class MarketplaceManager {
 				try {
 					await this.updateMarketplace(entry.name);
 				} catch (error) {
-					logger.warn("Marketplace catalog refresh failed; the catalog stays stale", {
-						marketplace: entry.name,
-						error: errorMessage(error),
-					});
+					logger.warn(
+						`The catalog for marketplace ${entry.name} could not be refreshed, so plugin lookups keep using ` +
+							`the stale copy: ${errorMessage(error)}. Fix: check network access, then run ` +
+							`\`veyyon plugin marketplace update ${entry.name}\`.`,
+						{
+							marketplace: entry.name,
+							error: errorMessage(error),
+						},
+					);
 				}
 			}
 		}
@@ -755,13 +789,18 @@ export class MarketplaceManager {
 				const entry = await this.upgradePlugin(update.pluginId, update.scope);
 				results.push({ pluginId: update.pluginId, scope: update.scope, from: update.from, to: entry.version });
 			} catch (error) {
-				logger.warn("Plugin upgrade failed; the installed version is unchanged", {
-					pluginId: update.pluginId,
-					scope: update.scope,
-					from: update.from,
-					to: update.to,
-					error: errorMessage(error),
-				});
+				logger.warn(
+					`Plugin ${update.pluginId} could not be upgraded, so version ${update.from} stays installed. ` +
+						`Fix: run \`veyyon plugin upgrade ${update.pluginId}\` to retry, or ` +
+						`\`veyyon plugin uninstall ${update.pluginId}\` and install it again.`,
+					{
+						pluginId: update.pluginId,
+						scope: update.scope,
+						from: update.from,
+						to: update.to,
+						error: errorMessage(error),
+					},
+				);
 			}
 		}
 		return results;
@@ -786,10 +825,15 @@ export class MarketplaceManager {
 			return normalizePluginRuntimeConfig(await Bun.file(this.#runtimeLockPath(scope)).json());
 		} catch (err) {
 			if (isEnoent(err)) return normalizePluginRuntimeConfig({});
-			logger.warn("Failed to load marketplace plugin runtime config", {
-				path: this.#runtimeLockPath(scope),
-				error: String(err),
-			});
+			logger.warn(
+				`The marketplace plugin runtime config at ${this.#runtimeLockPath(scope)} could not be read ` +
+					`(${String(err)}), so every marketplace plugin is treated as freshly installed with default ` +
+					"settings. Fix: check that file's permissions, or delete it to have it rebuilt.",
+				{
+					path: this.#runtimeLockPath(scope),
+					error: String(err),
+				},
+			);
 			return normalizePluginRuntimeConfig({});
 		}
 	}
@@ -906,8 +950,14 @@ export class MarketplaceManager {
 			return parseMarketplaceCatalog(content, entry.catalogPath);
 		} catch (err) {
 			if (isEnoent(err)) {
+				// `/marketplace` IS NOT A COMMAND. It is in no slash-command
+				// declaration table and never was, so the remedy named a route that
+				// exists on no surface at all. `veyyon plugin marketplace update` is
+				// the one that runs, and it re-fetches exactly this catalog.
 				throw new Error(
-					`Marketplace catalog not found at ${entry.catalogPath}. Try: /marketplace update ${entry.name}`,
+					`The catalog for marketplace "${entry.name}" is not on disk at ${entry.catalogPath}, so none of ` +
+						`its plugins can be resolved. Fix: run \`veyyon plugin marketplace update ${entry.name}\` to ` +
+						"fetch it again.",
 				);
 			}
 			throw err;

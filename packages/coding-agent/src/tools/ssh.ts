@@ -116,7 +116,14 @@ async function loadHosts(session: ToolSession): Promise<{
 	hostNames: string[];
 	hostsByName: Map<string, SSHHost>;
 }> {
-	const result = await loadCapability<SSHHost>(sshCapability.id, { cwd: session.cwd });
+	// The profile is the ONLY scope for `ssh.json`, so which profile is the whole
+	// answer. `session.settings.getAgentDir()` is the dir the session actually
+	// loaded from; the loader's fallback is the process-booted profile, which is a
+	// different profile whenever a host runs a session for a non-active one.
+	const result = await loadCapability<SSHHost>(sshCapability.id, {
+		cwd: session.cwd,
+		agentDir: session.settings.getAgentDir(),
+	});
 	const hostsByName = new Map<string, SSHHost>();
 	for (const host of result.items) {
 		if (!hostsByName.has(host.name)) {

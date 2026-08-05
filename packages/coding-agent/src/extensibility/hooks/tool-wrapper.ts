@@ -55,7 +55,12 @@ export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = u
 				})) as ToolCallEventResult | undefined;
 
 				if (callResult?.block) {
-					const reason = callResult.reason || "Tool execution was blocked by a hook";
+					// The model reads this. A hook that blocks WITHOUT a reason gives it
+					// nothing to act on, so the default has to carry the next step.
+					const reason =
+						callResult.reason ||
+						`A hook blocked this ${this.tool.name} call and gave no reason. Do not retry it; tell the ` +
+							"operator which hook is blocking so they can fix or remove it.";
 					throw new Error(reason);
 				}
 			} catch (err) {
@@ -63,7 +68,11 @@ export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = u
 				if (err instanceof Error) {
 					throw err;
 				}
-				throw new Error(`Hook failed, blocking execution: ${String(err)}`);
+				throw new Error(
+					`A hook threw a non-error value while vetting this ${this.tool.name} call, so the call was blocked ` +
+						`rather than run unchecked: ${String(err)}. Do not retry it; tell the operator that hook is ` +
+						"failing.",
+				);
 			}
 		}
 

@@ -166,16 +166,5 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
-	"commands.enableOpencodeProject": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tasks",
-			group: "Commands & Skills",
-			label: "OpenCode Project Commands",
-			description: "Load commands from .opencode/commands/",
-		},
-	},
-
 	// ────────────────────────────────────────────────────────────────────────
 } as const;

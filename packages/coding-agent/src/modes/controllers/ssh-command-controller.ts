@@ -197,12 +197,7 @@ export class SSHCommandController {
 			await addSSHHost(filePath, name, hostConfig);
 			await this.ctx.session.refreshSshTool({ activateIfAvailable: true });
 
-			const lines = [
-				"",
-				theme.fg("success", `+ Added SSH host "${name}"`),
-				"",
-				`  Host: ${host}`,
-			];
+			const lines = ["", theme.fg("success", `+ Added SSH host "${name}"`), "", `  Host: ${host}`];
 			if (username) lines.push(`  User: ${username}`);
 			if (port) lines.push(`  Port: ${port}`);
 			if (keyPath) lines.push(`  Key:  ${keyPath}`);

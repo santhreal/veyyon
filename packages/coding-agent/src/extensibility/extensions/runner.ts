@@ -457,20 +457,30 @@ export class ExtensionRunner {
 				const normalizedKey = key.toLowerCase() as KeyId;
 
 				if (ExtensionRunner.#RESERVED_SHORTCUTS[normalizedKey]) {
-					logger.warn("Extension shortcut conflicts with built-in shortcut", {
-						key,
-						extensionPath: shortcut.extensionPath,
-					});
+					logger.warn(
+						`The extension at ${shortcut.extensionPath} binds ${key}, which veyyon reserves, so that ` +
+							"binding is inactive and the built-in still runs. " +
+							"Fix: rebind it in that extension's source to a key veyyon does not reserve.",
+						{ key, extensionPath: shortcut.extensionPath },
+					);
 					continue;
 				}
 
 				const existing = allShortcuts.get(normalizedKey);
 				if (existing) {
-					logger.warn("Extension shortcut conflict", {
-						key,
-						extensionPath: shortcut.extensionPath,
-						existingExtensionPath: existing.extensionPath,
-					});
+					// It warned and then overwrote anyway, so the loser was silent about
+					// losing. Say WHICH binding is live: with two extensions fighting,
+					// the last one loaded wins and neither path told the reader that.
+					logger.warn(
+						`Two extensions bind ${key}: ${existing.extensionPath} and ${shortcut.extensionPath}. ` +
+							`Only ${shortcut.extensionPath} is active for that key. ` +
+							"Fix: rebind one of them in its own source.",
+						{
+							key,
+							extensionPath: shortcut.extensionPath,
+							existingExtensionPath: existing.extensionPath,
+						},
+					);
 				}
 				allShortcuts.set(normalizedKey, shortcut);
 			}
@@ -520,7 +530,10 @@ export class ExtensionRunner {
 		for (const ext of this.extensions) {
 			for (const command of ext.commands.values()) {
 				if (reserved?.has(command.name)) {
-					const message = `Extension command '${command.name}' from ${ext.path} conflicts with built-in commands. Skipping.`;
+					const message =
+						`The extension at ${ext.path} registers the command "/${command.name}", which is a built-in, ` +
+						`so the extension's version is not active and "/${command.name}" still runs the built-in. ` +
+						"Fix: rename it in that extension's source.";
 					this.#commandDiagnostics.push({ type: "warning", message, path: ext.path });
 					if (!this.hasUI()) {
 						logger.warn(message);
@@ -615,8 +628,11 @@ export class ExtensionRunner {
 		try {
 			const handlerResult = await raceHandlerWithTimeout(Promise.resolve(handler(event, ctx)), timeoutMs);
 			if (handlerResult === EXTENSION_HANDLER_TIMEOUT) {
-				const error = `handler timed out after ${timeoutMs}ms`;
-				logger.warn("Extension handler timed out", {
+				const error =
+					`Its "${event.type}" handler did not finish within ${timeoutMs}ms, so veyyon carried on without ` +
+					"its result. Fix: make the handler return inside that budget, or start the slow work without " +
+					"awaiting it and report back through a later event.";
+				logger.warn(`Extension ${ext.path}: ${error}`, {
 					extensionPath: ext.path,
 					event: event.type,
 					timeoutMs,
@@ -777,8 +793,10 @@ export class ExtensionRunner {
 					const handlerResult = await raceHandlerWithTimeout(Promise.resolve(handler(event, ctx)), timeoutMs);
 
 					if (handlerResult === EXTENSION_HANDLER_TIMEOUT) {
-						const error = `handler timed out after ${timeoutMs}ms`;
-						logger.warn("Extension handler timed out", {
+						const error =
+							`Its "tool_call" handler did not answer within ${timeoutMs}ms, so the tool call was blocked ` +
+							"rather than run unchecked. Fix: make the handler return inside that budget.";
+						logger.warn(`Extension ${ext.path}: ${error}`, {
 							extensionPath: ext.path,
 							event: "tool_call",
 							timeoutMs,
@@ -790,7 +808,15 @@ export class ExtensionRunner {
 						});
 						return {
 							block: true,
-							reason: `LoadedExtension ${ext.path} timed out after ${timeoutMs}ms`,
+							// READ BY THE MODEL, which can neither edit the extension nor
+							// disable it, so its remedy is to stop and say so. It used to
+							// read `LoadedExtension /p/x.ts timed out after 30000ms`,
+							// leaking an internal class name and naming no next step.
+							reason:
+								`The extension at ${ext.path} vets tool calls and did not answer within ${timeoutMs}ms, ` +
+								"so this call was blocked rather than run unchecked. Do not retry it; tell the operator " +
+								"that extension is timing out, and that removing its path from the `extensions` setting " +
+								"unblocks the tool.",
 						};
 					}
 
@@ -809,7 +835,13 @@ export class ExtensionRunner {
 						error: message,
 						stack,
 					});
-					return { block: true, reason: `LoadedExtension ${ext.path} failed: ${message}` };
+					return {
+						block: true,
+						reason:
+							`The extension at ${ext.path} vets tool calls and threw, so this call was blocked rather ` +
+							`than run unchecked: ${message}. Do not retry it; tell the operator that extension is ` +
+							"failing, and that removing its path from the `extensions` setting unblocks the tool.",
+					};
 				}
 			}
 		}

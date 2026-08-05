@@ -19,6 +19,7 @@ import { replaceTabs, truncateToWidth } from "@veyyon/tui";
 import { formatDuration, getAgentDir, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
+import { credentialRemedySentence } from "../config/missing-credentials";
 import {
 	formatModelSelectorValue,
 	formatModelString,
@@ -552,9 +553,14 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 			const testSessionId = randomSessionId();
 			const preflightKey = await runtime.modelRegistry.getApiKey(model, testSessionId);
 			if (!preflightKey) {
+				// `veyyon bench/throughput` has no TUI, and this string also lands in
+				// `--json` output that a script reads. It said `Run \`veyyon\` and use
+				// /login, or set the provider API key`: a TUI-only command, and an
+				// unnamed variable. `credentialRemedySentence` names the real env vars
+				// for THIS provider and the headless sign-in command.
 				const failure: BenchRunFailure = {
 					ok: false,
-					error: `No credentials for provider "${model.provider}". Run \`veyyon\` and use /login, or set the provider API key.`,
+					error: `No credentials for provider "${model.provider}". ${credentialRemedySentence(model.provider)}`,
 				};
 				results.push(failure);
 				if (!json) writeStdout(`${formatRunLine(failure, 0, runs)}\n`);

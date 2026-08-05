@@ -16,7 +16,6 @@ import { DynamicBorder } from "./dynamic-border";
 type TransportType = "stdio" | "http" | "sse";
 type AuthMethod = "none" | "oauth" | "manual";
 type AuthLocation = "env" | "header";
-type Scope = "user" | "project";
 
 type WizardStep =
 	| "name"
@@ -35,7 +34,6 @@ type WizardStep =
 	| "auth-location"
 	| "env-var-name"
 	| "header-name"
-	| "scope"
 	| "confirm";
 
 /**
@@ -84,7 +82,6 @@ interface WizardState {
 	authLocation: AuthLocation | null;
 	envVarName: string;
 	headerName: string;
-	scope: Scope | null;
 }
 
 /** Max display width for sanitized error/URL text in wizard TUI */
@@ -116,14 +113,13 @@ export class MCPAddWizard extends Container {
 		authLocation: null,
 		envVarName: "API_KEY",
 		headerName: "Authorization",
-		scope: null,
 	};
 
 	#contentContainer: Container;
 	#inputField: Input | null = null;
 	#selectedIndex = 0;
 	#validationError: string | null = null;
-	#onCompleteCallback: (name: string, config: MCPServerConfig, scope: Scope) => void;
+	#onCompleteCallback: (name: string, config: MCPServerConfig) => void;
 	#onCancelCallback: () => void;
 	#onOAuthCallback:
 		| ((
@@ -145,7 +141,7 @@ export class MCPAddWizard extends Container {
 	#oauthAbort: AbortController | null = null;
 
 	constructor(
-		onComplete: (name: string, config: MCPServerConfig, scope: Scope) => void,
+		onComplete: (name: string, config: MCPServerConfig) => void,
 		onCancel: () => void,
 		onOAuth?: (
 			authUrl: string,
@@ -247,9 +243,6 @@ export class MCPAddWizard extends Container {
 				break;
 			case "header-name":
 				this.#renderHeaderNameStep();
-				break;
-			case "scope":
-				this.#renderScopeStep();
 				break;
 			case "confirm":
 				this.#renderConfirmStep();
@@ -402,33 +395,6 @@ export class MCPAddWizard extends Container {
 		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
-	#renderScopeStep(): void {
-		this.#contentContainer.addChild(new Text(theme.fg("accent", "Step: Configuration Scope")));
-		this.#contentContainer.addChild(new Spacer(1));
-
-		const cwd = getProjectDir();
-
-		const userPathLabel = shortenPath(getMCPConfigPath("user", cwd));
-		const projectPathLabel = shortenPath(getMCPConfigPath("project", cwd));
-		const options = [
-			{ value: "user" as const, label: `User level (${userPathLabel})` },
-			{ value: "project" as const, label: `Project level (${projectPathLabel})` },
-		];
-
-		for (let i = 0; i < options.length; i++) {
-			const option = options[i];
-			const isSelected = i === this.#selectedIndex;
-			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
-			const text = isSelected ? theme.fg("accent", option.label) : option.label;
-			this.#contentContainer.addChild(new Text(prefix + text, 0, 0));
-		}
-
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(
-			new Text(theme.fg("muted", "[↑↓ to navigate, Enter to select, Esc to go back]"), 0, 0),
-		);
-	}
-
 	#renderConfirmStep(): void {
 		this.#contentContainer.addChild(new Text(theme.fg("accent", "Review Configuration")));
 		this.#contentContainer.addChild(new Spacer(1));
@@ -459,8 +425,8 @@ export class MCPAddWizard extends Container {
 			}
 		}
 
-		const scopeLabel = this.#state.scope === "user" ? "User level" : "Project level";
-		this.#contentContainer.addChild(new Text(`Scope: ${scopeLabel}`, 0, 0));
+		const destinationLabel = shortenPath(getMCPConfigPath("user", getProjectDir()));
+		this.#contentContainer.addChild(new Text(`Saves to: ${destinationLabel}`, 0, 0));
 
 		this.#contentContainer.addChild(new Spacer(1));
 		this.#contentContainer.addChild(new Text("Save this configuration?", 0, 0));
@@ -639,7 +605,7 @@ export class MCPAddWizard extends Container {
 				}
 				this.#state.envVarName = value;
 				this.#state.authLocation = "env";
-				this.#currentStep = "scope";
+				this.#currentStep = "confirm";
 				this.#selectedIndex = 0;
 				break;
 			case "header-name":
@@ -648,7 +614,7 @@ export class MCPAddWizard extends Container {
 				}
 				this.#state.headerName = value;
 				this.#state.authLocation = "header";
-				this.#currentStep = "scope";
+				this.#currentStep = "confirm";
 				this.#selectedIndex = 0;
 				break;
 		}
@@ -693,20 +659,13 @@ export class MCPAddWizard extends Container {
 				}
 				break;
 			}
-			case "scope": {
-				const scopes: Scope[] = ["user", "project"];
-				this.#state.scope = scopes[this.#selectedIndex];
-				this.#currentStep = "confirm";
-				this.#selectedIndex = 0;
-				break;
-			}
 			case "confirm": {
 				if (this.#selectedIndex === 0) {
 					this.#complete();
 					return;
 				}
-				this.#currentStep = "scope";
-				this.#selectedIndex = this.#state.scope === "user" ? 0 : 1;
+				this.#currentStep = this.#stepBeforeConfirm();
+				this.#selectedIndex = 0;
 				break;
 			}
 		}
@@ -730,8 +689,6 @@ export class MCPAddWizard extends Container {
 			case "oauth-error":
 				return 1; // 2 options
 			case "auth-location":
-				return 1; // 2 options
-			case "scope":
 				return 1; // 2 options
 			case "confirm":
 				return 1; // 2 options
@@ -800,29 +757,29 @@ export class MCPAddWizard extends Container {
 					this.#currentStep = "oauth-client-secret";
 				}
 				break;
-			case "scope":
-				// Go back to last authentication step
-				if (this.#state.authMethod === "oauth") {
-					this.#currentStep = "oauth-scopes";
-				} else {
-					// manual - go back to env var name or header name
-					if (this.#state.authLocation === "env") {
-						this.#currentStep = "env-var-name";
-					} else {
-						this.#currentStep = "header-name";
-					}
-				}
-				break;
 			case "oauth-error":
 				this.#currentStep = "oauth-auth-url";
 				break;
 			case "confirm":
-				this.#currentStep = "scope";
-				this.#selectedIndex = this.#state.scope === "user" ? 0 : 1;
+				this.#currentStep = this.#stepBeforeConfirm();
+				this.#selectedIndex = 0;
 				break;
 		}
 
 		this.#renderStep();
+	}
+
+	/**
+	 * The step `confirm` returns to.
+	 *
+	 * A "Configuration Scope" step used to sit between the auth steps and
+	 * `confirm`, offering user level or project level. Project level wrote
+	 * `<cwd>/.veyyon/mcp.json`, a repository file nothing loads any more, so the
+	 * step is gone and `confirm` inherits its back-navigation.
+	 */
+	#stepBeforeConfirm(): WizardStep {
+		if (this.#state.authMethod === "oauth") return "oauth-scopes";
+		return this.#state.authLocation === "env" ? "env-var-name" : "header-name";
 	}
 
 	#renderAuthMethodStep(): void {
@@ -966,8 +923,8 @@ export class MCPAddWizard extends Container {
 		const testConfig = this.#buildServerConfig();
 
 		if (!this.#onTestConnectionCallback) {
-			// Skip test, go to scope
-			this.#currentStep = "scope";
+			// Skip test, go straight to the review step
+			this.#currentStep = "confirm";
 			this.#selectedIndex = 0;
 			this.#renderStep();
 			return;
@@ -986,7 +943,7 @@ export class MCPAddWizard extends Container {
 
 			setTimeout(() => {
 				this.#state.authMethod = "none";
-				this.#currentStep = "scope";
+				this.#currentStep = "confirm";
 				this.#selectedIndex = 0;
 				this.#renderStep();
 			}, 1000);
@@ -1057,7 +1014,7 @@ export class MCPAddWizard extends Container {
 
 				setTimeout(() => {
 					this.#state.authMethod = "none";
-					this.#currentStep = "scope";
+					this.#currentStep = "confirm";
 					this.#selectedIndex = 0;
 					this.#renderStep();
 				}, 2000);
@@ -1258,7 +1215,7 @@ export class MCPAddWizard extends Container {
 			// Move to scope selection after short delay
 			setTimeout(
 				() => {
-					this.#currentStep = "scope";
+					this.#currentStep = "confirm";
 					this.#selectedIndex = 0;
 					this.#renderStep();
 					this.#requestRender();
@@ -1320,13 +1277,11 @@ export class MCPAddWizard extends Container {
 	}
 
 	#complete(): void {
-		if (!this.#state.scope) return;
-
 		// Build the config
 		const config: MCPServerConfig = this.#buildConfig();
 
 		// Call completion callback
-		this.#onCompleteCallback(this.#state.name, config, this.#state.scope);
+		this.#onCompleteCallback(this.#state.name, config);
 	}
 
 	#buildConfig(): MCPServerConfig {

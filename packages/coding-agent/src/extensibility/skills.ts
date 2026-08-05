@@ -225,7 +225,13 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		if (existing) {
 			collisionWarnings.push({
 				skillPath: capSkill.path,
-				message: `name collision: "${capSkill.name}" already loaded from ${existing.filePath}, skipping this one`,
+				// Names the WINNER's file, and says the loser is inert. "skipping this
+				// one" left an operator with two SKILL.md files, no way to tell which
+				// one the model is reading, and no stated action.
+				message:
+					`its skill name "${capSkill.name}" is already taken by ${existing.filePath}, so this file is not ` +
+					"available to the model. Fix: rename this one in its own frontmatter, or delete whichever of the " +
+					"two you do not want.",
 			});
 			realPathSet.add(resolvedPath);
 		} else {

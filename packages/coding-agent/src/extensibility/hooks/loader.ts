@@ -10,6 +10,7 @@ import type { Hook } from "../../discovery";
 import { loadCapability } from "../../discovery";
 import type { CustomMessagePayload } from "../../session/messages";
 import { loadCodingAgentApi } from "../coding-agent-api";
+import { factoryExportMissingMessage, moduleImportFailedMessage } from "../load-failure";
 import * as typebox from "../typebox";
 import { resolvePath, withExitGuard } from "../utils";
 import { execCommand } from "./runner";
@@ -152,7 +153,7 @@ async function loadHook(hookPath: string, cwd: string): Promise<{ hook: LoadedHo
 		const factory = module.default as HookFactory;
 
 		if (typeof factory !== "function") {
-			return { hook: null, error: "Hook must export a default function" };
+			return { hook: null, error: factoryExportMissingMessage("hook") };
 		}
 
 		// Create handlers map and API
@@ -178,8 +179,7 @@ async function loadHook(hookPath: string, cwd: string): Promise<{ hook: LoadedHo
 			error: null,
 		};
 	} catch (err) {
-		const message = errorMessage(err);
-		return { hook: null, error: `Failed to load hook: ${message}` };
+		return { hook: null, error: moduleImportFailedMessage("hook", errorMessage(err)) };
 	}
 }
 

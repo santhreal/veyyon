@@ -341,10 +341,12 @@ function resolveDirectoryEntries(dir: string): string[] {
 		// legitimately declares no entries -- so the tools and hooks it should have registered are simply
 		// missing from the session with nothing to trace.
 		if (!isEnoent(err)) {
-			logger.warn("A plugin directory could not be read; the entries inside it are not being loaded", {
-				dir,
-				error: errorMessage(err),
-			});
+			logger.warn(
+				`The plugin directory ${dir} could not be read, so the tools and hooks inside it are not registered ` +
+					`in this run: ${errorMessage(err)}. Fix: check its permissions, then run \`veyyon plugin doctor\` ` +
+					"to confirm the plugin is intact.",
+				{ dir, error: errorMessage(err) },
+			);
 		}
 		return [];
 	}

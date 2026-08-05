@@ -11,6 +11,7 @@ import type { AuthStorage, UsageHistoryEntry, UsageLimit, UsageReport, UsageUnit
 import { resolveUsedFraction } from "@veyyon/ai/usage";
 import { clamp01, DAY_MS, formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";
 import chalk from "chalk";
+import { credentialRemedySentence } from "../config/missing-credentials";
 import { ModelRegistry } from "../config/model-registry";
 // `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
 // the whole application and this file wants one function.
@@ -895,10 +896,19 @@ export async function runUsageCommand(cmd: UsageCommandArgs): Promise<void> {
 			const scope = cmd.provider ? ` for provider "${cmd.provider}"` : "";
 			// Credentials exist but every one is for a provider without a usage
 			// endpoint — say so rather than implying nothing is logged in.
+			// `veyyon usage` is a terminal command with no TUI, and this said `Run
+			// \`veyyon\` and use /login`: it sent the reader into an interactive
+			// session to reach a menu, when the same sign-in runs headlessly. When a
+			// provider was named, the per-provider owner states its env vars too.
+			const addAccounts = cmd.provider
+				? credentialRemedySentence(cmd.provider)
+				: "Fix: run `veyyon auth-broker login` to pick a provider and sign in, " +
+					"or `veyyon auth-broker list` to see which providers support it.";
 			const message =
 				storedAccounts.length > 0
-					? `No usage data${scope}. Stored credentials are for providers without a usage endpoint.\n`
-					: `No credentials found${scope}. Run \`veyyon\` and use /login to add accounts.\n`;
+					? `No usage data${scope}. Stored credentials are for providers without a usage endpoint. ` +
+						"Nothing to fix here: reporting usage is a provider feature and these providers do not offer it.\n"
+					: `No credentials found${scope}. ${addAccounts}\n`;
 			process.stderr.write(chalk.yellow(message));
 			process.exitCode = 1;
 			return;

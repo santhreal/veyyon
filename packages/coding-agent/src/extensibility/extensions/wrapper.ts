@@ -381,14 +381,21 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				})) as ToolCallEventResult | undefined;
 
 				if (callResult?.block) {
-					const reason = callResult.reason || "Tool execution was blocked by an extension";
+					const reason =
+						callResult.reason ||
+						`An extension blocked this ${this.tool.name} call and gave no reason. Do not retry it; tell ` +
+							"the operator which extension is blocking so they can fix or remove it.";
 					throw new Error(reason);
 				}
 			} catch (err) {
 				if (err instanceof Error) {
 					throw err;
 				}
-				throw new Error(`Extension failed, blocking execution: ${String(err)}`);
+				throw new Error(
+					`An extension threw a non-error value while vetting this ${this.tool.name} call, so the call was ` +
+						`blocked rather than run unchecked: ${String(err)}. Do not retry it; tell the operator that ` +
+						"extension is failing.",
+				);
 			}
 		}
 
