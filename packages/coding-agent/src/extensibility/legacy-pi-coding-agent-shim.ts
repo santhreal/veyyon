@@ -939,12 +939,16 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 
 	async #loadExtensions(settings: Settings): Promise<LoadExtensionsResult> {
-		const { cwd, noExtensions, additionalExtensionPaths, extensionFactories, eventBus } = this.#state;
+		const { cwd, agentDir, noExtensions, additionalExtensionPaths, extensionFactories, eventBus } = this.#state;
 
 		if (noExtensions && additionalExtensionPaths.length === 0 && extensionFactories.length === 0) {
 			return { extensions: [], errors: [], runtime: new ExtensionRuntime() };
 		}
 
+		// `agentDir` for the same reason `reload()` passes it to skills, prompt
+		// templates and context files: this loader resolves a caller-named
+		// profile, and extensions were the one arm of the four still resolving
+		// the process-booted one.
 		const paths = await discoverSessionExtensionPaths(
 			{
 				disableExtensionDiscovery: noExtensions,
@@ -952,6 +956,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			},
 			cwd,
 			settings,
+			agentDir,
 		);
 
 		const result = await loadExtensions(paths, cwd, eventBus);
