@@ -266,13 +266,32 @@ export interface RevealedLine {
 /**
  * Content preview handed to {@link unseenLinesMessage}. `lines` are the
  * unseen anchor lines whose actual file content we surface inline (from the
- * tagged snapshot the caller matched). `truncated` = true means the anchor
- * range exceeded the inline reveal cap; the caller only revealed a prefix
- * and the remaining unseen lines still require a range re-read.
+ * tagged snapshot the caller matched).
+ *
+ * `truncated` = true means the reveal did not cover every unseen anchor line
+ * in full, so none of them merged into the seen-line set and the model still
+ * owes a re-read. WHY it fell short decides which re-read can actually clear
+ * the gate, and the two answers are different commands:
+ *
+ * - `overCap`: too MANY unseen lines. A ranged re-read of the remainder works.
+ * - `columnClipped`: a line too WIDE to show. A ranged re-read does NOT work,
+ *   because the reader applies the same per-line column cap and clips it
+ *   again, which is why that line was never marked seen in the first place.
+ *   Only a `:raw` read shows it in full.
+ *
+ * These were one boolean, and the message spelled the ranged re-read for
+ * both. On a long line that produced a dead end: the tool rejected the edit,
+ * named a command, the command clipped the line again, and the next attempt
+ * was rejected identically. Nothing in the loop ever mentioned `:raw`, so the
+ * only way out was to already know about it.
  */
 export interface UnseenLinesReveal {
 	lines: readonly RevealedLine[];
 	truncated: boolean;
+	/** The reveal hit the line-count cap; the remainder is re-readable by range. */
+	overCap?: boolean;
+	/** At least one revealed line was clipped at the column cap; only `:raw` shows it whole. */
+	columnClipped?: boolean;
 }
 
 /**
@@ -306,10 +325,18 @@ export function unseenLinesMessage(
 	}
 	const preview = reveal.lines.map(({ line, text }) => `  ${formatNumberedLine(line, text)}`).join("\n");
 	if (reveal.truncated) {
+		// Name the command that can actually succeed. A column-clipped line is
+		// re-clipped by any ranged read, so pointing at one is an instruction to
+		// repeat the failure; `:raw` is the only selector that bypasses the
+		// per-line column cap.
+		const remedy = reveal.columnClipped
+			? `At least one of those lines is too wide to show in full here, and a ranged re-read applies the same ` +
+				`column cap — read it verbatim with \`${sectionPath}:${selector}:raw\` before re-issuing the edit.`
+			: `The range exceeds the inline preview cap — re-read the remainder with \`${sectionPath}:${selector}\` ` +
+				`before re-issuing the edit.`;
 		return (
 			`${header} Preview of the actual file content at the first ${reveal.lines.length} unseen line(s):\n${preview}\n` +
-			`The range exceeds the inline preview cap — re-read the remainder with \`${sectionPath}:${selector}\` before ` +
-			`re-issuing the edit.`
+			remedy
 		);
 	}
 	return (
