@@ -9,7 +9,7 @@ import { errorMessage, getActiveAuthDbPath } from "@veyyon/utils";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { OAuthSelectorComponent } from "../../components/oauth-selector";
 import { theme } from "../../theme/theme";
-import type { SetupSceneHost, SetupTab } from "./types";
+import type { SetupKeyHint, SetupSceneHost, SetupTab } from "./types";
 
 function loginUrlLink(url: string): string {
 	return `\x1b]8;;${url}\x07Open login URL\x1b]8;;\x07`;
@@ -82,8 +82,11 @@ interface PromptState {
 
 /**
  * "Sign in" panel: lets the user authenticate one or more model providers via
- * OAuth. Unlike a standalone scene it never auto-advances the wizard — the user
- * may sign in to several providers and then skip ahead with Esc.
+ * OAuth. Unlike a standalone scene it never auto-advances the wizard: the user
+ * may sign in to several providers and then move on with `→`. Esc belongs to
+ * the wizard (leave setup) except in the two states this panel claims it for:
+ * a login in flight, which Esc aborts, and a live provider search, which Esc
+ * clears.
  */
 export class SignInTab implements SetupTab {
 	readonly id = "sign-in";
@@ -122,6 +125,18 @@ export class SignInTab implements SetupTab {
 	invalidate(): void {
 		this.#selector.invalidate();
 		this.#prompt?.input.invalidate();
+	}
+
+	/**
+	 * Esc's two in-panel meanings. The search rung is the one that mattered
+	 * most: this is the FIRST list a new user meets, it holds every OAuth
+	 * provider, and typing a letter to find one then pressing Esc to undo it
+	 * ended the whole onboarding run, because nothing here claimed the key and
+	 * the footer went on advertising "esc leave setup".
+	 */
+	escapeAction(): SetupKeyHint | undefined {
+		if (this.#loggingInProvider) return { keys: "esc", label: "cancel sign-in" };
+		return this.#selector.hasActiveSearch() ? { keys: "esc", label: "clear search" } : undefined;
 	}
 
 	handleInput(data: string): void {
@@ -293,7 +308,10 @@ export class SignInTab implements SetupTab {
 				const message = errorMessage(error);
 				this.#statusLines = [
 					theme.fg("error", `Login failed: ${message}`),
-					theme.fg("dim", "Choose another provider or press Esc to skip."),
+					// "→", not "Esc": the login has ended, so Esc is back to meaning
+					// "leave setup" and naming it here offered to abandon onboarding
+					// as the remedy for one provider failing.
+					theme.fg("dim", "Choose another provider, or press → to skip this step."),
 				];
 				this.#authUrl = undefined;
 				this.#authLaunchUrl = undefined;

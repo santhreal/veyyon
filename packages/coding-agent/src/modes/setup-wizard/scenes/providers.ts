@@ -62,6 +62,18 @@ class ProvidersSceneController implements SetupSceneController {
 		return hints;
 	}
 
+	/**
+	 * Esc belongs to whichever panel is on screen, because only it knows what
+	 * state it is in: the sign-in panel claims Esc to abort a login in flight or
+	 * to clear a provider search, the web-search panel to clear its own filter.
+	 * The scene answering on their behalf is how both claims were lost. It could
+	 * see `modal` and nothing else, so a typed provider search, on the FIRST list
+	 * of onboarding, had no way out but ending the run.
+	 */
+	escapeAction(): SetupKeyHint | undefined {
+		return this.#activeTab().escapeAction?.();
+	}
+
 	handleInput(data: string): void {
 		const tab = this.#activeTab();
 		if (tab.modal) {
