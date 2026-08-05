@@ -35,9 +35,27 @@ export function memoryRootsFromRegistry(): string[] {
 	return roots;
 }
 
+/**
+ * The memory root a `memory://` read resolves against.
+ *
+ * The caller's own cwd when it threaded one. Otherwise the registry's roots,
+ * and if those name more than one PROJECT, this refuses instead of returning a
+ * list for the caller to try in order. First-hit-wins over several roots means
+ * a read issued by one conversation is answered from another project's memory
+ * directory, silently and with a plausible-looking file. Two conversations in
+ * the same project produce the same root and dedupe to one, so the common
+ * multi-session case still resolves.
+ */
 function memoryRootsForContext(context?: ResolveContext): string[] {
 	if (context?.cwd) return [getMemoryRoot(getAgentDir(), context.cwd)];
-	return memoryRootsFromRegistry();
+	const roots = memoryRootsFromRegistry();
+	if (roots.length > 1) {
+		throw new Error(
+			`Ambiguous memory root: this process is driving ${roots.length} projects at once and this URL names none.\n` +
+				`Read it from the session whose project you mean.`,
+		);
+	}
+	return roots;
 }
 
 function ensureWithinRoot(targetPath: string, rootPath: string): void {
@@ -270,7 +288,16 @@ export class MemoryProtocolHandler implements ProtocolHandler {
 
 	async complete(_query?: string, context?: ResolveContext): Promise<UrlCompletion[]> {
 		const completions: UrlCompletion[] = [];
-		if (memoryRootsForContext(context).length > 0) {
+		// An ambiguous root throws in `resolve`; a completer must not. Offering the
+		// namespace anyway would be offering a value whose read is refused, so the
+		// absence IS the honest completion.
+		let projectRoots = 0;
+		try {
+			projectRoots = memoryRootsForContext(context).length;
+		} catch {
+			projectRoots = 0;
+		}
+		if (projectRoots > 0) {
 			completions.push({ value: MEMORY_NAMESPACE, description: "Project memory summary" });
 		}
 		if (mnemopiSessionStatesFromRegistry().length > 0) {

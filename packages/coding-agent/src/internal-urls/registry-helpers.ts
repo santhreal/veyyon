@@ -25,6 +25,32 @@ export function resetRegisteredArtifactDirsForTests(): void {
 }
 
 /**
+ * Distinct conversation scopes with a LIVE root session in this process.
+ *
+ * A handler whose `ResolveContext` carries no agent id cannot tell which
+ * conversation asked it a question. That is harmless while the process drives
+ * one conversation, and is a guess the moment it drives two: ACP's `session/new`
+ * keeps every session it has opened in one map, so a `veyyon acp` process
+ * routinely holds several live `kind: "main"` refs at once, each with its own
+ * scope.
+ *
+ * `length > 1` is therefore the honest trigger for refusing rather than
+ * guessing, the same test `local://` already applies to its own root lookup.
+ * A root with no scope (a collab mirror, a hand-built test ref) contributes
+ * nothing: it cannot make a process multi-conversation on its own, and counting
+ * it would break every render-only caller.
+ */
+export function liveConversationScopes(): string[] {
+	const scopes: string[] = [];
+	for (const ref of AgentRegistry.global().list()) {
+		if (ref.kind !== "main" || !ref.session) continue;
+		if (ref.scope === undefined || scopes.includes(ref.scope)) continue;
+		scopes.push(ref.scope);
+	}
+	return scopes;
+}
+
+/**
  * Snapshot of artifacts dirs for every registered session, deduped.
  *
  * Collects TWO candidate dirs per ref, because a subagent reads from its

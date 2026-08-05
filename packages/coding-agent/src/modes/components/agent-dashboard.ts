@@ -958,7 +958,7 @@ export class AgentDashboard extends Container {
 		// scan a local session tree that is not its own.
 		this.persistedSubagentsReady = deps.remote
 			? Promise.resolve()
-			: registerPersistedSubagents(this.#registry, deps.sessionFile).then(registered => {
+			: registerPersistedSubagents(this.#registry, deps.sessionFile, deps.scope).then(registered => {
 					// Only when the scan actually added something. A session with no
 					// subagents on disk would otherwise rebuild the roster and repaint the
 					// card one microtask after opening it, to draw the same rows again.
@@ -1035,18 +1035,22 @@ export class AgentDashboard extends Container {
 	/**
 	 * The bus log, minus the traffic of other conversations sharing this process.
 	 *
-	 * The bus is process-global and its log is not keyed by conversation, so an
-	 * ACP or cmux host driving several sessions at once, or a session resumed
-	 * over a previous one, had every one of them reading the same stream. A
-	 * message is kept when EITHER end belongs to this conversation, which is what
-	 * keeps the last words of an agent released moments ago on screen while a
-	 * stranger's exchange stays off it.
+	 * The bus is process-global, so an ACP or cmux host driving several sessions
+	 * at once, or a session resumed over a previous one, had every one of them
+	 * reading the same stream. Filtered on the scope the BUS stamped on the line
+	 * when it recorded it, not on who is in the registry now.
+	 *
+	 * That distinction is the whole fix. Filtering by current membership got both
+	 * directions wrong: an agent released moments ago is unregistered, so its
+	 * last words dropped off the pane that promises to keep them, and a stranger
+	 * whose conversation had run an agent of the same name showed up under a live
+	 * local id. A recorded stamp answers "whose line is this" once, at the only
+	 * moment both endpoints were still addressable.
 	 */
 	#scopedComms(): IrcLogEntry[] {
 		const scope = this.#deps.scope;
 		if (!scope) return this.#irc.log();
-		const mine = new Set(this.#registry.listInScope(scope).map(ref => ref.id));
-		return this.#irc.log().filter(entry => mine.has(entry.message.from) || mine.has(entry.message.to));
+		return this.#irc.log().filter(entry => AgentRegistry.sameScope(entry.scope, scope));
 	}
 
 	#observableFor(id: string): ObservableSession | undefined {
@@ -1392,9 +1396,18 @@ export class AgentDashboard extends Container {
 	/**
 	 * Mount the read-only transcript viewer over the card, for agents with no
 	 * live session to hand over. No-op without a real TUI (render-only tests).
+	 *
+	 * Refuses an agent outside this card's conversation. The roster it is
+	 * normally driven from is already scoped, but this is a public method taking
+	 * a bare id, and the id is the whole authorization: a transcript is the most
+	 * complete record an agent leaves, so opening one from a conversation this
+	 * card does not belong to hands over the entire contents of somebody else's
+	 * session.
 	 */
 	openTranscript(id: string): void {
-		if (!this.#registry.get(id)) return;
+		const ref = this.#registry.get(id);
+		if (!ref) return;
+		if (!AgentRegistry.sameScope(ref.scope, this.#deps.scope)) return;
 		if (typeof this.#ui.showOverlay !== "function") return;
 		this.#closeTranscriptOverlay({ restoreFocus: false });
 		const viewer = new AgentTranscriptViewer({

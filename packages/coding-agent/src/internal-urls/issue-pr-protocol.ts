@@ -214,23 +214,29 @@ function parseUrl(url: InternalUrl, scheme: Scheme): Parsed {
 }
 
 /**
- * Resolve the working directory the protocol should use.
+ * Working directory to run `gh` in.
  *
  * Order:
  * 1. Caller-supplied `context.cwd` (the session that initiated `read`).
- * 2. First registered session via `AgentRegistry` (single-session fallback).
+ * 2. The ONE registered live session's cwd, when the process holds exactly one.
  * 3. `process.cwd()` (last resort).
  *
- * The earlier-fallback drives `gh repo view` and any `gh issue list` /
- * `gh pr list` for short-form URLs, so getting this right is what keeps
- * reads of `issue://N` from picking the wrong repo across concurrent sessions.
+ * Step 2 used to be "first registered session wins", which is a guess whenever
+ * the process holds more than one. It decides which repository `issue://123`
+ * names, so the guess resolves a short-form URL against another conversation's
+ * checkout and returns that project's issue under this project's number, and
+ * `gh` reports success, so nothing surfaces as an error. Where the answer is
+ * genuinely unknown, fall through to `process.cwd()` rather than pick: it may be
+ * unhelpful, but it is not another conversation's repository.
  */
 function resolveCwd(context: ResolveContext | undefined): string {
 	if (context?.cwd) return context.cwd;
+	const cwds: string[] = [];
 	for (const ref of AgentRegistry.global().list()) {
 		const cwd = ref.session?.sessionManager?.getCwd();
-		if (cwd) return cwd;
+		if (cwd && !cwds.includes(cwd)) cwds.push(cwd);
 	}
+	if (cwds.length === 1) return cwds[0] as string;
 	return process.cwd();
 }
 
