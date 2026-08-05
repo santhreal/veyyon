@@ -8,7 +8,8 @@
  *
  * Precedence (highest first):
  *   1. `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN` env vars.
- *   2. `auth.broker.url` / `auth.broker.token` in `~/.veyyon/profiles/default/agent/config.yml`
+ *   2. `auth.broker.url` / `auth.broker.token` in the active profile's `config.yml`
+ *      (`~/.veyyon/profiles/<name>/agent/config.yml`)
  *      (hidden from the settings UI; `!command` resolution supported).
  *   3. Token file `~/.veyyon/auth-broker.token` (paired with URL from env or config).
  *

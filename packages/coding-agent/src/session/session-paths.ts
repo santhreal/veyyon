@@ -2,7 +2,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getTerminalId } from "@veyyon/tui";
-import { getSessionsDir, getTerminalSessionsDir, isEnoent, logger, resolveEquivalentPath } from "@veyyon/utils";
+import {
+	errorMessage,
+	getSessionsDir,
+	getTerminalSessionsDir,
+	isEnoent,
+	logger,
+	resolveEquivalentPath,
+} from "@veyyon/utils";
 import type { SessionStorage } from "./session-storage";
 
 const migratedSessionRoots = new Set<string>();
@@ -94,8 +101,15 @@ function migrateHomeSessionDirs(sessionsRoot: string): void {
 
 		try {
 			migrateSessionDirPath(oldPath, newPath);
-		} catch {
-			// Best effort
+		} catch (error) {
+			// The migration runs once per sessions root, so a failure here is permanent
+			// for this process: the transcripts under the old name are never listed
+			// again and the operator sees a session history that starts empty.
+			logger.warn("Legacy session directory could not be migrated; its transcripts will not be listed", {
+				from: oldPath,
+				to: newPath,
+				error: errorMessage(error),
+			});
 		}
 	}
 }
@@ -106,8 +120,14 @@ function migrateLegacyAbsoluteSessionDir(cwd: string, sessionDir: string, sessio
 
 	try {
 		migrateSessionDirPath(legacyDir, sessionDir);
-	} catch {
-		// Best effort
+	} catch (error) {
+		// Same loss as migrateHomeSessionDirs: the transcripts stay under a directory
+		// name nothing looks at again.
+		logger.warn("Legacy absolute session directory could not be migrated; its transcripts will not be listed", {
+			from: legacyDir,
+			to: sessionDir,
+			error: errorMessage(error),
+		});
 	}
 }
 

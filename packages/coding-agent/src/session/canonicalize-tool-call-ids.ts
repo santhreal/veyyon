@@ -41,36 +41,48 @@ export function resolveCanonicalToolCallId(id: string, map: ToolCallIdMap, alloc
 }
 
 /**
+ * Rewrite one message through the session-local ID map.
+ *
+ * The returned reference is unchanged when the message contains no mapped ID.
+ */
+export function canonicalizeToolCallIdsInMessage(
+	message: Message,
+	map: ToolCallIdMap,
+	allocate: () => string,
+): Message {
+	if (message.role === "assistant") {
+		let content: typeof message.content | undefined;
+		for (let i = 0; i < message.content.length; i++) {
+			const block = message.content[i];
+			if (block.type !== "toolCall") continue;
+			const canonical = resolveCanonicalToolCallId(block.id, map, allocate);
+			if (canonical === block.id) continue;
+			content ??= [...message.content];
+			content[i] = { ...block, id: canonical };
+		}
+		return content ? { ...message, content } : message;
+	}
+	if (message.role === "toolResult") {
+		const canonical = resolveCanonicalToolCallId(message.toolCallId, map, allocate);
+		return canonical === message.toolCallId ? message : { ...message, toolCallId: canonical };
+	}
+	return message;
+}
+
+/**
  * Rewrite `assistant.toolCall.id` and `toolResult.toolCallId` through `map`.
  *
  * Walks messages in order; first appearance of a provider ID assigns the next
  * handle. Call and result IDs that share a provider ID receive the same handle.
- * Returns the input array reference when nothing changed (cheap no-op for
- * empty/tool-less contexts).
+ * Returns the input array reference when nothing changed.
  */
 export function canonicalizeToolCallIds(messages: Message[], map: ToolCallIdMap, allocate: () => string): Message[] {
-	let changed = false;
-	const out = messages.map(msg => {
-		if (msg.role === "assistant") {
-			let contentChanged = false;
-			const content = msg.content.map(block => {
-				if (block.type !== "toolCall") return block;
-				const canonical = resolveCanonicalToolCallId(block.id, map, allocate);
-				if (canonical === block.id) return block;
-				contentChanged = true;
-				return { ...block, id: canonical };
-			});
-			if (!contentChanged) return msg;
-			changed = true;
-			return { ...msg, content };
-		}
-		if (msg.role === "toolResult") {
-			const canonical = resolveCanonicalToolCallId(msg.toolCallId, map, allocate);
-			if (canonical === msg.toolCallId) return msg;
-			changed = true;
-			return { ...msg, toolCallId: canonical };
-		}
-		return msg;
-	});
-	return changed ? out : messages;
+	let out: Message[] | undefined;
+	for (let i = 0; i < messages.length; i++) {
+		const next = canonicalizeToolCallIdsInMessage(messages[i], map, allocate);
+		if (next === messages[i]) continue;
+		out ??= [...messages];
+		out[i] = next;
+	}
+	return out ?? messages;
 }
