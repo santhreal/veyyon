@@ -220,9 +220,20 @@ export function renderAccountStatus(
 			const unblocks = formatDurationCoarse(row.blockedUntilMs - now);
 			lines.push(line(DETAIL_INDENT, `rate limited · ${unblocks} until it unblocks`));
 		}
-		if (!row.name) lines.push(line(DETAIL_INDENT, NAME_HINT));
-
 		lines.push("");
+	}
+
+	// ONE hint for the whole block, not one per unnamed account. A real session routes several
+	// providers at once and almost none of them are named, so the per-row form printed the same
+	// sentence seven times in an eight-provider block: it tripled the height, buried the accounts
+	// between repetitions of itself, and read as nagging rather than as an offer. The placeholder
+	// on each row is what marks WHICH accounts it applies to.
+	const unnamed = [...routed.values()].filter(rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name).length;
+	if (unnamed > 0) {
+		lines.push(
+			line(ROW_INDENT, `${unnamed === 1 ? "1 account has" : `${unnamed} accounts have`} no name · ${NAME_HINT}`),
+			"",
+		);
 	}
 
 	const footer = `${routed.size} of ${inventory.providers.length} providers in use`;
