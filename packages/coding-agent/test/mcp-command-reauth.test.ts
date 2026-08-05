@@ -98,7 +98,11 @@ describe("/mcp auth commands", () => {
 	beforeEach(async () => {
 		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-reauth-project-"));
 		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-reauth-agent-"));
-		configPath = path.join(projectDir, ".mcp.json");
+		// The fixture lives in the PROFILE-scoped `<agentDir>/mcp.json`. It used to
+		// be `<projectDir>/.mcp.json`; `/mcp reauth|unauth` no longer resolves any
+		// working-tree file, because a repository must not name a server Veyyon
+		// connects to. The subject here is OAuth credential storage, not scope.
+		configPath = getMCPConfigPath("user", projectDir, agentDir);
 		originalMcpHost = Bun.env.MCP_HOST;
 		Bun.env.MCP_HOST = "mcp.example.com";
 		process.env.MCP_HOST = "mcp.example.com";

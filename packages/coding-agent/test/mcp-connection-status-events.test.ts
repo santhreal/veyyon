@@ -37,13 +37,20 @@ describe("MCPManager connection status events", () => {
 			);
 
 			expect(result.connectedServers).toContain("alpha");
-			expect(result.errors.get("broken")).toBe('Server "broken": stdio server requires "command" field');
+			expect(result.errors.get("broken")).toBe(
+				'Server "broken" is a stdio server with no "command" to spawn. Fix: add the executable, for example ' +
+					'`"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]`. ' +
+					'If this is a remote server, set `"type": "http"` and give it a "url" instead.',
+			);
 			expect(events).toEqual([
 				{ type: "connecting", serverNames: ["alpha", "broken"] },
 				{
 					type: "failed",
 					serverName: "broken",
-					error: 'Server "broken": stdio server requires "command" field',
+					error:
+						'Server "broken" is a stdio server with no "command" to spawn. Fix: add the executable, for example ' +
+						'`"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]`. ' +
+						'If this is a remote server, set `"type": "http"` and give it a "url" instead.',
 					// A server from veyyon's own config — not imported from another tool.
 					foreign: false,
 				},

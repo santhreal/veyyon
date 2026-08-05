@@ -113,8 +113,15 @@ function ctx(): LoadContext {
 	return { cwd: project, home, repoRoot: project };
 }
 
-test("project settings.json#extensions surfaces every sub-directory", async () => {
-	writeFile(path.join(project, ".veyyon", "settings.json"), JSON.stringify({ extensions: [ext] }));
+// The extensions list lives in the PROFILE's `<agentDir>/settings.json`, which
+// `beforeEach` points at `home/.veyyon/agent`. It used to be written to
+// `project/.veyyon/settings.json`; `veyyon-extension-roots.ts` no longer reads
+// that file, because naming a package root is naming every skill, command,
+// rule, prompt, hook, tool and MCP server it ships, and a repository does not
+// get to do that. What each case here tests is unchanged: only the file the
+// list is written to moved.
+test("settings.json#extensions surfaces every sub-directory", async () => {
+	writeFile(path.join(home, ".veyyon", "agent", "settings.json"), JSON.stringify({ extensions: [ext] }));
 
 	const [skills, commands, rules, prompts, hooks, tools, mcps] = await Promise.all([
 		loadFromPlugin<{ name: string }>(skillCapability.id, ctx()),
@@ -134,13 +141,6 @@ test("project settings.json#extensions surfaces every sub-directory", async () =
 	expect(hooks.some(h => h.name === "edit.sh" && h.type === "post")).toBe(true);
 	expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(["wcount", "deep-tool"]));
 	expect(mcps.find(m => m.name === "lsp")?.command).toBe("lsp-server");
-});
-
-test("user settings.json#extensions also feeds sub-discovery", async () => {
-	writeFile(path.join(home, ".veyyon", "agent", "settings.json"), JSON.stringify({ extensions: [ext] }));
-
-	const skills = await loadFromPlugin<{ name: string }>(skillCapability.id, ctx());
-	expect(skills.map(s => s.name)).toContain("my-skill");
 });
 
 test("`--extension` CLI injection is wired through the same provider", async () => {
@@ -168,7 +168,7 @@ test("relative paths in settings resolve against the project cwd", async () => {
 	const target = path.join(project, relative);
 	fs.mkdirSync(path.dirname(target), { recursive: true });
 	fs.cpSync(ext, target, { recursive: true });
-	writeFile(path.join(project, ".veyyon", "settings.json"), JSON.stringify({ extensions: [`./${relative}`] }));
+	writeFile(path.join(home, ".veyyon", "agent", "settings.json"), JSON.stringify({ extensions: [`./${relative}`] }));
 
 	const skills = await loadFromPlugin<{ name: string }>(skillCapability.id, ctx());
 	expect(skills.map(s => s.name)).toContain("my-skill");
@@ -179,7 +179,7 @@ test(".mcp.json with bare entries (no command/url) records a warning and is skip
 		path.join(ext, ".mcp.json"),
 		JSON.stringify({ mcpServers: { broken: {}, ok: { command: "x", args: [] } } }),
 	);
-	writeFile(path.join(project, ".veyyon", "settings.json"), JSON.stringify({ extensions: [ext] }));
+	writeFile(path.join(home, ".veyyon", "agent", "settings.json"), JSON.stringify({ extensions: [ext] }));
 
 	const result = await pluginProvider(mcpCapability.id).load(ctx());
 	expect(result.items.map(s => (s as { name: string }).name)).toEqual(["ok"]);
@@ -196,7 +196,7 @@ test("relative path-like command and cwd resolve against the plugin config direc
 			},
 		}),
 	);
-	writeFile(path.join(project, ".veyyon", "settings.json"), JSON.stringify({ extensions: [ext] }));
+	writeFile(path.join(home, ".veyyon", "agent", "settings.json"), JSON.stringify({ extensions: [ext] }));
 
 	const servers = await loadFromPlugin<{ name: string; command?: string; cwd?: string }>(mcpCapability.id, ctx());
 	const local = servers.find(s => s.name === "local");

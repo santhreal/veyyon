@@ -34,6 +34,24 @@ function makeConnection(transport: MCPTransport, name = "test-server"): MCPServe
 	};
 }
 
+/**
+ * The full text a failing MCP tool hands the MODEL.
+ *
+ * Asserted whole rather than by substring, because the two halves are what make
+ * it useful and either can be lost independently: the identification (which tool,
+ * which server, which underlying failure) and the model's own next step. Before
+ * this, the model got `MCP error: ECONNRESET` and its only two options were to
+ * retry the identical call forever or abandon the task.
+ */
+function modelFacingFailure(detail: string, server = "test-server", tool = TOOL_DEF.name): string {
+	return (
+		`MCP tool "${tool}" on server "${server}" failed: ${detail}\n` +
+		"Next step: retry this call at most once. A transport, auth or configuration failure returns the same error " +
+		"on every attempt, so a retry loop costs turns and changes nothing. If a second attempt fails, stop calling " +
+		"this tool and tell the operator what failed, which server it was on, and the fix named above."
+	);
+}
+
 // ---------------------------------------------------------------------------
 // isRetriableConnectionError
 // ---------------------------------------------------------------------------
@@ -188,7 +206,7 @@ describe("MCPTool.execute retry on connection error", () => {
 		const result = await tool.execute("call-1", {}, noop, noCtx);
 
 		expect(result.details?.isError).toBe(true);
-		expect(result.content[0]).toEqual({ type: "text", text: "MCP error: ECONNRESET" });
+		expect(result.content[0]).toEqual({ type: "text", text: modelFacingFailure("ECONNRESET") });
 	});
 
 	it("does not retry on non-retriable error", async () => {
@@ -217,7 +235,7 @@ describe("MCPTool.execute retry on connection error", () => {
 		const result = await tool.execute("call-1", {}, noop, noCtx);
 
 		expect(result.details?.isError).toBe(true);
-		expect(result.content[0]).toEqual({ type: "text", text: "MCP error: ECONNREFUSED" });
+		expect(result.content[0]).toEqual({ type: "text", text: modelFacingFailure("ECONNREFUSED") });
 	});
 
 	it("returns error from retry when retry also fails", async () => {
@@ -233,7 +251,10 @@ describe("MCPTool.execute retry on connection error", () => {
 		const result = await tool.execute("call-1", {}, noop, noCtx);
 
 		expect(result.details?.isError).toBe(true);
-		expect(result.content[0]).toEqual({ type: "text", text: "MCP error: HTTP 503: Service Unavailable" });
+		expect(result.content[0]).toEqual({
+			type: "text",
+			text: modelFacingFailure("HTTP 503: Service Unavailable"),
+		});
 	});
 
 	it("preserves provider info from new connection on successful retry", async () => {
