@@ -21,14 +21,7 @@ import { type MCPServer, mcpCapability } from "../capability/mcp";
 import type { Rule } from "../capability/rule";
 import { ruleCapability } from "../capability/rule";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
-import {
-	buildRuleFromMarkdown,
-	createSourceMeta,
-	expandEnvVarsDeep,
-	getProjectPath,
-	getUserPath,
-	loadFilesFromDir,
-} from "./helpers";
+import { buildRuleFromMarkdown, createSourceMeta, expandEnvVarsDeep, getUserPath, loadFilesFromDir } from "./helpers";
 
 const PROVIDER_ID = "cursor";
 const DISPLAY_NAME = "Cursor";
@@ -38,11 +31,7 @@ const PRIORITY = 50;
 // MCP Servers
 // =============================================================================
 
-function parseMCPServers(
-	content: string,
-	path: string,
-	level: "user" | "project",
-): { items: MCPServer[]; warning?: string } {
+function parseMCPServers(content: string, path: string): { items: MCPServer[]; warning?: string } {
 	const items: MCPServer[] = [];
 
 	const parsed = tryParseJson<{ mcpServers?: Record<string, unknown> }>(content);
@@ -64,7 +53,7 @@ function parseMCPServers(
 				? (serverConfig.type as "stdio" | "sse" | "http")
 				: undefined,
 			timeout: typeof serverConfig.timeout === "number" ? serverConfig.timeout : undefined,
-			_source: createSourceMeta(PROVIDER_ID, path, level),
+			_source: createSourceMeta(PROVIDER_ID, path, "user"),
 		});
 	}
 
@@ -72,32 +61,12 @@ function parseMCPServers(
 }
 
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
-	const items: MCPServer[] = [];
-	const warnings: string[] = [];
-
 	const userPath = getUserPath(ctx, "cursor", "mcp.json");
+	const userContent = userPath ? await readFile(userPath) : null;
+	if (!userContent || !userPath) return { items: [], warnings: [] };
 
-	const [userContent, projectPath] = await Promise.all([
-		userPath ? readFile(userPath) : Promise.resolve(null),
-		getProjectPath(ctx, "cursor", "mcp.json"),
-	]);
-
-	const projectContentPromise = projectPath ? readFile(projectPath) : Promise.resolve(null);
-
-	if (userContent && userPath) {
-		const result = parseMCPServers(userContent, userPath, "user");
-		items.push(...result.items);
-		if (result.warning) warnings.push(result.warning);
-	}
-
-	const projectContent = await projectContentPromise;
-	if (projectContent && projectPath) {
-		const result = parseMCPServers(projectContent, projectPath, "project");
-		items.push(...result.items);
-		if (result.warning) warnings.push(result.warning);
-	}
-
-	return { items, warnings };
+	const result = parseMCPServers(userContent, userPath);
+	return { items: result.items, warnings: result.warning ? [result.warning] : [] };
 }
 
 // =============================================================================
@@ -105,35 +74,13 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 // =============================================================================
 
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
-	const items: Rule[] = [];
-	const warnings: string[] = [];
-
 	const userRulesPath = getUserPath(ctx, "cursor", "rules");
+	if (!userRulesPath) return { items: [], warnings: [] };
 
-	const projectRulesPath = getProjectPath(ctx, "cursor", "rules");
-
-	const [userResult, projectResult] = await Promise.all([
-		userRulesPath
-			? loadFilesFromDir<Rule>(userRulesPath, PROVIDER_ID, "user", {
-					extensions: ["mdc", "md"],
-					transform: transformMDCRule,
-				})
-			: Promise.resolve({ items: [] as Rule[], warnings: undefined }),
-		projectRulesPath
-			? loadFilesFromDir<Rule>(projectRulesPath, PROVIDER_ID, "project", {
-					extensions: ["mdc", "md"],
-					transform: transformMDCRule,
-				})
-			: Promise.resolve({ items: [] as Rule[], warnings: undefined }),
-	]);
-
-	items.push(...userResult.items);
-	if (userResult.warnings) warnings.push(...userResult.warnings);
-
-	items.push(...projectResult.items);
-	if (projectResult.warnings) warnings.push(...projectResult.warnings);
-
-	return { items, warnings };
+	return await loadFilesFromDir<Rule>(userRulesPath, PROVIDER_ID, "user", {
+		extensions: ["mdc", "md"],
+		transform: transformMDCRule,
+	});
 }
 
 function transformMDCRule(name: string, content: string, path: string, source: SourceMeta): Rule {
@@ -159,4 +106,3 @@ registerProvider(ruleCapability.id, {
 	priority: PRIORITY,
 	load: loadRules,
 });
-

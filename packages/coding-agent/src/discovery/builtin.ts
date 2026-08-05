@@ -5,9 +5,8 @@
  */
 
 import * as path from "node:path";
-import { getAgentDir, getConfigDirName, isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
+import { getAgentDir, getConfigDirName, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
 import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
-import { YAML } from "bun";
 import { getManagedSkillsDir, MANAGED_SKILLS_PROVIDER_ID } from "../autolearn/managed-skills";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
