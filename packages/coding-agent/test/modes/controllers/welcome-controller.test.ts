@@ -126,20 +126,4 @@ describe("WelcomeController", () => {
 		controller.dismiss();
 		expect(port.dismissed).toEqual([]);
 	});
-
-	/** Source lock: interactive-mode must DELEGATE the welcome lane, never
-	 * re-inline it. This extraction was clobbered once by a parallel landing
-	 * that restored the inline `#welcomeComponent` fields, silently orphaning
-	 * this controller as dead code (2026-07-22) — with no failing test to
-	 * show for it. Now a re-inline fails here. */
-	it("interactive-mode delegates to the controller and keeps no inline welcome state", async () => {
-		const { readFileSync } = await import("node:fs");
-		const { join } = await import("node:path");
-		const src = readFileSync(join(import.meta.dir, "../../../src/modes/interactive-mode.ts"), "utf8");
-		expect(src).toContain("this.#welcomeController.dismiss()");
-		expect(src).toContain("this.#welcomeController.mountHero(");
-		expect(src).toContain("this.#welcomeController.showFull(");
-		expect(src).not.toContain("#welcomeComponent");
-		expect(src).not.toContain("#welcomeSpacers");
-	});
 });

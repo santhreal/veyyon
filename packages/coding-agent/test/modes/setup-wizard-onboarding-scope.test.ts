@@ -279,6 +279,13 @@ describe("onboarding runs once per machine", () => {
 			isTTY: true,
 			settingsUnreadable: onboarding.unreadable,
 		});
-		expect(selected.map(scene => scene.id)).toEqual(["providers", "glyph-mode", "theme"]);
+		// Every scene with no `shouldRun`, in `ALL_SCENES` order. The two that are
+		// absent are the two that gate on discovery (`subagents`, `import-config`);
+		// this call passes no context, so `selectSetupScenes` cannot run their gate
+		// and drops them. `approvals` belongs here: it is a plain scene that runs
+		// on every first install, and it is deliberately second, before subagents
+		// and cosmetics, because it is the one answer that changes what the agent
+		// may do to the machine.
+		expect(selected.map(scene => scene.id)).toEqual(["providers", "approvals", "glyph-mode", "theme"]);
 	});
 });

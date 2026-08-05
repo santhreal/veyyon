@@ -53,8 +53,14 @@ function configRecord(filePath: string): Record<string, unknown> {
 	return isRecord(parsed) ? parsed : {};
 }
 
-/** The ids the gate selects for a first install with no wizard context supplied. */
-const FIRST_INSTALL_SCENE_IDS = ["providers", "glyph-mode", "theme"];
+/**
+ * The ids the gate selects for a first install with no wizard context supplied.
+ *
+ * Every scene with no `shouldRun`, in `ALL_SCENES` order. `subagents` and
+ * `import-config` gate on discovery and these calls pass no context, so the
+ * gate cannot run theirs and drops them.
+ */
+const FIRST_INSTALL_SCENE_IDS = ["providers", "approvals", "glyph-mode", "theme"];
 
 describe("onboarding is resolved from the whole machine", () => {
 	let settingsState: SettingsTestState | undefined;

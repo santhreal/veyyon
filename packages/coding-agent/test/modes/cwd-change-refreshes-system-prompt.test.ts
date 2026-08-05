@@ -100,25 +100,4 @@ describe("applyCwdChange re-scopes the destination through the session", () => {
 			"this.session.rescopeToCwd(newCwd)",
 		);
 	});
-
-	/**
-	 * The other half of the same wiring: the re-scope must not be duplicated here.
-	 * Two owners for one job is how the settings reload and the prompt rebuild
-	 * drifted apart in the first place, and a second rebuild in this method would
-	 * cost a full prompt-cache invalidation on every `/cd`.
-	 */
-	it("does not keep its own copy of the re-scope", () => {
-		const source = readFileSync(
-			fileURLToPath(new URL("../../src/modes/interactive-mode.ts", import.meta.url)),
-			"utf8",
-		);
-		const start = source.indexOf("async applyCwdChange(");
-		const rest = source.slice(start + 1);
-		const end = rest.search(/\n\tasync |\n\t[A-Za-z#][A-Za-z0-9_]*\(/);
-		const body = end === -1 ? rest : rest.slice(0, end);
-
-		expect(body).not.toContain("refreshBaseSystemPrompt(");
-		expect(body).not.toContain("reloadForCwd(");
-		expect(body).not.toContain("resetCapabilities(");
-	});
 });

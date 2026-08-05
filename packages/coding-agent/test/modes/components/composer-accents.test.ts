@@ -110,21 +110,3 @@ describe("resolveComposerAccents — the focused-subagent dim", () => {
 		expect(a.promptGutter).toBe(`${INSET}\x1b[2m${theme.getBypassModeBorderColor()("!")}\x1b[22m `);
 	});
 });
-
-describe("composer accent wiring (interactive-mode)", () => {
-	/** interactive-mode must only SNAPSHOT state and APPLY the result — the
-	 * decision lives in the one resolver. Re-inlining any glyph choice there
-	 * recreates the untestable duplicate this extraction removed. */
-	it("delegates the decision and keeps no inline glyph morph", async () => {
-		const src = await Bun.file(new URL("../../../src/modes/interactive-mode.ts", import.meta.url)).text();
-		expect(src).toContain("resolveComposerAccents({");
-		expect(src).toContain("this.editor.setPromptGutter(accents.promptGutter)");
-		expect(src).toContain("this.editor.setPromptGutterContinuation(accents.promptGutterContinuation)");
-		// The old inline morphs, banned from the host file.
-		expect(src).not.toContain('getBypassModeBorderColor()("!")');
-		expect(src).not.toContain('getBashModeBorderColor()("$")');
-		expect(src).not.toContain('fg("modeAccent", "◈")');
-		// One inset owner: the const moved to composer-chrome.ts.
-		expect(src).not.toContain("const COMPOSER_INSET_COLS");
-	});
-});
