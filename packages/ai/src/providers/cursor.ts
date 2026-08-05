@@ -105,6 +105,7 @@ import {
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { CURSOR_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import { logger } from "@veyyon/utils";
 import { $env } from "@veyyon/utils/env";
 import { parseJsonWithRepair, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
@@ -407,11 +408,12 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			const blobStore = conversationBlobStores.get(conversationId) ?? new Map<string, Uint8Array>();
 			conversationBlobStores.set(conversationId, blobStore);
 			const cachedState = conversationStateCache.get(conversationId);
-			const { requestBytes, conversationState } = await buildGrpcRequest(model, context, options, {
-				conversationId,
-				blobStore,
-				conversationState: cachedState,
-			});
+			const { requestBytes, conversationState, systemPromptBlobIds } = await buildGrpcRequest(
+				model,
+				context,
+				options,
+				{ conversationId, blobStore, conversationState: cachedState },
+			);
 			conversationStateCache.set(conversationId, conversationState);
 			const requestContextTools = buildMcpToolDefinitions(context.tools);
 
@@ -458,6 +460,19 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 
 			let pendingBuffer = Buffer.alloc(0);
 			let endStreamError: Error | null = null;
+			/**
+			 * Fail this turn from inside a server-message handler.
+			 *
+			 * Reuses the `endStreamError` channel a Connect end-stream error already uses (the outer
+			 * promise rejects with it), rather than throwing: a throw out of `handleServerMessage` is
+			 * caught by the `.catch` below and cannot stop the turn. The first cause wins, so a later
+			 * end-stream error cannot overwrite the reason the turn was actually abandoned.
+			 */
+			const failTurn = (error: Error): void => {
+				if (endStreamError) return;
+				endStreamError = error;
+				h2Request?.close();
+			};
 			let currentTextBlock: (TextContent & { [kStreamingBlockIndex]: number }) | null = null;
 			let currentThinkingBlock: (ThinkingContent & { [kStreamingBlockIndex]: number }) | null = null;
 			let currentToolCall: ToolCallState | null = null;
@@ -545,8 +560,17 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 							usageState,
 							requestContextTools,
 							onConversationCheckpoint,
+							{ systemPromptBlobIds, onFatal: failTurn },
 						).catch(error => {
-							log("error", "handleServerMessage", { error: String(error) });
+							// `log` is a no-op unless DEBUG_CURSOR is set, so every failure inside a server-message
+							// handler used to vanish: an exec handler that threw, a malformed interaction update, a
+							// checkpoint that could not be applied. The turn then completed as though nothing had
+							// gone wrong. Report it for real and keep the best-effort shape.
+							logger.warn("Cursor server message handler failed", {
+								model: model.id,
+								messageCase: serverMessage.message.case,
+								error: errorMessage(error),
+							});
 						});
 
 						// Resolve only on explicit turnEnded. stopReason defaults to "stop"
@@ -721,6 +745,7 @@ export async function handleServerMessage(
 	usageState: UsageState,
 	requestContextTools: McpToolDefinition[],
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
+	blobLookup?: CursorBlobLookup,
 ): Promise<void> {
 	const msgCase = msg.message.case;
 
@@ -732,7 +757,7 @@ export async function handleServerMessage(
 		// thinkingCompleted) blocks direct assignability, hence the assertion.
 		processInteractionUpdate(msg.message.value as InteractionUpdateView, output, stream, state, usageState);
 	} else if (msgCase === "kvServerMessage") {
-		handleKvServerMessage(msg.message.value as KvServerMessage, blobStore, h2Request);
+		handleKvServerMessage(msg.message.value as KvServerMessage, blobStore, h2Request, blobLookup);
 	} else if (msgCase === "execServerMessage") {
 		// The server is waiting on OUR local tool result during this window — no
 		// AssistantMessageEvent flows until the handler finishes. Mark the wait
@@ -755,10 +780,25 @@ export async function handleServerMessage(
 	}
 }
 
+/**
+ * Options a blob lookup needs beyond the store itself.
+ *
+ * `systemPromptBlobIds` is the set of hex ids `buildGrpcRequest` minted for this request's system
+ * prompt entries. The kv channel only ever sees an opaque id, so without it a miss on the system
+ * prompt and a miss on some historical turn are the same event, and they are not: one is a
+ * degraded transcript, the other is a model running with no instructions at all.
+ */
+interface CursorBlobLookup {
+	systemPromptBlobIds: ReadonlySet<string>;
+	/** Fails the turn. Wired to the same `endStreamError` channel a Connect end-stream error uses. */
+	onFatal: (error: Error) => void;
+}
+
 function handleKvServerMessage(
 	kvMsg: KvServerMessage,
 	blobStore: Map<string, Uint8Array>,
 	h2Request: http2.ClientHttp2Stream,
+	lookup?: CursorBlobLookup,
 ): void {
 	const kvCase = kvMsg.message.case;
 
@@ -767,6 +807,31 @@ function handleKvServerMessage(
 		const blobIdKey = Buffer.from(blobId).toString("hex");
 
 		const blobData = blobStore.get(blobIdKey);
+
+		// A miss used to answer with an empty GetBlobResult and say nothing. That answer is
+		// success-shaped on the wire (an 11-byte frame instead of one carrying the content), so the
+		// server takes the blob to be empty and builds the prompt without it. `readCursorBlob` treats
+		// the same fact as fatal (`Cursor blob not found`); this path failed open and silent for it.
+		if (!blobData) {
+			const isSystemPrompt = lookup?.systemPromptBlobIds.has(blobIdKey) === true;
+			logger.warn(
+				isSystemPrompt
+					? "Cursor asked for a system-prompt blob this process does not hold; the model would have run with no system prompt"
+					: "Cursor asked for a blob this process does not hold; that part of the conversation is missing from the prompt",
+				{ blobId: blobIdKey, systemPrompt: isSystemPrompt, knownBlobs: blobStore.size },
+			);
+			// A missing history entry degrades the transcript and the turn is still worth having. A
+			// missing SYSTEM PROMPT is not degradation: the model answers plausibly with none of the
+			// operator's instructions and nothing else in the run would ever say so.
+			if (isSystemPrompt) {
+				lookup?.onFatal(
+					new AIError.ProviderResponseError(
+						`Cursor requested system-prompt blob ${blobIdKey} which this process does not hold, so the request would have run with no system prompt`,
+						{ provider: "cursor", kind: "runtime" },
+					),
+				);
+			}
+		}
 
 		const response = create(KvClientMessageSchema, {
 			id: kvMsg.id,
@@ -783,7 +848,7 @@ function handleKvServerMessage(
 		const responseBytes = toBinary(AgentClientMessageSchema, kvClientMessage);
 		h2Request.write(frameConnectMessage(responseBytes));
 
-		log("kvClient", "getBlobResult", { blobId: blobIdKey.slice(0, 40) });
+		log("kvClient", "getBlobResult", { blobId: blobIdKey.slice(0, 40), hit: blobData !== undefined });
 	} else if (kvCase === "setBlobArgs") {
 		const { blobId, blobData } = kvMsg.message.value;
 		const blobIdKey = Buffer.from(blobId).toString("hex");
@@ -1111,6 +1176,14 @@ async function handleExecServerMessage(
 	log("exec", "dispatch", { execCase, execId: execMsg.execId, hasHandlers: !!execHandlers });
 	if (execCase === "requestContextArgs") {
 		const requestContext = create(RequestContextSchema, {
+			// Empty DELIBERATELY, not by omission. `CursorRule` is Cursor's own repo-rule mechanism:
+			// `full_path` + `content` + a `global | file_globbed | agent_fetched | manually_attached`
+			// type, i.e. `.cursor/rules/*.mdc` and the AGENTS.md a repository ships. Veyyon does not
+			// deliver instructions through it for two reasons. Its context files are already assembled
+			// into `context.systemPrompt` and travel as the system-prompt blobs above, so filling this
+			// too would send the same text twice and pay for it twice. And a repository may not
+			// configure the agent, which is exactly what populating this field from checked-in files
+			// would restore through a side door.
 			rules: [],
 			repositoryInfo: [],
 			tools: requestContextTools,
@@ -2823,6 +2896,12 @@ async function buildGrpcRequest(
 	requestBytes: Uint8Array;
 	blobStore: Map<string, Uint8Array>;
 	conversationState: ConversationStateStructure;
+	/**
+	 * Hex ids of this request's system-prompt blobs. The kv channel sees only opaque ids, so the
+	 * only way a blob miss can be classified as "the system prompt" rather than "some history
+	 * entry" is to carry the set the request just minted.
+	 */
+	systemPromptBlobIds: ReadonlySet<string>;
 }> {
 	const blobStore = state.blobStore;
 
@@ -2987,7 +3066,12 @@ async function buildGrpcRequest(
 			: undefined,
 	});
 
-	return { requestBytes, blobStore, conversationState };
+	return {
+		requestBytes,
+		blobStore,
+		conversationState,
+		systemPromptBlobIds: new Set(systemPromptIds.map(id => Buffer.from(id).toString("hex"))),
+	};
 }
 
 function hasImages(content: (TextContent | ImageContent)[]): boolean {

@@ -1877,7 +1877,11 @@ const MAX_COERCION_PASSES = 5;
 export function validateToolCall(tools: Tool[], toolCall: ToolCall): ToolCall["arguments"] {
 	const tool = tools.find(t => t.name === toolCall.name);
 	if (!tool) {
-		throw new AIError.ToolNotFoundError(toolCall.name);
+		// The active set is right here, and it is the whole remedy for the model.
+		throw new AIError.ToolNotFoundError(
+			toolCall.name,
+			tools.map(t => t.name),
+		);
 	}
 	return validateToolArguments(tool, toolCall);
 }

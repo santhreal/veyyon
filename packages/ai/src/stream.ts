@@ -1845,6 +1845,20 @@ function getGoogleBudget(
 		}
 	}
 
-	// Unknown model - use dynamic
-	return -1;
+	// Every effort level used to land here as -1, Gemini's "you decide" sentinel, for any id
+	// without "2.5-" in it. That made the thinking control a no-op on eleven bundled rows:
+	// `gemini-flash-latest` and `-lite` on both `google` and `google-vertex`, plus 7 `gemma-4`
+	// rows. minimal, low, medium and high all produced the byte-identical
+	// `{enabled: true, budgetTokens: -1}`, so the operator set an effort, the request did not
+	// change, and nothing said so.
+	//
+	// Refuse rather than invent a number. A budget picked for a row whose underlying model is
+	// unknown is a second silent wrong answer: `gemini-flash-latest` is an alias, and the Gemini 3
+	// generation takes `thinkingLevel` rather than `thinkingBudget`, so a plausible-looking value
+	// could be wrong in a way no one would ever observe. The caller can pick a row that accepts a
+	// budget, or leave thinking off and take the model's own behaviour.
+	throw new AIError.ConfigurationError(
+		`${model.provider}/${model.id} does not accept a thinking budget, so the requested effort "${effort}" would change nothing about the request. ` +
+			`Choose a model that supports budgeted thinking (the Gemini 2.5 family on this API), pass an explicit thinkingBudgets entry for "${effort}", or turn thinking off for this model.`,
+	);
 }

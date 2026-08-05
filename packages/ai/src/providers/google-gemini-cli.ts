@@ -397,9 +397,15 @@ function normalizeExpiryMs(value: unknown): number | undefined {
 }
 
 export function parseGeminiCliCredentials(apiKeyRaw: string): ParsedGeminiCliCredentials {
-	const invalidCredentialsMessage = "Invalid Google Cloud Code Assist credentials. Use /login to re-authenticate.";
+	// `/login` alone was the entire remedy at all three of these sites, and it is
+	// a TUI-only slash command (no `textMode: true` in the coding agent's
+	// `slash-commands/builtin-declarations.ts`), so a headless run, an ACP client
+	// and the model were each told to do something they cannot do, with no
+	// alternative offered. The provider id is `google-gemini-cli`.
+	const invalidCredentialsMessage =
+		"The stored Google Cloud Code Assist credentials could not be parsed, so they cannot be used. Fix: run `veyyon auth-broker login google-gemini-cli` to sign in again from a terminal, or `/login google-gemini-cli` in an interactive veyyon session.";
 	const missingCredentialsMessage =
-		"Missing token or projectId in Google Cloud credentials. Use /login to re-authenticate.";
+		"The stored Google Cloud Code Assist credentials are missing their token or projectId, so no request can be signed. Fix: run `veyyon auth-broker login google-gemini-cli` to sign in again from a terminal, or `/login google-gemini-cli` in an interactive veyyon session.";
 
 	let rawCredentials: unknown;
 	try {
@@ -535,7 +541,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 			const apiKeyRaw = options?.apiKey;
 			if (!apiKeyRaw) {
 				throw new AIError.ConfigurationError(
-					"Google Cloud Code Assist requires OAuth authentication. Use /login to authenticate.",
+					"No Google Cloud Code Assist credential is available, and this provider accepts only an OAuth credential, never a plain API key. Fix: run `veyyon auth-broker login google-gemini-cli` to sign in from a terminal, or `/login google-gemini-cli` in an interactive veyyon session. Setting a `GEMINI_API_KEY`-style key does not work here.",
 				);
 			}
 

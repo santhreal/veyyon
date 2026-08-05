@@ -37,6 +37,13 @@ export type { CacheEnforcement };
  * would turn `error` into an outage. Hard blocking is therefore opt-in: set
  * `VEYYON_CACHE_ENFORCEMENT=error`, or turn on **Settings → Context → Block On
  * Cache Rejection**.
+ *
+ * ANTHROPIC ONLY, and that is a gap rather than a design. `providers/anthropic.ts`
+ * is the single production importer of this module, so on Bedrock, on OpenAI
+ * Responses and on the OpenAI-compatible chat-completions path (OpenRouter
+ * Claude) the enforcement level resolves and then governs nothing. Two of the
+ * four defects that motivated this subsystem, listed in
+ * `test/cache-verdict.test.ts`, happened on providers it does not observe.
  */
 export function resolveCacheEnforcement(explicit?: CacheEnforcement): CacheEnforcement {
 	if (explicit) return explicit;
