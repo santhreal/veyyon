@@ -15,7 +15,7 @@ Package-specific references:
 
 ## Memory backends
 
-Memory backends are selected via `memory.backend` (Settings → Memory, or profile `config.yml` under `~/.veyyon/profiles/default/agent/`):
+Memory backends are selected via `memory.backend` (Settings → Memory, or the active profile's `config.yml` under `~/.veyyon/profiles/<name>/agent/`):
 
 - `off` (default) — no memory subsystem runs.
 - `local` — rollout summarization; writes `memory_summary.md` and related artifacts under the agent dir.

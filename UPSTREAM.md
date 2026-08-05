@@ -19,15 +19,14 @@ third-party attribution.
   `crates/veyyon-natives`. The hashline edit engine is TypeScript and lives in
   `packages/hashline`, not in a crate.
 - The prompt/agent model, hashline edit engine, mnemopi memory system, and
-  provider catalog that oh-my-pi shipped — these are the reasons this
-  project forked oh-my-pi rather than starting from scratch (see
-  `BACKLOG.md` notes).
+  provider catalog that oh-my-pi shipped. These are the reasons this project
+  forked oh-my-pi rather than starting from scratch.
 
-This repository's git remotes reflect that lineage directly:
+The canonical repositories record that lineage:
 
 ```
-origin    https://github.com/santhreal/veyyon.git
-upstream  https://github.com/can1357/oh-my-pi.git
+Veyyon     https://github.com/santhreal/veyyon.git
+oh-my-pi   https://github.com/can1357/oh-my-pi.git
 ```
 
 ## What changed (rebrand + product direction)

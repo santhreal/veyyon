@@ -97,7 +97,7 @@ Artifacts and side channels:
     - hard abort (caller signal / wall-clock / budget) → registry status `aborted`, session disposed: terminal;
     - isolated run → status `parked` without a reviver (workspace is merged + cleaned, so the session is not revivable; transcript stays readable via `history://`), then session disposed and detached;
     - everything else (success and failure alike) → status `idle` with the live session attached, and `AgentLifecycleManager.global().adopt(id, { idleTtlMs, revive })` arms the park timer. The reviver reopens the session JSONL (park closed the writer, so the single-writer lock is taken cleanly).
-16. Lifecycle thereafter: `idle` agents are parked after `subagent.idleTtlMs` (session disposed; `AgentRef` + session file retained); messaging (`irc`), or opening the agent in the Agent Control Center, revives them back to `idle`. `"Main"` is never parked.
+16. Lifecycle thereafter: `idle` agents are parked after `subagent.idleTtlMs`, which defaults to 5 minutes regardless of model or provider. Parking disposes the live session but retains the `AgentRef` and session file; messaging (`irc`), or opening the agent in the Agent Control Center, revives it back to `idle`. `"Main"` is never parked.
 
 ## Modes / Variants
 - Execution mode
@@ -135,7 +135,7 @@ Artifacts and side channels:
 
 ## Limits & Caps
 - Concurrency: one session-scoped `Semaphore` sized from `subagent.maxConcurrency` at first use (later setting changes do not resize it) bounds concurrent subagents across parallel `task` calls: both async job bodies and the sync fallback acquire it.
-- Idle TTL: `subagent.idleTtlMs`, default `420_000` ms (7 min); `<= 0` disables parking and keeps idle sessions live until exit.
+- Idle TTL: `subagent.idleTtlMs`, default 5 minutes. A positive millisecond value overrides it; `<= 0` disables parking and keeps idle sessions live until exit.
 - Per-subagent output truncation: `MAX_OUTPUT_BYTES = 500_000` and `MAX_OUTPUT_LINES = 5000` in `packages/coding-agent/src/task/types.ts` (overridable via `VEYYON_TASK_MAX_OUTPUT_BYTES` / `VEYYON_TASK_MAX_OUTPUT_LINES`). Full raw output is still written to `<id>.md`.
 - Progress coalescing: `PROGRESS_COALESCE_MS = 150`; recent-output tail: `RECENT_OUTPUT_TAIL_BYTES = 8 * 1024` (last 8 non-empty lines).
 - Missing-`yield` reminder retries: `MAX_YIELD_RETRIES = 3`; MCP proxy timeout: `MCP_CALL_TIMEOUT_MS = 60_000`: both in `packages/coding-agent/src/task/executor.ts`.
