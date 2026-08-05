@@ -26,6 +26,22 @@ export type AgentReviver = () => Promise<AgentSession>;
 export type PersistedSubagentReviverFactory = (ref: AgentRef) => Promise<AgentReviver | undefined>;
 export type PersistedSubagentIdleTtlResolver = (ref: AgentRef) => number;
 
+/**
+ * Close budgets for a ref the manager adopts on demand rather than at hand-over.
+ *
+ * A cold-revived ref used to be adopted with both budgets at zero, so it parked on its
+ * idle TTL and then stayed listed for the rest of the session whatever the operator had
+ * set. Resume a session, message a few old agents, and the roster grew monotonically,
+ * which is the one thing the close stage exists to prevent. The budgets travel through
+ * the same injected seam as the idle TTL because the reason they were missing was
+ * plumbing rather than policy.
+ */
+export interface PersistedSubagentCloseBudget {
+	parkedMs: number;
+	waitingMs: number;
+}
+export type PersistedSubagentCloseBudgetResolver = (ref: AgentRef) => PersistedSubagentCloseBudget;
+
 export interface AdoptOptions {
 	/** TTL before an idle agent is parked. <= 0 disables parking. */
 	idleTtlMs: number;
@@ -69,6 +85,24 @@ function arm(adopted: AdoptedAgent, at: number, stage: "park" | "close"): void {
 function disarm(adopted: AdoptedAgent): void {
 	adopted.deadline = undefined;
 	adopted.stage = undefined;
+}
+
+/**
+ * Normalize a pair of close budgets. Shared by {@link AgentLifecycleManager.adopt} and the
+ * cold-adopt path so there is ONE place that decides what zero means.
+ *
+ * A zero quiet budget means "never close", and that has to include the waiting case:
+ * honouring a waiting budget beside it would close exactly the agents most likely to be
+ * needed while leaving every ordinary one listed, which inverts the switch instead of
+ * disabling it. The waiting budget is also never shorter than the quiet one, because an
+ * agent that stopped to let a peer finish has not run out of things to do.
+ */
+function normalizeCloseBudgets(
+	parkedMs: number | undefined,
+	waitingMs: number | undefined,
+): PersistedSubagentCloseBudget {
+	const parked = Math.max(0, parkedMs ?? 0);
+	return { parkedMs: parked, waitingMs: parked === 0 ? 0 : Math.max(parked, waitingMs ?? parked) };
 }
 
 /**
@@ -118,6 +152,17 @@ export class AgentLifecycleManager {
 	#timer: NodeJS.Timeout | undefined;
 	/** TTL policy applied when a cold-revived ref is adopted on demand. */
 	#persistedReviveTtl: number | PersistedSubagentIdleTtlResolver = 0;
+	/**
+	 * Close budgets applied when a cold-revived ref is adopted on demand.
+	 *
+	 * Defaults to zero so a host that installs a factory without them keeps the old
+	 * never-close behaviour rather than silently acquiring a close stage it did not ask
+	 * for. The non-ACP bootstrap passes the operator's resolved budgets.
+	 */
+	#persistedReviveCloseBudget: PersistedSubagentCloseBudget | PersistedSubagentCloseBudgetResolver = {
+		parkedMs: 0,
+		waitingMs: 0,
+	};
 
 	constructor(registry: AgentRegistry = AgentRegistry.global()) {
 		this.#registry = registry;
@@ -133,9 +178,11 @@ export class AgentLifecycleManager {
 	setPersistedSubagentReviverFactory(
 		factory: PersistedSubagentReviverFactory,
 		idleTtl: number | PersistedSubagentIdleTtlResolver,
+		closeBudget: PersistedSubagentCloseBudget | PersistedSubagentCloseBudgetResolver = { parkedMs: 0, waitingMs: 0 },
 	): void {
 		this.#persistedReviverFactory = factory;
 		this.#persistedReviveTtl = idleTtl;
+		this.#persistedReviveCloseBudget = closeBudget;
 	}
 
 	/**
@@ -159,8 +206,10 @@ export class AgentLifecycleManager {
 		// likely to be needed while leaving every ordinary one listed, which inverts the
 		// switch instead of disabling it. Normalized here rather than trusted from the
 		// caller so the invariant holds for every adoption, not just the settings path.
-		const closeParkedMs = Math.max(0, opts.closeParkedMs ?? 0);
-		const closeWaitingMs = closeParkedMs === 0 ? 0 : Math.max(closeParkedMs, opts.closeWaitingMs ?? closeParkedMs);
+		const { parkedMs: closeParkedMs, waitingMs: closeWaitingMs } = normalizeCloseBudgets(
+			opts.closeParkedMs,
+			opts.closeWaitingMs,
+		);
 		const adopted: AdoptedAgent = {
 			idleTtlMs: opts.idleTtlMs,
 			closeParkedMs,
@@ -294,11 +343,19 @@ export class AgentLifecycleManager {
 					typeof this.#persistedReviveTtl === "function"
 						? this.#persistedReviveTtl(ref)
 						: this.#persistedReviveTtl;
-				// A cold-revived ref carries no close budgets: it came from disk, so the
-				// operator's current settings have not been threaded to it, and dropping
-				// a ref that was just deliberately woken would be the wrong default. It
-				// parks again on its idle TTL and then stays listed.
-				this.#adopted.set(id, { idleTtlMs, closeParkedMs: 0, closeWaitingMs: 0, revive });
+				// A cold-revived ref carries the operator's CURRENT close budgets, injected
+				// beside the idle TTL. It used to carry zeros, which meant a ref restored from
+				// disk and woken once was never closed again, so a resumed session accumulated
+				// every agent it ever revived. The close budget counts from `lastActivity`, and
+				// the revive below bumps that through `setStatus(id, "idle")`, so a just-woken
+				// agent gets a FULL budget from the wake rather than being dropped for having
+				// been parked a long time.
+				const budget =
+					typeof this.#persistedReviveCloseBudget === "function"
+						? this.#persistedReviveCloseBudget(ref)
+						: this.#persistedReviveCloseBudget;
+				const { parkedMs, waitingMs } = normalizeCloseBudgets(budget.parkedMs, budget.waitingMs);
+				this.#adopted.set(id, { idleTtlMs, closeParkedMs: parkedMs, closeWaitingMs: waitingMs, revive });
 				coldAdopted = true;
 			}
 		}
