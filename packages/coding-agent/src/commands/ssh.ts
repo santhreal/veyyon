@@ -29,7 +29,6 @@ export default class SSH extends Command {
 		key: Flags.string({ description: "Identity key path" }),
 		desc: Flags.string({ description: "Host description" }),
 		compat: Flags.boolean({ description: "Enable compatibility mode" }),
-		scope: Flags.string({ description: "Config scope (project|user)", options: ["project", "user"] }),
 	};
 
 	async run(): Promise<void> {
@@ -48,7 +47,6 @@ export default class SSH extends Command {
 				key: flags.key,
 				desc: flags.desc,
 				compat: flags.compat,
-				scope: flags.scope as "project" | "user" | undefined,
 			},
 		};
 

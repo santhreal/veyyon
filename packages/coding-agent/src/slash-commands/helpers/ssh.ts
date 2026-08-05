@@ -2,11 +2,10 @@ import { getSSHConfigPath } from "@veyyon/utils";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../../ssh/config-writer";
 import { parseCommandArgs } from "../../utils/command-args";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
-import { commandConsumed, errorMessage, parseNamedScopeArgs, parseSubcommand, usage } from "./parse";
+import { commandConsumed, errorMessage, parseSubcommand, usage } from "./parse";
 
 interface ParsedSshAddArgs {
 	name?: string;
-	scope: "user" | "project";
 	host?: string;
 	username?: string;
 	port?: number;
@@ -17,7 +16,7 @@ interface ParsedSshAddArgs {
 type SshAddOptionParser = (parsed: ParsedSshAddArgs, value: string | undefined) => string | undefined;
 
 const SSH_ADD_USAGE =
-	"Usage: /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]";
+	"Usage: /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>]";
 
 const SSH_ADD_OPTION_PARSERS = new Map<string, SshAddOptionParser>([
 	[
@@ -62,19 +61,11 @@ const SSH_ADD_OPTION_PARSERS = new Map<string, SshAddOptionParser>([
 			return undefined;
 		},
 	],
-	[
-		"--scope",
-		(parsed, value) => {
-			if (!value || (value !== "project" && value !== "user")) return "Invalid --scope value. Use project or user.";
-			parsed.scope = value;
-			return undefined;
-		},
-	],
 ]);
 
 function parseSshAddArgs(rest: string): ParsedSshAddArgs {
 	const tokens = parseCommandArgs(rest);
-	const parsed: ParsedSshAddArgs = { scope: "project" };
+	const parsed: ParsedSshAddArgs = {};
 	let index = 0;
 	if (tokens.length > 0 && !tokens[0]!.startsWith("-")) {
 		parsed.name = tokens[0];
@@ -93,40 +84,23 @@ function parseSshAddArgs(rest: string): ParsedSshAddArgs {
 
 const SSH_HELP_TEXT = [
 	"SSH host management (ACP mode)",
-	"  /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]",
-	"  /ssh list                                       List configured SSH hosts",
-	"  /ssh remove <name> [--scope project|user]       Remove an SSH host",
-	"  /ssh help                                       Show this help",
+	"  /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>]",
+	"  /ssh list                     List configured SSH hosts",
+	"  /ssh remove <name>            Remove an SSH host",
+	"  /ssh help                     Show this help",
 ].join("\n");
 
 async function handleListCommand(runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
 	try {
-		const userPath = getSSHConfigPath("user", runtime.cwd);
-		const projectPath = getSSHConfigPath("project", runtime.cwd);
-		const [userConfig, projectConfig] = await Promise.all([
-			readSSHConfigFile(userPath),
-			readSSHConfigFile(projectPath),
-		]);
-		const entries: Array<{ name: string; host: string; user?: string; port?: number; scope: string }> = [];
-		// Capability loader resolves project before user, so list project hosts
-		// first and let the user-scope loop skip duplicates. Otherwise a host
-		// shared between scopes shows up under "user" when the project entry
-		// is the one actually in effect.
-		for (const [name, config] of Object.entries(projectConfig.hosts ?? {})) {
-			entries.push({ name, host: config.host, user: config.username, port: config.port, scope: "project" });
-		}
-		for (const [name, config] of Object.entries(userConfig.hosts ?? {})) {
-			if (!entries.some(entry => entry.name === name)) {
-				entries.push({ name, host: config.host, user: config.username, port: config.port, scope: "user" });
-			}
-		}
+		const config = await readSSHConfigFile(getSSHConfigPath());
+		const entries = Object.entries(config.hosts ?? {});
 		if (entries.length === 0) {
 			await runtime.output("No SSH hosts configured.");
 			return commandConsumed();
 		}
 		await runtime.output(
 			entries
-				.map(entry => `${entry.name} | ${entry.host} | ${entry.user ?? "-"} | ${entry.port ?? 22} [${entry.scope}]`)
+				.map(([name, host]) => `${name} | ${host.host} | ${host.username ?? "-"} | ${host.port ?? 22}`)
 				.join("\n"),
 		);
 		return commandConsumed();
@@ -136,14 +110,12 @@ async function handleListCommand(runtime: SlashCommandRuntime): Promise<SlashCom
 }
 
 async function handleRemoveCommand(rest: string, runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
-	const parsed = parseNamedScopeArgs(rest, "Invalid --scope value. Use project or user.");
-	if (parsed.error) return usage(parsed.error, runtime);
-	if (!parsed.name) return usage("Usage: /ssh remove <name> [--scope project|user]", runtime);
+	const name = parseCommandArgs(rest)[0];
+	if (!name || name.startsWith("-")) return usage("Usage: /ssh remove <name>", runtime);
 	try {
-		const filePath = getSSHConfigPath(parsed.scope, runtime.cwd);
-		await removeSSHHost(filePath, parsed.name);
+		await removeSSHHost(getSSHConfigPath(), name);
 		await runtime.session.refreshSshTool();
-		await runtime.output(`Removed SSH host "${parsed.name}" from ${parsed.scope} config.`);
+		await runtime.output(`Removed SSH host "${name}".`);
 		return commandConsumed();
 	} catch (err) {
 		return usage(`Failed to remove SSH host: ${errorMessage(err)}`, runtime);
@@ -161,10 +133,9 @@ async function handleAddCommand(rest: string, runtime: SlashCommandRuntime): Pro
 	if (parsed.port) hostConfig.port = parsed.port;
 	if (parsed.keyPath) hostConfig.keyPath = parsed.keyPath;
 	try {
-		const filePath = getSSHConfigPath(parsed.scope, runtime.cwd);
-		await addSSHHost(filePath, parsed.name, hostConfig);
+		await addSSHHost(getSSHConfigPath(), parsed.name, hostConfig);
 		await runtime.session.refreshSshTool({ activateIfAvailable: true });
-		await runtime.output(`Added SSH host "${parsed.name}" (${parsed.scope}).`);
+		await runtime.output(`Added SSH host "${parsed.name}".`);
 		return commandConsumed();
 	} catch (err) {
 		return usage(`Failed to add SSH host: ${errorMessage(err)}`, runtime);

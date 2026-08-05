@@ -10,7 +10,7 @@ import { pluralize } from "@veyyon/utils/format";
 import { nearestNames } from "@veyyon/utils/levenshtein";
 import chalk from "chalk";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
-import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/builtin-names";
+import { BUILTIN_TOOL_NAMES, type BuiltinToolName, normalizeToolNames } from "../tools/builtin-names";
 import {
 	OPTIONAL_FLAGS,
 	OPTIONAL_VALUE_FLAGS,
@@ -80,7 +80,7 @@ export interface Args {
 	autoApprove?: boolean;
 	/** `--dangerously-skip-permissions`: start with the full `/yolo` bypass on. */
 	dangerouslySkipPermissions?: boolean;
-	approvalMode?: "plan" | "ask" | "auto-edit" | "yolo" | "always-ask" | "write";
+	approvalMode?: "plan" | "ask" | "ask-command" | "auto" | "yolo" | "always-ask" | "write" | "auto-edit";
 	messages: string[];
 	fileArgs: string[];
 	/** Extension-registered flags this parse recognized — name to value. */
@@ -400,6 +400,60 @@ function envSection(title: string, rows: ReadonlyArray<readonly [string, string]
 	return [`  ${chalk.dim(`# ${title}`)}`, ...renderHelpTable(rows, { indent: "  " }), ""];
 }
 
+/**
+ * One line per built-in tool, for the AVAILABLE TOOLS block in `--help`.
+ *
+ * WHY THIS IS A `Record<BuiltinToolName, string>` AND NOT A HAND-WRITTEN LIST.
+ * The list it replaces was fifteen literal rows that had stopped describing this
+ * build. It named `python` and `notebook`, neither of which is a tool: both are
+ * refused by the very flag the same help text points at, so `veyyon --tools
+ * python` exits 2 with `Unknown tool passed to --tools`. It also omitted twenty
+ * tools that do exist, among them `task`'s siblings `job` and `irc`, the whole
+ * memory set, `eval`, `ssh`, `github` and the AST pair. A reader could neither
+ * trust what it listed nor discover what it left out.
+ *
+ * Keying the record by {@link BuiltinToolName} makes the compiler the check:
+ * adding a tool to `BUILTIN_TOOL_NAMES` without describing it here does not
+ * build, and describing a tool that no longer exists does not build either.
+ * That is the property the literal list could not have.
+ */
+const BUILTIN_TOOL_HELP: Record<BuiltinToolName, string> = {
+	argot_load: "Load a folder's Argot shorthand so its paths can be written as short handles",
+	argot_unload: "Stop being taught a folder's Argot shorthand",
+	ask: "Ask the user a clarifying question",
+	ast_edit: "Perform AST-aware code edits (structural refactoring)",
+	ast_grep: "Search code with AST patterns (structural grep)",
+	bash: "Run a shell command",
+	browser: "Control a headless browser to navigate and interact with web pages",
+	checkpoint: "Create a git-based checkpoint to save and restore session state",
+	debug: "Debug a running process with DAP (debug adapter protocol)",
+	edit: "Apply line-anchored patches to existing files",
+	eval: `Run code in a persistent Python or JavaScript kernel (Python needs: ${APP_NAME} setup python)`,
+	github: "Interact with GitHub issues, pull requests, and repositories",
+	glob: "Find files by glob pattern",
+	grep: "Grep file contents using ripgrep (fast regex search)",
+	inspect_image: "Describe or analyze an image file",
+	irc: "Send and receive messages between agents",
+	job: "Manage long-running background jobs",
+	launch: "Launch and control shared long-running project processes",
+	learn: "Capture a reusable lesson to memory, and optionally a managed skill",
+	lsp: "Query LSP (language server) for diagnostics, hover info, and references",
+	manage_skill: "Create, update, or delete an isolated managed skill",
+	memory_edit: "Update, forget, or invalidate Mnemopi memories",
+	read: "Read files, directories, archives, documents, images, and URLs",
+	recall: "Search memory for relevant prior context",
+	reflect: "Synthesize an answer from long-term memory",
+	retain: "Store important facts in long-term memory",
+	rewind: "Rewind to a previously created checkpoint",
+	search_tool_bm25: "Search the descriptions of tools that have not been loaded yet",
+	set_cwd: "Change the session's working directory for the rest of the session",
+	ssh: "Execute a command on a remote host over SSH",
+	task: "Spawn subagents to complete delegated tasks",
+	todo: "Write a structured todo list to track progress within a session",
+	web_search: "Search the web",
+	write: "Write files (creates/overwrites)",
+};
+
 export function getExtraHelpText(): string {
 	const lines: string[] = [chalk.bold("ENVIRONMENT VARIABLES")];
 
@@ -463,7 +517,7 @@ export function getExtraHelpText(): string {
 				["VEYYON_PROFILE", "Named profile for isolated agent state (same as --profile)"],
 				[
 					"VEYYON_CODING_AGENT_DIR",
-					`Session storage directory (default: ~/${CONFIG_DIR_NAME}/profiles/default/agent)`,
+					`Agent directory, default profile only (default: ~/${CONFIG_DIR_NAME}/profiles/default/agent; a named profile derives ~/${CONFIG_DIR_NAME}/profiles/<name>/agent and ignores this)`,
 				],
 				["VEYYON_PACKAGE_DIR", "Override package directory (for Nix/Guix store paths)"],
 				["VEYYON_SMOL_MODEL", "Override smol/fast model (see --smol)"],
@@ -481,25 +535,14 @@ export function getExtraHelpText(): string {
 		...renderHelpParagraph("For the complete environment variable reference, see:"),
 		`  ${chalk.dim("https://veyyon.dev/docs/reference/environment.html")}`,
 		"",
-		chalk.bold("AVAILABLE TOOLS (default-enabled unless noted)"),
+		chalk.bold("BUILT-IN TOOLS"),
+		...renderHelpParagraph(
+			"These are the names `--tools` and `--no-tools` accept. A tool that needs something this machine does not have (a language server, a GitHub token, a memory backend) is absent from the session rather than failing when called.",
+			{ indent: "  " },
+		),
+		"",
 		...renderHelpTable(
-			[
-				["read", "Read file contents"],
-				["bash", "Execute bash commands"],
-				["edit", "Edit files with find/replace"],
-				["write", "Write files (creates/overwrites)"],
-				["grep", "Search file contents"],
-				["glob", "Find files by glob pattern"],
-				["lsp", "Language server protocol (code intelligence)"],
-				["python", `Execute Python code (requires: ${APP_NAME} setup python)`],
-				["notebook", "Edit Jupyter notebooks"],
-				["inspect_image", "Analyze images with a vision model"],
-				["browser", "Browser automation (Puppeteer)"],
-				["task", "Launch sub-agents for parallel tasks"],
-				["todo", "Manage todo/task lists"],
-				["web_search", "Search the web"],
-				["ask", "Ask user questions (interactive mode only)"],
-			],
+			BUILTIN_TOOL_NAMES.map(name => [name, BUILTIN_TOOL_HELP[name]] as const),
 			{ indent: "  " },
 		),
 		"",
@@ -509,7 +552,10 @@ export function getExtraHelpText(): string {
 		chalk.bold("USEFUL COMMANDS"),
 		...renderHelpTable(
 			[
-				["veyyon agents unpack", "Export bundled subagents to ~/.veyyon/agent/agents (default)"],
+				[
+					"veyyon agents unpack",
+					`Export bundled subagents to the active profile's agent dir, ~/${CONFIG_DIR_NAME}/profiles/<name>/agent/agents (default)`,
+				],
 				["veyyon agents unpack --project", "Export bundled subagents to ./.veyyon/agents"],
 			],
 			{ indent: "  " },
