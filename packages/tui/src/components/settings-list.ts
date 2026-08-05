@@ -24,6 +24,12 @@ export interface SettingItem {
 	description?: string;
 	/** Current value to display (right side) */
 	currentValue: string;
+	/**
+	 * Render `currentValue` as something a person reads, when the stored value is not
+	 * that. Display only: preselection, cycling and write-back all keep using
+	 * `currentValue`, so a labelled row still round-trips its real value.
+	 */
+	labelForValue?: (value: string) => string;
 	/** If provided, Enter/Space cycles through these values */
 	values?: string[];
 	/** If provided, Enter opens this submenu. Receives current value and done callback. */
@@ -555,7 +561,12 @@ export class SettingsList implements Component {
 		// cycling gesture is discoverable, not a hidden power feature.
 		const cyclable =
 			isSelected && !item.readOnly && !item.submenu && item.values !== undefined && item.values.length > 0;
-		const rawValue = cyclable ? `‹ ${item.currentValue} ›` : String(item.currentValue ?? "");
+		// A row whose value is machine-readable (a millisecond count, a byte size) renders
+		// through its own labeller so the operator reads "5 minutes" instead of "300000".
+		// Mapped at render time from `currentValue` rather than stored beside it, because
+		// a second field would go stale the moment a submenu selection writes the first.
+		const shownValue = item.labelForValue?.(item.currentValue) ?? item.currentValue;
+		const rawValue = cyclable ? `‹ ${shownValue} ›` : String(shownValue ?? "");
 		const valuePlain = truncateToWidth(rawValue, valueMaxWidth, Ellipsis.Omit);
 		const hovered = !isSelected && this.#theme.hovered !== undefined && item.id === this.#hoveredItemId;
 		// De-emphasized rows (outside the active section) render as plain text

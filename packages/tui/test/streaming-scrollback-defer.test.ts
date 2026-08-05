@@ -1,11 +1,4 @@
-// The TUI reads this at construction, and this suite is about the rebuild path, so
-// it is set before the import that pulls the class in. Restored in `afterAll`
-// below: left set, it decides the behaviour of every suite that runs after this
-// one in the same process, which is what `scripts/find-test-leaks.ts` caught.
-const scrollbackRebuildBefore = process.env.VEYYON_TUI_SCROLLBACK_REBUILD;
-process.env.VEYYON_TUI_SCROLLBACK_REBUILD = "true";
-
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type Component, type NativeScrollbackCommittedRows, type NativeScrollbackLiveRegion, TUI } from "@veyyon/tui";
 import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
@@ -14,11 +7,6 @@ import { VirtualTerminal } from "./virtual-terminal";
 // TUI construction, so leaving it set hands the rebuild path to every suite after
 // this one. Two other suites (`scroll-isolation`, `scroll-isolation-history`) had
 // to state the shipped default explicitly to defend against exactly that.
-afterAll(() => {
-	if (scrollbackRebuildBefore === undefined) delete process.env.VEYYON_TUI_SCROLLBACK_REBUILD;
-	else process.env.VEYYON_TUI_SCROLLBACK_REBUILD = scrollbackRebuildBefore;
-});
-
 // Law-encoding suite for native-scrollback commits.
 //
 // The tape is the terminal's visual record: whatever scrolls above the window
@@ -1225,6 +1213,95 @@ describe("scrollback divergence — multiplexer fallback", () => {
 			expect(buffer.slice(-9)).toEqual(result);
 			expect(contiguousAt(buffer, result)).toHaveLength(1);
 			expect(eraseScrollbackCount(writes)).toBe(0);
+		} finally {
+			tui.stop();
+		}
+	});
+});
+
+/**
+ * The duplicated paragraph, which is the shape operators actually report.
+ *
+ * WHAT IT LOOKS LIKE. A streamed answer reflows a block after part of it has
+ * already scrolled past the window top, and the reader ends up with:
+ *
+ *     Two real defects I can now name precisely:
+ *     Two real defects I can now name precisely:
+ *     1. A stale comment that misdescribes the gate ...
+ *     1. A stale comment that misdescribes the gate ...
+ *
+ * The engine's repair for it (`divergenceRebuild`: erase history with one ED3
+ * and replay so the block lands exactly once) was written, correct, and OFF.
+ * It sat behind `tui.scrollbackRebuild`, which defaulted to false, so every
+ * direct-terminal session took the append-below fallback that is only supposed
+ * to be the multiplexer compromise. Turning it on is the whole fix; this case
+ * is here so it cannot be turned back off by accident.
+ *
+ * The sibling case above pins the OTHER half of the contract: inside a
+ * multiplexer, where ED3 would eat the pane's own history, the duplication is
+ * still the correct trade and must stay.
+ */
+describe("scrollback divergence — the default repairs a duplicated block", () => {
+	const savedEnv = saveTerminalEnv();
+	afterEach(() => restoreTerminalEnv(savedEnv));
+
+	it("leaves a reflowed block in history exactly once, with no flag set", async () => {
+		if (process.platform === "win32") return;
+		const term = new VirtualTerminal(80, 4);
+		// A direct terminal, not a pane: this is where the erase is safe and where
+		// the operator reports the duplicate.
+		overrideProbe(term, true);
+		const tui = new TUI(term);
+		const root = new SeamLineList([]);
+
+		// No `setScrollbackRebuild` call anywhere in this case, deliberately. The
+		// point is the SHIPPED default, so a future change that flips it back
+		// fails here rather than only in a suite that opts in.
+		expect(tui.getScrollbackRebuild()).toBe(true);
+
+		try {
+			tui.addChild(root);
+			tui.start();
+			await settle(term, tui);
+
+			// The live block streams in and overflows the 4-row window, so its head
+			// scrolls off and commits as a frozen snapshot.
+			const preview = [
+				"Two real defects I can now name precisely:",
+				"1. A stale comment that misdescribes the gate",
+				"2. A count that is off by one",
+				"filler-a",
+				"filler-b",
+				"filler-c",
+			];
+			root.setLines(preview);
+			root.seam = 0;
+			tui.requestRender();
+			await settle(term, tui);
+
+			// Then it finalizes with the block reflowed: same opening lines, more
+			// text under them. This is the divergence that used to recommit the
+			// head below its own stale copy.
+			const finalBlock = [
+				"Two real defects I can now name precisely:",
+				"1. A stale comment that misdescribes the gate, policy.ts:361",
+				"2. A count that is off by one, policy.ts:404",
+				"filler-a",
+				"filler-b",
+				"filler-c",
+				"filler-d",
+			];
+			root.setLines(finalBlock);
+			root.seam = undefined;
+			tui.requestRender();
+			await settle(term, tui);
+
+			const buffer = tape(term);
+			// The assertion that matches the screenshot: the opening line appears
+			// ONCE in the terminal's whole history, not twice.
+			expect(buffer.filter(line => line === "Two real defects I can now name precisely:")).toHaveLength(1);
+			expect(contiguousAt(buffer, finalBlock)).toHaveLength(1);
+			expect(buffer).toEqual(finalBlock);
 		} finally {
 			tui.stop();
 		}

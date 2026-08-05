@@ -133,7 +133,10 @@ export class Text implements Component {
 			return this.#cachedLines;
 		}
 
-		// Don't render anything if there's no actual text
+		// Whitespace-only content collapses to zero rows, so a Text is never a way to emit a
+		// blank line: padding and NBSP are both stripped by trim. A deliberate blank row is
+		// Spacer(1), or a newline inside a single multi-line Text ("a\n\nb" keeps its gap).
+		// Callers that iterate a renderer's line array into one Text per line lose the blanks.
 		if (!this.#text || this.#text.trim() === "") {
 			const result: string[] = [];
 			this.#cachedText = this.#text;

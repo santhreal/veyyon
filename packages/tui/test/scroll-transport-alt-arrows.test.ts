@@ -644,8 +644,8 @@ describe("alt-arrows exit replay", () => {
 
 /**
  * The env door. `VEYYON_TUI_SCROLL_TRANSPORT` is how the surface is reachable
- * before it has a settings entry, mirroring `VEYYON_TUI_SCROLLBACK_REBUILD`. It is
- * an earlier door and not a substitute for the setting.
+ * before it has a settings entry. It is an earlier door and not a substitute for
+ * the setting.
  */
 describe("alt-arrows env selection", () => {
 	function transportFor(value: string | undefined): ScrollTransport {

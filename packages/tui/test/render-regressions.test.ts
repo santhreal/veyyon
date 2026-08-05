@@ -1,12 +1,5 @@
-// The TUI reads this at construction, so it is set before the import that pulls
-// the class in. Restored in `afterAll` below: left set, it decides the behaviour of
-// every suite that runs after this one in the same process, which is what
-// `scripts/find-test-leaks.ts` caught.
-const scrollbackRebuildBefore = process.env.VEYYON_TUI_SCROLLBACK_REBUILD;
-process.env.VEYYON_TUI_SCROLLBACK_REBUILD = "true";
-
 import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import {
 	type Component,
 	CURSOR_MARKER,
@@ -22,11 +15,6 @@ import { VirtualTerminal } from "./virtual-terminal";
 // TUI construction, so leaving it set hands the rebuild path to every suite after
 // this one. Two other suites (`scroll-isolation`, `scroll-isolation-history`) had
 // to state the shipped default explicitly to defend against exactly that.
-afterAll(() => {
-	if (scrollbackRebuildBefore === undefined) delete process.env.VEYYON_TUI_SCROLLBACK_REBUILD;
-	else process.env.VEYYON_TUI_SCROLLBACK_REBUILD = scrollbackRebuildBefore;
-});
-
 class MutableLinesComponent implements Component {
 	#lines: string[];
 
