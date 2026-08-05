@@ -167,7 +167,14 @@ async function runSwitch(name: string, port: ProfileCommandPort): Promise<void> 
 		port.showStatus(`Already on profile "${resolved ?? "default"}"`);
 		return;
 	}
-	port.requestRelaunch({ VEYYON_PROFILE: resolved });
+	// `resolved` is undefined for the default profile, and the spawn merge in
+	// InteractiveMode.shutdown() DROPS undefined env values, so passing it
+	// through would boot the child with no VEYYON_PROFILE at all, and the child
+	// would fall back to the global `defaultProfile` setting, which can be the
+	// very profile the operator just left. The explicitly-empty value is the
+	// documented override that forces the default profile (dirs.ts:
+	// profileEnvIsSet / normalizeProfileName).
+	port.requestRelaunch({ VEYYON_PROFILE: resolved ?? "" });
 	port.showStatus(`Switching to profile "${resolved ?? "default"}", starting a fresh session…`);
 	port.requestShutdown();
 }
