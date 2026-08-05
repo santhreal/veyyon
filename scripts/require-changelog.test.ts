@@ -136,6 +136,35 @@ describe("parseUnreleasedBullets", () => {
 	it("returns empty for a missing or empty changelog (a new package at base)", () => {
 		expect(parseUnreleasedBullets("")).toEqual([]);
 	});
+
+	// These three boundaries used to be pinned only through the
+	// `has-releasable-changes` wrapper that fed the removed push-triggered
+	// auto-release. The wrapper is gone; the boundaries are real and belong on
+	// the function every release gate now calls directly.
+	it("returns empty for an Unreleased section holding only whitespace", () => {
+		const content = ["# Changelog", "", "## [Unreleased]", "   ", "\t", "", "## [1.0.0] - 2026-01-01", ""].join("\n");
+		expect(parseUnreleasedBullets(content)).toEqual([]);
+	});
+
+	it("collects a bullet in a trailing Unreleased section with no following version heading", () => {
+		const content = ["# Changelog", "", "## [Unreleased]", "", "- A change with nothing below it."].join("\n");
+		expect(parseUnreleasedBullets(content)).toEqual(["- A change with nothing below it."]);
+	});
+
+	it("collects a bullet nested under a category sub-heading inside Unreleased", () => {
+		const content = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"### Fixed",
+			"",
+			"- A fix under a sub-heading.",
+			"",
+			"## [1.0.0] - 2026-01-01",
+		].join("\n");
+		expect(parseUnreleasedBullets(content)).toEqual(["- A fix under a sub-heading."]);
+	});
 });
 
 describe("parseSkipMarkers", () => {

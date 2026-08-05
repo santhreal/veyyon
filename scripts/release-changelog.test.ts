@@ -22,9 +22,9 @@ import {
  * the `## [Unreleased]` section lives BELOW a fork-notice blockquote, so the
  * title-anchored insert put a second `[Unreleased]` ABOVE the fork notice and
  * renamed the real (below-notice) one to the version — stranding the actual
- * bullets in a version section, while the empty top `[Unreleased]` made
- * `has-releasable-changes` read false. The net effect: a "released" version that
- * carried the changes but never published, and no way to cut the next one. These
+ * bullets in a version section, while the empty top `[Unreleased]` read as
+ * "nothing to document". The net effect: a "released" version that carried the
+ * changes but never published, and no way to cut the next one. These
  * tests lock the fork-notice ordering, the no-empty-version rule, and the
  * newest-first section order so that regression can't return silently.
  */
@@ -228,7 +228,7 @@ describe("the release changelog gate", () => {
 	});
 
 	/** A category heading with no bullet under it is not content, and the gate counts the same
-	 * bullets `has-releasable-changes` counts. A stray `### Fixed` must not buy a release. */
+	 * bullets `parseUnreleasedBullets` counts. A stray `### Fixed` must not buy a release. */
 	it("refuses an [Unreleased] that holds only a category heading", () => {
 		const headingOnly = ["# Changelog", "", "## [Unreleased]", "", "### Fixed", "", "## [1.0.46] - 2026-08-01"].join(
 			"\n",

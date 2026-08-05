@@ -267,7 +267,6 @@ export const repoScriptTests = [
 	"scripts/release-version.test.ts",
 	"scripts/release-version-authorities.test.ts",
 	"scripts/release-request.test.ts",
-	"scripts/has-releasable-changes.test.ts",
 	"scripts/release-policy.test.ts",
 	"scripts/link-veyyon.test.ts",
 	"scripts/docs-book-pin.test.ts",
@@ -357,6 +356,9 @@ export const repoScriptTests = [
 	// close. script-tests-coverage caught it.
 	"scripts/every-script-suite-actually-runs.test.ts",
 	"scripts/no-install-jobs-resolve-their-imports.test.ts",
+	// Landed on disk without being wired, so the gate that keeps a suite from
+	// touching the operator's real home was itself running nowhere.
+	"scripts/tests-never-touch-real-home.test.ts",
 ];
 
 /**
