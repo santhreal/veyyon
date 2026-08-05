@@ -17,6 +17,7 @@ import {
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
 import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
+import { missingCredentialsMessage } from "../config/missing-credentials";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
 import { PRIORITY_TIER_COMMAND_LABEL, PRIORITY_TIER_LABEL } from "../config/service-tier";
@@ -646,7 +647,10 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				);
 			}
 			if (!runtime.session.modelRegistry.hasConfiguredAuth(resolved.model)) {
-				return usage(`No API key for ${resolved.model.provider}/${resolved.model.id}`, runtime);
+				// `/prewalk` is text-mode, so the remedy has to hold outside a terminal.
+				// `missingCredentialsMessage` names the env var, the auth-broker command and the models.yml
+				// path, and marks `/login` as the interactive-only shortcut rather than the answer.
+				return usage(missingCredentialsMessage(resolved.model.provider, resolved.model.id), runtime);
 			}
 			runtime.session.armPrewalk(resolved.model, resolved.thinkingLevel);
 			await runtime.output(
