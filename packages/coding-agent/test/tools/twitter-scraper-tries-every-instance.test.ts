@@ -42,7 +42,13 @@
  * only the CALLER's signal ends the walk. Two adjacent files, two different
  * predicates, both correct; that is why the hierarchy exists rather than one test.
  */
-import { describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "bun:test";
+import { handleTwitter } from "@veyyon/coding-agent/web/scrapers/twitter";
+import * as scraperTypes from "@veyyon/coding-agent/web/scrapers/types";
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 /** Nitter HTML that the handler will accept: over 500 bytes with a `.tweet-content`. */
 function nitterPage(text: string): string {
@@ -61,14 +67,19 @@ function timeoutRejection(): DOMException {
 }
 
 /**
- * Load the handler with `loadPage` replaced. The module is re-imported per test so
- * each one gets its own mock; `mock.module` is process-wide otherwise.
+ * Replace `loadPage` for ONE test and hand back the handler under test.
+ *
+ * The spy lives on the imported namespace and is undone by the `restoreAllMocks`
+ * above, so it cannot outlive this file. `mock.module` rewrites bun's
+ * PROCESS-GLOBAL module registry: it stayed installed for every sibling file that
+ * linked its imports afterwards, and it is also why this helper used to re-import
+ * the handler behind a cache-busting query string on every single call. The spy
+ * is read at call time through the namespace binding, so one static import of
+ * `handleTwitter` now serves every test.
  */
-async function withLoadPage(impl: (url: string, options: { timeout: number; signal?: AbortSignal }) => unknown) {
-	const types = await import("@veyyon/coding-agent/web/scrapers/types");
-	mock.module("@veyyon/coding-agent/web/scrapers/types", () => ({ ...types, loadPage: impl }));
-	const mod = await import(`@veyyon/coding-agent/web/scrapers/twitter?t=${performance.now()}`);
-	return mod.handleTwitter as (
+function withLoadPage(impl: (url: string, options: { timeout: number; signal?: AbortSignal }) => unknown) {
+	vi.spyOn(scraperTypes, "loadPage").mockImplementation(impl as unknown as typeof scraperTypes.loadPage);
+	return handleTwitter as (
 		url: string,
 		timeout: number,
 		signal?: AbortSignal,
@@ -80,7 +91,7 @@ describe("handleTwitter, when an instance fails", () => {
 		// THE REGRESSION. Instance one times out; instance two has the tweet. The old
 		// code abandoned the loop on the first throw and never reached instance two.
 		const tried: string[] = [];
-		const handleTwitter = await withLoadPage(async (url: string) => {
+		const handleTwitter = withLoadPage(async (url: string) => {
 			tried.push(new URL(url).hostname);
 			if (tried.length === 1) throw timeoutRejection();
 			return {
@@ -101,7 +112,7 @@ describe("handleTwitter, when an instance fails", () => {
 
 	it("tries all four instances before giving up", async () => {
 		const tried: string[] = [];
-		const handleTwitter = await withLoadPage(async (url: string) => {
+		const handleTwitter = withLoadPage(async (url: string) => {
 			tried.push(new URL(url).hostname);
 			throw timeoutRejection();
 		});
@@ -117,7 +128,7 @@ describe("handleTwitter, when an instance fails", () => {
 		// The old fixed sentence asserted a cause nobody checked. The operator's next
 		// move differs by reason: four timeouts is a transient network problem worth
 		// retrying, four 429s is not.
-		const handleTwitter = await withLoadPage(async (url: string) => {
+		const handleTwitter = withLoadPage(async (url: string) => {
 			const host = new URL(url).hostname;
 			if (host === "nitter.poast.org")
 				return { ok: false, status: 429, content: "", contentType: "", finalUrl: url };
@@ -139,7 +150,7 @@ describe("handleTwitter, when an instance fails", () => {
 		// caller's own signal may stop the walk. The first version of this fix used
 		// `isCancellation` here and this test is what caught it.
 		const tried: string[] = [];
-		const handleTwitter = await withLoadPage(async (url: string) => {
+		const handleTwitter = withLoadPage(async (url: string) => {
 			tried.push(new URL(url).hostname);
 			throw timeoutRejection();
 		});
@@ -154,7 +165,7 @@ describe("handleTwitter, when an instance fails", () => {
 		// A mirror that answers with a 200 and an interstitial is a different problem
 		// from one that never answered, and the old code could not tell them apart
 		// because the `content.length > 500` test just fell off the end of the loop.
-		const handleTwitter = await withLoadPage(async (url: string) => ({
+		const handleTwitter = withLoadPage(async (url: string) => ({
 			ok: true,
 			content: "<html>rate limited</html>",
 			contentType: "text/html",
@@ -168,7 +179,7 @@ describe("handleTwitter, when an instance fails", () => {
 	});
 
 	it("records a page with no tweet content as its own reason", async () => {
-		const handleTwitter = await withLoadPage(async (url: string) => ({
+		const handleTwitter = withLoadPage(async (url: string) => ({
 			ok: true,
 			content: `<html><body>${"y".repeat(600)}</body></html>`,
 			contentType: "text/html",
@@ -189,7 +200,7 @@ describe("handleTwitter, when the work is cancelled", () => {
 		// X blocks bots when in fact they pressed Escape.
 		const controller = new AbortController();
 		const tried: string[] = [];
-		const handleTwitter = await withLoadPage(async (url: string) => {
+		const handleTwitter = withLoadPage(async (url: string) => {
 			tried.push(new URL(url).hostname);
 			controller.abort(new Error("user pressed Escape"));
 			throw new DOMException("This operation was aborted", "AbortError");
@@ -215,7 +226,7 @@ describe("handleTwitter, when the work is cancelled", () => {
 		// not be filed under "this mirror is slow" and retried against the next three.
 		const tried: string[] = [];
 		const thrown = new DOMException("This operation was aborted", "AbortError");
-		const handleTwitter = await withLoadPage(async (url: string) => {
+		const handleTwitter = withLoadPage(async (url: string) => {
 			tried.push(new URL(url).hostname);
 			throw thrown;
 		});
@@ -232,7 +243,7 @@ describe("handleTwitter, when the work is cancelled", () => {
 	it("reports the cancellation when an instance swallowed it and threw something else", async () => {
 		const controller = new AbortController();
 		const reason = new Error("session ended");
-		const handleTwitter = await withLoadPage(async () => {
+		const handleTwitter = withLoadPage(async () => {
 			controller.abort(reason);
 			throw new Error("Unexpected end of JSON input");
 		});
@@ -251,7 +262,7 @@ describe("handleTwitter, when the URL is not its own", () => {
 	it("returns null for a non-Twitter host so the next handler sees it", async () => {
 		// THE NEGATIVE TWIN. Hoisting the URL checks out of the old try must not turn
 		// a decline into a match; a match here would stop the whole dispatcher.
-		const handleTwitter = await withLoadPage(async () => {
+		const handleTwitter = withLoadPage(async () => {
 			throw new Error("loadPage must not be called for a URL this handler declines");
 		});
 
@@ -259,7 +270,7 @@ describe("handleTwitter, when the URL is not its own", () => {
 	});
 
 	it("returns null for an unparseable URL", async () => {
-		const handleTwitter = await withLoadPage(async () => {
+		const handleTwitter = withLoadPage(async () => {
 			throw new Error("loadPage must not be called for an unparseable URL");
 		});
 

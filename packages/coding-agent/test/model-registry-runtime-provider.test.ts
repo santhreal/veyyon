@@ -451,25 +451,31 @@ describe("ModelRegistry runtime provider registration", () => {
 	});
 
 	test("extension-registered API keys survive refresh cycle for auth resolution", async () => {
-		// Set up the env var that the apiKey config references
+		// Set up the env var that the apiKey config references. try/finally rather
+		// than a trailing `delete`: a failed assertion below would skip that line
+		// and leave the variable set for every later file in the same `bun test`
+		// process.
+		const previousRuntimeKey = process.env.TEST_RUNTIME_KEY;
 		process.env.TEST_RUNTIME_KEY = "test-value";
+		try {
+			const config: ProviderConfigInput = {
+				baseUrl: "https://runtime.example.com/v1",
+				apiKey: "TEST_RUNTIME_KEY",
+				api: "openai-completions",
+				models: [baseModel],
+			};
 
-		const config: ProviderConfigInput = {
-			baseUrl: "https://runtime.example.com/v1",
-			apiKey: "TEST_RUNTIME_KEY",
-			api: "openai-completions",
-			models: [baseModel],
-		};
+			registry.registerProvider("runtime-provider", config, "ext://runtime");
+			expect(registry.authStorage.hasAuth("runtime-provider")).toBe(true);
 
-		registry.registerProvider("runtime-provider", config, "ext://runtime");
-		expect(registry.authStorage.hasAuth("runtime-provider")).toBe(true);
+			await registry.refresh("offline");
 
-		await registry.refresh("offline");
-
-		// The fallback resolver should still find the API key after refresh
-		expect(registry.authStorage.hasAuth("runtime-provider")).toBe(true);
-
-		delete process.env.TEST_RUNTIME_KEY;
+			// The fallback resolver should still find the API key after refresh
+			expect(registry.authStorage.hasAuth("runtime-provider")).toBe(true);
+		} finally {
+			if (previousRuntimeKey === undefined) delete process.env.TEST_RUNTIME_KEY;
+			else process.env.TEST_RUNTIME_KEY = previousRuntimeKey;
+		}
 	});
 
 	test("extension-registered custom API handler survives model refresh", async () => {

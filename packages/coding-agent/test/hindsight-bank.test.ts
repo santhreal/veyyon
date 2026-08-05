@@ -11,12 +11,35 @@ import { removeWithRetries } from "@veyyon/utils";
 // `~/.gitconfig` commit signing or template hooks would otherwise turn the
 // worktree fixture's `git init`/`git commit`/`git worktree add` into a flaky
 // dance. Mirrors the isolation in `test/tools/gh.test.ts`.
-process.env.GIT_CONFIG_GLOBAL = "/dev/null";
-process.env.GIT_CONFIG_SYSTEM = "/dev/null";
-process.env.GIT_CONFIG_NOSYSTEM = "1";
-process.env.GIT_TERMINAL_PROMPT = "0";
-process.env.GIT_ASKPASS = "true";
-delete process.env.XDG_CONFIG_HOME;
+//
+// Applied in a hook rather than at module scope: `bun test` runs every file in
+// ONE process, so a bare top-level assignment stayed in force for every file
+// that ran after this one, and the deleted `XDG_CONFIG_HOME` never came back at
+// all. The top-level `beforeAll` still runs before any describe-scoped fixture.
+const GIT_ISOLATION_ENV: Readonly<Record<string, string | undefined>> = {
+	GIT_CONFIG_GLOBAL: "/dev/null",
+	GIT_CONFIG_SYSTEM: "/dev/null",
+	GIT_CONFIG_NOSYSTEM: "1",
+	GIT_TERMINAL_PROMPT: "0",
+	GIT_ASKPASS: "true",
+	XDG_CONFIG_HOME: undefined,
+};
+const savedGitEnv: Record<string, string | undefined> = {};
+
+beforeAll(() => {
+	for (const [key, value] of Object.entries(GIT_ISOLATION_ENV)) {
+		savedGitEnv[key] = process.env[key];
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+});
+
+afterAll(() => {
+	for (const [key, value] of Object.entries(savedGitEnv)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+});
 
 function runGit(cwd: string, args: string[]): string {
 	const result = Bun.spawnSync(["git", ...args], {
