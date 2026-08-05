@@ -261,8 +261,10 @@ and verify it before running it.
 
 ### Asset names
 
-The build (`scripts/ci-release-build-binaries.ts`) and both installers agree on these
-names, keep them in sync if you touch any of the three:
+The asset names come from one table,
+[`packages/coding-agent/scripts/binary-targets.ts`](../../packages/coding-agent/scripts/binary-targets.ts),
+which both binary builders read. Both installers have to agree with it, so if you
+change a name, change it in the table and in both installers together:
 
 | Platform / arch | Asset |
 | --- | --- |
@@ -280,31 +282,13 @@ Each ships alongside a `<asset>.sha256`. `install.sh` covers linux and darwin;
 Both installers **fail closed** when SHA-256 verification fails. They download the
 matching `<asset>.sha256`, recompute the binary's digest, and refuse to install a
 missing, empty, malformed, or mismatched sidecar (with `--no-verify` / `-NoVerify`
-as the explicit override). CI creates a sidecar for every binary and native addon,
-checks the exact asset manifest, then downloads the draft Linux x64, macOS arm64,
-and Windows x64 binaries on their native runners. Each verification job recomputes
-the SHA-256 digest, checks the embedded release version, and runs `--smoke-test` in
-a clean home directory. A release that ships only some platforms will 404 for the
-rest, so keep the asset set complete.
+as the explicit override).
 
 ### How binaries get published
 
-The Release workflow runs only when a person dispatches it, and its gate refuses
-to cut unless CI and Checks are both green for the exact `origin/main` SHA the
-dispatch named. It then cuts the tag, dispatches Checks at that immutable tag,
-and dispatches `ci.yml` only after the exact tag passes `checks.yml`. The
-controller correlates and waits for that exact tagged CI run. CI compiles and
-smoke-tests every platform binary,
-prepares the GitHub release with all assets and SHA-256 sidecars, verifies the
-draft binaries on native runners, and publishes only after those runtime checks
-pass. The Release workflow succeeds only after it verifies the final asset
-manifest, non-draft state, and `releases/latest` tag.
-
-Publication does not complete when the GitHub API first reports the release. The release train polls the public `releases/latest` redirect with cache-busting requests until it resolves to the exact new tag. It then drives the production installer on Linux x64, Linux arm64, macOS x64, macOS arm64, and Windows x64. Each transactional run requires the installed binary to report that same tag before reinstall and uninstall checks can pass.
-
-> Every `ci.yml` job runs on GitHub-hosted runners, so a release never depends
-> on a self-hosted fleet: see [releasing.md](./releasing.md) §Runners and
-> concurrency.
+[releasing.md](./releasing.md) is the only page about that. It covers the one
+command you run, the publication transaction the tagged CI run performs, what the
+release produces, how to verify it, and how to recover a failed step.
 
 ## Repository secrets and variables
 
@@ -322,25 +306,13 @@ production deployment inside tagged CI.
 
 ## Rollback and hotfix
 
-The installers resolve **`releases/latest`**, so what "latest" points at *is* the
-rollback lever:
-
-- **Bad release, binaries broken**: mark the bad GitHub release as a **pre-release**
-  (or delete it). `releases/latest` immediately falls back to the previous good
-  release and every new `curl | sh` install gets the old binaries. The installed
-  binary's auto-updater resolves the same `releases/latest`, so it stops offering the
-  bad version too. This is the fastest path and needs no new build.
-- **Website/changelog**: the next `site:deploy` (manual or the fixed release's
-  auto-deploy) reconciles the changelog against non-draft releases. Deleting the
-  bad release, or making it absent, drops that version to `pending release`.
-  Merely marking it as a pre-release does not: the current generator still
-  renders non-draft pre-releases as published.
-
-**Hotfix flow**: fix on `main`, wait for that commit's own CI and Checks runs to
-go green, then dispatch the Release workflow at that SHA (`gh workflow run
-release.yml -f version=patch -f expected_sha=<sha>`). Nothing cuts the fix for
-you. There are no release branches. If the bad version must stop being installed
-*right now*, do the pre-release flip above first.
+Rolling back a bad release and shipping the hotfix are release work, so they live
+with the rest of it in [releasing.md](./releasing.md) under "Recover from a
+failure". One detail belongs here because it is about the site rather than the
+release: the next site deploy reconciles the changelog against non-draft releases,
+so deleting a bad release drops that version to `pending release`, while merely
+marking it a pre-release does not. The generator still renders non-draft
+pre-releases as published.
 
 ## Checklist for a normal site update
 
@@ -359,4 +331,4 @@ merge lands:
 4. `bun run site:deploy`.
 5. If `install.sh` or `install.ps1` changed, also run `bun run site:deploy:get`.
 
-*Verified against `77074dee` on 2026-08-02.*
+*Verified against `92ff7a6b` on 2026-08-04.*

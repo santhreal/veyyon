@@ -45,7 +45,7 @@ The same minimum-content guard exists again inside `AgentSession.handoff()` and 
 
 - Reads current branch entries (`sessionManager.getBranch()`).
 - Validates minimum message count (`>= 2`).
-- Streaming guard lives in the callers, not here: the TUI `/handoff` (`handleHandoffCommand` warns `Wait for the current response to finish or abort it before handing off.`) and RPC `handoff` command check `isStreaming` before calling this, and the auto-handoff path runs only after the turn settles. Resetting the agent mid-stream would let the live turn keep emitting into the torn-down session.
+- Streaming guards live in the explicit TUI and RPC callers. The TUI `/handoff` warns `Wait for the current response to finish or abort it before handing off.` Resetting the agent mid-stream would let the live turn keep emitting into the torn-down session.
 - Creates `#handoffAbortController` and links any caller-provided abort signal to it.
 - Resolves the current model API key through `ModelRegistry`.
 - Builds the handoff request through the **same pipeline a live turn uses**: the cache-preserving side-request path shared with `runEphemeralTurn` (`/btw`, `/omfg`):

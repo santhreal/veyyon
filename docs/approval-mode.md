@@ -17,27 +17,28 @@ Configure with `tools.approvalMode`:
 | Mode               | Auto-approves           | Prompts for     |
 | ------------------ | ----------------------- | --------------- |
 | `plan`             | `read`                  | `write` only inside an active plan-mode session; `write` and `exec` are otherwise denied |
-| `ask`              | `read`                  | `write`, `exec` |
-| `auto-edit`        | `read`, `write`         | `exec`          |
-| `yolo` (default)   | `read`, `write`, `exec` | none            |
+| `ask`              | nothing                 | `read`, `write`, `exec` |
+| `ask-command`      | `read`, `write`         | `exec`          |
+| `auto` (default)   | `read`, `write`, `exec` | a per-tool policy, the working-directory boundary, credential use, and a tool's own `critical` calls |
+| `yolo`             | `read`, `write`, `exec` | none            |
 
 Under `plan`, `exec` is always denied (it returns an error to the model, never a prompt). Outside an active plan-mode session, `write` is denied too; with a plan-mode session active, `write` prompts.
 
-Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`.
+Legacy aliases still accepted: `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`.
 
 `--auto-approve` and `--yolo` force `tools.approvalMode: yolo` for the session.
 
 ## The working-directory boundary
 
 The table above sorts tools by tier, and a tier says nothing about which file a
-call touches. The `write` tier auto-approves `write` in `auto-edit` mode whether
+call touches. The `write` tier auto-approves `write` in `ask-command` mode whether
 the target is `src/main.ts` or `/etc/hosts`. The working-directory boundary is
 the second question, asked after the tier:
 
 > Does this call touch a path outside the session working directory?
 
 If it does, the call needs approval even when its tier would have allowed it.
-This applies in `plan`, `ask` and `auto-edit`. It does not apply in `yolo`, which
+This applies in `plan`, `ask`, `ask-command` and `auto`. It does not apply in `yolo`, which
 opts out of all permission and so opts out of this too.
 
 The boundary is physical, not textual. A path spelled entirely inside the working
@@ -70,7 +71,7 @@ The model works with placeholders such as `#GITHUB_TOKEN#`, and Veyyon substitut
 value immediately before the tool runs, so the model can use a secret it never reads. That
 substitution is recorded by `secrets.auditLog`, which answers the question afterwards. This
 boundary is what asks first: a call whose arguments carry a real credential needs approval
-in `plan`, `ask` and `auto-edit`, and the prompt names the secret without showing its value.
+in `plan`, `ask`, `ask-command` and `auto`, and the prompt names the secret without showing its value.
 
 `yolo` opts out of all permission and so opts out of this too. A call that mentions a
 placeholder without expanding it, such as one made while `secrets.enabled` is false, carries
@@ -100,7 +101,7 @@ To start a session already in full bypass, pass `--dangerously-skip-permissions`
 
 ```yaml
 tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
     read: allow
@@ -124,7 +125,7 @@ A tool can force a prompt with object-form approval:
 approval: { tier: "exec", override: true, reason: "Needs confirmation" }
 ```
 
-`override: true` beats a per-tool `allow` in `plan`, `ask`, and `auto-edit`. `yolo` ignores it.
+`override: true` beats a per-tool `allow` in `plan`, `ask`, `ask-command`, and `auto`. `yolo` ignores it.
 
 There is a second strength for calls that must stop even there:
 
@@ -134,7 +135,7 @@ approval: { tier: "exec", critical: true, reason: "rm would recursively remove t
 
 `critical: true` implies `override: true` and adds a floor under it: the call still prompts in `yolo`, and the `/yolo` session bypass does not lift it. Setting `tools.approval.<tool>` explicitly still wins in both directions, so `allow` is the escape hatch and `deny` is still a hard block.
 
-`bash` marks both halves of its guard critical: the paths a command would recursively delete (judged after expansion, so `rm -rf ~/` and `rm -rf "$HOME"/` are recognized) and the text-shaped patterns such as fork bombs, remote-fetch-then-execute, writes to `/etc/passwd`, and host shutdown commands. The reason names the path where there is one, and surfaces as `reason` in the approval prompt. Without the floor the ordering would be inverted: `tools.approvalMode` defaults to `yolo`, so the calls the guard considers most dangerous would be the ones most likely to run in the mode that skips the check.
+`bash` marks both halves of its guard critical: the paths a command would recursively delete (judged after expansion, so `rm -rf ~/` and `rm -rf "$HOME"/` are recognized) and the text-shaped patterns such as fork bombs, remote-fetch-then-execute, writes to `/etc/passwd`, and host shutdown commands. The reason names the path where there is one, and surfaces as `reason` in the approval prompt. Without the floor the ordering would be inverted: `tools.approvalMode` defaults to `auto`, which runs the exec tier unasked, so the calls the guard considers most dangerous would be the ones most likely to run without a check.
 
 ## Per-tool prompt details
 
@@ -193,7 +194,7 @@ veyyon acp --config ./acp-yolo.yml   # file contains tools.approvalMode: yolo
 
 Precedence is the normal settings precedence: runtime flags (`--approval-mode`, `--auto-approve`, `--yolo`) override `--config` overlays, which override project config, which overrides global config. ACP does not currently define a `session/new`, `session/load`, or `session/resume` approval-policy field, so ACP clients that need per-session yolo should launch a separate `veyyon acp` process with one of the flags above or with a session-specific `--config` overlay.
 
-`tools.approvalMode: yolo` fully applies to ACP when it is explicitly configured or supplied by a runtime flag. It skips Veyyon's approval prompts and also skips the ACP client permission gate for `bash`, `edit`, `delete`, and `move` unless `tools.approval.<tool>` is `prompt` or `deny`. The schema default is `yolo`, but default-config ACP sessions still keep the client permission gate; set `tools.approvalMode: yolo` explicitly when the client wants unattended execution.
+`tools.approvalMode: yolo` fully applies to ACP when it is explicitly configured or supplied by a runtime flag. It skips Veyyon's approval prompts and also skips the ACP client permission gate for `bash`, `edit`, `delete`, and `move` unless `tools.approval.<tool>` is `prompt` or `deny`. The schema default is `auto`, not `yolo`, so default-config ACP sessions still keep the client permission gate; set `tools.approvalMode: yolo` explicitly when the client wants unattended execution.
 
 When ACP approval is required, Veyyon routes it through the ACP client instead of the terminal TUI. Client-gated `bash`, `edit`, `delete`, and `move` calls use ACP `session/request_permission`; generic approval prompts use form elicitation when the client advertises `elicitation.form`. A rejected, cancelled, or unsupported prompt rejects/cancels the tool call; Veyyon does not silently allow it.
 

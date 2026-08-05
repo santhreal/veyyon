@@ -14,11 +14,11 @@ the original notes pointed at an archived Rust/codex layout (`crates/core/src/..
 
 These are genuinely good patterns. Refactors must preserve behavior.
 
-1. **Handoff / compaction prompt**: `packages/agent/src/compaction/compaction.ts`
-   (`renderHandoffPrompt`, `generateHandoffFromContext`), called from
-   `packages/coding-agent/src/session/agent-session.ts`. Preserves task continuity across compaction
-   when `compaction.strategy` is `handoff` (the other user-facing type is `summary`, the default; see
-   [Compaction & project memory](../handbook/src/context/compaction-memory.md)). Engineering detail:
+1. **Handoff and compaction prompts**: `packages/agent/src/compaction/compaction.ts`
+   (`renderHandoffPrompt`, `generateHandoffFromContext`) and the compaction prompt
+   registry, called from `packages/coding-agent/src/session/agent-session.ts`.
+   Compaction summarizes in place. Explicit `/handoff` transfers continuity to a
+   new session. Engineering detail:
    [`docs/internal/handoff-generation-pipeline.md`](./handoff-generation-pipeline.md).
 2. **Subagent spawn model**: `packages/coding-agent/src/task/executor.ts` (spawn, per-model
    concurrency semaphore, soft output-budget steering notice, background output capture) plus
@@ -55,10 +55,10 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
    `packages/coding-agent/src/config/model-resolver.ts`.
 2. **Silent per-role heuristic routing.** The primary model drives everything unless the plain
    subagent/compaction fields say otherwise; there is no hidden per-role auto-pick behind the scenes.
-3. **Overlapping compaction settings UX.** Condensed to three fields: threshold, type
-   (`handoff`/`summary`), model, see `packages/coding-agent/src/config/compaction-strategy.ts` and the
-   `compaction.*` group in `packages/coding-agent/src/config/settings-schema.ts`. Not a parallel
-   model-picker maze.
+3. **Overlapping compaction settings UX.** Condensed to threshold, the fixed
+   `summary` strategy, and an ordered model chain. See
+   `packages/coding-agent/src/config/compaction-strategy.ts` and the `compaction.*`
+   group in `packages/coding-agent/src/config/settings-schema.ts`.
 4. **Hosted Cloud/Ultra task-list backend types.** Out of scope for this product; do not conflate with
    the `todo` tool above.
 

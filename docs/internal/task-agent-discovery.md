@@ -149,7 +149,7 @@ In `src/task/index.ts`, command helpers are re-exported with agent discovery hel
 
 An agent can be discoverable but still unavailable to run because of execution guardrails.
 
-### Disabled-agent settings
+### Per-agent profile settings
 
 `TaskTool.#executeSync` checks `subagent.agents.<name>.enabled` after resolving the agent, through `isSubagentEnabled` — one predicate, and the same one that decides what goes in the tool description, so the set the model is offered and the set it may spawn cannot diverge. A disabled agent is refused, and the refusal names the setting and lists the enabled agents. The one thing that also passes is a per-turn grant: a `/` command declares the agents its prompt names (`CustomCommand.spawnsAgents`), the session grants them for the turn that prompt starts, and `TaskTool` consults `session.agentGrantedThisTurn`. That is how `/review` spawns `reviewer` on a stock install where every specialist is disabled. There used to be a second predicate, `isSubagentSpawnable`, under which any named spawn ran; it made `enabled: false` the only real off switch and left a user-visible state reading "not offered but still runs when named".
 
@@ -172,7 +172,7 @@ If denied: immediate `Cannot spawn '...'. Allowed: ...` response.
 In `runSubprocess` (`src/task/executor.ts`):
 
 - depth computed from `taskDepth`
-- `subagent.maxRecursionDepth` controls cutoff
+- `subagent.maxNestedSpawnDepth` controls the cutoff
 - when at max depth:
   - `task` tool is removed from child tool list
   - child `spawns` env is set to empty

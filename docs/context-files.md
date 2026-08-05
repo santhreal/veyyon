@@ -23,7 +23,7 @@ The native provider is the recommended format for new projects. It reads from yo
 |---|---|---|
 | `~/.veyyon/AGENTS.md` | Global User | Global cross-profile context for every session across all profiles. |
 | `~/.veyyon/profiles/<profile>/...` | Profile User | Active profile context. Scanned in descending priority order (first match wins; exactly 1 file loaded per profile):<br>1. `~/.veyyon/profiles/<profile>/agent/AGENTS.md` (Highest)<br>2. `~/.veyyon/profiles/<profile>/AGENTS.md`<br>3. `~/.veyyon/profiles/<profile>/agent/agent.md`<br>4. `~/.veyyon/profiles/<profile>/agent.md` (Lowest) |
-| `<ancestor>/.veyyon/AGENTS.md` | Project | Project context. `veyyon` walks upward from the current directory to the repository root and uses the **nearest** non-empty `.veyyon/AGENTS.md`. Farther `.veyyon/AGENTS.md` files are not also included. Separately, every bare `<ancestor>/AGENTS.md` and `<ancestor>/CLAUDE.md` along the walk-up is collected too (see the `native` provider row below). |
+| `<ancestor>/.veyyon/AGENTS.md` | Project | Project context. `veyyon` walks upward from the current directory to the repository root and every ancestor contributes at most **one** file. The nearest non-empty `.veyyon/` directory supplies that ancestor's file from its `AGENTS.md`; other ancestors fall back to a bare `AGENTS.md`, then a bare `CLAUDE.md`. See [Load order and shadowing](#load-order-and-shadowing) for the full per-directory order. |
 | `~/.veyyon/profiles/<profile>/agent/RULES.md` | User | User-level sticky rule content. Loaded as an always-apply rule, not as a context file. |
 | `<ancestor>/.veyyon/RULES.md` | Project | Project sticky rule content. Same nearest-ancestor walk-up as above. Loaded as an always-apply rule. |
 Two details matter:
@@ -58,7 +58,7 @@ Put broad, durable project background in `AGENTS.md`. Reserve `RULES.md` for sho
 
 | Provider id | Convention path | Scope | Notes |
 |---|---|---|---|
-| `native` | `.veyyon/AGENTS.md` | User + project | Recommended `veyyon` format. User file at `~/.veyyon/profiles/default/agent/AGENTS.md`; project file is the nearest non-empty `.veyyon/AGENTS.md` walking up to the repo root, plus every bare `<encestor>/AGENTS.md` and `<encestor>/CLAUDE.md` collected at each ancestor. |
+| `native` | `.veyyon/AGENTS.md` | User + project | Recommended `veyyon` format. User file at `~/.veyyon/profiles/<profile>/agent/AGENTS.md`; project files are one per ancestor directory from the repo root down to the cwd, resolved per directory as described in [Load order and shadowing](#load-order-and-shadowing). |
 | `claude` | `.claude/CLAUDE.md` | User + project | User file `~/.claude/CLAUDE.md`; project file `<cwd>/.claude/CLAUDE.md` only (no ancestor walk-up). |
 | `codex` | `.codex/AGENTS.md` | User | User file `~/.codex/AGENTS.md` only. Project-level standalone `AGENTS.md` files load through the `native` provider's ancestor walk-up, not from `<cwd>/.codex/AGENTS.md`. |
 | `gemini` | `.gemini/GEMINI.md` | User + project | User file `~/.gemini/GEMINI.md`; project file `<cwd>/.gemini/GEMINI.md` only (no ancestor walk-up). |
@@ -86,13 +86,24 @@ When two providers describe the *same* scope, the higher-priority provider wins.
 
 Discovered files are then deduplicated by scope:
 
-- **One user context file** is kept across all providers. Because `native` has the highest priority, `~/.veyyon/profiles/default/agent/AGENTS.md` shadows every other user-level context file.
+- **One user context file** is kept across all providers. Because `native` has the highest priority, `~/.veyyon/profiles/<profile>/agent/AGENTS.md` shadows every other user-level context file.
 - **One project context file per directory depth.** Depth is measured from the current directory: the cwd is depth 0, its parent depth 1, and so on. Config subdirectories of an ancestor (`.claude/`, `.github/`, `.gemini/`, …) count as the same depth as that ancestor.
+- **Within one directory, `native` picks a single file before any shadowing happens.** The order is `.veyyon/AGENTS.md` (only from the nearest non-empty `.veyyon/` directory), then a bare `AGENTS.md`, then a bare `CLAUDE.md`. The first one that has content wins and the rest of that directory's candidates are never read, so a `CLAUDE.md` beside an `AGENTS.md` is not loaded, not appended, and not deduplicated later. `CLAUDE.md` is last because `AGENTS.md` is the tool-neutral convention: a project carrying both is nearly always stating the same rules twice, and a stale `CLAUDE.md` must not contradict a maintained `AGENTS.md`. A candidate that is empty or unreadable contributes nothing and therefore shadows nothing, so the next one down gets its turn.
+- **The pick is per directory, not per project.** A repo root with only `AGENTS.md` and a package directory with only `CLAUDE.md` both load, each at its own depth.
 - **At the same depth, the higher-priority provider shadows the rest.**
 - **Across depths, multiple files survive.** In a monorepo, an ancestor `AGENTS.md` and a package-level one are different depths and both load.
 - **Byte-identical files are collapsed.** If two surviving files have exactly the same content, only the copy closest to the cwd is kept.
 
 After deduplication, project files are sorted so **farther ancestors appear first** and files **closer to the cwd appear last**. Later files sit nearer the end of the context block, where they are most prominent.
+
+### Scope prominence: the profile file is last and wins
+
+Provider priority and depth decide which files *survive*. A separate axis decides where each survivor is *rendered*, and therefore which one wins an outright conflict. These are two different orders and it is easy to read one as the other:
+
+- **Resolution order** is the order the three scopes are read: global, then profile, then project.
+- **Prominence order** is the order they are rendered, least prominent first: global, then the project group (farther ancestors first, closest to the cwd last), then the profile file **last of all**.
+
+So the closest project file outranks its own ancestors, but the whole project group is still placed *before* the profile file, and the profile file therefore has the last word. That is deliberate: standing instructions you wrote once for your account must not be silently outranked by whatever repository happens to be checked out. The cross-profile global `~/.veyyon/AGENTS.md` is the baseline and is placed first, so anything more specific overrides it.
 
 ### Worked shadowing example
 
@@ -117,7 +128,7 @@ Discovered context files are injected into the opening project prompt as a singl
 
 ```xml
 <context>
-You MUST follow the context files below for all tasks:
+The current user message has highest authority. The user-authored context files below are next: they override conflicting Veyyon system/developer prompt defaults and any other supplied or historical context. Among these files, later and deeper files override earlier and broader files. You MUST follow the resulting instructions for all tasks:
 <file path="/abs/path/to/repo/AGENTS.md">
 ...root content...
 </file>
@@ -128,6 +139,8 @@ You MUST follow the context files below for all tasks:
 ```
 
 The agent sees each file's absolute path and its fully expanded Markdown content (with `@` imports already resolved, see below). When discovery is enabled, matching context files are injected at session start.
+
+This authority statement applies to Veyyon's own assembled prompt. A current user message wins over standing context files. The surviving context files then win over conflicting generic Veyyon workflow defaults, retrieved material, and historical summaries. Within the context block, the later and more specific file wins when two loaded files conflict.
 
 Deeper-directory `AGENTS.md` files that were *not* auto-loaded (for example, ones below the current directory) are surfaced separately in a `<dir-context>` block that lists their paths and tells the agent to read them before editing those directories. Those files are pointers, not full injected content.
 
@@ -148,7 +161,7 @@ The exact rules:
 - **`~/` and `~`** resolve from the user's home directory; absolute paths are used as-is.
 - **Tokens inside fenced code blocks and inline code spans are left untouched**: useful when you want to *write about* an `@token` without expanding it.
 - **`git@github.com:org/repo.git` and `user@example.com`-style tokens are not treated as imports.** A token only counts when the `@` sits at the start of a line or after a space or tab.
-- **Trailing sentence punctuation is trimmed** off the path (`. , ; : ! ? ) ] } " '`), so `@docs/setup.md.` imports `docs/setup.md`.
+- **Trailing sentence punctuation is trimmed** off the path (`. , ; : ! ? ) ] } " '`), so `@notes/setup.md.` imports `notes/setup.md`.
 - **Imports recurse up to five hops.** An imported file may itself contain `@` imports, up to a total depth of five.
 - **Cycles are skipped.** A file already pulled into the current expansion tree is not re-expanded, so mutual imports terminate cleanly.
 - **A missing or unreadable target leaves the original `@token` text in place** rather than erroring.
@@ -160,7 +173,7 @@ Use a normal context file (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copil
 Use a top-level **`RULES.md`** for the handful of hard requirements that must stay active even after a long conversation has pushed the opening context far up the transcript:
 
 ```markdown
-# ~/.veyyon/profiles/default/agent/RULES.md
+# ~/.veyyon/profiles/<profile>/agent/RULES.md
 
 Never commit or push unless the user explicitly asks.
 Do not edit generated files.
@@ -168,7 +181,7 @@ Do not edit generated files.
 
 `RULES.md` is special:
 
-- It is read **only** at the native locations: `~/.veyyon/profiles/default/agent/RULES.md` and the nearest `<ancestor>/.veyyon/RULES.md` from the cwd up to the repo root. A `RULES.md` anywhere else is not a context-file convention and is ignored.
+- It is read **only** at the native locations: `~/.veyyon/profiles/<profile>/agent/RULES.md` and the nearest `<ancestor>/.veyyon/RULES.md` from the cwd up to the repo root. A `RULES.md` anywhere else is not a context-file convention and is ignored.
 - It is loaded as an **always-apply rule**, not as a context file, so it is re-attached near the current turn and keeps its hold across long sessions.
 - It is **always sticky**: frontmatter cannot make it non-sticky. If you want conditional or opt-in behavior, write a normal rule file instead (see [Skills](./skills.md)).
 
@@ -176,7 +189,7 @@ Keep `RULES.md` short. Long background belongs in `AGENTS.md`, where it costs co
 
 ## Disabling discovery providers
 
-Turn a provider off with the `disabledProviders` setting in `~/.veyyon/profiles/default/agent/config.yml`, a project's `.veyyon/config.yml`, or a `--config` overlay:
+Turn a provider off with the `disabledProviders` setting in `~/.veyyon/profiles/<profile>/agent/config.yml`, a project's `.veyyon/config.yml`, or a `--config` overlay:
 
 ```yaml
 # .veyyon/config.yml
@@ -213,7 +226,7 @@ Remember that higher-precedence settings layers **replace** array settings rathe
 ### A file is not loaded
 
 - Native project context must live at `.veyyon/AGENTS.md`, and the `.veyyon/` directory must be non-empty; an empty `.veyyon/` is skipped and the walk-up continues to the next ancestor.
-- A standalone `AGENTS.md` or `CLAUDE.md` at any ancestor is loaded by `native` itself; `agents-md` contributes only when `native` is disabled.
+- A standalone `AGENTS.md` or `CLAUDE.md` at any ancestor is loaded by `native` itself; `agents-md` contributes only when `native` is disabled. A `CLAUDE.md` is skipped when the same directory has a usable `AGENTS.md` or `.veyyon/AGENTS.md`; that is deliberate, see [Load order and shadowing](#load-order-and-shadowing).
 - `.claude/CLAUDE.md`, `.gemini/GEMINI.md`, and `.github/copilot-instructions.md` are read only from the current working directory's config directory: not from every ancestor.
 - `~/.codex/AGENTS.md` and `~/.config/opencode/AGENTS.md` are user-level only and have no project equivalent.
 - Empty files contribute nothing for the native and standalone providers.
@@ -225,11 +238,11 @@ At one user scope or project depth, the higher-priority provider shadows the oth
 
 ### User context disappeared
 
-Only one user-level context file survives, and `~/.veyyon/profiles/default/agent/AGENTS.md` has the highest priority. If it exists, it shadows user-level `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, and `~/.agent`/`~/.agents` files. Consolidate user guidance into the native file or remove the native one if you prefer another tool's file. Under a named profile the native user file is the profile's own `~/.veyyon/profiles/<name>/agent/AGENTS.md`, a profile without one falls through to the next-priority user file (typically `~/.claude/CLAUDE.md`).
+Only one user-level context file survives, and `~/.veyyon/profiles/<profile>/agent/AGENTS.md` has the highest priority. If it exists, it shadows user-level `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, and `~/.agent`/`~/.agents` files. Consolidate user guidance into the native file or remove the native one if you prefer another tool's file. A profile without one falls through to the next-priority user file (typically `~/.claude/CLAUDE.md`).
 
 ### A `RULES.md` file is ignored
 
-Only the native `RULES.md` locations are sticky: `~/.veyyon/profiles/default/agent/RULES.md` and the nearest `<ancestor>/.veyyon/RULES.md` from cwd to the repo root. A `RULES.md` in any other directory is not a recognized convention and will not be loaded.
+Only the native `RULES.md` locations are sticky: `~/.veyyon/profiles/<profile>/agent/RULES.md` and the nearest `<ancestor>/.veyyon/RULES.md` from cwd to the repo root. A `RULES.md` in any other directory is not a recognized convention and will not be loaded.
 
 ### An `@` import did not expand
 

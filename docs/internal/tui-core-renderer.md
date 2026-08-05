@@ -98,7 +98,7 @@ scrolled reader could be looking at.
    (⇒ re-anchor at the first changed row). Frozen snapshots past the verified
    zone are exempt while live and hard-scanned in full, once, when the
    boundary rises past them. A re-anchor repairs history by **erase-and-replay
-   rebuild** (`divergenceRebuild`, opt-in `VEYYON_TUI_SCROLLBACK_REBUILD`,
+   rebuild** (`divergenceRebuild`, on by default, `tui.scrollbackRebuild`,
    non-multiplexer) so history holds the content exactly once, else by
    recommitting from the changed row, **duplication, never loss**.
 3. Classify: **fullPaint** (first paint, `clearScrollback` session replace, or
@@ -126,7 +126,7 @@ scrolled reader could be looking at.
 `clearScrollback: true`, reached by user gestures: session
 replace/branch/resume (`requestRender(true, { clearScrollback: true })`),
 resize outside a multiplexer, `resetDisplay()` (Ctrl+L); plus, when the
-opt-in scrollback rebuild is enabled (`VEYYON_TUI_SCROLLBACK_REBUILD`), the
+scrollback rebuild is enabled (`tui.scrollbackRebuild`, on by default), the
 `divergenceRebuild` repair path on non-multiplexer terminals (committed
 history diverged from the frame, erase and replay so history holds the
 content exactly once instead of a duplicated block). It clears native
@@ -376,7 +376,6 @@ default-on only for kitty/ghostty (`VEYYON_NO_KITTY_PLACEHOLDERS` /
 | `VEYYON_NOTIFICATIONS=off\|0\|false` | Suppress terminal notifications. |
 | `VEYYON_DEBUG_REDRAW=1` | Log the chosen render intent + ledger state per frame to the debug log. |
 | `VEYYON_TUI_RESIZE_IN_PLACE=1\|0` | Force resize to repaint in place (no alt-screen borrow, no ED3 rewrap) on / off. Default-on for terminals that re-report size on alt-screen toggles (Warp). |
-| `VEYYON_TUI_SCROLLBACK_REBUILD=1\|true` | Opt into the `divergenceRebuild` repair: when committed history diverges from the frame on a non-multiplexer terminal, erase and replay history (ED3 full paint) so content lands exactly once, instead of recommitting below the stale copy. |
 
 Removed with the old engine: `VEYYON_TUI_ED3_SAFE` (no ED3-risk lever exists),
 `VEYYON_CLEAR_ON_SHRINK` (shrinks always clear exactly), `VEYYON_TUI_DEBUG` (per-render
@@ -539,7 +538,7 @@ Regression coverage lives in two suites, and the split matters:
 history every frame, and `test/scroll-isolation-history.test.ts` drives one that
 drops committed rows the way the real container does. Only the second one can
 see this class of bug. Both state `setScrollbackRebuild(false)` explicitly,
-because the constructor reads `VEYYON_TUI_SCROLLBACK_REBUILD` and another suite
+because the rebuild is on by default and these suites assert the append-below history
 in the same process sets it at module scope. A third suite,
 `packages/coding-agent/test/modes/components/transcript-scrollback-pinned-composer.test.ts`,
 mounts the real container and the real shortcut bar together, so the host side of

@@ -180,7 +180,7 @@ theme:
   light: light
 
 tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
     read: allow
@@ -191,7 +191,7 @@ tools:
 ```yaml
 # ~/.veyyon/profiles/default/agent/config.yml
 tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
     read: allow
@@ -212,7 +212,7 @@ Effective settings inside `<repo>`:
 
 ```yaml
 tools:
-  approvalMode: auto-edit   # kept from global (object deep-merge)
+  approvalMode: ask-command   # kept from global (object deep-merge)
   approval:
     bash: allow         # overridden by project
     read: allow         # kept from global
@@ -234,7 +234,7 @@ modelRoles:
   slow: anthropic/claude-opus-4-5:high
 
 tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
 
@@ -516,7 +516,7 @@ When the active model keeps failing (429s, quota walls, provider outages) and `r
 
 ```yaml
 tools:
-  approvalMode: yolo          # default
+  approvalMode: auto          # default
   approval:
     bash: prompt
     edit: allow
@@ -527,7 +527,7 @@ tools:
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `tools.approvalMode` | enum | `yolo` | Canonical: `plan` (read auto; write asks with an active plan-mode session, otherwise write/exec denied), `ask` (read auto; write/exec ask), `auto-edit` (read+write auto; exec ask), `yolo` (all tiers auto). Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`. Override per run with `--approval-mode` / `--auto-approve` / `--yolo`. |
+| `tools.approvalMode` | enum | `auto` | Canonical: `plan` (read auto; write asks with an active plan-mode session, otherwise write/exec denied), `ask` (nothing auto; every tier asks, reads included), `ask-command` (read+write auto; exec ask), `auto` (all tiers auto, with the per-tool, working-directory, credential and critical-call guards still asking), `yolo` (all tiers auto). Legacy aliases still accepted: `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`. Override per run with `--approval-mode` / `--auto-approve` / `--yolo`. |
 | `tools.approval` | record | `{}` | Per-tool policy keyed by tool name; each value is `allow`, `deny`, or `prompt`. e.g. `veyyon config set tools.approval '{"bash":"prompt"}'`. |
 | `tools.discoveryMode` | enum | `auto` | `auto`, `off`, `mcp-only`, `all`. `all` hides non-essential built-ins and first-party heavyweight tools such as `generate_image` until the discovery search activates them. |
 | `tools.essentialOverride` | array | `[]` | Tool names kept available even when tools are narrowed. |
@@ -758,7 +758,7 @@ They used to open a separate screen with its own roster, which meant two answers
 | `subagent.maxConcurrency` | number | `32` | Subagents running at once. |
 | `subagent.maxNestedSpawnDepth` | number | `0` | Nested levels that subagents may spawn. Direct children receive no `task` tool at `0`; an agent-specific override may raise the limit. |
 | `subagent.maxRuntimeMs` | number | `0` | Hard per-subagent wall-clock limit in ms; `0` disables it. |
-| `subagent.idleTtlMs` | number | `420000` | How long an idle subagent stays in memory before being parked to disk. |
+| `subagent.idleTtlMs` | number | `300000` | How long a finished subagent stays live before parking. The default is 5 minutes for every model and provider. Set a positive millisecond value to override it. `0` keeps idle agents live until exit. Parking closes the live session but retains its transcript for revival. |
 | `subagent.softRequestBudget` | number | `200` | Requests after which a subagent is asked to wrap up; `0` disables the guard. |
 | `subagent.softRequestBudgetNotice` | boolean | `true` | Inject that wrap-up notice once. |
 | `subagent.showResolvedModelBadge` | boolean | `true` | Show each subagent's resolved model, and what decided it, on the task widget and the agent surfaces. |
@@ -884,7 +884,7 @@ contextPromotion:
 
 compaction:
   enabled: true
-  strategy: summary           # summary | handoff (schema default: summary)
+  strategy: summary           # the sole compaction strategy
   midTurnEnabled: true        # check thresholds between tool-loop provider requests
   threshold: auto             # auto | 85% (of the model's window) | 170000 (tokens, any model)
 
@@ -897,8 +897,8 @@ memory:
 | `contextPromotion.enabled` | boolean | `false` | Promote to a larger-context model on overflow instead of compacting. |
 | `compaction.enabled` | boolean | `true` | Automatic conversation compaction. |
 | `compaction.midTurnEnabled` | boolean | `true` | Check thresholds at safe mid-turn tool-loop boundaries before the next provider request. |
-| `compaction.strategy` | enum | `summary` | `summary` (rewrite old history into an in-place LLM summary) or `handoff` (LLM handoff summary / new session transfer). |
-| `compaction.model` | modelChain | unset | Models for handoff/LLM compaction, tried in order, written as a comma-separated string or as a YAML list; unset inherits the model you are working with (`modelRoles.default`). Each may carry a `:effort` suffix, applied on every compaction pass. A candidate that is unauthenticated, or whose window cannot hold the summary, is skipped and the next one runs. |
+| `compaction.strategy` | enum | `summary` | The sole strategy. It rewrites old history into an in-place LLM summary. Stored legacy values migrate to `summary`; use `/handoff` for an explicit new-session transfer. |
+| `compaction.model` | modelChain | unset | Models for LLM compaction, tried in order, written as a comma-separated string or as a YAML list; unset inherits the model you are working with (`modelRoles.default`). Each may carry a `:effort` suffix, applied on every compaction pass. A candidate that is unauthenticated, or whose window cannot hold the summary, is skipped and the next one runs. |
 | `compaction.modelFallbackStrategy` | enum | `auto` | What to try after `compaction.model` runs out. `auto` also tries the main model, each model role, then the largest-window model available. `configured-only` stops at the models you listed and fails with the reason. Compacting on anything but your first choice is reported in the session, once per reason. |
 | `compaction.threshold` | string | `auto` | When auto-compaction triggers, with the unit in the value: `auto` uses `contextWindow - max(15% of contextWindow, reserveTokens)`; `85%` is a percent of the current model's window, so the trigger moves with the model; `170000` is an absolute token amount, the same trigger on every model. An absolute amount larger than the current model's window is honored up to `contextWindow - 1` and you get a one-time warning. Set it in `/settings` -> Model -> Auto-Compaction Threshold. |
 | `compaction.thresholdTokens` | number | `-1` | Retired, replaced by `compaction.threshold`. A value `> 0` in your global config is rewritten to `threshold: <amount>` on load and this key is dropped, so your trigger point does not change. Write an absolute amount as `threshold: 170000`. |
