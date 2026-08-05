@@ -17,14 +17,7 @@ import { readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Rule, ruleCapability } from "../capability/rule";
 import type { LoadContext, LoadResult } from "../capability/types";
-import {
-	buildRuleFromMarkdown,
-	createSourceMeta,
-	expandEnvVarsDeep,
-	getProjectPath,
-	getUserPath,
-	loadFilesFromDir,
-} from "./helpers";
+import { buildRuleFromMarkdown, createSourceMeta, expandEnvVarsDeep, getUserPath } from "./helpers";
 
 const PROVIDER_ID = "windsurf";
 const DISPLAY_NAME = "Windsurf";
@@ -65,29 +58,16 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	const warnings: string[] = [];
 
 	const userPath = getUserPath(ctx, "windsurf", "mcp_config.json");
-	const [userContent, projectPath] = await Promise.all([
-		userPath ? readFile(userPath) : Promise.resolve(null),
-		getProjectPath(ctx, "windsurf", "mcp_config.json"),
-	]);
+	const content = userPath ? await readFile(userPath) : null;
+	if (!content || !userPath) return { items, warnings };
 
-	const projectContent = projectPath ? await readFile(projectPath) : null;
+	const config = tryParseJson<{ mcpServers?: Record<string, unknown> }>(content);
+	if (!config?.mcpServers) return { items, warnings };
 
-	const configs: Array<{ content: string | null; path: string | null; scope: "user" | "project" }> = [
-		{ content: userContent, path: userPath, scope: "user" },
-		{ content: projectContent, path: projectPath, scope: "project" },
-	];
-
-	for (const { content, path, scope } of configs) {
-		if (!content || !path) continue;
-
-		const config = tryParseJson<{ mcpServers?: Record<string, unknown> }>(content);
-		if (!config?.mcpServers) continue;
-
-		for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
-			const result = parseServerConfig(name, serverConfig, path, scope);
-			if (result.warning) warnings.push(result.warning);
-			if (result.server) items.push(result.server);
-		}
+	for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
+		const result = parseServerConfig(name, serverConfig, userPath, "user");
+		if (result.warning) warnings.push(result.warning);
+		if (result.server) items.push(result.server);
 	}
 
 	return { items, warnings };
@@ -109,18 +89,6 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 			const source = createSourceMeta(PROVIDER_ID, userPath, "user");
 			items.push(buildRuleFromMarkdown("global_rules.md", content, userPath, source, { ruleName: "global_rules" }));
 		}
-	}
-
-	// Project-level: .windsurf/rules/*.md
-	const projectRulesDir = getProjectPath(ctx, "windsurf", "rules");
-	if (projectRulesDir) {
-		const result = await loadFilesFromDir<Rule>(projectRulesDir, PROVIDER_ID, "project", {
-			extensions: ["md"],
-			transform: (name, content, path, source) =>
-				buildRuleFromMarkdown(name, content, path, source, { stripNamePattern: /\.md$/ }),
-		});
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
 	}
 
 	return { items, warnings };

@@ -16,7 +16,6 @@
  * Priority: 55 (tool-specific provider)
  */
 
-import * as path from "node:path";
 import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
@@ -34,7 +33,6 @@ import {
 	createSourceMeta,
 	discoverExtensionModulePaths,
 	expandEnvVarsDeep,
-	getProjectPath,
 	getUserPath,
 	loadFilesFromDir,
 	readContextFile,
@@ -171,15 +169,6 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		}
 	}
 
-	// Project-level: opencode.json in project root
-	const projectConfigPath = path.join(ctx.cwd, "opencode.json");
-	const projectConfig = await loadJsonConfig(projectConfigPath);
-	if (projectConfig) {
-		const result = extractMCPServers(projectConfig, projectConfigPath, "project");
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
-
 	return { items, warnings };
 }
 
@@ -243,35 +232,9 @@ function extractMCPServers(
 
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	const userSkillsDir = getUserPath(ctx, "opencode", "skills");
-	const projectSkillsDir = getProjectPath(ctx, "opencode", "skills");
+	if (!userSkillsDir) return { items: [], warnings: [] };
 
-	const promises: Promise<LoadResult<Skill>>[] = [];
-
-	if (userSkillsDir) {
-		promises.push(
-			scanSkillsFromDir({
-				dir: userSkillsDir,
-				providerId: PROVIDER_ID,
-				level: "user",
-			}),
-		);
-	}
-
-	if (projectSkillsDir) {
-		promises.push(
-			scanSkillsFromDir({
-				dir: projectSkillsDir,
-				providerId: PROVIDER_ID,
-				level: "project",
-			}),
-		);
-	}
-
-	const results = await Promise.all(promises);
-	const items = results.flatMap(r => r.items);
-	const warnings = results.flatMap(r => r.warnings || []);
-
-	return { items, warnings };
+	return await scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" });
 }
 
 // =============================================================================
@@ -280,16 +243,8 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
 	const userPluginsDir = getUserPath(ctx, "opencode", "plugins");
-	const projectPluginsDir = getProjectPath(ctx, "opencode", "plugins");
-
-	const [userPaths, projectPaths] = await Promise.all([
-		userPluginsDir ? discoverExtensionModulePaths(userPluginsDir) : Promise.resolve([]),
-		projectPluginsDir ? discoverExtensionModulePaths(projectPluginsDir) : Promise.resolve([]),
-	]);
-
-	const items = buildExtensionModuleItems(PROVIDER_ID, userPaths, projectPaths);
-
-	return { items, warnings: [] };
+	const userPaths = userPluginsDir ? await discoverExtensionModulePaths(userPluginsDir) : [];
+	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
 
 // =============================================================================
@@ -297,64 +252,37 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 // =============================================================================
 
 /**
- * Read the OpenCode command-loading toggles from settings.
+ * Read the OpenCode command-loading toggle from settings.
  * Falls back to true (current behavior) when settings are not initialized,
  * e.g. inside discovery unit tests that run without Settings.init().
  */
-function readOpencodeCommandToggles(): { enableUser: boolean; enableProject: boolean } {
+function readOpencodeCommandsEnabled(): boolean {
 	try {
-		return {
-			enableUser: settings.get("commands.enableOpencodeUser") ?? true,
-			enableProject: settings.get("commands.enableOpencodeProject") ?? true,
-		};
+		return settings.get("commands.enableOpencodeUser") ?? true;
 	} catch {
-		return { enableUser: true, enableProject: true };
+		return true;
 	}
 }
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
-	const { enableUser, enableProject } = readOpencodeCommandToggles();
-	const userCommandsDir = enableUser ? getUserPath(ctx, "opencode", "commands") : null;
-	const projectCommandsDir = enableProject ? getProjectPath(ctx, "opencode", "commands") : null;
+	if (!readOpencodeCommandsEnabled()) return { items: [], warnings: [] };
+	const userCommandsDir = getUserPath(ctx, "opencode", "commands");
+	if (!userCommandsDir) return { items: [], warnings: [] };
 
-	const transformCommand =
-		(level: "user" | "project") => (name: string, content: string, filePath: string, source: SourceMeta) => {
+	return await loadFilesFromDir(userCommandsDir, PROVIDER_ID, "user", {
+		extensions: ["md"],
+		transform: (name: string, content: string, filePath: string, source: SourceMeta) => {
 			const { frontmatter, body } = parseFrontmatter(content, { source: filePath });
 			const commandName = frontmatter.name || name.replace(/\.md$/, "");
 			return {
 				name: String(commandName),
 				path: filePath,
 				content: body,
-				level,
+				level: "user" as const,
 				_source: source,
 			};
-		};
-
-	const promises: Promise<LoadResult<SlashCommand>>[] = [];
-
-	if (userCommandsDir) {
-		promises.push(
-			loadFilesFromDir(userCommandsDir, PROVIDER_ID, "user", {
-				extensions: ["md"],
-				transform: transformCommand("user"),
-			}),
-		);
-	}
-
-	if (projectCommandsDir) {
-		promises.push(
-			loadFilesFromDir(projectCommandsDir, PROVIDER_ID, "project", {
-				extensions: ["md"],
-				transform: transformCommand("project"),
-			}),
-		);
-	}
-
-	const results = await Promise.all(promises);
-	const items = results.flatMap(r => r.items);
-	const warnings = results.flatMap(r => r.warnings || []);
-
-	return { items, warnings };
+		},
+	});
 }
 
 // =============================================================================

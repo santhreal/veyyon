@@ -41,10 +41,6 @@ const PROVIDER_ID = "codex";
 const DISPLAY_NAME = "OpenAI Codex";
 const PRIORITY = 70;
 
-function getProjectCodexDir(ctx: LoadContext): string {
-	return path.join(ctx.cwd, ".codex");
-}
-
 // =============================================================================
 // Context Files (AGENTS.md)
 // =============================================================================
@@ -87,40 +83,17 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 // =============================================================================
 
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
-	const warnings: string[] = [];
-
 	const userConfigPath = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "config.toml");
-	const codexDir = getProjectCodexDir(ctx);
-	const projectConfigPath = path.join(codexDir, "config.toml");
-
-	const [userConfig, projectConfig] = await Promise.all([
-		loadTomlConfig(ctx, userConfigPath),
-		loadTomlConfig(ctx, projectConfigPath),
-	]);
+	const userConfig = await loadTomlConfig(ctx, userConfigPath);
 
 	const items: MCPServer[] = [];
 	if (userConfig) {
-		const servers = extractMCPServersFromToml(userConfig);
-		for (const [name, config] of Object.entries(servers)) {
-			items.push({
-				name,
-				...config,
-				_source: createSourceMeta(PROVIDER_ID, userConfigPath, "user"),
-			});
-		}
-	}
-	if (projectConfig) {
-		const servers = extractMCPServersFromToml(projectConfig);
-		for (const [name, config] of Object.entries(servers)) {
-			items.push({
-				name,
-				...config,
-				_source: createSourceMeta(PROVIDER_ID, projectConfigPath, "project"),
-			});
+		for (const [name, config] of Object.entries(extractMCPServersFromToml(userConfig))) {
+			items.push({ name, ...config, _source: createSourceMeta(PROVIDER_ID, userConfigPath, "user") });
 		}
 	}
 
-	return { items, warnings };
+	return { items, warnings: [] };
 }
 
 async function loadTomlConfig(_ctx: LoadContext, path: string): Promise<Record<string, unknown> | null> {
@@ -226,26 +199,7 @@ function extractMCPServersFromToml(toml: Record<string, unknown>): Record<string
 
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	const userSkillsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "skills");
-	const codexDir = getProjectCodexDir(ctx);
-	const projectSkillsDir = path.join(codexDir, "skills");
-
-	const results = await Promise.all([
-		scanSkillsFromDir({
-			dir: userSkillsDir,
-			providerId: PROVIDER_ID,
-			level: "user",
-		}),
-		scanSkillsFromDir({
-			dir: projectSkillsDir,
-			providerId: PROVIDER_ID,
-			level: "project",
-		}),
-	]);
-
-	const items = results.flatMap(r => r.items);
-	const warnings = results.flatMap(r => r.warnings || []);
-
-	return { items, warnings };
+	return await scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" });
 }
 
 // =============================================================================
@@ -253,20 +207,9 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 // =============================================================================
 
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
-	const warnings: string[] = [];
-
 	const userExtensionsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "extensions");
-	const codexDir = getProjectCodexDir(ctx);
-	const projectExtensionsDir = path.join(codexDir, "extensions");
-
-	const [userPaths, projectPaths] = await Promise.all([
-		discoverExtensionModulePaths(userExtensionsDir),
-		discoverExtensionModulePaths(projectExtensionsDir),
-	]);
-
-	const items = buildExtensionModuleItems(PROVIDER_ID, userPaths, projectPaths);
-
-	return { items, warnings };
+	const userPaths = await discoverExtensionModulePaths(userExtensionsDir);
+	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
 
 // =============================================================================
@@ -275,37 +218,21 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const userCommandsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "commands");
-	const codexDir = getProjectCodexDir(ctx);
-	const projectCommandsDir = path.join(codexDir, "commands");
 
-	const transformCommand =
-		(level: "user" | "project") => (name: string, content: string, path: string, source: SourceMeta) => {
-			const { frontmatter, body } = parseFrontmatter(content, { source: path });
+	return await loadFilesFromDir(userCommandsDir, PROVIDER_ID, "user", {
+		extensions: ["md"],
+		transform: (name: string, content: string, cmdPath: string, source: SourceMeta) => {
+			const { frontmatter, body } = parseFrontmatter(content, { source: cmdPath });
 			const commandName = frontmatter.name || name.replace(/\.md$/, "");
 			return {
 				name: String(commandName),
-				path,
+				path: cmdPath,
 				content: body,
-				level,
+				level: "user" as const,
 				_source: source,
 			};
-		};
-
-	const results = await Promise.all([
-		loadFilesFromDir(userCommandsDir, PROVIDER_ID, "user", {
-			extensions: ["md"],
-			transform: transformCommand("user"),
-		}),
-		loadFilesFromDir(projectCommandsDir, PROVIDER_ID, "project", {
-			extensions: ["md"],
-			transform: transformCommand("project"),
-		}),
-	]);
-
-	const items = results.flatMap(r => r.items);
-	const warnings = results.flatMap(r => r.warnings || []);
-
-	return { items, warnings };
+		},
+	});
 }
 
 // =============================================================================
@@ -314,36 +241,21 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 
 async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 	const userPromptsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "prompts");
-	const codexDir = getProjectCodexDir(ctx);
-	const projectPromptsDir = path.join(codexDir, "prompts");
 
-	const transformPrompt = (name: string, content: string, path: string, source: SourceMeta) => {
-		const { frontmatter, body } = parseFrontmatter(content, { source: path });
-		const promptName = frontmatter.name || name.replace(/\.md$/, "");
-		return {
-			name: String(promptName),
-			path,
-			content: body,
-			description: frontmatter.description ? String(frontmatter.description) : undefined,
-			_source: source,
-		};
-	};
-
-	const results = await Promise.all([
-		loadFilesFromDir(userPromptsDir, PROVIDER_ID, "user", {
-			extensions: ["md"],
-			transform: transformPrompt,
-		}),
-		loadFilesFromDir(projectPromptsDir, PROVIDER_ID, "project", {
-			extensions: ["md"],
-			transform: transformPrompt,
-		}),
-	]);
-
-	const items = results.flatMap(r => r.items);
-	const warnings = results.flatMap(r => r.warnings || []);
-
-	return { items, warnings };
+	return await loadFilesFromDir(userPromptsDir, PROVIDER_ID, "user", {
+		extensions: ["md"],
+		transform: (name: string, content: string, promptPath: string, source: SourceMeta) => {
+			const { frontmatter, body } = parseFrontmatter(content, { source: promptPath });
+			const promptName = frontmatter.name || name.replace(/\.md$/, "");
+			return {
+				name: String(promptName),
+				path: promptPath,
+				content: body,
+				description: frontmatter.description ? String(frontmatter.description) : undefined,
+				_source: source,
+			};
+		},
+	});
 }
 
 // =============================================================================
@@ -352,8 +264,6 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const userHooksDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "hooks");
-	const codexDir = getProjectCodexDir(ctx);
-	const projectHooksDir = path.join(codexDir, "hooks");
 
 	// Veyyon hooks must be named `pre-<tool>.<ts|js>` or `post-<tool>.<ts|js>`.
 	// Files without that prefix are not Veyyon hooks (e.g. the standalone Codex
@@ -361,39 +271,21 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	// defaulting to `pre:<basename>` caused those scripts to be imported as
 	// extension factories and any top-level `process.exit()` killed startup
 	// (#3680).
-	const transformHook =
-		(level: "user" | "project") =>
-		(name: string, _content: string, path: string, source: SourceMeta): Hook | null => {
-			const baseName = name.replace(/\.(ts|js)$/, "");
-			const match = baseName.match(/^(pre|post)-(.+)$/);
+	return await loadFilesFromDir<Hook>(userHooksDir, PROVIDER_ID, "user", {
+		extensions: ["ts", "js"],
+		transform: (name: string, _content: string, hookPath: string, source: SourceMeta): Hook | null => {
+			const match = name.replace(/\.(ts|js)$/, "").match(/^(pre|post)-(.+)$/);
 			if (!match) return null;
-			const hookType = match[1] as "pre" | "post";
-			const toolName = match[2];
 			return {
 				name,
-				path,
-				type: hookType,
-				tool: toolName,
-				level,
+				path: hookPath,
+				type: match[1] as "pre" | "post",
+				tool: match[2],
+				level: "user",
 				_source: source,
 			};
-		};
-
-	const results = await Promise.all([
-		loadFilesFromDir<Hook>(userHooksDir, PROVIDER_ID, "user", {
-			extensions: ["ts", "js"],
-			transform: transformHook("user"),
-		}),
-		loadFilesFromDir<Hook>(projectHooksDir, PROVIDER_ID, "project", {
-			extensions: ["ts", "js"],
-			transform: transformHook("project"),
-		}),
-	]);
-
-	const items = results.flatMap(r => r.items);
-	const warnings = results.flatMap(r => r.warnings || []);
-
-	return { items, warnings };
+		},
+	});
 }
 
 // =============================================================================
@@ -402,35 +294,17 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 
 async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
 	const userToolsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "tools");
-	const codexDir = getProjectCodexDir(ctx);
-	const projectToolsDir = path.join(codexDir, "tools");
 
-	const transformTool =
-		(level: "user" | "project") => (name: string, _content: string, path: string, source: SourceMeta) => {
-			const toolName = name.replace(/\.(ts|js)$/, "");
-			return {
-				name: toolName,
-				path,
-				level,
+	return await loadFilesFromDir(userToolsDir, PROVIDER_ID, "user", {
+		extensions: ["ts", "js"],
+		transform: (name: string, _content: string, toolPath: string, source: SourceMeta) =>
+			({
+				name: name.replace(/\.(ts|js)$/, ""),
+				path: toolPath,
+				level: "user",
 				_source: source,
-			} as DiscoveredCustomTool;
-		};
-
-	const results = await Promise.all([
-		loadFilesFromDir(userToolsDir, PROVIDER_ID, "user", {
-			extensions: ["ts", "js"],
-			transform: transformTool("user"),
-		}),
-		loadFilesFromDir(projectToolsDir, PROVIDER_ID, "project", {
-			extensions: ["ts", "js"],
-			transform: transformTool("project"),
-		}),
-	]);
-
-	const items = results.flatMap(r => r.items);
-	const warnings = results.flatMap(r => r.warnings || []);
-
-	return { items, warnings };
+			}) as DiscoveredCustomTool,
+	});
 }
 
 // =============================================================================

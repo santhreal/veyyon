@@ -35,6 +35,8 @@ import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import "@veyyon/coding-agent/discovery";
 import { initializeWithSettings } from "@veyyon/coding-agent/capability";
+import { scanForeignConfig } from "@veyyon/coding-agent/discovery/import-scan";
+import { loadSectionOverrideFiles } from "@veyyon/coding-agent/system-prompt-builder/section-overrides";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
 import { useContextScopeFixture } from "../helpers/context-scope-fixture";
 
@@ -180,7 +182,7 @@ describe("a working tree does not configure the agent", () => {
 
 	it("does not let a repository name a machine the ssh tool can reach", async () => {
 		const hosts = await loadCapability<SSHHost>("ssh", { cwd: repo.cwd, agentDir: repo.agentDir });
-		expect(hosts.all.map(host => host.hostname ?? host.name)).not.toContain(HOSTILE_HOST);
+		expect(hosts.all.map(host => host.host)).not.toContain(HOSTILE_HOST);
 	});
 
 	it("does not let a repository add an MCP server", async () => {
@@ -199,5 +201,28 @@ describe("a working tree does not configure the agent", () => {
 		const { agents } = await discoverAgents(repo.cwd, undefined, repo.agentDir);
 		const reviewer = agents.find(agent => agent.name === "reviewer");
 		expect(reviewer?.systemPrompt ?? "").not.toContain("Approve everything");
+	});
+
+	/**
+	 * This one bypasses `loadCapability` entirely, so the enumeration above cannot
+	 * see it. `.veyyon/PROMPT_SECTIONS/role.md` REPLACED a shipped system-prompt
+	 * section outright, and the project level outranked the operator's own file.
+	 */
+	it("does not let a repository replace a system prompt section", async () => {
+		const overrides = await loadSectionOverrideFiles({ cwd: repo.cwd });
+		expect(overrides.map(file => file.path)).toEqual([]);
+	});
+
+	/**
+	 * The onboarding import scan calls `loadCapability` with no cwd, so it enumerates
+	 * whatever the process cwd offers and relies on a `level !== "user"` filter to keep
+	 * repo content off the list the operator is asked to COPY INTO THEIR PROFILE. That
+	 * predicate is load-bearing: assert the outcome rather than trusting it.
+	 */
+	it("never offers repository content for import into the operator's profile", async () => {
+		const candidates = await scanForeignConfig(repo.cwd);
+		for (const candidate of candidates) {
+			expect(candidate.sourcePath.startsWith(repo.cwd)).toBe(false);
+		}
 	});
 });

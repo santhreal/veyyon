@@ -20,7 +20,6 @@ import { parseFrontmatter } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { type Instruction, instructionCapability } from "../capability/instruction";
-import type { Prompt } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 
@@ -208,19 +207,6 @@ function isAlwaysApplyGlob(glob: string): boolean {
 function describeInstructionRule(globs: string[] | undefined): string {
 	if (!globs) return "GitHub Copilot instructions without applyTo metadata";
 	return `GitHub Copilot instructions for ${globs.join(", ")}`;
-}
-
-// =============================================================================
-
-function transformPrompt(name: string, content: string, filePath: string, source: SourceMeta): Prompt | null {
-	// Prompt files are `*.prompt.md`; ignore other markdown that may share the dir.
-	if (!name.endsWith(".prompt.md")) return null;
-
-	const { frontmatter, body } = parseFrontmatter(content, { source: filePath });
-	const promptName =
-		typeof frontmatter.name === "string" && frontmatter.name ? frontmatter.name : path.basename(name, ".prompt.md");
-
-	return { name: promptName, path: filePath, content: body, _source: source };
 }
 
 /** Directories listed in the COPILOT_CUSTOM_INSTRUCTIONS_DIRS env var (comma-separated). */
