@@ -296,9 +296,15 @@ describe("formatCwdBoundaryReason", () => {
 describe("filesystem cwd boundary through the approval gate", () => {
 	// End-to-end: the boundary must fire inside ExtensionToolWrapper (the single
 	// approval chokepoint) for real read/write tools. Differential design: an
-	// in-cwd read auto-approves in `ask` mode (proving the read tier is NOT the
-	// blocker), while the same-mode out-of-cwd read is blocked (proving the
-	// boundary IS). yolo bypasses both.
+	// in-cwd read auto-approves in `ask-command` mode (proving the read tier is
+	// NOT the blocker), while the same-mode out-of-cwd read is blocked (proving
+	// the boundary IS). yolo bypasses both.
+	//
+	// `ask-command` rather than `ask` is what makes that differential mean
+	// anything. `ask` runs nothing unasked, reads included, so an out-of-cwd read
+	// under `ask` would be stopped by the rung whether the boundary existed or
+	// not. `ask-command` allows the whole read tier by rung, which leaves the cwd
+	// boundary as the only thing that can still refuse the call.
 	let tempDir: string;
 	let cwd: string;
 	let insideFile: string;
@@ -382,25 +388,25 @@ describe("filesystem cwd boundary through the approval gate", () => {
 		return "";
 	}
 
-	it("auto-approves an in-cwd read in ask mode (read tier is not the blocker)", async () => {
+	it("auto-approves an in-cwd read in ask-command mode (read tier is not the blocker)", async () => {
 		const result = await tool("read").execute(
-			"in-ask",
+			"in-askcommand",
 			{ path: insideFile },
 			undefined,
 			undefined,
-			ctx({ "tools.approvalMode": "ask" }),
+			ctx({ "tools.approvalMode": "ask-command" }),
 		);
 		expect(textOf(result)).toContain("INSIDE_CONTENT");
 	});
 
-	it("blocks an out-of-cwd read in ask mode, naming the boundary", async () => {
+	it("blocks an out-of-cwd read in ask-command mode, naming the boundary", async () => {
 		await expect(
 			tool("read").execute(
-				"out-ask",
+				"out-askcommand",
 				{ path: outsideFile },
 				undefined,
 				undefined,
-				ctx({ "tools.approvalMode": "ask" }),
+				ctx({ "tools.approvalMode": "ask-command" }),
 			),
 		).rejects.toThrow(/outside the session working directory/);
 	});
@@ -483,36 +489,36 @@ describe("filesystem cwd boundary through the approval gate", () => {
 		expect(fs.readFileSync(target, "utf8")).toBe("before");
 	});
 
-	it("blocks an out-of-cwd grep in ask mode (search tools honor the same boundary as read)", async () => {
+	it("blocks an out-of-cwd grep in ask-command mode (search tools honor the same boundary as read)", async () => {
 		// Differential: in-cwd grep auto-approves (read tier alone is not the blocker);
 		// out-of-cwd path is blocked by the cwd boundary before content leaks.
 		const inside = await tool("grep").execute(
-			"gin-ask",
+			"gin-askcommand",
 			{ pattern: "INSIDE", path: cwd },
 			undefined,
 			undefined,
-			ctx({ "tools.approvalMode": "ask" }),
+			ctx({ "tools.approvalMode": "ask-command" }),
 		);
 		expect(textOf(inside)).toContain("INSIDE_CONTENT");
 		await expect(
 			tool("grep").execute(
-				"gout-ask",
+				"gout-askcommand",
 				{ pattern: "OUTSIDE", path: outsideFile },
 				undefined,
 				undefined,
-				ctx({ "tools.approvalMode": "ask" }),
+				ctx({ "tools.approvalMode": "ask-command" }),
 			),
 		).rejects.toThrow(/outside the session working directory/);
 	});
 
-	it("blocks an out-of-cwd glob in ask mode", async () => {
+	it("blocks an out-of-cwd glob in ask-command mode", async () => {
 		await expect(
 			tool("glob").execute(
-				"glob-out-ask",
+				"glob-out-askcommand",
 				{ path: path.join(tempDir, "*") },
 				undefined,
 				undefined,
-				ctx({ "tools.approvalMode": "ask" }),
+				ctx({ "tools.approvalMode": "ask-command" }),
 			),
 		).rejects.toThrow(/outside the session working directory/);
 	});

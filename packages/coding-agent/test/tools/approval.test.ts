@@ -4,11 +4,15 @@ import { LSP_READONLY_ACTIONS } from "@veyyon/coding-agent/lsp";
 import {
 	APPROVAL_MODE_VALUES,
 	type ApprovalMode,
+	type ApprovalPolicy,
+	type AutonomyLevel,
 	formatApprovalPrompt,
 	isKnownApprovalMode,
+	type LegacyApprovalMode,
 	normalizeApprovalMode,
 	requiresApproval,
 	resolveApproval,
+	resolveEffectiveApprovalMode,
 	type ToolTier,
 	truncateForPrompt,
 	validateApprovalModeSetting,
@@ -60,7 +64,7 @@ function bashApproval(command: string) {
 
 describe("resolveApproval tier matrix", () => {
 	const cases: Array<[ApprovalMode, "read" | "write" | "exec", "allow" | "prompt"]> = [
-		["always-ask", "read", "allow"],
+		["always-ask", "read", "prompt"],
 		["always-ask", "write", "prompt"],
 		["always-ask", "exec", "prompt"],
 		["write", "read", "allow"],
@@ -84,6 +88,200 @@ describe("resolveApproval tier matrix", () => {
 		expect(resolveApproval(subject, {}, "write")).toMatchObject({ policy: "prompt", tier: "exec" });
 		expect(resolveApproval(subject, {}, "yolo")).toMatchObject({ policy: "allow", tier: "exec" });
 	});
+});
+
+/**
+ * The autonomy ladder, rung by rung: which tiers each rung runs unasked.
+ *
+ * This is the table an operator is really choosing between when they set
+ * `tools.approvalMode`, so every cell is pinned. The row that matters most is
+ * `ask` + `read`: `ask` means ask about everything, reads included, because a
+ * `read` of `~/.ssh/id_rsa` and a `bash cat` of the same file are the same act.
+ * A rung whose safest step silently exempted reads would be a rung nobody could
+ * reason about, and it is exactly the cell a "reads are always harmless"
+ * shortcut would regress.
+ *
+ * `plan` is deliberately absent: it is a cap rather than a rung an operator
+ * picks, and its deny behavior is pinned in the fail-closed matrix below.
+ */
+describe("resolveApproval autonomy rung matrix", () => {
+	const cases: Array<[AutonomyLevel, ToolTier, ApprovalPolicy, string]> = [
+		["ask", "read", "prompt", "ask everything includes reads"],
+		["ask", "write", "prompt", "no tier runs unasked"],
+		["ask", "exec", "prompt", "no tier runs unasked"],
+		["ask-command", "read", "allow", "reads run"],
+		["ask-command", "write", "allow", "workspace writes run"],
+		["ask-command", "exec", "prompt", "anything that executes asks"],
+		["auto", "read", "allow", "every tier runs unasked"],
+		["auto", "write", "allow", "every tier runs unasked"],
+		["auto", "exec", "allow", "every tier runs unasked"],
+		["yolo", "read", "allow", "no prompts"],
+		["yolo", "write", "allow", "no prompts"],
+		["yolo", "exec", "allow", "no prompts"],
+	];
+
+	for (const [level, tier, policy, why] of cases) {
+		it(`${level} resolves ${tier} tier to ${policy} (${why})`, () => {
+			const subject = tool(`${tier}_tool`, tier);
+			expect(resolveApproval(subject, {}, level).policy).toBe(policy);
+			expect(requiresApproval(subject, {}, level).required).toBe(policy === "prompt");
+		});
+	}
+});
+
+/**
+ * The one behavioral difference that justifies shipping both `auto` and `yolo`.
+ *
+ * Both run every tier unasked, so a reader has to be able to point at what
+ * separates them: `auto` keeps the guards on and still surfaces a prompt a tool
+ * raised for itself from `approval(args)`; `yolo` short-circuits before the
+ * override is ever consulted. Collapse either half and one of the two rungs
+ * stops being worth choosing.
+ */
+describe("auto keeps a tool's own approval override, yolo does not", () => {
+	// A dynamic declaration, not a static one, so the test also proves the
+	// resolver actually calls `approval(args)` with the call's arguments rather
+	// than reading a fixed field.
+	const guarded = tool("guarded", (args: unknown) => {
+		const risky = typeof args === "object" && args !== null && "command" in args && args.command === "danger";
+		return risky ? { tier: "exec", override: true, reason: "Guard says ask" } : "exec";
+	});
+
+	it("auto prompts when the tool raises an override for these arguments", () => {
+		const result = resolveApproval(guarded, { command: "danger" }, "auto");
+		expect(result).toMatchObject({ policy: "prompt", tier: "exec", override: true, reason: "Guard says ask" });
+		expect(requiresApproval(guarded, { command: "danger" }, "auto")).toEqual({
+			required: true,
+			reason: "Guard says ask",
+		});
+	});
+
+	it("auto runs the same tool unasked when it raises no override", () => {
+		expect(resolveApproval(guarded, { command: "ls" }, "auto")).toMatchObject({
+			policy: "allow",
+			tier: "exec",
+			override: false,
+		});
+	});
+
+	it("yolo ignores the override and allows the risky arguments", () => {
+		const result = resolveApproval(guarded, { command: "danger" }, "yolo");
+		expect(result).toMatchObject({ policy: "allow", tier: "exec", override: false });
+		expect(result.reason).toBeUndefined();
+		expect(requiresApproval(guarded, { command: "danger" }, "yolo").required).toBe(false);
+	});
+});
+
+/**
+ * `auto` is "run it, the guards are on", and a per-tool policy the operator
+ * wrote in `tools.approval` is one of those guards. If the rung's tier ceiling
+ * were checked before the policy, the most permissive non-yolo rung would
+ * quietly discard the only per-tool control an operator has.
+ */
+describe("auto honors an explicit per-tool policy", () => {
+	const execTool = tool("bash", "exec");
+
+	it("a configured deny blocks the call and throws in requiresApproval", () => {
+		expect(resolveApproval(execTool, {}, "auto", { bash: "deny" }).policy).toBe("deny");
+		expect(() => requiresApproval(execTool, {}, "auto", { bash: "deny" })).toThrow(
+			'Tool "bash" is blocked by user policy',
+		);
+	});
+
+	it("a configured prompt reinstates the prompt the rung would have skipped", () => {
+		expect(resolveApproval(execTool, {}, "auto").policy).toBe("allow");
+		expect(resolveApproval(execTool, {}, "auto", { bash: "prompt" }).policy).toBe("prompt");
+		expect(requiresApproval(execTool, {}, "auto", { bash: "prompt" }).required).toBe(true);
+	});
+});
+
+/**
+ * The critical floor under `yolo`: the calls a tool marked `critical` (the
+ * `rm -rf /` class) still stop and ask. Without the floor the severity ordering
+ * inverts, because the most destructive commands are the ones most likely to be
+ * run in the rung that skips every check. Opting out has to be deliberate, which
+ * is what the configured `allow` is for.
+ */
+describe("yolo critical floor", () => {
+	const destructive = tool("bash", {
+		tier: "exec",
+		critical: true,
+		reason: "rm would recursively remove a protected system directory (/)",
+	});
+
+	it("prompts a critical decision when no per-tool policy is configured", () => {
+		const result = resolveApproval(destructive, {}, "yolo");
+		expect(result).toMatchObject({
+			policy: "prompt",
+			tier: "exec",
+			override: true,
+			critical: true,
+			reason: "rm would recursively remove a protected system directory (/)",
+		});
+		expect(requiresApproval(destructive, {}, "yolo").required).toBe(true);
+	});
+
+	it("allows a critical decision once tools.approval names the tool allow", () => {
+		const result = resolveApproval(destructive, {}, "yolo", { bash: "allow" });
+		expect(result).toMatchObject({ policy: "allow", tier: "exec", critical: true });
+		expect(requiresApproval(destructive, {}, "yolo", { bash: "allow" }).required).toBe(false);
+	});
+});
+
+/**
+ * The rung actually in force, before any per-tool policy is consulted. The two
+ * precedence edges are what this locks: `--auto-approve` is an explicit operator
+ * instruction typed at launch and outranks stored config, while an active plan
+ * session caps everything so a stored `yolo` cannot execute inside a plan. Get
+ * either edge backwards and the losing side becomes unenforceable.
+ */
+describe("resolveEffectiveApprovalMode precedence", () => {
+	it("falls back to the shipped default when nothing is configured", () => {
+		expect(resolveEffectiveApprovalMode(undefined)).toBe("auto");
+	});
+
+	it("returns the configured rung untouched when neither flag is set", () => {
+		expect(resolveEffectiveApprovalMode("auto")).toBe("auto");
+		expect(resolveEffectiveApprovalMode("ask-command")).toBe("ask-command");
+	});
+
+	it("cliAutoApprove beats a configured plan", () => {
+		expect(resolveEffectiveApprovalMode("plan", { cliAutoApprove: true })).toBe("yolo");
+	});
+
+	it("planModeActive beats a configured yolo", () => {
+		expect(resolveEffectiveApprovalMode("yolo", { planModeActive: true })).toBe("plan");
+	});
+
+	it("cliAutoApprove beats planModeActive", () => {
+		expect(resolveEffectiveApprovalMode("ask", { planModeActive: true, cliAutoApprove: true })).toBe("yolo");
+	});
+});
+
+/**
+ * The legacy config strings, asserted through resolved policy rather than only
+ * through `normalizeApprovalMode`. An alias that is still listed in
+ * `APPROVAL_MODE_VALUES` but no longer wired into the resolver would pass a
+ * normalizer-only test and silently move an operator who never edited their
+ * settings onto a different rung.
+ */
+describe("legacy approval mode aliases resolve like their ladder rung", () => {
+	const cases: Array<[LegacyApprovalMode, AutonomyLevel, Record<ToolTier, ApprovalPolicy>]> = [
+		["always-ask", "ask", { read: "prompt", write: "prompt", exec: "prompt" }],
+		["write", "ask-command", { read: "allow", write: "allow", exec: "prompt" }],
+		["auto-edit", "ask-command", { read: "allow", write: "allow", exec: "prompt" }],
+	];
+
+	for (const [alias, rung, expected] of cases) {
+		it(`${alias} behaves as ${rung} across all three tiers`, () => {
+			expect(normalizeApprovalMode(alias)).toBe(rung);
+			for (const tier of ["read", "write", "exec"] as const) {
+				const subject = tool(`${tier}_tool`, tier);
+				expect(resolveApproval(subject, {}, alias).policy).toBe(expected[tier]);
+				expect(resolveApproval(subject, {}, rung).policy).toBe(expected[tier]);
+			}
+		});
+	}
 });
 
 describe("resolveApproval override and user policy", () => {
@@ -301,7 +499,9 @@ describe("tool-owned dynamic approval declarations", () => {
  *      mutation block.
  */
 describe("resolveApproval precedence — fail-closed matrix (HSL-4)", () => {
-	const MODES: ApprovalMode[] = ["plan", "ask", "auto-edit", "yolo", "always-ask", "write"];
+	// Every accepted string, straight from the one source of truth: a rung added
+	// to the ladder without being added here would never be swept for fail-open.
+	const MODES: readonly ApprovalMode[] = APPROVAL_MODE_VALUES;
 	const TIERS: ToolTier[] = ["read", "write", "exec"];
 	const OVERRIDES = [false, true] as const;
 	const BYPASS = [false, true] as const;
@@ -410,20 +610,32 @@ describe("resolveApproval precedence — fail-closed matrix (HSL-4)", () => {
 });
 
 describe("normalizeApprovalMode fails closed on an invalid mode (never yolo)", () => {
-	// A hand-edited config typo must not silently become the least-safe mode.
-	// undefined = no configured value = the documented product default (yolo);
-	// any unrecognized non-empty string fails CLOSED to ask.
+	/**
+	 * A hand-edited config typo must not silently buy autonomy. Every accepted
+	 * string is pinned to its rung, including the legacy names: `always-ask` is
+	 * the old spelling of `ask`, and `write`/`auto-edit` are both the old
+	 * spellings of `ask-command`.
+	 */
 	it("maps the shipped ladder and legacy aliases exactly", () => {
 		expect(normalizeApprovalMode("plan")).toBe("plan");
 		expect(normalizeApprovalMode("ask")).toBe("ask");
-		expect(normalizeApprovalMode("always-ask")).toBe("ask");
-		expect(normalizeApprovalMode("auto-edit")).toBe("auto-edit");
-		expect(normalizeApprovalMode("write")).toBe("auto-edit");
+		expect(normalizeApprovalMode("ask-command")).toBe("ask-command");
+		expect(normalizeApprovalMode("auto")).toBe("auto");
 		expect(normalizeApprovalMode("yolo")).toBe("yolo");
+		expect(normalizeApprovalMode("always-ask")).toBe("ask");
+		expect(normalizeApprovalMode("auto-edit")).toBe("ask-command");
+		expect(normalizeApprovalMode("write")).toBe("ask-command");
 	});
 
-	it("keeps yolo as the product default only for an absent value", () => {
-		expect(normalizeApprovalMode(undefined)).toBe("yolo");
+	/**
+	 * An absent value carries no operator intent, so it lands on the rung a fresh
+	 * install ships with, `auto`. A TYPO is the opposite case and still falls to
+	 * `ask`: a broken configuration must never be read as more permissive than
+	 * the strictest reading of what someone wrote down.
+	 */
+	it("treats an absent value as the shipped default, not as a typo", () => {
+		expect(normalizeApprovalMode(undefined)).toBe("auto");
+		expect(normalizeApprovalMode("askk")).toBe("ask");
 	});
 
 	it("fails closed to ask for a typo, never yolo", () => {
@@ -445,11 +657,11 @@ describe("approval mode value set is the one source of truth", () => {
 		expect(isKnownApprovalMode(42)).toBe(false);
 	});
 
-	it("includes the shipped ladder and both legacy aliases", () => {
+	it("lists the five ladder rungs and all three legacy aliases", () => {
 		// APPROVAL_MODE_VALUES is a readonly tuple of narrow literals; compare against
 		// a plain string[] by widening the matcher's expected type.
 		expect([...APPROVAL_MODE_VALUES].sort()).toEqual<string[]>(
-			["always-ask", "ask", "auto-edit", "plan", "write", "yolo"].sort(),
+			["plan", "ask", "ask-command", "auto", "yolo", "always-ask", "write", "auto-edit"].sort(),
 		);
 	});
 });

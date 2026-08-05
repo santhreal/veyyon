@@ -15,6 +15,13 @@ import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 // proving an `ssh://` target is exec-tier (prompts / is denied without a UI) while the
 // equivalent local-path call runs. ssh:// calls are rejected at the approval gate before any
 // connection, so this suite needs no live ssh.
+//
+// The read and grep cases run at `ask-command`, not `ask`. `ask` runs nothing
+// unasked, so a local read would be refused there too and the pair would prove
+// nothing about ssh://. `ask-command` allows the read tier outright, so the only
+// thing that can still stop the ssh:// half is the exec escalation this suite is
+// about. The write case uses `write`, the legacy alias for the same rung, which
+// likewise allows the local write and leaves ssh:// as the sole exec trigger.
 const BASE_SETTINGS = {
 	"async.enabled": false,
 	"bash.autoBackground.enabled": false,
@@ -68,7 +75,7 @@ describe("ssh:// tools are exec-gated through the production approval wrapper", 
 		return found;
 	}
 
-	function ctx(approvalMode: "always-ask" | "write"): AgentToolContext {
+	function ctx(approvalMode: "ask-command" | "write"): AgentToolContext {
 		return {
 			settings: Settings.isolated({ ...BASE_SETTINGS, "tools.approvalMode": approvalMode }),
 		} as AgentToolContext;
@@ -81,10 +88,10 @@ describe("ssh:// tools are exec-gated through the production approval wrapper", 
 				{ path: "ssh://localhost/etc/hostname" },
 				undefined,
 				undefined,
-				ctx("always-ask"),
+				ctx("ask-command"),
 			),
 		).rejects.toThrow(APPROVAL_RE);
-		const ok = await tool("read").execute("r-local", { path: "local.txt" }, undefined, undefined, ctx("always-ask"));
+		const ok = await tool("read").execute("r-local", { path: "local.txt" }, undefined, undefined, ctx("ask-command"));
 		expect(JSON.stringify(ok.content)).toContain("hello-local");
 	});
 
@@ -96,7 +103,7 @@ describe("ssh:// tools are exec-gated through the production approval wrapper", 
 				{ pattern: "x", paths: "local.txt,ssh://localhost/etc/hosts" },
 				undefined,
 				undefined,
-				ctx("always-ask"),
+				ctx("ask-command"),
 			),
 		).rejects.toThrow(APPROVAL_RE);
 		const ok = await tool("grep").execute(
@@ -104,7 +111,7 @@ describe("ssh:// tools are exec-gated through the production approval wrapper", 
 			{ pattern: "hello", path: "." },
 			undefined,
 			undefined,
-			ctx("always-ask"),
+			ctx("ask-command"),
 		);
 		expect(ok).toBeDefined();
 	});

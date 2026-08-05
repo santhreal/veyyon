@@ -17,14 +17,14 @@ describe("resolveApproval matrix adversarial", () => {
 		expect(resolveApproval(tool("read", "read"), {}, "yolo").policy).toBe("allow");
 	});
 
-	it("always-ask prompts write and exec but allows read", () => {
+	it("always-ask prompts every tier, reads included", () => {
 		expect(resolveApproval(tool("write", "write"), {}, "always-ask").policy).toBe("prompt");
 		expect(resolveApproval(tool("bash", "exec"), {}, "always-ask").policy).toBe("prompt");
-		expect(resolveApproval(tool("read", "read"), {}, "always-ask").policy).toBe("allow");
+		expect(resolveApproval(tool("read", "read"), {}, "always-ask").policy).toBe("prompt");
 	});
 
-	it("ask mode allows read, prompts write and exec", () => {
-		expect(resolveApproval(tool("read", "read"), {}, "ask").policy).toBe("allow");
+	it("ask mode prompts every tier, reads included", () => {
+		expect(resolveApproval(tool("read", "read"), {}, "ask").policy).toBe("prompt");
 		expect(resolveApproval(tool("write", "write"), {}, "ask").policy).toBe("prompt");
 		expect(resolveApproval(tool("bash", "exec"), {}, "ask").policy).toBe("prompt");
 	});

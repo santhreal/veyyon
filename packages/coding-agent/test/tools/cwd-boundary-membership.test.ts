@@ -27,10 +27,19 @@ import { hasFilesystemTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
  *
  * Sorted, and compared as a whole set rather than with per-entry `toContain`, so
  * an ADDITION fails as loudly as a removal.
+ *
+ * `bash` is the odd member and joined deliberately. The others report every
+ * path they touch; bash reports only the paths under a credentials directory
+ * (`bashCredentialTargets`). Reporting a shell command's whole path set would
+ * prompt on `/usr/bin/env` and every toolchain path a build names, which is the
+ * false-positive noise that gets approvals switched off. Before it joined at
+ * all, `read ~/.ssh/id_rsa` asked and `bash cat ~/.ssh/id_rsa` did not, so the
+ * boundary had a hole that the more natural spelling walked straight through.
  */
 const BOUND_TOOLS = [
 	"ast_edit",
 	"ast_grep",
+	"bash",
 	"edit",
 	"glob",
 	"grep",
@@ -44,6 +53,7 @@ const BOUND_TOOLS = [
 const TOOL_SOURCES: ReadonlyArray<readonly [name: string, file: string]> = [
 	["ast_edit", "ast-edit.ts"],
 	["ast_grep", "ast-grep.ts"],
+	["bash", "bash.ts"],
 	["edit", "../edit/index.ts"],
 	["glob", "glob.ts"],
 	["grep", "grep.ts"],

@@ -101,13 +101,50 @@ describe("tools.approvalMode setting", () => {
 		return bash;
 	}
 
-	it("yolo mode (default) bypasses approval for non-overriding tool calls", async () => {
-		const settings = approvalSettings();
+	/**
+	 * yolo runs an exec-tier tool with no prompt even though no UI is attached.
+	 * It is no longer the default rung, so the mode is set explicitly here: a test
+	 * that relied on the default would silently start asserting the default's
+	 * behavior instead of yolo's the next time the default moved.
+	 */
+	it("explicit yolo mode bypasses approval for non-overriding tool calls", async () => {
+		const settings = approvalSettings({ "tools.approvalMode": "yolo" });
 		const result = await bashTool().execute("yolo", { command: "echo ok" }, undefined, undefined, {
 			settings,
 			sessionManager,
 		} as Partial<AgentToolContext> as AgentToolContext);
 		expect(textOf(result)).toContain("ok");
+	});
+
+	/**
+	 * With nothing configured the gate lands on `auto`, so an exec-tier tool runs
+	 * unasked. No UI is attached, so a rung that prompted would surface as the
+	 * "no interactive UI" rejection: the command's OUTPUT is therefore the proof
+	 * that the unconfigured default really is the rung that runs, resolved
+	 * through the live tool wrapper rather than read off the schema.
+	 */
+	it("runs an exec tool unasked when approvalMode is unconfigured", async () => {
+		const settings = approvalSettings();
+		const result = await bashTool().execute("default-auto", { command: "echo ok" }, undefined, undefined, {
+			settings,
+			sessionManager,
+		} as Partial<AgentToolContext> as AgentToolContext);
+		expect(textOf(result)).toContain("ok");
+	});
+
+	/**
+	 * And the guards the default keeps. `auto` runs every tier, but a per-tool
+	 * policy still outranks it, so raising the default did not turn the rung into
+	 * an unconditional yolo.
+	 */
+	it("still honours a per-tool deny under the unconfigured default", async () => {
+		const settings = approvalSettings({ "tools.approval": { bash: "deny" } });
+		await expect(
+			bashTool().execute("default-auto-deny", { command: "echo blocked" }, undefined, undefined, {
+				settings,
+				sessionManager,
+			} as Partial<AgentToolContext> as AgentToolContext),
+		).rejects.toThrow(/blocked by user policy/);
 	});
 
 	it("always-ask mode rejects exec tools when no UI is available", async () => {
@@ -203,10 +240,12 @@ describe("tools.approvalMode setting", () => {
 	it("normalizes shipped autonomy ladder and legacy aliases", () => {
 		expect(normalizeApprovalMode("plan")).toBe("plan");
 		expect(normalizeApprovalMode("ask")).toBe("ask");
-		expect(normalizeApprovalMode("always-ask")).toBe("ask");
-		expect(normalizeApprovalMode("auto-edit")).toBe("auto-edit");
-		expect(normalizeApprovalMode("write")).toBe("auto-edit");
+		expect(normalizeApprovalMode("ask-command")).toBe("ask-command");
+		expect(normalizeApprovalMode("auto")).toBe("auto");
 		expect(normalizeApprovalMode("yolo")).toBe("yolo");
+		expect(normalizeApprovalMode("always-ask")).toBe("ask");
+		expect(normalizeApprovalMode("auto-edit")).toBe("ask-command");
+		expect(normalizeApprovalMode("write")).toBe("ask-command");
 	});
 
 	it("plan mode blocks exec-tier tools", async () => {
