@@ -119,15 +119,15 @@ describe("the /account status block reports the accounts in use", () => {
 				"",
 				"  Anthropic          work                        main model  (opus-5)",
 				"                     first@example.com · org Example Org",
-				"                     5h  [███████░░░] 71%   resets in 2h",
-				"                     7d  [███░░░░░░░] 34%   resets in 4d",
+				"                     5h      [███████░░░] 71%   resets in 2h",
+				"                     7d      [███░░░░░░░] 34%   resets in 4d",
 				"",
 				"  Google Gemini Cli  (no name set)               web search",
 				"                     second@example.com · project example-project",
 				"",
 				"  Openai Codex       codex-main                  subagents",
 				"                     first@example.com",
-				"                     5h  [████░░░░░░] 44%   resets in 1h",
+				"                     5h      [████░░░░░░] 44%   resets in 1h",
 				"",
 				// ONE hint for the block. The per-row form printed this sentence once per unnamed
 				// account, which in a real eight-provider session meant seven repetitions of it.
