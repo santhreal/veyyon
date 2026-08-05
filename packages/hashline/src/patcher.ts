@@ -588,7 +588,16 @@ export class Patcher {
 				revealed.push({ line, text: source });
 			}
 		}
-		const truncated = unseen.length > revealed.length || columnTruncated;
+		const overCap = unseen.length > revealed.length;
+		// Whether ANY unseen line is too wide, not just one inside the reveal.
+		// `columnTruncated` above only sees the first `SEEN_LINE_REVEAL_CAP`, so a
+		// wide line past that index left `columnClipped` false, the message named
+		// a plain ranged re-read, and running it re-clipped that line and the
+		// retry was rejected again. The scan is a length check over at most a few
+		// hundred already-in-memory strings.
+		const anyUnseenTooWide =
+			columnTruncated || unseen.some(line => (sourceLines[line - 1]?.length ?? 0) > SEEN_LINE_REVEAL_MAX_COLUMNS);
+		const truncated = overCap || anyUnseenTooWide;
 		// Only merge when the reveal covered every unseen anchor line in full
 		// width. A prefix-truncated reveal would let the model split a blind
 		// edit into <=cap-line retries and land it without ever running the
@@ -597,7 +606,17 @@ export class Patcher {
 		if (!truncated) {
 			for (const { line } of revealed) seen.add(line);
 		}
-		throw new Error(unseenLinesMessage(section.path, unseen, expected, { lines: revealed, truncated }));
+		// `columnClipped` wins over `overCap` in the message, because `:raw` clears
+		// both and a plain ranged read clears only the second. See
+		// `UnseenLinesReveal`.
+		throw new Error(
+			unseenLinesMessage(section.path, unseen, expected, {
+				lines: revealed,
+				truncated,
+				overCap,
+				columnClipped: anyUnseenTooWide,
+			}),
+		);
 	}
 	#mismatchError(
 		section: PatchSection,
