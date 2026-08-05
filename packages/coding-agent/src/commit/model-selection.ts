@@ -98,12 +98,8 @@ export async function resolveSmolModel(
 		}
 		// Law 10: a CONFIGURED smol role being skipped for missing credentials
 		// must be loud, not a quiet substitution down the priority list.
-		// `veyyon auth` is not a command: `cli-commands.ts` registers `auth-broker`
-		// and `auth-gateway`, and a bare `veyyon auth` hits the near-miss guard
-		// rather than a login flow. This warning is printed by `veyyon commit`,
-		// which has no TUI, so `/login` is not available here either.
 		warn(
-			`Configured smol model ${resolvedSmol.model.provider}/${resolvedSmol.model.id} has no stored credentials; picking a substitute — run \`veyyon auth-broker login ${resolvedSmol.model.provider}\` to sign in.`,
+			`Configured smol model ${resolvedSmol.model.provider}/${resolvedSmol.model.id} has no stored credentials; picking a substitute — run \`veyyon auth\` to sign in.`,
 		);
 	}
 

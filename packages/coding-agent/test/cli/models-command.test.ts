@@ -27,11 +27,8 @@ describe("veyyon models without credentials", () => {
 			const proc = Bun.spawn(["bun", cliPath, "models"], { env, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
 			const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
 			expect(exitCode).toBe(0);
-			// `veyyon models` has no TUI. The sentence used to end at "sign in with
-			// /login in an interactive session", which named the surface honestly and
-			// left this reader with nothing to run.
 			expect(stdout).toContain(
-				"No models available. Fix: set an API key environment variable (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, …), or run `veyyon auth-broker login <provider>` to sign in.",
+				"No models available. Set an API key environment variable, or sign in with /login in an interactive session.",
 			);
 		} finally {
 			cleanup();

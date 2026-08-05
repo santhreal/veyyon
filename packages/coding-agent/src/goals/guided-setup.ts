@@ -2,7 +2,6 @@ import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core
 import type { ApiKey, Context, Tool } from "@veyyon/ai";
 import { isRecord, prompt, Snowflake } from "@veyyon/utils";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
-import { missingCredentialsMessage } from "../config/missing-credentials";
 import { goalsPrompts } from "../prompts/goals/rows";
 import { mapJsonStrings } from "../secrets/obfuscator";
 import type { AgentSession } from "../session/agent-session";
@@ -114,7 +113,7 @@ export async function runGuidedGoalTurn(
 		throw new Error("Could not resolve credentials for the guided goal request.");
 	}
 	if (!apiKey) {
-		throw new Error(missingCredentialsMessage(resolved.model.provider, resolved.model.id, "the guided-goal model"));
+		throw new Error(`No API key for ${resolved.model.provider}/${resolved.model.id}`);
 	}
 
 	const rawSystemPrompt = prompt.render(goalsPrompts["goals/guided-goal-system"].text);
@@ -162,10 +161,7 @@ export async function runGuidedGoalTurn(
 			// from the main session id so the oneshot's append-only turn state never
 			// pollutes the main conversation.
 			sessionId: options.sideSessionId ?? newGuidedGoalSessionId(session),
-			// Providers route on `promptCacheKey ?? sessionId`. Mirror the pinned key
-			// the live turns cache under (fork/tan/shared sessions set one) so the
-			// interview reads that prefix instead of cold-missing it.
-			promptCacheKey: session.agent.promptCacheKey ?? session.sessionId,
+			promptCacheKey: session.sessionId,
 			preferWebsockets: session.preferWebsockets,
 			providerSessionState: session.providerSessionState,
 		},
