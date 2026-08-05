@@ -5,6 +5,7 @@
  * order, and banners, while the statement registry supplies the shipped base.
  */
 import { describe, expect, it } from "bun:test";
+import * as path from "node:path";
 import {
 	assembleDefaultTemplate,
 	assembleStatementSections,
@@ -17,17 +18,16 @@ import {
 	type SectionOverrideFile,
 } from "@veyyon/coding-agent/system-prompt-builder/section-overrides";
 import { STATEMENT_SECTIONS } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
+import { getAgentDir } from "@veyyon/utils";
 
 const PROMPT_DIR = "PROMPT_SECTIONS";
 const SHIPPED = assembleStatementSections({ renderMermaid: true });
 
-function file(
-	id: string,
-	mode: "replace" | "append",
-	content: string,
-	level: "user" | "project" = "project",
-): SectionOverrideFile {
-	return { id, mode, content, level, path: `/fake/${PROMPT_DIR}/${id}${mode === "append" ? ".append" : ""}.md` };
+/** The one directory overrides are discovered in: the active profile's. */
+const OPERATOR_DIR = path.join(getAgentDir(), PROMPT_DIR);
+
+function file(id: string, mode: "replace" | "append", content: string): SectionOverrideFile {
+	return { id, mode, content, path: `/fake/${PROMPT_DIR}/${id}${mode === "append" ? ".append" : ""}.md` };
 }
 
 describe("reading a filename as a section and mode", () => {
@@ -174,38 +174,43 @@ describe("replacing a section body", () => {
 	});
 });
 
-describe("precedence between user and project levels", () => {
-	/** A repository-specific file must beat the same personal section and mode. */
-	it("lets project content win for the same section and mode", () => {
-		const overrides = applySectionOverrides(
-			[file("role", "append", "user text", "user"), file("role", "append", "project text", "project")],
-			SHIPPED,
-		);
+describe("one directory, one winner per section and mode", () => {
+	/**
+	 * There is no project level left to outrank the operator: a repository's
+	 * `<cwd>/.veyyon/PROMPT_SECTIONS/` used to beat this same file, and the
+	 * loader no longer reads anywhere but the active profile.
+	 */
+	it("applies the operator's file for a section and mode", () => {
+		const overrides = applySectionOverrides([file("role", "append", "user text")], SHIPPED);
 
-		expect(overrides.role).toContain("project text");
-		expect(overrides.role).not.toContain("user text");
+		expect(overrides.role).toContain("user text");
 	});
 
-	/** Directory listing order must not change project-over-user precedence. */
-	it("does not let file order choose the winner", () => {
+	/**
+	 * File order is the only arbiter left. Two files for one section and mode
+	 * cannot come from disk (a directory holds one file per name), so this is
+	 * the fold's tie-break and nothing else: reintroducing a level that lets an
+	 * EARLIER entry win inverts this case.
+	 */
+	it("lets the later file win for the same section and mode", () => {
 		const overrides = applySectionOverrides(
-			[file("role", "append", "project text", "project"), file("role", "append", "user text", "user")],
+			[file("role", "append", "first text"), file("role", "append", "second text")],
 			SHIPPED,
 		);
 
-		expect(overrides.role).toContain("project text");
-		expect(overrides.role).not.toContain("user text");
+		expect(overrides.role).toContain("second text");
+		expect(overrides.role).not.toContain("first text");
 	});
 
-	/** Project precedence is per section and must preserve unrelated user files. */
-	it("keeps user content for sections the project does not touch", () => {
+	/** Folding is per section and mode: a file touches only its own section. */
+	it("keeps files for sections nothing else targets", () => {
 		const overrides = applySectionOverrides(
-			[file("runtime", "append", "user runtime", "user"), file("role", "append", "project role", "project")],
+			[file("runtime", "append", "runtime text"), file("role", "append", "role text")],
 			SHIPPED,
 		);
 
-		expect(overrides.runtime).toContain("user runtime");
-		expect(overrides.role).toContain("project role");
+		expect(overrides.runtime).toContain("runtime text");
+		expect(overrides.role).toContain("role text");
 	});
 });
 
@@ -230,7 +235,7 @@ describe("assembled prompt containment", () => {
 
 describe("discovering override files on disk", () => {
 	/**
-	 * `loadSectionOverrideFiles` walks two real directories, so the tests above
+	 * `loadSectionOverrideFiles` walks one real directory, so the tests above
 	 * (which construct file records directly) prove the folding logic and nothing
 	 * about whether the files are ever found. The reader is injected here rather
 	 * than writing to the user's real agent directory, which a test must never
@@ -251,16 +256,30 @@ describe("discovering override files on disk", () => {
 		};
 	}
 
-	it("finds an append file in the project config directory", async () => {
-		const projectDir = "/repo/.veyyon";
+	it("finds an append file in the operator's config directory", async () => {
 		const files = await loadSectionOverrideFiles({
 			cwd: "/repo",
-			projectConfigDir: projectDir,
-			...fakeFs({ [`${projectDir}/${PROMPT_DIR}`]: { "role.append.md": "extra rule" } }),
+			...fakeFs({ [OPERATOR_DIR]: { "role.append.md": "extra rule" } }),
 		});
 
 		expect(files).toHaveLength(1);
-		expect(files[0]).toMatchObject({ id: "role", mode: "append", level: "project", content: "extra rule" });
+		expect(files[0]).toMatchObject({ id: "role", mode: "append", content: "extra rule" });
+	});
+
+	/**
+	 * The inversion this suite exists to pin. A repository's
+	 * `<cwd>/.veyyon/PROMPT_SECTIONS/` used to be read at level "project" and
+	 * outranked the operator's own files, so a cloned repo could REPLACE a
+	 * shipped system-prompt section. The loader must not see it: reintroducing
+	 * the project scan turns this case red.
+	 */
+	it("ignores an override file sitting in the repository's config directory", async () => {
+		const files = await loadSectionOverrideFiles({
+			cwd: "/repo",
+			...fakeFs({ "/repo/.veyyon/PROMPT_SECTIONS": { "role.append.md": "hostile rule" } }),
+		});
+
+		expect(files).toEqual([]);
 	});
 
 	it("returns nothing when the directory does not exist", async () => {
@@ -325,13 +344,10 @@ describe("discovering override files on disk", () => {
 	 * answer any failure with `null` and the loop dropped it without a word.
 	 */
 	it("refuses a listed file it cannot read", async () => {
-		const projectDir = "/repo/.veyyon";
-
 		await expect(
 			loadSectionOverrideFiles({
 				cwd: "/repo",
-				projectConfigDir: projectDir,
-				listDir: async (dir: string) => (dir.includes(".veyyon") ? ["role.append.md"] : []),
+				listDir: async () => ["role.append.md"],
 				readFile: async () => {
 					throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
 				},
@@ -342,38 +358,36 @@ describe("discovering override files on disk", () => {
 	it("throws on a markdown file naming a section that does not exist", async () => {
 		// The discovery half of the loudness contract. A typo here is silent by
 		// nature: the file sits there looking applied while the shipped prompt runs.
-		const projectDir = "/repo/.veyyon";
-
 		await expect(
 			loadSectionOverrideFiles({
 				cwd: "/repo",
-				projectConfigDir: projectDir,
-				...fakeFs({ [`${projectDir}/${PROMPT_DIR}`]: { "delivery_contract.md": "x" } }),
+				...fakeFs({ [OPERATOR_DIR]: { "delivery_contract.md": "x" } }),
 			}),
 		).rejects.toThrow(/unknown prompt section/);
 	});
 
 	it("ignores non-markdown files sitting in the directory", async () => {
-		const projectDir = "/repo/.veyyon";
 		const files = await loadSectionOverrideFiles({
 			cwd: "/repo",
-			projectConfigDir: projectDir,
-			...fakeFs({ [`${projectDir}/${PROMPT_DIR}`]: { "README.txt": "notes", "role.append.md": "rule" } }),
+			...fakeFs({ [OPERATOR_DIR]: { "README.txt": "notes", "role.append.md": "rule" } }),
 		});
 
 		expect(files.map(f => f.id)).toEqual(["role"]);
 	});
 
-	it("labels project and user files by level so precedence can be applied", async () => {
-		// Level is what `applySectionOverrides` resolves precedence on, so a loader
-		// that mislabelled it would silently invert project-over-user.
-		const projectDir = "/repo/.veyyon";
+	it("returns files from the operator's directory only, even beside a repository file", async () => {
+		// Both trees hold an override for the same section. The repository's used
+		// to come back labelled "project" and win; now it must not come back at all.
 		const files = await loadSectionOverrideFiles({
 			cwd: "/repo",
-			projectConfigDir: projectDir,
-			...fakeFs({ [`${projectDir}/${PROMPT_DIR}`]: { "role.append.md": "project rule" } }),
+			...fakeFs({
+				[OPERATOR_DIR]: { "role.append.md": "operator rule" },
+				"/repo/.veyyon/PROMPT_SECTIONS": { "role.append.md": "hostile rule" },
+			}),
 		});
 
-		expect(files[0]?.level).toBe("project");
+		expect(files).toHaveLength(1);
+		expect(files[0]?.content).toBe("operator rule");
+		expect(files[0]?.path).toBe(path.join(OPERATOR_DIR, "role.append.md"));
 	});
 });

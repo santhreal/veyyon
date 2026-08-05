@@ -49,7 +49,13 @@ function bundledRules(): Rule[] {
 
 /** Rule names that survived the disable levers, whichever bucket they landed in. */
 function survivingRuleNames(disabledRules: string[], builtinRules = true): string[] {
-	const manager = new TtsrManager({ enabled: true, interruptMode: "never", repeatMode: "once", repeatGap: 10 });
+	const manager = new TtsrManager({
+		enabled: true,
+		contextMode: "discard",
+		interruptMode: "never",
+		repeatMode: "once",
+		repeatGap: 10,
+	});
 	const buckets = bucketRules(bundledRules(), manager, { disabledRules, builtinRules });
 	return [
 		...manager.getRules().map(rule => rule.name),

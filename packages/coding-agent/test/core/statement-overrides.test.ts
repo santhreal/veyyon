@@ -237,8 +237,7 @@ describe("an append-mode override appends to the assembled statements", () => {
 		{
 			id: "role",
 			mode: "append" as const,
-			level: "project" as const,
-			path: ".veyyon/prompt-sections/role.append.md",
+			path: "PROMPT_SECTIONS/role.append.md",
 			content: "- One more principle.",
 		},
 	];
@@ -271,7 +270,7 @@ describe("an append-mode override appends to the assembled statements", () => {
 	 */
 	it("lets a replacement in the same override set win before append", () => {
 		const applied = applySectionOverrides(
-			[{ id: "role", mode: "replace", level: "project", path: "a.md", content: "replaced" }, ...APPEND],
+			[{ id: "role", mode: "replace", path: "a.md", content: "replaced" }, ...APPEND],
 			assembledWithRole("ROLE\n====\n\nassembled\n\n"),
 		);
 

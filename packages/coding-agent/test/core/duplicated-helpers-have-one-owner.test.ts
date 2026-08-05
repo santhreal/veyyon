@@ -406,12 +406,12 @@ describe("the AES-256-GCM frame seal", () => {
 		expect(collabCrypto.generateWriteToken).toBe(wire.generateWriteToken);
 
 		const key = await collabCrypto.importRoomKey(collabCrypto.generateRoomKey());
-		const frame = { t: "hello", peer: "guest-1" } as unknown as Parameters<typeof collabCrypto.seal>[1];
+		const frame: collabProtocol.CollabFrame = { t: "hello", proto: 1, name: "guest-1" };
 		const sealed = await collabCrypto.seal(key, frame);
 
 		// 12-byte IV, then ciphertext and the 16-byte GCM tag. A layout change on either side moves this.
 		expect(sealed.byteLength).toBeGreaterThan(12 + 16);
-		expect(await wire.openFrame(key, sealed)).toEqual(frame);
+		expect(await wire.openFrame<collabProtocol.CollabFrame>(key, sealed)).toEqual(frame);
 		expect(await collabCrypto.open(key, await wire.sealFrame(key, frame))).toEqual(frame);
 
 		// A different key does not open it, so the round trip above is authentication and not a no-op.
