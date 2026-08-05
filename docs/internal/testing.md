@@ -328,10 +328,14 @@ for (const [label, resolved] of [
 }
 ```
 
-Run the suite bare (`bun test path/to/suite.test.ts`, without the runner) before
-you trust it. The runner hands every child a sandboxed `HOME`, which hides a
-missing redirect; running bare uses your real home and is the only way to see the
-isolation actually hold.
+Do not trust a bare `bun test path/to/suite.test.ts` to expose a missing redirect
+any more. It used to: the runner sandboxed `HOME` and a bare run did not, so the
+real home was what a suite fell back onto. Since `sandbox-home.ts` joined the
+tripwire preload, a bare run mints its own per-process home under `os.tmpdir()`
+too, and a suite with no isolation at all now looks isolated in both. Assert the
+resolved roots the way the block above does, and let the static gate
+(`scripts/tests-never-touch-real-home.test.ts`) read the suite: those are what
+still answer the question.
 
 ## Real user data is off limits (three layers)
 
@@ -380,11 +384,21 @@ hook form `useIsolatedConfigRoot()` in
 `packages/coding-agent/test/helpers/isolated-agent-dir.ts`, which wraps it.
 
 Never isolate by inventing a fresh config-dir NAME (`.veyyon-<suite>-<id>`). It reads as
-isolation and is not: the name is joined onto `os.homedir()`, so the tree lands in the real
-home whenever the suite runs outside the test runner's sandboxed `HOME`, which is what a
-bare `bun test path/to/file` does. That left 133 abandoned `~/.veyyon-*` directories in a
-real home, and the real-data tripwire now refuses any write to a `~/.veyyon*` path so it
-cannot happen again.
+isolation and is not: the name is joined onto `os.homedir()`, so the tree lands in the
+home of whatever process resolves it. That left 133 abandoned `~/.veyyon-*` directories in
+one real home, 131 of them from a single suite. Three things stop it now, and it took all
+three because each one has a blind spot the next covers:
+
+- The real-data tripwire refuses any write to a `~/.veyyon*` path, so an in-process write
+  cannot land. It knows only the home the process started with, so a child process, or a
+  checkout whose `bunfig.toml` carries no preload, is outside it.
+- `scripts/tests-never-touch-real-home.test.ts` reads the VALUE, not just the assignment,
+  and fails on a name-shaped one (`bare-config-dir-name`). It reads every `.ts` under
+  `packages/*/test`, not only `*.test.ts`, because a shared setup module decides the config
+  root for a whole package at once and was invisible to the walk while the leak was live.
+- A package whose setup enters a root asserts the home is unchanged when it leaves, which
+  is the only check that survives someone finding a fourth way to spell the mistake. See
+  `useMnemopiTestEnv()` and `packages/mnemopi/test/the-config-root-never-lands-in-the-home.test.ts`.
 
 To give a whole package one convention, export a hook from its shared test setup and
 call it in every suite, the way `useMnemopiTestEnv()` in `packages/mnemopi/test/setup.ts`

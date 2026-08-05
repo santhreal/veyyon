@@ -7,35 +7,36 @@ Source of truth in code:
 - Runtime config types: `packages/coding-agent/src/mcp/types.ts`
 - Config writer: `packages/coding-agent/src/mcp/config-writer.ts`
 - Loader + validation: `packages/coding-agent/src/mcp/config.ts`
-- Standalone `mcp.json` discovery: `packages/coding-agent/src/discovery/mcp-json.ts`
+- Capability providers (the editor configs Veyyon also reads): `packages/coding-agent/src/discovery/`
 - Schema: `packages/coding-agent/src/config/mcp-schema.json`
 
-## Preferred config locations
+## Where MCP config lives
 
-Veyyon can discover MCP servers from multiple tools (`.claude/`, `.cursor/`, `.vscode/`, `opencode.json`, and more), but for Veyyon-native configuration you should usually use one of these primary files:
+Veyyon-native MCP config lives in exactly one file, the active profile's agent directory:
 
-- Project: `.veyyon/mcp.json`
-- User: `~/.veyyon/profiles/default/agent/mcp.json` (or `~/.veyyon/profiles/<name>/agent/mcp.json` when a named profile is active: see [Profiles](#profiles))
+- `~/.veyyon/profiles/default/agent/mcp.json`
+- `~/.veyyon/profiles/<name>/agent/mcp.json` when a named profile is active (see [Profiles](#profiles))
 
-The native provider also reads `.veyyon/.mcp.json` and `~/.veyyon/profiles/default/agent/.mcp.json` for compatibility, but Veyyon writes to the primary `mcp.json` paths above.
+The native provider also reads `.mcp.json` beside it for compatibility, but Veyyon writes to `mcp.json`.
 
-Veyyon also accepts fallback standalone files in the project root:
-
-- `mcp.json`
-- `.mcp.json`
-
-Use `.veyyon/mcp.json` or `~/.veyyon/profiles/default/agent/mcp.json` when you want Veyyon to own the configuration. Use root `mcp.json` / `.mcp.json` only when you want a portable fallback file that other MCP clients may also read.
+There is no project scope. `.veyyon/mcp.json`, a root `mcp.json` and a root `.mcp.json` inside a
+working tree used to be loaded and used to be writable through `/mcp add --scope project`; none of
+them is read now, and `--scope` is gone from every `/mcp` subcommand. A repository is content you
+may not have written, so a checked-in file must not name a server the agent connects to or a command
+it spawns. Veyyon still discovers servers from other tools' configs (`.claude/`, `.cursor/`,
+`.vscode/`, `opencode.json`, and more) at their own scopes, and `/mcp list` names the file each
+server came from.
 
 ### Profiles
 
-Named profiles (`veyyon --profile <name>`, the `--alias` shortcut, or `VEYYON_PROFILE` still work) isolate user-level MCP config. When a profile is active, the **user** scope resolves to the profile's agent directory instead of the default one:
+Named profiles (`veyyon --profile <name>`, the `--alias` shortcut, or `VEYYON_PROFILE` still work) isolate MCP config. When a profile is active, `mcp.json` resolves to that profile's agent directory:
 
 - Default profile: `~/.veyyon/profiles/default/agent/mcp.json`
 - Profile `<name>`: `~/.veyyon/profiles/<name>/agent/mcp.json`
 
-Discovery, the `/mcp` commands, and the config writer all follow the active profile, so a profile sees **only** its own user-level servers, never the default profile's `~/.veyyon/profiles/default/agent/mcp.json`. Add a server to a profile by launching under it (`veyyon --profile <name>`) and running `/mcp add` → User level, or by editing `~/.veyyon/profiles/<name>/agent/mcp.json` directly.
+Discovery, the `/mcp` commands, and the config writer all follow the active profile, so a profile sees **only** its own servers, never the default profile's `~/.veyyon/profiles/default/agent/mcp.json`. Add a server to a profile by launching under it (`veyyon --profile <name>`) and running `/mcp add`, or by editing `~/.veyyon/profiles/<name>/agent/mcp.json` directly.
 
-Project-scoped MCP config (`.veyyon/mcp.json`) is keyed to the working directory, not the profile, so it applies under every profile. External-tool configs (`.claude/`, `.cursor/`, etc.) are also profile-independent because they belong to those tools rather than to a Veyyon profile.
+External-tool configs (`.claude/`, `.cursor/`, etc.) are profile-independent because they belong to those tools rather than to a Veyyon profile.
 
 MCP follows the same profile rules as the rest of Veyyon-native config; see [Configuration Discovery → Profiles](./config-usage.md#profiles).
 
@@ -203,28 +204,24 @@ You normally do not need to write this block: when Veyyon completes an OAuth flo
 for an `http`/`sse` server it stores the credential under a deterministic id
 derived from the active profile and server URL
 (`mcp_oauth:profile:<profile>:<url>`), with the refresh material embedded. Any
-config that points at the same URL, including a *definition-only* entry in a
-shared project `mcp.json` with no `auth` block at all, resolves the active
-profile's own credential automatically, including when auth storage is backed by
-a shared auth broker. This is what makes project-scoped servers safe across
-profiles: commit the definition, and each profile authorizes (and stays signed
-in as) its own account via `/mcp reauth <name>`. An explicit `credentialId` is
-still honored when it resolves; if it points at another profile's row, Veyyon falls
-back to the profile-scoped url-keyed binding.
+config that points at the same URL, including a *definition-only* entry with no
+`auth` block at all, resolves the active profile's own credential automatically,
+including when auth storage is backed by a shared auth broker. An explicit
+`credentialId` is still honored when it resolves; if it points at another
+profile's row, Veyyon falls back to the profile-scoped url-keyed binding.
 
 `/mcp reauth` on a definition-only entry leaves the file untouched, the
 credential (refresh material included) lives entirely in the active profile's
-auth storage (local `agent.db` or broker), so a committed project config never
-picks up local auth state. An explicitly
-configured `Authorization` header always wins over the url-keyed binding.
+auth storage (local `agent.db` or broker), so no config file ever picks up local
+auth state. An explicitly configured `Authorization` header always wins over the
+url-keyed binding.
 
-The binding is per profile but not per project: once a profile has authorized
-a URL, *any* checkout whose `mcp.json` defines a server at that URL connects
-with that profile's credential automatically. Committed MCP definitions are
-trusted input, the same already applies to `stdio` entries, which run
-arbitrary commands, so review a repository's `mcp.json` before opening it
-with a profile that holds credentials you care about, or use a dedicated
-profile for untrusted checkouts.
+The binding is per profile but not per project: once a profile has authorized a
+URL, any config defining a server at that URL connects with that profile's
+credential automatically. That is one reason a repository cannot define an MCP
+server: a checked-in entry naming an already-authorized URL would have borrowed
+the profile's credential. Servers you add through `/mcp add` are yours, and the
+editor configs Veyyon still reads are named by file in `/mcp list`.
 
 ### `oauth`
 
@@ -464,7 +461,7 @@ Veyyon does not merge duplicate server definitions across files. Discovery provi
 
 In practice:
 
-- prefer `.veyyon/mcp.json` or `~/.veyyon/profiles/default/agent/mcp.json` when you want a Veyyon-specific override
+- prefer `~/.veyyon/profiles/default/agent/mcp.json` when you want a Veyyon-specific override
 - keep server names unique across tools when possible
 - use `disabledServers` in the user config when a third-party config keeps reintroducing a server you do not want
 
@@ -489,7 +486,7 @@ The JSON is valid, but the server may still be unreachable. Use `/mcp test <name
 
 ### The server exists in another tool's config but not in Veyyon
 
-Run `/mcp list`. Veyyon discovers many third-party MCP files, but project-level loading can also be disabled via the `mcp.enableProjectConfig` setting, and a user-level `disabledServers` entry can suppress a server by name.
+Run `/mcp list`: it names the file each server came from. Veyyon discovers many third-party MCP files, but it never reads a repository's own `mcp.json`, `.mcp.json` or `.veyyon/mcp.json`, and a `disabledServers` entry in your profile's `mcp.json` can suppress a discovered server by name.
 
 ### A call fails with a protocol error rather than a timeout
 

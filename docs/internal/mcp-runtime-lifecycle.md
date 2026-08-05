@@ -27,7 +27,7 @@ This document describes how MCP servers are discovered, connected, exposed as to
 
 Both paths:
 
-- pass `authStorage`, cache storage, `mcp.enableProjectConfig`, and browser-MCP filtering based on the `browser.enabled` setting,
+- pass `authStorage`, cache storage, and browser-MCP filtering based on the `browser.enabled` setting,
 - always set `filterExa: true`,
 - log per-server load/connect errors,
 - store the manager in `toolSession.mcpManager` and the session result.
@@ -40,7 +40,7 @@ If `enableMCP` is false, MCP discovery is skipped entirely.
 
 Filtering behavior:
 
-- `enableProjectConfig: false` removes project-level entries (`_source.level === "project"`).
+- There is no project-level filter. No MCP provider emits `_source.level === "project"`, because a repository must not name a server the agent connects to; the `enableProjectConfig` option and its `mcp.enableProjectConfig` settings row governed that filter and were removed with it.
 - `enabled: false` servers are skipped before connect attempts.
 - Exa servers are filtered out by default and API keys are extracted for native Exa tool integration; browser automation MCP servers are filtered when `filterBrowser` is true.
 

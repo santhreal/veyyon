@@ -197,14 +197,21 @@ session does not accumulate every agent it ever spawned. Closing removes the
 revivable reference; it does not touch the transcript, which stays readable at
 `history://<name>`.
 
-Three settings in the Auto Close group control it. `subagent.autoClose.enabled`
-is on by default; turn it off to keep every finished subagent listed and
-revivable until you exit. `subagent.autoClose.parkedMs` is how long a parked
-subagent stays listed, counted from the moment it parked, and defaults to five
-minutes. `subagent.autoClose.waitingMs` is the same budget for a subagent whose
-last message said it was waiting on another agent, and defaults to thirty
-minutes: it stopped on purpose to let a peer finish, so it is the agent you are
-most likely to message next. Set the two equal to treat both the same.
+Four settings in the Auto Close group control the whole lifecycle, in the order they
+happen. `subagent.idleTtlMs` ("Park After") is stage one: how long a finished subagent
+stays live before parking, five minutes by default. `subagent.autoClose.enabled` is on by
+default; turn it off to keep every parked subagent listed and revivable until you exit.
+`subagent.autoClose.parkedMs` ("Close After") is how long a parked subagent stays listed,
+counted from the moment it parked, and defaults to five minutes.
+`subagent.autoClose.waitingMs` ("Close After (Waiting)") is the same budget for a subagent
+whose last message said it was waiting on another agent, and defaults to thirty minutes:
+it stopped on purpose to let a peer finish, so it is the agent you are most likely to
+message next. Set the two equal to treat both the same.
+
+Turning auto-close off does not turn parking off. Parking is what releases the session, and
+it happens either way; the toggle only decides whether the parked reference is eventually
+dropped. That is why "Park After" sits in this group but is not hidden when the toggle is
+off.
 
 ### When each budget starts counting
 

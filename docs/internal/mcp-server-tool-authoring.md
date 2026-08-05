@@ -63,8 +63,9 @@ The dedicated fallback provider in `src/discovery/mcp-json.ts` reads project-roo
 
 In practice MCP servers also come from higher-priority providers (for example native `.veyyon/...` and tool-specific config dirs). Authoring guidance:
 
-- Prefer `.veyyon/mcp.json` (project) or `~/.veyyon/profiles/default/agent/mcp.json` (user) for explicit control.
-- Use root `mcp.json` / `.mcp.json` when you need fallback compatibility.
+- Use `~/.veyyon/profiles/default/agent/mcp.json` (the active profile). There is no project scope:
+  a `<cwd>/.veyyon/mcp.json` or a repo-root `mcp.json`/`.mcp.json` is not read, because a
+  checked-out working tree must not add a tool-providing server.
 - Reusing the same server name in multiple sources causes precedence shadowing, not merge.
 
 ### Normalization behavior
@@ -79,9 +80,10 @@ Key behavior:
 
 ### Environment expansion during discovery
 
-Veyyon-native MCP config (`.veyyon/mcp.json`, `~/.veyyon/profiles/default/agent/mcp.json`, plus their `.mcp.json` variants) expands `${VAR}` and `${VAR:-default}` placeholders recursively before converting to runtime config. It also accepts boolean/string forms for `enabled` (`true`, `false`, `1`, `0`) and numeric strings for `timeout`.
-
-The standalone fallback provider in `src/discovery/mcp-json.ts` reads project-root `mcp.json` and `.mcp.json`, expands the same `${...}` placeholders, and type-checks `enabled`/`timeout` without coercing string values.
+Veyyon-native MCP config (`~/.veyyon/profiles/default/agent/mcp.json` and its `.mcp.json` variant)
+expands `${VAR}` and `${VAR:-default}` placeholders recursively before converting to runtime config.
+It also accepts boolean/string forms for `enabled` (`true`, `false`, `1`, `0`) and numeric strings
+for `timeout`.
 
 Invalid `enabled`/`timeout` values are ignored with warnings rather than failing the whole file.
 
