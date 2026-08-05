@@ -15,7 +15,10 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 try {
 	delete process.env.MallocStackLogging;
 	delete process.env.MallocStackLoggingNoCompact;
-} catch {}
+} catch {
+	// A frozen or proxied `process.env` is the only way this throws, and the
+	// vars it would strip are a macOS-only child-process warning.
+}
 
 /**
  * CLI entry point — registers all commands explicitly and delegates to the

@@ -440,7 +440,7 @@ describe("system prompt section order", () => {
 			...baseOptions,
 			sectionOrder: ["delivery-contract", "tool-policy"],
 		});
-		const prompt = result.systemPrompt[0];
+		const prompt = result.systemPrompt.slice(0, 2).join("\n");
 		expect(prompt.indexOf("DELIVERY CONTRACT")).toBeGreaterThan(-1);
 		expect(prompt.indexOf("DELIVERY CONTRACT")).toBeLessThan(prompt.indexOf("TOOL POLICY"));
 		expect(prompt.indexOf("TOOL POLICY")).toBeLessThan(prompt.indexOf("ROLE"));
@@ -470,5 +470,70 @@ describe("system prompt section order", () => {
 			expect(result.systemPrompt.join("\n")).not.toContain("Engineering Principles");
 			expect(result.systemPrompt.join("\n")).toContain("PROJECT\n==============");
 		}
+	});
+});
+
+describe("system prompt cache prefix", () => {
+	const baseOptions = {
+		contextFiles: [],
+		rules: [],
+		workspaceTree: {
+			rootPath: import.meta.dir,
+			rendered: "",
+			truncated: false,
+			totalLines: 0,
+			agentsMdFiles: [],
+		},
+		activeRepoContext: null,
+	};
+
+	/**
+	 * Providers cache block zero across turns and parent/subagent requests. This
+	 * test prevents tool, model, personality, and delegation settings from
+	 * invalidating that cache boundary while proving the later policy block
+	 * still reflects those capabilities.
+	 */
+	it("keeps the first block byte-identical across dynamic harness policies", async () => {
+		const minimal = await buildSystemPrompt({
+			...baseOptions,
+			skills: [],
+			toolNames: ["read"],
+			model: "anthropic/claude-sonnet-4",
+			personality: "none",
+			eagerTasks: false,
+			taskBatch: false,
+			taskMaxConcurrency: 1,
+			renderMermaid: false,
+		});
+		const delegated = await buildSystemPrompt({
+			...baseOptions,
+			skills: [
+				{
+					name: "cache-probe",
+					description: "cache probe",
+					filePath: "/tmp/cache-probe/SKILL.md",
+					baseDir: "/tmp/cache-probe",
+					source: "test",
+					hide: false,
+				},
+			],
+			toolNames: ["read", "bash", "task", "lsp", "ast_grep"],
+			model: "openai/gpt-5.6",
+			personality: "friendly",
+			eagerTasks: true,
+			eagerTasksAlways: true,
+			taskBatch: true,
+			taskMaxConcurrency: 32,
+			taskIrcEnabled: true,
+			renderMermaid: true,
+			sectionOrder: ["tool-policy", "role"],
+		});
+
+		expect(minimal.systemPrompt[0]).toBe(delegated.systemPrompt[0]);
+		expect(minimal.systemPrompt[1]).not.toBe(delegated.systemPrompt[1]);
+		expect(minimal.systemPrompt[0]).toContain("DELIVERY CONTRACT");
+		expect(minimal.systemPrompt[0]).not.toContain("TOOL POLICY");
+		expect(delegated.systemPrompt[1]).toContain("TOOL POLICY");
+		expect(delegated.systemPrompt[1]).toContain("<personality>");
 	});
 });

@@ -84,7 +84,7 @@ export function getChangelogPath(): string | undefined {
 
 /**
  * Config directory bases in priority order (highest first).
- * User-level: ~/.veyyon/profiles/default/agent (profile-aware via getConfigAgentDirName), ~/.claude, ~/.codex, ~/.gemini
+ * User-level: the active profile's agent dir, `~/.veyyon/profiles/<name>/agent` (resolved via getConfigAgentDirName), ~/.claude, ~/.codex, ~/.gemini
  * Project-level: .veyyon, .claude, .codex, .gemini
  */
 const USER_CONFIG_BASES = priorityList.map(({ dir, globalAgentDir }) => ({
@@ -104,7 +104,7 @@ export interface ConfigDirEntry {
 }
 
 export interface GetConfigDirsOptions {
-	/** Include user-level directories (~/.veyyon/profiles/default/agent/...). Default: true */
+	/** Include user-level directories (`~/.veyyon/profiles/<name>/agent/...`). Default: true */
 	user?: boolean;
 	/** Include project-level directories (.veyyon/...). Default: true */
 	project?: boolean;
@@ -126,7 +126,7 @@ export interface GetConfigDirsOptions {
  * @example
  * // Get all command directories
  * getConfigDirs("commands")
- * // → [{ path: "~/.veyyon/profiles/default/agent/commands", source: ".veyyon", level: "user" }, ...]
+ * // → [{ path: "~/.veyyon/profiles/<name>/agent/commands", source: ".veyyon", level: "user" }, ...]
  *
  * @example
  * // Get only existing project skill directories

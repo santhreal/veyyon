@@ -64,7 +64,6 @@ export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
 	"gemini",
 	"github",
 	"opencode",
-	"vscode",
 	"windsurf",
 ]);
 

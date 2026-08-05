@@ -9,11 +9,14 @@ const DEFAULT_MAX_RUNNING_JOBS = 15;
 /**
  * Adaptive ("smart") `job` poll-wait ladder (ms). A tight poll loop climbs
  * these rungs so each immediate re-poll backs off and stops spending turns on
- * "still running" frames; the floor (first rung) is the shortest wait and the
- * top rung is the longest a smart poll will ever block. Only used when
- * `async.pollWaitDuration` is set to `smart`; fixed durations wait verbatim.
+ * "still running" frames. The four-minute ceiling leaves a full minute before
+ * the five-minute prompt-cache boundary, so timer and request-preparation
+ * latency cannot turn the next heartbeat into a full uncached prompt.
+ *
+ * Only used when `async.pollWaitDuration` is set to `smart`; fixed durations
+ * wait verbatim.
  */
-const POLL_WAIT_LADDER_MS = [5_000, 10_000, 30_000, 60_000, 300_000] as const;
+const POLL_WAIT_LADDER_MS = [30_000, 4 * 60_000] as const;
 /**
  * Going at least this long between poll calls means the agent stepped out of
  * the poll loop to do real work — the next poll drops back to the ladder floor.
@@ -315,15 +318,52 @@ export class AsyncJobManager {
 		return uniqueJobIds.length;
 	}
 
+	/**
+	 * Lift a watch installed by {@link watchJobs}, re-arming the delivery of anything
+	 * that finished inside the window.
+	 *
+	 * The re-arm is the point. A watch suppresses `#enqueueDelivery` outright, so a
+	 * job that completes while watched has no delivery anywhere: not queued, not
+	 * in-flight, not retained for later. Before this, lifting the watch simply
+	 * forgot about it, and the child's report survived only inside the return value
+	 * of whatever call installed the watch. Any path that dropped that return value
+	 * dropped the subagent's entire output, permanently and silently, and nothing
+	 * could recover it: `resumeDeliveries` lifts `#suppressedDeliveries` and has
+	 * never been able to see a watch.
+	 *
+	 * CALLERS MUST `acknowledgeDeliveries` BEFORE UNWATCHING when they are returning
+	 * the results themselves. That is what keeps delivery exactly-once: the
+	 * acknowledgement is permanent, so the re-arm here sees it and stays quiet. Get
+	 * the order backwards and the operator sees the same report twice.
+	 */
 	unwatchJobs(jobIds: string[]): number {
 		const uniqueJobIds = Array.from(new Set(jobIds.map(id => id.trim()).filter(id => id.length > 0)));
 		let removed = 0;
 		for (const jobId of uniqueJobIds) {
-			if (this.#watchedJobs.delete(jobId)) {
-				removed += 1;
-			}
+			if (!this.#watchedJobs.delete(jobId)) continue;
+			removed += 1;
+			this.#requeueSettledDelivery(jobId);
 		}
 		return removed;
+	}
+
+	/**
+	 * Re-enqueue the completion of a job whose delivery `#enqueueDelivery` skipped
+	 * while it was suppressed. No-op unless the job has actually settled and is not
+	 * already queued or in flight; `#enqueueDelivery` is the single place that
+	 * decides suppression, so an acknowledged job is dropped there rather than
+	 * pre-checked here.
+	 */
+	#requeueSettledDelivery(jobId: string): void {
+		const job = this.#jobs.get(jobId);
+		if (!job || (job.status !== "completed" && job.status !== "failed")) return;
+		if (
+			this.#deliveries.some(delivery => delivery.jobId === jobId) ||
+			this.#inFlightDeliveries.some(delivery => delivery.jobId === jobId)
+		) {
+			return;
+		}
+		this.#enqueueDelivery(jobId, job.status === "completed" ? (job.resultText ?? "") : (job.errorText ?? ""));
 	}
 
 	/**
@@ -379,13 +419,7 @@ export class AsyncJobManager {
 			const jobId = rawId.trim();
 			if (!jobId) continue;
 			if (!this.#suppressedDeliveries.delete(jobId)) continue;
-			const job = this.#jobs.get(jobId);
-			if (!job || (job.status !== "completed" && job.status !== "failed")) continue;
-			const queued =
-				this.#deliveries.some(delivery => delivery.jobId === jobId) ||
-				this.#inFlightDeliveries.some(delivery => delivery.jobId === jobId);
-			if (queued) continue;
-			this.#enqueueDelivery(jobId, job.status === "completed" ? (job.resultText ?? "") : (job.errorText ?? ""));
+			this.#requeueSettledDelivery(jobId);
 		}
 	}
 

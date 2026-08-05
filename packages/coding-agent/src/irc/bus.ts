@@ -275,6 +275,41 @@ export class IrcBus {
 		return () => this.#logListeners.delete(listener);
 	}
 
+	/**
+	 * Drop every trace of the named agents: their mailboxes, their pending
+	 * waiters, and every traffic line they took part in.
+	 *
+	 * Called when a driving session re-roots to a different transcript (`/new`,
+	 * `/resume`) and releases the subagents of the conversation it left. The
+	 * registry refs go, but the bus is process-global and its log is not keyed by
+	 * conversation, so without this the Comms stream of a brand-new session opens
+	 * on the previous session's chatter between agents that no longer exist —
+	 * which is exactly the "agents from another session" the scoping fixes
+	 * everywhere else.
+	 *
+	 * A waiter is CANCELLED rather than dropped: it is a promise something is
+	 * blocked on, and a released agent's `wait` must unblock rather than hang for
+	 * the life of the process.
+	 */
+	forgetAgents(ids: Iterable<string>): void {
+		const gone = new Set(ids);
+		if (gone.size === 0) return;
+		for (const id of gone) {
+			this.#mailboxes.delete(id);
+			// SNAPSHOT the array. `cancel` settles, and settling runs `cleanup`,
+			// which splices this very array through `#removeWaiter`. Iterating it
+			// live skipped every second waiter, and the `delete` below then made
+			// the skipped ones unreachable, so a second concurrent
+			// `irc wait timeoutMs:0` on a released agent hung for the life of the
+			// process. That is the exact hang `cancel` was changed to prevent,
+			// reintroduced one line away from the fix.
+			for (const waiter of [...(this.#waiters.get(id) ?? [])]) waiter.cancel();
+			this.#waiters.delete(id);
+		}
+		const kept = this.#log.filter(entry => !gone.has(entry.message.from) && !gone.has(entry.message.to));
+		if (kept.length !== this.#log.length) this.#log.splice(0, this.#log.length, ...kept);
+	}
+
 	#record(entry: IrcLogEntry, attempt: IrcDeliveryAttempt): void {
 		const facts: IrcDeliveryFacts = {
 			outcome: attempt.outcome,
@@ -501,7 +536,14 @@ export class IrcBus {
 		const waiter: IrcWaiter = {
 			from: filter.from,
 			resolve: msg => settle({ kind: "message", msg }),
-			cancel: () => cleanup(),
+			// Settles, not merely cleans up. `cancel` had no caller until
+			// `forgetAgents` gained one, and it was written as `cleanup()` alone:
+			// that deregisters the waiter and clears the timer, which removes the
+			// last thing that could ever have settled the promise, so the caller
+			// blocked in `wait` hung for the life of the process. Resolving null is
+			// the honest outcome and the one callers already handle: nothing is
+			// coming, for the same reason a timeout means nothing is coming.
+			cancel: () => settle({ kind: "timeout" }),
 		};
 
 		if (signal) {

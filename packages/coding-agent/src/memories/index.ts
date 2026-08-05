@@ -340,7 +340,7 @@ async function runMemoryStartup(options: {
 	await runPhase1(options);
 	await runPhase2(options);
 	await refreshMemoryToolDeveloperInstructionsCacheAfterStartup(options.session, options.agentDir, options.settings);
-	await options.session.refreshBaseSystemPrompt?.();
+	await options.session.refreshBaseSystemPrompt?.("memory-startup");
 }
 
 async function runPhase1(options: {
