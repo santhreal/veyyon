@@ -106,9 +106,7 @@ const HOSTILE_SHAPES: Array<[label: string, args: Record<string, unknown>]> = [
 ];
 
 const tools = await createTools(toolSession() as never);
-const BUILTINS: Tool[] = (Array.isArray(tools) ? tools : Object.values(tools)).filter(
-	(tool: Tool) => tool?.parameters !== undefined,
-);
+const BUILTINS: Tool[] = tools.filter(tool => tool?.parameters !== undefined);
 
 /**
  * Every (shape, tool) failure message, computed ONCE.

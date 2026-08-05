@@ -25,17 +25,20 @@
  */
 import { describe, expect, it } from "bun:test";
 import { getDefault } from "@veyyon/coding-agent/config/settings-schema";
-import type { ApprovalSubject, ToolApprovalDecision } from "@veyyon/coding-agent/tools/approval";
+import type { ApprovalMode, ToolApprovalDecision } from "@veyyon/coding-agent/tools/approval";
 import { resolveApproval, resolveEffectiveApprovalMode } from "@veyyon/coding-agent/tools/approval";
 
 /** The rung a fresh install runs on: read from the schema, never from the ladder's own constant. */
-function freshInstallMode(): string {
+function freshInstallMode(): ApprovalMode {
 	return resolveEffectiveApprovalMode(getDefault("tools.approvalMode"));
 }
 
+/** What {@link resolveApproval} will examine, taken from its own signature rather than restated. */
+type ApprovalSubject = Parameters<typeof resolveApproval>[0];
+
 /** A tool whose own `approval(args)` returns `decision`, which is the seam every guard rides on. */
 function toolDeciding(decision: ToolApprovalDecision): ApprovalSubject {
-	return { name: "bash", approval: () => decision } as ApprovalSubject;
+	return { name: "bash", approval: () => decision };
 }
 
 describe("the approval ladder on a fresh install", () => {

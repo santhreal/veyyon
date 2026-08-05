@@ -34,16 +34,26 @@ import { describe, expect, it } from "bun:test";
 import { parseGeminiCliCredentials } from "@veyyon/ai/providers/google-gemini-cli";
 import { commands } from "@veyyon/coding-agent/cli-commands";
 import { missingXAICredentialsMessage } from "@veyyon/coding-agent/lib/xai-http";
-import { BUILTIN_SLASH_COMMAND_DECLARATIONS } from "@veyyon/coding-agent/slash-commands/builtin-declarations";
+import {
+	BUILTIN_SLASH_COMMAND_DECLARATIONS,
+	type BuiltinSlashCommandDeclaration,
+} from "@veyyon/coding-agent/slash-commands/builtin-declarations";
 import { errorMessage } from "@veyyon/utils";
 
 const REGISTERED_COMMANDS: ReadonlySet<string> = new Set(
 	commands.flatMap(entry => [entry.name, ...(entry.aliases ?? [])]),
 );
 
-/** Slash commands with no `textMode: true`, i.e. reachable only from the TUI. */
+/**
+ * Slash commands with no `textMode: true`, i.e. reachable only from the TUI.
+ * The callback is annotated with the declaration interface because the table is
+ * `as const`: its literal element types simply omit `textMode`, which makes the
+ * property unreadable on the union even though the interface declares it.
+ */
 const TUI_ONLY_SLASH_COMMANDS: ReadonlySet<string> = new Set(
-	BUILTIN_SLASH_COMMAND_DECLARATIONS.filter(entry => entry.textMode !== true).map(entry => entry.name),
+	BUILTIN_SLASH_COMMAND_DECLARATIONS.filter((entry: BuiltinSlashCommandDeclaration) => entry.textMode !== true).map(
+		entry => entry.name,
+	),
 );
 
 function unroutableSubcommandsIn(text: string): string[] {

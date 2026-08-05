@@ -2,9 +2,13 @@
  * A settings row must describe the layer that owns its effective value.
  *
  * Before source provenance was tracked, /settings rendered every resolved value as
- * a profile control. Activating a project, --config, or runtime-shadowed row then
- * wrote an invisible lower-precedence profile value and fired onChange even though
- * the effective setting never changed.
+ * a profile control. Activating a --config or runtime-shadowed row then wrote an
+ * invisible lower-precedence profile value and fired onChange even though the
+ * effective setting never changed.
+ *
+ * The project layer that used to be a third shadowing source is gone: a
+ * repository's `<cwd>/.veyyon/config.yml` produces no source and no shadow, and
+ * two cases here pin that inversion (reintroducing the layer turns them red).
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
@@ -121,14 +125,28 @@ describe("Settings source provenance", () => {
 		expect(loaded.get(SETTING_PATH)).toBe(true);
 	});
 
-	/** Project policy must win provenance as well as value when it shadows the profile. */
-	it("reports the exact project source and effective project value", async () => {
+	/**
+	 * A repository's `<cwd>/.veyyon/config.yml` used to shadow the profile at a
+	 * "project" source. That layer is gone: the file must produce NO source and
+	 * NO value, so the profile's ownership and value stand untouched.
+	 */
+	it("ignores a repository config file: the profile source and value stand", async () => {
 		const fixture = makeFixture();
 		writeProfile(fixture, true);
 		writeProject(fixture, false);
 		const loaded = await Settings.loadIsolated(fixture);
 
-		expect(loaded.getSource(SETTING_PATH)).toBe("project");
+		expect(loaded.getSource(SETTING_PATH)).toBe("profile");
+		expect(loaded.get(SETTING_PATH)).toBe(true);
+	});
+
+	/** The same file with no profile beneath it must leave the DEFAULT in charge. */
+	it("ignores a repository config file with nothing beneath it: the default stands", async () => {
+		const fixture = makeFixture();
+		writeProject(fixture, true);
+		const loaded = await Settings.loadIsolated(fixture);
+
+		expect(loaded.getSource(SETTING_PATH)).toBe("default");
 		expect(loaded.get(SETTING_PATH)).toBe(false);
 	});
 
@@ -157,29 +175,33 @@ describe("Settings source provenance", () => {
 });
 
 describe("Settings selector source ownership", () => {
-	/** Enter on project policy used to persist a profile toggle and announce a change that never became effective. */
-	it("names a project-shadowed boolean and refuses Enter without a lower-layer change", async () => {
+	/**
+	 * A repository config file must produce NO shadow. This row used to render
+	 * "project config · false" and refuse Enter; with the project layer gone the
+	 * same file is invisible, so the row keeps the profile's value, stays an	 * editable profile toggle, and Enter writes the profile exactly as though the
+	 * repository file did not exist. Reintroducing the project layer turns this
+	 * red: the render would show the repository's `true` instead of `false`.
+	 */
+	it("ignores a repository config file: the row stays a profile toggle", async () => {
 		const fixture = makeFixture();
 		writeProfile(fixture, false);
-		writeProject(fixture, false);
+		writeProject(fixture, true);
 		await Settings.init(fixture);
 		geometryStub = stubStdoutGeometry({ columns: 120, rows: 40 });
 		const changes: Array<[string, unknown]> = [];
 		const component = createSelector(fixture.cwd, changes);
 
-		component.handleInput("\x1b[C");
 		const rendered = component.render(120).map(stripVTControlCharacters).join("\n");
-		expect(rendered).toMatch(/Auto-Promote Context\s+project config · false/);
-		expect(rendered).toContain("Effective value comes from project config; this");
-		expect(rendered).toContain("profile control is read-only.");
-		expect(rendered).not.toContain("enter change");
+		expect(rendered).toMatch(/Auto-Promote Context\s+‹ false ›/);
+		expect(rendered).not.toContain("project config");
+		expect(rendered).not.toContain("read-only");
 		component.handleInput("\n");
 		await Settings.instance.flush();
 
-		expect(Settings.instance.getSource(SETTING_PATH)).toBe("project");
-		expect(Settings.instance.get(SETTING_PATH)).toBe(false);
-		expect(readProfileValue(fixture)).toBe(false);
-		expect(changes).toEqual([]);
+		expect(Settings.instance.getSource(SETTING_PATH)).toBe("profile");
+		expect(Settings.instance.get(SETTING_PATH)).toBe(true);
+		expect(readProfileValue(fixture)).toBe(true);
+		expect(changes).toEqual([[SETTING_PATH, true]]);
 	});
 
 	/** A mouse activation must obey the same runtime-ownership guard as keyboard activation. */

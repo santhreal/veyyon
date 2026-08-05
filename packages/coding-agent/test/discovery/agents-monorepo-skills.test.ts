@@ -1,28 +1,40 @@
 /**
- * Tests that the agents provider walks up from cwd to find capabilities in ancestor
- * .agent/ and .agents/ directories (project-level discovery).
+ * A monorepo's .agent/.agents directories DO NOT configure the agent.
  *
- * Instead of testing the full provider flow (which requires the entire capability registry),
- * this test verifies the building blocks (scanSkillsFromDir, loadFilesFromDir, readFile)
- * with the same walk-up pattern used by the agents provider.
+ * This suite used to assert the opposite: the agents provider walked up from a
+ * package cwd to the repository root, collecting `.agents/skills`,
+ * `.agents/rules`, `.agents/prompts`, `.agents/commands` and
+ * `.agents/AGENTS.md` at PROJECT level, so a cloned repository injected skills
+ * and instructions the operator never wrote and never read. That walk-up is
+ * gone (the operator rule: nothing loads from the repository except
+ * AGENTS.md/CLAUDE.md context files), and every case here is the inversion of
+ * one that asserted it.
+ *
+ * The cases drive the REAL provider registry through `loadCapability` with an
+ * explicit provider allowlist, against a monorepo fixture (a repo root with a
+ * `.git` marker and one package under `packages/`). "Did the repository reach
+ * the session" is answered by the same path a session uses, and re-injecting
+ * the project walk-up turns each first case red. The user level
+ * (`~/.agent`, `~/.agents`) is the positive control: it must keep loading.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache, readFile } from "@veyyon/coding-agent/capability/fs";
+import { loadCapability, reset as resetCapabilityCaches } from "@veyyon/coding-agent/capability";
+import type { ContextFile } from "@veyyon/coding-agent/capability/context-file";
+import type { Prompt } from "@veyyon/coding-agent/capability/prompt";
 import type { Rule } from "@veyyon/coding-agent/capability/rule";
-import type { LoadContext } from "@veyyon/coding-agent/capability/types";
-import { getProjectPathCandidates } from "@veyyon/coding-agent/discovery/agents";
-import {
-	buildRuleFromMarkdown,
-	calculateDepth,
-	loadFilesFromDir,
-	scanSkillsFromDir,
-} from "@veyyon/coding-agent/discovery/helpers";
+import type { Skill } from "@veyyon/coding-agent/capability/skill";
+import type { SlashCommand } from "@veyyon/coding-agent/capability/slash-command";
+import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
+import "@veyyon/coding-agent/discovery";
 import { removeSyncWithRetries } from "@veyyon/utils";
 
-const PROVIDER_ID = "agents";
+/** The provider whose project walk-up was removed. */
+const AGENTS = "agents";
+/** The provider that owns the one repository contribution still allowed. */
+const AGENTS_MD = "agents-md";
 
 function writeSkill(dir: string, name: string, description: string): void {
 	const skillDir = path.join(dir, name);
@@ -38,140 +50,78 @@ function writeFile(filePath: string, content: string): void {
 	fs.writeFileSync(filePath, content);
 }
 
-describe("agents provider project-level discovery", () => {
-	let tempDir!: string;
-	let repoRoot!: string;
-	let subProject!: string;
-	let ctx!: LoadContext;
+function projectPaths(items: Array<{ _source?: SourceMeta }>): string[] {
+	return items.flatMap(item => (item._source?.level === "project" ? [item._source.path] : []));
+}
+
+describe("a monorepo's .agents directories are invisible to the agents provider", () => {
+	let tempDir: string;
+	let userHome: string;
+	let repoRoot: string;
+	let subProject: string;
+	let agentDir: string;
 
 	beforeEach(() => {
-		clearCache();
+		resetCapabilityCaches();
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-agents-monorepo-"));
+		userHome = path.join(tempDir, "home");
 		repoRoot = path.join(tempDir, "repo");
 		subProject = path.join(repoRoot, "packages", "my-app");
+		agentDir = path.join(tempDir, "agent");
 		fs.mkdirSync(subProject, { recursive: true });
 		fs.mkdirSync(path.join(repoRoot, ".git"), { recursive: true });
-		ctx = { cwd: subProject, home: tempDir, repoRoot };
+		fs.mkdirSync(userHome, { recursive: true });
+		fs.mkdirSync(agentDir, { recursive: true });
 	});
 
 	afterEach(() => {
-		clearCache();
+		resetCapabilityCaches();
 		removeSyncWithRetries(tempDir);
 	});
+
+	/** Load one capability from the sub-project cwd through the agents provider only. */
+	function loadFromAgents<T>(capability: string) {
+		return loadCapability<T>(capability, {
+			cwd: subProject,
+			home: userHome,
+			agentDir,
+			providers: [AGENTS],
+		});
+	}
 
 	// =========================================================================
 	// Skills
 	// =========================================================================
 
 	describe("skills", () => {
-		test("finds .agents/skills in monorepo root from sub-project cwd", async () => {
+		test("finds no skill in the repo root's .agents/skills from a sub-project cwd", async () => {
 			writeSkill(path.join(repoRoot, ".agents", "skills"), "root-skill", "From repo root");
 
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(s => s.name);
-			expect(names).toContain("root-skill");
+			const result = await loadFromAgents<Skill>("skills");
+
+			expect(result.items.map(skill => skill.name)).not.toContain("root-skill");
+			expect(projectPaths(result.all)).toEqual([]);
 		});
 
-		test("finds .agent/skills in monorepo root from sub-project cwd", async () => {
-			writeSkill(path.join(repoRoot, ".agent", "skills"), "root-skill", "From repo root");
-
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(s => s.name);
-			expect(names).toContain("root-skill");
-		});
-
-		test("finds skills at both sub-project and repo root, closest first", async () => {
+		test("finds no skill in the sub-project's own .agents/skills either", async () => {
 			writeSkill(path.join(subProject, ".agents", "skills"), "local-skill", "From sub-project");
+
+			const result = await loadFromAgents<Skill>("skills");
+
+			expect(result.items.map(skill => skill.name)).not.toContain("local-skill");
+			expect(projectPaths(result.all)).toEqual([]);
+		});
+
+		test("still loads the user level: ~/.agents/skills is found from inside the monorepo", async () => {
 			writeSkill(path.join(repoRoot, ".agents", "skills"), "root-skill", "From repo root");
+			writeSkill(path.join(userHome, ".agents", "skills"), "user-skill", "From the operator's home");
 
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(s => s.name);
-			expect(names).toContain("local-skill");
-			expect(names).toContain("root-skill");
-			expect(names.indexOf("local-skill")).toBeLessThan(names.indexOf("root-skill"));
-		});
+			const result = await loadFromAgents<Skill>("skills");
 
-		test("discovers skills from both .agent and .agents at same level", async () => {
-			writeSkill(path.join(repoRoot, ".agent", "skills"), "agent-skill", "From .agent");
-			writeSkill(path.join(repoRoot, ".agents", "skills"), "agents-skill", "From .agents");
-
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(s => s.name);
-			expect(names).toContain("agent-skill");
-			expect(names).toContain("agents-skill");
-		});
-
-		test("walk-up stops at repo root", async () => {
-			writeSkill(path.join(tempDir, ".agents", "skills"), "above-repo-skill", "Above repo");
-			writeSkill(path.join(repoRoot, ".agents", "skills"), "root-skill", "At repo root");
-
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(s => s.name);
-			expect(names).toContain("root-skill");
-			expect(names).not.toContain("above-repo-skill");
-		});
-
-		test("project walk-up skips home directory (no repo root)", async () => {
-			// Regression for https://github.com/can1357/oh-my-pi/issues/1116:
-			// when cwd is under $HOME and no closer repoRoot exists, the walk-up
-			// must NOT enumerate `~/.agent[s]/` as project paths — those belong
-			// to the user level and getUserPathCandidates already covers them.
-			const noRepoCtx: LoadContext = { cwd: subProject, home: repoRoot, repoRoot: null };
-			// Skill above home (should NOT be found via project walk-up).
-			writeSkill(path.join(tempDir, ".agents", "skills"), "above-home-skill", "Above home");
-			// Skill *at* the home directory (must NOT be enumerated as project).
-			writeSkill(path.join(repoRoot, ".agents", "skills"), "home-skill", "At home");
-			// Skill at the sub-project (must still be found).
-			writeSkill(path.join(subProject, ".agents", "skills"), "local-skill", "Sub-project");
-
-			const candidates = getProjectPathCandidates(noRepoCtx, "skills");
-			expect(candidates).not.toContain(path.join(repoRoot, ".agent", "skills"));
-			expect(candidates).not.toContain(path.join(repoRoot, ".agents", "skills"));
-
-			const results = await Promise.all(
-				candidates.map(dir => scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" })),
-			);
-			const names = results.flatMap(r => r.items).map(s => s.name);
-			expect(names).toContain("local-skill");
-			expect(names).not.toContain("home-skill");
-			expect(names).not.toContain("above-home-skill");
-		});
-
-		test("project and user candidates do not overlap when cwd is under home", () => {
-			// Regression for https://github.com/can1357/oh-my-pi/issues/1116.
-			const noRepoCtx: LoadContext = { cwd: subProject, home: repoRoot, repoRoot: null };
-			const project = getProjectPathCandidates(noRepoCtx, "skills");
-			const user = [".agent", ".agents"].map(b => path.join(repoRoot, b, "skills"));
-			const overlap = project.filter(p => user.includes(p));
-			expect(overlap).toEqual([]);
-		});
-		test("returns empty when no ancestor has skills", async () => {
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
-				),
-			);
-			expect(results.flatMap(r => r.items)).toHaveLength(0);
+			const userSkill = result.items.find(skill => skill.name === "user-skill");
+			expect(userSkill).toBeDefined();
+			expect(userSkill?._source.level).toBe("user");
+			expect(result.items.map(skill => skill.name)).not.toContain("root-skill");
 		});
 	});
 
@@ -180,63 +130,32 @@ describe("agents provider project-level discovery", () => {
 	// =========================================================================
 
 	describe("rules", () => {
-		test("finds .agents/rules in monorepo root from sub-project cwd", async () => {
-			writeFile(path.join(repoRoot, ".agents", "rules", "my-rule.md"), "# My Rule\n\nDo the thing.");
+		test("finds no rule in the repo root's .agents/rules from a sub-project cwd", async () => {
+			writeFile(path.join(repoRoot, ".agents", "rules", "root-rule.md"), "# Root\n\nRoot rule.");
 
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "rules").map(dir =>
-					loadFilesFromDir<Rule>(dir, PROVIDER_ID, "project", {
-						extensions: ["md", "mdc"],
-						transform: (name, content, filePath, source) =>
-							buildRuleFromMarkdown(name, content, filePath, source, {
-								stripNamePattern: /\.(md|mdc)$/,
-							}),
-					}),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(r => r.name);
-			expect(names).toContain("my-rule");
+			const result = await loadFromAgents<Rule>("rules");
+
+			expect(result.items.map(rule => rule.name)).not.toContain("root-rule");
+			expect(projectPaths(result.all)).toEqual([]);
 		});
 
-		test("finds rules at both sub-project and repo root, closest first", async () => {
+		test("finds no rule in the sub-project's own .agents/rules either", async () => {
 			writeFile(path.join(subProject, ".agents", "rules", "local-rule.md"), "# Local\n\nLocal rule.");
-			writeFile(path.join(repoRoot, ".agents", "rules", "root-rule.md"), "# Root\n\nRoot rule.");
 
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "rules").map(dir =>
-					loadFilesFromDir<Rule>(dir, PROVIDER_ID, "project", {
-						extensions: ["md", "mdc"],
-						transform: (name, content, filePath, source) =>
-							buildRuleFromMarkdown(name, content, filePath, source, {
-								stripNamePattern: /\.(md|mdc)$/,
-							}),
-					}),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(r => r.name);
-			expect(names).toContain("local-rule");
-			expect(names).toContain("root-rule");
-			expect(names.indexOf("local-rule")).toBeLessThan(names.indexOf("root-rule"));
+			const result = await loadFromAgents<Rule>("rules");
+
+			expect(result.items.map(rule => rule.name)).not.toContain("local-rule");
+			expect(projectPaths(result.all)).toEqual([]);
 		});
 
-		test("walk-up stops at repo root", async () => {
-			writeFile(path.join(tempDir, ".agents", "rules", "above-rule.md"), "# Above\n\nAbove rule.");
+		test("still loads the user level: ~/.agents/rules is found from inside the monorepo", async () => {
 			writeFile(path.join(repoRoot, ".agents", "rules", "root-rule.md"), "# Root\n\nRoot rule.");
+			writeFile(path.join(userHome, ".agents", "rules", "user-rule.md"), "# User\n\nUser rule.");
 
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "rules").map(dir =>
-					loadFilesFromDir<Rule>(dir, PROVIDER_ID, "project", {
-						extensions: ["md", "mdc"],
-						transform: (name, content, filePath, source) =>
-							buildRuleFromMarkdown(name, content, filePath, source, {
-								stripNamePattern: /\.(md|mdc)$/,
-							}),
-					}),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(r => r.name);
-			expect(names).toContain("root-rule");
-			expect(names).not.toContain("above-rule");
+			const result = await loadFromAgents<Rule>("rules");
+
+			expect(result.items.map(rule => rule.name)).toContain("user-rule");
+			expect(result.items.map(rule => rule.name)).not.toContain("root-rule");
 		});
 	});
 
@@ -245,47 +164,14 @@ describe("agents provider project-level discovery", () => {
 	// =========================================================================
 
 	describe("prompts", () => {
-		test("finds .agents/prompts in monorepo root from sub-project cwd", async () => {
-			writeFile(path.join(repoRoot, ".agents", "prompts", "my-prompt.md"), "You are a helpful assistant.");
-
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "prompts").map(dir =>
-					loadFilesFromDir(dir, PROVIDER_ID, "project", {
-						extensions: ["md"],
-						transform: (name, content, filePath, source) => ({
-							name: name.replace(/\.md$/, ""),
-							path: filePath,
-							content,
-							_source: source,
-						}),
-					}),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(p => p.name);
-			expect(names).toContain("my-prompt");
-		});
-
-		test("finds prompts at both sub-project and repo root, closest first", async () => {
+		test("finds no prompt anywhere in the monorepo's .agents/prompts directories", async () => {
 			writeFile(path.join(subProject, ".agents", "prompts", "local.md"), "Local prompt.");
 			writeFile(path.join(repoRoot, ".agents", "prompts", "root.md"), "Root prompt.");
 
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "prompts").map(dir =>
-					loadFilesFromDir(dir, PROVIDER_ID, "project", {
-						extensions: ["md"],
-						transform: (name, content, filePath, source) => ({
-							name: name.replace(/\.md$/, ""),
-							path: filePath,
-							content,
-							_source: source,
-						}),
-					}),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(p => p.name);
-			expect(names).toContain("local");
-			expect(names).toContain("root");
-			expect(names.indexOf("local")).toBeLessThan(names.indexOf("root"));
+			const result = await loadFromAgents<Prompt>("prompts");
+
+			expect(result.items.map(prompt => prompt.name)).toEqual([]);
+			expect(projectPaths(result.all)).toEqual([]);
 		});
 	});
 
@@ -294,160 +180,59 @@ describe("agents provider project-level discovery", () => {
 	// =========================================================================
 
 	describe("commands", () => {
-		test("finds .agents/commands in monorepo root from sub-project cwd", async () => {
-			writeFile(path.join(repoRoot, ".agents", "commands", "deploy.md"), "Run the deploy pipeline.");
-
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "commands").map(dir =>
-					loadFilesFromDir(dir, PROVIDER_ID, "project", {
-						extensions: ["md"],
-						transform: (name, content, filePath, source) => ({
-							name: name.replace(/\.md$/, ""),
-							path: filePath,
-							content,
-							level: "project" as const,
-							_source: source,
-						}),
-					}),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(c => c.name);
-			expect(names).toContain("deploy");
-		});
-
-		test("finds commands at both sub-project and repo root, closest first", async () => {
+		test("finds no command anywhere in the monorepo's .agents/commands directories", async () => {
 			writeFile(path.join(subProject, ".agents", "commands", "local-cmd.md"), "Local command.");
 			writeFile(path.join(repoRoot, ".agents", "commands", "root-cmd.md"), "Root command.");
 
-			const results = await Promise.all(
-				getProjectPathCandidates(ctx, "commands").map(dir =>
-					loadFilesFromDir(dir, PROVIDER_ID, "project", {
-						extensions: ["md"],
-						transform: (name, content, filePath, source) => ({
-							name: name.replace(/\.md$/, ""),
-							path: filePath,
-							content,
-							level: "project" as const,
-							_source: source,
-						}),
-					}),
-				),
-			);
-			const names = results.flatMap(r => r.items).map(c => c.name);
-			expect(names).toContain("local-cmd");
-			expect(names).toContain("root-cmd");
-			expect(names.indexOf("local-cmd")).toBeLessThan(names.indexOf("root-cmd"));
+			const result = await loadFromAgents<SlashCommand>("slash-commands");
+
+			expect(result.items.map(command => command.name)).toEqual([]);
+			expect(projectPaths(result.all)).toEqual([]);
 		});
 	});
 
 	// =========================================================================
-	// Context Files (AGENTS.md)
+	// Context files: the one repository contribution still allowed
 	// =========================================================================
 
 	describe("context files (AGENTS.md)", () => {
-		test("finds .agents/AGENTS.md in monorepo root from sub-project cwd", async () => {
-			writeFile(path.join(repoRoot, ".agents", "AGENTS.md"), "# Project Rules\n\nFollow these rules.");
+		function loadContextFiles() {
+			return loadCapability<ContextFile>("context-files", {
+				cwd: subProject,
+				home: userHome,
+				agentDir,
+				providers: [AGENTS_MD],
+			});
+		}
 
-			const paths = getProjectPathCandidates(ctx, "AGENTS.md");
-			const results = await Promise.all(paths.map(p => readFile(p)));
-			const found = results.filter(r => r !== null);
-			expect(found).toHaveLength(1);
-			expect(found[0]).toContain("Project Rules");
+		test("ignores .agents/AGENTS.md: a dotted directory is not a context-file location", async () => {
+			writeFile(path.join(repoRoot, ".agents", "AGENTS.md"), "# Dotted Rules\n\nDo not load me.");
+
+			const result = await loadContextFiles();
+
+			expect(result.items).toEqual([]);
 		});
 
-		test("finds AGENTS.md at both sub-project and repo root", async () => {
-			writeFile(path.join(subProject, ".agents", "AGENTS.md"), "# Local Rules");
-			writeFile(path.join(repoRoot, ".agents", "AGENTS.md"), "# Root Rules");
+		test("still walks up for standalone AGENTS.md files, closest first", async () => {
+			writeFile(path.join(subProject, "AGENTS.md"), "# Local Rules");
+			writeFile(path.join(repoRoot, "AGENTS.md"), "# Root Rules");
 
-			const paths = getProjectPathCandidates(ctx, "AGENTS.md");
-			const results = await Promise.all(paths.map(p => readFile(p)));
-			const found = results.filter(r => r !== null);
-			expect(found).toHaveLength(2);
-			// Closest first (sub-project before root)
-			expect(found[0]).toContain("Local Rules");
-			expect(found[1]).toContain("Root Rules");
+			const result = await loadContextFiles();
+
+			expect(result.items.map(file => file.content)).toEqual(["# Local Rules", "# Root Rules"]);
+			expect(result.items.map(file => file.level)).toEqual(["project", "project"]);
+			// Depth is what keeps dedup keys distinct across levels: 0 at cwd, deeper above.
+			expect(result.items[0]?.depth).toBe(0);
+			expect(result.items[1]?.depth).toBeGreaterThan(0);
 		});
 
-		test("walk-up stops at repo root", async () => {
-			writeFile(path.join(tempDir, ".agents", "AGENTS.md"), "# Above Repo");
-			writeFile(path.join(repoRoot, ".agents", "AGENTS.md"), "# Root Rules");
+		test("stops the AGENTS.md walk-up at the repository root", async () => {
+			writeFile(path.join(tempDir, "AGENTS.md"), "# Above Repo");
+			writeFile(path.join(repoRoot, "AGENTS.md"), "# Root Rules");
 
-			const paths = getProjectPathCandidates(ctx, "AGENTS.md");
-			const results = await Promise.all(paths.map(p => readFile(p)));
-			const found = results.filter(r => r !== null);
-			expect(found).toHaveLength(1);
-			expect(found[0]).toContain("Root Rules");
-		});
+			const result = await loadContextFiles();
 
-		test("multi-level context files get distinct depth values for dedup", async () => {
-			writeFile(path.join(subProject, ".agents", "AGENTS.md"), "# Local Rules");
-			writeFile(path.join(repoRoot, ".agents", "AGENTS.md"), "# Root Rules");
-
-			const paths = getProjectPathCandidates(ctx, "AGENTS.md");
-			const items: Array<{ content: string; depth: number }> = [];
-			for (const p of paths) {
-				const content = await readFile(p);
-				if (!content) continue;
-				const ancestorDir = path.dirname(path.dirname(p));
-				const depth = calculateDepth(ctx.cwd, ancestorDir, path.sep);
-				items.push({ content, depth });
-			}
-
-			expect(items).toHaveLength(2);
-			// Depths must differ so dedup keys are distinct
-			expect(items[0]!.depth).not.toBe(items[1]!.depth);
-			// Local (depth 0) before root (positive depth)
-			expect(items[0]!.depth).toBe(0);
-			expect(items[0]!.content).toContain("Local Rules");
-			expect(items[1]!.depth).toBeGreaterThan(0);
-			expect(items[1]!.content).toContain("Root Rules");
-		});
-	});
-
-	// =========================================================================
-	// Generic project path candidates
-	// =========================================================================
-
-	describe("generic project path candidates", () => {
-		/**
-		 * Capabilities using nested files must find a repository-level candidate
-		 * from a package cwd without escaping the repository.
-		 */
-		test("finds a nested .agents file in the monorepo root", async () => {
-			writeFile(path.join(repoRoot, ".agents", "commands", "review.md"), "Review command");
-
-			const paths = getProjectPathCandidates(ctx, "commands", "review.md");
-			const results = await Promise.all(paths.map(p => readFile(p)));
-			const found = results.filter(r => r !== null);
-			expect(found).toEqual(["Review command"]);
-		});
-
-		/**
-		 * Local and repository candidates are both returned in prominence order,
-		 * so the consuming capability can apply its own precedence.
-		 */
-		test("finds local and repository copies of one nested path", async () => {
-			writeFile(path.join(subProject, ".agents", "commands", "review.md"), "Local command");
-			writeFile(path.join(repoRoot, ".agents", "commands", "review.md"), "Root command");
-
-			const paths = getProjectPathCandidates(ctx, "commands", "review.md");
-			const results = await Promise.all(paths.map(p => readFile(p)));
-			const found = results.filter(r => r !== null);
-			expect(found).toEqual(["Local command", "Root command"]);
-		});
-
-		/**
-		 * A same-shaped path above the repository must never become project
-		 * configuration for a nested package.
-		 */
-		test("stops generic path discovery at the repository root", async () => {
-			writeFile(path.join(tempDir, ".agents", "commands", "review.md"), "Above repository");
-			writeFile(path.join(repoRoot, ".agents", "commands", "review.md"), "Root command");
-
-			const paths = getProjectPathCandidates(ctx, "commands", "review.md");
-			const results = await Promise.all(paths.map(p => readFile(p)));
-			const found = results.filter(r => r !== null);
-			expect(found).toEqual(["Root command"]);
+			expect(result.items.map(file => file.content)).toEqual(["# Root Rules"]);
 		});
 	});
 });
