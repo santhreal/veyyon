@@ -484,7 +484,7 @@ describe("Anthropic request fingerprint alignment", () => {
 		expect(extractSuffix(billingWithDev)).toBe(extractSuffix(billingUserOnly));
 	});
 
-	it("places the automatic Anthropic cache breakpoint on the last ordered system prompt", async () => {
+	it("places automatic Anthropic cache breakpoints on the stable prefix and final system prompt", async () => {
 		const payload = (await captureAnthropicPayload(
 			ANTHROPIC_MODEL,
 			{
@@ -495,7 +495,7 @@ describe("Anthropic request fingerprint alignment", () => {
 		)) as { system?: Array<{ type: string; text?: string; cache_control?: unknown }> };
 
 		expect(payload.system).toEqual([
-			{ type: "text", text: "stable system" },
+			{ type: "text", text: "stable system", cache_control: { type: "ephemeral" } },
 			{ type: "text", text: "stable durable context", cache_control: { type: "ephemeral" } },
 		]);
 	});

@@ -262,7 +262,10 @@ function debugBytes(bytes: Uint8Array, asHex: boolean): string {
 	try {
 		const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 		if (/^[\x20-\x7E\s]*$/.test(text)) return text;
-	} catch {}
+	} catch {
+		// A strict UTF-8 decode is the probe: bytes that are not text fall through
+		// to the hex rendering below, which is the point of the function.
+	}
 	return Buffer.from(bytes).toString("hex");
 }
 
@@ -1991,7 +1994,10 @@ function decodeMcpArgValue(value: Uint8Array): unknown {
 			return parseToolArgsJson(jsonValue);
 		}
 		return jsonValue;
-	} catch {}
+	} catch {
+		// Probing whether the bytes are a protobuf Value. Servers also send plain
+		// text here, which is what the decode below handles.
+	}
 	const text = new TextDecoder().decode(value);
 	return parseToolArgsJson(text);
 }
@@ -2208,10 +2214,20 @@ function endCurrentThinkingBlock(
  * last text block instead of proper tool components (issue #4348).
  *
  * The block is stamped with {@link kCursorExecResolved} so the shared
- * `agent-loop.ts` execution pass skips it — Cursor's server-driven exec
- * channel already ran the tool via the bridge and buffered the result, so
- * treating this block as runnable would re-execute the same side-effecting
- * tool a second time.
+ * `agent-loop.ts` execution pass skips it: the exec channel has already
+ * dispatched this call, so treating the block as runnable would re-execute the
+ * same side-effecting tool a second time.
+ *
+ * "Already dispatched" is not "already finished, elsewhere". The handler is a
+ * caller-supplied `execHandler` and it runs IN THIS PROCESS, and this function
+ * pushes the block BEFORE `resolveExecHandler` is awaited. So between this
+ * block appearing and its `toolResult` arriving, the tool is running locally
+ * and may be part-way through its side effects. A stream reset in that window
+ * leaves a call that is neither safe to retry verbatim nor answered, which is
+ * why `buildAbortedTurnLedger` in `agent-loop.ts` reports such a block as
+ * "started, no result recorded" rather than as never run. Do not restate this
+ * as server-side execution: that wording is what made the harness's
+ * "nothing is in flight at abort time" claim look unconditional.
  *
  * Exported for tests to exercise ordering with adjacent text/thinking blocks.
  */
@@ -2810,9 +2826,8 @@ async function buildGrpcRequest(
 }> {
 	const blobStore = state.blobStore;
 
-	const systemPromptIds = buildCursorSystemPromptJsons(context.systemPrompt).map(json =>
-		storeCursorBlob(blobStore, new TextEncoder().encode(json)),
-	);
+	const systemPromptJsons = buildCursorSystemPromptJsons(context.systemPrompt);
+	const systemPromptIds = systemPromptJsons.map(json => storeCursorBlob(blobStore, new TextEncoder().encode(json)));
 
 	const activeUserMessageIndex = context.messages.length - 1;
 	const activeMessage = context.messages[activeUserMessageIndex];
@@ -2947,6 +2962,29 @@ async function buildGrpcRequest(
 		tools: toolNames.length,
 		toolNames: toolNames.slice(0, 20),
 		detail: detail || undefined,
+		// Payload breakdown: prefill is on the TTFS critical path, so the size of
+		// what we ship (system prompt blobs + advertised tool schemas) is the first
+		// thing to look at when first-token latency regresses. Debug-gated only.
+		payload: $env.DEBUG_CURSOR
+			? {
+					systemPromptBlobs: systemPromptJsons.map(json => Buffer.byteLength(json, "utf8")),
+					systemPromptBytes: systemPromptJsons.reduce((sum, json) => sum + Buffer.byteLength(json, "utf8"), 0),
+					systemPromptText: $env.DEBUG_CURSOR === "2" ? systemPromptJsons : undefined,
+					toolSchemaBytes: (context.tools ?? []).map(tool => ({
+						name: tool.name,
+						description: Buffer.byteLength(tool.description ?? "", "utf8"),
+						schema: Buffer.byteLength(JSON.stringify(toolWireSchema(tool) ?? {}), "utf8"),
+					})),
+					toolText:
+						$env.DEBUG_CURSOR === "2"
+							? (context.tools ?? []).map(tool => ({
+									name: tool.name,
+									description: tool.description ?? "",
+									schema: JSON.stringify(toolWireSchema(tool) ?? {}),
+								}))
+							: undefined,
+				}
+			: undefined,
 	});
 
 	return { requestBytes, blobStore, conversationState };

@@ -1,13 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ApiKeyResolveContext, OAuthAccess, OAuthAccessSource } from "@veyyon/ai";
-import {
-	AUTH_RETRY_MAX_ATTEMPTS,
-	isApiKeyResolver,
-	isAuthRetryableError,
-	resolveApiKeyOnce,
-	withAuth,
-	withOAuthAccess,
-} from "@veyyon/ai";
+import { isApiKeyResolver, isAuthRetryableError, resolveApiKeyOnce, withAuth, withOAuthAccess } from "@veyyon/ai";
 import { ProviderHttpError } from "@veyyon/ai/error";
 
 function authError(status = 401): Error & { status: number } {
@@ -334,8 +327,12 @@ describe("withAuth", () => {
 		}
 
 		expect(caught).toBe(lastError);
-		expect(keys).toHaveLength(AUTH_RETRY_MAX_ATTEMPTS);
-		expect(resolveIndex).toBe(AUTH_RETRY_MAX_ATTEMPTS);
+		// Literal 64, not AUTH_RETRY_MAX_ATTEMPTS. The ceiling is the contract: a
+		// caller waits through at most this many credential attempts before the
+		// error surfaces, and an assertion against the constant would call an
+		// accidental 6,400 correct while a session hung for an hour.
+		expect(keys).toHaveLength(64);
+		expect(resolveIndex).toBe(64);
 	});
 
 	/**
@@ -617,8 +614,8 @@ describe("withOAuthAccess", () => {
 		}
 
 		expect(caught).toBe(lastError);
-		expect(attempts).toHaveLength(AUTH_RETRY_MAX_ATTEMPTS);
-		expect(rotateCalls).toBe(AUTH_RETRY_MAX_ATTEMPTS - 1);
+		expect(attempts).toHaveLength(64);
+		expect(rotateCalls).toBe(63);
 	});
 
 	it("propagates non-auth errors immediately and surfaces the last auth error when exhausted", async () => {

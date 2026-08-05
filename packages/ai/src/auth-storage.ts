@@ -30,6 +30,7 @@ import { trimTrailingSlashes } from "@veyyon/utils/url";
 // the names that were public here.
 import {
 	isRefreshFailureDisableCause,
+	resolveAccountNameIdentity,
 	resolveCredentialIdentityKey,
 	serializeCredential,
 	USAGE_REPORT_TTL_MS,
@@ -161,6 +162,34 @@ function fingerprintOAuthBearer(bearer: string): string {
 	return createHash("sha256").update(bearer).digest("base64url");
 }
 const SESSION_STICKY_CACHE_PREFIX = "session:sticky:";
+/**
+ * Where a user's explicit account choice lives, kept apart from the sticky record above.
+ *
+ * The sticky record is ROUTING's own state: it is rewritten on every resolve and cleared
+ * outright when a credential fails auth (`rotateSessionCredential`). A pin is the USER's
+ * intent. Storing both in one row means rate-limit rotation silently overwrites the choice
+ * the user made, and nothing is left to compare against, so the UI cannot say the account
+ * changed under them. Two keys keeps the two facts separable, which is what makes the
+ * divergence reportable instead of invisible.
+ */
+const SESSION_PIN_CACHE_PREFIX = "session:pin:";
+
+/** How long a pin survives with no further use, matching the sticky record's window. */
+const SESSION_PIN_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+/**
+ * How one provider's traffic is routed for one session: what the user chose, what is
+ * actually serving, and why those can differ.
+ */
+export interface SessionCredentialRouting {
+	provider: string;
+	/** Credential the user pinned with `/account`, when they pinned one. */
+	pinnedCredentialId?: number;
+	/** Credential the next request will use. Equals the pin unless the pin is unusable. */
+	activeCredentialId?: number;
+	/** Epoch ms the pinned credential becomes usable again, when it is rate-limit blocked. */
+	pinnedBlockedUntilMs?: number;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Credential Types
@@ -495,6 +524,15 @@ export interface AuthCredentialStore {
 	cleanExpiredCredentialBlocks?(nowMs: number): void;
 	/** List non-expired blocks for broker snapshots. */
 	listCredentialBlocks?(credentialIds: readonly number[]): StoredCredentialBlock[];
+	/**
+	 * User-chosen account display names, keyed by the stable identity from
+	 * {@link resolveAccountNameIdentity}. Optional: the remote-broker store has no
+	 * local table, and a store without them simply has no names to show.
+	 */
+	getAccountName?(identity: string): string | undefined;
+	listAccountNames?(): Array<{ identity: string; name: string }>;
+	setAccountName?(identity: string, name: string): void;
+	deleteAccountName?(identity: string): void;
 	tryAcquireCredentialRefreshLease?(credentialId: number, owner: string, expiresAtMs: number): boolean;
 	getCredentialRefreshLeaseExpiresAt?(credentialId: number): number | undefined;
 	releaseCredentialRefreshLease?(credentialId: number, owner: string): void;
@@ -1233,6 +1271,11 @@ export class AuthStorage {
 	/** `operation:provider` keys already warned about, so the warning fires once. */
 	#reportedStickyCacheFailures = new Set<string>();
 	#sessionLastCredential: Map<string, Map<string, { type: AuthCredential["type"]; index: number }>> = new Map();
+	/**
+	 * Explicit per-session account choice, mirroring the pin cache rows so the hot
+	 * resolve path costs a map lookup rather than a store read per request.
+	 */
+	#sessionPinnedCredential: Map<string, Map<string, number>> = new Map();
 	/** Recent bearer fingerprints resolved for each durable OAuth row; used only for delayed usage-limit attribution. */
 	#oauthBearerFingerprints: Map<string, Map<number, string[]>> = new Map();
 	/**
@@ -1894,8 +1937,77 @@ export class AuthStorage {
 		);
 	}
 
-	/** Retrieves the last credential used by a session. */
+	/**
+	 * Resolve a pin to a live credential index, dropping a pin whose credential is gone.
+	 *
+	 * Stored by row id, resolved to an index on every read, exactly like the sticky
+	 * record: an index alone is meaningless once the row set changes, and honouring a
+	 * stale one routes the session to somebody else's account.
+	 */
+	#getSessionCredentialPin(
+		provider: string,
+		sessionId: string | undefined,
+	): { type: AuthCredential["type"]; index: number; credentialId: number } | undefined {
+		if (!sessionId) return undefined;
+		let credentialId = this.#sessionPinnedCredential.get(provider)?.get(sessionId);
+		if (credentialId === undefined) {
+			try {
+				const raw = this.#store.getCache(`${SESSION_PIN_CACHE_PREFIX}${provider}:${sessionId}`);
+				if (!raw) return undefined;
+				const parsed = JSON.parse(raw) as { credentialId?: number };
+				if (typeof parsed.credentialId !== "number") return undefined;
+				credentialId = parsed.credentialId;
+				const pinMap = this.#sessionPinnedCredential.get(provider) ?? new Map<string, number>();
+				pinMap.set(sessionId, credentialId);
+				this.#sessionPinnedCredential.set(provider, pinMap);
+			} catch (err) {
+				this.#reportStickyCacheFailure("pin-read", provider, err);
+				return undefined;
+			}
+		}
+		const stored = this.#getStoredCredentials(provider);
+		const index = stored.findIndex(entry => entry.id === credentialId);
+		if (index === -1) {
+			// The pinned account was logged out or replaced. Forget the pin rather than
+			// leave a dangling id that would be re-resolved on every request.
+			this.clearSessionCredentialPin(provider, sessionId);
+			return undefined;
+		}
+		const credential = stored[index]?.credential;
+		if (!credential) return undefined;
+		return { type: credential.type, index, credentialId };
+	}
+
+	/**
+	 * The credential this session prefers: an explicit user pin when one resolves,
+	 * otherwise the last credential routing actually used.
+	 *
+	 * The pin is checked FIRST and this is the only place that decides it, because every
+	 * consumer of session preference goes through here (OAuth selection, account-identity
+	 * display, rotation, usage attribution). Honouring the pin at one chokepoint is what
+	 * makes `/account` switching real rather than cosmetic: a pin the resolver ignored
+	 * would show the new account in the UI while requests kept using the old one.
+	 */
 	#getSessionCredential(
+		provider: string,
+		sessionId: string | undefined,
+	): { type: AuthCredential["type"]; index: number } | undefined {
+		if (!sessionId) return undefined;
+		const pinned = this.#getSessionCredentialPin(provider, sessionId);
+		if (pinned) return { type: pinned.type, index: pinned.index };
+		return this.#getStickySessionCredential(provider, sessionId);
+	}
+
+	/**
+	 * The credential this session LAST ACTUALLY USED, ignoring any pin.
+	 *
+	 * Separate from {@link AuthStorage.#getSessionCredential} because two different questions
+	 * are being asked and answering both with the pin makes one of them un-askable: "what
+	 * should serve the next request" is the pin, but "what served the last one" is this, and
+	 * `sessionCredentialRouting` needs the second to notice the two have diverged. Reading the
+	 * pin for both is how a rate-limit rotation reports itself as the user's own choice.
+	 */
+	#getStickySessionCredential(
 		provider: string,
 		sessionId: string | undefined,
 	): { type: AuthCredential["type"]; index: number } | undefined {
@@ -1954,6 +2066,145 @@ export class AuthStorage {
 		} catch (err) {
 			this.#reportStickyCacheFailure("clear", provider, err);
 		}
+	}
+
+	/**
+	 * Route this session's requests for one provider to one specific credential.
+	 *
+	 * PER PROVIDER, deliberately. Several providers serve one session at the same time
+	 * (the main model, subagent roles, web search), so there is no single "current
+	 * account" to switch: pinning Anthropic must leave the Codex and Gemini routing
+	 * exactly as it was. Cross-provider movement is a MODEL choice, not an account one.
+	 *
+	 * Returns false when `credentialId` is not a live credential of `provider`, so a
+	 * caller cannot record a pin that would silently resolve to nothing.
+	 */
+	pinSessionCredential(provider: string, sessionId: string | undefined, credentialId: number): boolean {
+		if (!sessionId) return false;
+		const stored = this.#getStoredCredentials(provider);
+		if (!stored.some(entry => entry.id === credentialId)) return false;
+		const pinMap = this.#sessionPinnedCredential.get(provider) ?? new Map<string, number>();
+		pinMap.set(sessionId, credentialId);
+		this.#sessionPinnedCredential.set(provider, pinMap);
+		try {
+			this.#store.setCache(
+				`${SESSION_PIN_CACHE_PREFIX}${provider}:${sessionId}`,
+				JSON.stringify({ credentialId }),
+				Math.floor(Date.now() / 1000) + SESSION_PIN_TTL_SECONDS,
+			);
+		} catch (err) {
+			// The in-memory pin still holds for this process, so the switch the user just
+			// made does take effect; it simply will not survive a restart. Loud, because a
+			// pin that quietly evaporates looks like the switch was ignored.
+			this.#reportStickyCacheFailure("pin-write", provider, err);
+		}
+		// Drop the routing record so the next resolve re-ranks from the pin instead of
+		// re-using whichever credential served the previous request.
+		this.#clearSessionCredential(provider, sessionId);
+		return true;
+	}
+
+	/** Forget an explicit account choice; routing returns to its own selection. */
+	clearSessionCredentialPin(provider: string, sessionId: string | undefined): void {
+		if (!sessionId) return;
+		const pinMap = this.#sessionPinnedCredential.get(provider);
+		if (pinMap) {
+			pinMap.delete(sessionId);
+			if (pinMap.size === 0) this.#sessionPinnedCredential.delete(provider);
+		}
+		try {
+			this.#store.setCache(`${SESSION_PIN_CACHE_PREFIX}${provider}:${sessionId}`, "", 0);
+		} catch (err) {
+			this.#reportStickyCacheFailure("pin-clear", provider, err);
+		}
+	}
+
+	/**
+	 * What this session is routed to for one provider, and whether that matches what the
+	 * user asked for.
+	 *
+	 * `pinnedCredentialId` is the user's choice; `activeCredentialId` is what will actually
+	 * serve the next request. They differ when the pinned account is blocked or was rotated
+	 * away from, and reporting that difference is the whole reason this returns both:
+	 * showing only the active account would present a rate-limit rotation as if the user
+	 * had chosen it, and showing only the pin would claim an account is serving traffic
+	 * that is not.
+	 */
+	sessionCredentialRouting(provider: string, sessionId: string | undefined): SessionCredentialRouting | undefined {
+		if (!sessionId) return undefined;
+		const stored = this.#getStoredCredentials(provider);
+		if (stored.length === 0) return undefined;
+		const routing: SessionCredentialRouting = { provider };
+		const pin = this.#getSessionCredentialPin(provider, sessionId);
+		// The LAST-USED record, never `#getSessionCredential`: that one answers with the pin,
+		// so asking it here made `activeCredentialId` a copy of `pinnedCredentialId` and the
+		// divergence this method exists to report could never be observed.
+		const sticky = this.#getStickySessionCredential(provider, sessionId);
+		const stickyEntry = sticky ? stored[sticky.index] : undefined;
+		if (pin) {
+			routing.pinnedCredentialId = pin.credentialId;
+			// `${provider}:${type}`, the same composite `#getProviderTypeKey` builds. Passing the
+			// bare credential type looked plausible and silently matched no block row at all, so
+			// a blocked pin reported itself as healthy.
+			const blockedUntil = this.credentialBlockedUntil(
+				provider,
+				this.#getProviderTypeKey(provider, stored[pin.index]!.credential.type),
+				pin.index,
+			);
+			if (blockedUntil !== undefined) routing.pinnedBlockedUntilMs = blockedUntil;
+			// A usable pin IS what serves next. A blocked one is not, and then the credential
+			// that last served is the honest answer to "what is running this session".
+			if (blockedUntil === undefined) {
+				routing.activeCredentialId = pin.credentialId;
+				return routing;
+			}
+		}
+		if (stickyEntry) routing.activeCredentialId = stickyEntry.id;
+		return routing;
+	}
+
+	/**
+	 * The name a user gave one account, or undefined when they never set one.
+	 *
+	 * A missing name is NOT an error and must not be papered over with a provider label:
+	 * callers fall back to the account's own identity (email, then org, then account id)
+	 * so the row always says WHICH account it is, and the absence of a name stays visible
+	 * as an invitation to set one.
+	 */
+	getAccountName(provider: string, credentialId: number): string | undefined {
+		const read = this.#store.getAccountName;
+		if (!read) return undefined;
+		const row = this.#getStoredCredentials(provider).find(entry => entry.id === credentialId);
+		if (!row) return undefined;
+		return read.call(this.#store, resolveAccountNameIdentity(provider, row));
+	}
+
+	/**
+	 * Name an account, or clear the name with an empty string.
+	 *
+	 * Writes to the names table, never to `auth_credentials`, so renaming an account
+	 * cannot rewrite, reorder or truncate the token bytes it is named after. That is the
+	 * property worth having: a rename is the one credential operation a user will do
+	 * casually and repeatedly, and it must be incapable of costing them a login.
+	 *
+	 * Returns false when the store keeps no names (the remote broker) or the credential is
+	 * unknown, so the caller can tell the user instead of reporting a save that did not happen.
+	 */
+	setAccountName(provider: string, credentialId: number, name: string): boolean {
+		const row = this.#getStoredCredentials(provider).find(entry => entry.id === credentialId);
+		if (!row) return false;
+		const identity = resolveAccountNameIdentity(provider, row);
+		const trimmed = name.trim();
+		if (trimmed.length === 0) {
+			const remove = this.#store.deleteAccountName;
+			if (!remove) return false;
+			remove.call(this.#store, identity);
+			return true;
+		}
+		const write = this.#store.setAccountName;
+		if (!write) return false;
+		write.call(this.#store, identity, trimmed);
+		return true;
 	}
 
 	/**

@@ -1371,7 +1371,10 @@ const streamOpenAICompletionsOnce = (
 			// throw here must not prevent the terminal error event below.
 			try {
 				finishOpenBlocksOnError();
-			} catch {}
+			} catch {
+				// Deliberate: the terminal error event below is what the caller needs,
+				// and a failure closing already-broken blocks must not replace it.
+			}
 			const capturedErrorResponse = error instanceof OpenAIHttpError ? error.captured : undefined;
 			const result = await AIError.finalize(error, {
 				api: model.api,

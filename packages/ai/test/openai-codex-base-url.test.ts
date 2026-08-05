@@ -13,6 +13,10 @@ import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
 
 describe("normalizeCodexBaseUrl", () => {
 	it("falls back to the canonical Codex base URL when no override is given", () => {
+		// The literal first: every assertion below compares against CODEX_BASE_URL,
+		// so without this one the whole file passes for any value the constant is
+		// edited to, including a proxy origin, which is issue #3679 exactly.
+		expect(normalizeCodexBaseUrl(undefined)).toBe("https://chatgpt.com/backend-api");
 		expect(normalizeCodexBaseUrl(undefined)).toBe(CODEX_BASE_URL);
 		expect(normalizeCodexBaseUrl("")).toBe(CODEX_BASE_URL);
 		// Whitespace-only trims to empty, so it is treated as "no override".

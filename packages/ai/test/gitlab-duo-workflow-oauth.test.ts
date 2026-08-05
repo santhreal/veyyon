@@ -47,7 +47,12 @@ describe("gitlab duo workflow OAuth", () => {
 
 		const authorize = new URL(authUrl);
 		expect(authorize.toString()).toStartWith("https://gitlab.com/oauth/authorize?");
-		expect(authorize.searchParams.get("client_id")).toBe(GITLAB_DUO_WORKFLOW_OAUTH_CLIENT_ID);
+		// Literal: the client id is registered with GitLab, so the bytes are the
+		// contract. Against the constant, a typo in it authorizes nothing and the
+		// test still passes.
+		expect(authorize.searchParams.get("client_id")).toBe(
+			"36f2a70cddeb5a0889d4fd8295c241b7e9848e89cf9e599d0eed2d8e5350fbf5",
+		);
 		expect(authorize.searchParams.get("redirect_uri")).toBe(GITLAB_DUO_WORKFLOW_OAUTH_REDIRECT_URI);
 		expect(authorize.searchParams.get("response_type")).toBe("code");
 		expect(authorize.searchParams.get("scope")).toBe("api");

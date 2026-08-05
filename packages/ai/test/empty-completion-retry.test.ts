@@ -91,7 +91,9 @@ describe("withEmptyCompletionRetry", () => {
 		const result = await stream.result();
 
 		expect(attempts).toBe(MAX_EMPTY_COMPLETION_RETRIES + 1);
-		expect(waits).toHaveLength(MAX_EMPTY_COMPLETION_RETRIES);
+		// Literal 2, not MAX_EMPTY_COMPLETION_RETRIES: two retries is the budget a
+		// user waits through for an empty completion before the turn gives up.
+		expect(waits).toHaveLength(2);
 		// Discarded attempts' `start` events must not leak — exactly one survives.
 		expect(events.filter(e => e.type === "start")).toHaveLength(1);
 		expect(events.some(e => e.type === "text_delta")).toBe(true);
@@ -129,7 +131,7 @@ describe("withEmptyCompletionRetry", () => {
 		const result = await stream.result();
 
 		expect(attempts).toBe(MAX_EMPTY_COMPLETION_RETRIES + 1);
-		expect(waits).toHaveLength(MAX_EMPTY_COMPLETION_RETRIES);
+		expect(waits).toHaveLength(2);
 		expect(events.filter(e => e.type === "start")).toHaveLength(1);
 		expect(events.at(-1)?.type).toBe("done");
 		expect(result.content).toEqual([]);

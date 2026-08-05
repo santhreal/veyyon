@@ -557,7 +557,10 @@ describe("observations are kept per cache identity", () => {
 			const tracked = beginCacheTrackedRequest(state, factsFor(`conv-${index}`), 1_000 + index);
 			recordCacheOutcome(state, tracked, { input: 1_000, cacheRead: 40_000, cacheWrite: 0 }, "warn");
 		}
-		expect(state.keys.size).toBe(CACHE_TRACKER_MAX_KEYS);
+		// Literal 16, not CACHE_TRACKER_MAX_KEYS: the point of the test is that the
+		// map is bounded at a small number, and against the constant it stays green
+		// for a bound of 16,000, which is the unbounded growth it exists to refuse.
+		expect(state.keys.size).toBe(16);
 		// The first four are gone; the most recent survive.
 		expect(state.keys.has("conv-0")).toBe(false);
 		expect(state.keys.has("conv-3")).toBe(false);

@@ -16,6 +16,7 @@ import type {
 	ModelSpec,
 	ProviderSessionState,
 } from "@veyyon/ai/types";
+import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { buildModel } from "@veyyon/catalog/build";
 import * as piUtils from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils";
@@ -845,6 +846,56 @@ describe("openai-codex streaming", () => {
 		expect(toolCall.arguments).toEqual({ path: "README.md" });
 		expect((toolCall as unknown as Record<string, unknown>).partialJson).toBeUndefined();
 		expect((toolCall as unknown as Record<string, unknown>).lastParseLen).toBeUndefined();
+	});
+
+	/**
+	 * Providers may replay the full argument prefix in a delta event. The live
+	 * preview must replace that cumulative snapshot instead of appending it and
+	 * rendering an exponentially repeated path until the authoritative done event.
+	 */
+	it("normalizes cumulative function-call argument snapshots in live events", async () => {
+		const tempDir = TempDir.createSync("@pi-codex-stream-");
+		setAgentDir(tempDir.path());
+		const token = createCodexTestToken();
+		const context = createCodexTestContext();
+		const prefix = '{"path":"packages/coding-agent/src';
+		const complete = `${prefix}/**/*.ts"}`;
+		const sse = `${[
+			`data: ${JSON.stringify({ type: "response.output_item.added", item: { type: "function_call", id: "fc_1", call_id: "call_1", name: "glob", arguments: "" } })}`,
+			`data: ${JSON.stringify({ type: "response.function_call_arguments.delta", item_id: "fc_1", delta: prefix })}`,
+			`data: ${JSON.stringify({ type: "response.function_call_arguments.delta", item_id: "fc_1", delta: complete })}`,
+			`data: ${JSON.stringify({ type: "response.function_call_arguments.delta", item_id: "fc_1", delta: complete })}`,
+			`data: ${JSON.stringify({ type: "response.function_call_arguments.done", item_id: "fc_1", arguments: complete })}`,
+			`data: ${JSON.stringify({ type: "response.output_item.done", item: { type: "function_call", id: "fc_1", call_id: "call_1", name: "glob", arguments: complete } })}`,
+			`data: ${JSON.stringify({ type: "response.completed", response: { status: "completed", usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8, input_tokens_details: { cached_tokens: 0 } } } })}`,
+		].join("\n\n")}\n\n`;
+		const model = { ...createCodexTestModel("https://chatgpt.com/backend-api"), preferWebsockets: false };
+		const stream = streamOpenAICodexResponses(model, context, {
+			apiKey: token,
+			fetch: (async () =>
+				new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } })) as FetchImpl,
+		});
+		const livePrefixes: string[] = [];
+		const emittedDeltas: string[] = [];
+		const readPromise = (async () => {
+			for await (const event of stream) {
+				if (event.type !== "toolcall_delta") continue;
+				emittedDeltas.push(event.delta);
+				const block = event.partial.content[event.contentIndex];
+				if (block?.type !== "toolCall") continue;
+				const partial = getStreamingPartialJson(block);
+				if (partial !== undefined) livePrefixes.push(partial);
+			}
+		})();
+		const result = await stream.result();
+		await readPromise;
+
+		expect(emittedDeltas).toEqual([prefix, complete.slice(prefix.length)]);
+		expect(emittedDeltas.join("")).toBe(complete);
+		expect(livePrefixes).toEqual([prefix, complete]);
+		const toolCall = result.content.find(c => c.type === "toolCall");
+		if (toolCall?.type !== "toolCall") throw new Error("expected a finalized toolCall block");
+		expect(toolCall.arguments).toEqual({ path: "packages/coding-agent/src/**/*.ts" });
 	});
 
 	it("routes interleaved function-call argument deltas to the matching open item", async () => {

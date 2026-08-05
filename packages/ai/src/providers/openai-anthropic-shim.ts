@@ -9,7 +9,9 @@
  */
 
 import { buildModel } from "@veyyon/catalog/build";
-import { ANTHROPIC_THINKING, mapAnthropicToolChoice } from "../stream";
+import { resolveReasoningSelection } from "@veyyon/catalog/model-thinking";
+import { ANTHROPIC_THINKING_BUDGETS, resolveThinkingBudget } from "../reasoning-budget";
+import { mapAnthropicToolChoice } from "../stream";
 import type { Context, Model, ModelSpec, SimpleStreamOptions } from "../types";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { createProviderErrorMessage } from "./error-message";
@@ -71,10 +73,14 @@ export function streamOpenAIAnthropicShim(
 					cost: model.cost,
 				} as ModelSpec<"anthropic-messages">);
 
-				const reasoningEffort = options?.reasoning;
-				const thinkingEnabled = !!reasoningEffort && model.reasoning && !options?.disableReasoning;
+				const reasoningSelection = resolveReasoningSelection(anthropicModel, {
+					effort: options?.reasoning,
+					disabled: options?.disableReasoning,
+				});
+				const reasoningEffort = reasoningSelection.effort;
+				const thinkingEnabled = reasoningSelection.enabled;
 				const thinkingBudget = reasoningEffort
-					? (options?.thinkingBudgets?.[reasoningEffort] ?? ANTHROPIC_THINKING[reasoningEffort])
+					? resolveThinkingBudget(reasoningEffort, ANTHROPIC_THINKING_BUDGETS, options?.thinkingBudgets)
 					: undefined;
 
 				const innerStream = streamAnthropic(anthropicModel, context, {

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { streamSimple } from "@veyyon/ai/stream";
-import type { FetchImpl } from "@veyyon/ai/types";
-import { type Context, type Model, type ModelSpec, OPENAI_MAX_OUTPUT_TOKENS } from "@veyyon/ai/types";
+import type { Context, FetchImpl, Model, ModelSpec } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";
 
@@ -184,7 +183,10 @@ describe("OpenAI-family output-token cap", () => {
 			compat: base.compatConfig,
 		} as ModelSpec<"openai-responses">);
 		const body = await drainResponses(model);
-		expect(body.max_output_tokens).toBe(OPENAI_MAX_OUTPUT_TOKENS);
+		// Literal 64,000, not OPENAI_MAX_OUTPUT_TOKENS: the ceiling is OpenAI's, and
+		// a request above it is rejected by the API. Against the constant the test
+		// follows a bad edit straight into a 400 on every capped request.
+		expect(body.max_output_tokens).toBe(64_000);
 	});
 
 	it("omits default max_output_tokens for OpenRouter Responses so provider routing is not filtered", async () => {
@@ -199,7 +201,7 @@ describe("OpenAI-family output-token cap", () => {
 
 	it("clamps non-aggregator completions output to the 64k ceiling", async () => {
 		const body = await captureCompletionsBody(directCompletionsModel(131_072), 131_072);
-		expect(body.max_completion_tokens ?? body.max_tokens).toBe(OPENAI_MAX_OUTPUT_TOKENS);
+		expect(body.max_completion_tokens ?? body.max_tokens).toBe(64_000);
 	});
 
 	it("never raises a requested output below the ceiling", async () => {
@@ -225,6 +227,6 @@ describe("OpenAI-family output-token cap", () => {
 
 	it("still sends max_tokens for Kimi via OpenRouter (TPM rate-limit requirement)", async () => {
 		const body = await captureCompletionsBody(kimiOpenRouterModel(131_072));
-		expect(body.max_completion_tokens ?? body.max_tokens).toBe(OPENAI_MAX_OUTPUT_TOKENS);
+		expect(body.max_completion_tokens ?? body.max_tokens).toBe(64_000);
 	});
 });
