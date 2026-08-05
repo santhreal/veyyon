@@ -92,6 +92,25 @@ export interface FileResult {
 }
 
 /**
+ * `--preload` arguments for the probes the traced file's own package contributes.
+ *
+ * The tracer probes `@veyyon/utils` state and nothing else, deliberately: importing a
+ * heavier package into every traced process risks the diagnostic initialising the very
+ * state it is supposed to observe. So the dependency is inverted. A package that owns
+ * module-global state worth watching drops a `test/helpers/leak-probes.ts` that calls
+ * `registerLeakProbe`, and it is loaded only when tracing a file from that package.
+ * The tracer never learns which packages exist.
+ *
+ * Silent when the package has no probes file, which is the common case.
+ */
+function packageProbePreloadArgs(repoRoot: string, file: string): string[] {
+	const parts = file.split(path.sep);
+	if (parts[0] !== "packages" || parts.length < 2) return [];
+	const probes = path.join(repoRoot, "packages", parts[1] as string, "test", "helpers", "leak-probes.ts");
+	return fs.existsSync(probes) ? ["--preload", probes] : [];
+}
+
+/**
  * Runs one test file with the tracer preloaded and collects its leak lines.
  *
  * The target is passed as an ABSOLUTE path. A bare relative path is a FILTER to
@@ -108,10 +127,15 @@ export function traceFile(repoRoot: string, file: string): FileResult {
 		"bun",
 		// Absolute preload paths: bun resolves a bare relative path as a package
 		// specifier and reports "preload not found".
+		//
+		// Package probes load BEFORE the tracer, because the tracer takes its baseline
+		// snapshot at import and a probe registered afterwards would be absent from the
+		// `before` side and read as a change the moment it first appeared.
 		[
 			"test",
 			"--preload",
 			path.join(repoRoot, TRIPWIRE),
+			...packageProbePreloadArgs(repoRoot, file),
 			"--preload",
 			path.join(repoRoot, TRACER),
 			path.resolve(repoRoot, file),

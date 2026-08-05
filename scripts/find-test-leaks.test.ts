@@ -32,7 +32,7 @@ import {
 	parseLeaks,
 	registerLeakProbe,
 	snapshotGlobals,
-	TRACKED_ENV_NAMES,
+	UNTRACKED_ENV_NAMES,
 } from "../packages/utils/test/helpers/global-state-leak-tracer";
 import { testFilesUnder, traceFile } from "./find-test-leaks";
 
@@ -41,45 +41,60 @@ const LEAKY_FIXTURE = "packages/utils/test/fixtures/leaky-suite.fixture.ts";
 
 describe("snapshotGlobals", () => {
 	/**
-	 * The variables that decide where a suite reads and writes are the ones worth
-	 * tracking; anything else would make every test look like a leak.
+	 * EVERY variable is captured, not a list of interesting ones. The allowlist this
+	 * replaced (`VEYYON_`/`PI_`/`XDG_` plus four names) was fail-OPEN: five `GIT_*`
+	 * variables left set by `gh.test.ts` were invisible to the tracer because nobody
+	 * had thought to add `GIT_`, and the file was reported clean.
 	 *
 	 * `env` and `cwd` are asserted, and `probes` deliberately is not: which probes are
 	 * registered depends on whether this file was loaded with the tracer preload, and an
 	 * assertion on the whole snapshot object passed alone and failed under the preload —
 	 * order-dependence in the suite that exists to find order-dependence.
 	 */
-	it("captures the root-deciding variables and ignores unrelated ones", () => {
+	it("captures every variable, including ones no allowlist would have named", () => {
 		const snapshot = snapshotGlobals(
-			{ VEYYON_CONFIG_DIR: "/a", XDG_CONFIG_HOME: "/b", PI_AGENT_DIR: "/c", UNRELATED: "/d", HOME: "/h" },
+			{ VEYYON_CONFIG_DIR: "/a", GIT_CONFIG_GLOBAL: "/dev/null", UNRELATED: "/d", HOME: "/h" },
 			"/cwd",
 		);
 
 		expect(snapshot.cwd).toBe("/cwd");
 		expect(snapshot.env).toEqual({
 			VEYYON_CONFIG_DIR: "/a",
-			XDG_CONFIG_HOME: "/b",
-			PI_AGENT_DIR: "/c",
+			GIT_CONFIG_GLOBAL: "/dev/null",
+			UNRELATED: "/d",
 			HOME: "/h",
-			USERPROFILE: undefined,
-			TMPDIR: undefined,
-			NODE_ENV: undefined,
 		});
-		// The unrelated variable is absent, which is the half the object above cannot state.
-		expect("UNRELATED" in snapshot.env).toBe(false);
+	});
+
+	/** The denylist is the only thing excluded, and it is deliberately tiny. */
+	it("excludes exactly the denylisted names", () => {
+		const env: NodeJS.ProcessEnv = { KEPT: "yes" };
+		for (const name of UNTRACKED_ENV_NAMES) env[name] = "moves for its own reasons";
+
+		expect(snapshotGlobals(env, "/cwd").env).toEqual({ KEPT: "yes" });
 	});
 
 	/**
-	 * Every tracked name is present as a key even when unset. Without that, a suite
-	 * that DELETES `HOME` and never restores it reads as "absent on both sides" and
-	 * the deletion is invisible — the exact shape of leak this tool exists for.
+	 * A suite that EXPORTS something new has polluted the process just as surely as one
+	 * that changed or deleted a variable, and the allowlist could not see it unless the
+	 * new name happened to match a tracked prefix.
 	 */
-	it("keeps unset tracked names as keys so a deletion is a diff", () => {
-		const before = snapshotGlobals({ HOME: "/h" }, "/cwd");
-		const after = snapshotGlobals({}, "/cwd");
+	it("reports a variable the file added, not only ones it changed or removed", () => {
+		const diffs = diffGlobals(snapshotGlobals({}, "/cwd"), snapshotGlobals({ GIT_ASKPASS: "true" }, "/cwd"));
 
-		expect(diffGlobals(before, after)).toEqual([{ key: "env.HOME", before: "/h", after: undefined }]);
-		for (const name of TRACKED_ENV_NAMES) expect(name in after.env).toBe(true);
+		expect(diffs).toEqual([{ key: "env.GIT_ASKPASS", before: undefined, after: "true" }]);
+	});
+
+	/**
+	 * A deletion is visible through the key union rather than through pre-seeded keys:
+	 * the name is present on the `before` side, absent on the `after` side, and reads as
+	 * `value -> undefined`. This is the exact shape of leak the tool exists for — the
+	 * pre-fix `gh.test.ts` deleted `XDG_CONFIG_HOME` and never put it back.
+	 */
+	it("reports a variable the file deleted", () => {
+		const diffs = diffGlobals(snapshotGlobals({ HOME: "/h" }, "/cwd"), snapshotGlobals({}, "/cwd"));
+
+		expect(diffs).toEqual([{ key: "env.HOME", before: "/h", after: undefined }]);
 	});
 
 	/** The tracer's own bookkeeping variable is not state under test. */

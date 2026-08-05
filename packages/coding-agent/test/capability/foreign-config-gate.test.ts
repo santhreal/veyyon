@@ -14,13 +14,16 @@
  * flipping the setting flips discovery and the settings UI in lockstep.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+	captureRegistryForTests,
 	getCapabilityInfo,
 	getForeignProviderIds,
 	initializeWithSettings,
 	isForeignConfigImportEnabled,
 	isProviderEnabled,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
 } from "@veyyon/coding-agent/capability";
 import { skillCapability } from "@veyyon/coding-agent/capability/skill";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -36,10 +39,19 @@ function applyImportSetting(value: boolean): void {
 const NATIVE_PROVIDERS = ["native", "veyyon-plugins"];
 const FOREIGN_SAMPLES = ["claude", "codex", "agents", "agents-md", "cursor", "gemini"];
 
+let registrySnapshot: RegistrySnapshot | undefined;
+
+beforeEach(() => {
+	registrySnapshot = captureRegistryForTests();
+});
+
 afterEach(() => {
-	// Restore the shipped default (foreign providers OFF) so sibling test files
-	// sharing this process's global capability registry see production behavior.
-	applyImportSetting(false);
+	// Restore the whole registry, not just the gate. Re-running
+	// `applyImportSetting(false)` put the shipped default back but left the other
+	// module-globals `initializeWithSettings` writes — the captured Settings
+	// reference and the disabled-provider set — holding this file's values.
+	if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+	registrySnapshot = undefined;
 });
 
 describe("discovery.importForeignConfig", () => {

@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { type ExtensionModule, extensionModuleCapability } from "@veyyon/coding-agent/capability/extension-module";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { getCapability, initializeWithSettings } from "@veyyon/coding-agent/discovery";
+import { getCapability } from "@veyyon/coding-agent/discovery";
 import {
 	discoverAndLoadExtensions,
 	discoverExtensionPaths,
@@ -22,14 +28,21 @@ describe("extensions discovery", () => {
 	let tempDir: TempDir;
 	let extensionsDir: string;
 
+	// One case installs a Settings carrying `disabledExtensions`, and
+	// `initializeWithSettings` copies that into MODULE-GLOBAL state in
+	// capability/index.ts which `resetSettingsForTest` does not clear.
+	let registrySnapshot: RegistrySnapshot | undefined;
+
 	beforeEach(() => {
+		registrySnapshot = captureRegistryForTests();
 		tempDir = TempDir.createSync("@pi-ext-test-");
 		extensionsDir = path.join(getProjectAgentDir(tempDir.path()), "extensions");
 		fs.mkdirSync(extensionsDir, { recursive: true });
-		resetSettingsForTest();
 	});
 	afterEach(() => {
 		resetSettingsForTest();
+		if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+		registrySnapshot = undefined;
 		tempDir.removeSync();
 	});
 

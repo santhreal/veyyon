@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import {
+	captureRegistryForTests,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
@@ -26,8 +31,15 @@ describe("issue #1022 — path-scoped enabledModels respected by default fallbac
 	let testDir: string;
 	let agentDir: string;
 	let cwd: string;
+	// `createAgentSession` calls `initializeWithSettings`, which copies this config's
+	// path-scoped `disabledProviders: ["github-copilot"]` into MODULE-GLOBAL state in
+	// capability/index.ts. `resetSettingsForTest` clears the Settings singleton and
+	// none of that, so the provider stayed disabled for every later file in the
+	// process — it silently vanished from their discovery.
+	let registrySnapshot: RegistrySnapshot | undefined;
 
 	beforeEach(() => {
+		registrySnapshot = captureRegistryForTests();
 		resetSettingsForTest();
 		testDir = path.join(os.tmpdir(), `pi-issue-1022-${Snowflake.next()}`);
 		agentDir = path.join(testDir, "agent");
@@ -38,6 +50,8 @@ describe("issue #1022 — path-scoped enabledModels respected by default fallbac
 
 	afterEach(() => {
 		resetSettingsForTest();
+		if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+		registrySnapshot = undefined;
 		if (fs.existsSync(testDir)) removeSyncWithRetries(testDir);
 	});
 

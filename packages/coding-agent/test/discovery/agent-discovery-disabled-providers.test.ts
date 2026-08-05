@@ -6,7 +6,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { disableProvider, enableProvider, initializeWithSettings } from "@veyyon/coding-agent/capability";
+import {
+	captureRegistryForTests,
+	disableProvider,
+	enableProvider,
+	initializeWithSettings,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
@@ -23,6 +30,7 @@ const PLUGIN_AGENT_MD = [
 
 describe("discoverAgents — claude-plugins disabled provider", () => {
 	let tempHome: string;
+	let registrySnapshot: RegistrySnapshot | undefined;
 
 	beforeEach(() => {
 		tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "pi-agent-disco-home-"));
@@ -57,6 +65,13 @@ describe("discoverAgents — claude-plugins disabled provider", () => {
 		// claude-plugins is a foreign provider, gated behind the (default-off)
 		// importForeignConfig master toggle. Turn it on so this test exercises the
 		// per-provider enable/disable path rather than the master gate.
+		//
+		// The snapshot below is what puts BOTH the gate and the disabled-provider set
+		// back. The old teardown re-ran `initializeWithSettings(false)` plus
+		// `enableProvider`, which happened to cover this file only because the first of
+		// those clears the disabled set as a side effect; removing both at once showed
+		// the file leaving `state.disabledProviders: (none) -> claude-plugins` behind.
+		registrySnapshot = captureRegistryForTests();
 		initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
 
 		// Start each test with a clean provider + cache state.
@@ -67,9 +82,9 @@ describe("discoverAgents — claude-plugins disabled provider", () => {
 
 	afterEach(() => {
 		removeSyncWithRetries(tempHome);
-		// Restore global state so other tests in the suite are not affected.
-		initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": false }));
-		enableProvider("claude-plugins");
+		// Restore global state so other files are not affected.
+		if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+		registrySnapshot = undefined;
 		clearFsCache();
 		clearClaudePluginRootsCache();
 	});
