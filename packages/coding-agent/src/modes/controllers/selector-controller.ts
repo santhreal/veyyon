@@ -7,7 +7,15 @@ import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
-import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
+import {
+	errorMessage,
+	getActiveAuthDbPath,
+	getAgentDir,
+	getGlobalConfigRootDir,
+	getProjectDir,
+	normalizePathForComparison,
+} from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
 import { isRollbackSupported, rollbackToVersion } from "../../cli/update-cli";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../config/model-roles";
@@ -30,6 +38,15 @@ import {
 } from "../../modes/theme/theme";
 import type { InteractiveModeContext } from "../../modes/types";
 import { resolveAvailablePersonalities } from "../../personality/resolver";
+import { SecretAuditLog, secretAuditPath } from "../../secrets/audit";
+import { resolveVaultLocations, SecretVault } from "../../secrets/vault";
+import {
+	accountDisplayLabel,
+	applyCredentialHealth,
+	applyUsageReports,
+	buildAccountInventory,
+	loadAccountInventory,
+} from "../../session/account-inventory";
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "../../session/auth-storage";
 import type { SessionInfo } from "../../session/session-listing";
 import { SessionManager } from "../../session/session-manager";
@@ -53,6 +70,7 @@ import {
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
 } from "../../web/search";
+import { AccountManagerComponent } from "../components/account-manager";
 import { AgentDashboard } from "../components/agent-dashboard";
 import { AssistantMessageComponent } from "../components/assistant-message";
 import { CopySelectorComponent } from "../components/copy-selector";
@@ -65,6 +83,7 @@ import { ModelHubComponent } from "../components/model-hub";
 import { ModelPickerComponent } from "../components/model-picker";
 import { OAuthSelectorComponent } from "../components/oauth-selector";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
+import { SecretManager } from "../components/secret-manager";
 import { SessionSelectorComponent } from "../components/session-selector";
 import { SettingsSelectorComponent } from "../components/settings-selector";
 import { ThinkingSelectorComponent } from "../components/thinking-selector";
@@ -92,6 +111,7 @@ export type SelectorControllerContext = Pick<
 	| "effectiveHideThinkingBlock"
 	| "focusAgentSession"
 	| "handleDebugTranscriptCommand"
+	| "handleUsageCommand"
 	| "hideThinkingBlock"
 	| "historyStorage"
 	| "keybindings"
@@ -455,6 +475,10 @@ export class SelectorController {
 			observers,
 			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
 			sessionFile: this.ctx.sessionManager.getSessionFile() ?? null,
+			// The roster is this conversation's, not the process's. Without it a
+			// session resumed with `/resume` listed the subagents of every
+			// conversation the process had driven before it.
+			scope: this.ctx.sessionManager.getSessionId(),
 			focusAgent: id => this.ctx.focusAgentSession(id),
 			ui: this.ctx.ui,
 			getTool: name => this.ctx.session.getToolByName(name),
@@ -502,6 +526,63 @@ export class SelectorController {
 			return;
 		}
 		show();
+	}
+
+	/**
+	 * Show the Secret Manager: the ONE place stored credentials are managed.
+	 *
+	 * `manager` is the only reserved word after `/secret`, because everything else typed there IS
+	 * the credential. That trade is only honest if the surface the word is reserved for can do
+	 * everything the subcommand grammar could, so this card owns revoke, extend, rename, copying
+	 * the placeholder, and the repair for a vault file that cannot be read.
+	 *
+	 * The vault and the audit log are built from the SAME resolved locations `/secret` itself uses
+	 * (`slash-commands/helpers/secret.ts`). Resolving them a second way here is how the card and
+	 * the command come to read different files and disagree about what is stored.
+	 *
+	 * The Log view is also the ONLY route to the expansion record now. In a terminal `/secret log`
+	 * no longer parses, because everything after `/secret` is read as the credential, so a card
+	 * without the log would have retired the evidence trail as a side effect of a parser change.
+	 */
+	showSecretManager(): void {
+		const locations = resolveVaultLocations({
+			globalConfigRoot: getGlobalConfigRootDir(),
+			agentDir: getAgentDir(),
+			cwd: this.ctx.sessionManager.getCwd(),
+		});
+		const manager = new SecretManager({
+			vault: new SecretVault(locations),
+			// Absent when recording is off, which the card reports as "off" rather than as an
+			// empty log: the two states support opposite conclusions about what has been spent.
+			auditLog: this.ctx.settings.get("secrets.auditLog")
+				? new SecretAuditLog(secretAuditPath(locations), this.ctx.session.operatorNotices)
+				: undefined,
+			terminalHeight: this.ctx.ui.terminal.rows,
+			reveal: modalRevealEnabled(),
+			// Every mutation the card makes has to reach the running session, or it keeps spending
+			// the secret state it captured at startup: a revoked credential stays substitutable
+			// and a renamed one leaves the model writing a placeholder nothing resolves.
+			refreshSecrets: () => this.ctx.session.refreshSecrets(),
+		});
+		// Fullscreen on the alternate screen (the /settings idiom): the overlay borrows the
+		// terminal's alt buffer and enables mouse tracking for its lifetime, leaving the
+		// transcript untouched underneath.
+		const overlay = this.ctx.ui.showOverlay(manager, {
+			width: "100%",
+			maxHeight: "100%",
+			anchor: "top-left",
+			margin: 0,
+			fullscreen: true,
+		});
+		manager.onClose = () => {
+			overlay.hide();
+			this.focusActiveEditorArea();
+			this.ctx.ui.requestRender();
+		};
+		manager.onRequestRender = () => {
+			this.ctx.ui.requestRender();
+		};
+		this.ctx.ui.requestRender();
 	}
 
 	/**
@@ -1567,6 +1648,158 @@ export class SelectorController {
 			);
 			return { component: selector, focus: selector };
 		});
+	}
+
+	/**
+	 * Fullscreen account manager: one row per stored CREDENTIAL, grouped by provider.
+	 *
+	 * Paints from the synchronous inventory first, then folds in health and usage as their probes
+	 * land. That order is deliberate: probing every credential costs a network round-trip each, and
+	 * a card that waits for them shows an empty frame for seconds on a multi-account setup. The
+	 * component keeps its selection across `setInventory`, so the rows filling in underneath the
+	 * cursor never move it.
+	 */
+	async showAccountManager(providerId?: string): Promise<void> {
+		const authStorage = this.ctx.session.modelRegistry.authStorage;
+		const sessionId = this.ctx.session.sessionId;
+		let overlayHandle: OverlayHandle | undefined;
+		let manager: AccountManagerComponent | undefined;
+		let closed = false;
+		const done = () => {
+			if (closed) return;
+			closed = true;
+			manager?.dispose();
+			overlayHandle?.hide();
+			this.focusActiveEditorArea();
+			this.ctx.ui.requestRender();
+		};
+		// Re-read from the store rather than mutating the rendered model: a pin, a rename and a
+		// logout all change what the store says, and rebuilding is the only way the card cannot
+		// disagree with it.
+		const reload = () => {
+			if (closed) return;
+			manager?.setInventory(buildAccountInventory(authStorage, { sessionId }));
+			this.ctx.ui.requestRender();
+		};
+
+		manager = new AccountManagerComponent(
+			await loadAccountInventory(authStorage, { sessionId }),
+			{
+				onUseAccount: row => {
+					if (authStorage.pinSessionCredential(row.provider, sessionId, row.credentialId)) {
+						this.ctx.showStatus(`${row.providerLabel}: this session now uses ${accountDisplayLabel(row)}`);
+					} else {
+						// The credential vanished between render and keypress (a peer logged it out).
+						// Say so; a silent no-op reads as the key being broken.
+						this.ctx.showWarning(`${row.providerLabel}: that account is no longer stored`);
+					}
+					reload();
+				},
+				onRename: (row, name) => {
+					const previous = accountDisplayLabel(row);
+					if (!authStorage.setAccountName(row.provider, row.credentialId, name)) {
+						this.ctx.showWarning(
+							`Could not name that account — ${row.providerLabel} credentials are stored where names cannot be kept`,
+						);
+						return;
+					}
+					reload();
+					this.ctx.showStatus(
+						name.trim().length === 0
+							? `${row.providerLabel}: cleared the name on ${previous}`
+							: `${row.providerLabel}: ${previous} is now "${name.trim()}"`,
+					);
+				},
+				onRefresh: () => {
+					void this.#probeAccountHealth(
+						() => manager,
+						() => closed,
+					);
+				},
+				onLogout: row => {
+					void (async () => {
+						try {
+							const removed = await authStorage.removeCredential(row.provider, row.credentialId);
+							if (!removed) {
+								this.ctx.showWarning(`${row.providerLabel}: that account was already removed`);
+							} else {
+								this.ctx.showStatus(`${row.providerLabel}: logged out of ${accountDisplayLabel(row)}`);
+							}
+							await this.ctx.session.modelRegistry.refresh();
+						} catch (error) {
+							this.ctx.showError(`Logout failed: ${errorMessage(error)}`);
+						}
+						reload();
+					})();
+				},
+				onShowUsage: () => {
+					done();
+					void this.ctx.handleUsageCommand();
+				},
+				onAddAccount: provider => {
+					done();
+					void this.showOAuthSelector("login", provider);
+				},
+				onCancel: done,
+			},
+			{
+				initialProviderId: providerId,
+				reveal: modalRevealEnabled(),
+				requestRender: () => {
+					const component = manager;
+					if (component) this.ctx.ui.requestComponentRender(component);
+				},
+			},
+		);
+
+		overlayHandle = this.ctx.ui.showOverlay(manager, {
+			anchor: "bottom-center",
+			width: "100%",
+			maxHeight: "100%",
+			margin: 0,
+			fullscreen: true,
+		});
+		this.ctx.ui.setFocus(manager);
+		this.ctx.ui.requestRender();
+
+		await this.#probeAccountHealth(
+			() => manager,
+			() => closed,
+		);
+	}
+
+	/**
+	 * Fold live health and usage into an open account manager.
+	 *
+	 * Both probes are best-effort and independent: a provider with no usage endpoint must not stop
+	 * the health column from arriving, and a health probe that times out must not blank the usage
+	 * bars. A failure leaves the affected column absent, which the card renders as "not probed"
+	 * rather than as a healthy account.
+	 */
+	async #probeAccountHealth(
+		getManager: () => AccountManagerComponent | undefined,
+		isClosed: () => boolean,
+	): Promise<void> {
+		const authStorage = this.ctx.session.modelRegistry.authStorage;
+		const sessionId = this.ctx.session.sessionId;
+		const baseUrlResolver = (target: string) => this.ctx.session.modelRegistry.getProviderBaseUrl?.(target);
+		const [health, usage] = await Promise.all([
+			authStorage.checkCredentials({ baseUrlResolver }).catch(error => {
+				logger.debug("account manager: credential health probe failed", { error: errorMessage(error) });
+				return [];
+			}),
+			this.ctx.session.fetchUsageReports().catch(error => {
+				logger.debug("account manager: usage probe failed", { error: errorMessage(error) });
+				return null;
+			}),
+		]);
+		if (isClosed()) return;
+		const manager = getManager();
+		if (!manager) return;
+		let inventory = applyCredentialHealth(await loadAccountInventory(authStorage, { sessionId }), health);
+		if (usage) inventory = applyUsageReports(inventory, usage);
+		manager.setInventory(inventory);
+		this.ctx.ui.requestRender();
 	}
 
 	async showResetUsageSelector(): Promise<void> {
