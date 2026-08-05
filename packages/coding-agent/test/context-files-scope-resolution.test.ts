@@ -93,13 +93,15 @@ describe("context file scope resolution", () => {
 	});
 
 	/**
-	 * PROJECT scope, depth numbering and prominence order.
+	 * PROJECT scope, depth numbering and intra-project order.
 	 *
-	 * The prompt tells the model that deeper rules override shallower ones, and
-	 * that promise is only true if the array is ordered farthest-from-cwd first
-	 * so the closest file lands last and most prominent. A sort that reverses
-	 * this makes the repo-root house style override the package's own
-	 * conventions, which is a silent behavior change with no error anywhere.
+	 * A project directory's own file refines its ancestors rather than replacing
+	 * them, so the array is ordered farthest-from-cwd first and the closest file
+	 * lands last. Both entries are PROJECT scope, so neither outranks the other on
+	 * the authority ladder and position is the only discriminator left: this is one
+	 * project directory refining another, not a project file outranking a broader
+	 * scope. A sort that reverses it makes the repo-root house style displace the
+	 * package's own conventions, silently and with no error anywhere.
 	 */
 	it("walks the project tree with repo root at depth 1 and cwd at depth 0, root first", async () => {
 		const f = fixture("scope-project");
@@ -115,22 +117,24 @@ describe("context file scope resolution", () => {
 	});
 
 	/**
-	 * PROMINENCE across all three scopes, which is a different axis from the
-	 * order the scopes are RESOLVED in. Resolution runs global, then profile,
-	 * then the project walk. The array is then sorted least prominent first:
-	 * global (the cross-machine baseline), the project walk farthest-from-cwd
-	 * first, and the user's own profile file last and most authoritative.
+	 * AUTHORITY across all three scopes, which is a different axis from the order
+	 * the scopes are RESOLVED in. Resolution runs global, then profile, then the
+	 * project walk. The array is then sorted LEAST AUTHORITATIVE FIRST: the project
+	 * walk farthest-from-cwd first, then the active profile's file, then the
+	 * operator's own global file last and strongest.
 	 *
-	 * Profile sits last on purpose. A user's standing rules must not lose to
-	 * whatever repository happens to be checked out, and `capability/context-file.ts`
-	 * documents that prominence deliberately.
+	 * Global sits last on purpose, and it is a safety boundary rather than a
+	 * convention. A project file is content checked into a repository the operator
+	 * may not have written, so letting one hold the highest-recency slot lets any
+	 * cloned repo rewrite the rules the operator set for themselves. That is
+	 * exactly what happened: a repo's "do not use subagents for this repository"
+	 * was obeyed over the operator's global file AND over their live instruction.
 	 *
 	 * Asserting only that all four files are present would pass under any
-	 * permutation, including the one that puts the machine-wide baseline last
-	 * and lets it override the package the user is actually editing. The exact
+	 * permutation, including the inverted one that caused the report. The exact
 	 * array is the contract; anything weaker is decoration.
 	 */
-	it("orders global, then project by descending depth, then the profile file last", async () => {
+	it("orders project by descending depth, then the profile, then the global file last", async () => {
 		const f = fixture("scope-precedence");
 		f.writeFile(f.globalAgentsPath, `${GLOBAL_BODY}\n`);
 		f.writeFile(f.profileAgentsPath, `${PROFILE_BODY}\n`);
@@ -140,17 +144,17 @@ describe("context file scope resolution", () => {
 		const files = await loadProjectContextFiles({ cwd: f.cwd });
 
 		expect(files.map(file => file.path)).toEqual([
-			f.globalAgentsPath,
 			f.rootAgentsPath,
 			f.nestedAgentsPath,
 			f.profileAgentsPath,
+			f.globalAgentsPath,
 		]);
-		expect(files.map(file => file.depth)).toEqual([undefined, 1, 0, undefined]);
+		expect(files.map(file => file.depth)).toEqual([1, 0, undefined, undefined]);
 		expect(files.map(file => file.content)).toEqual([
-			`${GLOBAL_BODY}\n`,
 			`${PROJECT_ROOT_BODY}\n`,
 			`${PROJECT_NESTED_BODY}\n`,
 			`${PROFILE_BODY}\n`,
+			`${GLOBAL_BODY}\n`,
 		]);
 	});
 
@@ -174,8 +178,8 @@ describe("context file scope resolution", () => {
 
 		expect(PROFILE_AGENTS_GUIDANCE.length).toBe(597);
 		expect(files).toEqual([
-			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
 			{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
+			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
 		]);
 	});
 

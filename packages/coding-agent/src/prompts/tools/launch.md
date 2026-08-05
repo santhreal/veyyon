@@ -1,7 +1,6 @@
 Launches and controls project-scoped long-running processes shared by every veyyon instance in the same directory.
 
 <instruction>
-- Long-running service, watcher, debugger, REPL, or process needing later input? MUST use `launch`, not `bash`.
 - `start` launches `application` + `args` directly. `cwd` defaults to the session directory; `pty` defaults true.
 - `ready.log` is a regex; `ready.port` is a TCP port. Both supplied? BOTH MUST pass. `ready.timeout` is seconds.
 - Names are unique per project directory. A completed name MAY be started again; a live name MUST be stopped or restarted.
@@ -18,7 +17,7 @@ Launches and controls project-scoped long-running processes shared by every veyy
 </instruction>
 
 <critical>
-- Long-running work MUST use `launch`, not async/background bash.
+- A service, watcher, debugger, REPL, or anything needing later stdin MUST use `launch`, never `bash` or async/background bash.
 - Readiness MUST be observed; process creation alone is not readiness.
 - Omit `persist` and `detached` unless their survival guarantees are required.
 - Use `stop`; NEVER kill an unverified PID through bash.

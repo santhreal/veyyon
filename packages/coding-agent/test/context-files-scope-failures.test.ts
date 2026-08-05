@@ -115,8 +115,8 @@ describe("context file scope failures", () => {
 
 		expect(fs.statSync(f.nestedAgentsPath).isDirectory()).toBe(true);
 		expect(files).toEqual([
-			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
 			{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
+			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
 		]);
 	});
 
@@ -142,19 +142,52 @@ describe("context file scope failures", () => {
 
 	/**
 	 * Two scopes holding the SAME text is what happens when a user copies their
-	 * global rules into a project. Sending both wastes context and, worse, makes
-	 * the duplicated block look twice as authoritative. The surviving copy must
-	 * be the more prominent one, because that is the one whose position in the
-	 * array encodes "this wins".
+	 * global rules into a project, or a project quotes them. Sending both wastes
+	 * context and makes the duplicated block look twice as authoritative, so one
+	 * copy is dropped.
+	 *
+	 * WHICH copy survives is not cosmetic. The survivor's `<file path=...>` label is
+	 * what tells the model which rules it is reading, so keeping the project copy
+	 * re-attributes the operator's own standing rules to a repository file: same
+	 * bytes, and a project file now wearing the authority of the user's own
+	 * configuration. The dedupe therefore keeps the copy from the more
+	 * AUTHORITATIVE scope, read from the same rank table the render order uses, not
+	 * the copy that happens to sit later in the array.
 	 */
-	it("keeps only the most prominent copy when two scopes hold identical text", async () => {
+	it("keeps the copy from the most authoritative scope when two scopes hold identical text", async () => {
 		const f = fixture("failure-duplicate");
 		f.writeFile(f.globalAgentsPath, `${GLOBAL_BODY}\n`);
 		f.writeFile(f.nestedAgentsPath, `${GLOBAL_BODY}\n`);
 
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: f.agentDir });
 
-		expect(files).toEqual([{ path: f.nestedAgentsPath, content: `${GLOBAL_BODY}\n`, depth: 0 }]);
+		expect(files).toEqual([{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined }]);
+	});
+
+	/**
+	 * A project file that QUOTES the operator's global rules inside a longer file is
+	 * the case that decides the direction of the whole rule. The global file's
+	 * blocks are a subset of the project file's, so containment points from global
+	 * to project, and a position-driven dedupe drops the global copy: the operator's
+	 * own rules survive only as text inside a repository file, labelled with the
+	 * repository's path.
+	 *
+	 * Both must survive. The global copy is kept because it outranks, and the
+	 * project file is left byte-identical because the dedupe drops whole files and
+	 * never rewrites what an author wrote.
+	 */
+	it("keeps the global file whole when a longer project file quotes it", async () => {
+		const f = fixture("failure-quoted-global");
+		const quoting = `# Package rules\n\n${GLOBAL_BODY}\n\nAlso run the package linter.\n`;
+		f.writeFile(f.globalAgentsPath, `${GLOBAL_BODY}\n`);
+		f.writeFile(f.nestedAgentsPath, quoting);
+
+		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: f.agentDir });
+
+		expect(files).toEqual([
+			{ path: f.nestedAgentsPath, content: quoting, depth: 0 },
+			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
+		]);
 	});
 
 	/**

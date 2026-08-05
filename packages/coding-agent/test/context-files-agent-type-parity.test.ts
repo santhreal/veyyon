@@ -64,7 +64,7 @@ describe("context file agent-type parity", () => {
 	/**
 	 * The headline invariant: for one cwd and one agent dir, the default agent,
 	 * a custom-prompt agent, and a subagent inheriting from the default agent all
-	 * put the SAME files, in the SAME order, into their prompts.
+	 * put the SAME files, in the SAME authority order, into their prompts.
 	 *
 	 * Comparing rendered paths rather than loader output is deliberate: the two
 	 * templates each gate the whole context section on `contextFiles.length`, so
@@ -99,7 +99,7 @@ describe("context file agent-type parity", () => {
 			resolvedCustomPrompt: "You are a narrow reviewer agent.",
 		});
 
-		const expectedPaths = [f.globalAgentsPath, f.rootAgentsPath, f.nestedAgentsPath, f.profileAgentsPath];
+		const expectedPaths = [f.rootAgentsPath, f.nestedAgentsPath, f.profileAgentsPath, f.globalAgentsPath];
 		expect(parentContextFiles.map(file => file.path)).toEqual(expectedPaths);
 		expect(renderedContextPaths(defaultPrompt)).toEqual(expectedPaths);
 		expect(renderedContextPaths(customPrompt)).toEqual(expectedPaths);
@@ -115,7 +115,7 @@ describe("context file agent-type parity", () => {
 	 * The deleted implementation filtered by basename, so a list of four scopes
 	 * became a list of zero, silently. Asserting identity of the array (not just
 	 * equal length) also pins that nothing is copied and re-sorted on the way
-	 * through, which would break the prominence order the parent resolved.
+	 * through, which would break the authority order the parent resolved.
 	 */
 	it("hands a same-cwd subagent the parent's context files unfiltered and in order", async () => {
 		const f = fixture("parity-inherit");
@@ -132,7 +132,7 @@ describe("context file agent-type parity", () => {
 		});
 
 		expect(inherited).toBe(parentContextFiles);
-		expect(inherited?.map(file => file.path)).toEqual([f.globalAgentsPath, f.nestedAgentsPath, f.profileAgentsPath]);
+		expect(inherited?.map(file => file.path)).toEqual([f.nestedAgentsPath, f.profileAgentsPath, f.globalAgentsPath]);
 		expect(inherited?.every(file => path.basename(file.path) === "AGENTS.md")).toBe(true);
 	});
 
