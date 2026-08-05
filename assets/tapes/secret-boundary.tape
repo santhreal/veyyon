@@ -1,6 +1,10 @@
-# Veyyon secret-boundary demo: a fabricated project credential is stored from
-# the environment, shown to Gemini only as a placeholder, expanded for one real
-# bash call, and recorded by the operator-visible use log without revealing it.
+# Veyyon secret-boundary demo: a fabricated credential is stored from the
+# environment, shown in the secret manager as a placeholder only, expanded for
+# one real bash call, and recorded in the manager's Log view without its value.
+# In a terminal everything after `/secret` is the credential itself, so the
+# hidden seed uses the one flag that grammar keeps, `--from-env`, and answers
+# the visible name field that follows it. The manager is the only other line a
+# terminal honours, and Right moves from its Secrets view to its Log view.
 # Regenerate: `bash scripts/demos/record-secret-boundary.sh`.
 # Do not run this tape directly. The driver owns the throwaway project and value.
 
@@ -24,28 +28,36 @@ Type "clear" Enter
 Sleep 300ms
 Type "bash scripts/demos/launch.sh --auto-approve" Enter
 Sleep 4s
-Type "/secret add DEMO_API_TOKEN --from-env VEYYON_DEMO_SECRET --scope project"
+Type "/secret --from-env VEYYON_DEMO_SECRET"
 Sleep 700ms
 Escape
+Enter
+Sleep 2s
+Type "DEMO_API_TOKEN"
+Sleep 500ms
 Enter
 Sleep 3s
 Type "/clear" Enter
 Sleep 2s
 Show
 
-Type "/secret list"
+Type "/secret manager"
 Sleep 700ms
 Escape
 Enter
-Sleep 4s
+Sleep 5s
+Escape
+Sleep 1s
 
 Type "use bash with the DEMO_API_TOKEN placeholder to print only its byte length. After the tool returns, reply exactly: The byte length is 39 bytes. Do not repeat the placeholder, credential name, or value."
 Sleep 800ms
 Enter
 Sleep 90s
 
-Type "/secret log --limit 5"
+Type "/secret manager"
 Sleep 700ms
 Escape
 Enter
+Sleep 3s
+Right
 Sleep 5s
