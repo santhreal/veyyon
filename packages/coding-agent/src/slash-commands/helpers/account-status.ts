@@ -39,10 +39,6 @@ const PROVIDER_COLUMN = 19;
 const NAME_COLUMN = 28;
 /** Continuation lines hang under the account name, not under the provider. */
 const DETAIL_INDENT = " ".repeat(ROW_INDENT.length + PROVIDER_COLUMN);
-/** Width of the usage-window label ("5h", "7d") before its bar. */
-const USAGE_LABEL_COLUMN = 4;
-/** A provider that names its windows in prose ("Claude 7 Day") may not eat the row. */
-const USAGE_LABEL_MAX = 12;
 /** Bar cells. Narrower than the `/usage` report's default: this block carries three columns. */
 const USAGE_BAR_WIDTH = 10;
 
@@ -235,6 +231,21 @@ export function renderAccountStatus(
 	if (unnamed > 0) {
 		lines.push(
 			line(ROW_INDENT, `${unnamed === 1 ? "1 account has" : `${unnamed} accounts have`} no name · ${NAME_HINT}`),
+			"",
+		);
+	}
+
+	// A torn-down login is not an account "in use", so it has no block of its own here — but this is
+	// the surface a user checks first, and saying nothing would leave the dead login discoverable only
+	// by opening the manager on a hunch. One pointer, counted, in the same shape as the naming hint.
+	const signedOut = inventory.providers.filter(entry => entry.disabledCause !== undefined);
+	if (signedOut.length > 0) {
+		const which = signedOut.map(entry => entry.label).join(", ");
+		lines.push(
+			line(
+				ROW_INDENT,
+				`${signedOut.length === 1 ? "1 provider has" : `${signedOut.length} providers have`} a signed-out login (${which}) · /providers to sign in again`,
+			),
 			"",
 		);
 	}

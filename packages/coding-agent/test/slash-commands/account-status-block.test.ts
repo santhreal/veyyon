@@ -363,3 +363,45 @@ describe("role annotations name why a provider is in the session", () => {
 		expect(WEB_SEARCH_CREDENTIAL_PROVIDERS.gemini).toEqual(["google-gemini-cli", "google-antigravity"]);
 	});
 });
+
+describe("the status block points at a signed-out login", () => {
+	/**
+	 * A torn-down login is not an account "in use", so it gets no block of its own — but this is the
+	 * surface a user checks first, and saying nothing would leave a dead login discoverable only by
+	 * opening the manager on a hunch. The pointer names the provider so the reader knows where to go.
+	 */
+	it("names the provider whose login was signed out", () => {
+		const withDeadLogin: AccountInventory = {
+			...fullInventory,
+			providers: [
+				...fullInventory.providers,
+				{ provider: "kimi-code", label: "Kimi Code", rows: [], disabledCause: "oauth refresh failed: revoked" },
+			],
+		};
+
+		expect(render(withDeadLogin, fullRoles)).toContain(
+			"  1 provider has a signed-out login (Kimi Code) · /providers to sign in again",
+		);
+	});
+
+	/** Two dead logins pluralise and list both, so the count never disagrees with the names. */
+	it("counts and lists several signed-out providers", () => {
+		const withTwo: AccountInventory = {
+			...fullInventory,
+			providers: [
+				...fullInventory.providers,
+				{ provider: "kimi-code", label: "Kimi Code", rows: [], disabledCause: "oauth refresh failed: revoked" },
+				{ provider: "cursor", label: "Cursor", rows: [], disabledCause: "oauth refresh failed: expired" },
+			],
+		};
+
+		expect(render(withTwo, fullRoles)).toContain(
+			"  2 providers have a signed-out login (Kimi Code, Cursor) · /providers to sign in again",
+		);
+	});
+
+	/** No dead login, no pointer. A healthy session must not carry a line about signing in again. */
+	it("says nothing about signed-out logins when there are none", () => {
+		expect(render(fullInventory, fullRoles)).not.toContain("signed-out login");
+	});
+});
