@@ -100,6 +100,27 @@ describe("AgentSession re-scopes to the destination directory", () => {
 	});
 
 	/**
+	 * The rebuild has to say WHY. A re-root is the most frequent mid-session
+	 * invalidator of the provider prompt cache and it was the least traceable: the
+	 * call passed no reason, so the session's own invalidation record read
+	 * `unspecified`. One real session re-rooted four times, rewrote a ~32k-char
+	 * prompt each time, and left four unattributed entries, which is evidence that
+	 * the cache was thrown away and no evidence of what threw it. `reason` is a
+	 * required parameter now, so this asserts the value the cwd path passes rather
+	 * than merely that some string arrived.
+	 */
+	it("names the cwd change as the invalidation reason", async () => {
+		const origin = makeDir("origin");
+		const destination = makeDir("destination");
+		const agentSession = await createSession(origin);
+		const rebuild = vi.spyOn(agentSession, "refreshBaseSystemPrompt").mockResolvedValue([]);
+
+		await agentSession.setCwd(destination);
+
+		expect(rebuild).toHaveBeenCalledWith("cwd-change");
+	});
+
+	/**
 	 * The tool set moves too. `refreshSshTool` re-resolves whether the destination
 	 * project has an ssh target at all, so leaving it pinned offered the previous
 	 * project's remote from the new one.

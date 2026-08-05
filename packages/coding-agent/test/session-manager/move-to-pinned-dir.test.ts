@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { __resetDirsFromEnvForTests, setAgentDir, TempDir } from "@veyyon/utils";
+import { setAgentDir, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 /**
  * `moveTo` must not move a session out of the directory its caller pinned.
@@ -34,7 +35,7 @@ import { __resetDirsFromEnvForTests, setAgentDir, TempDir } from "@veyyon/utils"
  */
 describe("moveTo and an explicitly pinned session directory", () => {
 	const tempDirs: TempDir[] = [];
-	let savedAgentDirEnv: string | undefined;
+	let dirOverrides: DirOverridesSnapshot | undefined;
 
 	function makeTempDir(prefix: string): string {
 		const dir = TempDir.createSync(prefix);
@@ -45,14 +46,19 @@ describe("moveTo and an explicitly pinned session directory", () => {
 	beforeEach(() => {
 		// The default session root resolves under the agent dir. Without moving it,
 		// this suite writes into the developer's real data directory.
-		savedAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
+		//
+		// The whole snapshot, not just `VEYYON_CODING_AGENT_DIR`: `setAgentDir` also deletes
+		// `VEYYON_PROFILE` and overwrites the pre-profile baseline, so restoring the one
+		// variable by hand left this file handing an unset profile to every suite scheduled
+		// after it, which then resolved under `profiles/default/` on a machine that runs with
+		// a named profile. `restoreDirOverrides` is the single owner of putting all of it back.
+		dirOverrides = captureDirOverrides();
 		setAgentDir(makeTempDir("@pi-movepin-agent-"));
 	});
 
 	afterEach(async () => {
-		if (savedAgentDirEnv === undefined) delete process.env.VEYYON_CODING_AGENT_DIR;
-		else process.env.VEYYON_CODING_AGENT_DIR = savedAgentDirEnv;
-		__resetDirsFromEnvForTests();
+		if (dirOverrides !== undefined) restoreDirOverrides(dirOverrides);
+		dirOverrides = undefined;
 		await Promise.all(tempDirs.splice(0).map(dir => dir.remove()));
 	});
 
