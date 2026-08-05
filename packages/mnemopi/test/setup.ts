@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from "bun:test";
 import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 import * as Beam from "@veyyon/mnemopi/core/beam";
 import * as Embeddings from "@veyyon/mnemopi/core/embeddings";
@@ -67,17 +68,27 @@ class FakeLocalLlmBackend implements LlmBackend {
 }
 
 /**
- * Every `.veyyon*` entry sitting DIRECTLY in the home, sorted.
+ * Every entry sitting DIRECTLY in the home that a mnemopi run could have put there, sorted.
  *
- * That is the exact shape the mistake this package's isolation replaced leaves behind:
- * `VEYYON_CONFIG_DIR` is a directory NAME joined onto `os.homedir()`, so a fresh
+ * TWO prefixes, because this package has TWO home-derived roots and the guard used to watch
+ * only one. `.veyyon*` is the shape the mistake this package's isolation replaced leaves
+ * behind: `VEYYON_CONFIG_DIR` is a directory NAME joined onto `os.homedir()`, so a fresh
  * `.veyyon-mnemopi-profile-iso-<id>` is a config root in the home rather than out of it.
- * Reading the directory is the only way to see it, because every path the suite resolves
+ *
+ * `.hermes` is the other one and it was invisible here. `dataDir()` defaults to
+ * `~/.hermes/mnemopi/data` and every module-level facade call (`remember`, `recall`,
+ * `getContext`, `getStats`) opens the database there when `MNEMOPI_DATA_DIR` is unset, which
+ * is a SQLite file, a `-wal` and a `-shm` in the operator's home. `enterIsolatedConfigRoot`
+ * cannot move it: it is not derived from the config root. A 372KB schema-only
+ * `~/.hermes/mnemopi/data/mnemopi.db` with zero rows in every data table was found in one real
+ * home, and this list is why nothing said so.
+ *
+ * Reading the directory is the only way to see either, because every path the suite resolves
  * looks correct from inside the suite.
  */
-function veyyonSiblingsInHome(): string[] {
+function homeRootsAMnemopiRunCouldCreate(): string[] {
 	return readdirSync(homedir())
-		.filter(entry => entry.startsWith(".veyyon"))
+		.filter(entry => entry.startsWith(".veyyon") || entry === ".hermes")
 		.sort();
 }
 
@@ -114,17 +125,27 @@ function veyyonSiblingsInHome(): string[] {
  */
 export function useMnemopiTestEnv(): void {
 	let isolated: IsolatedConfigRoot | undefined;
-	let siblingsBefore: string[] = [];
+	let rootsBefore: string[] = [];
+	let previousDataDir: string | undefined;
 
 	beforeAll(() => {
-		siblingsBefore = veyyonSiblingsInHome();
+		rootsBefore = homeRootsAMnemopiRunCouldCreate();
 		isolated = enterIsolatedConfigRoot("mnemopi-suite", { defaultProfile: true });
+		// The SECOND root, which the config root cannot move. `MNEMOPI_DATA_DIR` is the only
+		// lever over `dataDir()`, and unlike `VEYYON_CONFIG_DIR` it takes an absolute path, so
+		// it gets a directory inside the isolated root rather than a name. Left unset, the
+		// default is `~/.hermes/mnemopi/data` and every facade call opens a database there.
+		previousDataDir = process.env.MNEMOPI_DATA_DIR;
+		process.env.MNEMOPI_DATA_DIR = join(isolated.root, "mnemopi-data");
 	});
 
 	afterAll(() => {
+		if (previousDataDir === undefined) delete process.env.MNEMOPI_DATA_DIR;
+		else process.env.MNEMOPI_DATA_DIR = previousDataDir;
+		previousDataDir = undefined;
 		isolated?.restore();
 		isolated = undefined;
-		expect(veyyonSiblingsInHome()).toEqual(siblingsBefore);
+		expect(homeRootsAMnemopiRunCouldCreate()).toEqual(rootsBefore);
 	});
 
 	beforeEach(() => {
