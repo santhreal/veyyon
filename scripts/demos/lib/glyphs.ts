@@ -184,6 +184,16 @@ const FONT: Readonly<Record<string, string>> = {
 	"■": "...../.###./.###./.###./.###./...../.....",
 	"□": "...../.###./.#.#./.#.#./.###./...../.....",
 	"▣": "...../.###./.#.#./.###./.#.#./.###./.....",
+	// The account-state marks from the `/providers` card, and the reason all three are here: the
+	// card's whole claim is that you can tell at a glance which of several accounts is spending your
+	// tokens, which is idle, and which is temporarily unusable. Rastering any of them as an
+	// anonymous box leaves the proof unable to show the one thing it was taken to show.
+	// `●` serving, `◦` idle (its lighter twin, deliberately smaller so the pair reads as a
+	// difference in weight), `⊗` rate-limit blocked (a ring struck through: usable again later, so
+	// it must not read as the `✗` of a dead credential).
+	"●": "...../.###./#####/#####/#####/.###./.....",
+	"◦": "...../...../..#../.#.#./..#../...../.....",
+	"⊗": "...../.###./##.##/#.#.#/##.##/.###./.....",
 };
 
 /**
