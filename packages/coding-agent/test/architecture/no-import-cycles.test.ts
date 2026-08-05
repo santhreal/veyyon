@@ -67,6 +67,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search-scope";
 import { moduleGraph, moduleSpecifiersIn, resolveModuleSpecifier } from "@veyyon/utils/module-reach";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
@@ -430,17 +431,19 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	});
 
 	/**
-	 * And the function that needed the router still exists where it moved to, with
-	 * the import it moved for. Without this, deleting `search-scope.ts` outright
-	 * would satisfy every assertion above.
+	 * Locks out: deleting `tools/search-scope.ts` outright, which would satisfy every absence above.
+	 * The function that needed the router still lives there and still names it.
+	 *
+	 * Asserted by importing the module and checking the export, not by searching its text for
+	 * `export async function resolveToolSearchScope`. A text search passes on a comment carrying the
+	 * name and fails when the same function is exported as a const arrow, so it tests the spelling
+	 * rather than the surface.
 	 */
 	it("still resolves internal URLs, from tools/search-scope", () => {
 		const imports = staticImports("tools/search-scope.ts");
 
 		expect(imports).toContain("../internal-urls");
 		expect(imports).toContain("./path-utils");
-		expect(fs.readFileSync(path.join(SRC, "tools/search-scope.ts"), "utf-8")).toContain(
-			"export async function resolveToolSearchScope",
-		);
+		expect(typeof resolveToolSearchScope).toBe("function");
 	});
 });

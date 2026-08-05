@@ -18,11 +18,15 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
 import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/coding-agent/extensibility/legacy-tool-marker";
 import { MCP_PROTOCOL_VERSION } from "@veyyon/coding-agent/mcp/protocol-version";
+import { MAIN_CALL_SIGN } from "@veyyon/coding-agent/modes/components/agent-activity";
 import { DEFAULT_PLAN_FILE_URL } from "@veyyon/coding-agent/plan-mode/plan-file-url";
+import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
 const AI_SRC = path.resolve(import.meta.dir, "../../../ai/src");
@@ -35,25 +39,23 @@ describe("the legacy tool-definition marker", () => {
 	});
 
 	/**
-	 * The sdk's own marker stays a SYMBOL and is deliberately not this string. A symbol cannot collide with a
-	 * property a user put on their tool, so the two markers distinguish "converted by the sdk" from "converted
-	 * by the legacy shim", and `sdk.ts` checks both because checking one would double-convert the other kind.
+	 * Locks out: the legacy shim stamping a string it spells itself, so an already-converted tool is
+	 * converted twice and the order of the arguments `execute()` receives is scrambled.
+	 *
+	 * The tree-wide literal scan below forbids `"__isToolDefinition"` anywhere but the owner, with one
+	 * exemption: `sdk.ts`'s `Symbol("__isToolDefinition")`, which is a deliberately DIFFERENT key (a
+	 * symbol cannot collide with a property a user put on their own tool). So what is left to state
+	 * here is that the shim names the owner rather than carrying its own copy.
+	 *
+	 * What used to be here instead was three searches of `sdk.ts` and the shim for exact expressions,
+	 * including `marked[TOOL_DEFINITION_MARKER] !== true && marked[LEGACY_TOOL_DEFINITION_MARKER] !== true`.
+	 * That passes with the condition inverted and fails when a local is renamed, which is the wrong way
+	 * round on both counts.
 	 */
-	it("is checked alongside the sdk's symbol marker", async () => {
-		const sdk = await Bun.file(path.join(SRC, "sdk.ts")).text();
-		expect(sdk).toContain('const TOOL_DEFINITION_MARKER = Symbol("__isToolDefinition");');
-		expect(sdk).toContain(
-			"marked[TOOL_DEFINITION_MARKER] !== true && marked[LEGACY_TOOL_DEFINITION_MARKER] !== true",
-		);
-		expect(sdk).toContain('from "./extensibility/legacy-tool-marker"');
-	});
+	it("is stamped by the shim from the owner", () => {
+		const shim = path.join(SRC, "extensibility/legacy-pi-coding-agent-shim.ts");
 
-	/** The shim stamps the same string it is read by, from the one declaration. */
-	it("is stamped by the shim from the owner", async () => {
-		const shim = await Bun.file(path.join(SRC, "extensibility/legacy-pi-coding-agent-shim.ts")).text();
-		expect(shim).toContain("Object.defineProperty(tool, LEGACY_TOOL_DEFINITION_MARKER,");
-		expect(shim).toContain('from "./legacy-tool-marker"');
-		expect(shim).not.toContain('= "__isToolDefinition"');
+		expect(moduleSpecifiersIn(fs.readFileSync(shim, "utf-8"))).toContain("./legacy-tool-marker");
 	});
 });
 
@@ -73,14 +75,22 @@ describe("the default plan file URL", () => {
 		expect(DEFAULT_PLAN_FILE_URL).toContain("://");
 	});
 
-	/** Both the producer and the matcher read the one declaration. */
-	it("is read by the ACP agent and by plan protection", async () => {
-		const agent = await Bun.file(path.join(SRC, "modes/acp/acp-agent.ts")).text();
-		const protection = await Bun.file(path.join(SRC, "plan-mode/plan-protection.ts")).text();
-		expect(agent).toContain("planFilePath: previous?.planFilePath ?? DEFAULT_PLAN_FILE_URL,");
-		expect(agent).toContain('from "../../plan-mode/plan-file-url"');
-		expect(protection).toContain("readTargetsPlan(path, DEFAULT_PLAN_FILE_URL)");
-		expect(protection).toContain('from "./plan-file-url"');
+	/**
+	 * Locks out: the producer or the matcher keeping its own copy of the URL, so plan mode reports that
+	 * it is protecting the plan file while an edit to that exact path is allowed through.
+	 *
+	 * The tree-wide literal scan forbids the bytes outside the owner; this states the other half, that
+	 * both sides still name the owner. It used to assert two exact statements of code
+	 * (`planFilePath: previous?.planFilePath ?? DEFAULT_PLAN_FILE_URL,`), which pins how the value is
+	 * spelled at one call site and says nothing about whether it is the same value.
+	 */
+	it("is read by the ACP agent and by plan protection", () => {
+		for (const [file, specifier] of [
+			["modes/acp/acp-agent.ts", "../../plan-mode/plan-file-url"],
+			["plan-mode/plan-protection.ts", "./plan-file-url"],
+		] as const) {
+			expect(moduleSpecifiersIn(fs.readFileSync(path.join(SRC, file), "utf-8")), file).toContain(specifier);
+		}
 	});
 });
 
@@ -93,12 +103,20 @@ describe("the MCP protocol revision", () => {
 		expect(new Date(`${MCP_PROTOCOL_VERSION}T00:00:00Z`).toISOString().slice(0, 10)).toBe(MCP_PROTOCOL_VERSION);
 	});
 
-	/** Both MCP speakers send the same revision in their initialize request. */
-	it("is sent by both MCP speakers", async () => {
-		for (const file of ["mcp/client.ts", "web/search/providers/zai.ts"]) {
-			const text = await Bun.file(path.join(SRC, file)).text();
-			expect(text, file).toContain("protocolVersion: MCP_PROTOCOL_VERSION,");
-			expect(text, file).toMatch(/from "(?:\.\/protocol-version|\.\.\/\.\.\/\.\.\/mcp\/protocol-version)";/);
+	/**
+	 * Locks out: one of the two MCP speakers keeping its own copy of the revision, which negotiates a
+	 * silent protocol downgrade against a server that answers an unknown revision with its own.
+	 *
+	 * The tree-wide literal scan above already forbids the bytes outside the owner. What is left to
+	 * state here is that both speakers really do NAME the owner, so neither has dropped the import and
+	 * started sending something else.
+	 */
+	it("is sent by both MCP speakers from the one owner", () => {
+		for (const [file, specifier] of [
+			["mcp/client.ts", "./protocol-version"],
+			["web/search/providers/zai.ts", "../../../mcp/protocol-version"],
+		] as const) {
+			expect(moduleSpecifiersIn(fs.readFileSync(path.join(SRC, file), "utf-8")), file).toContain(specifier);
 		}
 	});
 });
@@ -268,24 +286,28 @@ describe("each value is declared once", () => {
 	 * is rendered into a sentence in the dashboard's own help line. A registry key is not free to change with
 	 * it, since parked agents are revived by id from disk.
 	 */
-	it("keeps the agent registry key and the displayed call sign apart", async () => {
-		const registry = await Bun.file(path.join(SRC, "registry/agent-registry.ts")).text();
-		const activity = await Bun.file(path.join(SRC, "modes/components/agent-activity.ts")).text();
-
-		expect(registry).toContain('export const MAIN_AGENT_ID = "Main";');
-		expect(activity).toContain('export const MAIN_CALL_SIGN = "Main";');
-		// The seam: the UI module reads the registry key and assigns its own label, rather than assuming the
-		// two are the same string. That import is what makes the duplication deliberate rather than accidental.
-		expect(activity).toContain('import { MAIN_AGENT_ID } from "../../registry/agent-registry";');
-		expect(activity).toMatch(/ref\.id === MAIN_AGENT_ID[\s\S]{0,120}callSign = MAIN_CALL_SIGN/);
+	it("keeps the agent registry key and the displayed call sign apart", () => {
+		expect(MAIN_AGENT_ID).toBe("Main");
+		expect(MAIN_CALL_SIGN).toBe("Main");
+		// The seam, as an IMPORT rather than as a search for one exact line of code: the UI module reads
+		// the registry key and assigns its own label, so the two are free to diverge. The regex this
+		// replaced (`ref.id === MAIN_AGENT_ID[\s\S]{0,120}callSign = MAIN_CALL_SIGN`) pinned 120
+		// characters of unrelated statement layout and would have gone red on a reformat.
+		expect(
+			moduleSpecifiersIn(fs.readFileSync(path.join(SRC, "modes/components/agent-activity.ts"), "utf-8")),
+		).toContain("../../registry/agent-registry");
 	});
 
-	/** Every owner is a leaf, which is what makes importing cheaper than retyping. */
-	it("has leaf owners", async () => {
+	/**
+	 * Locks out: an owner growing an import, which is what makes importing it cheaper than retyping the
+	 * value and is the entire reason these constants were centralised rather than left duplicated.
+	 *
+	 * Asserted through the import-graph walk rather than by regexing the file for `^\s*import`, which
+	 * matched the word inside a doc comment and missed `export * from` entirely.
+	 */
+	it("has leaf owners", () => {
 		for (const owner of OWNERS) {
-			const text = await Bun.file(owner).text();
-			expect(text, owner).not.toMatch(/^\s*import\s/m);
-			expect(text, owner).not.toMatch(/\bfrom\s+"/);
+			expect(moduleSpecifiersIn(fs.readFileSync(owner, "utf-8")), owner).toEqual([]);
 		}
 	});
 });

@@ -24,6 +24,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as contextUsagePanel from "@veyyon/coding-agent/modes/utils/context-usage";
+import * as contextUsageNumbers from "@veyyon/coding-agent/session/context-usage";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
@@ -123,46 +125,47 @@ describe("tools reach the terminal UI only to draw", () => {
 	});
 
 	/**
-	 * The two modules that left. `modes/turn-budget` parsed a directive out of
-	 * message text and `modes/utils/context-usage` counted tokens; neither drew
-	 * anything, and both were imported by `session/`, which is not allowed the UI at
-	 * all. They live under `session/` now. Asserted as an absence from `modes/` so a
-	 * revert puts them back in front of a reader rather than passing quietly.
+	 * Locks out: the token accounting drifting back under `modes/`, where `session/` would have to
+	 * import the UI to reach it. `modes/turn-budget` parsed a directive out of message text and
+	 * `modes/utils/context-usage` counted tokens; neither drew anything, and both were imported by
+	 * `session/`, which is not allowed the UI at all. They live under `session/` now.
+	 *
+	 * Asserted by IMPORTING the two modules and checking which one exports which function, not by
+	 * searching either file's text for `export function ...`. A text search passes when the export is
+	 * spelled `export const computeContextBreakdown = (...) =>` and fails on a comment that mentions
+	 * the name, so it tests neither direction of the thing it claims.
 	 */
-	it.each(["modes/turn-budget.ts", "modes/utils/context-usage.ts"])("%s is not where the numbers live", relative => {
-		const inModes = path.join(SRC, relative);
-		if (relative === "modes/turn-budget.ts") {
-			expect(fs.existsSync(inModes)).toBe(false);
-			expect(fs.existsSync(path.join(SRC, "session/turn-budget.ts"))).toBe(true);
-			return;
-		}
-		// The panel kept the name, so this one is checked by what it exports rather
-		// than by whether the file is there: drawing stayed, accounting left.
-		const source = fs.readFileSync(inModes, "utf-8");
+	it("the panel exports the drawing and the session module exports the accounting", () => {
+		expect(typeof contextUsagePanel.renderContextUsage).toBe("function");
+		expect(contextUsagePanel).not.toHaveProperty("computeContextBreakdown");
+		expect(typeof contextUsageNumbers.computeContextBreakdown).toBe("function");
+	});
 
-		expect(source).toContain("export function renderContextUsage");
-		expect(source).not.toContain("export function computeContextBreakdown");
-		expect(fs.readFileSync(path.join(SRC, "session/context-usage.ts"), "utf-8")).toContain(
-			"export function computeContextBreakdown",
-		);
+	/** And `modes/turn-budget.ts` is gone outright, so a revert cannot hide behind a re-export. */
+	it("has no turn budget left under modes", () => {
+		expect(fs.existsSync(path.join(SRC, "modes/turn-budget.ts"))).toBe(false);
+		expect(fs.existsSync(path.join(SRC, "session/turn-budget.ts"))).toBe(true);
 	});
 
 	/**
-	 * And the panel depends on the accounting rather than the other way round. A
-	 * re-export left behind in `modes/` would satisfy every check above while
-	 * keeping `session/` pointed at the UI, which is the failure this whole split
-	 * was for.
+	 * Locks out: the accounting module importing the panel, which is the failure the whole split was
+	 * for, and the panel taking a RUNTIME edge on the accounting, which is the half a re-export left
+	 * behind in `modes/` would satisfy while pointing `session/` back at the UI.
+	 *
+	 * Both directions are stated as runtime specifiers. The panel needs only the SHAPES
+	 * (`CategoryId`, `ContextBreakdown`), and a type import is erased, so the observable contract is
+	 * that the panel names the accounting at no runtime edge at all. That used to be asserted by
+	 * searching the panel's source for one exact `import type { ... }` line, which reflowing the
+	 * import or adding a third type to it would have broken for no reason.
 	 */
-	it("has the panel importing the numbers, not the numbers importing the panel", () => {
+	it("has the panel depending on the numbers only as types, and the numbers on nothing in the UI", () => {
 		const panel = path.join(SRC, "modes/utils/context-usage.ts");
 		const numbers = path.join(SRC, "session/context-usage.ts");
 
 		expect(uiImportsIn(numbers)).toEqual([]);
-		// A TYPE import, which `moduleSpecifiersIn` deliberately does not report, so it is
-		// read out of the source. That the panel needs only the shapes and no runtime value
-		// is the strongest form of the dependency this split was after.
-		expect(fs.readFileSync(panel, "utf-8")).toContain(
-			'import type { CategoryId, ContextBreakdown } from "../../session/context-usage";',
-		);
+
+		const panelRuntime = moduleSpecifiersIn(fs.readFileSync(panel, "utf-8"));
+
+		expect(panelRuntime).not.toContain("../../session/context-usage");
 	});
 });
