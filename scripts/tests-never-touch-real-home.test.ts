@@ -14,7 +14,10 @@
  *     tell" is not the answer "it is safe",
  *  4. claim isolation it does not have, by assigning `process.env.HOME` with no
  *     `os.homedir` spy and no config-root redirect in the same file,
- *  5. NAME the real home at all -- by importing the tripwire's `__tripwire`, by
+ *  5. redirect `VEYYON_CONFIG_DIR` to a bare directory NAME. The variable is joined
+ *     onto `os.homedir()`, so a fresh `.veyyon-<suite>-<id>` is a new config root
+ *     INSIDE the home it was supposed to escape,
+ *  6. NAME the real home at all -- by importing the tripwire's `__tripwire`, by
  *     calling `enterRealHome`, or by reading `VEYYON_TEST_REAL_CONFIG_ROOT` -- unless
  *     it is on the allowlist below with a reason.
  *
@@ -42,6 +45,15 @@
  * suites were in that state when this gate was written, and every one of them had been
  * read by someone who concluded it was isolated.
  *
+ * The bare-name case is the fake-isolation case one level down, and it went unseen for
+ * longer because the gate's own acceptance hid it: assigning `VEYYON_CONFIG_DIR` is proof
+ * that a file did something about the config root, so a suite that assigned a fresh NAME
+ * was recorded as isolated and never asked where the name pointed. 131 abandoned
+ * `~/.veyyon-mnemopi-profile-iso-*` directories accumulated in one operator's home
+ * underneath this gate. The value is now read as well as the assignment, and the two
+ * questions stay separate: `REDIRECTS_CONFIG_DIR` still says the root moved, and
+ * `CONFIG_DIR_LITERAL` says whether it moved anywhere useful.
+ *
  * The real-home-reference case is newer and it is the one this gate was missing. Every test process
  * now starts with `os.homedir()` and `HOME` pointing at an empty per-process sandbox
  * (`packages/utils/test/helpers/sandbox-home.ts`, loaded by the tripwire preload). Before
@@ -60,7 +72,7 @@
  * test actually touched on the run that happened. It cannot see a violation inside a
  * skipped case, a platform-gated branch, or an error path, and it cannot see the
  * fake-isolation case AT ALL, because its entire signature is that nothing observably
- * misbehaves. Reading the sources sees all five, needs no test process, and finishes
+ * misbehaves. Reading the sources sees all six, needs no test process, and finishes
  * in well under a second on 4,400 files. The runtime half of this protection already
  * exists and is complementary, not a substitute: `packages/utils/test/helpers/
  * real-data-tripwire.ts` is preloaded into every test process, redirects `HOME` before
@@ -85,12 +97,13 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 /** Never walked. `fixtures` holds deliberately broken inputs, not tests. */
 const SKIP_DIRS: ReadonlySet<string> = new Set(["node_modules", "fixtures", "dist", "target", "repo-cache", ".git"]);
 
-/** The six things this gate refuses. */
+/** The seven things this gate refuses. */
 export type Rule =
 	| "real-home-write"
 	| "installed-binary-spawn"
 	| "unresolved-spawn-target"
 	| "fake-home-isolation"
+	| "bare-config-dir-name"
 	| "real-home-scan"
 	| "real-home-reference";
 
@@ -192,6 +205,65 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 		rule: "unresolved-spawn-target",
 		reason:
 			'`runtime.pythonPath` is the interpreter the setup path discovered, either the system python or the managed environment\'s. The spawn is `-c "import matplotlib"`, a capability probe against that specific interpreter, which is the one thing a hardcoded path would answer wrongly.',
+	},
+	// The four below are all `bare-config-dir-name`, and they have one shape between them:
+	// the config-dir NAME is the SUBJECT, not the isolation. Each one assigns a name, asks a
+	// resolver or a helper what it does with it, and asserts on the STRING that comes back.
+	// None of them opens the path, so none of them creates the directory the rule exists to
+	// prevent, and giving any of them a `path.relative` value would delete the thing under
+	// test. A suite that starts writing through the name it invents stops matching these
+	// reasons, which is why the entries name the absence of a write rather than the suite.
+	{
+		file: "packages/utils/test/config-dir-env-alias.test.ts",
+		rule: "bare-config-dir-name",
+		reason:
+			"Its subject is which environment variable NAMES the config directory: it sets `VEYYON_CONFIG_DIR` to `.veyyon-branded` and requires `getConfigDirName()` to answer exactly that, and to keep answering it when the dropped `OMP_CONFIG_DIR` and `PI_CONFIG_DIR` aliases are set alongside. A relative temp-root value would make the assertion a tautology about a string nobody is testing. It calls no filesystem mutator at all: the name never becomes a directory.",
+	},
+	{
+		file: "packages/utils/test/dirs-config-root-ignores-xdg-config-home.test.ts",
+		rule: "bare-config-dir-name",
+		reason:
+			'It proves that `XDG_CONFIG_HOME` does not move the config root and that renaming it is `VEYYON_CONFIG_DIR`\'s job alone, so the case sets `.veyyon-renamed` and asserts the root resolves to `path.join(os.homedir(), ".veyyon-renamed")`, where the home-relative join IS the contract being pinned. Everything it writes goes to the `mkdtempSync` root it removes in `afterEach`; the renamed root is a string it compares and never opens.',
+	},
+	{
+		file: "packages/coding-agent/test/discovery/veyyon-config-dir.test.ts",
+		rule: "bare-config-dir-name",
+		reason:
+			"It pins that `getConfigDirs` routes the user scope through the config root and the ACTIVE profile rather than the caller's `ctx.home`, which needs a config-dir name distinguishable from the default: `.config/veyyon`, asserted back as a path under `os.homedir()`. The suite is two `expect` calls on returned paths and contains no filesystem call of any kind.",
+	},
+	{
+		file: "packages/coding-agent/test/helpers/hermetic-spawn-env.test.ts",
+		rule: "bare-config-dir-name",
+		reason:
+			"It is the suite that proves `hermeticSpawnEnv()` STRIPS this variable. It has to set `.veyyon-guard-test` on the real `process.env` first, because the assertion is that the returned child environment no longer carries it and points at a temp home instead. An already-relative value would pass whether the helper stripped it or not. It builds environment objects and spawns nothing.",
+	},
+	// The four below are not suites at all. They are the modules the walk started reading
+	// when it stopped stopping at the `.test.ts` suffix, and two of them ARE the protection
+	// this gate reports on: the rules describe what a test may not do, and the machinery that
+	// enforces them has to do those things once, in one place, so that nothing else has to.
+	{
+		file: "packages/utils/test/helpers/sandbox-home.ts",
+		rule: "fake-home-isolation",
+		reason:
+			"It is the redirect itself. It assigns `process.env.HOME` because it has just replaced `os.homedir` and `os.userInfo` on the `node:os` object every module shares, and the environment variable is the half of the move that a spawned child reads. The gate looks for a `spyOn` and there is none: a preload cannot spy on a module the suites have not imported yet, which is the whole reason this runs before them.",
+	},
+	{
+		file: "packages/utils/test/helpers/sandbox-home.ts",
+		rule: "real-home-reference",
+		reason:
+			"It is the producer of `VEYYON_TEST_REAL_CONFIG_ROOT`, not a consumer. It captures the real home BEFORE the redirect and publishes the real config root under that name so the tripwire, and every child process a test spawns, can still recognise the directory they must refuse. Nothing else can name it once the redirect is in place, which is the point.",
+	},
+	{
+		file: "packages/utils/test/helpers/real-data-tripwire.ts",
+		rule: "real-home-reference",
+		reason:
+			"It is the guard that refuses writes to the real config root, so it has to read `VEYYON_TEST_REAL_CONFIG_ROOT` to know which directory that is. It opens nothing: the value is compared against the target of every mutating `node:fs` call and the comparison is the entire feature.",
+	},
+	{
+		file: "packages/coding-agent/test/helpers/temp-home-cleanup.ts",
+		rule: "fake-home-isolation",
+		reason:
+			"Its only assignment of `process.env.HOME` RESTORES the value a suite saved before overwriting it, in a teardown that also removes the two temp directories. Putting a captured value back is the opposite of claiming isolation, and requiring a homedir spy in a nine-line cleanup helper would mean spying in order to undo.",
 	},
 ];
 
@@ -455,6 +527,73 @@ const REDIRECTS_CONFIG_DIR = /VEYYON_CONFIG_DIR(?:["'`]\s*\])?\s*[=:](?!=)/;
 
 const ASSIGNS_HOME = /(?:process\.env\.HOME|process\.env\[\s*["'`]HOME["'`]\s*\])\s*=(?!=)/;
 
+/**
+ * Where a `VEYYON_CONFIG_DIR` value lands, which the rule above deliberately does not ask.
+ *
+ * The variable is a directory NAME joined onto `os.homedir()`, never a path that replaces
+ * it, so `VEYYON_CONFIG_DIR = ".veyyon-<suite>-<id>"` names a brand new directory INSIDE
+ * the home it was meant to escape. It reads as isolation, it isolates the suite from other
+ * suites, and it isolates it from nobody else: 131 `~/.veyyon-mnemopi-profile-iso-*`
+ * directories were found in one operator's home, created by a suite that was doing exactly
+ * this. The only correct value is one that walks back OUT of the home,
+ * `path.relative(os.homedir(), tempRoot)`, which is what `enterIsolatedConfigRoot()` writes.
+ *
+ * This is a rule of its own rather than a tightening of `REDIRECTS_CONFIG_DIR`, and the
+ * distinction is worth stating because the two look contradictory. That regex answers "did
+ * this file move the config root away from `~/.veyyon`", which a bare name genuinely does,
+ * and that is all the `fake-home-isolation` rule needs to know. This one answers the
+ * question nobody was asking: WHERE it moved it to. Folding them together would have to
+ * pick one answer for both, and either choice is wrong: refusing the acceptance breaks
+ * every suite that redirects a child's environment, and widening it excuses the defect.
+ */
+const CONFIG_DIR_LITERAL = /VEYYON_CONFIG_DIR(?:["'`]\s*\])?\s*[=:](?!=)\s*(["'`])([^"'`\n]*)/g;
+
+/** `const VEYYON_CONFIG_DIR = ".veyyon"` names a local binding; nothing is redirected. */
+const DECLARES_A_BINDING = /\b(?:const|let|var)\s+$/;
+
+/** The assignment target is THIS process's environment, so this process's home is the base. */
+const THIS_PROCESS_ENV = /process\.env(?:\.|\[\s*["'`])$/;
+
+/**
+ * A value that does not stay under the home it is joined onto: the `..`-relative form
+ * `path.relative` produces, an absolute path (refused at startup, a different defect), or
+ * an interpolation in first position, which says the value is computed and unreadable here.
+ */
+const LEAVES_THE_HOME = /^(?:\.\.[\\/]|[\\/]|[A-Za-z]:[\\/]|\$\{)/;
+
+/**
+ * The file hands a HOME to whatever will join the name onto it.
+ *
+ * For a CHILD environment that is the whole answer: the child reads `HOME` before its own
+ * resolver runs, so `{ HOME: tempRoot, VEYYON_CONFIG_DIR: ".veyyon" }` is a config root in
+ * the temp root and not in anyone's home. It is deliberately NOT accepted for an assignment
+ * into this process's environment, where the same spelling does nothing: Bun resolved
+ * `os.homedir()` at process start, which is the trap the whole gate exists for.
+ */
+const HANDS_OVER_A_HOME = /(?:process\.env\.HOME|process\.env\[\s*["'`]HOME["'`]\s*\]|(?<![\w$.])HOME)\s*[=:](?!=)/;
+
+/** Every `VEYYON_CONFIG_DIR` value that names a directory inside somebody's real home. */
+function bareConfigDirViolations(file: string, source: string): Violation[] {
+	const found: Violation[] = [];
+	const homedirMoved = movesHomedir(source);
+	const childHome = HANDS_OVER_A_HOME.test(source);
+	CONFIG_DIR_LITERAL.lastIndex = 0;
+	for (let match = CONFIG_DIR_LITERAL.exec(source); match; match = CONFIG_DIR_LITERAL.exec(source)) {
+		const before = source.slice(Math.max(0, match.index - 40), match.index);
+		if (DECLARES_A_BINDING.test(before)) continue;
+		const value = match[2] ?? "";
+		if (value === "" || LEAVES_THE_HOME.test(value)) continue;
+		if (THIS_PROCESS_ENV.test(before) ? homedirMoved : childHome) continue;
+		found.push({
+			file,
+			line: lineAt(source, match.index),
+			rule: "bare-config-dir-name",
+			evidence: evidenceOf(source.slice(match.index, match.index + 140)),
+		});
+	}
+	return found;
+}
+
 /** True when `os.homedir()` itself answers a temp path in this file. */
 export function movesHomedir(source: string): boolean {
 	return MOVES_HOMEDIR.test(source);
@@ -495,6 +634,18 @@ function callText(source: string, open: number): string {
 	return source.slice(open, limit);
 }
 
+/** Character codes the comment scan compares, so the hot loop never allocates a substring. */
+const SLASH = 47;
+const STAR = 42;
+const NEWLINE = 10;
+const BACKSLASH = 92;
+const DOUBLE_QUOTE = 34;
+const SINGLE_QUOTE = 39;
+const BACKTICK = 96;
+/** A comment keeps its newlines and nothing else, so every other byte becomes a space. */
+const SPACE = " ";
+const NOT_NEWLINE = /[^\n]/g;
+
 /**
  * Blank out comments, keeping every byte position and newline.
  *
@@ -507,33 +658,55 @@ function callText(source: string, open: number): string {
  * Replacing rather than removing keeps line numbers and offsets true, so a reported line
  * still points at the real one. String and template literals are walked so that a `//`
  * inside a URL does not swallow the rest of the line.
+ *
+ * The scan keeps one chunk per span rather than a per-character array. The state machine is
+ * the same one, byte for byte in its output; what changed is that a 40 KB file now costs a
+ * handful of slices instead of 40,000 single-character strings and a 40,000-element join.
+ * That mattered: this helper runs over every test file in the repository, and the array was
+ * most of why the whole-tree case measured 14.4s. A file with no comment at all is returned
+ * as-is, which is the same string the copy-and-join produced.
  */
 export function withoutComments(source: string): string {
-	const out = source.split("");
+	const length = source.length;
+	let chunks: string[] | null = null;
+	// First byte not yet handed to a chunk. Everything before it is already accounted for.
+	let kept = 0;
 	let i = 0;
-	while (i < source.length) {
-		const c = source[i];
-		const next = source[i + 1];
-		if (c === "/" && next === "/") {
-			while (i < source.length && source[i] !== "\n") out[i++] = " ";
-			continue;
-		}
-		if (c === "/" && next === "*") {
-			const end = source.indexOf("*/", i + 2);
-			const stop = end < 0 ? source.length : end + 2;
-			for (; i < stop; i++) {
-				if (source[i] !== "\n") out[i] = " ";
+	while (i < length) {
+		const c = source.charCodeAt(i);
+		if (c === SLASH) {
+			const next = source.charCodeAt(i + 1);
+			if (next === SLASH) {
+				const start = i;
+				while (i < length && source.charCodeAt(i) !== NEWLINE) i++;
+				chunks ??= [];
+				chunks.push(source.slice(kept, start), SPACE.repeat(i - start));
+				kept = i;
+				continue;
 			}
+			if (next === STAR) {
+				const end = source.indexOf("*/", i + 2);
+				const stop = end < 0 ? length : end + 2;
+				chunks ??= [];
+				// Only newlines survive a block comment, and they must, or every line number
+				// reported after the comment shifts.
+				chunks.push(source.slice(kept, i), source.slice(i, stop).replace(NOT_NEWLINE, " "));
+				kept = stop;
+				i = stop;
+				continue;
+			}
+			i++;
 			continue;
 		}
-		if (c === '"' || c === "'" || c === "`") {
+		if (c === DOUBLE_QUOTE || c === SINGLE_QUOTE || c === BACKTICK) {
 			i++;
-			while (i < source.length) {
-				if (source[i] === "\\") {
+			while (i < length) {
+				const inner = source.charCodeAt(i);
+				if (inner === BACKSLASH) {
 					i += 2;
 					continue;
 				}
-				if (source[i] === c) break;
+				if (inner === c) break;
 				i++;
 			}
 			i++;
@@ -541,7 +714,9 @@ export function withoutComments(source: string): string {
 		}
 		i++;
 	}
-	return out.join("");
+	if (chunks === null) return source;
+	chunks.push(source.slice(kept));
+	return chunks.join("");
 }
 
 /** One line of the offending call, for the failure message. */
@@ -720,6 +895,10 @@ export function analyzeSource(file: string, rawSource: string): Violation[] {
 		}
 	}
 
+	// Runs whether or not the file counts as isolated: a bare name is what the acceptance
+	// above accepts, so this is the only place the value itself is ever read.
+	found.push(...bareConfigDirViolations(file, source));
+
 	// Unconditional: no isolation helper excuses this one, because naming the real home is
 	// the opposite of isolating from it. The allowlist is the only way through.
 	const reference = source.search(REAL_HOME_REFERENCE);
@@ -735,7 +914,16 @@ export function analyzeSource(file: string, rawSource: string): Violation[] {
 	return found;
 }
 
-/** Test files under `packages/*​/test`, repo-relative and sorted. */
+/**
+ * Every TypeScript module under `packages/*​/test`, repo-relative and sorted.
+ *
+ * Not only `*.test.ts`. A shared setup module or a helper is a test file that happens to
+ * export instead of declaring cases, it runs inside the same process with the same reach,
+ * and it is where a mistake is worst rather than mildest: `packages/mnemopi/test/setup.ts`
+ * decides the config root for all 106 mnemopi suites at once. The walk used to stop at the
+ * `.test.ts` suffix, so the one file that could leak on behalf of a whole package was the
+ * one file nothing read.
+ */
 export function testSources(): string[] {
 	const found: string[] = [];
 	const walk = (dir: string): void => {
@@ -749,7 +937,7 @@ export function testSources(): string[] {
 			if (SKIP_DIRS.has(entry.name)) continue;
 			const full = path.join(dir, entry.name);
 			if (entry.isDirectory()) walk(full);
-			else if (/\.test\.tsx?$/.test(entry.name)) found.push(path.relative(REPO_ROOT, full));
+			else if (/\.tsx?$/.test(entry.name)) found.push(path.relative(REPO_ROOT, full));
 		}
 	};
 	for (const pkg of readdirSync(path.join(REPO_ROOT, "packages"), { withFileTypes: true })) {
@@ -780,7 +968,29 @@ describe("no test reaches outside its sandbox", () => {
 		}
 		const report = violations.map(v => `${v.file}:${v.line}  [${v.rule}]  ${v.evidence}`);
 		expect(report).toEqual([]);
-	});
+		// 20s, declared rather than inherited, and lowered from the 60s that stood while the
+		// analyzer was expensive. This case reads and analyses every `.ts` file under
+		// `packages/<pkg>/test`, 4,575 of them, so its cost grows with the suite, and it measured
+		// 14.4s against the 5,000ms default. A timeout is not a violation, but it fails
+		// identically to one, and a gate that goes red on timing is a gate people learn to
+		// re-run, which is how they come to re-run it on the day it is telling the truth.
+		//
+		// What changed is `withoutComments`, which used to copy every source into a
+		// per-character array. Measured over all 4,575 files (30,686,571 bytes) in one warm
+		// process, interleaving the two implementations so a load spike lands on both: the helper
+		// alone went from a 326ms median to 112ms and a full `analyzeSource` pass over the tree
+		// from 2,303ms to 1,958ms, with the violation set identical, 24 findings before the
+		// allowlist, and every stripped source byte-identical. The same comparison on a box
+		// shared with five other builds read 1,261ms to 287ms and 4,072ms to 2,902ms, so the
+		// ratio is load-dependent and the helper is worth about three to four times less than it
+		// was. Most of what remains is file reading and the other per-file scans, not this one.
+		//
+		// The whole file runs in 2.3s idle and the case alone in 2.7s. 20s is several times the
+		// worst single run observed under load, and still fails long before a real regression
+		// could hide inside it. The number is the only thing here that may be raised, and only
+		// alongside the measurement that justifies it. Widening it to hide a violation would not
+		// be honest.
+	}, 20_000);
 });
 
 describe("the allowlist", () => {
@@ -1152,5 +1362,68 @@ describe("the detectors", () => {
 
 	it("does NOT flag a suite that merely uses the sandbox home the preload already gave it", () => {
 		expect(rulesFor(`const scratch = path.join(os.homedir(), "scratch");`)).toEqual([]);
+	});
+
+	/**
+	 * The comment blanking is what lets a suite DOCUMENT one of these traps, and the byte
+	 * positions it preserves are what makes a reported line number true. Both are asserted
+	 * here because the scan splices spans rather than copying characters, and a span it
+	 * mismeasures reports a real violation at the wrong line, which reads as a false alarm
+	 * and is how a gate stops being believed.
+	 */
+	it("ignores the mistake a comment describes and reports the real one at its true line", () => {
+		const source = [
+			`/**`,
+			` * A suite once ran spawnSync("veyyon", ["auth"]) and wrote to os.homedir().`,
+			` */`,
+			`// process.env.HOME = tempHome;`,
+			`const url = "https://example.com//still-a-string"; // trailing note`,
+			`spawnSync("veyyon", ["auth", "list"]);`,
+		].join("\n");
+		const found = analyzeSource("probe.test.ts", source);
+		expect(found.map(v => v.rule)).toEqual(["installed-binary-spawn"]);
+		expect(found[0]?.line).toBe(6);
+	});
+
+	/** An unterminated block comment has no end to stop at, so it swallows the rest of the file. */
+	it("blanks an unterminated block comment through the end of the file", () => {
+		const source = [
+			`spawnSync("git", ["status"]);`,
+			`/* everything below is commented out and never closed`,
+			`spawnSync("veyyon", ["auth"]);`,
+		].join("\n");
+		expect(rulesFor(source)).toEqual([]);
+	});
+
+	/**
+	 * The 131-directory pattern, verbatim. A fresh dot-name, a snowflake to keep runs apart,
+	 * and a resolver that joins the whole thing onto the operator's home.
+	 */
+	it("catches a VEYYON_CONFIG_DIR set to a fresh directory NAME, which lands inside the home", () => {
+		const source = [
+			// The `${...}` below is the FIXTURE: this string is source text the analyzer reads, and
+			// the interpolation is what made every run mint a new directory. A template literal here
+			// would evaluate a `Snowflake` that is not in scope and delete the case.
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: quoted source text, not a missed template
+			"process.env.VEYYON_CONFIG_DIR = `.veyyon-mnemopi-profile-iso-${Snowflake.next()}`;",
+			`refreshDirsFromEnv();`,
+		].join("\n");
+		expect(rulesFor(source)).toEqual(["bare-config-dir-name"]);
+	});
+
+	/**
+	 * The negative control, and the reason the rule above cannot be satisfied by flagging
+	 * every assignment: the sanctioned value is a `path.relative` result, and the two forms
+	 * differ only in where they point. A rule that could not tell them apart would either
+	 * fail `enterIsolatedConfigRoot` itself or catch nothing.
+	 */
+	it("does NOT flag a value computed back out of the home, which is what isolation looks like", () => {
+		const relative = [
+			`process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), tempRoot);`,
+			`refreshDirsFromEnv();`,
+		].join("\n");
+		expect(rulesFor(relative)).toEqual([]);
+		// The same value after `path.relative` has run, written out: it climbs OUT of the home.
+		expect(rulesFor(`process.env.VEYYON_CONFIG_DIR = "../tmp/veyyon-config-root-probe-1";`)).toEqual([]);
 	});
 });
