@@ -91,6 +91,7 @@ import statementDeliveryVerificationSource from "./statements/delivery-contract/
 };
 import statementDeliveryYielding from "./statements/delivery-contract/yielding.md" with { type: "text" };
 import statementExecutionCleanup from "./statements/execution-workflow/cleanup.md" with { type: "text" };
+import statementExecutionCommitOften from "./statements/execution-workflow/commit-often.md" with { type: "text" };
 import statementExecutionDecompose from "./statements/execution-workflow/decompose.md" with { type: "text" };
 import statementExecutionDecomposeTodoBatching from "./statements/execution-workflow/decompose-todo-batching.md" with {
 	type: "text",
@@ -139,7 +140,9 @@ import statementToolPolicyAst from "./statements/tool-policy/ast.md" with { type
 import statementToolPolicyAstEdit from "./statements/tool-policy/ast-edit.md" with { type: "text" };
 import statementToolPolicyAstGrep from "./statements/tool-policy/ast-grep.md" with { type: "text" };
 import statementToolPolicyAstPlainText from "./statements/tool-policy/ast-plain-text.md" with { type: "text" };
+import statementToolPolicyBashCwd from "./statements/tool-policy/bash-cwd.md" with { type: "text" };
 import statementToolPolicyDelegation from "./statements/tool-policy/delegation.md" with { type: "text" };
+import statementToolPolicyDelegationAllowed from "./statements/tool-policy/delegation-allowed.md" with { type: "text" };
 import statementToolPolicyDelegationCodexEager from "./statements/tool-policy/delegation-codex-eager.md" with {
 	type: "text",
 };
@@ -542,8 +545,10 @@ export const PROMPT_STATEMENTS = [
 		purpose: "bounds bash to real binaries and short pipelines, and says the shadowing commands are blocked",
 	},
 	{
+		id: "tool-policy/bash-cwd",
 		section: "tool-policy",
 		condition: contains("tools", "bash"),
+		text: statementToolPolicyBashCwd,
 		purpose: "keeps commands in the session cwd and makes user cwd corrections binding on the next call",
 	},
 	{
@@ -691,6 +696,7 @@ export const PROMPT_STATEMENTS = [
 			"the softer delegation setting, encouraging substantial work to use the closest enabled agent role while unmatched work remains inline",
 	},
 	{
+		id: "tool-policy/delegation-allowed",
 		section: "tool-policy",
 		// The floor, and the level that had no sentence at all: the section rendered its heading, its
 		// gates and its subagent-value bullets with nothing saying when spawning is appropriate, so the
@@ -704,6 +710,7 @@ export const PROMPT_STATEMENTS = [
 			not(when("useCodexTaskPrompt")),
 			not(when("eagerTasks")),
 		),
+		text: statementToolPolicyDelegationAllowed,
 		purpose:
 			"the weakest delegation setting: the ability stays, an explicit request is the trigger, and the model does not fan out on its own initiative",
 	},
@@ -853,8 +860,10 @@ export const PROMPT_STATEMENTS = [
 			"forbids destructive commands outright when there is no way to ask; the else arm of the same block, so it is `not` rather than a second variable",
 	},
 	{
+		id: "execution-workflow/commit-often",
 		section: "execution-workflow",
 		condition: contains("tools", "bash"),
+		text: statementExecutionCommitOften,
 		purpose:
 			"tells the agent to commit its own finished work frequently without asking, and separates that from the destructive git commands that do need permission; needs bash because that is what runs git",
 	},

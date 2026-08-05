@@ -6,6 +6,7 @@
 <project>
 ## Context
 <instructions>
+{{contextFileAuthority}}
 {{#list contextFiles join="\n"}}
 <file path="{{path}}">
 {{content}}

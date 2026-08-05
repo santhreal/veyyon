@@ -39,8 +39,10 @@ tool.<name>(args) → unknown
     Invoke any session tool; `args` = its parameter object.
 completion(prompt, model?="default", system?=None, schema?=None) → str | dict
     Oneshot, stateless (no history/tools). `model`: "smol" fast | "default" session | "slow" most capable. `schema` (JSON-Schema) → structured output, parsed object.
-{{#if spawns}}agent(prompt, agent?="{{spawnDefaultAgent}}", model?=None, label?=None, schema?=None, handle?=False) → str | dict
-    Run a subagent → final output. `agent` picks another discovered agent; omit it to use `{{spawnDefaultAgent}}`.{{#if spawnAllowedAgentsText}} Allowed agents: {{spawnAllowedAgentsText}}.{{/if}} `schema` as in completion(). Background via `local://` files named in the prompt. `handle` → DAG node dict { text, output, handle: "agent://<id>", id, agent } (parsed under `data` when `schema` set).
+{{#if spawns}}
+{{#if hasSpawnDefaultAgent}}agent(prompt, agent?="{{spawnDefaultAgent}}", model?=None, label?=None, schema?=None, handle?=False) → str | dict
+    Run a subagent → final output. `agent` picks another enabled agent; omit it to use `{{spawnDefaultAgent}}`.{{else}}agent(prompt, agent, model?=None, label?=None, schema?=None, handle?=False) → str | dict
+    Run a subagent → final output. `agent` must name an enabled agent.{{/if}}{{#if spawnAllowedAgentsText}} {{spawnAgentListLabel}}: {{spawnAllowedAgentsText}}.{{/if}} `schema` as in completion(). Background via `local://` files named in the prompt. `handle` → DAG node dict { text, output, handle: "agent://<id>", id, agent } (parsed under `data` when `schema` set).
 {{#if js}}    JS: options are ONE trailing object — agent(prompt, { agent, schema, handle }).
 {{/if}}
 {{/if}}

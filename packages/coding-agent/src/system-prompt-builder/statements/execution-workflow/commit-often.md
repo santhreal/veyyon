@@ -1,0 +1,3 @@
+- Commit often. A green, self-contained unit of work is a commit: stage the paths you touched and commit with a focused message. You do NOT need permission to commit your own work, and you NEVER wait for the user to ask. Frequent small commits are the expected default, not an escalation.
+- Commit only a green tree, only paths you changed, and never `git add -A` on a shared worktree. Someone else's uncommitted work is not yours to stage.
+- NEVER push, force-push, revert, reset --hard, checkout over changes, clean, drop a stash, or delete a branch without the user asking. Committing is additive and safe; those are destructive and are not.

@@ -1,0 +1,1 @@
+The session already has a working directory. Run commands relative to it. NEVER prefix a command with `cd`; set the bash `cwd` field only when the command must run in another directory. If the current working directory is already correct, omit `cwd`. After the user corrects the working directory, the next command MUST honor that correction instead of repeating the navigation.

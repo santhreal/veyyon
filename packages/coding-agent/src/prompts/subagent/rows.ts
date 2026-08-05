@@ -28,6 +28,7 @@ import subagentTaskLabel from "./task-label.md" with { type: "text" };
 import subagentUserPrompt from "./user-prompt.md" with { type: "text" };
 import subagentWorkflowNotice from "./workflow-notice.md" with { type: "text" };
 import subagentYieldReminder from "./yield-reminder.md" with { type: "text" };
+import subagentYieldSchemaRepair from "./yield-schema-repair.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/subagent/`, keyed by its id (the path under `src/prompts/`). */
 export const subagentPrompts = {
@@ -77,6 +78,10 @@ export const subagentPrompts = {
 	"subagent/workflow-notice": {
 		text: subagentWorkflowNotice,
 		purpose: "recasts the user's message as a deterministic multi-subagent workflow",
+	},
+	"subagent/yield-schema-repair": {
+		text: subagentYieldSchemaRepair,
+		purpose: "repairs an invalid structured terminal yield without discarding accepted incremental data",
 	},
 	"subagent/yield-reminder": {
 		text: subagentYieldReminder,

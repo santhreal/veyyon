@@ -18,5 +18,4 @@ Greps files using regex.
 
 <critical>
 - MUST use built-in `grep` for any content search. NEVER shell out to `grep`, `rg`, `ripgrep`, `ag`, `ack`, `git grep`, `awk`, `sed`-for-search, or any CLI search via Bash — not even for one match or a quick check.
-{{#if canDelegate}}- Open-ended search needing multiple rounds? MUST hand it to a `task` subagent, NOT chained `grep` calls.{{/if}}
 </critical>

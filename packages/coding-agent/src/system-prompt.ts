@@ -10,9 +10,7 @@ import {
 	$env,
 	errorMessage,
 	firstNonEmpty,
-	getActiveProfileOrDefault,
 	getAgentDir,
-	getProfileRootDir,
 	getProjectDir,
 	kebabToCamel,
 	logger,
@@ -236,7 +234,25 @@ export async function resolvePromptInput(input: string | undefined, description:
 export interface LoadContextFilesOptions {
 	/** Working directory to start walking up from. Default: getProjectDir() */
 	cwd?: string;
+	/**
+	 * Agent directory whose profile scope is loaded. Default: getAgentDir().
+	 *
+	 * It reaches the providers through `LoadOptions.agentDir` and lands on every
+	 * `LoadContext`, so the profile scope is a function of this value rather than of
+	 * whichever profile the process booted with. A caller running on behalf of an
+	 * agent rooted in a different agent dir used to have no way to say so and
+	 * silently got the active profile's files instead of its own.
+	 */
+	agentDir?: string;
 }
+
+/** A context file plus the scope it came from, used only for ordering inside this module. */
+type ScopedContextFile = {
+	path: string;
+	content: string;
+	depth?: number;
+	level: ContextFile["level"];
+};
 
 /**
  * Drop a less-prominent context file only when a later, more-prominent file
@@ -257,49 +273,115 @@ function dedupeContainedContextFiles(
 }
 
 /**
- * Load all project context files using the capability API.
- * Returns {path, content, depth} entries for all discovered context files.
- * Files are sorted by depth (descending) so files closer to cwd appear last/more prominent.
+ * Load the context files for a session, all three scopes, and report what could
+ * not be read.
+ *
+ * SCOPES. Resolution order is global, then profile, then project: profile is
+ * resolved after global because it refines it, and project is the cwd walk.
+ *
+ *   - global  - the cross-profile `<config root>/AGENTS.md`.
+ *   - profile - the agent dir's own instruction file, first hit on the ladder
+ *               `<agentDir>/AGENTS.md`, `<profileDir>/AGENTS.md`,
+ *               `<agentDir>/agent.md`, `<profileDir>/agent.md`. `options.agentDir`
+ *               picks WHICH agent dir, so an agent that is not the active profile
+ *               gets its own file and exactly one profile file is ever returned.
+ *   - project - the repo-root-to-cwd walk, one file per directory. Which file a
+ *               directory contributes is owned by `PROJECT_RULE_FILE_NAMES` in
+ *               `discovery/builtin.ts`; it is not restated here.
+ *
+ * PROMINENCE is a different axis and the returned array is sorted by it, least
+ * prominent first so a later entry overrides an earlier one: global → project
+ * (descending depth, so the repo root comes first and the file closest to cwd
+ * comes last) → profile. Profile is last, and therefore wins, so a user's
+ * standing rules are not silently outranked by whatever repository is checked
+ * out. See `ContextFile.level` in capability/context-file.ts.
+ *
+ * ONE OWNER. All three scopes come from the capability providers, and the native
+ * provider resolves global and profile from `LoadContext.agentDir` (fed by
+ * `options.agentDir` below), so this function orders and dedupes what it is given
+ * and reads no file itself. It used to re-resolve global and profile here and key
+ * them by absolute path against the provider results, because the provider read the
+ * process-global profile and had to be corrected. That is fixed at the source
+ * (discovery/builtin.ts), and the pass was proved to change nothing on 16 fixtures
+ * except one case where it was actively wrong: with `native` in `disabledProviders`
+ * it re-added veyyon's two scopes anyway, overriding the operator's own setting.
+ *
+ * A file whose content is nothing but its managed guidance header contributes
+ * nothing, by design (that is the seeded, unedited state). It never suppresses
+ * another scope. The provider strips that header.
  */
-export async function loadProjectContextFiles(
+export async function loadProjectContextFilesWithWarnings(
 	options: LoadContextFilesOptions = {},
-): Promise<Array<{ path: string; content: string; depth?: number }>> {
+): Promise<{ files: Array<{ path: string; content: string; depth?: number }>; warnings: string[] }> {
 	const resolvedCwd = options.cwd ?? getProjectDir();
+	const resolvedAgentDir = path.resolve(options.agentDir ?? getAgentDir());
 
-	const result = await loadCapability(contextFileCapability.id, { cwd: resolvedCwd });
+	const result = await loadCapability<ContextFile>(contextFileCapability.id, {
+		cwd: resolvedCwd,
+		agentDir: resolvedAgentDir,
+	});
+	const warnings = [...result.warnings];
 
 	// Materialize ContextFile items, expanding any `@path/to/file` includes
 	// in their content. The expansion uses the file's own directory as the
 	// resolution base so relative imports work the same way Claude Code,
 	// Goose, and other tools document.
-	const files = await Promise.all(
-		result.items.map(async item => {
-			const contextFile = item as ContextFile;
-			return {
-				path: contextFile.path,
-				content: await expandAtImports(contextFile.content, contextFile.path),
-				depth: contextFile.depth,
-				level: contextFile.level,
-			};
-		}),
+	//
+	// One profile file at most, and it is the caller's: `agentDir` reaches the
+	// provider through `LoadContext`, which resolves the ladder for that dir and stops
+	// at its first real hit. Filtering other-profile candidates here, as this used to,
+	// was not free: the capability keys every `user`-level file to one slot, so
+	// dropping the item that won that slot also dropped the foreign-tool home file it
+	// had shadowed, and the operator lost a scope either way.
+	const files: ScopedContextFile[] = await Promise.all(
+		result.items.map(async item => ({
+			path: item.path,
+			content: await expandAtImports(item.content, item.path),
+			depth: item.depth,
+			level: item.level,
+		})),
 	);
 
-	// Order by prominence, least prominent first (earliest in the prompt), most
-	// prominent last: global (the cross-profile baseline) → project (farther from
-	// cwd first) → user (the active profile's own file, the most specific). This
-	// keeps the previous behavior for project/user files (user depth is undefined
-	// → -1, so it already sorted last) and slots the global baseline ahead of both.
+	// Least prominent first (earliest in the prompt), most prominent last:
+	// global (the cross-profile baseline) → project (farther from cwd first, so the
+	// file closest to cwd wins among project files) → user (the active agent's own
+	// profile file, the most specific thing the operator wrote and the last word).
+	//
+	// Profile outranks project deliberately, as `ContextFile.level` documents: a
+	// user's standing profile rules must not be silently outranked by whatever
+	// repository happens to be checked out. Resolution ORDER is global then profile
+	// then project; rendering PROMINENCE is this. Do not conflate the two.
 	const levelRank = (level: ContextFile["level"]): number => (level === "global" ? 0 : level === "project" ? 1 : 2);
 	files.sort((a, b) => {
 		const rankDelta = levelRank(a.level) - levelRank(b.level);
 		if (rankDelta !== 0) return rankDelta;
 		// Within the project level, higher depth (farther from cwd) comes first.
-		const depthA = a.depth ?? -1;
-		const depthB = b.depth ?? -1;
-		return depthB - depthA;
+		return (b.depth ?? -1) - (a.depth ?? -1);
 	});
 
-	return dedupeContainedContextFiles(files.map(({ path, content, depth }) => ({ path, content, depth })));
+	return {
+		files: dedupeContainedContextFiles(files.map(({ path, content, depth }) => ({ path, content, depth }))),
+		warnings,
+	};
+}
+
+/**
+ * {@link loadProjectContextFilesWithWarnings} for callers that only want the
+ * files: same three scopes (global → profile → project) in the same precedence,
+ * with every warning logged instead of returned.
+ *
+ * Logging rather than dropping is the point. A context file that exists and
+ * cannot be read used to disappear into an empty list, and an empty list renders
+ * as nothing at all, so the operator saw a prompt with no rules and no reason.
+ */
+export async function loadProjectContextFiles(
+	options: LoadContextFilesOptions = {},
+): Promise<Array<{ path: string; content: string; depth?: number }>> {
+	const { files, warnings } = await loadProjectContextFilesWithWarnings(options);
+	for (const warning of warnings) {
+		logger.warn(`Context file loading: ${warning}`, { cwd: options.cwd ?? getProjectDir() });
+	}
+	return files;
 }
 
 export const DEFAULT_SYSTEM_PROMPT_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
@@ -373,7 +455,23 @@ export interface BuildSystemPromptOptions extends Partial<GateInputs> {
 	cwd?: string;
 	/** Agent configuration directory. Default: getAgentDir() */
 	agentDir?: string;
-	/** Pre-loaded context files (skips discovery if provided). */
+	/**
+	 * Context files this caller has ALREADY resolved. Presence, not length, is the switch:
+	 *
+	 * - `undefined` means "not resolved": this function runs the discovery walk itself.
+	 * - `[]` means "resolved, and there are genuinely none": discovery is TURNED OFF and the
+	 *   prompt ships with zero context files. That is a real caller intent (the legacy resource
+	 *   loader's `noContextFiles: true` opt-out passes exactly this), which is why an empty array
+	 *   is not quietly re-interpreted as "go look".
+	 *
+	 * So `contextFiles: someArray` at a call site is never harmless data passing. Handing this a
+	 * list that a filter reduced to `[]` disables every scope the operator wrote, which is how
+	 * three spawn sites silently stripped every `AGENTS.md` from every subagent. A caller that
+	 * cannot resolve its own list passes `undefined`, never `[]`; see
+	 * `task/context-inheritance.ts`, which returns `undefined` for exactly this reason. Taking the
+	 * empty branch is logged, so an accidental `[]` is visible in the operator's log instead of
+	 * showing up as a model that stopped following the rules.
+	 */
 	contextFiles?: Array<{ path: string; content: string; depth?: number }>;
 	/** Skills provided directly to system prompt construction. */
 	skills?: Skill[];
@@ -586,8 +684,15 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const inlineToolDescriptors = providedInlineToolDescriptors ?? OMITTED_GATE_DEFAULTS.inlineToolDescriptors;
 	const resolvedCwd = cwd ?? getProjectDir();
 	const resolvedAgentDir = path.resolve(providedAgentDir ?? getAgentDir());
-	const activeProfileName = getActiveProfileOrDefault();
-	const profileRootDir = getProfileRootDir(activeProfileName);
+	// Every agentConfiguration row derives from ONE dir, `resolvedAgentDir`, which is
+	// also the dir the profile context file was inlined from. Two of the five rows used
+	// to come from `getActiveProfileOrDefault()` / `getProfileRootDir()` instead, i.e. the
+	// process-booted profile: a session rooted in another agent dir was handed a
+	// "Profile AGENTS.md" path pointing at a DIFFERENT file than the one whose bytes were
+	// in its own prompt, so a model told to update the operator's standing rules edited
+	// the wrong profile. The agent dir is always `<config root>/profiles/<name>/agent`,
+	// so the profile name is its parent's basename.
+	const activeProfileName = path.basename(path.dirname(resolvedAgentDir));
 
 	const prepDefaults = {
 		resolvedCustomPrompt: undefined as string | undefined,
@@ -644,14 +749,35 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		return result.value;
 	}
 
-	const contextFilesPromise = providedContextFiles
+	// Presence, not truthiness. Every array is truthy, so the old `providedContextFiles ? ... : ...`
+	// spelling read as "a caller supplied files" while actually meaning "a caller supplied the key",
+	// and a list some spawn site had filtered down to `[]` took the resolved branch and switched
+	// discovery off with nothing said. The distinction is the same one the option's doc states, and
+	// the empty case is announced rather than assumed, because it is far more often a filter that
+	// ate the list than a caller that truly wants a prompt with no operator context.
+	const contextFilesResolvedByCaller = providedContextFiles !== undefined;
+	if (contextFilesResolvedByCaller && providedContextFiles.length === 0) {
+		logger.warn("Context file discovery disabled: caller supplied an empty resolved list", {
+			cwd: resolvedCwd,
+			agentDir: resolvedAgentDir,
+		});
+	}
+	const contextFilesPromise = contextFilesResolvedByCaller
 		? Promise.resolve(providedContextFiles)
-		: // Seed the global ~/.veyyon/AGENTS.md AND the active profile's AGENTS.md
+		: // Seed the global ~/.veyyon/AGENTS.md AND the LOADING profile's AGENTS.md
 			// with their guidance headers on first run (idempotent once they exist),
 			// then load the context layers. Both live outside the git checkout, so
-			// they survive source updates — unlike a file edited inside ~/.veyyon/src.
-			ensureManagedAgentsFilesOnStartup().then(() =>
-				logger.time("loadProjectContextFiles", loadProjectContextFiles, { cwd: resolvedCwd }),
+			// they survive source updates, unlike a file edited inside ~/.veyyon/src.
+			// The profile seeded is `resolvedAgentDir`, the one this prompt is for:
+			// seeding the booted profile instead left the profile actually in use
+			// without the persistent file the whole back-fill exists to give it.
+			ensureManagedAgentsFilesOnStartup(resolvedAgentDir).then(() =>
+				// `resolvedAgentDir` is forwarded so the profile scope follows the agent
+				// this prompt is being built for, not whichever profile the process booted with.
+				logger.time("loadProjectContextFiles", loadProjectContextFiles, {
+					cwd: resolvedCwd,
+					agentDir: resolvedAgentDir,
+				}),
 			);
 	const workspaceTreePromise =
 		providedWorkspaceTree !== undefined
@@ -671,7 +797,13 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		providedSkills !== undefined
 			? Promise.resolve(providedSkills)
 			: skillsSettings?.enabled !== false
-				? loadSkills({ ...skillsSettings, cwd: resolvedCwd }).then(result => result.skills)
+				? // `resolvedAgentDir` is forwarded for the same reason the context files above
+					// forward it: all three profile-rooted skill providers (native, veyyon-managed,
+					// veyyon-plugins) read it off the `LoadContext`, and without it they fall back to
+					// the process-active profile and the prompt carries a stranger's skills.
+					loadSkills({ ...skillsSettings, cwd: resolvedCwd, agentDir: resolvedAgentDir }).then(
+						result => result.skills,
+					)
 				: Promise.resolve([]);
 	const activeRepoContextPromise =
 		providedActiveRepoContext !== undefined
@@ -811,7 +943,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 			{ label: "Agent directory", value: resolvedAgentDir },
 			{ label: "Skills directory", value: path.join(resolvedAgentDir, "skills") },
 			{ label: "Global AGENTS.md", value: getGlobalAgentsPath() },
-			{ label: "Profile AGENTS.md", value: path.join(profileRootDir, "agent", "AGENTS.md") },
+			{ label: "Profile AGENTS.md", value: path.join(resolvedAgentDir, "AGENTS.md") },
 		],
 		// Merged into the project section: same input (cwd), same lifetime, same
 		// invalidation as the rest of the project framing.
@@ -819,6 +951,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		// Why the working directory is not a project, when it is not one. The prompt turns the reason
 		// into the sentence that names it; an empty string is "nothing to say".
 		nonProjectCwd: nonProjectCwd ? NON_PROJECT_REASON_TEXT[nonProjectCwd] : "",
+		contextFileAuthority: sessionPrompts["session/context-file-authority"].text.trim(),
 		contextFiles,
 		agentsMdSearch: { files: agentsMdFiles },
 		workspaceTree,

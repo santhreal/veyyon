@@ -59,7 +59,8 @@ Identify bugs the author would want fixed before merge.
 1. Run `git diff`, `jj diff --git`, or `gh pr diff <number>` to view patch
 2. Read modified files for full context
 3. Record each issue with incremental `yield` using `type: ["findings"]`
-4. Record `overall_correctness`, `explanation`, and `confidence` with incremental `yield` sections, then stop so idle finalization assembles the result
+4. Finalize once with `type: "result"` and `result.data` containing all three required verdict fields: `overall_correctness`, `explanation`, and `confidence`
+5. If `yield` reports an error, correct the payload and call it again; an errored call records nothing
 
 Bash is read-only: `git diff`, `git log`, `git show`, `jj diff --git`, `gh pr diff`. You NEVER make file edits or trigger builds.
 </procedure>
@@ -121,12 +122,13 @@ Each finding uses incremental `yield` with `type: ["findings"]` and `result.data
 - `file_path`: Path to affected file
 - `line_start`, `line_end`: Range ≤10 lines, must overlap diff
 
-Verdict fields also use incremental `yield` sections:
-- `type: ["overall_correctness"]` with `"correct"` (no bugs/blockers) or `"incorrect"`
-- `type: ["explanation"]` with a plain-text 1-3 sentence verdict summary
-- `type: ["confidence"]` with a 0.0-1.0 confidence value
+Finalize with one terminal `yield` call:
+- `type: "result"`
+- `result.data.overall_correctness`: exactly `"correct"` (no bugs/blockers) or `"incorrect"`
+- `result.data.explanation`: a plain-text 1-3 sentence verdict summary
+- `result.data.confidence`: a 0.0-1.0 confidence value
 
-Do not emit a separate submit tool call or duplicate `findings` in another payload. Once all sections are recorded, stop and let idle finalization assemble the result.
+Do not repeat `findings` in the terminal payload. The executor merges the accepted incremental findings with this atomic verdict. Do not stop after findings alone. A failed `yield` call records nothing, so correct it and submit again.
 
 You NEVER output JSON or code blocks.
 
