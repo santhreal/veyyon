@@ -23,7 +23,15 @@ interface InternalUrlResolver {
 }
 
 export interface InternalUrlExpansionOptions {
-	skills: readonly Skill[];
+	/**
+	 * The calling session's resolved skills, or `undefined` when it never resolved them.
+	 *
+	 * The two are not interchangeable. `[]` is an assertion that the session HAS no skills,
+	 * and `skill-protocol.ts` honors it (`context?.skills ?? getActiveSkills()`), so an empty
+	 * array suppresses the process-wide snapshot and every `skill://` reports
+	 * "Unknown skill: X / Available: none". Callers that do not know MUST pass `undefined`.
+	 */
+	skills: readonly Skill[] | undefined;
 	noEscape?: boolean;
 	internalRouter?: InternalUrlResolver;
 	localOptions?: LocalProtocolOptions;
@@ -75,7 +83,7 @@ function shellEscape(p: string): string {
 
 async function resolveInternalUrlToPath(
 	rawUrl: string,
-	skills: readonly Skill[],
+	skills: readonly Skill[] | undefined,
 	internalRouter: InternalUrlResolver,
 	localOptions?: LocalProtocolOptions,
 	ensureLocalParentDirs?: boolean,

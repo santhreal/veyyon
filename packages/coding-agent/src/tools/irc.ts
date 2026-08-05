@@ -15,7 +15,7 @@ import { errorMessage, formatDuration, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../irc/bus";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
+import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import type { ToolSession } from ".";
 
 const DEFAULT_IRC_TIMEOUT_MS = 120_000;
@@ -158,19 +158,29 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 
 	#executeList(registry: AgentRegistry, senderId: string): AgentToolResult<IrcDetails> {
 		const bus = IrcBus.global();
-		const peers = registry
-			.list()
-			.filter(ref => ref.id !== senderId && ref.status !== "aborted" && ref.kind !== "advisor")
-			.map(ref => ({
-				id: ref.id,
-				displayName: ref.displayName,
-				kind: ref.kind,
-				status: ref.status,
-				parentId: ref.parentId,
-				unread: bus.unreadCount(ref.id),
-				lastActivity: ref.lastActivity,
-				activity: ref.activity,
-			}));
+		// Scoped to the caller's conversation, and scoped HERE rather than only in
+		// the surfaces a human looks at. This is the roster the MODEL reads, and
+		// the ids it hands back are the ids the model then messages, so an
+		// unfiltered list is not a display bug: it is how a subagent from a
+		// conversation the operator closed gets woken to answer a question about
+		// work it never did. `listVisibleTo` already excludes the caller, advisors
+		// and dead agents, so the hand-rolled filter it replaces is now only the
+		// `parked` case, which stays listed because messaging a parked peer is a
+		// supported revival.
+		const visible = registry.listVisibleTo(senderId);
+		const parked = registry
+			.listInScope(registry.get(senderId)?.scope)
+			.filter(ref => ref.id !== senderId && ref.kind !== "advisor" && ref.status === "parked");
+		const peers = [...visible, ...parked].map(ref => ({
+			id: ref.id,
+			displayName: ref.displayName,
+			kind: ref.kind,
+			status: ref.status,
+			parentId: ref.parentId,
+			unread: bus.unreadCount(ref.id),
+			lastActivity: ref.lastActivity,
+			activity: ref.activity,
+		}));
 		const lines: string[] = [];
 		if (peers.length === 0) {
 			lines.push("No other agents.");
@@ -255,8 +265,20 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 
 		try {
 			// Broadcasts fan out to live peers only (running | idle); reviving every
-			// parked agent on a broadcast would be a stampede. Direct sends go
-			// through the bus unfiltered so parked recipients are revived.
+			// parked agent on a broadcast would be a stampede. Direct sends still go
+			// through the bus so a parked recipient IS revived, but only inside the
+			// caller's own conversation: `bus.send` revives whatever id it is
+			// handed, so an unscoped directed send is the one path that can wake an
+			// agent belonging to a transcript the operator already left, and have it
+			// answer into that transcript. Refused by name rather than silently
+			// dropped, because a send that reports success and reaches nobody is
+			// worse than one that says who it could not find.
+			if (!isBroadcast && !AgentRegistry.sameScope(registry.get(to)?.scope, registry.get(senderId)?.scope)) {
+				return errorResult(
+					`Agent "${to}" belongs to a different conversation and cannot be messaged from this one. Run \`irc list\` for the peers of this session.`,
+					{ op: "send", to },
+				);
+			}
 			const targets = isBroadcast ? registry.listVisibleTo(senderId).map(ref => ref.id) : [to];
 			// A broadcast that also reaches the main agent delivers the body to it
 			// directly (its own incoming card); relaying the sibling legs to the

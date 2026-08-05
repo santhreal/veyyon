@@ -80,7 +80,9 @@ export function cloneSafe(value: unknown): unknown {
 	try {
 		structuredClone(value);
 		return value;
-	} catch {}
+	} catch {
+		// This IS the probe for cloneability; a throw is how the answer arrives.
+	}
 	// The shared renderer, so a value that survives here comes back with its
 	// functions and symbols named rather than dropped on the floor.
 	const rendered = stringifyJsonSafe(value);

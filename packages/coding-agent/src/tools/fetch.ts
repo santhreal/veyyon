@@ -471,7 +471,10 @@ function getExtensionHint(url: string, contentDisposition?: string): string {
 		const pathname = new URL(url).pathname;
 		const ext = getFilenameExtensionHint(pathname);
 		if (ext) return ext;
-	} catch {}
+	} catch {
+		// `new URL` on a caller-supplied string: no parseable path means no
+		// extension hint, which is the empty string below.
+	}
 
 	return "";
 }
@@ -783,7 +786,10 @@ async function parseFeedToMarkdown(content: string, maxItems = 10): Promise<stri
 			}
 			return md;
 		}
-	} catch {}
+	} catch {
+		// Feed parsing is opportunistic. The raw content returned below is what
+		// the caller asked for, so the operator still sees the document.
+	}
 
 	return content; // Fall back to raw content
 }

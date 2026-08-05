@@ -39,6 +39,7 @@ import {
 	streamTailUpdates,
 	TailBuffer,
 } from "../session/streaming-output";
+import { statementById } from "../system-prompt-builder/statement-registry";
 import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } from "../tui/output-block";
 // The owner, not the local `../tui` barrel, which re-exports `./file-list` and through it the theme engine.
 import { renderStatusLine } from "../tui/status-line";
@@ -46,7 +47,7 @@ import { getSixelLineMask } from "../utils/sixel";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
 import { registerForegroundBashWait } from "./bash-foreground-registry";
-import { CRITICAL_BASH_PATTERNS, findCriticalBashRisk } from "./bash-guard";
+import { bashCredentialTargets, CRITICAL_BASH_PATTERNS, findCriticalBashRisk } from "./bash-guard";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import { checkBashInterception } from "./bash-interceptor";
 import { canUseInteractiveBashPty } from "./bash-pty-selection";
@@ -121,10 +122,46 @@ export { CRITICAL_BASH_PATTERNS } from "./bash-guard";
  * calls that must still stop in yolo, which is the mode every published
  * home-directory wipe happened in.
  */
-export function bashApprovalDecision(args: unknown, extraProtectedPaths: readonly string[] = []): ToolApprovalDecision {
+/**
+ * The environment a bash call will actually run with: the process environment
+ * with the call's own `env` argument spread over it, which is exactly what
+ * `buildNonInteractiveEnv` hands the child.
+ *
+ * Both judgements that read variables (`findCriticalBashRisk` and
+ * `bashCredentialTargets`) go through this. Judging against `process.env`
+ * alone let a caller hand the guard one value and the shell another, so
+ * `bash({command:"rm -rf $LANG", env:{LANG:"/"}})` was approved and deleted the
+ * root. Only string values are taken; anything else is not something the child
+ * would receive either.
+ */
+function bashJudgementEnv(args: unknown): NodeJS.ProcessEnv {
+	const rawEnv = (args as Partial<BashToolInput>).env;
+	const merged: NodeJS.ProcessEnv = { ...process.env };
+	if (rawEnv && typeof rawEnv === "object") {
+		for (const [name, value] of Object.entries(rawEnv as Record<string, unknown>)) {
+			if (typeof value === "string") merged[name] = value;
+		}
+	}
+	return merged;
+}
+
+export function bashApprovalDecision(
+	args: unknown,
+	extraProtectedPaths: readonly string[] = [],
+	sessionCwd = "",
+): ToolApprovalDecision {
 	const rawCommand = (args as Partial<BashToolInput>).command;
 	const command = typeof rawCommand === "string" ? rawCommand : "";
-	const risk = command === "" ? undefined : findCriticalBashRisk(command, undefined, extraProtectedPaths);
+	// A relative delete resolves against the directory the command will run in:
+	// the call's own `cwd` when it names one, else the session's. Without it
+	// `rm -rf ../../../../../..` was judged as "relative, therefore fine" and
+	// reached the root from any depth of six or less.
+	const argCwd = (args as Partial<BashToolInput>).cwd;
+	const cwd = typeof argCwd === "string" && argCwd.startsWith("/") ? argCwd : sessionCwd;
+	const risk =
+		command === ""
+			? undefined
+			: findCriticalBashRisk(command, undefined, extraProtectedPaths, bashJudgementEnv(args), cwd);
 	if (risk) return { tier: "exec", critical: true, reason: risk.reason };
 	if (command !== "" && CRITICAL_BASH_PATTERNS.some(pattern => pattern.test(command))) {
 		return { tier: "exec", critical: true, reason: "Critical pattern detected" };
@@ -137,12 +174,15 @@ function saveBashOriginalArtifact(session: ToolSession, originalText: string): P
 }
 
 const BASH_TIMEOUT_DESCRIPTION = describeTimeoutParam("bash", { zeroDisablesNoun: "command deadline" });
+const bashCwdStatement = statementById("tool-policy/bash-cwd");
+if (!bashCwdStatement) throw new Error("Missing required tool-policy/bash-cwd prompt statement");
+const BASH_CWD_DESCRIPTION = bashCwdStatement.text.trim();
 
 const bashSchemaBase = type({
 	command: type("string").describe("command to execute"),
 	"env?": type({ "[string]": "string" }).describe("extra env vars"),
 	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
-	"cwd?": type("string").describe("working directory"),
+	"cwd?": type("string").describe(BASH_CWD_DESCRIPTION),
 	"pty?": type("boolean").describe("run in pty mode"),
 });
 
@@ -150,7 +190,7 @@ const bashSchemaWithAsync = type({
 	command: "string",
 	"env?": { "[string]": "string" },
 	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
-	"cwd?": "string",
+	"cwd?": type("string").describe(BASH_CWD_DESCRIPTION),
 	"pty?": "boolean",
 	"async?": type("boolean").describe("run in background"),
 });
@@ -402,6 +442,33 @@ function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "thres
 }
 
 /**
+ * Reported when a bash call uses `skill://` but the session never resolved its skill list, so
+ * the resolution ran against the process-wide active set rather than this session's scope.
+ * Exported for the regression test that locks out the old silent `?? []`.
+ */
+export const SKILL_SCOPE_UNRESOLVED_NOTICE =
+	"(skill:// resolved against the process-wide skill set: this session never resolved its own skills, so a skill:// that did not resolve was left as a literal path)";
+
+/**
+ * Whether this bash call actually asks for a `skill://` URL, in the command, the extracted
+ * cwd, or any env value. Used to keep the unresolved-skill-scope notice off the 99% of calls
+ * that never touch the protocol: a session with genuinely zero skills is legitimate and must
+ * stay quiet, only an unresolvable REQUEST is worth reporting.
+ */
+function referencesSkillUrl(
+	command: string,
+	cwd: string | undefined,
+	env: Record<string, string> | undefined,
+): boolean {
+	if (command.includes("skill://")) return true;
+	if (cwd?.includes("skill://")) return true;
+	if (env) {
+		for (const value of Object.values(env)) if (value.includes("skill://")) return true;
+	}
+	return false;
+}
+
+/**
  * Strip the trailing occurrence of `notice` (plus a single surrounding newline
  * on each side) so the TUI can echo the value via a styled footer label
  * instead of repeating it verbatim in the output pane. The notice is
@@ -449,12 +516,18 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	// property. `bashApprovalDecision` stays exported and takes the paths
 	// explicitly, so the rule is testable without constructing a session.
 	readonly approval = (args: unknown): ToolApprovalDecision =>
-		bashApprovalDecision(args, this.session.settings.get("tools.protectedPaths") ?? []);
+		bashApprovalDecision(args, this.session.settings.get("tools.protectedPaths") ?? [], this.session.cwd);
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const rawCommand = (args as Partial<BashToolInput>).command;
 		const command = typeof rawCommand === "string" ? rawCommand : "(missing)";
 		return [`Command: ${truncateForPrompt(command)}`];
 	};
+	// The cwd/secret boundary only sees tools that declare filesystem targets, so
+	// without this `bash cat ~/.ssh/id_rsa` ran unasked at every rung where
+	// `read` of the same path prompts. Credential paths only; see
+	// `bashCredentialTargets` for why this is not the whole command's path set.
+	readonly filesystemTargets = (args: unknown): string[] =>
+		bashCredentialTargets(String((args as Partial<BashToolInput>).command ?? ""), bashJudgementEnv(args));
 	readonly label = "Bash";
 	readonly loadMode = "essential";
 	get description(): string {
@@ -945,8 +1018,22 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			}
 		}
 
+		// `skills: this.session.skills ?? []` used to sit here, and the `?? []` is a lie about
+		// scope: `[]` asserts this session HAS no skills, which `skill-protocol.ts` honors
+		// (`context?.skills ?? getActiveSkills()`). So an unresolved parent suppressed the
+		// process-wide snapshot, every `skill://` resolved to "Unknown skill: X / Available:
+		// none", and `expandInternalUrls` swallowed that and left the URL as a literal path,
+		// which bash then reported as a missing file. Pass the absence through, and when the
+		// command actually asked for a `skill://`, name the gap in the notices this tool
+		// already returns instead of letting the model debug a phantom path.
+		const skillScopeUnresolved = this.session.skills === undefined && referencesSkillUrl(rawCommand, cwd, env);
+		if (skillScopeUnresolved) {
+			logger.warn("bash: session skills are unresolved, skill:// URLs resolve against the process-wide set", {
+				cwd: this.session.cwd,
+			});
+		}
 		const internalUrlOptions: InternalUrlExpansionOptions = {
-			skills: this.session.skills ?? [],
+			skills: this.session.skills,
 			internalRouter: InternalUrlRouter.instance(),
 			cwd: this.session.cwd,
 			localOptions: {
@@ -1007,6 +1094,9 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		if (timeoutSec !== undefined) {
 			const timeoutClampNotice = formatTimeoutClampNotice("bash", requestedTimeoutSec, timeoutSec);
 			if (timeoutClampNotice) pendingNotices.push(timeoutClampNotice);
+		}
+		if (skillScopeUnresolved) {
+			pendingNotices.push(SKILL_SCOPE_UNRESOLVED_NOTICE);
 		}
 
 		if (asyncRequested) {

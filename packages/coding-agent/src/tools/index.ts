@@ -1,4 +1,4 @@
-import type { AgentTelemetryConfig, AgentTool } from "@veyyon/agent-core";
+import type { AgentTelemetryConfig, AgentTool, ThinkingLevel } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { logger } from "@veyyon/utils";
@@ -130,6 +130,8 @@ export interface ToolSession {
 	obfuscateProviderText?: (text: string) => string;
 	/** Whether UI is available */
 	hasUI: boolean;
+	/** Effective concrete effort currently applied to the parent session. */
+	readonly thinkingLevel?: ThinkingLevel;
 	/**
 	 * Suppress the spawn specialization/coordination advisory appended to `task`
 	 * results. Set by internal/programmatic callers (e.g. the commit agent's
@@ -425,7 +427,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	ast_edit: async s => new (await import("./ast-edit")).AstEditTool(s),
 	ask: async s => (await import("./ask")).AskTool.createIf(s),
 	debug: async s => (await import("./debug")).DebugTool.createIf(s),
-	eval: async s => new (await import("./eval")).EvalTool(s),
+	eval: async s => (await import("./eval")).EvalTool.create(s),
 	ssh: async s => (await import("./ssh")).loadSshTool(s),
 	github: async s => (await import("./gh")).GithubTool.createIf(s),
 	glob: async s => new (await import("./glob")).GlobTool(s, { rootPathAlias: true }),

@@ -278,9 +278,8 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 				await Promise.race(racePromises);
 			}
 		} finally {
-			manager.unwatchJobs(watchedJobIds);
 			clearTimeout(timeoutHandle);
-			if (progressTimer) clearInterval(progressTimer);
+			clearInterval(progressTimer);
 			if (smartPoll) {
 				// Reset the idle-gap clock: escalate if the agent polls again soon,
 				// drop back to the floor once it goes quiet for a while.
@@ -288,7 +287,17 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 			}
 		}
 
-		return this.#buildResult(manager, allTrackedJobs, cancelOutcomes);
+		// `#buildResult` acknowledges every settled job it reports, and `unwatchJobs`
+		// re-arms the async delivery of anything that settled inside the window and was
+		// NOT acknowledged. So the order is the exactly-once contract, in both
+		// directions: acknowledge first and the re-arm stays quiet; unwatch first and
+		// the operator gets the same subagent report twice. The `finally` is what makes
+		// the watch impossible to leak if `#buildResult` ever throws.
+		try {
+			return this.#buildResult(manager, allTrackedJobs, cancelOutcomes);
+		} finally {
+			manager.unwatchJobs(watchedJobIds);
+		}
 	}
 
 	/**
