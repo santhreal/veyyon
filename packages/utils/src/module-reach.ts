@@ -6,7 +6,7 @@ import * as path from "node:path";
  *
  * WHY THIS HAS ONE OWNER NOW. Three architecture gates walk the static import graph and pin a
  * ceiling on it: `packages/utils/test/barrel-stays-cheap.test.ts`, `packages/ai/test`'s cut ratchet,
- * and `packages/coding-agent/test/architecture/test-suite-module-reach.test.ts`. Each carried its own
+ * and `packages/coding-agent/test/architecture/leveraged-imports-stay-cut.test.ts`. Each carried its own
  * copy of the walk, and the copies did not resolve the same things: one followed relative specifiers
  * only, one also followed workspace aliases and bare package names. That is not a cosmetic
  * duplication. Every one of those gates is an UPPER BOUND, so a resolver that quietly resolves less
@@ -24,7 +24,7 @@ import * as path from "node:path";
  *
  * WHAT A CEILING HERE IS AND IS NOT. It says the graph did not widen. It does NOT predict a test run's
  * memory: Bun caches instantiated modules across test files, so a run costs the UNION of what its
- * files reach, not the sum. `test-suite-module-reach.test.ts` has the measurement.
+ * files reach, not the sum. `docs/internal/testing.md` has the measurement.
  */
 
 /** `import "./x"` -- a side-effect import, which instantiates the module like any other. */
@@ -175,7 +175,7 @@ export function resolveModuleSpecifier(
  * A per-run memo of "which files does this file import", for a caller that walks MANY entries.
  *
  * WHY THIS EXISTS. Each walk re-reads and re-resolves every file it reaches, and the gates that use this
- * module walk one entry per test FILE: `test-suite-module-reach.test.ts` walks 1,891 of them over a graph
+ * module walk one entry per test FILE: the suite-total gate walked 1,891 of them over a graph
  * whose files are shared almost completely, so the same `readFileSync` plus regex scan plus resolution ran
  * thousands of times for one answer. Resolving the whole workspace instead of four packages made that
  * visible: the gate went from about forty seconds to minutes, which is a test nobody runs (Law 7 -- an

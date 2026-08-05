@@ -665,9 +665,12 @@ Two things that are still worth doing, for reasons other than the total:
   510. This is an architecture argument, not a memory one.
 - **Keep the hot entry points from growing without anyone noticing.** `no-import-cycles.test.ts`
   caps how many modules a named entry point reaches; add an entry when a module becomes something
-  many suites import. `test-suite-module-reach.test.ts` caps the suite's total reach and how many
-  files are individually heavy. Read the header of that file before treating either number as a
-  memory prediction: it says plainly what the numbers do and do not mean.
+  many suites import. There used to be a `test-suite-module-reach.test.ts` beside it capping the
+  suite's TOTAL reach and its heavy-file count. It was deleted on 2026-08-04: every edit either
+  constant ever received was a raise (830,000 -> 846,976, 378 -> 391) under commit subjects reading
+  "recalibrate after suite growth", so the gate only ever taught people to edit the gate. A total
+  that predicts nothing an operator can see is not a contract. State the edge by name instead --
+  `leveraged-imports-stay-cut.test.ts` is nothing but named absences now.
 - **Keep the process entry point thin.** `the-boot-path-stays-thin.test.ts` caps what
   `packages/coding-agent/src/cli.ts` reaches STATICALLY, which is what every invocation of the binary
   parses before it looks at an argument. It is 34 modules; `main.ts`, one `await import` away, is

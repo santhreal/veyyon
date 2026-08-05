@@ -14,7 +14,7 @@ import { resolveVarRefs, type ThemeJson } from "./color";
  * slot. Getting that boolean used to mean importing `./builtin-themes`, which statically embeds one
  * JSON module per bundled theme, so the settings module carried 103 extra modules and every one of the
  * ~1,500 files that import `Settings` carried them too. That is the diffuse graph widening
- * `test/architecture/test-suite-module-reach.test.ts` exists to catch, and it was the single largest
+ * the leveraged-import gate in `test/architecture/` exists to catch, and it was the single largest
  * edge in the package: `config/settings` reached 440 modules, of which 103 were theme data nothing on
  * that path reads.
  *

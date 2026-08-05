@@ -39,7 +39,6 @@ import {
 	createModuleReachCache,
 	type ModuleReachResolution,
 	moduleReach,
-	moduleReachCount,
 	moduleSpecifiersIn,
 } from "@veyyon/utils/module-reach";
 import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-workspace";
@@ -59,10 +58,6 @@ const DECLARATIONS: readonly BuiltinSlashCommandDeclaration[] = BUILTIN_SLASH_CO
 const RESOLUTION: ModuleReachResolution = workspaceModuleReachResolution(REPO_ROOT);
 const CACHE = createModuleReachCache();
 
-function reach(relative: string): number {
-	return moduleReachCount(path.join(SRC, relative), RESOLUTION, CACHE);
-}
-
 function reachedNames(relative: string): string[] {
 	return [...moduleReach(path.join(SRC, relative), RESOLUTION, CACHE)]
 		.map(file => path.relative(REPO_ROOT, file))
@@ -75,17 +70,14 @@ function runtimeImportsOf(relative: string): string[] {
 
 describe("the declarations are a leaf", () => {
 	/**
-	 * Measured at 3: itself, the priority-tier label and the compaction mode table, both of which are
-	 * one-module leaves and both of which this file must reference rather than restate. The ceiling is
-	 * deliberately tight, because a fourth import of any size undoes the whole split.
-	 */
-	it("reaches at most 6 modules", () => {
-		expect(reach("slash-commands/builtin-declarations.ts")).toBeLessThanOrEqual(6);
-	});
-
-	/**
-	 * The absences, NAMED. Each is a subsystem a handler body reaches and a command name does not
-	 * need, and each is one import away from returning.
+	 * Locks out: a fourth import into the declarations file, which undoes the whole split. Each name
+	 * below is a subsystem a handler body reaches and a command NAME does not need, and each is one
+	 * import away from returning.
+	 *
+	 * Stated as named absences rather than as a count. The count that used to sit above this (`<= 6`
+	 * against a measurement of 3) could be satisfied by an import of any small module and could be
+	 * broken by growth in the two leaves this file legitimately references, so it neither caught the
+	 * regression it names nor stayed quiet about the growth it does not care about.
 	 */
 	it("reaches none of the application a handler reaches", () => {
 		const reached = reachedNames("slash-commands/builtin-declarations.ts");
@@ -112,19 +104,6 @@ describe("the declarations are a leaf", () => {
 });
 
 describe("the modules that only wanted the names", () => {
-	/**
-	 * Ceilings, each a little above its measurement. The extension handler is the one that motivated
-	 * the split; the other two are what it was costing, and they are on the interactive and print
-	 * paths, which is where a cold start is felt.
-	 */
-	it.each([
-		["extensibility/extensions/get-commands-handler.ts", 200],
-		["modes/runtime-init.ts", 250],
-		["modes/print-mode.ts", 250],
-	])("%s reaches at most %i modules", (relative, ceiling) => {
-		expect(reach(relative)).toBeLessThanOrEqual(ceiling);
-	});
-
 	/**
 	 * The edge itself, by SPECIFIER, which is the assertion that names the fix. Both modules export
 	 * `BUILTIN_SLASH_COMMAND_RESERVED_NAMES` under the same name and the registry re-exports the
@@ -174,9 +153,12 @@ describe("the split kept one set of commands", () => {
 	 *     DECLARATIONS one shorter, which is exactly what this number counts.
 	 *   - UP to 67: `/secret` was added, storing a credential the agent can reference by
 	 *     placeholder without ever seeing its value.
+	 *   - UP to 68: `/permissions` was added, setting the tool-approval rung for one session
+	 *     without touching the saved default. It exists because the rung became something an
+	 *     operator changes mid-task once the ladder replaced `yolo` with a shipped default of `auto`.
 	 */
-	it("there are the 67 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(67);
+	it("there are the 68 builtins the declarations hold", () => {
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(68);
 	});
 
 	/**
