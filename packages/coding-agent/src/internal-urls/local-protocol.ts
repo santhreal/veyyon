@@ -8,7 +8,7 @@ import { formatBytes, formatCount } from "@veyyon/utils/format";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { AgentRegistry } from "../registry/agent-registry";
+import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
 import { getContentType } from "./content-type";
 import { buildDirectoryResource, ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";
 import { parseInternalUrl } from "./parse";
@@ -445,20 +445,36 @@ export class LocalProtocolHandler implements ProtocolHandler {
 	 *    (used by SDK consumers with a custom artifacts/session-id mapping and
 	 *    by code paths that do not have a calling session, e.g. TUI hyperlink
 	 *    resolution).
-	 * 3. The first `main`-kind session in `AgentRegistry.global()`. Its
-	 *    `SessionManager` supplies both `getArtifactsDir` and `getSessionId`.
-	 *    Last-resort fallback — every caller that has a session reference
-	 *    SHOULD thread it through `context` so this branch is never taken in
-	 *    multi-session setups.
+	 * 3. The one and only `main`-kind session in `AgentRegistry.global()` that
+	 *    still holds a live `SessionManager`, which supplies both
+	 *    `getArtifactsDir` and `getSessionId`. Last-resort fallback — every
+	 *    caller that has a session reference SHOULD thread it through `context`
+	 *    so this branch is never taken in multi-session setups.
+	 *
+	 *    AMBIGUITY REFUSES rather than guesses. A multi-session host registers
+	 *    every one of its conversations as `kind: "main"`, and `resolveOptions`
+	 *    has nothing to disambiguate with: `ResolveContext` carries cwd,
+	 *    settings and skills, but no agent id and no scope, and this branch is
+	 *    reached precisely when the caller failed to thread its own options. So
+	 *    picking the first match is picking at random, and what it picks is an
+	 *    artifacts directory that `local://` both READS and WRITES: one
+	 *    conversation silently reading, and then overwriting, another's
+	 *    planning artifacts, with no error and nothing for the operator to
+	 *    notice. Returning undefined surfaces as `No session - local://
+	 *    unavailable`, which is a caller bug the doc above already tells that
+	 *    caller how to fix.
 	 */
 	static resolveOptions(context?: ResolveContext): LocalProtocolOptions | undefined {
 		const fromContext = context?.localProtocolOptions;
 		if (fromContext) return fromContext;
 		const override = LocalProtocolHandler.#override;
 		if (override) return override;
-		const main = AgentRegistry.global()
-			.list()
-			.find(ref => ref.kind === "main");
+		let main: AgentRef | undefined;
+		for (const ref of AgentRegistry.global().list()) {
+			if (ref.kind !== "main" || !ref.session?.sessionManager) continue;
+			if (main) return undefined;
+			main = ref;
+		}
 		const sessionManager = main?.session?.sessionManager;
 		if (!sessionManager) return undefined;
 		return {

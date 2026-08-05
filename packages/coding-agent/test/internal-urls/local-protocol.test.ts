@@ -8,6 +8,8 @@ import {
 	resolveLocalRoot,
 	resolveLocalUrlToPath,
 } from "@veyyon/coding-agent/internal-urls";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { removeWithRetries } from "@veyyon/utils";
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
@@ -23,11 +25,13 @@ describe("LocalProtocolHandler", () => {
 	beforeEach(() => {
 		LocalProtocolHandler.resetOverrideForTests();
 		InternalUrlRouter.resetForTests();
+		AgentRegistry.resetGlobalForTests();
 	});
 
 	afterEach(() => {
 		LocalProtocolHandler.resetOverrideForTests();
 		InternalUrlRouter.resetForTests();
+		AgentRegistry.resetGlobalForTests();
 	});
 
 	it("lists files at local://", async () => {
@@ -193,6 +197,56 @@ describe("LocalProtocolHandler", () => {
 					},
 				}),
 			).rejects.toThrow("Local file not found: local://PLAN.md");
+		});
+	});
+
+	/**
+	 * BUG: the registry fallback took the FIRST `main`-kind ref. A multi-session host
+	 * (cmux/ACP, embedded SDK) registers every conversation as `kind: "main"`, and
+	 * `resolveOptions` has no caller identity to disambiguate with, so any caller that
+	 * failed to thread `localProtocolOptions` was routed at random into some other
+	 * conversation's artifacts directory — which `local://` WRITES as well as reads.
+	 * One conversation silently overwriting another's planning artifacts, no error.
+	 *
+	 * If this regresses: the two-session read below returns session A's PLAN.md
+	 * instead of refusing.
+	 */
+	it("refuses the registry fallback when two live main sessions could each answer", async () => {
+		await withTempDir(async tempDir => {
+			const dirA = path.join(tempDir, "a-artifacts");
+			const dirB = path.join(tempDir, "b-artifacts");
+			await fs.mkdir(path.join(dirA, "local"), { recursive: true });
+			await fs.mkdir(path.join(dirB, "local"), { recursive: true });
+			await Bun.write(path.join(dirA, "local", "PLAN.md"), "# conversation A");
+			await Bun.write(path.join(dirB, "local", "PLAN.md"), "# conversation B");
+
+			const registry = AgentRegistry.global();
+			const mainRef = (id: string, artifactsDir: string) => ({
+				id,
+				displayName: id,
+				kind: "main" as const,
+				sessionFile: null,
+				session: {
+					sessionManager: { getArtifactsDir: () => artifactsDir, getSessionId: () => id },
+				} as unknown as AgentSession,
+			});
+			registry.register(mainRef("A", dirA));
+			const router = InternalUrlRouter.instance();
+
+			// One live root: the fallback answers, and answers with THAT root's file.
+			expect(LocalProtocolHandler.resolveOptions()?.getArtifactsDir?.()).toBe(dirA);
+			expect((await router.resolve("local://PLAN.md")).content).toBe("# conversation A");
+
+			// A second live root makes the question unanswerable. Refuse, never guess.
+			registry.register(mainRef("B", dirB));
+			expect(LocalProtocolHandler.resolveOptions()).toBeUndefined();
+			await expect(router.resolve("local://PLAN.md")).rejects.toThrow("No session - local:// unavailable");
+
+			// Threading the caller's own options still resolves, unambiguously.
+			const resource = await router.resolve("local://PLAN.md", {
+				localProtocolOptions: { getArtifactsDir: () => dirB, getSessionId: () => "B" },
+			});
+			expect(resource.content).toBe("# conversation B");
 		});
 	});
 });
