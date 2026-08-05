@@ -10,6 +10,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { spawn } from "../src/ptree";
 import { readPipeText } from "../src/stream";
 import { collectPackageSources } from "./support/package-sources";
 
@@ -114,12 +115,23 @@ describe("every process pipe in the repository", () => {
 	 * `ptree.ts` reads the same pipes as a blob, as JSON and as an ArrayBuffer, which are different
 	 * operations and stay where they are. This pins that the sweep did not quietly convert them: a
 	 * `readPipeText` where a caller wanted bytes would decode binary output as UTF-8 and corrupt it.
+	 *
+	 * Asserted as byte fidelity through a real pipe rather than as the spelling of the call. `FF FE`
+	 * is not valid UTF-8, so it survives the round trip only if nothing decoded it; routing any of
+	 * these readers through the text reader replaces both bytes with U+FFFD and the array stops
+	 * matching. A rename or a reflow inside `ptree.ts` moves nothing here.
 	 */
-	it("left the non-text pipe readers alone", async () => {
-		const ptree = await Bun.file(new URL("../src/ptree.ts", import.meta.url)).text();
+	it("left the non-text pipe readers alone, so binary output survives byte for byte", async () => {
+		const raw = [0xff, 0xfe, 0x41];
+		const emit = ["sh", "-c", "printf '\\377\\376A'"];
 
-		expect(ptree).toContain("new Response(this.stdout).blob()");
-		expect(ptree).toContain("new Response(this.stdout).json()");
-		expect(ptree).toContain("new Response(this.stdout).arrayBuffer()");
+		expect([...(await spawn(emit).bytes())]).toEqual(raw);
+		expect([...new Uint8Array(await spawn(emit).arrayBuffer())]).toEqual(raw);
+		expect([...new Uint8Array(await (await spawn(emit).blob()).arrayBuffer())]).toEqual(raw);
+	});
+
+	/** And `json()` hands back parsed data, not the text of it, which a text reader could not do. */
+	it("parses JSON off the pipe", async () => {
+		expect(await spawn(["sh", "-c", `printf '{"ok":true,"n":2}'`]).json()).toEqual({ ok: true, n: 2 });
 	});
 });

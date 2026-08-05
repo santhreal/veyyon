@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SUPPORTED_VERSION } from "../src/constants.js";
 import { generateDictFromRepo } from "../src/generate.js";
@@ -79,23 +80,51 @@ describe("the generated dictionary declares the version the loader expects", () 
 		expect(parseDict(toml, "generated.dict").version).toBe(SUPPORTED_VERSION);
 	});
 
-	test("the generator hardcodes no version literal any more", () => {
-		// The lock, and the only test here that can fail TODAY if the fix is reverted.
-		// Every behavioral assertion above still passes with a hardcoded `1` while the
-		// constant is 1; they only start failing on the bump, which is far too late.
-		// This one fails immediately.
-		const generate = readFileSync(join(import.meta.dir, "..", "src", "generate.ts"), "utf8");
+	test("stamps whatever the constant says, at both sites, so neither duplicates the literal", async () => {
+		// The lock, and the only test here that can fail TODAY if the fix is reverted. Every behavioral
+		// assertion above still passes with a hardcoded `1` while the constant is 1; they only start
+		// failing on the bump, which is far too late.
+		//
+		// So this one MOVES the constant instead of reading the generator's characters. `generate.ts`
+		// reaches only `constants.ts` and `types.ts`, so a three-file copy with a different
+		// `SUPPORTED_VERSION` is the whole generator running against a bumped format. A hardcoded
+		// literal keeps emitting the old number and goes red here immediately; a rename, a reflow, or a
+		// changed comment in the generator moves nothing.
+		const bumped = SUPPORTED_VERSION + 41;
+		const dir = await mkdtemp(join(tmpdir(), "argot-version-"));
+		try {
+			for (const name of ["generate.ts", "constants.ts", "types.ts"]) {
+				await copyFile(join(import.meta.dir, "..", "src", name), join(dir, name));
+			}
+			const constantsPath = join(dir, "constants.ts");
+			const patched = (await readFile(constantsPath, "utf8")).replace(
+				/export const SUPPORTED_VERSION = \d+;/,
+				`export const SUPPORTED_VERSION = ${bumped};`,
+			);
+			// If the substitution missed, every assertion below would compare the old number to itself
+			// and pass while proving nothing.
+			expect(patched).toContain(`export const SUPPORTED_VERSION = ${bumped};`);
+			await writeFile(constantsPath, patched);
 
-		// Both spellings the bug appeared in: the emitted TOML line and the object
-		// literal on the returned Vocabulary.
-		expect(generate).not.toMatch(/version\s*=\s*\d/);
-		expect(generate).not.toMatch(/version\s*:\s*\d/);
-		// The reason must stay on the one `biome-ignore` line: a wrapped continuation
-		// `//` line becomes the comment immediately above the code, and the suppression
-		// silently stops applying while still reading as if it did.
-		// biome-ignore lint/suspicious/noTemplateCurlyInString: asserting on the generator's SOURCE text, where this really is a template placeholder rather than an unintended one.
-		expect(generate).toContain("version = ${SUPPORTED_VERSION}");
-		expect(generate).toContain("version: SUPPORTED_VERSION");
+			// Runtime-selected by construction: the module under test is a patched copy at a temp path
+			// that does not exist at author time, which is the entire mechanism. A static import would
+			// load the unpatched generator and make the case vacuous.
+			const bumpedGenerate = (await import(join(dir, "generate.ts"))) as {
+				generateDictFromRepo: typeof generateDictFromRepo;
+			};
+
+			// The default-sigil branch, which builds its header one way...
+			const plain = bumpedGenerate.generateDictFromRepo(FILES, { naming: "mnemonic" });
+			expect(plain.toml).toContain(`version = ${bumped}`);
+			expect(plain.vocab.version).toBe(bumped);
+
+			// ...and the non-default-sigil branch, which builds it separately and held the second copy.
+			const sigil = bumpedGenerate.generateDictFromRepo(FILES, { naming: "mnemonic", sigil: "@" });
+			expect(sigil.toml).toContain(`version = ${bumped}`);
+			expect(sigil.vocab.version).toBe(bumped);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 
 	test("a file targeting a NEWER version is refused with an upgrade hint", () => {

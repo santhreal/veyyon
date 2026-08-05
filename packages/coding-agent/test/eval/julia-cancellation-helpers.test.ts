@@ -1,13 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+
 import {
 	getRemainingTimeoutMs,
 	isCancellationError,
 	isTimedOutCancellation,
 	getExecutionDeadlineMs as sharedGetExecutionDeadlineMs,
 } from "@veyyon/coding-agent/eval/executor-base";
-import { deadlineForNonZeroTimeout } from "@veyyon/coding-agent/eval/jl/executor";
+import { deadlineForNonZeroTimeout, executeJulia } from "@veyyon/coding-agent/eval/jl/executor";
 
 /**
  * The Julia executor used to carry byte-diverged private copies of
@@ -139,11 +138,41 @@ describe("deadlineForNonZeroTimeout is Julia's rule and says so in its name", ()
 });
 
 describe("julia cancellation-classification single-owner lock", () => {
-	it("jl/executor.ts does not reimplement the AbortError/TimeoutError classification", () => {
-		const src = readFileSync(join(import.meta.dir, "..", "..", "src", "eval", "jl", "executor.ts"), "utf8");
-		// The classification lives only in executor-base now; a reintroduced
-		// private copy would compare error names against these literals.
-		expect(src).not.toContain('=== "AbortError"');
-		expect(src).not.toContain('=== "TimeoutError"');
+	/**
+	 * The Julia executor carries two thin wrappers that bind its cancelled-error class and delegate to
+	 * `executor-base`. What makes the delegation load-bearing rather than cosmetic is stated in
+	 * `jl/executor.ts` itself: the shared version inspects the abort REASON as well as the error, and
+	 * the private copies it replaced only caught a DOMException because Bun happens to make
+	 * DOMException a subclass of Error.
+	 *
+	 * So the lock is driven through `executeJulia` with an already-aborted signal instead of scanning
+	 * `jl/executor.ts` for `=== "AbortError"`. That path classifies and returns before any Julia
+	 * runtime is looked up, so no interpreter is needed, and the classification is observable: a
+	 * timeout is annotated as a timeout and a plain abort as a cancellation. A reintroduced private
+	 * copy that keys on the error name alone reads the timeout case as a generic cancellation and
+	 * turns this red, which the character scan could only do if the copy also happened to be spelled
+	 * the same way.
+	 */
+	/** An aborted signal carrying `reason`, built without a real timer. */
+	function abortedWith(reason: DOMException): AbortSignal {
+		const controller = new AbortController();
+		controller.abort(reason);
+		return controller.signal;
+	}
+
+	it("reads a timeout reason off the signal, not just off the error", async () => {
+		const signal = abortedWith(new DOMException("deadline reached", "TimeoutError"));
+
+		const result = await executeJulia("1 + 1", { signal });
+
+		expect(result.output).toContain("timed out");
+	});
+
+	it("still calls a plain abort a cancellation rather than a timeout", async () => {
+		const signal = abortedWith(new DOMException("user stopped it", "AbortError"));
+
+		const result = await executeJulia("1 + 1", { signal });
+
+		expect(result.output).toBe("[execution cancelled]\n");
 	});
 });

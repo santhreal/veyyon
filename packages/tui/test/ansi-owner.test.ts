@@ -31,6 +31,7 @@ import {
 	ST,
 	sgrSequence,
 } from "@veyyon/tui/ansi";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const TUI_SRC = path.join(import.meta.dir, "..", "src");
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../coding-agent/src");
@@ -305,8 +306,9 @@ describe("primitive ownership", () => {
 	 */
 	it("imports nothing", async () => {
 		const owner = await Bun.file(path.join(TUI_SRC, "ansi.ts")).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
+		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 	});
 
 	/**

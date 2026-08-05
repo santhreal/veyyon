@@ -23,6 +23,7 @@
 
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "../src/module-reach";
 import {
 	ADVISOR_TRANSCRIPT_FILENAME,
 	ADVISOR_TRANSCRIPT_PREFIX,
@@ -336,10 +337,17 @@ describe("the naming module has one owner", () => {
 		}
 	});
 
-	/** The owner is a leaf, so a package pays one module for the contract. */
+	/**
+	 * The owner is a leaf, so a package pays one module for the contract.
+	 *
+	 * Asserted on the PARSED specifier list rather than on the characters. The scan this replaced was
+	 * `not.toMatch(/\bfrom\s+"/)`, which a doc comment containing the words `from "..."` turns red for
+	 * no reason, and `not.toMatch(/^\s*import\s/m)`, which also rejects a free `import type`. The list
+	 * excludes type-only imports, which is the right line: they cost nothing at runtime, and runtime
+	 * cost is the whole claim.
+	 */
 	it("imports nothing", async () => {
 		const owner = await Bun.file(path.resolve(import.meta.dir, "../src/session-file.ts")).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 	});
 });

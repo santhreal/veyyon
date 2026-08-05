@@ -18,6 +18,7 @@ import {
 	GITLAB_SAAS_URL,
 	OPENROUTER_API_ENDPOINT,
 } from "@veyyon/catalog/provider-endpoints";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 /**
  * Google's Cloud Code Assist and Antigravity base URLs, and the one place they are written.
@@ -470,7 +471,8 @@ describe("the hosts have one owner", () => {
 	 */
 	it("imports nothing, so taking a host costs one module", async () => {
 		const owner = await Bun.file(path.join(PACKAGES_DIR, OWNER)).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
+		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 	});
 });

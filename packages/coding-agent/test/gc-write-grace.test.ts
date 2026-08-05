@@ -155,16 +155,48 @@ describe("the lock breaker's own window", () => {
 	 * how long GC waits before breaking another run's lock -- that would turn a thorough sweep into two
 	 * GC runs deleting each other's candidates.
 	 *
-	 * Asserted on the source, because reaching the breaker needs a live lock from another process. The
-	 * shape is what matters: the breaker names its own constant and the grace names none.
+	 * This does NOT need a second process. `shouldBreakGcLock` only consults the PID line when it parses
+	 * as one; a lock whose first line is not a PID falls through to the timestamp branch, which is the
+	 * branch the shared constant used to live in. So the window is driven by writing a lock file of a
+	 * chosen age and observing whether the run takes it over or refuses.
 	 */
-	it("is a separate constant from the write grace", async () => {
-		const source = await Bun.file(path.join(import.meta.dir, "../src/cli/gc-cli.ts")).text();
+	/** A held `gc.lock` of a chosen age, with no PID, so staleness is decided by the timestamp. */
+	async function seedGcLock(agentDir: string, ageMs: number): Promise<void> {
+		const created = new Date(Date.now() - ageMs).toISOString();
+		await fs.writeFile(path.join(agentDir, "gc.lock"), `unknown\n${created}\n`);
+	}
 
-		expect(source).toContain("const GC_LOCK_STALE_MS");
-		expect(source).toContain("ageFromMs > GC_LOCK_STALE_MS");
-		// And the grace is read from the resolved options, never from a module constant.
-		expect(source).toContain("Date.now() - options.writeGraceMs");
-		expect(source).not.toContain("Date.now() - GC_WRITE_GRACE_MS");
+	/**
+	 * The load-bearing direction. Two minutes is comfortably STALE by the one-minute grace and
+	 * comfortably FRESH by the five-minute lock window, so the two constants disagree here and the
+	 * refusal is what says which one the breaker consulted. Sharing the constant again makes this green
+	 * on the wrong branch: the lock gets stolen and the sweep runs.
+	 */
+	it("keeps a two-minute-old lock even when the write grace is one minute", async () => {
+		const { agentDir } = await agentDirWithBlobs(1, 10 * MINUTE_MS);
+		await seedGcLock(agentDir, 2 * MINUTE_MS);
+
+		await expect(sweep(agentDir, 1)).rejects.toThrow(/GC already running/);
+	});
+
+	/**
+	 * The control. Without it the case above would also pass if GC had simply stopped breaking locks at
+	 * all, which is a different bug with the same symptom.
+	 */
+	it("still breaks a lock older than its own five-minute window", async () => {
+		const { agentDir } = await agentDirWithBlobs(1, 10 * MINUTE_MS);
+		await seedGcLock(agentDir, 6 * MINUTE_MS);
+
+		expect((await sweep(agentDir, 1)).blobs?.wouldDelete).toBe(1);
+	});
+
+	/** And the independence holds in the other direction: a long grace does not protect a stale lock. */
+	it("breaks that same lock under a sixty-minute write grace", async () => {
+		const { agentDir } = await agentDirWithBlobs(1, 10 * MINUTE_MS);
+		await seedGcLock(agentDir, 6 * MINUTE_MS);
+
+		// The grace is long enough to keep the blob, which proves the grace really is 60 minutes here;
+		// the lock was still taken over, which is the point.
+		expect((await sweep(agentDir, 60)).blobs?.wouldDelete).toBe(0);
 	});
 });

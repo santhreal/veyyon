@@ -22,6 +22,7 @@
 
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import {
 	PERPLEXITY_HEADERS,
 	PERPLEXITY_NATIVE_APP_API_VERSION,
@@ -182,8 +183,9 @@ describe("the Perplexity client identity has one owner", () => {
 	/** The owner is a leaf, so either package pays one module for the identity. */
 	it("imports nothing", async () => {
 		const owner = await Bun.file(path.resolve(import.meta.dir, "../src/wire/perplexity.ts")).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
+		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 	});
 });
 

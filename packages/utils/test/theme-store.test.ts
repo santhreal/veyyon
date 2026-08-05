@@ -18,6 +18,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { moduleSpecifiersIn } from "../src/module-reach";
 import { createThemeStore, type SystemTheme, type ThemeEnvironment } from "../src/theme-store";
 
 interface FakeEnvironment extends ThemeEnvironment {
@@ -303,20 +304,21 @@ describe("the two browser bundles", () => {
 	 * The lock. Both had the whole store, ~90 lines each, differing only in a storage key and
 	 * in the storage guard that was the bug. What stays local is the React binding, because
 	 * `@veyyon/utils` carries no UI dependency, and the storage key, which is per app.
+	 *
+	 * Asserted as the parsed import EDGE. The consumers are React modules in other packages, so
+	 * importing them here to compare function identity would pull a UI dependency into this
+	 * package's tests; the edge is what is checkable from here. What this deliberately no longer
+	 * does is scan for the absence of `function applyResolvedTheme(`, `localStorage.getItem` and
+	 * four more literals: a private copy named `applyTheme` satisfied every one of them, while a
+	 * consumer legitimately calling `addEventListener` for anything else turned them red. The edge
+	 * is the claim the title actually makes.
 	 */
 	it("bind the shared store instead of defining their own", async () => {
 		const packages = path("../..");
 		for (const file of ["collab-web/src/lib/theme.ts", "stats/src/client/useSystemTheme.ts"]) {
 			const text = await Bun.file(`${packages}/${file}`).text();
 
-			expect(text).toContain('createThemeStore({ storageKey: "veyyon-');
-			expect(text).toContain('from "@veyyon/utils/theme-store"');
-			expect(text).not.toContain("function applyResolvedTheme(");
-			expect(text).not.toContain("function readStoredPreference(");
-			expect(text).not.toContain("function getSystemTheme(");
-			expect(text).not.toContain("addEventListener");
-			expect(text).not.toContain("localStorage.getItem");
-			expect(text).not.toContain("localStorage.setItem");
+			expect(moduleSpecifiersIn(text), file).toContain("@veyyon/utils/theme-store");
 		}
 	});
 });

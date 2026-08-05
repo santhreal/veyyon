@@ -27,6 +27,7 @@ import {
 	isReservedAskOptionLabel,
 	RESERVED_ASK_OPTION_LABELS,
 } from "@veyyon/coding-agent/tools/ask-option-labels";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
 const OWNER_REL = "tools/ask-option-labels.ts";
@@ -206,7 +207,8 @@ describe("the ask option labels have one owner", () => {
 	 */
 	it("imports nothing", async () => {
 		const owner = await Bun.file(path.join(SRC, OWNER_REL)).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
+		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 	});
 });

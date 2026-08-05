@@ -31,7 +31,8 @@
     "test": "bun test --parallel"
   },
   "devDependencies": {
-    "@types/bun": "catalog:"
+    "@types/bun": "catalog:",
+    "@veyyon/utils": "catalog:"
   },
   "engines": {
     "bun": ">=1.3.14"

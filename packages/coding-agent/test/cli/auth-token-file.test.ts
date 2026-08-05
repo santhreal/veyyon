@@ -22,7 +22,7 @@
  * (`Bearer $(veyyon auth-gateway token)`), so an extra character in it breaks a request far from here.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -116,17 +116,34 @@ describe("creating the token file", () => {
 	/**
 	 * The mode has to arrive IN the create call, not in a `chmod` after it.
 	 *
-	 * This one is asserted on the source, and deliberately: the window it closes is unobservable once the
-	 * call returns, because the following `chmod` narrows the file either way and a finished-state check
-	 * reads `600` in both worlds. The broker's version wrote with `Bun.write` (mode `0644`) and chmod'd
-	 * afterwards, so the token existed world-readable for the length of one syscall, and on Windows, where
-	 * `chmod` does nothing, permanently. Only the shape of the call distinguishes the two.
+	 * The window this closes is unobservable in the finished state: the following `chmod` narrows the
+	 * file either way, so a `stat` after the call reads `600` in both worlds. The broker's version wrote
+	 * with `Bun.write` (mode `0644`) and chmod'd afterwards, so the token existed world-readable for the
+	 * length of one syscall, and on Windows, where `chmod` does nothing, permanently.
+	 *
+	 * So the assertion is on the CALL, watched at the `node:fs/promises` seam the module actually uses,
+	 * rather than on the characters of the source. A rename, a reflow, or a moved comment changes
+	 * nothing here; switching to `Bun.write`, or dropping `mode` from the options, is red immediately,
+	 * because then no `writeFile` carrying both flags ever reaches the seam.
 	 */
 	it("asks for the restricted mode in the same call that creates the file", async () => {
-		const source = await Bun.file(path.join(import.meta.dir, "../../src/cli/auth-token-file.ts")).text();
+		const calls: Array<{ target: string; options: unknown }> = [];
+		const realWriteFile = fs.writeFile;
+		const spy = spyOn(fs, "writeFile").mockImplementation((async (target, data, options) => {
+			calls.push({ target: String(target), options });
+			return await Reflect.apply(realWriteFile, fs, [target, data, options]);
+		}) as typeof fs.writeFile);
+		try {
+			expect(await file.createExclusive("tok-mode")).toBe(true);
+		} finally {
+			spy.mockRestore();
+		}
 
-		expect(source).toContain('await fs.writeFile(file, token, { flag: "wx", mode: 0o600 });');
-		expect(source).not.toContain("Bun.write(file");
+		const create = calls.find(call => call.target === file.path());
+		// `wx` is the no-clobber half and `0o600` is the never-briefly-wider half; both must ride the
+		// same call, so they are asserted as one object rather than as two independent facts.
+		expect(create?.options).toEqual({ flag: "wx", mode: 0o600 });
+		expect(await modeOf(file.path())).toBe("600");
 	});
 
 	/** THE concurrency property: an existing file is reported, never truncated. */
