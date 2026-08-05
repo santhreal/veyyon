@@ -1,4 +1,5 @@
 /** Tools domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
+import { DEFAULT_APPROVAL_MODE } from "../../tools/approval-modes";
 import { DEFAULT_INLINE_FLOOR_FRACTION } from "./shared";
 
 export const TOOLS_SETTINGS = {
@@ -39,46 +40,58 @@ export const TOOLS_SETTINGS = {
 	},
 
 	// Default tool approval mode (interaction tab, but governs the tool wrapper).
-	// Autonomy ladder (src/tools/approval.ts normalizeApprovalMode):
-	//   "plan"      — read-tier only; plan-mode session semantics.
-	//   "ask"       — auto-approves read-tier tools only; prompts for write/exec.
-	//   "auto-edit" — auto-approves read and write-tier tools; prompts for exec.
-	//   "yolo"      — auto-approves every tier.
-	// Legacy names "always-ask" (= ask) and "write" (= auto-edit) stay accepted
-	// for stored configs and the CLI, but the UI offers the ladder names.
+	// The rungs and what each one still stops for live in
+	// `src/tools/approval-modes.ts`; `normalizeApprovalMode` maps the legacy
+	// names ("always-ask" = ask, "write"/"auto-edit" = ask-command), which stay
+	// accepted from stored configs and the CLI but are not offered in the UI.
 	"tools.approvalMode": {
 		type: "enum",
-		values: ["plan", "ask", "auto-edit", "yolo", "always-ask", "write"] as const,
-		default: "yolo",
+		values: ["plan", "ask", "ask-command", "auto", "yolo", "always-ask", "write", "auto-edit"] as const,
+		// `DEFAULT_APPROVAL_MODE` is the single place the unset default is
+		// decided; `normalizeApprovalMode`, `resolveEffectiveApprovalMode` and the
+		// tool wrapper all read the same constant rather than spelling a fallback
+		// of their own. It is `auto`: every tier runs out of the box, but the
+		// guards stay on, so per-tool policies, the working-directory boundary,
+		// credential use, and a tool's own critical calls still stop and ask. An
+		// operator who wants a stricter or looser rung says so once, in
+		// onboarding, in `/settings`, or per session with `/permissions`, and the
+		// status line then says which of those is in force.
+		default: DEFAULT_APPROVAL_MODE,
 		ui: {
 			tab: "interaction",
 			group: "Approvals",
 			label: "Tool Approval",
 			description:
-				"Default approval behavior for tool calls. 'Ask' auto-approves read-only tools only. 'Auto-edit' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block.",
+				"How much the agent may do without asking. Defaults to Auto: every tier runs, with the per-tool policies, working-directory boundary, credential and critical-call guards still asking. This is the persisted default; override it for one session with /permissions.",
 			options: [
 				{
-					value: "plan",
-					label: "Plan",
-					description:
-						"Read-only planning: auto-approve read tools; write asks only inside an active plan-mode session, exec is blocked.",
-				},
-				{
 					value: "ask",
-					label: "Ask",
-					description: "Auto-approve read-only tools; require confirmation for write and exec tools.",
+					label: "Ask everything",
+					description: "Every tool call asks first, reads included.",
 				},
 				{
-					value: "auto-edit",
-					label: "Auto-edit",
+					value: "ask-command",
+					label: "Ask commands only",
 					description:
-						"Auto-approve read-only and write tools; require confirmation for exec tools such as bash, eval, browser, task, and ssh.",
+						"Reads and workspace edits run unasked; anything that executes (bash, eval, browser, task, ssh) asks.",
+				},
+				{
+					value: "auto",
+					label: "Auto",
+					description:
+						"Every tier runs unasked, with the guards on: per-tool policies, the working-directory boundary, credential use, and a tool's own critical calls still ask.",
 				},
 				{
 					value: "yolo",
 					label: "Yolo",
 					description:
-						"Auto-approve read, write, and exec tools. User policy can still require confirmation or block calls.",
+						"No prompts. Only blatantly destructive commands (rm -rf / and its expansions) and an explicit deny policy still stop a call.",
+				},
+				{
+					value: "plan",
+					label: "Plan",
+					description:
+						"Read-only planning: reads run, writes ask only inside an active plan-mode session, execution is blocked.",
 				},
 			],
 		},
@@ -103,7 +116,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Todos",
 			label: "Todo Reminders",
-			description: "Remind the agent to complete todos before stopping",
+			description: "Prompt continued execution when unfinished todos remain",
 		},
 	},
 
@@ -114,7 +127,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Todos",
 			label: "Todo Reminder Limit",
-			description: "Maximum number of todo reminders before giving up",
+			description: "Maximum distinct todo-state reminders before reminders stay silent",
 			options: [
 				{ value: "1", label: "1 reminder" },
 				{ value: "2", label: "2 reminders" },
@@ -370,7 +383,7 @@ export const TOOLS_SETTINGS = {
 			group: "GitHub",
 			label: "GitHub View Cache",
 			description:
-				"Cache rendered issue/PR view output in ~/.veyyon/cache/github-cache.db so repeated reads are free",
+				"Cache rendered issue/PR view output in the active profile's `cache/github-cache.db` so repeated reads are free",
 		},
 	},
 
@@ -378,6 +391,7 @@ export const TOOLS_SETTINGS = {
 		type: "number",
 		default: 300,
 		ui: {
+			min: 0, // a TTL cannot be negative
 			tab: "tools",
 			group: "GitHub",
 			label: "GitHub Cache Soft TTL",
@@ -390,6 +404,7 @@ export const TOOLS_SETTINGS = {
 		type: "number",
 		default: 604800,
 		ui: {
+			min: 0, // a TTL cannot be negative
 			tab: "tools",
 			group: "GitHub",
 			label: "GitHub Cache Hard TTL",
@@ -678,6 +693,7 @@ export const TOOLS_SETTINGS = {
 		type: "number",
 		default: 500,
 		ui: {
+			min: 0, // a debounce cannot be negative
 			tab: "tools",
 			group: "Discovery & MCP",
 			label: "MCP Notification Debounce",

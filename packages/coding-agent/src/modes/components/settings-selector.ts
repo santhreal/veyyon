@@ -57,7 +57,7 @@ import type {
 	StatusLineSeparatorStyle,
 	SubmenuOption,
 } from "../../config/settings-schema";
-import { isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
+import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
@@ -105,6 +105,51 @@ import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings"
 import { RollbackPanelComponent } from "./rollback-panel";
 import { DEFAULT_MODEL_SETTING_ID, getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
 import { getPreset } from "./status-line/presets";
+
+/**
+ * A decimal number and nothing else. Deliberately narrower than `Number()`, which
+ * accepts `0x10` as 16, `1e400` as Infinity, ` 5 ` after trimming and `""` as zero.
+ * Every one of those is a value the operator did not mean to type into a retry delay.
+ */
+const DECIMAL_NUMBER = /^-?\d+(?:\.\d+)?$/;
+
+/** An empty box clears the setting, which for a number means the default comes back. */
+export const UNSET_NUMBER_INPUT = "unset";
+
+/**
+ * What a typed number does to the setting: store this value, clear it, or refuse.
+ *
+ * A text input hands back a string and these settings are numbers with meaning: retry
+ * delays, cache TTLs, a concurrency cap, line thresholds. The write path used to do
+ * `Number(value)` and store the result, so `"abc"` became NaN and `""` became 0. A
+ * threshold that quietly becomes zero is worse than a row the operator could not see,
+ * because the invisible row was at least honest about being absent. So an unreadable
+ * value is refused where it was typed: the thrown message renders in red under the
+ * input and the submenu stays open, rather than closing over a stored surprise.
+ *
+ * An empty box is the one string that is not a refusal. The input's own footer says
+ * "Clear field to unset", and for a number the honest reading of that is to remove the
+ * key so the schema default applies again. Storing 0 for it would be the exact silent
+ * coercion this function exists to stop.
+ *
+ * Bounds come from the schema (`ui.min` / `ui.max`) and nowhere else. A setting that
+ * declares none accepts any decimal: the job is to enforce what was written down, not
+ * to invent a range at the input and refuse a value that was legal. Today every bound
+ * in the schema is a `min`; no number setting declares a `max`.
+ *
+ * Exported because it IS the contract. Left private it could only be tested by driving
+ * the whole selector, which is how "`Number(value)` and hope" survived this long.
+ */
+export function parseNumberSetting(path: SettingPath, text: string): number | typeof UNSET_NUMBER_INPUT {
+	if (text.trim() === "") return UNSET_NUMBER_INPUT;
+	if (!DECIMAL_NUMBER.test(text)) throw new Error(`"${text}" is not a number. Type digits only, for example 250.`);
+	const parsed = Number(text);
+	if (!Number.isFinite(parsed)) throw new Error(`"${text}" is too large to store.`);
+	const ui = getUi(path);
+	if (ui?.min !== undefined && parsed < ui.min) throw new Error(`Must be at least ${ui.min}.`);
+	if (ui?.max !== undefined && parsed > ui.max) throw new Error(`Must be at most ${ui.max}.`);
+	return parsed;
+}
 
 /**
  * A submenu component for selecting from a list of options.
@@ -1517,8 +1562,8 @@ class DefaultModelSubmenu extends Container {
  * Models with no supported efforts skip the second step and store the bare
  * selector.
  *
- * Persisted as ONE comma-separated string, because that is what these settings
- * are schema-typed as, and it is the encoding every reader has always accepted.
+ * Persisted as a string array so the ordered choices survive YAML save/reload
+ * without being reparsed from a display-oriented comma string.
  */
 export class ModelChainSubmenu extends Container {
 	#selectList: SelectList | undefined;
@@ -1529,9 +1574,9 @@ export class ModelChainSubmenu extends Container {
 		private readonly registry: ModelRegistry,
 		private readonly models: ReadonlyArray<Model>,
 		private readonly title: string,
-		current: string | undefined,
+		current: string | string[] | undefined,
 		private readonly done: (value?: string) => void,
-		private readonly onChange: (value: string | undefined) => void,
+		private readonly onChange: (value: string[] | undefined) => void,
 		private readonly requestRender?: () => void,
 	) {
 		super();
@@ -1566,7 +1611,7 @@ export class ModelChainSubmenu extends Container {
 			else this.#showModelPicker(Number(item.value.slice(CHAIN_ENTRY_PREFIX.length)));
 			this.requestRender?.();
 		};
-		this.#selectList.onCancel = () => this.done(this.#chain[0]);
+		this.#selectList.onCancel = () => this.done(this.#chain.join(","));
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("dim", "  Enter edits · Del removes · Esc to go back"), 0, 0));
@@ -1665,15 +1710,15 @@ export class ModelChainSubmenu extends Container {
 
 	#clear(): void {
 		this.#chain = [];
-		settings.set(this.path, undefined as never);
+		settings.unset(this.path);
 		this.onChange(undefined);
 		this.done("inherit");
 	}
 
 	#persistChain(): void {
-		const value = this.#chain.join(",");
-		settings.set(this.path, (value === "" ? undefined : value) as never);
-		this.onChange(value === "" ? undefined : value);
+		const value = [...this.#chain];
+		settings.set(this.path, (value.length === 0 ? undefined : value) as never);
+		this.onChange(value.length === 0 ? undefined : value);
 		this.#showChain();
 		this.requestRender?.();
 	}
@@ -2489,10 +2534,15 @@ export class SettingsSelectorComponent implements Component {
 		const source = settings.getSource(def.path);
 		if (source !== "project" && source !== "config-file" && source !== "runtime") return searchable;
 		const sourceLabel = SETTING_SOURCE_LABELS[source];
+		// The composite is built from the LABELLED value, and the labeller is dropped with
+		// it: once the value is wrapped in "<source> · ...", no option can match it, so a
+		// mapper carried along here would silently fall back and print the stored number.
+		const shownValue = searchable.labelForValue?.(searchable.currentValue) ?? searchable.currentValue;
 		return {
 			...searchable,
 			readOnly: true,
-			currentValue: `${sourceLabel} · ${searchable.currentValue}`,
+			currentValue: `${sourceLabel} · ${shownValue}`,
+			labelForValue: undefined,
 			description: `${searchable.description ?? def.label}. Effective value comes from ${sourceLabel}; this profile control is read-only.`,
 			values: undefined,
 			submenu: undefined,
@@ -2539,6 +2589,9 @@ export class SettingsSelectorComponent implements Component {
 					label: def.label,
 					description: def.description,
 					currentValue: this.#getSubmenuCurrentValue(def.path, currentValue),
+					// The stored value is often not the readable one: a duration setting keeps
+					// milliseconds, and the option list is where the words for them live.
+					labelForValue: value => def.options.find(option => option.value === value)?.label ?? value,
 					submenu: (cv, done) => this.#createSubmenu(def, cv, done),
 					changed,
 				};
@@ -2884,11 +2937,12 @@ export class SettingsSelectorComponent implements Component {
 		// `SettingValue<SettingPath>` collapses to never for the full path union;
 		// widen and narrow by runtime type instead.
 		const current: unknown = settings.get(path);
-		// The RAW value, not a bare selector: this slot holds an ordered chain and
-		// `barePickerSelector` collapses it to its first entry, which is how the
-		// picker used to silently drop every fallback the user had configured.
-		const rawCurrent =
-			typeof current === "string" ? current.trim() : Array.isArray(current) ? current.join(",") : undefined;
+		let rawCurrent: string | string[] | undefined;
+		if (typeof current === "string") {
+			rawCurrent = current;
+		} else if (Array.isArray(current) && current.every(value => typeof value === "string")) {
+			rawCurrent = current;
+		}
 		const label =
 			path === "subagent.model" ? "Subagent Model" : path === "compaction.model" ? "Compaction Model" : String(path);
 		return new ModelChainSubmenu(
@@ -2896,7 +2950,7 @@ export class SettingsSelectorComponent implements Component {
 			ctx.registry,
 			ctx.models,
 			label,
-			rawCurrent || undefined,
+			rawCurrent,
 			done,
 			value => this.callbacks.onChange(path, value),
 			this.context.requestRender,
@@ -3122,8 +3176,16 @@ export class SettingsSelectorComponent implements Component {
 					.filter(entry => entry.length > 0);
 			}
 			settings.set(path, arr as never);
-		} else if (typeof currentValue === "number") {
-			settings.set(path, Number(value) as never);
+		} else if (schemaType === "number") {
+			// Keyed off the SCHEMA, not off `typeof currentValue`: an unset number reads
+			// back `undefined`, so the old check fell through to the final `else` and
+			// stored the raw STRING into a number setting.
+			// The RAW value, not a trimmed one: ` 5` is a typo, and a control that silently
+			// repairs input is a control that silently accepts the next thing it should
+			// have refused. `parseNumberSetting` owns every case, including the empty box.
+			const next = parseNumberSetting(path, value);
+			if (next === UNSET_NUMBER_INPUT) settings.unset(path);
+			else settings.set(path, next as never);
 		} else if (typeof currentValue === "boolean") {
 			settings.set(path, (value === "true") as never);
 		} else {

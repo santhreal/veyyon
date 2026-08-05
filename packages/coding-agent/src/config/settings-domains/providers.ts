@@ -50,7 +50,8 @@ export const PROVIDERS_SETTINGS = {
 			tab: "providers",
 			group: "Privacy",
 			label: "Hide Secrets",
-			description: "Obfuscate secrets before sending to AI providers. /secret add turns this on for you",
+			description:
+				"Obfuscate secrets before sending to AI providers. Storing a credential with /secret turns this on for you",
 		},
 	},
 
@@ -73,7 +74,8 @@ export const PROVIDERS_SETTINGS = {
 			tab: "providers",
 			group: "Privacy",
 			label: "Secret Lifetime",
-			description: 'How long a /secret lasts by default: 30m, 12h, 7d, 2w, or "never"',
+			description:
+				'How long a /secret lasts when the command does not say. Default 1d; also accepts forms like 30m, 12h, 7d, 2w, or "never"',
 		},
 	},
 
@@ -107,7 +109,7 @@ export const PROVIDERS_SETTINGS = {
 			group: "Discovery",
 			label: "Import Other Tools' Config",
 			description:
-				"Auto-discover skills, context files (CLAUDE.md/AGENTS.md), rules, and MCP servers authored for other AI tools (Claude, Codex, Gemini, Cursor, opencode, and more) found on disk. Off by default: veyyon runs on its own instruction layers only (the system prompt, the global ~/.veyyon/AGENTS.md, and the active profile's AGENTS.md) and never ambiently picks up a foreign CLAUDE.md/GEMINI.md. Turn on to import them as a base layer.",
+				"Auto-discover skills, context files, rules, and MCP servers authored for other AI tools (Claude, Codex, Gemini, Cursor, opencode, and more) found on disk. Off by default: veyyon runs on its own instruction layers only (the system prompt, the global ~/.veyyon/AGENTS.md, the active profile's AGENTS.md, and the project's own AGENTS.md/CLAUDE.md walked from the repo root down to cwd), and never ambiently picks up a foreign tool's own config directory, GEMINI.md, or the skills, rules and MCP servers those tools define. Turn on to import them as a base layer.",
 		},
 	},
 
@@ -116,6 +118,7 @@ export const PROVIDERS_SETTINGS = {
 		type: "number",
 		default: 3,
 		ui: {
+			min: 0, // 0 is documented as 'no provider-specific limit', so zero is legal and negative is not
 			tab: "providers",
 			group: "Services",
 			label: "Ollama Cloud Max Concurrency",
@@ -572,6 +575,7 @@ export const PROVIDERS_SETTINGS = {
 		type: "number",
 		default: 60,
 		ui: {
+			min: 0, // a duration cannot be negative
 			tab: "providers",
 			group: "Services",
 			label: "Codex Auto-Redeem Min Block",
@@ -583,6 +587,7 @@ export const PROVIDERS_SETTINGS = {
 		type: "number",
 		default: 0,
 		ui: {
+			min: 0, // a credit reserve cannot be negative
 			tab: "providers",
 			group: "Services",
 			label: "Codex Auto-Redeem Reserve",
@@ -629,6 +634,7 @@ export const PROVIDERS_SETTINGS = {
 		type: "number",
 		default: 1_000,
 		ui: {
+			min: 0, // a delay cannot be negative
 			tab: "providers",
 			group: "Services",
 			label: "Exa Search Delay",

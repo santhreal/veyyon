@@ -47,7 +47,7 @@ veyyon config get compaction.threshold
 | `tui.hyperlinks` | Terminal Hyperlinks | enum | `auto` | Wrap paths and URLs in OSC 8 hyperlinks for terminal-native click-to-open (auto: detect support; off: never; always: unconditional). Values: `off`, `auto`, `always`. |
 | `tui.paintGround` | Paint Theme Ground | enum | `auto` | Set the terminal background (OSC 11) to the theme's ground color while Veyyon runs, restoring it on exit (auto: only when the terminal background already matches the theme so no seam appears; always: unconditional; never: inherit the terminal background). Values: `auto`, `always`, `never`. |
 | `tui.tight` | Tight Layout | boolean | `false` | Remove the 1-character horizontal padding from the left and right of the terminal output. Shown under the tab's Advanced fold. |
-| `tui.scrollbackRebuild` | Rewrite Scrollback | boolean | `false` | Erase and replay terminal scrollback when a block's final form replaces its live preview. When off (default), stale preview copies remain in history and the final content is appended below. Shown under the tab's Advanced fold. |
+| `tui.scrollbackRebuild` | Rewrite Scrollback | boolean | `true` | Erase and replay terminal scrollback when a block's final form replaces its live preview. On by default: with it off, the stale preview stays in history and the final content is appended underneath, so the same paragraph appears twice. Terminal multiplexers keep the append-below behaviour either way, because erasing there would take the pane's own history with it. Shown under the tab's Advanced fold. |
 | `tui.scrollIsolation` | Scroll Isolation | boolean | `false` | Read the mouse wheel so the transcript scrolls with the prompt pinned at the bottom, showing the position on the right edge. This costs you drag-select: while it is on, veyyon holds the mouse, so plain dragging selects nothing and you need shift+drag, or `/copy` to pick text and code out of the conversation without the mouse. When off (default), the terminal keeps the wheel and the mouse, so native scrollback, drag-select and copy all behave exactly as they do in any other program, and the prompt still sits at the bottom of the live view. Shown under the tab's Advanced fold. |
 | `display.transitions` | Transitions | enum | `on` | Structural motion: overlay open transitions and the welcome bloom. Values: `on`, `off`. |
 | `display.shimmer` | Shimmer | enum | `disabled` | Animation style for working/loading messages. Values: `classic`, `kitt`, `living`, `disabled`. |
@@ -64,9 +64,9 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `display.collapseCompacted` | Collapse Compacted History | boolean | `true` | Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point. |
-| `compaction.strategy` | Compaction Type | enum | `summary` | Summary condenses history in place and continues the same session; Handoff generates a session transfer and continues in a new session. Values: `handoff`, `summary`. |
+| `compaction.strategy` | Compaction Type | enum | `summary` | Summary condenses history in place and continues the same session. Values: `summary`. |
 | `compaction.threshold` | Auto-Compaction Threshold | string | `auto` | When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model. |
-| `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used for LLM compaction / handoff, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small. |
+| `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small. |
 | `compaction.modelFallbackStrategy` | Compaction Fallback | enum | `auto` | What to try after the compaction models you configured. Auto also tries the main model, your model roles, and the largest-window model available. Configured only stops there and fails loudly. Values: `auto`, `configured-only`. |
 | `compaction.modelContextWindow` | Compaction Model Context | number | _(unset)_ | Context window in tokens to assume for the compaction model. Unset uses the compaction model's own reported window. Candidates whose window cannot fit the summarization payload are skipped loudly. |
 
@@ -126,6 +126,7 @@ veyyon config get compaction.threshold
 | `retry.maxDelayMs` | Max Retry Delay | number | `300000` | Maximum wait between retries, in ms. When the provider asks us to wait longer than this and no credential or model fallback succeeds, the request fails fast instead of sleeping (e.g. 3-hour Anthropic rate-limit windows). |
 | `retry.modelFallback` | Retry Model Fallback | boolean | `true` | Allow retry recovery to switch to configured fallback models. |
 | `retry.fallbackChains` | Retry Fallback Chains | record | `{}` | JSON object mapping model roles, model selectors ("provider/model-id"), or provider wildcards ("provider/*") to ordered fallback selectors, e.g. {"default":["openai/gpt-4o-mini"],"google-antigravity/*":["google/*","google-vertex/*"]}. Model-oriented keys apply whenever that model/provider is active, regardless of role; a "provider/*" entry keeps the failing model's id and swaps the provider. |
+| `retry.perProvider` | Per-Provider Retry | record | `{}` | JSON object overriding retry limits for specific backends, keyed like Retry Fallback Chains: a model selector ("provider/model-id"), a provider wildcard ("provider/*"), or a bare provider name. Each value may set maxRetries, baseDelayMs, and maxDelayMs; anything omitted falls back to the global retry settings. Example: {"cursor":{"maxRetries":3,"baseDelayMs":2000}}. Backends whose retries are intrinsically expensive (cursor, devin) already ship with sensible limits; an entry here overrides those. |
 | `retry.fallbackRevertPolicy` | Fallback Revert Policy | enum | `cooldown-expiry` | When to return to the primary model after a fallback. Values: `cooldown-expiry`, `never`. |
 | `providers.anthropic.serverSideFallback` | Anthropic Server-Side Fallback (Fable 5) | boolean | `false` | When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic's safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic `server-side-fallback-2026-06-01` beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request. |
 
@@ -172,7 +173,7 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `tools.approval` | Tool Approval Policies | record | `{}` | Per-tool approval policies. Set to 'allow' to auto-approve, 'prompt' to require confirmation, or 'deny' to block. Overrides are honored in every approval mode. |
 | `tools.protectedPaths` | Extra Protected Paths | array | `[]` | Additional absolute paths (a leading ~ is expanded) that a recursive delete must never target without approval. Adds to the built-in set; it cannot remove from it. |
-| `tools.approvalMode` | Tool Approval | enum | `yolo` | Default approval behavior for tool calls. 'Ask' auto-approves read-only tools only. 'Auto-edit' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block. Values: `plan`, `ask`, `auto-edit`, `yolo`, `always-ask`, `write`. |
+| `tools.approvalMode` | Tool Approval | enum | `auto` | How much the agent may do without asking. Defaults to Auto: every tier runs, with the per-tool policies, working-directory boundary, credential and critical-call guards still asking. This is the persisted default; override it for one session with /permissions. Values: `plan`, `ask`, `ask-command`, `auto`, `yolo`, `always-ask`, `write`, `auto-edit`. |
 
 ### Notifications
 
@@ -276,6 +277,13 @@ veyyon config get compaction.threshold
 | `ttsr.builtinRules` | Built-in Rules | boolean | `true` | Load the default rules shipped with the agent (override individually with ttsr.disabledRules). |
 | `ttsr.disabledRules` | Disabled Rules | array | `[]` | Rule names to ignore entirely (applies to bundled defaults and your own rules). |
 
+### Prompt cache
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `cache.reportRejection` | Report Cache Rejections | boolean | `true` | Warn when a turn asked the provider to cache a prefix and the provider cached nothing. |
+| `cache.blockOnRejection` | Block On Cache Rejection | boolean | `false` | Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money. |
+
 ### Session instrumentation
 
 | Key | Setting | Type | Default | What it does |
@@ -318,7 +326,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `hindsight.apiUrl` | Hindsight API URL | string | `http://localhost:8888` | Hindsight server URL (Cloud or self-hosted). |
-| `hindsight.bankId` | Hindsight Bank ID | string | _(unset)_ | Memory bank identifier (default: project name). |
+| `hindsight.bankId` | Hindsight Bank ID | string | _(unset)_ | Base memory bank name. Unset uses `veyyon`. Hindsight Bank Prefix is prepended when set, and Hindsight Scoping decides whether the project name is appended (per-project) or carried as a `project:` tag instead (per-project-tagged). |
 | `hindsight.scoping` | Hindsight Scoping | enum | `per-project-tagged` | global = one shared bank; per-project = isolated bank per cwd; per-project-tagged = shared bank with project tags so global + project memories merge on recall. Values: `global`, `per-project`, `per-project-tagged`. |
 | `hindsight.autoRecall` | Hindsight Auto Recall | boolean | `true` | Recall memories on the first turn of each session. |
 | `hindsight.autoRetain` | Hindsight Auto Retain | boolean | `true` | Retain transcript every N turns and at session boundaries. |
@@ -427,8 +435,8 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `todo.reminders` | Todo Reminders | boolean | `true` | Remind the agent to complete todos before stopping. |
-| `todo.reminders.max` | Todo Reminder Limit | number | `3` | Maximum number of todo reminders before giving up. |
+| `todo.reminders` | Todo Reminders | boolean | `true` | Prompt continued execution when unfinished todos remain. |
+| `todo.reminders.max` | Todo Reminder Limit | number | `3` | Maximum distinct todo-state reminders before reminders stay silent. |
 | `todo.eager` | Create Todos Automatically | enum | `default` | How strongly to push automatic todo-list creation after the first message. Values: `default`, `preferred`, `always`. |
 | `tasks.todoClearDelay` | Todo Auto-Clear Delay | number | `60` | Delay before completed or abandoned todos are removed from the todo widget. |
 
@@ -446,7 +454,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `github.cache.enabled` | GitHub View Cache | boolean | `true` | Cache rendered issue/PR view output in ~/.veyyon/cache/github-cache.db so repeated reads are free. |
+| `github.cache.enabled` | GitHub View Cache | boolean | `true` | Cache rendered issue/PR view output in the active profile's `cache/github-cache.db` so repeated reads are free. |
 | `github.cache.softTtlSec` | GitHub Cache Soft TTL | number | `300` | Within this window, cached issue/PR view rows are returned directly (seconds; default 5 minutes). |
 | `github.cache.hardTtlSec` | GitHub Cache Hard TTL | number | `604800` | Past the soft TTL the cached row is returned and refreshed in the background; past the hard TTL it is dropped (seconds; default 7 days). |
 
@@ -500,6 +508,7 @@ veyyon config get compaction.threshold
 | `plan.enabled` | Plan Mode | boolean | `true` | Enable plan mode for read-only exploration and planning before execution. |
 | `plan.defaultOnStartup` | Start in Plan Mode | boolean | `false` | Automatically enter plan mode at the start of every new session. |
 | `goal.enabled` | Goal Mode | boolean | `true` | Enable per-session goal mode and the hidden goal tool. |
+| `goal.modelBudgetsEnabled` | Model Goal Budgets | boolean | `false` | Expose and enforce persisted per-goal token budgets for the model. This control is available only in Settings. |
 | `goal.statusInFooter` | Goal Progress Bar in Footer | boolean | `true` | Add a compact progress bar next to the goal token count in the status line. The token count is always shown; this controls the extra bar. |
 | `goal.continuationModes` | Goal Continuation Modes | array | `["interactive"]` | Run modes where active goals may auto-continue between turns. |
 | `title.refreshOnReplan` | Refresh Title on Replan | boolean | `true` | Refresh generated session titles after todo init replans unless the title was set by the user. |
@@ -545,10 +554,18 @@ veyyon config get compaction.threshold
 | `subagent.maxConcurrency` | Max Concurrent Subagents | number | `32` | Maximum number of subagents running concurrently. |
 | `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn. 0 still lets the parent session spawn direct subagents, but those children do not receive the task tool. Each agent can override this in the Agents editor. |
 | `subagent.maxRuntimeMs` | Max Subagent Runtime | number | `0` | Hard wall-clock limit per subagent (ms). 0 disables it. Defense-in-depth against provider-side stream hangs that escape the inference-layer watchdog; triggers a normal subagent abort with a 'timed out' reason. |
-| `subagent.idleTtlMs` | Idle TTL | number | `420000` | How long an idle subagent stays live in memory before being parked to disk (ms). Parked agents are revived automatically when messaged or resumed. 0 keeps idle agents live until exit. |
+| `subagent.idleTtlMs` | Idle TTL | number | `300000` | How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parked agents keep their transcript and revive automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. |
 | `subagent.softRequestBudget` | Soft Request Budget | number | `200` | Soft per-subagent request budget (assistant requests per run). Crossing it injects a wrap-up steering notice (see the notice setting below); at 1.5x the budget the run is force-stopped and the agent must yield its partial findings. 0 disables the guard. Bundled scout/sonic agents use a lower built-in budget. |
 | `subagent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop. |
 | `subagent.enableLsp` | LSP in Subagents | boolean | `false` | Allow spawned subagents to use the lsp tool. Off by default to keep subagents cheap; enable when LSP-aware delegation is worth the extra tokens. |
+
+### Auto Close
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `subagent.autoClose.enabled` | Close Parked Subagents | boolean | `true` | Close a parked subagent for good once it has been quiet long enough, instead of keeping it in the roster for the whole session. Parking already released the session; this decides whether the revivable reference is eventually dropped too. Turn it off to keep every finished subagent listed and revivable until you exit. |
+| `subagent.autoClose.parkedMs` | Close After | number | `300000` | How long a parked subagent stays listed and revivable before it is closed (ms). Counted from the moment it parked, not from when it started. Its transcript survives either way and stays readable through `history://`. |
+| `subagent.autoClose.waitingMs` | Close After (Waiting) | number | `1800000` | The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it gets a longer grace than one that simply went quiet: closing it on the ordinary timer would drop the agent you are most likely to message next. Set it equal to Close After to treat both the same. |
 
 ### Isolation
 
@@ -557,7 +574,7 @@ veyyon config get compaction.threshold
 | `subagent.isolation.mode` | Isolation Mode | enum | `none` | Isolation backend for subagents. "auto" lets the native PAL pick the best available backend (CoW-aware filesystems, then overlayfs/ProjFS, then a git worktree / recursive-copy fallback). Values: `none`, `auto`, `apfs`, `btrfs`, `zfs`, `reflink`, `overlayfs`, `projfs`, `block-clone`, `rcopy`. |
 | `subagent.isolation.merge` | Isolation Merge Strategy | enum | `patch` | How isolated subagent changes are integrated (patch apply or branch merge). Values: `patch`, `branch`. |
 | `subagent.isolation.commits` | Isolation Commit Style | enum | `generic` | Commit message style for nested repo changes (generic or AI-generated). Values: `generic`, `ai`. |
-| `worktree.base` | Worktree Base Directory | string | _(unset)_ | Base directory for agent-managed worktrees — subagent isolation copies, `github` PR checkouts, and `veyyon worktree` cleanup all live here. Unset uses ~/.veyyon/wt. Must be an absolute or ~-relative path; relative paths are ignored. The VEYYON_WORKTREE_DIR env var overrides this. |
+| `worktree.base` | Worktree Base Directory | string | _(unset)_ | Base directory for agent-managed worktrees: subagent isolation copies, `github` PR checkouts, and `veyyon worktree` cleanup all live here. Unset uses the active profile's `wt/` directory (~/.veyyon/profiles/<name>/wt, or its XDG data equivalent). Must be an absolute or ~-relative path; relative paths are ignored. The VEYYON_WORKTREE_DIR env var overrides this. |
 
 ### Coordination
 
@@ -600,7 +617,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `discovery.importForeignConfig` | Import Other Tools' Config | boolean | `false` | Auto-discover skills, context files (CLAUDE.md/AGENTS.md), rules, and MCP servers authored for other AI tools (Claude, Codex, Gemini, Cursor, opencode, and more) found on disk. Off by default: veyyon runs on its own instruction layers only (the system prompt, the global ~/.veyyon/AGENTS.md, and the active profile's AGENTS.md) and never ambiently picks up a foreign CLAUDE.md/GEMINI.md. Turn on to import them as a base layer. |
+| `discovery.importForeignConfig` | Import Other Tools' Config | boolean | `false` | Auto-discover skills, context files, rules, and MCP servers authored for other AI tools (Claude, Codex, Gemini, Cursor, opencode, and more) found on disk. Off by default: veyyon runs on its own instruction layers only (the system prompt, the global ~/.veyyon/AGENTS.md, the active profile's AGENTS.md, and the project's own AGENTS.md/CLAUDE.md walked from the repo root down to cwd), and never ambiently picks up a foreign tool's own config directory, GEMINI.md, or the skills, rules and MCP servers those tools define. Turn on to import them as a base layer. |
 
 ### Fireworks
 
@@ -639,7 +656,7 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `images.blockImages` | Block Images | boolean | `false` | Prevent images from being sent to LLM providers. |
 | `secrets.enabled` | Hide Secrets | boolean | `false` | Obfuscate secrets before sending to AI providers. Storing a credential with /secret turns this on for you. |
-| `secrets.defaultTtl` | Secret Lifetime | string | `1d` | How long a /secret lasts by default: 30m, 12h, 7d, 2w, or "never". |
+| `secrets.defaultTtl` | Secret Lifetime | string | `1d` | How long a /secret lasts when the command does not say. Default 1d; also accepts forms like 30m, 12h, 7d, 2w, or "never". |
 | `secrets.auditLog` | Record Secret Use | boolean | `true` | Append which secret was used in which command to the profile's log. Never records values. |
 
 ## Experimental
@@ -690,4 +707,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-331 settings.
+338 settings.
