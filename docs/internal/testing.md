@@ -501,13 +501,47 @@ across 405 call sites and 102 of them never removed anything, so a single full r
 over 1,700 directories. The largest were around 290 MB each: a CLI spawned with a fresh
 `HOME` stages the native addon into that home.
 
-### Layer one: every test child gets a disposable home
+### Layer one: every test process gets a disposable home
+
+There are two halves and you need both, because they cover different ways a suite gets
+started.
 
 `scripts/ci-test-ts.ts` spawns each test process with `HOME` pointing at a fresh
 temporary directory, and passes the real config root down in
-`VEYYON_TEST_REAL_CONFIG_ROOT`. Because config, credential, and session paths are
-all built from `os.homedir()`, a child started this way cannot name real data at
-all. This applies to the whole suite without any suite opting in.
+`VEYYON_TEST_REAL_CONFIG_ROOT`. That covers a full run.
+
+`packages/utils/test/helpers/sandbox-home.ts`, imported by the tripwire preload, does the
+same thing in-process for every other way a suite is started, above all the bare
+`bun test path/to/file` that is how most suites are actually run while working. It patches
+`os.homedir()` and `os.userInfo().homedir` on the object `require("node:os")` returns and
+sets `HOME` to a fresh per-process directory, before any test module is imported. Under
+the runner it adopts the runner's sandbox rather than minting a second one, so the shared
+native-addon staging and the runner's `/proc` ownership matching both keep working.
+
+The second half is not a nicety. A report-only fs probe, run per test file in its own
+process, measured 2,829 of 4,609 test files READING the operator's real home before it
+existed. 2,814 of them read `$HOME/.env`, which is where the API keys are. The cause was
+one defect, not thousands: `packages/utils/src/env.ts` parses the home, config-root, agent
+and project `.env` layers AT MODULE SCOPE, so importing the `@veyyon/utils` barrel
+anywhere loads the operator's secrets. After the redirect the same probe measures 2 files,
+both of them suites whose subject IS the real config root, both allowlisted in
+`scripts/tests-never-touch-real-home.test.ts` with a reason.
+
+Because config, credential, session and `.env` paths are all built from `os.homedir()`, a
+process started either way cannot name real data at all. This applies to the whole suite
+without any suite opting in.
+
+ONE RULE IF YOU TOUCH THAT PRELOAD: no module in its import graph may write
+`import * as os from "node:os"`. Bun materializes a builtin's ESM namespace for the whole
+graph before evaluating any of it and freezes it, so a single ESM import anywhere in the
+graph makes the `require`-side patch invisible and the redirect silently does nothing --
+`HOME` moves, `os.homedir()` does not. That is exactly what happened on the first attempt,
+through `temp-dir-janitor.ts`. Use `require("node:os")` there instead;
+`scripts/tests-never-touch-real-home.test.ts` walks the graph and fails when one reappears,
+and also asserts from inside a live test process that `os.homedir()` really has moved.
+
+A suite that genuinely needs the real home calls `enterRealHome()` from that helper and
+restores with `exitRealHome()`, and must be on the same gate's allowlist with a reason.
 
 ### Layer two: the tripwire refuses the write
 
