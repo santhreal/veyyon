@@ -79,12 +79,36 @@ describe("BashTool env set/unset adversarial", () => {
 		expect(textOf(result)).toContain("missing");
 	});
 
-	it("HOME is non-empty in the bash environment", async () => {
+	/**
+	 * THE BUG THIS LOCKS OUT: `bash` handing the shell a `HOME` that is not the one the
+	 * process resolved. Tools that shell out write caches, credentials and config under
+	 * `$HOME`, so a wrong value scatters state into the wrong tree, and an EMPTY one
+	 * makes `cd`, `~` expansion and every dotfile lookup resolve against `/`.
+	 *
+	 * WHY IT WAS REWRITTEN. The previous assertion was
+	 * `expect(textOf(result).trim().length).toBeGreaterThan(0)`, which cannot fail on
+	 * either half of that. A shell that printed a diagnostic, a wrong path, or any other
+	 * non-empty byte satisfied it, and the test's own name ("HOME is non-empty") was the
+	 * strongest thing it checked. It is also exactly the assertion that survives the
+	 * repo-wide test-home sandbox unchanged, which is the tell: it never read the value.
+	 *
+	 * IF IT REGRESSES: a bash tool call writes into a home directory nobody chose.
+	 */
+	it("gives the shell the same HOME the process resolved, not merely a non-empty one", async () => {
 		const tool = new BashTool(bashSession(tmpDir) as never);
 		const result = await tool.execute("e3", {
 			command: "printf '%s\\n' \"$HOME\"",
 			timeout: 15,
 		});
-		expect(textOf(result).trim().length).toBeGreaterThan(0);
+
+		// The resolved path, byte for byte, from the command's FIRST output line: the
+		// result also carries a wall-time footer, and comparing the whole blob would
+		// force a substring check, which is the weaker assertion this test is replacing.
+		// `os.homedir()` is what every other home-touching code path in the process
+		// reads, so equality here is the contract.
+		expect(textOf(result).trim().split("\n")[0]).toBe(os.homedir());
+		// And it is a real absolute path, so an `os.homedir()` that itself went empty
+		// cannot make the line above pass by comparing "" to "".
+		expect(path.isAbsolute(os.homedir())).toBe(true);
 	});
 });
