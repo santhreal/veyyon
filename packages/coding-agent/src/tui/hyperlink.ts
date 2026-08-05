@@ -166,14 +166,15 @@ export function tryResolveInternalUrlSync(input: string): string | undefined {
 		if (input.startsWith("memory://")) {
 			const url = parseInternalUrl(input);
 			const roots = memoryRootsFromRegistry();
-			for (const root of roots) {
-				try {
-					return resolveMemoryUrlToPath(url, root);
-				} catch {
-					// Try the next root; some sessions may not have this namespace mounted.
-				}
-			}
-			return undefined;
+			// Exactly one project, or no link. Trying roots in order and returning
+			// the first that parses offered to open another project's memory file
+			// under this conversation's link, and `resolveMemoryUrlToPath` is a pure
+			// path join, so the FIRST root always "succeeds" and the loop never
+			// reached a second. Two conversations in one project share a root and
+			// dedupe to one, so the ordinary case still links.
+			const only = roots.length === 1 ? roots[0] : undefined;
+			if (!only) return undefined;
+			return resolveMemoryUrlToPath(url, only);
 		}
 	} catch {
 		// Hyperlink targets come from rendered text, including text a model wrote, so a URL this cannot map to

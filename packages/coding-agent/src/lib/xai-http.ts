@@ -125,3 +125,33 @@ export async function resolveXAIHttpCredentials(
 
 	return null;
 }
+
+/**
+ * What to do when {@link resolveXAIHttpCredentials} returns `null`.
+ *
+ * ONE OWNER, because there were two copies and they drifted. `tools/image-gen.ts`
+ * and `tools/tts.ts` each carried the same sentence; image-gen's was corrected to
+ * name a reachable command and tts's was left saying `Run /login -> xAI Grok
+ * OAuth`, which is a TUI submenu path. `/login` carries no `textMode: true` in
+ * `slash-commands/builtin-declarations.ts`, so it is unreachable from an ACP
+ * client, a `--print` run, and the model.
+ *
+ * THE READER IS THE MODEL FIRST. Both call sites are tool failures, so the model
+ * reads this before any person does, and it can neither sign in nor open a menu.
+ * Without a stopping rule its options are to call the tool again with the same
+ * arguments or to abandon the task, so the rule is stated: a missing credential
+ * does not appear between two calls.
+ *
+ * The OAuth provider id is `xai-oauth` (`registry/oauth/xai-oauth.ts`). `xai` has
+ * no login flow and `veyyon auth-broker login xai` would be refused.
+ *
+ * @param what The capability that could not run, e.g. `speech cannot be synthesized`.
+ */
+export function missingXAICredentialsMessage(what: string): string {
+	return (
+		`No xAI credentials, so ${what}. ` +
+		"Fix: set XAI_API_KEY in the environment, or run `veyyon auth-broker login xai-oauth` to sign in with a " +
+		"SuperGrok or X Premium+ account (`/login` in an interactive veyyon session). " +
+		"Do not retry this tool until one of those is done; report the missing credential instead."
+	);
+}

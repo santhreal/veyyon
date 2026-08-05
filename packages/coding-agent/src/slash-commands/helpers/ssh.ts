@@ -15,8 +15,7 @@ interface ParsedSshAddArgs {
 
 type SshAddOptionParser = (parsed: ParsedSshAddArgs, value: string | undefined) => string | undefined;
 
-const SSH_ADD_USAGE =
-	"Usage: /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>]";
+const SSH_ADD_USAGE = "Usage: /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>]";
 
 const SSH_ADD_OPTION_PARSERS = new Map<string, SshAddOptionParser>([
 	[
