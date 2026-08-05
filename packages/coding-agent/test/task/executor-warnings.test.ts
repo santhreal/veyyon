@@ -3,7 +3,6 @@ import {
 	finalizeSubprocessOutput,
 	SUBAGENT_WARNING_MISSING_YIELD,
 	SUBAGENT_WARNING_NULL_YIELD,
-	SUBAGENT_WARNING_SCHEMA_OVERRIDDEN,
 } from "@veyyon/coding-agent/task/executor";
 
 describe("subagent warning injection", () => {
@@ -133,12 +132,10 @@ describe("subagent warning injection", () => {
 		expect(result.exitCode).toBe(0);
 	});
 
-	it("honors schemaOverridden flag from yield and surfaces data with warning", () => {
-		// Reviewer subagent exhausted its in-tool schema-retry budget, then was
-		// accepted with empty finding objects. Without honoring the override, the
-		// executor's post-mortem validator silently rejected the same payload with
-		// `schema_violation`, opaquely swapping the agent's accepted output for an
-		// error blob. Reports #2, #8, #11, #16, #17, #20.
+	/**
+	 * Exhausting the yield tool's retry counter must not turn malformed reviewer findings into success.
+	 */
+	it("fails whole-result validation after a schema-overridden yield", () => {
 		const result = finalizeSubprocessOutput({
 			rawOutput: "",
 			exitCode: 0,
@@ -167,9 +164,9 @@ describe("subagent warning injection", () => {
 			},
 		});
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stderr).toBe(SUBAGENT_WARNING_SCHEMA_OVERRIDDEN);
-		expect(JSON.parse(result.rawOutput)).toEqual({ findings: [{}, {}] });
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain("schema_violation");
+		expect(JSON.parse(result.rawOutput)).toMatchObject({ error: "schema_violation" });
 	});
 
 	it("treats malformed output schemas as no validation instead of schema_violation", () => {

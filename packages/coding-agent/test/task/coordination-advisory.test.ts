@@ -52,19 +52,21 @@ describe("composeSpawnAdvisory", () => {
 	it("joins the specialization tip and the irc coordination suggestion for an async generic fanout", () => {
 		const advisory = composeSpawnAdvisory({
 			agents: ["task", "task"],
+			enabledAgentNames: ["task", "scout"],
 			items: [worker(), worker()],
 			depthCapacity: true,
 			ircEnabled: true,
 			willRunAsync: true,
 		});
 		expect(advisory).toContain("generic");
-		expect(advisory).toContain('`agent: "scout"`');
+		expect(advisory).toContain("`scout`");
 		expect(advisory).toContain("Coordinate:");
 	});
 
 	it("drops the coordination suggestion on the sync path but keeps the specialization tip", () => {
 		const advisory = composeSpawnAdvisory({
 			agents: ["task", "task"],
+			enabledAgentNames: ["task", "scout"],
 			items: [worker(), worker()],
 			depthCapacity: true,
 			ircEnabled: true,
@@ -77,6 +79,7 @@ describe("composeSpawnAdvisory", () => {
 	it("omits coordination when irc is unavailable, even async", () => {
 		const advisory = composeSpawnAdvisory({
 			agents: ["task", "task"],
+			enabledAgentNames: ["task", "scout"],
 			items: [worker(), worker()],
 			depthCapacity: true,
 			ircEnabled: false,
@@ -90,6 +93,7 @@ describe("composeSpawnAdvisory", () => {
 		expect(
 			composeSpawnAdvisory({
 				agents: ["reviewer"],
+				enabledAgentNames: ["task", "reviewer"],
 				items: [worker()],
 				depthCapacity: true,
 				ircEnabled: true,
@@ -102,6 +106,7 @@ describe("composeSpawnAdvisory", () => {
 		expect(
 			composeSpawnAdvisory({
 				agents: ["task", "task"],
+				enabledAgentNames: ["task", "scout"],
 				items: [worker(), worker()],
 				depthCapacity: false,
 				ircEnabled: true,

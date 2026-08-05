@@ -7,7 +7,15 @@ import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import * as executorModule from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition, SingleResult } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { makeToolSession } from "../helpers/tool-session";
+
+// The gating cases below drive a REAL spawn through `TaskTool.execute` with a session that has
+// no session file, and a fileless parent routes its subagent transcripts to the ACTIVE PROFILE's
+// durable sessions dir (`getSessionsDir()`). Without this the spawn tries to mkdir inside the
+// developer's real `~/.veyyon/profiles/<profile>/agent/sessions` and the real-data tripwire
+// refuses it, which surfaced as the advisory text being a tripwire error instead of the nudge.
+useIsolatedAgentDir();
 
 // Contract: the task tool appends an advisory (never a rejection) steering the
 // spawner toward more specific agent types when one call resolves ≥2 items to
@@ -17,29 +25,29 @@ import { makeToolSession } from "../helpers/tool-session";
 
 describe("buildSpecializationAdvisory", () => {
 	it("nudges when one call spawns two generic workers with depth capacity", () => {
-		const advice = buildSpecializationAdvisory(["task", "task"], true);
+		const advice = buildSpecializationAdvisory(["task", "task"], true, ["task", "scout"]);
 		expect(advice).toBeDefined();
-		expect(advice).toContain('`agent: "scout"`');
+		expect(advice).toContain("`scout`");
 	});
 
 	it("stays silent at max depth even for a generic fan-out", () => {
-		expect(buildSpecializationAdvisory(["task", "task"], false)).toBeUndefined();
+		expect(buildSpecializationAdvisory(["task", "task"], false, ["task", "scout"])).toBeUndefined();
 	});
 
 	it("stays silent for a single generic spawn", () => {
-		expect(buildSpecializationAdvisory(["task"], true)).toBeUndefined();
+		expect(buildSpecializationAdvisory(["task"], true, ["task", "scout"])).toBeUndefined();
 	});
 
 	it("stays silent when the fan-out already uses specific agent types", () => {
-		expect(buildSpecializationAdvisory(["reviewer", "scout"], true)).toBeUndefined();
+		expect(buildSpecializationAdvisory(["reviewer", "scout"], true, ["task", "scout", "reviewer"])).toBeUndefined();
 	});
 
 	it("stays silent for a mixed call with only one generic worker", () => {
-		expect(buildSpecializationAdvisory(["task", "scout"], true)).toBeUndefined();
+		expect(buildSpecializationAdvisory(["task", "scout"], true, ["task", "scout"])).toBeUndefined();
 	});
 
 	it("counts sonic as generic alongside task", () => {
-		const advice = buildSpecializationAdvisory(["sonic", "task"], true);
+		const advice = buildSpecializationAdvisory(["sonic", "task"], true, ["task", "scout", "sonic"]);
 		expect(advice).toBeDefined();
 		expect(advice).toContain("2 generic");
 	});
@@ -54,6 +62,12 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 		name: "task",
 		description: "General-purpose task agent",
 		systemPrompt: "You are a task agent.",
+		source: "bundled",
+	};
+	const scout: AgentDefinition = {
+		name: "scout",
+		description: "Read-only investigation agent",
+		systemPrompt: "Inspect and report.",
 		source: "bundled",
 	};
 
@@ -77,6 +91,11 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 				"async.enabled": false,
 				"subagent.isolation.mode": "none",
 				"subagent.batch": true,
+				// The advisory names a SPECIFIC alternative drawn from the enabled catalog, and only
+				// the general-purpose delegate ships enabled (`subagentEnabledByDefault`). Without
+				// this row `scout` is not in the catalog, the nudge has nothing to suggest, and the
+				// case silently measures enablement policy instead of the advisory it is about.
+				"subagent.agents": { scout: { enabled: true } },
 			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
@@ -84,7 +103,7 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 	}
 
 	async function spawnText(suppress: boolean): Promise<string> {
-		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [agent], projectAgentsDir: null });
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [agent, scout], projectAgentsDir: null });
 		vi.spyOn(executorModule, "runSubprocess").mockImplementation(
 			async (options): Promise<SingleResult> => ({
 				index: options.index ?? 0,
@@ -116,10 +135,10 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 	}
 
 	it("appends the specialization advisory when a batch resolves two generic workers", async () => {
-		expect(await spawnText(false)).toContain('`agent: "scout"`');
+		expect(await spawnText(false)).toContain("`scout`");
 	});
 
 	it("omits the advisory entirely when the session suppresses it", async () => {
-		expect(await spawnText(true)).not.toContain('`agent: "scout"`');
+		expect(await spawnText(true)).not.toContain("`scout`");
 	});
 });

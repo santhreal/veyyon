@@ -171,6 +171,11 @@ function makeSpawnSession(spawns: string): ToolSession {
 		"async.enabled": false,
 		"subagent.batch": true,
 		"subagent.isolation.mode": "none",
+		// Enabled the way an operator does. Only the general-purpose delegate ships enabled
+		// (`subagentEnabledByDefault`), so without these rows the catalog resolves to zero agents
+		// and the description renders "Agent spawning is currently disabled". The case below would
+		// then be measuring enablement policy instead of the spawn-policy allow-list it is about.
+		"subagent.agents": { "fact-finder": { enabled: true }, oracle: { enabled: true } },
 	});
 	return makeToolSession({
 		settings,
@@ -198,8 +203,9 @@ describe("task spawn policy surfaces", () => {
 		const tool = await TaskTool.create(makeSpawnSession("fact-finder,oracle"));
 		const description = tool.description;
 
-		expect(description).toContain("the general-purpose worker (`fact-finder`)");
-		expect(description).toContain("Current spawn policy allows: `fact-finder`, `oracle`.");
+		expect(description).toContain("Omitting it uses the configured default (`fact-finder`)");
+		expect(description).toContain("Enabled and allowed: `fact-finder`, `oracle`.");
 		expect(description).not.toContain("(`task`)");
+		expect(description).not.toContain("Agent spawning is currently disabled");
 	});
 });

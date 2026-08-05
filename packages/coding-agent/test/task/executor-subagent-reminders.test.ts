@@ -13,7 +13,7 @@ import {
 	SUBAGENT_WARNING_MISSING_YIELD,
 } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { logger } from "@veyyon/utils";
+import { isRecord, logger } from "@veyyon/utils";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import {
 	createAssistantStopMessage,
@@ -54,6 +54,24 @@ describe("runSubprocess yield reminders", () => {
 			refresh: async () => {},
 		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry,
 		enableLsp: false,
+	};
+
+	const reviewerSchema = {
+		type: "object",
+		required: ["findings", "overall_correctness", "explanation", "confidence"],
+		properties: {
+			findings: {
+				type: "array",
+				items: {
+					type: "object",
+					required: ["title", "body"],
+					properties: { title: { type: "string" }, body: { type: "string" } },
+				},
+			},
+			overall_correctness: { type: "string", enum: ["correct", "incorrect"] },
+			explanation: { type: "string" },
+			confidence: { type: "number" },
+		},
 	};
 
 	it("waits for session_start extension user messages before prompting the subagent", async () => {
@@ -430,8 +448,10 @@ describe("runSubprocess yield reminders", () => {
 		expect(result.abortReason).toBeUndefined();
 	});
 
-	it("surfaces abort reason when yield reports aborted status", async () => {
-		const session = createMockSession(({ promptIndex, emit, state }) => {
+	it("surfaces abort reason without entering schema reminders when yield reports aborted status", async () => {
+		const prompts: string[] = [];
+		const session = createMockSession(({ text, promptIndex, emit, state }) => {
+			prompts.push(text);
 			if (promptIndex === 1) {
 				const assistant = createAssistantStopMessage("cannot proceed");
 				state.messages.push(assistant);
@@ -451,9 +471,18 @@ describe("runSubprocess yield reminders", () => {
 
 		mockCreateAgentSession(session);
 
-		const result = await runSubprocess({ ...baseOptions, id: "subagent-aborted-yield" });
+		const result = await runSubprocess({
+			...baseOptions,
+			id: "subagent-aborted-yield",
+			outputSchema: {
+				type: "object",
+				properties: { ok: { type: "boolean" } },
+				required: ["ok"],
+			},
+		});
 		expect(result.aborted).toBe(true);
 		expect(result.abortReason).toBe("blocked by permissions");
+		expect(prompts).toEqual(["do work"]);
 	});
 
 	it("marks pre-aborted subprocess with a concrete reason", async () => {
@@ -579,6 +608,117 @@ describe("runSubprocess yield reminders", () => {
 		expect(result.exitCode).toBe(1);
 		expect(result.stderr).toMatch(/options\.authStorage.*modelRegistry\.authStorage/);
 		expect(createAgentSessionSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * A reviewer that submits findings before its verdict gets one bounded repair
+	 * turn, and the corrected terminal verdict retains the accepted finding.
+	 */
+	it("repairs an incomplete reviewer yield without losing incremental findings", async () => {
+		const prompts: string[] = [];
+		const session = createMockSession(({ text, promptIndex, emit }) => {
+			prompts.push(text);
+			emit({
+				type: "tool_execution_end",
+				toolCallId: `tool-review-${promptIndex}`,
+				toolName: "yield",
+				result: {
+					content: [{ type: "text", text: "Result submitted." }],
+					details:
+						promptIndex === 1
+							? {
+									status: "success",
+									type: ["findings"],
+									data: { title: "Broken path", body: "The path is duplicated." },
+								}
+							: {
+									status: "success",
+									type: "result",
+									data: {
+										overall_correctness: "incorrect",
+										explanation: "The duplicated path breaks the preview.",
+										confidence: 0.95,
+									},
+								},
+				},
+				isError: false,
+			});
+		});
+		mockCreateAgentSession(session);
+
+		const result = await runSubprocess({
+			...baseOptions,
+			id: "subagent-review-schema-repair",
+			agent: { ...baseAgent, output: reviewerSchema },
+			outputSchema: reviewerSchema,
+		});
+
+		expect(prompts).toHaveLength(2);
+		expect(prompts[1]).toContain("Missing required fields");
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(result.output)).toEqual({
+			findings: [{ title: "Broken path", body: "The path is duplicated." }],
+			overall_correctness: "incorrect",
+			explanation: "The duplicated path breaks the preview.",
+			confidence: 0.95,
+		});
+	});
+
+	/**
+	 * The repair budget is exactly one turn: a second malformed verdict fails
+	 * closed while retaining accepted findings in the diagnostic payload.
+	 */
+	it("fails after one reviewer repair attempt and preserves accepted findings", async () => {
+		let promptCount = 0;
+		const session = createMockSession(({ promptIndex, emit }) => {
+			promptCount = promptIndex;
+			emit({
+				type: "tool_execution_end",
+				toolCallId: `tool-review-invalid-${promptIndex}`,
+				toolName: "yield",
+				result: {
+					content: [{ type: "text", text: "Result submitted." }],
+					details:
+						promptIndex === 1
+							? {
+									status: "success",
+									type: ["findings"],
+									data: { title: "Retained", body: "Keep this evidence." },
+								}
+							: {
+									status: "success",
+									type: "result",
+									data: {
+										overall_correctness: "Correct",
+										explanation: "Wrong enum casing remains invalid.",
+										confidence: 0.5,
+									},
+								},
+				},
+				isError: false,
+			});
+		});
+		mockCreateAgentSession(session);
+
+		const result = await runSubprocess({
+			...baseOptions,
+			id: "subagent-review-schema-repair-exhausted",
+			agent: { ...baseAgent, output: reviewerSchema },
+			outputSchema: reviewerSchema,
+		});
+
+		expect(promptCount).toBe(2);
+		expect(result.exitCode).toBe(1);
+		expect(result.stderr).toContain("schema_violation");
+		const failure: unknown = JSON.parse(result.output);
+		expect(isRecord(failure)).toBe(true);
+		if (!isRecord(failure)) throw new Error("Expected a structured schema violation");
+		expect(failure.error).toBe("schema_violation");
+		expect(typeof failure.data).toBe("string");
+		if (typeof failure.data !== "string") throw new Error("Expected serialized offending data");
+		expect(JSON.parse(failure.data)).toMatchObject({
+			findings: [{ title: "Retained", body: "Keep this evidence." }],
+		});
 	});
 
 	it("logs reminder-loop aborts at debug, not error (issue #1623)", async () => {
