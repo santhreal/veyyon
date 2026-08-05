@@ -73,6 +73,18 @@ export class OAuthSelectorComponent implements Component {
 	#allProviders: OAuthProviderInfo[] = [];
 	#filteredProviders: OAuthProviderInfo[] = [];
 	#searchQuery = "";
+	/**
+	 * True while {@link #searchQuery} is something the user typed here.
+	 *
+	 * {@link #isSearchEnabled} is a function of the CURRENT row budget, and the
+	 * setup wizard resizes this selector on every render, so growing the terminal
+	 * until every provider fits used to turn a live query un-typeable, un-
+	 * backspaceable and un-clearable in one frame — and, because the wizard reads
+	 * {@link hasActiveSearch} to decide who owns Escape, turned Escape back into
+	 * "end onboarding" while a filtered list was still on screen. A query the
+	 * user typed stays theirs to clear whatever the budget does afterwards.
+	 */
+	#searchTypedByUser = false;
 	#selectedIndex: number = 0;
 	#hoveredIndex: number | null = null;
 	/** First provider index of the visible ScrollView window (last #buildBody). */
@@ -138,6 +150,23 @@ export class OAuthSelectorComponent implements Component {
 	/** Size the provider list to the rows the host can actually show. */
 	setMaxVisible(rows: number): void {
 		this.#maxVisible = Math.max(1, Math.floor(rows));
+	}
+
+	/**
+	 * Whether the cancel key clears a live search instead of closing the selector.
+	 *
+	 * A host that owns Escape (the setup wizard, whose Escape leaves onboarding)
+	 * has to ask before consuming it, or the user's way of undoing a mistyped
+	 * search is the same key that ends the run. The host claims Escape while this
+	 * is true and forwards the keystroke here.
+	 *
+	 * Gated on the search being CLEARABLE, not merely stored, so the answer
+	 * matches what the cancel key will actually do. A query the user typed stays
+	 * clearable after a resize shrinks the provider list back inside the window;
+	 * see {@link #searchTypedByUser}.
+	 */
+	hasActiveSearch(): boolean {
+		return this.#searchQuery.length > 0 && (this.#searchTypedByUser || this.#isSearchEnabled());
 	}
 
 	stopValidation(): void {
@@ -288,8 +317,9 @@ export class OAuthSelectorComponent implements Component {
 		return text;
 	}
 
-	#setSearchQuery(query: string): void {
+	#setSearchQuery(query: string, typedByUser = false): void {
 		this.#searchQuery = query;
+		this.#searchTypedByUser = query.length > 0 && typedByUser;
 		this.#filteredProviders = query.trim()
 			? fuzzyFilter(this.#allProviders, query, provider => this.#getProviderSearchText(provider))
 			: this.#allProviders;
@@ -298,21 +328,24 @@ export class OAuthSelectorComponent implements Component {
 	}
 
 	#handleSearchInput(keyData: string): boolean {
-		if (!this.#isSearchEnabled()) return false;
-
+		// Backspace is judged by whether the query is CLEARABLE, not by whether a
+		// new one could be started: a resize that grows the window past the
+		// provider count must not strand the query the user already typed.
 		if (matchesKey(keyData, "backspace")) {
-			if (this.#searchQuery.length === 0) return false;
+			if (!this.hasActiveSearch()) return false;
 			const chars = [...this.#searchQuery];
 			chars.pop();
-			this.#setSearchQuery(chars.join(""));
+			this.#setSearchQuery(chars.join(""), true);
 			return true;
 		}
+
+		if (!this.#isSearchEnabled()) return false;
 
 		const printableText = extractPrintableText(keyData);
 		if (printableText === undefined) return false;
 		if (this.#searchQuery.length === 0 && printableText.trim().length === 0) return false;
 
-		this.#setSearchQuery(this.#searchQuery + printableText);
+		this.#setSearchQuery(this.#searchQuery + printableText, true);
 		return true;
 	}
 
@@ -386,8 +419,19 @@ export class OAuthSelectorComponent implements Component {
 			return;
 		}
 
-		// Escape or Ctrl+C
+		// Escape or Ctrl+C. Cancel-key ladder, the same one SelectList and the
+		// model browser use: a live search query is cleared first, and only a
+		// cancel with no query closes. Going straight to the cancel callback was
+		// the worst instance of it in the product, because this selector is step 1
+		// of onboarding: typing one letter to find a provider and pressing Escape
+		// to undo that ENDED the whole setup run, with no recovery and nothing on
+		// screen that had named Escape as anything but "leave setup".
 		if (matchesSelectCancel(keyData)) {
+			if (this.hasActiveSearch()) {
+				this.#setSearchQuery("");
+				(this.#requestRenderCallback ?? this.#onRequestRender)?.();
+				return;
+			}
 			this.stopValidation();
 			this.#onCancelCallback();
 			return;
