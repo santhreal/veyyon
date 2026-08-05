@@ -461,6 +461,8 @@ Built-in role ids (see `model-roles.ts`):
 | `tiny` | Yes | Lightweight background (titles, classifiers); else `@smol` |
 | `advisor` | Yes | Advisor runtime |
 
+There is no `task` model role. Profile-wide and per-agent subagent model policy lives under `subagent` instead of the role table.
+
 `cycleOrder` defaults to `["smol","slow"]`; the entry `default` is stripped on load. Role aliases like `@smol` expand through `settings.modelRoles`; `*` selects `@default` (interactive). Quote `@` aliases in YAML values (`fable: "@slow"`). Each role value can append a thinking selector (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).
 
 If a role points at another role, the target model still inherits normally and any explicit suffix on the referring role wins for that role-specific use.
@@ -502,6 +504,12 @@ disabledProviders:
 String entries apply everywhere. Scoped entries apply when the current working directory is the configured path or one of its subdirectories. Use `path`, `paths`, `pathPrefix`, or `pathPrefixes`; use `models` for `enabledModels`, `providers` for `disabledProviders`, or `values` for either.
 
 ## `/model` and `veyyon models`
+
+```console
+$ veyyon models refresh google-antigravity --json
+```
+
+This command bypasses the cache for `google-antigravity` only, then prints that provider's refreshed models. Omit the provider to refresh every authenticated or local provider.
 
 Both surfaces keep provider-prefixed models visible and selectable.
 

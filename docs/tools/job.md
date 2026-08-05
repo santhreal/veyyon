@@ -110,7 +110,7 @@ Lifecycle and exact state names:
 - Poll wait duration comes from `async.pollWaitDuration` ("Max Poll Time") in `packages/coding-agent/src/config/settings-schema.ts`:
   - allowed values: `5s`, `10s`, `30s`, `1m`, `5m`, `smart`
   - default: `smart`
-  - fixed values block for exactly that long; `smart` uses the adaptive ladder `POLL_WAIT_LADDER_MS = [5s, 10s, 30s, 1m, 5m]` in `packages/coding-agent/src/async/job-manager.ts`, climbing one rung per back-to-back poll and resetting to the 5s floor after `POLL_ESCALATION_RESET_MS = 60_000` ms without polling. Per-owner state is driven by `nextPollWaitMs(...)` / `recordPollWaitEnd(...)`.
+  - fixed values block for exactly that long; `smart` uses the adaptive ladder `POLL_WAIT_LADDER_MS = [30s, 4m]` in `packages/coding-agent/src/async/job-manager.ts`, climbing one rung per back-to-back poll and resetting to the 30s floor after `POLL_ESCALATION_RESET_MS = 60_000` ms without polling. The 4-minute ceiling stays below the 5-minute prompt-cache boundary. Per-owner state is driven by `nextPollWaitMs(...)` / `recordPollWaitEnd(...)`.
 - Progress update cadence while polling: `PROGRESS_INTERVAL_MS = 500` in `packages/coding-agent/src/tools/job.ts`.
 - Async job retention default: `DEFAULT_RETENTION_MS = 5 * 60 * 1000` in `packages/coding-agent/src/async/job-manager.ts`.
 - Manager fallback max-running limit: `DEFAULT_MAX_RUNNING_JOBS = 15` in `packages/coding-agent/src/async/job-manager.ts`.
