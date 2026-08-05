@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "bun:test";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { completionBudgetReport, GoalRuntime } from "@veyyon/coding-agent/goals/runtime";
 import type { Goal, GoalModeState, GoalTokenUsage } from "@veyyon/coding-agent/goals/state";
 import { buildGoalToolResponse, GoalTool } from "@veyyon/coding-agent/goals/tools/goal-tool";
@@ -34,7 +35,10 @@ function cloneState(state: GoalModeState | undefined): GoalModeState | undefined
 }
 
 function createToolSession(overrides: Partial<ToolSession>): ToolSession {
-	return overrides as ToolSession;
+	return {
+		settings: Settings.isolated({ "goal.modelBudgetsEnabled": true }),
+		...overrides,
+	} as ToolSession;
 }
 
 function createRuntimeHarness(initialState?: GoalModeState) {
@@ -44,6 +48,7 @@ function createRuntimeHarness(initialState?: GoalModeState) {
 		setState: next => {
 			state = cloneState(next);
 		},
+		budgetsEnabled: () => true,
 		getCurrentUsage: () => createUsage(),
 		emit: async () => {},
 		persist: (_mode, _state) => {},
@@ -91,9 +96,8 @@ describe("GoalTool", () => {
 		const created = await tool.execute("call-create", {
 			op: "create",
 			objective: "  Create route  ",
-			token_budget: 10,
 		});
-		expect(runtime.createGoal).toHaveBeenCalledWith({ objective: "Create route", tokenBudget: 10 });
+		expect(runtime.createGoal).toHaveBeenCalledWith({ objective: "Create route" });
 		expect(created.details).toMatchObject({
 			op: "create",
 			goal: createGoalState.goal,
@@ -101,7 +105,7 @@ describe("GoalTool", () => {
 			completionBudgetReport: null,
 		});
 
-		const fetched = await tool.execute("call-get", { op: "get", objective: undefined, token_budget: undefined });
+		const fetched = await tool.execute("call-get", { op: "get" });
 		expect(getGoalModeState).toHaveBeenCalledTimes(1);
 		expect(fetched.details).toMatchObject({
 			op: "get",
@@ -113,8 +117,6 @@ describe("GoalTool", () => {
 
 		const completed = await tool.execute("call-complete", {
 			op: "complete",
-			objective: undefined,
-			token_budget: undefined,
 		});
 		expect(runtime.completeGoalFromTool).toHaveBeenCalledTimes(1);
 		expect(completed.details).toMatchObject({
@@ -127,6 +129,50 @@ describe("GoalTool", () => {
 			type: "text",
 			text: "Goal: Complete route\nStatus: complete\nTokens: 7 used / 10 budget\nRemaining tokens: 3\n\nGoal achieved. Report final budget usage to the user: tokens used: 7 of 10; time used: 3 seconds.",
 		});
+	});
+
+	/**
+	 * The agent contract never exposes or accepts a goal-budget write, regardless
+	 * of the human-owned Settings toggle. The toggle only controls whether a
+	 * persisted budget is visible to the model.
+	 */
+	it("never exposes or accepts model-authored budgets", async () => {
+		for (const enabled of [false, true]) {
+			const getGoalModeState = vi.fn(() => ({
+				enabled: true,
+				mode: "active" as const,
+				goal: createGoal({ tokenBudget: 100, tokensUsed: 40 }),
+			}));
+			const runtime = { createGoal: vi.fn() };
+			const tool = new GoalTool(
+				createToolSession({
+					settings: Settings.isolated({ "goal.modelBudgetsEnabled": enabled }),
+					getGoalRuntime: () => runtime as unknown as GoalRuntime,
+					getGoalModeState,
+				}),
+			);
+			const schema = tool.parameters.toJsonSchema() as { properties?: Record<string, unknown> };
+
+			expect(schema.properties).toEqual({
+				op: expect.any(Object),
+				objective: expect.any(Object),
+			});
+			expect(tool.description).not.toContain("token_budget");
+			await expect(
+				tool.execute("call-budget", { op: "create", objective: "Ship it", token_budget: 100 } as never),
+			).rejects.toThrow("token_budget is not supported");
+			expect(runtime.createGoal).not.toHaveBeenCalled();
+
+			const fetched = await tool.execute("call-get", { op: "get" });
+			const content = fetched.content[0];
+			expect(content?.type).toBe("text");
+			if (content?.type !== "text") throw new Error("Expected goal output to be text");
+			expect(content.text).toBe(
+				enabled
+					? "Goal: Ship it\nStatus: active\nTokens: 40 used / 100 budget\nRemaining tokens: 60"
+					: "Goal: Ship it\nStatus: active\nTokens: 40 used",
+			);
+		}
 	});
 
 	it("rejects create when a goal already exists", async () => {
@@ -142,9 +188,9 @@ describe("GoalTool", () => {
 			}),
 		);
 
-		await expect(
-			tool.execute("call-create", { op: "create", objective: "New goal", token_budget: 10 }),
-		).rejects.toThrow("cannot create a new goal because this session already has a goal");
+		await expect(tool.execute("call-create", { op: "create", objective: "New goal" })).rejects.toThrow(
+			"cannot create a new goal because this session already has a goal",
+		);
 	});
 
 	it("rejects complete when no goal is active", async () => {
@@ -156,9 +202,9 @@ describe("GoalTool", () => {
 			}),
 		);
 
-		await expect(
-			tool.execute("call-complete", { op: "complete", objective: undefined, token_budget: undefined }),
-		).rejects.toThrow("cannot complete goal because no goal is active");
+		await expect(tool.execute("call-complete", { op: "complete" })).rejects.toThrow(
+			"cannot complete goal because no goal is active",
+		);
 	});
 
 	it("rejects op=create when the objective is missing or only whitespace", async () => {
@@ -170,26 +216,8 @@ describe("GoalTool", () => {
 			}),
 		);
 
-		await expect(
-			tool.execute("call-empty", { op: "create", objective: "   \t\n", token_budget: undefined }),
-		).rejects.toThrow("objective is required when op=create");
-		expect(harness.getState()).toBeUndefined();
-	});
-
-	it("rejects op=create when the token_budget is zero or negative", async () => {
-		const harness = createRuntimeHarness();
-		const tool = new GoalTool(
-			createToolSession({
-				getGoalRuntime: () => harness.runtime,
-				getGoalModeState: () => harness.getState(),
-			}),
-		);
-
-		await expect(tool.execute("call-zero", { op: "create", objective: "Ship it", token_budget: 0 })).rejects.toThrow(
-			"token_budget must be a positive integer when provided",
-		);
-		await expect(tool.execute("call-neg", { op: "create", objective: "Ship it", token_budget: -5 })).rejects.toThrow(
-			"token_budget must be a positive integer when provided",
+		await expect(tool.execute("call-empty", { op: "create", objective: "   \t\n" })).rejects.toThrow(
+			"objective is required when op=create",
 		);
 		expect(harness.getState()).toBeUndefined();
 	});
@@ -207,7 +235,6 @@ describe("GoalTool", () => {
 		const result = await tool.execute("call-complete", {
 			op: "complete",
 			objective: undefined,
-			token_budget: undefined,
 		});
 
 		expect(result.details).toMatchObject({ op: "complete" });
@@ -234,7 +261,6 @@ describe("GoalTool", () => {
 		const result = await tool.execute("call-complete", {
 			op: "complete",
 			objective: undefined,
-			token_budget: undefined,
 		});
 		expect(result.details?.goal?.status).toBe("complete");
 		expect(harness.getState()?.goal.status).toBe("complete");
@@ -257,7 +283,6 @@ describe("GoalTool", () => {
 		const result = await tool.execute("call-create", {
 			op: "create",
 			objective: "Next goal",
-			token_budget: undefined,
 		});
 		expect(result.details?.goal?.objective).toBe("Next goal");
 		expect(result.details?.goal?.status).toBe("active");
@@ -276,7 +301,7 @@ describe("GoalTool", () => {
 			}),
 		);
 
-		const result = await tool.execute("call-get", { op: "get", objective: undefined, token_budget: undefined });
+		const result = await tool.execute("call-get", { op: "get" });
 		expect(result.details?.goal?.status).toBe("paused");
 		expect(result.details?.goal?.objective).toBe("Ship it");
 	});
@@ -294,7 +319,7 @@ describe("GoalTool", () => {
 			}),
 		);
 
-		const result = await tool.execute("call-resume", { op: "resume", objective: undefined, token_budget: undefined });
+		const result = await tool.execute("call-resume", { op: "resume" });
 		expect(result.details?.op).toBe("resume");
 		expect(result.details?.goal?.status).toBe("active");
 		expect(harness.getState()?.enabled).toBe(true);
@@ -313,7 +338,7 @@ describe("GoalTool", () => {
 			}),
 		);
 
-		const result = await tool.execute("call-drop", { op: "drop", objective: undefined, token_budget: undefined });
+		const result = await tool.execute("call-drop", { op: "drop" });
 		expect(result.details?.op).toBe("drop");
 		expect(result.details?.goal?.status).toBe("dropped");
 		expect(harness.getState()).toBeUndefined();
@@ -343,18 +368,24 @@ describe("buildGoalToolResponse", () => {
 
 	it("computes remainingTokens as budget minus used, null without a budget", () => {
 		expect(buildGoalToolResponse(createGoal({ tokensUsed: 4 })).remainingTokens).toBeNull();
-		expect(buildGoalToolResponse(createGoal({ tokenBudget: 10, tokensUsed: 4 })).remainingTokens).toBe(6);
+		expect(
+			buildGoalToolResponse(createGoal({ tokenBudget: 10, tokensUsed: 4 }), { budgetsEnabled: true })
+				.remainingTokens,
+		).toBe(6);
 	});
 
 	it("floors remainingTokens at 0 when usage overran the budget", () => {
-		expect(buildGoalToolResponse(createGoal({ tokenBudget: 3, tokensUsed: 5 })).remainingTokens).toBe(0);
+		expect(
+			buildGoalToolResponse(createGoal({ tokenBudget: 3, tokensUsed: 5 }), { budgetsEnabled: true }).remainingTokens,
+		).toBe(0);
 	});
 
 	it("includes the completion report only for a complete goal when the flag is set", () => {
 		const complete = createGoal({ status: "complete", tokenBudget: 10, tokensUsed: 4, timeUsedSeconds: 7 });
-		expect(buildGoalToolResponse(complete, { includeCompletionReport: true }).completionBudgetReport).toBe(
-			"Goal achieved. Report final budget usage to the user: tokens used: 4 of 10; time used: 7 seconds.",
-		);
+		expect(
+			buildGoalToolResponse(complete, { includeCompletionReport: true, budgetsEnabled: true })
+				.completionBudgetReport,
+		).toBe("Goal achieved. Report final budget usage to the user: tokens used: 4 of 10; time used: 7 seconds.");
 	});
 
 	it("omits the completion report for a complete goal when the flag is unset", () => {

@@ -10,11 +10,11 @@
 		},
 		{
 			"id": "settings-tools-approval-mode-default",
-			"contract": "tools.approvalMode default is yolo on empty config (product default autonomy)",
+			"contract": "tools.approvalMode default is auto on empty config: every tier runs with the guards still on",
 			"surface": "settings-get-default",
 			"tags": ["positive", "regression"],
 			"input": { "path": "tools.approvalMode" },
-			"expect": { "default": "yolo", "isolated": "yolo" }
+			"expect": { "default": "auto", "isolated": "auto" }
 		},
 		{
 			"id": "settings-compaction-strategy-default",

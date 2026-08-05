@@ -18,6 +18,7 @@
  */
 import { vi } from "bun:test";
 import type { Api, AssistantMessage, Model } from "@veyyon/ai";
+import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
 import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
@@ -104,6 +105,15 @@ export interface MockSessionOptions {
 	 * the child has no shorthand and text passes through as written.
 	 */
 	readonly argotSession?: unknown;
+	/**
+	 * The skills the CHILD resolved, answered from `session.skills` and defaulting to `[]` exactly as
+	 * the real getter does.
+	 *
+	 * Load-bearing for autoload: the executor settles an agent's `autoloadSkills` names against this,
+	 * not against the parent's set, because a spawn whose `cwd` differs inherits no skills and
+	 * rediscovers its own. A suite about a differing-cwd spawn therefore sets the CHILD's tree here.
+	 */
+	readonly skills?: readonly Skill[];
 }
 
 /** The session plus what a suite needs to observe about how the executor drove it. */
@@ -222,6 +232,7 @@ export function createMockSessionHandle(
 		state,
 		agent: { state: { systemPrompt: ["test"] } },
 		model: options.model,
+		skills: options.skills ?? [],
 		extensionRunner: undefined,
 		sessionManager: {
 			appendSessionInit: () => {},

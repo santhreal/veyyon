@@ -54,7 +54,9 @@ function cloneEvent(event: GoalRuntimeEvent): GoalRuntimeEvent {
 	return { ...event };
 }
 
-function createHarness(initial: { state?: GoalModeState; usage?: GoalTokenUsage; now?: number } = {}) {
+function createHarness(
+	initial: { state?: GoalModeState; usage?: GoalTokenUsage; now?: number; budgetsEnabled?: boolean } = {},
+) {
 	let state = cloneState(initial.state);
 	let usage = createUsage(initial.usage);
 	let now = initial.now ?? 0;
@@ -67,6 +69,7 @@ function createHarness(initial: { state?: GoalModeState; usage?: GoalTokenUsage;
 		setState: next => {
 			state = cloneState(next);
 		},
+		budgetsEnabled: () => initial.budgetsEnabled ?? true,
 		getCurrentUsage: () => createUsage(usage),
 		emit: async event => {
 			events.push(cloneEvent(event));
@@ -356,6 +359,48 @@ describe("goal runtime", () => {
 		expect(prompt).not.toContain(objective);
 	});
 
+	/**
+	 * Disabled goal budgets must disappear from hidden model steering, not merely
+	 * reject mutation after the model has already been taught the feature.
+	 */
+	it("omits all budget guidance from goal prompts while budgets are disabled", () => {
+		const prompt = renderGoalPrompt(
+			"active",
+			createGoal({ objective: "Ship safely", tokenBudget: 100, tokensUsed: 40 }),
+			{ budgetsEnabled: false },
+		);
+
+		expect(prompt).toContain("Ship safely");
+		expect(prompt).not.toContain("Budget:");
+		expect(prompt).not.toContain("Token budget");
+		expect(prompt).not.toContain("Tokens remaining");
+		expect(prompt).not.toContain("Budget exhaustion");
+	});
+
+	/**
+	 * A persisted budget must become behaviorally inert when the operator turns
+	 * the feature off. Usage accounting continues, but no limit or steer fires.
+	 */
+	it("does not enforce persisted budgets while the feature is disabled", async () => {
+		const harness = createHarness({
+			budgetsEnabled: false,
+			state: {
+				enabled: true,
+				mode: "active",
+				goal: createGoal({ tokenBudget: 10 }),
+			},
+		});
+		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.setUsage({ input: 20 });
+
+		await harness.runtime.flushUsage("allowed");
+
+		expect(harness.getState()?.goal.tokensUsed).toBe(20);
+		expect(harness.getState()?.goal.status).toBe("active");
+		expect(harness.hiddenMessages).toEqual([]);
+		await expect(harness.runtime.onBudgetMutated(30)).rejects.toThrow("Goal budgets are disabled");
+	});
+
 	it("returns the input verbatim when escapeXmlText has nothing to escape", () => {
 		const input = "plain text — with 'quotes' and \"double\" plus unicode ✓";
 		expect(escapeXmlText(input)).toBe(input);
@@ -485,11 +530,10 @@ describe("goal runtime", () => {
 	/**
 	 * Locks out: a default token budget being injected for a goal created without one.
 	 *
-	 * `token_budget` is optional on the `goal` tool and `Goal.tokenBudget` is `number |
-	 * undefined`, so "no budget" must mean genuinely unbounded: unbounded remaining, and a
-	 * status that can never flip to `budget-limited` no matter how much the goal spends. If
-	 * anything ever defaulted that field, every goal would silently acquire a ceiling and
-	 * eventually stall itself with a budget-limit steer the user never asked for.
+	 * The goal tool has no budget argument and `Goal.tokenBudget` remains `number |
+	 * undefined` for persisted sessions, so "no budget" must mean genuinely unbounded:
+	 * unbounded remaining, and a status that can never flip to `budget-limited` no matter
+	 * how much the goal spends.
 	 */
 	it("leaves a goal created without a token budget genuinely unbounded", async () => {
 		const harness = createHarness();

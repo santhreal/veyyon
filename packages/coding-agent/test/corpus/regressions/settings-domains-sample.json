@@ -65,15 +65,15 @@
 			"expect": { "exists": false }
 		},
 		{
-			"id": "settings-override-approval-mode-ask",
-			"contract": "Isolated override sets tools.approvalMode to ask",
+			"id": "settings-override-approval-mode-ask-command",
+			"contract": "Isolated override can set tools.approvalMode to ask-command against its auto default",
 			"surface": "settings-override",
 			"tags": ["positive"],
 			"input": {
-				"overrides": { "tools.approvalMode": "ask" },
+				"overrides": { "tools.approvalMode": "ask-command" },
 				"path": "tools.approvalMode"
 			},
-			"expect": { "value": "ask" }
+			"expect": { "value": "ask-command" }
 		},
 		{
 			"id": "settings-override-argot-enabled-true",
