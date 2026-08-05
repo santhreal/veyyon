@@ -255,15 +255,20 @@ jobs:
                 echo "cross-platform-run-id=$cross_platform_run_id"
               } >> "$GITHUB_OUTPUT"
 
-   # Fast lint, type check, and browser bundle build (no Rust, no native build needed)
+   # Type check and the browser bundle build (no Rust, no native build needed).
+   # Lint, formatting and import order are checks.yml's `lint-and-typecheck`, which
+   # is the one owner of Biome: this job never ran it, and the job title used to say
+   # "Lint" anyway, so the absence read as coverage. Naming a job for what it runs
+   # is the same lesson checks.yml records about its own "Biome check" step that ran
+   # pure TypeScript.
    check:
-      name: Lint, type check & web build
+      name: Type check & web build
       runs-on: ubuntu-22.04
       steps:
          - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
          - uses: ./.github/actions/bun-install
          - name: Type check workspace
-           run: bun run ci:check:full
+           run: bun run check:ts
          - name: Build collab web
            run: bun run collab:web:build
 
