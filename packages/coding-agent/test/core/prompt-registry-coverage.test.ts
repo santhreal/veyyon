@@ -151,18 +151,60 @@ async function idsOnDisk(dir: string): Promise<string[]> {
 	return found.sort();
 }
 
-/** Every module that imports a `.md` as text, with the specifier it used. */
-async function textImporters(sourceGlob: string): Promise<Array<{ module: string; specifier: string }>> {
-	const [root, rest] = [sourceGlob.slice(0, sourceGlob.indexOf("**")), sourceGlob.slice(sourceGlob.indexOf("**"))];
-	const glob = new Bun.Glob(rest);
+/**
+ * Every `.ts` under `packages/`, read once.
+ *
+ * Six cases in this file walk that tree and read every file, and two of them are
+ * `it.each`, so the walk ran roughly fifteen times per run: about 250ms of real
+ * filesystem work multiplied out into the single most expensive entry in
+ * `scripts/preflight.ts`, 38 percent of the gate. Under load one case blew bun's 5000ms
+ * per-case default and failed the BUILD GATE on timing rather than on a broken contract,
+ * which is the worst thing a gate can do: it teaches people to re-run a red, and they
+ * will re-run the one that was telling the truth. The tree does not change during a run.
+ *
+ * `repo-cache` is excluded here for every caller, including the prompt-import scan which
+ * used to look inside it. That directory holds cached copies of OTHER repositories; a
+ * markdown import in one of them is not a registration this repository owes a row for.
+ */
+let packageSourceCache: Promise<ReadonlyArray<{ file: string; text: string }>> | undefined;
+
+function packageSources(): Promise<ReadonlyArray<{ file: string; text: string }>> {
+	packageSourceCache ??= readPackageSources();
+	return packageSourceCache;
+}
+
+async function readPackageSources(): Promise<ReadonlyArray<{ file: string; text: string }>> {
+	const sources: Array<{ file: string; text: string }> = [];
+	for await (const relative of new Bun.Glob("packages/**/*.ts").scan({ cwd: REPO_ROOT, onlyFiles: true })) {
+		const file = relative.replace(/\\/g, "/");
+		if (file.includes("node_modules") || file.includes("repo-cache")) continue;
+		sources.push({ file, text: await Bun.file(path.join(REPO_ROOT, file)).text() });
+	}
+	return sources;
+}
+
+/**
+ * Every module under `sourceGlob` that imports a `.md` as text, with the specifier.
+ *
+ * Six cases ask this question of three different subtrees, so the tree is scanned ONCE
+ * off {@link packageSources} and each caller filters the one result by its own prefix.
+ * Every glob used here is `<dir>/**​/*.ts`, so the prefix is exactly the part before the
+ * `**` and the filter answers the same set the walk did.
+ */
+let textImporterCache: Promise<ReadonlyArray<{ module: string; specifier: string }>> | undefined;
+
+async function textImporters(sourceGlob: string): Promise<ReadonlyArray<{ module: string; specifier: string }>> {
+	textImporterCache ??= scanTextImporters();
+	const prefix = sourceGlob.slice(0, sourceGlob.indexOf("**"));
+	return (await textImporterCache).filter(use => use.module.startsWith(prefix));
+}
+
+async function scanTextImporters(): Promise<ReadonlyArray<{ module: string; specifier: string }>> {
 	const found: Array<{ module: string; specifier: string }> = [];
-	for await (const relative of glob.scan({ cwd: path.join(REPO_ROOT, root), onlyFiles: true })) {
-		const modulePath = path.posix.join(root, relative.replace(/\\/g, "/"));
-		if (modulePath.includes("node_modules")) continue;
-		const text = await Bun.file(path.join(REPO_ROOT, modulePath)).text();
+	for (const { file, text } of await packageSources()) {
 		if (!text.includes('.md" with')) continue;
 		for (const match of text.matchAll(/import\s+\w+\s+from\s+"([^"]+\.md)"\s+with\s+\{\s*type:\s*"text"\s*\}/g)) {
-			found.push({ module: modulePath, specifier: match[1] as string });
+			found.push({ module: file, specifier: match[1] as string });
 		}
 	}
 	return found;
@@ -258,13 +300,8 @@ describe("a registry exports nothing the descriptor already carries", () => {
 	];
 
 	it.each(SUPERSEDED)("does not export %s, which the descriptor already answers", async name => {
-		const found: string[] = [];
-		for await (const relative of new Bun.Glob("packages/**/*.ts").scan({ cwd: REPO_ROOT, onlyFiles: true })) {
-			const file = relative.replace(/\\/g, "/");
-			if (file.includes("node_modules") || file.includes("repo-cache")) continue;
-			const text = await Bun.file(path.join(REPO_ROOT, file)).text();
-			if (new RegExp(`^export (?:const|type|function) ${name}\\b`, "m").test(text)) found.push(file);
-		}
+		const pattern = new RegExp(`^export (?:const|type|function) ${name}\\b`, "m");
+		const found = (await packageSources()).filter(source => pattern.test(source.text)).map(source => source.file);
 
 		expect(found).toEqual([]);
 	});
@@ -301,13 +338,9 @@ describe("a registry's directory is written down once", () => {
 	 * assertion tautological, which is a worse trade than one more place a path is typed.
 	 */
 	it.each(OWNERS)("is stated only in $registry.dir's own registry", async ({ registry }) => {
-		const holders: string[] = [];
-		for await (const relative of new Bun.Glob("packages/**/*.ts").scan({ cwd: REPO_ROOT, onlyFiles: true })) {
-			const file = relative.replace(/\\/g, "/");
-			if (file.includes("node_modules") || file.includes("repo-cache") || file.endsWith(".test.ts")) continue;
-			const text = await Bun.file(path.join(REPO_ROOT, file)).text();
-			if (text.includes(`"${registry.dir}"`)) holders.push(file);
-		}
+		const holders = (await packageSources())
+			.filter(source => !source.file.endsWith(".test.ts") && source.text.includes(`"${registry.dir}"`))
+			.map(source => source.file);
 
 		// Listed rather than counted, so a failure names the file that restated it.
 		expect(holders.sort()).toEqual([
@@ -318,13 +351,10 @@ describe("a registry's directory is written down once", () => {
 	it("would notice a second statement, so the check is not passing on a bad glob", async () => {
 		// The anti-vacuity half. A path every registry demonstrably does NOT own must be
 		// found where it IS written, or the scan above proves nothing about uniqueness.
-		let found = 0;
-		for await (const relative of new Bun.Glob("packages/**/*.ts").scan({ cwd: REPO_ROOT, onlyFiles: true })) {
-			const file = relative.replace(/\\/g, "/");
-			if (file.includes("node_modules") || file.includes("repo-cache") || file.endsWith(".test.ts")) continue;
-			const text = await Bun.file(path.join(REPO_ROOT, file)).text();
-			if (text.includes('"packages/metaharness/adapters/edit/prompts"')) found++;
-		}
+		const found = (await packageSources()).filter(
+			source =>
+				!source.file.endsWith(".test.ts") && source.text.includes('"packages/metaharness/adapters/edit/prompts"'),
+		).length;
 
 		expect(found).toBe(1);
 	});
@@ -531,7 +561,7 @@ describe("each prompt directory owns its rows and registry.ts aggregates every o
 		// accept any string, a typo would compile, and `PROMPTS[typo]` would render as `undefined`. The
 		// compile-time half of this lives in the row modules' `satisfies` clause; this is the runtime
 		// half, which fails if a row module ever stops contributing its ids.
-		expect(PROMPT_IDS.length).toBe(164);
+		expect(PROMPT_IDS.length).toBe(167);
 		expect(PROMPT_IDS).toContain("tools/read");
 		expect(new Set(PROMPT_IDS).size).toBe(PROMPT_IDS.length);
 	});
