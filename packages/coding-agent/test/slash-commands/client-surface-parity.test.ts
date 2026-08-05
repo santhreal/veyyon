@@ -351,21 +351,23 @@ describe("an ACP-reachable remedy names something an ACP client can run", () => 
 
 describe("every documented alias reaches the handler it claims", () => {
 	/**
-	 * `/cockpit` and `/hub` are documented as aliases of `/agents`. An alias that resolved to a
-	 * different spec, or to nothing, would send a reader to a command that errors.
+	 * The aliases a reader would NOT guess, which is what makes them worth naming one by one:
+	 * `/status` opens the Extension Control Center rather than a session-status view, `/cockpit` and
+	 * `/hub` are the retired Agent Hub names now pointing at the Agent Control Center, and `/help` is
+	 * the first thing a new user types. An alias that resolved elsewhere, or to nothing, would send a
+	 * reader to a command that errors.
 	 *
-	 * `/providers` is deliberately absent: it used to be an alias of `/setup` and is now a command
-	 * of its own, so pinning it here would lock the shape it was retired from.
+	 * The predictable aliases (`/models`, `/effort`, `/approval`, `/profiles`) are deliberately NOT
+	 * pinned here. They are covered by the sweep below, which reads the registry, and a hand-written
+	 * row for one of them once asserted `/approval` before `/permissions` had landed: a test pinning
+	 * a command that shipped in no version is worse than no row. `/providers` is absent for the
+	 * opposite reason, having stopped being an alias of `/setup` and become a command of its own.
 	 */
 	it.each([
 		["cockpit", "agents"],
 		["hub", "agents"],
 		["help", "welcome"],
 		["status", "extensions"],
-		["models", "model"],
-		["effort", "thinking"],
-		["approval", "permissions"],
-		["profiles", "profile"],
 	])("resolves /%s to /%s", (alias, target) => {
 		const resolved = lookupBuiltinSlashCommand(alias);
 
