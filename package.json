@@ -1,5 +1,6 @@
 {
 	"name": "veyyon",
+	"license": "MIT",
 	"homepage": "https://veyyon.dev",
 	"private": true,
 	"type": "module",

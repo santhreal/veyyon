@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import * as os from "node:os";
 import { join } from "node:path";
 import { defaultTripleDbPath, resolveDefaultTripleDb, TripleStore } from "@veyyon/mnemopi/core/triples";
 
@@ -9,12 +9,28 @@ const originalDataDir = process.env.MNEMOPI_DATA_DIR;
 const roots: string[] = [];
 
 function tempRoot(): string {
-	const root = mkdtempSync(join(tmpdir(), "mnemopi-ts-triples-"));
+	const root = mkdtempSync(join(os.tmpdir(), "mnemopi-ts-triples-"));
 	roots.push(root);
 	return root;
 }
 
+/**
+ * Point BOTH home mechanisms at `home`, and prove it took.
+ *
+ * `homeDir()` in the triple store prefers `process.env.HOME` and falls back to
+ * `os.homedir()`, and Bun fixes that fallback at process start, so the env var alone is
+ * one refactor away from silently reading the developer's real `~/.hermes`. The spy
+ * closes that path, and the assertion is what makes the isolation a fact rather than an
+ * intention.
+ */
+function enterHome(home: string): void {
+	process.env.HOME = home;
+	spyOn(os, "homedir").mockReturnValue(home);
+	expect(os.homedir()).toBe(home);
+}
+
 afterEach(() => {
+	spyOn(os, "homedir").mockRestore();
 	if (originalHome === undefined) delete process.env.HOME;
 	else process.env.HOME = originalHome;
 	if (originalDataDir === undefined) delete process.env.MNEMOPI_DATA_DIR;
@@ -27,7 +43,7 @@ describe("TripleStore default data-directory handling", () => {
 		const root = tempRoot();
 		const home = join(root, "home");
 		const dataDir = join(root, "configured-data");
-		process.env.HOME = home;
+		enterHome(home);
 		process.env.MNEMOPI_DATA_DIR = dataDir;
 
 		const store = new TripleStore();
@@ -46,7 +62,7 @@ describe("TripleStore default data-directory handling", () => {
 		const home = join(root, "home");
 		const dataDir = join(root, "configured-data");
 		const legacyDb = join(home, ".hermes", "mnemopi", "data", "triples.db");
-		process.env.HOME = home;
+		enterHome(home);
 		process.env.MNEMOPI_DATA_DIR = dataDir;
 
 		const legacy = new TripleStore(legacyDb);
@@ -82,7 +98,7 @@ describe("TripleStore default data-directory handling", () => {
 		const home = join(root, "home");
 		const dataDir = join(root, "configured-data");
 		const legacyDb = join(home, ".hermes", "mnemopi", "data", "triples.db");
-		process.env.HOME = home;
+		enterHome(home);
 		process.env.MNEMOPI_DATA_DIR = dataDir;
 
 		const legacy = new TripleStore(legacyDb);
