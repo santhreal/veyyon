@@ -208,6 +208,7 @@ import {
 	toAgentCompactionSettings,
 } from "../config/compaction-strategy";
 import { type EffortSource, resolveEffort, withLegacyDefaultEffort } from "../config/effort-resolver";
+import { missingCredentialsMessage } from "../config/missing-credentials";
 import type { ModelRegistry } from "../config/model-registry";
 import {
 	extractExplicitThinkingSelector,
@@ -11627,7 +11628,7 @@ export class AgentSession {
 	): Promise<{ switched: boolean }> {
 		const previousEditMode = this.#resolveActiveEditMode();
 		if (!this.#modelRegistry.hasConfiguredAuth(model)) {
-			throw new Error(`No API key for ${model.provider}/${model.id}`);
+			throw new Error(missingCredentialsMessage(model.provider, model.id, "the requested model"));
 		}
 
 		const targetModel = await this.#modelRegistry.refreshSelectedModelMetadata(model);
@@ -11669,7 +11670,7 @@ export class AgentSession {
 	): Promise<void> {
 		const previousEditMode = this.#resolveActiveEditMode();
 		if (!this.#modelRegistry.hasConfiguredAuth(model)) {
-			throw new Error(`No API key for ${model.provider}/${model.id}`);
+			throw new Error(missingCredentialsMessage(model.provider, model.id, "the requested model"));
 		}
 
 		const targetModel = await this.#modelRegistry.refreshSelectedModelMetadata(model);
@@ -11866,7 +11867,7 @@ export class AgentSession {
 
 		const apiKey = await this.#modelRegistry.getApiKey(nextModel, this.sessionId);
 		if (!apiKey) {
-			throw new Error(`No API key for ${nextModel.provider}/${nextModel.id}`);
+			throw new Error(missingCredentialsMessage(nextModel.provider, nextModel.id, "the next model in the cycle"));
 		}
 
 		this.#modelRegistry.clearSuppressedSelector(formatModelStringWithRouting(nextModel));
@@ -12824,7 +12825,7 @@ export class AgentSession {
 			}
 			const apiKey = await this.#modelRegistry.getApiKey(model, this.sessionId);
 			if (!apiKey) {
-				throw new Error(`No API key for ${model.provider}`);
+				throw new Error(missingCredentialsMessage(model.provider, model.id, "the handoff summary model"));
 			}
 
 			// Build the handoff request through the SAME pipeline a live turn uses
@@ -16249,7 +16250,7 @@ export class AgentSession {
 		}
 		const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
 		if (!apiKey) {
-			throw new Error(`No API key for retry fallback ${selector.raw}`);
+			throw new Error(missingCredentialsMessage(candidate.provider, candidate.id, `retry fallback ${selector.raw}`));
 		}
 
 		// Capture the configured selector (auto-aware) so a fallback chain preserves
@@ -18176,7 +18177,7 @@ export class AgentSession {
 			const model = this.model!;
 			const apiKey = await this.#modelRegistry.getApiKey(model, this.sessionId);
 			if (!apiKey) {
-				throw new Error(`No API key for ${model.provider}`);
+				throw new Error(missingCredentialsMessage(model.provider, model.id, "the branch summary model"));
 			}
 			await this.leaseSecretRuntime();
 			const branchSummarySettings = this.settings.getGroup("branchSummary");
