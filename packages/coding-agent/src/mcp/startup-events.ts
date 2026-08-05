@@ -6,12 +6,19 @@ export const MCP_CONNECTION_STATUS_EVENT_CHANNEL = "mcp:connection-status";
 /**
  * The `serverName` a config-level MCP failure is reported under.
  *
- * A `.mcp.json` that cannot be parsed, or an entry the capability layer
- * refused, never becomes a named server, so there is no real name to attach
- * the failure to. Without a stand-in the failure has nowhere to go and the
- * boot health zone reports a clean start while the user's servers are missing.
+ * An `mcp.json` that cannot be parsed, or an entry the capability layer refused,
+ * never becomes a named server, so there is no real name to attach the failure
+ * to. Without a stand-in the failure has nowhere to go and the boot health zone
+ * reports a clean start while the user's servers are missing.
+ *
+ * It used to read `.mcp.json`, which named a specific file. Project-scope
+ * `.mcp.json` discovery has since been removed, so that label pointed the
+ * operator at a file the agent no longer opens, and the user-scope file it does
+ * read is `mcp.json` under the agent dir. The label now names the LAYER rather
+ * than a filename, because the failures reported under it come from more than
+ * one file and the message body already carries the real path.
  */
-export const MCP_CONFIG_STATUS_LABEL = ".mcp.json";
+export const MCP_CONFIG_STATUS_LABEL = "mcp config";
 
 export type McpConnectionStatusEvent =
 	| { type: "connecting"; serverNames: string[] }

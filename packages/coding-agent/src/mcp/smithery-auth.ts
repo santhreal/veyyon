@@ -42,7 +42,9 @@ export async function createSmitheryCliAuthSession(): Promise<SmitheryCliAuthSes
 		signal: smitheryTimeoutSignal(),
 	});
 	if (!response.ok) {
-		throw new Error(`Failed to create Smithery auth session: ${response.status} ${response.statusText}`);
+		throw new Error(
+			`Smithery would not start a login session: HTTP ${response.status} ${response.statusText} from ${SMITHERY_URL}/api/auth/cli/session. Fix: check that ${SMITHERY_URL} is reachable from this network, then run \`/mcp smithery-login\` again. If you already hold a key, set \`SMITHERY_API_KEY\` in the environment instead and skip the login.`,
+		);
 	}
 	return (await response.json()) as SmitheryCliAuthSession;
 }
@@ -56,9 +58,13 @@ export async function pollSmitheryCliAuthSession(
 	});
 	if (!response.ok) {
 		if (response.status === 404 || response.status === 410) {
-			throw new Error("Smithery login session expired. Please try again.");
+			throw new Error(
+				`This Smithery login session expired before it was approved in the browser. Fix: run \`/mcp smithery-login\` again and finish the approval in the browser page it opens.`,
+			);
 		}
-		throw new Error(`Smithery auth polling failed: ${response.status} ${response.statusText}`);
+		throw new Error(
+			`Smithery would not report the state of this login session: HTTP ${response.status} ${response.statusText}. Fix: run \`/mcp smithery-login\` again. If ${SMITHERY_URL} is unreachable from this network, set \`SMITHERY_API_KEY\` in the environment instead and skip the login.`,
+		);
 	}
 	return (await response.json()) as SmitheryCliPollResponse;
 }
@@ -81,7 +87,9 @@ export async function getSmitheryApiKey(): Promise<string | undefined> {
 export async function saveSmitheryApiKey(apiKey: string): Promise<void> {
 	const normalized = normalizeApiKey(apiKey);
 	if (!normalized) {
-		throw new Error("Smithery API key cannot be empty.");
+		throw new Error(
+			"A Smithery API key cannot be empty. Fix: paste the key from your Smithery account settings, or run `/mcp smithery-login` to obtain one through the browser.",
+		);
 	}
 
 	const authPath = getSmitheryAuthPath();

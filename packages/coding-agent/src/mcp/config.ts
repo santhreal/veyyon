@@ -17,8 +17,6 @@ import { validateServerConfig } from "./validate";
 
 /** Options for loading MCP configs */
 export interface LoadMCPConfigsOptions {
-	/** Whether to load project-level config (default: true) */
-	enableProjectConfig?: boolean;
 	/** Whether to filter out Exa MCP servers (default: true) */
 	filterExa?: boolean;
 	/** Whether to filter out browser MCP servers when builtin browser tool is enabled (default: false) */
@@ -120,17 +118,16 @@ function convertToLegacyConfig(server: MCPServer): MCPServerConfig {
  * @param options Load options
  */
 export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOptions): Promise<LoadMCPConfigsResult> {
-	const enableProjectConfig = options?.enableProjectConfig ?? true;
 	const filterExa = options?.filterExa ?? true;
 	const filterBrowser = options?.filterBrowser ?? false;
 
-	// Load MCP servers via capability system
+	// Load MCP servers via capability system. There is no project-level filter
+	// here any more: no MCP provider emits `_source.level === "project"`, because
+	// a repository must not name a server the agent connects to. The
+	// `enableProjectConfig` option and its settings row governed that filter and
+	// so governed nothing.
 	const result = await loadCapability<MCPServer>(mcpCapability.id, { cwd, agentDir: options?.agentDir });
-
-	// Filter out project-level configs if disabled
-	const servers = enableProjectConfig
-		? result.items
-		: result.items.filter(server => server._source.level !== "project");
+	const servers = result.items;
 
 	// Load user-level disable/force-enable lists. The denylist always wins; the
 	// allowlist overrides a non-writable source config's `enabled: false`.

@@ -113,12 +113,16 @@ function resolveRedirectUri(redirectUri: string | undefined): string | undefined
 	const trimmed = configured?.trim();
 	if (!trimmed) return undefined;
 	if (trimmed !== configured) {
-		throw new Error("OAuth redirect URI must not include surrounding whitespace");
+		throw new Error(
+			`The \`oauth.redirectUri\` "${configured}" has leading or trailing whitespace, which an authorization server compares literally and will reject as a redirect_uri mismatch. Fix: remove the whitespace from \`oauth.redirectUri\` on this server's entry in your MCP config.`,
+		);
 	}
 
 	const parsed = new URL(configured);
 	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-		throw new Error("OAuth redirect URI must use http or https");
+		throw new Error(
+			`The \`oauth.redirectUri\` "${configured}" uses the "${parsed.protocol}" scheme, and an OAuth redirect must be http or https. Fix: change \`oauth.redirectUri\` on this server's entry in your MCP config to an \`http://localhost:<port>/…\` loopback URL, or delete it to use the default.`,
+		);
 	}
 	return configured;
 }
@@ -140,13 +144,13 @@ function validateRedirectConfig(config: MCPOAuthConfig, redirectUri: string | un
 
 	if (config.callbackPort === undefined) {
 		throw new Error(
-			"HTTPS loopback redirect URIs require oauth.callbackPort to point at the local HTTP callback listener behind your TLS terminator",
+			`The \`oauth.redirectUri\` "${redirectUri}" is an HTTPS loopback URL, and the local callback listener speaks plain HTTP: it terminates no TLS. Fix: set \`oauth.callbackPort\` on this server's entry in your MCP config to the plain-HTTP port your TLS terminator forwards to.`,
 		);
 	}
 
 	if (config.callbackPort === getUriPort(parsed)) {
 		throw new Error(
-			"HTTPS loopback redirect URIs cannot reuse the same local port; terminate TLS separately and forward to oauth.callbackPort",
+			`\`oauth.callbackPort\` is ${config.callbackPort}, the same port as the HTTPS redirect URI "${redirectUri}", so the local listener would collide with the TLS terminator. Fix: give \`oauth.callbackPort\` a different, plain-HTTP port on this server's entry in your MCP config and forward ${getUriPort(parsed)} to it.`,
 		);
 	}
 }
@@ -226,15 +230,21 @@ function resolveResourceUri(resource: string | undefined): string | undefined {
 	const trimmed = resource?.trim();
 	if (!trimmed) return undefined;
 	if (trimmed !== resource) {
-		throw new Error("OAuth resource URI must not include surrounding whitespace");
+		throw new Error(
+			`The \`auth.resource\` "${resource}" has leading or trailing whitespace, which an authorization server compares literally and will reject. Fix: remove the whitespace from \`auth.resource\` on this server's entry in your MCP config.`,
+		);
 	}
 
 	const parsed = new URL(trimmed);
 	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-		throw new Error("OAuth resource URI must use http or https");
+		throw new Error(
+			`The \`auth.resource\` "${trimmed}" uses the "${parsed.protocol}" scheme, and an RFC 8707 resource indicator must be http or https. Fix: change \`auth.resource\` on this server's entry in your MCP config, or delete it to let the server URL be used.`,
+		);
 	}
 	if (parsed.hash) {
-		throw new Error("OAuth resource URI must not include a fragment");
+		throw new Error(
+			`The \`auth.resource\` "${trimmed}" includes the fragment "${parsed.hash}", which RFC 8707 forbids in a resource indicator. Fix: drop everything from the "#" onward in \`auth.resource\` on this server's entry in your MCP config.`,
+		);
 	}
 	return trimmed;
 }
@@ -481,7 +491,9 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 
 		if (!response.ok) {
 			const errorText = await response.text();
-			throw new Error(`Token exchange failed: ${response.status} ${errorText}`);
+			throw new Error(
+				`The authorization server at ${this.config.tokenUrl} rejected the token exchange with HTTP ${response.status}: ${truncate(errorText.trim(), 512)}. Fix: run \`/mcp reauth <name>\` to start the authorization again (\`/mcp list\` gives the name). If the response says \`invalid_client\`, this provider needs a pre-registered client: set \`oauth.clientId\` (and \`oauth.clientSecret\` if it requires one) on this server's entry in your MCP config.`,
+			);
 		}
 
 		const data = (await response.json()) as {
@@ -788,7 +800,9 @@ export async function refreshMCPOAuthToken(
 
 	if (!response.ok) {
 		const text = await response.text();
-		throw new Error(`MCP OAuth refresh failed: ${response.status} ${text}`);
+		throw new Error(
+			`The authorization server at ${tokenUrl} refused to refresh this MCP server's token, answering HTTP ${response.status}: ${truncate(text.trim(), 512)}. Fix: the stored grant is no longer usable, so refreshing again will not help. Run \`/mcp reauth <name>\` to authorize from scratch; \`/mcp list\` gives the server's name.`,
+		);
 	}
 
 	const data = (await response.json()) as {

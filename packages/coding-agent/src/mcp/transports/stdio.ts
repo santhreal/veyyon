@@ -23,6 +23,7 @@ import type {
 import { toJsonRpcError } from "../../mcp/types";
 import { isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 import { describeJsonRpcError, isUnattributableError, rejectAllPending } from "../unattributable-error";
+import { mcpNotConnectedMessage, mcpTimeoutMessage } from "./transport-failure";
 
 /** Subprocess argv and platform-derived spawn flags for an MCP stdio server. */
 export interface StdioSpawnCommand {
@@ -338,6 +339,16 @@ const STDERR_TAIL_LINES = 40;
 
 /** Longest single stderr line retained; a server can emit an arbitrarily long one. */
 const STDERR_TAIL_LINE_CHARS = 400;
+/**
+ * What to do about a stdio server that is gone.
+ *
+ * Kept out of {@link StdioTransport.#describeClose} only so the sentence is one
+ * literal rather than a fragment assembled in a `parts` array with the facts.
+ * `/mcp` is `textMode: true`, so `reconnect` and `list` are reachable from a text
+ * or ACP client too, not only the TUI.
+ */
+const STDIO_CLOSED_FIX =
+	"Fix: run `/mcp list` to find this server's name, then `/mcp reconnect <name>`. If the output above names a missing command or environment variable, fix that in the server's MCP config entry first.";
 
 export class StdioTransport implements MCPTransport {
 	#process: Subprocess<"pipe", "pipe", "pipe"> | null = null;
@@ -604,6 +615,11 @@ export class StdioTransport implements MCPTransport {
 	 * facts that separate them are the server's name (a session runs several),
 	 * how it ended (an exit code or a signal), and what it last said. All three
 	 * are already available here and were simply not being used.
+	 *
+	 * The remedy is the fourth fact and it does not come from the process: the
+	 * server is down and `/mcp reconnect <name>` is what brings it back, whatever
+	 * the exit code was. Naming it here rather than at each call site is what
+	 * makes every path that reports a dead stdio server carry it.
 	 */
 	#describeClose(): string {
 		const parts = [`MCP server "${this.config.command}" closed its connection`];
@@ -617,6 +633,7 @@ export class StdioTransport implements MCPTransport {
 		} else {
 			parts.push("The server produced no output explaining why.");
 		}
+		parts.push(STDIO_CLOSED_FIX);
 		return parts.join(" ");
 	}
 
@@ -646,7 +663,11 @@ export class StdioTransport implements MCPTransport {
 			// the one where a bare "not connected" is least useful: the reason is
 			// known, it is just in the past. Report it with the same detail an
 			// in-flight call gets, so the two orderings read the same.
-			throw new Error(this.#process ? this.#describeClose() : `MCP server "${this.config.command}" is not running.`);
+			throw new Error(
+				this.#process
+					? this.#describeClose()
+					: mcpNotConnectedMessage({ command: this.config.command }, `request "${method}"`),
+			);
 		}
 
 		const id = Snowflake.next();
@@ -706,7 +727,7 @@ export class StdioTransport implements MCPTransport {
 		if (isMCPTimeoutEnabled(timeout)) {
 			timer = setTimeout(() => {
 				cleanup();
-				reject(new Error(`Request timeout after ${timeout}ms`));
+				reject(new Error(mcpTimeoutMessage({ command: this.config.command }, `request "${method}"`, timeout)));
 			}, timeout);
 		}
 
@@ -740,7 +761,7 @@ export class StdioTransport implements MCPTransport {
 
 	async notify(method: string, params?: Record<string, unknown>): Promise<void> {
 		if (!this.#connected || !this.#process?.stdin) {
-			throw new Error("Transport not connected");
+			throw new Error(mcpNotConnectedMessage({ command: this.config.command }, `notification "${method}"`));
 		}
 
 		const notification = {
@@ -761,7 +782,9 @@ export class StdioTransport implements MCPTransport {
 		// "connected" handle wrapping a dead transport. See #1710.
 		if (!writeFrame(this.#process.stdin, `${JSON.stringify(notification)}\n`)) {
 			this.#handleClose();
-			throw new Error(`Transport closed while sending notification "${method}"`);
+			throw new Error(
+				`${this.#describeClose()} The notification "${method}" was not delivered and nothing will retry it.`,
+			);
 		}
 	}
 

@@ -25,6 +25,7 @@ import { ToolAbortError, throwIfAborted, toolAbort } from "../tools/tool-errors"
 import { callTool } from "./client";
 import { renderMCPCall, renderMCPResult } from "./render";
 import { retainMCPToolArgsAttemptFactory } from "./transports/http";
+import { isMCPTransportStateMessage } from "./transports/transport-failure";
 import type { MCPContent, MCPServerConnection, MCPToolCallParams, MCPToolCallResult, MCPToolDefinition } from "./types";
 
 /** Reconnect callback: tears down stale connection, returns new one or null. */
@@ -50,8 +51,15 @@ const RETRIABLE_PATTERNS = [
 export function isRetriableConnectionError(error: unknown): boolean {
 	if (!(error instanceof Error)) return false;
 	const msg = error.message.toLowerCase();
-	// Stale session (server restarted, old session ID is gone)
-	if (/^http (404|502|503):/.test(msg)) return true;
+	// Stale session (server restarted, old session ID is gone). Unanchored on
+	// purpose: `mcpHttpFailureMessage` leads with the URL that failed, so the
+	// status now sits mid-sentence ("... failed: HTTP 404: ..."). The old
+	// `/^http (404|502|503):/` still matched only the shape that builder
+	// replaced, so every stale-session reconnect had stopped firing.
+	if (/\bhttp (404|502|503)\b/.test(msg)) return true;
+	// The transports' own wording for a dead connection, owned next to the
+	// strings rather than duplicated as literals here.
+	if (isMCPTransportStateMessage(msg)) return true;
 	return RETRIABLE_PATTERNS.some(p => msg.includes(p));
 }
 
@@ -223,9 +231,43 @@ function containsRawToolArgument(text: string, value: unknown, seen: WeakSet<obj
 	);
 }
 
+/**
+ * The MODEL is the first reader of every message below, and that decides the wording.
+ *
+ * A failing MCP tool used to hand the model `MCP error: Transport not connected`.
+ * The model cannot open a selector, cannot read a docs page, and cannot run a
+ * slash command, so a message that names only the failure leaves it exactly two
+ * behaviours: call the same tool again with the same arguments, or abandon the
+ * task. Both cost eval score directly, and the retry loop costs turns as well.
+ *
+ * So the model's action is stated explicitly: a retry budget of one, and an
+ * escalation with the facts to escalate. The operator-facing fix (`/mcp
+ * reconnect`, a `timeout` in the config, a `reauth`) is already inside `detail`,
+ * put there by the layer that knows it: see `transports/transport-failure.ts`
+ * and `transports/http-failure.ts`. This layer adds only what it alone knows:
+ * who is reading.
+ */
+const MODEL_NEXT_STEP =
+	"Next step: retry this call at most once. A transport, auth or configuration failure returns the same error on every attempt, so a retry loop costs turns and changes nothing. If a second attempt fails, stop calling this tool and tell the operator what failed, which server it was on, and the fix named above.";
+
+/** `serverName` and `mcpToolName` come from config and the tool schema, never from the caller's arguments, so naming them cannot leak one. */
+function mcpToolFailureText(serverName: string, mcpToolName: string, detail: string): string {
+	return `MCP tool "${mcpToolName}" on server "${serverName}" failed: ${detail}\n${MODEL_NEXT_STEP}`;
+}
+
+/**
+ * The error text, or an explanation of its absence.
+ *
+ * When a server echoes the call's arguments back inside its error, the error is
+ * withheld: a tool argument can carry a credential and the transcript is
+ * re-read on every turn. The old fallback for that case was the bare sentence
+ * "MCP request failed.", which told the model neither what happened nor that
+ * anything had been withheld, so it read as a transport failure and got retried.
+ */
 function safeMCPErrorMessage(error: unknown, rawParams: unknown): string {
 	const message = errorMessage(error);
-	return containsRawToolArgument(message, rawParams) ? "MCP request failed." : message;
+	if (!containsRawToolArgument(message, rawParams)) return message;
+	return "the server's error message echoed this call's arguments back, so it was withheld to keep credentials out of the transcript. Change the arguments and call again, or ask the operator to check the server's own logs for the real error.";
 }
 
 /** Build a CustomToolResult from a callTool response. */
@@ -247,7 +289,15 @@ function buildResult(
 		provider,
 		providerName,
 	};
-	const contentText = result.isError ? (leaksRawArgs ? "Error: MCP tool call failed." : `Error: ${text}`) : text;
+	const contentText = result.isError
+		? mcpToolFailureText(
+				serverName,
+				mcpToolName,
+				leaksRawArgs
+					? "the server reported an error whose text echoed this call's arguments, so it was withheld to keep credentials out of the transcript. Change the arguments and call again, or ask the operator to check the server's own logs."
+					: text,
+			)
+		: text;
 	const toolResult: CustomToolResult<MCPToolDetails> = { content: [{ type: "text", text: contentText }], details };
 	if (result.isError) {
 		toolResult.isError = true;
@@ -266,7 +316,7 @@ function buildErrorResult(
 ): CustomToolResult<MCPToolDetails> {
 	const message = safeMCPErrorMessage(error, rawParams);
 	return {
-		content: [{ type: "text", text: `MCP error: ${message}` }],
+		content: [{ type: "text", text: mcpToolFailureText(serverName, mcpToolName, message) }],
 		details: { serverName, mcpToolName, isError: true, provider, providerName },
 		isError: true,
 	};

@@ -282,8 +282,8 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `cache.reportRejection` | Report Cache Rejections | boolean | `true` | Warn when a turn asked the provider to cache a prefix and the provider cached nothing. |
-| `cache.blockOnRejection` | Block On Cache Rejection | boolean | `false` | Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money. |
+| `cache.reportRejection` | Report Cache Rejections | boolean | `true` | Warn when a turn asked the provider to cache a prefix and the provider cached nothing. Anthropic only; other providers do not report cache rejection. |
+| `cache.blockOnRejection` | Block On Cache Rejection | boolean | `false` | Anthropic only. Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money. |
 
 ### Session instrumentation
 
@@ -478,7 +478,7 @@ veyyon config get compaction.threshold
 | `tools.abortOnFabricatedResult` | Abort On Fabricated Tool Result | boolean | `true` | With in-band tool calls, stop the model immediately when it starts hallucinating a tool result mid-turn. Disable to let the model finish generating and discard the fabricated continuation instead. |
 | `tools.maxTimeout` | Max Tool Timeout | number | `0` | Maximum timeout in seconds the agent can set for any tool (0 = no limit). |
 | `async.enabled` | Async Execution | boolean | `true` | Enable async bash commands and background task execution. |
-| `async.pollWaitDuration` | Max Poll Time | enum | `smart` | How long the poll tool waits for background job updates before returning the current state. A fixed value waits that exact duration every time. `smart` adapts: it starts at 5s and lengthens with each back-to-back poll (up to 5m), then resets to 5s after about a minute without polling. Values: `5s`, `10s`, `30s`, `1m`, `5m`, `smart`. |
+| `async.pollWaitDuration` | Max Poll Time | enum | `smart` | How long the poll tool waits for background job updates before returning the current state. A fixed value waits that exact duration every time. `smart` adapts: it starts at 30s and climbs to 4m on a back-to-back poll, then resets to 30s after about a minute without polling. The 4m ceiling stays below the 5-minute prompt-cache boundary. Values: `5s`, `10s`, `30s`, `1m`, `5m`, `smart`. |
 
 ### Discovery & MCP
 
@@ -486,7 +486,6 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `tools.discoveryMode` | Tool Discovery | enum | `auto` | Hide tools behind a search tool to save tokens. 'auto' hides MCP tools once the tool set has more than 40 tools; 'mcp-only' always hides MCP tools; 'all' also hides non-essential built-ins and first-party heavyweight tools such as generate_image. Values: `auto`, `off`, `mcp-only`, `all`. |
 | `tools.essentialOverride` | Essential Tools Override | array | `[]` | Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults. |
-| `mcp.enableProjectConfig` | MCP Project Config | boolean | `true` | Load .mcp.json/mcp.json from project root. |
 | `mcp.discoveryMode` | MCP Tool Discovery | boolean | `false` | Hide MCP tools by default and expose them through a tool discovery tool. |
 | `mcp.discoveryDefaultServers` | MCP Discovery Default Servers | array | `[]` | Keep MCP tools from these servers visible while discovery mode hides other MCP tools. |
 | `mcp.notifications` | MCP Update Injection | boolean | `false` | Inject MCP resource updates into the agent conversation. |
@@ -522,7 +521,6 @@ veyyon config get compaction.threshold
 | `commands.enableClaudeUser` | Claude User Commands | boolean | `true` | Load commands from ~/.claude/commands/. |
 | `commands.enableClaudeProject` | Claude Project Commands | boolean | `true` | Load commands from .claude/commands/. |
 | `commands.enableOpencodeUser` | OpenCode User Commands | boolean | `true` | Load commands from ~/.config/opencode/commands/. |
-| `commands.enableOpencodeProject` | OpenCode Project Commands | boolean | `true` | Load commands from .opencode/commands/. |
 
 ## Subagents
 
@@ -555,7 +553,6 @@ veyyon config get compaction.threshold
 | `subagent.maxConcurrency` | Max Concurrent Subagents | number | `32` | Maximum number of subagents running concurrently. |
 | `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn. 0 still lets the parent session spawn direct subagents, but those children do not receive the task tool. Each agent can override this in the Agents editor. |
 | `subagent.maxRuntimeMs` | Max Subagent Runtime | number | `0` | Hard wall-clock limit per subagent (ms). 0 disables it. Defense-in-depth against provider-side stream hangs that escape the inference-layer watchdog; triggers a normal subagent abort with a 'timed out' reason. |
-| `subagent.idleTtlMs` | Idle TTL | number | `300000` | How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parked agents keep their transcript and revive automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. |
 | `subagent.softRequestBudget` | Soft Request Budget | number | `200` | Soft per-subagent request budget (assistant requests per run). Crossing it injects a wrap-up steering notice (see the notice setting below); at 1.5x the budget the run is force-stopped and the agent must yield its partial findings. 0 disables the guard. Bundled scout/sonic agents use a lower built-in budget. |
 | `subagent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop. |
 | `subagent.enableLsp` | LSP in Subagents | boolean | `false` | Allow spawned subagents to use the lsp tool. Off by default to keep subagents cheap; enable when LSP-aware delegation is worth the extra tokens. |
@@ -564,6 +561,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
+| `subagent.idleTtlMs` | Park After | number | `300000` | How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. |
 | `subagent.autoClose.enabled` | Close Parked Subagents | boolean | `true` | Close a parked subagent for good once it has been quiet long enough, instead of keeping it in the roster for the whole session. Parking already released the session; this decides whether the revivable reference is eventually dropped too. Turn it off to keep every finished subagent listed and revivable until you exit. |
 | `subagent.autoClose.parkedMs` | Close After | number | `300000` | How long a parked subagent stays listed and revivable before it is closed (ms). Counted from the moment it parked, not from when it started. Its transcript survives either way and stays readable through `history://`. |
 | `subagent.autoClose.waitingMs` | Close After (Waiting) | number | `1800000` | The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it gets a longer grace than one that simply went quiet: closing it on the ordinary timer would drop the agent you are most likely to message next. Set it equal to Close After to treat both the same. |
@@ -708,4 +706,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-339 settings.
+337 settings.

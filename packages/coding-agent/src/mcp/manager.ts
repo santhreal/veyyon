@@ -43,6 +43,7 @@ import { MCP_CONFIG_STATUS_LABEL, type McpConnectionStatusEvent } from "./startu
 import type { MCPToolDetails } from "./tool-bridge";
 import { DeferredMCPTool, MCPTool, mcpToolNamePrefix } from "./tool-bridge";
 import type { MCPToolCache } from "./tool-cache";
+import { describeMCPServerTarget } from "./transports/transport-failure";
 import type {
 	MCPGetPromptResult,
 	MCPPrompt,
@@ -163,8 +164,6 @@ export interface MCPLoadResult {
 
 /** Options for discovering and connecting to MCP servers */
 export interface MCPDiscoverOptions {
-	/** Whether to load project-level config (default: true) */
-	enableProjectConfig?: boolean;
 	/** Whether to filter out Exa MCP servers (default: true) */
 	filterExa?: boolean;
 	/** Whether to filter out browser MCP servers when builtin browser tool is enabled (default: false) */
@@ -342,14 +341,13 @@ export class MCPManager {
 	}
 
 	/**
-	 * Discover and connect to all MCP servers from .mcp.json files.
+	 * Discover and connect to every MCP server the capability system reports.
 	 * Returns tools and any connection errors.
 	 */
 	async discoverAndConnect(options?: MCPDiscoverOptions): Promise<MCPLoadResult> {
 		let loadedConfigs: LoadMCPConfigsResult;
 		try {
 			loadedConfigs = await loadAllMCPConfigs(this.cwd, {
-				enableProjectConfig: options?.enableProjectConfig,
 				filterExa: options?.filterExa,
 				filterBrowser: options?.filterBrowser,
 				agentDir: options?.agentDir,
@@ -680,7 +678,12 @@ export class MCPManager {
 			case "roots/list":
 				return this.#getRoots();
 			default:
-				throw Object.assign(new Error(`Unsupported server request: ${method}`), { code: -32601 });
+				throw Object.assign(
+					new Error(
+						`This MCP client does not implement the server-to-client request "${method}". It answers "ping" and "roots/list" only. Fix: nothing for the operator to do; the server should treat -32601 as "unsupported" and continue. If it does not, report the method name to the server's maintainer.`,
+					),
+					{ code: -32601 },
+				);
 		}
 	}
 
@@ -771,7 +774,9 @@ export class MCPManager {
 			const result = await reconnecting;
 			if (result) return result;
 		}
-		throw new Error(`MCP server not connected: ${name}`);
+		throw new Error(
+			`MCP server "${name}" is not connected, and no connection or reconnection to it is in flight. Fix: run \`/mcp list\` to check the name and whether the server is enabled, then \`/mcp reconnect ${name}\`. \`/mcp test ${name}\` reports why the connection fails.`,
+		);
 	}
 
 	/**
@@ -1030,7 +1035,9 @@ export class MCPManager {
 		// while we were connecting (e.g. /mcp reload called disconnectAll).
 		if (!this.#serverConfigs.has(name) || this.#epoch !== reconnectEpoch) {
 			closeTransportDetached(connection.transport, name, "reconnect-superseded");
-			throw new Error(`Server "${name}" was disconnected during reconnection`);
+			throw new Error(
+				`MCP server "${name}" was removed or disabled while it was reconnecting, so the new connection was dropped rather than left orphaned. Fix: if you did not intend that, run \`/mcp enable ${name}\` and then \`/mcp reconnect ${name}\`; \`/mcp list\` shows the current state.`,
+			);
 		}
 
 		this.#connections.set(name, connection);
@@ -1311,12 +1318,16 @@ export class MCPManager {
 						},
 						refresh: (current, signal) => {
 							if (current.refresh === REMOTE_REFRESH_SENTINEL) {
-								throw new Error("MCP OAuth refresh token is broker-redacted; local refresh is unavailable");
+								throw new Error(
+									`The OAuth refresh token for ${describeMCPServerTarget(config)} is held by the auth broker and redacted locally, so this process cannot refresh it. Fix: run \`/mcp reauth <name>\` to authorize again through the broker; \`/mcp list\` gives the server's name.`,
+								);
 							}
 							const material = selectMcpOAuthRefreshMaterial(current, auth);
 							const tokenUrl = material?.tokenUrl;
 							if (!current.refresh || !tokenUrl) {
-								throw new Error("MCP OAuth credential is missing refresh material");
+								throw new Error(
+									`The stored OAuth credential for ${describeMCPServerTarget(config)} has no refresh token or no token endpoint, so it cannot be refreshed and will stay expired. Fix: run \`/mcp reauth <name>\` to authorize again; \`/mcp list\` gives the server's name.`,
+								);
 							}
 							const clientId = material?.clientId;
 							const clientSecret = material?.clientSecret;

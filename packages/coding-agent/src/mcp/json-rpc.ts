@@ -6,6 +6,7 @@
  */
 import { logger, tryParseJson } from "@veyyon/utils";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
+import { mcpHttpFailureMessage } from "./transports/http-failure";
 import type { JsonRpcResponse } from "./types";
 
 /** Hard ceiling on a single MCP HTTP request when the caller provides no signal. */
@@ -101,7 +102,10 @@ export async function callMCP<T = unknown>(
 		});
 
 		if (!response.ok) {
-			const errorMsg = `MCP request failed: ${response.status} ${response.statusText}`;
+			// The same builder the HTTP transport uses, so a direct `callMCP` and a
+			// transport request report the same failure the same way, with the same
+			// bound on the echoed body and the same per-status remedy.
+			const errorMsg = mcpHttpFailureMessage(redactUrlForLog(url), response.status, response.statusText);
 			logger.error(errorMsg, { url: redactUrlForLog(url), method, params });
 			throw new Error(errorMsg);
 		}
@@ -118,7 +122,9 @@ export async function callMCP<T = unknown>(
 			method,
 			responseText: text.slice(0, 500),
 		});
-		throw new Error("Failed to parse MCP response");
+		throw new Error(
+			`MCP server at ${redactUrlForLog(url)} answered "${method}" with something that is neither JSON nor a JSON-RPC SSE frame, so there is nothing to read. Fix: this is a bug in the server, or a proxy rewriting its response. Check the server's own logs, and run \`/mcp test <name>\` to reproduce it.`,
+		);
 	}
 
 	return result;

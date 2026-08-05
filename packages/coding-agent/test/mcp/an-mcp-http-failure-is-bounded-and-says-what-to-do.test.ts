@@ -71,13 +71,20 @@ describe("an MCP HTTP failure", () => {
 	});
 
 	/**
-	 * Every status that carries a specific next step, in one pass, because a
-	 * remedy added for the branch someone happened to open is the defect class
-	 * this session keeps finding. The `/mcp` subcommands named are real: `/mcp`
-	 * declares `textMode: true` and `list` / `reauth` are declared subcommands, so
-	 * a text client can run them too.
+	 * Every status carries a specific next step, in one pass, because a remedy
+	 * added for the branch someone happened to open is the defect class this
+	 * session keeps finding. The `/mcp` subcommands named are real: `/mcp`
+	 * declares `textMode: true` and `list` / `reauth` / `test` are declared
+	 * subcommands, so a text client can run them too.
+	 *
+	 * The 418 case is the one that changed. `remedyFor` used to return
+	 * `undefined` outside 401/403/404/429/5xx, which left the entire 4xx middle
+	 * silent, and 4xx is exactly the band a misconfigured entry produces: a 400
+	 * from a malformed request, a 405 from a URL that is not an MCP endpoint at
+	 * all. "No specific next step" is not the same as "no next step", and the
+	 * generic branch names the three fields worth checking.
 	 */
-	it("names the remedy each status implies, and names none when the status implies none", async () => {
+	it("names a remedy for every status, including the 4xx band that had none", async () => {
 		const expected: ReadonlyArray<[number, string]> = [
 			[
 				401,
@@ -100,12 +107,18 @@ describe("an MCP HTTP failure", () => {
 			expect(message).toContain(remedy);
 		}
 
-		// A status with no specific next step says nothing rather than guessing one.
+		// The generic 4xx branch: still a remedy, and one that says retrying is
+		// pointless rather than leaving the reader to discover that by looping.
 		respond = res => {
 			res.writeHead(418, { "Content-Type": "text/plain" });
 			res.end("teapot");
 		};
-		expect(await failureMessage()).toBe(`MCP request to ${url} failed: HTTP 418: teapot`);
+		expect(await failureMessage()).toBe(
+			`MCP request to ${url} failed: HTTP 418: teapot. ` +
+				"Fix: check this server's `url`, `type` and `headers` in your MCP configuration, " +
+				"then run `/mcp test <name>` to reproduce it. A 4xx here means the server understood the request " +
+				"and refused it, so retrying it unchanged will not help.",
+		);
 	});
 
 	/**

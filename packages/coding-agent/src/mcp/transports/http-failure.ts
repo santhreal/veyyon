@@ -47,8 +47,18 @@ const MAX_BODY_LENGTH = 512;
  */
 const MAX_MESSAGE_LENGTH = 1200;
 
-/** What the reader should do about `status`, when the status implies one thing. */
-function remedyFor(status: number): string | undefined {
+/**
+ * What the reader should do about `status`.
+ *
+ * Total, not partial. It used to return `undefined` for anything outside
+ * 401/403/404/429/5xx, which left the whole 4xx middle with no next step at all:
+ * a 400 from a malformed request, a 405 from a URL that is not an MCP endpoint,
+ * a 413. Those are the statuses a misconfigured entry produces, so they are
+ * exactly the ones an operator needs a fix for.
+ * next step whatsoever. Those are the statuses a misconfigured entry produces, so
+ * they are exactly the ones an operator needs a fix for.
+ */
+function remedyFor(status: number): string {
 	if (status === 401 || status === 403) {
 		return "Fix: run `/mcp list` to find this server's name, then `/mcp reauth <name>`, or check its token in your MCP configuration.";
 	}
@@ -61,7 +71,7 @@ function remedyFor(status: number): string | undefined {
 	if (status >= 500) {
 		return "Fix: the server failed, not the request. Retry, and check the server's own logs if it persists.";
 	}
-	return undefined;
+	return "Fix: check this server's `url`, `type` and `headers` in your MCP configuration, then run `/mcp test <name>` to reproduce it. A 4xx here means the server understood the request and refused it, so retrying it unchanged will not help.";
 }
 
 /**
@@ -77,7 +87,6 @@ export function mcpHttpFailureMessage(url: string, status: number, body: string,
 	const trimmedBody = truncate(body.trim(), MAX_BODY_LENGTH);
 	if (trimmedBody.length > 0) message += `: ${trimmedBody}`;
 	if (authHints) message += ` [${authHints}]`;
-	const remedy = remedyFor(status);
-	if (remedy) message += `. ${remedy}`;
+	message += `. ${remedyFor(status)}`;
 	return truncate(message, MAX_MESSAGE_LENGTH);
 }
