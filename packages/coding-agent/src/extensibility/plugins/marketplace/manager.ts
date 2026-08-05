@@ -10,7 +10,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { DAY_MS, isEnoent, logger, pathIsWithin, removeTempPath } from "@veyyon/utils";
+import { DAY_MS, errorMessage, isEnoent, logger, pathIsWithin, removeTempPath } from "@veyyon/utils";
 import { normalizePluginRuntimeConfig } from "../runtime-config";
 import type { PluginRuntimeConfig } from "../types";
 
@@ -602,7 +602,9 @@ export class MarketplaceManager {
 	// ── Update / upgrade ─────────────────────────────────────────────────────
 
 	// Refresh marketplace catalogs that haven't been updated in more than 24 h.
-	// Per-marketplace failures are silently swallowed — offline is fine.
+	// Per-marketplace failures do not stop the sweep, but they are reported: a
+	// marketplace that has been failing for weeks looks exactly like one that is
+	// current, and every plugin it serves silently stops receiving updates.
 	async refreshStaleMarketplaces(): Promise<void> {
 		const reg = await readMarketplacesRegistry(this.#opts.marketplacesRegistryPath);
 		const staleMs = DAY_MS;
@@ -610,8 +612,11 @@ export class MarketplaceManager {
 			if (Date.now() - Date.parse(entry.updatedAt) >= staleMs) {
 				try {
 					await this.updateMarketplace(entry.name);
-				} catch {
-					// Network or parse failure — leave stale, try next time.
+				} catch (error) {
+					logger.warn("Marketplace catalog refresh failed; the catalog stays stale", {
+						marketplace: entry.name,
+						error: errorMessage(error),
+					});
 				}
 			}
 		}
@@ -737,7 +742,9 @@ export class MarketplaceManager {
 
 	// Upgrade every (pluginId, scope) pair that checkForUpdates reports as outdated.
 	// Only stale scopes are touched; a current user install is not re-installed when only
-	// the project scope is stale. Per-entry failures are skipped — partial success is returned.
+	// the project scope is stale. Per-entry failures are skipped so partial success is
+	// still returned, and each skip is reported: the returned list only names what
+	// succeeded, so a plugin that never upgrades is otherwise invisible.
 	async upgradeAllPlugins(): Promise<
 		Array<{ pluginId: string; scope: "user" | "project"; from: string; to: string }>
 	> {
@@ -747,8 +754,14 @@ export class MarketplaceManager {
 			try {
 				const entry = await this.upgradePlugin(update.pluginId, update.scope);
 				results.push({ pluginId: update.pluginId, scope: update.scope, from: update.from, to: entry.version });
-			} catch {
-				// Skip this entry; partial upgrades are better than none.
+			} catch (error) {
+				logger.warn("Plugin upgrade failed; the installed version is unchanged", {
+					pluginId: update.pluginId,
+					scope: update.scope,
+					from: update.from,
+					to: update.to,
+					error: errorMessage(error),
+				});
 			}
 		}
 		return results;

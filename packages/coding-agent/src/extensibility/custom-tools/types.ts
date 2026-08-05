@@ -27,6 +27,7 @@ import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
 import type { Theme } from "../../modes/theme/theme";
 import type { ReadonlySessionManager } from "../../session/session-manager";
+import type { SessionToolApprovals } from "../../tools/approval-modes";
 import type { TodoItem } from "../../tools/todo";
 import type { RecoveredRetryError } from "../shared-events";
 import type * as TypeBox from "../typebox";
@@ -124,6 +125,15 @@ export interface CustomToolContext {
 	 * still stop the call. Session-scoped, defaults off.
 	 */
 	bypassAllApprovals?: boolean;
+	/**
+	 * Standing per-tool answers the operator gave at an approval prompt this
+	 * session ("Approve for session" / "Deny for session").
+	 *
+	 * Read after policy resolution and never before it: it can dismiss a prompt,
+	 * never lift a settings `deny` or a plan-mode block. Absent in hosts with no
+	 * interactive approval dialog, which then simply ask every time.
+	 */
+	sessionApprovals?: SessionToolApprovals;
 }
 
 /** Session event passed to onSession callback */
