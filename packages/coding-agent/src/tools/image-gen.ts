@@ -1349,8 +1349,14 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					}
 					const xaiCreds = await resolveXAIHttpCredentials(ctx.modelRegistry, resolvedModel);
 					if (!xaiCreds) {
+						// This is a TOOL error, so the first reader is the model, which
+						// cannot open a selector. `Run /login → xAI Grok OAuth` named a
+						// TUI menu path and nothing the model or a headless operator
+						// could act on. The login provider id is `xai-oauth`, not `xai`
+						// (`registry/xai-oauth.ts`); `xai` has no `login` and would be
+						// refused as an unknown OAuth provider.
 						throw new Error(
-							"No xAI credentials. Run /login → xAI Grok OAuth (SuperGrok or X Premium+) or set XAI_API_KEY.",
+							"No xAI credentials. Fix: set XAI_API_KEY in the environment, or run `veyyon auth-broker login xai-oauth` to sign in with a SuperGrok or X Premium+ account (`/login` in an interactive veyyon session).",
 						);
 					}
 
