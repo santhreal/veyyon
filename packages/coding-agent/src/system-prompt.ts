@@ -23,7 +23,6 @@ import type { SkillsSettings } from "./config/settings";
 import { type ContextFile, loadCapability } from "./discovery";
 import { ensureManagedAgentsFilesOnStartup, getGlobalAgentsPath } from "./discovery/agents-guidance";
 import { expandAtImports } from "./discovery/at-imports";
-import { findNearestProjectConfigDir } from "./discovery/builtin";
 import { loadSkills, type Skill } from "./extensibility/skills";
 import { hasObsidian } from "./internal-urls/vault-protocol";
 import {
@@ -255,19 +254,58 @@ type ScopedContextFile = {
 };
 
 /**
- * Drop a less-prominent context file only when a later, more-prominent file
- * contains its entire normalized paragraph sequence. Input order is therefore
- * authoritative: callers must order context from least to most prominent first.
+ * Authority rank of a context-file scope, ascending.
+ *
+ * ONE table owns both the render order and the dedupe survivor, so the two can
+ * no longer disagree. The sort below emits least authoritative first, which puts
+ * the strongest file in the last and highest-recency slot; the dedupe keeps the
+ * highest-ranked copy of duplicated text.
+ *
+ * `project` is lowest because a project file is content checked into a repository
+ * the operator may not have written. `global` is highest because it is the
+ * operator's own cross-profile configuration. `user` is the active profile's own
+ * file and sits between them. The model-facing statement of the same ladder lives
+ * in `prompts/session/context-file-authority.md`; keep the two in agreement.
  */
-function dedupeContainedContextFiles(
-	contextFiles: Array<{ path: string; content: string; depth?: number }>,
-): Array<{ path: string; content: string; depth?: number }> {
+const CONTEXT_SCOPE_AUTHORITY: Record<ContextFile["level"], number> = { project: 0, user: 1, global: 2 };
+
+/**
+ * Drop a context file whose entire normalized paragraph sequence is already
+ * contained in a copy that OUTRANKS it.
+ *
+ * Outranking is AUTHORITY first and position second, and that order is the whole
+ * point. The survivor's `<file path=...>` label is what tells the model which
+ * rules it is reading, so choosing by position alone re-attributes the operator's
+ * global rules to whichever project file happens to quote them: identical bytes,
+ * wrong provenance, and a repository's file wearing the authority of the user's
+ * own configuration. Inverting the render order silently flipped exactly that,
+ * which is why the rank is read from `CONTEXT_SCOPE_AUTHORITY` rather than from
+ * where a file landed in the array.
+ *
+ * Position still breaks ties WITHIN one scope, where it is the real ordering: the
+ * project file closest to cwd is the most specific project rule and keeps the
+ * copy. Only bytes are dropped, never rewritten, so a longer project file that
+ * quotes a shorter global one keeps both: the global copy survives on rank, and
+ * the project file is left exactly as its author wrote it.
+ *
+ * A caller that supplies its own `contextFiles` array has no scope information to
+ * give and gets the position-only tie-break for every pair, which is the same
+ * contract the rest of that path follows: an explicit array is rendered as handed
+ * over.
+ */
+function dedupeContainedContextFiles<T extends { content: string }>(
+	contextFiles: T[],
+	authorityOf: (file: T) => number = () => 0,
+): T[] {
 	const blocks = contextFiles.map(file => splitComparablePromptBlocks(file.content));
+	const authority = contextFiles.map(authorityOf);
+	const outranks = (candidate: number, subject: number): boolean =>
+		authority[candidate] === authority[subject] ? candidate > subject : authority[candidate] > authority[subject];
 	return contextFiles.filter(
 		(_file, index) =>
 			!blocks.some(
 				(candidateBlocks, candidateIndex) =>
-					candidateIndex > index && promptBlocksContain(candidateBlocks, blocks[index]),
+					outranks(candidateIndex, index) && promptBlocksContain(candidateBlocks, blocks[index]),
 			),
 	);
 }
@@ -289,12 +327,13 @@ function dedupeContainedContextFiles(
  *               directory contributes is owned by `PROJECT_RULE_FILE_NAMES` in
  *               `discovery/builtin.ts`; it is not restated here.
  *
- * PROMINENCE is a different axis and the returned array is sorted by it, least
- * prominent first so a later entry overrides an earlier one: global → project
- * (descending depth, so the repo root comes first and the file closest to cwd
- * comes last) → profile. Profile is last, and therefore wins, so a user's
- * standing rules are not silently outranked by whatever repository is checked
- * out. See `ContextFile.level` in capability/context-file.ts.
+ * AUTHORITY is a different axis and the returned array is sorted by it, LEAST
+ * authoritative first so the strongest file holds the last and highest-recency
+ * slot: project (descending depth, so the repo root comes first and the file
+ * closest to cwd comes last) → profile → GLOBAL LAST. The operator's own
+ * cross-profile configuration therefore wins, and a repository that happens to be
+ * checked out cannot outrank it. The ranks live in `CONTEXT_SCOPE_AUTHORITY`, which
+ * the dedupe reads too. See `ContextFile.level` in capability/context-file.ts.
  *
  * ONE OWNER. All three scopes come from the capability providers, and the native
  * provider resolves global and profile from `LoadContext.agentDir` (fed by
@@ -342,33 +381,49 @@ export async function loadProjectContextFilesWithWarnings(
 		})),
 	);
 
-	// Least prominent first (earliest in the prompt), most prominent last:
-	// global (the cross-profile baseline) → project (farther from cwd first, so the
-	// file closest to cwd wins among project files) → user (the active agent's own
-	// profile file, the most specific thing the operator wrote and the last word).
+	// Least prominent first (earliest in the prompt), most prominent last, ordered so POSITION
+	// AGREES WITH AUTHORITY: project (farther from cwd first, so the file closest to cwd is the
+	// most specific project rule) → profile (the active agent's own file) → GLOBAL LAST, because
+	// the operator's cross-profile configuration is the highest file authority there is.
 	//
-	// Profile outranks project deliberately, as `ContextFile.level` documents: a
-	// user's standing profile rules must not be silently outranked by whatever
-	// repository happens to be checked out. Resolution ORDER is global then profile
-	// then project; rendering PROMINENCE is this. Do not conflate the two.
-	const levelRank = (level: ContextFile["level"]): number => (level === "global" ? 0 : level === "project" ? 1 : 2);
+	// This used to rank global FIRST, which is the WEAKEST recency position, putting every
+	// project file above it. The operator hit the consequence: a repository's AGENTS.md saying
+	// "do not use subagents for this repository" was obeyed over their own global rules AND over
+	// a live instruction to use them. The prose in `prompts/session/context-file-authority.md`
+	// ranked global highest while this sort put it lowest, and position won.
+	//
+	// The old comment already had the right instinct and applied it to only one pair: it said a
+	// user's standing PROFILE rules must not be silently outranked by whatever repository happens
+	// to be checked out. That reasoning is stronger for global, not weaker. A project file is
+	// content checked into a repository the operator may not have written, so it is the lowest
+	// authority of the three and now renders in the weakest position.
+	//
+	// Resolution ORDER (which scope is consulted when) is a separate axis from rendering
+	// PROMINENCE (this). Do not conflate them.
 	files.sort((a, b) => {
-		const rankDelta = levelRank(a.level) - levelRank(b.level);
+		const rankDelta = CONTEXT_SCOPE_AUTHORITY[a.level] - CONTEXT_SCOPE_AUTHORITY[b.level];
 		if (rankDelta !== 0) return rankDelta;
-		// Within the project level, higher depth (farther from cwd) comes first.
+		// Within the project level, higher depth (farther from cwd) comes first. Both files are
+		// project scope, so neither outranks the other on the ladder and the more specific one
+		// takes the more prominent slot. This is intra-scope refinement, not a project file
+		// outranking a broader scope.
 		return (b.depth ?? -1) - (a.depth ?? -1);
 	});
 
+	// Dedupe AFTER the sort: the survivor is chosen by scope authority first, and only files of
+	// the same scope fall back to this position.
 	return {
-		files: dedupeContainedContextFiles(files.map(({ path, content, depth }) => ({ path, content, depth }))),
+		files: dedupeContainedContextFiles(files, file => CONTEXT_SCOPE_AUTHORITY[file.level]).map(
+			({ path, content, depth }) => ({ path, content, depth }),
+		),
 		warnings,
 	};
 }
 
 /**
  * {@link loadProjectContextFilesWithWarnings} for callers that only want the
- * files: same three scopes (global → profile → project) in the same precedence,
- * with every warning logged instead of returned.
+ * files: the same three scopes resolved the same way and ranked by the same
+ * authority ladder, with every warning logged instead of returned.
  *
  * Logging rather than dropping is the point. A context file that exists and
  * cannot be read used to disappear into an empty list, and an empty list renders
@@ -951,6 +1006,14 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		// Why the working directory is not a project, when it is not one. The prompt turns the reason
 		// into the sentence that names it; an empty string is "nothing to say".
 		nonProjectCwd: nonProjectCwd ? NON_PROJECT_REASON_TEXT[nonProjectCwd] : "",
+		// Two halves of one ruling, split because only one of them is conditional. The file ladder
+		// only means something when files are loaded, so it renders inside the context block's
+		// `{{#if contextFiles.length}}` gate. "The user's live instruction is absolute" is a standing
+		// safety boundary that must hold for a session with no context files at all, where a rule,
+		// an always-apply rule, or a memory could still tell the model to refuse, so it renders
+		// unconditionally from `project-prompt.md`. It sits in the PROJECT runtime section rather
+		// than in the cached prefix, so it costs no prefix-cache invalidation.
+		userInstructionAuthority: sessionPrompts["session/user-instruction-authority"].text.trim(),
 		contextFileAuthority: sessionPrompts["session/context-file-authority"].text.trim(),
 		contextFiles,
 		agentsMdSearch: { files: agentsMdFiles },
@@ -1018,10 +1081,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// letting a `PROMPT_SECTIONS/` directory on the machine running the arm mix
 	// into it would silently contaminate the result.
 	const usingEvalOverrides = Object.keys(evalSectionOverrides).length > 0;
-	const sectionOverrideFiles = await loadSectionOverrideFiles({
-		cwd: resolvedCwd,
-		projectConfigDir: (await findNearestProjectConfigDir(resolvedCwd))?.dir,
-	});
+	const sectionOverrideFiles = await loadSectionOverrideFiles({ cwd: resolvedCwd });
 	if (usingEvalOverrides && sectionOverrideFiles.length > 0) {
 		logger.warn(
 			`${PROMPT_SECTIONS_DIR}/ overrides are present but IGNORED because ` +

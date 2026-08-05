@@ -98,17 +98,18 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 	 * The two AXES, asserted together because they were conflated once already.
 	 *
 	 * RESOLUTION order is global, then profile, then the project walk: that is the
-	 * order the loader reads the disk in. PROMINENCE is the order of the returned
-	 * array, least prominent first so a later entry overrides an earlier one:
-	 * global, then project by DESCENDING depth, then profile last and therefore
-	 * winning. Profile outranks project on purpose, so a user's standing rules are
-	 * not outranked by whatever repository is checked out.
+	 * order the loader reads the disk in. AUTHORITY is the order of the returned
+	 * array, least authoritative first so the strongest file holds the last slot:
+	 * project by DESCENDING depth, then the profile file, then GLOBAL last and
+	 * therefore winning. Global outranks the project on purpose, because a project
+	 * file is content checked into a repository the operator may not have written.
 	 *
-	 * Sorting by resolution order instead would put the profile file second, where
-	 * the repository's own AGENTS.md would override it, and no test asserting mere
-	 * membership would notice.
+	 * Sorting by resolution order instead would put the global file FIRST, in the
+	 * weakest slot, where every project file overrides it. That is exactly the
+	 * inversion the operator hit, and no test asserting mere membership would
+	 * notice.
 	 */
-	test("orders global, then project by descending depth, then the NAMED profile last", async () => {
+	test("orders project by descending depth, then the NAMED profile, then global last", async () => {
 		const f = fixture("axes-active");
 		const namedAgentDir = f.agentDirFor("axes-named");
 		f.writeFile(f.globalAgentsPath, `${GLOBAL_BODY}\n`);
@@ -120,10 +121,10 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: namedAgentDir });
 
 		expect(files).toEqual([
-			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
 			{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
 			{ path: f.nestedAgentsPath, content: `${PROJECT_NESTED_BODY}\n`, depth: 0 },
 			{ path: namedAgentsPath, content: NAMED_MARKER, depth: undefined },
+			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
 		]);
 	});
 

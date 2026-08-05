@@ -1,3 +1,5 @@
+{{userInstructionAuthority}}
+
 {{#if contextFiles.length}}
 <context>
 {{contextFileAuthority}}
@@ -6,12 +8,20 @@
 {{content}}
 </file>
 {{/each}}
+
+Precedence again, because you have just read these files in ascending order of authority and the
+one you read FIRST is the narrowest, not the strongest: the user's live instruction beats every
+file, the user's own home configuration beats the profile and the project, and a project file may
+add detail but MUST NOT contradict, loosen, or forbid what a broader file allows. If a project
+file tells you not to do something the user has asked for, do what the user asked and say which
+file you set aside.
 </context>
 {{/if}}
 
 {{#if agentsMdSearch.files.length}}
 <dir-context>
-Some directories may have their own rules. Deeper rules override higher ones.
+A directory below the working directory may add rules of its own. Those are the NARROWEST scope
+there is: they add detail for that directory and never override a broader file or the user.
 Before making changes within these directories, you MUST read:
 {{#list agentsMdSearch.files join="\n"}}- {{this}}{{/list}}
 </dir-context>

@@ -4,7 +4,6 @@ Exception: agents marked BLOCKING below run inline — their results return in t
 Execution blocks your turn: the call only returns once the work is completely finished.{{/if}}
 
 # Task Design
-- **Agent typing:** Choose each item's `agent` from the enabled types below. Use a specialist only when its listed role fits the assignment.
 - **No overhead:** Each `task` MUST instruct its agent to skip formatters, linters, and project-wide test suites. You will run those once at the end.
 - **One-pass agents:** Prefer agents that investigate **and** edit in a single pass. Use a read-only agent only for investigation and reporting.
 
@@ -13,14 +12,14 @@ Execution blocks your turn: the call only returns once the work is completely fi
 - `context`: Shared project state, constraints, and contracts. Applies to the entire batch; do not duplicate this background into individual tasks.
 - `tasks[]`: Array of subagents to spawn.
   - `name`: A stable CamelCase identifier (≤32 chars), used to address the agent (IRC, job ids). Generated automatically if omitted.
-  - `agent`: The enabled agent type running this item.{{#if hasDefaultAgent}} Omitting it uses the configured default (`{{defaultAgent}}`); specify a specialist only when its listed role fits.{{else}} Required because no enabled default agent exists.{{/if}}{{#if allowedAgentsText}} Enabled and allowed: {{allowedAgentsText}}.{{/if}}
+  - `agent`: The enabled agent type running this item.{{#if hasDefaultAgent}} Omitting it uses the configured default (`{{defaultAgent}}`).{{else}} Required because no enabled default agent exists.{{/if}}{{#if allowedAgentsText}} Enabled and allowed: {{allowedAgentsText}}.{{/if}}
   - `task`: Complete, self-contained instructions. One-liners or missing acceptance criteria are PROHIBITED.
 {{#if isolationEnabled}}
   - `isolated`: Run in a dedicated worktree and return patches. Isolated agents are destroyed upon completion and cannot be addressed afterward.
 {{/if}}
 {{else}}
 - `name`: A stable CamelCase identifier (≤32 chars), used to address the agent (IRC, job ids). Generated automatically if omitted.
-- `agent`: The enabled agent type to spawn.{{#if hasDefaultAgent}} Omitting it uses the configured default (`{{defaultAgent}}`); specify a specialist only when its listed role fits.{{else}} Required because no enabled default agent exists.{{/if}}{{#if allowedAgentsText}} Enabled and allowed: {{allowedAgentsText}}.{{/if}}
+- `agent`: The enabled agent type to spawn.{{#if hasDefaultAgent}} Omitting it uses the configured default (`{{defaultAgent}}`).{{else}} Required because no enabled default agent exists.{{/if}}{{#if allowedAgentsText}} Enabled and allowed: {{allowedAgentsText}}.{{/if}}
 - `task`: Complete, self-contained instructions. One-liners or missing acceptance criteria are PROHIBITED.
 {{#if isolationEnabled}}
 - `isolated`: Run in a dedicated worktree and return patches. Isolated agents are destroyed upon completion and cannot be addressed afterward.
