@@ -62,7 +62,9 @@ function formatCommunity(community: LemmyCommunity): string {
 		try {
 			const host = new URL(community.actor_id).hostname;
 			return `!${community.name}@${host}`;
-		} catch {}
+		} catch {
+			// A federated actor id that is not a URL just loses its host suffix.
+		}
 	}
 	return `!${community.name}`;
 }
@@ -72,7 +74,9 @@ function formatAuthor(creator: LemmyCreator): string {
 		try {
 			const host = new URL(creator.actor_id).hostname;
 			return `@${creator.name}@${host}`;
-		} catch {}
+		} catch {
+			// As above: no host suffix when the actor id is not a URL.
+		}
 	}
 	return creator.name;
 }

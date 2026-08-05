@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { ThinkingLevel } from "@veyyon/agent-core";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedAgentDir } from "../../../test/helpers/isolated-agent-dir";
 import { Settings } from "../../config/settings";
@@ -69,6 +70,8 @@ interface SessionOptions {
 	mcpManager?: MCPManager;
 	localProtocolOptions?: LocalProtocolOptions;
 	agentId?: string;
+	/** Parent-resolved discovery layers, for the inheritance cases. */
+	layers?: Partial<ToolSession>;
 }
 
 /**
@@ -120,6 +123,7 @@ function makeSession(options: SessionOptions = {}): ToolSession {
 		mcpManager: options.mcpManager,
 		localProtocolOptions: options.localProtocolOptions,
 		getAgentId: options.agentId !== undefined ? () => options.agentId as string : undefined,
+		...(options.layers ?? {}),
 	};
 }
 
@@ -215,6 +219,61 @@ describe("runEvalAgent", () => {
 		expect(overrideResult.text).toBe("reviewer");
 		expect(runSpy.mock.calls[0]?.[0].agent.name).toBe("task");
 		expect(runSpy.mock.calls[1]?.[0].agent.name).toBe("reviewer");
+	});
+
+	/**
+	 * LOCKS OUT: `skills: options.session.skills ?? []` (and the same `??` for context files and
+	 * prompt templates) in `eval/agent-bridge.ts`.
+	 *
+	 * `sdk.ts` gates discovery on PRESENCE, not on length: `if (options.skills !== undefined)`
+	 * skips `discoverSkills` entirely, empty arrays included. So `[]` from a parent that had not
+	 * resolved its own layers yet does not mean "the child will also find nothing", it means "the
+	 * child must not look", and every eval-spawned subagent silently ran with no skills, no prompt
+	 * templates, and no `AGENTS.md`, with green tests and no warning.
+	 *
+	 * IF THIS REGRESSES: an `agent()` spawn from an eval cell loses the operator's whole
+	 * configuration and reports nothing.
+	 */
+	it("hands a child undefined, never an empty array, when the parent resolved no layer", async () => {
+		mockAgents([taskAgent]);
+		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
+
+		await runEvalAgent({ prompt: "hello" }, { session: makeSession({ layers: {} }) });
+
+		const options = runSpy.mock.calls[0]?.[0];
+		if (!options) throw new Error("runSubprocess was not called");
+		expect(options.contextFiles).toBeUndefined();
+		expect(options.skills).toBeUndefined();
+		expect(options.promptTemplates).toBeUndefined();
+		// Never forwarded by this spawn path at all, so the child always resolves its own.
+		expect(options.rules).toBeUndefined();
+	});
+
+	/**
+	 * The other half: an eval spawn always runs in the parent's own cwd, so a resolved layer is
+	 * forwarded verbatim rather than rediscovered. Pins the AGENTS.md entry specifically, because
+	 * the defect this whole guard exists for was a `.filter()` that dropped exactly that basename.
+	 */
+	it("forwards the parent's resolved layers verbatim, AGENTS.md included", async () => {
+		mockAgents([taskAgent]);
+		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
+		const contextFiles = [
+			{ path: "/repo/AGENTS.md", content: "# project rules\n", depth: 0 },
+			{ path: "/repo/CLAUDE.md", content: "# claude rules\n", depth: 0 },
+		];
+		const skills = [{ name: "review" }] as unknown as ToolSession["skills"];
+		const promptTemplates = [{ name: "brief" }] as unknown as ToolSession["promptTemplates"];
+
+		await runEvalAgent(
+			{ prompt: "hello" },
+			{ session: makeSession({ layers: { contextFiles, skills, promptTemplates } }) },
+		);
+
+		const options = runSpy.mock.calls[0]?.[0];
+		if (!options) throw new Error("runSubprocess was not called");
+		expect(options.contextFiles).toEqual(contextFiles);
+		expect(options.skills).toEqual(skills);
+		expect(options.promptTemplates).toEqual(promptTemplates);
 	});
 
 	it("throws for an unknown agent", async () => {
@@ -364,6 +423,33 @@ describe("runEvalAgent", () => {
 		expect(firstOptions.modelOverride).toEqual(["p/override"]);
 		expect(secondOptions.outputSchema).toBeUndefined();
 		expect(secondOptions.outputSchemaOverridesAgent).toBeUndefined();
+	});
+
+	it("applies per-agent effort independently while preserving explicit call suffix precedence", async () => {
+		mockAgents([taskAgent]);
+		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
+		const session = makeSession({
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"subagent.isolation.mode": "none",
+				"subagent.agents": {
+					task: { model: "p/profile", thinkingLevel: "high" },
+				},
+			}),
+		});
+
+		await runEvalAgent({ prompt: "bare override", model: "p/call" }, { session });
+		await runEvalAgent({ prompt: "suffixed override", model: "p/call:max" }, { session });
+
+		const bare = runSpy.mock.calls[0]?.[0];
+		const suffixed = runSpy.mock.calls[1]?.[0];
+		if (!bare || !suffixed) throw new Error("runSubprocess was not called twice");
+		expect(bare.modelOverride).toEqual(["p/call"]);
+		expect(bare.thinkingLevel).toBe(ThinkingLevel.High);
+		expect(bare.parentThinkingLevel).toBeUndefined();
+		expect(suffixed.modelOverride).toEqual(["p/call:max"]);
+		expect(suffixed.thinkingLevel).toBe(ThinkingLevel.High);
+		expect(suffixed.parentThinkingLevel).toBeUndefined();
 	});
 
 	it("forwards session-scoped MCP, local protocol options, and the parent agent id", async () => {
@@ -575,7 +661,7 @@ describe("agent() through eval runtimes", () => {
 		expect(JSON.parse(result.output.trim())).toEqual(["hello from agent", { ok: true, n: 3 }]);
 	});
 
-	it("bounds JavaScript parallel() by the task.maxConcurrency setting while preserving order", async () => {
+	it("bounds JavaScript parallel() by the subagent.maxConcurrency setting while preserving order", async () => {
 		using tempDir = TempDir.createSync("@veyyon-eval-agent-js-parallel-");
 		const settings = Settings.isolated({
 			"async.enabled": false,
@@ -644,7 +730,7 @@ describe("agent() through eval runtimes", () => {
 		expect(result.output.trim()).toBe("hello from python");
 	});
 
-	it("bounds Python parallel() by the task.maxConcurrency setting while preserving order", async () => {
+	it("bounds Python parallel() by the subagent.maxConcurrency setting while preserving order", async () => {
 		using tempDir = TempDir.createSync("@veyyon-eval-agent-py-parallel-");
 		const settings = Settings.isolated({
 			"async.enabled": false,
@@ -693,7 +779,7 @@ describe("agent() through eval runtimes", () => {
 		});
 		const releaseAgents = Promise.withResolvers<void>();
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => {
-			// task.maxConcurrency=6 → six bridge calls block at once; signal then.
+			// subagent.maxConcurrency=6 → six bridge calls block at once; signal then.
 			if (++inFlight >= 6) markSaturated?.();
 			await releaseAgents.promise;
 			completed++;
@@ -1013,7 +1099,7 @@ describe("runEvalAgent isolation", () => {
 		return { repoRoot };
 	}
 
-	it("rejects isolated=true when task.isolation.mode is 'none'", async () => {
+	it("rejects isolated=true when subagent.isolation.mode is 'none'", async () => {
 		mockAgents();
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
 		const prepSpy = vi.spyOn(isolationRunner, "prepareIsolationContext");
@@ -1027,7 +1113,7 @@ describe("runEvalAgent isolation", () => {
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
-	it("stays non-isolated by default even when task.isolation.mode is set; isolated=true opts in", async () => {
+	it("stays non-isolated by default even when subagent.isolation.mode is set; isolated=true opts in", async () => {
 		mockAgents();
 		mockIsolationContext();
 		const isolatedSpy = vi

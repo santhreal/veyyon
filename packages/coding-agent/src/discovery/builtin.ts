@@ -5,7 +5,7 @@
  */
 
 import * as path from "node:path";
-import { getAgentDir, isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
+import { getAgentDir, getConfigDirName, isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
 import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
 import { YAML } from "bun";
 import { getManagedSkillsDir, MANAGED_SKILLS_PROVIDER_ID } from "../autolearn/managed-skills";
@@ -33,15 +33,12 @@ import {
 	getExtensionNameFromPath,
 	loadFilesFromDir,
 	readContextFile,
-	SOURCE_PATHS,
 	scanSkillsFromDir,
 } from "./helpers";
 
 export const PROVIDER_ID = "native";
-const DESCRIPTION = "Native configuration from ~/.veyyon and .veyyon/";
+const DESCRIPTION = "Native configuration from the active profile";
 const PRIORITY = 100;
-
-const PATHS = SOURCE_PATHS.native;
 
 async function ifNonEmptyDir(...seg: string[]): Promise<string | null> {
 	let dir = path.join(...seg);
@@ -101,7 +98,7 @@ export async function findNearestProjectConfigDir(
 	repoRoot?: string | null,
 ): Promise<{ dir: string; depth: number } | null> {
 	for (const ancestor of getAncestorDirs(cwd, repoRoot)) {
-		const configDir = await ifNonEmptyDir(ancestor.dir, PATHS.projectDir);
+		const configDir = await ifNonEmptyDir(ancestor.dir, getConfigDirName());
 		if (configDir) return { dir: configDir, depth: ancestor.depth };
 	}
 	return null;

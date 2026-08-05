@@ -12,6 +12,7 @@ import { registerArtifactsDir } from "../internal-urls/registry-helpers";
 import { mcpManagerInstance } from "../mcp/manager-instance";
 import { subagentPrompts } from "../prompts/subagent/rows";
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
+import { inheritContextFiles } from "../task/context-inheritance";
 import * as taskDiscovery from "../task/discovery";
 // `../task/executor` and `../task/isolation-runner` are loaded inside
 // `runEvalAgent`, not here. `task/executor` imports `../sdk`, the composition
@@ -25,16 +26,19 @@ import * as taskDiscovery from "../task/discovery";
 // offered `agent()` has loaded the task layer anyway. TYPES stay static, since
 // they are erased.
 import type { ExecutorOptions } from "../task/executor";
+import { inheritResolvedCollection, resolveAutoloadSkills } from "../task/inherited-collections";
 import type { IsolationContext } from "../task/isolation-runner";
 import { AgentOutputManager } from "../task/output-manager";
-import { resolveSpawnPolicy } from "../task/spawn-policy";
+import { type ResolvedSpawnPolicy, resolveSpawnPolicy } from "../task/spawn-policy";
 import {
-	filterEnabledAgents,
+	type EnabledSubagentCatalog,
 	isSubagentEnabled,
+	resolveEnabledSubagents,
 	resolveSessionMaxNestedSpawnDepth,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	subagentModelSourceLabel,
+	subagentsEnabled,
 } from "../task/subagent-settings";
 import { type AgentDefinition, type AgentProgress, canSpawnAtDepth, type SingleResult } from "../task/types";
 import { type NestedRepoPatch, parseIsolationMode } from "../task/worktree";
@@ -157,8 +161,7 @@ function assertDepthAllowed(session: ToolSession): void {
 	}
 }
 
-function assertSpawnAllowed(session: ToolSession, agentName: string): void {
-	const spawnPolicy = resolveSpawnPolicy(session.getSessionSpawns());
+function assertSpawnAllowed(spawnPolicy: ResolvedSpawnPolicy, agentName: string): void {
 	if (!spawnPolicy.enabled) {
 		throw new ToolError(`Cannot spawn '${agentName}'. Allowed: ${spawnPolicy.allowedErrorText}`);
 	}
@@ -176,10 +179,10 @@ function assertSpawnAllowed(session: ToolSession, agentName: string): void {
  * it made the setting mean nothing on this path. A `/` command's turn-scoped
  * grant still passes, so a command that drives eval keeps working.
  */
-function assertAgentEnabled(session: ToolSession, agent: AgentDefinition, agents: AgentDefinition[]): void {
+function assertAgentEnabled(session: ToolSession, agent: AgentDefinition, catalog: EnabledSubagentCatalog): void {
 	if (isSubagentEnabled(session.settings, agent)) return;
 	if (session.agentGrantedThisTurn?.(agent.name)) return;
-	const available = filterEnabledAgents(session.settings, agents).map(candidate => candidate.name);
+	const available = catalog.agents.map(candidate => candidate.name);
 	throw new ToolError(
 		`Agent "${agent.name}" is disabled (subagent.agents.${agent.name}.enabled is false), so it cannot be chosen. Enable it in the Subagents settings tab (/settings), or use a different agent type.${available.length > 0 ? ` Enabled: ${available.join(", ")}` : ""}`,
 	);
@@ -328,12 +331,14 @@ function buildSubagentFailureMessage(agentName: string, result: SingleResult): s
  */
 export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOptions): Promise<EvalAgentResult> {
 	const parsed = parseAgentArgs(args);
-	const agentName = parsed.agent ?? resolveSpawnPolicy(options.session.getSessionSpawns()).defaultAgent;
+	const parentSpawns = options.session.getSessionSpawns();
+	const spawnPolicy = resolveSpawnPolicy(parentSpawns);
+	const agentName = parsed.agent ?? spawnPolicy.defaultAgent;
 	const structured = Object.hasOwn(parsed, "schema");
 
 	assertNotPlanMode(options.session);
 	assertDepthAllowed(options.session);
-	assertSpawnAllowed(options.session, agentName);
+	assertSpawnAllowed(spawnPolicy, agentName);
 
 	const turnBudget = options.session.getTurnBudget?.();
 	if (turnBudget?.hard && turnBudget.total !== null && turnBudget.spent >= turnBudget.total) {
@@ -343,14 +348,26 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	}
 
 	const { agents } = await taskDiscovery.discoverAgents(options.session.cwd);
-	const agent = taskDiscovery.getAgent(agents, agentName);
-	if (!agent) {
-		const available = agents.map(candidate => candidate.name).join(", ") || "none";
+	const catalog = resolveEnabledSubagents({
+		settings: options.session.settings,
+		agents,
+		parentSpawns,
+		isGranted: name => options.session.agentGrantedThisTurn?.(name) === true,
+	});
+	if (!subagentsEnabled(options.session.settings)) {
+		throw new ToolError("agent() is unavailable because subagents are disabled in settings.");
+	}
+	const discoveredAgent = taskDiscovery.getAgent(agents, agentName);
+	if (!discoveredAgent) {
+		const available = catalog.agents.map(candidate => candidate.name).join(", ") || "none";
 		throw new ToolError(`Unknown agent "${agentName}". Available: ${available}`);
 	}
-	assertAgentEnabled(options.session, agent, agents);
-
-	const effectiveAgent = agent;
+	assertAgentEnabled(options.session, discoveredAgent, catalog);
+	const effectiveAgent = taskDiscovery.getAgent(catalog.agents, agentName);
+	if (!effectiveAgent) {
+		const available = catalog.agents.map(candidate => candidate.name).join(", ") || "none";
+		throw new ToolError(`Cannot spawn '${agentName}'. Enabled and allowed: ${available}`);
+	}
 	const parentActiveModelPattern = options.session.getActiveModelString?.();
 	const parentThinkingLevel = options.session.getActiveThinkingLevel?.();
 	// An explicit `agent(..., { model })` call is the caller speaking for this one
@@ -377,16 +394,36 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		);
 	}
 	const modelOverride = resolvedModel.patterns;
-	const availableSkills = [...(options.session.skills ?? [])];
-	const resolvedAutoloadSkills =
-		effectiveAgent.autoloadSkills?.length && availableSkills.length > 0
-			? effectiveAgent.autoloadSkills
-					.map(name => availableSkills.find(skill => skill.name === name))
-					.filter((skill): skill is NonNullable<typeof skill> => skill !== undefined)
-			: [];
-	const contextFiles = options.session.contextFiles?.filter(
-		file => path.basename(file.path).toLowerCase() !== "agents.md",
-	);
+	// Same contract as the `task` tool's spawn: an empty array reaching the child's session options
+	// switches its own discovery off, so nothing but an unambiguous list is forwarded.
+	// A vibe/eval spawn always runs in the parent's cwd, so the cwd guard is a no-op here and
+	// the same-cwd inherit path is exercised.
+	const inheritedSkills = inheritResolvedCollection({
+		items: options.session.skills,
+		kind: "skills",
+		parentCwd: options.session.cwd,
+		spawnCwd: options.session.cwd,
+		agentName,
+	});
+	const inheritedPromptTemplates = inheritResolvedCollection({
+		items: options.session.promptTemplates,
+		kind: "promptTemplates",
+		parentCwd: options.session.cwd,
+		spawnCwd: options.session.cwd,
+		agentName,
+	});
+	// `inheritedSkills` and not `options.session.skills ?? []`: that `??` turned "the parent never
+	// resolved skills" into "the parent resolved zero", so every eval spawn from such a parent
+	// warned that its declared `autoloadSkills` would not load, naming a cause that was not the
+	// real one. The cwd half of the same rule is inert here, an eval spawn's cwd being the
+	// parent's, so this resolution can never come back `deferred`.
+	const resolvedAutoloadSkills = resolveAutoloadSkills(effectiveAgent.autoloadSkills, inheritedSkills, agentName);
+	const contextFiles = inheritContextFiles({
+		parentContextFiles: options.session.contextFiles,
+		parentCwd: options.session.cwd,
+		spawnCwd: options.session.cwd,
+		agentName,
+	});
 	const localProtocolOptions: LocalProtocolOptions = options.session.localProtocolOptions ?? {
 		getArtifactsDir: options.session.getArtifactsDir ?? (() => null),
 		getSessionId: options.session.getSessionId ?? (() => null),
@@ -479,10 +516,10 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		keepAlive: false,
 		mcpManager,
 		contextFiles,
-		skills: availableSkills,
+		skills: inheritedSkills,
 		autoloadSkills: resolvedAutoloadSkills,
 		workspaceTree: options.session.workspaceTree,
-		promptTemplates: options.session.promptTemplates,
+		promptTemplates: inheritedPromptTemplates,
 		localProtocolOptions,
 		parentArtifactManager,
 		parentHindsightSessionState: options.session.getHindsightSessionState?.(),

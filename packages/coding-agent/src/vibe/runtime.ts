@@ -24,14 +24,19 @@ import { mcpManagerInstance } from "../mcp/manager-instance";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
-import { getBundledAgent } from "../task/agents";
+import { inheritContextFiles } from "../task/context-inheritance";
+import { discoverAgents, getAgent } from "../task/discovery";
 import { type ExecutorOptions, runSubagentFollowUpTurn, runSubprocess } from "../task/executor";
+import { inheritResolvedCollection } from "../task/inherited-collections";
 import { generateTaskName } from "../task/name-generator";
 import { AgentOutputManager } from "../task/output-manager";
 import {
+	isSubagentEnabled,
+	resolveEnabledSubagents,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	subagentModelSourceLabel,
+	subagentsEnabled,
 } from "../task/subagent-settings";
 import { type AgentDefinition, type AgentProgress, oneLineLabel, type SingleResult } from "../task/types";
 import type { ConfiguredThinkingLevel } from "../thinking";
@@ -312,9 +317,28 @@ export class VibeSessionRegistry {
 		const owner = session.getAgentId?.() ?? MAIN_AGENT_ID;
 		const manager = this.#manager(session);
 		const agentName = VIBE_CLI_AGENT[args.cli];
-		const agent = getBundledAgent(agentName);
+		const { agents } = await discoverAgents(session.cwd);
+		if (!subagentsEnabled(session.settings)) {
+			throw new ToolError(`Cannot start vibe worker "${agentName}": subagents are disabled in settings.`);
+		}
+		const discoveredAgent = getAgent(agents, agentName);
+		if (!discoveredAgent) {
+			throw new ToolError(`Agent "${agentName}" for vibe cli "${args.cli}" is unavailable.`);
+		}
+		const catalog = resolveEnabledSubagents({
+			settings: session.settings,
+			agents,
+			parentSpawns: session.getSessionSpawns?.() ?? "*",
+		});
+		const agent = getAgent(catalog.agents, agentName);
 		if (!agent) {
-			throw new ToolError(`Bundled agent "${agentName}" for vibe cli "${args.cli}" is unavailable.`);
+			if (!isSubagentEnabled(session.settings, discoveredAgent)) {
+				throw new ToolError(
+					`Agent "${agentName}" is disabled (subagent.agents.${agentName}.enabled is false). Enable it in the Subagents settings tab (/settings) before starting the "${args.cli}" vibe worker.`,
+				);
+			}
+			const available = catalog.agents.map(candidate => candidate.name).join(", ") || "none";
+			throw new ToolError(`Cannot start vibe worker "${agentName}". Enabled and allowed agents: ${available}.`);
 		}
 
 		const resolvedModel = resolveSubagentModel({
@@ -469,6 +493,12 @@ export class VibeSessionRegistry {
 			try {
 				await Promise.race(racePromises);
 			} finally {
+				// Acknowledge BEFORE lifting the watch. `unwatchJobs` re-arms the async
+				// delivery of anything that settled inside the window and was not
+				// acknowledged, which is what stops a dropped return value from losing a
+				// worker's whole result. This wait returns those results itself, so the
+				// acknowledgement has to land first or the operator sees them twice.
+				manager.acknowledgeDeliveries(collectSettled().map(entry => entry.jobId));
 				manager.unwatchJobs(watchedJobIds);
 				clearTimeout(timeoutHandle);
 				abortCleanup?.();
@@ -564,11 +594,34 @@ export class VibeSessionRegistry {
 			modelRegistry: session.modelRegistry,
 			settings: session.settings,
 			mcpManager: session.mcpManager ?? mcpManagerInstance(),
-			contextFiles: session.contextFiles?.filter(file => path.basename(file.path).toLowerCase() !== "agents.md"),
-			skills: [...(session.skills ?? [])],
+			contextFiles: inheritContextFiles({
+				parentContextFiles: session.contextFiles,
+				parentCwd: session.cwd,
+				spawnCwd: session.cwd,
+				agentName: record.agent.name,
+			}),
+			skills: inheritResolvedCollection({
+				items: session.skills,
+				kind: "skills",
+				parentCwd: session.cwd,
+				spawnCwd: session.cwd,
+				agentName: record.agent.name,
+			}),
 			workspaceTree: session.workspaceTree,
-			promptTemplates: session.promptTemplates,
-			rules: session.rules,
+			promptTemplates: inheritResolvedCollection({
+				items: session.promptTemplates,
+				kind: "promptTemplates",
+				parentCwd: session.cwd,
+				spawnCwd: session.cwd,
+				agentName: record.agent.name,
+			}),
+			rules: inheritResolvedCollection({
+				items: session.rules,
+				kind: "rules",
+				parentCwd: session.cwd,
+				spawnCwd: session.cwd,
+				agentName: record.agent.name,
+			}),
 			preloadedExtensionPaths: session.extensionPaths,
 			preloadedCustomToolPaths: session.customToolPaths,
 			localProtocolOptions,
