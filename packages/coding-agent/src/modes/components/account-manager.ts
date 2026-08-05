@@ -518,7 +518,15 @@ export class AccountManagerComponent implements Component {
 			if (!entry) continue;
 			const active = entry.providerId === this.#activeProviderId;
 			const cursor = active && this.#focus === "sidebar" ? theme.fg("accent", theme.nav.cursor) : " ";
-			const label = active ? theme.bold(theme.fg("accent", entry.label)) : entry.label;
+			// A provider you hold no account for dims ENTIRELY, label included. Only its count was
+			// dimmed before, so forty empty providers sat at the same text weight as the three you use
+			// and the eye had to read the right-hand column to find them. The list's job is "what you
+			// have, then what you could have", and weight is what says which is which.
+			const label = active
+				? theme.bold(theme.fg("accent", entry.label))
+				: entry.accountCount === 0
+					? theme.fg("dim", entry.label)
+					: entry.label;
 			const annotation = entry.hasFailure
 				? `${theme.fg("dim", entry.annotation)} ${theme.fg("warning", theme.status.warning)}`
 				: `${theme.fg("dim", entry.annotation)}  `;
@@ -558,8 +566,10 @@ export class AccountManagerComponent implements Component {
 		const wrapped = wrapTextWithAnsi(text, inner).map(part => `${indent}${part}`);
 		if (wrapped.length <= NOTE_MAX_LINES) return wrapped;
 		const kept = wrapped.slice(0, NOTE_MAX_LINES);
-		const last = kept[NOTE_MAX_LINES - 1] ?? "";
-		kept[NOTE_MAX_LINES - 1] = `${truncateToWidth(last, Math.max(1, width - 1))}…`;
+		const last = truncateToWidth(kept[NOTE_MAX_LINES - 1] ?? "", Math.max(1, width - 1));
+		// `truncateToWidth` appends its own ellipsis when it clips, so adding one unconditionally
+		// produced `…`-`…` on any note long enough to need both.
+		kept[NOTE_MAX_LINES - 1] = last.endsWith("…") ? last : `${last}…`;
 		return kept;
 	}
 
@@ -616,8 +626,10 @@ export class AccountManagerComponent implements Component {
 				lines.push({ text: truncateToWidth(`       ${prompt} ${field}`, width) });
 			}
 
+			// `muted`, not `dim`: this line carries the plan and the origin badge, which outrank the
+			// usage bars underneath it, and rendering it quieter than they are inverted the hierarchy.
 			const plan = accountPlanLine(row);
-			if (plan) lines.push({ text: theme.fg("dim", truncateToWidth(`       ${plan}`, width)) });
+			if (plan) lines.push({ text: theme.fg("muted", truncateToWidth(`       ${plan}`, width)) });
 			for (const usage of accountUsageLines(row, nowMs)) {
 				lines.push({ text: truncateToWidth(`       ${usage}`, width) });
 			}
@@ -646,7 +658,9 @@ export class AccountManagerComponent implements Component {
 		lines.push({
 			text: theme.fg(
 				"accent",
-				truncateToWidth(`  + add another ${sanitizeAccountText(entry.label)} account (a)`, width),
+				// No `(a)` hint: the footer chip two rows below already says `a add`, and naming the key
+				// twice on one card reads as two different affordances.
+				truncateToWidth(`  + add another ${sanitizeAccountText(entry.label)} account`, width),
 			),
 		});
 		return lines;

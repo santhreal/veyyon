@@ -13,7 +13,7 @@ import {
 	AccountManagerComponent,
 	type AccountManagerOptions,
 } from "@veyyon/coding-agent/modes/components/account-manager";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AccountInventory, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
 
 beforeAll(async () => {
@@ -37,9 +37,9 @@ function account(credentialId: number, overrides: Partial<AccountRow> = {}): Acc
 	};
 }
 
-function inventory(rows: AccountRow[]): AccountInventory {
+function inventory(rows: AccountRow[], disabledCause?: string): AccountInventory {
 	return {
-		providers: [{ provider: "anthropic", label: "Anthropic", rows }],
+		providers: [{ provider: "anthropic", label: "Anthropic", rows, ...(disabledCause ? { disabledCause } : {}) }],
 		totalAccounts: rows.length,
 		unhealthyCount: rows.filter(row => row.health === "failed").length,
 	};
@@ -57,7 +57,7 @@ interface Recorded {
 
 function harness(
 	rows: AccountRow[],
-	options: AccountManagerOptions = {},
+	options: AccountManagerOptions & { disabledCause?: string } = {},
 ): {
 	component: AccountManagerComponent;
 	recorded: Recorded;
@@ -86,7 +86,7 @@ function harness(
 			recorded.cancels += 1;
 		},
 	};
-	const component = new AccountManagerComponent(inventory(rows), callbacks, options);
+	const component = new AccountManagerComponent(inventory(rows, options.disabledCause), callbacks, options);
 	const render = (): string[] => component.render(120).map(line => stripVTControlCharacters(line));
 	return {
 		component,
@@ -226,7 +226,7 @@ describe("AccountManagerComponent rendering", () => {
 		const lines = frame();
 
 		expect(lineWith(lines, "no accounts yet")).toBe("Cerebras · no accounts yet");
-		expect(lineWith(lines, "add another")).toBe("+ add another Cerebras account (a)");
+		expect(lineWith(lines, "add another")).toBe("+ add another Cerebras account");
 
 		component.handleInput("a");
 		expect(recorded.added).toEqual(["cerebras"]);
@@ -416,5 +416,33 @@ describe("AccountManagerComponent sidebar mouse", () => {
 
 		const cursorRows = raw().filter(line => sidebarCell(line).includes("›"));
 		expect(cursorRows).toHaveLength(1);
+	});
+});
+
+describe("a long warning is clipped once, not twice", () => {
+	/**
+	 * A note longer than three wrapped lines gets ONE ellipsis.
+	 *
+	 * `truncateToWidth` appends its own ellipsis when it clips, and the clip-to-three-lines step
+	 * appended another unconditionally, so a real provider cause rendered `...url=https://api.anthropic.com/v1/oauth/toke\u2026\u2026`.
+	 * A doubled ellipsis reads as corrupted output, which is a poor advertisement for a line whose whole
+	 * job is to be trusted as the provider's own words.
+	 *
+	 * Not an ANSI assertion: `theme.fg` returns plain text under `bun test`, so colour cannot be
+	 * asserted here at all. This pins the TEXT, which is where the defect lived.
+	 */
+	test("ends a clipped note with a single ellipsis", () => {
+		// Unbroken tokens, not spaced words: wrapping fills each line to the full width, which is the
+		// only shape that makes the clipped third line long enough for truncateToWidth to add an
+		// ellipsis of its own. A cause of ordinary words wraps short and never reaches the defect,
+		// which is how the first version of this test passed against the bug.
+		const longCause = `oauth refresh failed: OAuthError: token refresh request failed, ${"url=https://api.example.com/v1/oauth/token/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,".repeat(6)}`;
+		const { frame } = harness(THREE_ACCOUNTS(), { disabledCause: longCause });
+		const clipped = frame().filter(line => line.endsWith("\u2026"));
+
+		expect(clipped.length).toBeGreaterThan(0);
+		for (const line of clipped) {
+			expect(line.endsWith("\u2026\u2026")).toBe(false);
+		}
 	});
 });
