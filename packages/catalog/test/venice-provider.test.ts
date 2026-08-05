@@ -1,9 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { getBundledModel } from "@veyyon/catalog/models";
-import {
-	KIMI_K27_CODE_RECOMMENDED_MAX_TOKENS,
-	veniceModelManagerOptions,
-} from "@veyyon/catalog/provider-models/openai-compat";
+import { veniceModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
 import type { FetchImpl } from "@veyyon/catalog/types";
 
 describe("Venice provider catalog", () => {
@@ -11,7 +8,10 @@ describe("Venice provider catalog", () => {
 		const model = getBundledModel("venice", "kimi-k2-7-code");
 
 		expect(model).toBeDefined();
-		expect(model.maxTokens).toBe(KIMI_K27_CODE_RECOMMENDED_MAX_TOKENS);
+		// Literal 32,768, Venice's recommended output cap for this model. Against
+		// the exported constant the assertion only proves the bundle and the
+		// constant were generated together, which they always are.
+		expect(model.maxTokens).toBe(32_768);
 	});
 
 	it("caps Kimi K2.7 Code during runtime discovery", async () => {
@@ -39,6 +39,6 @@ describe("Venice provider catalog", () => {
 
 		expect(requestedUrls).toEqual(["https://api.venice.ai/api/v1/models"]);
 		expect(model).toBeDefined();
-		expect(model?.maxTokens).toBe(KIMI_K27_CODE_RECOMMENDED_MAX_TOKENS);
+		expect(model?.maxTokens).toBe(32_768);
 	});
 });

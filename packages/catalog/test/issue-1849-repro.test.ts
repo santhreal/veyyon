@@ -14,11 +14,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { getBundledModel } from "@veyyon/catalog/models";
-import {
-	clampFireworksKimiMaxTokens,
-	FIREWORKS_KIMI_MAX_TOKENS,
-	isFireworksKimiK2ModelId,
-} from "@veyyon/catalog/provider-models/openai-compat";
+import { clampFireworksKimiMaxTokens, isFireworksKimiK2ModelId } from "@veyyon/catalog/provider-models/openai-compat";
 
 describe("Fireworks Kimi K2 maxTokens cap (#1849)", () => {
 	it("recognizes Kimi K2.x public and wire ids", () => {
@@ -48,10 +44,11 @@ describe("Fireworks Kimi K2 maxTokens cap (#1849)", () => {
 
 	it("clamps Kimi K2.x candidates to the published ceiling and leaves others untouched", () => {
 		// Inflated upstream value collapses to the cap.
-		expect(clampFireworksKimiMaxTokens("kimi-k2.6", 65_536)).toBe(FIREWORKS_KIMI_MAX_TOKENS);
-		expect(clampFireworksKimiMaxTokens("accounts/fireworks/routers/kimi-k2p6-turbo", 131_072)).toBe(
-			FIREWORKS_KIMI_MAX_TOKENS,
-		);
+		// Literal 32,768: the published Fireworks ceiling for Kimi K2.x. Asserting
+		// against FIREWORKS_KIMI_MAX_TOKENS made the clamp agree with whatever the
+		// clamp had been set to, which is the defect issue #1849 was.
+		expect(clampFireworksKimiMaxTokens("kimi-k2.6", 65_536)).toBe(32_768);
+		expect(clampFireworksKimiMaxTokens("accounts/fireworks/routers/kimi-k2p6-turbo", 131_072)).toBe(32_768);
 		// Already-low candidate stays low — the helper never raises a budget.
 		expect(clampFireworksKimiMaxTokens("kimi-k2.5", 4_096)).toBe(4_096);
 		// Non-Kimi ids pass through verbatim.
@@ -68,7 +65,7 @@ describe("Fireworks Kimi K2 maxTokens cap (#1849)", () => {
 		for (const [provider, id] of entries) {
 			const model = getBundledModel(provider, id);
 			expect(model).toBeDefined();
-			expect(model.maxTokens).toBe(FIREWORKS_KIMI_MAX_TOKENS);
+			expect(model.maxTokens).toBe(32_768);
 		}
 	});
 });

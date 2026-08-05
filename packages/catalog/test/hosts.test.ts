@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import * as hosts from "@veyyon/catalog/hosts";
 import {
 	hostMatchesUrl,
 	isDashscopeCompatibleModeUrl,
@@ -6,7 +7,6 @@ import {
 	isVertexRawPredictUrl,
 	modelMatchesHost,
 } from "@veyyon/catalog/hosts";
-import * as hosts from "@veyyon/catalog/hosts";
 
 describe("hostMatchesUrl", () => {
 	test("matches OpenRouter URLs and rejects other or missing URLs", () => {

@@ -100,7 +100,10 @@ describe("a gateway falls back to the shared pair", () => {
 		const silent = models?.find(model => model.id.includes("silent"));
 		const talkative = models?.find(model => model.id.includes("talkative"));
 		expect(silent, "silent model missing").toBeDefined();
-		expect(silent?.contextWindow).toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
+		// Literal, not the exported constant: 200k is what a provider that told us
+		// nothing is assumed to have, and asserting against the constant follows a
+		// bad edit to it instead of catching one.
+		expect(silent?.contextWindow).toBe(200_000);
 		expect(silent?.maxTokens).toBe(AGENT_GATEWAY_DEFAULT_MAX_TOKENS);
 		expect(talkative?.contextWindow).toBe(1_000_000);
 		expect(talkative?.maxTokens).toBe(96_000);
@@ -119,7 +122,7 @@ describe("a gateway falls back to the shared pair", () => {
 			fetcher: respondWith({ "zero-model": { displayName: "Zero", maxTokens: 0, maxOutputTokens: 0 } }),
 		});
 		const zero = models?.find(model => model.id.includes("zero"));
-		expect(zero?.contextWindow).toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
+		expect(zero?.contextWindow).toBe(200_000);
 		expect(zero?.maxTokens).toBe(AGENT_GATEWAY_DEFAULT_MAX_TOKENS);
 	});
 });

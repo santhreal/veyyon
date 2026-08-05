@@ -37,20 +37,22 @@ describe("Anthropic cache control on OpenRouter", () => {
 	 * sweep that happened to skip them would still pass the aggregate assertion
 	 * below, and these are the rows a user is most likely to run.
 	 */
-	it.each(["~anthropic/claude-opus-latest", "~anthropic/claude-sonnet-latest", "~anthropic/claude-haiku-latest", "~anthropic/claude-fable-latest"])(
-		"marks %s for Anthropic cache control despite the tilde-prefixed id",
-		id => {
-			const model = getBundledModel<"openrouter">("openrouter", id);
+	it.each([
+		"~anthropic/claude-opus-latest",
+		"~anthropic/claude-sonnet-latest",
+		"~anthropic/claude-haiku-latest",
+		"~anthropic/claude-fable-latest",
+	])("marks %s for Anthropic cache control despite the tilde-prefixed id", id => {
+		const model = getBundledModel<"openrouter">("openrouter", id);
 
-			expect(model, `${id} is missing from the bundled catalog`).toBeDefined();
-			// The exact wire format, not merely "something truthy": the completions
-			// path branches on this value to choose where the breakpoint goes.
-			expect(model.compat.cacheControlFormat).toBe("anthropic");
-			// The condition that broke it, asserted directly so the reason this row
-			// is special cannot be lost: the id does NOT start with `anthropic/`.
-			expect(id.startsWith("anthropic/")).toBe(false);
-		},
-	);
+		expect(model, `${id} is missing from the bundled catalog`).toBeDefined();
+		// The exact wire format, not merely "something truthy": the completions
+		// path branches on this value to choose where the breakpoint goes.
+		expect(model.compat.cacheControlFormat).toBe("anthropic");
+		// The condition that broke it, asserted directly so the reason this row
+		// is special cannot be lost: the id does NOT start with `anthropic/`.
+		expect(id.startsWith("anthropic/")).toBe(false);
+	});
 
 	/**
 	 * Every Claude row, not a sample. The bug was a predicate that agreed with the
@@ -62,7 +64,9 @@ describe("Anthropic cache control on OpenRouter", () => {
 
 		// A vacuous pass would be worse than a failure here.
 		expect(ids.length).toBeGreaterThan(20);
-		const unmarked = ids.filter(id => getBundledModel<"openrouter">("openrouter", id).compat.cacheControlFormat !== "anthropic");
+		const unmarked = ids.filter(
+			id => getBundledModel<"openrouter">("openrouter", id).compat.cacheControlFormat !== "anthropic",
+		);
 		expect(unmarked).toEqual([]);
 	});
 

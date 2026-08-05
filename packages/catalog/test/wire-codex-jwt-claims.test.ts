@@ -61,6 +61,10 @@ describe("the Codex JWT claim namespaces", () => {
 	it("keeps the two claims distinct but on one host", () => {
 		expect(CODEX_JWT_AUTH_CLAIM).not.toBe(CODEX_JWT_PROFILE_CLAIM);
 		expect(new URL(CODEX_JWT_AUTH_CLAIM).origin).toBe(new URL(CODEX_JWT_PROFILE_CLAIM).origin);
+		// The whole URI, literal: this is the key OpenAI writes into the token, so a
+		// change to the origin makes every Codex identity read fail while the
+		// pathname assertion alone stays green.
+		expect(CODEX_JWT_AUTH_CLAIM).toBe("https://api.openai.com/auth");
 		expect(new URL(CODEX_JWT_AUTH_CLAIM).pathname).toBe("/auth");
 		expect(new URL(CODEX_JWT_PROFILE_CLAIM).pathname).toBe("/profile");
 	});

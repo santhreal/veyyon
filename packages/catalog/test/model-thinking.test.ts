@@ -8,6 +8,7 @@ import {
 	mapEffortToGoogleThinkingLevel,
 	minimumSupportedEffort,
 	requireSupportedEffort,
+	resolveReasoningSelection,
 } from "@veyyon/catalog/model-thinking";
 import type { Api, Model, ModelSpec, Provider } from "@veyyon/catalog/types";
 
@@ -1002,5 +1003,130 @@ describe("hand-authored effort ladders bake canonical", () => {
 	it("reports the lowest supported effort regardless of authored order", () => {
 		expect(minimumSupportedEffort(customModel([Effort.Max, Effort.Minimal]))).toBe(Effort.Minimal);
 		expect(minimumSupportedEffort(customModel([Effort.High, Effort.Low, Effort.Medium]))).toBe(Effort.Low);
+	});
+});
+
+describe("resolveReasoningSelection", () => {
+	/**
+	 * A selected effort, provider wire value, and effort-tier model SKU are one
+	 * plan. Callers must not resolve those three facts independently.
+	 */
+	it("resolves effort maps and model-id routes together", () => {
+		const model = createModel({
+			id: "logical-thinker",
+			api: "openai-completions",
+			provider: "custom",
+			thinking: {
+				mode: "effort",
+				efforts: [Effort.Low, Effort.High],
+				effortMap: { high: "max" },
+				effortRouting: { low: "thinker-low", high: "thinker-high", off: "thinker-off" },
+			},
+		});
+
+		expect(resolveReasoningSelection(model, { effort: Effort.High })).toEqual({
+			state: "enabled",
+			effort: Effort.High,
+			wireEffort: "max",
+			wireModelId: "thinker-high",
+			mode: "effort",
+			forcedByModel: false,
+			enabled: true,
+		});
+		expect(resolveReasoningSelection(model, { disabled: true }).wireModelId).toBe("thinker-off");
+	});
+
+	/**
+	 * Compatibility aliases describe accepted provider wire levels. The canonical
+	 * plan must resolve unsupported user levels before any transport sees them.
+	 */
+	it("resolves compatibility effort aliases into supported canonical levels", () => {
+		const model = createModel({
+			id: "compat-thinker",
+			api: "openai-completions",
+			provider: "custom",
+			compat: { reasoningEffortMap: { minimal: "low", xhigh: "high" } },
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.High] },
+		});
+
+		const minimal = resolveReasoningSelection(model, { effort: Effort.Minimal });
+		const xhigh = resolveReasoningSelection(model, { effort: Effort.XHigh });
+
+		expect(minimal.effort).toBe(Effort.Low);
+		expect(minimal.wireEffort).toBe(Effort.Low);
+		expect(xhigh.effort).toBe(Effort.High);
+		expect(xhigh.wireEffort).toBe(Effort.High);
+	});
+
+	/**
+	 * Explicit disable is stronger than a simultaneously supplied effort. This
+	 * locks out providers accidentally enabling high reasoning from stale input.
+	 */
+	it("gives explicit disable precedence over effort", () => {
+		const model = createModel({
+			id: "disable-wins",
+			api: "openai-completions",
+			provider: "custom",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.High] },
+		});
+
+		expect(resolveReasoningSelection(model, { effort: Effort.High, disabled: true })).toEqual({
+			state: "disabled",
+			effort: undefined,
+			wireEffort: undefined,
+			wireModelId: "disable-wins",
+			mode: "effort",
+			forcedByModel: false,
+			enabled: false,
+		});
+	});
+
+	/**
+	 * Mandatory-reasoning endpoints cannot honor off. Their model capability
+	 * must produce the lowest valid effort explicitly and reproducibly.
+	 */
+	it("floors disabled intent only when the model requires effort", () => {
+		const model = createModel({
+			id: "mandatory-thinker",
+			api: "openai-completions",
+			provider: "custom",
+			thinking: {
+				mode: "effort",
+				efforts: [Effort.Medium, Effort.High],
+				requiresEffort: true,
+			},
+		});
+
+		expect(resolveReasoningSelection(model, { disabled: true })).toEqual({
+			state: "enabled",
+			effort: Effort.Medium,
+			wireEffort: Effort.Medium,
+			wireModelId: "mandatory-thinker",
+			mode: "effort",
+			forcedByModel: true,
+			enabled: true,
+		});
+	});
+
+	/**
+	 * Reasoning capability and controllable effort are different facts. Native
+	 * reasoning models without a dial must not invent a user-facing effort.
+	 */
+	it("distinguishes uncontrolled reasoning from unsupported reasoning", () => {
+		const uncontrolled = createModel({
+			id: "native-reasoner",
+			api: "openai-responses",
+			provider: "custom",
+			compat: { supportsReasoningEffort: false },
+		});
+		const unsupported = createModel({
+			id: "plain-model",
+			api: "openai-completions",
+			provider: "custom",
+			reasoning: false,
+		});
+
+		expect(resolveReasoningSelection(uncontrolled, { effort: Effort.High }).state).toBe("uncontrolled");
+		expect(resolveReasoningSelection(unsupported, { effort: Effort.High }).state).toBe("unsupported");
 	});
 });
