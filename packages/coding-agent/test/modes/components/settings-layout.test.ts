@@ -38,25 +38,40 @@ describe("settings layout", () => {
 		expect(violations).toEqual([]);
 	});
 
-	it("getSettingsForTab returns contiguous groups in TAB_GROUPS order", () => {
+	/**
+	 * Every group the tab DECLARES is reachable, exactly once, in declaration order.
+	 *
+	 * The previous version of this case computed its expectation as
+	 * `TAB_GROUPS[tab].filter(group => grouped.includes(group))`, which derives the
+	 * expected list from the observed one: a group that disappeared from the panel
+	 * dropped out of both sides and the equality still held. Measured by making one
+	 * real appearance group unreachable from `getSettingsForTab`, which left all
+	 * eleven cases in this file green while the group was gone from /settings. That
+	 * is the exact symptom the preflight entry for this suite names, so the suite was
+	 * asserting order and calling it coverage.
+	 *
+	 * Comparing against `TAB_GROUPS[tab]` as WRITTEN pins all three properties at
+	 * once: every declared group present, none twice, and in declaration order. A
+	 * group with no settings behind it is therefore a failure rather than an empty
+	 * section, which is why `experimental` no longer declares a "Display" group: it
+	 * was introduced with the tab and never had a setting.
+	 */
+	it("renders every group TAB_GROUPS declares, once each, in declaration order", () => {
 		for (const tab of SETTING_TABS) {
 			const defs = getSettingsForTab(tab);
 			expect(defs.length).toBeGreaterThan(0);
 
-			// Collapse the def sequence into the order groups first appear.
+			// Collapse the def sequence into the order groups first appear. A group
+			// appearing twice survives this collapse and breaks the equality below,
+			// which is how non-contiguous sections are caught.
 			const sequence: string[] = [];
 			for (const def of defs) {
 				const group = def.group ?? "";
 				if (sequence[sequence.length - 1] !== group) sequence.push(group);
 			}
 
-			// Contiguous: no group appears twice in the collapsed sequence.
-			expect(new Set(sequence).size).toBe(sequence.length);
-
-			// Ordered: grouped sections follow the TAB_GROUPS declaration order.
 			const grouped = sequence.filter(group => group !== "");
-			const expected = TAB_GROUPS[tab].filter(group => grouped.includes(group));
-			expect(grouped).toEqual(expected);
+			expect(grouped).toEqual([...TAB_GROUPS[tab]]);
 		}
 	});
 

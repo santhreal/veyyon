@@ -120,23 +120,20 @@ describe("the ownership sites ask through the predicate", () => {
 	const source = fs.readFileSync(SDK, "utf8");
 
 	/**
-	 * The four decisions that turn on ownership: constructing the process-global
-	 * `AsyncJobManager`, scoping to an inherited one, installing the active skills
-	 * and rules, and installing the global `MCPManager`. Each was a bare
-	 * `!options.parentTaskPrefix`, which is what let them drift from each other and
-	 * from `isSubagentSession` without anything failing.
+	 * The four ownership decisions -- constructing the process-global `AsyncJobManager`,
+	 * scoping to an inherited one, installing the active skills and rules, and installing
+	 * the global `MCPManager` -- were each a bare `!options.parentTaskPrefix`, which is
+	 * what let them drift from each other and from `isSubagentSession` silently.
+	 *
+	 * DELETED HERE: four `expect(source).toContain("<exact expression>")` cases, one per
+	 * decision. They named no bug the case below does not already catch, and they were
+	 * strictly weaker than it: a FIFTH ownership decision spelled inline -- the way the
+	 * original divergence actually appeared -- left all four green, while reformatting
+	 * any one of the four expressions turned them red with nothing about the product
+	 * changed. Failing on renames and passing on drift is backwards, and
+	 * "leaves no bare truthiness test on parentTaskPrefix" below covers the real defect
+	 * for every site, including ones nobody has written yet.
 	 */
-	it.each([
-		["constructing the AsyncJobManager", "!isInProcessChildSession(options) && !AsyncJobManager.instance()"],
-		["scoping to an inherited manager", "isInProcessChildSession(options) ? AsyncJobManager.instance() : undefined"],
-		["installing the active skills and rules", "if (!isInProcessChildSession(options)) {"],
-		[
-			"installing the global MCPManager",
-			"if (mcpManager && !isInProcessChildSession(options)) MCPManager.setInstance(mcpManager)",
-		],
-	])("routes %s through isInProcessChildSession", (_label, expression) => {
-		expect(source).toContain(expression);
-	});
 
 	/**
 	 * No bare copy is left. This is the case that actually holds the line: the four

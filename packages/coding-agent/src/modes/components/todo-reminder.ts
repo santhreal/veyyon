@@ -1,7 +1,12 @@
 import { Box, Container, Spacer, Text } from "@veyyon/tui";
 import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
-import type { TodoItem } from "../../tools/todo";
+import {
+	createBoundedTodoPreview,
+	prioritizeTodoItems,
+	TODO_REMINDER_PREVIEW_LIMIT,
+	type TodoItem,
+} from "../../tools/todo";
 
 /**
  * Component that renders a todo completion reminder notification, committed into
@@ -32,16 +37,20 @@ export class TodoReminderComponent extends Container {
 		this.#box.clear();
 
 		const count = this.todos.length;
-		const label = count === 1 ? "todo" : "todos";
-		const header = withIcon(
-			theme.icon.warning,
-			`${count} incomplete ${label} - reminder ${this.attempt}/${this.maxAttempts}`,
-		);
+		const label = count === 1 ? "todo remains" : "todos remain";
+		const header = withIcon(theme.icon.warning, `Continue: ${count} ${label} · ${this.attempt}/${this.maxAttempts}`);
 
 		this.#box.addChild(new Text(header, 0, 0));
 		this.#box.addChild(new Spacer(1));
 
-		const todoList = this.todos.map(todo => `  ${theme.checkbox.unchecked} ${todo.content}`).join("\n");
-		this.#box.addChild(new Text(theme.italic(todoList), 0, 0));
+		const preview = createBoundedTodoPreview();
+		const prefix = `  ${theme.checkbox.unchecked} `;
+		for (const todo of prioritizeTodoItems(this.todos).slice(0, TODO_REMINDER_PREVIEW_LIMIT)) {
+			if (!preview.push(prefix, todo.content)) break;
+		}
+		const lines = preview.lines;
+		const hidden = count - lines.length;
+		if (hidden > 0) lines.push(`  … ${hidden} more in todo state`);
+		this.#box.addChild(new Text(theme.italic(lines.join("\n")), 0, 0));
 	}
 }
