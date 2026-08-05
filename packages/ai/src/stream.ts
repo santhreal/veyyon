@@ -318,6 +318,32 @@ function reportProviderInFlightLockLeak(lockDir: string, what: string, error: un
 	});
 }
 
+/**
+ * Report a lease directory that could not be removed.
+ *
+ * The lock releases have carried this contract since they were written: a failed release must never
+ * turn into a thrown error on a request, and must never be silent either. The LEASE removal was the
+ * half that had neither. `releaseProviderInFlightLease` had no `catch` at all, so an `fs.rm` that
+ * failed (a config root whose permissions changed under a restrictive umask, a container running as
+ * another uid, a synced home) threw out of the `finally` in `withProviderInFlightLimit` and REPLACED
+ * the provider's own error with an `EACCES` about a temp directory. On the success path it was worse
+ * than useless: the stream had already ended, so the throw was swallowed whole and the leaked slot
+ * left no trace at all.
+ *
+ * A leaked lease is not merely slow. Until it ages past {@link PROVIDER_INFLIGHT_LEASE_STALE_MS} it
+ * counts against the provider's limit, and if the same permissions stop the staleness sweep from
+ * removing it, the slot is gone for the life of the directory.
+ */
+function reportProviderInFlightLeaseLeak(leasePath: string, what: string, error: unknown): void {
+	if (isEnoent(error)) return;
+	logger.warn("Provider in-flight lease could not be removed; it will hold a slot for this provider", {
+		leasePath,
+		lease: what,
+		staleAfterMs: PROVIDER_INFLIGHT_LEASE_STALE_MS,
+		error: errorMessage(error),
+	});
+}
+
 async function releaseProviderInFlightStaleLock(lockDir: string, stale: ProviderInFlightStaleLock): Promise<void> {
 	if ("token" in stale) {
 		await releaseProviderInFlightLock(lockDir, stale.token);
@@ -417,7 +443,23 @@ async function cleanupProviderInFlightLeases(providerDir: string): Promise<numbe
 		}
 		if (!isDirectory) continue;
 		if (await isProviderInFlightDirStale(leaseDir, PROVIDER_INFLIGHT_LEASE_STALE_MS)) {
-			await fs.rm(leaseDir, { recursive: true, force: true });
+			// The lease is provably dead: its owning pid is gone or its heartbeat stopped long enough ago
+			// that another process is already entitled to proceed. Removing the directory is housekeeping,
+			// so a removal that fails must not become the request's error. It used to: the throw escaped
+			// through `tryAcquireProviderInFlightLease` and `acquireProviderInFlightSlot` into
+			// `withProviderInFlightLimit`, which failed the stream with an `EACCES` about a temp directory,
+			// and it did so on EVERY later request for that provider because the sweep runs on each one.
+			// One unremovable directory turned into a permanently dead provider.
+			//
+			// It is counted as reclaimed rather than active, deliberately. Counting it would be the other
+			// failure: with a limit of one, a directory that cannot be removed and cannot age out would
+			// block every request for that provider forever, and a hang is worse than briefly exceeding a
+			// soft concurrency cap. The warning names the directory so the cause is findable.
+			try {
+				await fs.rm(leaseDir, { recursive: true, force: true });
+			} catch (error) {
+				reportProviderInFlightLeaseLeak(leaseDir, "stale lease sweep", error);
+			}
 			continue;
 		}
 		active++;
@@ -595,7 +637,18 @@ async function removeProviderInFlightLeaseDir(leasePath: string): Promise<void> 
 async function releaseProviderInFlightLease(lease: ProviderInFlightLease): Promise<void> {
 	clearInterval(lease.heartbeat);
 	await lease.flushHeartbeat();
-	await removeProviderInFlightLeaseDir(lease.path);
+	try {
+		await removeProviderInFlightLeaseDir(lease.path);
+	} catch (error) {
+		// Never rethrow. This runs from the `finally` in `withProviderInFlightLimit`, where a throw
+		// REPLACES whatever the request was already reporting: a provider's real failure became an
+		// `EACCES` about a temp directory, and a successful stream had the throw swallowed silently
+		// because `outer` was already ended. Both outcomes destroyed the information that mattered.
+		reportProviderInFlightLeaseLeak(lease.path, "own lease", error);
+	}
+	// Signalled even when the removal failed. Waiters are woken by the `.wakeup` write, not by the
+	// directory disappearing, and a waiter that is never woken pays the fallback timer on top of a
+	// slot it may not get anyway.
 	await signalProviderInFlightWaitersInDir(path.dirname(lease.path));
 }
 

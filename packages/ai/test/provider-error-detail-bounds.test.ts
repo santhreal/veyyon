@@ -101,7 +101,8 @@ describe("provider entry points inherit the ceiling", () => {
 		expect(info.message).toBe(`${HOSTILE_PAGE.slice(0, 4096)} [truncated, ${HOSTILE_LENGTH} chars total]`);
 		expect(info.message.length).toBe(4128);
 		expect(info.status).toBe(502);
-		expect(info.raw.length).toBe(HOSTILE_LENGTH);
+		// Unbounded on purpose: `raw` feeds classification, never a rendered message.
+		expect(info.raw).toHaveLength(HOSTILE_LENGTH);
 	});
 
 	it("bounds an oversized Codex envelope message", async () => {
