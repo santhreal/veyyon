@@ -208,7 +208,12 @@ describe("a tool call spending a placeholder while a vault scope cannot be read"
 		// placeholder for the operator to substitute. `discard` moves the file aside and does not
 		// re-add anything, so naming it alone would leave the operator halfway.
 		expect(refusal).toContain("/secret discard --scope profile");
-		expect(refusal).toContain("/secret add");
+		expect(refusal).toContain("store the secrets it held again");
+		// The refusal cannot know which surface prints it, and in a terminal `/secret add` is not a
+		// command: the whole line after `/secret` is stored as a credential. So it names the manager,
+		// which works there, and marks the verb form as the one for a client with no terminal.
+		expect(refusal).toContain("/secret manager");
+		expect(refusal).not.toContain("/secret add");
 		// A corrupt vault is attacker-influenced input. Echoing it into a tool result would put
 		// whatever it contains in front of the model and into the transcript.
 		expect(refusal).not.toContain(VAULT_BYTE_MARKER);

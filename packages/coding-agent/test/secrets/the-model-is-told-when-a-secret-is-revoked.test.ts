@@ -17,6 +17,9 @@
  *      returned early on `!secretsEnabled` before it ever looked at the notice, and that state is
  *      exactly the one where a stale placeholder does the most damage, because with no obfuscator
  *      nothing is substituted at all.
+ *
+ * Driven through the NONINTERACTIVE surface throughout, because a notice is always about a NAMED
+ * placeholder and only that surface's grammar can name one on a command line. See {@link harness}.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
@@ -72,10 +75,17 @@ interface Harness {
 /**
  * A port over real temp-directory vault files.
  *
+ * NO `promptForValue`, WHICH SELECTS THE NONINTERACTIVE SURFACE, and that is the surface this suite
+ * is about. Every notice below is produced by a verb — `rm`, `extend`, `add ... --from-env`, or a
+ * read — and verbs only exist where there is no masked field: in a terminal the argument line IS
+ * the credential, so `rm github-token` typed there is a value to store, not a removal. Which
+ * placeholders the model is told about is vault semantics, identical on both surfaces, and this is
+ * the grammar that can still name a specific one.
+ *
  * `protection: "off"` models the state the early return used to swallow notices in: the settings
  * flag may be anything, but the live runtime has no obfuscator, so nothing is substituted.
  */
-function harness(options?: { protection?: "off"; promptReturns?: string }): Harness {
+function harness(options?: { protection?: "off" }): Harness {
 	const agentMessages: DeliveredMessage[] = [];
 	const sessionMessages: DeliveredMessage[] = [];
 	const protectionOn = options?.protection !== "off";
@@ -118,7 +128,6 @@ function harness(options?: { protection?: "off"; promptReturns?: string }): Harn
 			cwd: project,
 			globalConfigRoot: home,
 			agentDir: path.join(home, "profiles", "default"),
-			promptForValue: async () => options?.promptReturns,
 		} as unknown as Parameters<typeof runSecretCommandForSurface>[1],
 	};
 }
@@ -330,22 +339,34 @@ describe("a notice", () => {
 	 * The whole point of the placeholder is that the value never leaves the machine. A notice is
 	 * the one new string on the path to the provider, so it is checked against a value that would
 	 * be unmistakable if it leaked.
+	 *
+	 * The `add` arrives through `--from-env`, because a noninteractive client refuses an inline
+	 * credential outright and has no field to open. That is the only entry form this surface has, so
+	 * it is the one whose notice is worth searching.
 	 */
 	it("never contains the stored value", async () => {
 		await store("github-token");
 		const h = harness();
+		process.env.VEYYON_REVOKE_NOTICE_ADD = VALUE;
 
-		const added = await runSecretCommandForSurface("add other-token", harness({ promptReturns: VALUE }).port);
-		const extended = await runSecretCommandForSurface("extend github-token --ttl 7d", h.port);
-		const removed = await runSecretCommandForSurface("rm github-token", h.port);
+		try {
+			const added = await runSecretCommandForSurface(
+				"add other-token --from-env VEYYON_REVOKE_NOTICE_ADD",
+				harness().port,
+			);
+			const extended = await runSecretCommandForSurface("extend github-token --ttl 7d", h.port);
+			const removed = await runSecretCommandForSurface("rm github-token", h.port);
 
-		for (const text of [...texts(h.agentMessages), ...texts(h.sessionMessages)]) {
-			expect(text).not.toContain(VALUE);
+			for (const text of [...texts(h.agentMessages), ...texts(h.sessionMessages)]) {
+				expect(text).not.toContain(VALUE);
+			}
+			for (const outcome of [added, extended, removed]) {
+				expect(outcome.message).not.toContain(VALUE);
+			}
+			expect(h.agentMessages).toHaveLength(2);
+		} finally {
+			delete process.env.VEYYON_REVOKE_NOTICE_ADD;
 		}
-		for (const outcome of [added, extended, removed]) {
-			expect(outcome.message).not.toContain(VALUE);
-		}
-		expect(h.agentMessages).toHaveLength(2);
 	});
 
 	/** A value that happens to look like a placeholder must not survive into the notice either. */
@@ -385,15 +406,27 @@ describe("with secret protection off", () => {
 		expect(texts(h.sessionMessages)).toEqual([notice]);
 	});
 
-	/** The other half: an offer of a placeholder that cannot expand is withheld, not delivered. */
+	/**
+	 * The other half: an offer of a placeholder that cannot expand is withheld, not delivered.
+	 *
+	 * Stored through `--from-env`, the only entry form a client with no masked field has.
+	 */
 	it("withholds the notice that a new secret is usable", async () => {
-		const h = harness({ protection: "off", promptReturns: VALUE });
+		const h = harness({ protection: "off" });
+		process.env.VEYYON_REVOKE_NOTICE_WITHHELD = VALUE;
 
-		const outcome = await runSecretCommandForSurface("add fresh-token", h.port);
+		try {
+			const outcome = await runSecretCommandForSurface(
+				"add fresh-token --from-env VEYYON_REVOKE_NOTICE_WITHHELD",
+				h.port,
+			);
 
-		expect(outcome.message).toContain("Secret protection is OFF");
-		expect(h.agentMessages).toEqual([]);
-		expect(h.sessionMessages).toEqual([]);
+			expect(outcome.message).toContain("Secret protection is OFF");
+			expect(h.agentMessages).toEqual([]);
+			expect(h.sessionMessages).toEqual([]);
+		} finally {
+			delete process.env.VEYYON_REVOKE_NOTICE_WITHHELD;
+		}
 	});
 
 	/** `extend` claims availability too, so it is withheld on the same grounds as `add`. */

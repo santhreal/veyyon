@@ -163,6 +163,13 @@ describe("the same name in a different scope", () => {
 	});
 });
 
+/**
+ * The confirmation wording, read on the NONINTERACTIVE surface, because that is the only surface
+ * whose grammar still has an `add` verb with a leading name: in a terminal the argument line IS
+ * the credential, so `add GITHUB_TOKEN <value>` there is one long value and could never collide
+ * with an existing name. A rotation is therefore something only a `-p`/ACP caller can express as
+ * a command line, and the vault-level rows above cover the write itself for both surfaces.
+ */
 describe("what the operator is told", () => {
 	/**
 	 * The whole point of the flag: it has to reach the confirmation the operator reads. A correct
@@ -178,8 +185,11 @@ describe("what the operator is told", () => {
 				now: Date.now(),
 				surface: "noninteractive" as const,
 			};
-			await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${FIRST_VALUE}`), context);
-			const rotation = await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${SECOND_VALUE}`), context);
+			await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${FIRST_VALUE}`, "noninteractive"), context);
+			const rotation = await runSecretCommand(
+				parseSecretCommand(`add GITHUB_TOKEN ${SECOND_VALUE}`, "noninteractive"),
+				context,
+			);
 
 			expect(rotation.message).toContain("Replaced GITHUB_TOKEN");
 			expect(rotation.message).toContain("The previous value is gone");
@@ -196,7 +206,7 @@ describe("what the operator is told", () => {
 	it("says Stored, and never mentions a previous value, on a first store", async () => {
 		const { vault, cleanup } = await freshVault();
 		try {
-			const first = await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${FIRST_VALUE}`), {
+			const first = await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${FIRST_VALUE}`, "noninteractive"), {
 				vault,
 				readEnv: () => undefined,
 				defaultTtl: 24 * 60 * 60 * 1000,
@@ -227,8 +237,11 @@ describe("what the operator is told", () => {
 				now: Date.now(),
 				surface: "noninteractive" as const,
 			};
-			await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${FIRST_VALUE}`), context);
-			const rotation = await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${SECOND_VALUE}`), context);
+			await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${FIRST_VALUE}`, "noninteractive"), context);
+			const rotation = await runSecretCommand(
+				parseSecretCommand(`add GITHUB_TOKEN ${SECOND_VALUE}`, "noninteractive"),
+				context,
+			);
 
 			expect(rotation.message).not.toContain(FIRST_VALUE);
 			expect(rotation.message).not.toContain(SECOND_VALUE);
