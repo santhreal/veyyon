@@ -17,16 +17,44 @@ const DEVIN_GET_CLI_MODEL_CONFIGS_PATH = "/exa.api_server_pb.ApiServerService/Ge
 /**
  * The client Devin's API is told it is talking to.
  *
- * Both are sent as request metadata on every call, by model discovery here AND by the
- * provider in `@veyyon/ai`, which had its own copy of both strings. `@veyyon/catalog`
+ * All four are sent as request metadata on every call, by model discovery here AND by the
+ * provider in `@veyyon/ai`, which had its own copy of the strings. `@veyyon/catalog`
  * is the declared owner of what goes on Devin's wire, so a bump landed in one file and
  * left the other claiming a different client: two versions of the same product
  * identifying themselves differently on requests that belong to one session, which the
  * server is entitled to treat as two clients. Exported for the same reason
  * {@link DEVIN_SESSION_TOKEN_PREFIX} is.
+ *
+ * `chisel` is the native `devin` CLI's own internal name, and it is load-bearing rather
+ * than cosmetic: `GetCliModelConfigs` gates entitlement on `ide_name`. Claiming to be
+ * `windsurf` came back with `disabled_reason` "Upgrade to Pro to access this model" on 167
+ * of 168 entries for an account that is fully entitled through the CLI, leaving discovery
+ * with the one free model. `extension_name` is not part of that gate, but the two are sent
+ * together to describe one client. The versions are the CLI's own (it really does ship
+ * `0.0.0-dev`); their VALUE does not affect the gate, but an empty one is a 400, so they
+ * are pinned rather than omitted.
  */
-export const DEVIN_IDE_VERSION = "3.2.23";
-export const DEVIN_EXTENSION_VERSION = "1.48.2";
+export const DEVIN_IDE_NAME = "chisel";
+export const DEVIN_EXTENSION_NAME = "chisel";
+export const DEVIN_IDE_VERSION = "0.0.0-dev";
+export const DEVIN_EXTENSION_VERSION = "0.0.0-dev";
+
+/**
+ * Model display styles this client asks for, sent as `Metadata.supported_model_displays`.
+ *
+ * This is a catalogue filter rather than a rendering hint: the server only returns configs
+ * whose display style the client claims to support. Sending nothing returns 168 of the 174
+ * entries and drops `adaptive`; sending the native CLI's own `[3, 4, 6, 8]` returns all 174.
+ *
+ * We deliberately ask for LESS than the CLI does. Styles 4 and 6 are its internal buckets —
+ * `swe-check`, `opus-4-7-review`, `gpt-5-5-review` (4) and `subagent-default`,
+ * `memory-migration-default` (6) — which the CLI receives and then hides, because they are
+ * fixed roles in its own harness and not models a user picks. Asking only for the
+ * user-facing styles makes the server do that filtering: `[3, 8]` returns exactly the 169
+ * the CLI displays, with no entry it omits and none of the five it hides.
+ */
+const DEVIN_SUPPORTED_MODEL_DISPLAYS = [3, 8];
+
 /**
  * Prefix Devin's API expects on a session token.
  *
@@ -92,10 +120,11 @@ export async function fetchDevinModels(
 		const request = create(GetCliModelConfigsRequestSchema, {
 			metadata: create(MetadataSchema, {
 				apiKey: normalizeDevinSessionToken(options.apiKey),
-				ideName: "windsurf",
+				ideName: DEVIN_IDE_NAME,
 				ideVersion: DEVIN_IDE_VERSION,
-				extensionName: "windsurf",
+				extensionName: DEVIN_EXTENSION_NAME,
 				extensionVersion: DEVIN_EXTENSION_VERSION,
+				supportedModelDisplays: DEVIN_SUPPORTED_MODEL_DISPLAYS,
 			}),
 		});
 		const body = toBinary(GetCliModelConfigsRequestSchema, request);
@@ -165,13 +194,30 @@ function decodeCliModelConfigsResponse(payload: Uint8Array, reportUndecodable: (
 	}
 }
 
+/**
+ * Turns `ClientModelConfig` entries into canonical model entries, dropping the ones this
+ * account cannot actually use.
+ *
+ * The disabled test reads `disabled_reason` (field 33) and NOT the `disabled` bool the
+ * vendored descriptor still declares at field 4. Field 4 is not a disablement flag on the
+ * current wire: in the native CLI's own fully-entitled response it is true on 171 of 174
+ * entries, `grok-4-5-medium` among them, every one of which the CLI lists as available, and
+ * the CLI's own compiled `ClientModelConfig` has no `disabled` field at all — it carries
+ * `disabled_reason` instead. Reading field 4 is what reduced this provider to the single
+ * free model. What field 4 does mean is not something the evidence settles, so nothing here
+ * reads it; the descriptor is generated and is left as the vendor's proto produced it.
+ *
+ * `disabled_reason` is the signal the server actually populates, and it is per-account: the
+ * same request under the wrong `ide_name` comes back with "Upgrade to Pro to access this
+ * model" attached to nearly every entry. It is absent on all 169 when the identity is right.
+ */
 function normalizeDevinModels(
 	configs: readonly ClientModelConfig[],
 	baseUrlOverride: string | undefined,
 ): ModelSpec<"devin-agent">[] {
 	const byId = new Map<string, ModelSpec<"devin-agent">>();
 	for (const config of configs) {
-		if (config.disabled) {
+		if (config.disabledReason) {
 			continue;
 		}
 		const id = config.modelUid.trim();
