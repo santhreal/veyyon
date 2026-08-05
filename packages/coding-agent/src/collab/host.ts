@@ -554,10 +554,21 @@ export class CollabHost {
 		}
 	}
 
+	/**
+	 * The agents this host mirrors to guests: its OWN conversation's, never the
+	 * whole process registry.
+	 *
+	 * A collab guest is a window onto one shared session, and the snapshot is not
+	 * display-only: `#handleAgentCmd` accepts chat/kill/revive by any id the
+	 * guest was shown. An unfiltered list therefore handed a remote guest control
+	 * over agents belonging to a conversation the sharer never shared, in any host
+	 * that drives more than one. A ref carrying no scope is still mirrored, which
+	 * is what keeps a hand-built or pre-scope ref visible.
+	 */
 	#snapshotAgents(): AgentSnapshot[] {
 		return (
 			AgentRegistry.global()
-				.list()
+				.listInScope(this.#ctx.sessionManager.getSessionId())
 				// Advisor transcripts are local observability only; never mirror them to
 				// guests (the wire AgentSnapshot kind has no `advisor`, and guests must not
 				// be able to chat/kill/revive them).
@@ -591,8 +602,20 @@ export class CollabHost {
 		}
 		// Advisor refs are excluded from snapshots, but reject control by id defensively:
 		// a stale/malicious client must never chat/kill/revive a read-only advisor transcript.
-		if (AgentRegistry.global().get(agentId)?.kind === "advisor") {
+		const target = AgentRegistry.global().get(agentId);
+		if (target?.kind === "advisor") {
 			this.#socket?.send({ t: "error", message: `agent ${agentId}: advisor transcripts are read-only` }, fromPeer);
+			return;
+		}
+		// Same defensiveness for the conversation boundary. The snapshot no longer
+		// offers another conversation's agents, but the command carries a bare id
+		// off the wire and this is the only thing standing between a guest and an
+		// agent belonging to a session that was never shared with it.
+		if (target && !AgentRegistry.sameScope(target.scope, this.#ctx.sessionManager.getSessionId())) {
+			this.#socket?.send(
+				{ t: "error", message: `agent ${agentId}: belongs to a conversation that is not shared here` },
+				fromPeer,
+			);
 			return;
 		}
 		const fail = (err: unknown) => {
@@ -634,7 +657,13 @@ export class CollabHost {
 	async #handleFetchTranscript(reqId: number, agentId: string, fromByte: number, fromPeer: number): Promise<void> {
 		const reply = (text: string, newSize: number, error?: string) =>
 			this.#socket?.send({ t: "transcript", reqId, text, newSize, error }, fromPeer);
-		const file = AgentRegistry.global().get(agentId)?.sessionFile;
+		// Scope-checked before the file is even named. This serves raw transcript
+		// BYTES to a remote peer, so an unguarded id lookup is the widest of the
+		// collab leaks: a guest naming an agent of an unshared conversation was
+		// streamed that conversation's session file.
+		const ref = AgentRegistry.global().get(agentId);
+		const file =
+			ref && AgentRegistry.sameScope(ref.scope, this.#ctx.sessionManager.getSessionId()) ? ref.sessionFile : null;
 		if (!file) {
 			reply("", fromByte, "no transcript available");
 			return;
