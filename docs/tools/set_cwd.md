@@ -46,12 +46,8 @@ Both branches state the resulting directory rather than describing what did or d
 6. Any throw from the session is re-wrapped as a `ToolError` carrying the original message.
 
 ## Side Effects & Prompt Cache Stability
-- Session state: re-roots the live session at the new directory. The session cwd changes, and in an interactive session the project-scoped state follows it: project settings (`.veyyon` / `.claude`) reload, and plugins, slash commands, capabilities, the ssh tool, and the system-prompt project framing are rebuilt for the new directory.
-- **Prompt Cache Protection:** Working directory changes occur across three distinct mutation vectors:
-  1. *Profile Defaults (`session.workdir` setting)*: Configured per-profile; updating it mid-session updates future session defaults without mutating live prompt headers.
-  2. *Agent Tool (`set_cwd`)*: Re-roots live session scope for path resolving (`[name#tag]`); prompt header metadata remains frozen until context compaction.
-  3. *User Commands (`/cwd`, `/move`)*: Changes interactive execution scope without invalidating system prompt prefix hashes.
-  **Rule:** To prevent cache invalidation, the rendered System Prompt and `<workstation>` block in preceding chat context MUST NOT be re-rendered mid-session prior to context compaction. Updating prompt header metadata is deferred to compaction re-primes when history is already reset.
+- Session state: re-roots the live session at the new directory. The session cwd changes, and the cwd-scoped state follows it: path-scoped settings re-resolve, secrets and the ssh tool are re-scoped, capabilities are rediscovered, and the system-prompt project framing is rebuilt for the new directory.
+- **Prompt cache cost:** the system prompt names the working directory and carries that project's context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider's prefix prompt cache, and the next request re-reads the whole context as fresh input. It is done anyway because the alternative is a frozen header that tells the model it is working in the directory it just left. A re-root to the directory already in force does nothing at all.
 - Filesystem: none. The directory is read for validation by the session, nothing is written.
 - Approval: write-tier. It prompts in ask mode, is allowed under yolo and `bypassAllApprovals`, and is always blocked by a hard deny. The approval prompt shows `Working directory: <previous> → <next>`.
 ## Errors

@@ -1,6 +1,8 @@
 # Settings
 
-`veyyon` resolves settings from built-in defaults, a persistent global config file, optional project-local config, one-shot CLI overlays, and in-memory runtime overrides. Reach for project settings when one repository needs a different provider set, model role, tool policy, memory backend, or UI behavior than your global defaults, without touching your machine-wide configuration.
+`veyyon` resolves settings from built-in defaults, a persistent profile config file, a small machine-global file, one-shot CLI overlays, and in-memory runtime overrides. When one repository needs a different provider set, model role, tool policy, or UI behavior than your profile defaults, use a `--config` overlay or a path-scoped array (see [Path-scoped arrays](#path-scoped-arrays)); both are covered below.
+
+A repository never configures the agent. A checked-in `.veyyon/config.yml` or `.veyyon/settings.json` in a working tree is not read, because a repository is content you may not have written. The only files a project contributes are context files (`AGENTS.md` / `CLAUDE.md`), which are prose the model reads, not settings; see [Context files](./context-files.md).
 
 Settings are stored as plain YAML mappings. Every key, its type, default, and enum values come from the settings schema, and you can inspect or change any of them with `veyyon config` or the interactive `/settings` panel.
 
@@ -13,17 +15,15 @@ Settings are stored as plain YAML mappings. Every key, its type, default, and en
 
 | Scope | Path | Read behavior | Write behavior |
 |---|---|---|---|
-| Global | `~/.veyyon/profiles/default/agent/config.yml` | The main persistent settings file for the active profile. Always loaded. | `/settings`, `veyyon config set`, and `veyyon config reset` write here. |
-| Global legacy | `~/.veyyon/profiles/default/agent/settings.json` | Migrated into `config.yml` once, only when `config.yml` does not yet exist. | Not written after migration; the original is renamed to `settings.json.bak`. |
+| Profile | `~/.veyyon/profiles/<name>/agent/config.yml` | The main persistent settings file for the active profile. Always loaded. | `/settings`, `veyyon config set`, and `veyyon config reset` write here. |
+| Profile legacy | `~/.veyyon/profiles/<name>/agent/settings.json` | Migrated into `config.yml` once, only when `config.yml` does not yet exist. | Not written after migration; the original is renamed to `settings.json.bak`. |
 | Machine-global (all profiles) | `~/.veyyon/config.yml` | A small set of values shared by every profile: `defaultProfile` (which profile a bare `vey` launches), `profileSharing` (whether provider credentials are shared across profiles), and the auth-broker keys `authBrokerUrl` / `authBrokerToken`. Read live. | The **Global** tab of `/settings`, or `veyyon profile default` for `defaultProfile`. These keys never land in a profile's own `config.yml`. |
-| Project | `<cwd>/.veyyon/config.yml` (plus `.veyyon/settings.json`) | Loaded when the process working directory has a non-empty `.veyyon/`. | Read-only from settings commands; edit the file by hand. |
-| Project legacy | `<cwd>/.veyyon/settings.json` | Still read; project `config.yml` is merged on top of it. | Not written by settings commands. |
-| CLI overlay | Any file passed with `--config <file>` | Loaded after global and project settings, for that one process. Repeatable. | Never persisted. |
+| CLI overlay | Any file passed with `--config <file>` | Loaded after the profile config, for that one process. Repeatable. | Never persisted. |
 | Runtime overrides | In-memory only | Set by dedicated CLI flags (`--model`, `--approval-mode`, …) and feature env vars. | Never persisted. |
 
 `VEYYON_CODING_AGENT_DIR` relocates the `~/.veyyon/profiles/default/agent` base directory. When it is set, the global `config.yml`, the auth store (`agent.db`), and everything else under the agent directory move with it. Use `veyyon config path` to print the active agent directory.
 
-Native project settings are intentionally scoped to the process working directory's `.veyyon/` folder, settings discovery does **not** walk ancestor directories looking for the nearest `.veyyon/`. Other discovery providers (Claude, Codex, Gemini, Cursor, OpenCode) can also contribute project-level settings from their own files; those are read-only from `veyyon` settings commands and can be turned off by provider id (see [Provider and source disabling](#provider-and-source-disabling)).
+There is no project layer. Settings discovery reads home directories only: the active profile's agent directory and the machine-global `~/.veyyon/config.yml`. A `.veyyon/` directory inside a working tree is never consulted for settings, whatever it contains.
 
 ## Config file formats
 
@@ -85,7 +85,7 @@ This only controls the startup splash animation. It does not rerun setup or chan
 | `veyyon config list` | Print every setting grouped by tab, with its current value and type. `--json` emits an object keyed by setting path with `{ value, type, description }`. |
 | `veyyon config get <key>` | Print the effective value of one key. Unknown keys exit non-zero. `--json` emits `{ key, value, type, description }`. |
 | `veyyon config set <key> <value>` | Parse `<value>` against the key's schema type and write it to the global `config.yml`. |
-| `veyyon config reset <key>` | Remove the key from the global `config.yml`, so the schema default (or a project-level value) applies again. Reset deletes the key; it does not write the default into the file. |
+| `veyyon config reset <key>` | Remove the key from the profile `config.yml`, so the schema default (or an overlay or runtime value) applies again. Reset deletes the key; it does not write the default into the file. |
 | `veyyon config path` | Print the active agent directory (honors `VEYYON_CODING_AGENT_DIR`). |
 | `veyyon config init-xdg` | Create the XDG data/state/cache directories Veyyon uses on Linux/macOS. |
 
@@ -110,11 +110,11 @@ Keys must match a real schema path exactly. There is no shorthand, set `theme.da
 
 ### Where writes go
 
-`veyyon config set`, `veyyon config reset`, `/settings`, and any runtime settings change all write to the global `config.yml` under the active agent directory. They never write to `<cwd>/.veyyon/config.yml`. To create a project-local override, edit that file directly (see [Project-local config](#project-local-config)). Saves are debounced and re-read the file under a lock, so external edits made while a session is open are preserved. The machine-global keys on the **Global** tab (`defaultProfile`, `profileSharing`) are the exception: they write to `~/.veyyon/config.yml` instead of the active agent directory, and are read live so an external edit to that file is reflected without a restart.
+`veyyon config set`, `veyyon config reset`, `/settings`, and any runtime settings change all write to the `config.yml` under the active agent directory. To vary behavior per repository, use a `--config` overlay or a path-scoped array (see [Path-scoped arrays](#path-scoped-arrays)); a `.veyyon/config.yml` inside a repository is never read. Saves are debounced and re-read the file under a lock, so external edits made while a session is open are preserved. The machine-global keys on the **Global** tab (`defaultProfile`, `profileSharing`) are the exception: they write to `~/.veyyon/config.yml` instead of the active agent directory, and are read live so an external edit to that file is reflected without a restart.
 
 `/settings` shows the effective value from the full precedence chain. A row
-supplied by project config, a `--config` file, or a runtime override names that
-source beside the value and is read-only. Change the owning source instead.
+supplied by a `--config` file or a runtime override names that source beside
+the value and is read-only. Change the owning source instead.
 This prevents an accepted-looking profile edit from remaining hidden until the
 higher layer disappears.
 
@@ -132,16 +132,15 @@ hides that row, the panel selects the nearest available setting instead.
 From lowest to highest priority, the effective value of a setting is built as:
 
 ```text
-built-in defaults  <-  global config  <-  project config  <-  CLI overlays  <-  runtime overrides
+built-in defaults  <-  profile config  <-  CLI overlays  <-  runtime overrides
 ```
 
 From highest to lowest:
 
 1. **Runtime overrides**: dedicated CLI flags and feature env vars applied in memory for the current process: `--model`, `--smol`, `--slow`, `--plan`, `--approval-mode`, `--auto-approve`/`--yolo`, `--hide-thinking`, `--advisor`, `--no-pty`, `--api-key`, and protocol-mode defaults. Never persisted.
 2. **CLI config overlays**: each `--config <file>`; later overlay files override earlier ones.
-3. **Project settings**: `<cwd>/.veyyon/settings.json` then `<cwd>/.veyyon/config.yml` (and contributions from other discovery providers at project level).
-4. **Global settings**: `~/.veyyon/profiles/default/agent/config.yml`.
-5. **Built-in defaults**: from the settings schema.
+3. **Profile settings**: `~/.veyyon/profiles/<name>/agent/config.yml`.
+4. **Built-in defaults**: from the settings schema.
 
 A key that is unset at every layer resolves to its schema default at read time.
 
@@ -186,7 +185,7 @@ tools:
     read: allow
 ```
 
-### Worked example: global vs. project
+### Worked example: profile vs. overlay
 
 ```yaml
 # ~/.veyyon/profiles/default/agent/config.yml
@@ -200,7 +199,7 @@ disabledProviders:
   - openai
   - gemini
 
-# <repo>/.veyyon/config.yml
+# ./ci-overrides.yml, passed with --config
 tools:
   approval:
     bash: allow
@@ -208,56 +207,34 @@ disabledProviders:
   - groq
 ```
 
-Effective settings inside `<repo>`:
+Effective settings for that process:
 
 ```yaml
 tools:
-  approvalMode: ask-command   # kept from global (object deep-merge)
+  approvalMode: ask-command   # kept from the profile (object deep-merge)
   approval:
-    bash: allow         # overridden by project
-    read: allow         # kept from global
+    bash: allow         # overridden by the overlay
+    read: allow         # kept from the profile
 disabledProviders:
-  - groq                # project array REPLACES the global array
+  - groq                # the overlay array REPLACES the profile array
 ```
 
-Array replacement is the most common surprise: the project's `disabledProviders` does not extend the global list, it becomes the entire list for that project. The same applies to `enabledModels`, `cycleOrder`, `extensions`, and every other array-typed setting.
+Array replacement is the most common surprise: the overlay's `disabledProviders` does not extend the profile list, it becomes the entire list for that process. The same applies to `enabledModels`, `cycleOrder`, `extensions`, and every other array-typed setting.
 
-## Project-local config
+## Per-repository settings
 
-Create `<repo>/.veyyon/config.yml` when a repository needs its own settings:
+A repository cannot carry its own settings: a checked-in `.veyyon/config.yml` is not read, because a working tree is content you may not have written. Two mechanisms cover what project config used to do:
 
-```yaml
-# <repo>/.veyyon/config.yml
-modelRoles:
-  default: anthropic/claude-sonnet-4-5
-  smol: openai/gpt-4.1-mini
-  slow: anthropic/claude-opus-4-5:high
-
-tools:
-  approvalMode: ask-command
-  approval:
-    bash: prompt
-
-compaction:
-  strategy: summary
-  threshold: 150000     # compact past 150k tokens, on any model
-
-theme:
-  dark: titanium
-```
-
-Keep secrets out of committed project config unless your repository policy allows it. Prefer environment variables, stored auth, an auth broker, or an untracked `--config` overlay for credentials.
-
-### One-shot overlays
-
-Use `--config` for a temporary layer that should not persist:
+- **`--config` overlays** apply a file you choose to one process, so a per-repo launcher or alias can pass the repo's overlay explicitly:
 
 ```bash
-veyyon --config ./local/ci-settings.yml "check this failure"
+veyyon --config ./local/repo-settings.yml "check this failure"
 veyyon --config ./base.yml --config ./experiment.yml "try this model"
 ```
 
-Overlay paths are resolved relative to the process working directory (and `~` is expanded). Each overlay must parse as a YAML mapping; a missing file, invalid YAML, or a top-level array/scalar is a hard error, it does **not** silently fall back to lower-precedence settings.
+Overlay paths are resolved relative to the process working directory (and `~` is expanded). Each overlay must parse as a YAML mapping; a missing file, invalid YAML, or a top-level array/scalar is a hard error, it does **not** silently fall back to lower-precedence settings. Keep the overlay file out of commits if it holds anything private.
+
+- **Path-scoped arrays** let one profile config behave differently per directory; see below.
 
 ## Path-scoped arrays
 
@@ -302,7 +279,7 @@ Only string values are kept; malformed scoped entries are ignored. Path scoping 
 
 Most provider-control use cases list model provider ids. Disabling the `claude` discovery source is different from disabling the `anthropic` model provider, one stops Claude-format config discovery, the other stops the Anthropic model backend.
 
-Because arrays replace rather than append, a project that sets `disabledProviders` must list the complete desired set:
+Because arrays replace rather than append, an overlay that sets `disabledProviders` must list the complete desired set:
 
 ```yaml
 # ~/.veyyon/profiles/default/agent/config.yml
@@ -310,7 +287,7 @@ disabledProviders:
   - anthropic
   - openai
 
-# <repo>/.veyyon/config.yml: inside this repo ONLY groq is disabled
+# ./ci-overrides.yml, passed with --config: for that process ONLY groq is disabled
 disabledProviders:
   - groq
 ```
@@ -440,7 +417,7 @@ thinkingBudgets:
 
 These settings are unset by default, and unset means the key is absent from `config.yml`: `veyyon` then does not send that parameter and the provider uses its own default. Every number you write is sent as written, including negatives: `presencePenalty: -1` and `repetitionPenalty: -0.5` both reach the provider. In `/settings` the unset state is the row labelled `Default`, and choosing it removes the key rather than storing a value.
 
-Earlier versions stored `-1` to mean unset, which made `-1` itself impossible to configure. Your global config is migrated once: a `-1` on one of these keys is dropped, and the config records that the migration ran (`settingsMigrationVersion`), so a `-1` you set afterwards is kept. A project config or a `--config` overlay is never rewritten and is read as written, so a `-1` there is the value `-1`.
+Earlier versions stored `-1` to mean unset, which made `-1` itself impossible to configure. Your global config is migrated once: a `-1` on one of these keys is dropped, and the config records that the migration ran (`settingsMigrationVersion`), so a `-1` you set afterwards is kept. A `--config` overlay is never rewritten and is read as written, so a `-1` there is the value `-1`.
 
 Set a negative value from the command line the way you would any other:
 
@@ -634,7 +611,7 @@ exploration becomes something it is told to route away from its own context.
 
 This is also the answer to "why did it delegate my audit?". If a specialist for that
 work is enabled, the model has been told the work is delegable. If none is, and it
-still fans out, that is a prompt bug rather than a settings question — file it.
+still fans out, that is a prompt bug rather than a settings question: file it.
 
 **Context preservation, not a cheaper model.** A subagent usually runs the same model
 you are on (see [Which model a subagent runs](#which-model-a-subagent-runs)). What
@@ -650,8 +627,8 @@ the strength you pick has no effect until you enable at least one: the prompt st
 asking for delegation, the first-turn reminder is not injected, and both agent
 surfaces say so in a line above the table. If `subagent.enabled` is off, the same line
 says that instead, because turning agents on would change nothing until you turn
-subagents back on. Neither setting is hidden behind the other — you need all three
-while setting up a session — but none pretends the others do not exist.
+subagents back on. Neither setting is hidden behind the other: you need all three
+while setting up a session, but none pretends the others do not exist.
 
 #### Agents
 
@@ -702,8 +679,8 @@ A row may also carry `model` and `thinkingLevel` for that agent alone.
 
 Four things can name the model a subagent runs. The first one that names a model wins:
 
-1. `subagent.agents.<name>.model` — that agent's own row.
-2. `subagent.model` — the blanket model for every subagent.
+1. `subagent.agents.<name>.model`: that agent's own row.
+2. `subagent.model`: the blanket model for every subagent.
 3. the agent definition's own `model:` frontmatter, for an agent you wrote.
 4. otherwise the subagent inherits the model you are working with.
 
@@ -714,8 +691,8 @@ A configured value that matches no available model does **not** fall through to 
 next layer. The spawn is refused and the message names the setting to fix, because a
 silent fall-through is indistinguishable from your setting having no effect.
 
-Effort works the same way. Both effort settings are picked from one list — `off`,
-`minimal` through `max`, `auto`, and `Inherit` — so a level you choose in the panel is
+Effort works the same way. Both effort settings are picked from one list: `off`,
+`minimal` through `max`, `auto`, and `Inherit`. A level you choose in the panel is
 always one that exists. A value that names no level (from a hand-written config) is
 reported with the setting and the accepted levels, then ignored, and the next layer
 decides. It is never rounded to a neighbouring effort: running at an effort you did not
@@ -1058,7 +1035,7 @@ After `config.yml` exists, these legacy sources are no longer consulted. The gen
 
 ### Field-level migrations
 
-Applied whenever raw settings are loaded (global, project, overlays, and runtime overrides):
+Applied whenever raw settings are loaded (profile config, `--config` overlays, and runtime overrides):
 
 | Old | New |
 |---|---|
@@ -1079,32 +1056,28 @@ Applied whenever raw settings are loaded (global, project, overlays, and runtime
 
 ## Troubleshooting
 
-### A project setting is not taking effect
+### A `.veyyon/config.yml` in a repository is ignored
 
-- Start `veyyon` from the directory that contains `.veyyon/config.yml`. Settings discovery only checks the current working directory's `.veyyon/`, not ancestor directories.
-- Ensure `.veyyon/` is non-empty; empty config directories are ignored.
-- Confirm the file is valid YAML and its top level is a mapping.
-- Run `veyyon config get <key>` from that directory to see the effective value.
-- Remember that `--config` overlays and runtime flags override project config.
+That is the rule, not a malfunction: a working tree never configures the agent, so a checked-in settings file is not read. Move the values into your profile config, pass them for one run with `--config <file>`, or use a path-scoped array for `enabledModels` / `disabledProviders`.
 
-### A global array disappeared in a project
+### An array from my profile disappeared under an overlay
 
-Arrays replace; they do not append. If a project sets `disabledProviders`, `enabledModels`, `cycleOrder`, `extensions`, or any other array, include the **complete** desired value in the project layer, the global array is fully replaced.
+Arrays replace; they do not append. If an overlay sets `disabledProviders`, `enabledModels`, `cycleOrder`, `extensions`, or any other array, include the **complete** desired value in the overlay, the profile array is fully replaced.
 
 ### A provider is still available after editing config
 
 - Check whether you disabled the model provider id (e.g. `anthropic`) or a discovery source id (e.g. `claude`): they are different namespaces with different effects.
-- Check for a project (or overlay) `disabledProviders` array replacing your global one.
+- Check for an overlay `disabledProviders` array replacing your profile one.
 - Credentials can still come from environment variables, `.env`, OAuth, stored auth, or `models.yml`; disabling a provider blocks selection regardless, but verify you edited the right layer. See [Providers](./providers.md).
 - Restart the session if the model list was already initialized.
 
 ### `veyyon config set` changed the wrong file
 
-`veyyon config set` and `veyyon config reset` always write the global `config.yml` under the active agent directory. Run `veyyon config path` to print it. For project-local settings, edit `<repo>/.veyyon/config.yml` directly.
+`veyyon config set` and `veyyon config reset` always write the `config.yml` under the active agent directory. Run `veyyon config path` to print it.
 
 ### `veyyon config reset` removed my global override
 
-That is what reset does: it deletes the key from the global `config.yml` so the schema default (or a project-level value) applies. To keep a custom value, run `veyyon config set <key> <value>` again.
+That is what reset does: it deletes the key from the profile `config.yml` so the schema default (or an overlay or runtime value) applies. To keep a custom value, run `veyyon config set <key> <value>` again.
 
 ### A `--config` overlay fails at startup
 

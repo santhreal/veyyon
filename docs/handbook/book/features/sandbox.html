@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-595774d2.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -233,7 +233,7 @@ below.</p>
 </table>
 </div>
 <p>Schema default: <strong><code>auto</code></strong>. Legacy aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>.</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit
+<pre><code class="language-console">$ veyyon --approval-mode ask-command
 $ veyyon --yolo                    # same as --auto-approve → yolo
 $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
 </code></pre>
@@ -243,11 +243,18 @@ $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
 <h2 id="the-approval-prompt"><a class="header" href="#the-approval-prompt">The approval prompt</a></h2>
 <p>When the active mode requires approval for a tool call, the TUI shows a <strong>Permission required</strong>
 card. The card names the tool, states that the decision applies to this call only, separates the
-reason from the requested command or file operation, and waits on two options:</p>
+reason from the requested command or file operation, and waits on four options:</p>
 <ul>
-<li><strong>Approve</strong>: run this call once without saving a policy.</li>
+<li><strong>Approve</strong>: run this call once. Nothing is remembered.</li>
+<li><strong>Approve for session</strong>: run this and every later call to this tool, until you exit.</li>
 <li><strong>Deny</strong>: refuse this call and return <code>Tool call denied by user: &lt;name&gt;</code> to the model.</li>
+<li><strong>Deny for session</strong>: refuse this and every later call to this tool, until you exit.</li>
 </ul>
+<p>The two “for session” rows are session memory, not policy: nothing is written to
+<code>tools.approval</code>, and the next launch asks again. A remembered decision also covers only
+the ordinary tier prompt. The three prompts that are about a call’s ARGUMENTS rather than
+its tool name still ask every time: a <code>critical</code> bash command, a path outside the working
+directory, and a call that spends a stored credential.</p>
 <p>The selected option uses a radio marker and includes a short description. Navigate with the usual
 list keys (<code>up</code>/<code>down</code>, <code>enter</code> to confirm, <code>esc</code> to cancel; cancelling counts as a denial).
 Denied actions return an error to the model, and permissions are never widened.</p>
@@ -258,7 +265,7 @@ add <code>tools.approval.&lt;name&gt;: allow</code>, or use an interactive UI), 
 run unattended, pass <code>--yolo</code> or pick a mode that does not prompt for the tiers you need. The
 process exit status follows the run.</p>
 <h2 id="critical-bash-commands"><a class="header" href="#critical-bash-commands">Critical bash commands</a></h2>
-<p>Some shell commands always prompt in <code>plan</code>, <code>ask</code>, and <code>auto-edit</code>, even over a per-tool
+<p>Some shell commands always prompt in <code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, even over a per-tool
 <code>allow</code> override. The guard lives in <code>packages/coding-agent/src/tools/bash-guard.ts</code> and has
 two halves.</p>
 <p>The first half judges what a command would delete, after expansion rather than as text. It

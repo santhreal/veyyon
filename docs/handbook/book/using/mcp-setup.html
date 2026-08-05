@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,13 +209,15 @@ transport, authenticate, and fix the most common connection problems.</p>
 <tr><th>Scope</th><th>Path</th></tr>
 </thead>
 <tbody>
-<tr><td>Project</td><td><code>.veyyon/mcp.json</code></td></tr>
 <tr><td>User</td><td><code>~/.veyyon/profiles/default/agent/mcp.json</code> (profile: <code>~/.veyyon/profiles/&lt;name&gt;/agent/mcp.json</code>)</td></tr>
 </tbody>
 </table>
 </div>
-<p>Veyyon also discovers MCP entries from Claude, Cursor, VS Code, and OpenCode configs. The easiest way
-to add a server is <code>/mcp add</code> in the TUI, which writes to <code>mcp.json</code> for you.</p>
+<p>There is no project scope: a repository’s own <code>mcp.json</code>, <code>.mcp.json</code>, or <code>.veyyon/mcp.json</code> is not
+read, because a checked-in file must not name a server the agent connects to.</p>
+<p>Veyyon also discovers MCP entries from other tools’ user-level configs (Claude, Cursor, Codex,
+Gemini, OpenCode, Windsurf). The easiest way to add a server is <code>/mcp add</code> in the TUI, which writes
+to <code>mcp.json</code> for you.</p>
 <h2 id="file-shape"><a class="header" href="#file-shape">File shape</a></h2>
 <pre><code class="language-json">{
   "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",

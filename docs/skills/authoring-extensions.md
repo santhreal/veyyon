@@ -77,10 +77,11 @@ export default function myExtension(pi: ExtensionAPI) {
 
 veyyon loads extension modules from these sources:
 
-1. Native `.veyyon` locations discovered through the capability system:
-   - `<cwd>/.veyyon/extensions/`
+1. The active profile's native locations, discovered through the capability system:
    - `~/.veyyon/profiles/default/agent/extensions/`
-   - legacy extension paths listed in `.veyyon/settings.json#extensions` or `~/.veyyon/profiles/default/agent/settings.json#extensions`
+   - legacy extension paths listed in `~/.veyyon/profiles/default/agent/settings.json#extensions`
+
+   A working tree's `.veyyon/extensions/` or `.veyyon/settings.json#extensions` is not read: a checked-in file must not hand the agent executable modules.
 2. Installed plugins under `~/.veyyon/profiles/default/plugins/node_modules` (`veyyon plugin install` npm/git/marketplace specs, or `veyyon plugin link`) via their `veyyon.extensions` manifests (legacy `omp.extensions`/`pi.extensions` still accepted). Marketplace installs are symlinked into the same `node_modules` tree, so their `veyyon.extensions` manifests load extension modules too.
 3. Explicit configured paths passed by the CLI (`veyyon --extension ./my-ext.ts`, also `-e`; `--hook` is treated as an alias) and by the `extensions:` setting in config.
 

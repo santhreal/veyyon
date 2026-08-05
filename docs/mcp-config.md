@@ -23,9 +23,10 @@ There is no project scope. `.veyyon/mcp.json`, a root `mcp.json` and a root `.mc
 working tree used to be loaded and used to be writable through `/mcp add --scope project`; none of
 them is read now, and `--scope` is gone from every `/mcp` subcommand. A repository is content you
 may not have written, so a checked-in file must not name a server the agent connects to or a command
-it spawns. Veyyon still discovers servers from other tools' configs (`.claude/`, `.cursor/`,
-`.vscode/`, `opencode.json`, and more) at their own scopes, and `/mcp list` names the file each
-server came from.
+it spawns. Veyyon still discovers servers from other tools' user-level configs (`~/.claude.json`,
+`~/.claude/mcp.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`,
+opencode, windsurf, and more), always from your home directory, never from a working tree, and
+`/mcp list` names the file each server came from.
 
 ### Profiles
 

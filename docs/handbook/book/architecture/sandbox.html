@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -204,7 +204,8 @@ Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before d
 <li>Map the <strong>approval mode</strong> (<code>tools.approvalMode</code>) to a per-tier decision (read / write / exec) for
 <code>bash</code>, <code>edit</code>, <code>write</code>, and related tools.</li>
 <li>Apply per-tool overrides (<code>tools.approval</code> → <code>allow</code> / <code>deny</code> / <code>prompt</code>) on top of the mode.</li>
-<li>Force a prompt for hard-coded critical bash patterns (recursive deletion rooted at <code>/</code>, fork bombs, <code>curl | sh</code>, disk destruction) in <code>plan</code>, <code>ask</code>, and <code>auto-edit</code>; <code>yolo</code> auto-approves them unless <code>tools.approval.bash</code> is <code>prompt</code> or <code>deny</code>.</li>
+<li>Apply the two argument-level boundaries the tier cannot see: a filesystem target outside the session working directory, and a call whose arguments carry a stored credential. Both prompt on every rung except <code>yolo</code>, the shipped <code>auto</code> included.</li>
+<li>Force a prompt for hard-coded critical bash patterns (recursive deletion of the home directory or a system directory, fork bombs, <code>curl | sh</code>, disk destruction) on every rung, <code>yolo</code> included. This is a floor rather than an ordinary prompt: only an explicit <code>tools.approval.bash: allow</code> lifts it, and <code>deny</code> remains a hard block.</li>
 <li>Surface the approval prompt in the TUI before a gated command or edit runs.</li>
 </ul>
 <h2 id="public-boundary"><a class="header" href="#public-boundary">Public boundary</a></h2>
@@ -219,9 +220,9 @@ exec-server process in the shipped product.</p>
 <tr><th>Concept</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td>Approval mode</td><td>Which tool tiers run without asking (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>).</td></tr>
+<tr><td>Approval mode</td><td>Which tool tiers run without asking (<code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (default), <code>yolo</code>; legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>).</td></tr>
 <tr><td>Per-tool policy</td><td><code>tools.approval</code> overrides the mode for a named tool.</td></tr>
-<tr><td>Critical bash patterns</td><td>Hard-coded destructive-command shapes that prompt in non-yolo modes, even over a per-tool <code>allow</code>.</td></tr>
+<tr><td>Critical bash patterns</td><td>Hard-coded destructive-command shapes that prompt on every rung including <code>yolo</code>, even over a per-tool <code>allow</code>.</td></tr>
 <tr><td>Plan mode</td><td>Restricts mutating tools until the plan is approved (<code>/plan</code>).</td></tr>
 </tbody>
 </table>

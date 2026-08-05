@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -200,7 +200,7 @@
 (consumes configured servers). Editor embedding uses ACP (<code>veyyon acp</code>), a different protocol.</p>
 <h2 id="responsibility"><a class="header" href="#responsibility">Responsibility</a></h2>
 <ul>
-<li>Discover MCP servers from project and user config files</li>
+<li>Discover MCP servers from the operator’s user and profile config files</li>
 <li>Connect over <strong>stdio</strong> or <strong>HTTP</strong> (streamable HTTP / SSE-style transports)</li>
 <li>Register tools as namespaced names (<code>mcp__&lt;server&gt;_&lt;tool&gt;</code>, e.g. <code>mcp__filesystem_delete</code>)</li>
 <li>Handle OAuth for remote servers and persist credentials per profile</li>
@@ -213,18 +213,26 @@
 </thead>
 <tbody>
 <tr><td><code>packages/coding-agent/src/mcp/</code></td><td>Config load, manager, OAuth, tool wiring</td></tr>
-<tr><td><code>packages/coding-agent/src/discovery/mcp-json.ts</code></td><td>Standalone <code>mcp.json</code> discovery</td></tr>
+<tr><td><code>packages/coding-agent/src/discovery/builtin.ts</code></td><td>Profile-scoped <code>mcp.json</code> / <code>.mcp.json</code> discovery</td></tr>
 <tr><td><code>packages/coding-agent/src/modes/controllers/mcp-command-controller.ts</code></td><td><code>/mcp</code> TUI commands</td></tr>
 </tbody>
 </table>
 </div>
 <p>Primary config files:</p>
 <ul>
-<li>Project: <code>.veyyon/mcp.json</code></li>
 <li>User: <code>~/.veyyon/profiles/default/agent/mcp.json</code> (profile-scoped when using <code>--profile</code>)</li>
 </ul>
-<p>Veyyon also ingests MCP definitions from other tools (<code>.cursor/mcp.json</code>, <code>.vscode/mcp.json</code>,
-Claude/Codex/Gemini configs) when discovery is enabled.</p>
+<p>There is no project scope. A checked-out working tree is untrusted input, so
+<code>&lt;cwd&gt;/.veyyon/mcp.json</code>, a repo-root <code>mcp.json</code>/<code>.mcp.json</code>, and the foreign
+<code>.cursor/mcp.json</code> and <code>.vscode/mcp.json</code> are no longer read.</p>
+<p>Veyyon also ingests MCP definitions from other tools’ USER-level configs
+(<code>~/.claude</code>, <code>~/.codex</code>, <code>~/.gemini</code>, <code>~/.cursor</code>) when discovery is enabled.</p>
+<p>A config file that exists but does not parse is REPORTED, never skipped: the
+<code>native</code> provider raises <code>Failed to parse JSON in &lt;path&gt;</code> through the capability
+warning channel, which <code>MCPManager.discoverAndConnect</code> puts on its status stream
+and <code>/mcp list</code> and the boot health zone render. Before that, a mistyped comma in
+<code>mcp.json</code> produced a session with every configured server missing and no line
+anywhere saying why.</p>
 <p>User guide: <a href="../features/mcp.html">MCP</a>, <a href="../using/mcp-setup.html">MCP setup</a>.</p>
 <p>Engineering detail:
 <a href="../../../mcp-config.html"><code>docs/mcp-config.md</code></a>,

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -217,9 +217,10 @@ use ACP (<code>veyyon acp</code>); to drive it from your own process, use the SD
 <p>Each tool an MCP server exposes appears namespaced as <code>mcp__&lt;server&gt;_&lt;tool&gt;</code> (a single underscore
 between server and tool, for example <code>mcp__sqlite_query</code>), so a server never
 shadows a built-in tool or another server. If you turn on <code>discovery.importForeignConfig</code> (off by
-default), Veyyon also discovers MCP entries that Claude, Cursor, VS
-Code, OpenCode, and related tools already wrote, so a server you configured elsewhere often works
-without re-registering it.</p>
+default), Veyyon also discovers MCP entries from the user-level configs that Claude, Cursor, Codex,
+OpenCode, and related tools already wrote, so a server you configured elsewhere often works
+without re-registering it. Discovery never reads a working tree: a repository’s own <code>mcp.json</code> is
+not a server source.</p>
 <p>For the full setup path, choosing a transport (<code>stdio</code>, <code>http</code>, <code>sse</code>), passing environment
 variables, authenticating (bearer token or OAuth), approving tools, the <code>/mcp</code> commands, and fixing
 common connection errors, see <a href="../using/mcp-setup.html">MCP server setup</a>.</p>
@@ -240,7 +241,7 @@ Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to t
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../features/hooks-guide.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../features/hooks.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -254,7 +255,7 @@ Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to t
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../features/hooks-guide.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../features/hooks.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

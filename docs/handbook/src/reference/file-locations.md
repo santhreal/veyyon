@@ -87,5 +87,5 @@ Alongside your project (not under the config home):
 
 | Path | Purpose |
 | --- | --- |
-| `AGENTS.md` | Project instructions Veyyon auto-loads. See [AGENTS.md](../using/extending.md). |
-| `.veyyon/` | Optional per-project overrides and data (`mcp.json`, `ssh.json`, `modules/`, `prompts/`). Follows the working directory, never profile-scoped. |
+| `AGENTS.md` / `CLAUDE.md` | Project instructions Veyyon auto-loads. These are the only configuration-shaped files a repository contributes. See [AGENTS.md](../using/extending.md). |
+| `.veyyon/` | Project-scoped data that follows the working directory: prompt templates (`prompts/`), personalities (`personalities/`), the project secret vault, and project-scope plugin installs. Settings, MCP servers, rules, hooks, tools, commands, skills, and agents are never read from it, because a checked-in file must not configure the agent. |

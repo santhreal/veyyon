@@ -197,7 +197,7 @@ Install and run these engines with their own tooling (`ollama serve`, `llama-ser
 Use the `disabledProviders` setting to remove a provider's models from selection:
 
 ```yaml
-# ~/.veyyon/profiles/default/agent/config.yml or <project>/.veyyon/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 disabledProviders:
   - anthropic
   - openai
@@ -217,38 +217,15 @@ Provider IDs are matched exactly. Disable `google` to hide the Google Gemini API
 
 Disabling a provider does not delete its stored credentials, re-enable it by removing its ID from the effective list.
 
-## Project-specific provider control
+## Per-project provider control
 
-Project settings live in `<project>/.veyyon/config.yml`. Use them when one repository must allow or hide a different provider set than your global default:
+A repository cannot carry settings: `<project>/.veyyon/config.yml` is not read. When one repository must allow or hide a different provider set than your profile default, use a path-scoped entry (below) or pass a `--config` overlay for that run:
 
-```yaml
-# <project>/.veyyon/config.yml
-disabledProviders:
-  - openai
-  - openrouter
+```console
+$ veyyon --config ./no-openai.yml
 ```
 
-Settings arrays are **replaced** wholesale by the higher-precedence layer, not merged or appended. If the global file disables three providers and the project file disables one, the project sees only the project list:
-
-```yaml
-# ~/.veyyon/profiles/default/agent/config.yml
-disabledProviders:
-  - anthropic
-  - openai
-  - google
-
-# <project>/.veyyon/config.yml
-disabledProviders:
-  - groq
-```
-
-Effective result inside the project:
-
-```json
-["groq"]
-```
-
-The project array re-enables `anthropic`, `openai`, and `google` for sessions launched from that project. If you want a project to *add* to the global set, repeat the global IDs in the project file. See [Settings](./settings.md) for the full precedence chain, including `--config` overlays and runtime overrides.
+Settings arrays are **replaced** wholesale by the higher-precedence layer, not merged or appended. If the profile file disables three providers and an overlay disables one, that process sees only the overlay list. If you want an overlay to *add* to the profile set, repeat the profile IDs in the overlay. See [Settings](./settings.md) for the full precedence chain, including `--config` overlays and runtime overrides.
 
 ## Path-scoped `disabledProviders`
 
@@ -358,7 +335,7 @@ disabledProviders:
 
 **The wrong key is being used (a stale key from `.env`).** Resolution favors runtime `--api-key`, then a `models.yml` config key, then stored credentials, then environment/`.env`. An already-set process environment variable also beats every `.env` file, and `<cwd>/.env` beats `~/.env`. If an unexpected key wins, check for an exported shell variable and the four `.env` files in precedence order, and clear the one that should not apply.
 
-**A provider still appears even though I disabled it.** `disabledProviders` arrays are replaced, not merged: a project `<project>/.veyyon/config.yml` array fully overrides the global one. Verify the *effective* list for the directory you are in (path-scoped entries only apply at or under their configured path), and confirm the ID is spelled exactly. Use `veyyon config get disabledProviders` to inspect the merged value (see [Settings](./settings.md)).
+**A provider still appears even though I disabled it.** `disabledProviders` arrays are replaced, not merged: a `--config` overlay array fully overrides the profile one. Verify the *effective* list for the directory you are in (path-scoped entries only apply at or under their configured path), and confirm the ID is spelled exactly. Use `veyyon config get disabledProviders` to inspect the merged value (see [Settings](./settings.md)).
 
 **A discovery provider name had no effect on models (or vice-versa).** The ID namespace is shared. `gemini`, `codex`, `claude`, `native`, and `agents` are discovery-source IDs; the Google model backend is `google`. Make sure you are disabling the right kind of provider.
 

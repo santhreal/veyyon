@@ -4,9 +4,11 @@ A hook lets you run your own code at a moment in the session: before a tool call
 when a turn ends. You use one to enforce policy (block a dangerous command), add context, or record
 what happened. The example below refuses any `bash` command containing `rm -rf`.
 
-A hook is a TypeScript module. You put it under a hook path (for example `.veyyon/hooks/`), and Veyyon
-loads it through the extension runner. The module default-exports a factory function that registers
-handlers with `pi.on(...)`, one handler per event you care about.
+A hook is a TypeScript module. You put it under a hook path in your profile (for example
+`~/.veyyon/profiles/<name>/agent/hooks/`), and Veyyon loads it through the extension runner. A
+repository cannot ship a hook: a `.veyyon/hooks/` directory inside a working tree is not read. The
+module default-exports a factory function that registers handlers with `pi.on(...)`, one handler per
+event you care about.
 
 CLI: `--hook` is an alias for `--extension` (paths merge into extension loading).
 
@@ -46,7 +48,13 @@ Hook/extension paths are resolved as absolute, `~`-expanded, or relative to cwd.
 
 Handlers attach to the runtime event bus used by the extension runner (tool call, session, compaction, and related events as defined in `types.ts`). Exact event names and payloads are in `packages/coding-agent/src/extensibility/hooks/types.ts` and `docs/hooks.md`.
 
+## Typical uses
+
+- Block or annotate specific tools before they run
+- Inject policy text when a session starts
+- Audit tool usage outside the TUI
+- Register your own slash commands
+
 ## Related
 
-- [Custom hooks guide](./hooks-guide.md)
 - Repository `docs/hooks.md`

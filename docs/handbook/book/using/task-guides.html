@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -198,15 +198,16 @@
                         <h1 id="task-guides"><a class="header" href="#task-guides">Task guides</a></h1>
 <p>Short, goal-shaped recipes for common jobs. Each guide points at the deeper feature pages; use those
 when you need full schemas or edge cases.</p>
-<p>Related references: <a href="../features/hooks-guide.html">Hooks guide</a>, <a href="../features/exec.html">Non-interactive mode</a>,
+<p>Related references: <a href="../features/hooks.html">Hooks</a>, <a href="../features/exec.html">Non-interactive mode</a>,
 <a href="../features/mcp.html">MCP</a>, <a href="../features/skills.html">Skills</a>, <a href="../features/memory.html">Memory</a>,
 <a href="../features/branching.html">Branching</a>, <a href="../features/sandbox.html">Sandbox</a>.</p>
 <hr>
 <h2 id="automate-a-check-on-every-edit-hooks"><a class="header" href="#automate-a-check-on-every-edit-hooks">Automate a check on every edit (hooks)</a></h2>
 <p>Goal: every time the agent finishes an edit, run a deterministic check and fail closed when it breaks.</p>
-<p>The shipped hook model is a <strong>TypeScript module</strong> discovered under <code>.veyyon/hooks/</code> (project) or
-<code>~/.veyyon/profiles/default/agent/hooks/</code> (user). The module exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
-<pre><code class="language-ts">// .veyyon/hooks/post-edit-check.ts
+<p>The shipped hook model is a <strong>TypeScript module</strong> discovered under
+<code>~/.veyyon/profiles/&lt;name&gt;/agent/hooks/</code> (the active profile). Hooks are user-level only: a
+<code>.veyyon/hooks/</code> directory inside a repository is not read. The module exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
+<pre><code class="language-ts">// ~/.veyyon/profiles/default/agent/hooks/post-edit-check.ts
 export default (pi) =&gt; {
   pi.on("tool_result", async (event) =&gt; {
     if (!/^(edit|write)$/.test(event.toolName)) return;
@@ -215,14 +216,14 @@ export default (pi) =&gt; {
 };
 </code></pre>
 <p>The Bun runtime imports the module at startup; restart (or <code>/reload-plugins</code>) to pick up changes. See
-<a href="../features/hooks-guide.html">Hooks guide</a> for the event names and handler contract.</p>
+<a href="../features/hooks.html">Hooks</a> for the event names and handler contract.</p>
 <hr>
 <h2 id="run-a-bounded-task-from-a-script-or-ci"><a class="header" href="#run-a-bounded-task-from-a-script-or-ci">Run a bounded task from a script or CI</a></h2>
 <p>Use <code>veyyon --print</code> (<code>-p</code>) when the trigger lives outside the agent (pre-commit, CI, <code>entr</code>, <code>watchexec</code>):</p>
-<pre><code class="language-console">$ veyyon -p --approval-mode auto-edit \
+<pre><code class="language-console">$ veyyon -p \
     "Run the focused tests for the files changed in the last commit and fail if any regress"
 </code></pre>
-<p>The prompt can be an argument or piped on stdin. <code>auto-edit</code> auto-approves writes and safe exec commands, and still prompts on critical exec; <code>--yolo</code> auto-approves all tiers (use only on disposable runners). JSON event streams: <code>--mode json</code>. For review, pass a review prompt to <code>-p</code>, or use the passive advisor (<code>--advisor</code>) in the TUI. See <a href="../features/exec.html">Non-interactive mode</a>.</p>
+<p>The prompt can be an argument or piped on stdin. Leave the rung alone unless you have a reason to move it: the default <code>auto</code> auto-approves every tier, while a target outside the working directory, a call that spends a stored credential, a per-tool <code>prompt</code>/<code>deny</code> policy, and a critical command such as a recursive delete of your home directory all still ask, and a headless run has no terminal to ask on, so each of those becomes a failed tool call rather than a silent pass. Do NOT pass <code>--approval-mode ask-command</code> here: it prompts for every exec-tier call, which in <code>-p</code> means every command fails. <code>--yolo</code> auto-approves all tiers and drops the two boundaries (use only on disposable runners). JSON event streams: <code>--mode json</code>. For review, pass a review prompt to <code>-p</code>, or use the passive advisor (<code>--advisor</code>) in the TUI. See <a href="../features/exec.html">Non-interactive mode</a>.</p>
 <hr>
 <h2 id="give-the-agent-a-new-tool-mcp-or-skills"><a class="header" href="#give-the-agent-a-new-tool-mcp-or-skills">Give the agent a new tool (MCP or skills)</a></h2>
 <p>Goal: teach Veyyon a capability you do not want to bake into the binary.</p>
@@ -242,7 +243,8 @@ export default (pi) =&gt; {
 <p>Add it from the TUI, which writes <code>mcp.json</code> for you:</p>
 <pre><code class="language-text">/mcp add
 </code></pre>
-<p>Or edit <code>~/.veyyon/profiles/default/agent/mcp.json</code> (user) / <code>.veyyon/mcp.json</code> (project) directly:</p>
+<p>Or edit <code>~/.veyyon/profiles/default/agent/mcp.json</code> directly (the active profile’s file; there is no
+project scope):</p>
 <pre><code class="language-json">{
   "mcpServers": {
     "database": {
@@ -258,7 +260,7 @@ export default (pi) =&gt; {
 server needs OAuth, run <code>/mcp reauth &lt;name&gt;</code>. Details: <a href="../features/mcp.html">MCP</a>,
 <a href="./mcp-setup.html">MCP setup</a>.</p>
 <h3 id="path-2-author-a-skill"><a class="header" href="#path-2-author-a-skill">Path 2: author a skill</a></h3>
-<p>Create a skill directory in user or project scope, for example
+<p>Create a skill directory under the active profile, for example
 <code>~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md</code>:</p>
 <pre><code class="language-markdown">---
 name: audit-config
@@ -270,7 +272,7 @@ metadata:
 # Audit config
 
 When asked to audit configuration:
-1. Read the active config.yml and any project overrides.
+1. Read the active config.yml.
 2. Flag `yolo` approval paired with broad tool allow-lists on untrusted repos.
 3. Prefer concrete remediations over generic advice.
 </code></pre>

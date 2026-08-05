@@ -28,13 +28,12 @@ Extension loading builds a list of module entry files, imports each module with 
 
 `discoverAndLoadExtensions()` first asks discovery providers for `extension-module` capability items, then keeps only provider `native` items.
 
-Native `extension-module` discovery comes from:
+Native `extension-module` discovery comes from one place:
 
-- Project directory: `<cwd>/.veyyon/extensions`
 - User directory: `~/.veyyon/profiles/default/agent/extensions`
-- Native legacy/settings JSON entries: `<cwd>/.veyyon/settings.json#extensions` and `~/.veyyon/profiles/default/agent/settings.json#extensions`
+- Native legacy/settings JSON entries: `~/.veyyon/profiles/default/agent/settings.json#extensions`
 
-The project root is the native provider's `.veyyon` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `veyyon --profile <name>` it becomes `~/.veyyon/profiles/<name>/agent/extensions` (and it honors `VEYYON_CODING_AGENT_DIR`). See [Profiles](../config-usage.md#profiles).
+The user root is the active profile's agent directory via `getAgentDir()`, so under `veyyon --profile <name>` it becomes `~/.veyyon/profiles/<name>/agent/extensions` (and it honors `VEYYON_CODING_AGENT_DIR`). See [Profiles](../config-usage.md#profiles). There is no project root: `<cwd>/.veyyon/extensions` and `<cwd>/.veyyon/settings.json#extensions` used to be read, and are not any more, because a checked-in file must not hand the agent executable modules.
 
 Notes:
 
@@ -65,12 +64,10 @@ Configured path sources in the main session startup path (`sdk.ts`):
 Settings files:
 
 - User: `~/.veyyon/profiles/default/agent/config.yml` (or custom agent dir via `VEYYON_CODING_AGENT_DIR`)
-- Project/native settings capability: `<cwd>/.veyyon/config.yml` and `<cwd>/.veyyon/settings.json`
 
-Native extension-module discovery also reads legacy JSON extension lists from:
+Native extension-module discovery also reads the legacy JSON extension list from:
 
 - `~/.veyyon/profiles/default/agent/settings.json`
-- `<cwd>/.veyyon/settings.json`
 
 Examples:
 
@@ -224,9 +221,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 
 ---
 
-## Minimal user/project layout examples
-
-### User-level
+## Minimal layout example
 
 ```text
 ~/.veyyon/profiles/default/agent/
@@ -237,19 +232,9 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
       index.ts
 ```
 
-### Project-level
+An extension package can also carry a `package.json` manifest:
 
-```text
-<repo>/
-  .veyyon/
-    settings.json
-    extensions/
-      checks/
-        package.json
-      lint-gates.ts
-```
-
-`checks/package.json`:
+`audit/package.json`:
 
 ```json
 {

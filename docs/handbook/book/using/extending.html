@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -199,11 +199,11 @@
 <h2 id="tools"><a class="header" href="#tools">Tools</a></h2>
 <p>Built-in tools (read, grep, glob, edit, bash, …) run through the agent loop under <code>tools.approvalMode</code> and related policy. Edit paths share hashline verification. Catalog: <a href="../reference/tools.html">Tools reference</a>.</p>
 <h2 id="skills"><a class="header" href="#skills">Skills</a></h2>
-<p>Filesystem skill packages (e.g. <code>SKILL.md</code> trees) discovered under project and profile skill dirs. Unreadable or malformed skill files surface load warnings. See <a href="../features/skills.html">Skills</a>.</p>
+<p>Filesystem skill packages (e.g. <code>SKILL.md</code> trees) discovered under the active profile’s skill dir. A project-local skills directory is never scanned. Unreadable or malformed skill files surface load warnings. See <a href="../features/skills.html">Skills</a>.</p>
 <h2 id="plugins"><a class="header" href="#plugins">Plugins</a></h2>
 <p><code>veyyon plugin</code> / marketplaces install bundles of skills, MCP, hooks, and related assets. See <a href="../features/plugins.html">Plugins</a>.</p>
 <h2 id="mcp"><a class="header" href="#mcp">MCP</a></h2>
-<p>External tools via Model Context Protocol: client config in <code>mcp.json</code> (user profile and/or project). See <a href="../features/mcp.html">MCP</a>.</p>
+<p>External tools via Model Context Protocol: client config in the profile’s <code>mcp.json</code> (there is no project scope). See <a href="../features/mcp.html">MCP</a>.</p>
 <h2 id="hooks"><a class="header" href="#hooks">Hooks</a></h2>
 <p>TypeScript modules with <code>pi.on(...)</code>, not JSON command tables. See <a href="../features/hooks.html">Hooks</a>.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>

@@ -408,6 +408,13 @@ veyyon config get compaction.threshold
 | `ruby.interpreter` | Ruby Interpreter | string | _(empty)_ | Optional path to an exact Ruby executable. When set, automatic Ruby runtime discovery is skipped. |
 | `julia.interpreter` | Julia Interpreter | string | _(empty)_ | Optional path to an exact Julia executable. When set, automatic Julia runtime discovery is skipped. |
 
+### CPU Limit
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `session.cpuLimitCores` | Session CPU Limit | number | `0` | Maximum CPU a session's spawned processes may use, in cores (0 = off). Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session cgroup with a matching cpu.max quota, so the kernel throttles the group as a whole. While the group runs saturated, new commands are refused with an error naming the budget. Linux with cgroups v2 only: on any other platform this setting reports that it is unsupported and changes nothing. The harness's own compute (agent turns, in-process workers) is never capped. |
+| `session.cpuLimitKill` | Kill Over-Budget Commands | boolean | `false` | What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running under the throttle. On: the over-budget process group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. The kernel quota throttles either way; this only chooses the policy on top. |
+
 ## Tools
 
 ### Available Tools
@@ -706,4 +713,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-337 settings.
+339 settings.

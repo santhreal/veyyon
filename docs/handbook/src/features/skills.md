@@ -1,6 +1,6 @@
 # Skills
 
-A skill is a folder of instructions you drop next to your code or in your profile, and the agent picks it up on its own. Use one to teach Veyyon a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills live on disk, not in the binary, so you add or change one by editing a file, with no rebuild.
+A skill is a folder of instructions you drop into your profile, and the agent picks it up on its own. Use one to teach Veyyon a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills live on disk, not in the binary, so you add or change one by editing a file, with no rebuild.
 
 For general information on Veyyon extension capabilities, see [Tools, skills, and extension data](../using/extending.md).
 

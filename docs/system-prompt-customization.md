@@ -230,12 +230,14 @@ The default template is a sequence of named sections. To see the names for your 
 veyyon prompt --sections
 ```
 
-Put a file named after a section in a `PROMPT_SECTIONS/` directory under your config base:
+Put a file named after a section in a `PROMPT_SECTIONS/` directory under the active profile's agent dir:
 
 ```
-~/.veyyon/profiles/default/agent/PROMPT_SECTIONS/    # applies everywhere
-<cwd>/.veyyon/PROMPT_SECTIONS/                       # applies in this project
+~/.veyyon/profiles/default/agent/PROMPT_SECTIONS/    # default profile
+~/.veyyon/profiles/<name>/agent/PROMPT_SECTIONS/     # named profile
 ```
+
+The active profile is the only location. A repository's `.veyyon/PROMPT_SECTIONS/` used to be read and could replace a shipped section outright; a working tree no longer contributes prompt sections.
 
 Two filename forms decide what happens:
 
@@ -246,10 +248,10 @@ Two filename forms decide what happens:
 
 Prefer append. It survives upgrades, because the shipped section is reused rather than copied.
 
-To add a rule to the delivery contract for one repository:
+To add a rule to the delivery contract:
 
 ```
-# <cwd>/.veyyon/PROMPT_SECTIONS/delivery-contract.append.md
+# ~/.veyyon/profiles/default/agent/PROMPT_SECTIONS/delivery-contract.append.md
 Always include the exact command you ran when you report a test result.
 ```
 
@@ -260,7 +262,6 @@ A few rules worth knowing:
 - A file naming a section that does not exist is an error, not a no-op. The message lists the valid names. A typo that silently did nothing would leave you believing a change was live when it was not.
 - Section names are the ids `veyyon prompt --sections` prints: `conventions`, `role`, `runtime`, `tool-policy`, `execution-workflow`, `delivery-contract`. The `systemPrompt.sectionOverrides` config key accepts the same ids, and also accepts the camelCase spelling (`toolPolicy`) that the SDK uses for its property names. Both reach the same section, so you can use the id everywhere and never think about the difference.
 - Replacement and append files contain section body text only. Do not copy any registered `NAME` and `==============` banner into the file. The section registry adds the target section's canonical banner, and rejects any banner-shaped text that could manufacture a second section. An empty or whitespace-only append file is a no-op.
-- Project files win over user files for the same section, section by section. A project `role.append.md` does not discard your user `runtime.append.md`.
 - `PROMPT_SECTIONS/` cannot be combined with `--system-prompt`. A custom prompt has no sections to override, so asking for both is an error rather than a silent choice between them.
 - A directory that is not there means you have no overrides, and that is the ordinary case. A directory that IS there and cannot be read is an error naming the path and the reason, as is a file inside it that cannot be opened. Both would otherwise run the shipped prompt while your files sat on disk looking applied.
 

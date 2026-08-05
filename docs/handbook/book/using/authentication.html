@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,7 +209,60 @@ tracks its own credentials. Those credentials are shared across profiles by defa
 <li><code>/login &lt;redirect-url&gt;</code>: completes an OAuth flow that needs a pasted callback URL.</li>
 <li><code>/logout</code>: opens the provider selector to remove stored credentials.</li>
 </ul>
-<p>On first run, the first-run setup (<code>veyyon setup</code>, or <code>/setup</code> / <code>/providers</code> later) walks the same flow.</p>
+<p>On first run, the first-run setup (<code>veyyon setup</code>, or <code>/setup</code> later) walks the same flow.</p>
+<h2 id="using-several-accounts-for-one-provider"><a class="header" href="#using-several-accounts-for-one-provider">Using several accounts for one provider</a></h2>
+<p>You can sign in to the same provider more than once. Run <code>/login anthropic</code> twice with two different
+logins and Veyyon stores both, each with its own quota. To see them, open the account manager:</p>
+<pre><code class="language-text">/providers
+</code></pre>
+<p>The sidebar lists your providers and the body lists that provider’s accounts, one row each, with the
+email, the plan, how the credential was supplied, and how much of its quota is spent. A row marked
+<code>this session</code> is the one serving your current session.</p>
+<p>From that card you press <code>enter</code> to use the selected account, <code>n</code> to name it, <code>r</code> to re-check its
+health, <code>u</code> to open its usage, <code>x</code> twice to log it out, and <code>a</code> to add another account for the same
+provider. <code>/account manager</code> opens the same card.</p>
+<p>Switching is <strong>per provider</strong>. Choosing another Anthropic account changes Anthropic and nothing else,
+because several providers serve one session at the same time: your main model, your subagent roles,
+and web search can each be a different provider. Moving between providers is a model choice, so it
+lives in <code>/models</code>.</p>
+<h2 id="naming-an-account"><a class="header" href="#naming-an-account">Naming an account</a></h2>
+<p>An email is not always the thing you recognise, especially when two subscriptions share one login.
+Give an account a name and every surface uses it:</p>
+<pre><code class="language-text">/account name work
+</code></pre>
+<p>The name belongs to the account, not to the stored token, so it survives a token refresh and a later
+re-login to the same account. An account you never named shows its email instead, and Veyyon tells
+you how to set one.</p>
+<h2 id="which-account-am-i-using"><a class="header" href="#which-account-am-i-using">Which account am I using?</a></h2>
+<pre><code class="language-text">/account
+</code></pre>
+<p>This reports one line per provider your session has actually routed to, with the account it is using
+and that account’s remaining quota. A provider you hold credentials for but have not used this
+session is not listed.</p>
+<p>If your chosen account hits its rate limit, Veyyon moves to another one so your work continues, and
+says so:</p>
+<pre><code class="language-text">Anthropic          personal                    main model  (opus-5)
+                   pinned to work, rotated off it (usage limit)
+                   /account switch anthropic to re-pin work · 2h 14m until it unblocks
+</code></pre>
+<p>Your choice is kept, not discarded. Once the limit resets, traffic returns to the account you picked
+with no further action.</p>
+<h2 id="when-a-login-is-signed-out-for-you"><a class="header" href="#when-a-login-is-signed-out-for-you">When a login is signed out for you</a></h2>
+<p>A stored login can stop working without you doing anything: the provider revokes the grant, or a
+token refresh fails and the credential is set aside. Veyyon does not hide that. The account manager
+marks the provider and prints the provider’s own reason, so you can tell a revoked grant from a
+temporary outage:</p>
+<pre><code class="language-text">Kimi Code · 1 account
+  a previous login was signed out: oauth refresh failed:
+  invalid_grant: The provided authorization grant is invalid
+  press a to sign in again
+</code></pre>
+<p>If that provider had only one login, it now has none, and the card says so rather than showing the
+provider as one you never signed into. <code>/account</code> names it too, so you do not have to open the card
+to find out:</p>
+<pre><code class="language-text">1 provider has a signed-out login (Kimi Code) · /providers to sign in again
+</code></pre>
+<p>A logout you performed yourself is not reported this way. You already know about it.</p>
 <h2 id="headless-and-remote-hosts"><a class="header" href="#headless-and-remote-hosts">Headless and remote hosts</a></h2>
 <p>For CI, servers, or a shared team credential store, use the auth broker from the shell:</p>
 <pre><code class="language-console">$ veyyon auth-broker login &lt;provider&gt;

@@ -273,9 +273,10 @@ function resolvesFor(rootDir: string, relFile: string, target: string): boolean 
 export const DEAD_PATH_BASELINE: readonly string[] = Object.freeze([
 	".veyyon/skills/tool-prompt-optimization/SKILL.md:14:scripts/probe.ts",
 	".veyyon/skills/tool-prompt-optimization/SKILL.md:28:scripts/probe-builtin.ts",
-	"docs/context-files.md:66:.github/copilot-instructions.md",
-	"docs/context-files.md:171:.github/copilot-instructions.md",
-	"docs/context-files.md:230:.github/copilot-instructions.md",
+	"docs/context-files.md:64:.github/copilot-instructions.md",
+	"docs/context-files.md:67:.github/instructions/",
+	"docs/context-files.md:243:.github/copilot-instructions.md",
+	"docs/internal/rulebook-matching-pipeline.md:133:.github/instructions/",
 	"docs/internal/toolconv/deepseek.md:101:assets/search_tool_trajectory.html",
 	"packages/coding-agent/src/prompts/skills/user-invocation.md:8:scripts/foo.js",
 	"website/blog/argot.md:12:packages/server/src/database/connection.ts",

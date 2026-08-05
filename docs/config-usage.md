@@ -35,8 +35,10 @@ Key integration points:
                     │
                     ▼
         capability providers enumerate items
- (native provider scans project .veyyon before user .veyyon;
-  other providers have their own loading rules)
+ (capability discovery reads HOME only: a working tree is
+  untrusted input and contributes nothing but context files;
+  the project bases above survive only in the generic helper
+  for the callers that still use it, such as TITLE_SYSTEM.md)
                     │
                     ▼
       provider priority sort + capability dedup
@@ -71,6 +73,8 @@ Project-level bases:
 - `<cwd>/.codex`
 - `<cwd>/.gemini`
 
+The project bases exist in the generic helper, but capability discovery no longer uses them: a checked-out working tree is untrusted input, so a repository contributes context files (`AGENTS.md` / `CLAUDE.md`) and nothing else. The remaining caller of the project bases is `TITLE_SYSTEM.md` discovery (see [Session title prompt override](#session-title-prompt-override)).
+
 `CONFIG_DIR_NAME` is `.veyyon` (`packages/utils/src/dirs.ts`).
 
 ## Profiles
@@ -81,7 +85,7 @@ The relocation is uniform across the native provider (`builtin.ts`) and the gene
 
 Keybindings get a one-time seed rather than a live merge: a new named profile copies the default profile's `~/.veyyon/profiles/default/agent/keybindings.*` once (at `profile new`, or on first launch of an older profile that has no keybindings file). After that the profile's own file is the only one read, later edits to the default profile's keybindings do not flow into other profiles.
 
-The other source bases are not profile-scoped and load identically under every profile: the external-tool bases (`~/.claude`, `~/.codex`, `~/.gemini`) belong to those tools, and the project-level bases (`<cwd>/.veyyon`, `<cwd>/.claude`, ...) are keyed to the working directory. Throughout this document, read `~/.veyyon/profiles/default/agent` as shorthand for the active profile's agent directory.
+The other source bases are not profile-scoped and load identically under every profile: the external-tool bases (`~/.claude`, `~/.codex`, `~/.gemini`) belong to those tools. Throughout this document, read `~/.veyyon/profiles/default/agent` as shorthand for the active profile's agent directory.
 
 ## Important constraint
 
@@ -115,7 +119,7 @@ Searches for the first existing file across ordered bases, returns first match (
 
 Walks parent directories upward and returns the **nearest existing directory per source base** (`.veyyon`, `.claude`, `.codex`, `.gemini`), then sorts results by source priority.
 
-Use this when project config should be inherited from ancestor directories (monorepo/nested workspace behavior).
+This helper predates the untrusted-working-tree rule and survives for the callers that legitimately key on the working directory (plugin install scopes). It is not a path for a repository to configure the agent.
 
 ---
 
@@ -147,20 +151,20 @@ Legacy migration still supported:
 
 The runtime settings model is layered:
 
-1. Global settings: `~/.veyyon/profiles/default/agent/config.yml`
-2. Project settings: discovered via settings capability (`settings.json` and `config.yml` from providers)
-3. CLI config overlays: `veyyon --config <path>` / repeated `--config` files, loaded as `config.yml`-style YAML for this process only
-4. Runtime overrides: in-memory, non-persistent
-5. Schema defaults: from `SETTINGS_SCHEMA`
+1. Profile settings: `~/.veyyon/profiles/<name>/agent/config.yml`
+2. CLI config overlays: `veyyon --config <path>` / repeated `--config` files, loaded as `config.yml`-style YAML for this process only
+3. Runtime overrides: in-memory, non-persistent
+4. Schema defaults: from `SETTINGS_SCHEMA`
+
+There is no project layer. A `.veyyon/config.yml` or `.veyyon/settings.json` inside a working tree is never read, because a checked-in file would let any cloned repository configure the agent (the measured escalation was `tools.approvalMode: yolo` shipped in a repo's `settings.json`).
 
 Effective precedence:
 
-`defaults <- global <- project <- CLI config overlays <- overrides`
+`defaults <- profile <- CLI config overlays <- overrides`
 
 Write behavior:
 
-- `settings.set(...)` writes to the **global** layer (`config.yml`) and queues background save.
-- Project settings are read-only from capability discovery.
+- `settings.set(...)` writes to the **profile** layer (`config.yml`) and queues background save.
 
 ## Migration behavior still active
 
@@ -220,20 +224,19 @@ Relevant keys:
 
 ## 6) Native `.veyyon` provider behavior (`packages/coding-agent/src/discovery/builtin.ts`)
 
-Native provider (`id: native`) reads native config from:
-
-- project: `<cwd>/.veyyon/...`
-- user: `~/.veyyon/profiles/default/agent/...`
+Native provider (`id: native`) reads native config from one place: the active profile's agent directory, `~/.veyyon/profiles/<name>/agent/...`. The provider's config-dir helper resolves HOME only. `<cwd>/.veyyon` used to be pushed at level `"project"`, and six capabilities read it through that one helper (slash commands, rules, prompts, instructions, hooks, tools) plus extension modules and settings; that is gone, because one line in a cloned repo configured the agent. The only thing a repository still contributes is the context-file walk.
 
 ### Directory admission rules
 
-- Slash commands, rules, prompts, instructions, hooks, tools, extensions, extension modules, and settings use a project/user root only when the root directory exists and is non-empty.
+- The profile agent directory is used only when it exists and is non-empty.
 - Skills are loaded only from the active profile's agent dir (`~/.veyyon/profiles/<name>/agent/skills`). Project-local `.veyyon/skills` directories are deliberately not scanned, so no repository can inject skills into a session by ambient autodiscovery.
-- `AGENTS.md` reads the global cross-profile file and the active profile's first matching instruction file directly. Project context walks from the working directory to the repository root. `RULES.md` reads the active profile file and the nearest project `.veyyon` file. Persistent system-prompt changes use `PROMPT_SECTIONS/`. See [`docs/system-prompt-customization.md`](./system-prompt-customization.md).
+- `AGENTS.md` has three scopes: the global cross-profile `~/.veyyon/AGENTS.md`, the active profile's first matching instruction file, and the project walk from the working directory to the repository root (one file per directory level: `.veyyon/AGENTS.md` at the nearest non-empty `.veyyon/` claims its level, bare `AGENTS.md` next, bare `CLAUDE.md` last). `RULES.md` is the active profile's file only; a repository's `.veyyon/RULES.md` is not read. Persistent system-prompt changes use `PROMPT_SECTIONS/` under the active profile's agent dir. See [`docs/system-prompt-customization.md`](./system-prompt-customization.md).
 
 ### Scope-specific loading
 
-- Skills: `~/.veyyon/profiles/<profile>/agent/skills/*/SKILL.md` only (project `.veyyon/skills` is not scanned)
+All under the active profile's agent dir:
+
+- Skills: `skills/*/SKILL.md`
 - Slash commands: `commands/*.md`
 - Rules: `rules/*.{md,mdc}`
 - Prompts: `prompts/*.md`
@@ -242,18 +245,17 @@ Native provider (`id: native`) reads native config from:
 - Tools: `tools/*.{json,md,ts,js,sh,bash,py}` and `tools/<name>/index.ts`
 - Extension modules: discovered under `extensions/` (+ legacy `settings.json.extensions` string array)
 - Extensions: `extensions/<name>/gemini-extension.json`
-- Settings capability: `settings.json`, then `config.yml`
+- Settings: `config.yml` (plus the one-time `settings.json` migration)
 
-### Nearest-project lookup nuance
+### Project context-file walk
 
-The native provider uses nearest-ancestor project `.veyyon` directory search for project `AGENTS.md`, `RULES.md`, and `PROMPT_SECTIONS/`. The directory must be non-empty. Bare project `AGENTS.md` files use their own repository-bounded walk-up.
+The native provider's only project-scope read is the context-file walk: the nearest non-empty `.veyyon/` directory's `AGENTS.md` claims its own directory level, and every level from the repository root down to the cwd contributes at most one file (`.veyyon/AGENTS.md`, else bare `AGENTS.md`, else bare `CLAUDE.md`).
 
 ## 7) How major subsystems consume config
 
 ## Settings subsystem
 
-- `Settings.init()` loads global `config.yml` + discovered project settings capability items.
-- Only capability items with `level === "project"` are merged into project layer.
+- `Settings.init()` loads the profile `config.yml`, the machine-global bindings, CLI `--config` overlays, and runtime overrides. Nothing is read from the working tree.
 
 ### Session title prompt override
 
@@ -303,7 +305,7 @@ Use this mental model:
 
 ### Settings-specific caveat
 
-Settings capability items are not deduplicated; `Settings.#loadProjectSettings()` deep-merges project items in returned order. Because merge applies later item values over earlier values, effective override behavior depends on provider emission order, not just capability key semantics.
+The settings layers deep-merge in a fixed order (profile, then `--config` overlays, then runtime overrides). Because merge applies later layer values over earlier values, an overlay's array replaces the profile array rather than appending to it.
 
 ---
 

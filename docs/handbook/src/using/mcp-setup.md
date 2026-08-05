@@ -15,8 +15,12 @@ MCP servers are configured as **JSON** in `mcp.json`, not in `config.yml`:
 | --- | --- |
 | User | `~/.veyyon/profiles/default/agent/mcp.json` (profile: `~/.veyyon/profiles/<name>/agent/mcp.json`) |
 
-Veyyon also discovers MCP entries from Claude, Cursor, VS Code, and OpenCode configs. The easiest way
-to add a server is `/mcp add` in the TUI, which writes to `mcp.json` for you.
+There is no project scope: a repository's own `mcp.json`, `.mcp.json`, or `.veyyon/mcp.json` is not
+read, because a checked-in file must not name a server the agent connects to.
+
+Veyyon also discovers MCP entries from other tools' user-level configs (Claude, Cursor, Codex,
+Gemini, OpenCode, Windsurf). The easiest way to add a server is `/mcp add` in the TUI, which writes
+to `mcp.json` for you.
 
 ## File shape
 

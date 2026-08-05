@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-595774d2.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -205,7 +205,7 @@ veyyon plugin doctor
 <h2 id="provider-errors"><a class="header" href="#provider-errors">Provider errors</a></h2>
 <p>Check API key / auth store / <code>models.yml</code> for that provider id, base URL, and scopes. See <a href="./models.html">Models and providers</a>.</p>
 <h2 id="command-or-edit-blocked-or-prompting"><a class="header" href="#command-or-edit-blocked-or-prompting">Command or edit blocked or prompting</a></h2>
-<p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code> (plus hard-coded critical bash patterns that prompt in non-yolo modes). There is no OS command sandbox. Schema default is <strong><code>auto</code></strong>. See <a href="../features/sandbox.html">Approvals</a> and <a href="./configuration.html">Configuration</a>.</p>
+<p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code>, plus the working-directory and secret-use boundaries (every rung except <code>yolo</code>) and hard-coded critical bash patterns (every rung, <code>yolo</code> included). There is no OS command sandbox. Schema default is <strong><code>auto</code></strong>. See <a href="../features/sandbox.html">Approvals</a> and <a href="./configuration.html">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>
 <p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="../benefits/lower-cost.html">Context size and retries</a>, <a href="../context/reads-search.html">Bounded reads and search</a>.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>

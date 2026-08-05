@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -334,8 +334,11 @@ decision to the next layer. <code>/agents</code> shows the resolved model and wh
 See <a href="../../../settings.html#subagents">Settings: Subagents</a> and
 <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 <h2 id="automation-note"><a class="header" href="#automation-note">Automation note</a></h2>
-<p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust boundary:</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the unit tests and fix failures"
+<p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust
+boundary. A headless run has no terminal to answer a prompt on, so a rung that asks turns the
+gated tool call into an error rather than a pause: the default <code>auto</code> runs every tier while the
+working-directory, credential and critical-command guards still stop the calls they cover.</p>
+<pre><code class="language-console">$ veyyon --print "run the unit tests and fix failures"
 </code></pre>
 <p>Use <code>--yolo</code> (auto-approve everything) only in trusted automation, ideally in an externally isolated environment (Docker, a VM, a CI jail), since Veyyon does not sandbox the commands it runs.</p>
 <h2 id="what-stays-constant"><a class="header" href="#what-stays-constant">What stays constant</a></h2>

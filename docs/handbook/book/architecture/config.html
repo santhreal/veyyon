@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -197,18 +197,19 @@
                     <main>
                         <h1 id="config"><a class="header" href="#config">Config</a></h1>
 <p>Configuration controls models, approvals, memory, MCP, extensions, and TUI behavior. Veyyon loads
-layered YAML/JSON from the project and user agent directories.</p>
+layered YAML/JSON from the user agent directories. A working tree never supplies configuration:
+a checked-in <code>.veyyon/config.yml</code> is not read, because a repository is content you may not have
+written.</p>
 <h2 id="responsibility"><a class="header" href="#responsibility">Responsibility</a></h2>
 <ul>
-<li>Resolve config roots (<code>.veyyon</code>, plus Claude/Codex/Gemini compatibility paths)</li>
-<li>Merge project + user settings; apply <strong>profiles</strong> (<code>veyyon --profile &lt;name&gt;</code>)</li>
+<li>Resolve config roots (the active profile’s agent dir, plus Claude/Codex/Gemini compatibility paths at user level)</li>
+<li>Merge profile settings with <code>--config</code> overlays and runtime overrides; apply <strong>profiles</strong> (<code>veyyon --profile &lt;name&gt;</code>)</li>
 <li>Validate against <code>settings-schema.ts</code>; support <code>--config &lt;file&gt;</code> YAML overlay files (repeatable)</li>
 <li>Feed resolved settings to sessions, tools, and discovery (skills, hooks, MCP, extensions)</li>
 </ul>
 <h2 id="public-boundary"><a class="header" href="#public-boundary">Public boundary</a></h2>
 <ul>
 <li>Primary user file: <code>~/.veyyon/profiles/default/agent/config.yml</code> (or profile path under <code>~/.veyyon/profiles/</code>)</li>
-<li>Project overrides: <code>.veyyon/config.yml</code></li>
 <li>CLI: <code>veyyon config list|get|set</code>, <code>/settings</code>, <code>/reload-plugins</code> (re-read without restart)</li>
 </ul>
 <p>Config loading is part of the harness.</p>

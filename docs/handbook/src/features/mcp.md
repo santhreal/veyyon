@@ -26,9 +26,10 @@ You register a server in an `mcp.json` file, and its tools become callable. A mi
 Each tool an MCP server exposes appears namespaced as `mcp__<server>_<tool>` (a single underscore
 between server and tool, for example `mcp__sqlite_query`), so a server never
 shadows a built-in tool or another server. If you turn on `discovery.importForeignConfig` (off by
-default), Veyyon also discovers MCP entries that Claude, Cursor, VS
-Code, OpenCode, and related tools already wrote, so a server you configured elsewhere often works
-without re-registering it.
+default), Veyyon also discovers MCP entries from the user-level configs that Claude, Cursor, Codex,
+OpenCode, and related tools already wrote, so a server you configured elsewhere often works
+without re-registering it. Discovery never reads a working tree: a repository's own `mcp.json` is
+not a server source.
 
 For the full setup path, choosing a transport (`stdio`, `http`, `sse`), passing environment
 variables, authenticating (bearer token or OAuth), approving tools, the `/mcp` commands, and fixing

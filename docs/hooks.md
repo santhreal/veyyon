@@ -5,7 +5,7 @@ Hook subsystem code lives under `src/extensibility/hooks/*`. Runtime loading use
 ## Runtime loading
 
 - `--hook` is treated as an alias for `--extension` (CLI paths are merged into `additionalExtensionPaths`)
-- JS/TS hook factories discovered through `hookCapability` (for example `.veyyon/hooks/pre/*.ts`) are loaded as extension modules so their `pi.on(...)` handlers bind to the runtime event bus
+- JS/TS hook factories discovered through `hookCapability` (for example `~/.veyyon/profiles/<name>/agent/hooks/pre/*.ts`; hooks are user-level only, a working tree's `.veyyon/hooks/` is not read) are loaded as extension modules so their `pi.on(...)` handlers bind to the runtime event bus
 - tools are wrapped by `ExtensionToolWrapper`, not `HookToolWrapper`
 - context transforms and lifecycle emissions go through `ExtensionRunner`
 

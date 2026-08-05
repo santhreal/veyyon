@@ -20,7 +20,6 @@ It reflects the current implementation, including partial semantics and metadata
 - [`packages/coding-agent/src/discovery/agents.ts`](../../packages/coding-agent/src/discovery/agents.ts)
 - [`packages/coding-agent/src/discovery/cursor.ts`](../../packages/coding-agent/src/discovery/cursor.ts)
 - [`packages/coding-agent/src/discovery/windsurf.ts`](../../packages/coding-agent/src/discovery/windsurf.ts)
-- [`packages/coding-agent/src/discovery/cline.ts`](../../packages/coding-agent/src/discovery/cline.ts)
 - [`packages/coding-agent/src/discovery/github.ts`](../../packages/coding-agent/src/discovery/github.ts)
 - [`packages/coding-agent/src/sdk.ts`](../../packages/coding-agent/src/sdk.ts)
 - [`packages/coding-agent/src/system-prompt.ts`](../../packages/coding-agent/src/system-prompt.ts)
@@ -63,20 +62,21 @@ Consequence: precedence and deduplication are **name-based only**. Two different
 - `agents` (priority `70`)
 - `cursor` (priority `50`)
 - `windsurf` (priority `50`)
-- `cline` (priority `40`)
 - `github` (priority `30`)
 - `builtin-defaults` (priority `1`)
 
-The registry contains every provider above. Ambient discovery filters foreign providers (`agents`, `cline`, `cursor`, `github`, and `windsurf`) unless `discovery.importForeignConfig` is enabled. An explicit provider allowlist selects named providers directly and bypasses that ambient foreign-config gate.
+The registry contains every provider above. Ambient discovery filters foreign providers (`agents`, `cursor`, `github`, and `windsurf`) unless `discovery.importForeignConfig` is enabled. An explicit provider allowlist selects named providers directly and bypasses that ambient foreign-config gate.
+
+Every provider reads home directories only. A working tree contributes no rules: the foreign providers used to walk project directories (`.cursor/rules`, `.windsurf/rules`, `.clinerules`, `.agent/rules`, `.github/instructions`, and `.veyyon/rules`), and each of those walks was a way for a cloned repository to install a standing instruction, so they are gone.
 
 ### Native provider (`builtin.ts`)
 
-Loads native rules from:
+Loads native rules from the active profile only:
 
-- project: `<cwd>/.veyyon/rules/*.{md,mdc}` when the cwd `.veyyon` directory exists
 - user: `<active agent dir>/rules/*.{md,mdc}`, where the active agent directory comes from `getAgentDir()`
 - sticky user rule: `<active agent dir>/RULES.md`
-- sticky project rule: nearest ancestor `.veyyon/RULES.md` while walking from cwd toward the repository root
+
+A repository's `.veyyon/rules/` and `.veyyon/RULES.md` used to load at project scope and no longer do.
 
 Normalization:
 
@@ -84,16 +84,17 @@ Normalization:
 - frontmatter parsed via `parseFrontmatter`
 - `content` = body (frontmatter stripped)
 - `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` are parsed by `buildRuleFromMarkdown`
-- top-level `RULES.md` is synthesized as rule name `RULES` for the user file and `RULES@project` for the project file, and forced to `alwaysApply: true`
+- top-level `RULES.md` is synthesized as rule name `RULES` and forced to `alwaysApply: true`
 
 Important caveat: `condition` values that look like file globs are removed from the regex condition list and converted into `tool:edit(...)` / `tool:write(...)` scope shorthands. Catch-all condition `.*` is added only when no non-glob regex condition remains.
 
 ### Agents provider (`agents.ts`)
 
-Loads from both `.agent` and `.agents` directories:
+Loads from the home-level `.agent` and `.agents` directories only:
 
-- project: walk upward from `cwd` to repo root, loading `<ancestor>/.agent/rules/*.{md,mdc}` and `<ancestor>/.agents/rules/*.{md,mdc}`
 - user: `~/.agent/rules/*.{md,mdc}` and `~/.agents/rules/*.{md,mdc}`
+
+There is no project scope: the provider used to walk up from `cwd` loading `<ancestor>/.agent/rules/` and `<ancestor>/.agents/rules/`, which made a cloned repository a second directory vocabulary for installing rules.
 
 Normalization uses the shared `buildRuleFromMarkdown` path: filename-derived name, stripped frontmatter body, and parsed `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap`.
 
@@ -102,7 +103,6 @@ Normalization uses the shared `buildRuleFromMarkdown` path: filename-derived nam
 Loads from:
 
 - user: `~/.cursor/rules/*.{mdc,md}`
-- project: `<cwd>/.cursor/rules/*.{mdc,md}`
 
 Normalization (`transformMDCRule`):
 
@@ -117,33 +117,20 @@ Normalization (`transformMDCRule`):
 Loads from:
 
 - user: `~/.codeium/windsurf/memories/global_rules.md` (fixed rule name `global_rules`)
-- project: `<cwd>/.windsurf/rules/*.md`
 
 Normalization:
 
 - `globs`: array-of-string or single string
 - `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` parsed by shared rule helpers
-- `name` is fixed to `global_rules` for the user global file and derived from filename for project rules
-
-### Cline provider (`cline.ts`)
-
-Searches upward from `cwd` for nearest `.clinerules`:
-
-- if directory: loads `*.md` inside it
-- if file: loads single file as rule named `clinerules`
-
-Normalization:
-
-- `globs`: array-of-string or single string
-- `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` parsed by shared rule helpers
-- `name` is fixed to `clinerules` for a `.clinerules` file and derived from filename for `.clinerules/*.md`
+- `name` is fixed to `global_rules`
 
 ### GitHub Copilot provider (`github.ts`)
 
 Loads rules recursively from:
 
-- project: `<cwd>/.github/instructions/**/*.instructions.md`
 - user: `<configured-dir>/.github/instructions/**/*.instructions.md` for each directory in `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`
+
+A repository's own `.github/instructions/` is not read.
 
 Normalization uses `buildRuleFromMarkdown`, strips `.instructions.md` from the rule name, and maps GitHub's comma-separated or array-valued `applyTo` metadata to `globs`. `applyTo` values `*`, `**`, and `**/*` become `alwaysApply: true`; other values become described rulebook rules. A missing `applyTo` emits a warning and loads the rule without glob scoping.
 
@@ -183,9 +170,8 @@ Effective rule provider order is currently:
 3. `agents` (70)
 4. `cursor` (50)
 5. `windsurf` (50)
-6. `cline` (40)
-7. `github` (30)
-8. `builtin-defaults` (1)
+6. `github` (30)
+7. `builtin-defaults` (1)
 
 ### Intra-provider ordering caveat
 
@@ -193,13 +179,12 @@ Within a provider, item order comes from `loadFilesFromDir` glob result ordering
 
 Notable source-order differences:
 
-- `native` appends project `.veyyon/rules`, user `<active agent dir>/rules`, user `<active agent dir>/RULES.md`, then nearest project `.veyyon/RULES.md`.
+- `native` appends user `<active agent dir>/rules`, then user `<active agent dir>/RULES.md`.
 - `veyyon-plugins` appends `rules/` results per configured extension package root.
-- `agents` appends project-walk `.agent`/`.agents` rule dirs before user home dirs.
-- `cursor` appends user then project results.
-- `windsurf` appends user `global_rules` first, then project rules.
-- `cline` loads only nearest `.clinerules` source.
-- `github` appends recursive project instructions before instructions from each configured custom root.
+- `agents` appends the home `.agent`/`.agents` rule dirs.
+- `cursor` appends user results.
+- `windsurf` appends the user `global_rules` file.
+- `github` appends instructions from each configured custom root.
 - `builtin-defaults` uses the embedded rule source order.
 
 ## 5. Split into Rulebook, Always-Apply, and TTSR buckets
@@ -296,7 +281,7 @@ Implications:
 
 ## 9. Known partial / non-enforced semantics
 
-1. Registered rule providers are `native`, `veyyon-plugins`, `agents`, `cursor`, `windsurf`, `cline`, `github`, and embedded `builtin-defaults`. Ambient discovery filters foreign providers unless `discovery.importForeignConfig` enables them; an explicit provider allowlist can select them directly.
+1. Registered rule providers are `native`, `veyyon-plugins`, `agents`, `cursor`, `windsurf`, `github`, and embedded `builtin-defaults`. Ambient discovery filters foreign providers unless `discovery.importForeignConfig` enables them; an explicit provider allowlist can select them directly.
 2. `globs` metadata is surfaced to prompt/UI and is used as a global path gate for TTSR matching, but it is not used to automatically select rulebook rules for `rule://`.
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.
