@@ -34,6 +34,7 @@ import { nextActionableTask } from "../../tools/todo";
 import { SpeechEnhancer } from "../../tts/speech-enhancer";
 import { vocalizer } from "../../tts/vocalizer";
 import { canonicalizeMessage } from "../../utils/thinking-display";
+import { formatRetryLine, formatRetrySummary, type RetryTrace, retryReason } from "../retry-display";
 import { interruptHint } from "../shared";
 import { createAssistantMessageComponent } from "../utils/interactive-context-helpers";
 import {
@@ -159,6 +160,12 @@ export class EventController {
 	#pinnedErrorComponent: AssistantMessageComponent | undefined = undefined;
 	#retrySupersededAssistantComponents = new Map<string, AssistantMessageComponent>();
 	#retrySupersededAssistantQueue: AssistantMessageComponent[] = [];
+	/**
+	 * What the current turn's retries have cost so far. Accumulated across
+	 * `auto_retry_start` events and consumed once when they resolve, so the
+	 * summary reports the whole sequence rather than the last attempt.
+	 */
+	#retryTrace: RetryTrace | undefined = undefined;
 	#idleCompactionTimer?: NodeJS.Timeout;
 	#idleRecapTimer?: NodeJS.Timeout;
 	// In-flight ephemeral recap turn; aborted by #cancelIdleRecap when any
@@ -1531,7 +1538,13 @@ export class EventController {
 			this.#pinnedErrorComponent = undefined;
 			this.ctx.clearPinnedError();
 		}
-		const delaySeconds = Math.round(event.delayMs / 1000);
+		// Accumulate what this turn's retries cost, so the summary emitted when
+		// they resolve can attribute the wait instead of leaving it unexplained.
+		this.#retryTrace ??= { attempts: 0, totalDelayMs: 0 };
+		const trace = this.#retryTrace;
+		trace.attempts = event.attempt;
+		trace.totalDelayMs += Math.max(0, event.delayMs);
+		trace.reason = retryReason(event.errorId, event.errorMessage);
 		// In living mode the activity is now "error", so render the retry text
 		// through the shimmer: it blinks red (the error motion) instead of sitting
 		// in a flat muted grey. Other modes keep the plain warning styling.
@@ -1543,7 +1556,14 @@ export class EventController {
 			this.ctx.ui,
 			spinner => theme.fg(living ? "error" : "warning", spinner),
 			retryMessageColor,
-			`Retrying (${event.attempt}/${event.maxAttempts}) in ${delaySeconds}s…${this.#maintenanceEscHint()}`,
+			`${formatRetryLine({
+				attempt: event.attempt,
+				maxAttempts: event.maxAttempts,
+				delayMs: event.delayMs,
+				errorId: event.errorId,
+				errorMessage: event.errorMessage,
+				policySource: event.policySource,
+			})}…${this.#maintenanceEscHint()}`,
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(this.ctx.retryLoader);
@@ -1571,10 +1591,15 @@ export class EventController {
 				this.ctx.clearPinnedError();
 			}
 			this.#clearRetrySupersededAssistantComponents();
+			// A recovered turn used to leave no trace of the retries, so the wait
+			// they cost read as the tool being slow. Attribute it once, here.
+			const summary = this.#retryTrace ? formatRetrySummary(this.#retryTrace) : undefined;
+			if (summary) this.ctx.showStatus(summary);
 		} else {
 			this.#clearRetrySupersededAssistantComponents();
 			this.ctx.showError(`Retry failed after ${event.attempt} attempts: ${event.finalError || "Unknown error"}`);
 		}
+		this.#retryTrace = undefined;
 		this.#ensureWorkingLoaderWhileStreaming();
 		this.ctx.ui.requestRender();
 	}
