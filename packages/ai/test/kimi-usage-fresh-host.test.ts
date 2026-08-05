@@ -23,6 +23,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { SANDBOX_MARKER_ENV_KEY } from "@veyyon/utils/dir-env-keys";
 
 const PKG_ROOT = path.join(import.meta.dir, "..");
 const USAGE_KIMI = path.join(PKG_ROOT, "src", "usage", "kimi.ts");
@@ -52,9 +53,17 @@ describe("kimiUsageProvider.fetchUsage on a fresh host (no config dir yet)", () 
 		// which would otherwise redirect the child back to the real, existing
 		// agent dir and defeat the fresh-host reproduction), and point HOME and
 		// VEYYON_CONFIG_DIR at brand-new temp paths.
+		//
+		// SANDBOX_MARKER_ENV_KEY is the one VEYYON_* var that must survive. It is not a
+		// directory override; it is this child's proof that it is running inside the test
+		// sandbox, where a home is a disposable tmpfs. Stripping it made the child look like
+		// a process on the operator's real machine pointing its config root into its own
+		// home, which `getConfigRootOverride` refuses by design, and the whole suite died on
+		// the refusal. See `packages/utils/src/dir-env-keys.ts`.
 		const childEnv: Record<string, string> = {};
 		for (const [key, value] of Object.entries(process.env)) {
-			if (value !== undefined && !key.startsWith("VEYYON_")) childEnv[key] = value;
+			if (value !== undefined && (!key.startsWith("VEYYON_") || key === SANDBOX_MARKER_ENV_KEY))
+				childEnv[key] = value;
 		}
 		childEnv.HOME = path.join(root, "home");
 		childEnv.VEYYON_CONFIG_DIR = configDirName;

@@ -26,7 +26,7 @@ import { APP_DIRECTORY_SLUG } from "./app-identity";
 // that can reach this file, which is why the `.env` layers needing a resolved directory stay in `./env`.
 import "./dotenv-home";
 import { atomicWriteFileSync } from "./atomic-write";
-import { AGENT_DIR_ENV_KEYS, CONFIG_DIR_ENV_KEYS, PROFILE_ENV_KEYS } from "./dir-env-keys";
+import { AGENT_DIR_ENV_KEYS, CONFIG_DIR_ENV_KEYS, PROFILE_ENV_KEYS, SANDBOX_MARKER_ENV_KEY } from "./dir-env-keys";
 import { withFileLockSync } from "./file-lock";
 import { isMissingPath } from "./fs-error";
 import { isUuid } from "./regex";
@@ -286,16 +286,24 @@ export function resolveHomeDirOrThrow(): string {
 	}
 	if (path.parse(home).root === home) {
 		throw new Error(
-			`HOME is set to the filesystem root (${home}), so veyyon would create ${path.join(home, getConfigDirName())} ` +
-				`at the top of the filesystem. Set HOME to a real home directory, or set VEYYON_CONFIG_DIR to place the ` +
-				`config root explicitly.`,
+			`HOME is set to the filesystem root (${home}), so veyyon would create ${path.join(home, CONFIG_DIR_NAME)} ` +
+				`at the top of the filesystem. Set HOME to a real home directory, or set VEYYON_CONFIG_DIR to an ` +
+				`absolute path that places the config root explicitly.`,
 		);
 	}
 	return home;
 }
 
+/**
+ * The config root, before the profile segment.
+ *
+ * `CONFIG_DIR_NAME` rather than `getConfigDirName()` on the default branch, deliberately:
+ * the name is only ever a name in the default case, and asking the override for its
+ * basename here would let a `/srv/veyyon-work` override answer `~/veyyon-work`, which is
+ * the doubled-path defect the override exists to remove.
+ */
 function getBaseConfigRoot(): string {
-	return path.join(resolveHomeDirOrThrow(), getConfigDirName());
+	return getConfigRootOverride() ?? path.join(resolveHomeDirOrThrow(), CONFIG_DIR_NAME);
 }
 
 /** The default profile's directory name under `profiles/`. */
@@ -1112,69 +1120,123 @@ export async function directoryExists(dir: string): Promise<boolean> {
 /**
  * A `VEYYON_CONFIG_DIR` value written as an absolute path, on either platform.
  *
- * `path.isAbsolute` only knows the platform it runs on, and a value written for
- * the other one is the same mistake: `C:\veyyon` on Linux is not "absolute" to
- * `path`, so it would be joined and create a directory whose NAME contains a
- * backslash. Both forms are caught so the message is the same wherever the value
- * was authored.
+ * `path.isAbsolute` only knows the platform it runs on, and a value written for the
+ * other one means the same thing: `C:\veyyon` on Linux is not "absolute" to `path`, so
+ * resolving it against the home would produce a directory whose NAME contains a
+ * backslash. Both forms are recognised so the value is read as the path its author
+ * meant wherever it was written.
  */
 function looksAbsolute(value: string): boolean {
 	return path.isAbsolute(value) || /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("\\\\");
 }
 
+/** True when `candidate` is `root` or sits underneath it. */
+function isUnderPath(candidate: string, root: string): boolean {
+	const rel = path.relative(root, candidate);
+	return rel === "" || (!rel.startsWith(`..${path.sep}`) && rel !== ".." && !path.isAbsolute(rel));
+}
+
 /**
- * Get the config directory name relative to home (e.g. ".veyyon" or a
- * `VEYYON_CONFIG_DIR` override), refusing values that cannot mean what they say.
+ * The config root named by `VEYYON_CONFIG_DIR`, or `undefined` when it is unset.
  *
- * This is a NAME, not a path, and the two ways of getting that wrong both used to
- * pass through silently because the caller only ever `path.join`s the result onto
- * the home directory:
+ * ## The bug this is the fix for
  *
- *  - An ABSOLUTE path. `path.join("/home/you", "/srv/veyyon")` is
- *    `/home/you/srv/veyyon`, so somebody moving their config to another volume got
- *    a brand new tree inside their home instead, with the old one still in place
- *    and no message. That is the worst shape a config error can take: it appears to
- *    work, and the data is not where the user believes it is.
- *  - Whitespace only. `" "` would create a directory named with a space, invisible
- *    in every listing. The EMPTY value still falls back to the default, because that
- *    is how a shell passes a variable it exported without setting.
+ * This used to be `getConfigDirName()`, which returned a NAME that every caller
+ * `path.join`ed onto `os.homedir()`. A location that can only ever land inside the home
+ * is not a location, it is a rename, and both halves of that produced damage:
  *
- * A `..` segment is deliberately NOT refused. It leaves the home directory, which
- * looks like the same class of mistake, but it is the sanctioned in-process isolation
- * lever and behaves exactly as `path.join` says: `os.homedir()` is fixed for the life
- * of a process under Bun, so a test that needs the config root in a temp directory
- * has no other way to get there and passes `path.relative(os.homedir(), tempRoot)`.
- * See `docs/internal/testing.md`. Nothing about it is silent: the value the user wrote
- * is the path they get.
+ *  - A BARE NAME created a real directory in the operator's real home. Assigning
+ *    `process.env.HOME` does not move `os.homedir()` under Bun -- it is resolved once at
+ *    process start -- so a suite setting `VEYYON_CONFIG_DIR=".veyyon-mysuite"` believing
+ *    it had isolated itself was writing to `~/.veyyon-mysuite`. 136 of those accumulated
+ *    in one real home before anyone counted them. The mechanism read as isolation and
+ *    was its opposite.
+ *  - An ABSOLUTE PATH was REFUSED, so the one spelling that could NOT land in the home
+ *    was the one spelling forbidden, and the sanctioned escape was
+ *    `path.relative(os.homedir(), tempRoot)`: a run of `..` segments whose correctness
+ *    depends on a home the reader cannot see from the call site.
  *
- * This throws rather than warning-and-ignoring, unlike the relative-`XDG_*_HOME`
- * case in {@link isUsableXdgBase}. The difference is which answer is safe: ignoring
- * a bad XDG base leaves veyyon at its normal location, while ignoring a bad config
- * dir would write the user's credentials somewhere they did not ask for. When the
- * fix is one line and the failure is silent data placement, refuse.
+ * So the rule is inverted. The value is a PATH -- absolute taken as written, relative
+ * resolved against the home, which keeps the `..` form above working -- and then checked
+ * against the one thing it must never be: somewhere inside the operator's home. The
+ * default root `~/.veyyon` is unaffected: that is what you get when the variable is
+ * unset, and this function is not consulted.
+ *
+ * ## Why the sandbox marker grants it
+ *
+ * Inside the test sandbox the home IS disposable: a tmpfs the guest owns, with the
+ * operator's real home absent from the filesystem view entirely. Refusing there would
+ * break every suite that legitimately puts its config root under its own temp home while
+ * protecting nothing. {@link SANDBOX_MARKER_ENV_KEY} is trusted in this one direction
+ * only, and it is the weaker half of the pair: the strong half is the reachability proof
+ * in `packages/utils/test/helpers/sandbox-gate.ts`, which has already refused to let the
+ * process start if a real home was in reach.
+ *
+ * ## What breaks if this regresses
+ *
+ * Reverting to a joined name makes `~/.veyyon-<anything>` reachable from one environment
+ * variable again, which is how the 136 directories were created.
+ * `packages/utils/test/sandbox-gate-contracts.test.ts` fails when it does.
  */
-export function getConfigDirName(): string {
+export function getConfigRootOverride(): string | undefined {
 	const override = pickProcessEnv(...CONFIG_DIR_ENV_KEYS);
-	if (override === undefined || override === "") return CONFIG_DIR_NAME;
+	if (override === undefined || override === "") return undefined;
 	const key = CONFIG_DIR_ENV_KEYS[0];
 	if (override.trim() === "") {
 		throw new Error(
-			`${key} is set to whitespace (${JSON.stringify(override)}). It names the config directory under your home ` +
-				`directory, so this would create a directory whose name you cannot see. Set it to a directory name ` +
-				`such as ".veyyon", or unset it to use the default.`,
+			`${key} is set to whitespace (${JSON.stringify(override)}). It names the directory veyyon keeps its ` +
+				`configuration in, so this would create a directory whose name you cannot see. Set it to an absolute ` +
+				`path such as "/srv/veyyon", or unset it to use the default (${path.join("~", CONFIG_DIR_NAME)}).`,
 		);
 	}
-	if (looksAbsolute(override)) {
+	// A value written for the OTHER platform is still refused, and this is the one refusal
+	// that survived the inversion above. `C:\veyyon` is not absolute to POSIX `path`, so it
+	// would be resolved as a relative name and create a directory whose name contains a
+	// backslash -- a thing no listing shows sensibly and no user asked for. There is no
+	// reading of it that is worth guessing at.
+	if (!path.isAbsolute(override) && looksAbsolute(override)) {
 		throw new Error(
-			`${key} is set to the absolute path "${override}", but it names the config directory under your home ` +
-				`directory rather than replacing it, so veyyon would have created ` +
-				`"${path.join(resolveHomeDirOrThrow(), override)}" instead of what you asked for. Set it to a directory ` +
-				`name such as ".veyyon". The config root always lives under your home directory; if what you need is to ` +
-				`keep the bulky directories on another volume, XDG_DATA_HOME, XDG_STATE_HOME and XDG_CACHE_HOME do take ` +
-				`absolute paths and move the data, state and cache directories.`,
+			`${key} is set to "${override}", which is written as an absolute path for another platform and cannot ` +
+				`be one here, so it would be resolved as a relative name and create a directory whose name contains ` +
+				`a path separator. Set it to an absolute path in this platform's form, such as "/srv/veyyon".`,
 		);
 	}
-	return override;
+	const home = resolveHomeDirOrThrow();
+	// One `resolve`, because it already does both jobs: an absolute `override` replaces
+	// `home` outright, and a relative one is resolved against it.
+	const resolved = path.resolve(home, override);
+	if (isUnderPath(resolved, home) && !process.env[SANDBOX_MARKER_ENV_KEY]) {
+		throw new Error(
+			`${key} resolves to "${resolved}", which is inside your home directory ("${home}").\n` +
+				`It is a PATH to the config root, not a name hung off your home, and a value that lands back in your ` +
+				`home is how 136 stray ${CONFIG_DIR_NAME}* directories were created in one: a bare name such as ` +
+				`"${CONFIG_DIR_NAME}-mysuite" reads like isolation and is a directory in the real home.\n` +
+				`Set it to an absolute path OUTSIDE your home (for example "/srv/veyyon", or a temp directory), or ` +
+				`unset it to use the default (${path.join(home, CONFIG_DIR_NAME)}).`,
+		);
+	}
+	return resolved;
+}
+
+/**
+ * The config root expressed RELATIVE TO THE HOME, for the callers that hold a home and
+ * join a name onto it -- {@link getConfigAgentDirName} below, and through it
+ * `USER_CONFIG_BASES` in `packages/coding-agent/src/config.ts`.
+ *
+ * `path.relative`, not `path.basename`, and the difference is a wrong answer rather than
+ * an ugly one. Every caller does `path.join(home, thisValue)`, so the value has to be the
+ * one that reconstructs the root: a basename turns an override of `../shared` into
+ * `~/shared` and `/srv/veyyon-work` into `~/veyyon-work`, which is the doubled-path defect
+ * the override exists to remove, reintroduced one layer up. The `..`-relative form is not
+ * pretty, but `path.join(home, "../../srv/veyyon")` is `/srv/veyyon`, which is the root the
+ * user asked for.
+ *
+ * Derived from the resolved root rather than the raw environment value, so it cannot answer
+ * anything {@link getConfigRootOverride} refuses: one validator, consulted by both.
+ */
+export function getConfigDirName(): string {
+	const override = getConfigRootOverride();
+	return override === undefined ? CONFIG_DIR_NAME : path.relative(resolveHomeDirOrThrow(), override);
 }
 
 /** Get the config agent directory name relative to home (e.g. ".veyyon/profiles/default/agent"). */

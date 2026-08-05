@@ -53,6 +53,13 @@
  * its allowlist, so the exception stays countable and each one carries a reason.
  */
 
+// FIRST, and above `node:path` on purpose. This is the fail-closed sandbox gate: it exits
+// the process when the sandbox marker is absent, before this module mints a temp home or
+// the tripwire below it touches anything. Everything else in this directory assumes the
+// host home is not reachable; this is the line that makes the assumption true. Imported
+// here rather than only in `./real-data-tripwire` because a suite that imports
+// `sandbox-home` directly, without the preload, must hit the same wall.
+import "./sandbox-gate";
 import * as path from "node:path";
 import { XDG_BASE_ENV_KEYS } from "../../src/dir-env-keys";
 

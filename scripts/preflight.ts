@@ -23,6 +23,7 @@
 
 import { spawn } from "node:child_process";
 import * as path from "node:path";
+import { SANDBOX_MARKER_ENV_KEY } from "../packages/utils/src/dir-env-keys";
 
 interface Contract {
 	/** Test file, relative to the repo root. */
@@ -129,9 +130,33 @@ const CONTRACTS: readonly Contract[] = [
 
 const repoRoot = path.dirname(import.meta.dir);
 
+/**
+ * `bun test <suite>`, wrapped in the sandbox unless we are already inside one.
+ *
+ * THE HOLE THIS CLOSES. Every entry in the list above is a `bun test`, and this script
+ * shelled out to a BARE one. So the script whose stated job is "refuse to build while a
+ * load-bearing contract is broken" -- the one that goes first precisely because a test
+ * run is what wrote three rows into the operator's real credential store -- was itself
+ * the door that ran the suite against the operator's real filesystem. A gate with a
+ * script-shaped bypass is not a gate, and this is the script most likely to be run.
+ *
+ * The child's own preload refuses if the boundary is not real
+ * (`packages/utils/test/helpers/sandbox-gate.ts`), so this wrapper cannot manufacture
+ * safety it did not get; what it does is make sure the child is offered a boundary in the
+ * first place instead of being handed the host.
+ *
+ * The nesting check is not an escape hatch. When `SANDBOX_MARKER_ENV` is already set this
+ * process is running INSIDE the sandbox, and a second `docker run` from in there would
+ * fail rather than isolate. Inheriting the boundary we are already behind is the correct
+ * answer, and it is still verified: the child runs the same proof this process passed.
+ */
 function runSuite(suite: string): Promise<{ ok: boolean; output: string }> {
 	const { promise, resolve } = Promise.withResolvers<{ ok: boolean; output: string }>();
-	const child = spawn("bun", ["test", suite], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
+	const inside = Boolean(process.env[SANDBOX_MARKER_ENV_KEY]);
+	const [command, args] = inside
+		? (["bun", ["test", suite]] as const)
+		: (["bash", [path.join("scripts", "test-sandbox.sh"), "bun", "test", suite]] as const);
+	const child = spawn(command, [...args], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
 	let output = "";
 	child.stdout?.on("data", chunk => {
 		output += String(chunk);

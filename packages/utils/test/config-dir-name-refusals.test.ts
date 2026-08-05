@@ -1,166 +1,155 @@
 /**
- * `VEYYON_CONFIG_DIR` names a directory under your home, and a value that cannot
- * mean that is refused rather than reinterpreted.
+ * `VEYYON_CONFIG_DIR` is a PATH to the config root, and a value that cannot mean one, or
+ * that lands back inside the operator's home, is refused rather than reinterpreted.
  *
- * Every caller of `getConfigDirName()` joins the result onto the home directory,
- * which made two mistakes silent and expensive:
+ * ## The inversion this file records
  *
- *  - `VEYYON_CONFIG_DIR=/srv/veyyon` became `~/srv/veyyon`. Somebody moving their
- *    config to another volume got a NEW tree inside their home, the old one stayed
- *    where it was, and nothing said so. The observed form of this was
- *    `VEYYON_CONFIG_DIR=/tmp/veyyon-abs-probe` resolving to
- *    `/home/you/tmp/veyyon-abs-probe/profiles/default/agent`.
- *  - Whitespace only, which created a directory whose name is invisible in a listing.
+ * It used to be a NAME joined onto `os.homedir()`, and that had the rule exactly backwards:
  *
- * A `..` value is ALLOWED, deliberately, and that boundary is pinned here too: it is
- * the only way a test can move the config root into a temp directory, because
- * `os.homedir()` cannot be changed mid-process under Bun.
+ *  - A BARE NAME was accepted and created a real directory in the real home. Assigning
+ *    `process.env.HOME` does not move `os.homedir()` under Bun, so every suite that
+ *    "isolated" itself with `VEYYON_CONFIG_DIR=".veyyon-mysuite"` was writing to
+ *    `~/.veyyon-mysuite`. 136 of those accumulated in one operator's home. The mechanism
+ *    read as isolation and was its opposite.
+ *  - An ABSOLUTE PATH was REFUSED. `VEYYON_CONFIG_DIR=/srv/veyyon` threw, so the one
+ *    spelling that could not possibly land in the home was the one spelling forbidden, and
+ *    the sanctioned escape was `path.relative(os.homedir(), tempRoot)`.
  *
- * The refusals are the contract, so they are pinned here by message content as well
- * as by throwing: an error that does not name the variable, the value, and where the
- * data would have gone leaves the user with the same mystery they started with.
+ * So the refusals moved. An absolute path outside the home is now the CORRECT value and is
+ * taken as written; what is refused is a destination inside the home. That refusal is
+ * lifted inside the test sandbox, where the home is a disposable tmpfs and the operator's
+ * real home is not in the filesystem view at all -- which is why this suite, which runs in
+ * the sandbox, can still use in-home values freely. The refusal itself is exercised where
+ * it has to be, in a child process with the marker cleared:
+ * `packages/utils/test/sandbox-gate-contracts.test.ts`.
  *
- * The accepted values are pinned just as carefully. A refusal that also rejects a
- * plain name would break every relocated install and every test that isolates
- * through this variable, so the boundary is asserted from both sides.
+ * The messages are pinned by content as well as by throwing. An error that does not name
+ * the variable, the value, and where the data would have gone leaves the user with the same
+ * mystery they started with.
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getConfigDirName, refreshDirsFromEnv } from "@veyyon/utils/dirs";
+import { getConfigDirName, getConfigRootOverride, refreshDirsFromEnv } from "@veyyon/utils/dirs";
 
 const KEY = "VEYYON_CONFIG_DIR";
 
-/** Read the name back with the variable set to `value`, restoring it afterwards. */
+/** Read the home-relative name back with the variable set to `value`. */
 function nameWith(value: string | undefined): string {
 	if (value === undefined) delete process.env[KEY];
 	else process.env[KEY] = value;
 	return getConfigDirName();
 }
 
-describe("an absolute VEYYON_CONFIG_DIR", () => {
-	const saved = process.env[KEY];
+/** Read the resolved absolute root back with the variable set to `value`. */
+function rootWith(value: string): string | undefined {
+	process.env[KEY] = value;
+	return getConfigRootOverride();
+}
 
-	afterEach(() => {
+/** Restore the variable this file scribbles on, whatever the test did to it. */
+function restoring(): () => void {
+	const saved = process.env[KEY];
+	return () => {
 		if (saved === undefined) delete process.env[KEY];
 		else process.env[KEY] = saved;
 		refreshDirsFromEnv();
+	};
+}
+
+describe("an absolute VEYYON_CONFIG_DIR outside the home", () => {
+	afterEach(restoring());
+
+	/**
+	 * THE regression, inverted. This used to throw; before that it was joined under the
+	 * home and produced `~/srv/veyyon`, so the user got a brand new tree inside their home,
+	 * the old one stayed where it was, and nothing said so. The value must now come back
+	 * exactly as written.
+	 */
+	it("is taken as written, not joined under the home directory", () => {
+		expect(rootWith("/srv/veyyon")).toBe("/srv/veyyon");
 	});
 
-	/** THE regression: this used to return the path unchanged, and the caller then
-	 * joined it under the home directory. */
-	it("is refused instead of being joined under the home directory", () => {
-		expect(() => nameWith("/srv/veyyon")).toThrow(/absolute path "\/srv\/veyyon"/);
-	});
-
-	/** The message has to show the path that WOULD have been used, because that is
-	 * the surprising part and the only way the user recognizes the mistake. */
-	it("names the directory it would have created", () => {
-		expect(() => nameWith("/srv/veyyon")).toThrow(path.join(os.homedir(), "srv", "veyyon"));
-	});
-
-	/** And it has to point at the mechanism that does accept an absolute path,
-	 * otherwise the user's actual goal is still unmet after the error. */
-	it("points at the XDG variables that do take absolute paths", () => {
-		expect(() => nameWith("/srv/veyyon")).toThrow(/XDG_DATA_HOME/);
-		expect(() => nameWith("/srv/veyyon")).toThrow(/XDG_STATE_HOME/);
-		expect(() => nameWith("/srv/veyyon")).toThrow(/XDG_CACHE_HOME/);
+	/** The observed form of the original defect: `/tmp/...` landing at `~/tmp/...`. */
+	it("does not reappear inside the home for a /tmp value", () => {
+		const probe = path.join(os.tmpdir(), "veyyon-abs-probe");
+		expect(rootWith(probe)).toBe(probe);
+		expect(rootWith(probe)).not.toContain(path.join(os.homedir(), "tmp"));
 	});
 
 	/**
-	 * THE HONESTY REGRESSION. The message used to open that list with `XDG_CONFIG_HOME` and say the
-	 * XDG variables "move the config root onto another volume". Nothing reads `XDG_CONFIG_HOME` for a
-	 * veyyon directory: `DirResolver` builds its per-category roots from `XDG_DATA_HOME`,
-	 * `XDG_STATE_HOME` and `XDG_CACHE_HOME` only, and `dirs-config-root-ignores-xdg-config-home.test.ts`
-	 * pins that on purpose. So a user who did exactly what the error said exported the variable, saw
-	 * the config root stay where it was, and was left with no next move. The message now names only
-	 * routes that work, and says plainly that the config root is not one of the things that moves.
+	 * The home-relative NAME has to reconstruct the root when a caller joins it onto the
+	 * home, which is what `USER_CONFIG_BASES` in `packages/coding-agent/src/config.ts` does.
+	 * A basename would answer `veyyon` here and rebuild `~/veyyon`, which is the doubled
+	 * path all over again one layer up.
 	 */
-	it("does not offer XDG_CONFIG_HOME as a way to move the config root", () => {
-		let message = "";
-		try {
-			nameWith("/srv/veyyon");
-		} catch (error) {
-			message = error instanceof Error ? error.message : String(error);
-		}
-
-		expect(message).toContain('VEYYON_CONFIG_DIR is set to the absolute path "/srv/veyyon"');
-		expect(message).not.toContain("XDG_CONFIG_HOME");
-		expect(message).toContain("The config root always lives under your home directory");
-		expect(message).toContain(
-			"XDG_DATA_HOME, XDG_STATE_HOME and XDG_CACHE_HOME do take absolute paths and move the data, state and cache directories.",
-		);
+	it("yields a name that rebuilds the same root when joined onto the home", () => {
+		const name = nameWith("/srv/veyyon");
+		expect(path.join(os.homedir(), name)).toBe("/srv/veyyon");
 	});
 
-	/** A Windows-style value on a POSIX host is not absolute to `path`, so it would
-	 * have created a directory whose NAME contains a backslash. Same mistake, and it
-	 * gets the same message wherever the value was authored. */
+	/**
+	 * A Windows-style value on a POSIX host is the one absolute-looking form still refused.
+	 * `path` does not read it as absolute, so it would be resolved as a RELATIVE name and
+	 * create a directory whose name contains a backslash: invisible in a listing, and
+	 * nothing the author could have meant.
+	 */
 	it("is refused when written for the other platform", () => {
-		expect(() => nameWith("C:\\veyyon")).toThrow(/absolute path "C:\\veyyon"/);
-		expect(() => nameWith("D:/veyyon")).toThrow(/absolute path/);
-		expect(() => nameWith("\\\\server\\share\\veyyon")).toThrow(/absolute path/);
+		expect(() => nameWith("C:\\veyyon")).toThrow(/absolute path for another platform/);
+		expect(() => nameWith("D:/veyyon")).toThrow(/absolute path for another platform/);
+		expect(() => nameWith("\\\\server\\share\\veyyon")).toThrow(/absolute path for another platform/);
+	});
+
+	/** And the message has to name a form that works, or the user's goal is still unmet. */
+	it("names a usable spelling in the refusal", () => {
+		expect(() => nameWith("C:\\veyyon")).toThrow(/"\/srv\/veyyon"/);
 	});
 });
 
 describe("a VEYYON_CONFIG_DIR that walks out of the home directory", () => {
-	const saved = process.env[KEY];
-
-	afterEach(() => {
-		if (saved === undefined) delete process.env[KEY];
-		else process.env[KEY] = saved;
-		refreshDirsFromEnv();
-	});
+	afterEach(restoring());
 
 	/**
-	 * This one is ALLOWED, and that is a decision rather than an oversight, so it is
-	 * pinned: `os.homedir()` is fixed for the life of a process under Bun, so a suite
-	 * that needs the config root inside a temp directory cannot move the home and has
-	 * to reach out of it. `path.relative(os.homedir(), tempRoot)` is the documented
-	 * lever (`docs/internal/testing.md`), it produces exactly this shape, and the
-	 * whole utils suite isolates through it. Refusing it once broke 83 tests.
-	 *
-	 * It is also not the mistake the absolute case is: `path.join` does precisely what
-	 * the value says, so the user gets the directory they wrote.
+	 * Still accepted, and still the shape the whole suite isolates through:
+	 * `path.relative(os.homedir(), tempRoot)`. Refusing it once broke 83 tests. It is not
+	 * the mistake the in-home case is -- it leaves the home, which is the whole point --
+	 * and an absolute path is now simply the clearer way to write the same thing.
 	 */
-	it("is accepted, because it is how a test moves the config root into a temp dir", () => {
+	it("is accepted and resolves out of the home", () => {
+		const root = rootWith("../shared");
+		expect(root).toBe(path.resolve(os.homedir(), "../shared"));
 		expect(nameWith("../shared")).toBe("../shared");
-		expect(nameWith(path.relative(os.homedir(), path.join(os.tmpdir(), "veyyon-root")))).toContain("..");
 	});
 
 	it("is accepted with the .. buried in the middle", () => {
-		expect(nameWith("state/../../shared")).toBe("state/../../shared");
+		expect(rootWith("state/../../shared")).toBe(path.resolve(os.homedir(), "../shared"));
 	});
 
-	/** A name that merely CONTAINS dots is an ordinary directory name and must not be
-	 * confused with a traversal. */
-	it("accepts a name with dots that is not a .. segment", () => {
+	/** A name that merely CONTAINS dots is an ordinary directory name, not a traversal. */
+	it("treats a name with dots that is not a .. segment as an ordinary name", () => {
 		expect(nameWith("..veyyon")).toBe("..veyyon");
 		expect(nameWith(".veyyon.test")).toBe(".veyyon.test");
 	});
 });
 
 describe("a blank VEYYON_CONFIG_DIR", () => {
-	const saved = process.env[KEY];
+	afterEach(restoring());
 
-	afterEach(() => {
-		if (saved === undefined) delete process.env[KEY];
-		else process.env[KEY] = saved;
-		refreshDirsFromEnv();
-	});
-
-	/** Unset and empty both mean "I did not choose", and the default is the right
-	 * answer for both. Empty is how a shell passes an unset-but-exported variable. */
+	/** Unset and empty both mean "I did not choose", and the default answers both. Empty is
+	 * how a shell passes an unset-but-exported variable. */
 	it("falls back to the default when unset or empty", () => {
 		// Literal ".veyyon", not CONFIG_DIR_NAME: this is where every user's config,
-		// credentials and sessions live. Against the constant, a rename would move
-		// the whole config root and this test would call it correct.
+		// credentials and sessions live. Against the constant, a rename would move the whole
+		// config root and this test would call it correct.
 		expect(nameWith(undefined)).toBe(".veyyon");
 		expect(nameWith("")).toBe(".veyyon");
+		process.env[KEY] = "";
+		expect(getConfigRootOverride()).toBeUndefined();
 	});
 
-	/** Whitespace is different: it is a value, and it would create a directory whose
-	 * name is invisible in every listing. */
+	/** Whitespace is different: it is a value, and it would create a directory whose name is
+	 * invisible in every listing. */
 	it("refuses whitespace rather than creating an unnameable directory", () => {
 		expect(() => nameWith(" ")).toThrow(/whitespace \(" "\)/);
 		expect(() => nameWith("\t")).toThrow(/whitespace/);
@@ -168,49 +157,56 @@ describe("a blank VEYYON_CONFIG_DIR", () => {
 });
 
 describe("the values that must keep working", () => {
-	const saved = process.env[KEY];
+	afterEach(restoring());
 
-	afterEach(() => {
-		if (saved === undefined) delete process.env[KEY];
-		else process.env[KEY] = saved;
-		refreshDirsFromEnv();
-	});
-
-	it("accepts a plain directory name", () => {
-		expect(nameWith(".veyyon")).toBe(".veyyon");
+	/**
+	 * In-home values are the sandbox's own case, and this suite runs in the sandbox, so they
+	 * resolve rather than throw. Outside the sandbox they are refused, which is the contract
+	 * `sandbox-gate-contracts.test.ts` owns: it is the only place that can clear the marker,
+	 * because the marker is what let this process start.
+	 */
+	it("accepts a plain directory name under the sandbox home", () => {
+		expect(rootWith(".veyyon")).toBe(path.join(os.homedir(), ".veyyon"));
 		expect(nameWith(".veyyon-work")).toBe(".veyyon-work");
 	});
 
-	/** Tests isolate through this variable with a generated name, and a nested
-	 * relative name stays inside the home directory, so both are allowed. */
 	it("accepts a nested relative name", () => {
-		expect(nameWith(".veyyon-test-1234/inner")).toBe(".veyyon-test-1234/inner");
+		expect(nameWith(".veyyon-test-1234/inner")).toBe(path.join(".veyyon-test-1234", "inner"));
 	});
 });
 
 describe("the refusal on the module-load path", () => {
-	/** `getConfigDirName` runs while `dirs.ts` is being imported, so a bad value must
-	 * fail at startup with the explanation rather than reaching the first write. This
-	 * spawns a real process because that ordering cannot be observed in one that has
-	 * already imported the module successfully. */
+	const repoRoot = path.resolve(import.meta.dir, "../../..");
+
+	/**
+	 * `getBaseConfigRoot` runs while `dirs.ts` is being imported, so a bad value must fail at
+	 * STARTUP with the explanation rather than reaching the first write. That ordering cannot
+	 * be observed from a process that has already imported the module successfully, so this
+	 * spawns a real one.
+	 *
+	 * The bad value here is the foreign-platform form rather than an in-home path, because
+	 * the child inherits this process's sandbox marker and an in-home path is legitimate
+	 * under it. The in-home refusal is spawned with the marker cleared in
+	 * `sandbox-gate-contracts.test.ts`.
+	 */
 	it("fails the import and prints the explanation", () => {
 		const result = spawnSync(process.execPath, ["-e", 'await import("@veyyon/utils/dirs")'], {
-			cwd: path.resolve(import.meta.dir, "../../.."),
-			env: { ...process.env, [KEY]: "/srv/veyyon" },
+			cwd: repoRoot,
+			env: { ...process.env, [KEY]: "C:\\veyyon" },
 			encoding: "utf8",
 		});
 
 		expect(result.status).not.toBe(0);
 		expect(result.stderr).toContain(KEY);
-		expect(result.stderr).toContain("/srv/veyyon");
+		expect(result.stderr).toContain("C:\\veyyon");
 	});
 
-	/** The control: the same import with a usable value must succeed, so the test
-	 * above is proving the refusal and not a broken spawn. */
+	/** The control: the same import with a usable value must succeed, so the test above is
+	 * proving the refusal and not a broken spawn. */
 	it("imports cleanly with a usable value", () => {
 		const result = spawnSync(process.execPath, ["-e", 'await import("@veyyon/utils/dirs")'], {
-			cwd: path.resolve(import.meta.dir, "../../.."),
-			env: { ...process.env, [KEY]: ".veyyon-load-control" },
+			cwd: repoRoot,
+			env: { ...process.env, [KEY]: path.join(os.tmpdir(), "veyyon-load-control") },
 			encoding: "utf8",
 		});
 

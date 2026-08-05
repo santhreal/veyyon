@@ -448,6 +448,153 @@ function installSqliteTripwire(): void {
 	sqlite.Database = GuardedDatabase as unknown as new (...args: never[]) => unknown;
 }
 
+/**
+ * Guard Bun's OWN write surface, which does not go through `node:fs` at all.
+ *
+ * Measured against the version of this file that hooked only `node:fs` and `bun:sqlite`:
+ * `Bun.write`, `Bun.file(p).write()` and `Bun.file(p).writer()` each created a file
+ * inside the forbidden root with no error raised. A tripwire that watches one door is
+ * theatre, and these three are the doors this repository's own code reaches for most --
+ * `Bun.write` is the idiomatic spelling here, so the guard was blind to the writes most
+ * likely to be written.
+ *
+ * `BunFile.write`/`writer` are patched on the PROTOTYPE, which is where they live: there
+ * is no constructor to subclass the way `bun:sqlite`'s `Database` allows, and `Bun.file`
+ * itself only names the file. Both properties are writable and non-configurable, so
+ * assignment is the only available move; `Object.defineProperty` on them throws.
+ */
+function installBunWriteTripwire(): void {
+	// Named consts, not inline assertions: both are the "compiler lost track of a
+	// well-known in-process value" case. `Bun` is typed as a namespace with no index
+	// signature, and `BunFile`'s prototype is not a declared type at all.
+	const bun: Record<string, unknown> = Bun as unknown as Record<string, unknown>;
+	const originalWrite = bun.write;
+	if (typeof originalWrite === "function") {
+		const fn = originalWrite as (...args: unknown[]) => unknown;
+		const guarded = function guardedBunWrite(this: unknown, ...args: unknown[]) {
+			assertNotRealData("Bun.write", args[0]);
+			return fn.apply(this, args);
+		};
+		(guarded as unknown as Record<string, unknown>)[GUARDED_MARKER] = true;
+		bun.write = guarded;
+	}
+
+	// `Bun.file` only NAMES a path; it neither opens nor creates, so this probe touches
+	// nothing on disk and exists solely to reach the prototype the write methods live on.
+	const proto: Record<string, unknown> = Object.getPrototypeOf(Bun.file("/veyyon-tripwire-probe"));
+	for (const name of ["write", "writer", "unlink", "delete"] as const) {
+		const original = proto[name];
+		if (typeof original !== "function") continue;
+		const fn = original as (...args: unknown[]) => unknown;
+		const guarded = function guardedBunFile(this: { name?: string }, ...args: unknown[]) {
+			// The path is on the RECEIVER, not in the arguments: `Bun.file(p).write(data)`
+			// puts `p` in `this.name`. Reading it off the argument list, as every other
+			// wrapper here does, would guard nothing at all.
+			assertNotRealData(`Bun.file().${name}`, this?.name);
+			return fn.apply(this, args);
+		};
+		(guarded as unknown as Record<string, unknown>)[GUARDED_MARKER] = true;
+		proto[name] = guarded;
+	}
+}
+
+/**
+ * Guard child processes, which reach the filesystem with none of this process's patches.
+ *
+ * `sh -c 'printf x > ~/.veyyon/leaked'` was measured writing straight through every
+ * guard above, and so were `Bun.spawn`, `Bun.spawnSync`, `Bun.$` and all six
+ * `node:child_process` entry points. A child gets a fresh address space; nothing patched
+ * here travels into it.
+ *
+ * BE CLEAR ABOUT WHAT THIS IS. It inspects the argv, the shell string and the `cwd` for a
+ * forbidden path and refuses the spawn before it happens. That catches the realistic
+ * shape -- a test that names the path it means to write -- and it CANNOT catch a child
+ * that computes the path itself, reads it from a file, or expands `$HOME` in its own
+ * shell. Containment of a child process is not something a JS wrapper can promise; that
+ * is the kernel boundary's job, and `packages/utils/test/helpers/sandbox-gate.ts` refuses
+ * to start without one. This layer exists so the common case fails at the call site with
+ * a message naming the test, rather than silently succeeding on a machine whose sandbox
+ * turned out to be weaker than believed.
+ */
+function installSpawnTripwire(): void {
+	// The needles, precomputed once. NOT the real home itself: this repository's own test
+	// children are spawned as `<realHome>/.bun/bin/bun`, so refusing every argument that
+	// merely mentions the home would refuse every spawn in the suite. What is forbidden is
+	// a path into veyyon DATA, which is the config roots and their siblings, plus the
+	// unexpanded `~/.veyyon` a shell string would carry.
+	const needles = [...FORBIDDEN];
+	if (REAL_HOME) needles.push(path.join(REAL_HOME, ".veyyon"));
+	needles.push("~/.veyyon");
+
+	const inspect = (operation: string, args: readonly unknown[]): void => {
+		for (const arg of args) {
+			if (typeof arg === "string") {
+				for (const needle of needles) if (arg.includes(needle)) assertNotRealData(operation, needle);
+				continue;
+			}
+			if (Array.isArray(arg)) {
+				inspect(operation, arg);
+				continue;
+			}
+			if (typeof arg !== "object" || arg === null) continue;
+			// Narrowed with `in` rather than asserted: these are ordinary spawn options
+			// objects whose shape differs between Bun and node:child_process, and the two
+			// fields read here are the only ones that can name a path.
+			if ("cwd" in arg && typeof arg.cwd === "string") assertNotRealData(`${operation} cwd`, arg.cwd);
+			if ("cmd" in arg && Array.isArray(arg.cmd)) inspect(operation, arg.cmd);
+		}
+	};
+
+	const guardSpawns = (target: Record<string, unknown>, label: string, names: readonly string[]): void => {
+		for (const name of names) {
+			const original = target[name];
+			if (typeof original !== "function") continue;
+			const fn = original as (...args: unknown[]) => unknown;
+			const guarded = function guardedSpawn(this: unknown, ...args: unknown[]) {
+				inspect(`${label}.${name}`, args);
+				return fn.apply(this, args);
+			};
+			(guarded as unknown as Record<string, unknown>)[GUARDED_MARKER] = true;
+			target[name] = guarded;
+		}
+	};
+
+	guardSpawns(Bun as unknown as Record<string, unknown>, "Bun", ["spawn", "spawnSync"]);
+	guardSpawns(require("node:child_process") as Record<string, unknown>, "child_process", [
+		"spawn",
+		"spawnSync",
+		"exec",
+		"execSync",
+		"execFile",
+		"execFileSync",
+		"fork",
+	]);
+
+	// `Bun.$` is a tagged template, so its argument is the template's string parts plus the
+	// interpolated values. Both halves can carry the path, and both are inspected.
+	//
+	// Called through `Reflect.apply` rather than `fn.apply(...)`, because `Bun.$` carries an
+	// own `apply` property that is not `Function.prototype.apply`, so the ordinary spelling
+	// throws "fn.apply is not a function" on every command the guard ALLOWS. That broke every
+	// `Bun.$` call in the repository and the door test did not catch it: the test only ever
+	// drove a FORBIDDEN path, so `inspect` threw first and the call was never reached.
+	// `Reflect.apply` goes through the internal call slot and ignores the property entirely.
+	// The properties are copied onto the wrapper so `$.braces`, `$.escape`, `$.env` and
+	// `$.cwd` keep working, which is also how that stray `apply` gets there.
+	const bun = Bun as unknown as Record<string, unknown>;
+	const shell = bun.$;
+	if (typeof shell === "function") {
+		const fn = shell as (...args: unknown[]) => unknown;
+		const guarded = function guardedShell(this: unknown, strings: unknown, ...values: unknown[]) {
+			inspect("Bun.$", [strings, ...values]);
+			return Reflect.apply(fn, this, [strings, ...values]);
+		};
+		Object.assign(guarded, shell);
+		(guarded as unknown as Record<string, unknown>)[GUARDED_MARKER] = true;
+		bun.$ = guarded;
+	}
+}
+
 // Before the wrapping below, so the janitor captures the real `fs.rmSync`, and OUTSIDE the
 // `ENABLED` gate: a run with the tripwire disabled still has to clean up after itself.
 installTempDirJanitor();
@@ -455,6 +602,8 @@ installTempDirJanitor();
 if (ENABLED) {
 	installFsTripwire();
 	installSqliteTripwire();
+	installBunWriteTripwire();
+	installSpawnTripwire();
 }
 
 /** Exported for the tripwire's own tests; the preload path calls it via module load. */
