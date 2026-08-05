@@ -493,6 +493,17 @@ export const MODEL_SETTINGS = {
 				'JSON object mapping model roles, model selectors ("provider/model-id"), or provider wildcards ("provider/*") to ordered fallback selectors, e.g. {"default":["openai/gpt-4o-mini"],"google-antigravity/*":["google/*","google-vertex/*"]}. Model-oriented keys apply whenever that model/provider is active, regardless of role; a "provider/*" entry keeps the failing model\'s id and swaps the provider.',
 		},
 	},
+	"retry.perProvider": {
+		type: "record",
+		default: {} as Record<string, { maxRetries?: number; baseDelayMs?: number; maxDelayMs?: number }>,
+		ui: {
+			tab: "model",
+			group: "Retry & Fallback",
+			label: "Per-Provider Retry",
+			description:
+				'JSON object overriding retry limits for specific backends, keyed like Retry Fallback Chains: a model selector ("provider/model-id"), a provider wildcard ("provider/*"), or a bare provider name. Each value may set maxRetries, baseDelayMs, and maxDelayMs; anything omitted falls back to the global retry settings. Example: {"cursor":{"maxRetries":3,"baseDelayMs":2000}}. Backends whose retries are intrinsically expensive (cursor, devin) already ship with sensible limits; an entry here overrides those.',
+		},
+	},
 	"retry.fallbackRevertPolicy": {
 		type: "enum",
 		values: ["cooldown-expiry", "never"] as const,
