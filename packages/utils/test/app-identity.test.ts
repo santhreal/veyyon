@@ -45,6 +45,9 @@ describe("the product's two names", () => {
 
 	/** `dirs.ts` keeps its published name and reads the slug, so the path form has one statement. */
 	it("keeps the published dirs name pointing at the slug", () => {
+		// Literal, not the slug constant: APP_NAME is the on-disk directory name, so
+		// the assertion has to name the bytes rather than restate the identity.
+		expect(APP_NAME).toBe("veyyon");
 		expect(APP_NAME).toBe(APP_DIRECTORY_SLUG);
 	});
 });

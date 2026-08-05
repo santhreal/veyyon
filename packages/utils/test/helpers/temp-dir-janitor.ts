@@ -39,8 +39,22 @@
  * recovers from the unhealthy ones.
  */
 
-import * as os from "node:os";
 import * as path from "node:path";
+import { REAL_HOME, TEMP_HOME } from "./sandbox-home";
+
+/**
+ * `node:os` through `require`, NEVER through `import * as os from "node:os"`.
+ *
+ * Not for this module's sake but for `./sandbox-home`, which redirects `os.homedir()` by
+ * patching the object `require("node:os")` returns. Under Bun a builtin's ESM namespace is
+ * materialized for the WHOLE preload module graph before any of it is evaluated, so one
+ * `import * as os from "node:os"` anywhere in that graph freezes the namespace with the
+ * unpatched functions and every later `import * as os` sees the operator's real home.
+ * This module is in that graph -- `real-data-tripwire.ts` imports it -- and this exact
+ * import is what silently defeated the redirect the first time it was written. The `import`
+ * inside `typeof` is a type-only reference and produces no runtime import.
+ */
+const os = require("node:os") as typeof import("node:os");
 
 /**
  * `node:fs` through `require`, NEVER through `import * as fs from "node:fs"`.
@@ -89,9 +103,17 @@ const TMP_ROOTS = ((): string[] => {
  *
  * A directory belongs to a test file when that file created it for itself. Everything under
  * the home directory belongs to the RUN, and the run removes its own sandbox on exit.
+ *
+ * TAKEN FROM `./sandbox-home` RATHER THAN FROM `os.homedir()`, because the two disagree for as
+ * long as it takes that module to be evaluated and this one is in the same preload graph.
+ * Reading `os.homedir()` here made the answer depend on which of the two the formatter had
+ * sorted first: sorted the wrong way this const held the operator's real home, the sandbox
+ * home was no longer carved out, and the janitor was free to delete the directory every
+ * chunk of the run shares. Naming the owner removes the ordering question, since an
+ * imported binding is resolved after that module has run whatever the order.
  */
 const HOME = ((): string => {
-	const home = path.resolve(os.homedir());
+	const home = path.resolve(TEMP_HOME ?? REAL_HOME);
 	try {
 		return (fsModule().realpathSync as (target: string) => string)(home);
 	} catch {

@@ -2,13 +2,16 @@
  * Centralized path helpers for veyyon config directories.
  *
  * Uses VEYYON_CONFIG_DIR (default ".veyyon") for the config root and
- * VEYYON_CODING_AGENT_DIR to override the agent directory.
+ * VEYYON_CODING_AGENT_DIR to override the agent directory. That override applies
+ * in default-profile mode only: a named profile derives its own
+ * `~/.veyyon/profiles/<name>/agent` and ignores the variable.
  *
- * On Linux, if XDG_DATA_HOME / XDG_STATE_HOME / XDG_CACHE_HOME environment
- * variables are set, paths are redirected to XDG-compliant locations under
- * $XDG_*_HOME/veyyon/. This requires running `veyyon config migrate` first to
- * move data to the new locations. No filesystem existence checks are performed
- * — if the env var is set, veyyon trusts that the migration has been done.
+ * On Linux and macOS, when XDG_DATA_HOME / XDG_STATE_HOME / XDG_CACHE_HOME are
+ * set AND the corresponding `$XDG_*_HOME/veyyon` directory already exists, paths
+ * are redirected there. The existence check is the migration signal: setting the
+ * variable alone changes nothing until `veyyon config init-xdg` has created and
+ * populated that directory. Named profiles key the same check on the
+ * profile-specific path, so a profile's location is fixed at first activation.
  */
 
 import * as fs from "node:fs";
@@ -1257,7 +1260,7 @@ class DirResolver {
 			state: xdgState ?? this.configRoot,
 			cache: xdgCache ?? this.configRoot,
 		};
-		// XDG flattens the agent/ prefix: ~/.veyyon/agent/sessions → $XDG_DATA_HOME/veyyon/sessions
+		// XDG flattens the profile+agent prefix: ~/.veyyon/profiles/default/agent/sessions → $XDG_DATA_HOME/veyyon/sessions
 		this.#agentDirs = {
 			data: xdgData ?? this.agentDir,
 			state: xdgState ?? this.agentDir,
@@ -1795,7 +1798,7 @@ export function migrateLegacyDefaultProfileLayout(): LegacyLayoutMigrationResult
 	movedEntries.sort((a, b) => a.localeCompare(b));
 	return { migrated: true, movedEntries, targetDir };
 }
-/** Get the agent config directory (~/.veyyon/agent). */
+/** Get the active profile's agent config directory (~/.veyyon/profiles/<name>/agent). */
 export function getAgentDir(): string {
 	return dirs.agentDir;
 }
@@ -1806,10 +1809,10 @@ export function getProjectAgentDir(cwd: string = getProjectDir()): string {
 }
 
 // =============================================================================
-// Config-root subdirectories (~/.veyyon/*)
+// Profile-root subdirectories (~/.veyyon/profiles/<name>/*)
 // =============================================================================
 
-/** Get the reports directory (~/.veyyon/reports). */
+/** Get the reports directory (~/.veyyon/profiles/<name>/reports). */
 export function getReportsDir(): string {
 	return dirs.rootSubdir("reports", "state");
 }
@@ -1913,7 +1916,7 @@ export function getWorktreesDir(): string {
 	);
 }
 
-/** Get the SSH control socket directory (~/.veyyon/ssh-control). */
+/** Get the SSH control socket directory (~/.veyyon/profiles/<name>/ssh-control). */
 export function getSshControlDir(): string {
 	return dirs.rootSubdir("ssh-control", "state");
 }
@@ -1923,27 +1926,27 @@ export function getRemoteHostDir(): string {
 	return dirs.rootSubdir("remote-host", "data");
 }
 
-/** Get the managed Python venv directory (~/.veyyon/python-env). */
+/** Get the managed Python venv directory (~/.veyyon/profiles/<name>/python-env). */
 export function getPythonEnvDir(): string {
 	return dirs.rootSubdir("python-env", "data");
 }
 
-/** Get the shared Python gateway state directory (~/.veyyon/agent/python-gateway; XDG default: $XDG_STATE_HOME/veyyon/python-gateway). */
+/** Get the shared Python gateway state directory (profile `agent/python-gateway`; XDG default: $XDG_STATE_HOME/veyyon/python-gateway). */
 export function getPythonGatewayDir(): string {
 	return dirs.agentSubdir(undefined, "python-gateway", "state");
 }
 
-/** Get the puppeteer sandbox directory (~/.veyyon/puppeteer). */
+/** Get the puppeteer sandbox directory (profile `puppeteer/`). */
 export function getPuppeteerDir(): string {
 	return dirs.rootSubdir("puppeteer", "cache");
 }
 
-/** Get DOCS_RS cache directory () */
+/** Get the docs.rs web cache directory (profile `webcache/`). */
 export function getDocsRsCacheDir(): string {
 	return dirs.rootSubdir("webcache", "cache");
 }
 
-/**Get AutoQa db directory */
+/** Get the AutoQA database directory (profile `autoqa.db`). */
 export function getAutoQaDbDir(): string {
 	return dirs.rootSubdir("autoqa.db", "data");
 }
@@ -1965,7 +1968,7 @@ export function getWorktreeDir(segment: string): string {
 	return path.join(getWorktreesDir(), segment);
 }
 
-/** Get the GPU cache path (~/.veyyon/gpu_cache.json). */
+/** Get the GPU cache path (profile `gpu_cache.json`). */
 export function getGpuCachePath(): string {
 	return dirs.rootSubdir("gpu_cache.json", "cache");
 }
@@ -2002,7 +2005,7 @@ export function getFastembedRuntimeDir(): string {
 	return dirs.rootSubdir(path.join("cache", "fastembed-runtime"), "cache");
 }
 
-/** Get the natives directory (~/.veyyon/natives). */
+/** Get the natives directory (profile `natives/`). */
 export function getNativesDir(): string {
 	return dirs.rootSubdir("natives", "cache");
 }
@@ -2017,33 +2020,33 @@ export function getArgotCacheDir(): string {
 	return dirs.rootSubdir(path.join("cache", "argot"), "cache");
 }
 
-/** Get the stats database path (~/.veyyon/stats.db). */
+/** Get the stats database path (profile `stats.db`). */
 export function getStatsDbPath(): string {
 	return dirs.rootSubdir("stats.db", "data");
 }
 
-/** Get the autoresearch state directory (~/.veyyon/autoresearch). */
+/** Get the autoresearch state directory (profile `autoresearch/`). */
 export function getAutoresearchDir(): string {
 	return dirs.rootSubdir("autoresearch", "state");
 }
 
-/** Get the per-project autoresearch state directory (~/.veyyon/autoresearch/<encoded-project>). */
+/** Get the per-project autoresearch state directory (profile `autoresearch/<encoded-project>`). */
 export function getAutoresearchProjectDir(encodedProject: string): string {
 	return path.join(getAutoresearchDir(), encodedProject);
 }
 
-/** Get the per-project autoresearch SQLite database path (~/.veyyon/autoresearch/<encoded-project>.db). */
+/** Get the per-project autoresearch SQLite database path (profile `autoresearch/<encoded-project>.db`). */
 export function getAutoresearchDbPath(encodedProject: string): string {
 	return path.join(getAutoresearchDir(), `${encodedProject}.db`);
 }
 
-/** Get the per-run artifact directory (~/.veyyon/autoresearch/<encoded-project>/runs/<runId>). */
+/** Get the per-run artifact directory (profile `autoresearch/<encoded-project>/runs/<runId>`). */
 export function getAutoresearchRunDir(encodedProject: string, runId: number): string {
 	return path.join(getAutoresearchProjectDir(encodedProject), "runs", String(runId).padStart(4, "0"));
 }
 
 // =============================================================================
-// Agent subdirectories (~/.veyyon/agent/*)
+// Agent subdirectories (~/.veyyon/profiles/<name>/agent/*)
 // =============================================================================
 
 /** Get the path to agent.db (SQLite database for settings and auth storage). */
@@ -2081,13 +2084,13 @@ export function getActiveAuthDbPath(agentDir?: string): string {
 	return getAgentDbPath(getSharedAuthStoreDirIfEnabled() ?? agentDir ?? getAgentDir());
 }
 
-/** Get the last-seen-changelog-version marker file (~/.veyyon/agent/last-changelog-version). */
+/** Get the last-seen-changelog-version marker file (agent `last-changelog-version`). */
 export function getLastChangelogVersionPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "last-changelog-version", "state");
 }
 
 /**
- * Get the automatic-update state file (~/.veyyon/agent/auto-update-state.json).
+ * Get the automatic-update state file (agent `auto-update-state.json`).
  *
  * Holds the record of the last failed background update so a launch that cannot
  * install does not retry and re-report the same failure every time you start.
@@ -2099,7 +2102,7 @@ export function getAutoUpdateStatePath(agentDir?: string): string {
 }
 
 /**
- * Get the version-move history file (~/.veyyon/agent/update-history.json).
+ * Get the version-move history file (agent `update-history.json`).
  *
  * Records each deliberate move between versions (from, to, when) so the rollback
  * picker can annotate a row with "you were here before" and so a support
@@ -2125,67 +2128,67 @@ export function getModelDbPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "models.db", "data");
 }
 
-/** Get the tiny title model cache directory (~/.veyyon/agent/cache/tiny-models). */
+/** Get the tiny title model cache directory (agent `cache/tiny-models`). */
 export function getTinyModelsCacheDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, path.join("cache", "tiny-models"), "cache");
 }
 
-/** Get the document conversion cache directory (~/.veyyon/agent/cache/document-conversions; XDG default: $XDG_CACHE_HOME/veyyon/cache/document-conversions). */
+/** Get the document conversion cache directory (agent `cache/document-conversions`; XDG default: $XDG_CACHE_HOME/veyyon/cache/document-conversions). */
 export function getDocumentConversionCacheDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, path.join("cache", "document-conversions"), "cache");
 }
 
-/** Get the sessions directory (~/.veyyon/agent/sessions). */
+/** Get the sessions directory (agent `sessions/`). */
 export function getSessionsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "sessions", "data");
 }
 
-/** Get the content-addressed blob store directory (~/.veyyon/agent/blobs). */
+/** Get the content-addressed blob store directory (agent `blobs/`). */
 export function getBlobsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "blobs", "data");
 }
 
-/** Get the custom themes directory (~/.veyyon/agent/themes). */
+/** Get the custom themes directory (agent `themes/`). */
 export function getCustomThemesDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "themes");
 }
 
-/** Get the tools directory (~/.veyyon/agent/tools). */
+/** Get the tools directory (agent `tools/`). */
 export function getToolsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "tools");
 }
 
-/** Get the slash commands directory (~/.veyyon/agent/commands). */
+/** Get the slash commands directory (agent `commands/`). */
 export function getCommandsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "commands");
 }
 
-/** Get the prompts directory (~/.veyyon/agent/prompts). */
+/** Get the prompts directory (agent `prompts/`). */
 export function getPromptsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "prompts");
 }
 
-/** Get the user-level Python modules directory (~/.veyyon/agent/modules). */
+/** Get the user-level Python modules directory (agent `modules/`). */
 export function getAgentModulesDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "modules");
 }
 
-/** Get the memories directory (~/.veyyon/agent/memories). */
+/** Get the memories directory (agent `memories/`). */
 export function getMemoriesDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "memories", "state");
 }
 
-/** Get the terminal sessions directory (~/.veyyon/agent/terminal-sessions). */
+/** Get the terminal sessions directory (agent `terminal-sessions/`). */
 export function getTerminalSessionsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "terminal-sessions", "state");
 }
 
-/** Get the crash log path (~/.veyyon/agent/veyyon-crash.log). */
+/** Get the crash log path (agent `veyyon-crash.log`). */
 export function getCrashLogPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "veyyon-crash.log", "state");
 }
 
-/** Get the debug log path (~/.veyyon/agent/veyyon-debug.log). */
+/** Get the debug log path (agent `veyyon-debug.log`). */
 export function getDebugLogPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, `${APP_NAME}-debug.log`, "state");
 }
@@ -2232,12 +2235,19 @@ export function getMCPConfigPath(
 	return path.join(getProjectAgentDir(cwd), "mcp.json");
 }
 
-/** Get the SSH config file path. */
-export function getSSHConfigPath(scope: "user" | "project", cwd: string = getProjectDir()): string {
-	if (scope === "user") {
-		return path.join(getAgentDir(), "ssh.json");
-	}
-	return path.join(getProjectAgentDir(cwd), "ssh.json");
+/**
+ * Path to the SSH host config for one profile.
+ *
+ * There is no project scope. A repository is untrusted input, so a checked-in
+ * `ssh.json` must never name a machine the ssh tool will connect to, and a
+ * writer that offered a project scope would be writing a file nothing reads.
+ *
+ * `agentDir` names WHICH profile, defaulting to the process-active one. It used
+ * to be absent, so this always resolved the booted profile and a caller loading
+ * for another profile silently got the wrong host list.
+ */
+export function getSSHConfigPath(agentDir: string = getAgentDir()): string {
+	return path.join(agentDir, "ssh.json");
 }
 
 // =============================================================================
