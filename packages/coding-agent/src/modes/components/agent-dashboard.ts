@@ -855,6 +855,8 @@ export class AgentDashboard extends Container {
 	#unsubscribers: Array<() => void> = [];
 	#ageTimer: NodeJS.Timeout | undefined;
 	#dataChangeTimer: NodeJS.Timeout | undefined;
+	/** Set by {@link dispose}, so async work started at open cannot land after close. */
+	#disposed = false;
 
 	#builtRows = -1;
 	#builtCols = -1;
@@ -961,6 +963,11 @@ export class AgentDashboard extends Container {
 					// subagents on disk would otherwise rebuild the roster and repaint the
 					// card one microtask after opening it, to draw the same rows again.
 					if (registered === 0) return;
+					// And only while the card is still open. The scan walks a session
+					// tree, so a card closed before it lands used to rebuild a layout
+					// nobody was looking at and ask the host to repaint it, which is the
+					// exact work `dispose` exists to stop.
+					if (this.#disposed) return;
 					this.#refreshLiveAgents();
 					this.#buildLayout();
 					this.onRequestRender?.();
@@ -990,6 +997,7 @@ export class AgentDashboard extends Container {
 	 * per agent event and once per message.
 	 */
 	dispose(): void {
+		this.#disposed = true;
 		for (const unsubscribe of this.#unsubscribers.splice(0)) unsubscribe();
 		if (this.#ageTimer) {
 			clearInterval(this.#ageTimer);
