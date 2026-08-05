@@ -1622,10 +1622,20 @@ export class StatusLineComponent implements Component {
 	}
 
 	renderQuietLine(width: number, extras?: { locationRight?: string | null }): string | null {
-		const { location, capLeft, capRight } = this.#gatherQuietSegments(width);
+		// The focus badge rides the footline while the view is proxied onto an
+		// agent. It was built for `getTopBorder`, but the borderless composer
+		// never asks for a top border: the editor's border is hidden and this
+		// quiet footline is the one persistent status surface, so an agent view
+		// announced itself nowhere. Prefixed the same way `getTopBorder` does it:
+		// the line is built into what the badge leaves, so no width pressure can
+		// shed the one line of text that says whose session this is and that Esc
+		// leaves it.
+		const badge = this.#focusedAgentId ? focusExitBadge(this.#focusedAgentId) : "";
+		const badgeWidth = visibleWidth(badge);
+		const { location, capLeft, capRight } = this.#gatherQuietSegments(width - badgeWidth);
 		const sep = theme.fg("dim", "  ·  ");
 		// One cell of right margin, always — nothing kisses the terminal edge.
-		const budget = Math.max(1, width - 1);
+		const budget = Math.max(1, width - 1 - badgeWidth);
 		const locationContents = location.map(part => part.content);
 		let left = this.#locationWithRunClock(locationContents, sep);
 		const rightParts = [...capLeft, ...capRight];
@@ -1671,7 +1681,7 @@ export class StatusLineComponent implements Component {
 		}
 		if (!left && !right) {
 			this.#quietLineBounds = [];
-			return null;
+			return badge === "" ? null : badge;
 		}
 		// Record where each surviving segment landed, in 0-based columns of the
 		// returned line, so a footer click can be resolved back to a segment id
@@ -1699,13 +1709,20 @@ export class StatusLineComponent implements Component {
 			}
 		}
 		// Single-group lines truncate to the budget: clamp bounds the same way.
+		// The badge shifts every segment right by its width; the recorded bounds
+		// answer in columns of the RETURNED line (quietSegmentAt hit-testing), so
+		// they shift with it.
 		this.#quietLineBounds = bounds
 			.filter(entry => entry.start < budget)
-			.map(entry => ({ ...entry, end: Math.min(entry.end, budget) }));
+			.map(entry => ({
+				...entry,
+				start: entry.start + badgeWidth,
+				end: Math.min(entry.end, budget) + badgeWidth,
+			}));
 		if (left && right) {
-			return left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
+			return badge + left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
 		}
-		return truncateToWidth(left || right, budget);
+		return badge + truncateToWidth(left || right, budget);
 	}
 
 	/**

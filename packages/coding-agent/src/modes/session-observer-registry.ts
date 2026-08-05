@@ -112,6 +112,29 @@ export class SessionObserverRegistry {
 		return sessions;
 	}
 
+	/**
+	 * The subagents one session directly spawned, by the dotted-id spawn-tree
+	 * convention: a requested id never contains ".", so a dot marks a nested
+	 * child ("Anna.Bob" is Anna's child Bob; see AgentOutputManager). An
+	 * undefined `parentId` names the driving session's scope, the top-level
+	 * spawns; `"Anna"` names Anna's direct children, not her whole subtree.
+	 *
+	 * The registry observes ONE session's event bus, so a scope below the root
+	 * is empty until that session's bus is observed; for a leaf agent the empty
+	 * answer is the truth, not a fallback. The subagent HUD scopes itself by the
+	 * viewed session through this accessor; the `/agents` roster keeps the
+	 * unscoped {@link getSessions}.
+	 */
+	getSessionsSpawnedBy(parentId: string | undefined): ObservableSession[] {
+		return this.getSessions().filter(session => {
+			if (session.kind !== "subagent") return false;
+			if (parentId === undefined) return !session.id.includes(".");
+			const prefix = `${parentId}.`;
+			if (!session.id.startsWith(prefix)) return false;
+			return !session.id.slice(prefix.length).includes(".");
+		});
+	}
+
 	getActiveSubagentCount(): number {
 		let count = 0;
 		for (const s of this.#sessions.values()) {
