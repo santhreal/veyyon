@@ -21,8 +21,11 @@
  *   2. THE NEAR-EXPIRY MARKER, and that it comes from the same threshold owner as the sentences
  *      `expiryWarnings` writes. Two owners of "nearly expired" is the exact bug that once made
  *      the halfway warning unreachable.
- *   3. THE SURFACE SPLIT. A client with no way to hide what is typed must never be told to type
- *      a credential, in the usage text or in the empty-vault help.
+ *   3. THE SURFACE SPLIT, which is now about verbs as well as entry forms. A client with no way to
+ *      hide what is typed must never be told to type a credential, in the usage text or in the
+ *      empty-vault help; and a terminal, whose whole argument line is the credential, must never
+ *      be shown a verb it would store rather than run. The TABLE itself is surface independent,
+ *      so every row that renders one names no surface at all.
  *
  * No value may appear anywhere, so every fixture carries a real-looking credential and every
  * rendering is searched for it and for a prefix of it.
@@ -358,18 +361,20 @@ describe("a cell is sanitised before it is drawn", () => {
 
 describe("the empty vault", () => {
 	/**
-	 * THE FIRST THING A NEW USER SEES. The line this replaced named `--from-env` and nothing else,
-	 * so a TUI operator was pointed at the one form that requires the credential to already be in
-	 * their environment and was never told the hidden prompt existed.
+	 * THE FIRST THING A NEW USER SEES, on the TUI surface, whose three entry forms are the verbless
+	 * grammar: the argument line is the credential, a bare `/secret` opens the hidden field, and
+	 * `--from-env` reads it out of the environment. This surface owns the copy because it is the
+	 * only one that HAS a field to offer; the one below owns the same text minus what it cannot do.
 	 */
-	it("offers both entry forms and explains what a secret is, in the TUI", () => {
+	it("offers every entry form the terminal has, and explains what a secret is", () => {
 		expect(renderSecretList([], { now: NOW })).toBe(
 			[
 				"No active secrets. Nothing is being substituted right now.",
 				"",
 				"Store one and the agent can spend it by writing #NAME#, never seeing the value itself:",
-				"  /secret add <name>                    prompt for the value, hidden as you type",
-				"  /secret add <name> --from-env <VAR>   store the value of an environment variable",
+				"  /secret <value>                       store it now, then name it (optional)",
+				"  /secret                               paste into a hidden field instead",
+				"  /secret --from-env <VAR>              store the value of an environment variable",
 			].join("\n"),
 		);
 	});
@@ -407,48 +412,66 @@ describe("the two usage variants", () => {
 	});
 
 	/**
-	 * THE SECURITY DIFFERENCE, asserted as the ONLY difference.
+	 * THE STRUCTURAL FRAME IS SHARED, AND ONLY THE SURFACE-SPECIFIC LINES DIVERGE.
 	 *
-	 * Deleting the two credential-entry lines from the TUI text must produce the noninteractive
-	 * text byte for byte. That makes every other edit — a reworded heading, a new subcommand, a
-	 * changed option list — impossible to apply to one variant and forget on the other, which is
-	 * how the two lists would otherwise drift.
+	 * The two variants no longer differ by two removable lines: a terminal has no verbs at all, so
+	 * its entry group describes the verbless grammar and its management group is the single line
+	 * that opens the manager. What must still hold, and is what stops the two lists drifting, is
+	 * that the frame around those lines is byte-identical: both headings, the blank line between
+	 * the groups, and the blank line before the footer. A reworded heading applied to one variant
+	 * and forgotten on the other fails here.
+	 *
+	 * THE FOOTER IS DELIBERATELY NOT COMPARED, and that is the one exemption. It names the verbs
+	 * that read each option, and only the noninteractive surface has verbs, so a shared footer put
+	 * "on add, rm and discard" in front of an operator who cannot type `discard`. Each footer is
+	 * pinned as an exact list by its own test below, which is a stricter check than equality with
+	 * the other surface: neither can drift silently just because this comparison stopped covering
+	 * it. The one footer line that IS a shared fact is asserted on both, so the exemption cannot
+	 * quietly widen into "the footers are unrelated".
 	 */
-	it("differ by exactly the lines that type a credential", () => {
-		const withoutTypedEntry = SECRET_COMMAND_USAGE.split("\n")
-			.filter(line => !line.includes("prompt for the value") && !line.includes("<value>"))
-			.join("\n");
+	it("agree on the structural frame around the lines that differ", () => {
+		const structure = (usage: string) => usage.split("\n").filter(line => line === "" || line.endsWith(":"));
 
-		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toBe(withoutTypedEntry);
+		expect(structure(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual(structure(SECRET_COMMAND_USAGE));
+		expect(structure(SECRET_COMMAND_USAGE)).toEqual([
+			"Store a credential the agent can use without ever seeing it:",
+			"",
+			"Manage what is already stored:",
+			"",
+		]);
+		for (const usage of [SECRET_COMMAND_USAGE, NONINTERACTIVE_SECRET_COMMAND_USAGE]) {
+			expect(usage).toContain(
+				"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
+			);
+		}
 		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toBe(SECRET_COMMAND_USAGE);
 	});
 
 	/** The TUI can hide what is typed, so it is the only variant that may advertise doing so. */
 	it("offer masked and inline entry only in the TUI", () => {
 		expect(SECRET_COMMAND_USAGE).toContain(
-			"/secret add <name>                    prompt for the value, hidden as you type",
+			"/secret <value>                       store it now, then name it (optional)",
 		);
-		expect(SECRET_COMMAND_USAGE).toContain(
-			"/secret add <name> <value>            store a value directly (visible on screen)",
-		);
+		expect(SECRET_COMMAND_USAGE).toContain("/secret                               paste into a hidden field instead");
 
-		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("prompt for the value");
-		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("hidden as you type");
 		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("<value>");
-		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("visible on screen");
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("hidden field");
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("store it now");
 	});
 
 	/**
-	 * Both surfaces can still reach every subcommand. Dropping the inline and masked lines must
-	 * remove entry FORMS, never a whole verb: an ACP client that cannot run `/secret extend` is a
-	 * client whose secrets simply expire.
+	 * THE DIVERGENCE, stated as a set. A verb only reaches an operator who has nothing better: the
+	 * noninteractive text lists all of them because that client has no field and no manager screen,
+	 * and the TUI text lists exactly one word, the one it reserves. Any verb appearing in the TUI
+	 * list is a word a terminal would now store as a credential, and any verb missing from the
+	 * noninteractive list is a client whose secrets simply expire.
 	 */
-	it("list the same set of subcommands on both surfaces", () => {
-		const subcommands = (usage: string) =>
+	it("list every verb for a client with no screen, and only the manager for a terminal", () => {
+		const commandWords = (usage: string) =>
 			[...new Set([...usage.matchAll(/^ {2}\/secret (\w+)/gmu)].map(match => match[1]))].sort();
 
-		expect(subcommands(SECRET_COMMAND_USAGE)).toEqual(["add", "discard", "extend", "list", "log", "rm"]);
-		expect(subcommands(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual([
+		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(["manager"]);
+		expect(commandWords(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual([
 			"add",
 			"discard",
 			"extend",
@@ -463,7 +486,8 @@ describe("the two usage variants", () => {
 	 * so the one line a new operator needs was the fourth of seven with nothing separating them.
 	 *
 	 * Asserted structurally: two headings, every command line indented under one of them, and a
-	 * blank line between the groups. Not by counting lines, which any reflow would break.
+	 * blank line between the groups. Not by counting lines, which any reflow would break. The
+	 * management BODY is then asserted per surface, since that is exactly where the two diverge.
 	 */
 	it("separate the everyday path from management, on both surfaces", () => {
 		for (const usage of [SECRET_COMMAND_USAGE, NONINTERACTIVE_SECRET_COMMAND_USAGE]) {
@@ -475,25 +499,62 @@ describe("the two usage variants", () => {
 			expect(manage).toBeGreaterThan(store);
 			expect(lines[manage - 1]).toBe("");
 			expect(lines.slice(store + 1, manage - 1).every(line => line.startsWith("  /secret "))).toBe(true);
-			expect(lines.slice(manage + 1, manage + 4)).toEqual([
-				"  /secret rm <name>                     remove a secret",
-				"  /secret extend <name> --ttl 7d        give a secret a fresh lifetime",
-				"  /secret log [--limit 50]              show which secrets were used, and where",
-			]);
+
+			// The management body itself, exactly, because that group is where the two texts diverge:
+			// a terminal offers the manager screen and a client with no screen gets the verbs. Bounded
+			// by the heading above and the blank line below rather than by fixed offsets, so the claim
+			// survives any reflow of the group in front of it.
+			expect(lines.slice(manage + 1, lines.indexOf("", manage + 1))).toEqual(
+				usage === SECRET_COMMAND_USAGE
+					? ["  /secret manager                       list, rename, extend, revoke, copy"]
+					: [
+							"  /secret rm <name> [--scope global]    remove a secret",
+							"  /secret extend <name> --ttl 7d        give a secret a fresh lifetime",
+							"  /secret log [--limit 50]              show which secrets were used, and where",
+							"  /secret discard --scope project       move a broken vault file aside",
+						],
+			);
 		}
 	});
 
-	/** The options footer belongs to every subcommand, so it stays out of both groups. */
-	it("keep the shared options footer below both groups", () => {
-		for (const usage of [SECRET_COMMAND_USAGE, NONINTERACTIVE_SECRET_COMMAND_USAGE]) {
-			const lines = usage.split("\n");
+	/**
+	 * The options block sits below both groups, and names which subcommands read each option.
+	 *
+	 * It used to open with a bare "Options:" heading, which read as "every subcommand takes these".
+	 * That was false: `list` takes neither, `rm` took `--scope` only after it was added, and
+	 * `extend` takes only `--ttl`. Advertising a flag the parser refuses costs more than omitting
+	 * it, because the refusal looks like the operator's mistake rather than a limit.
+	 */
+	it("keep the options below both groups, naming which subcommands read each one", () => {
+		const lines = NONINTERACTIVE_SECRET_COMMAND_USAGE.split("\n");
 
-			expect(lines.slice(-2)).toEqual([
-				"Options: --ttl 30m|12h|7d|2w|never   --scope profile|project|global",
-				"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
-			]);
-			expect(lines[lines.length - 3]).toBe("");
-		}
+		expect(lines.slice(-4)).toEqual([
+			"--ttl 30m|12h|7d|2w|never            on add and extend",
+			"--scope profile|project|global       on add, rm and discard",
+			"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
+			"Removal without --scope takes the narrowest match, which is the one currently in effect.",
+		]);
+		expect(lines[lines.length - 5]).toBe("");
+	});
+
+	/**
+	 * Terminal help states the option values without naming a verb that takes them.
+	 *
+	 * The annotation column is a fact about the VERB grammar, and the terminal has no verbs: its
+	 * whole argument line is the credential. Sharing one footer put "on add, rm and discard" on
+	 * this surface, advertising a `discard` an operator here cannot type. Pinned as an exact list
+	 * so a future footer line has to be placed on the surface it is true for.
+	 */
+	it("state the options in the terminal without naming verbs that surface does not have", () => {
+		const lines = SECRET_COMMAND_USAGE.split("\n");
+
+		expect(lines.slice(-3)).toEqual([
+			"--ttl 30m|12h|7d|2w|never",
+			"--scope profile|project|global",
+			"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
+		]);
+		expect(lines[lines.length - 4]).toBe("");
+		expect(SECRET_COMMAND_USAGE).not.toContain("discard");
 	});
 });
 
@@ -503,7 +564,11 @@ describe("/secret list end to end", () => {
 	 *
 	 * `renderSecretList` is the seam every test above uses, so this is the one that proves the
 	 * seam is actually wired: run the real command over a real vault and check the noninteractive
-	 * invocation does not come back advertising a masked prompt it cannot open.
+	 * invocation does not come back advertising an entry form it cannot offer.
+	 *
+	 * NONINTERACTIVE THROUGHOUT, because `list` and `add <name> --from-env <VAR>` are verbs and a
+	 * terminal has none: `list` typed there is a credential to store. The table itself is surface
+	 * independent, which is why every row above renders it without naming one.
 	 */
 	it("renders the table through runSecretCommand and honours the surface when empty", async () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-secret-list-"));
@@ -528,16 +593,17 @@ describe("/secret list end to end", () => {
 				...context,
 				surface: "noninteractive" as const,
 			});
-			expect(empty.message).not.toContain("hidden as you type");
+			expect(empty.message).not.toContain("hidden field");
+			expect(empty.message).not.toContain("/secret <value>");
 			expect(empty.message).toContain("  /secret add <name> --from-env <VAR>");
 
-			await runSecretCommand(parseSecretCommand("add api-key --from-env SOURCE"), context);
+			await runSecretCommand(parseSecretCommand("add api-key --from-env SOURCE", "noninteractive"), context);
 			await runSecretCommand(
-				parseSecretCommand("add deployment-service-account --from-env SOURCE --ttl never"),
+				parseSecretCommand("add deployment-service-account --from-env SOURCE --ttl never", "noninteractive"),
 				context,
 			);
 
-			const listed = await runSecretCommand(parseSecretCommand("list"), context);
+			const listed = await runSecretCommand(parseSecretCommand("list", "noninteractive"), context);
 			expect(listed.message).toBe(
 				[
 					"2 active secrets. The agent spends one by writing its placeholder; the value is never shown.",

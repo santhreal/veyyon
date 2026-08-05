@@ -1,5 +1,6 @@
 /**
- * An option given to a `/secret` subcommand that does not read it is refused.
+ * An option given to a `/secret` subcommand that does not read it is refused, on the one surface
+ * that still has subcommands.
  *
  * WHY THIS SUITE EXISTS. The parser accepted every option for every verb, and each subcommand then
  * read only the fields it cared about. Nothing failed. `/secret extend NAME --scope global`
@@ -11,6 +12,18 @@
  * where "I thought I had removed that" is the sentence you least want an operator to say. Accepting
  * an argument and ignoring it is worse than rejecting it, because rejection is information.
  *
+ * THERE ARE TWO WAYS OUT of a silent no-op, and `rm` took the other one. Refusing the option was
+ * right while nothing implemented it, but the operator still had no way to reach a shadowed copy,
+ * so `rm` now honours `--scope` and is tested in `removing-a-secret-can-name-its-scope.test.ts`.
+ * It is named below as an ACCEPTED case, not quietly dropped from the refusal list: a verb leaving
+ * this suite has to be a decision someone can see, or the guard erodes one exemption at a time.
+ *
+ * WHICH GRAMMAR THIS IS. Option ownership is a property of the VERB grammar, and the verbs now
+ * exist only on the noninteractive surface: a terminal has no `rm` to hand `--scope` to, because
+ * the whole argument line there is the credential. So every parse below is explicitly
+ * `"noninteractive"`. Nothing here is weakened by that; it is the same guard against the same
+ * silent no-op, pinned on the surface that can still commit it.
+ *
  * The other half of what these tests pin is that the refusal is USEFUL: it names the subcommand
  * that does take the option, so the operator learns the right command instead of only learning
  * that they typed the wrong one. And the options that ARE valid keep working, so the guard has not
@@ -19,10 +32,16 @@
 import { describe, expect, it } from "bun:test";
 import { parseSecretCommand } from "@veyyon/coding-agent/secrets/secret-command";
 
-/** Parse, returning the thrown message. */
+/**
+ * Parse on the verb surface, returning the thrown message.
+ *
+ * The surface is spelled out at the call rather than left to the parameter's default, because the
+ * default is the terminal grammar, where every line below would be stored as a credential instead
+ * of refused and each of these tests would fail for a reason that has nothing to do with options.
+ */
 function refusal(args: string): string {
 	try {
-		parseSecretCommand(args);
+		parseSecretCommand(args, "noninteractive");
 	} catch (error) {
 		return error instanceof Error ? error.message : String(error);
 	}
@@ -31,18 +50,19 @@ function refusal(args: string): string {
 
 describe("--scope on a subcommand that ignores it", () => {
 	/**
-	 * THE WORST CASE, and the reason this guard exists at all.
+	 * `rm` is the one verb that left this list, and it is pinned here so that leaving is deliberate.
 	 *
-	 * `rm` walks scopes narrowest-first and removes the entry in effect. An accepted-and-ignored
-	 * `--scope project` therefore prints "Removed X from the profile vault" for a command that said
-	 * `project`, and an operator scanning output sees a removal and moves on.
+	 * This case used to be the suite's headline refusal, because `rm` walked scopes narrowest-first
+	 * and an accepted-and-ignored `--scope project` printed "Removed X from the profile vault". The
+	 * fix could have stayed a refusal forever; instead the option was implemented, which is the
+	 * better answer to "the operator asked for something we do not do". If somebody restores the
+	 * refusal, this fails and points at the suite that owns the behaviour now.
 	 */
-	it("refuses --scope on rm, naming add", () => {
-		const message = refusal("rm github-token --scope project");
+	it("no longer refuses --scope on rm, because rm implements it", () => {
+		const request = parseSecretCommand("rm github-token --scope project", "noninteractive");
 
-		expect(message).toContain("/secret rm does not take --scope");
-		expect(message).toContain("would look like it had been applied");
-		expect(message).toContain("/secret add and /secret discard take it");
+		expect(request.subcommand).toBe("rm");
+		expect(request.scope).toBe("project");
 	});
 
 	/**
@@ -120,7 +140,7 @@ describe("ownership is checked before option values", () => {
 	it("refuses the option itself even when its value is malformed", () => {
 		const cases = [
 			["list --ttl not-a-lifetime", "/secret list does not take --ttl"],
-			["rm github-token --scope nowhere", "/secret rm does not take --scope"],
+			["extend github-token --scope nowhere", "/secret extend does not take --scope"],
 			["extend github-token --limit not-a-number", "/secret extend does not take --limit"],
 			["help --from-env --candidate-secret", "/secret help does not take --from-env"],
 		] as const;
@@ -139,25 +159,27 @@ describe("ownership is checked before option values", () => {
 describe("the refusal's shape", () => {
 	/** The usage text is attached, so the operator sees the whole command surface at once. */
 	it("shows the usage", () => {
-		const message = refusal("rm github-token --scope project");
+		const message = refusal("extend github-token --scope project");
 
 		expect(message).toContain("/secret list");
 		expect(message).toContain("/secret log");
 	});
 
 	/**
-	 * Singular and plural agree with how many verbs take the option.
+	 * Singular and plural agree with how many verbs take the option, and three verbs read as a list.
 	 *
 	 * "/secret add and /secret extend take it" against "/secret log takes it". A message that reads
 	 * as broken English undermines the advice it is giving.
 	 *
 	 * `--limit` is the singular case on purpose: it is owned by `log` alone, and it stays singular as
-	 * verbs are added. `--scope` used to serve here, and `/secret discard` taking a required scope
-	 * turned it plural, which is exactly how a test that pins grammar loses the case it was pinning.
+	 * verbs are added. `--scope` is the case that broke: it was joined with `" and "` between every
+	 * pair, which is invisible at two verbs and became "/secret add and /secret rm and /secret
+	 * discard take it" the moment `rm` implemented the option. Both the two-verb and three-verb
+	 * forms are pinned, because a joiner fixed for three can regress the two it already had right.
 	 */
 	it("agrees in number with the verbs it names", () => {
 		expect(refusal("list --limit 50")).toContain("/secret log takes it");
-		expect(refusal("list --scope project")).toContain("/secret add and /secret discard take it");
+		expect(refusal("list --scope project")).toContain("/secret add, /secret rm and /secret discard take it");
 		expect(refusal("list --ttl 7d")).toContain("/secret add and /secret extend take it");
 	});
 });
@@ -165,7 +187,10 @@ describe("the refusal's shape", () => {
 describe("options where they belong", () => {
 	/** `add` takes all three of its options together, and each lands on the request. */
 	it("accepts --from-env, --ttl and --scope on add", () => {
-		const request = parseSecretCommand("add github-token --from-env GH_PAT --ttl 30m --scope project");
+		const request = parseSecretCommand(
+			"add github-token --from-env GH_PAT --ttl 30m --scope project",
+			"noninteractive",
+		);
 
 		expect(request.subcommand).toBe("add");
 		expect(request.name).toBe("github-token");
@@ -176,23 +201,23 @@ describe("options where they belong", () => {
 
 	/** `extend` takes a lifetime, including `never`, which parses to null rather than to a number. */
 	it("accepts --ttl on extend", () => {
-		expect(parseSecretCommand("extend github-token --ttl 7d").ttl).toBe(7 * 24 * 60 * 60 * 1000);
-		expect(parseSecretCommand("extend github-token --ttl never").ttl).toBeNull();
+		expect(parseSecretCommand("extend github-token --ttl 7d", "noninteractive").ttl).toBe(7 * 24 * 60 * 60 * 1000);
+		expect(parseSecretCommand("extend github-token --ttl never", "noninteractive").ttl).toBeNull();
 	});
 
 	/** `log` takes a limit, under both its name and its alias. */
 	it("accepts --limit on log and on audit", () => {
-		expect(parseSecretCommand("log --limit 50").limit).toBe(50);
-		expect(parseSecretCommand("audit --limit 50")).toMatchObject({ subcommand: "log", limit: 50 });
+		expect(parseSecretCommand("log --limit 50", "noninteractive").limit).toBe(50);
+		expect(parseSecretCommand("audit --limit 50", "noninteractive")).toMatchObject({ subcommand: "log", limit: 50 });
 	});
 
 	/** No options at all is the common case and stays untouched. */
 	it("accepts every subcommand with no options", () => {
 		for (const verb of ["list", "log", "help"]) {
-			expect(() => parseSecretCommand(verb)).not.toThrow();
+			expect(() => parseSecretCommand(verb, "noninteractive")).not.toThrow();
 		}
-		expect(() => parseSecretCommand("rm github-token")).not.toThrow();
-		expect(() => parseSecretCommand("add github-token")).not.toThrow();
+		expect(() => parseSecretCommand("rm github-token", "noninteractive")).not.toThrow();
+		expect(() => parseSecretCommand("add github-token", "noninteractive")).not.toThrow();
 	});
 
 	/**
@@ -266,27 +291,31 @@ describe("bare words where they belong", () => {
 	 * That is what an earlier version of this check did, and this test is why it does not now.
 	 */
 	it("accepts a name and a multi-word value on add", () => {
-		const request = parseSecretCommand("add github-token my secret pass phrase");
+		const request = parseSecretCommand("add github-token my secret pass phrase", "noninteractive");
 
 		expect(request.name).toBe("github-token");
 		expect(request.value).toBe("my secret pass phrase");
 	});
 
-	/** A name alone on add is the masked-prompt case and takes no second word. */
+	/**
+	 * A name alone on add parses, and leaves the value unset for `addSecret` to refuse with the
+	 * `--from-env` advice. It is not the masked-prompt case any more: this surface has no field to
+	 * open, which is the whole reason it kept the verbs.
+	 */
 	it("accepts a name alone on add", () => {
-		expect(parseSecretCommand("add github-token").value).toBeUndefined();
+		expect(parseSecretCommand("add github-token", "noninteractive").value).toBeUndefined();
 	});
 
 	/** One name is what rm and extend read. */
 	it("accepts one name on rm and extend", () => {
-		expect(parseSecretCommand("rm github-token").name).toBe("github-token");
-		expect(parseSecretCommand("extend github-token --ttl 7d").name).toBe("github-token");
+		expect(parseSecretCommand("rm github-token", "noninteractive").name).toBe("github-token");
+		expect(parseSecretCommand("extend github-token --ttl 7d", "noninteractive").name).toBe("github-token");
 	});
 
 	/** No words at all is valid everywhere that takes none. */
 	it("accepts list and log with no words", () => {
-		expect(parseSecretCommand("list").subcommand).toBe("list");
-		expect(parseSecretCommand("log").subcommand).toBe("log");
+		expect(parseSecretCommand("list", "noninteractive").subcommand).toBe("list");
+		expect(parseSecretCommand("log", "noninteractive").subcommand).toBe("log");
 	});
 });
 

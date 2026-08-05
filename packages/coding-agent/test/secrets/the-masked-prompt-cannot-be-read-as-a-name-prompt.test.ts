@@ -1,38 +1,46 @@
 /**
- * The masked credential field, driven the way an operator drives it: real keystrokes.
+ * The verbless `/secret` grammar and its two fields, driven the way an operator drives them:
+ * real keystrokes into real components.
  *
  * WHY THIS SUITE EXISTS. Every other `/secret` test stubs `showHookInput` and returns a string,
  * so the whole interactive seam (real `ExtensionUiController` dialog -> real `HookInputComponent`
- * -> real `Input` -> real vault write) was never exercised end to end. The bug that motivated this
- * lived exactly there in spirit: `/secret add` with no name opened a field titled "Paste the
- * secret", an operator read that as "name the secret", typed `GITHUB_TOKEN`, and veyyon stored the
- * NAME as the credential under an invented `SECRET_1`.
+ * -> real `Input` -> real vault write) was never exercised end to end. The bug that motivated it
+ * lived exactly there: `/secret add` with no name opened a field titled "Paste the secret", an
+ * operator read that as "name the secret", typed `GITHUB_TOKEN`, and veyyon stored the NAME as
+ * the credential under an invented `SECRET_1`.
  *
  * Nothing downstream can catch that mistake. A name is a perfectly well-formed secret value, and a
  * shape heuristic that refused name-looking input would refuse real credentials: an AWS key id
  * such as `AKIAIOSFODNN7EXAMPLE` is uppercase, underscore-free, and indistinguishable from a name.
- * The prompt wording is therefore the ONLY defence, which is why it is pinned here as a contract
- * rather than left as prose someone can soften later.
  *
- * The suite asserts two separable things, because either alone would let the bug back:
- *   1. the wording cannot be read as a request for a name, and
- *   2. whatever the operator actually types or pastes is the exact byte sequence stored.
+ * THE GRAMMAR IS NOW THE PRIMARY DEFENCE, and the wording is the second. In a terminal there is no
+ * `add` verb and no leading name to mistype a credential into: the argument line IS the value,
+ * `manager` is the only reserved word, and the name is asked afterwards where declining it costs
+ * nothing. So the suite asserts three separable things, because any one alone would let the bug
+ * back:
+ *   1. the terminal grammar reads the whole line as a credential and reserves nothing else,
+ *   2. the wording of the masked field cannot be read as a request for a name, and
+ *   3. whatever the operator actually types or pastes is the exact byte sequence stored.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { HookInputComponent } from "@veyyon/coding-agent/modes/components/hook-input";
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import {
+	maskedPromptHint,
 	maskedPromptTitle,
 	namePromptTitle,
 	runSecretCommandForSurface,
+	type SecretCommandOutcome,
 } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 import { PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
+import { stripAnsi } from "@veyyon/utils";
 
 let home: string;
 let project: string;
@@ -68,6 +76,21 @@ interface PresentedField {
 	masked: boolean;
 }
 
+/** Drives one real field: `feed` delivers bytes to the live component. */
+type Drive = (feed: (bytes: string) => void) => void;
+
+/**
+ * Refuse to answer a field, and say which one opened.
+ *
+ * Used wherever a test's contract is that a field must NOT open. A silently unused driver would
+ * let the field open and be answered by nothing, which reads as a pass.
+ */
+function mustNotOpen(field: string): Drive {
+	return () => {
+		throw new Error(`The ${field} field must not open here.`);
+	};
+}
+
 /**
  * Run `/secret <args>` through the REAL dialogs, with `typeValue`/`typeName` driving the real
  * components.
@@ -75,11 +98,11 @@ interface PresentedField {
  * Both prompts are wired exactly as `builtin-registry.ts` wires them, including which one gets a
  * mask, so the fields under test are the fields the operator sees.
  */
-async function addThroughRealDialog(
+async function secretThroughRealDialog(
 	args: string,
-	typeValue: (feed: (bytes: string) => void) => void,
-	typeName?: (feed: (bytes: string) => void) => void,
-): Promise<{ fields: PresentedField[] }> {
+	options: { typeValue?: Drive; typeName?: Drive } = {},
+): Promise<{ fields: PresentedField[]; outcome: SecretCommandOutcome }> {
+	const { typeName } = options;
 	const fields: PresentedField[] = [];
 	const uiCtx = {
 		ui: { setFocus() {}, requestRender() {}, requestComponentRender() {}, terminal: { rows: 40 } },
@@ -89,11 +112,7 @@ async function addThroughRealDialog(
 	};
 	const controller = new ExtensionUiController(uiCtx as never);
 
-	const present = (
-		title: string,
-		mask: string | undefined,
-		drive: (feed: (bytes: string) => void) => void,
-	): Promise<string | undefined> => {
+	const present = (title: string, mask: string | undefined, drive: Drive): Promise<string | undefined> => {
 		fields.push({ title, masked: mask !== undefined });
 		const pending = controller.showHookInput(title, undefined, undefined, mask ? { mask } : undefined);
 		const component = uiCtx.hookInput;
@@ -120,12 +139,15 @@ async function addThroughRealDialog(
 		cwd: project,
 		globalConfigRoot: home,
 		agentDir: agentDir(),
-		promptForValue: (name: string | undefined) => present(maskedPromptTitle(name), DEFAULT_MASK_CHAR, typeValue),
+		// Always supplied, because its presence is what selects the TUI surface. A test whose
+		// contract is that the masked field stays shut passes `mustNotOpen`.
+		promptForValue: () =>
+			present(maskedPromptTitle(), DEFAULT_MASK_CHAR, options.typeValue ?? mustNotOpen("masked value")),
 		...(typeName === undefined ? {} : { promptForName: () => present(namePromptTitle(), undefined, typeName) }),
 	};
 
-	await runSecretCommandForSurface(args, port as never);
-	return { fields };
+	const outcome = await runSecretCommandForSurface(args, port as never);
+	return { fields, outcome };
 }
 
 /** Every live entry, so a test can assert the stored bytes rather than a success message. */
@@ -133,52 +155,223 @@ async function stored(): Promise<Array<{ name: string; value: string }>> {
 	return (await new SecretVault(locations()).load()).map(entry => ({ name: entry.name, value: entry.value }));
 }
 
-describe("the wording of the masked credential field", () => {
-	/**
-	 * LOCKS OUT the exact defect: an unnamed `/secret add` whose title says "Paste the secret",
-	 * which an operator reads as a request for the secret's NAME. The field is masked, so a
-	 * misread is unrecoverable and invisible. The title must name what it wants (a value) and
-	 * explicitly deny what it does not want (a name).
-	 */
-	it("tells an unnamed add that it wants a value and not a name", () => {
-		const title = maskedPromptTitle(undefined);
+/** Type `text` into a field and accept it. The keystroke path a credential actually takes. */
+function type(text: string): Drive {
+	return feed => {
+		for (const character of text) feed(character);
+		feed("\r");
+	};
+}
 
-		expect(title).toContain("value");
-		expect(title).toContain("not a name");
-		// The generated name is announced, so `SECRET_1` in the confirmation is not a surprise.
-		expect(title).toContain("generated");
+/**
+ * The terminal grammar: the argument line is the credential, and only `manager` is reserved.
+ *
+ * This is the layer that makes the original bug unreachable rather than merely discouraged. There
+ * is no longer a position in the command where a name is expected, so a pasted token cannot land
+ * in one.
+ */
+describe("the verbless /secret grammar in a terminal", () => {
+	/**
+	 * LOCKS OUT the whole class of "which positional was that" mistakes: a token pasted straight
+	 * after `/secret` is the VALUE, byte for byte, and no field opens to ask for it. If a verb or a
+	 * leading name is ever reintroduced, this token would be parsed as a name and the test fails.
+	 */
+	it("stores a pasted token as the value without opening the masked field", async () => {
+		const { fields } = await secretThroughRealDialog("ghp_inlineCredential4242", { typeName: type("") });
+
+		expect(fields).toEqual([{ title: namePromptTitle(), masked: false }]);
+		const entries = await stored();
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.value).toBe("ghp_inlineCredential4242");
 	});
 
 	/**
-	 * The named form must say "value for <NAME>" rather than merely mentioning the name: a title
-	 * that only echoes the name is precisely the ambiguity this suite exists to remove.
+	 * THE EXACT INVERSE OF THE ORIGINAL BUG, and the sharpest statement of the new grammar: the
+	 * word `add` is no longer a verb in a terminal, so `/secret add GITHUB_TOKEN` stores that
+	 * literal text as a credential rather than treating `GITHUB_TOKEN` as a name with no value.
+	 * A regression that quietly restored verb parsing would store nothing here and fail.
 	 */
-	it("tells a named add whose value it wants", () => {
-		const title = maskedPromptTitle("GITHUB_TOKEN");
+	it("treats a former verb as ordinary credential text", async () => {
+		await secretThroughRealDialog("add GITHUB_TOKEN", { typeName: type("") });
 
-		expect(title).toContain("value for GITHUB_TOKEN");
+		const entries = await stored();
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.value).toBe("add GITHUB_TOKEN");
 	});
 
 	/**
-	 * Both forms promise masking. An operator who cannot see what they typed relies on this line
-	 * to know the field is safe to paste a live credential into.
+	 * A passphrase is allowed to contain spaces, so the value is the span from the first token to
+	 * the last, not a single word and not a re-joined token list. Splitting on whitespace here
+	 * would store a truncated credential that fails to authenticate with nothing on screen to say
+	 * so, which is the worst available failure.
 	 */
-	it("promises masking in both forms", () => {
-		expect(maskedPromptTitle(undefined)).toContain("hidden as you type");
-		expect(maskedPromptTitle("GITHUB_TOKEN")).toContain("hidden as you type");
+	it("keeps whitespace inside the credential and drops only what surrounds it", async () => {
+		await secretThroughRealDialog("   correct horse  battery staple   ", { typeName: type("") });
+
+		const entries = await stored();
+		expect(entries[0]?.value).toBe("correct horse  battery staple");
+	});
+
+	/**
+	 * The one reserved word opens the manager and does nothing else: no field, no vault write, no
+	 * message. If `manager` ever fell through to the store path it would silently save the literal
+	 * word `manager` as a credential, which is exactly the collision the reservation exists to
+	 * prevent.
+	 */
+	it("reserves manager for the GUI and stores nothing", async () => {
+		const { fields, outcome } = await secretThroughRealDialog("manager", {
+			typeName: mustNotOpen("name"),
+		});
+
+		expect(outcome.openManager).toBe(true);
+		expect(fields).toEqual([]);
+		expect(await stored()).toEqual([]);
+	});
+
+	/**
+	 * The reservation is exactly one word long. `manager` followed by anything is a credential
+	 * again, so an operator whose token really does begin with that word is not locked out, and the
+	 * GUI cannot be opened by accident from a longer paste.
+	 */
+	it("reserves only the bare word, so a longer line is still a credential", async () => {
+		const { outcome } = await secretThroughRealDialog("manager key 8891", { typeName: type("") });
+
+		expect(outcome.openManager).toBeUndefined();
+		const entries = await stored();
+		expect(entries[0]?.value).toBe("manager key 8891");
+	});
+
+	/**
+	 * `--from-env` survives the grammar change, in leading position only. It is the single entry
+	 * form that never puts the credential on screen at all, so losing it from the terminal would
+	 * have left the safest path available to ACP clients and not to the operator.
+	 */
+	it("still reads a credential out of the environment without a field", async () => {
+		process.env.VEYYON_TEST_FROM_ENV_TOKEN = "ghp_fromEnvCredential77";
+		try {
+			await secretThroughRealDialog("--from-env VEYYON_TEST_FROM_ENV_TOKEN", { typeName: type("") });
+		} finally {
+			delete process.env.VEYYON_TEST_FROM_ENV_TOKEN;
+		}
+
+		const entries = await stored();
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.value).toBe("ghp_fromEnvCredential77");
+	});
+
+	/**
+	 * A `--from-env` that names nothing is refused rather than stored as the literal text
+	 * `--from-env`. The flag reading and the credential reading of that word are mutually
+	 * exclusive, so the ambiguous case must fail loudly instead of picking one.
+	 */
+	it("refuses a --from-env with no variable rather than storing the flag", async () => {
+		await expect(secretThroughRealDialog("--from-env")).rejects.toThrow(/needs the name of an environment variable/);
+		expect(await stored()).toEqual([]);
+	});
+});
+
+/**
+ * What the operator actually reads, rendered.
+ *
+ * These assert the PAINTED FIELD rather than the title string. The four things this field has to
+ * communicate used to live in one sentence, which made the string the whole surface and a string
+ * assertion sufficient. It read as a paragraph and a user reported it did not tell them what to
+ * do, so the two mechanical facts moved to the legend row. Had these stayed string tests they
+ * would have failed for a copy improvement while a genuinely broken field, one whose hint never
+ * reached the component, would have passed.
+ *
+ * So the field is presented through the REAL {@link ExtensionUiController}, the same call the
+ * registry makes, rather than by constructing the component here. That is the seam the hint has
+ * to survive: `showHookInput` receives it in `inputOptions` and has to hand it to the component,
+ * and a version that accepted the option and dropped it would render a field missing the only
+ * statement that it masks what you type.
+ */
+describe("the masked credential field as the operator sees it", () => {
+	/** Present the masked field the way the registry does, and return what it paints. */
+	function paintedMaskedField(): string {
+		const uiCtx = {
+			ui: { setFocus() {}, requestRender() {}, requestComponentRender() {}, terminal: { rows: 40 } },
+			editorContainer: { clear() {}, addChild() {} },
+			editor: {},
+			hookInput: undefined as HookInputComponent | undefined,
+		};
+		const controller = new ExtensionUiController(uiCtx as never);
+		void controller.showHookInput(maskedPromptTitle(), undefined, undefined, {
+			mask: DEFAULT_MASK_CHAR,
+			hint: maskedPromptHint(),
+		});
+		const field = uiCtx.hookInput;
+		if (field === undefined) throw new Error("The field was never presented.");
+		return stripAnsi(field.render(100).join("\n"));
+	}
+
+	/**
+	 * LOCKS OUT the exact defect: a field titled "Paste the secret", which an operator reads as a
+	 * request for the secret's NAME. The field is masked, so a misread is unrecoverable and
+	 * invisible. The field must name what it wants (a value) and explicitly deny what it does not.
+	 */
+	it("says it wants a value and not a name", () => {
+		const painted = paintedMaskedField();
+
+		expect(painted).toContain("value");
+		expect(painted).toContain("not a name");
+	});
+
+	/**
+	 * The field must say the naming question is still coming. Without that, an operator who wants
+	 * to label the secret has no reason to believe they will get the chance, and the pressure to
+	 * answer this field with a name comes straight back.
+	 */
+	it("promises the name can be given afterwards", () => {
+		expect(paintedMaskedField()).toContain("afterwards");
+	});
+
+	/**
+	 * The field promises masking. An operator who cannot see what they typed relies on this to
+	 * know it is safe to paste a live credential. It is now on the legend row rather than in the
+	 * title, so this is exactly the assertion that catches the hint being dropped in wiring.
+	 */
+	it("promises masking and encryption at rest", () => {
+		const painted = paintedMaskedField();
+
+		expect(painted).toContain("hidden as you type");
+		expect(painted).toContain("stored encrypted");
+	});
+
+	/**
+	 * The instruction is what the operator must ACT on, so it may not be buried behind the
+	 * mechanics. Pinning the order catches a refactor that appends the title to the legend row or
+	 * reorders the children: both would render every required word and still bury the imperative.
+	 */
+	it("puts the instruction above the mechanics", () => {
+		const painted = paintedMaskedField();
+
+		expect(painted.indexOf("Paste the secret value")).toBeLessThan(painted.indexOf("hidden as you type"));
+	});
+
+	/**
+	 * The legend keeps its keys. The hint shares that row, and a naive implementation that
+	 * REPLACED the legend rather than joining it would take the only statement of how to submit or
+	 * escape off the screen.
+	 */
+	it("keeps the submit and cancel keys beside the hint", () => {
+		const painted = paintedMaskedField();
+
+		expect(painted).toContain("enter submit");
+		expect(painted).toContain("esc cancel");
 	});
 });
 
 describe("a credential entered through the real masked dialog", () => {
 	/**
 	 * The end-to-end contract nothing else covers: keystrokes typed into the REAL component reach
-	 * the vault as the exact bytes typed, under the name the operator asked for. A regression
-	 * anywhere in dialog settlement, masking, or `request.value` assignment fails here.
+	 * the vault as the exact bytes typed, under the name the operator asked for afterwards. A
+	 * regression anywhere in dialog settlement, masking, or `request.value` assignment fails here.
 	 */
-	it("stores exactly the typed bytes under the requested name", async () => {
-		await addThroughRealDialog("add GITHUB_TOKEN", feed => {
-			for (const character of "ghp_typedCredential12345") feed(character);
-			feed("\r");
+	it("stores exactly the typed bytes under the name given afterwards", async () => {
+		await secretThroughRealDialog("", {
+			typeValue: type("ghp_typedCredential12345"),
+			typeName: type("github token"),
 		});
 
 		expect(await stored()).toEqual([{ name: "GITHUB_TOKEN", value: "ghp_typedCredential12345" }]);
@@ -190,101 +383,85 @@ describe("a credential entered through the real masked dialog", () => {
 	 * silently persist a credential that does not authenticate.
 	 */
 	it("stores a bracketed paste as the credential, without its framing", async () => {
-		await addThroughRealDialog("add PASTED_TOKEN", feed => {
-			feed(`${PASTE_START}ghp_pastedCredential67890${PASTE_END}`);
-			feed("\r");
+		await secretThroughRealDialog("", {
+			typeValue: feed => {
+				feed(`${PASTE_START}ghp_pastedCredential67890${PASTE_END}`);
+				feed("\r");
+			},
+			typeName: type("pasted token"),
 		});
 
 		expect(await stored()).toEqual([{ name: "PASTED_TOKEN", value: "ghp_pastedCredential67890" }]);
 	});
 
 	/**
-	 * The unnamed path still works and still generates a name. This is the behaviour the wording
-	 * fix protects rather than removes: it must keep storing what was typed as the VALUE.
+	 * A surface that implements only the masked field still works and still generates a name. This
+	 * is the fallback the wording above has to carry alone, so it must keep storing what was typed
+	 * as the VALUE rather than refusing for want of a name.
 	 */
-	it("stores the typed value under a generated name when no name was given", async () => {
-		const { fields } = await addThroughRealDialog("add", feed => {
-			for (const character of "ghp_unnamedCredential999") feed(character);
-			feed("\r");
-		});
+	it("stores the typed value under a generated name when no name field exists", async () => {
+		const { fields } = await secretThroughRealDialog("", { typeValue: type("ghp_unnamedCredential999") });
 
-		// No name field here: this surface supplied only `promptForValue`, which is the fallback
-		// path the wording above still has to carry on its own.
-		expect(fields).toEqual([{ title: maskedPromptTitle(undefined), masked: true }]);
+		expect(fields).toEqual([{ title: maskedPromptTitle(), masked: true }]);
 		const entries = await stored();
 		expect(entries).toHaveLength(1);
 		expect(entries[0]?.value).toBe("ghp_unnamedCredential999");
+		expect(entries[0]?.name).toMatch(/^SECRET_\d+$/);
 	});
 
 	/**
-	 * Cancelling stores nothing. A field that persisted a partial credential on escape would leave
-	 * a placeholder that spends the wrong bytes, which is worse than storing nothing at all.
+	 * Cancelling the value field stores nothing and never reaches the naming question. A field that
+	 * persisted a partial credential on escape would leave a placeholder that spends the wrong
+	 * bytes, which is worse than storing nothing at all.
 	 */
-	it("stores nothing when the field is cancelled", async () => {
-		const outcome = await (async () => {
-			let captured: string | undefined;
-			await addThroughRealDialog("add CANCELLED_TOKEN", feed => {
+	it("stores nothing when the value field is cancelled", async () => {
+		const { outcome } = await secretThroughRealDialog("", {
+			typeValue: feed => {
 				for (const character of "ghp_halfTypedCredential") feed(character);
 				feed("\x1b");
-			}).then(() => {
-				captured = "completed";
-			});
-			return captured;
-		})();
+			},
+			typeName: mustNotOpen("name"),
+		});
 
-		expect(outcome).toBe("completed");
+		expect(outcome.cancelled).toBe(true);
 		expect(await stored()).toEqual([]);
 	});
 });
 
 /**
- * The structural fix: two fields instead of one overloaded field.
+ * The structural fix: two fields instead of one overloaded field, with the credential asked FIRST.
  *
- * Wording alone could only discourage the mistake. Asking the name in its own VISIBLE field, then
- * the value in a hidden one, makes "which question is this" answerable from the screen rather than
- * from a sentence, so an operator answering the name question can no longer land their answer in
- * the credential.
+ * Wording alone could only discourage the mistake. Asking the value in its own hidden field, then
+ * the name in a visible one, makes "which question is this" answerable from the screen rather than
+ * from a sentence. The order is deliberate: the credential is what the operator came to store, so
+ * nothing stands in front of it, and the label is an afterthought with a generated fallback.
  */
-describe("the name field shown before the masked one", () => {
+describe("the optional name field shown after the credential", () => {
 	/**
-	 * LOCKS OUT the reported bug at its root. Two fields are presented, in order, and only the
-	 * second one masks. If the name step is ever dropped or the mask ever moves to the name field,
-	 * the ambiguity that stored `GITHUB_TOKEN` as a credential is back.
+	 * LOCKS OUT both the ambiguity and a regression to the old order. Two fields are presented, the
+	 * masked one FIRST, and only that one masks. If the name step is ever moved back in front, or
+	 * the mask ever moves to the name field, the ambiguity that stored `GITHUB_TOKEN` as a
+	 * credential is back.
 	 */
-	it("asks for the name first, unmasked, then the value, masked", async () => {
-		const { fields } = await addThroughRealDialog(
-			"add",
-			feed => {
-				for (const character of "ghp_twoStepCredential11") feed(character);
-				feed("\r");
-			},
-			feed => {
-				for (const character of "github token") feed(character);
-				feed("\r");
-			},
-		);
+	it("asks for the value first, masked, then the name, unmasked", async () => {
+		const { fields } = await secretThroughRealDialog("", {
+			typeValue: type("ghp_twoStepCredential11"),
+			typeName: type("github token"),
+		});
 
 		expect(fields).toEqual([
+			{ title: maskedPromptTitle(), masked: true },
 			{ title: namePromptTitle(), masked: false },
-			// The value field names the secret the operator just chose, normalised.
-			{ title: maskedPromptTitle("GITHUB_TOKEN"), masked: true },
 		]);
 		expect(await stored()).toEqual([{ name: "GITHUB_TOKEN", value: "ghp_twoStepCredential11" }]);
 	});
 
 	/**
-	 * The name field is OPTIONAL. Someone stashing a credential should not have to invent a label,
-	 * so an empty name keeps the generated one and the value is still stored.
+	 * The name field is OPTIONAL, which is the entire premise of the feature: stashing a token has
+	 * to cost one paste. An empty name keeps the generated one and the value is still stored.
 	 */
 	it("generates a name when the field is left empty", async () => {
-		await addThroughRealDialog(
-			"add",
-			feed => {
-				for (const character of "ghp_generatedNameCred22") feed(character);
-				feed("\r");
-			},
-			feed => feed("\r"),
-		);
+		await secretThroughRealDialog("ghp_generatedNameCred22", { typeName: type("") });
 
 		const entries = await stored();
 		expect(entries).toHaveLength(1);
@@ -293,62 +470,28 @@ describe("the name field shown before the masked one", () => {
 	});
 
 	/**
-	 * A name given on the command line is not asked for again. Re-asking would be a second chance
-	 * to contradict what was already typed, and would make the common `/secret add NAME` slower for
-	 * no benefit.
+	 * Escaping the NAME field abandons the store rather than falling back to a generated name. The
+	 * operator has an unstored credential on screen and pressed escape; keeping it under a name
+	 * they never saw is the one reading they did not ask for.
 	 */
-	it("does not ask for a name the command already carried", async () => {
-		const { fields } = await addThroughRealDialog(
-			"add PRESET_TOKEN",
-			feed => {
-				for (const character of "ghp_presetNameCred333") feed(character);
-				feed("\r");
-			},
-			() => {
-				throw new Error("The name field must not open when the command already named the secret.");
-			},
-		);
+	it("stores nothing when the name field is cancelled", async () => {
+		const { outcome } = await secretThroughRealDialog("ghp_abandonedCredential", {
+			typeName: feed => feed("\x1b"),
+		});
 
-		expect(fields).toEqual([{ title: maskedPromptTitle("PRESET_TOKEN"), masked: true }]);
-		expect(await stored()).toEqual([{ name: "PRESET_TOKEN", value: "ghp_presetNameCred333" }]);
-	});
-
-	/**
-	 * Escaping the NAME field abandons the whole command before the credential field ever opens.
-	 * Continuing to the masked field would ask for a live credential the operator just declined to
-	 * name, and storing it under a generated name is not what cancelling means.
-	 */
-	it("abandons the command when the name field is cancelled", async () => {
-		const { fields } = await addThroughRealDialog(
-			"add",
-			() => {
-				throw new Error("The masked field must not open after the name field was cancelled.");
-			},
-			feed => feed("\x1b"),
-		);
-
-		expect(fields).toEqual([{ title: namePromptTitle(), masked: false }]);
+		expect(outcome.cancelled).toBe(true);
 		expect(await stored()).toEqual([]);
 	});
 
 	/**
-	 * An unusable name typed into the field is refused BEFORE the masked field opens, the same rule
-	 * that already applied to a name given on the command line. Prompting first would take a live
-	 * credential into memory and then throw the request away over a name.
+	 * An unusable name is refused, and because it is asked last the operator loses only the label:
+	 * the error names the problem while the credential is still in hand to retry with. Nothing
+	 * partial is written under a name the vault could not hold.
 	 */
-	it("refuses an unusable typed name without asking for a credential", async () => {
-		await expect(
-			addThroughRealDialog(
-				"add",
-				() => {
-					throw new Error("The masked field must not open for an unusable name.");
-				},
-				feed => {
-					for (const character of "ab") feed(character);
-					feed("\r");
-				},
-			),
-		).rejects.toThrow(/not a usable secret name/);
+	it("refuses an unusable typed name and stores nothing", async () => {
+		await expect(secretThroughRealDialog("ghp_unusableNameCred55", { typeName: type("ab") })).rejects.toThrow(
+			/not a usable secret name/,
+		);
 		expect(await stored()).toEqual([]);
 	});
 });

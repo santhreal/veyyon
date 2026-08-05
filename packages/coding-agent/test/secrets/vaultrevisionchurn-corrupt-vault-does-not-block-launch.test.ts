@@ -288,7 +288,11 @@ describe("a vault that is beyond reproach except for its payload", () => {
 		expect(notice).toContain("could not be read");
 		expect(notice).toContain("/secret discard --scope profile");
 		expect(notice).toContain("move the unreadable file aside");
-		expect(notice).toContain("/secret add");
+		expect(notice).toContain("/secret manager");
+		// The advice must not tell a terminal operator to type a verb that would be stored as a
+		// credential. `add` has no reading in the TUI grammar, and this notice cannot know which
+		// surface is reading it, so it may name only forms that are safe on both.
+		expect(notice).not.toContain("/secret add");
 	});
 
 	/** A notice ending in ".." reached a real terminal, because parser messages punctuate themselves. */

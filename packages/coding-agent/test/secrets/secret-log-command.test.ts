@@ -10,16 +10,23 @@
  *      either direction is a real defect: too eager and `--from-env` stops working, too shy and
  *      the credential goes through the composer. It is asked in the pure layer precisely so both
  *      surfaces cannot disagree, so it is pinned here rather than in a TUI test.
+ *
+ * THE SURFACE IS NONINTERACTIVE, everywhere a command line appears. `log`, `audit`, `--limit` and
+ * `add <name> <value>` are verb grammar, and a terminal has none: it reads its whole argument line
+ * as a credential. So every `parseSecretCommand` below names that surface explicitly, and the
+ * usage assertion reads the noninteractive help, which is the only variant that still lists a
+ * verb. `needsValuePrompt` itself is surface-blind — it reads a parsed request, not a surface —
+ * which is why the requests it is fed here are the shapes only that grammar can produce.
  */
 import { describe, expect, it } from "bun:test";
 import { SecretAuditLog } from "@veyyon/coding-agent/secrets/audit";
 import {
 	DEFAULT_LOG_LIMIT,
+	NONINTERACTIVE_SECRET_COMMAND_USAGE,
 	needsValuePrompt,
 	parseSecretCommand,
 	renderLog,
 	runSecretCommand,
-	SECRET_COMMAND_USAGE,
 } from "@veyyon/coding-agent/secrets/secret-command";
 import { normaliseSecretName, type SecretVault } from "@veyyon/coding-agent/secrets/vault";
 
@@ -29,18 +36,18 @@ const unusedVault = {} as SecretVault;
 describe("parsing /secret log", () => {
 	/** The verb, and the alias people reach for. */
 	it("accepts log and audit", () => {
-		expect(parseSecretCommand("log").subcommand).toBe("log");
-		expect(parseSecretCommand("audit").subcommand).toBe("log");
+		expect(parseSecretCommand("log", "noninteractive").subcommand).toBe("log");
+		expect(parseSecretCommand("audit", "noninteractive").subcommand).toBe("log");
 	});
 
 	/** A limit is read as a number. */
 	it("reads --limit", () => {
-		expect(parseSecretCommand("log --limit 50").limit).toBe(50);
+		expect(parseSecretCommand("log --limit 50", "noninteractive").limit).toBe(50);
 	});
 
 	/** No limit means the default, chosen in one place. */
 	it("leaves the limit unset when not given", () => {
-		expect(parseSecretCommand("log").limit).toBeUndefined();
+		expect(parseSecretCommand("log", "noninteractive").limit).toBeUndefined();
 		expect(DEFAULT_LOG_LIMIT).toBe(20);
 	});
 
@@ -51,17 +58,17 @@ describe("parsing /secret log", () => {
 	 * they had asked for all of it.
 	 */
 	it("refuses a limit that is not a positive whole number", () => {
-		expect(() => parseSecretCommand("log --limit abc")).toThrow(/positive whole number/);
-		expect(() => parseSecretCommand("log --limit 0")).toThrow(/positive whole number/);
-		expect(() => parseSecretCommand("log --limit -3")).toThrow(/positive whole number/);
-		expect(() => parseSecretCommand("log --limit 2.5")).toThrow(/positive whole number/);
-		expect(() => parseSecretCommand("log --limit")).toThrow(/positive whole number/);
+		expect(() => parseSecretCommand("log --limit abc", "noninteractive")).toThrow(/positive whole number/);
+		expect(() => parseSecretCommand("log --limit 0", "noninteractive")).toThrow(/positive whole number/);
+		expect(() => parseSecretCommand("log --limit -3", "noninteractive")).toThrow(/positive whole number/);
+		expect(() => parseSecretCommand("log --limit 2.5", "noninteractive")).toThrow(/positive whole number/);
+		expect(() => parseSecretCommand("log --limit", "noninteractive")).toThrow(/positive whole number/);
 	});
 
-	/** The usage text documents the subcommand, so `/secret` alone teaches it. */
+	/** The noninteractive usage text documents the subcommand, so a bare `/secret` there teaches it. */
 	it("is documented in the usage text", () => {
-		expect(SECRET_COMMAND_USAGE).toContain("/secret log");
-		expect(SECRET_COMMAND_USAGE).toContain("--limit");
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain("/secret log");
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain("--limit");
 	});
 });
 
@@ -73,7 +80,7 @@ describe("running /secret log", () => {
 	 * this command to check.
 	 */
 	it("says recording is off rather than showing an empty log", async () => {
-		const result = await runSecretCommand(parseSecretCommand("log"), {
+		const result = await runSecretCommand(parseSecretCommand("log", "noninteractive"), {
 			vault: unusedVault,
 			readEnv: () => undefined,
 			defaultTtl: null,
@@ -90,7 +97,7 @@ describe("running /secret log", () => {
 	/** Reading the log never counts as a change, so nothing is reconciled or re-saved. */
 	it("reports no change", async () => {
 		const log = new SecretAuditLog("/nonexistent/veyyon-test/secret-audit.jsonl");
-		const result = await runSecretCommand(parseSecretCommand("log"), {
+		const result = await runSecretCommand(parseSecretCommand("log", "noninteractive"), {
 			vault: unusedVault,
 			readEnv: () => undefined,
 			defaultTtl: null,
@@ -262,34 +269,38 @@ describe("a log shared by several sessions", () => {
 describe("deciding whether to prompt for a value", () => {
 	/** An add with a name and nothing else is the case a masked field exists for. */
 	it("prompts for an add with no value and no source", () => {
-		expect(needsValuePrompt(parseSecretCommand("add github-token"))).toBe(true);
+		expect(needsValuePrompt(parseSecretCommand("add github-token", "noninteractive"))).toBe(true);
 	});
 
 	/** A name is not required: an unnamed add still needs a value. */
 	it("prompts for an add with no name at all", () => {
-		expect(needsValuePrompt(parseSecretCommand("add"))).toBe(true);
+		expect(needsValuePrompt(parseSecretCommand("add", "noninteractive"))).toBe(true);
 	});
 
 	/** `--from-env` already has the value, so prompting would be a pointless extra step. */
 	it("does not prompt when the value comes from the environment", () => {
-		expect(needsValuePrompt(parseSecretCommand("add github-token --from-env GH_TOKEN"))).toBe(false);
+		expect(needsValuePrompt(parseSecretCommand("add github-token --from-env GH_TOKEN", "noninteractive"))).toBe(
+			false,
+		);
 	});
 
 	/** An inline value is already supplied, however unwise that was. */
 	it("does not prompt when a value was given inline", () => {
-		expect(needsValuePrompt(parseSecretCommand("add github-token ghp_inlinevalue"))).toBe(false);
+		expect(needsValuePrompt(parseSecretCommand("add github-token ghp_inlinevalue", "noninteractive"))).toBe(false);
 	});
 
 	/** Only `add` ever prompts. Every other subcommand needs no credential. */
 	it("does not prompt for any other subcommand", () => {
 		for (const line of ["list", "rm github-token", "extend github-token --ttl 7d", "log", "help"]) {
-			expect(needsValuePrompt(parseSecretCommand(line))).toBe(false);
+			expect(needsValuePrompt(parseSecretCommand(line, "noninteractive"))).toBe(false);
 		}
 	});
 
 	/** Options do not change the answer: `--ttl` and `--scope` are not a value. */
 	it("still prompts when only options were given", () => {
-		expect(needsValuePrompt(parseSecretCommand("add github-token --ttl 7d --scope project"))).toBe(true);
+		expect(needsValuePrompt(parseSecretCommand("add github-token --ttl 7d --scope project", "noninteractive"))).toBe(
+			true,
+		);
 	});
 });
 
@@ -319,7 +330,7 @@ describe("the confirmation after a masked entry", () => {
 			},
 		} as unknown as SecretVault;
 
-		const request = parseSecretCommand("add github-token");
+		const request = parseSecretCommand("add github-token", "noninteractive");
 		request.value = "ghp_typedIntoAMaskedField";
 		request.maskedEntry = true;
 
@@ -350,12 +361,15 @@ describe("the confirmation after a masked entry", () => {
 			}),
 		} as unknown as SecretVault;
 
-		const result = await runSecretCommand(parseSecretCommand("add github-token ghp_inlineValue123"), {
-			vault,
-			readEnv: () => undefined,
-			defaultTtl: null,
-			now: 0,
-		});
+		const result = await runSecretCommand(
+			parseSecretCommand("add github-token ghp_inlineValue123", "noninteractive"),
+			{
+				vault,
+				readEnv: () => undefined,
+				defaultTtl: null,
+				now: 0,
+			},
+		);
 
 		expect(result.message).toContain("scrollback");
 	});
@@ -371,7 +385,7 @@ describe("a client that cannot prompt", () => {
 	 */
 	it("refuses an add with no value and points at --from-env", async () => {
 		await expect(
-			runSecretCommand(parseSecretCommand("add github-token"), {
+			runSecretCommand(parseSecretCommand("add github-token", "noninteractive"), {
 				vault: unusedVault,
 				readEnv: () => undefined,
 				defaultTtl: null,

@@ -46,7 +46,20 @@ import { InteractiveCli } from "../../../../scripts/secret-stress/lib/pty";
 /** The message the bug printed instead of drawing a terminal. */
 const REFUSAL = "Secret expansion was refused";
 
-/** Proof the process got past startup: it lived long enough to evaluate its model registry. */
+/**
+ * Proof the process got past startup: it drew a frame.
+ *
+ * ONE LITERAL, and the strict one. The refusal this file is about kills the process before any
+ * frame exists, so the warning that no model is usable is only ever printed by a process that
+ * got as far as rendering, which is exactly the claim each case makes.
+ *
+ * This was briefly widened to also accept the composer's "ask anything", because a workstation
+ * running Ollama has a usable model with no auth root at all and drew a composer on a supposedly
+ * empty root, so all five cases hung here. The fix belonged in the harness, not the assertion:
+ * `createIsolatedRoot(label, "none")` now points the keyless local providers at a closed port,
+ * so a root with no credentials really has no model on any machine. Accepting two frames made
+ * the marker weaker for no gain once that hole was shut, so it is back to one.
+ */
 const REACHED_STARTUP = "No models are available";
 
 /** Startup on a cold temp root has to load the model registry, which is not instant. */

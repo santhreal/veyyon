@@ -28,6 +28,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { UNREACHABLE_LOCAL_PROVIDER_ENV } from "../helpers/hermetic-spawn-env";
 
 const CLI = path.resolve(import.meta.dir, "../../src/cli.ts");
 const roots = new Set<string>();
@@ -59,11 +60,17 @@ async function fixture(): Promise<Fixture> {
  * The environment is built from scratch rather than spread from `Bun.env`: the test runner's own
  * environment carries loader settings that make the child fail to build, and inheriting provider
  * credentials would make these assertions depend on whose machine they run on.
+ *
+ * A from-scratch environment is still not enough on its own. `ollama`, `llama.cpp` and
+ * `lm-studio` are discovered with no credential and no config at fixed loopback addresses, so on
+ * a desk running any of them these launches reached a real model and spent a real inference.
+ * `UNREACHABLE_LOCAL_PROVIDER_ENV` points those knobs at a port nothing can be listening on; it
+ * is the same map `hermeticSpawnEnv` applies, imported rather than restated.
  */
 async function run(fixture: Fixture, args: string[]): Promise<Run> {
 	const child = Bun.spawn([process.execPath, CLI, ...args], {
 		cwd: fixture.project,
-		env: { PATH: Bun.env.PATH ?? "", HOME: fixture.home, TERM: "dumb" },
+		env: { PATH: Bun.env.PATH ?? "", HOME: fixture.home, TERM: "dumb", ...UNREACHABLE_LOCAL_PROVIDER_ENV },
 		stdout: "pipe",
 		stderr: "pipe",
 	});
@@ -147,7 +154,13 @@ describe("a session whose secret key cannot be created", () => {
 		// asserts only the ABSENCE of the refusal, so it holds whether the provider answers,
 		// rejects, or is unreachable, and needs no network of its own.
 		expect(output).not.toContain("Secret protection is enabled");
-	});
+		// Unlike its siblings this case leaves the key path HEALTHY, so the launch is not cut short
+		// by the refusal and pays for two complete CLI startups: `config set`, then a `-p` run that
+		// builds the model registry on a cold temp root. Measured at 2.6s to 3.5s on an idle
+		// machine, which is too close to the 5s default to be safe on a loaded runner, so the
+		// budget is explicit. It is COLD START and nothing else: no model is reachable from this
+		// environment, so no inference can happen here (see `run` above).
+	}, 15_000);
 
 	/** The advertised opt-out must work end to end even though it needs four real CLI launches. */
 	it("honours the escape hatch it advertises, leaving the key path still broken", async () => {

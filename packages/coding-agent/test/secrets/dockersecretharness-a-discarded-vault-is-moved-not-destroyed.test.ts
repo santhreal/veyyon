@@ -20,6 +20,13 @@
  * TO MOVE ASIDE, so a default would let `/secret discard` on its own move a WORKING vault out from
  * under the session.
  *
+ * THE SURFACE IS NONINTERACTIVE THROUGHOUT, and that is not incidental. `discard` is a verb, and
+ * verbs only exist where there is no field and no GUI to replace them: a terminal reads its whole
+ * argument line as a credential, so `discard --scope profile` typed there is a value, not a
+ * command. What the rows below pin — the move, the permissions, the refusals, the required scope —
+ * is vault semantics reached through the one grammar that can still name it, which is the grammar
+ * a `-p` run and an ACP client speak.
+ *
  * The vault is real, on a temporary directory, so the seal, the scope files and the move are the
  * production ones. The unreadable state comes from the shared fixture rather than from writing
  * garbage: `load()` skips exactly one failure, a payload that cleared every provenance and
@@ -74,7 +81,13 @@ interface Fixture {
 	readonly vault: SecretVault;
 	/** Every moved-aside file sitting beside a scope's vault, absolute and sorted. */
 	movedAside(scope: VaultScope): Promise<string[]>;
-	/** Run `/secret <args>` the way a surface does: parse for that surface, then dispatch. */
+	/**
+	 * Run `/secret <args>` the way a surface does: parse for that surface, then dispatch.
+	 *
+	 * DEFAULTS TO `noninteractive`, because that is the surface `discard` lives on. A terminal has
+	 * no verbs at all now — the argument line there IS a credential — so every row below that types
+	 * `discard --scope profile` is describing the text grammar a `-p` run or an ACP client speaks.
+	 */
 	secret(args: string, surface?: SecretCommandSurface): Promise<SecretCommandResult>;
 	/** Dispatch a request built by hand, as a client that never goes through the parser does. */
 	run(request: SecretCommandRequest, surface?: SecretCommandSurface): Promise<SecretCommandResult>;
@@ -100,7 +113,7 @@ async function fixture(options?: { shareProfileWithGlobal?: boolean }): Promise<
 		projectDir: path.join(root, "project", ".veyyon"),
 	};
 	const vault = new SecretVault(locations, () => NOW);
-	const run = async (request: SecretCommandRequest, surface: SecretCommandSurface = "tui") =>
+	const run = async (request: SecretCommandRequest, surface: SecretCommandSurface = "noninteractive") =>
 		await runSecretCommand(request, {
 			vault,
 			readEnv: () => undefined,
@@ -119,7 +132,7 @@ async function fixture(options?: { shareProfileWithGlobal?: boolean }): Promise<
 				.map(name => path.join(directory, name))
 				.sort();
 		},
-		secret: async (args, surface = "tui") => await run(parseSecretCommand(args, surface), surface),
+		secret: async (args, surface = "noninteractive") => await run(parseSecretCommand(args, surface), surface),
 		run,
 	};
 }
@@ -296,8 +309,8 @@ describe("/secret discard", () => {
 	 * the usage so the missing flag is learnable from the failure.
 	 */
 	it("refuses a bare invocation rather than defaulting the scope", () => {
-		expect(() => parseSecretCommand("discard", "tui")).toThrow("There is no default");
-		expect(() => parseSecretCommand("discard", "tui")).toThrow("--scope profile|project|global");
+		expect(() => parseSecretCommand("discard", "noninteractive")).toThrow("There is no default");
+		expect(() => parseSecretCommand("discard", "noninteractive")).toThrow("--scope profile|project|global");
 	});
 
 	/**
@@ -330,18 +343,24 @@ describe("/secret discard", () => {
 		const f = await fixture();
 		await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
 
-		const parse = () => parseSecretCommand(`discard ${SURVIVING_NAME} --scope profile`, "tui");
+		const parse = () => parseSecretCommand(`discard ${SURVIVING_NAME} --scope profile`, "noninteractive");
 		expect(parse).toThrow("no arguments");
 		expect(messageOf(parse)).not.toContain(SURVIVING_NAME);
 		expect(await f.movedAside("profile")).toEqual([]);
 	});
 
 	/**
-	 * The repair must not be TUI-only. A broken vault is most likely to be met by a headless client,
-	 * which cannot open a masked prompt and so takes the noninteractive help; a verb missing from
-	 * that surface, or from its help, leaves those operators with no in-product route at all.
+	 * The repair belongs to the noninteractive surface, and its help is the one that has to carry it.
+	 * A broken vault is most likely to be met by a headless client, which cannot open a masked prompt
+	 * or a manager screen and so takes the noninteractive help; a verb missing from that surface, or
+	 * from its help, leaves those operators with no in-product route at all.
+	 *
+	 * The TUI help deliberately does NOT list it. That surface has no verbs to list: it offers
+	 * `/secret manager`, and a `discard` line there would advertise a word a terminal now stores as
+	 * a credential. Asserted, rather than left implied, because a `discard` line reappearing in the
+	 * TUI text is exactly the drift that would teach an operator to type it.
 	 */
-	it("runs from the noninteractive surface, and appears in both help variants", async () => {
+	it("runs from the noninteractive surface, whose help is the only one that lists it", async () => {
 		const f = await fixture();
 		const broken = await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
 
@@ -353,7 +372,8 @@ describe("/secret discard", () => {
 		});
 		expect(result.message).toContain("profile");
 		expect(secretCommandUsage("noninteractive")).toContain("/secret discard");
-		expect(secretCommandUsage("tui")).toContain("/secret discard");
+		expect(secretCommandUsage("tui")).not.toContain("discard");
+		expect(secretCommandUsage("tui")).toContain("/secret manager");
 	});
 
 	/**

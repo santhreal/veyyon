@@ -4,8 +4,8 @@
  * THE GAP. Expansion is audited (`secrets.auditLog`) and, outside yolo, gated (the secret-use
  * boundary). Neither of those puts anything on screen while the spend happens: the log is a file
  * read afterwards, and the boundary is deliberately skipped when `approvalMode === "yolo"` or the
- * `/yolo` bypass is on. yolo is the shipped default AND the mode most likely to be running
- * unattended, so it was exactly the configuration in which a stored credential could leave the vault
+ * `/yolo` bypass is on. yolo is the mode most likely to be running unattended, so it was exactly
+ * the configuration in which a stored credential could leave the vault
  * into a live command with no signal at all. The transcript showed the `#GITHUB_TOKEN#` placeholder
  * only when the tool's renderer happened to print the argument it sat in — a `bash` command yes, a
  * `write` body or a nested `env` entry no — and even then an expanded placeholder looked identical
