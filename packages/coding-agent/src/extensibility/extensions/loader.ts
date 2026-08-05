@@ -493,11 +493,26 @@ export async function discoverExtensionPaths(
 	// the extension runner, which owns the current runtime event bus. Hook
 	// capability loading already applies hook-specific disabled ids; do not also
 	// filter them through extension-module names.
+	//
+	// Every hook provider discovers ANY file under `hooks/{pre,post}/`, and the
+	// claude and codex providers strip `.sh`/`.bash`/`.zsh`/`.fish` off the tool
+	// name, so a shell hook is a shape they expect. But this is the only
+	// production consumer of the capability and it can bind nothing but a JS/TS
+	// module. A dropped hook is therefore named out loud: it was discovered, the
+	// `/extensions` panel lists it as active, and running it is the one thing
+	// that does not happen. Staying quiet here left the operator with a hook file
+	// on disk, a row in the panel, and no execution and no explanation.
 	const hooks = await loadCapability<Hook>(hookCapability.id, loadOptions);
-	for (const hookPath of hooks.items
-		.map(hook => hook.path)
-		.filter(hookPath => isExtensionFile(path.basename(hookPath)))) {
-		addPath(hookPath);
+	for (const hook of hooks.items) {
+		if (isExtensionFile(path.basename(hook.path))) {
+			addPath(hook.path);
+			continue;
+		}
+		reportFault({
+			source: "extensions",
+			text: `Hook ${hook.path} is not a JS/TS module, so it is not loaded in this run. Hooks run as extension modules: rename it to .ts or .js and export a factory.`,
+			context: { hookPath: hook.path, hookType: hook.type, tool: hook.tool },
+		});
 	}
 
 	// Both loads above answer with `items` AND `warnings`, and only `items` was
