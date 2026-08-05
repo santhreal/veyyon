@@ -254,9 +254,14 @@ export function streamGitLabDuo(
 		try {
 			const apiKey = typeof options?.apiKey === "string" ? options.apiKey : undefined;
 			if (!apiKey || !options) {
+				// `/login` is a TUI-only slash command: it carries no `textMode: true`
+				// in the coding agent's `slash-commands/builtin-declarations.ts`, so an
+				// ACP client, a `--print` run and the model itself all cannot reach it.
+				// A provider error surfaces in every one of those channels, so the
+				// message names a command for each channel it can actually reach.
 				throw new AIError.MissingApiKeyError(
 					undefined,
-					"Missing GitLab access token. Run /login gitlab-duo or set GITLAB_TOKEN.",
+					"Missing GitLab access token, so no GitLab Duo request can be signed. Fix: set GITLAB_TOKEN in the environment, or run `veyyon auth-broker login gitlab-duo` to sign in from a terminal (`/login gitlab-duo` in an interactive veyyon session).",
 				);
 			}
 
