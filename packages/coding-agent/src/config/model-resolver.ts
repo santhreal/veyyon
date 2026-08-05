@@ -1400,9 +1400,22 @@ export function fallbackForUnavailableDefault(
 	const subject = configuredDefault
 		? `Configured default model "${configuredDefault}"`
 		: "The configured default model";
+	// The provider to sign into is the prefix of the configured selector when it
+	// carries one; a bare model id (`opus`) does not name a provider, so the
+	// clause stays generic rather than guessing one.
+	const configuredProvider = configuredDefault?.includes("/") ? configuredDefault.split("/")[0] : undefined;
+	// This warning reaches `veyyon commit`, `--print` startup and `bench` as well
+	// as the interactive session (see the doc comment above), so the remedies are
+	// shell commands. `veyyon auth` was named here and is not a command at all:
+	// `cli-commands.ts` registers `auth-broker` and `auth-gateway`, and `/model`
+	// only exists once a TUI is up.
 	return {
 		model,
-		warning: `${subject} is unavailable: its provider has no stored credentials or the model no longer exists. Using ${model.provider}/${model.id} instead — run \`veyyon auth\` to sign in or \`/model\` to pick a new default.`,
+		warning:
+			`${subject} is unavailable: its provider has no stored credentials or the model no longer exists. ` +
+			`Using ${model.provider}/${model.id} instead. Fix: run ` +
+			`\`veyyon auth-broker login ${configuredProvider ?? "<provider>"}\` to sign in, or ` +
+			"`veyyon models` to see what is available (`/model` picks a new default in an interactive veyyon session).",
 	};
 }
 
