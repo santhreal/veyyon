@@ -415,7 +415,9 @@ describe("with secret protection off", () => {
 		const outcome = await runSecretCommandForSurface("rm github-token", h.port);
 
 		expect(outcome.message).toContain("Removed GITHUB_TOKEN from the profile vault.");
-		expect(outcome.message).toContain('Turn on "Hide Secrets" in /settings.');
+		expect(outcome.message).toContain(
+			'Turn on "Hide Secrets" in /settings, or run: veyyon config set secrets.enabled true.',
+		);
 	});
 });
 
