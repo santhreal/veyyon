@@ -195,7 +195,7 @@ function hasFinalResult(
  * take precedence unless a provider opts into OpenAI-family idle flooring for
  * local backends that users historically tuned with `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS`.
  */
-interface LazyStreamLimits {
+export interface LazyStreamLimits {
 	defaultFirstEventTimeoutMs?: number;
 	defaultIdleTimeoutMs?: number;
 	/**
@@ -231,6 +231,67 @@ const OPENAI_IDLE_FLOORED_LAZY_STREAM_LIMITS: LazyStreamLimits = {
 	openAIIdleEnvFloorsFirstEvent: true,
 };
 
+/**
+ * Backends that run their OWN agent loop server-side (`cursor-agent`,
+ * `devin-agent`).
+ *
+ * These were the only lazy providers left on the generic defaults, 100s to the
+ * first event and 120s of silence thereafter, and both numbers are wrong for
+ * what these backends do. A Cursor or Devin turn is not a token stream with an
+ * occasional gap: the remote agent plans, edits files and runs commands on its
+ * own side, emitting nothing to us while it does, and a single step of that
+ * routinely outlasts two minutes. The watchdog then aborted a perfectly healthy
+ * session with "Provider stream stalled while waiting for the next event",
+ * which is exactly the report — the same models behave in their own harnesses,
+ * because their own harnesses do not impose this budget.
+ *
+ * Every OpenAI-family and Anthropic provider is already exempt through
+ * `providerHandlesStreamTimeouts`, because each owns a watchdog tuned to its
+ * transport. Neither of these two owns one: `devin.ts` is a bare Connect frame
+ * reader with no timeout of any kind, so exempting them outright would mean a
+ * genuinely dead socket hangs forever. They get a budget instead, sized for an
+ * agent rather than for a token stream.
+ *
+ * `VEYYON_STREAM_IDLE_TIMEOUT_MS` and `VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS`
+ * still win, so anyone who wants the old aggression can ask for it.
+ */
+export const AGENTIC_BACKEND_LAZY_STREAM_LIMITS: LazyStreamLimits = {
+	defaultFirstEventTimeoutMs: 300_000,
+	defaultIdleTimeoutMs: 600_000,
+};
+
+/**
+ * Resolve the watchdog budget a lazy provider stream runs under.
+ *
+ * Split out of {@link forwardStream} because it is the whole reason a provider
+ * either survives a long quiet stretch or gets killed during one, and inside an
+ * async IIFE it can only be observed by waiting out the real deadline. As a
+ * function it can be asserted directly for every provider class.
+ *
+ * `undefined` idle means no idle watchdog; a `0` first-event budget means no
+ * first-event watchdog. Both are what `providerHandlesStreamTimeouts` yields,
+ * for providers that own a watchdog tuned to their own transport.
+ */
+export function resolveLazyStreamBudget(
+	options: { streamIdleTimeoutMs?: number; streamFirstEventTimeoutMs?: number },
+	limits?: LazyStreamLimits,
+): { idleTimeoutMs: number | undefined; firstItemTimeoutMs: number | undefined } {
+	if (limits?.providerHandlesStreamTimeouts === true) {
+		return { idleTimeoutMs: undefined, firstItemTimeoutMs: 0 };
+	}
+	const idleTimeoutMs =
+		options.streamIdleTimeoutMs ??
+		(limits?.openAIIdleEnvFloorsFirstEvent
+			? getOpenAIStreamIdleTimeoutMs(limits.defaultIdleTimeoutMs)
+			: getStreamIdleTimeoutMs(limits?.defaultIdleTimeoutMs));
+	const firstItemTimeoutMs =
+		options.streamFirstEventTimeoutMs ??
+		(limits?.openAIIdleEnvFloorsFirstEvent
+			? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs, limits.defaultFirstEventTimeoutMs)
+			: getStreamFirstEventTimeoutMs(idleTimeoutMs, limits?.defaultFirstEventTimeoutMs));
+	return { idleTimeoutMs, firstItemTimeoutMs };
+}
+
 function forwardStream<TApi extends Api>(
 	target: EventStreamImpl,
 	source: AsyncIterable<AssistantMessageEvent>,
@@ -241,19 +302,7 @@ function forwardStream<TApi extends Api>(
 ): void {
 	(async () => {
 		try {
-			const providerHandlesStreamTimeouts = limits?.providerHandlesStreamTimeouts === true;
-			const idleTimeoutMs = providerHandlesStreamTimeouts
-				? undefined
-				: (options.streamIdleTimeoutMs ??
-					(limits?.openAIIdleEnvFloorsFirstEvent
-						? getOpenAIStreamIdleTimeoutMs(limits.defaultIdleTimeoutMs)
-						: getStreamIdleTimeoutMs(limits?.defaultIdleTimeoutMs)));
-			const firstItemTimeoutMs = providerHandlesStreamTimeouts
-				? 0
-				: (options.streamFirstEventTimeoutMs ??
-					(limits?.openAIIdleEnvFloorsFirstEvent
-						? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs, limits.defaultFirstEventTimeoutMs)
-						: getStreamFirstEventTimeoutMs(idleTimeoutMs, limits?.defaultFirstEventTimeoutMs)));
+			const { idleTimeoutMs, firstItemTimeoutMs } = resolveLazyStreamBudget(options, limits);
 			// Providers with a server-driven local tool bridge (e.g. the Cursor
 			// exec channel) mark their stream busy while a local tool runs; the
 			// watchdog must not read that silence as a provider stall (#4593).
@@ -477,8 +526,8 @@ export const streamOpenAIResponses = createLazyStream(
 	loadOpenAIResponsesProviderModule,
 	PROVIDER_HANDLED_STREAM_TIMEOUTS,
 );
-export const streamCursor = createLazyStream(loadCursorProviderModule);
-export const streamDevin = createLazyStream(loadDevinProviderModule);
+export const streamCursor = createLazyStream(loadCursorProviderModule, AGENTIC_BACKEND_LAZY_STREAM_LIMITS);
+export const streamDevin = createLazyStream(loadDevinProviderModule, AGENTIC_BACKEND_LAZY_STREAM_LIMITS);
 export const streamOllama = createLazyStream(loadOllamaProviderModule, OPENAI_IDLE_FLOORED_LAZY_STREAM_LIMITS);
 
 export const streamBedrock = createLazyStream(loadBedrockProviderModule);
