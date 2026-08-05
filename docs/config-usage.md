@@ -238,7 +238,7 @@ Native provider (`id: native`) reads native config from:
 - Rules: `rules/*.{md,mdc}`
 - Prompts: `prompts/*.md`
 - Instructions: `instructions/*.md`
-- Hooks: `hooks/pre/*`, `hooks/post/*`
+- Hooks: `hooks/pre/*`, `hooks/post/*` are scanned in full, but only `.ts` and `.js` entries load; anything else is reported as skipped
 - Tools: `tools/*.{json,md,ts,js,sh,bash,py}` and `tools/<name>/index.ts`
 - Extension modules: discovered under `extensions/` (+ legacy `settings.json.extensions` string array)
 - Extensions: `extensions/<name>/gemini-extension.json`
