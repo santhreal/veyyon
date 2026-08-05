@@ -18,6 +18,12 @@ import shlex
 from pathlib import Path
 from typing import Any, ClassVar
 
+from model_catalog_bootstrap import (
+    build_model_catalog_refresh_command,
+    build_status_preserving_tee_command,
+)
+from veyyon_replay_driver import EXACT_MODEL, load_replay_manifest
+
 from pier.agents.installed.base import BaseInstalledAgent
 from pier.agents.network import allowlist_from_urls
 from pier.environments.base import BaseEnvironment
@@ -25,6 +31,7 @@ from pier.models.agent.context import AgentContext
 from pier.models.agent.install import AgentInstallSpec, InstallStep
 
 CONTAINER_ASSETS_DIR = "/opt/veyyon-assets"
+MODEL_CATALOG_REFRESH_TIMEOUT_SECONDS = 120
 
 
 class VeyyonAgent(BaseInstalledAgent):
@@ -49,11 +56,13 @@ class VeyyonAgent(BaseInstalledAgent):
         arm_name: str = "default",
         assets_dir: str = "",
         binary_sha: str = "nosha",
+        replay_path: str = "",
         **kwargs,
     ):
         self._arm_name = arm_name
         self._assets_dir = assets_dir
         self._binary_sha = binary_sha
+        self._replay_path = replay_path
         super().__init__(*args, **kwargs)
 
     def get_version_command(self) -> str | None:
@@ -82,6 +91,36 @@ class VeyyonAgent(BaseInstalledAgent):
     ) -> None:
         if not self.model_name:
             raise ValueError("VeyyonAgent requires --model (provider/model-id)")
+        replay_path = Path(self._replay_path) if self._replay_path else None
+        if replay_path is not None:
+            if self.model_name != EXACT_MODEL:
+                raise ValueError(
+                    f"Veyyon replay requires exactly {EXACT_MODEL}; got {self.model_name!r}. "
+                    "Aliases and fallback are not permitted."
+                )
+            if not replay_path.is_absolute():
+                raise ValueError(
+                    f"Veyyon replay manifest path must be absolute: {replay_path}"
+                )
+            if not replay_path.is_file():
+                raise ValueError(f"Veyyon replay manifest missing on host: {replay_path}")
+            replay_manifest, _, _ = load_replay_manifest(replay_path, self.model_name)
+            missing_provenance = [
+                value
+                for value in replay_manifest["source_session_artifacts"]
+                if not Path(value).is_file()
+            ]
+            checkpoint = Path(replay_manifest["repository_checkpoint"])
+            if missing_provenance or not checkpoint.is_dir():
+                details = [*(f"source artifact {value}" for value in missing_provenance)]
+                if not checkpoint.is_dir():
+                    details.append(f"repository checkpoint {checkpoint}")
+                raise ValueError(
+                    "Veyyon replay provenance missing on host: " + "; ".join(details)
+                )
+            replay_driver = Path(__file__).with_name("veyyon_replay_driver.py")
+            if not replay_driver.is_file():
+                raise ValueError(f"Veyyon replay driver missing on host: {replay_driver}")
         instruction = self.render_instruction(instruction)
         host_assets = Path(self._assets_dir)
         for rel in ("vey", "auth-agent.db", f"arms/{self._arm_name}.yml"):
@@ -96,6 +135,13 @@ class VeyyonAgent(BaseInstalledAgent):
             host_assets / "arms" / f"{self._arm_name}.yml",
             f"{CONTAINER_ASSETS_DIR}/arm.yml",
         )
+        if replay_path is not None:
+            await environment.upload_file(
+                replay_path, f"{CONTAINER_ASSETS_DIR}/replay.json"
+            )
+            await environment.upload_file(
+                replay_driver, f"{CONTAINER_ASSETS_DIR}/veyyon_replay_driver.py"
+            )
         # An arm MAY carry a .rule.md, staged by run.ts, injected as an
         # always-apply rule.
         has_rule = (host_assets / "rules" / f"{self._arm_name}.md").is_file()
@@ -165,13 +211,39 @@ class VeyyonAgent(BaseInstalledAgent):
             if has_statements
             else ""
         )
-        command = (
-            f"{setup} && "
-            f"{sections_env}{statements_env}{CONTAINER_ASSETS_DIR}/vey --model {shlex.quote(self.model_name)} "
-            f"--auto-approve --config $HOME/.veyyon/arm.yml "
-            f"--print {shlex.quote(instruction)} "
-            "2>&1 </dev/null | stdbuf -oL tee /logs/agent/veyyon.txt"
+        catalog_refresh = build_model_catalog_refresh_command(
+            f"{CONTAINER_ASSETS_DIR}/vey",
+            self.model_name,
+            "/logs/agent/model-catalog-refresh.txt",
+            timeout_seconds=MODEL_CATALOG_REFRESH_TIMEOUT_SECONDS,
         )
+        if replay_path is not None:
+            driver_command = (
+                f"{sections_env}{statements_env}python3 "
+                f"{CONTAINER_ASSETS_DIR}/veyyon_replay_driver.py "
+                f"--binary {CONTAINER_ASSETS_DIR}/vey "
+                f"--config $HOME/.veyyon/arm.yml "
+                f"--manifest {CONTAINER_ASSETS_DIR}/replay.json "
+                f"--repo . --logs /logs/agent "
+                f"--model {shlex.quote(EXACT_MODEL)}"
+            )
+            logged_agent_command = build_status_preserving_tee_command(
+                driver_command,
+                "/logs/agent/veyyon.txt",
+                "/logs/agent/veyyon-exit-status.txt",
+            )
+        else:
+            agent_command = (
+                f"{sections_env}{statements_env}{CONTAINER_ASSETS_DIR}/vey "
+                f"--model {shlex.quote(self.model_name)} "
+                f"--auto-approve --config $HOME/.veyyon/arm.yml "
+                f"--print {shlex.quote(instruction)} </dev/null 2>&1"
+            )
+            logged_agent_command = build_status_preserving_tee_command(
+                agent_command,
+                "/logs/agent/veyyon.txt",
+            )
+        command = f"{setup} && {catalog_refresh} && {logged_agent_command}"
         try:
             await self.exec_as_agent(environment, command=command)
         finally:
@@ -190,6 +262,50 @@ class VeyyonAgent(BaseInstalledAgent):
                 pass
 
     def populate_context_post_run(self, context: AgentContext) -> None:
+        replay_result_path = self.logs_dir / "veyyon-result.json"
+        if replay_result_path.is_file():
+            result = json.loads(replay_result_path.read_text())
+
+            def host_artifact(value: Any) -> Any:
+                prefix = "/logs/agent/"
+                if isinstance(value, str) and value.startswith(prefix):
+                    return str(self.logs_dir / value.removeprefix(prefix))
+                return value
+
+            input_tokens = result.get("input_tokens")
+            output_tokens = result.get("output_tokens")
+            cache_tokens = result.get("cache_tokens")
+            if isinstance(input_tokens, int):
+                context.n_input_tokens = input_tokens
+            if isinstance(output_tokens, int):
+                context.n_output_tokens = output_tokens
+            if isinstance(cache_tokens, int):
+                context.n_cache_tokens = cache_tokens
+            if result.get("provider_cost_supported") is True and isinstance(
+                result.get("cost_usd"), (int, float)
+            ):
+                context.cost_usd = float(result["cost_usd"])
+            native_compaction = dict(result.get("native_compaction") or {})
+            native_compaction["artifact"] = host_artifact(
+                native_compaction.get("artifact")
+            )
+            artifacts = {
+                name: host_artifact(path)
+                for name, path in dict(result.get("artifacts") or {}).items()
+            }
+            context.metadata = {
+                "system": "veyyon",
+                **result,
+                "native_compaction": native_compaction,
+                "patch_path": host_artifact(result.get("patch_path")),
+                "transcript_path": host_artifact(result.get("transcript_path")),
+                "log_path": host_artifact(result.get("log_path")),
+                "continuation_artifact": host_artifact(
+                    result.get("continuation_artifact")
+                ),
+                "artifacts": artifacts,
+            }
+            return
         sessions_dir = self.logs_dir / "sessions"
         if not sessions_dir.is_dir():
             return
