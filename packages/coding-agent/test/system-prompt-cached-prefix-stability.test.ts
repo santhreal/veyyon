@@ -85,17 +85,44 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
-			// Updated 2026-07-27, deliberately, for the redundancy trim: 731 bytes SHORTER
-			// (10_332 -> 9_601), and every one of them was a line the prompt already said somewhere else.
+			// Updated 2026-08-04, deliberately, for the restored anti-early-stop instructions:
+			// 9_601 -> 10_108 (+507).
 			//
-			// WHAT WENT, and why each was a duplicate rather than a cut. `<contract>` lost "NEVER
-			// fabricate outputs. Claims about code, tools, tests, docs, or sources MUST be grounded",
-			// which `<evidence-and-output>` states verbatim two sections later; it also lost "NEVER yield
-			// unless the deliverable is complete" and "NEVER punt half-solved work back", both already
-			// carried by `<completeness>` and by the `<critical>` line saying there is no stopping
-			// condition other than completion. `<yielding>` lost the two items that restated
-			// `<completeness>` and `<evidence-and-output>`. `# 3. Decompose` lost the sentence
-			// re-explaining the cleanup phase that `# 6. Cleanup` defines directly below it.
+			// WHY THE PIN WAS ALREADY RED WHEN THIS LANDED, since the number here does not match what
+			// the working tree renders. Three statement rows were added to the registry earlier in the
+			// same session (`tool-policy/bash-cwd`, `tool-policy/delegation-allowed`,
+			// `execution-workflow/commit-often`) and are still uncommitted, with their .md files
+			// untracked. Measured by ablating each row at this fixture, the two that render here are
+			// worth exactly 1_024 bytes, which is the whole of the unrecorded 9_601 -> 10_625 drift;
+			// `delegation-allowed` contributes nothing because the fixture grants no `task` tool. This
+			// pin therefore records the tree that was COMMITTED, not the tree that was in flight:
+			// recording 11_132 would have left HEAD red for everyone until that other work landed.
+			// When those three rows and their files are committed, this becomes
+			// `e9ee4981c4a330e5` / 11_132, measured, and belongs in the same commit that lands them.
+			//
+			// WHAT THE +507 IS. Five instructions that upstream oh-my-pi carries and
+			// this fork had dropped are restored as statements: `delivery-contract/no-partial-yield`,
+			// `delivery-contract/no-punting`, `delivery-contract/verification-source`,
+			// `delivery-contract/never-stop-early` and `execution-workflow/decompose-todo-batching`
+			// (conditioned on the todo tool, so it contributes nothing to THIS fixture, which grants
+			// only read/write/bash). Four of the five are anti-early-stop text, and the last one is
+			// last on purpose: it holds the final recency slot of the cached prefix.
+			//
+			// WHY THEY CAME BACK. The 2026-07-27 trim recorded below removed "NEVER yield unless the
+			// deliverable is complete" and "NEVER punt half-solved work back" as redundant against
+			// "the `<critical>` line saying there is no stopping condition other than completion".
+			// That line is not in `<critical>` and never was: it lives in `prompts/session/
+			// project-prompt.md`, which is the SUBAGENT prompt. So the main-session prompt lost both
+			// prohibitions and gained nothing, and the justification named text that does not render
+			// here. `packages/coding-agent/test/system-prompt-never-stops-early.test.ts` now asserts
+			// each restored line against the composed bytes, so the next trim has to argue with an
+			// assertion instead of with a comment.
+			//
+			// The 2026-07-27 trim itself, kept for provenance: 731 bytes SHORTER (10_332 -> 9_601).
+			// `<contract>` also lost "NEVER fabricate outputs...", which `<evidence-and-output>` does
+			// state verbatim two sections later. `<yielding>` lost two items restating
+			// `<completeness>` and `<evidence-and-output>`. `# 3. Decompose` lost a sentence
+			// re-explaining the cleanup phase defined directly below it.
 			//
 			// NOT the delegation gating, which is the change this digest looks like it should be. The
 			// fixture grants `toolNames: ["read","write","bash"]` and therefore no `task` tool, so the
@@ -112,8 +139,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "00dcb881cd93ade9",
-			length: 9_601,
+			sha: "2a975b88105db940",
+			length: 10_108,
 		});
 	});
 

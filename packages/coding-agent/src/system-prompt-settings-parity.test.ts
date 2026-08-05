@@ -145,6 +145,7 @@ const GATING_PROPS = [
 	"hasInspectImage",
 	"hasReportToolIssue",
 	"hasLsp",
+	"hasTodo",
 	"hasAstTools",
 	"useCodexTaskPrompt",
 ] as const;
@@ -258,6 +259,11 @@ describe("system prompt settings parity: tool policy", () => {
 	it(`${asserted("hasLsp")} toggles the LSP section`, async () => {
 		expect(await renderBlock0({ toolNames: ["read", "lsp"] })).toContain("# LSP");
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("# LSP");
+	});
+
+	it(`${asserted("hasTodo")} toggles the todo batching rule`, async () => {
+		expect(await renderBlock0({ toolNames: ["read", "todo"] })).toContain("Todo calls NEVER travel alone");
+		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Todo calls NEVER travel alone");
 	});
 
 	it(`${asserted("hasAstTools")} toggles the AST section`, async () => {
@@ -612,6 +618,7 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	"tools:ask": "hasAsk",
 	"tools:task": "hasTask",
 	"tools:lsp": "hasLsp",
+	"tools:todo": "hasTodo",
 	"tools:inspect_image": "hasInspectImage",
 	"tools:report_tool_issue": "hasReportToolIssue",
 	"tools:ast_grep": "hasAstTools",

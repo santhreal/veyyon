@@ -82,10 +82,19 @@ import statementDeliveryCritical from "./statements/delivery-contract/critical.m
 import statementDeliveryEvidenceAndOutput from "./statements/delivery-contract/evidence-and-output.md" with {
 	type: "text",
 };
+import statementDeliveryNeverStopEarly from "./statements/delivery-contract/never-stop-early.md" with { type: "text" };
+import statementDeliveryNoPartialYield from "./statements/delivery-contract/no-partial-yield.md" with { type: "text" };
+import statementDeliveryNoPunting from "./statements/delivery-contract/no-punting.md" with { type: "text" };
 import statementDeliveryPersonality from "./statements/delivery-contract/personality.md" with { type: "text" };
+import statementDeliveryVerificationSource from "./statements/delivery-contract/verification-source.md" with {
+	type: "text",
+};
 import statementDeliveryYielding from "./statements/delivery-contract/yielding.md" with { type: "text" };
 import statementExecutionCleanup from "./statements/execution-workflow/cleanup.md" with { type: "text" };
 import statementExecutionDecompose from "./statements/execution-workflow/decompose.md" with { type: "text" };
+import statementExecutionDecomposeTodoBatching from "./statements/execution-workflow/decompose-todo-batching.md" with {
+	type: "text",
+};
 import statementExecutionImplement from "./statements/execution-workflow/implement.md" with { type: "text" };
 import statementExecutionImplementAskFirst from "./statements/execution-workflow/implement-ask-first.md" with {
 	type: "text",
@@ -533,6 +542,11 @@ export const PROMPT_STATEMENTS = [
 		purpose: "bounds bash to real binaries and short pipelines, and says the shadowing commands are blocked",
 	},
 	{
+		section: "tool-policy",
+		condition: contains("tools", "bash"),
+		purpose: "keeps commands in the session cwd and makes user cwd corrections binding on the next call",
+	},
+	{
 		id: "tool-policy/specialized-bash-litmus",
 		section: "tool-policy",
 		condition: contains("tools", "bash"),
@@ -677,6 +691,23 @@ export const PROMPT_STATEMENTS = [
 			"the softer delegation setting, encouraging substantial work to use the closest enabled agent role while unmatched work remains inline",
 	},
 	{
+		section: "tool-policy",
+		// The floor, and the level that had no sentence at all: the section rendered its heading, its
+		// gates and its subagent-value bullets with nothing saying when spawning is appropriate, so the
+		// capability was described and its trigger was not. `not(eagerTasks)` is exactly `allowed`,
+		// since `eagerTasks` is `preferred`-or-stronger. Codex models take
+		// `delegation-codex-off` in this state instead, which already says the same thing in their
+		// wording, hence `not(useCodexTaskPrompt)` like its two siblings.
+		condition: allOf(
+			contains("tools", "task"),
+			when("hasSpawnableSubagent"),
+			not(when("useCodexTaskPrompt")),
+			not(when("eagerTasks")),
+		),
+		purpose:
+			"the weakest delegation setting: the ability stays, an explicit request is the trigger, and the model does not fan out on its own initiative",
+	},
+	{
 		id: "tool-policy/delegation-subagent-value",
 		section: "tool-policy",
 		// `hasSpawnableSubagent` as well as the tool, because the tool outlives the agents. It stays
@@ -780,6 +811,19 @@ export const PROMPT_STATEMENTS = [
 		purpose: "the Decompose heading, todo discipline, and the rule that cleanup is not planned up front",
 	},
 	{
+		id: "execution-workflow/decompose-todo-batching",
+		section: "execution-workflow",
+		// The only conditioned row of the five restored here, and it is conditioned because it names
+		// a tool. Telling a session with no todo tool to batch its todo calls is instruction the
+		// session cannot act on, paid for on every turn. The tool name interpolates for the same
+		// reason every other tool reference in this registry does: a renamed or wire-renamed tool
+		// must not leave the prompt naming something the model cannot call.
+		condition: contains("tools", "todo"),
+		text: statementExecutionDecomposeTodoBatching,
+		purpose:
+			"keeps a todo op in the same message as the turn's real work, because a turn whose only tool call is todo spends a full model round trip on bookkeeping",
+	},
+	{
 		id: "execution-workflow/implement",
 		section: "execution-workflow",
 		condition: { kind: "always" },
@@ -809,6 +853,12 @@ export const PROMPT_STATEMENTS = [
 			"forbids destructive commands outright when there is no way to ask; the else arm of the same block, so it is `not` rather than a second variable",
 	},
 	{
+		section: "execution-workflow",
+		condition: contains("tools", "bash"),
+		purpose:
+			"tells the agent to commit its own finished work frequently without asking, and separates that from the destructive git commands that do need permission; needs bash because that is what runs git",
+	},
+	{
 		id: "execution-workflow/verify",
 		section: "execution-workflow",
 		condition: { kind: "always" },
@@ -828,6 +878,28 @@ export const PROMPT_STATEMENTS = [
 		condition: { kind: "always" },
 		text: statementDeliveryContract,
 		purpose: "the inviolable contract block: never substitute an easier problem and require a clean cutover",
+	},
+	{
+		id: "delivery-contract/no-partial-yield",
+		section: "delivery-contract",
+		// Unconditional on purpose. A reduced tool set does not make stopping mid-deliverable
+		// acceptable, so any gate here would recreate the defect this row exists to close: an
+		// instruction that is present in the tree and absent from the prompt the agent actually gets.
+		// Its own block rather than a bullet appended to `contract.md`, because the registry's
+		// granularity rule only admits an adjacent unconditional row when that row opens a unit the
+		// document declares.
+		condition: { kind: "always" },
+		text: statementDeliveryNoPartialYield,
+		purpose:
+			"forbids yielding on a phase boundary, a todo flip, or a sub-step, which is the stop condition that ends a run with the work unfinished",
+	},
+	{
+		id: "delivery-contract/no-punting",
+		section: "delivery-contract",
+		condition: { kind: "always" },
+		text: statementDeliveryNoPunting,
+		purpose:
+			"forbids handing partially solved work back to the user, the other shape of an early stop and the one that reads as a report rather than as quitting",
 	},
 	{
 		id: "delivery-contract/completeness",
@@ -867,6 +939,26 @@ export const PROMPT_STATEMENTS = [
 		condition: { kind: "always" },
 		text: statementDeliveryCritical,
 		purpose: "the closing critical block: never narrate budgets, never re-audit an applied edit",
+	},
+	{
+		id: "delivery-contract/verification-source",
+		section: "delivery-contract",
+		condition: { kind: "always" },
+		text: statementDeliveryVerificationSource,
+		purpose:
+			"names the tool result as the verification, so the row above it forbidding a re-audit reads as a redirection rather than as a ban on checking anything",
+	},
+	{
+		id: "delivery-contract/never-stop-early",
+		section: "delivery-contract",
+		// LAST ROW OF THE LAST STATIC SECTION, deliberately. This is the final recency slot of the
+		// cached prefix, and position is part of why the instruction works; upstream states the same
+		// prohibition twice for that reason, once in the contract and once here. Anything appended
+		// after this row takes the slot away from it.
+		condition: { kind: "always" },
+		text: statementDeliveryNeverStopEarly,
+		purpose:
+			"repeats the no-early-stop prohibition in the last position the model reads before the conversation, which is the placement upstream uses and the reason it is stated twice",
 	},
 ] as const satisfies readonly PromptStatement[];
 
