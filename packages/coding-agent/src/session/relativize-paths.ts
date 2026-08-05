@@ -196,23 +196,40 @@ function relativizeMessage(
 	return content ? { ...message, content } : message;
 }
 
+export interface PathRelativizer {
+	transform(message: Message): { message: Message; bytesSaved: number };
+}
+
+/** Compile one roots version once, then relativize individual appended messages. */
+export function createPathRelativizer(roots: readonly string[]): PathRelativizer {
+	const compiled = roots.map(compileRoot);
+	return {
+		transform(message) {
+			const state = { saved: 0 };
+			return {
+				message: relativizeMessage(message, roots, compiled, state),
+				bytesSaved: state.saved,
+			};
+		},
+	};
+}
+
 /**
- * Render absolute paths under `roots` (normalized via {@link normalizeRoots})
- * as root-relative in the outbound copy of `messages`. Returns the input
- * array untouched when nothing matched, preserving context identity so
- * callers can skip downstream cache-key churn.
+ * Render absolute paths under `roots` as root-relative in an outbound copy.
+ * Returns the input array untouched when nothing matched.
  */
 export function relativizePathsUnderRoots(messages: Message[], roots: readonly string[]): RelativizeResult {
 	if (messages.length === 0 || roots.length === 0) return { messages, bytesSaved: 0 };
-	const compiled = roots.map(compileRoot);
-	const state = { saved: 0 };
+	const relativizer = createPathRelativizer(roots);
+	let bytesSaved = 0;
 	let out: Message[] | undefined;
 	for (let i = 0; i < messages.length; i++) {
-		const next = relativizeMessage(messages[i], roots, compiled, state);
-		if (next !== messages[i]) {
+		const next = relativizer.transform(messages[i]);
+		bytesSaved += next.bytesSaved;
+		if (next.message !== messages[i]) {
 			out ??= [...messages];
-			out[i] = next;
+			out[i] = next.message;
 		}
 	}
-	return { messages: out ?? messages, bytesSaved: state.saved };
+	return { messages: out ?? messages, bytesSaved };
 }

@@ -2226,6 +2226,13 @@ export class SessionManager {
 			timestamp,
 			cwd: this.#cwd,
 			parentSession: this.#persist ? sourceSessionFile : undefined,
+			// A branch keeps `entriesToKeep`, a genuine prefix of the source
+			// conversation, so the provider prefix cache the source populated is
+			// still valid for it. Carry the source's cache identity forward the
+			// same way `fork()` does; without it the reminted session id becomes a
+			// brand-new `prompt_cache_key` and the first post-branch turn pays a
+			// full uncached prefill of the entire retained history.
+			providerPromptCacheKey: this.#header.providerPromptCacheKey ?? this.#sessionId,
 		};
 
 		const labels: LabelEntry[] = [];
