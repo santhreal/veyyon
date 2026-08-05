@@ -10,7 +10,3 @@ Globs files and directories via fast pattern matching, any codebase size.
 <output>
 Matching paths sorted by mtime (newest first), grouped under `# <dir>/` headers with basenames below; directories get a trailing `/`.
 </output>
-
-<avoid>
-Open-ended searches needing multiple rounds of globbing/searching: you MUST use the Task tool instead.
-</avoid>

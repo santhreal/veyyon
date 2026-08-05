@@ -21,5 +21,4 @@ Structural code search via ast-grep.
 <critical>
 - AVOID repo-root scans — narrow `path` first
 - Parse issues = query failure, not absence: fix the pattern or tighten `path` before concluding "no matches"
-{{#if canDelegate}}- Broad cross-subsystem exploration: you SHOULD hand it to a `task` subagent first{{/if}}
 </critical>

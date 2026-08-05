@@ -1,0 +1,1 @@
+Delegation is available, not asked for. Spawn an enabled agent role when the user asks for delegation or hands you separate slices; otherwise keep the work inline rather than fanning out on your own initiative.

@@ -4,23 +4,23 @@ Exception: agents marked BLOCKING below run inline — their results return in t
 Execution blocks your turn: the call only returns once the work is completely finished.{{/if}}
 
 # Task Design
-{{#has agentNames "scout"}}- **Agent typing:** Choose each item's `agent` type first. Read-only research MUST use `agent: "scout"`. Use the default worker only when no listed specialist fits.{{else}}- **Agent typing:** Choose each item's `agent` type first, from the list below. Use the default worker when no listed specialist fits.{{/has}}
+- **Agent typing:** Choose each item's `agent` from the enabled types below. Use a specialist only when its listed role fits the assignment.
 - **No overhead:** Each `task` MUST instruct its agent to skip formatters, linters, and project-wide test suites. You will run those once at the end.
-- **One-pass agents:** Prefer agents that investigate **and** edit in a single pass{{#if hasReadOnlyAgents}}; only spin a read-only discovery step when the affected files are genuinely unknown{{/if}}.
+- **One-pass agents:** Prefer agents that investigate **and** edit in a single pass. Use a read-only agent only for investigation and reporting.
 
 # Inputs
 {{#if batchEnabled}}
 - `context`: Shared project state, constraints, and contracts. Applies to the entire batch; do not duplicate this background into individual tasks.
 - `tasks[]`: Array of subagents to spawn.
   - `name`: A stable CamelCase identifier (≤32 chars), used to address the agent (IRC, job ids). Generated automatically if omitted.
-  - `agent`: The agent type running this item, from the list below. Omitting it gives you the general-purpose worker (`{{defaultAgent}}`) — NEVER pass that name explicitly. Only omit it after checking the agent list below and finding no specialist that fits.{{#if allowedAgentsText}} Current spawn policy allows: {{allowedAgentsText}}.{{/if}}
+  - `agent`: The enabled agent type running this item.{{#if hasDefaultAgent}} Omitting it uses the configured default (`{{defaultAgent}}`); specify a specialist only when its listed role fits.{{else}} Required because no enabled default agent exists.{{/if}}{{#if allowedAgentsText}} Enabled and allowed: {{allowedAgentsText}}.{{/if}}
   - `task`: Complete, self-contained instructions. One-liners or missing acceptance criteria are PROHIBITED.
 {{#if isolationEnabled}}
   - `isolated`: Run in a dedicated worktree and return patches. Isolated agents are destroyed upon completion and cannot be addressed afterward.
 {{/if}}
 {{else}}
 - `name`: A stable CamelCase identifier (≤32 chars), used to address the agent (IRC, job ids). Generated automatically if omitted.
-- `agent`: The agent type to spawn, from the list below. Omitting it gives you the general-purpose worker (`{{defaultAgent}}`) — NEVER pass that name explicitly. Only omit it after checking the agent list below and finding no specialist that fits.{{#if allowedAgentsText}} Current spawn policy allows: {{allowedAgentsText}}.{{/if}}
+- `agent`: The enabled agent type to spawn.{{#if hasDefaultAgent}} Omitting it uses the configured default (`{{defaultAgent}}`); specify a specialist only when its listed role fits.{{else}} Required because no enabled default agent exists.{{/if}}{{#if allowedAgentsText}} Enabled and allowed: {{allowedAgentsText}}.{{/if}}
 - `task`: Complete, self-contained instructions. One-liners or missing acceptance criteria are PROHIBITED.
 {{#if isolationEnabled}}
 - `isolated`: Run in a dedicated worktree and return patches. Isolated agents are destroyed upon completion and cannot be addressed afterward.
@@ -53,7 +53,7 @@ The `task` field MUST follow this format:
 {{#if spawningDisabled}}
 Agent spawning is currently disabled.
 {{else}}
-Pick the most specific agent for each task. Use the default worker only when no specialist below fits.
+Pick the most specific enabled agent for each task.{{#if hasDefaultAgent}} Use the default only when no specialist below fits.{{/if}}
 {{#list agents join="\n"}}
 ### {{name}}{{#if readOnly}} (READ-ONLY: no edit/write/command tools){{/if}}{{#if blocking}} (BLOCKING: runs inline; its result returns in this call){{/if}}
 {{description}}

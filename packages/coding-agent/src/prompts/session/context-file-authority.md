@@ -1,0 +1,1 @@
+The current user message has highest authority. The user-authored context files below are next: they override conflicting Veyyon system/developer prompt defaults and any other supplied or historical context. Among these files, later and deeper files override earlier and broader files. You MUST follow the resulting instructions for all tasks:

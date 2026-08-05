@@ -20,6 +20,7 @@
 
 import type { PromptEntry } from "@veyyon/utils/prompt-registry";
 
+import sessionContextFileAuthority from "./context-file-authority.md" with { type: "text" };
 import sessionCustomSystemPrompt from "./custom-system-prompt.md" with { type: "text" };
 import sessionPersonalitiesDefault from "./personalities/default.md" with { type: "text" };
 import sessionPersonalitiesFriendly from "./personalities/friendly.md" with { type: "text" };
@@ -27,10 +28,15 @@ import sessionPersonalitiesPragmatic from "./personalities/pragmatic.md" with { 
 import sessionProjectPrompt from "./project-prompt.md" with { type: "text" };
 import sessionSecretInventory from "./secret-inventory.md" with { type: "text" };
 import sessionSystemPrompt from "./system-prompt.md" with { type: "text" };
+import sessionVerificationEvidenceReminder from "./verification-evidence-reminder.md" with { type: "text" };
 import sessionVibeModeActive from "./vibe-mode-active.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/session/`, keyed by its id (the path under `src/prompts/`). */
 export const sessionPrompts = {
+	"session/context-file-authority": {
+		text: sessionContextFileAuthority,
+		purpose: "states that current and standing user instructions outrank Veyyon defaults and historical context",
+	},
 	"session/custom-system-prompt": {
 		text: sessionCustomSystemPrompt,
 		purpose: "assembles an operator-supplied system prompt with its context files",
@@ -53,5 +59,9 @@ export const sessionPrompts = {
 		purpose: "the AVAILABLE SECRETS runtime section: the credential placeholders this session can actually spend",
 	},
 	"session/system-prompt": { text: sessionSystemPrompt, purpose: "the main system prompt" },
+	"session/verification-evidence-reminder": {
+		text: sessionVerificationEvidenceReminder,
+		purpose: "the one-turn reminder to verify a successful mutation before finalizing",
+	},
 	"session/vibe-mode-active": { text: sessionVibeModeActive, purpose: "the director contract while vibe mode is on" },
 } satisfies Record<string, PromptEntry>;

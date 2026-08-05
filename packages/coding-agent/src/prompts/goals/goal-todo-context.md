@@ -11,10 +11,7 @@ Before continuing substantial work, compare your next action with these todos as
 {{/if}}
 
 Overall: {{closed}}/{{total}} done, {{open}} open.
-{{#each phases}}
-- {{name}}
-{{#each tasks}}
-  - [{{status}}] {{content}}
-{{/each}}
-{{/each}}
+{{#if nextItem}}
+Active/next: [{{nextItem.status}}] {{nextItem.text}}
+{{/if}}
 </todo_context>
