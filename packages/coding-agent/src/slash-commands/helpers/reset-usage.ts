@@ -59,7 +59,10 @@ export function describeRedeemOutcome(outcome: ResetCreditRedeemOutcome, label: 
 		case "no_account":
 			return `Could not find a stored Codex account matching "${label}".`;
 		case "account_unavailable":
-			return `${label}: could not authenticate this account — try /login.`;
+			// `/usage reset` is a text-mode command, so this sentence reaches ACP, where `/login` is
+			// not advertised and not dispatchable. Naming the surface is what keeps it actionable
+			// there instead of pointing at a command the caller cannot type.
+			return `${label}: could not authenticate this account — sign in again with /login in an interactive veyyon session.`;
 		default:
 			return `${label}: reset did not apply (${outcome.code}).`;
 	}

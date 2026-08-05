@@ -28,8 +28,14 @@ export const ANY_MODEL_EFFORT_KEY = "*";
  * setting is, is what keeps one axis from feeling like two: before this, typing
  * the command silently rewrote the profile default while the cycle keybinding did
  * not, so the same change stuck or evaporated depending on how you made it.
+ *
+ * BOTH SPELLINGS, because `/thinking` is a text-mode command and this sentence
+ * reaches ACP, where `/settings` is neither advertised nor dispatchable. Naming
+ * only the settings screen sent a client without a terminal to a command it
+ * cannot type, with nothing else to do.
  */
-export const DEFAULT_EFFORT_POINTER = "To change the saved default, use /settings → Model → Default Effort.";
+export const DEFAULT_EFFORT_POINTER =
+	'To change the saved default, use /settings → Model → Default Effort, or run: veyyon config set defaultEffort \'{"*":"high"}\'.';
 
 /** The stored shape of `defaultEffort`: selector (or `*`) to configured effort. */
 export type DefaultEffortList = Record<string, string>;

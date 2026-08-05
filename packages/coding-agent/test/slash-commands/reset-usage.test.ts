@@ -70,7 +70,9 @@ describe("describeRedeemOutcome", () => {
 			"L: nothing to reset right now — your limits aren't constrained, so no credit was spent.",
 		);
 		expect(message("no_account")).toBe('Could not find a stored Codex account matching "L".');
-		expect(message("account_unavailable")).toBe("L: could not authenticate this account — try /login.");
+		expect(message("account_unavailable")).toBe(
+			"L: could not authenticate this account — sign in again with /login in an interactive veyyon session.",
+		);
 	});
 
 	it("falls back to a safe message that names the unexpected code", () => {
