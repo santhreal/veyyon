@@ -8,7 +8,7 @@
  * Registered by the lowest-priority `builtin-defaults` rule provider so any
  * user/project/tool rule with the same name overrides the bundled copy.
  */
-import argotLoadNudge from "./argot-load-nudge.md" with { type: "text" };
+import argotLoadNudge from "./experimental/argot-load-nudge.md" with { type: "text" };
 import bashToolNudge from "./bash-tool-nudge.md" with { type: "text" };
 import commitDrift from "./commit-drift.md" with { type: "text" };
 import cwdReroot from "./cwd-reroot.md" with { type: "text" };
