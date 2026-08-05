@@ -2,9 +2,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { type ContextFile, contextFileCapability } from "@veyyon/coding-agent/capability/context-file";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { initializeWithSettings, loadCapability } from "@veyyon/coding-agent/discovery";
+import { loadCapability } from "@veyyon/coding-agent/discovery";
 import { __resetDirsFromEnvForTests, removeWithRetries, setAgentDir } from "@veyyon/utils";
 
 function restoreEnvValue(key: string, value: string | undefined): void {
@@ -23,13 +29,22 @@ describe("disabledExtensions runtime filtering", () => {
 	let originalHome: string | undefined;
 	let originalAgentDirEnv: string | undefined;
 	let originalVeyyonProfileEnv: string | undefined;
-	let originalPiProfileEnv: string | undefined;
+	// `initializeWithSettings` writes MODULE-GLOBAL state in `capability/index.ts`
+	// (the settings reference, the disabled-provider set and the foreign-config
+	// flag), and `resetSettingsForTest` does not touch any of it — it only clears
+	// the Settings singleton in `config/settings.ts`. Without this snapshot the
+	// in-memory Settings below stayed installed as the registry's settings for the
+	// rest of the process, so every later file's `loadCapability` fell back to
+	// `disabledExtensions: ["context-file:project:AGENTS.md"]` and silently found
+	// no project AGENTS.md. That is the pair
+	// discovery/disabled-extensions.test.ts -> discovery/agents-monorepo-skills.test.ts.
+	let registrySnapshot: RegistrySnapshot | undefined;
 
 	beforeEach(async () => {
+		registrySnapshot = captureRegistryForTests();
 		resetSettingsForTest();
 		originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
 		originalVeyyonProfileEnv = process.env.VEYYON_PROFILE;
-		originalPiProfileEnv = process.env.VEYYON_PROFILE;
 		originalHome = process.env.HOME;
 		tempHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-disabled-ext-home-"));
 		process.env.HOME = tempHomeDir;
@@ -51,10 +66,11 @@ describe("disabledExtensions runtime filtering", () => {
 
 	afterEach(async () => {
 		resetSettingsForTest();
+		if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+		registrySnapshot = undefined;
 		vi.restoreAllMocks();
 		restoreEnvValue("HOME", originalHome);
 		restoreEnvValue("VEYYON_PROFILE", originalVeyyonProfileEnv);
-		restoreEnvValue("VEYYON_PROFILE", originalPiProfileEnv);
 		restoreEnvValue("VEYYON_CODING_AGENT_DIR", originalAgentDirEnv);
 		__resetDirsFromEnvForTests();
 		await removeWithRetries(tempHomeDir);
