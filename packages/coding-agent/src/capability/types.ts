@@ -16,6 +16,20 @@ export interface LoadContext {
 	home: string;
 	/** Git repository root (directory containing .git), or null if not in a repo */
 	repoRoot: string | null;
+	/**
+	 * WHICH profile's agent dir the caller is loading for
+	 * (`~/.veyyon/profiles/<name>/agent`). {@link loadCapability} always populates this
+	 * from `LoadOptions.agentDir`, defaulting to the process-active {@link getAgentDir}.
+	 *
+	 * A provider that reads a profile-scoped path MUST resolve it from here, not by
+	 * calling `getAgentDir()` itself. Every one of them used to call the global, so a
+	 * caller loading for a non-active profile silently got the profile the process
+	 * booted with: another agent's skills, rules and plugins, with nothing reported.
+	 *
+	 * Optional only because a hand-built context (tests, direct provider calls) may omit
+	 * it, in which case the active profile applies.
+	 */
+	agentDir?: string;
 }
 
 /**
@@ -68,6 +82,11 @@ export interface LoadOptions {
 	cwd?: string;
 	/** Custom home dir for user-level scans. Default: os.homedir() */
 	home?: string;
+	/**
+	 * WHICH profile's agent dir to load for. Default: the process-active
+	 * {@link getAgentDir}. Reaches providers as {@link LoadContext.agentDir}.
+	 */
+	agentDir?: string;
 	/** Include items even if they fail validation. Default: false */
 	includeInvalid?: boolean;
 	/** Include items disabled via settings. Default: false */

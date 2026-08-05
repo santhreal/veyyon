@@ -22,7 +22,6 @@ import { type ExtensionManifest, extensionCapability, type ManifestExtension } f
 import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
 import { readDirEntries, readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type Settings, settingsCapability } from "../capability/settings";
 import type { LoadContext, LoadResult } from "../capability/types";
 import {
 	buildExtensionModuleItems,
@@ -32,6 +31,7 @@ import {
 	expandEnvVarsDeep,
 	getProjectPath,
 	getUserPath,
+	readContextFile,
 } from "./helpers";
 
 const PROVIDER_ID = "gemini";
@@ -120,14 +120,26 @@ async function loadMCPFromSettings(
 // Context Files
 // =============================================================================
 
+/**
+ * Load GEMINI.md context files.
+ *
+ * Scopes: a home-level layer emitted as `level: "user"` (`~/.gemini/GEMINI.md`)
+ * and PROJECT (`<cwd>/.gemini/GEMINI.md`).
+ *
+ * GLOBAL and PROFILE scope do not apply. Gemini CLI has no profile concept, so
+ * there is no per-profile file to read, and veyyon's global layer
+ * (`<globalConfigRoot>/AGENTS.md`) belongs to the native provider. The home-level
+ * file shares veyyon's single home slot with the active profile's AGENTS.md and
+ * loses to it on priority (native 100 against 60).
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
 
-	// User-level: ~/.gemini/GEMINI.md
 	const userGeminiMd = getUserPath(ctx, "gemini", "GEMINI.md");
 	if (userGeminiMd) {
-		const content = await readFile(userGeminiMd);
+		const { content, warning } = await readContextFile(userGeminiMd);
+		if (warning) warnings.push(warning);
 		if (content) {
 			items.push({
 				path: userGeminiMd,
@@ -138,10 +150,10 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 		}
 	}
 
-	// Project-level: .gemini/GEMINI.md
 	const projectGeminiMd = getProjectPath(ctx, "gemini", "GEMINI.md");
 	if (projectGeminiMd) {
-		const content = await readFile(projectGeminiMd);
+		const { content, warning } = await readContextFile(projectGeminiMd);
+		if (warning) warnings.push(warning);
 		if (content) {
 			const projectBase = getProjectPath(ctx, "gemini", "");
 			const depth = projectBase ? calculateDepth(ctx.cwd, projectBase, path.sep) : 0;
@@ -245,55 +257,6 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 }
 
 // =============================================================================
-// Settings
-// =============================================================================
-
-async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
-	const items: Settings[] = [];
-	const warnings: string[] = [];
-
-	// User-level: ~/.gemini/settings.json
-	const userPath = getUserPath(ctx, "gemini", "settings.json");
-	if (userPath) {
-		const content = await readFile(userPath);
-		if (content) {
-			const parsed = tryParseJson<Record<string, unknown>>(content);
-			if (parsed) {
-				items.push({
-					path: userPath,
-					data: parsed,
-					level: "user",
-					_source: createSourceMeta(PROVIDER_ID, userPath, "user"),
-				});
-			} else {
-				warnings.push(`Invalid JSON in ${userPath}`);
-			}
-		}
-	}
-
-	// Project-level: .gemini/settings.json
-	const projectPath = getProjectPath(ctx, "gemini", "settings.json");
-	if (projectPath) {
-		const content = await readFile(projectPath);
-		if (content) {
-			const parsed = tryParseJson<Record<string, unknown>>(content);
-			if (parsed) {
-				items.push({
-					path: projectPath,
-					data: parsed,
-					level: "project",
-					_source: createSourceMeta(PROVIDER_ID, projectPath, "project"),
-				});
-			} else {
-				warnings.push(`Invalid JSON in ${projectPath}`);
-			}
-		}
-	}
-
-	return { items, warnings };
-}
-
-// =============================================================================
 // Provider Registration
 // =============================================================================
 
@@ -329,10 +292,3 @@ registerProvider(extensionModuleCapability.id, {
 	load: loadExtensionModules,
 });
 
-registerProvider(settingsCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load settings from ~/.gemini/settings.json and .gemini/settings.json",
-	priority: PRIORITY,
-	load: loadSettings,
-});

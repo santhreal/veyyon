@@ -116,9 +116,13 @@ export function getGlobalAgentsPath(): string {
 	return path.join(getGlobalConfigRootDir(), "AGENTS.md");
 }
 
-/** Candidate paths for the active profile's instruction file (AGENTS.md / agent.md). */
-export function getProfileAgentsCandidates(): string[] {
-	const agentDir = getAgentDir();
+/**
+ * Candidate paths for a profile's instruction file (AGENTS.md / agent.md), in
+ * priority order. Defaults to the active profile so existing callers are
+ * unchanged; pass `agentDir` explicitly when a caller must resolve the ladder
+ * for a specific agent directory rather than the process-global one.
+ */
+export function getProfileAgentsCandidates(agentDir: string = getAgentDir()): string[] {
 	const profileDir = path.dirname(agentDir);
 	return [
 		path.join(agentDir, "AGENTS.md"),
@@ -126,11 +130,6 @@ export function getProfileAgentsCandidates(): string[] {
 		path.join(agentDir, "agent.md"),
 		path.join(profileDir, "agent.md"),
 	];
-}
-
-/** Absolute path of the active profile's primary AGENTS.md (`<agentDir>/AGENTS.md`). */
-export function getProfileAgentsPath(): string {
-	return path.join(getAgentDir(), "AGENTS.md");
 }
 
 /**
@@ -195,8 +194,8 @@ async function pathPresent(p: string): Promise<boolean> {
 }
 
 /**
- * Seed the ACTIVE profile's `AGENTS.md` on startup when the profile carries no
- * instruction file at all.
+ * Seed a profile's `AGENTS.md` on startup when that profile carries no
+ * instruction file at all. Defaults to the active profile.
  *
  * {@link ensureProfileAgentsFileAt} runs only at profile *creation*, so a
  * profile that predates that code (or the implicit `default`) would never get a
@@ -205,6 +204,11 @@ async function pathPresent(p: string): Promise<boolean> {
  * reset away. Back-filling on startup gives every profile a real file outside
  * the checkout.
  *
+ * `agentDir` names WHICH profile. It used to be hardwired to the process-global
+ * active profile, so a prompt built for another agent dir back-filled a file into
+ * the booted profile and left the profile it was actually loading unseeded: the
+ * one profile guaranteed to have nothing to edit was the one being used.
+ *
  * Only seeds when NONE of the four ladder candidates
  * ({@link getProfileAgentsCandidates}) exist. Seeding the top-priority
  * `<agentDir>/AGENTS.md` while the user keeps real instructions in a
@@ -212,20 +216,20 @@ async function pathPresent(p: string): Promise<boolean> {
  * first candidate that exists), so an existing lower-priority file suppresses
  * the seed instead.
  */
-export async function ensureActiveProfileAgentsFile(): Promise<void> {
-	for (const candidate of getProfileAgentsCandidates()) {
+export async function ensureProfileAgentsFile(agentDir: string = getAgentDir()): Promise<void> {
+	for (const candidate of getProfileAgentsCandidates(agentDir)) {
 		if (await pathPresent(candidate)) return;
 	}
-	await ensureProfileAgentsFileAt(getAgentDir());
+	await ensureProfileAgentsFileAt(agentDir);
 }
 
 /**
  * Seed both managed instruction files veyyon owns at startup: the global
- * cross-profile `~/.veyyon/AGENTS.md` and the active profile's `AGENTS.md`. One
+ * cross-profile `~/.veyyon/AGENTS.md` and the loading profile's `AGENTS.md`. One
  * call so the boot path (system-prompt.ts) can never drift into seeding one and
  * forgetting the other. Both are no-ops once their files exist.
  */
-export async function ensureManagedAgentsFilesOnStartup(): Promise<void> {
+export async function ensureManagedAgentsFilesOnStartup(agentDir?: string): Promise<void> {
 	await ensureGlobalAgentsFile();
-	await ensureActiveProfileAgentsFile();
+	await ensureProfileAgentsFile(agentDir);
 }

@@ -5,7 +5,7 @@
  * Priority: 5 (low, project/user config discovery)
  */
 import * as path from "node:path";
-import { getSSHConfigPath, tryParseJson } from "@veyyon/utils";
+import { getAgentDir, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { readFile } from "../capability/fs";
 import { type SSHHost, sshCapability } from "../capability/ssh";
@@ -84,11 +84,7 @@ function normalizeHost(
 	};
 }
 
-async function loadSshJsonFile(
-	ctx: LoadContext,
-	filePath: string,
-	level: "user" | "project",
-): Promise<LoadResult<SSHHost>> {
+async function loadSshJsonFile(ctx: LoadContext, filePath: string): Promise<LoadResult<SSHHost>> {
 	const items: SSHHost[] = [];
 	const warnings: string[] = [];
 	const content = await readFile(filePath);
@@ -106,7 +102,7 @@ async function loadSshJsonFile(
 		return { items, warnings };
 	}
 
-	const source = createSourceMeta(PROVIDER_ID, filePath, level);
+	const source = createSourceMeta(PROVIDER_ID, filePath, "user");
 	for (const [name, rawHost] of Object.entries(config.hosts)) {
 		if (!name.trim()) {
 			warnings.push(`Invalid SSH host name in ${filePath}`);
@@ -125,29 +121,30 @@ async function loadSshJsonFile(
 		warnings: warnings.length > 0 ? warnings : undefined,
 	};
 }
+
+/**
+ * SSH hosts come from the caller's PROFILE and only from there.
+ *
+ * DEFECT ONE, now closed: three of the four candidates were resolved from
+ * `ctx.cwd` — `<cwd>/.veyyon/ssh.json`, `<cwd>/ssh.json` and `<cwd>/.ssh.json`,
+ * the last two at the repository root. A file checked into any repository the
+ * operator cloned therefore named the machines the ssh tool would connect to.
+ *
+ * DEFECT TWO, also closed and pointing the other way: the user candidate called
+ * `getSSHConfigPath("user")`, which resolves `path.join(getAgentDir(), …)` from
+ * the PROCESS-ACTIVE profile and ignored `ctx.agentDir`. A session loading for a
+ * non-active profile silently got the booted profile's hosts. Every other
+ * provider already resolves its profile paths from `ctx.agentDir`; this one now
+ * does too.
+ */
 async function load(ctx: LoadContext): Promise<LoadResult<SSHHost>> {
-	const candidateSources: Array<{ path: string; level: "user" | "project" }> = [
-		{ path: getSSHConfigPath("project", ctx.cwd), level: "project" },
-		{ path: getSSHConfigPath("user", ctx.cwd), level: "user" },
-		{ path: path.join(ctx.cwd, "ssh.json"), level: "project" },
-		{ path: path.join(ctx.cwd, ".ssh.json"), level: "project" },
-	];
-	const uniqueSources = candidateSources.filter(
-		(source, index, arr) => arr.findIndex(candidate => candidate.path === source.path) === index,
-	);
-	const results = await Promise.all(uniqueSources.map(source => loadSshJsonFile(ctx, source.path, source.level)));
-	const allItems = results.flatMap(r => r.items);
-	const allWarnings = results.flatMap(r => r.warnings ?? []);
-	return {
-		items: allItems,
-		warnings: allWarnings.length > 0 ? allWarnings : undefined,
-	};
+	return await loadSshJsonFile(ctx, path.join(ctx.agentDir ?? getAgentDir(), "ssh.json"));
 }
 
 registerProvider(sshCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
-	description: "Load SSH hosts from managed veyyon paths and legacy ssh.json/.ssh.json files",
+	description: "Load SSH hosts from the loading profile's ssh.json",
 	priority: 5,
 	load,
 });

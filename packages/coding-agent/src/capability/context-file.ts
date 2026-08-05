@@ -18,9 +18,16 @@ export interface ContextFile {
 	content: string;
 	/**
 	 * Which layer this came from. `global` is veyyon's cross-profile
-	 * `~/.veyyon/AGENTS.md`; `user` is the active profile's own AGENTS.md; and
-	 * `project` is a workspace `.veyyon/AGENTS.md`. Prominence runs global (least,
-	 * the baseline) → project → user (most, the most specific).
+	 * `~/.veyyon/AGENTS.md`; `user` is the LOADING profile's own AGENTS.md, meaning
+	 * the one named by `LoadContext.agentDir` rather than whichever profile the
+	 * process booted with; and `project` is the one file a directory on the
+	 * repo-root-to-cwd walk contributes.
+	 * Prominence runs global (least, the baseline) → project → user (most, the most
+	 * specific).
+	 *
+	 * Which file a project directory contributes, and how `.veyyon/AGENTS.md`,
+	 * `AGENTS.md` and `CLAUDE.md` rank against each other at one level, is owned by
+	 * `PROJECT_RULE_FILE_NAMES` in `discovery/builtin.ts`. Do not restate it here.
 	 */
 	level: "user" | "project" | "global";
 	/** Distance from cwd (0 = in cwd, 1 = parent, etc.) for project files */
@@ -39,6 +46,9 @@ export const contextFileCapability = defineCapability<ContextFile>({
 	// if both keyed as "user"). Within each depth level, higher-priority providers
 	// shadow lower-priority ones. This supports monorepo hierarchies where
 	// AGENTS.md exists at multiple ancestor levels.
+	//
+	// This key is a CROSS-PROVIDER backstop, not the native walk's precedence rule:
+	// that walk resolves one file per directory itself and never emits a loser here.
 	// Clamp depth >= 0: files inside config subdirectories of an ancestor (e.g. .claude/, .github/)
 	// are same-scope as the ancestor itself.
 	key: file =>

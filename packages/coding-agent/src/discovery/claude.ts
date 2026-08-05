@@ -12,7 +12,6 @@ import { type ExtensionModule, extensionModuleCapability } from "../capability/e
 import { readFile } from "../capability/fs";
 import { type Hook, hookCapability } from "../capability/hook";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
@@ -26,6 +25,7 @@ import {
 	expandEnvVarsDeep,
 	getExtensionNameFromPath,
 	loadFilesFromDir,
+	readContextFile,
 	scanSkillsFromDir,
 } from "./helpers";
 
@@ -122,6 +122,23 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 // Context Files (CLAUDE.md)
 // =============================================================================
 
+/**
+ * Load CLAUDE.md context files.
+ *
+ * Scopes: a home-level layer emitted as `level: "user"` (`~/.claude/CLAUDE.md`)
+ * and PROJECT (`<cwd>/.claude/CLAUDE.md`).
+ *
+ * GLOBAL and PROFILE scope do not apply. Claude Code has no profile concept, so
+ * there is no per-profile location to read, and veyyon's own global layer
+ * (`<globalConfigRoot>/AGENTS.md`) belongs to the native provider. The home-level
+ * file shares the capability's single home slot with the active profile's
+ * AGENTS.md and loses to it on priority (native 100 against this provider's 80),
+ * so it only applies when the profile has no instructions of its own and the
+ * user opted into `discovery.importForeignConfig`.
+ *
+ * The project scope is cwd-only, not a walk-up: this feeds the onboarding import
+ * scan, which is about the checkout the user is standing in.
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
@@ -129,11 +146,12 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	const userBase = getUserClaude(ctx);
 	const userClaudeMd = path.join(userBase, "CLAUDE.md");
 
-	const userContent = await readFile(userClaudeMd);
-	if (userContent !== null) {
+	const user = await readContextFile(userClaudeMd);
+	if (user.warning) warnings.push(user.warning);
+	if (user.content !== null) {
 		items.push({
 			path: userClaudeMd,
-			content: userContent,
+			content: user.content,
 			level: "user",
 			_source: createSourceMeta(PROVIDER_ID, userClaudeMd, "user"),
 		});
@@ -141,12 +159,13 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 
 	const projectBase = getProjectClaude(ctx);
 	const projectClaudeMd = path.join(projectBase, "CLAUDE.md");
-	const projectContent = await readFile(projectClaudeMd);
-	if (projectContent !== null) {
+	const project = await readContextFile(projectClaudeMd);
+	if (project.warning) warnings.push(project.warning);
+	if (project.content !== null) {
 		const depth = calculateDepth(ctx.cwd, path.dirname(projectBase), path.sep);
 		items.push({
 			path: projectClaudeMd,
-			content: projectContent,
+			content: project.content,
 			level: "project",
 			depth,
 			_source: createSourceMeta(PROVIDER_ID, projectClaudeMd, "project"),
@@ -172,7 +191,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	while (true) {
 		if (current !== ctx.home) {
 			projectScans.push(
-				scanSkillsFromDir(ctx, {
+				scanSkillsFromDir({
 					dir: path.join(current, CONFIG_DIR, "skills"),
 					providerId: PROVIDER_ID,
 					level: "project",
@@ -186,7 +205,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	}
 
 	const [userResult, ...projectResults] = await Promise.allSettled([
-		scanSkillsFromDir(ctx, { dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" }),
+		scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" }),
 		...projectScans,
 	]);
 
@@ -302,7 +321,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 		const userBase = getUserClaude(ctx);
 		const userCommandsDir = path.join(userBase, "commands");
 
-		const userResult = await loadFilesFromDir<SlashCommand>(ctx, userCommandsDir, PROVIDER_ID, "user", {
+		const userResult = await loadFilesFromDir<SlashCommand>(userCommandsDir, PROVIDER_ID, "user", {
 			extensions: ["md"],
 			recursive: true,
 			transform: (name, content, filePath, source) => ({
@@ -321,7 +340,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	if (enableProject) {
 		const projectCommandsDir = path.join(ctx.cwd, CONFIG_DIR, "commands");
 
-		const projectResult = await loadFilesFromDir<SlashCommand>(ctx, projectCommandsDir, PROVIDER_ID, "project", {
+		const projectResult = await loadFilesFromDir<SlashCommand>(projectCommandsDir, PROVIDER_ID, "project", {
 			extensions: ["md"],
 			recursive: true,
 			transform: (name, content, filePath, source) => ({
@@ -365,7 +384,7 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 
 	const results = await Promise.all(
 		loadTasks.map(({ dir, hookType, level }) =>
-			loadFilesFromDir<Hook>(ctx, dir, PROVIDER_ID, level, {
+			loadFilesFromDir<Hook>(dir, PROVIDER_ID, level, {
 				transform: (name, _content, path, source) => {
 					const toolName = name.replace(/\.(sh|bash|zsh|fish)$/, "");
 					return {
@@ -400,7 +419,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 	const userBase = getUserClaude(ctx);
 	const userToolsDir = path.join(userBase, "tools");
 
-	const userResult = await loadFilesFromDir<DiscoveredCustomTool>(ctx, userToolsDir, PROVIDER_ID, "user", {
+	const userResult = await loadFilesFromDir<DiscoveredCustomTool>(userToolsDir, PROVIDER_ID, "user", {
 		transform: (name, _content, path, source) => {
 			const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
 			return {
@@ -419,7 +438,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 	const projectBase = getProjectClaude(ctx);
 	const projectToolsDir = path.join(projectBase, "tools");
 
-	const projectResult = await loadFilesFromDir<DiscoveredCustomTool>(ctx, projectToolsDir, PROVIDER_ID, "project", {
+	const projectResult = await loadFilesFromDir<DiscoveredCustomTool>(projectToolsDir, PROVIDER_ID, "project", {
 		transform: (name, _content, path, source) => {
 			const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
 			return {
@@ -434,52 +453,6 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 
 	items.push(...projectResult.items);
 	if (projectResult.warnings) warnings.push(...projectResult.warnings);
-
-	return { items, warnings };
-}
-
-// =============================================================================
-// Settings
-// =============================================================================
-
-async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
-	const items: Settings[] = [];
-	const warnings: string[] = [];
-
-	const userBase = getUserClaude(ctx);
-	const userSettingsJson = path.join(userBase, "settings.json");
-
-	const userContent = await readFile(userSettingsJson);
-	if (userContent) {
-		const data = tryParseJson<Record<string, unknown>>(userContent);
-		if (data) {
-			items.push({
-				path: userSettingsJson,
-				data,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, userSettingsJson, "user"),
-			});
-		} else {
-			warnings.push(`Failed to parse JSON in ${userSettingsJson}`);
-		}
-	}
-
-	const projectBase = getProjectClaude(ctx);
-	const projectSettingsJson = path.join(projectBase, "settings.json");
-	const projectContent = await readFile(projectSettingsJson);
-	if (projectContent) {
-		const data = tryParseJson<Record<string, unknown>>(projectContent);
-		if (data) {
-			items.push({
-				path: projectSettingsJson,
-				data,
-				level: "project",
-				_source: createSourceMeta(PROVIDER_ID, projectSettingsJson, "project"),
-			});
-		} else {
-			warnings.push(`Failed to parse JSON in ${projectSettingsJson}`);
-		}
-	}
 
 	return { items, warnings };
 }
@@ -544,10 +517,3 @@ registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	load: loadTools,
 });
 
-registerProvider<Settings>(settingsCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load settings from .claude/settings.json",
-	priority: PRIORITY,
-	load: loadSettings,
-});

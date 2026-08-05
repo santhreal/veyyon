@@ -22,7 +22,7 @@ import { readDirEntries, readFile } from "../capability/fs";
 import type { LoadContext } from "../capability/types";
 import { getEnabledPlugins } from "../extensibility/plugins/loader";
 import { expandTilde } from "../tools/path-utils";
-import { listClaudePluginRoots } from "./helpers";
+import { listClaudePluginRoots, pluginsRootFor } from "./helpers";
 
 /** A resolved extension package directory wired into the discovery surfaces. */
 export interface VeyyonExtensionRoot {
@@ -80,10 +80,19 @@ interface ScopeDirs {
 	user: string;
 }
 
-function scopeDirs(ctx: LoadContext): ScopeDirs {
+/**
+ * WHICH profile supplies the user scope, and the project dir for `ctx.cwd`.
+ *
+ * `agentDir` used to be absent here and `user` was always `getAgentDir()`, so a caller
+ * that had resolved a DIFFERENT profile still got the process-active profile's
+ * `settings.json#extensions` and its installed plugins. Skills, rules, prompts, commands,
+ * hooks and tools shipped by that profile's packages therefore followed whichever profile
+ * the process booted with, not the one the caller named.
+ */
+function scopeDirs(ctx: LoadContext, agentDir: string): ScopeDirs {
 	return {
 		project: path.join(ctx.cwd, ".veyyon"),
-		user: getAgentDir(),
+		user: agentDir,
 	};
 }
 
@@ -115,6 +124,15 @@ async function isDirectory(p: string): Promise<boolean> {
 	}
 }
 
+/** Options for {@link listVeyyonExtensionRoots}. */
+export interface ListVeyyonExtensionRootsOptions {
+	/**
+	 * WHICH profile supplies the user scope: its `settings.json#extensions` and its
+	 * installed plugins. Default: {@link getAgentDir}, the process-active profile.
+	 */
+	agentDir?: string;
+}
+
 /**
  * Resolve every configured extension package directory for the given context.
  *
@@ -123,22 +141,30 @@ async function isDirectory(p: string): Promise<boolean> {
  *
  * 1. CLI roots injected via {@link injectVeyyonExtensionCliRoots}
  * 2. Project `<cwd>/.veyyon/settings.json#extensions`
- * 3. User `~/.veyyon/profiles/default/agent/settings.json#extensions`
+ * 3. User `<agentDir>/settings.json#extensions`
  * 4. Enabled npm/link plugins installed under `<plugins>/node_modules/` (for
  *    `veyyon install <pkg>` / `veyyon plugin install` / `veyyon plugin link`). Marketplace
  *    installs are loaded by the `claude-plugins` provider and are excluded here.
  * Only entries that resolve to a directory on disk are returned; file
  * entrypoints contribute zero sub-discovery surface and are filtered out.
  * Installed-plugin enumeration failures (missing lockfile, unreadable
- * `package.json`, etc.) are logged at `debug` and degrade gracefully — the
+ * `package.json`, etc.) are logged at `debug` and degrade gracefully, the
  * other sources still surface.
+ *
+ * Sources 3 and 4 are PROFILE scoped, so `options.agentDir` selects them. Without it
+ * both resolved the process-global active profile, which is why a session rooted in
+ * another agent dir loaded that profile's plugin packages instead of its own.
  */
-export async function listVeyyonExtensionRoots(ctx: LoadContext): Promise<VeyyonExtensionRoot[]> {
-	const { project, user } = scopeDirs(ctx);
+export async function listVeyyonExtensionRoots(
+	ctx: LoadContext,
+	options: ListVeyyonExtensionRootsOptions = {},
+): Promise<VeyyonExtensionRoot[]> {
+	const agentDir = options.agentDir ?? getAgentDir();
+	const { project, user } = scopeDirs(ctx, agentDir);
 	const [projectExtensions, userExtensions, installedPlugins] = await Promise.all([
 		readSettingsExtensions(path.join(project, "settings.json")),
 		readSettingsExtensions(path.join(user, "settings.json")),
-		listInstalledPluginRoots(ctx),
+		listInstalledPluginRoots(ctx, pluginsRootFor(agentDir)),
 	]);
 
 	const candidates: InjectedRoot[] = [
@@ -187,11 +213,15 @@ async function realpathOrResolved(p: string): Promise<string> {
 	}
 }
 
-async function listInstalledPluginRoots(ctx: LoadContext): Promise<InjectedRoot[]> {
+async function listInstalledPluginRoots(ctx: LoadContext, pluginsRoot: string | undefined): Promise<InjectedRoot[]> {
 	try {
 		const [plugins, marketplaceRoots] = await Promise.all([
-			getEnabledPlugins(ctx.cwd, { home: ctx.home }),
-			listClaudePluginRoots(ctx.home, ctx.cwd),
+			getEnabledPlugins(ctx.cwd, { home: ctx.home, pluginsRoot }),
+			// Same profile on both sides: the exclusion set has to be THIS profile's
+			// marketplace installs, or a package the named profile installed by hand
+			// gets dropped because the ACTIVE profile happens to have it from a
+			// marketplace, and vice versa.
+			listClaudePluginRoots(ctx.home, ctx.cwd, pluginsRoot),
 		]);
 		const marketplaceRealpaths = new Set(
 			await Promise.all(marketplaceRoots.roots.map(root => realpathOrResolved(root.path))),
