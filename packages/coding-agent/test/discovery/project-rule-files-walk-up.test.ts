@@ -25,9 +25,9 @@
  * either. Rules that are silently absent are worse than rules that are absent
  * loudly, and this was the silent kind.
  *
- * Every ancestor is collected rather than only the nearest, because the prompt
- * promises "deeper rules override higher ones" and that ordering only means
- * something if the higher file is present to be overridden.
+ * Every ancestor is collected rather than only the nearest, because a project
+ * directory's own file REFINES its ancestors rather than replacing them, and that
+ * only means something if the ancestor is present to be refined.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
@@ -94,11 +94,12 @@ describe("project rule files are discovered by walking up", () => {
 		expect(found[0].path).toBe(path.join(repo, "AGENTS.md"));
 	});
 
-	it("records depth so a deeper file overrides a higher one", async () => {
-		// `loadProjectContextFiles` sorts project files by DESCENDING depth, so the
-		// most distant ancestor lands earliest in the prompt and the closest file lands
-		// last. That is the order the prompt describes as "deeper rules override higher
-		// ones", and it is only correct if both files are present and carry true depths.
+	it("records depth so the closest project file is the most specific one", async () => {
+		// `loadProjectContextFiles` sorts project files by DESCENDING depth, so the most
+		// distant ancestor lands earliest in the prompt and the closest file lands last.
+		// Both entries are PROJECT scope, so neither outranks the other on the authority
+		// ladder and this is one project directory refining another. It is only correct
+		// if both files are present and carry true depths.
 		await fs.writeFile(path.join(repo, "AGENTS.md"), "Root rule: use tabs.");
 		await fs.writeFile(path.join(pkg, "AGENTS.md"), "Package rule: use spaces.");
 
@@ -164,8 +165,8 @@ describe("project rule files are discovered by walking up", () => {
 
 		const found = projectFilesUnder(repo, await loadProjectContextFiles({ cwd: nested }));
 
-		// Sorted least prominent first, so repo root (depth 3) leads and cwd (depth 0)
-		// is the last word.
+		// Sorted least authoritative first within the project group, so repo root
+		// (depth 3) leads and cwd (depth 0) is the most specific.
 		expect(found.map(f => [f.path, f.depth])).toEqual([
 			[path.join(repo, "AGENTS.md"), 3],
 			[path.join(pkg, "CLAUDE.md"), 1],

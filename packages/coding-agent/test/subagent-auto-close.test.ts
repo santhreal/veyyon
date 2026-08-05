@@ -33,6 +33,7 @@ import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { finalizeSubagentLifecycle, runSubprocess, saysItIsWaitingOnAPeer } from "@veyyon/coding-agent/task/executor";
+import { resolveSubagentAutoCloseBudget } from "@veyyon/coding-agent/task/subagent-settings";
 import {
 	createAssistantStopMessage,
 	createAssistantToolCallMessage,
@@ -118,6 +119,119 @@ async function advance(ms: number): Promise<void> {
 	// has to turn over before the registry reflects them.
 	for (let i = 0; i < 8; i++) await Promise.resolve();
 }
+
+/**
+ * The WIRING from the operator's setting to the close stage, which nothing else covers.
+ *
+ * Every other case in this file hands `adopt()` a budget directly, so the suite proves the
+ * MECHANISM works GIVEN a budget and says nothing about whether a budget ever arrives. The supply
+ * line is `resolveSubagentAutoCloseBudget(settings)` -> `autoClose` -> `finalizeSubagentLifecycle`
+ * -> `adopt`. Drop the `autoClose` argument at the executor call site, or return zeros from the
+ * resolver, and nothing closes an agent ever again while this suite stays fully green.
+ */
+describe("the operator's setting reaches the close stage", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		AgentRegistry.resetGlobalForTests();
+		AgentLifecycleManager.resetGlobalForTests();
+	});
+
+	afterEach(() => {
+		AgentLifecycleManager.resetGlobalForTests();
+		AgentRegistry.resetGlobalForTests();
+		vi.useRealTimers();
+	});
+
+	/**
+	 * A default install resolves a REAL budget, not zero.
+	 *
+	 * Zero is the documented "never close" value, so a resolver returning it by accident disables
+	 * the feature for everyone with no error anywhere. Asserted as literals rather than against the
+	 * constants the resolver reads, because a test that imports the number it pins follows that
+	 * number wherever somebody moves it.
+	 */
+	it("resolves five minutes quiet and thirty minutes waiting on a default install", () => {
+		const budget = resolveSubagentAutoCloseBudget(Settings.isolated({}));
+
+		expect(budget.parkedMs).toBe(5 * 60_000);
+		expect(budget.waitingMs).toBe(30 * 60_000);
+	});
+
+	/**
+	 * That resolved budget, handed to the real finalizer the way production hands it, closes.
+	 *
+	 * `finalizeSubagentLifecycle` is the only production caller of `adopt`, and it reads
+	 * `args.autoClose?.parkedMs ?? 0`, so the `?? 0` silently disables the whole stage the moment
+	 * the argument stops being passed.
+	 */
+	it("closes an agent finished through the real finalizer with the resolved budget", async () => {
+		const budget = resolveSubagentAutoCloseBudget(Settings.isolated({}));
+		const registry = AgentRegistry.global();
+		const session = fakeSession();
+		registry.register({
+			id: "Wired",
+			displayName: "task",
+			kind: "sub",
+			session,
+			sessionFile: "/tmp/Wired.jsonl",
+		});
+
+		await finalizeSubagentLifecycle({
+			id: "Wired",
+			session,
+			aborted: false,
+			keepAlive: true,
+			isolated: false,
+			agentIdleTtlMs: IDLE_TTL_MS,
+			autoClose: budget,
+			reviveSession: async () => fakeSession(),
+		});
+
+		expect(registry.get("Wired")?.status).toBe("idle");
+
+		await advance(IDLE_TTL_MS);
+		expect(registry.get("Wired")?.status).toBe("parked");
+
+		await advance(budget.parkedMs);
+		expect(registry.get("Wired")).toBeUndefined();
+	});
+
+	/**
+	 * And the off switch really switches it off, through the same path.
+	 *
+	 * Pairs with the case above so neither can pass by closing unconditionally.
+	 */
+	it("never closes when the operator turned auto-close off", async () => {
+		const budget = resolveSubagentAutoCloseBudget(Settings.isolated({ "subagent.autoClose.enabled": false }));
+		expect(budget).toEqual({ parkedMs: 0, waitingMs: 0 });
+
+		const registry = AgentRegistry.global();
+		const session = fakeSession();
+		registry.register({
+			id: "Kept",
+			displayName: "task",
+			kind: "sub",
+			session,
+			sessionFile: "/tmp/Kept.jsonl",
+		});
+
+		await finalizeSubagentLifecycle({
+			id: "Kept",
+			session,
+			aborted: false,
+			keepAlive: true,
+			isolated: false,
+			agentIdleTtlMs: IDLE_TTL_MS,
+			autoClose: budget,
+			reviveSession: async () => fakeSession(),
+		});
+
+		await advance(IDLE_TTL_MS);
+		expect(registry.get("Kept")?.status).toBe("parked");
+		await advance(CLOSE_WAITING_MS * 4);
+		expect(registry.get("Kept")?.status).toBe("parked");
+	});
+});
 
 describe("parked subagents are closed once they are quiet", () => {
 	beforeEach(() => {

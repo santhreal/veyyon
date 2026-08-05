@@ -85,20 +85,28 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
-			// Updated 2026-08-04, deliberately, for the restored anti-early-stop instructions:
-			// 9_601 -> 10_108 (+507).
+			// Updated 2026-08-04, deliberately: `2a975b88105db940` / 10_108 -> `e9ee4981c4a330e5`
+			// / 11_132 (+1_024).
 			//
-			// WHY THE PIN WAS ALREADY RED WHEN THIS LANDED, since the number here does not match what
-			// the working tree renders. Three statement rows were added to the registry earlier in the
-			// same session (`tool-policy/bash-cwd`, `tool-policy/delegation-allowed`,
-			// `execution-workflow/commit-often`) and are still uncommitted, with their .md files
-			// untracked. Measured by ablating each row at this fixture, the two that render here are
-			// worth exactly 1_024 bytes, which is the whole of the unrecorded 9_601 -> 10_625 drift;
-			// `delegation-allowed` contributes nothing because the fixture grants no `task` tool. This
-			// pin therefore records the tree that was COMMITTED, not the tree that was in flight:
-			// recording 11_132 would have left HEAD red for everyone until that other work landed.
-			// When those three rows and their files are committed, this becomes
-			// `e9ee4981c4a330e5` / 11_132, measured, and belongs in the same commit that lands them.
+			// THE +1_024 IS THE DEBT THE PREVIOUS ENTRY NAMED, now paid. That entry recorded the
+			// COMMITTED tree rather than the working tree, because three statement rows
+			// (`tool-policy/bash-cwd`, `tool-policy/delegation-allowed`,
+			// `execution-workflow/commit-often`) had been added to the registry but not committed,
+			// and recording their bytes would have left HEAD red for everyone until they landed.
+			// It predicted `e9ee4981c4a330e5` / 11_132 for when they did. They are committed now
+			// (`git ls-files` resolves all three .md files), the tree renders exactly that pair,
+			// and this line is the prediction being kept. Measured by ablating each row at this
+			// fixture, the two that render here are worth exactly 1_024 bytes;
+			// `delegation-allowed` contributes nothing because the fixture grants no `task` tool.
+			//
+			// NOT THE CONTEXT-FILE PRECEDENCE CHANGE that lands in the same commit, and that is a
+			// measured fact rather than an assumption. `session/context-file-authority.md`,
+			// `session/project-prompt.md` and the new `session/user-instruction-authority.md` all
+			// render into the PROJECT runtime section, which is `systemPrompt[1]`, never block 0.
+			// Block 0 hashed `e9ee4981c4a330e5` / 11_132 both before and after those edits at this
+			// fixture. The precedence work costs zero prefix-cache invalidation, which is why the
+			// unconditional user-authority sentence was put in the runtime section rather than
+			// promoted into a statement row.
 			//
 			// WHAT THE +507 IS. Five instructions that upstream oh-my-pi carries and
 			// this fork had dropped are restored as statements: `delivery-contract/no-partial-yield`,
@@ -139,8 +147,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "2a975b88105db940",
-			length: 10_108,
+			sha: "e9ee4981c4a330e5",
+			length: 11_132,
 		});
 	});
 
