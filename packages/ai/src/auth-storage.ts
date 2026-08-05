@@ -2926,6 +2926,36 @@ export class AuthStorage {
 	}
 
 	/**
+	 * Every provider whose latest credential was torn down by a FAILED REFRESH, with the cause.
+	 *
+	 * The per-provider {@link AuthStorage.disabledCredentialCause} can only answer for a provider you
+	 * already know to ask about, and the case that matters most is the one where you do not: a
+	 * provider whose ONLY login died has no active credential, so it appears in no list of stored
+	 * accounts and there is nothing left to prompt the question. That is the silent logout in its
+	 * final form, and this is the reader that makes it enumerable.
+	 *
+	 * Filtered to refresh failures for the same reason as the single-provider form: a logout or a
+	 * superseded duplicate is a disable the user performed and already knows about, and resurrecting
+	 * it as a warning would train them to ignore the warning that matters.
+	 */
+	listProvidersWithFailedRefresh(): Array<{ provider: string; cause: string }> {
+		const listDisabled = this.#store.listDisabledAuthCredentials?.bind(this.#store);
+		if (!listDisabled) return [];
+		const seen = new Set<string>();
+		const failures: Array<{ provider: string; cause: string }> = [];
+		// Newest first, so the first row seen for a provider is the disable that is current; an
+		// account removed and re-added leaves older rows whose causes the user already resolved.
+		for (const row of listDisabled()) {
+			if (seen.has(row.provider)) continue;
+			seen.add(row.provider);
+			if (row.disabledCause && isRefreshFailureDisableCause(row.disabledCause)) {
+				failures.push({ provider: row.provider, cause: row.disabledCause });
+			}
+		}
+		return failures;
+	}
+
+	/**
 	 * Check if any form of auth is configured for a provider.
 	 * Unlike getApiKey(), this doesn't refresh OAuth tokens.
 	 */
