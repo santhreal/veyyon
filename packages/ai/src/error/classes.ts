@@ -1,4 +1,5 @@
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
+import { boundProviderErrorDetail } from "./detail-bounds";
 
 /** Prefix on errors raised when an Anthropic SSE stream envelope is malformed. */
 export const STREAM_ENVELOPE_ERROR_PREFIX = "Anthropic stream envelope error:";
@@ -83,7 +84,7 @@ export class AnthropicApiError extends ProviderHttpError {
 		// The STATUS is the failure being classified; the body is extra detail on it. A body that cannot be
 		// read (already consumed, connection dropped) must not turn an HTTP error into a read error.
 		const body = await response.text().catch(() => "");
-		const detail = body.trim() || "status code (no body)";
+		const detail = boundProviderErrorDetail(body.trim()) || "status code (no body)";
 		return new AnthropicApiError(response.status, `${response.status} ${detail}`, response.headers);
 	}
 }

@@ -233,7 +233,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			if (!response.ok) {
 				const text = await response.text();
 				throw new AIError.DevinApiError(
-					`Devin API error ${response.status} ${response.statusText}: ${text}`,
+					`Devin API error ${response.status} ${response.statusText}: ${AIError.boundProviderErrorDetail(text)}`,
 					response.status,
 				);
 			}

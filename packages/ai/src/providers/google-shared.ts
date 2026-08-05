@@ -1228,27 +1228,24 @@ function paramsToWireBody(params: GenerateContentParameters): Record<string, unk
 }
 
 /**
- * Bound the `Error.message` allocation built from a Google error body.
+ * Pull the human-readable detail out of a Google error body, bounded.
  *
  * A non-2xx body is not always a Google error envelope. A corporate proxy, a
  * captive portal, or a CDN interstitial in front of
  * `generativelanguage.googleapis.com` answers with an HTML page, and the whole
  * page used to become the message: rendered in the TUI, written to the session
- * file, and replayed on every later read of that turn. The sibling paths
- * already cap this (`MAX_DETAIL_CHARS` on the OpenAI path, 1000 chars on
- * Bedrock); this one did not.
+ * file, and replayed on every later read of that turn. The ceiling now lives in
+ * `error/detail-bounds`, shared with every other provider that interpolates a
+ * response body, because the per-site caps had drifted to four different
+ * numbers and three of them were "none".
  */
-const MAX_GOOGLE_ERROR_DETAIL_CHARS = 4096;
-
 function extractGoogleErrorMessage(errorText: string): string {
 	if (!errorText) return "Unknown error";
-	let detail = errorText;
 	try {
 		const parsed = JSON.parse(errorText) as { error?: { message?: string } };
-		if (parsed.error?.message) detail = parsed.error.message;
+		if (parsed.error?.message) return AIError.boundProviderErrorDetail(parsed.error.message);
 	} catch {
 		// Non-JSON body: keep the raw text, capped below.
 	}
-	if (detail.length <= MAX_GOOGLE_ERROR_DETAIL_CHARS) return detail;
-	return `${detail.slice(0, MAX_GOOGLE_ERROR_DETAIL_CHARS)} [truncated, ${detail.length} chars total]`;
+	return AIError.boundProviderErrorDetail(errorText);
 }
