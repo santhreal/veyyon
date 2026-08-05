@@ -42,6 +42,7 @@ import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { runExtensionCompact, runExtensionSetModel } from "../extensibility/extensions/compact-handler";
 import { getSessionSlashCommands } from "../extensibility/extensions/get-commands-handler";
+import type { ExtensionUIContext } from "../extensibility/extensions/types";
 import { buildSkillPromptMessage, type Skill } from "../extensibility/skills";
 import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
@@ -1115,18 +1116,49 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	// hang escapes the inference-layer watchdog (see openai-completions
 	// `isOpenAICompletionsProgressChunk`). Disabled by default; set
 	// `task.maxRuntimeMs > 0` to cap each subagent's lifetime.
+	//
+	// The budget bounds the AGENT's work, so it must not charge time the operator
+	// spent deciding on an approval card. Aborting a child whose prompt is still
+	// on screen is abandonment with extra steps: the operator answers for an agent
+	// that is already dead, and the run is lost with no report. So the timer does
+	// not abort on its first fire; it recomputes worked time with the approval
+	// waits subtracted and re-arms for whatever remains.
+	//
+	// Subtraction rather than a pause/resume pair on purpose. A stop-and-rearm
+	// clock has a failure direction this does not: a resume missed on any throw
+	// path leaves the child with no cap at all, turning a bounded abandonment into
+	// an unbounded one. Here a missed clear only ever makes the cap fire late, and
+	// the registry stays the single source of truth for the interval.
 	let runtimeTimeoutId: NodeJS.Timeout | undefined;
 	if (maxRuntimeMs > 0) {
-		runtimeTimeoutId = setTimeout(() => {
-			if (!resolved) {
-				logger.warn("Subagent runtime limit exceeded; aborting", {
-					id,
-					agent: agent.name,
-					maxRuntimeMs,
-				});
-				requestAbort("timeout");
-			}
-		}, maxRuntimeMs);
+		const registry = AgentRegistry.global();
+		const armRuntimeLimit = (delayMs: number) => {
+			runtimeTimeoutId = setTimeout(
+				() => {
+					if (resolved) return;
+					const now = Date.now();
+					const openSince = registry.pendingApprovalSince(id);
+					// Closed waits plus the one still open, if the child is blocked right
+					// now. Reading only the open interval would under-credit a child that
+					// has already answered several prompts and gone back to work.
+					const waitedMs = registry.approvalWaitedMs(id) + (openSince === undefined ? 0 : now - openSince);
+					const remainingMs = maxRuntimeMs - (now - startTime - waitedMs);
+					if (remainingMs > 0) {
+						armRuntimeLimit(remainingMs);
+						return;
+					}
+					logger.warn("Subagent runtime limit exceeded; aborting", {
+						id,
+						agent: agent.name,
+						maxRuntimeMs,
+						approvalWaitedMs: waitedMs,
+					});
+					requestAbort("timeout");
+				},
+				Math.max(0, delayMs),
+			);
+		};
+		armRuntimeLimit(maxRuntimeMs);
 	}
 
 	const resolveSignalAbortReason = (): string => {
@@ -2402,6 +2434,44 @@ export async function runSubagentFollowUpTurn(options: FollowUpTurnOptions): Pro
 }
 
 /**
+ * The interactive surface a spawned agent's approval prompts are presented on:
+ * the one belonging to the ROOT session of its conversation.
+ *
+ * Without this a subagent has no surface at all. `initialize` takes a
+ * `uiContext` as its fourth parameter and the spawner never passed one, so the
+ * runner kept its no-op default, `hasUI()` was false for every child, and any
+ * call that needed permission threw "requires approval but no interactive UI
+ * available" instead of asking anyone. That was survivable only while every
+ * subagent was forced to `yolo` and therefore never asked; once children inherit
+ * the operator's rung, the same path is a hard failure on an ordinary call.
+ *
+ * Resolution is by {@link AgentRef.scope}, not by walking `parentId`. Scope is
+ * inherited transitively at registration, so a child at ANY depth already
+ * carries the root's identity and the request goes straight there. A
+ * parent-to-parent chain is the thing this avoids: every intermediate is an
+ * agent that can be parked, aborted or simply busy, and each one is another
+ * place the request can be dropped, which is the abandonment being fixed.
+ *
+ * Returns undefined when the root itself has no UI (ACP, `-p` with no terminal)
+ * or when no root is resolvable. That is deliberate and is NOT a fallback to
+ * silence: the runner then reports `hasUI()` false and the wrapper refuses the
+ * call with an explanation, which is the correct answer for a run where nobody
+ * can be asked. Auto-approving instead would make a non-interactive root the
+ * most permissive configuration in the product.
+ */
+export function resolveRootUIContext(childId: string): ExtensionUIContext | undefined {
+	const registry = AgentRegistry.global();
+	const child = registry.get(childId);
+	if (!child) return undefined;
+	const rootRunner = registry.listInScope(child.scope).find(ref => ref.kind === "main")?.session?.extensionRunner;
+	// `hasUI()` distinguishes a root wired to a terminal from one holding the
+	// no-op context. Passing the no-op down would make the child's `hasUI()` true
+	// and turn every prompt into a silent `undefined` choice, i.e. a denial the
+	// operator was never shown.
+	return rootRunner?.hasUI() ? rootRunner.getUIContext() : undefined;
+}
+
+/**
  * Run a single agent in-process.
  */
 export async function runSubprocess(options: ExecutorOptions): Promise<SingleResult> {
@@ -2922,6 +2992,9 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			const pendingExtensionMessages: Array<Promise<unknown>> = [];
 			const extensionRunner = session.extensionRunner;
 			if (extensionRunner) {
+				// Name the child on its own runner before initialize, so an approval
+				// card raised from it carries a byline. See `ExtensionRunner.agentId`.
+				extensionRunner.setAgentId(id);
 				extensionRunner.initialize(
 					{
 						sendMessage: (message, options) => {
@@ -2970,6 +3043,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 						getSystemPrompt: () => session.systemPrompt,
 						compact: instructionsOrOptions => runExtensionCompact(session, instructionsOrOptions),
 					},
+					undefined,
+					resolveRootUIContext(id),
 				);
 				extensionRunner.onError(err => {
 					logger.error("Extension error", { path: err.extensionPath, error: err.error });

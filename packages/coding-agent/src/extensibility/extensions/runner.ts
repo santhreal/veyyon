@@ -222,6 +222,21 @@ const noOpUIContext: ExtensionUIContext = {
 
 export class ExtensionRunner {
 	#uiContext: ExtensionUIContext;
+	/**
+	 * Registry id of the agent this runner drives, when it is a spawned subagent.
+	 *
+	 * Undefined for a root session, which needs no attribution: its prompts are
+	 * self-evidently its own. A subagent's are not. The operator answers ONE
+	 * queue at the root, so two children asking at the same moment are two
+	 * identical cards unless each says who is asking, and an anonymous prompt is
+	 * nearly as bad as no prompt: it can be answered, but not answered correctly.
+	 *
+	 * Set by the spawner rather than passed through {@link initialize}, because
+	 * the four mode controllers that call initialize have no agent id to give and
+	 * would all have to pass undefined.
+	 */
+	#agentId: string | undefined;
+
 	#errorListeners: Set<ExtensionErrorListener> = new Set();
 	#getModel: () => Model | undefined = () => undefined;
 	#isIdleFn: () => boolean = () => true;
@@ -262,6 +277,16 @@ export class ExtensionRunner {
 	) {
 		this.#uiContext = noOpUIContext;
 		this.#getMemoryFn = getMemory;
+	}
+
+	/** See {@link ExtensionRunner.agentId}. Called by the spawner before `initialize`. */
+	setAgentId(agentId: string): void {
+		this.#agentId = agentId;
+	}
+
+	/** Registry id of the spawned agent this runner drives; undefined at a root session. */
+	get agentId(): string | undefined {
+		return this.#agentId;
 	}
 
 	initialize(

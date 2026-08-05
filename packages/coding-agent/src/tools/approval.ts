@@ -10,7 +10,7 @@
 import type { AgentTool, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
 import { isRecord } from "@veyyon/utils";
 import type { ApprovalMode, AutonomyLevel } from "./approval-modes";
-import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "./approval-modes";
+import { APPROVAL_MODE_VALUES, DEFAULT_APPROVAL_MODE, isKnownApprovalMode } from "./approval-modes";
 
 export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
 // Re-export the zero-dependency mode set so tool code keeps one import site.
@@ -18,6 +18,7 @@ export {
 	APPROVAL_MODE_VALUES,
 	type ApprovalMode,
 	type AutonomyLevel,
+	DEFAULT_APPROVAL_MODE,
 	isKnownApprovalMode,
 	type LegacyApprovalMode,
 } from "./approval-modes";
@@ -63,10 +64,20 @@ const TIER_RANK: Record<ToolTier, number> = {
 	exec: 2,
 };
 
-const AUTONOMY_MAX_TIER: Record<AutonomyLevel, ToolTier> = {
+/**
+ * The highest tier each rung runs unasked, or `"none"` for a rung that runs
+ * nothing unasked.
+ *
+ * `ask` is `"none"`, not `"read"`. "Ask about everything" has to include reads
+ * or the name is a lie: a `read` of `~/.ssh/id_rsa` and a `bash cat` of the same
+ * file are the same act, and a ladder whose safest rung silently exempts one of
+ * them is a ladder an operator cannot reason about.
+ */
+const AUTONOMY_MAX_TIER: Record<AutonomyLevel, ToolTier | "none"> = {
 	plan: "read",
-	ask: "read",
-	"auto-edit": "write",
+	ask: "none",
+	"ask-command": "write",
+	auto: "exec",
 	yolo: "exec",
 };
 
@@ -75,27 +86,30 @@ const DEFAULT_PROMPT_TRUNCATE_CHARS = 2000;
 /**
  * Map a stored setting / CLI value to the shipped autonomy ladder.
  *
- * `undefined` (no configured mode) maps to `yolo`, the documented product
- * default for a fresh install. An unrecognized NON-EMPTY value (a hand-edited
- * config typo like `askk`) FAILS CLOSED to `ask` — never to `yolo`. Mapping a
- * typo to yolo would silently turn a user's intended safety setting into
- * auto-approve-everything; a security control must fail closed, not open. The
- * typo is surfaced loudly by the startup config check (see
+ * `undefined` (no configured mode) maps to `DEFAULT_APPROVAL_MODE`, the one
+ * place the unset case is decided, so this agrees with the schema default by
+ * construction rather than by two literals happening to match.
+ *
+ * An unrecognized NON-EMPTY value (a hand-edited config typo like `askk`) is a
+ * different question and fails closed to `ask`, never up the ladder and never
+ * to the default. The typo is surfaced loudly by the startup config check (see
  * `validateApprovalModeSetting`), so this is not a silent fallback.
  */
 export function normalizeApprovalMode(mode: string | undefined): AutonomyLevel {
 	switch (mode) {
+		case undefined:
+			return DEFAULT_APPROVAL_MODE;
 		case "plan":
 			return "plan";
-		case "ask":
-		case "always-ask":
-			return "ask";
+		case "ask-command":
+		// `auto-edit` and `write` named the same rung before it did: reads and
+		// writes run, commands ask.
 		case "auto-edit":
 		case "write":
-			return "auto-edit";
+			return "ask-command";
+		case "auto":
+			return "auto";
 		case "yolo":
-			return "yolo";
-		case undefined:
 			return "yolo";
 		default:
 			return "ask";
@@ -160,7 +174,8 @@ function getToolDecision(tool: ApprovalSubject, args: unknown): Omit<ResolvedApp
 }
 
 function autonomyApprovesTier(level: AutonomyLevel, tier: ToolTier): boolean {
-	return TIER_RANK[tier] <= TIER_RANK[AUTONOMY_MAX_TIER[level]];
+	const ceiling = AUTONOMY_MAX_TIER[level];
+	return ceiling !== "none" && TIER_RANK[tier] <= TIER_RANK[ceiling];
 }
 
 function planAutonomyBlocksMutation(
@@ -182,19 +197,26 @@ function planAutonomyBlocksMutation(
  *  2. User per-tool override, if set and valid, EXCEPT that an active plan-mode
  *     session blocks mutations regardless of a per-tool `allow` (a `deny` still
  *     wins, and a configured `plan` level with no active session does not cap).
- *  3. Active autonomy level tier comparison (`plan` denies mutations; `ask` prompts).
+ *  3. Active autonomy level tier comparison. `plan` denies mutations, `ask`
+ *     prompts for every tier, `ask-command` prompts for exec only, `auto` and
+ *     `yolo` approve every tier.
  *
- * In yolo mode, override-based tool prompts are ignored; user `tools.approval`
- * settings remain authoritative. The exception is a decision the tool marked
- * `critical`, which still prompts in yolo unless `tools.approval.<tool>` says
- * otherwise. Without that floor the ordering is inverted: the calls a tool
- * considers most dangerous are the ones most likely to run in the mode that
+ * `auto` and `yolo` differ in what they still stop for, which is the whole
+ * reason both exist. `auto` is "run it, the guards are on": a tool's own
+ * `approval(args)` prompt, the cwd boundary and the secret-use boundary (both
+ * applied by the caller, see `extensions/wrapper.ts`) all still ask. `yolo`
+ * ignores a tool's own prompt and opts out of those boundaries, leaving exactly
+ * two things standing — a decision the tool marked `critical` (the `rm -rf /`
+ * class, see `bash-guard.ts`) and an explicit `tools.approval.<tool>: deny`.
+ * Without the critical floor the ordering would be inverted: the calls a tool
+ * considers most dangerous are the ones most likely to be run in the mode that
  * skips the check.
  *
  * When `options.bypassAllApprovals` is set (the `/yolo` command), any result
  * that would still prompt is turned into `allow` as a final step, EXCEPT a
- * critical one. A `deny` is a hard block, not a prompt, so it survives the
- * bypass unchanged.
+ * critical one. That is the one thing it adds over the `yolo` rung: a per-tool
+ * `prompt` policy the operator wrote is honoured by the rung and lifted by the
+ * command. A `deny` is a hard block, not a prompt, so it survives both.
  */
 export function resolveApproval(
 	tool: ApprovalSubject,
@@ -308,7 +330,13 @@ function resolveApprovalInner(
 }
 
 /**
- * Effective autonomy when plan-mode session is active: cap to `plan` unless CLI yolo.
+ * The rung actually in force, before any per-tool policy is consulted.
+ *
+ * `--yolo` / `--auto-approve` is an explicit operator instruction and wins
+ * outright. An active plan-mode session caps to `plan`, which is why a
+ * configured `yolo` cannot execute inside a plan. Everything else is the
+ * configured rung, and an absent one is `DEFAULT_APPROVAL_MODE`: the caller has
+ * no operator intent to honour, so it gets the same rung a fresh install does.
  */
 export function resolveEffectiveApprovalMode(
 	configured: ApprovalMode | string | undefined,
@@ -316,14 +344,21 @@ export function resolveEffectiveApprovalMode(
 ): ApprovalMode {
 	if (options?.cliAutoApprove) return "yolo";
 	if (options?.planModeActive) return "plan";
-	return (configured ?? "yolo") as ApprovalMode;
+	return (configured ?? DEFAULT_APPROVAL_MODE) as ApprovalMode;
 }
 
 /**
  * Check if a tool call requires user approval.
  *
+ * `critical` travels with the answer because it changes WHO may dismiss the
+ * prompt, not just whether there is one. A standing "allow this tool for the
+ * session" answer may retire an ordinary tier prompt; it must never retire a
+ * call the tool itself flagged as destructive, because that answer was given
+ * about a tool NAME and this flag is about these ARGUMENTS. See the session
+ * grant handling in `extensions/wrapper.ts`.
+ *
  * @throws Error if policy is 'deny'
- * @returns Object with required flag and optional reason for the prompt
+ * @returns Whether a prompt is required, why, and whether it is a critical one
  */
 export function requiresApproval(
 	tool: ApprovalSubject,
@@ -331,8 +366,8 @@ export function requiresApproval(
 	mode: ApprovalMode,
 	userConfig: Record<string, unknown> = {},
 	options?: ApprovalResolutionOptions,
-): { required: boolean; reason?: string } {
-	const { policy, reason } = resolveApproval(tool, args, mode, userConfig, options);
+): { required: boolean; reason?: string; critical?: boolean } {
+	const { policy, reason, critical } = resolveApproval(tool, args, mode, userConfig, options);
 
 	if (policy === "deny") {
 		const detail =
@@ -342,7 +377,7 @@ export function requiresApproval(
 		throw new Error(detail);
 	}
 
-	if (policy === "prompt") return { required: true, reason };
+	if (policy === "prompt") return { required: true, reason, critical };
 	return { required: false };
 }
 
@@ -370,9 +405,21 @@ export function formatApprovalPrompt(tool: ApprovalSubject, args: unknown, reaso
 	return lines.join("\n");
 }
 
-/** Format the richer interactive card without breaking prompt-text consumers. */
-export function formatApprovalCard(tool: ApprovalSubject, args: unknown, reason?: string): string {
-	const lines = ["## Permission required", `**Tool:** \`${tool.name}\``, "**Scope:** This call only"];
+/**
+ * Format the richer interactive card without breaking prompt-text consumers.
+ *
+ * `requester` names the agent the call belongs to, and is set only for a spawned
+ * subagent. Every subagent prompt is presented at the ROOT session, so the
+ * operator faces one queue fed by an arbitrary number of children: without a name
+ * on the card, two agents asking to run `bash` at the same moment produce two
+ * identical prompts, and answering the wrong one is indistinguishable from
+ * answering the right one until the wrong agent proceeds. A root session passes
+ * nothing here, because a prompt with no other possible author needs no byline.
+ */
+export function formatApprovalCard(tool: ApprovalSubject, args: unknown, reason?: string, requester?: string): string {
+	const lines = ["## Permission required", `**Tool:** \`${tool.name}\``];
+	if (requester) lines.push(`**Requested by:** \`${requester}\``);
+	lines.push("**Scope:** This call only");
 
 	if (tool.name.startsWith("mcp__") && tool.approval === undefined) {
 		lines.push("**Origin:** MCP server tool");

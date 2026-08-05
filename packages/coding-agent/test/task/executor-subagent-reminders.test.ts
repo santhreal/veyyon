@@ -87,6 +87,10 @@ describe("runSubprocess yield reminders", () => {
 			messageInFlight = false;
 		};
 		mutableSession.extensionRunner = {
+			// The spawner names the child on its runner before initializing it, so an
+			// approval card raised from the child carries a byline. See
+			// `ExtensionRunner.agentId`.
+			setAgentId: () => {},
 			initialize: (actions: ExtensionActions) => {
 				extensionSendUserMessage = actions.sendUserMessage;
 			},
