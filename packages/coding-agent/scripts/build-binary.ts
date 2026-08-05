@@ -2,6 +2,7 @@
 
 import { createRequire } from "node:module";
 import * as path from "node:path";
+import { findBinaryTarget } from "./binary-targets";
 import { compileCodingAgent } from "./compile-binary";
 
 const packageDir = path.join(import.meta.dir, "..");
@@ -15,29 +16,19 @@ export interface CrossBuild {
 	readonly target: Bun.Build.CompileTarget;
 }
 
-/** Resolves a CROSS_TARGET value to the Bun compile target used by local binary builds. */
+/**
+ * Resolve a `CROSS_TARGET` value to the Bun compile target a local build uses.
+ *
+ * The triple comes from `binary-targets.ts`, the table the release build also
+ * reads, so a local cross-build and the published asset for the same platform
+ * cannot be compiled differently. The returned `id` is the value you asked for,
+ * because it names the output file (`dist/vey-<id>`).
+ */
 export function resolveCrossBuild(value: string | undefined): CrossBuild | null {
-	switch (value) {
-		case undefined:
-		case "":
-			return null;
-		case "darwin-arm64":
-			return { id: value, platform: "darwin", arch: "arm64", target: "bun-darwin-arm64" };
-		case "darwin-x64":
-			return { id: value, platform: "darwin", arch: "x64", target: "bun-darwin-x64" };
-		case "linux-arm64":
-			return { id: value, platform: "linux", arch: "arm64", target: "bun-linux-arm64" };
-		case "linux-x64":
-			return { id: value, platform: "linux", arch: "x64", target: "bun-linux-x64-baseline" };
-		case "win32-x64":
-		case "windows-x64":
-			// Modern, not baseline: Bun baseline Windows standalones segfault at
-			// startup (oven-sh/bun#32684). Kept in lockstep with the release target
-			// in scripts/ci-release-build-binaries.ts.
-			return { id: value, platform: "win32", arch: "x64", target: "bun-windows-x64" };
-		default:
-			throw new Error(`Unsupported CROSS_TARGET: ${value}`);
-	}
+	if (!value) return null;
+	const target = findBinaryTarget(value);
+	if (!target) throw new Error(`Unsupported CROSS_TARGET: ${value}`);
+	return { id: value, platform: target.platform, arch: target.arch, target: target.target };
 }
 
 // Transformers.js is an optional, native-heavy dependency that is never bundled
