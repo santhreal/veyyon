@@ -9,14 +9,18 @@ Settings are YAML mappings. Persistent settings live in `config.yml`; custom mod
 
 | Scope | Path | Notes |
 | --- | --- | --- |
-| Global | `~/.veyyon/profiles/default/agent/config.yml` | The main persistent file. `/settings` and `veyyon config set` write here. |
-| Project | `<repo>/.veyyon/config.yml` | Loaded when the cwd has a non-empty config dir. Edit by hand. |
+| Profile | `~/.veyyon/profiles/<name>/agent/config.yml` | The main persistent file. `/settings` and `veyyon config set` write here. |
+| Machine-global | `~/.veyyon/config.yml` | The few keys shared by every profile (`defaultProfile`, `profileSharing`, auth-broker keys). |
 | CLI overlay | any file passed with `--config <file>` | Process-local, repeatable, never persisted. |
+
+A repository cannot carry settings: a checked-in `.veyyon/config.yml` is not read. When one
+repository needs different behavior, pass an overlay (`--config ./repo.yml`) or use a path-scoped
+`enabledModels` / `disabledProviders` entry in your profile config.
 
 Precedence, low to high:
 
 ```text
-defaults  <-  global config  <-  project config  <-  --config overlays  <-  runtime flags
+defaults  <-  profile config  <-  --config overlays  <-  runtime flags
 ```
 
 Read and write from a shell with `veyyon config`:
@@ -497,8 +501,8 @@ $ veyyon --cwd /tmp/scratch          # wins over session.workdir for this run
 `session.workdir` must resolve to an existing directory; a relative path or a
 missing directory fails launch rather than falling back silently. Mid-session
 overrides via the agent `set_cwd` tool or `/cwd` are session-scoped only: they
-re-root the live session (the cwd, and with it the project settings, plugins,
-slash commands, capabilities, ssh tool, and system-prompt project framing) and
+re-root the live session (the cwd, and with it the path-scoped settings,
+secrets, capabilities, ssh tool, and system-prompt project framing) and
 never write `session.workdir`. Persist a new default with `veyyon config set` or
 `/settings`.
 

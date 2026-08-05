@@ -24,7 +24,7 @@ Common launch options:
 | `--subagent-model <id>` | Model for spawned task subagents |
 | `--compaction-model <id>` | Model for context compaction |
 
-Config precedence: CLI flags → `--config` overlays → project config → global config → defaults. See
+Config precedence: CLI flags → `--config` overlays → profile config → defaults. See
 [Configuration](../using/configuration.md).
 
 ## Registered subcommands

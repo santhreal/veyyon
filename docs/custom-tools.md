@@ -44,10 +44,10 @@ CustomTool.execute(toolCallId, params, onUpdate, ctx, signal)
 
 `discoverAndLoadCustomTools(configuredPaths, cwd, builtInToolNames)` merges:
 
-1. Capability providers (`toolCapability`), including:
-   - Native Veyyon config (`~/.veyyon/profiles/default/agent/tools`, `.veyyon/tools`): the user dir is profile-aware: under a named profile it resolves to `~/.veyyon/profiles/<name>/agent/tools`
-   - Claude config (`~/.claude/tools`, `.claude/tools`)
-   - Codex config (`~/.codex/tools`, `.codex/tools`)
+1. Capability providers (`toolCapability`), all user-level (a working tree never contributes tools):
+   - Native Veyyon config (`~/.veyyon/profiles/<name>/agent/tools`)
+   - Claude config (`~/.claude/tools`)
+   - Codex config (`~/.codex/tools`)
    - Claude marketplace plugin cache provider
 2. Installed plugin manifests (`~/.veyyon/profiles/<profile>/plugins/node_modules/*` via plugin loader; a project root `<anchor>/.veyyon/plugins` is enumerated the same way)
 3. Explicit configured paths passed to the loader

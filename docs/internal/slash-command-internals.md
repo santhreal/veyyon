@@ -82,32 +82,29 @@ So hidden files/directories are not loaded, ignored paths are skipped, and file 
 
 ## `native` provider (`builtin.ts`)
 
-Search roots come from `.veyyon` directories:
+Search root is the active profile's agent dir only:
 
-- project: `<cwd>/.veyyon/commands/*.md`
 - user: `~/.veyyon/profiles/default/agent/commands/*.md` (profile-scoped: `getAgentDir()` points at the active profile's agent dir, e.g. `~/.veyyon/profiles/<name>/agent`)
 
-`getConfigDirs()` returns project first, then user, so **project native commands beat user native commands** when names collide.
+A repository's `.veyyon/commands/` is not read: a working tree does not install commands.
 
 ## `claude` provider (`claude.ts`)
 
-Loads, subject to `commands.enableClaudeUser` and `commands.enableClaudeProject` settings:
+Loads, subject to the `commands.enableClaudeUser` setting:
 
 - user: `~/.claude/commands/**/*.md` (recursive)
-- project: `<cwd>/.claude/commands/**/*.md` (recursive)
+
+A project's `.claude/commands/` is not read: a repository does not install slash commands.
 
 Commands in subdirectories additionally get a namespaced alias: `foo/bar.md` is registered under both `bar` and `foo:bar` (`addClaudeCommandNamespaceAliases`).
-
-The provider pushes user items before project items, so **user Claude commands beat project Claude commands** on same-name collisions inside this provider.
 
 ## `codex` provider (`codex.ts`)
 
 Loads:
 
 - user: `~/.codex/commands/*.md`
-- project: `<cwd>/.codex/commands/*.md`
 
-Both sides are loaded then flattened in user-first order, so **user Codex commands beat project Codex commands** on collisions.
+A project's `.codex/commands/` is not read.
 
 Codex command content is parsed with frontmatter stripping (`parseFrontmatter`), and command name can be overridden by frontmatter `name`; otherwise filename is used.
 
@@ -265,4 +262,4 @@ Interactive mode separately hard-handles many built-ins in `InputController` (fo
   - non-native commands: warning + fallback key/value parse
 - Extension/custom command handler exceptions are caught and reported via extension error channel (or logger fallback for custom commands without extension runner), and treated as handled (no unintended fallback execution).
 
-*Verified against `16e2f2c587de8565330caf3181f4a9cca2d2af73` on 2026-07-28.*
+*Verified against `3fa88a60` on 2026-08-05.*

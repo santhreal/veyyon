@@ -60,19 +60,17 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 
 ### Discovery inputs
 
-1. Nearest project `.veyyon` agents dir from `findAllNearestProjectConfigDirs("agents", cwd)` (filtered to `.veyyon`; first hit only)
-2. User `.veyyon` agents dir from `getConfigDirs("agents", { project: false })` (filtered to `.veyyon`; first hit only)
-3. Veyyon extension-package `agents/` dirs (`listVeyyonExtensionRoots`): only when `isProviderEnabled("veyyon-plugins")`; consumed in source-precedence order (CLI roots > project `extensions:` settings > user `extensions:` settings > installed npm/link plugins, marketplace installs excluded by realpath)
-4. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs: only when `isProviderEnabled("claude-plugins")`; project-scope plugins sort before user-scope
-5. Bundled agents (`loadBundledAgents()`)
+1. User `.veyyon` agents dir from `getConfigDirs("agents", { project: false })` (filtered to `.veyyon`; first hit only). A repository's `.veyyon/agents/` is not read: an agent definition carries a system prompt, a tool allowlist, a model, and a `spawns` field, so a checked-in one could shadow a bundled agent by name.
+2. Veyyon extension-package `agents/` dirs (`listVeyyonExtensionRoots`): only when `isProviderEnabled("veyyon-plugins")`; consumed in source-precedence order (CLI roots > user `extensions:` settings > installed npm/link plugins, marketplace installs excluded by realpath)
+3. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs: only when `isProviderEnabled("claude-plugins")`; project-scope plugin installs are filtered out
+4. Bundled agents (`loadBundledAgents()`)
 
 ### Actual source order
 
-1. project `.veyyon/agents`
-2. user `~/.veyyon/profiles/default/agent/agents`
-3. Veyyon extension-package `agents/` dirs (CLI > project settings > user settings > installed plugins)
-4. Claude plugin `agents/` dirs (project-scope first, then user-scope)
-5. bundled agents last
+1. user `~/.veyyon/profiles/<name>/agent/agents`
+2. Veyyon extension-package `agents/` dirs (CLI > user settings > installed plugins)
+3. Claude plugin `agents/` dirs (user-scope only)
+4. bundled agents last
 
 ## Merge and collision rules
 
@@ -84,8 +82,7 @@ Discovery uses first-wins dedup by exact `agent.name`:
 
 Implications:
 
-- Project `.veyyon` overrides user `.veyyon`.
-- Non-bundled agents override bundled agents with the same name.
+- User and extension-package agents override bundled agents with the same name.
 - Name matching is case-sensitive (`Task` and `task` are distinct).
 - Within one directory, markdown files are read in lexicographic filename order before dedup.
 
@@ -189,4 +186,4 @@ When parent plan mode is enabled, `TaskTool.#runSpawn` builds an `effectiveAgent
 
 The same `effectiveAgent` is used for subprocess launch, model/thinking overrides, and output-schema selection.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `3fa88a60` on 2026-08-05.*

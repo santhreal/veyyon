@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -289,8 +289,8 @@ credential store). BYOK provider keys never land in plaintext <code>config.yml</
 <tr><th>Path</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>AGENTS.md</code></td><td>Project instructions Veyyon auto-loads. See <a href="../using/extending.html">AGENTS.md</a>.</td></tr>
-<tr><td><code>.veyyon/</code></td><td>Optional per-project overrides and data (<code>mcp.json</code>, <code>ssh.json</code>, <code>modules/</code>, <code>prompts/</code>). Follows the working directory, never profile-scoped.</td></tr>
+<tr><td><code>AGENTS.md</code> / <code>CLAUDE.md</code></td><td>Project instructions Veyyon auto-loads. These are the only configuration-shaped files a repository contributes. See <a href="../using/extending.html">AGENTS.md</a>.</td></tr>
+<tr><td><code>.veyyon/</code></td><td>Project-scoped data that follows the working directory: prompt templates (<code>prompts/</code>), personalities (<code>personalities/</code>), the project secret vault, and project-scope plugin installs. Settings, MCP servers, rules, hooks, tools, commands, skills, and agents are never read from it, because a checked-in file must not configure the agent.</td></tr>
 </tbody>
 </table>
 </div>

@@ -58,7 +58,6 @@
   - [Skills authoring](./features/skills-authoring.md)
 - [Plugins](./features/plugins.md)
 - [Hooks](./features/hooks.md)
-  - [Hooks guide](./features/hooks-guide.md)
 - [MCP](./features/mcp.md)
   - [MCP setup](./using/mcp-setup.md)
 - [Connectors and Apps](./features/connectors.md)

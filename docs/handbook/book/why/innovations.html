@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -223,7 +223,7 @@
 <p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the natives layer verifies the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
 <p>See <a href="../using/editing.html">Editing and repair</a> and <a href="../edit/engine.html">The hashline edit engine</a>.</p>
 <h2 id="tool-approval-tiers"><a class="header" href="#tool-approval-tiers">Tool approval tiers</a></h2>
-<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, or <code>yolo</code>. The older aliases <code>always-ask</code> and <code>write</code> still map to <code>ask</code> and <code>auto-edit</code>. On top of the mode, per-tool <code>tools.approval</code> overrides apply. The three tiers are read, write, and exec. Bash can still force a prompt on destructive patterns through the bash interceptor (<code>bashInterceptor.enabled</code> and <code>bashInterceptor.patterns</code>).</p>
+<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, or <code>yolo</code>, and <code>auto</code> is the default. The older aliases still map onto those: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>. The three tiers are read, write, and exec. On top of the mode sit the guards the mode does not lift: per-tool <code>tools.approval</code> overrides, the working-directory boundary, the secret-use boundary, and a built-in bash guard (<code>bash-guard.ts</code>) that forces a prompt on destructive commands such as a recursive delete of the home directory. That guard is always on and even <code>yolo</code> does not lift it. The separate bash interceptor (<code>bashInterceptor.enabled</code>, off by default, <code>bashInterceptor.patterns</code>) is an additional user-configured layer.</p>
 <p>See <a href="../features/sandbox.html">Approvals</a> and <code>/settings</code> → Interaction → Approvals.</p>
 <h2 id="model-slots-and-roles"><a class="header" href="#model-slots-and-roles">Model slots and roles</a></h2>
 <p>Veyyon separates the model you use from the job it does:</p>
@@ -235,7 +235,7 @@
 </ul>
 <p>The full contract is in <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 <h2 id="provider-neutral-loop"><a class="header" href="#provider-neutral-loop">Provider-neutral loop</a></h2>
-<p>The agent loop, the TUI, the session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. You configure providers in the active profile’s agent directory, through <code>config.yml</code>, <code>/setup</code>, or <code>/providers</code>.</p>
+<p>The agent loop, the TUI, the session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. You configure providers in the active profile’s agent directory, through <code>config.yml</code> or <code>/setup</code>, and manage their accounts with <code>/providers</code>.</p>
 <h2 id="engine-modes"><a class="header" href="#engine-modes">Engine modes</a></h2>
 <p>Compaction, goal continuation, plan mode, vibe mode, and task subagents live in the session and tool layer, not only in prompt text. Goal mode can keep an idle session moving toward a stored objective. Plan mode writes a plan file and holds back mutation until the resolve and approval paths complete.</p>
 <h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>

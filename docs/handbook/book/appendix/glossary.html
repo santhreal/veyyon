@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -202,7 +202,7 @@
 <p><strong>apply_patch</strong>: Edit mode (<code>edit.mode: apply_patch</code>) for a Codex-style <code>*** Begin Patch … *** End Patch</code> envelope. Default edit mode is <strong>hashline</strong> via the <code>edit</code> tool. Apply-patch shares approval policy with other write paths.</p>
 </li>
 <li>
-<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, and hard-coded critical bash patterns are the boundary.</p>
+<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (the default), <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, the working-directory and secret-use boundaries, and hard-coded critical bash patterns are the boundary.</p>
 </li>
 <li>
 <p><strong>model catalog</strong>: Bundled provider/model data plus <code>models.yml</code> / <code>models.yaml</code> custom entries. There is no separate <code>backends.toml</code> subsystem.</p>

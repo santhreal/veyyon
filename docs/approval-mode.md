@@ -174,9 +174,9 @@ approval: (args) =>
 
 ## ACP sessions
 
-ACP (`veyyon acp`) uses the same settings resolver as normal Veyyon launches. Global `~/.veyyon/profiles/default/agent/config.yml` (or the active profile's agent dir) applies, project config for the ACP session `cwd` applies, and any `--config <file>` overlays passed to the ACP server process apply to sessions created by that process.
+ACP (`veyyon acp`) uses the same settings resolver as normal Veyyon launches. The active profile's `config.yml` applies, and any `--config <file>` overlays passed to the ACP server process apply to sessions created by that process.
 
-To auto-approve ACP tool calls, set the mode in global or project config:
+To auto-approve ACP tool calls, set the mode in your profile config:
 
 ```yaml
 tools:
@@ -192,7 +192,7 @@ veyyon acp --approval-mode yolo
 veyyon acp --config ./acp-yolo.yml   # file contains tools.approvalMode: yolo
 ```
 
-Precedence is the normal settings precedence: runtime flags (`--approval-mode`, `--auto-approve`, `--yolo`) override `--config` overlays, which override project config, which overrides global config. ACP does not currently define a `session/new`, `session/load`, or `session/resume` approval-policy field, so ACP clients that need per-session yolo should launch a separate `veyyon acp` process with one of the flags above or with a session-specific `--config` overlay.
+Precedence is the normal settings precedence: runtime flags (`--approval-mode`, `--auto-approve`, `--yolo`) override `--config` overlays, which override the profile config. ACP does not currently define a `session/new`, `session/load`, or `session/resume` approval-policy field, so ACP clients that need per-session yolo should launch a separate `veyyon acp` process with one of the flags above or with a session-specific `--config` overlay.
 
 `tools.approvalMode: yolo` fully applies to ACP when it is explicitly configured or supplied by a runtime flag. It skips Veyyon's approval prompts and also skips the ACP client permission gate for `bash`, `edit`, `delete`, and `move` unless `tools.approval.<tool>` is `prompt` or `deny`. The schema default is `auto`, not `yolo`, so default-config ACP sessions still keep the client permission gate; set `tools.approvalMode: yolo` explicitly when the client wants unattended execution.
 
@@ -200,4 +200,4 @@ When ACP approval is required, Veyyon routes it through the ACP client instead o
 
 ## Subagents
 
-Subagents run headless with `tools.approvalMode: yolo` so they do not stall waiting for UI. The parent `task` approval is the authorization boundary. User `tools.approval.<tool>` settings continue to control whether a tool is allowed, prompted, or blocked.
+A spawned subagent inherits the spawning session's approval mode through its forked settings; nothing hardcodes a rung for it. The parent `task` approval is the authorization boundary for the delegation itself, and your `tools.approval.<tool>` policies apply inside the subagent exactly as they do in the parent. A subagent runs headless, so a call that would prompt fails with an error naming what needed approval rather than stalling on a UI that does not exist.

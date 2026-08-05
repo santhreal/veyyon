@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-595774d2.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -231,22 +231,23 @@ you know which tier a tool is in, the mode tells you whether it runs.</p>
 <p>The schema default is <code>auto</code>. Three older names still work: <code>always-ask</code> maps to <code>ask</code>, and
 <code>write</code> and <code>auto-edit</code> both map to <code>ask-command</code>.</p>
 <p>Set the mode in config, or override it for one run:</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the tests and fix failures"
+<pre><code class="language-console">$ veyyon --approval-mode ask-command "run the tests and fix failures"
 </code></pre>
 <p>The launch flags <code>--yolo</code> and <code>--plan-yolo</code> set <code>yolo</code> and a plan-mode variant of it.</p>
 <h2 id="the-working-directory-boundary"><a class="header" href="#the-working-directory-boundary">The working-directory boundary</a></h2>
 <p>A tier tells you what kind of thing a tool does. It does not tell you which file the
-tool is about to touch. In <code>auto-edit</code>, the <code>write</code> tier is approved, so <code>write</code> runs
-without asking whether the target is <code>src/main.ts</code> or a file in your home directory.</p>
+tool is about to touch. In <code>ask-command</code> and <code>auto</code>, the <code>write</code> tier is approved, so
+<code>write</code> runs without asking whether the target is <code>src/main.ts</code> or a file in your home
+directory.</p>
 <p>The working-directory boundary is the second question, asked after the tier:</p>
 <blockquote>
 <p>Does this call touch a path outside the session working directory?</p>
 </blockquote>
 <p>If it does, the call asks for approval even though its tier would have allowed it. This
-holds in <code>plan</code>, <code>ask</code>, and <code>auto-edit</code>. It does not hold in <code>yolo</code>, which turns off
-permission entirely.</p>
+holds in <code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, so the shipped default is inside it. It
+does not hold in <code>yolo</code>, which turns off permission entirely.</p>
 <p>Say you launched in <code>~/projects/api</code> and the model runs this:</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit "update the config"
+<pre><code class="language-console">$ veyyon --approval-mode ask-command "update the config"
 </code></pre>
 <p>Writing <code>~/projects/api/config.yml</code> runs without asking, because it is inside the
 working directory and <code>write</code> is an approved tier. Writing <code>~/.ssh/config</code> asks, because
@@ -276,17 +277,17 @@ secret-use boundary is the third question, asked the same way and in the same mo
 model can use a secret it never reads. That substitution used to be recorded and never
 asked about: <code>secrets.auditLog</code> could tell you afterwards which credential an agent had
 spent, and nothing could ask you first.</p>
-<p>Now a call whose arguments carry a real credential asks for approval in <code>plan</code>, <code>ask</code>, and
-<code>auto-edit</code>, even when its tier would have allowed it. The prompt names the secret and
-never shows its value:</p>
+<p>Now a call whose arguments carry a real credential asks for approval in <code>plan</code>, <code>ask</code>,
+<code>ask-command</code> and <code>auto</code>, even when its tier would have allowed it. The prompt names the
+secret and never shows its value:</p>
 <pre><code class="language-text">Allow tool: bash
 Reason: This call uses stored secret: GITHUB_TOKEN. Approving it runs the call with the
 real credential.
 </code></pre>
 <p>As with the working-directory boundary, <code>yolo</code> turns permission off entirely and turns
-this off with it, so the shipped default asks nothing extra. A call that mentions a
-placeholder without expanding it, such as one made while <code>secrets.enabled</code> is false, is
-not carrying a credential and does not ask.</p>
+this off with it. Every other rung keeps it, the shipped <code>auto</code> included. A call that
+mentions a placeholder without expanding it, such as one made while <code>secrets.enabled</code> is
+false, is not carrying a credential and does not ask.</p>
 <h2 id="per-tool-overrides"><a class="header" href="#per-tool-overrides">Per-tool overrides</a></h2>
 <p>When you want one tool to behave differently from its tier, name it under
 <code>tools.approval</code>. Each entry maps a tool to <code>allow</code>, <code>deny</code>, or <code>prompt</code>, and that choice
@@ -296,16 +297,16 @@ than a default, so it outranks both the configured mode and the per-tool setting
 is a hard block in every direction.</p>
 <pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
 tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
     read: allow
 </code></pre>
-<p>Here the mode is <code>auto-edit</code>, so writes run without asking. The override then pulls <code>bash</code>
+<p>Here the mode is <code>ask-command</code>, so writes run without asking. The override then pulls <code>bash</code>
 back to <code>prompt</code>, so commands still stop for your approval.</p>
 <h2 id="critical-bash-commands"><a class="header" href="#critical-bash-commands">Critical bash commands</a></h2>
 <p>Within the exec tier, a guard (<code>packages/coding-agent/src/tools/bash-guard.ts</code>) forces a prompt in
-<code>plan</code>, <code>ask</code>, and <code>auto-edit</code>, even over a per-tool <code>allow</code>. It has two halves.</p>
+<code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, even over a per-tool <code>allow</code>. It has two halves.</p>
 <p>The first half judges what a command would DELETE, and it judges the paths after expansion rather
 than the command as text. A tilde and <code>$HOME</code> are resolved, so <code>rm -rf ~/</code> and <code>rm -rf "$HOME"/</code>
 are recognized as the home directory. Every target is judged, not just the first, so

@@ -14,7 +14,7 @@ This chapter is a one-page map of what the harness does. Each row links to the c
 | Models | Separate slots for the interactive, subagent, and compaction models, plus optional roles per profile |
 | Sessions | Branchable session trees that you can resume and fork |
 | Memory | Memory backends, active whenever `memory.backend` is not `off` |
-| Config | `~/.veyyon`, or a relocated agent directory per profile, alongside project files under your working directory |
+| Config | `~/.veyyon`, or a relocated agent directory per profile; a working tree contributes `AGENTS.md` instructions and nothing else |
 
 ## Lineage
 

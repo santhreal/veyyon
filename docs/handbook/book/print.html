@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-336fa523.js";
+            window.path_to_searchindex_js = "searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-5cf6de48.js"></script>
+        <script src="toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -289,7 +289,7 @@ points you at.</p>
 <tr><td>Models</td><td>Separate slots for the interactive, subagent, and compaction models, plus optional roles per profile</td></tr>
 <tr><td>Sessions</td><td>Branchable session trees that you can resume and fork</td></tr>
 <tr><td>Memory</td><td>Memory backends, active whenever <code>memory.backend</code> is not <code>off</code></td></tr>
-<tr><td>Config</td><td><code>~/.veyyon</code>, or a relocated agent directory per profile, alongside project files under your working directory</td></tr>
+<tr><td>Config</td><td><code>~/.veyyon</code>, or a relocated agent directory per profile; a working tree contributes <code>AGENTS.md</code> instructions and nothing else</td></tr>
 </tbody>
 </table>
 </div>
@@ -330,7 +330,7 @@ points you at.</p>
 <p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the natives layer verifies the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
 <p>See <a href="#editing-and-repair">Editing and repair</a> and <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
 <h2 id="tool-approval-tiers"><a class="header" href="#tool-approval-tiers">Tool approval tiers</a></h2>
-<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, or <code>yolo</code>. The older aliases <code>always-ask</code> and <code>write</code> still map to <code>ask</code> and <code>auto-edit</code>. On top of the mode, per-tool <code>tools.approval</code> overrides apply. The three tiers are read, write, and exec. Bash can still force a prompt on destructive patterns through the bash interceptor (<code>bashInterceptor.enabled</code> and <code>bashInterceptor.patterns</code>).</p>
+<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, or <code>yolo</code>, and <code>auto</code> is the default. The older aliases still map onto those: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>. The three tiers are read, write, and exec. On top of the mode sit the guards the mode does not lift: per-tool <code>tools.approval</code> overrides, the working-directory boundary, the secret-use boundary, and a built-in bash guard (<code>bash-guard.ts</code>) that forces a prompt on destructive commands such as a recursive delete of the home directory. That guard is always on and even <code>yolo</code> does not lift it. The separate bash interceptor (<code>bashInterceptor.enabled</code>, off by default, <code>bashInterceptor.patterns</code>) is an additional user-configured layer.</p>
 <p>See <a href="#approvals">Approvals</a> and <code>/settings</code> → Interaction → Approvals.</p>
 <h2 id="model-slots-and-roles"><a class="header" href="#model-slots-and-roles">Model slots and roles</a></h2>
 <p>Veyyon separates the model you use from the job it does:</p>
@@ -342,7 +342,7 @@ points you at.</p>
 </ul>
 <p>The full contract is in <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
 <h2 id="provider-neutral-loop"><a class="header" href="#provider-neutral-loop">Provider-neutral loop</a></h2>
-<p>The agent loop, the TUI, the session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. You configure providers in the active profile’s agent directory, through <code>config.yml</code>, <code>/setup</code>, or <code>/providers</code>.</p>
+<p>The agent loop, the TUI, the session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. You configure providers in the active profile’s agent directory, through <code>config.yml</code> or <code>/setup</code>, and manage their accounts with <code>/providers</code>.</p>
 <h2 id="engine-modes"><a class="header" href="#engine-modes">Engine modes</a></h2>
 <p>Compaction, goal continuation, plan mode, vibe mode, and task subagents live in the session and tool layer, not only in prompt text. Goal mode can keep an idle session moving toward a stored objective. Plan mode writes a plan file and holds back mutation until the resolve and approval paths complete.</p>
 <h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
@@ -666,7 +666,7 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
 <pre><code class="language-console">$ vey --version
 </code></pre>
-<p>The first interactive <code>vey</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
+<p>The first interactive <code>vey</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code>. To manage the accounts you already have, use <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
 <p>Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
 <p>If an install is interrupted before the final replacement, run it again. The installer stages the binary beside its final path, so a partial download never overwrites an existing <code>veyyon</code>. On Linux and macOS, the verified file takes the live path with one same-filesystem rename. On Windows, the installer moves the old binary aside immediately before replacement and restores it if moving the staged file fails.</p>
 <p>Ctrl-C removes the staged file on the way out. A kill the process cannot catch can leave that staged file behind, and the next install reclaims it and names it:</p>
@@ -728,7 +728,7 @@ $ vey plugin doctor
 </code></pre>
 <p>The <a href="#file-locations-1">File locations</a> chapter shows the full layout.</p>
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
-<p>On the first interactive launch, the first-run setup (or <code>veyyon setup</code>) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with <code>/setup</code> or <code>/providers</code>, run <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the provider’s environment variable and skip the interactive step. See <a href="#signing-in">Authentication</a> and <a href="#configuring-providers">Configuring providers</a>.</p>
+<p>On the first interactive launch, the first-run setup (or <code>veyyon setup</code>) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the setup panel again with <code>/setup</code>, manage the accounts you already have with <code>/providers</code>, run <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the provider’s environment variable and skip the interactive step. See <a href="#signing-in">Authentication</a> and <a href="#configuring-providers">Configuring providers</a>.</p>
 <h2 id="updating"><a class="header" href="#updating">Updating</a></h2>
 <p>Veyyon keeps itself current. On startup it checks GitHub Releases for a newer
 version, and if it finds one it downloads the new binary in the background:</p>
@@ -978,7 +978,60 @@ tracks its own credentials. Those credentials are shared across profiles by defa
 <li><code>/login &lt;redirect-url&gt;</code>: completes an OAuth flow that needs a pasted callback URL.</li>
 <li><code>/logout</code>: opens the provider selector to remove stored credentials.</li>
 </ul>
-<p>On first run, the first-run setup (<code>veyyon setup</code>, or <code>/setup</code> / <code>/providers</code> later) walks the same flow.</p>
+<p>On first run, the first-run setup (<code>veyyon setup</code>, or <code>/setup</code> later) walks the same flow.</p>
+<h2 id="using-several-accounts-for-one-provider"><a class="header" href="#using-several-accounts-for-one-provider">Using several accounts for one provider</a></h2>
+<p>You can sign in to the same provider more than once. Run <code>/login anthropic</code> twice with two different
+logins and Veyyon stores both, each with its own quota. To see them, open the account manager:</p>
+<pre><code class="language-text">/providers
+</code></pre>
+<p>The sidebar lists your providers and the body lists that provider’s accounts, one row each, with the
+email, the plan, how the credential was supplied, and how much of its quota is spent. A row marked
+<code>this session</code> is the one serving your current session.</p>
+<p>From that card you press <code>enter</code> to use the selected account, <code>n</code> to name it, <code>r</code> to re-check its
+health, <code>u</code> to open its usage, <code>x</code> twice to log it out, and <code>a</code> to add another account for the same
+provider. <code>/account manager</code> opens the same card.</p>
+<p>Switching is <strong>per provider</strong>. Choosing another Anthropic account changes Anthropic and nothing else,
+because several providers serve one session at the same time: your main model, your subagent roles,
+and web search can each be a different provider. Moving between providers is a model choice, so it
+lives in <code>/models</code>.</p>
+<h2 id="naming-an-account"><a class="header" href="#naming-an-account">Naming an account</a></h2>
+<p>An email is not always the thing you recognise, especially when two subscriptions share one login.
+Give an account a name and every surface uses it:</p>
+<pre><code class="language-text">/account name work
+</code></pre>
+<p>The name belongs to the account, not to the stored token, so it survives a token refresh and a later
+re-login to the same account. An account you never named shows its email instead, and Veyyon tells
+you how to set one.</p>
+<h2 id="which-account-am-i-using"><a class="header" href="#which-account-am-i-using">Which account am I using?</a></h2>
+<pre><code class="language-text">/account
+</code></pre>
+<p>This reports one line per provider your session has actually routed to, with the account it is using
+and that account’s remaining quota. A provider you hold credentials for but have not used this
+session is not listed.</p>
+<p>If your chosen account hits its rate limit, Veyyon moves to another one so your work continues, and
+says so:</p>
+<pre><code class="language-text">Anthropic          personal                    main model  (opus-5)
+                   pinned to work, rotated off it (usage limit)
+                   /account switch anthropic to re-pin work · 2h 14m until it unblocks
+</code></pre>
+<p>Your choice is kept, not discarded. Once the limit resets, traffic returns to the account you picked
+with no further action.</p>
+<h2 id="when-a-login-is-signed-out-for-you"><a class="header" href="#when-a-login-is-signed-out-for-you">When a login is signed out for you</a></h2>
+<p>A stored login can stop working without you doing anything: the provider revokes the grant, or a
+token refresh fails and the credential is set aside. Veyyon does not hide that. The account manager
+marks the provider and prints the provider’s own reason, so you can tell a revoked grant from a
+temporary outage:</p>
+<pre><code class="language-text">Kimi Code · 1 account
+  a previous login was signed out: oauth refresh failed:
+  invalid_grant: The provided authorization grant is invalid
+  press a to sign in again
+</code></pre>
+<p>If that provider had only one login, it now has none, and the card says so rather than showing the
+provider as one you never signed into. <code>/account</code> names it too, so you do not have to open the card
+to find out:</p>
+<pre><code class="language-text">1 provider has a signed-out login (Kimi Code) · /providers to sign in again
+</code></pre>
+<p>A logout you performed yourself is not reported this way. You already know about it.</p>
 <h2 id="headless-and-remote-hosts"><a class="header" href="#headless-and-remote-hosts">Headless and remote hosts</a></h2>
 <p>For CI, servers, or a shared team credential store, use the auth broker from the shell:</p>
 <pre><code class="language-console">$ veyyon auth-broker login &lt;provider&gt;
@@ -1064,7 +1117,7 @@ vey --version
 <pre><code class="language-shell">cd my-project
 vey
 </code></pre>
-<p>The first interactive launch shows the first-run setup (splash, providers, glyphs, theme, outro), then the welcome screen and composer. Resuming a session, or setting <code>VEYYON_SKIP_SETUP=1</code>, skips it. You can re-open providers later with <code>/setup</code> or <code>/providers</code>, or run <code>veyyon setup</code> from the shell.</p>
+<p>The first interactive launch shows the first-run setup (splash, providers, glyphs, theme, outro), then the welcome screen and composer. Resuming a session, or setting <code>VEYYON_SKIP_SETUP=1</code>, skips it. You can re-open provider setup later with <code>/setup</code>, or run <code>veyyon setup</code> from the shell. To manage the accounts you already have, use <code>/providers</code>.</p>
 <p>After setup, you should see the TUI composer, the model indicator, and your workspace path.</p>
 <h2 id="ask-for-a-small-edit"><a class="header" href="#ask-for-a-small-edit">Ask for a small edit</a></h2>
 <pre><code class="language-text">&gt; Add a name argument to greet() in greet.py, default 'world'.
@@ -1112,7 +1165,7 @@ $ bun dev --version
 <li>Theme.</li>
 <li>The session welcome.</li>
 </ol>
-<p>You can return to provider setup later with <code>/setup</code> or <code>/providers</code> inside the TUI. To skip setup entirely, set <code>VEYYON_SKIP_SETUP=1</code>, or resume an existing session.</p>
+<p>You can return to provider setup later with <code>/setup</code> inside the TUI, and manage the accounts you already have with <code>/providers</code>. To skip setup entirely, set <code>VEYYON_SKIP_SETUP=1</code>, or resume an existing session.</p>
 <h2 id="3-sign-in-to-a-provider"><a class="header" href="#3-sign-in-to-a-provider">3. Sign in to a provider</a></h2>
 <p>Veyyon needs at least one model provider. You have three common options.</p>
 <p><strong>Use an API key.</strong> Set the provider’s key in your environment, then pick one of its models in <code>/model</code>. For example, export <code>DEEPSEEK_API_KEY</code> and choose a DeepSeek model.</p>
@@ -1149,7 +1202,7 @@ $ veyyon
 <li>It proposes an edit through the hashline <code>edit</code> and <code>write</code> tools.</li>
 <li>When your policy requires it, you approve the tool call. The <code>tools.approvalMode</code> setting decides when this happens; see <a href="#safety-1">Safety</a>.</li>
 <li>The change lands, and the diff appears in the TUI.</li>
-<li>If you asked for tests, you approve the <code>bash</code> or <code>cargo test</code> call when Veyyon runs them.</li>
+<li>If you asked for tests, Veyyon runs them with <code>bash</code>; under the default <code>auto</code> mode that call runs without asking, and a stricter mode prompts you first.</li>
 </ol>
 <h2 id="approval-mode"><a class="header" href="#approval-mode">Approval mode</a></h2>
 <p>Every tool call falls into one of three tiers: <code>read</code>, <code>write</code>, or <code>exec</code>. The <code>tools.approvalMode</code> setting decides which tiers run without asking and which ones prompt you first.</p>
@@ -1160,13 +1213,14 @@ $ veyyon
 </thead>
 <tbody>
 <tr><td><code>plan</code></td><td><code>read</code> (it proposes, but does not write)</td><td><code>write</code> only inside an active plan-mode session; <code>write</code> and <code>exec</code> are otherwise denied</td></tr>
-<tr><td><code>ask</code></td><td><code>read</code></td><td><code>write</code> and <code>exec</code></td></tr>
-<tr><td><code>auto-edit</code></td><td><code>read</code> and <code>write</code></td><td><code>exec</code></td></tr>
-<tr><td><code>yolo</code> (default)</td><td>all tiers</td><td>nothing, unless a per-tool override or a bash safety rule applies</td></tr>
+<tr><td><code>ask</code></td><td>nothing</td><td>every call, <code>read</code> included</td></tr>
+<tr><td><code>ask-command</code></td><td><code>read</code> and <code>write</code></td><td>anything that executes: <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>task</code>, <code>ssh</code></td></tr>
+<tr><td><code>auto</code> (default)</td><td>all tiers</td><td>a per-tool policy, a path outside the working directory, credential use, and a tool’s own critical calls</td></tr>
+<tr><td><code>yolo</code></td><td>all tiers</td><td>nothing, unless a per-tool override or a bash safety rule applies</td></tr>
 </tbody>
 </table>
 </div>
-<p>The older names <code>always-ask</code> and <code>write</code> still work, and map to <code>ask</code> and <code>auto-edit</code>. The schema default is <code>yolo</code>. You can change it in <code>/settings</code> or in your config. See <a href="#approvals">Approvals</a> and <a href="#safety-1">Safety</a>.</p>
+<p>The older names still work: <code>always-ask</code> maps to <code>ask</code>, and <code>write</code> and <code>auto-edit</code> both map to <code>ask-command</code>. The schema default is <code>auto</code>. You can change it in <code>/settings</code> or in your config. See <a href="#approvals">Approvals</a> and <a href="#safety-1">Safety</a>.</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <p>A few surfaces are worth trying early:</p>
 <ul>
@@ -1326,7 +1380,7 @@ fix that rather than retrying with a different silent default.</p>
 </thead>
 <tbody>
 <tr><td><a href="#sessions-turns-and-threads">Sessions, turns, and threads</a></td><td>The runtime units. A session is the persisted run, a turn is one request plus the agent loop, and a thread is the active path through the session tree.</td></tr>
-<tr><td><a href="#permission-model">Permission model</a></td><td>The approval-mode boundary. <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>) decides which tool tiers run automatically and when Veyyon asks you first. There is no operating-system command sandbox.</td></tr>
+<tr><td><a href="#permission-model">Permission model</a></td><td>The approval-mode boundary. <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>) decides which tool tiers run automatically and when Veyyon asks you first. There is no operating-system command sandbox.</td></tr>
 <tr><td><a href="#model-contract">Model contract</a></td><td>The bring-your-own-key boundary: endpoint, model, and key. It covers what the harness owns versus what the provider owns, Freeform versus Function tools, and how system prompts and tool schemas are presented.</td></tr>
 </tbody>
 </table>
@@ -1352,7 +1406,7 @@ fix that rather than retrying with a different silent default.</p>
 <h2 id="related-reading"><a class="header" href="#related-reading">Related reading</a></h2>
 <ul>
 <li><a href="#permission-model">Permission model</a> and <a href="#approvals">Approvals</a> cover the approval modes.</li>
-<li>For bounded automation, prefer <code>--approval-mode auto-edit</code>.</li>
+<li>Approvals usually need no tuning: the default <code>auto</code> runs every tier while the per-tool policies, the working-directory boundary, credential use, and a tool’s own critical commands all still ask. Pick a rung explicitly only when you want a different trade-off, and note that a headless run has nobody to answer a prompt, so a rung that asks turns a tool call into a failure rather than a pause.</li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a> covers scripted <code>veyyon</code> launch patterns.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1433,7 +1487,7 @@ it as the boundary.</p>
 <p>A mode approves whole tiers, not individual tools. That is why the tiers come first: once
 you know which tier a tool is in, the mode tells you whether it runs.</p>
 <h2 id="modes"><a class="header" href="#modes">Modes</a></h2>
-<p>A mode is a named choice of which tiers run without asking. There are four:</p>
+<p>A mode is a named choice of which tiers run without asking. There are five:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1441,31 +1495,33 @@ you know which tier a tool is in, the mode tells you whether it runs.</p>
 </thead>
 <tbody>
 <tr><td><code>plan</code></td><td>read</td><td>write with an active plan-mode session; write and exec are otherwise denied</td></tr>
-<tr><td><code>ask</code></td><td>read</td><td>write, exec</td></tr>
-<tr><td><code>auto-edit</code></td><td>read + write</td><td>exec</td></tr>
+<tr><td><code>ask</code></td><td>nothing</td><td>read, write, exec</td></tr>
+<tr><td><code>ask-command</code></td><td>read + write</td><td>exec</td></tr>
+<tr><td><code>auto</code></td><td>all tiers</td><td>a per-tool policy, the working-directory boundary, credential use, a tool’s own critical calls</td></tr>
 <tr><td><code>yolo</code></td><td>all tiers</td><td>nothing (unless a per-tool override applies)</td></tr>
 </tbody>
 </table>
 </div>
-<p>The schema default is <code>yolo</code>. Two older names still work: <code>always-ask</code> maps to <code>ask</code>, and
-<code>write</code> maps to <code>auto-edit</code>.</p>
+<p>The schema default is <code>auto</code>. Three older names still work: <code>always-ask</code> maps to <code>ask</code>, and
+<code>write</code> and <code>auto-edit</code> both map to <code>ask-command</code>.</p>
 <p>Set the mode in config, or override it for one run:</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the tests and fix failures"
+<pre><code class="language-console">$ veyyon --approval-mode ask-command "run the tests and fix failures"
 </code></pre>
 <p>The launch flags <code>--yolo</code> and <code>--plan-yolo</code> set <code>yolo</code> and a plan-mode variant of it.</p>
 <h2 id="the-working-directory-boundary"><a class="header" href="#the-working-directory-boundary">The working-directory boundary</a></h2>
 <p>A tier tells you what kind of thing a tool does. It does not tell you which file the
-tool is about to touch. In <code>auto-edit</code>, the <code>write</code> tier is approved, so <code>write</code> runs
-without asking whether the target is <code>src/main.ts</code> or a file in your home directory.</p>
+tool is about to touch. In <code>ask-command</code> and <code>auto</code>, the <code>write</code> tier is approved, so
+<code>write</code> runs without asking whether the target is <code>src/main.ts</code> or a file in your home
+directory.</p>
 <p>The working-directory boundary is the second question, asked after the tier:</p>
 <blockquote>
 <p>Does this call touch a path outside the session working directory?</p>
 </blockquote>
 <p>If it does, the call asks for approval even though its tier would have allowed it. This
-holds in <code>plan</code>, <code>ask</code>, and <code>auto-edit</code>. It does not hold in <code>yolo</code>, which turns off
-permission entirely.</p>
+holds in <code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, so the shipped default is inside it. It
+does not hold in <code>yolo</code>, which turns off permission entirely.</p>
 <p>Say you launched in <code>~/projects/api</code> and the model runs this:</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit "update the config"
+<pre><code class="language-console">$ veyyon --approval-mode ask-command "update the config"
 </code></pre>
 <p>Writing <code>~/projects/api/config.yml</code> runs without asking, because it is inside the
 working directory and <code>write</code> is an approved tier. Writing <code>~/.ssh/config</code> asks, because
@@ -1495,17 +1551,17 @@ secret-use boundary is the third question, asked the same way and in the same mo
 model can use a secret it never reads. That substitution used to be recorded and never
 asked about: <code>secrets.auditLog</code> could tell you afterwards which credential an agent had
 spent, and nothing could ask you first.</p>
-<p>Now a call whose arguments carry a real credential asks for approval in <code>plan</code>, <code>ask</code>, and
-<code>auto-edit</code>, even when its tier would have allowed it. The prompt names the secret and
-never shows its value:</p>
+<p>Now a call whose arguments carry a real credential asks for approval in <code>plan</code>, <code>ask</code>,
+<code>ask-command</code> and <code>auto</code>, even when its tier would have allowed it. The prompt names the
+secret and never shows its value:</p>
 <pre><code class="language-text">Allow tool: bash
 Reason: This call uses stored secret: GITHUB_TOKEN. Approving it runs the call with the
 real credential.
 </code></pre>
 <p>As with the working-directory boundary, <code>yolo</code> turns permission off entirely and turns
-this off with it, so the shipped default asks nothing extra. A call that mentions a
-placeholder without expanding it, such as one made while <code>secrets.enabled</code> is false, is
-not carrying a credential and does not ask.</p>
+this off with it. Every other rung keeps it, the shipped <code>auto</code> included. A call that
+mentions a placeholder without expanding it, such as one made while <code>secrets.enabled</code> is
+false, is not carrying a credential and does not ask.</p>
 <h2 id="per-tool-overrides"><a class="header" href="#per-tool-overrides">Per-tool overrides</a></h2>
 <p>When you want one tool to behave differently from its tier, name it under
 <code>tools.approval</code>. Each entry maps a tool to <code>allow</code>, <code>deny</code>, or <code>prompt</code>, and that choice
@@ -1515,16 +1571,16 @@ than a default, so it outranks both the configured mode and the per-tool setting
 is a hard block in every direction.</p>
 <pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
 tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
     read: allow
 </code></pre>
-<p>Here the mode is <code>auto-edit</code>, so writes run without asking. The override then pulls <code>bash</code>
+<p>Here the mode is <code>ask-command</code>, so writes run without asking. The override then pulls <code>bash</code>
 back to <code>prompt</code>, so commands still stop for your approval.</p>
 <h2 id="critical-bash-commands"><a class="header" href="#critical-bash-commands">Critical bash commands</a></h2>
 <p>Within the exec tier, a guard (<code>packages/coding-agent/src/tools/bash-guard.ts</code>) forces a prompt in
-<code>plan</code>, <code>ask</code>, and <code>auto-edit</code>, even over a per-tool <code>allow</code>. It has two halves.</p>
+<code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, even over a per-tool <code>allow</code>. It has two halves.</p>
 <p>The first half judges what a command would DELETE, and it judges the paths after expansion rather
 than the command as text. A tilde and <code>$HOME</code> are resolved, so <code>rm -rf ~/</code> and <code>rm -rf "$HOME"/</code>
 are recognized as the home directory. Every target is judged, not just the first, so
@@ -1713,8 +1769,11 @@ decision to the next layer. <code>/agents</code> shows the resolved model and wh
 See <a href="../../settings.html#subagents">Settings: Subagents</a> and
 <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
 <h2 id="automation-note"><a class="header" href="#automation-note">Automation note</a></h2>
-<p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust boundary:</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the unit tests and fix failures"
+<p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust
+boundary. A headless run has no terminal to answer a prompt on, so a rung that asks turns the
+gated tool call into an error rather than a pause: the default <code>auto</code> runs every tier while the
+working-directory, credential and critical-command guards still stop the calls they cover.</p>
+<pre><code class="language-console">$ veyyon --print "run the unit tests and fix failures"
 </code></pre>
 <p>Use <code>--yolo</code> (auto-approve everything) only in trusted automation, ideally in an externally isolated environment (Docker, a VM, a CI jail), since Veyyon does not sandbox the commands it runs.</p>
 <h2 id="what-stays-constant"><a class="header" href="#what-stays-constant">What stays constant</a></h2>
@@ -1858,14 +1917,15 @@ below.</p>
 </thead>
 <tbody>
 <tr><td><code>plan</code></td><td>auto</td><td>ask with an active plan-mode session, denied otherwise</td><td>denied</td></tr>
-<tr><td><code>ask</code></td><td>auto</td><td>ask</td><td>ask</td></tr>
-<tr><td><code>auto-edit</code></td><td>auto</td><td>auto</td><td>ask</td></tr>
+<tr><td><code>ask</code></td><td>ask</td><td>ask</td><td>ask</td></tr>
+<tr><td><code>ask-command</code></td><td>auto</td><td>auto</td><td>ask</td></tr>
+<tr><td><code>auto</code></td><td>auto</td><td>auto</td><td>auto, with the per-tool, working-directory, credential and critical-call guards still asking</td></tr>
 <tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td></tr>
 </tbody>
 </table>
 </div>
-<p>Schema default: <strong><code>yolo</code></strong>. Legacy aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit
+<p>Schema default: <strong><code>auto</code></strong>. Legacy aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>.</p>
+<pre><code class="language-console">$ veyyon --approval-mode ask-command
 $ veyyon --yolo                    # same as --auto-approve → yolo
 $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
 </code></pre>
@@ -1875,11 +1935,18 @@ $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
 <h2 id="the-approval-prompt"><a class="header" href="#the-approval-prompt">The approval prompt</a></h2>
 <p>When the active mode requires approval for a tool call, the TUI shows a <strong>Permission required</strong>
 card. The card names the tool, states that the decision applies to this call only, separates the
-reason from the requested command or file operation, and waits on two options:</p>
+reason from the requested command or file operation, and waits on four options:</p>
 <ul>
-<li><strong>Approve</strong>: run this call once without saving a policy.</li>
+<li><strong>Approve</strong>: run this call once. Nothing is remembered.</li>
+<li><strong>Approve for session</strong>: run this and every later call to this tool, until you exit.</li>
 <li><strong>Deny</strong>: refuse this call and return <code>Tool call denied by user: &lt;name&gt;</code> to the model.</li>
+<li><strong>Deny for session</strong>: refuse this and every later call to this tool, until you exit.</li>
 </ul>
+<p>The two “for session” rows are session memory, not policy: nothing is written to
+<code>tools.approval</code>, and the next launch asks again. A remembered decision also covers only
+the ordinary tier prompt. The three prompts that are about a call’s ARGUMENTS rather than
+its tool name still ask every time: a <code>critical</code> bash command, a path outside the working
+directory, and a call that spends a stored credential.</p>
 <p>The selected option uses a radio marker and includes a short description. Navigate with the usual
 list keys (<code>up</code>/<code>down</code>, <code>enter</code> to confirm, <code>esc</code> to cancel; cancelling counts as a denial).
 Denied actions return an error to the model, and permissions are never widened.</p>
@@ -1890,7 +1957,7 @@ add <code>tools.approval.&lt;name&gt;: allow</code>, or use an interactive UI), 
 run unattended, pass <code>--yolo</code> or pick a mode that does not prompt for the tiers you need. The
 process exit status follows the run.</p>
 <h2 id="critical-bash-commands-1"><a class="header" href="#critical-bash-commands-1">Critical bash commands</a></h2>
-<p>Some shell commands always prompt in <code>plan</code>, <code>ask</code>, and <code>auto-edit</code>, even over a per-tool
+<p>Some shell commands always prompt in <code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, even over a per-tool
 <code>allow</code> override. The guard lives in <code>packages/coding-agent/src/tools/bash-guard.ts</code> and has
 two halves.</p>
 <p>The first half judges what a command would delete, after expansion rather than as text. It
@@ -2328,7 +2395,7 @@ the verb grammar, so it is a refusal you can only meet on a client with no termi
 <h3 id="encryption-and-what-it-does-not-do"><a class="header" href="#encryption-and-what-it-does-not-do">Encryption, and what it does not do</a></h3>
 <p>Vault files use AES-256-GCM. Each write uses a fresh 12 byte nonce and the full 16 byte authentication tag. The key is a 32 byte file at <code>~/.veyyon/vault.key</code>, created on first use. It never lives inside a project directory.</p>
 <p>On POSIX, the key is mode 0600. Its directory must be owned by you and not writable by another user. On Windows, Veyyon applies and verifies a protected owner-only ACL. Existing vault files receive the same platform permission checks before they are read.</p>
-<p>A project-scoped vault lives inside the repository you are working in, so Veyyon keeps it out of your commits. The first time it stores a project secret, it writes <code>.veyyon/.gitignore</code> covering <code>vault.json</code> and the <code>vault.json.unreadable-*</code> file that a discarded vault is renamed to. If that file already exists, Veyyon adds the two rules and leaves your own lines alone. Only the vault is ignored, so anything else you keep in <code>.veyyon/</code>, such as skills or project settings, stays trackable. Commit the generated <code>.veyyon/.gitignore</code> along with the rest of your project.</p>
+<p>A project-scoped vault lives inside the repository you are working in, so Veyyon keeps it out of your commits. The first time it stores a project secret, it writes <code>.veyyon/.gitignore</code> covering <code>vault.json</code> and the <code>vault.json.unreadable-*</code> file that a discarded vault is renamed to. If that file already exists, Veyyon adds the two rules and leaves your own lines alone. Only the vault is ignored, so anything else you keep in <code>.veyyon/</code>, such as prompt templates, stays trackable. Commit the generated <code>.veyyon/.gitignore</code> along with the rest of your project.</p>
 <p>Committing a vault would not expose the credentials directly, because the ciphertext is unusable without the machine key. It would still put a credential store in your history, and nobody who clones the repository can open it, including you on another machine. A vault is not a portable backup. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. If you move or recreate that directory, store those entries again.</p>
 <p>Updates use a synchronized owner-only temporary file. Kernel no-replace and exchange operations publish the synced inode without overwriting a destination that appeared after the last check. Veyyon holds the scope directory open during the transaction, so replacing the lexical parent cannot redirect the read or write.</p>
 <p>Veyyon refuses symlinks, hard-linked files, directories, devices, insecure permissions, and paths whose resolved parent crosses the requested scope. It also refuses ciphertext copied to a different scope or physical directory.</p>
@@ -2945,12 +3012,59 @@ which of the four layers decided.</p>
 <p>The remaining groups in the tab are operational: how many subagents run at once
 (<code>subagent.maxConcurrency</code>), how deeply they may nest (<code>subagent.maxNestedSpawnDepth</code>),
 per-run wall clock and request budgets, how long a finished subagent stays live
-before parking (<code>subagent.idleTtlMs</code>), and whether its edits land in an isolated
+before parking (<code>subagent.idleTtlMs</code>) and how long it stays listed after that
+(<code>subagent.autoClose.*</code>), and whether its edits land in an isolated
 copy of the tree first (<code>subagent.isolation.*</code>, see <a href="#safety-1">Safety</a>).</p>
 <p><code>subagent.idleTtlMs</code> defaults to five minutes for every model and provider. Set
 a positive millisecond value to override it. Set <code>0</code> to keep idle agents live
 until exit. Parking releases the live session but keeps its transcript, so
 messaging or opening the agent can revive it.</p>
+<p>A parked subagent is eventually closed, which drops it from the roster so a long
+session does not accumulate every agent it ever spawned. Closing removes the
+revivable reference; it does not touch the transcript, which stays readable at
+<code>history://&lt;name&gt;</code>.</p>
+<p>Four settings in the Auto Close group control the whole lifecycle, in the order they
+happen. <code>subagent.idleTtlMs</code> (“Park After”) is stage one: how long a finished subagent
+stays live before parking, five minutes by default. <code>subagent.autoClose.enabled</code> is on by
+default; turn it off to keep every parked subagent listed and revivable until you exit.
+<code>subagent.autoClose.parkedMs</code> (“Close After”) is how long a parked subagent stays listed,
+counted from the moment it parked, and defaults to five minutes.
+<code>subagent.autoClose.waitingMs</code> (“Close After (Waiting)”) is the same budget for a subagent
+whose last message said it was waiting on another agent, and defaults to thirty minutes:
+it stopped on purpose to let a peer finish, so it is the agent you are most likely to
+message next. Set the two equal to treat both the same.</p>
+<p>Turning auto-close off does not turn parking off. Parking is what releases the session, and
+it happens either way; the toggle only decides whether the parked reference is eventually
+dropped. That is why “Park After” sits in this group but is not hidden when the toggle is
+off.</p>
+<h3 id="when-each-budget-starts-counting"><a class="header" href="#when-each-budget-starts-counting">When each budget starts counting</a></h3>
+<p>Both budgets count from the agent’s last transition, not from when it was spawned. An
+idle agent’s park budget starts when it went idle. A parked agent’s close budget starts
+at the moment it parked. A revived agent starts its park budget again from the revival,
+so messaging a parked agent gives it a fresh five minutes rather than resuming a clock
+that was already half spent.</p>
+<p>That is why a long-lived session does not slowly close everything at once: each agent’s
+deadline moves with its own activity.</p>
+<h3 id="only-idle-and-parked-agents-have-a-deadline"><a class="header" href="#only-idle-and-parked-agents-have-a-deadline">Only idle and parked agents have a deadline</a></h3>
+<p>A <code>running</code> agent carries no deadline at all, and neither does an <code>aborted</code> one. Nothing
+parks or closes an agent that is mid-turn.</p>
+<p>This matters when an agent looks stuck. A subagent waiting for you to answer an approval
+prompt is still mid-turn, so it stays <code>running</code> and no park or close timer applies to it.
+If a finished agent is not being cleaned up, check its status first: the lifecycle only
+acts on <code>idle</code> and <code>parked</code>, so an agent stuck in <code>running</code> is a different problem and the
+auto-close settings will not affect it.</p>
+<h3 id="turning-it-off"><a class="header" href="#turning-it-off">Turning it off</a></h3>
+<p>Set <code>subagent.autoClose.parkedMs</code> to <code>0</code> and no parked agent is ever closed. That also
+forces the waiting budget to <code>0</code>, whatever <code>subagent.autoClose.waitingMs</code> says.</p>
+<p>That coupling is deliberate. If a zero parked budget still honoured a separate waiting
+budget, the only agents that ever closed would be the ones that stopped to wait on a peer,
+which are the agents you are most likely to message next. Zero means never close, for
+both kinds.</p>
+<h3 id="if-the-session-cannot-be-saved"><a class="header" href="#if-the-session-cannot-be-saved">If the session cannot be saved</a></h3>
+<p>Parking flushes the agent’s session to disk before releasing it. If that flush fails, the
+park is cancelled and the agent stays live with its timer re-armed. You keep a live agent
+rather than losing unsaved state, and the attempt repeats on the next expiry.</p>
+<h3 id="nesting-depth"><a class="header" href="#nesting-depth">Nesting depth</a></h3>
 <p><code>subagent.maxNestedSpawnDepth</code> is inclusive. The default is <code>0</code>: the top-level session,
 at depth 0, may spawn direct subagents, but those children are leaves and cannot spawn
 more subagents. A value of <code>1</code> also lets direct children spawn, producing children at
@@ -3309,15 +3423,16 @@ it could not. Add an <code>export.pageBg</code> to the theme to give it a ground
 <h1 id="task-guides"><a class="header" href="#task-guides">Task guides</a></h1>
 <p>Short, goal-shaped recipes for common jobs. Each guide points at the deeper feature pages; use those
 when you need full schemas or edge cases.</p>
-<p>Related references: <a href="#custom-hooks-guide">Hooks guide</a>, <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>,
+<p>Related references: <a href="#hooks">Hooks</a>, <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>,
 <a href="#mcp">MCP</a>, <a href="#skills">Skills</a>, <a href="#memory">Memory</a>,
 <a href="#session-branching">Branching</a>, <a href="#approvals">Sandbox</a>.</p>
 <hr>
 <h2 id="automate-a-check-on-every-edit-hooks"><a class="header" href="#automate-a-check-on-every-edit-hooks">Automate a check on every edit (hooks)</a></h2>
 <p>Goal: every time the agent finishes an edit, run a deterministic check and fail closed when it breaks.</p>
-<p>The shipped hook model is a <strong>TypeScript module</strong> discovered under <code>.veyyon/hooks/</code> (project) or
-<code>~/.veyyon/profiles/default/agent/hooks/</code> (user). The module exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
-<pre><code class="language-ts">// .veyyon/hooks/post-edit-check.ts
+<p>The shipped hook model is a <strong>TypeScript module</strong> discovered under
+<code>~/.veyyon/profiles/&lt;name&gt;/agent/hooks/</code> (the active profile). Hooks are user-level only: a
+<code>.veyyon/hooks/</code> directory inside a repository is not read. The module exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
+<pre><code class="language-ts">// ~/.veyyon/profiles/default/agent/hooks/post-edit-check.ts
 export default (pi) =&gt; {
   pi.on("tool_result", async (event) =&gt; {
     if (!/^(edit|write)$/.test(event.toolName)) return;
@@ -3326,14 +3441,14 @@ export default (pi) =&gt; {
 };
 </code></pre>
 <p>The Bun runtime imports the module at startup; restart (or <code>/reload-plugins</code>) to pick up changes. See
-<a href="#custom-hooks-guide">Hooks guide</a> for the event names and handler contract.</p>
+<a href="#hooks">Hooks</a> for the event names and handler contract.</p>
 <hr>
 <h2 id="run-a-bounded-task-from-a-script-or-ci"><a class="header" href="#run-a-bounded-task-from-a-script-or-ci">Run a bounded task from a script or CI</a></h2>
 <p>Use <code>veyyon --print</code> (<code>-p</code>) when the trigger lives outside the agent (pre-commit, CI, <code>entr</code>, <code>watchexec</code>):</p>
-<pre><code class="language-console">$ veyyon -p --approval-mode auto-edit \
+<pre><code class="language-console">$ veyyon -p \
     "Run the focused tests for the files changed in the last commit and fail if any regress"
 </code></pre>
-<p>The prompt can be an argument or piped on stdin. <code>auto-edit</code> auto-approves writes and safe exec commands, and still prompts on critical exec; <code>--yolo</code> auto-approves all tiers (use only on disposable runners). JSON event streams: <code>--mode json</code>. For review, pass a review prompt to <code>-p</code>, or use the passive advisor (<code>--advisor</code>) in the TUI. See <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>.</p>
+<p>The prompt can be an argument or piped on stdin. Leave the rung alone unless you have a reason to move it: the default <code>auto</code> auto-approves every tier, while a target outside the working directory, a call that spends a stored credential, a per-tool <code>prompt</code>/<code>deny</code> policy, and a critical command such as a recursive delete of your home directory all still ask, and a headless run has no terminal to ask on, so each of those becomes a failed tool call rather than a silent pass. Do NOT pass <code>--approval-mode ask-command</code> here: it prompts for every exec-tier call, which in <code>-p</code> means every command fails. <code>--yolo</code> auto-approves all tiers and drops the two boundaries (use only on disposable runners). JSON event streams: <code>--mode json</code>. For review, pass a review prompt to <code>-p</code>, or use the passive advisor (<code>--advisor</code>) in the TUI. See <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>.</p>
 <hr>
 <h2 id="give-the-agent-a-new-tool-mcp-or-skills"><a class="header" href="#give-the-agent-a-new-tool-mcp-or-skills">Give the agent a new tool (MCP or skills)</a></h2>
 <p>Goal: teach Veyyon a capability you do not want to bake into the binary.</p>
@@ -3353,7 +3468,8 @@ export default (pi) =&gt; {
 <p>Add it from the TUI, which writes <code>mcp.json</code> for you:</p>
 <pre><code class="language-text">/mcp add
 </code></pre>
-<p>Or edit <code>~/.veyyon/profiles/default/agent/mcp.json</code> (user) / <code>.veyyon/mcp.json</code> (project) directly:</p>
+<p>Or edit <code>~/.veyyon/profiles/default/agent/mcp.json</code> directly (the active profile’s file; there is no
+project scope):</p>
 <pre><code class="language-json">{
   "mcpServers": {
     "database": {
@@ -3369,7 +3485,7 @@ export default (pi) =&gt; {
 server needs OAuth, run <code>/mcp reauth &lt;name&gt;</code>. Details: <a href="#mcp">MCP</a>,
 <a href="#mcp-server-setup">MCP setup</a>.</p>
 <h3 id="path-2-author-a-skill"><a class="header" href="#path-2-author-a-skill">Path 2: author a skill</a></h3>
-<p>Create a skill directory in user or project scope, for example
+<p>Create a skill directory under the active profile, for example
 <code>~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md</code>:</p>
 <pre><code class="language-markdown">---
 name: audit-config
@@ -3381,7 +3497,7 @@ metadata:
 # Audit config
 
 When asked to audit configuration:
-1. Read the active config.yml and any project overrides.
+1. Read the active config.yml.
 2. Flag `yolo` approval paired with broad tool allow-lists on untrusted repos.
 3. Prefer concrete remediations over generic advice.
 </code></pre>
@@ -3551,7 +3667,7 @@ still apply inside every worker, so path and command denials you have configured
 Workers are killed when you leave vibe mode, so none outlive the director that drives them.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="skills"><a class="header" href="#skills">Skills</a></h1>
-<p>A skill is a folder of instructions you drop next to your code or in your profile, and the agent picks it up on its own. Use one to teach Veyyon a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills live on disk, not in the binary, so you add or change one by editing a file, with no rebuild.</p>
+<p>A skill is a folder of instructions you drop into your profile, and the agent picks it up on its own. Use one to teach Veyyon a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills live on disk, not in the binary, so you add or change one by editing a file, with no rebuild.</p>
 <p>For general information on Veyyon extension capabilities, see <a href="#tools-skills-and-extension-data">Tools, skills, and extension data</a>.</p>
 <h2 id="skill-locations"><a class="header" href="#skill-locations">Skill locations</a></h2>
 <p>Skills load only from the active profile. Veyyon reads these three locations,
@@ -3585,9 +3701,12 @@ The copy is profile-owned from then on, so it loads like any other profile skill
 and is not affected by the original tool.</p>
 <p>A separate setting, <code>discovery.importForeignConfig</code>, governs whether Veyyon
 ambiently reads other tools’ context files (<code>CLAUDE.md</code>, standalone <code>AGENTS.md</code>),
-rules, and MCP servers. It ships <strong>off</strong>, so by default Veyyon never picks up a
-foreign <code>CLAUDE.md</code> or <code>GEMINI.md</code> from disk. Turn it on to load them as a
-machine-wide base layer:</p>
+rules, and MCP servers. It ships <strong>off</strong>, so by default Veyyon reads no foreign
+tool’s config directory and no <code>GEMINI.md</code>. It does still read a project’s own
+<code>AGENTS.md</code> or <code>CLAUDE.md</code> on the walk from the repository root down to your
+working directory: those are the project’s instructions to any agent, not another
+tool’s private config. Turn the setting on to load the rest as a machine-wide
+base layer:</p>
 <pre><code class="language-yaml">discovery:
   importForeignConfig: true
 </code></pre>
@@ -3596,16 +3715,30 @@ ambiently whether it is on or off. It also does not gate the import scan. The
 onboarding scan always finds and offers foreign files for import, because
 importing copies a file into your profile, which is how foreign config comes in
 by default now that ambient loading is off.</p>
-<p>Veyyon’s own instructions load in three layers, and only these three:</p>
+<p>Veyyon’s own instructions load in four layers, and only these four:</p>
 <ol>
 <li>The compiled system prompt.</li>
 <li>The global <code>~/.veyyon/AGENTS.md</code>, which applies to every profile.</li>
+<li>The project’s own context files: <strong>one file per directory</strong> on the walk from
+the repository root down to your working directory. Each directory offers
+<code>.veyyon/AGENTS.md</code> (only from the nearest non-empty <code>.veyyon/</code>), then
+<code>AGENTS.md</code>, then <code>CLAUDE.md</code>, and the first one with content wins. The rest of
+that directory’s candidates are not read, so a <code>CLAUDE.md</code> sitting beside an
+<code>AGENTS.md</code> is deliberately not loaded and the same rules are never inlined
+twice. The choice is made per directory, so a repository root using <code>AGENTS.md</code>
+and a package using <code>CLAUDE.md</code> both load.</li>
 <li>The active profile’s <code>AGENTS.md</code>
 (<code>~/.veyyon/profiles/&lt;name&gt;/agent/AGENTS.md</code>).</li>
 </ol>
-<p>A project’s <code>.veyyon/AGENTS.md</code> is read too when you work inside that project.
-The layers run least specific to most specific, so the global file is the
-baseline and the profile file wins where they overlap. See
+<p>That list is the order they are RESOLVED in, not the order of authority. They are
+rendered least authoritative first, so the strongest file has the last word: the
+project files come first, then the profile file, then the global
+<code>~/.veyyon/AGENTS.md</code> last of all. Your live instruction in the conversation beats
+every one of them. A narrower file may add detail a broader one does not cover,
+but it never contradicts, loosens, or forbids what a broader one allows, because a
+project file is content checked into a repository you may not have written. Within
+the project layer the file closest to your working directory is the most specific
+one. See
 <a href="#instruction-layers">instruction layers</a> below for how to split rules between
 the global and per-profile files.</p>
 <h2 id="instruction-layers"><a class="header" href="#instruction-layers">Instruction layers</a></h2>
@@ -3831,8 +3964,10 @@ Code-compatible path). The manifest describes the plugin’s metadata and lists 
 </table>
 </div>
 <p>Other plugin content loads from conventional locations rather than manifest fields: MCP servers from
-a <code>.mcp.json</code> file at the plugin root, and hooks from executable files under the plugin’s
-<code>hooks/pre/</code> and <code>hooks/post/</code> directories.</p>
+a <code>.mcp.json</code> file at the plugin root, and hooks from <code>.ts</code> or <code>.js</code> modules under the plugin’s
+<code>hooks/pre/</code> and <code>hooks/post/</code> directories. A hook is loaded as an extension module and must default-export
+a factory, so a shell script placed in those directories is discovered but not run; veyyon reports each
+one it had to skip.</p>
 <h2 id="marketplaces"><a class="header" href="#marketplaces">Marketplaces</a></h2>
 <p>Marketplaces are collections of plugins. A marketplace is a directory or Git repository containing a <code>marketplace.json</code> catalog manifest.</p>
 <p>Veyyon checks the following relative paths under a marketplace root to locate its catalog manifest:</p>
@@ -3989,9 +4124,11 @@ skills, see <a href="#task-guides">Task guides</a>.</p>
 <p>A hook lets you run your own code at a moment in the session: before a tool call, after a message,
 when a turn ends. You use one to enforce policy (block a dangerous command), add context, or record
 what happened. The example below refuses any <code>bash</code> command containing <code>rm -rf</code>.</p>
-<p>A hook is a TypeScript module. You put it under a hook path (for example <code>.veyyon/hooks/</code>), and Veyyon
-loads it through the extension runner. The module default-exports a factory function that registers
-handlers with <code>pi.on(...)</code>, one handler per event you care about.</p>
+<p>A hook is a TypeScript module. You put it under a hook path in your profile (for example
+<code>~/.veyyon/profiles/&lt;name&gt;/agent/hooks/</code>), and Veyyon loads it through the extension runner. A
+repository cannot ship a hook: a <code>.veyyon/hooks/</code> directory inside a working tree is not read. The
+module default-exports a factory function that registers handlers with <code>pi.on(...)</code>, one handler per
+event you care about.</p>
 <p>CLI: <code>--hook</code> is an alias for <code>--extension</code> (paths merge into extension loading).</p>
 <p>Full API and event list: repository <code>docs/hooks.md</code> and <code>packages/coding-agent/src/extensibility/hooks/</code>.</p>
 <h2 id="module-shape"><a class="header" href="#module-shape">Module shape</a></h2>
@@ -4021,44 +4158,16 @@ export default function hook(pi: HookAPI): void {
 <p>Hook/extension paths are resolved as absolute, <code>~</code>-expanded, or relative to cwd. Discovery loads capability-registered modules, importable <code>.ts</code>/<code>.js</code> factories, plugin extension entry points, and explicit paths.</p>
 <h2 id="lifecycle-extension-bus"><a class="header" href="#lifecycle-extension-bus">Lifecycle (extension bus)</a></h2>
 <p>Handlers attach to the runtime event bus used by the extension runner (tool call, session, compaction, and related events as defined in <code>types.ts</code>). Exact event names and payloads are in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code> and <code>docs/hooks.md</code>.</p>
-<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
-<ul>
-<li><a href="#custom-hooks-guide">Custom hooks guide</a></li>
-<li>Repository <code>docs/hooks.md</code></li>
-</ul>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="custom-hooks-guide"><a class="header" href="#custom-hooks-guide">Custom hooks guide</a></h1>
-<p>Hooks run at points in the session lifecycle (before/after tools, session start, compaction, and related events). They are <strong>TypeScript modules</strong> that default-export a factory and register handlers with <code>pi.on(...)</code>.</p>
-<p>Reference: <a href="#hooks">Hooks</a> and repository <code>docs/hooks.md</code>.</p>
-<h2 id="minimal-example"><a class="header" href="#minimal-example">Minimal example</a></h2>
-<p>Place a file under a discovered hooks directory (for example <code>.veyyon/hooks/pre/policy.ts</code>):</p>
-<pre><code class="language-ts">import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
-
-export default function (pi: HookAPI): void {
-	pi.on("tool_call", async (event) =&gt; {
-		if (event.toolName === "bash") {
-			const cmd = String(event.input.command ?? "");
-			if (/\brm\s+-rf\b/.test(cmd)) {
-				return { block: true, reason: "destructive rm blocked by project hook" };
-			}
-		}
-	});
-}
-</code></pre>
-<p>Load via discovery or pass the path with <code>--extension</code> / <code>--hook</code>.</p>
 <h2 id="typical-uses"><a class="header" href="#typical-uses">Typical uses</a></h2>
 <ul>
 <li>Block or annotate specific tools before they run</li>
-<li>Inject project policy text when a session starts</li>
+<li>Inject policy text when a session starts</li>
 <li>Audit tool usage outside the TUI</li>
-<li>Register project-local slash commands</li>
+<li>Register your own slash commands</li>
 </ul>
-<h2 id="events"><a class="header" href="#events">Events</a></h2>
-<p>Event names and payloads are defined in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code>. Common surfaces include tool call, permission-related gates (via the approval path), session lifecycle, and compaction. See <code>docs/hooks.md</code> for the typed list and return shapes (<code>block</code>, reasons, message injection).</p>
-<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
+<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
 <ul>
-<li><a href="#hooks">Hooks</a></li>
-<li><a href="#approvals">Approvals</a></li>
+<li>Repository <code>docs/hooks.md</code></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mcp"><a class="header" href="#mcp">MCP</a></h1>
@@ -4083,9 +4192,10 @@ use ACP (<code>veyyon acp</code>); to drive it from your own process, use the SD
 <p>Each tool an MCP server exposes appears namespaced as <code>mcp__&lt;server&gt;_&lt;tool&gt;</code> (a single underscore
 between server and tool, for example <code>mcp__sqlite_query</code>), so a server never
 shadows a built-in tool or another server. If you turn on <code>discovery.importForeignConfig</code> (off by
-default), Veyyon also discovers MCP entries that Claude, Cursor, VS
-Code, OpenCode, and related tools already wrote, so a server you configured elsewhere often works
-without re-registering it.</p>
+default), Veyyon also discovers MCP entries from the user-level configs that Claude, Cursor, Codex,
+OpenCode, and related tools already wrote, so a server you configured elsewhere often works
+without re-registering it. Discovery never reads a working tree: a repository’s own <code>mcp.json</code> is
+not a server source.</p>
 <p>For the full setup path, choosing a transport (<code>stdio</code>, <code>http</code>, <code>sse</code>), passing environment
 variables, authenticating (bearer token or OAuth), approving tools, the <code>/mcp</code> commands, and fixing
 common connection errors, see <a href="#mcp-server-setup">MCP server setup</a>.</p>
@@ -4095,7 +4205,7 @@ common connection errors, see <a href="#mcp-server-setup">MCP server setup</a>.<
 Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to tool servers.</li>
 <li><strong>SDK</strong>: embedding the agent in your own host process.</li>
 </ul>
-<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
+<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
 <ul>
 <li><a href="#mcp-server-setup">MCP server setup</a>: the configuration and troubleshooting guide</li>
 <li><a href="#mcp-3">MCP internals</a>: how the client is built</li>
@@ -4116,13 +4226,15 @@ transport, authenticate, and fix the most common connection problems.</p>
 <tr><th>Scope</th><th>Path</th></tr>
 </thead>
 <tbody>
-<tr><td>Project</td><td><code>.veyyon/mcp.json</code></td></tr>
 <tr><td>User</td><td><code>~/.veyyon/profiles/default/agent/mcp.json</code> (profile: <code>~/.veyyon/profiles/&lt;name&gt;/agent/mcp.json</code>)</td></tr>
 </tbody>
 </table>
 </div>
-<p>Veyyon also discovers MCP entries from Claude, Cursor, VS Code, and OpenCode configs. The easiest way
-to add a server is <code>/mcp add</code> in the TUI, which writes to <code>mcp.json</code> for you.</p>
+<p>There is no project scope: a repository’s own <code>mcp.json</code>, <code>.mcp.json</code>, or <code>.veyyon/mcp.json</code> is not
+read, because a checked-in file must not name a server the agent connects to.</p>
+<p>Veyyon also discovers MCP entries from other tools’ user-level configs (Claude, Cursor, Codex,
+Gemini, OpenCode, Windsurf). The easiest way to add a server is <code>/mcp add</code> in the TUI, which writes
+to <code>mcp.json</code> for you.</p>
 <h2 id="file-shape"><a class="header" href="#file-shape">File shape</a></h2>
 <pre><code class="language-json">{
   "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
@@ -4277,7 +4389,7 @@ provider’s own connector store. Extend it with the integrations below instead.
 <tr><td><a href="#plugins">Plugins</a></td><td>Install extensions; <code>veyyon plugin install …</code></td></tr>
 <tr><td><a href="#hooks">Hooks</a></td><td>Event-driven automation in the agent loop</td></tr>
 <tr><td><a href="#skills">Skills</a></td><td>Bundled instructions and tool patterns</td></tr>
-<tr><td>OAuth providers</td><td><code>/login</code>, <code>/setup</code> / <code>/providers</code> for supported APIs</td></tr>
+<tr><td>OAuth providers</td><td><code>/login</code> and <code>/setup</code> for supported APIs; <code>/providers</code> manages the accounts you have</td></tr>
 </tbody>
 </table>
 </div>
@@ -4690,8 +4802,10 @@ appends a position. Delete removes only the highlighted position.</p>
 </ol>
 <p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profiles</code> picker or <code>/profile &lt;name&gt;</code> (relaunch).<br>See <a href="#profiles-1">Profiles</a>, <a href="#file-locations-1">File locations</a>.</p>
 <h2 id="approvals-3"><a class="header" href="#approvals-3">Approvals</a></h2>
-<p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>auto-edit</code> | <code>yolo</code> (schema default <code>yolo</code>).<br>Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.<br>See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
+<p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>ask-command</code> | <code>auto</code> | <code>yolo</code> (schema default <code>auto</code>).
+Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>.
+See <a href="#approvals">Approvals</a>.</p>
+<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
 <ul>
 <li><a href="#models-and-providers">Models and providers</a></li>
 <li><a href="../../settings.html">Settings: models</a> (repo <code>docs/settings.md</code>)</li>
@@ -4852,14 +4966,17 @@ default off).</p>
 <tr><th>Scope</th><th>Path</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td>Global</td><td><code>~/.veyyon/profiles/default/agent/config.yml</code></td><td>The main persistent file. <code>/settings</code> and <code>veyyon config set</code> write here.</td></tr>
-<tr><td>Project</td><td><code>&lt;repo&gt;/.veyyon/config.yml</code></td><td>Loaded when the cwd has a non-empty config dir. Edit by hand.</td></tr>
+<tr><td>Profile</td><td><code>~/.veyyon/profiles/&lt;name&gt;/agent/config.yml</code></td><td>The main persistent file. <code>/settings</code> and <code>veyyon config set</code> write here.</td></tr>
+<tr><td>Machine-global</td><td><code>~/.veyyon/config.yml</code></td><td>The few keys shared by every profile (<code>defaultProfile</code>, <code>profileSharing</code>, auth-broker keys).</td></tr>
 <tr><td>CLI overlay</td><td>any file passed with <code>--config &lt;file&gt;</code></td><td>Process-local, repeatable, never persisted.</td></tr>
 </tbody>
 </table>
 </div>
+<p>A repository cannot carry settings: a checked-in <code>.veyyon/config.yml</code> is not read. When one
+repository needs different behavior, pass an overlay (<code>--config ./repo.yml</code>) or use a path-scoped
+<code>enabledModels</code> / <code>disabledProviders</code> entry in your profile config.</p>
 <p>Precedence, low to high:</p>
-<pre><code class="language-text">defaults  &lt;-  global config  &lt;-  project config  &lt;-  --config overlays  &lt;-  runtime flags
+<pre><code class="language-text">defaults  &lt;-  profile config  &lt;-  --config overlays  &lt;-  runtime flags
 </code></pre>
 <p>Read and write from a shell with <code>veyyon config</code>:</p>
 <pre><code class="language-console">$ veyyon config list                    # all settings with effective values
@@ -4998,20 +5115,22 @@ compaction:
 <tr><th>Goal</th><th>What to set</th></tr>
 </thead>
 <tbody>
-<tr><td>When Veyyon asks before acting</td><td><code>tools.approvalMode</code>: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (default); legacy <code>always-ask</code>/<code>write</code> accepted</td></tr>
+<tr><td>When Veyyon asks before acting</td><td><code>tools.approvalMode</code>: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (default), <code>yolo</code>; legacy <code>always-ask</code>/<code>write</code>/<code>auto-edit</code> accepted</td></tr>
 <tr><td>Per-tool policy</td><td><code>tools.approval</code>: map a tool to <code>allow</code> / <code>deny</code> / <code>prompt</code></td></tr>
 <tr><td>Advisor review pass</td><td><code>advisor.enabled</code> + <code>modelRoles.advisor</code></td></tr>
 </tbody>
 </table>
 </div>
 <pre><code class="language-yaml">tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
     read: allow
 </code></pre>
 <p>Per run, <code>--approval-mode &lt;mode&gt;</code> and <code>--auto-approve</code> / <code>--yolo</code> override the mode. There is no
-separate OS shell sandbox, the approval mode is the only boundary; see
+OS shell sandbox. The mode is the main boundary, and three guards sit on top of it and are not
+lifted by raising the rung: the working-directory boundary, the secret-use boundary, and the
+critical-command floor in the bash guard. See
 <a href="#approvals">Approvals</a> and <a href="#safety-1">Safety</a>.</p>
 <h2 id="run-unattended-or-in-ci"><a class="header" href="#run-unattended-or-in-ci">Run unattended or in CI</a></h2>
 <div class="table-wrapper">
@@ -5020,7 +5139,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 <tr><th>Goal</th><th>What to pass</th></tr>
 </thead>
 <tbody>
-<tr><td>Non-interactive one-shot</td><td><code>veyyon --approval-mode auto-edit "…"</code> (prompt as arg or piped stdin)</td></tr>
+<tr><td>Non-interactive one-shot</td><td><code>veyyon --print "…"</code> (prompt as arg or piped stdin), on the default <code>auto</code> rung so no tier prompt can stall the run</td></tr>
 <tr><td>Force <code>tools.approvalMode: yolo</code> for the run</td><td><code>--yolo</code></td></tr>
 <tr><td>Temporary settings for one run</td><td><code>--config ./ci-settings.yml</code> (repeatable)</td></tr>
 </tbody>
@@ -5265,8 +5384,8 @@ $ veyyon --cwd /tmp/scratch          # wins over session.workdir for this run
 <p><code>session.workdir</code> must resolve to an existing directory; a relative path or a
 missing directory fails launch rather than falling back silently. Mid-session
 overrides via the agent <code>set_cwd</code> tool or <code>/cwd</code> are session-scoped only: they
-re-root the live session (the cwd, and with it the project settings, plugins,
-slash commands, capabilities, ssh tool, and system-prompt project framing) and
+re-root the live session (the cwd, and with it the path-scoped settings,
+secrets, capabilities, ssh tool, and system-prompt project framing) and
 never write <code>session.workdir</code>. Persist a new default with <code>veyyon config set</code> or
 <code>/settings</code>.</p>
 <h2 id="profiles-3"><a class="header" href="#profiles-3">Profiles</a></h2>
@@ -5289,11 +5408,11 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 }
 </code></pre>
 <p>Hooks: TypeScript modules under project/profile hook paths (<code>pi.on(...)</code>). See <a href="#hooks">Hooks</a>, <a href="#task-guides">Task guides</a>. MCP: <a href="#mcp">MCP</a>.</p>
-<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
+<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
 <ul>
 <li><a href="#getting-started">Getting started</a></li>
 <li><a href="#task-guides">Task guides</a></li>
-<li><a href="#safety-1">Safety</a>: <code>tools.approvalMode</code> (default <code>yolo</code>)</li>
+<li><a href="#safety-1">Safety</a>: <code>tools.approvalMode</code> (default <code>auto</code>)</li>
 <li><a href="#tools-skills-and-extension-data">Extending</a></li>
 <li><a href="#cli-reference">CLI</a></li>
 </ul>
@@ -5329,7 +5448,7 @@ $ veyyon plugin features &lt;plugin&gt; --disable f1    # turn features off
 $ veyyon plugin features &lt;plugin&gt; --set f1,f2     # replace the enabled set
 </code></pre>
 <p>See <a href="#plugins">Plugins</a> for installation and management.</p>
-<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
+<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
 <p>Tool approvals are not feature flags, they use <code>tools.approvalMode</code> and per-tool policy.
 See <a href="#approvals">Approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -5337,14 +5456,14 @@ See <a href="#approvals">Approvals</a>.</p>
 <h2 id="tools-1"><a class="header" href="#tools-1">Tools</a></h2>
 <p>Built-in tools (read, grep, glob, edit, bash, …) run through the agent loop under <code>tools.approvalMode</code> and related policy. Edit paths share hashline verification. Catalog: <a href="#tools-reference">Tools reference</a>.</p>
 <h2 id="skills-1"><a class="header" href="#skills-1">Skills</a></h2>
-<p>Filesystem skill packages (e.g. <code>SKILL.md</code> trees) discovered under project and profile skill dirs. Unreadable or malformed skill files surface load warnings. See <a href="#skills">Skills</a>.</p>
+<p>Filesystem skill packages (e.g. <code>SKILL.md</code> trees) discovered under the active profile’s skill dir. A project-local skills directory is never scanned. Unreadable or malformed skill files surface load warnings. See <a href="#skills">Skills</a>.</p>
 <h2 id="plugins-1"><a class="header" href="#plugins-1">Plugins</a></h2>
 <p><code>veyyon plugin</code> / marketplaces install bundles of skills, MCP, hooks, and related assets. See <a href="#plugins">Plugins</a>.</p>
 <h2 id="mcp-1"><a class="header" href="#mcp-1">MCP</a></h2>
-<p>External tools via Model Context Protocol: client config in <code>mcp.json</code> (user profile and/or project). See <a href="#mcp">MCP</a>.</p>
+<p>External tools via Model Context Protocol: client config in the profile’s <code>mcp.json</code> (there is no project scope). See <a href="#mcp">MCP</a>.</p>
 <h2 id="hooks-1"><a class="header" href="#hooks-1">Hooks</a></h2>
 <p>TypeScript modules with <code>pi.on(...)</code>, not JSON command tables. See <a href="#hooks">Hooks</a>.</p>
-<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
+<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
 <ul>
 <li><a href="#configuration-4">Configuration</a>: approval mode and settings paths</li>
 <li><a href="#mechanisms">Mechanisms</a></li>
@@ -5477,7 +5596,7 @@ $ veyyon "fix the failing test in auth.rs"
 </tbody>
 </table>
 </div>
-<p>Config precedence: CLI flags → <code>--config</code> overlays → project config → global config → defaults. See
+<p>Config precedence: CLI flags → <code>--config</code> overlays → profile config → defaults. See
 <a href="#configuration-4">Configuration</a>.</p>
 <h2 id="registered-subcommands"><a class="header" href="#registered-subcommands">Registered subcommands</a></h2>
 <p>Unknown first tokens route to <code>launch</code> as a prompt:</p>
@@ -5594,8 +5713,8 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/resume</code></td><td>Resume another saved session</td></tr>
 <tr><td><code>/fork</code>, <code>/branch</code>, <code>/tree</code></td><td>Branching and session tree UI</td></tr>
 <tr><td><code>/rename &lt;title&gt;</code></td><td>Rename session</td></tr>
-<tr><td><code>/move &lt;dir&gt;</code></td><td>Relocate the session (including its saved session file) to another working directory and re-root project settings, plugins, commands, and capabilities there</td></tr>
-<tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same project-scoped state as <code>/move</code> (project settings, plugins, slash commands, capabilities, ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile <code>session.workdir</code></td></tr>
+<tr><td><code>/move &lt;dir&gt;</code></td><td>Relocate the session (including its saved session file) to another working directory and re-root path-scoped settings, secrets, capabilities, and the system-prompt project framing there</td></tr>
+<tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same cwd-scoped state as <code>/move</code> (path-scoped settings, secrets, capabilities, the ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile <code>session.workdir</code></td></tr>
 <tr><td><code>/export [path]</code></td><td>Export the session as a standalone HTML file</td></tr>
 <tr><td><code>/dump</code></td><td>Dump debug artifacts</td></tr>
 <tr><td><code>/session info</code>, <code>/session delete</code></td><td>Session metadata or delete</td></tr>
@@ -5616,6 +5735,7 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/switch</code></td><td>Try a model for this session only, without saving it as default (same as alt+p)</td></tr>
 <tr><td><code>/fast on|off|status</code></td><td>Fast mode</td></tr>
 <tr><td><code>/thinking [level]</code> (<code>/effort</code>)</td><td>Set reasoning effort; no argument opens the picker</td></tr>
+<tr><td><code>/permissions [rung]</code> (<code>/approval</code>)</td><td>Set how much the agent does unasked, for this session only: <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, or <code>plan</code>. No argument reports the rung in force and where it came from; <code>reset</code> drops the session override and returns to the saved default from Settings</td></tr>
 <tr><td><code>/yolo on|off|status</code></td><td>Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation)</td></tr>
 <tr><td><code>/plan</code></td><td>Toggle plan mode</td></tr>
 <tr><td><code>/plan-review</code></td><td>Re-open plan review</td></tr>
@@ -5624,7 +5744,11 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
 <tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential, a bare <code>/secret</code> opens a hidden field, and <code>/secret manager</code> opens the manager. A client with no terminal keeps the verbs <code>add</code>, <code>list</code>, <code>rm</code>, <code>extend</code>, <code>log</code>, <code>discard</code>. See <a href="#secrets">Secrets</a></td></tr>
-<tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> / <code>/providers</code> opens provider sign-in</td></tr>
+<tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> opens first-run provider sign-in</td></tr>
+<tr><td><code>/providers</code>, <code>/account manager</code></td><td>Open the account manager: every stored account per provider, with its email, plan, health, and usage. See <a href="#signing-in">Authentication</a></td></tr>
+<tr><td><code>/account [status]</code></td><td>Show which account each provider is serving this session with</td></tr>
+<tr><td><code>/account name &lt;text&gt;</code></td><td>Name the account this session is using, so rows read <code>work</code> instead of an email</td></tr>
+<tr><td><code>/account switch &lt;provider&gt;</code></td><td>Open the manager focused on one provider, to move that provider to another of your accounts</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
 <tr><td><code>/force &lt;tool&gt; [prompt]</code> (<code>/force:</code>)</td><td>Force the next turn to use a specific tool</td></tr>
@@ -6134,8 +6258,8 @@ never persisted); see the <a href="#cli-reference">CLI reference</a>.</p>
 <tbody>
 <tr><td><code>0</code></td><td>Success.</td></tr>
 <tr><td><code>1</code></td><td>A Veyyon runtime error: bad config, auth failure, no such session, an unrecoverable runtime error, or the fallback when a child process ended without a reportable status.</td></tr>
-<tr><td><code>2</code></td><td>A command-line usage error, following the conventional shell meaning of code <code>2</code>. You get it for an unrecognized flag, a bad flag value, or a single-shot run (<code>--print</code>) with no prompt to send. Veyyon fails before starting a session, so no LLM call or MCP connection happens.</td></tr>
-<tr><td><code>130</code></td><td>Veyyon itself was interrupted. A second <code>Ctrl+C</code> during shutdown hard-aborts the process at <code>128 + SIGINT</code> (<code>128 + 2</code>), rather than waiting on a teardown step that is stuck.</td></tr>
+<tr><td><code>2</code></td><td>A command-line usage error, following the conventional shell meaning of code <code>2</code>. You get it for an unrecognized flag, a bad flag value, a missing required argument, a mistyped subcommand, or a single-shot run (<code>--print</code>) with no prompt to send. It is the same code whether the mistake is in a root flag (<code>veyyon --nope</code>) or in a subcommand’s arguments (<code>veyyon config --nope</code>, <code>veyyon completions tcsh</code>, <code>veyyon config get</code>). Veyyon fails before starting a session, so no LLM call or MCP connection happens.</td></tr>
+<tr><td><code>130</code></td><td>Veyyon hard-aborted on a <code>Ctrl+C</code> that arrived while it was already shutting down, at <code>128 + SIGINT</code> (<code>128 + 2</code>), rather than waiting on a teardown step that is stuck. An ordinary exit through the normal shutdown, including the double <code>Ctrl+C</code> or <code>Ctrl+D</code> that starts it, completes and returns <code>0</code>.</td></tr>
 <tr><td><code>N</code></td><td>When Veyyon runs a child process (for example a shell tool command), the child’s own exit code passes through unchanged.</td></tr>
 <tr><td><code>128 + signal</code></td><td>On Unix, a child killed by a signal is reported as <code>128 + signal</code> (the POSIX shell convention): <code>SIGKILL</code> (9) → <code>137</code>, <code>SIGTERM</code> (15) → <code>143</code>.</td></tr>
 </tbody>
@@ -6157,8 +6281,11 @@ if [ "$status" -eq 2 ]; then
   exit 2
 fi
 </code></pre>
-<p>These codes come from one place in the source, <code>packages/coding-agent/src/cli/exit-codes.ts</code>, and a
-test asserts that this table and that module agree. If you add a code, add it to both.</p>
+<p><code>0</code>, <code>1</code>, <code>2</code> and <code>130</code> come from <code>packages/coding-agent/src/cli/exit-codes.ts</code>, and a test asserts
+that this table and that module agree. The command framework in <code>packages/utils/src/cli.ts</code> declares
+the same <code>2</code> as <code>CLI_EXIT_USAGE</code>, because it rejects a subcommand’s arguments before that module is
+on the startup path; a test asserts the two numbers are equal. If you add a code, add it to the
+table and to <code>exit-codes.ts</code>.</p>
 <p>For the machine-readable event stream (including per-turn and per-tool outcomes), use the
 Agent Client Protocol mode (<code>veyyon acp</code>); see the <a href="#cli-reference">CLI reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -6256,8 +6383,8 @@ credential store). BYOK provider keys never land in plaintext <code>config.yml</
 <tr><th>Path</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>AGENTS.md</code></td><td>Project instructions Veyyon auto-loads. See <a href="#tools-skills-and-extension-data">AGENTS.md</a>.</td></tr>
-<tr><td><code>.veyyon/</code></td><td>Optional per-project overrides and data (<code>mcp.json</code>, <code>ssh.json</code>, <code>modules/</code>, <code>prompts/</code>). Follows the working directory, never profile-scoped.</td></tr>
+<tr><td><code>AGENTS.md</code> / <code>CLAUDE.md</code></td><td>Project instructions Veyyon auto-loads. These are the only configuration-shaped files a repository contributes. See <a href="#tools-skills-and-extension-data">AGENTS.md</a>.</td></tr>
+<tr><td><code>.veyyon/</code></td><td>Project-scoped data that follows the working directory: prompt templates (<code>prompts/</code>), personalities (<code>personalities/</code>), the project secret vault, and project-scope plugin installs. Settings, MCP servers, rules, hooks, tools, commands, skills, and agents are never read from it, because a checked-in file must not configure the agent.</td></tr>
 </tbody>
 </table>
 </div>
@@ -6307,7 +6434,8 @@ Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before d
 <li>Map the <strong>approval mode</strong> (<code>tools.approvalMode</code>) to a per-tier decision (read / write / exec) for
 <code>bash</code>, <code>edit</code>, <code>write</code>, and related tools.</li>
 <li>Apply per-tool overrides (<code>tools.approval</code> → <code>allow</code> / <code>deny</code> / <code>prompt</code>) on top of the mode.</li>
-<li>Force a prompt for hard-coded critical bash patterns (recursive deletion rooted at <code>/</code>, fork bombs, <code>curl | sh</code>, disk destruction) in <code>plan</code>, <code>ask</code>, and <code>auto-edit</code>; <code>yolo</code> auto-approves them unless <code>tools.approval.bash</code> is <code>prompt</code> or <code>deny</code>.</li>
+<li>Apply the two argument-level boundaries the tier cannot see: a filesystem target outside the session working directory, and a call whose arguments carry a stored credential. Both prompt on every rung except <code>yolo</code>, the shipped <code>auto</code> included.</li>
+<li>Force a prompt for hard-coded critical bash patterns (recursive deletion of the home directory or a system directory, fork bombs, <code>curl | sh</code>, disk destruction) on every rung, <code>yolo</code> included. This is a floor rather than an ordinary prompt: only an explicit <code>tools.approval.bash: allow</code> lifts it, and <code>deny</code> remains a hard block.</li>
 <li>Surface the approval prompt in the TUI before a gated command or edit runs.</li>
 </ul>
 <h2 id="public-boundary"><a class="header" href="#public-boundary">Public boundary</a></h2>
@@ -6322,9 +6450,9 @@ exec-server process in the shipped product.</p>
 <tr><th>Concept</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td>Approval mode</td><td>Which tool tiers run without asking (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>).</td></tr>
+<tr><td>Approval mode</td><td>Which tool tiers run without asking (<code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (default), <code>yolo</code>; legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>).</td></tr>
 <tr><td>Per-tool policy</td><td><code>tools.approval</code> overrides the mode for a named tool.</td></tr>
-<tr><td>Critical bash patterns</td><td>Hard-coded destructive-command shapes that prompt in non-yolo modes, even over a per-tool <code>allow</code>.</td></tr>
+<tr><td>Critical bash patterns</td><td>Hard-coded destructive-command shapes that prompt on every rung including <code>yolo</code>, even over a per-tool <code>allow</code>.</td></tr>
 <tr><td>Plan mode</td><td>Restricts mutating tools until the plan is approved (<code>/plan</code>).</td></tr>
 </tbody>
 </table>
@@ -6352,18 +6480,19 @@ tool calls, and the final assistant message.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="config"><a class="header" href="#config">Config</a></h1>
 <p>Configuration controls models, approvals, memory, MCP, extensions, and TUI behavior. Veyyon loads
-layered YAML/JSON from the project and user agent directories.</p>
+layered YAML/JSON from the user agent directories. A working tree never supplies configuration:
+a checked-in <code>.veyyon/config.yml</code> is not read, because a repository is content you may not have
+written.</p>
 <h2 id="responsibility-2"><a class="header" href="#responsibility-2">Responsibility</a></h2>
 <ul>
-<li>Resolve config roots (<code>.veyyon</code>, plus Claude/Codex/Gemini compatibility paths)</li>
-<li>Merge project + user settings; apply <strong>profiles</strong> (<code>veyyon --profile &lt;name&gt;</code>)</li>
+<li>Resolve config roots (the active profile’s agent dir, plus Claude/Codex/Gemini compatibility paths at user level)</li>
+<li>Merge profile settings with <code>--config</code> overlays and runtime overrides; apply <strong>profiles</strong> (<code>veyyon --profile &lt;name&gt;</code>)</li>
 <li>Validate against <code>settings-schema.ts</code>; support <code>--config &lt;file&gt;</code> YAML overlay files (repeatable)</li>
 <li>Feed resolved settings to sessions, tools, and discovery (skills, hooks, MCP, extensions)</li>
 </ul>
 <h2 id="public-boundary-2"><a class="header" href="#public-boundary-2">Public boundary</a></h2>
 <ul>
 <li>Primary user file: <code>~/.veyyon/profiles/default/agent/config.yml</code> (or profile path under <code>~/.veyyon/profiles/</code>)</li>
-<li>Project overrides: <code>.veyyon/config.yml</code></li>
 <li>CLI: <code>veyyon config list|get|set</code>, <code>/settings</code>, <code>/reload-plugins</code> (re-read without restart)</li>
 </ul>
 <p>Config loading is part of the harness.</p>
@@ -6376,7 +6505,7 @@ layered YAML/JSON from the project and user agent directories.</p>
 (consumes configured servers). Editor embedding uses ACP (<code>veyyon acp</code>), a different protocol.</p>
 <h2 id="responsibility-3"><a class="header" href="#responsibility-3">Responsibility</a></h2>
 <ul>
-<li>Discover MCP servers from project and user config files</li>
+<li>Discover MCP servers from the operator’s user and profile config files</li>
 <li>Connect over <strong>stdio</strong> or <strong>HTTP</strong> (streamable HTTP / SSE-style transports)</li>
 <li>Register tools as namespaced names (<code>mcp__&lt;server&gt;_&lt;tool&gt;</code>, e.g. <code>mcp__filesystem_delete</code>)</li>
 <li>Handle OAuth for remote servers and persist credentials per profile</li>
@@ -6389,18 +6518,26 @@ layered YAML/JSON from the project and user agent directories.</p>
 </thead>
 <tbody>
 <tr><td><code>packages/coding-agent/src/mcp/</code></td><td>Config load, manager, OAuth, tool wiring</td></tr>
-<tr><td><code>packages/coding-agent/src/discovery/mcp-json.ts</code></td><td>Standalone <code>mcp.json</code> discovery</td></tr>
+<tr><td><code>packages/coding-agent/src/discovery/builtin.ts</code></td><td>Profile-scoped <code>mcp.json</code> / <code>.mcp.json</code> discovery</td></tr>
 <tr><td><code>packages/coding-agent/src/modes/controllers/mcp-command-controller.ts</code></td><td><code>/mcp</code> TUI commands</td></tr>
 </tbody>
 </table>
 </div>
 <p>Primary config files:</p>
 <ul>
-<li>Project: <code>.veyyon/mcp.json</code></li>
 <li>User: <code>~/.veyyon/profiles/default/agent/mcp.json</code> (profile-scoped when using <code>--profile</code>)</li>
 </ul>
-<p>Veyyon also ingests MCP definitions from other tools (<code>.cursor/mcp.json</code>, <code>.vscode/mcp.json</code>,
-Claude/Codex/Gemini configs) when discovery is enabled.</p>
+<p>There is no project scope. A checked-out working tree is untrusted input, so
+<code>&lt;cwd&gt;/.veyyon/mcp.json</code>, a repo-root <code>mcp.json</code>/<code>.mcp.json</code>, and the foreign
+<code>.cursor/mcp.json</code> and <code>.vscode/mcp.json</code> are no longer read.</p>
+<p>Veyyon also ingests MCP definitions from other tools’ USER-level configs
+(<code>~/.claude</code>, <code>~/.codex</code>, <code>~/.gemini</code>, <code>~/.cursor</code>) when discovery is enabled.</p>
+<p>A config file that exists but does not parse is REPORTED, never skipped: the
+<code>native</code> provider raises <code>Failed to parse JSON in &lt;path&gt;</code> through the capability
+warning channel, which <code>MCPManager.discoverAndConnect</code> puts on its status stream
+and <code>/mcp list</code> and the boot health zone render. Before that, a mistyped comma in
+<code>mcp.json</code> produced a session with every configured server missing and no line
+anywhere saying why.</p>
 <p>User guide: <a href="#mcp">MCP</a>, <a href="#mcp-server-setup">MCP setup</a>.</p>
 <p>Engineering detail:
 <a href="../../mcp-config.html"><code>docs/mcp-config.md</code></a>,
@@ -6453,7 +6590,7 @@ your own keys and choose models.</p>
 <li><strong>Tool-output bounds</strong>: truncation limits behave as configured and remain visible to the model.</li>
 <li><strong>Architecture gates</strong>: layering, import cycles, and module-reach checks in <code>packages/coding-agent/test/architecture/</code>.</li>
 </ul>
-<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
+<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a></li>
 <li><a href="#the-hashline-edit-engine">The hashline edit engine</a></li>
@@ -6480,7 +6617,7 @@ your own keys and choose models.</p>
 </table>
 </div>
 <p>Implementation: <code>packages/coding-agent/src/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
-<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
+<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a>: ordered rules</li>
 <li><a href="#per-model-repair-posture">Per-model posture</a>: harness profiles</li>
@@ -6499,7 +6636,7 @@ your own keys and choose models.</p>
 </ol>
 <p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
 <p>Per-model enable/disable and tool allowlist hints: <a href="#per-model-repair-posture">Per-model posture</a>.</p>
-<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
+<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
 <ul>
 <li><a href="#tool-call-repair">Why repair exists</a></li>
 <li><a href="#repair-on-edits">Repair on edits</a></li>
@@ -6541,7 +6678,7 @@ your own keys and choose models.</p>
 </ul>
 <h2 id="opentelemetry"><a class="header" href="#opentelemetry">OpenTelemetry</a></h2>
 <p>When <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> or <code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code> is set, the process registers an OTLP/protobuf trace exporter and exports agent-loop spans (<code>invoke_agent</code>, <code>chat</code>, <code>execute_tool</code>, …). Standard <code>OTEL_*</code> env vars apply (<code>OTEL_SERVICE_NAME</code>, headers, <code>OTEL_SDK_DISABLED</code>, <code>OTEL_TRACES_EXPORTER=none</code>). Transport is <code>http/protobuf</code> only. See <code>packages/coding-agent/src/telemetry-export.ts</code>.</p>
-<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
+<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
 <ul>
 <li><a href="#observability">Observability</a></li>
 <li><a href="#the-repair-cascade">Repair cascade</a></li>
@@ -6716,8 +6853,8 @@ and the command still exits 0, because a rule being off is a configuration and n
 that does not exist exits non-zero and quotes the ids of the section you named.</p>
 <p>Both read your real configuration. The settings the prompt is gated on – your personality, whether
 subagent delegation is preferred or required, whether Mermaid diagrams are rendered, which tool
-dialect applies – are resolved from <code>config.yml</code> and your project settings before the prompt is
-assembled, so what you see is what a session in that directory would send. Change a setting, run it
+dialect applies – are resolved from your profile <code>config.yml</code> before the prompt is
+assembled, so what you see is what a session would send. Change a setting, run it
 again, and the difference is visible.</p>
 <p>Nothing is written while you look. The command opens no database, migrates nothing, and leaves no
 marker files, so inspecting the prompt cannot change what the next session does.</p>
@@ -7044,10 +7181,10 @@ veyyon plugin doctor
 <h2 id="provider-errors"><a class="header" href="#provider-errors">Provider errors</a></h2>
 <p>Check API key / auth store / <code>models.yml</code> for that provider id, base URL, and scopes. See <a href="#models-and-providers">Models and providers</a>.</p>
 <h2 id="command-or-edit-blocked-or-prompting"><a class="header" href="#command-or-edit-blocked-or-prompting">Command or edit blocked or prompting</a></h2>
-<p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code> (plus hard-coded critical bash patterns that prompt in non-yolo modes). There is no OS command sandbox. Schema default is <strong><code>yolo</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
+<p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code>, plus the working-directory and secret-use boundaries (every rung except <code>yolo</code>) and hard-coded critical bash patterns (every rung, <code>yolo</code> included). There is no OS command sandbox. Schema default is <strong><code>auto</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>
 <p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="#context-size-and-retries">Context size and retries</a>, <a href="#bounded-reads-and-search">Bounded reads and search</a>.</p>
-<h2 id="related-20"><a class="header" href="#related-20">Related</a></h2>
+<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
 <ul>
 <li><a href="#approvals-and-errors">Approvals and errors</a></li>
 <li><a href="#observability">Observability</a></li>
@@ -7059,7 +7196,7 @@ veyyon plugin doctor
 <h3 id="veyyon-plugin-doctor-fails-what-do-i-fix"><a class="header" href="#veyyon-plugin-doctor-fails-what-do-i-fix"><code>veyyon plugin doctor</code> fails. What do I fix?</a></h3>
 <p><code>veyyon plugin doctor</code> exits non-zero when a check reports an error, and it prints the failed check and the next action. Fix the line it reports, then run it again. For the full diagnostics surface, see <a href="#diagnostics-and-health">Diagnostics and health</a>.</p>
 <h3 id="does-veyyon-sandbox-the-commands-it-runs"><a class="header" href="#does-veyyon-sandbox-the-commands-it-runs">Does Veyyon sandbox the commands it runs?</a></h3>
-<p>No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is <strong><code>tools.approvalMode</code></strong> (schema default <strong><code>yolo</code></strong>) plus hard-coded critical bash patterns that prompt in non-yolo modes. See <a href="#approvals">Approvals</a>.</p>
+<p>No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is <strong><code>tools.approvalMode</code></strong> (schema default <strong><code>auto</code></strong>), plus the working-directory and secret-use boundaries, which apply on every rung except <code>yolo</code>, and hard-coded critical bash patterns, which prompt on every rung including <code>yolo</code>. See <a href="#approvals">Approvals</a>.</p>
 <h2 id="database-and-session-locking"><a class="header" href="#database-and-session-locking">Database and session locking</a></h2>
 <p>There is no cross-process lock on a session file: nothing prevents two <code>veyyon</code> processes from opening the same session at once, and the single-writer guarantee is per-process only. Treat one session as belonging to one running process; do not edit or delete its file while that process is alive.</p>
 <p>For how sessions are stored and resumed, see <a href="#sessions">Sessions</a>.</p>
@@ -7072,7 +7209,7 @@ veyyon plugin doctor
 <p>Veyyon lists models from a bundled catalog plus live discovery from providers that expose a <code>/models</code> endpoint. If a model is not listed, the provider endpoint may not expose it, or your key may not have access to it. Check the provider catalog and your key scopes first.</p>
 <h2 id="workflow"><a class="header" href="#workflow">Workflow</a></h2>
 <h3 id="why-did-my-edit-ask-for-approval"><a class="header" href="#why-did-my-edit-ask-for-approval">Why did my edit ask for approval?</a></h3>
-<p>The approval mode decides when Veyyon prompts before a tool runs. In <code>ask</code>, write and exec tiers prompt. In <code>plan</code>, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with <code>--approval-mode &lt;mode&gt;</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>), <code>--auto-approve</code> / <code>--yolo</code>, or <code>tools.approvalMode</code> in <code>config.yml</code>. See <a href="#approvals">Approvals</a>.</p>
+<p>The approval mode decides when Veyyon prompts before a tool runs. In <code>ask</code>, every tier prompts, reads included. In <code>ask-command</code>, reads and edits run and anything that executes asks. In <code>auto</code>, the default, every tier runs with the per-tool, working-directory, credential and critical-call guards still asking. In <code>plan</code>, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with <code>--approval-mode &lt;mode&gt;</code> (<code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>), <code>--auto-approve</code> / <code>--yolo</code>, or <code>tools.approvalMode</code> in <code>config.yml</code>. See <a href="#approvals">Approvals</a>.</p>
 <h3 id="how-do-i-resume-a-session"><a class="header" href="#how-do-i-resume-a-session">How do I resume a session?</a></h3>
 <p>Run <code>veyyon --continue</code> to continue the most recent session, or <code>veyyon --resume &lt;SESSION_ID&gt;</code> to resume a specific one. The session stores turns and tool activity, so a resumed session keeps its context. For branching, forking, or exporting a session, see <a href="#sessions">Sessions</a>.</p>
 <h3 id="what-happened-to-my-queued-follow-up"><a class="header" href="#what-happened-to-my-queued-follow-up">What happened to my queued follow-up?</a></h3>
@@ -7175,7 +7312,7 @@ and <code>UPSTREAM.md</code>.</p>
 <p><strong>apply_patch</strong>: Edit mode (<code>edit.mode: apply_patch</code>) for a Codex-style <code>*** Begin Patch … *** End Patch</code> envelope. Default edit mode is <strong>hashline</strong> via the <code>edit</code> tool. Apply-patch shares approval policy with other write paths.</p>
 </li>
 <li>
-<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, and hard-coded critical bash patterns are the boundary.</p>
+<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (the default), <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, the working-directory and secret-use boundaries, and hard-coded critical bash patterns are the boundary.</p>
 </li>
 <li>
 <p><strong>model catalog</strong>: Bundled provider/model data plus <code>models.yml</code> / <code>models.yaml</code> custom entries. There is no separate <code>backends.toml</code> subsystem.</p>

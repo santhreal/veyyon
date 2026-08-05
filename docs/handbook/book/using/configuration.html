@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-595774d2.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -206,14 +206,17 @@
 <tr><th>Scope</th><th>Path</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td>Global</td><td><code>~/.veyyon/profiles/default/agent/config.yml</code></td><td>The main persistent file. <code>/settings</code> and <code>veyyon config set</code> write here.</td></tr>
-<tr><td>Project</td><td><code>&lt;repo&gt;/.veyyon/config.yml</code></td><td>Loaded when the cwd has a non-empty config dir. Edit by hand.</td></tr>
+<tr><td>Profile</td><td><code>~/.veyyon/profiles/&lt;name&gt;/agent/config.yml</code></td><td>The main persistent file. <code>/settings</code> and <code>veyyon config set</code> write here.</td></tr>
+<tr><td>Machine-global</td><td><code>~/.veyyon/config.yml</code></td><td>The few keys shared by every profile (<code>defaultProfile</code>, <code>profileSharing</code>, auth-broker keys).</td></tr>
 <tr><td>CLI overlay</td><td>any file passed with <code>--config &lt;file&gt;</code></td><td>Process-local, repeatable, never persisted.</td></tr>
 </tbody>
 </table>
 </div>
+<p>A repository cannot carry settings: a checked-in <code>.veyyon/config.yml</code> is not read. When one
+repository needs different behavior, pass an overlay (<code>--config ./repo.yml</code>) or use a path-scoped
+<code>enabledModels</code> / <code>disabledProviders</code> entry in your profile config.</p>
 <p>Precedence, low to high:</p>
-<pre><code class="language-text">defaults  &lt;-  global config  &lt;-  project config  &lt;-  --config overlays  &lt;-  runtime flags
+<pre><code class="language-text">defaults  &lt;-  profile config  &lt;-  --config overlays  &lt;-  runtime flags
 </code></pre>
 <p>Read and write from a shell with <code>veyyon config</code>:</p>
 <pre><code class="language-console">$ veyyon config list                    # all settings with effective values
@@ -359,13 +362,15 @@ compaction:
 </table>
 </div>
 <pre><code class="language-yaml">tools:
-  approvalMode: auto-edit
+  approvalMode: ask-command
   approval:
     bash: prompt
     read: allow
 </code></pre>
 <p>Per run, <code>--approval-mode &lt;mode&gt;</code> and <code>--auto-approve</code> / <code>--yolo</code> override the mode. There is no
-separate OS shell sandbox, the approval mode is the only boundary; see
+OS shell sandbox. The mode is the main boundary, and three guards sit on top of it and are not
+lifted by raising the rung: the working-directory boundary, the secret-use boundary, and the
+critical-command floor in the bash guard. See
 <a href="../features/sandbox.html">Approvals</a> and <a href="./safety.html">Safety</a>.</p>
 <h2 id="run-unattended-or-in-ci"><a class="header" href="#run-unattended-or-in-ci">Run unattended or in CI</a></h2>
 <div class="table-wrapper">
@@ -374,7 +379,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 <tr><th>Goal</th><th>What to pass</th></tr>
 </thead>
 <tbody>
-<tr><td>Non-interactive one-shot</td><td><code>veyyon --approval-mode auto-edit "…"</code> (prompt as arg or piped stdin)</td></tr>
+<tr><td>Non-interactive one-shot</td><td><code>veyyon --print "…"</code> (prompt as arg or piped stdin), on the default <code>auto</code> rung so no tier prompt can stall the run</td></tr>
 <tr><td>Force <code>tools.approvalMode: yolo</code> for the run</td><td><code>--yolo</code></td></tr>
 <tr><td>Temporary settings for one run</td><td><code>--config ./ci-settings.yml</code> (repeatable)</td></tr>
 </tbody>
@@ -619,8 +624,8 @@ $ veyyon --cwd /tmp/scratch          # wins over session.workdir for this run
 <p><code>session.workdir</code> must resolve to an existing directory; a relative path or a
 missing directory fails launch rather than falling back silently. Mid-session
 overrides via the agent <code>set_cwd</code> tool or <code>/cwd</code> are session-scoped only: they
-re-root the live session (the cwd, and with it the project settings, plugins,
-slash commands, capabilities, ssh tool, and system-prompt project framing) and
+re-root the live session (the cwd, and with it the path-scoped settings,
+secrets, capabilities, ssh tool, and system-prompt project framing) and
 never write <code>session.workdir</code>. Persist a new default with <code>veyyon config set</code> or
 <code>/settings</code>.</p>
 <h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>

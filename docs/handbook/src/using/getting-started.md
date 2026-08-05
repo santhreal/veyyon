@@ -93,7 +93,7 @@ A typical run looks like this:
 2. It proposes an edit through the hashline `edit` and `write` tools.
 3. When your policy requires it, you approve the tool call. The `tools.approvalMode` setting decides when this happens; see [Safety](./safety.md).
 4. The change lands, and the diff appears in the TUI.
-5. If you asked for tests, you approve the `bash` or `cargo test` call when Veyyon runs them.
+5. If you asked for tests, Veyyon runs them with `bash`; under the default `auto` mode that call runs without asking, and a stricter mode prompts you first.
 
 ## Approval mode
 

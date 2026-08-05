@@ -225,11 +225,10 @@ For robust MCP authoring in this codebase:
 - [`packages/coding-agent/src/mcp/config.ts`](../../packages/coding-agent/src/mcp/config.ts)
 - [`packages/coding-agent/src/mcp/config-writer.ts`](../../packages/coding-agent/src/mcp/config-writer.ts)
 - [`packages/coding-agent/src/mcp/tool-bridge.ts`](../../packages/coding-agent/src/mcp/tool-bridge.ts)
-- [`packages/coding-agent/src/discovery/mcp-json.ts`](../../packages/coding-agent/src/discovery/mcp-json.ts)
 - [`packages/coding-agent/src/modes/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/controllers/mcp-command-controller.ts)
 - [`packages/coding-agent/src/mcp/manager.ts`](../../packages/coding-agent/src/mcp/manager.ts)
 - [`packages/coding-agent/src/capability/index.ts`](../../packages/coding-agent/src/capability/index.ts)
 - [`packages/coding-agent/src/config/resolve-config-value.ts`](../../packages/coding-agent/src/config/resolve-config-value.ts)
 - [`packages/coding-agent/src/mcp/loader.ts`](../../packages/coding-agent/src/mcp/loader.ts)
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `3fa88a60` on 2026-08-05.*

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,8 +220,10 @@ Code-compatible path). The manifest describes the plugin’s metadata and lists 
 </table>
 </div>
 <p>Other plugin content loads from conventional locations rather than manifest fields: MCP servers from
-a <code>.mcp.json</code> file at the plugin root, and hooks from executable files under the plugin’s
-<code>hooks/pre/</code> and <code>hooks/post/</code> directories.</p>
+a <code>.mcp.json</code> file at the plugin root, and hooks from <code>.ts</code> or <code>.js</code> modules under the plugin’s
+<code>hooks/pre/</code> and <code>hooks/post/</code> directories. A hook is loaded as an extension module and must default-export
+a factory, so a shell script placed in those directories is discovered but not run; veyyon reports each
+one it had to skip.</p>
 <h2 id="marketplaces"><a class="header" href="#marketplaces">Marketplaces</a></h2>
 <p>Marketplaces are collections of plugins. A marketplace is a directory or Git repository containing a <code>marketplace.json</code> catalog manifest.</p>
 <p>Veyyon checks the following relative paths under a marketplace root to locate its catalog manifest:</p>

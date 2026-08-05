@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -223,8 +223,8 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/resume</code></td><td>Resume another saved session</td></tr>
 <tr><td><code>/fork</code>, <code>/branch</code>, <code>/tree</code></td><td>Branching and session tree UI</td></tr>
 <tr><td><code>/rename &lt;title&gt;</code></td><td>Rename session</td></tr>
-<tr><td><code>/move &lt;dir&gt;</code></td><td>Relocate the session (including its saved session file) to another working directory and re-root project settings, plugins, commands, and capabilities there</td></tr>
-<tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same project-scoped state as <code>/move</code> (project settings, plugins, slash commands, capabilities, ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile <code>session.workdir</code></td></tr>
+<tr><td><code>/move &lt;dir&gt;</code></td><td>Relocate the session (including its saved session file) to another working directory and re-root path-scoped settings, secrets, capabilities, and the system-prompt project framing there</td></tr>
+<tr><td><code>/cwd [path]</code></td><td>Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same cwd-scoped state as <code>/move</code> (path-scoped settings, secrets, capabilities, the ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile <code>session.workdir</code></td></tr>
 <tr><td><code>/export [path]</code></td><td>Export the session as a standalone HTML file</td></tr>
 <tr><td><code>/dump</code></td><td>Dump debug artifacts</td></tr>
 <tr><td><code>/session info</code>, <code>/session delete</code></td><td>Session metadata or delete</td></tr>
@@ -245,6 +245,7 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/switch</code></td><td>Try a model for this session only, without saving it as default (same as alt+p)</td></tr>
 <tr><td><code>/fast on|off|status</code></td><td>Fast mode</td></tr>
 <tr><td><code>/thinking [level]</code> (<code>/effort</code>)</td><td>Set reasoning effort; no argument opens the picker</td></tr>
+<tr><td><code>/permissions [rung]</code> (<code>/approval</code>)</td><td>Set how much the agent does unasked, for this session only: <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, or <code>plan</code>. No argument reports the rung in force and where it came from; <code>reset</code> drops the session override and returns to the saved default from Settings</td></tr>
 <tr><td><code>/yolo on|off|status</code></td><td>Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation)</td></tr>
 <tr><td><code>/plan</code></td><td>Toggle plan mode</td></tr>
 <tr><td><code>/plan-review</code></td><td>Re-open plan review</td></tr>
@@ -253,7 +254,11 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
 <tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential, a bare <code>/secret</code> opens a hidden field, and <code>/secret manager</code> opens the manager. A client with no terminal keeps the verbs <code>add</code>, <code>list</code>, <code>rm</code>, <code>extend</code>, <code>log</code>, <code>discard</code>. See <a href="../features/secrets.html">Secrets</a></td></tr>
-<tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> / <code>/providers</code> opens provider sign-in</td></tr>
+<tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> opens first-run provider sign-in</td></tr>
+<tr><td><code>/providers</code>, <code>/account manager</code></td><td>Open the account manager: every stored account per provider, with its email, plan, health, and usage. See <a href="../using/authentication.html">Authentication</a></td></tr>
+<tr><td><code>/account [status]</code></td><td>Show which account each provider is serving this session with</td></tr>
+<tr><td><code>/account name &lt;text&gt;</code></td><td>Name the account this session is using, so rows read <code>work</code> instead of an email</td></tr>
+<tr><td><code>/account switch &lt;provider&gt;</code></td><td>Open the manager focused on one provider, to move that provider to another of your accounts</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
 <tr><td><code>/force &lt;tool&gt; [prompt]</code> (<code>/force:</code>)</td><td>Force the next turn to use a specific tool</td></tr>

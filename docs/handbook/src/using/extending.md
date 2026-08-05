@@ -6,7 +6,7 @@ Built-in tools (read, grep, glob, edit, bash, …) run through the agent loop un
 
 ## Skills
 
-Filesystem skill packages (e.g. `SKILL.md` trees) discovered under project and profile skill dirs. Unreadable or malformed skill files surface load warnings. See [Skills](../features/skills.md).
+Filesystem skill packages (e.g. `SKILL.md` trees) discovered under the active profile's skill dir. A project-local skills directory is never scanned. Unreadable or malformed skill files surface load warnings. See [Skills](../features/skills.md).
 
 ## Plugins
 
@@ -14,7 +14,7 @@ Filesystem skill packages (e.g. `SKILL.md` trees) discovered under project and p
 
 ## MCP
 
-External tools via Model Context Protocol: client config in `mcp.json` (user profile and/or project). See [MCP](../features/mcp.md).
+External tools via Model Context Protocol: client config in the profile's `mcp.json` (there is no project scope). See [MCP](../features/mcp.md).
 
 ## Hooks
 

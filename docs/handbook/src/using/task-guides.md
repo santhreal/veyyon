@@ -3,7 +3,7 @@
 Short, goal-shaped recipes for common jobs. Each guide points at the deeper feature pages; use those
 when you need full schemas or edge cases.
 
-Related references: [Hooks guide](../features/hooks-guide.md), [Non-interactive mode](../features/exec.md),
+Related references: [Hooks](../features/hooks.md), [Non-interactive mode](../features/exec.md),
 [MCP](../features/mcp.md), [Skills](../features/skills.md), [Memory](../features/memory.md),
 [Branching](../features/branching.md), [Sandbox](../features/sandbox.md).
 
@@ -13,11 +13,12 @@ Related references: [Hooks guide](../features/hooks-guide.md), [Non-interactive 
 
 Goal: every time the agent finishes an edit, run a deterministic check and fail closed when it breaks.
 
-The shipped hook model is a **TypeScript module** discovered under `.veyyon/hooks/` (project) or
-`~/.veyyon/profiles/default/agent/hooks/` (user). The module exports a factory that registers handlers with `pi.on(...)`.
+The shipped hook model is a **TypeScript module** discovered under
+`~/.veyyon/profiles/<name>/agent/hooks/` (the active profile). Hooks are user-level only: a
+`.veyyon/hooks/` directory inside a repository is not read. The module exports a factory that registers handlers with `pi.on(...)`.
 
 ```ts
-// .veyyon/hooks/post-edit-check.ts
+// ~/.veyyon/profiles/default/agent/hooks/post-edit-check.ts
 export default (pi) => {
   pi.on("tool_result", async (event) => {
     if (!/^(edit|write)$/.test(event.toolName)) return;
@@ -27,7 +28,7 @@ export default (pi) => {
 ```
 
 The Bun runtime imports the module at startup; restart (or `/reload-plugins`) to pick up changes. See
-[Hooks guide](../features/hooks-guide.md) for the event names and handler contract.
+[Hooks](../features/hooks.md) for the event names and handler contract.
 
 ---
 
@@ -63,7 +64,8 @@ Add it from the TUI, which writes `mcp.json` for you:
 /mcp add
 ```
 
-Or edit `~/.veyyon/profiles/default/agent/mcp.json` (user) / `.veyyon/mcp.json` (project) directly:
+Or edit `~/.veyyon/profiles/default/agent/mcp.json` directly (the active profile's file; there is no
+project scope):
 
 ```json
 {
@@ -84,7 +86,7 @@ server needs OAuth, run `/mcp reauth <name>`. Details: [MCP](../features/mcp.md)
 
 ### Path 2: author a skill
 
-Create a skill directory in user or project scope, for example
+Create a skill directory under the active profile, for example
 `~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md`:
 
 ```markdown
@@ -98,7 +100,7 @@ metadata:
 # Audit config
 
 When asked to audit configuration:
-1. Read the active config.yml and any project overrides.
+1. Read the active config.yml.
 2. Flag `yolo` approval paired with broad tool allow-lists on untrusted repos.
 3. Prefer concrete remediations over generic advice.
 ```

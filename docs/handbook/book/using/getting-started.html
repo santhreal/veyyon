@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-595774d2.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,7 +220,7 @@ $ bun dev --version
 <li>Theme.</li>
 <li>The session welcome.</li>
 </ol>
-<p>You can return to provider setup later with <code>/setup</code> or <code>/providers</code> inside the TUI. To skip setup entirely, set <code>VEYYON_SKIP_SETUP=1</code>, or resume an existing session.</p>
+<p>You can return to provider setup later with <code>/setup</code> inside the TUI, and manage the accounts you already have with <code>/providers</code>. To skip setup entirely, set <code>VEYYON_SKIP_SETUP=1</code>, or resume an existing session.</p>
 <h2 id="3-sign-in-to-a-provider"><a class="header" href="#3-sign-in-to-a-provider">3. Sign in to a provider</a></h2>
 <p>Veyyon needs at least one model provider. You have three common options.</p>
 <p><strong>Use an API key.</strong> Set the provider’s key in your environment, then pick one of its models in <code>/model</code>. For example, export <code>DEEPSEEK_API_KEY</code> and choose a DeepSeek model.</p>
@@ -257,7 +257,7 @@ $ veyyon
 <li>It proposes an edit through the hashline <code>edit</code> and <code>write</code> tools.</li>
 <li>When your policy requires it, you approve the tool call. The <code>tools.approvalMode</code> setting decides when this happens; see <a href="./safety.html">Safety</a>.</li>
 <li>The change lands, and the diff appears in the TUI.</li>
-<li>If you asked for tests, you approve the <code>bash</code> or <code>cargo test</code> call when Veyyon runs them.</li>
+<li>If you asked for tests, Veyyon runs them with <code>bash</code>; under the default <code>auto</code> mode that call runs without asking, and a stricter mode prompts you first.</li>
 </ol>
 <h2 id="approval-mode"><a class="header" href="#approval-mode">Approval mode</a></h2>
 <p>Every tool call falls into one of three tiers: <code>read</code>, <code>write</code>, or <code>exec</code>. The <code>tools.approvalMode</code> setting decides which tiers run without asking and which ones prompt you first.</p>

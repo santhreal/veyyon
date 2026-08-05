@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -199,9 +199,11 @@
 <p>A hook lets you run your own code at a moment in the session: before a tool call, after a message,
 when a turn ends. You use one to enforce policy (block a dangerous command), add context, or record
 what happened. The example below refuses any <code>bash</code> command containing <code>rm -rf</code>.</p>
-<p>A hook is a TypeScript module. You put it under a hook path (for example <code>.veyyon/hooks/</code>), and Veyyon
-loads it through the extension runner. The module default-exports a factory function that registers
-handlers with <code>pi.on(...)</code>, one handler per event you care about.</p>
+<p>A hook is a TypeScript module. You put it under a hook path in your profile (for example
+<code>~/.veyyon/profiles/&lt;name&gt;/agent/hooks/</code>), and Veyyon loads it through the extension runner. A
+repository cannot ship a hook: a <code>.veyyon/hooks/</code> directory inside a working tree is not read. The
+module default-exports a factory function that registers handlers with <code>pi.on(...)</code>, one handler per
+event you care about.</p>
 <p>CLI: <code>--hook</code> is an alias for <code>--extension</code> (paths merge into extension loading).</p>
 <p>Full API and event list: repository <code>docs/hooks.md</code> and <code>packages/coding-agent/src/extensibility/hooks/</code>.</p>
 <h2 id="module-shape"><a class="header" href="#module-shape">Module shape</a></h2>
@@ -231,9 +233,15 @@ export default function hook(pi: HookAPI): void {
 <p>Hook/extension paths are resolved as absolute, <code>~</code>-expanded, or relative to cwd. Discovery loads capability-registered modules, importable <code>.ts</code>/<code>.js</code> factories, plugin extension entry points, and explicit paths.</p>
 <h2 id="lifecycle-extension-bus"><a class="header" href="#lifecycle-extension-bus">Lifecycle (extension bus)</a></h2>
 <p>Handlers attach to the runtime event bus used by the extension runner (tool call, session, compaction, and related events as defined in <code>types.ts</code>). Exact event names and payloads are in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code> and <code>docs/hooks.md</code>.</p>
+<h2 id="typical-uses"><a class="header" href="#typical-uses">Typical uses</a></h2>
+<ul>
+<li>Block or annotate specific tools before they run</li>
+<li>Inject policy text when a session starts</li>
+<li>Audit tool usage outside the TUI</li>
+<li>Register your own slash commands</li>
+</ul>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="./hooks-guide.html">Custom hooks guide</a></li>
 <li>Repository <code>docs/hooks.md</code></li>
 </ul>
 
@@ -245,7 +253,7 @@ export default function hook(pi: HookAPI): void {
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../features/hooks-guide.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../features/mcp.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -259,7 +267,7 @@ export default function hook(pi: HookAPI): void {
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../features/hooks-guide.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../features/mcp.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

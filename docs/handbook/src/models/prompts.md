@@ -76,8 +76,8 @@ that does not exist exits non-zero and quotes the ids of the section you named.
 
 Both read your real configuration. The settings the prompt is gated on -- your personality, whether
 subagent delegation is preferred or required, whether Mermaid diagrams are rendered, which tool
-dialect applies -- are resolved from `config.yml` and your project settings before the prompt is
-assembled, so what you see is what a session in that directory would send. Change a setting, run it
+dialect applies -- are resolved from your profile `config.yml` before the prompt is
+assembled, so what you see is what a session would send. Change a setting, run it
 again, and the difference is visible.
 
 Nothing is written while you look. The command opens no database, migrates nothing, and leaves no

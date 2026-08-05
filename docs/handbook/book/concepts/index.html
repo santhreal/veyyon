@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-336fa523.js";
+            window.path_to_searchindex_js = "../searchindex-ee92964e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5cf6de48.js"></script>
+        <script src="../toc-1bc24e0a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -206,7 +206,7 @@
 </thead>
 <tbody>
 <tr><td><a href="./sessions-turns-threads.html">Sessions, turns, and threads</a></td><td>The runtime units. A session is the persisted run, a turn is one request plus the agent loop, and a thread is the active path through the session tree.</td></tr>
-<tr><td><a href="./permission-model.html">Permission model</a></td><td>The approval-mode boundary. <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>) decides which tool tiers run automatically and when Veyyon asks you first. There is no operating-system command sandbox.</td></tr>
+<tr><td><a href="./permission-model.html">Permission model</a></td><td>The approval-mode boundary. <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>) decides which tool tiers run automatically and when Veyyon asks you first. There is no operating-system command sandbox.</td></tr>
 <tr><td><a href="./model-contract.html">Model contract</a></td><td>The bring-your-own-key boundary: endpoint, model, and key. It covers what the harness owns versus what the provider owns, Freeform versus Function tools, and how system prompts and tool schemas are presented.</td></tr>
 </tbody>
 </table>
@@ -232,7 +232,7 @@
 <h2 id="related-reading"><a class="header" href="#related-reading">Related reading</a></h2>
 <ul>
 <li><a href="./permission-model.html">Permission model</a> and <a href="../features/sandbox.html">Approvals</a> cover the approval modes.</li>
-<li>For bounded automation, prefer <code>--approval-mode auto-edit</code>.</li>
+<li>Approvals usually need no tuning: the default <code>auto</code> runs every tier while the per-tool policies, the working-directory boundary, credential use, and a tool’s own critical commands all still ask. Pick a rung explicitly only when you want a different trade-off, and note that a headless run has nobody to answer a prompt, so a rung that asks turns a tool call into a failure rather than a pause.</li>
 <li><a href="../features/exec.html">Non-interactive mode</a> covers scripted <code>veyyon</code> launch patterns.</li>
 </ul>
 
