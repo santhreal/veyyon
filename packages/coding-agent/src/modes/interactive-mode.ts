@@ -29,6 +29,7 @@ import {
 	Container,
 	clearRenderCache,
 	Loader,
+	matchesKey,
 	ProcessTerminal,
 	planPaintGround,
 	Spacer,
@@ -580,6 +581,8 @@ export class InteractiveMode implements InteractiveModeContext {
 	shutdownRequested = false;
 	#isShuttingDown = false;
 	#relaunchSpec: { argv: string[]; env?: Record<string, string | undefined> } | undefined;
+	/** Unsubscribe for the swallow-everything input gate shutdown() installs. */
+	#shutdownInputGateRelease: (() => void) | undefined;
 	/** True once `shutdown()` has begun teardown. Surfaced to the input
 	 *  controller so a Ctrl+C arriving while teardown is in flight can hard-
 	 *  abort the remaining work instead of stacking another no-op call. */
@@ -3712,6 +3715,38 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	stop(): void {
+		this.#freezeFrameProduction();
+		if (this.#cleanupUnsubscribe) {
+			this.#cleanupUnsubscribe();
+		}
+		this.#shutdownInputGateRelease?.();
+		this.#shutdownInputGateRelease = undefined;
+		if (this.isInitialized) {
+			this.ui.stop();
+			this.isInitialized = false;
+		}
+	}
+
+	/**
+	 * Disconnect everything that can still turn session state into a frame or
+	 * turn a keystroke into session work: the loading/mic/clock animations,
+	 * the todo/observer/goal timers, voice input, extension terminal input
+	 * listeners and hook widgets, the event bus, the agent/bash subscriptions,
+	 * the event controller, the status line, the resize hook, and the session
+	 * event subscription. Everything here is idempotent, and the method itself
+	 * is guarded, because shutdown() runs it BEFORE the teardown await. A slow
+	 * `session.dispose` (the consolidate budget is seconds) must not leave the
+	 * dying session painting or accepting work. Meanwhile stop() runs it again at
+	 * the end for every path that never went through shutdown().
+	 *
+	 * What deliberately stays live until stop(): the postmortem registration
+	 * (a signal mid-teardown must still reach the memoized teardown), the
+	 * shutdown input gate, and the terminal itself.
+	 */
+	#frameProductionFrozen = false;
+	#freezeFrameProduction(): void {
+		if (this.#frameProductionFrozen) return;
+		this.#frameProductionFrozen = true;
 		if (this.loadingAnimation) {
 			this.#stopLoadingAnimation(false);
 		}
@@ -3747,19 +3782,57 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		if (this.unsubscribe) {
 			this.unsubscribe();
+			this.unsubscribe = undefined;
 		}
-		if (this.#cleanupUnsubscribe) {
-			this.#cleanupUnsubscribe();
-		}
-		if (this.isInitialized) {
-			this.ui.stop();
-			this.isInitialized = false;
-		}
+	}
+
+	/**
+	 * Wait for one committed frame so the closing status is actually on screen
+	 * before `#freezeFrameProduction` runs. `showStatus` only SCHEDULES a
+	 * paint; without an explicit commit the freeze could win the race and the
+	 * operator would stare at a frozen terminal with no explanation for the
+	 * teardown pause. Bounded so a stopped or headless UI can never hang
+	 * shutdown.
+	 */
+	#commitClosingFrame(): Promise<void> {
+		if (!this.isInitialized) return Promise.resolve();
+		return new Promise<void>(resolve => {
+			const previous = this.ui.onFrameComposed;
+			let settled = false;
+			const finish = () => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				this.ui.onFrameComposed = previous;
+				resolve();
+			};
+			const timer = setTimeout(finish, 250);
+			this.ui.onFrameComposed = () => {
+				try {
+					previous?.();
+				} finally {
+					finish();
+				}
+			};
+			this.ui.requestRender(true);
+		});
 	}
 
 	async shutdown(): Promise<void> {
 		if (this.#isShuttingDown) return;
 		this.#isShuttingDown = true;
+
+		// From this moment the session is leaving, so its editor must not take
+		// another keystroke. Teardown below can hold the terminal for seconds
+		// (the consolidate budget plus the input drain), and every key delivered
+		// in that window used to land in the dying session's editor or, once
+		// the terminal was released, sit in the tty buffer and ambush the
+		// relaunched child. Swallow it all instead. The one exception is Ctrl+C:
+		// the hard-abort ladder for a stuck teardown (issue #2600) lives below
+		// the input listeners, so the gate passes it through.
+		this.#shutdownInputGateRelease ??= this.ui.addInputListener(data =>
+			matchesKey(data, "ctrl+c") ? undefined : { consume: true },
+		);
 
 		this.#btwController.dispose();
 		this.#omfgController.dispose();
@@ -3767,10 +3840,17 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		// Surface an explicit "Closing session…" line so the user sees a reason
 		// for the pause while `session.dispose()` flushes memory consolidate and
-		// other cleanups (issue #3641). The await on the next line yields the
-		// event loop, giving requestRender() a tick to paint the status before
-		// dispose blocks.
+		// other cleanups (issue #3641).
 		this.showStatus("Closing session…");
+
+		// Commit the closing frame, then disconnect every frame producer BEFORE
+		// the teardown await: the closing frame is the last frame this session
+		// paints, and a multi-second dispose can never make the dying session
+		// look alive again. (The previous code relied on the teardown await
+		// yielding a tick for the status to paint and left every producer live
+		// for the whole window.)
+		await this.#commitClosingFrame();
+		this.#freezeFrameProduction();
 
 		// Persist the draft and dispose the session through the shared teardown
 		// so a signal that arrives mid-shutdown cannot fire a second dispose.
