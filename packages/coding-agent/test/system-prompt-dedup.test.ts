@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { initializeWithSettings } from "@veyyon/coding-agent/capability";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	buildSystemPrompt,
@@ -21,9 +26,23 @@ const makePiSystemPromptDir = useTrackedTempDirs("pi-system-prompt-");
 // Discovering a bare project AGENTS.md (not under .veyyon/) is the foreign
 // agents-md convention, gated behind the (default-off) importForeignConfig
 // toggle. Turn it on for this file so the dedup-of-discovered test can find
-// those files; restore the shipped default after each test.
-beforeEach(() => initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true })));
-afterEach(() => initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": false })));
+// those files.
+//
+// Snapshot/restore rather than a second `initializeWithSettings(false)`: that idiom
+// puts the gate back but leaves the other module-globals the call writes — the
+// captured Settings reference and the disabled-provider set — holding this file's
+// values.
+let registrySnapshot: RegistrySnapshot | undefined;
+
+beforeEach(() => {
+	registrySnapshot = captureRegistryForTests();
+	initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
+});
+
+afterEach(() => {
+	if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+	registrySnapshot = undefined;
+});
 
 const READ_TOOL = new Map<string, SystemPromptToolMetadata>([
 	[

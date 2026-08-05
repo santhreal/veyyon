@@ -24,14 +24,33 @@
  * every hook of every suite is not worth it once the leaks are fixed.
  */
 /**
- * Environment variables whose value changes the roots a suite reads and writes.
+ * Names excluded from the environment comparison because they move for reasons that
+ * are not a test polluting the process.
  *
- * Prefix-matched rather than listed one by one, so a new `VEYYON_*` root override
- * is covered the day it is added rather than the day someone remembers this file.
+ * WHY A DENYLIST AND NOT AN ALLOWLIST. This was a list of INTERESTING prefixes
+ * (`VEYYON_`, `PI_`, `XDG_`) plus four exact names, which is fail-OPEN: every
+ * variable nobody thought of was invisible to the tracer. That is not hypothetical.
+ * `test/tools/gh.test.ts` and `test/hindsight-bank.test.ts` each set five `GIT_*`
+ * variables at module scope and never restored them, and the tracer reported both
+ * files clean, because no `GIT_` entry was on the list. A leak detector whose miss
+ * is silent is worse than none: it issues a clean bill for a file it never examined.
+ * Diffing the WHOLE environment inverts the failure mode to a noisy report someone
+ * triages, and a variable nobody anticipated is caught the first time it moves.
+ *
+ * Keep this list SHORT. A long denylist is the allowlist problem wearing a different
+ * hat: every entry is a class of leak deliberately made invisible again.
  */
-export const TRACKED_ENV_PREFIXES = ["VEYYON_", "PI_", "XDG_"] as const;
-/** Exact names outside those prefixes that still decide where files land. */
-export const TRACKED_ENV_NAMES = ["HOME", "USERPROFILE", "TMPDIR", "NODE_ENV"] as const;
+export const UNTRACKED_ENV_NAMES: readonly string[] = [
+	// The tracer's own bookkeeping, written per traced file by `find-test-leaks.ts`.
+	// Not state a test is leaking.
+	"VEYYON_LEAK_FILE",
+	// The natives loader's variant memo. `packages/natives/native/loader-state.js`
+	// publishes its detection verdict here ON PURPOSE so child workers and
+	// subprocesses inherit it instead of re-spawning `sysctl` from a context where
+	// that spawn can fail (issue #3238). It appears the first time any suite loads
+	// natives, which is a cache warming, not a suite polluting the process.
+	"__PI_NATIVE_VARIANT_CACHE",
+];
 /** Set by the reporting script so a leak line can name the file being run. */
 export const LEAK_FILE_ENV = "VEYYON_LEAK_FILE";
 
@@ -106,22 +125,21 @@ function readProbes(): Record<string, string | undefined> {
 	return values;
 }
 
-/** The process-global state this tracer compares, as a plain value. */
+/**
+ * The process-global state this tracer compares, as a plain value.
+ *
+ * Every environment variable is captured except {@link UNTRACKED_ENV_NAMES}, so a
+ * variable that is ADDED by a test is a diff just as much as one changed or removed:
+ * a suite that exports something new has polluted the process for every file after it.
+ * Removal is caught by the key union in {@link diffGlobals} — a name present in the
+ * `before` map and absent from `after` reads as `value -> undefined`.
+ */
 export function snapshotGlobals(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): GlobalSnapshot {
 	const tracked: Record<string, string | undefined> = {};
 	for (const name of Object.keys(env)) {
-		if (TRACKED_ENV_PREFIXES.some(prefix => name.startsWith(prefix)) || TRACKED_ENV_NAMES.includes(name as never)) {
-			tracked[name] = env[name];
-		}
+		if (UNTRACKED_ENV_NAMES.includes(name)) continue;
+		tracked[name] = env[name];
 	}
-	// A REMOVED variable has to be visible as a change, so the tracked names are
-	// always present as keys even when unset. Without this, deleting `HOME` and
-	// never restoring it reads as "absent on both sides" and no diff is reported.
-	for (const name of TRACKED_ENV_NAMES) {
-		if (!(name in tracked)) tracked[name] = undefined;
-	}
-	// The tracer's own bookkeeping variable is not state a test is leaking.
-	delete tracked[LEAK_FILE_ENV];
 	return { env: tracked, cwd, probes: readProbes() };
 }
 

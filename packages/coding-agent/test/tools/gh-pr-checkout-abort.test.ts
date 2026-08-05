@@ -33,7 +33,7 @@
  * the real `executePrCheckout`, and the real message builder.
  */
 
-import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -42,6 +42,7 @@ import { GithubTool, MUTATING_GITHUB_OPS } from "@veyyon/coding-agent/tools/gh";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { makeToolSession } from "../helpers/tool-session";
 
 const REPO_ROOT = path.join(path.sep, "tmp", "gh-abort-fixture");
@@ -142,8 +143,19 @@ describe("classifying which github ops may be abandoned on abort", () => {
 });
 
 describe("cancelling a multi-PR checkout", () => {
+	// `setAgentDir` moves the resolved agent dir, the pre-profile baseline and
+	// `VEYYON_CODING_AGENT_DIR`, all of which are process-global. Unrestored, every
+	// later file in the run resolved its agent dir to this file's `/tmp` path.
+	let dirOverrides: DirOverridesSnapshot | undefined;
+
 	beforeAll(() => {
+		dirOverrides = captureDirOverrides();
 		setAgentDir(path.join(path.sep, "tmp", "gh-abort-agent-dir"));
+	});
+
+	afterAll(() => {
+		if (dirOverrides) restoreDirOverrides(dirOverrides);
+		dirOverrides = undefined;
 	});
 
 	afterEach(() => {

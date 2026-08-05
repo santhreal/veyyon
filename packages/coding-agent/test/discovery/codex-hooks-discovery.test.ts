@@ -11,17 +11,28 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { type Hook, hookCapability } from "@veyyon/coding-agent/capability/hook";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { initializeWithSettings, loadCapability } from "@veyyon/coding-agent/discovery";
+import { loadCapability } from "@veyyon/coding-agent/discovery";
 import { removeWithRetries } from "@veyyon/utils";
 
 describe("codex hook discovery", () => {
 	let tempHome = "";
 	let tempCwd = "";
 	let originalHome: string | undefined;
+	// `initializeWithSettings` writes module-globals in capability/index.ts that
+	// `resetSettingsForTest` does not clear, so the in-memory Settings built below
+	// would otherwise stay installed as the registry's for the rest of the process.
+	let registrySnapshot: RegistrySnapshot | undefined;
 
 	beforeEach(async () => {
+		registrySnapshot = captureRegistryForTests();
 		resetSettingsForTest();
 		originalHome = process.env.HOME;
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-codex-hooks-home-"));
@@ -35,6 +46,8 @@ describe("codex hook discovery", () => {
 
 	afterEach(async () => {
 		resetSettingsForTest();
+		if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+		registrySnapshot = undefined;
 		vi.restoreAllMocks();
 		if (originalHome === undefined) delete process.env.HOME;
 		else process.env.HOME = originalHome;

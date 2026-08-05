@@ -17,7 +17,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { initializeWithSettings, loadCapability } from "@veyyon/coding-agent/capability";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	loadCapability,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import type { SlashCommand } from "@veyyon/coding-agent/capability/slash-command";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -27,9 +33,15 @@ import "@veyyon/coding-agent/discovery/claude-plugins";
 
 let tempDir: string;
 let originalHome: string | undefined;
+// Snapshot/restore rather than a second `initializeWithSettings(false)`: that idiom
+// puts the foreign gate back but leaves the other module-globals the call writes —
+// the captured Settings reference and the disabled-provider set — holding this
+// file's values.
+let registrySnapshot: RegistrySnapshot | undefined;
 
 beforeEach(async () => {
 	// claude-plugins is a foreign provider behind the default-off master toggle.
+	registrySnapshot = captureRegistryForTests();
 	initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
 	clearClaudePluginRootsCache();
 	clearFsCache();
@@ -46,7 +58,8 @@ afterEach(async () => {
 	if (originalHome === undefined) delete process.env.HOME;
 	else process.env.HOME = originalHome;
 	await removeWithRetries(tempDir);
-	initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": false }));
+	if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+	registrySnapshot = undefined;
 });
 
 /**

@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { initializeWithSettings, loadCapability } from "@veyyon/coding-agent/capability";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	loadCapability,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
@@ -20,9 +26,24 @@ import type { SlashCommand } from "@veyyon/coding-agent/capability/slash-command
 
 // claude-plugins is a foreign provider gated behind the (default-off)
 // importForeignConfig master toggle. Turn it on for the whole file so the
-// discovery blocks exercise plugin loading; restore the shipped default after.
-beforeEach(() => initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true })));
-afterEach(() => initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": false })));
+// discovery blocks exercise plugin loading.
+//
+// Snapshot/restore rather than a second `initializeWithSettings(false)`: that idiom
+// puts the gate back but leaves the OTHER module-globals the call writes — the
+// captured Settings reference and the disabled-provider set — holding this file's
+// values. It was sufficient here only because of what this file happens to set,
+// which is the kind of luck that stops holding without telling anyone.
+let registrySnapshot: RegistrySnapshot | undefined;
+
+beforeEach(() => {
+	registrySnapshot = captureRegistryForTests();
+	initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
+});
+
+afterEach(() => {
+	if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+	registrySnapshot = undefined;
+});
 
 describe("parseClaudePluginsRegistry", () => {
 	test("parses valid registry", () => {

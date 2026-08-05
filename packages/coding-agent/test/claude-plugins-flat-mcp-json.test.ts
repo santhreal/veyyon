@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { initializeWithSettings, loadCapability } from "@veyyon/coding-agent/capability";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	loadCapability,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
@@ -13,10 +19,16 @@ import type { MCPServer } from "@veyyon/coding-agent/capability/mcp";
 describe("issue-851: claude-plugins loads flat .mcp.json shape", () => {
 	let tempDir: string;
 	let originalHome: string | undefined;
+	// Snapshot/restore rather than a second `initializeWithSettings(false)`: that
+	// idiom puts the foreign gate back but leaves the other module-globals the call
+	// writes — the captured Settings reference and the disabled-provider set —
+	// holding this file's values.
+	let registrySnapshot: RegistrySnapshot | undefined;
 
 	beforeEach(async () => {
 		// Claude-plugin `.mcp.json` is foreign config; ambient loading is off by
 		// default, so turn on discovery.importForeignConfig for these repros.
+		registrySnapshot = captureRegistryForTests();
 		initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
 		clearClaudePluginRootsCache();
 		clearFsCache();
@@ -27,7 +39,8 @@ describe("issue-851: claude-plugins loads flat .mcp.json shape", () => {
 	});
 
 	afterEach(async () => {
-		initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": false }));
+		if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+		registrySnapshot = undefined;
 		clearClaudePluginRootsCache();
 		clearFsCache();
 		vi.restoreAllMocks();
