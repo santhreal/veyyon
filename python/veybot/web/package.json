@@ -1,6 +1,7 @@
 {
   "name": "veybot-web",
   "private": true,
+  "license": "MIT",
   "version": "0.1.0",
   "type": "module",
   "description": "Flat SolidJS operations console bundled by Vite and served by veybot's FastAPI app.",
