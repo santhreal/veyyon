@@ -23,8 +23,10 @@ Veyyon reads these fields from `plugin.json`:
 | `commands` / `slash-commands` | String or Array of Strings | Path or paths to command definitions (optional). |
 
 Other plugin content loads from conventional locations rather than manifest fields: MCP servers from
-a `.mcp.json` file at the plugin root, and hooks from executable files under the plugin's
-`hooks/pre/` and `hooks/post/` directories.
+a `.mcp.json` file at the plugin root, and hooks from `.ts` or `.js` modules under the plugin's
+`hooks/pre/` and `hooks/post/` directories. A hook is loaded as an extension module and must default-export
+a factory, so a shell script placed in those directories is discovered but not run; veyyon reports each
+one it had to skip.
 
 ## Marketplaces
 
