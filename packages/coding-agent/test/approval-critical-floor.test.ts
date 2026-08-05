@@ -142,9 +142,12 @@ describe("the function the tool wrapper actually calls", () => {
 	 * short-circuit. Asserting the floor only on the rule would leave open the
 	 * possibility that nothing downstream asks the question.
 	 *
-	 * This matters more than an edge case: `tools.approvalMode` defaults to
-	 * `yolo`, so before the floor existed the guard was inert in the DEFAULT
-	 * configuration.
+	 * `tools.approvalMode` no longer defaults to `yolo`; the shipped default is
+	 * `DEFAULT_APPROVAL_MODE`, which is not that rung, so nobody lands on yolo by
+	 * accident. That does not make the floor an edge case, it makes it narrower
+	 * and more load-bearing: an operator on `yolo` chose it deliberately, has
+	 * said they want no prompts, and is exactly the person a `rm -rf ~/` reaches
+	 * unchallenged. The floor is the one thing that still stops them.
 	 */
 	it("requires approval for a critical call in yolo", () => {
 		const check = requiresApproval(critical, {}, "yolo", {});

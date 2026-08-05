@@ -6,7 +6,8 @@ import { stripVTControlCharacters } from "node:util";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { StatusLineComponent, type StatusLineSettings } from "@veyyon/coding-agent/modes/components/status-line";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { withIcon } from "@veyyon/coding-agent/modes/theme/icon-label";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { removeSyncWithRetries, setProjectDir } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
@@ -158,7 +159,9 @@ describe("StatusLineComponent effective settings cache", () => {
 		const customComponent = makeComponent({ preset: "custom", leftSegments: [], rightSegments: [] });
 		expect(customComponent.getEffectiveSettingsForTest().leftSegments).toEqual([]);
 		expect(customComponent.getEffectiveSettingsForTest().rightSegments).toEqual([]);
-		expect(customComponent.getTopBorder(120)).toEqual({ content: "", width: 0 });
+		expect(stripVTControlCharacters(customComponent.getTopBorder(120).content)).toContain(
+			withIcon(theme.icon.agents, "0"),
+		);
 	});
 
 	it("surfaces active subagents even when custom segments omit subagents", () => {
@@ -167,14 +170,14 @@ describe("StatusLineComponent effective settings cache", () => {
 		component.setSubagentCount(2);
 
 		const content = stripVTControlCharacters(component.getTopBorder(120).content);
-		expect(content).toContain("2 agents");
-		expect(content).not.toContain("running");
+		expect(content).toContain(withIcon(theme.icon.agents, "2"));
+		expect(content).not.toContain("agents");
 	});
 
 	it("keeps plan and hook state dynamic without settings invalidation", () => {
 		const component = makeComponent({ preset: "custom", leftSegments: ["mode"], rightSegments: [] });
 		const effective = component.getEffectiveSettingsForTest();
-		expect(component.getTopBorder(80).content).toBe("");
+		expect(stripVTControlCharacters(component.getTopBorder(80).content)).toContain(withIcon(theme.icon.agents, "0"));
 
 		component.setPlanModeStatus({ enabled: true, paused: false });
 		expect(stripVTControlCharacters(component.getTopBorder(80).content)).toContain("Plan");

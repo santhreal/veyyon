@@ -15,12 +15,14 @@ function expectAttribution(message: Message | undefined, expected: "user" | "age
 }
 
 describe("convertToLlm compaction summary", () => {
-	it("sends a compaction summary as agent-owned developer context with legacy images", () => {
+	it("sends a compaction summary as untrusted historical user context with legacy images", () => {
 		// Regression: the live session uses THIS converter (not agent-core's
 		// defaultConvertToLlm). A compaction summary may still carry legacy
 		// `images` (from an old persisted archive); dropping them here would
 		// silently sever that content from the provider request — the model
 		// would see a summary that references attachments that never arrive.
+		// The summary is model-authored history, so it must remain below current
+		// developer/AGENTS policy in the provider instruction hierarchy.
 		const images: ImageContent[] = [
 			{ type: "image", data: "ZmFrZQ==", mimeType: "image/png" },
 			{ type: "image", data: "ZmFrZTI=", mimeType: "image/png" },
@@ -38,7 +40,7 @@ describe("convertToLlm compaction summary", () => {
 		const converted = convertToLlm(messages);
 
 		expect(converted).toHaveLength(1);
-		expect(converted[0]?.role).toBe("developer");
+		expect(converted[0]?.role).toBe("user");
 		const content = converted[0]?.content as Array<TextContent | ImageContent>;
 		expect(content).toHaveLength(3);
 		expect(content[0].type).toBe("text");

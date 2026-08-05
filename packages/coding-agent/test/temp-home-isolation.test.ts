@@ -224,12 +224,21 @@ describe("an XDG base directory the developer runs with", () => {
 		setProfile(undefined);
 		process.env.XDG_STATE_HOME = outside;
 		refreshDirsFromEnv();
+		// NOT the file-level `active`, and that is the whole point of the local. `active` is
+		// restored by `afterEach`, which runs AFTER this `finally`: the temp home's own
+		// `restore()` puts back the XDG values it snapshotted, and the value it snapshotted
+		// for `XDG_STATE_HOME` is the `outside` this case set two lines up. Restoring the
+		// variable here and letting `afterEach` reinstate it afterwards left this file
+		// handing `XDG_STATE_HOME=/tmp/veyyon-temp-home-xdg-*` to every suite scheduled after
+		// it, with the temp tree already deleted, so their state paths resolved into nothing.
+		let temp: TempHome | undefined;
 		try {
-			active = enterTempHome();
+			temp = enterTempHome();
 
 			expect(getLogsDir().startsWith(outside)).toBe(false);
-			expect(getLogsDir().startsWith(active.home)).toBe(true);
+			expect(getLogsDir().startsWith(temp.home)).toBe(true);
 		} finally {
+			temp?.restore();
 			restoreDirOverrides(dirOverrides);
 			if (previousState === undefined) delete process.env.XDG_STATE_HOME;
 			else process.env.XDG_STATE_HOME = previousState;

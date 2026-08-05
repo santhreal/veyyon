@@ -151,4 +151,77 @@ describe("system prompt cache invalidation is recorded", () => {
 		const record = session.systemPromptInvalidations();
 		expect(() => (record as string[]).push("forged")).toThrow();
 	});
+
+	/**
+	 * No invalidation may be recorded as "unspecified", because that is what the
+	 * record looked like for the callers that mattered. `reason` used to default,
+	 * and the three production callers that omitted it were the frequent ones: a
+	 * cwd re-root, a secrets refresh, and a memory clear. A real session showed
+	 * four consecutive entries all reading `unspecified`, each one a ~32k-char
+	 * prompt rebuild, so the record proved the prefix cache had been discarded and
+	 * could not say by what. The parameter is required now; this asserts the
+	 * default cannot come back by asserting on the recorded evidence rather than
+	 * on the signature, which a later refactor could re-widen.
+	 */
+	it("never records an unattributed invalidation", async () => {
+		let n = 0;
+		const session = makeSession(() => [`prompt-${n}`]);
+		for (const reason of ["cwd-change", "secrets-refresh", "memory-clear", "memory-startup"]) {
+			n++;
+			await session.refreshBaseSystemPrompt(reason);
+		}
+		const record = session.systemPromptInvalidations();
+		expect(record).toEqual(["cwd-change", "secrets-refresh", "memory-clear", "memory-startup"]);
+		expect(record).not.toContain("unspecified");
+		for (const reason of record) {
+			expect(reason.trim().length).toBeGreaterThan(0);
+		}
+	});
+});
+
+/**
+ * The provider cache KEY is the second way a session pays for a re-prefill, and
+ * until now it was the unrecorded one.
+ *
+ * WHY THIS SUITE EXISTS. `#clearInheritedProviderPromptCacheKey` already knew a
+ * thinking-level switch, a model switch, a tool-signature change, a session
+ * switch, and a branch each throw the prefix away: it is called from all of them.
+ * It recorded nothing, so only system-prompt rebuilds appeared in the evidence. A
+ * measured session made that concrete: its record listed four cwd-driven prompt
+ * rebuilds, while its single most expensive turn read 0 cached tokens and rewrote
+ * 67,528, eighteen seconds after an auto-thinking reclassification that appeared
+ * nowhere in the record. Attribution is the whole point of the evidence, so a
+ * discard now names its cause.
+ */
+describe("provider cache key discards are recorded", () => {
+	/**
+	 * A session that inherited no key cannot have discarded one. Recording a
+	 * phantom discard would send the next cost investigation after a miss that
+	 * never happened, which is the same failure as recording nothing. A plain
+	 * in-memory session inherits nothing, so a system-prompt rebuild that really
+	 * does change the bytes must still leave this record empty.
+	 */
+	it("records nothing when no key was ever inherited", async () => {
+		let current = ["base"];
+		const session = makeSession(() => current);
+		await session.refreshBaseSystemPrompt("first-build");
+		current = ["base", "changed"];
+		await session.refreshBaseSystemPrompt("cwd-change");
+
+		// The prompt change WAS recorded, so this proves the discard record is
+		// separately gated on inheritance rather than simply never written.
+		expect(session.systemPromptInvalidations()).toContain("cwd-change");
+		expect(session.providerCacheKeyDiscards()).toEqual([]);
+	});
+
+	/**
+	 * Cost evidence is read-only to callers, matching
+	 * {@link AgentSession.systemPromptInvalidations}. A reader that could trim the
+	 * live array would under-report exactly the events this record exists to count.
+	 */
+	it("does not let a caller mutate the record", () => {
+		const session = makeSession(() => ["base"]);
+		const record = session.providerCacheKeyDiscards();
+		expect(() => (record as string[]).push("forged")).toThrow();
+	});
 });

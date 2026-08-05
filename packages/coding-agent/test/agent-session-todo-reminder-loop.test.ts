@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { Agent } from "@veyyon/agent-core";
 import type { AssistantMessage, TextContent, ToolCall } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
@@ -100,7 +101,7 @@ describe("AgentSession todo reminder self-continuation suppression", () => {
 			if (!Array.isArray(content)) return false;
 			return content.some(
 				(item): item is TextContent =>
-					item.type === "text" && item.text.includes("You stopped with 2 incomplete todo item(s):"),
+					item.type === "text" && item.text.includes("Continue working now. 2 todo item(s) remain."),
 			);
 		});
 	}
@@ -130,8 +131,6 @@ describe("AgentSession todo reminder self-continuation suppression", () => {
 			settings: Settings.isolated({
 				"compaction.enabled": false,
 				"todo.enabled": true,
-				"todo.reminders": true,
-				"todo.reminders.max": 3,
 			}),
 			modelRegistry,
 		});
@@ -173,6 +172,32 @@ describe("AgentSession todo reminder self-continuation suppression", () => {
 
 		const reminderEntry = todoReminderTranscriptEntry();
 		expect(reminderEntry?.type).toBe("message");
+	});
+
+	it("does not add a todo reminder or continuation while an active goal owns continuation", async () => {
+		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
+		const now = Date.now();
+		session.setGoalModeState({
+			enabled: true,
+			mode: "active",
+			goal: {
+				id: "goal-1",
+				objective: "Finish the owned task",
+				status: "active",
+				tokensUsed: 0,
+				timeUsedSeconds: 0,
+				turnsCompleted: 0,
+				createdAt: now,
+				updatedAt: now,
+			},
+		});
+
+		emitTextOnlyStop();
+		await session.waitForIdle();
+
+		expect(reminderAttempts).toEqual([]);
+		expect(todoReminderTranscriptEntry()).toBeUndefined();
+		expect(continueSpy).not.toHaveBeenCalled();
 	});
 
 	it("does not remind or continue when the assistant yields with a user-facing question", async () => {
@@ -241,18 +266,30 @@ describe("AgentSession todo reminder self-continuation suppression", () => {
 		expect(reminderAttempts).toEqual([1]);
 	});
 
-	it("re-escalates after the agent makes tool-level progress between stops", async () => {
-		let continueCount = 0;
+	/**
+	 * A user asking the agent to resume must not replay the same task list when the
+	 * prior continuation produced no tool result. The prompt itself is not progress.
+	 */
+	it("keeps the same reminder suppressed across repeated user continue prompts", async () => {
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+		vi.spyOn(session.agent, "prompt").mockImplementation(async () => {
+			emitTextOnlyStop();
+			return undefined as never;
+		});
+
+		emitTextOnlyStop();
+		await withTimeout(firstReminderPromise, 1000, "todo_reminder never fired");
+		await session.waitForIdle();
+
+		await session.prompt("why did you stop; continue working");
+		await session.waitForIdle();
+
+		expect(reminderAttempts).toEqual([1]);
+	});
+
+	it("does not repeat an unchanged todo snapshot after unrelated tool activity", async () => {
 		vi.spyOn(session.agent, "continue").mockImplementation(async () => {
-			continueCount += 1;
-			if (continueCount === 1) {
-				// In response to reminder 1/3 the agent actually did work (called `todo`),
-				// then stopped again with todos still incomplete.
-				emitToolResult("todo", { phases: session.getTodoPhases() });
-				emitTextOnlyStop();
-				return;
-			}
-			// Subsequent continuations are bare acks — they must not escalate further.
+			emitToolResult("todo", { phases: session.getTodoPhases() });
 			emitTextOnlyStop();
 		});
 
@@ -260,7 +297,121 @@ describe("AgentSession todo reminder self-continuation suppression", () => {
 		await withTimeout(firstReminderPromise, 1000, "todo_reminder never fired");
 		await session.waitForIdle();
 
-		// 1/3 fires, agent does work, 2/3 fires, agent acks → suppressed, no 3/3.
+		expect(reminderAttempts).toEqual([1]);
+	});
+
+	/** A real status transition changes the fingerprint and warrants one new bounded continuation reminder. */
+	it("reminds again only after the todo state changes", async () => {
+		let continueCount = 0;
+		vi.spyOn(session.agent, "continue").mockImplementation(async () => {
+			continueCount += 1;
+			if (continueCount === 1) {
+				emitToolResult("todo", {
+					phases: [
+						{
+							name: "Pending review",
+							tasks: [
+								{ content: "Slice 81", status: "completed" },
+								{ content: "Slice 82", status: "in_progress" },
+							],
+						},
+					],
+				});
+			}
+			emitTextOnlyStop();
+		});
+
+		emitTextOnlyStop();
+		await withTimeout(firstReminderPromise, 1000, "todo_reminder never fired");
+		await session.waitForIdle();
+
 		expect(reminderAttempts).toEqual([1, 2]);
+	});
+
+	/**
+	 * Disabling reminders is itself the lifecycle boundary: the latch must reset
+	 * even when no assistant stop occurs until after reminders are re-enabled.
+	 */
+	it("starts a fresh reminder runway after reminders are disabled and re-enabled", async () => {
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+		emitTextOnlyStop();
+		await withTimeout(firstReminderPromise, 1000, "first todo_reminder never fired");
+		await session.waitForIdle();
+
+		session.settings.set("todo.reminders", false);
+		expect(session.settings.get("todo.reminders")).toBe(false);
+
+		const secondReminder = Promise.withResolvers<void>();
+		session.subscribe(event => {
+			if (event.type === "todo_reminder") secondReminder.resolve();
+		});
+		session.settings.set("todo.reminders", true);
+		expect(session.settings.get("todo.reminders")).toBe(true);
+		emitTextOnlyStop();
+		await withTimeout(secondReminder.promise, 1000, "re-enabled todo_reminder never fired");
+
+		expect(reminderAttempts).toEqual([1, 1]);
+	});
+
+	/**
+	 * A slow message-end subscriber must not let the later agent-end event observe
+	 * stale todo state and emit a continuation for work the todo result completed.
+	 */
+	it("applies todo result state before awaiting message-end subscribers", async () => {
+		const messageEndGate = Promise.withResolvers<void>();
+		const agentEndSeen = Promise.withResolvers<void>();
+		session.subscribe(async event => {
+			if (event.type === "message_end" && event.message.role === "toolResult") {
+				await messageEndGate.promise;
+			}
+			if (event.type === "agent_end") agentEndSeen.resolve();
+		});
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+
+		emitToolResult("todo", {
+			phases: [
+				{
+					name: "Pending review",
+					tasks: [
+						{ content: "Slice 81", status: "completed" },
+						{ content: "Slice 82", status: "completed" },
+					],
+				},
+			],
+		});
+		emitTextOnlyStop();
+		await withTimeout(agentEndSeen.promise, 1000, "agent_end never reached subscribers");
+		await delay(0);
+
+		expect(reminderAttempts).toEqual([]);
+		expect(session.getTodoPhases()[0]?.tasks).toEqual([
+			{ content: "Slice 81", status: "completed" },
+			{ content: "Slice 82", status: "completed" },
+		]);
+
+		messageEndGate.resolve();
+		await session.waitForIdle();
+	});
+
+	/**
+	 * UI renderers may bound their preview, but extension subscribers rely on the
+	 * event payload as lossless machine state for automation.
+	 */
+	it("emits every unfinished item to reminder subscribers beyond the preview limit", async () => {
+		const tasks = Array.from({ length: 8 }, (_, index) => ({
+			content: `Extension task ${index + 1}`,
+			status: index === 7 ? ("in_progress" as const) : ("pending" as const),
+		}));
+		let emitted: Extract<AgentSessionEvent, { type: "todo_reminder" }> | undefined;
+		session.subscribe(event => {
+			if (event.type === "todo_reminder") emitted = event;
+		});
+		session.setTodoPhases([{ name: "Extension contract", tasks }]);
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+
+		emitTextOnlyStop();
+		await withTimeout(firstReminderPromise, 1000, "todo_reminder never fired");
+
+		expect(emitted?.todos).toEqual(tasks);
 	});
 });

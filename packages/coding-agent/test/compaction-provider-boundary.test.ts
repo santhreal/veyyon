@@ -151,7 +151,7 @@ describe("AgentSession compaction confidentiality wiring", () => {
 
 		const result = await session.compact();
 
-		expect(result.summary).toBe("fallback summary");
+		expect(result.summary).toStartWith("fallback summary");
 		expect(compactSpy).toHaveBeenCalledTimes(2);
 		expect(sentTexts).toHaveLength(2);
 		for (const sentText of sentTexts) {

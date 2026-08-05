@@ -6,14 +6,7 @@ import {
 	parseCompactArgs,
 } from "@veyyon/coding-agent/session/compact-modes";
 
-/**
- * The parse, with the error branch ruled out.
- *
- * `parseCompactArgs` returns a union so a future mode can reject its arguments;
- * nothing rejects today, and every test below reads a field off the success shape.
- * Failing loudly here beats each test carrying its own cast, which would also
- * silence a real error the parser started returning.
- */
+/** Parse a successful `/compact` invocation for assertions below. */
 function parsed(args: string): ParsedCompactArgs {
 	const result = parseCompactArgs(args);
 	if ("error" in result) throw new Error(`parseCompactArgs(${JSON.stringify(args)}) refused: ${result.error}`);
@@ -21,27 +14,15 @@ function parsed(args: string): ParsedCompactArgs {
 }
 
 describe("compact mode registry", () => {
-	it("maps each shipped mode to the settings overrides the engine relies on", () => {
-		// These override values are load-bearing: the engine merges them over the
-		// configured compaction.* settings, so a regression here silently changes
-		// what `/compact <mode>` does.
+	it("maps the sole shipped mode to the summary strategy override", () => {
 		expect(findCompactMode("summary")?.overrides).toEqual({ strategy: "summary" });
-		expect(findCompactMode("handoff")?.overrides).toEqual({ strategy: "handoff" });
-		// snapcompact is no longer a /compact subcommand mode (image archive is
-		// strategy-level, not a focus-rejecting parse mode).
+		expect(findCompactMode("handoff")).toBeUndefined();
 		expect(findCompactMode("snapcompact")).toBeUndefined();
 	});
 
-	/**
-	 * The registry IS the strategy list. `soft` and `remote` existed only to steer
-	 * the provider-native remote compaction path — `soft` skipped it, `remote`
-	 * demanded it. That path was removed because it stored an opaque provider blob
-	 * and a placeholder summary, so both modes had nothing left to steer. If
-	 * either name reappears here, a private per-provider compaction path came back
-	 * with it.
-	 */
-	it("registry is exactly the two compaction strategies", () => {
-		expect(COMPACT_MODES.map(m => m.name).sort()).toEqual(["handoff", "summary"]);
+	it("registry contains only the canonical in-place summary mode", () => {
+		expect(COMPACT_MODES.map(mode => mode.name)).toEqual(["summary"]);
+		expect(findCompactMode("handoff")).toBeUndefined();
 		expect(findCompactMode("soft")).toBeUndefined();
 		expect(findCompactMode("remote")).toBeUndefined();
 	});
@@ -54,9 +35,9 @@ describe("compact mode registry", () => {
 		}
 	});
 
-	it("resolves mode names case-insensitively and rejects unknowns", () => {
+	it("resolves summary case-insensitively and rejects unknowns", () => {
 		expect(findCompactMode("SUMMARY")?.name).toBe("summary");
-		expect(findCompactMode("  Handoff ")?.name).toBe("handoff");
+		expect(findCompactMode("  Handoff ")).toBeUndefined();
 		expect(findCompactMode("bogus")).toBeUndefined();
 		expect(findCompactMode("")).toBeUndefined();
 	});
@@ -68,20 +49,20 @@ describe("parseCompactArgs", () => {
 		expect(parseCompactArgs("   ")).toEqual({});
 	});
 
-	it("detects a leading mode token", () => {
+	it("detects the canonical leading mode token and its focus", () => {
 		expect(parseCompactArgs("summary")).toEqual({ mode: "summary" });
-		expect(parseCompactArgs("handoff")).toEqual({ mode: "handoff" });
-	});
-
-	it("splits a mode from its trailing focus instructions", () => {
 		expect(parseCompactArgs("summary focus on the parser bug")).toEqual({
 			mode: "summary",
 			instructions: "focus on the parser bug",
 		});
-		expect(parseCompactArgs("handoff   keep auth details")).toEqual({
-			mode: "handoff",
-			instructions: "keep auth details",
-		});
+	});
+
+	it("refuses handoff as a compaction mode with the explicit replacement command", () => {
+		for (const args of ["handoff", "HANDOFF keep auth details", "  Handoff  "]) {
+			const result = parseCompactArgs(args);
+			expect(result).toHaveProperty("error");
+			if ("error" in result) expect(result.error).toContain("/handoff [focus instructions]");
+		}
 	});
 
 	it("treats a non-mode first token as plain focus instructions (backward compatible)", () => {
@@ -168,9 +149,8 @@ describe("a retired compact mode name", () => {
 		expect(parsed("what changed in the remote branch").notice).toBeUndefined();
 	});
 
-	it("does not fire for a live mode, or for ordinary focus text", () => {
+	it("does not fire for the live summary mode or ordinary focus text", () => {
 		expect(parsed("summary").notice).toBeUndefined();
-		expect(parsed("handoff keep auth details").notice).toBeUndefined();
 		expect(parsed("focus on the parser").notice).toBeUndefined();
 		expect(parsed("").notice).toBeUndefined();
 	});

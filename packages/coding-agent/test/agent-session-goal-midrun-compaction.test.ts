@@ -189,18 +189,18 @@ describe("AgentSession mid-run threshold compaction", () => {
 		expect(observedContexts[1].join("\n")).toContain("ACTIVE-GOAL-MID-RUN-COMPACTED");
 	});
 
-	it("falls back to in-place compaction for mid-run handoff strategy", async () => {
+	it("migrates a legacy handoff strategy to in-place compaction mid-run", async () => {
 		const { session, observedContexts } = await createHarness({ "compaction.strategy": "handoff" });
 		const handoffSpy = vi.spyOn(session, "handoff").mockImplementation(async () => {
-			throw new Error("mid-run compaction must not reset the session through handoff");
+			throw new Error("automatic compaction must never invoke manual handoff");
 		});
-		const compactSpy = mockCompaction("HANDOFF-MID-RUN-COMPACTED-IN-PLACE");
+		const compactSpy = mockCompaction("LEGACY-HANDOFF-MID-RUN-COMPACTED-IN-PLACE");
 
 		await session.prompt("work on the release");
 
 		expect(handoffSpy).not.toHaveBeenCalled();
 		expect(compactSpy).toHaveBeenCalledTimes(1);
-		expect(observedContexts[1].join("\n")).toContain("HANDOFF-MID-RUN-COMPACTED-IN-PLACE");
+		expect(observedContexts[1].join("\n")).toContain("LEGACY-HANDOFF-MID-RUN-COMPACTED-IN-PLACE");
 	});
 
 	it("preserves the just-finished tool turn when message_end hooks are still pending", async () => {

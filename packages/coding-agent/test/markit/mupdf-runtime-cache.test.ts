@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { materializeEmbeddedMupdf } from "@veyyon/coding-agent/markit/converters/pdf/extract";
-import { __resetDirsFromEnvForTests, getAgentDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { getAgentDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
@@ -41,12 +42,21 @@ describe("the materialized mupdf runtime cache", () => {
 	let root = "";
 	let assetDir = "";
 	let embedded = { version: "1.26.4", mupdfJs: "", mupdfWasmJs: "" };
+	let dirOverrides: DirOverridesSnapshot | undefined;
 
 	/** The exact bytes each embedded asset carries, so identity is assertable. */
 	const MUPDF_JS = 'import "./mupdf-wasm.js";\nexport const marker = "real mupdf.js";\n';
 	const MUPDF_WASM_JS = 'export const marker = "real mupdf-wasm.js";\n';
 
 	beforeEach(() => {
+		// The whole snapshot before `setAgentDir` touches anything. The teardown used to
+		// DELETE `VEYYON_CODING_AGENT_DIR` outright and re-derive from the environment, which
+		// discards whatever the process really had: on a machine running with a named profile
+		// this file left both that variable and `VEYYON_PROFILE` unset for every suite
+		// scheduled after it, so their paths resolved under `profiles/default/`. Deleting is
+		// not restoring, and `restoreDirOverrides` is the one implementation that knows the
+		// difference (it also carries the pre-profile baseline, which no variable holds).
+		dirOverrides = captureDirOverrides();
 		root = makeMupdfCacheDir();
 		assetDir = path.join(root, "assets");
 		fs.mkdirSync(assetDir, { recursive: true });
@@ -59,8 +69,8 @@ describe("the materialized mupdf runtime cache", () => {
 	});
 
 	afterEach(async () => {
-		delete process.env.VEYYON_CODING_AGENT_DIR;
-		__resetDirsFromEnvForTests();
+		if (dirOverrides !== undefined) restoreDirOverrides(dirOverrides);
+		dirOverrides = undefined;
 		if (root) {
 			await removeWithRetries(guardDestructivePath(root, "mupdf-runtime-cache"));
 			root = "";

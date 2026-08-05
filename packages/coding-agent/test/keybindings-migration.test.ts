@@ -6,6 +6,7 @@ import { KeybindingsManager, profileHasKeybindingsFile } from "@veyyon/coding-ag
 import { matchesAppFollowUp } from "@veyyon/coding-agent/modes/utils/keybinding-matchers";
 import { type KeybindingsConfig, resetKeybindingsForTests, setKeybindings } from "@veyyon/tui";
 import { __resetDirsFromEnvForTests, removeWithRetries, setProfile } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { YAML } from "bun";
 
 function ctrl(key: string): string {
@@ -286,6 +287,12 @@ describe("KeybindingsManager.create", () => {
 		});
 		await fs.mkdir(profileAgentDir, { recursive: true });
 
+		// The whole snapshot, not `VEYYON_CONFIG_DIR` alone. `setProfile(undefined)` DELETES
+		// `VEYYON_PROFILE` rather than restoring it, so on a machine running with a named
+		// profile these two cases handed an unset profile to every suite scheduled after
+		// them and their paths resolved under `profiles/default/`. Nothing in the victim
+		// files would say why.
+		const dirOverrides = captureDirOverrides();
 		const originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		try {
 			process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), rootDir);
@@ -298,8 +305,7 @@ describe("KeybindingsManager.create", () => {
 		} finally {
 			if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
 			else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-			setProfile(undefined);
-			__resetDirsFromEnvForTests();
+			restoreDirOverrides(dirOverrides);
 			await removeWithRetries(rootDir);
 		}
 	});
@@ -312,6 +318,7 @@ describe("KeybindingsManager.create", () => {
 		await writeKeybindingsYaml(defaultAgentDir, { "app.session.fork": "ctrl+f" });
 		await fs.mkdir(profileAgentDir, { recursive: true });
 
+		const dirOverrides = captureDirOverrides();
 		const originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		try {
 			process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), rootDir);
@@ -329,8 +336,7 @@ describe("KeybindingsManager.create", () => {
 		} finally {
 			if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
 			else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
-			setProfile(undefined);
-			__resetDirsFromEnvForTests();
+			restoreDirOverrides(dirOverrides);
 			await removeWithRetries(rootDir);
 		}
 	});

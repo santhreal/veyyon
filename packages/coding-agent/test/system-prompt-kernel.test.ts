@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as os from "node:os";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
-import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { useTempHome } from "./helpers/temp-home";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.
@@ -9,7 +9,6 @@ import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 // directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
 // reintroduce the leak by forgetting an `afterAll`.
 const makePiPromptKernelDir = useTrackedTempDirs("pi-prompt-kernel-");
-const makePiPromptKernelHomeDir = useTrackedTempDirs("pi-prompt-kernel-home-");
 
 const EMPTY_TREE = {
 	rootPath: "",
@@ -25,17 +24,15 @@ const EMPTY_TREE = {
 // (issue #4141). The Kernel field must always carry a real identity.
 describe("system prompt Kernel field", () => {
 	let tempDir = "";
-	let tempHomeDir = "";
-	let originalHome: string | undefined;
+
+	// The config root moves with HOME here, not just the variable: this suite reads the
+	// assembled prompt, and the prompt loads the global `AGENTS.md` from the config root.
+	// With `process.env.HOME` alone that file came from the developer's real `~/.veyyon`.
+	useTempHome();
 
 	beforeEach(() => {
 		tempDir = makePiPromptKernelDir();
-		tempHomeDir = makePiPromptKernelHomeDir();
-		originalHome = process.env.HOME;
-		process.env.HOME = tempHomeDir;
 	});
-
-	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
 
 	it(`falls back to "<type> <release>" when os.version() returns "unknown" (Bun on macOS 15+)`, async () => {
 		spyOn(os, "version").mockReturnValue("unknown");

@@ -29,6 +29,21 @@ import * as veyUtils from "@veyyon/utils";
 
 const isWindows = process.platform === "win32";
 
+/**
+ * Is this install-directory entry actually a leftover?
+ *
+ * The binary itself is expected, and so is `.<basename>.veyyon-owner`: the updater restamps that
+ * receipt on every successful swap because an install without one is refused by its own
+ * uninstaller. These assertions exist to catch a surviving `.new` download or `.bak` backup, so
+ * counting the receipt as debris made five of them fail on a correct updater. That the receipt is
+ * written at all is proven separately in `cli/update-binary-replace.test.ts`, which is why it is
+ * excluded here rather than asserted: only the swap paths write it, and three of these cases
+ * deliberately abort before the swap.
+ */
+function isLeftover(entry: string): boolean {
+	return entry !== "veyyon" && !entry.endsWith(".veyyon-owner");
+}
+
 beforeAll(async () => {
 	// The success reporter renders `theme.status.success`; without an initialized
 	// theme the happy path crashes before it can report.
@@ -153,7 +168,7 @@ describe.skipIf(isWindows)("installRelease end to end (binary self-update pipeli
 		expect(harness.reported.some(line => line.includes("Checksum verified"))).toBe(true);
 		expect(harness.reported.some(line => line.includes("Updated to 9.9.9"))).toBe(true);
 		// No leftover working files: neither the .new download nor a .bak backup.
-		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(f => f !== "veyyon");
+		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(isLeftover);
 		expect(leftovers).toEqual([]);
 		// The binary and its sidecar were fetched from the pinned release tag.
 		expect(harness.fetched.some(u => u.includes("/releases/download/v9.9.9/"))).toBe(true);
@@ -183,7 +198,7 @@ describe.skipIf(isWindows)("installRelease end to end (binary self-update pipeli
 		await expect(harness.run("9.9.9")).rejects.toThrow(/did not find a file it was pointed at/i);
 
 		expect(await fs.readFile(harness.targetPath, "utf8")).toBe(fakeBinaryScript("1.0.0"));
-		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(f => f !== "veyyon");
+		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(isLeftover);
 		expect(leftovers).toEqual([]);
 		expect(harness.reported.some(line => line.includes("Updated to 9.9.9"))).toBe(false);
 	});
@@ -202,7 +217,7 @@ describe.skipIf(isWindows)("installRelease end to end (binary self-update pipeli
 		await expect(harness.run("9.9.9")).rejects.toThrow(/sha256|sidecar|checksum/i);
 
 		expect(await fs.readFile(harness.targetPath, "utf8")).toBe(fakeBinaryScript("1.0.0"));
-		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(f => f !== "veyyon");
+		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(isLeftover);
 		expect(leftovers).toEqual([]);
 		expect(harness.reported.some(line => line.includes("Checksum verified"))).toBe(false);
 	});
@@ -220,7 +235,7 @@ describe.skipIf(isWindows)("installRelease end to end (binary self-update pipeli
 		await expect(harness.run("9.9.9")).rejects.toThrow(/checksum mismatch/i);
 
 		expect(await fs.readFile(harness.targetPath, "utf8")).toBe(fakeBinaryScript("1.0.0"));
-		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(f => f !== "veyyon");
+		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(isLeftover);
 		expect(leftovers).toEqual([]);
 	});
 
@@ -253,7 +268,7 @@ describe.skipIf(isWindows)("installRelease end to end (binary self-update pipeli
 		expect(await fs.readFile(harness.targetPath, "utf8")).toBe(fakeBinaryScript("1.0.0"));
 		const result = await Bun.$`${harness.targetPath} --version`.quiet();
 		expect(result.text().trim()).toBe("veyyon/1.0.0");
-		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(f => f !== "veyyon");
+		const leftovers = (await fs.readdir(path.dirname(harness.targetPath))).filter(isLeftover);
 		expect(leftovers).toEqual([]);
 	});
 

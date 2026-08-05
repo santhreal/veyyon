@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
@@ -12,7 +10,12 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import { usesCodexTaskPrompt } from "@veyyon/coding-agent/task/prompt-policy";
 import { removeSyncWithRetries } from "@veyyon/utils";
-import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
+import { useTempHome } from "./helpers/temp-home";
+import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
+
+const makePromptModelDir = useTrackedTempDirs("pi-prompt-model-");
+const makePromptModelSessionDir = useTrackedTempDirs("pi-prompt-model-session-");
 
 const EMPTY_TREE = {
 	rootPath: "",
@@ -24,7 +27,6 @@ const EMPTY_TREE = {
 
 async function expectPromptDateFromStartupTimezone(options: {
 	tempDir: string;
-	tempHomeDir: string;
 	timeZone: string;
 	now: string;
 	expectedDate: string;
@@ -63,41 +65,45 @@ it("renders the prompt date in the startup timezone", async () => {
 });
 `,
 	);
-	const child = Bun.spawn([process.execPath, "test", scenarioPath], {
-		cwd: options.tempDir,
-		env: {
-			...process.env,
-			HOME: options.tempHomeDir,
-			TZ: options.timeZone,
-			VEYYON_TEST_NOW: options.now,
-			VEYYON_EXPECTED_DATE: options.expectedDate,
-			VEYYON_REJECTED_DATE: options.rejectedDate,
-		},
-		stdout: "pipe",
-		stderr: "pipe",
+	// A CHILD process gets a fresh `os.homedir()` from whatever HOME it is handed, so the
+	// parent's spy is invisible to it and the hermetic env is what isolates it: throwaway
+	// HOME, config and XDG roots stripped, provider credentials denied. Bun's transpile
+	// cache is handed back explicitly, so re-transpiling the prompt graph here stays warm.
+	const hermetic = hermeticSpawnEnv({
+		TZ: options.timeZone,
+		VEYYON_TEST_NOW: options.now,
+		VEYYON_EXPECTED_DATE: options.expectedDate,
+		VEYYON_REJECTED_DATE: options.rejectedDate,
 	});
-	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(child.stdout).text(),
-		new Response(child.stderr).text(),
-		child.exited,
-	]);
-	expect(`${stdout}\n${stderr}`).toContain("1 pass");
-	expect(exitCode).toBe(0);
+	try {
+		const child = Bun.spawn([process.execPath, "test", scenarioPath], {
+			cwd: options.tempDir,
+			env: hermetic.env,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [stdout, stderr, exitCode] = await Promise.all([
+			new Response(child.stdout).text(),
+			new Response(child.stderr).text(),
+			child.exited,
+		]);
+		expect(`${stdout}\n${stderr}`).toContain("1 pass");
+		expect(exitCode).toBe(0);
+	} finally {
+		hermetic.cleanup();
+	}
 }
 
 describe("system prompt model identifier", () => {
 	let tempDir = "";
-	let tempHomeDir = "";
-	let originalHome: string | undefined;
+
+	// The config root moves with HOME, not just the variable: the assembled prompt reads
+	// the global `AGENTS.md` from a path built on `os.homedir()`.
+	useTempHome();
 
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-prompt-model-"));
-		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-prompt-model-home-"));
-		originalHome = process.env.HOME;
-		process.env.HOME = tempHomeDir;
+		tempDir = makePromptModelDir();
 	});
-
-	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
 
 	it("renders the model identifier into the workstation block when provided", async () => {
 		const { systemPrompt } = await buildSystemPrompt({
@@ -116,7 +122,6 @@ describe("system prompt model identifier", () => {
 	it("renders the prompt date from the startup local timezone rather than UTC", async () => {
 		await expectPromptDateFromStartupTimezone({
 			tempDir,
-			tempHomeDir,
 			timeZone: "America/Los_Angeles",
 			now: "2026-07-01T03:15:00Z",
 			expectedDate: "2026-06-30",
@@ -145,7 +150,7 @@ describe("AgentSession model-change prompt refresh", () => {
 	let session: AgentSession | undefined;
 
 	beforeEach(async () => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-prompt-model-session-"));
+		tempDir = makePromptModelSessionDir();
 		authStorage = await AuthStorage.create(path.join(tempDir, "auth.db"));
 		modelRegistry = new ModelRegistry(authStorage);
 	});

@@ -149,10 +149,17 @@ describe("the source launcher refuses to run against a missing checkout", () => 
 		expect(result.stderr).toContain("src/cli.ts is missing");
 	});
 
+	// Both routes out, because either one may be the wrong advice: the checkout
+	// may still be recoverable in place, or the user may want off source entirely.
+	// This used to assert `sh -s -- --source`, a flag the installer deliberately
+	// dropped because it cloned into `$HOME/.veyyon/src` behind the user's back
+	// (see MANUAL_BUILD in scripts/install.sh), so it asserted a route that no
+	// longer exists in the product.
 	it("gives the reinstall command rather than leaving the user to guess", () => {
 		const bunDir = path.dirname(Bun.which("bun") ?? "/usr/bin");
 		const result = withBrokenCheckout(script => runLauncher(script, [bunDir, "/usr/bin", "/bin"]));
-		expect(result.stderr).toContain("sh -s -- --source");
+		expect(result.stderr).toContain("re-run 'bun run setup' in it");
+		expect(result.stderr).toContain("curl -fsSL https://get.veyyon.dev | sh");
 	});
 
 	it("checks the checkout before trying to regenerate build artifacts", () => {

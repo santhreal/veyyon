@@ -356,6 +356,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		expect(continuation.toolChoice).toBeUndefined();
 	});
 
+	/** Persisted todo state must suppress a duplicate eager reminder after summary recovery resumes. */
 	it("does not re-inject the eager todo reminder when todos survived compaction", async () => {
 		const { session, sessionManager, waitForCall } = await createHarness({
 			"subagent.delegation": "allowed",
@@ -363,11 +364,12 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 			"todo.eager": "preferred",
 		});
 		await session.prompt("refactor the parser across modules");
-		// A surviving todo entry; pin firstKeptEntryId so compaction preserves it in the branch.
-		const todoEntryId = sessionManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, {
+		// Persist the todo normally; forcing it to be the summary cut point retained
+		// the pre-compaction high-usage snapshot and correctly tripped the progress guard.
+		sessionManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, {
 			phases: [{ name: "Work", tasks: [{ content: "do the thing", status: "pending" }] }],
 		});
-		stubCompaction(todoEntryId);
+		stubCompaction();
 
 		const continuationPromise = waitForCall(call => call.messageTexts.some(text => text.includes(CONTINUE_MARKER)));
 		emitHighUsageTurn(session);

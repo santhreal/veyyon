@@ -356,6 +356,101 @@ describe("read → edit seen-line guard", () => {
 		).rejects.toThrow(/never displayed \(it showed/);
 		expect(await Bun.file(file).text()).toBe(content);
 	});
+
+	/**
+	 * The rejection on a column-clipped line must name a re-read that can
+	 * actually clear the gate.
+	 *
+	 * THE LOOP THIS LOCKS OUT. A line wider than the read tool's column cap is
+	 * clipped on display and deliberately withheld from `seenLines`, so an edit
+	 * anchored there is refused. The refusal used to say "re-read the remainder
+	 * with `file:N`" for every truncated reveal, and on this line that command
+	 * cannot succeed: a ranged read applies the SAME column cap, clips the line
+	 * again, withholds it again, and the next attempt is refused identically.
+	 * The tool named a remedy, the remedy reproduced the failure, and nothing in
+	 * the message ever mentioned the one selector that works. Observed live: the
+	 * same edit refused three times in a row against a 1.1KB changelog line.
+	 */
+	it("points a column-clipped anchor at a raw re-read rather than a ranged one", async () => {
+		const file = path.join(tmpDir, "wide-advice.txt");
+		const wide = "a".repeat(4096);
+		const content = `head\n${wide}\nfoot\n`;
+		await Bun.write(file, content);
+		const session = createSession(tmpDir);
+
+		const read = await new ReadTool(session).execute("r1", { path: `${file}:2` });
+		const tag = tagFromOutput(resultText(read));
+
+		let message: string | undefined;
+		try {
+			await executeHashlineSingle(execOptions(`[wide-advice.txt#${tag}]\nSWAP 2.=2:\n+REPLACED`, session));
+		} catch (err) {
+			message = (err as Error).message;
+		}
+
+		expect(message).toMatch(/never displayed \(it showed/);
+		expect(message).toContain("wide-advice.txt:2:raw");
+		// And NOT the ranged form, which is the command that loops here.
+		expect(message).not.toContain("re-read the remainder with `wide-advice.txt:2`");
+		expect(await Bun.file(file).text()).toBe(content);
+	});
+
+	/**
+	 * And the advice works: following it lands the edit.
+	 *
+	 * The case above proves the message CHANGED; this one proves the message is
+	 * TRUE. Without it the guidance could name any plausible-looking command and
+	 * still dead-end, which is exactly the failure being fixed.
+	 */
+	it("lets a raw re-read of the clipped line clear the guard", async () => {
+		const file = path.join(tmpDir, "wide-recover.txt");
+		const wide = "a".repeat(4096);
+		const content = `head\n${wide}\nfoot\n`;
+		await Bun.write(file, content);
+		const session = createSession(tmpDir);
+
+		await new ReadTool(session).execute("r1", { path: `${file}:2` });
+		// The remedy the message names, run verbatim.
+		await new ReadTool(session).execute("r2", { path: `${file}:2:raw` });
+		const reread = await new ReadTool(session).execute("r3", { path: `${file}:1-3` });
+		const tag = tagFromOutput(resultText(reread));
+
+		await executeHashlineSingle(execOptions(`[wide-recover.txt#${tag}]\nSWAP 2.=2:\n+REPLACED`, session));
+
+		expect(await Bun.file(file).text()).toBe("head\nREPLACED\nfoot\n");
+	});
+
+	/**
+	 * A wide line PAST the reveal cap still gets the `:raw` advice.
+	 *
+	 * The width check only looked at the lines it actually revealed, which is the
+	 * first `SEEN_LINE_REVEAL_CAP` of them. Anchor more than that many unseen
+	 * lines with a wide one further down and the message took the over-cap
+	 * branch, naming a plain ranged re-read; running it re-clipped the wide line
+	 * and the next attempt was rejected identically. The two reasons are not
+	 * exclusive, and `:raw` is the one that clears both.
+	 */
+	it("names a raw re-read when a wide line sits past the inline reveal cap", async () => {
+		const file = path.join(tmpDir, "wide-far.txt");
+		const lines = Array.from({ length: 120 }, (_, i) => `line ${i + 1}`);
+		lines[60] = "w".repeat(4096);
+		await Bun.write(file, `${lines.join("\n")}\n`);
+		const session = createSession(tmpDir);
+
+		const read = await new ReadTool(session).execute("r1", { path: `${file}:1-5` });
+		const tag = tagFromOutput(resultText(read));
+
+		let message: string | undefined;
+		try {
+			await executeHashlineSingle(execOptions(`[wide-far.txt#${tag}]\nSWAP 10.=110:\n+X`, session));
+		} catch (err) {
+			message = (err as Error).message;
+		}
+
+		expect(message).toMatch(/never displayed \(it showed/);
+		expect(message).toContain(":raw");
+		expect(message).not.toContain("re-read the remainder with `wide-far.txt:10-110`");
+	});
 });
 
 describe("search → edit seen-line guard", () => {

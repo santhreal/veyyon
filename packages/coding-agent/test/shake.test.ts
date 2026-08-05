@@ -221,19 +221,18 @@ describe("AgentSession shake", () => {
 	});
 
 	describe("legacy shake strategy retirement", () => {
-		// The `shake` auto-compaction STRATEGY was retired: `compaction.strategy`
-		// now accepts only `handoff` | `summary`, and the legacy `shake` token
-		// folds into `summary` (compaction-strategy.ts LEGACY_SUMMARY). Auto
-		// compaction therefore dispatches the `context-full` engine action, never a
-		// `shake` action, and never calls AgentSession.shake() on its own. The
-		// manual shake operation (exercised by the suites above) is unaffected.
-		// These lock the retirement so a shake auto-dispatch cannot silently return.
+		// The `shake` auto-compaction strategy was retired. The setting now accepts
+		// only `summary`, and every legacy token folds into it. Automatic compaction
+		// therefore dispatches the `context-full` engine action, never a `shake`
+		// action, and never calls AgentSession.shake() on its own. The manual shake
+		// operation exercised above remains available. These checks lock the retirement
+		// so a shake auto-dispatch cannot silently return.
 
 		it("normalizes the legacy shake strategy token to summary / context-full", () => {
 			expect(normalizeCompactionStrategy("shake")).toBe("summary");
-			// The engine action a threshold run derives from the legacy token is
-			// context-full — the in-place summary path, not a shake.
-			expect(resolveCompactionEngineAction("shake", { reason: "threshold" })).toBe("context-full");
+			// The engine action derived from the legacy token is context-full, the
+			// in-place summary path rather than a shake.
+			expect(resolveCompactionEngineAction("shake")).toBe("context-full");
 		});
 
 		it("dispatches context-full (never a shake action) when the stored strategy is the legacy shake token", async () => {

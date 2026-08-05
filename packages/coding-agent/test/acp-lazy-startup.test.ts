@@ -274,7 +274,10 @@ describe("ACP lazy startup", () => {
 			"subagent.batch": false,
 			"subagent.maxConcurrency": 4,
 			"subagent.maxNestedSpawnDepth": 5,
-			"subagent.agents": { scout: { enabled: true } },
+			"subagent.agents": {
+				scout: { enabled: true },
+				task: { model: "claude-sonnet-4-20250514", effort: "inherit" },
+			},
 			"memory.backend": "local",
 			"memories.enabled": true,
 			"advisor.enabled": true,

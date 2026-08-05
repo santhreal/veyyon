@@ -161,7 +161,7 @@ describe("compaction prefers the current session model over modelRoles.default",
 
 		const result = await session.compact();
 
-		expect(result.summary).toBe("fallback summary");
+		expect(result.summary).toStartWith("fallback summary");
 		expect(compactSpy).toHaveBeenCalledTimes(2);
 		expect(compactSpy.mock.calls.map(([, model]) => `${model.provider}/${model.id}`)).toEqual([
 			`${currentModel.provider}/${currentModel.id}`,

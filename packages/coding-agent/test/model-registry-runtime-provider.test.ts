@@ -231,6 +231,48 @@ describe("ModelRegistry runtime provider registration", () => {
 		expect(configuredRegistry.find(providerName, "shared-runtime-model")?.contextWindow).toBe(32_768);
 	});
 
+	/**
+	 * Provider-scoped CLI refreshes must not execute unrelated extension discovery
+	 * callbacks, because each callback can perform an independent network request.
+	 */
+	test("refreshRuntimeProviders contacts only the requested runtime provider", async () => {
+		let targetCalls = 0;
+		let unrelatedCalls = 0;
+		registry.registerProvider(
+			"target-runtime-provider",
+			{
+				baseUrl: "https://target.example.com/v1",
+				apiKey: "TARGET_KEY",
+				api: "openai-completions",
+				fetchDynamicModels: async () => {
+					targetCalls++;
+					return [{ ...baseModel, id: "target-model" }];
+				},
+			},
+			"ext://runtime",
+		);
+		registry.registerProvider(
+			"unrelated-runtime-provider",
+			{
+				baseUrl: "https://unrelated.example.com/v1",
+				apiKey: "UNRELATED_KEY",
+				api: "openai-completions",
+				fetchDynamicModels: async () => {
+					unrelatedCalls++;
+					return [{ ...baseModel, id: "unrelated-model" }];
+				},
+			},
+			"ext://runtime",
+		);
+
+		await registry.refreshRuntimeProviders("online", "target-runtime-provider");
+
+		expect(targetCalls).toBe(1);
+		expect(unrelatedCalls).toBe(0);
+		expect(registry.find("target-runtime-provider", "target-model")?.id).toBe("target-model");
+		expect(registry.find("unrelated-runtime-provider", "unrelated-model")).toBeUndefined();
+	});
+
 	test("refreshRuntimeProviders times out extension fetchDynamicModels that never resolves", async () => {
 		vi.useFakeTimers();
 		const hangingFetch = Promise.withResolvers<readonly NonNullable<ProviderConfigInput["models"]>[number][]>();

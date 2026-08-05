@@ -796,12 +796,15 @@ describe("AgentSession auto-compaction progress guard", () => {
 		);
 	});
 
-	it("does not restore a length stop after handoff recovery commits", async () => {
-		session.settings.set("compaction.strategy", "handoff");
+	/**
+	 * A committed in-place summary owns incomplete-turn recovery, so the removed
+	 * length-stopped assistant must not be restored before the retry continues.
+	 */
+	it("does not restore a length stop after summary recovery commits", async () => {
 		session.settings.set("contextPromotion.enabled", false);
+		seedPriorTurns();
 		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
 		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
-		const handoffSpy = vi.spyOn(session, "handoff").mockResolvedValue({ document: "handoff document" });
 
 		const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
 		session.subscribe(event => {
@@ -831,9 +834,8 @@ describe("AgentSession auto-compaction progress guard", () => {
 		await compactionDone;
 		await session.waitForIdle();
 
-		expect(promptSpy).toHaveBeenCalledTimes(1);
-		expect(handoffSpy).toHaveBeenCalledTimes(1);
-		expect(continueSpy).not.toHaveBeenCalled();
+		expect(promptSpy).not.toHaveBeenCalled();
+		expect(continueSpy).toHaveBeenCalledTimes(1);
 		expect(sessionManager.getBranch()).not.toContainEqual(
 			expect.objectContaining({
 				type: "message",

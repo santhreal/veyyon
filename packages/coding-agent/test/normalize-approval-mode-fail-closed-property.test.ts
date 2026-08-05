@@ -1,21 +1,23 @@
 /**
- * normalizeApprovalMode: undefined → yolo (product default); known modes + aliases exact;
- * unrecognized non-empty → ask (fail closed, never yolo).
+ * normalizeApprovalMode: undefined → auto (the shipped default); known modes +
+ * aliases exact; unrecognized non-empty → ask (fail closed, never the default).
  */
 import { describe, expect, it } from "bun:test";
 import { normalizeApprovalMode, validateApprovalModeSetting } from "@veyyon/coding-agent/tools/approval";
 
 describe("normalizeApprovalMode fail-closed property", () => {
-	it("undefined maps to yolo default", () => {
-		expect(normalizeApprovalMode(undefined)).toBe("yolo");
+	it("undefined maps to the shipped default", () => {
+		expect(normalizeApprovalMode(undefined)).toBe("auto");
 	});
 
 	const accepted: Array<[string, string]> = [
 		["plan", "plan"],
 		["ask", "ask"],
+		["ask-command", "ask-command"],
+		["auto", "auto"],
 		["always-ask", "ask"],
-		["auto-edit", "auto-edit"],
-		["write", "auto-edit"],
+		["auto-edit", "ask-command"],
+		["write", "ask-command"],
 		["yolo", "yolo"],
 	];
 	for (const [input, want] of accepted) {
@@ -33,7 +35,7 @@ describe("normalizeApprovalMode fail-closed property", () => {
 		});
 	}
 
-	it("no typo maps to yolo except undefined", () => {
+	it("no typo reaches the default; every one lands on ask", () => {
 		for (const t of ["askk", "bogus", "auto-edit ", " plan", "YOLO"]) {
 			expect(normalizeApprovalMode(t)).toBe("ask");
 		}

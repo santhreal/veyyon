@@ -47,10 +47,11 @@ describe("requiresApproval throw and prompt matrix", () => {
 		expect(requiresApproval(tool("e", "exec"), {}, "auto-edit", {}).required).toBe(true);
 	});
 
-	it("read always allowed across modes without throw", () => {
-		for (const mode of ["plan", "ask", "auto-edit", "yolo"] as const) {
-			const r = requiresApproval(tool("read", "read"), {}, mode, {});
-			expect(r.required).toBe(false);
+	it("read runs unasked on every rung above ask, and asks on ask", () => {
+		for (const mode of ["plan", "ask-command", "auto", "yolo"] as const) {
+			expect(requiresApproval(tool("read", "read"), {}, mode, {}).required).toBe(false);
 		}
+		// `ask` is the exception and the point of the rung: it asks about reads too.
+		expect(requiresApproval(tool("read", "read"), {}, "ask", {}).required).toBe(true);
 	});
 });

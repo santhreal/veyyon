@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import { resolveConfiguredModelPatterns, resolveModelOverride } from "@veyyon/coding-agent/config/model-resolver";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getBundledAgent } from "@veyyon/coding-agent/task/agents";
-import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 
 describe("bundled agent parsing", () => {
 	/**
@@ -31,13 +31,15 @@ describe("bundled agent parsing", () => {
 	 * models and changing the subagent model appeared to do nothing. The models now
 	 * come from the Subagents settings area, which inherits the session model when
 	 * unset — so a definition that names a model here is a regression of that bug.
-	 * A thinking level is still fine: it is not a model choice.
+	 * A thinking level is still fine: it is not a model choice. `task` states
+	 * `inherit`, so the subagent runs at whatever effort the resolved subagent
+	 * model already carries rather than being forced onto the `auto` ladder.
 	 */
 	it("ships no model on any bundled agent, so the subagent settings decide", () => {
 		const task = getBundledAgent("task");
 		expect(task).toBeDefined();
 		expect(task?.model).toBeUndefined();
-		expect(task?.thinkingLevel).toBe(AUTO_THINKING);
+		expect(task?.thinkingLevel).toBe(ThinkingLevel.Inherit);
 
 		for (const name of ["scout", "reviewer", "designer", "librarian", "sonic"]) {
 			expect(getBundledAgent(name)?.model, `${name} must not pin a model`).toBeUndefined();

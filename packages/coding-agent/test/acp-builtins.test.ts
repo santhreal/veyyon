@@ -395,7 +395,14 @@ describe("ACP builtin slash commands", () => {
 		expect(output[0]).toContain("persists on disk");
 	});
 
-	it("dump: outputs transcript without sidecar when dumpLlmRequestToTmpDir throws", async () => {
+	/**
+	 * The sidecar is the machine-readable half of what `/dump` promises. It used
+	 * to be dropped in silence, so the operator got a transcript that looked
+	 * complete and then went looking for a file that was never written. The
+	 * transcript must still be emitted (the failure is not fatal), and the reason
+	 * the sidecar is missing must be stated.
+	 */
+	it("dump: reports the reason when dumpLlmRequestToTmpDir throws, and still outputs the transcript", async () => {
 		const { output, runtime } = createRuntime();
 		runtime.session.formatSessionAsText = () => "Session content here";
 		runtime.session.dumpLlmRequestToTmpDir = async () => {
@@ -405,7 +412,8 @@ describe("ACP builtin slash commands", () => {
 		const result = await executeAcpBuiltinSlashCommand("/dump", runtime);
 
 		expect(result).toEqual({ consumed: true });
-		expect(output[0]).toBe("Session content here");
+		expect(output[0]).toContain("Session content here");
+		expect(output[0]).toContain("LLM request JSON could not be written: convert failed");
 	});
 
 	it("dump: outputs empty-state message when no messages", async () => {
@@ -881,6 +889,30 @@ describe("wave 3 commands", () => {
 		expect(result).toEqual({ consumed: true });
 		expect(compactCalled).toBe(true);
 		expect(output[0]).toContain("Compaction complete.");
+	});
+
+	/**
+	 * `handoff` is not a compaction mode: `/compact` condenses history in place
+	 * and keeps the session, while a handoff replaces it. Reading the token as
+	 * focus text would summarize when the operator asked for a transfer, and
+	 * routing it into compact() would keep the old session either way, so the
+	 * token is refused by name and the refusal states the command that performs
+	 * the transfer. Nothing may compact on the way out.
+	 */
+	it("/compact handoff: refuses the token and names the command that transfers", async () => {
+		const { output, session, runtime } = createRuntime();
+		let compactCalled = false;
+		session.compact = async () => {
+			compactCalled = true;
+		};
+
+		const result = await executeAcpBuiltinSlashCommand("/compact handoff preserve failing gates", runtime);
+
+		expect(result).toEqual({ consumed: true });
+		expect(compactCalled).toBe(false);
+		expect(output[0]).toBe(
+			"`handoff` is not a compaction mode. Use `/handoff [focus instructions]` to transfer context to a new session.",
+		);
 	});
 });
 

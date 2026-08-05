@@ -109,8 +109,10 @@ describe("a rejection message only names values the parser accepts", () => {
 		expect(() => parseArgs(["--mode", "banana"])).toThrow(
 			'Invalid --mode value: "banana". Expected one of: text, json, rpc, acp, rpc-ui.',
 		);
+		// Derived, not retyped: the message is built from APPROVAL_MODE_VALUES, so
+		// a literal sentence here would just be a second copy free to drift.
 		expect(() => parseArgs(["--approval-mode", "nonsense"])).toThrow(
-			'Invalid --approval-mode value: "nonsense". Expected one of: plan, ask, auto-edit, yolo, always-ask, write.',
+			`Invalid --approval-mode value: "nonsense". Expected one of: ${APPROVAL_MODE_VALUES.join(", ")}.`,
 		);
 		expect(() => parseArgs(["--thinking", "banana"])).toThrow(
 			'Invalid --thinking value: "banana". Expected one of: off, auto, minimal, low, medium, high, xhigh, max.',

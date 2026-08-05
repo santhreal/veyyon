@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -23,6 +23,7 @@ function createIsolatedSkillsSettings(): Settings {
 
 describe("createAgentSession skills option", () => {
 	let tempDir: string;
+	let userAgentDir: string;
 	let nativeUserSkillsDir: string;
 	let tempHomeDir = "";
 	let originalHome: string | undefined;
@@ -66,10 +67,19 @@ describe("createAgentSession skills option", () => {
 		originalAgentDir = getAgentDir();
 		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-sdk-home-"));
 		process.env.HOME = tempHomeDir;
+		// The env var alone is decoration. Bun fixes `os.homedir()` at process start, and the
+		// foreign-config scan resolves `~/.claude/skills` from it, so the "a Claude home skill
+		// must never load" case below was asserting against the DEVELOPER's `~/.claude` and
+		// passing because the fixture name happened not to be installed there. The spy is what
+		// makes that case measure the loader.
+		spyOn(os, "homedir").mockReturnValue(tempHomeDir);
+		// Isolation proven, not intended: the resolver has to agree before any test body runs.
+		expect(os.homedir()).toBe(tempHomeDir);
 		// Skills load only from the active profile's agent skills dir. Point the
 		// agent dir at the temp home and author the test skill there.
-		const userAgentDir = path.join(tempHomeDir, ".veyyon", "agent");
+		userAgentDir = path.join(tempHomeDir, ".veyyon", "agent");
 		setAgentDir(userAgentDir);
+		expect(getAgentDir().startsWith(tempHomeDir)).toBe(true);
 		nativeUserSkillsDir = path.join(userAgentDir, "skills");
 		const testSkillDir = path.join(nativeUserSkillsDir, "test-skill");
 		fs.mkdirSync(testSkillDir, { recursive: true });
@@ -114,6 +124,7 @@ Loaded via symbolic link.
 			await session.dispose();
 		}
 		setAgentDir(originalAgentDir);
+		spyOn(os, "homedir").mockRestore();
 		cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome }))();
 		restoreSettingsTestState(globals);
 		globals = undefined;
@@ -122,7 +133,7 @@ Loaded via symbolic link.
 	it("should discover skills by default and expose them on session.skills", async () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
-			agentDir: tempDir,
+			agentDir: userAgentDir,
 			sessionManager: SessionManager.inMemory(),
 			modelRegistry: sharedModelRegistry,
 			settings: createIsolatedSkillsSettings(),
@@ -137,7 +148,7 @@ Loaded via symbolic link.
 	it("should discover skills when skill directory is a symlink", async () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
-			agentDir: tempDir,
+			agentDir: userAgentDir,
 			sessionManager: SessionManager.inMemory(),
 			modelRegistry: sharedModelRegistry,
 			settings: createIsolatedSkillsSettings(),
@@ -166,7 +177,7 @@ Loaded via symbolic link.
 
 		const { session } = await createAgentSession({
 			cwd: tempDir,
-			agentDir: tempDir,
+			agentDir: userAgentDir,
 			sessionManager: SessionManager.inMemory(),
 			modelRegistry: sharedModelRegistry,
 			settings: createIsolatedSkillsSettings(),
@@ -181,7 +192,7 @@ Loaded via symbolic link.
 	it("should have empty skills when options.skills is empty array (--no-skills)", async () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,
-			agentDir: tempDir,
+			agentDir: userAgentDir,
 			sessionManager: SessionManager.inMemory(),
 			modelRegistry: sharedModelRegistry,
 			skills: [], // Explicitly empty - like --no-skills
@@ -208,7 +219,7 @@ Loaded via symbolic link.
 
 		const { session } = await createAgentSession({
 			cwd: tempDir,
-			agentDir: tempDir,
+			agentDir: userAgentDir,
 			sessionManager: SessionManager.inMemory(),
 			modelRegistry: sharedModelRegistry,
 			skills: [customSkill],

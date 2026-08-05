@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 type AcpProc = Bun.Subprocess<"pipe", "pipe", "pipe">;
 
@@ -110,26 +111,31 @@ describe("ACP stdout hygiene", () => {
 		await fs.promises.mkdir(xdg, { recursive: true });
 		await fs.promises.mkdir(agentDir, { recursive: true });
 
-		// NOTE: we intentionally do NOT override HOME. Bun keys its transpile
-		// cache at `$HOME/.bun/install/cache`; pointing HOME at a fresh tmp
-		// dir forces a full re-transpile of the CLI's module graph on every
-		// run (~12s cold vs ~0.4s warm). VEYYON_CONFIG_DIR redirects the whole
-		// config root (XDG is ignored once an agent-dir override is set) and
-		// VEYYON_CODING_AGENT_DIR isolates the agent state.
+		// The child gets a throwaway HOME, so `os.homedir()` inside it cannot name the
+		// developer's tree at all. This suite used to keep the real HOME on purpose,
+		// because Bun's transpile cache lives at `$HOME/.bun/install/cache` and a fresh
+		// HOME meant re-transpiling the whole CLI graph (~12s cold against ~0.4s warm).
+		// `hermeticSpawnEnv` now hands that one cache back through `BUN_INSTALL` and
+		// `BUN_INSTALL_CACHE_DIR`, so the run stays warm while every config, credential
+		// and profile path still resolves inside `root`.
+		//
+		// `VEYYON_CONFIG_DIR` is joined onto the CHILD's `os.homedir()`, which is the temp
+		// home, so the relative value is computed against that and not against ours.
+		const hermetic = hermeticSpawnEnv({
+			XDG_DATA_HOME: xdg,
+			XDG_CONFIG_HOME: xdg,
+			VEYYON_CODING_AGENT_DIR: agentDir,
+			VEYYON_NO_TITLE: "1",
+			NO_COLOR: "1",
+		});
+		cleanupRoots.push(hermetic.home);
+		hermetic.env.VEYYON_CONFIG_DIR = path.relative(hermetic.home, path.join(root, "config"));
 		const proc = Bun.spawn(["bun", cliEntry, "acp"], {
 			cwd: repoRoot,
 			stdin: "pipe",
 			stdout: "pipe",
 			stderr: "pipe",
-			env: {
-				...process.env,
-				XDG_DATA_HOME: xdg,
-				XDG_CONFIG_HOME: xdg,
-				VEYYON_CONFIG_DIR: path.relative(os.homedir(), path.join(root, "config")),
-				VEYYON_CODING_AGENT_DIR: agentDir,
-				VEYYON_NO_TITLE: "1",
-				NO_COLOR: "1",
-			},
+			env: hermetic.env,
 		});
 		activeProc = proc;
 

@@ -442,40 +442,47 @@ describe("AsyncJobManager", () => {
 describe("AsyncJobManager smart poll-wait escalation", () => {
 	const newManager = () => new AsyncJobManager({ onJobComplete: async () => {} });
 
-	test("first poll waits the ladder floor", () => {
+	/**
+	 * A blocked poll still gets an early hang checkpoint without spending
+	 * model turns on five- and ten-second waiting frames.
+	 */
+	test("first poll waits thirty seconds", () => {
 		const m = newManager();
-		expect(m.nextPollWaitMs("Main", 1_000)).toBe(5_000);
-		// A fresh owner also starts at the floor.
-		expect(m.nextPollWaitMs("Other", 1_000)).toBe(5_000);
+		expect(m.nextPollWaitMs("Main", 1_000)).toBe(30_000);
+		expect(m.nextPollWaitMs("Other", 1_000)).toBe(30_000);
 	});
 
-	test("back-to-back polls climb the ladder to the top rung", () => {
+	/**
+	 * Locks out a cache-expiry regression where the adaptive top rung reached
+	 * five minutes before the next provider request could begin.
+	 */
+	test("back-to-back polls stay below the five-minute prompt-cache boundary", () => {
 		const m = newManager();
 		const owner = "Main";
 		const t = 1_000;
 		const waits: number[] = [];
 		for (let i = 0; i < 6; i++) {
-			// Same timestamp every time → zero gap → always escalates.
+			// Same timestamp every time: zero gap always escalates.
 			waits.push(m.nextPollWaitMs(owner, t));
 			m.recordPollWaitEnd(owner, t);
 		}
-		// Climbs the rungs, then saturates at the top.
-		expect(waits).toEqual([5_000, 10_000, 30_000, 60_000, 300_000, 300_000]);
+		expect(waits).toEqual([30_000, 240_000, 240_000, 240_000, 240_000, 240_000]);
+		expect(Math.max(...waits)).toBeLessThan(5 * 60_000);
 	});
 
 	test("a quiet gap of a minute resets back to the floor", () => {
 		const m = newManager();
 		const owner = "Main";
 
-		expect(m.nextPollWaitMs(owner, 0)).toBe(5_000);
+		expect(m.nextPollWaitMs(owner, 0)).toBe(30_000);
 		m.recordPollWaitEnd(owner, 0);
 
-		// Still within the reset window (just under a minute) → keeps climbing.
-		expect(m.nextPollWaitMs(owner, 59_999)).toBe(10_000);
+		// Still within the reset window: climb to the cache-safe heartbeat.
+		expect(m.nextPollWaitMs(owner, 59_999)).toBe(240_000);
 		m.recordPollWaitEnd(owner, 60_000);
 
 		// A full minute without polling resets the climb to the floor.
-		expect(m.nextPollWaitMs(owner, 120_000)).toBe(5_000);
+		expect(m.nextPollWaitMs(owner, 120_000)).toBe(30_000);
 	});
 
 	test("escalation is tracked independently per owner", () => {
@@ -488,8 +495,43 @@ describe("AsyncJobManager smart poll-wait escalation", () => {
 		m.recordPollWaitEnd("A", t);
 
 		// A fresh owner starts at the floor regardless of A's escalation.
-		expect(m.nextPollWaitMs("B", t)).toBe(5_000);
-		// A keeps climbing from where it left off.
-		expect(m.nextPollWaitMs("A", t)).toBe(30_000);
+		expect(m.nextPollWaitMs("B", t)).toBe(30_000);
+		// A remains at the cache-safe heartbeat ceiling.
+		expect(m.nextPollWaitMs("A", t)).toBe(240_000);
+	});
+});
+
+describe("AsyncJobManager watch windows", () => {
+	/**
+	 * BUG: a watch suppresses `#enqueueDelivery` outright, so a job that finished
+	 * inside the window had no delivery anywhere. `unwatchJobs` only forgot the
+	 * watch, and `resumeDeliveries` could not see one, so the child's report existed
+	 * only inside the return value of whatever installed the watch. Any path that
+	 * dropped that value dropped the subagent's entire output, permanently, with
+	 * nothing left to recover it from.
+	 *
+	 * If this regresses: `completions` stays empty and the queue stays at 0.
+	 */
+	test("lifting a watch re-arms the delivery of a job that finished inside the window", async () => {
+		const completions: Array<{ jobId: string; text: string }> = [];
+		const manager = new AsyncJobManager({
+			onJobComplete: async (jobId, text) => {
+				completions.push({ jobId, text });
+			},
+		});
+		const gate = Promise.withResolvers<string>();
+		const jobId = manager.register("task", "child", () => gate.promise);
+
+		manager.watchJobs([jobId]);
+		gate.resolve("the child's whole report");
+		await manager.waitForAll();
+		// Suppressed while watched: nothing queued, nothing delivered.
+		expect(completions).toEqual([]);
+		expect(manager.getDeliveryState().queued).toBe(0);
+
+		manager.unwatchJobs([jobId]);
+		await manager.drainDeliveries({ timeoutMs: 2_000 });
+
+		expect(completions).toEqual([{ jobId, text: "the child's whole report" }]);
 	});
 });

@@ -22,7 +22,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import type { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
@@ -31,8 +31,13 @@ import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { TempDir } from "@veyyon/utils";
+import { stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const TEST_CWD = path.resolve("agents-dashboard-cwd");
+/** The conversation the harness's session manager reports; the card's roster scope. */
+const TEST_SESSION_ID = "session-under-test";
+/** Rendered rows carry colour; the assertions are about the names, not the escapes. */
+const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 
 interface Harness {
 	controller: SelectorController;
@@ -80,7 +85,11 @@ function harness(registry: AgentRegistry, sessionFile: string | null = null): Ha
 			focusedAgents.push(id);
 		},
 		session: { getToolByName: () => undefined, extensionRunner: undefined },
-		sessionManager: { getCwd: () => TEST_CWD, getSessionFile: () => sessionFile },
+		sessionManager: {
+			getCwd: () => TEST_CWD,
+			getSessionFile: () => sessionFile,
+			getSessionId: () => TEST_SESSION_ID,
+		},
 		effectiveHideThinkingBlock: false,
 		proseOnlyThinking: false,
 	};
@@ -286,5 +295,58 @@ describe("Mounting and closing the card", () => {
 		});
 
 		expect(repaints).toBe(0);
+	});
+});
+
+describe("The roster scope the controller hands the card", () => {
+	/**
+	 * The card is opened for THIS conversation: the controller passes the session
+	 * manager's session id as the dashboard's `scope`, and the roster is filtered
+	 * to it. The registry is process-global, so a card built without that scope
+	 * listed the subagents of every conversation the process had driven — rows an
+	 * operator could select and hand the main view to, belonging to a transcript
+	 * this session had already replaced. The in-scope row is asserted present in
+	 * the same test, so a scope that filters everything away fails here instead of
+	 * looking like the fix.
+	 */
+	it("scopes the roster to the session id, hiding another conversation's subagents", () => {
+		const registry = new AgentRegistry();
+		registry.register({
+			id: "Mine",
+			displayName: "reviewer",
+			kind: "sub",
+			parentId: MAIN_AGENT_ID,
+			scope: TEST_SESSION_ID,
+			session: null,
+			sessionFile: null,
+			status: "running",
+		});
+		registry.register({
+			id: "Theirs",
+			displayName: "scout",
+			kind: "sub",
+			parentId: MAIN_AGENT_ID,
+			scope: "a-conversation-this-session-replaced",
+			session: null,
+			sessionFile: null,
+			status: "running",
+		});
+		// The open-unfold animation renders the card blank on its first frame, and
+		// this test reads the rows, not the animation.
+		settings.set("display.transitions", "off");
+		// The card sizes itself against the real terminal, which has no TTY under a
+		// test runner; without a stubbed geometry it renders blank rows.
+		const geometry = stubStdoutGeometry({ columns: 120, rows: 40 });
+		const h = harness(registry);
+		h.controller.showAgentsDashboard(new SessionObserverRegistry());
+		const dashboard = h.shown();
+		if (!dashboard) throw new Error("the card was not mounted");
+
+		const rendered = dashboard.render(120).join("\n").replace(ANSI_PATTERN, "");
+
+		expect(rendered).toContain("reviewer");
+		expect(rendered).not.toContain("scout");
+		dashboard.dispose();
+		geometry.restore();
 	});
 });

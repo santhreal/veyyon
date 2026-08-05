@@ -49,9 +49,17 @@ describe("setup splash — the sun-bloom launch signature", () => {
 		expect(late).toContain(wordmark);
 	});
 
-	it("always shows the skip hint and never scrolls the body sideways", () => {
-		const out = renderSetupSplash(W, H, SETUP_SPLASH_MS * 0.3);
-		expect(strip(out.join("\n"))).toContain("press enter to skip");
+	/**
+	 * The splash must always name both keys it answers to. This assertion pinned
+	 * "press enter to skip", which the splash stopped rendering when the hint was
+	 * rewritten to name Enter and Esc separately (Esc used to START setup here,
+	 * so the one key a user reaches for to get out walked them further in). It
+	 * asserted removed copy, so it failed on every run and pinned nothing.
+	 */
+	it("always names both keys the splash answers to", () => {
+		const out = strip(renderSetupSplash(W, H, SETUP_SPLASH_MS * 0.3).join("\n"));
+		expect(out).toContain("enter start setup");
+		expect(out).toContain("esc skip setup");
 	});
 
 	it("is deterministic — identical inputs give byte-identical frames", () => {

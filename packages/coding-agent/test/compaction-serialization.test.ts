@@ -19,8 +19,8 @@ describe("serializeConversation", () => {
 		const result = serializeConversation(messages);
 
 		expect(result).toContain("[Tool Result]:");
-		expect(result).toContain("[... 3000 more characters truncated]");
-		expect(result).toContain("x".repeat(2000));
+		expect(result).toContain("[... middle omitted; tail preserved ...]");
+		expect(result).toContain("x".repeat(900));
 		expect(result).not.toContain("x".repeat(3000));
 	});
 

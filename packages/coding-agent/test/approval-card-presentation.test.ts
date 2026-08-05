@@ -3,14 +3,23 @@ import { APPROVAL_DIALOG_OPTIONS, APPROVAL_SELECT_OPTIONS } from "../src/extensi
 import { formatApprovalCard } from "../src/tools/approval";
 
 describe("interactive permission card presentation", () => {
-	/** A routine prompt must state its one-call scope before the operator chooses. */
-	it("states tool identity and one-call scope without inventing persistent approval", () => {
+	/**
+	 * A routine prompt states its one-call scope before the operator chooses, and
+	 * the choices offered are the two one-call answers plus their session-scoped
+	 * twins. The session rows are what make the `ask` and `ask-command` rungs
+	 * survivable: a run touching twenty files would otherwise ask twenty times.
+	 * Nothing here writes a persistent policy; that stays an explicit act in
+	 * `/settings`.
+	 */
+	it("states tool identity and one-call scope, offering session grants but no persistent policy", () => {
 		expect(formatApprovalCard({ name: "bash" }, {})).toBe(
 			"## Permission required\n**Tool:** `bash`\n**Scope:** This call only",
 		);
 		expect(APPROVAL_SELECT_OPTIONS).toEqual([
-			{ label: "Approve", description: "Run this call once. No policy is saved." },
+			{ label: "Approve", description: "Run this call once. Nothing is remembered." },
+			{ label: "Approve for session", description: "Run this and every later call to this tool, until you exit." },
 			{ label: "Deny", description: "Do not run this call." },
+			{ label: "Deny for session", description: "Refuse this and every later call to this tool, until you exit." },
 		]);
 	});
 
