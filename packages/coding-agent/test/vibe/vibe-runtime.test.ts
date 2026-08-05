@@ -334,6 +334,60 @@ describe("vibe session registry", () => {
 	});
 
 	/**
+	 * The master `subagent.enabled` toggle is checked separately from the per-agent
+	 * row, and it must reject with its own message: an operator who turned the
+	 * whole feature off should not be told to go flip a per-agent row that is
+	 * already on.
+	 *
+	 * IF THIS REGRESSES: turning subagents off leaves vibe able to start workers.
+	 */
+	it("rejects a vibe worker when subagents are disabled wholesale", async () => {
+		const executorSpy = vi.spyOn(executorModule, "runSubprocess");
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({
+				"subagent.enabled": false,
+				"subagent.agents": { sonic: { enabled: true } },
+			}),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		await expect(
+			VibeSessionRegistry.global().spawn(session, { cli: "fast", name: "OffVibe", prompt: "Do not start." }),
+		).rejects.toThrow('Cannot start vibe worker "sonic": subagents are disabled in settings.');
+		expect(executorSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * The parent's spawn declaration is a recursion capability, distinct from the
+	 * profile's enabled rows. An agent that may only spawn `task` must not reach a
+	 * vibe worker sideways, and the rejection names what it may actually spawn.
+	 *
+	 * IF THIS REGRESSES: vibe becomes a hole in the spawn allowlist.
+	 */
+	it("rejects a vibe worker the parent's spawn policy does not allow", async () => {
+		const executorSpy = vi.spyOn(executorModule, "runSubprocess");
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "task",
+			asyncJobManager: manager,
+		});
+
+		await expect(
+			VibeSessionRegistry.global().spawn(session, { cli: "fast", name: "UnallowedVibe", prompt: "Do not start." }),
+		).rejects.toThrow('Cannot start vibe worker "sonic". Enabled and allowed agents: task.');
+		expect(executorSpy).not.toHaveBeenCalled();
+	});
+
+	/**
 	 * Prevents Vibe from drifting from task/eval policy by pinning the exact
 	 * model and effort fields handed to its production executor.
 	 */
@@ -644,6 +698,56 @@ describe("vibe session registry", () => {
 
 		followUpGate.resolve();
 		await manager.getJob("Fast-t2")!.promise;
+	});
+
+	/**
+	 * `wait` returns the settled turn's result itself, and `unwatchJobs` re-arms
+	 * the async delivery of anything that settled inside the watch window. The
+	 * delivery loop reaches `onJobComplete` synchronously, so `wait`'s `finally`
+	 * has to acknowledge BEFORE it unwatches.
+	 *
+	 * IF THIS REGRESSES (the two lines in `wait`'s `finally` swap places): the
+	 * operator is handed the worker's whole report twice, once as this call's
+	 * return value and once as an async job-completion follow-up.
+	 */
+	it("wait does not also deliver the report it returns", async () => {
+		const gate = deferred();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "running",
+			});
+			await gate.promise;
+			AgentRegistry.global().setStatus(options.id, "idle");
+			return makeResult(options.id, { output: "Fast finished." });
+		});
+
+		const pushed: Array<{ jobId: string; text: string }> = [];
+		const manager = new AsyncJobManager({
+			onJobComplete: async (jobId, text) => {
+				pushed.push({ jobId, text });
+			},
+		});
+		managers.push(manager);
+		const session = createSession({ manager });
+		const registry = VibeSessionRegistry.global();
+		const { jobId } = await registry.spawn(session, { cli: "fast", name: "Fast", prompt: "Task A." });
+		await pollUntil(() => AgentRegistry.global().get("Fast") !== undefined);
+
+		const waitPromise = registry.wait(session, { sessions: ["Fast"], timeoutMs: 5000 });
+		gate.resolve();
+		const outcome = await waitPromise;
+
+		expect(outcome.settled.map(entry => entry.jobId)).toEqual([jobId]);
+		expect(outcome.settled[0]!.resultText).toContain("Fast finished.");
+
+		await manager.drainDeliveries({ timeoutMs: 2_000 });
+		// The return value above is the operator's one copy; nothing may follow it.
+		expect(pushed).toEqual([]);
 	});
 
 	it("kill cancels the in-flight turn and releases the worker session", async () => {
