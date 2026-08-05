@@ -257,12 +257,12 @@ describe("set_cwd rule reporting", () => {
 		expect(details.rulesApplied).toEqual([]);
 	});
 
-	it("inlines a deeper rule file without re-inlining the ancestor it overrides", async () => {
+	it("inlines a deeper rule file without re-inlining the ancestor it refines", async () => {
 		// Descending into a subproject that has its own rules. The ancestor still
 		// applies and the model is already following it, so repeating it would spend
 		// tokens restating instructions that never left; only the newly-governing file
-		// is inlined. The ordering promise ("deeper overrides higher") is what makes
-		// that safe.
+		// is inlined. Both files are project scope, so the deeper one refines the
+		// ancestor rather than displacing it, which is what makes that safe.
 		await fs.writeFile(path.join(outer, "AGENTS.md"), "Outer rule: use tabs.");
 		await fs.writeFile(path.join(inner, "AGENTS.md"), "Inner rule: this package uses spaces.");
 

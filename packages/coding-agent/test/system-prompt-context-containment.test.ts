@@ -114,8 +114,10 @@ describe("context-file containment deduplication", () => {
 	});
 
 	/**
-	 * When complete copies occur at multiple prominence levels, only the latest,
-	 * closest path survives so the authoritative copy and its provenance are kept.
+	 * When complete copies occur at two positions in a CALLER-SUPPLIED array, the
+	 * later one survives so the authoritative copy and its provenance are kept.
+	 * An explicit `contextFiles` array carries no scope information, so position is
+	 * the only signal the dedupe has; the loader's own path ranks by scope first.
 	 */
 	it("keeps only the closest copy of identical context", async () => {
 		const content = "Use the repository conventions exactly.";
