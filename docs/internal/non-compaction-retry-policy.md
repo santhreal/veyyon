@@ -20,7 +20,7 @@ Retry and compaction are checked from the same `agent_end` maintenance path, in 
 
 1. A successful `yield` this run (or a pending yield termination) suppresses all retry/continuation; only an active goal still runs `#checkCompaction(...)`.
 2. `#handleEmptyAssistantStop(...)` strips and self-retries empty tool-use stops before anything else.
-3. With an active goal, `#checkCompaction(...)` runs as a **pre-empt** before retry; a deferred handoff / scheduled continuation ends the turn there.
+3. With an active goal, `#checkCompaction(...)` runs as a **pre-empt** before retry; a scheduled continuation ends the turn there.
 4. `#handleUnexpectedAssistantStop(...)` handles anomalous stops.
 5. `#isRetryableReasonlessAbort(...)` retries empty reason-less provider aborts (no model fallback).
 6. A deliberate `aborted` stop settles the turn (no retry, no queued continuations).

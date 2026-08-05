@@ -251,7 +251,8 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `git.enabled` | Enable Git Integration | boolean | `true` | Show git branch, status, and PR information in the TUI and watch repository metadata. |
+| `git.enabled` | Enable Git Integration | boolean | `true` | Show git branch, status, and PR information in the TUI, watch repository metadata, and let the commit nudge read repository state. |
+| `commit.nudgeAfterFiles` | Commit Nudge Threshold | number | `4` | Remind the agent to commit once this many files it edited itself are uncommitted. Counts only files this session changed, never other work already dirty in the tree. 0 turns the reminder off. |
 
 ## Context
 
@@ -275,7 +276,7 @@ veyyon config get compaction.threshold
 | `ttsr.repeatMode` | TTSR Repeat Mode | enum | `once` | How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter. Values: `once`, `after-gap`. |
 | `ttsr.repeatGap` | TTSR Repeat Gap | number | `10` | Messages before a rule can trigger again. A rule may override this in its frontmatter. |
 | `ttsr.builtinRules` | Built-in Rules | boolean | `true` | Load the default rules shipped with the agent (override individually with ttsr.disabledRules). |
-| `ttsr.disabledRules` | Disabled Rules | array | `[]` | Rule names to ignore entirely (applies to bundled defaults and your own rules). |
+| `ttsr.disabledRules` | Rules | array | `[]` | Every rule this project loads, each on or off. Stores only the ones you turn off, so a rule added in a later release arrives on. |
 
 ### Prompt cache
 
@@ -707,4 +708,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-338 settings.
+339 settings.
