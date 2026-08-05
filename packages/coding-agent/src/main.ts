@@ -35,6 +35,7 @@ import { buildInitialMessage } from "./cli/initial-message";
 import { selectSession } from "./cli/session-picker";
 import { announceAutoChdir, applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
+import { missingCredentialsMessage } from "./config/missing-credentials";
 import { ModelRegistry } from "./config/model-registry";
 import { modelResolutionFailureMessage } from "./config/model-resolution-failure";
 import {
@@ -86,6 +87,7 @@ import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
+import { resolveSubagentIdleTtlMs } from "./task/subagent-settings";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import type { LspStartupServerInfo } from "./tools";
 import { decideUpdateNotice, readLastChangelogVersion, writeLastChangelogVersion } from "./utils/changelog";
@@ -1106,7 +1108,7 @@ export async function buildSessionOptions(
 			throw new Error(resolved.error ?? modelResolutionFailureMessage([rolePattern], modelRegistry));
 		}
 		if (!modelRegistry.hasConfiguredAuth(resolved.model)) {
-			throw new Error(`No API key for ${resolved.model.provider}/${resolved.model.id}`);
+			throw new Error(missingCredentialsMessage(resolved.model.provider, resolved.model.id, "--prewalk target"));
 		}
 		options.prewalk = { target: resolved.model, thinkingLevel: resolved.thinkingLevel };
 	}
@@ -1124,7 +1126,7 @@ export async function buildSessionOptions(
 			throw new Error(resolved.error ?? modelResolutionFailureMessage([rolePattern], modelRegistry));
 		}
 		if (!modelRegistry.hasConfiguredAuth(resolved.model)) {
-			throw new Error(`No API key for ${resolved.model.provider}/${resolved.model.id}`);
+			throw new Error(missingCredentialsMessage(resolved.model.provider, resolved.model.id, "--plan-yolo target"));
 		}
 		options.planYolo = { target: resolved.model, thinkingLevel: resolved.thinkingLevel };
 	}
@@ -1774,7 +1776,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				settings: settingsInstance,
 				enableLsp: sessionOptions.enableLsp ?? true,
 			}),
-			Math.trunc(Number(settingsInstance.get("subagent.idleTtlMs") ?? 420_000) || 0),
+			resolveSubagentIdleTtlMs(settingsInstance),
 		);
 		if (parsedArgs.apiKey && !sessionOptions.model && session.model) {
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);
