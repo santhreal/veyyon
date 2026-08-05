@@ -23,6 +23,17 @@ export interface LoadMCPConfigsOptions {
 	filterExa?: boolean;
 	/** Whether to filter out browser MCP servers when builtin browser tool is enabled (default: false) */
 	filterBrowser?: boolean;
+	/**
+	 * WHICH profile owns the user scope: `<agentDir>/mcp.json` for the servers,
+	 * and the same file for the disable/force-enable lists. Default: the
+	 * process-active profile, applied by `loadCapability` and by
+	 * `getMCPConfigPath`, so an existing caller is unchanged.
+	 *
+	 * Both reads take it together on purpose. Scoping only the server list would
+	 * apply profile A's disable list to profile B's servers, so a server the
+	 * operator disabled would come back.
+	 */
+	agentDir?: string;
 }
 
 /** Result of loading MCP configs */
@@ -114,7 +125,7 @@ export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOpt
 	const filterBrowser = options?.filterBrowser ?? false;
 
 	// Load MCP servers via capability system
-	const result = await loadCapability<MCPServer>(mcpCapability.id, { cwd });
+	const result = await loadCapability<MCPServer>(mcpCapability.id, { cwd, agentDir: options?.agentDir });
 
 	// Filter out project-level configs if disabled
 	const servers = enableProjectConfig
@@ -123,7 +134,7 @@ export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOpt
 
 	// Load user-level disable/force-enable lists. The denylist always wins; the
 	// allowlist overrides a non-writable source config's `enabled: false`.
-	const userPath = getMCPConfigPath("user", cwd);
+	const userPath = getMCPConfigPath("user", cwd, options?.agentDir);
 	const [disabledServers, forcedEnabled] = await Promise.all([
 		readDisabledServers(userPath).then(list => new Set(list)),
 		readEnabledServers(userPath).then(list => new Set(list)),

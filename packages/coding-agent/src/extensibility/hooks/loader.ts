@@ -216,8 +216,17 @@ export async function loadHooks(paths: string[], cwd: string): Promise<LoadHooks
  * 3. Other editor/IDE configurations
  *
  * Plus any explicitly configured paths from settings.
+ *
+ * `agentDir` names WHICH profile supplies the user scope
+ * (`<agentDir>/hooks/{pre,post}` and that profile's plugin roots). It defaults
+ * inside `loadCapability` (`options.agentDir ?? getAgentDir()`), so omitting it
+ * still resolves the process-active profile. Pass it whenever you have one.
  */
-export async function discoverAndLoadHooks(configuredPaths: string[], cwd: string): Promise<LoadHooksResult> {
+export async function discoverAndLoadHooks(
+	configuredPaths: string[],
+	cwd: string,
+	agentDir?: string,
+): Promise<LoadHooksResult> {
 	const allPaths: string[] = [];
 	const seen = new Set<string>();
 
@@ -233,7 +242,7 @@ export async function discoverAndLoadHooks(configuredPaths: string[], cwd: strin
 	};
 
 	// 1. Discover hooks via capability API
-	const discovered = await loadCapability<Hook>(hookCapability.id, { cwd });
+	const discovered = await loadCapability<Hook>(hookCapability.id, { cwd, agentDir });
 	addPaths(discovered.items.map(hook => hook.path));
 
 	// 2. Explicitly configured paths (can override/add)

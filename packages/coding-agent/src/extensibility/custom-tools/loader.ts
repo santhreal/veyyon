@@ -11,6 +11,7 @@ import { type } from "arktype";
 import * as zodModule from "zod/v4";
 import { toolCapability } from "../../capability/tool";
 import { type DiscoveredCustomTool, loadCapability } from "../../discovery";
+import { pluginsRootFor } from "../../discovery/helpers";
 import type { ExecOptions } from "../../exec/exec";
 import { execCommand } from "../../exec/exec";
 import type { HookUIContext } from "../../extensibility/hooks/types";
@@ -243,8 +244,20 @@ export async function loadCustomTools(
  *
  * @param configuredPaths - Explicit paths from settings.json and CLI --tool flags
  * @param cwd - Current working directory
+ * @param agentDir - WHICH profile supplies the user scope: `<agentDir>/tools`
+ *   through the capability layer, and that profile's installed plugins through
+ *   {@link pluginsRootFor}. Defaults to the process-active profile in both
+ *   places (`loadCapability` applies `?? getAgentDir()`, and `pluginsRootFor`
+ *   returns undefined for the active dir so the plugin scan keeps its own
+ *   default), so omitting it is unchanged behavior. Pass it whenever you have
+ *   one: dropping it handed a session rooted in another agent dir the booted
+ *   profile's custom tools.
  */
-export async function discoverCustomToolPaths(configuredPaths: string[], cwd: string): Promise<ToolPathWithSource[]> {
+export async function discoverCustomToolPaths(
+	configuredPaths: string[],
+	cwd: string,
+	agentDir?: string,
+): Promise<ToolPathWithSource[]> {
 	const allPathsWithSources: ToolPathWithSource[] = [];
 	const seen = new Set<string>();
 
@@ -258,7 +271,7 @@ export async function discoverCustomToolPaths(configuredPaths: string[], cwd: st
 	};
 
 	// 1. Discover tools via capability system (user + project from all providers)
-	const discoveredTools = await loadCapability<DiscoveredCustomTool>(toolCapability.id, { cwd });
+	const discoveredTools = await loadCapability<DiscoveredCustomTool>(toolCapability.id, { cwd, agentDir });
 	for (const tool of discoveredTools.items) {
 		addPath(tool.path, {
 			provider: tool._source.provider,
@@ -268,7 +281,7 @@ export async function discoverCustomToolPaths(configuredPaths: string[], cwd: st
 	}
 
 	// 2. Plugin tools: profile plugins/node_modules/*/
-	for (const pluginPath of await getAllPluginToolPaths(cwd)) {
+	for (const pluginPath of await getAllPluginToolPaths(cwd, agentDir ? pluginsRootFor(agentDir) : undefined)) {
 		addPath(pluginPath, { provider: "plugin", providerName: "Plugin", level: "user" });
 	}
 
@@ -293,6 +306,8 @@ export async function discoverCustomToolPaths(configuredPaths: string[], cwd: st
  * @param configuredPaths - Explicit paths from settings.json and CLI --tool flags
  * @param cwd - Current working directory
  * @param builtInToolNames - Names of built-in tools to check for conflicts
+ * @param agentDir - WHICH profile supplies the user scope; see
+ *   {@link discoverCustomToolPaths}.
  */
 export async function discoverAndLoadCustomTools(
 	configuredPaths: string[],
@@ -304,7 +319,8 @@ export async function discoverAndLoadCustomTools(
 		apply(reason: string): Promise<AgentToolResult<unknown>>;
 		reject?(reason: string): Promise<AgentToolResult<unknown> | undefined>;
 	}) => void,
+	agentDir?: string,
 ) {
-	const pathsWithSources = await discoverCustomToolPaths(configuredPaths, cwd);
+	const pathsWithSources = await discoverCustomToolPaths(configuredPaths, cwd, agentDir);
 	return loadCustomTools(pathsWithSources, cwd, builtInToolNames, pushPendingAction);
 }
