@@ -536,11 +536,8 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		return prompt.render(toolsPrompts["tools/bash"].text, {
 			asyncEnabled: this.#asyncEnabled,
 			autoBackgroundEnabled: this.#autoBackgroundEnabled,
-			autoBackgroundThresholdSeconds: Math.max(0, Math.floor(this.#autoBackgroundThresholdMs / 1000)),
 			stallDetectionEnabled: this.#stallDetectionEnabled,
 			stallSeconds: Math.max(0, Math.floor(this.#stallMs / 1000)),
-			hasAstGrep: isToolActive("ast_grep", this.session.settings.get("astGrep.enabled")),
-			hasAstEdit: isToolActive("ast_edit", this.session.settings.get("astEdit.enabled")),
 			hasGrep: isToolActive("grep", this.session.settings.get("grep.enabled")),
 			hasGlob: isToolActive("glob", this.session.settings.get("glob.enabled")),
 			hasRead: isToolActive("read", true),

@@ -204,8 +204,6 @@ function renderDescription(
 	}));
 	return prompt.render(toolsPrompts["tools/task"].text, {
 		agents: renderedAgents,
-		agentNames: renderedAgents.map(agent => agent.name),
-		hasReadOnlyAgents: renderedAgents.some(agent => agent.readOnly),
 		spawningDisabled: renderedAgents.length === 0,
 		defaultAgent: catalog.defaultAgent,
 		hasDefaultAgent: catalog.defaultAgent !== undefined,
