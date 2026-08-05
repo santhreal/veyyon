@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { runConfigCommand, suggestSettingPaths } from "@veyyon/coding-agent/cli/config-cli";
+import { EXIT_USAGE } from "@veyyon/coding-agent/cli/exit-codes";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
@@ -101,7 +102,10 @@ describe("config CLI schema coverage", () => {
 				flags: { json: true },
 			}),
 		).rejects.toThrow("process.exit");
-		expect(exitSpy).toHaveBeenCalledWith(1);
+		// EXIT_USAGE: a malformed value on the command line cannot succeed on a
+		// retry, so it is the same class as an unrecognized flag, not a runtime
+		// failure a caller should loop on.
+		expect(exitSpy).toHaveBeenCalledWith(EXIT_USAGE);
 		expect(console.error).toHaveBeenCalledWith(
 			expect.stringContaining("Provider request limits must be positive numbers: openai, anthropic"),
 		);

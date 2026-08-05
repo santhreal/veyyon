@@ -61,6 +61,7 @@ export const PLUGIN_ACTIONS: PluginAction[] = [
 ];
 
 import { classifyInstallTarget } from "./classify-install-target";
+import { EXIT_USAGE } from "./exit-codes";
 
 export { classifyInstallTarget } from "./classify-install-target";
 
@@ -131,7 +132,7 @@ async function handleMarketplace(args: string[], _flags: PluginCommandArgs["flag
 			const source = args[1];
 			if (!source) {
 				console.error(chalk.red(`Usage: ${APP_NAME} plugin marketplace add <source>`));
-				process.exit(1);
+				process.exit(EXIT_USAGE);
 			}
 			try {
 				await manager.addMarketplace(source);
@@ -147,7 +148,7 @@ async function handleMarketplace(args: string[], _flags: PluginCommandArgs["flag
 			const name = args[1];
 			if (!name) {
 				console.error(chalk.red(`Usage: ${APP_NAME} plugin marketplace remove <name>`));
-				process.exit(1);
+				process.exit(EXIT_USAGE);
 			}
 			try {
 				await manager.removeMarketplace(name);
@@ -178,7 +179,7 @@ async function handleMarketplace(args: string[], _flags: PluginCommandArgs["flag
 			if (subcommand !== "list") {
 				console.error(chalk.red(`Unknown marketplace subcommand: ${subcommand}`));
 				console.error(chalk.dim("Valid subcommands: add, remove, update, list"));
-				process.exit(1);
+				process.exit(EXIT_USAGE);
 			}
 			try {
 				const marketplaces = await manager.listMarketplaces();
@@ -274,7 +275,7 @@ async function handleInstall(
 		console.error(chalk.dim(`  ${APP_NAME} plugin install github:user/repo`));
 		console.error(chalk.dim(`  ${APP_NAME} plugin install https://github.com/user/repo#v1.0`));
 		console.error(chalk.dim(`  ${APP_NAME} plugin install ./path/to/local/plugin`));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	// Build known marketplace set for classification
@@ -387,7 +388,7 @@ async function handleUninstall(
 ): Promise<void> {
 	if (packages.length === 0) {
 		console.error(chalk.red(`Usage: ${APP_NAME} plugin uninstall <package> ...`));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	// For uninstall, check the installed plugins registry directly.
@@ -480,7 +481,7 @@ async function handleList(manager: PluginManager, flags: { json?: boolean }): Pr
 async function handleLink(manager: PluginManager, paths: string[], flags: { json?: boolean }): Promise<void> {
 	if (paths.length === 0) {
 		console.error(chalk.red(`Usage: ${APP_NAME} plugin link <path>`));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	try {
@@ -545,7 +546,7 @@ async function handleFeatures(
 		console.error(
 			chalk.red(`Usage: ${APP_NAME} plugin features <plugin> [--enable f1,f2] [--disable f1] [--set f1,f2]`),
 		);
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const pluginName = args[0];
@@ -638,7 +639,7 @@ async function handleConfig(
 		console.error(
 			chalk.red(`Usage: ${APP_NAME} plugin config <list|get|set|delete|validate> <plugin> [key] [value]`),
 		);
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const [subcommand, pluginName, key, ...valueArgs] = args;
@@ -753,7 +754,7 @@ async function handleConfig(
 		default:
 			console.error(chalk.red(`Unknown config subcommand: ${subcommand}`));
 			console.error(chalk.dim("Valid subcommands: list, get, set, delete, validate"));
-			process.exit(1);
+			process.exit(EXIT_USAGE);
 	}
 }
 
@@ -819,7 +820,7 @@ async function handleSetEnabled(
 
 	if (plugins.length === 0) {
 		console.error(chalk.red(`Usage: ${APP_NAME} plugin ${action} <plugin> ...`));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const mktMgr = await makeMarketplaceManager();

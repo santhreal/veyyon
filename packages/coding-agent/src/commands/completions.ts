@@ -5,7 +5,7 @@
  * (see `cli/completion-gen.ts`), so it never drifts from the actual CLI surface.
  */
 import { APP_ALIAS, APP_NAME, errorMessage, VERSION } from "@veyyon/utils";
-import { Args, type CliConfig, Command, type CommandCtor, Flags } from "@veyyon/utils/cli";
+import { Args, CLI_EXIT_USAGE, type CliConfig, Command, type CommandCtor, Flags } from "@veyyon/utils/cli";
 import { buildSpec, generateCompletion, type Shell } from "../cli/completion-gen";
 import { commands } from "../cli-commands";
 
@@ -53,7 +53,7 @@ export default class Completions extends Command {
 		} catch (error) {
 			process.stderr.write(`Error: ${errorMessage(error)}\n`);
 			process.stderr.write(`Usage: ${APP_NAME} completions <${SHELLS.join("|")}>\n`);
-			process.exitCode = 1;
+			process.exitCode = CLI_EXIT_USAGE;
 			return;
 		}
 		if (!isShell(shell)) {
@@ -61,7 +61,7 @@ export default class Completions extends Command {
 			// narrowing below is a type guard, not a second validation.
 			process.stderr.write(`Error: unsupported shell "${shell}"\n`);
 			process.stderr.write(`Usage: ${APP_NAME} completions <${SHELLS.join("|")}>\n`);
-			process.exitCode = 1;
+			process.exitCode = CLI_EXIT_USAGE;
 			return;
 		}
 

@@ -7,6 +7,7 @@
 import { errorMessage, getSSHConfigPath } from "@veyyon/utils";
 import chalk from "chalk";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../ssh/config-writer";
+import { EXIT_USAGE } from "./exit-codes";
 
 // =============================================================================
 // Types
@@ -50,7 +51,7 @@ export async function runSSHCommand(cmd: SSHCommandArgs): Promise<void> {
 		default:
 			process.stderr.write(chalk.red(`Unknown action: ${cmd.action}\n`));
 			process.stderr.write(`Valid actions: add, remove, list\n`);
-			process.exitCode = 1;
+			process.exitCode = EXIT_USAGE;
 	}
 }
 
@@ -65,7 +66,7 @@ async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 		process.stderr.write(
 			chalk.dim("Usage: veyyon ssh add <name> --host <address> [--user <user>] [--port <port>] [--key <path>]\n"),
 		);
-		process.exitCode = 1;
+		process.exitCode = EXIT_USAGE;
 		return;
 	}
 
@@ -73,7 +74,7 @@ async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 	if (!host) {
 		process.stderr.write(chalk.red("Error: --host is required\n"));
 		process.stderr.write(chalk.dim("Usage: veyyon ssh add <name> --host <address>\n"));
-		process.exitCode = 1;
+		process.exitCode = EXIT_USAGE;
 		return;
 	}
 
@@ -82,7 +83,7 @@ async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 		const port = Number.parseInt(cmd.flags.port, 10);
 		if (Number.isNaN(port) || port < 1 || port > 65535) {
 			process.stderr.write(chalk.red("Error: Port must be an integer between 1 and 65535\n"));
-			process.exitCode = 1;
+			process.exitCode = EXIT_USAGE;
 			return;
 		}
 	}
@@ -111,7 +112,7 @@ async function handleRemove(cmd: SSHCommandArgs): Promise<void> {
 	if (!name) {
 		process.stderr.write(chalk.red("Error: Host name required\n"));
 		process.stderr.write(chalk.dim("Usage: veyyon ssh remove <name> [--scope project|user]\n"));
-		process.exitCode = 1;
+		process.exitCode = EXIT_USAGE;
 		return;
 	}
 
@@ -161,7 +162,7 @@ async function handleList(cmd: SSHCommandArgs): Promise<void> {
 	}
 
 	if (hasUser) {
-		process.stdout.write(chalk.bold("User SSH Hosts (~/.veyyon/profiles/default/agent/ssh.json):\n"));
+		process.stdout.write(chalk.bold("User SSH Hosts (~/.veyyon/profiles/<name>/agent/ssh.json):\n"));
 		printHosts(userHosts);
 	}
 }

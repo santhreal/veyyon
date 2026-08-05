@@ -4,9 +4,9 @@
  * Subcommands:
  * - `ls` (default): list every available model grouped by provider.
  * - `find <substring>`: list models whose provider, id, or name contains the substring.
- * - `refresh`: force an online catalog re-fetch (ignoring the model cache TTL),
- *   then list. This is the supported replacement for `rm -rf ~/.veyyon/models.db`
- *   when a provider ships a new model that the 24h cache has not picked up yet.
+ * - `refresh [provider]`: force an online catalog re-fetch (ignoring the model
+ *   cache TTL), then list. With a provider, only that provider is contacted.
+ *   This replaces `rm -rf ~/.veyyon/models.db` when a provider ships a new model.
  *
  * `ls`/`find` use the cache when fresh (`online-if-uncached`); only `refresh`
  * forces the network (`online`).
@@ -22,12 +22,13 @@ import { discoverAndLoadExtensions, loadExtensions } from "../extensibility/exte
 // the whole application and this file wants one function.
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { EventBus } from "../utils/event-bus";
+import { EXIT_USAGE } from "./exit-codes";
 
 export type ModelsAction = "ls" | "find" | "refresh";
 
 export interface ModelsCommandArgs {
 	action: ModelsAction;
-	/** Search substring for `find`, or optional filter for `ls`. */
+	/** Search substring for `find`, optional filter for `ls`, or exact provider for `refresh`. */
 	pattern?: string;
 	flags: {
 		json?: boolean;
@@ -215,8 +216,11 @@ function renderProviderModels(
 	}
 
 	if (available.length === 0) {
+		// `veyyon models` has no TUI, so `/login` is not a route its reader has.
+		// The old sentence said so ("in an interactive session") and then named
+		// nothing this reader could actually run.
 		writeLine(
-			"No models available. Set an API key environment variable, or sign in with /login in an interactive session.",
+			"No models available. Fix: set an API key environment variable (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, …), or run `veyyon auth-broker login <provider>` to sign in.",
 		);
 		return;
 	}
@@ -323,7 +327,10 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
 	}
 	extensionsResult.runtime.pendingProviderRegistrations = [];
 	// Discover runtime (extension) provider catalogs now that they are registered.
-	await modelRegistry.refreshRuntimeProviders(action === "refresh" ? "online" : "online-if-uncached");
+	await modelRegistry.refreshRuntimeProviders(
+		action === "refresh" ? "online" : "online-if-uncached",
+		action === "refresh" ? pattern : undefined,
+	);
 
 	renderProviderModels(modelRegistry, action, pattern, json);
 }
@@ -339,7 +346,7 @@ export async function runModelsCommand(command: ModelsCommandArgs): Promise<void
 
 	if (action === "find" && (!pattern || pattern.trim().length === 0)) {
 		process.stderr.write("`veyyon models find` requires a search substring, e.g. `veyyon models find minimax`\n");
-		process.exitCode = 1;
+		process.exitCode = EXIT_USAGE;
 		return;
 	}
 
@@ -350,9 +357,15 @@ export async function runModelsCommand(command: ModelsCommandArgs): Promise<void
 		const modelRegistry = new ModelRegistry(authStorage);
 
 		if (action === "refresh" && !json && process.stderr.isTTY) {
-			process.stderr.write("Refreshing models from all providers…\n");
+			process.stderr.write(
+				pattern ? `Refreshing models from ${pattern}…\n` : "Refreshing models from all providers…\n",
+			);
 		}
-		await modelRegistry.refresh(action === "refresh" ? "online" : "online-if-uncached");
+		if (action === "refresh" && pattern) {
+			await modelRegistry.refreshProvider(pattern, "online");
+		} else {
+			await modelRegistry.refresh(action === "refresh" ? "online" : "online-if-uncached");
+		}
 
 		const cliExtensionPaths = command.flags.noExtensions ? [] : (command.flags.extensions ?? []);
 		await runModelsListing({

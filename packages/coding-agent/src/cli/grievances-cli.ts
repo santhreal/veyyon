@@ -6,6 +6,7 @@ import { formatCount, getAutoQaDbDir, pluralize } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { flushGrievances, openAutoQaDb } from "../tools/report-tool-issue";
+import { EXIT_USAGE } from "./exit-codes";
 
 interface GrievanceRow {
 	id: number;
@@ -120,12 +121,12 @@ export async function cleanGrievances(options: CleanGrievancesOptions): Promise<
 	const selectors = [options.id !== undefined, !!options.tool, !!options.all].filter(Boolean).length;
 	if (selectors === 0) {
 		console.error(chalk.red("Specify exactly one of --id, --tool, or --all."));
-		process.exitCode = 1;
+		process.exitCode = EXIT_USAGE;
 		return;
 	}
 	if (selectors > 1) {
 		console.error(chalk.red("--id, --tool, and --all are mutually exclusive."));
-		process.exitCode = 1;
+		process.exitCode = EXIT_USAGE;
 		return;
 	}
 

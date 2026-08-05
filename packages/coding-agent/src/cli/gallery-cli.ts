@@ -16,6 +16,7 @@ import { Settings } from "../config/settings";
 import { ToolExecutionComponent } from "../modes/components/tool-execution";
 import { getAvailableThemes, initTheme, setTheme, theme } from "../modes/theme/theme";
 import { toolRenderers } from "../tools/renderers";
+import { EXIT_USAGE } from "./exit-codes";
 import { type GalleryFixture, type GalleryResult, galleryFixtures } from "./gallery-fixtures";
 import { captureGalleryScreenshots } from "./gallery-screenshot";
 
@@ -310,7 +311,7 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 	const names = args.tool ? allNames.filter(name => name === args.tool) : allNames;
 	if (args.tool && names.length === 0) {
 		process.stderr.write(`Unknown tool '${args.tool}'. Known tools: ${allNames.join(", ")}\n`);
-		process.exitCode = 1;
+		process.exitCode = EXIT_USAGE;
 		return;
 	}
 

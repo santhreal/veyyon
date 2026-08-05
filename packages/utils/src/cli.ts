@@ -71,11 +71,27 @@ function maskNegativeNumbers(argv: readonly string[]): {
 }
 
 /**
+ * The status a command-line mistake exits with, following the conventional Unix
+ * meaning of `2`: the invocation was wrong, so nothing ran and an identical retry
+ * cannot help.
+ *
+ * `packages/coding-agent/src/cli/exit-codes.ts` declares the same number as
+ * `EXIT_USAGE` rather than importing this one, because that module sits on
+ * `cli.ts`'s static boot graph and this one does not: `the-boot-path-stays-thin`
+ * caps that graph, and a boot-path module edge for a single integer is not worth
+ * the parse on every `veyyon --version`. The two are held equal by an assertion
+ * in `packages/coding-agent/test/cli/exit-codes.test.ts`, which is what stops
+ * them drifting.
+ */
+export const CLI_EXIT_USAGE = 2;
+
+/**
  * A user-facing argument/flag validation failure. Thrown by {@link Command.parse}
  * for missing/invalid positionals and flags. The top-level {@link run} handler
- * prints its message plus the command usage line to stderr and exits 1, instead
- * of letting it bubble to the process-level catch — which would dump a minified
- * `dist/cli.js` code frame over a plain argument mistake (issue #5369).
+ * prints its message plus the command usage line to stderr and exits
+ * {@link CLI_EXIT_USAGE}, instead of letting it bubble to the process-level catch,
+ * which would dump a minified `dist/cli.js` code frame over a plain argument
+ * mistake (issue #5369).
  */
 export class CliUsageError extends Error {
 	constructor(message: string) {
@@ -775,10 +791,11 @@ export async function run(opts: RunOptions): Promise<void> {
 			renderCommandHelp(bin, entry.name, Cmd);
 		} else {
 			// An unknown command is an error on the help path too: exit non-zero so
-			// `veyyon <typo> --help` matches `veyyon <typo>` (both exit 1) instead of
-			// reporting the typo as success.
+			// `veyyon <typo> --help` matches `veyyon <typo>` instead of reporting the
+			// typo as success. Both are CLI_EXIT_USAGE, because a command name that
+			// does not exist is a command line that cannot succeed on a retry.
 			process.stderr.write(unknownCommandLine(commandId));
-			process.exitCode = 1;
+			process.exitCode = CLI_EXIT_USAGE;
 		}
 		return;
 	}
@@ -788,7 +805,7 @@ export async function run(opts: RunOptions): Promise<void> {
 
 	if (!entry) {
 		process.stderr.write(unknownCommandLine(commandId));
-		process.exitCode = 1;
+		process.exitCode = CLI_EXIT_USAGE;
 		return;
 	}
 
@@ -799,14 +816,20 @@ export async function run(opts: RunOptions): Promise<void> {
 		await instance.run();
 	} catch (error) {
 		// A usage mistake (missing/invalid arg or flag) is not a crash: print the
-		// message and the command's usage line, then exit 1. Letting it reach the
-		// process-level catch would dump a minified `dist/cli.js` code frame over a
-		// plain argument error (issue #5369).
+		// message and the command's usage line, then exit CLI_EXIT_USAGE. Letting it
+		// reach the process-level catch would dump a minified `dist/cli.js` code
+		// frame over a plain argument error (issue #5369).
+		//
+		// The status is 2, not 1, because a subcommand's command line is still a
+		// command line: `veyyon --nope` and `veyyon config --nope` are the same
+		// mistake, and the published exit-code table promises 2 for "an
+		// unrecognized flag, a bad flag value". Returning 1 here split one mistake
+		// down the middle and told a wrapper script that retrying might help.
 		if (error instanceof CliUsageError) {
 			process.stderr.write(`Error: ${error.message}\n\n`);
 			process.stderr.write(`USAGE\n  ${commandUsageLine(bin, entry.name, Cmd)}\n`);
 			process.stderr.write(`\nRun \`${bin} ${entry.name} --help\` for details.\n`);
-			process.exitCode = 1;
+			process.exitCode = CLI_EXIT_USAGE;
 			return;
 		}
 		throw error;

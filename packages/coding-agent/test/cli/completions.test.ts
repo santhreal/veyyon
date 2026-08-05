@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { join as pathJoin } from "node:path";
 import { buildSpec, type CompletionSpec, generateCompletion } from "@veyyon/coding-agent/cli/completion-gen";
+import { EXIT_USAGE } from "@veyyon/coding-agent/cli/exit-codes";
+// The accepted `--approval-mode` set is generated from one array. Import it so a
+// ladder change fails here as a value mismatch, not as a stale hand-typed list.
+import { APPROVAL_MODE_VALUES } from "@veyyon/coding-agent/tools/approval-modes";
 import { APP_ALIAS } from "@veyyon/utils";
 import type { CliConfig, CommandCtor } from "@veyyon/utils/cli";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
@@ -302,7 +306,7 @@ describe("veyyon completions (integration / drift)", () => {
 		expect(stdout).toContain("{-r,--resume}");
 		// Real enum option sets flow through unchanged.
 		expect(stdout).toContain(":value:(off auto minimal low medium high xhigh max)");
-		expect(stdout).toContain(":value:(plan ask auto-edit yolo always-ask write)");
+		expect(stdout).toContain(`:value:(${APPROVAL_MODE_VALUES.join(" ")})`);
 		// Real subcommands present; dynamic callbacks wired.
 		expect(stdout).toContain("_veyyon_cmd_commit");
 		expect(stdout).toContain("'completions:");
@@ -316,7 +320,7 @@ describe("veyyon completions (integration / drift)", () => {
 		expect(stdout).not.toContain("_veyyon_cmd___complete");
 	});
 
-	it("rejects an unsupported shell with a named error and exit 1", async () => {
+	it("rejects an unsupported shell with a named error and the usage exit code", async () => {
 		const { env, cleanup } = hermeticSpawnEnv();
 		let stderr: string;
 		let exitCode: number;
@@ -331,7 +335,10 @@ describe("veyyon completions (integration / drift)", () => {
 		} finally {
 			cleanup();
 		}
-		expect(exitCode).toBe(1);
+		// EXIT_USAGE, not a bare 1: a shell name that is not one of the four cannot
+		// succeed on a retry, and `docs/handbook/src/reference/exit-codes.md`
+		// promises 2 for a bad flag value.
+		expect(exitCode).toBe(EXIT_USAGE);
 		// The message names the shell that was rejected AND the ones that work, so
 		// the reader does not have to go looking for the list.
 		expect(stderr).toContain('Expected shell to be one of: bash, zsh, fish, powershell; got "tcsh"');
@@ -381,7 +388,7 @@ describe("veyyon completions argument handling", () => {
 		// `vey` belongs to someone else. Refusing is the honest answer for a
 		// boolean flag that takes no argument; silently doing the opposite is not.
 		const { stdout, stderr, exitCode } = await run("bash", "--no-alias=true");
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(EXIT_USAGE);
 		expect(stdout).toBe("");
 		expect(stderr).toContain("does not take an argument");
 	}, 30000);
@@ -394,13 +401,13 @@ describe("veyyon completions argument handling", () => {
 	it("refuses a stray extra argument instead of ignoring it", async () => {
 		// Dropping it would run a command the user did not write, at exit 0.
 		const { stderr, exitCode } = await run("bash", "zsh");
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(EXIT_USAGE);
 		expect(stderr).toContain('Unexpected argument: "zsh"');
 	}, 30000);
 
 	it("refuses an unknown flag", async () => {
 		const { stderr, exitCode } = await run("bash", "--nope");
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(EXIT_USAGE);
 		expect(stderr).toContain("--nope");
 	}, 30000);
 
@@ -421,7 +428,7 @@ describe("veyyon completions argument handling", () => {
 
 	it("names the missing shell rather than printing an empty error", async () => {
 		const { stderr, exitCode } = await run();
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(EXIT_USAGE);
 		expect(stderr).toContain("Missing required argument: shell");
 		expect(stderr).toContain("Usage: veyyon completions <bash|zsh|fish|powershell>");
 	}, 30000);
