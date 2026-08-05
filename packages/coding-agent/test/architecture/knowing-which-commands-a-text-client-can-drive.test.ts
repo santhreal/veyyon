@@ -205,7 +205,7 @@ describe("the declared flag and the handler table agree", () => {
 	});
 
 	/**
-	 * The counts, pinned. 30 of the 68 builtins are drivable from text; the rest are TUI surfaces such
+	 * The counts, pinned. 32 of the 70 builtins are drivable from text; the rest are TUI surfaces such
 	 * as `/settings`, `/cockpit` and `/quit` that an ACP client cannot render. A change to either
 	 * number is a real product change and should be a deliberate edit here.
 	 *
@@ -217,10 +217,16 @@ describe("the declared flag and the handler table agree", () => {
 	 * approval rung, and a headless client is the surface where a rung that prompts cannot be
 	 * answered at all. Denying it the one command that changes the rung would leave such a client
 	 * with no route out of a configuration that blocks every write.
+	 *
+	 * The account manager moved both numbers by two and one. `/providers` stopped being an alias of
+	 * `/setup` and became its own declaration, and it is TUI-only because it opens a view. `/account`
+	 * is text-drivable for the same reason `/permissions` is: the inline block, the naming and the
+	 * re-probe are the only way a headless client can find out which account it is spending, and
+	 * spending the wrong one is not something it could otherwise detect.
 	 */
-	it("30 of the 68 builtins are text-drivable", () => {
-		expect(DECLARATIONS.length).toBe(68);
-		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(30);
+	it("32 of the 70 builtins are text-drivable", () => {
+		expect(DECLARATIONS.length).toBe(70);
+		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(32);
 	});
 
 	/**

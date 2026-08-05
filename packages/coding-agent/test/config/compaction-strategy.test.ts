@@ -10,61 +10,23 @@ import {
 } from "../../src/config/compaction-strategy";
 
 /**
- * compaction-strategy.ts folds every legacy or persisted compaction token into the
- * two surviving strategies (`handoff` | `summary`) and picks the engine action that
- * auto-compaction runs. Only normalizeCompactionStrategy/migrateCompactionStrategyValue
- * had coverage; the five functions that translate a strategy into an ENGINE ACTION and
- * gate whether compaction runs did not. Those decide, at runtime, whether a session
- * hands off to a fresh session or summarizes in place, so their branches are pinned:
- *   - a handoff strategy only produces the "handoff" action when the trigger is NOT an
- *     overflow and handoff is not suppressed; overflow and suppressHandoff both force
- *     "context-full" (you cannot start a fresh session when the window already overflowed);
- *   - "summary" always maps to "context-full";
- *   - resolveCompactionEngineAction normalizes first, so a legacy token like "snap" or a
- *     bare "off" resolves through "summary" to "context-full";
- *   - the "off" kill switch lives OUTSIDE the strategy enum (normalize turns "off" into
- *     "summary"); isCompactionStrategyOff / isThresholdCompactionDisabled read the raw
- *     token, so a regression that routed "off" through normalize would silently re-enable
- *     a disabled compactor;
- *   - toAgentCompactionSettings replaces the strategy with its normalized form while
- *     carrying every other profile field through unchanged.
+ * Every persisted strategy token now selects the same in-place summary engine
+ * action. The raw `off` token remains a separate migration-era kill switch:
+ * normalization erases it, while the enablement predicates deliberately inspect
+ * it before normalization.
  */
 
 describe("compactionStrategyToEngineAction", () => {
-	it("maps handoff to the handoff action for non-overflow triggers", () => {
-		expect(compactionStrategyToEngineAction("handoff")).toBe("handoff");
-		expect(compactionStrategyToEngineAction("handoff", { reason: "threshold" })).toBe("handoff");
-		expect(compactionStrategyToEngineAction("handoff", { reason: "idle" })).toBe("handoff");
-		expect(compactionStrategyToEngineAction("handoff", { reason: "incomplete" })).toBe("handoff");
-	});
-
-	it("forces context-full when the trigger is overflow or handoff is suppressed", () => {
-		expect(compactionStrategyToEngineAction("handoff", { reason: "overflow" })).toBe("context-full");
-		expect(compactionStrategyToEngineAction("handoff", { suppressHandoff: true })).toBe("context-full");
-	});
-
-	it("always maps summary to context-full regardless of trigger", () => {
+	it("always maps the canonical strategy to context-full", () => {
 		expect(compactionStrategyToEngineAction("summary")).toBe("context-full");
-		expect(compactionStrategyToEngineAction("summary", { reason: "threshold" })).toBe("context-full");
 	});
 });
 
 describe("resolveCompactionEngineAction normalizes before mapping", () => {
-	it("routes a legacy summary token through summary to context-full", () => {
-		expect(resolveCompactionEngineAction("snap")).toBe("context-full");
-		expect(resolveCompactionEngineAction("shake")).toBe("context-full");
-		expect(resolveCompactionEngineAction("context-full")).toBe("context-full");
-	});
-
-	it("keeps a stored handoff as the handoff action for non-overflow triggers", () => {
-		expect(resolveCompactionEngineAction("handoff")).toBe("handoff");
-		expect(resolveCompactionEngineAction("handoff", { reason: "overflow" })).toBe("context-full");
-	});
-
-	it("treats an unknown or 'off' token as summary (context-full), since 'off' is a separate gate", () => {
-		expect(resolveCompactionEngineAction("off")).toBe("context-full");
-		expect(resolveCompactionEngineAction(undefined)).toBe("context-full");
-		expect(resolveCompactionEngineAction("garbage")).toBe("context-full");
+	it("routes every legacy and unknown token to in-place summary", () => {
+		for (const strategy of ["snap", "shake", "context-full", "handoff", "off", "garbage", undefined]) {
+			expect(resolveCompactionEngineAction(strategy)).toBe("context-full");
+		}
 	});
 });
 
@@ -100,9 +62,9 @@ describe("isThresholdCompactionDisabled", () => {
 });
 
 describe("migrateCompactionStrategyValue", () => {
-	it("normalizes a string value and returns undefined for non-strings", () => {
+	it("migrates every string value to summary and returns undefined for non-strings", () => {
 		expect(migrateCompactionStrategyValue("snap")).toBe("summary");
-		expect(migrateCompactionStrategyValue("handoff")).toBe("handoff");
+		expect(migrateCompactionStrategyValue("handoff")).toBe("summary");
 		expect(migrateCompactionStrategyValue(42)).toBeUndefined();
 		expect(migrateCompactionStrategyValue(null)).toBeUndefined();
 		expect(migrateCompactionStrategyValue(undefined)).toBeUndefined();
