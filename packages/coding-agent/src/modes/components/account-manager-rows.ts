@@ -23,7 +23,7 @@
 import { truncateToWidth } from "@veyyon/tui";
 import type { AccountInventory, AccountRow } from "../../session/account-inventory";
 import { accountDisplayLabel, accountIdentityDetail, accountOriginLabel } from "../../session/account-inventory";
-import { formatDurationCoarse, renderAsciiBar } from "../../slash-commands/helpers/format";
+import { formatDurationCoarse, formatUsageWindowLine } from "../../slash-commands/helpers/format";
 
 /** Width of the usage bar in the manager's body pane, in cells. */
 export const USAGE_BAR_WIDTH = 10;
@@ -219,10 +219,11 @@ export function accountPlanLine(row: AccountRow): string {
 /** One line per usage window: `5h  [███░░░░░░░] 34%   resets in 4h`. */
 export function accountUsageLines(row: AccountRow, nowMs: number): string[] {
 	return row.usage.map(window => {
-		const label = truncateToWidth(sanitizeAccountText(window.label), USAGE_LABEL_MAX).padEnd(USAGE_LABEL_COLUMN);
-		const bar = renderAsciiBar(window.usedFraction, USAGE_BAR_WIDTH);
-		if (window.resetsAtMs === undefined) return `${label}  ${bar}`;
-		return `${label}  ${bar}   resets in ${formatDurationCoarse(Math.max(0, window.resetsAtMs - nowMs))}`;
+		const resets =
+			window.resetsAtMs === undefined
+				? undefined
+				: `   resets in ${formatDurationCoarse(Math.max(0, window.resetsAtMs - nowMs))}`;
+		return formatUsageWindowLine(sanitizeAccountText(window.label), window.usedFraction, USAGE_BAR_WIDTH, resets);
 	});
 }
 

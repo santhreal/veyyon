@@ -29,7 +29,7 @@ import {
 	pinnedButRotated,
 } from "../../session/account-inventory";
 import { TRUNCATE_LENGTHS } from "../../tools/render-utils";
-import { formatDurationCoarse, renderAsciiBar } from "./format";
+import { formatDurationCoarse, formatUsageWindowLine } from "./format";
 
 /** Left margin of every account row, matching the other inline report blocks. */
 const ROW_INDENT = "  ";
@@ -116,13 +116,16 @@ function line(...parts: string[]): string {
 function usageLines(row: AccountRow, now: number): string[] {
 	const lines: string[] = [];
 	for (const window of row.usage) {
-		const label = cell(window.label, USAGE_LABEL_MAX).padEnd(USAGE_LABEL_COLUMN);
-		const bar = renderAsciiBar(window.usedFraction, USAGE_BAR_WIDTH);
 		const resets =
 			window.resetsAtMs !== undefined && window.resetsAtMs > now
 				? `   resets in ${formatDurationCoarse(window.resetsAtMs - now)}`
-				: "";
-		lines.push(line(DETAIL_INDENT, label, bar, resets));
+				: undefined;
+		lines.push(
+			line(
+				DETAIL_INDENT,
+				formatUsageWindowLine(sanitizeText(window.label), window.usedFraction, USAGE_BAR_WIDTH, resets),
+			),
+		);
 	}
 	return lines;
 }

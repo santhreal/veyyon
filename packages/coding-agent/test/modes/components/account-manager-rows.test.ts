@@ -153,9 +153,9 @@ describe("account row wording", () => {
 			now,
 		).map(line => stripVTControlCharacters(line));
 
-		expect(lines[0]).toBe("5h    [███████░░░] 70%   resets in 2h");
-		expect(lines[1]?.slice(0, 14)).toBe("Claude 7 Da…  ");
-		expect(lines[1]).toBe("Claude 7 Da…  [███░░░░░░░] 34%");
+		expect(lines[0]).toBe("5h      [███████░░░] 70%   resets in 2h");
+		expect(lines[1]?.slice(0, 13)).toBe("Claude 7 Da… ");
+		expect(lines[1]).toBe("Claude 7 Da… [███░░░░░░░] 34%");
 	});
 });
 
@@ -184,5 +184,43 @@ describe("the routing tag reports both facts", () => {
 	 */
 	test("a pinned account that is not serving says only that it is pinned", () => {
 		expect(accountHeadLine(account("anthropic", 1, { pinnedForSession: true }), NOW).tag).toBe("pinned");
+	});
+});
+
+describe("usage windows line up under the labels providers actually send", () => {
+	/**
+	 * The bug this locks out shipped past a full synthetic suite and only appeared against a real
+	 * store. The label column was 4 wide, which fits the `5h` / `7d` shorthand a fixture invents and
+	 * NOTHING a provider returns: Anthropic sends `5 Hour` and `7 Day`, Antigravity `Daily`, Codex
+	 * `7 days`. At 4 the pad was a no-op, so the bar butted straight against the label
+	 * (`5 Hour[████░░░░░░]`) and two windows whose labels differ in length started their bars in
+	 * different columns. Real labels are the fixture here, deliberately.
+	 */
+	test("keeps one bar column across real Anthropic window labels", () => {
+		const lines = accountUsageLines(
+			account("anthropic", 1, {
+				usage: [
+					{ label: "5 Hour", usedFraction: 0.36, resetsAtMs: NOW + 4 * 60 * 60_000 },
+					{ label: "7 Day", usedFraction: 0.4, resetsAtMs: NOW + 2 * 24 * 60 * 60_000 },
+				],
+			}),
+			NOW,
+		).map(line => stripVTControlCharacters(line));
+
+		expect(lines[0]).toBe("5 Hour  [████░░░░░░] 36%   resets in 4h");
+		expect(lines[1]).toBe("7 Day   [████░░░░░░] 40%   resets in 2d");
+		// The load-bearing assertion: both bars open in the same column.
+		expect(lines[0]?.indexOf("[")).toBe(lines[1]?.indexOf("["));
+	});
+
+	/** A label always gets at least one space before its bar, however long it clips to. */
+	test("never lets a label touch its bar", () => {
+		for (const label of ["Daily", "7 days", "Usage window", "Claude 7 Day (Fable)"]) {
+			const [rendered] = accountUsageLines(
+				account("anthropic", 1, { usage: [{ label, usedFraction: 0.1 }] }),
+				NOW,
+			).map(line => stripVTControlCharacters(line));
+			expect(rendered).not.toMatch(/\S\[/);
+		}
 	});
 });

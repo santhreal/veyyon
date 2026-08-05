@@ -1,3 +1,4 @@
+import { truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { clamp01 } from "@veyyon/utils";
 import { shimmerText } from "../../modes/theme/shimmer";
 import { theme as currentTheme, type Theme } from "../../modes/theme/theme";
@@ -49,6 +50,38 @@ export function renderAsciiBar(fraction: number | undefined, width = 24, uiTheme
 	const pct = Math.round(clamped * 100);
 	const bar = `${"█".repeat(filled)}${"░".repeat(Math.max(0, width - filled))}`;
 	return `[${shimmerText(bar, progressBarTheme)}] ${pct}%`;
+}
+
+/**
+ * Column the window label occupies before its bar, so stacked windows line their bars up.
+ *
+ * Sized for the labels providers ACTUALLY send. Both account surfaces started at 4, which fits the
+ * `5h` / `7d` shorthand a fixture invents and nothing a provider returns: Anthropic sends
+ * `5 Hour` and `7 Day`, Antigravity `Daily`, Codex `7 days`. At 4 the pad was a no-op, so the bar
+ * butted straight against the label (`5 Hour[████░░░░░░]`) and two windows of different label
+ * lengths started their bars in different columns.
+ */
+export const USAGE_WINDOW_LABEL_COLUMN = 8;
+
+/** Longest window label rendered before it is clipped; past this the label would eat the bar. */
+export const USAGE_WINDOW_LABEL_MAX = 12;
+
+/**
+ * One usage window as both account surfaces print it: `7 Day    [███░░░░░░░] 34%   resets in 4h`.
+ *
+ * ONE owner for the layout, because the two surfaces have to agree: they sit next to each other in
+ * the same session, and a bar that starts one column further left in `/account` than on the card
+ * reads as a rendering bug in whichever one you saw second.
+ */
+export function formatUsageWindowLine(
+	label: string,
+	usedFraction: number | undefined,
+	barWidth: number,
+	resetsSuffix?: string,
+): string {
+	const clipped = truncateToWidth(label, USAGE_WINDOW_LABEL_MAX);
+	const padded = clipped + " ".repeat(Math.max(1, USAGE_WINDOW_LABEL_COLUMN - visibleWidth(clipped)));
+	return `${padded}${renderAsciiBar(usedFraction, barWidth)}${resetsSuffix ?? ""}`;
 }
 
 /**
