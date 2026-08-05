@@ -5,19 +5,31 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 
 interface SessionStub {
 	session: AgentSession;
+	flushCalls: () => number;
 	disposeCalls: () => number;
 }
 
-/** Minimal session: the lifecycle manager only ever calls dispose() on it. */
-function makeSessionStub(dispose?: () => Promise<void>): SessionStub {
-	let calls = 0;
+/** Minimal durable session exposing the flush-before-dispose boundary owned by the lifecycle manager. */
+function makeSessionStub(dispose?: () => Promise<void>, flush?: () => Promise<void>): SessionStub {
+	let flushCount = 0;
+	let disposeCount = 0;
 	const stub = {
+		sessionManager: {
+			flush: async () => {
+				flushCount++;
+				await flush?.();
+			},
+		},
 		dispose: async () => {
-			calls++;
+			disposeCount++;
 			await dispose?.();
 		},
 	};
-	return { session: stub as unknown as AgentSession, disposeCalls: () => calls };
+	return {
+		session: stub as unknown as AgentSession,
+		flushCalls: () => flushCount,
+		disposeCalls: () => disposeCount,
+	};
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -56,16 +68,25 @@ describe("AgentLifecycleManager", () => {
 		return registry.register({ id, displayName: "task", kind: "sub", session, sessionFile, status: "idle" });
 	}
 
-	it("adopt arms the TTL: an idle agent is parked — session disposed, ref + sessionFile retained", async () => {
+	/**
+	 * The deadline is inclusive, and expiry retains the durable transcript
+	 * reference while closing only the live session.
+	 */
+	it("parks an idle agent exactly at its deadline and retains its transcript reference", async () => {
 		vi.useFakeTimers();
 		const stub = makeSessionStub();
 		registerIdleSub("1-Sub", stub.session, "/tmp/1-Sub.jsonl");
 		lifecycle.adopt("1-Sub", { idleTtlMs: TTL });
 
-		vi.advanceTimersByTime(TTL);
+		vi.advanceTimersByTime(TTL - 1);
+		await flushAsync();
+		expect(registry.get("1-Sub")?.status).toBe("idle");
+
+		vi.advanceTimersByTime(1);
 		await flushAsync();
 
 		const ref = registry.get("1-Sub");
+		expect(stub.flushCalls()).toBe(1);
 		expect(stub.disposeCalls()).toBe(1);
 		expect(ref?.status).toBe("parked");
 		expect(ref?.session).toBeNull();
@@ -73,11 +94,13 @@ describe("AgentLifecycleManager", () => {
 		expect(lifecycle.has("1-Sub")).toBe(true);
 	});
 
-	it("running disarms the timer; returning to idle re-arms a fresh TTL", async () => {
+	/** A running transition cancels expiry; the next idle transition starts a fresh deadline. */
+	it("resets the idle deadline from the canonical activity transition and never expires a running agent", async () => {
 		vi.useFakeTimers();
 		const stub = makeSessionStub();
 		registerIdleSub("2-Sub", stub.session);
 		lifecycle.adopt("2-Sub", { idleTtlMs: TTL });
+		vi.advanceTimersByTime(TTL - 1);
 		registry.setStatus("2-Sub", "running");
 
 		vi.advanceTimersByTime(TTL * 10);
@@ -87,10 +110,63 @@ describe("AgentLifecycleManager", () => {
 		expect(stub.disposeCalls()).toBe(0);
 
 		registry.setStatus("2-Sub", "idle");
-		vi.advanceTimersByTime(TTL);
+		vi.advanceTimersByTime(TTL - 1);
+		await flushAsync();
+		expect(registry.get("2-Sub")?.status).toBe("idle");
+		vi.advanceTimersByTime(1);
 		await flushAsync();
 		expect(registry.get("2-Sub")?.status).toBe("parked");
 		expect(stub.disposeCalls()).toBe(1);
+	});
+
+	/** Durable state lands before live teardown, followed by the ordinary registry lifecycle notification. */
+	it("flushes before close and publishes the parked transition", async () => {
+		vi.useFakeTimers();
+		const order: string[] = [];
+		const stub = makeSessionStub(
+			async () => {
+				order.push("close");
+			},
+			async () => {
+				order.push("persist");
+			},
+		);
+		registerIdleSub("ordered", stub.session, "/tmp/ordered.jsonl");
+		const unsubscribe = registry.onChange(event => {
+			if (event.type === "status_changed" && event.ref.id === "ordered") {
+				order.push(`status:${event.ref.status}`);
+			}
+		});
+		lifecycle.adopt("ordered", { idleTtlMs: TTL });
+
+		vi.advanceTimersByTime(TTL);
+		await flushAsync();
+		unsubscribe();
+
+		expect(order).toEqual(["persist", "close", "status:parked"]);
+		expect(registry.get("ordered")).toMatchObject({
+			status: "parked",
+			session: null,
+			sessionFile: "/tmp/ordered.jsonl",
+		});
+	});
+
+	/** A cohort shares one next-deadline timer and is drained without per-agent pollers. */
+	it("uses one scheduler timer for multiple idle agents", async () => {
+		vi.useFakeTimers();
+		const first = makeSessionStub();
+		const second = makeSessionStub();
+		registerIdleSub("cohort-a", first.session);
+		registerIdleSub("cohort-b", second.session);
+
+		lifecycle.adopt("cohort-a", { idleTtlMs: TTL });
+		lifecycle.adopt("cohort-b", { idleTtlMs: TTL });
+
+		expect(vi.getTimerCount()).toBe(1);
+		vi.advanceTimersByTime(TTL);
+		await flushAsync();
+		expect(registry.get("cohort-a")?.status).toBe("parked");
+		expect(registry.get("cohort-b")?.status).toBe("parked");
 	});
 
 	it("ensureLive revives a parked agent through its reviver and flips it back to idle", async () => {
@@ -156,6 +232,7 @@ describe("AgentLifecycleManager", () => {
 		await expect(lifecycle.ensureLive("5-Sub")).rejects.toThrow(/cannot be revived.*no reviver registered/);
 	});
 
+	/** A restored ref's model metadata selects its own cold-revive idle deadline. */
 	it("ensureLive cold-revives a parked ref via the persisted factory and rejoins the lifecycle", async () => {
 		vi.useFakeTimers();
 		const revived = makeSessionStub();
@@ -167,12 +244,16 @@ describe("AgentLifecycleManager", () => {
 			session: null,
 			sessionFile: "/tmp/6-Sub.jsonl",
 			status: "parked",
+			model: "anthropic/claude-sonnet-4-5",
 		});
 		let factoryCalls = 0;
-		lifecycle.setPersistedSubagentReviverFactory(async () => {
-			factoryCalls++;
-			return async () => revived.session;
-		}, TTL);
+		lifecycle.setPersistedSubagentReviverFactory(
+			async () => {
+				factoryCalls++;
+				return async () => revived.session;
+			},
+			ref => (ref.model?.startsWith("anthropic/") ? TTL * 2 : TTL),
+		);
 
 		const session = await lifecycle.ensureLive("6-Sub");
 
@@ -181,7 +262,10 @@ describe("AgentLifecycleManager", () => {
 		expect(registry.get("6-Sub")?.status).toBe("idle");
 		expect(registry.get("6-Sub")?.session).toBe(revived.session);
 
-		// Adopted on demand with the configured TTL: it re-parks like any idle subagent.
+		// The per-ref resolver selected 2 × TTL from the persisted model metadata.
+		vi.advanceTimersByTime(TTL);
+		await flushAsync();
+		expect(registry.get("6-Sub")?.status).toBe("idle");
 		vi.advanceTimersByTime(TTL);
 		await flushAsync();
 		expect(registry.get("6-Sub")?.status).toBe("parked");
@@ -276,8 +360,9 @@ describe("AgentLifecycleManager", () => {
 		registerIdleSub("7-Sub", stub.session);
 		lifecycle.adopt("7-Sub", { idleTtlMs: 0 });
 
-		// park() runs synchronously up to `await session.dispose()`, which we hold open.
+		// park() first flushes, then enters dispose(), which we hold open.
 		const parking = lifecycle.park("7-Sub");
+		await flushAsync();
 
 		expect(stub.disposeCalls()).toBe(1);
 		expect(lifecycle.isParking("7-Sub")).toBe(true);
@@ -305,5 +390,183 @@ describe("AgentLifecycleManager", () => {
 		expect(ref?.session).toBe(stub.session);
 		expect(stub.disposeCalls()).toBe(0);
 		expect(lifecycle.has("8-Sub")).toBe(true);
+	});
+
+	/**
+	 * BUG: the cold-adopt compensation in `#resolveAndRevive` covered only the
+	 * `#revive` call. The `ref.status !== "parked"` re-check threw from OUTSIDE that
+	 * try, so a ref whose status changed while `#persistedReviverFactory` was awaited
+	 * left the reviver built from the STALE ref sitting in `#adopted` with no deadline
+	 * armed. `#resolveAndRevive` prefers `#adopted.get(id)?.revive` over the factory,
+	 * so that poisoned reviver is what every later wake would use, forever.
+	 *
+	 * If this regresses: the second ensureLive below reuses the stale reviver instead
+	 * of rebuilding (factoryCalls stays 1) and `has()` reports an adoption that was
+	 * never armed.
+	 */
+	it("drops the cold adoption when the ref's status changes during the reviver factory await", async () => {
+		const gate = deferred();
+		const revived = makeSessionStub();
+		registry.register({
+			id: "Cold",
+			displayName: "task",
+			kind: "sub",
+			session: null,
+			sessionFile: "/tmp/Cold.jsonl",
+			status: "parked",
+		});
+		let factoryCalls = 0;
+		lifecycle.setPersistedSubagentReviverFactory(async () => {
+			factoryCalls++;
+			if (factoryCalls === 1) await gate.promise;
+			return async () => revived.session;
+		}, TTL);
+
+		const waking = lifecycle.ensureLive("Cold");
+		await flushAsync();
+		// A collab mirror update / re-registration flips the ref out of `parked` while
+		// the factory is still building a reviver from the ref as it was.
+		registry.setStatus("Cold", "running");
+		gate.resolve();
+
+		await expect(waking).rejects.toThrow(
+			'Agent "Cold" is running and cannot be revived. Its transcript remains readable at history://Cold.',
+		);
+		expect(factoryCalls).toBe(1);
+		expect(lifecycle.has("Cold")).toBe(false);
+
+		// The stale reviver is gone, so the next wake rebuilds through the factory.
+		registry.setStatus("Cold", "parked");
+		const session = await lifecycle.ensureLive("Cold");
+		expect(factoryCalls).toBe(2);
+		expect(session).toBe(revived.session);
+		expect(registry.get("Cold")?.status).toBe("idle");
+	});
+
+	/**
+	 * BUG: `#revive` re-read the ref only to ask whether it had been RELEASED. A ref
+	 * flipped to `aborted` mid-revive was resurrected: the abort's dispose ran against
+	 * a parked ref and therefore against no session, then `#revive` attached the
+	 * freshly rebuilt one and set `idle`. That session is a leaked process, MCP client
+	 * and file-handle set for the rest of the run, and the terminal agent is back in
+	 * the roster.
+	 *
+	 * If this regresses: the wake resolves instead of rejecting, `disposeCalls()` is 0
+	 * and the ref reads `idle` with a live session.
+	 */
+	it("refuses the wake and disposes the rebuilt session when the ref is aborted mid-revive", async () => {
+		const gate = deferred();
+		const revived = makeSessionStub();
+		registry.register({
+			id: "Killed",
+			displayName: "task",
+			kind: "sub",
+			session: null,
+			sessionFile: "/tmp/Killed.jsonl",
+			status: "parked",
+		});
+		lifecycle.adopt("Killed", {
+			idleTtlMs: 0,
+			revive: async () => {
+				await gate.promise;
+				return revived.session;
+			},
+		});
+
+		const waking = lifecycle.ensureLive("Killed");
+		await flushAsync();
+		registry.setStatus("Killed", "aborted");
+		gate.resolve();
+
+		await expect(waking).rejects.toThrow(
+			'Agent "Killed" was terminated while it was being revived. Its transcript remains readable at history://Killed.',
+		);
+		expect(revived.disposeCalls()).toBe(1);
+		expect(registry.get("Killed")?.status).toBe("aborted");
+		expect(registry.get("Killed")?.session).toBeNull();
+	});
+
+	/**
+	 * BUG: `park()` disarmed the deadline and rescheduled BEFORE checking whether the
+	 * agent was parkable at all. Called on an already-parked agent it wiped the armed
+	 * close deadline and returned without re-arming, and `parked` is a stable state,
+	 * so no later `status_changed` ever re-derived one: the agent stayed listed for
+	 * the rest of the run and never closed.
+	 *
+	 * If this regresses: the close below never fires and the ref is still registered.
+	 */
+	it("park() on an already-parked agent leaves its close deadline armed", async () => {
+		vi.useFakeTimers();
+		const stub = makeSessionStub();
+		registerIdleSub("Twice", stub.session, "/tmp/Twice.jsonl");
+		lifecycle.adopt("Twice", { idleTtlMs: TTL, closeParkedMs: TTL * 5 });
+
+		vi.advanceTimersByTime(TTL);
+		await flushAsync();
+		expect(registry.get("Twice")?.status).toBe("parked");
+
+		// A second park on a ref that is already parked must be a pure no-op.
+		await lifecycle.park("Twice");
+		expect(stub.disposeCalls()).toBe(1);
+
+		vi.advanceTimersByTime(TTL * 5);
+		await flushAsync();
+		expect(registry.get("Twice")).toBeUndefined();
+		expect(lifecycle.has("Twice")).toBe(false);
+	});
+
+	/**
+	 * BUG: `close()` refused a reviving agent and then re-derived its deadline through
+	 * `#refreshDeadline`. The ref is still `parked` during a revive, so the derivation
+	 * produced `lastActivity + closeParkedMs` — the very instant that had just fired —
+	 * and `#scheduleNext` armed a `setTimeout` of 0. That timer re-entered `close`,
+	 * which refused and armed 0 again: a hot loop for the whole duration of the wake,
+	 * starving the event loop the revive is waiting on. The operator sees veyyon peg a
+	 * core and hang the moment they message a long-parked agent.
+	 *
+	 * If this regresses: `close` is re-entered once per millisecond for the whole
+	 * revive, and the failed-revive close below never fires because nothing else
+	 * re-examines a ref whose revive threw.
+	 */
+	it("close() during an in-flight revive arms a future re-check instead of spinning", async () => {
+		vi.useFakeTimers();
+		registry.register({
+			id: "Waking",
+			displayName: "task",
+			kind: "sub",
+			session: null,
+			sessionFile: "/tmp/Waking.jsonl",
+			status: "parked",
+		});
+		const gate = Promise.withResolvers<AgentSession>();
+		lifecycle.adopt("Waking", { idleTtlMs: 0, closeParkedMs: TTL, revive: () => gate.promise });
+		const closeCalls = vi.spyOn(lifecycle, "close");
+
+		const waking = lifecycle.ensureLive("Waking");
+		await flushAsync();
+
+		// Drive the clock past the close budget one millisecond at a time, draining the
+		// scheduler's async expiry drain between steps, while the wake is still
+		// rebuilding the session. The spin needs exactly this interleaving to show up.
+		for (let elapsed = 0; elapsed < TTL * 5; elapsed++) {
+			vi.advanceTimersByTime(1);
+			await flushAsync();
+		}
+
+		// One refusal, not one per millisecond.
+		expect(closeCalls).toHaveBeenCalledTimes(1);
+		expect(registry.get("Waking")?.status).toBe("parked");
+
+		// A revive that THROWS leaves the ref `parked` with no status change, so the
+		// re-check armed by that refusal is the only thing that can ever close it.
+		gate.reject(new Error("stale context"));
+		await expect(waking).rejects.toThrow("stale context");
+		for (let elapsed = 0; elapsed < 1_000; elapsed += TTL) {
+			vi.advanceTimersByTime(TTL);
+			await flushAsync();
+		}
+
+		expect(registry.get("Waking")).toBeUndefined();
+		expect(lifecycle.has("Waking")).toBe(false);
 	});
 });
