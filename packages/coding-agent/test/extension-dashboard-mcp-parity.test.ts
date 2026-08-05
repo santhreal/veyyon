@@ -22,8 +22,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import {
+	captureRegistryForTests,
+	initializeWithSettings,
+	type RegistrySnapshot,
+	restoreRegistryForTests,
+} from "@veyyon/coding-agent/capability";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { initializeWithSettings, reset as resetDiscoveryCache } from "@veyyon/coding-agent/discovery";
+import { reset as resetDiscoveryCache } from "@veyyon/coding-agent/discovery";
 import { readMCPConfigFile, setMcpServerEnabled, setServerDisabled } from "@veyyon/coding-agent/mcp/config-writer";
 import { loadAllExtensions } from "@veyyon/coding-agent/modes/components/extensions/state-manager";
 import { getMCPConfigPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
@@ -37,8 +43,14 @@ describe("loadAllExtensions MCP parity with /mcp list (issue #3827)", () => {
 	// `VEYYON_CODING_AGENT_DIR`, so re-deriving FROM the environment re-derived the temp
 	// dir this file then deleted. The snapshot clears the variable it found absent.
 	const dirOverrides = captureDirOverrides();
+	// The `discovery.importForeignConfig` write below lands in MODULE-GLOBAL state in
+	// capability/index.ts, which `resetSettingsForTest` does not touch. Unrestored, this
+	// suite left the foreign gate OPEN for every later file in the process, so they
+	// ambiently loaded other tools' config that is off by default.
+	let registrySnapshot: RegistrySnapshot | undefined;
 
 	beforeEach(async () => {
+		registrySnapshot = captureRegistryForTests();
 		resetSettingsForTest();
 		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-3827-project-"));
 		userAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-3827-user-"));
@@ -77,6 +89,8 @@ describe("loadAllExtensions MCP parity with /mcp list (issue #3827)", () => {
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
+		if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
+		registrySnapshot = undefined;
 		resetSettingsForTest();
 		restoreDirOverrides(dirOverrides);
 		await removeWithRetries(projectDir);
