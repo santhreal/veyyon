@@ -23,6 +23,7 @@ import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 function renderCustom(overrides: Record<string, unknown> = {}): string {
 	return prompt.render(PROMPTS["session/custom-system-prompt"].text, {
 		customPrompt: "USER SUPPLIED PROMPT",
+		contextFileAuthority: PROMPTS["session/context-file-authority"].text.trim(),
 		...overrides,
 	});
 }

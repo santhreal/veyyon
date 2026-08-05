@@ -156,9 +156,14 @@ describe("the split kept one set of commands", () => {
 	 *   - UP to 68: `/permissions` was added, setting the tool-approval rung for one session
 	 *     without touching the saved default. It exists because the rung became something an
 	 *     operator changes mid-task once the ladder replaced `yolo` with a shipped default of `auto`.
+	 *   - UP to 70: `/providers` and `/account` were added by the account manager. `/providers` was
+	 *     an ALIAS of `/setup` before, so it was not counted here; it is now its own declaration
+	 *     because it opens the account manager instead of the onboarding wizard, and `/account` is
+	 *     the inline per-provider report and the row actions that reach the same accounts without
+	 *     a view.
 	 */
-	it("there are the 68 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(68);
+	it("there are the 70 builtins the declarations hold", () => {
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(70);
 	});
 
 	/**

@@ -182,12 +182,16 @@ describe("update closes by pointing at the rest of the mechanism", () => {
 });
 
 describe("the manual source-update guidance is still available where it belongs", () => {
-	it("names the checkout's launcher and both recovery routes", () => {
+	it("names the checkout's launcher and the command that updates it", () => {
 		// It is no longer the answer to `veyyon update`, but it is still what every
 		// source-update FAILURE appends, so the text has to stay correct.
+		//
+		// It used to also assert `--source`, an installer flag that was deliberately
+		// dropped for cloning into `$HOME/.veyyon/src` behind the user's back (see
+		// MANUAL_BUILD in scripts/install.sh). Asserting it kept this test red over a
+		// route the product no longer has.
 		const guidance = updateCli.sourceInstallUpdateGuidance("/opt/checkout/packages/coding-agent/scripts/veyyon");
 		expect(guidance).toContain("/opt/checkout/packages/coding-agent/scripts/veyyon");
 		expect(guidance).toContain("git pull && bun install");
-		expect(guidance).toContain("--source");
 	});
 });
