@@ -23,7 +23,7 @@ import * as path from "node:path";
 import { readdirIfPresent, reportFault } from "@veyyon/utils";
 import { isProviderEnabled } from "../capability";
 import { findAllNearestProjectConfigDirs, getConfigDirs } from "../config";
-import { listClaudePluginRoots } from "../discovery/helpers";
+import { listClaudePluginRoots, pluginsRootFor } from "../discovery/helpers";
 import { listVeyyonExtensionRoots } from "../discovery/veyyon-extension-roots";
 import { loadBundledAgents, parseAgent } from "./agents";
 import type { AgentDefinition, AgentSource } from "./types";
@@ -78,17 +78,46 @@ async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<Agen
  * (CLI roots > project `extensions:` settings > user `extensions:` settings >
  * installed npm/link plugins), Claude marketplace plugin agents (project
  * scope before user), then bundled.
+ *
+ * THREE of those sources are PROFILE scoped, and `agentDir` selects the profile for
+ * all three at once: the user `agents/` dir, the user `extensions:` settings plus that
+ * profile's installed plugins, and that profile's marketplace registry. Leave it
+ * undefined and each source resolves the process-active profile exactly as before.
+ *
+ * Why this matters more than the sibling skill and rule leaks: an agent definition
+ * carries a system prompt and a tool list, so reading another profile's marketplace
+ * silently changes what a spawned agent IS and what it is allowed to do.
+ *
+ * `undefined` is the honest default and not a fallback dressed up as one: `ToolSession`
+ * carries no agent dir today, so the tool-side callers (`task`, `eval`, `vibe`, the
+ * settings selector, the setup wizard) have no session value to pass and the active
+ * profile is the only answer available to them. A caller that DOES know the profile it
+ * is loading for (an SDK host built with an explicit `agentDir`, anything routing for
+ * another profile) must pass it, and the moment `ToolSession` grows the field the
+ * tool-side callers must pass it too.
+ *
  * @param cwd - Current working directory for project agent discovery
+ * @param home - Home directory for user-scope resolution
+ * @param agentDir - Profile agent dir whose user, extension and marketplace scopes load
  */
-export async function discoverAgents(cwd: string, home: string = os.homedir()): Promise<DiscoveryResult> {
+export async function discoverAgents(
+	cwd: string,
+	home: string = os.homedir(),
+	agentDir?: string,
+): Promise<DiscoveryResult> {
 	const resolvedCwd = path.resolve(cwd);
 
-	const userDirs = getConfigDirs("agents", { project: false })
-		.filter(entry => entry.source === TASK_AGENT_CONFIG_SOURCE)
-		.map(entry => ({
-			...entry,
-			path: path.resolve(entry.path),
-		}));
+	// Named profile: resolve its `agents/` dir directly. Unnamed: keep the existing
+	// `getConfigDirs` resolution, which is home-relative and XDG-aware, rather than
+	// re-deriving it from `getAgentDir()` and changing where every current caller reads.
+	const userDirs = agentDir
+		? [{ path: path.resolve(agentDir, "agents"), source: TASK_AGENT_CONFIG_SOURCE, level: "user" as const }]
+		: getConfigDirs("agents", { project: false })
+				.filter(entry => entry.source === TASK_AGENT_CONFIG_SOURCE)
+				.map(entry => ({
+					...entry,
+					path: path.resolve(entry.path),
+				}));
 
 	const projectDirs = findAllNearestProjectConfigDirs("agents", resolvedCwd)
 		.filter(entry => entry.source === TASK_AGENT_CONFIG_SOURCE)
@@ -111,15 +140,18 @@ export async function discoverAgents(cwd: string, home: string = os.homedir()): 
 	// surface in `discovery/veyyon-plugins.ts`. Gate on `veyyon-plugins` so
 	// disabledProviders suppresses the whole extension-package surface.
 	const extensionRoots = isProviderEnabled("veyyon-plugins")
-		? await listVeyyonExtensionRoots({ cwd: resolvedCwd, home, repoRoot: null })
+		? await listVeyyonExtensionRoots({ cwd: resolvedCwd, home, repoRoot: null }, { agentDir })
 		: [];
 	for (const root of extensionRoots) {
 		orderedDirs.push({ dir: path.join(root.path, "agents"), source: root.level });
 	}
 
-	// Load agents from Claude Code marketplace plugins (respects disabledProviders)
+	// Load agents from Claude Code marketplace plugins (respects disabledProviders).
+	// The registry is profile-scoped, so a named agent dir reads THAT profile's
+	// installs. Reading the active profile's here handed a spawned agent whichever
+	// system prompt and tool list the booted profile's marketplace happened to ship.
 	const { roots: pluginRoots } = isProviderEnabled("claude-plugins")
-		? await listClaudePluginRoots(home, resolvedCwd)
+		? await listClaudePluginRoots(home, resolvedCwd, agentDir ? pluginsRootFor(agentDir) : undefined)
 		: { roots: [] };
 	const sortedPluginRoots = [...pluginRoots].sort((a, b) => {
 		if (a.scope === b.scope) return 0;
@@ -153,6 +185,6 @@ export async function discoverAgents(cwd: string, home: string = os.homedir()): 
 /**
  * Get an agent by name from discovered agents.
  */
-export function getAgent(agents: AgentDefinition[], name: string): AgentDefinition | undefined {
+export function getAgent(agents: readonly AgentDefinition[], name: string): AgentDefinition | undefined {
 	return agents.find(a => a.name === name);
 }

@@ -168,15 +168,18 @@ export function assembleYieldResult(
 		}
 	}
 
-	// An explicit terminal payload wins: an untyped final result or a
-	// `type: "result"` finalize that carries `data` is the complete result, used
-	// verbatim — never wrapped in a section.
+	// An explicit `type: "result"` object finalizes scalar fields while
+	// preserving accepted incremental collections. Untyped terminal objects keep
+	// the historical last-yield-wins contract and are returned verbatim.
 	if (terminalItem && terminalItem.data !== undefined) {
 		const resolved = resolveYieldPayload(terminalItem, lastAssistantText, []);
+		const value = resolved.value;
+		const merged =
+			terminalItem.type === "result" && hasSections && isRecord(value) ? { ...sections, ...value } : value;
 		return {
-			data: resolved.value,
-			schemaOverridden: terminalItem.schemaOverridden === true,
-			rawText: resolved.fromLastAssistantText && typeof resolved.value === "string",
+			data: merged,
+			schemaOverridden: schemaOverridden || terminalItem.schemaOverridden === true,
+			rawText: resolved.fromLastAssistantText && typeof merged === "string",
 			missingData: resolved.missingData,
 		};
 	}

@@ -8,6 +8,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
 import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
 import { emptyUsage } from "@veyyon/catalog/models";
 import {
@@ -98,8 +99,14 @@ import { ToolAbortError } from "../tools/tool-errors";
 import type { EventBus } from "../utils/event-bus";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";
+import { type AutoloadSkillPlan, settleAutoloadSkills } from "./inherited-collections";
 import { generateTaskLabel } from "./label";
-import { resolveSubagentMaxNestedSpawnDepth } from "./subagent-settings";
+import {
+	resolveSubagentAutoCloseBudget,
+	resolveSubagentIdleTtlMs,
+	resolveSubagentMaxNestedSpawnDepth,
+	type SubagentAutoCloseBudget,
+} from "./subagent-settings";
 import { subprocessToolRegistry, YIELD_TOOL_NAME } from "./subprocess-tool-registry";
 import {
 	type AgentDefinition,
@@ -446,8 +453,12 @@ export interface ExecutorOptions {
 	 * transition explicitly.
 	 */
 	parentTelemetry?: AgentTelemetryConfig;
-	/** Skills to autoload via sendCustomMessage before the first prompt */
-	autoloadSkills?: Skill[];
+	/**
+	 * The spawner's plan for the agent definition's `autoloadSkills` names, autoloaded via
+	 * `sendCustomMessage` before the first prompt. A `deferred` plan carries the names unmatched so
+	 * they resolve against the child's own skills; see `settleAutoloadSkills`.
+	 */
+	autoloadSkills?: AutoloadSkillPlan<Skill>;
 	/**
 	 * Registry id of the spawning agent, recorded as this subagent's parent.
 	 * Forwarded verbatim to the SDK; the executor never derives it (the spawner
@@ -583,8 +594,6 @@ interface FinalizeSubprocessOutputResult {
 	abortedViaYield: boolean;
 	hasYield: boolean;
 }
-export const SUBAGENT_WARNING_SCHEMA_OVERRIDDEN =
-	"SYSTEM WARNING: Subagent exhausted schema-retry budget; result was accepted despite failing the output schema.";
 export const SUBAGENT_WARNING_NULL_YIELD = "SYSTEM WARNING: Subagent called yield with null data.";
 export const SUBAGENT_WARNING_MISSING_YIELD =
 	"SYSTEM WARNING: Subagent exited without calling yield tool after 3 reminders.";
@@ -614,6 +623,30 @@ function buildSchemaViolationOutcome(
 	return { rawOutput, stderr: headline, exitCode: 1 };
 }
 
+/** Return the whole-result schema failure for accepted yields, or undefined when complete. */
+function currentYieldSchemaFailure(progress: AgentProgress, outputSchema: unknown): string | undefined {
+	const extracted = progress.extractedToolData?.yield;
+	if (!Array.isArray(extracted) || extracted.length === 0) return undefined;
+	const yieldItems = extracted.filter(item => item !== null && typeof item === "object") as YieldItem[];
+	const lastYield = yieldItems[yieldItems.length - 1];
+	if (lastYield?.status === "aborted") return undefined;
+	const assembled = assembleYieldResult(yieldItems, undefined, arrayValuedLabels(outputSchema));
+	if (!assembled || assembled.missingData) return "The accepted yield data is incomplete.";
+	const { validator, error: schemaError } = buildOutputValidator(outputSchema);
+	if (schemaError || !validator) return undefined;
+	const extractedFindings = progress.extractedToolData?.report_finding;
+	const reportFindings = Array.isArray(extractedFindings) ? (extractedFindings as ReviewFinding[]) : undefined;
+	const completeData = assembled.rawText
+		? assembled.data
+		: normalizeCompleteData(assembled.data, reportFindings, validator);
+	const result = validator.validate(completeData);
+	if (result.success) return undefined;
+	const summary = summarizeValidationFailure(result, completeData, validator.requiredFields);
+	return summary.missingRequired.length > 0
+		? `${summary.message}. Missing required fields: ${summary.missingRequired.join(", ")}`
+		: summary.message;
+}
+
 export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): FinalizeSubprocessOutputResult {
 	let { rawOutput, exitCode, stderr } = args;
 	const { yieldItems, reportFindings, doneAborted, signalAborted, outputSchema, lastAssistantText } = args;
@@ -641,10 +674,9 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 				const completeData = assembled.rawText
 					? assembled.data
 					: normalizeCompleteData(assembled.data, reportFindings, validator);
-				const result =
-					schemaError || assembled.schemaOverridden
-						? { success: true as const }
-						: (validator?.validate(completeData) ?? { success: true as const });
+				const result = schemaError
+					? { success: true as const }
+					: (validator?.validate(completeData) ?? { success: true as const });
 				if (!result.success) {
 					const summary = summarizeValidationFailure(result, completeData, validator?.requiredFields ?? []);
 					const outcome = buildSchemaViolationOutcome(summary, completeData);
@@ -663,11 +695,7 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 					}
 					if (!hadFailureBeforeYield) {
 						exitCode = 0;
-						stderr = assembled.schemaOverridden
-							? SUBAGENT_WARNING_SCHEMA_OVERRIDDEN
-							: schemaError
-								? `invalid output schema: ${schemaError}`
-								: "";
+						stderr = schemaError ? `invalid output schema: ${schemaError}` : "";
 					} else if (!stderr) {
 						stderr = "Subagent failed after yielding a result.";
 					}
@@ -871,15 +899,43 @@ export function createSubagentSettings(
 		"async.enabled": false,
 		"bash.autoBackground.enabled": false,
 
-		// Subagents run headless — there is no UI to confirm prompts against, so
-		// the parent task approval is the authorization boundary. Use yolo mode
-		// to preserve unattended subagent execution. User `tools.approval` policies still apply.
-		"tools.approvalMode": "yolo",
+		// `tools.approvalMode` is DELIBERATELY ABSENT. A spawned agent INHERITS the
+		// spawning session's rung through the fork's own settings layers; writing any
+		// literal here would override the operator's choice with a value they never
+		// configured. This used to be a hardcoded `"yolo"`, which meant a `read` of
+		// /etc/passwd and a `bash` that spends a stored credential were UNGATED for
+		// every subagent on a default install: the wrapper opts out of the
+		// working-directory boundary and the secret-use boundary on exactly the
+		// condition `approvalMode === "yolo"`. It also silently LOWERED a rung the
+		// operator had raised, so delegating work one level down was a way around a
+		// boundary the main session enforced. A spawn carries the parent's rung; it
+		// never widens it and never arbitrarily narrows it.
+		//
+		// Per-tool `tools.approval` policies were already inherited the same way.
 		...overrides,
 	});
 }
 
-/** Derive destination project policy before adding subagent-only overrides. */
+/**
+ * Derive destination project policy before adding subagent-only overrides.
+ *
+ * SECURITY NOTE, LEFT DELIBERATELY AS A NOTE RATHER THAN A FIX. `cloneForCwd`
+ * resolves the child against the DESTINATION project's settings layer, and
+ * `tools.approvalMode` is an ordinary project-scoped setting, so a checked-in
+ * `.veyyon/settings.json` in a repo the operator merely cloned currently decides
+ * the security rung of any agent spawned into it. Measured with the real loader:
+ * parent project pinned to `ask`, destination containing
+ * `{"tools.approvalMode":"yolo"}`, child resolved `yolo`, which short-circuits
+ * the working-directory boundary and the secret-use boundary in the tool wrapper.
+ *
+ * A clamp pinning the child back to the parent's rung was built here and then
+ * REMOVED on the operator's ruling that a repository may contribute nothing but
+ * `AGENTS.md` / `CLAUDE.md` context. A destination repo does not get to set the
+ * rung in either direction, so narrowing the door is the wrong fix and the door
+ * itself goes. That removal spans every project-scoped layer (rules, hooks, MCP,
+ * slash commands, custom tools, extension modules, SSH hosts) and belongs to the
+ * dedicated removal lane, not to a per-setting patch here.
+ */
 export async function createSubagentSettingsForCwd(
 	baseSettings: Settings,
 	cwd: string,
@@ -1844,6 +1900,7 @@ async function driveSessionToYield(
 	session: AgentSession,
 	monitor: SubagentRunMonitor,
 	task: string,
+	outputSchema: unknown,
 ): Promise<DriveOutcome> {
 	const abortSignal = monitor.abortSignal;
 	let failure: string | undefined;
@@ -1933,6 +1990,29 @@ async function driveSessionToYield(
 					logger.error("Subagent prompt failed", {
 						error: errorMessage(err),
 					});
+				}
+			}
+		}
+
+		const schemaFailure = abortSignal.aborted ? undefined : currentYieldSchemaFailure(monitor.progress, outputSchema);
+		if (schemaFailure) {
+			try {
+				await awaitAbortable(
+					session.prompt(
+						prompt.render(subagentPrompts["subagent/yield-schema-repair"].text, { failure: schemaFailure }),
+						{
+							attribution: "agent",
+							synthetic: true,
+							...(reminderToolChoice ? { toolChoice: reminderToolChoice } : {}),
+						},
+					),
+				);
+				await awaitAbortable(session.waitForIdle());
+			} catch (err) {
+				if (abortSignal.aborted || err instanceof ToolAbortError) {
+					logger.debug("Subagent schema repair prompt aborted");
+				} else {
+					logger.error("Subagent schema repair prompt failed", { error: errorMessage(err) });
 				}
 			}
 		}
@@ -2255,6 +2335,70 @@ async function finalizeRunResult(args: FinalizeRunArgs): Promise<SingleResult> {
 }
 
 /**
+ * Whether an agent's sign-off says it stopped to wait on another agent, which earns
+ * it the longer close budget.
+ *
+ * WHAT IT IS GIVEN. Callers pass {@link subagentSignOffText}, which is the agent's
+ * LAST assistant message when that message carried text, and the run's accumulated
+ * assistant text only when it did not. This comment used to say "last message" while
+ * every caller handed it `monitor.rawOutput()`, which is every assistant message of
+ * the run concatenated. That was a false description of what the matcher reads, and
+ * it made the position rules below read as if they applied to a sign-off when they
+ * were being applied to a whole transcript.
+ *
+ * The scan is cheap either way and never reaches a model, so it costs no tokens:
+ * measured at roughly 11 microseconds per KiB, 4.6 ms on 424 KiB, and 2.4 ms on a
+ * 203 KiB string built entirely from "The fix was worth waiting for", which is the
+ * adversarial shape for this pattern and shows no backtracking blowup. Cost is not
+ * the reason to prefer the sign-off; accuracy is.
+ *
+ * The phrase alone is not enough. "waiting for" carries two unrelated meanings and
+ * the surface form is identical: "waiting for the audit to finish" is a self-report,
+ * "worth waiting for the rebuild to prove" is a comment about something else. So the
+ * match requires the report POSITION as well as the words. The clause has to open a
+ * sentence ("Waiting on SourceLfsGates"), follow a label ("Blocked: waits for X"), or
+ * follow a subject that makes the agent the one waiting ("I am waiting on the
+ * reviewer", "still waiting for review").
+ *
+ * A line's leading list or quote marker counts as the start of the clause, because a
+ * bulleted status line ("- Waiting on ReviewBot") is the single most common way an
+ * agent writes this and is exactly the self-report shape. The marker class only ever
+ * lets the clause begin a line: anything else between the marker and the verb, as in
+ * "- The fix was worth waiting for", still fails to match.
+ *
+ * A false positive only lengthens the grace and a false negative only shortens it to
+ * the ordinary one, so the failure direction is a ref that lingers rather than one
+ * that vanishes while still needed. That asymmetry is why a phrase match is
+ * acceptable here at all; nothing about correctness depends on it.
+ */
+const WAITING_ON_PEER =
+	/(?:^[\s>*\-+\d.)\]]*|[.!?:;]\s+|\b(?:i am|i'm|am|is|are|still|currently|now)\s+)wait(?:ing|s)\s+(?:on|for)\b/im;
+
+export function saysItIsWaitingOnAPeer(signOff: string | undefined): boolean {
+	return signOff !== undefined && WAITING_ON_PEER.test(signOff);
+}
+
+/**
+ * The text a finished agent signed off with, for {@link saysItIsWaitingOnAPeer}.
+ *
+ * `monitor.rawOutput()` is not that. It is `finalOutputChunks` joined, filled from
+ * the `agent_end` event's `messages`, which the agent loop supplies as every message
+ * the run produced: on a long run it is the whole transcript's assistant prose, so a
+ * "waiting on X" line written forty turns earlier and long since resolved reads as
+ * the agent's current state. `captureSalvage` has already recorded the LAST assistant
+ * message's text by the time either caller runs, and that is the sign-off.
+ *
+ * The fallback matters and is deliberately the broad one. An agent whose final
+ * message was a bare `yield` tool call left no salvage text, and reading nothing
+ * there would deny the longer grace to exactly the agents that stopped to wait,
+ * which is the harmful direction: a peer the operator is about to message gets
+ * dropped. Over-matching only makes a ref linger.
+ */
+function subagentSignOffText(monitor: SubagentRunMonitor): string | undefined {
+	return monitor.lastAssistantSalvageText() ?? monitor.rawOutput();
+}
+
+/**
  * Settle a subagent's registry lifecycle after a run: terminal teardown for
  * hard aborts, unregister for one-shot helpers, park for isolated runs, and
  * idle + lifecycle adoption for kept-alive agents. A soft-budget abort on a
@@ -2270,6 +2414,13 @@ export async function finalizeSubagentLifecycle(args: {
 	keepAlive: boolean;
 	isolated: boolean;
 	agentIdleTtlMs: number;
+	/** Close budgets for the parked ref; absent keeps it listed until exit. */
+	autoClose?: SubagentAutoCloseBudget;
+	/**
+	 * The agent's sign-off (see the resolver beside {@link saysItIsWaitingOnAPeer}),
+	 * read only to decide whether it stopped to wait on a peer.
+	 */
+	signOff?: string;
 	reviveSession: (() => Promise<AgentSession>) | null;
 }): Promise<void> {
 	const registry = AgentRegistry.global();
@@ -2295,6 +2446,14 @@ export async function finalizeSubagentLifecycle(args: {
 	if (args.aborted && !resumableAbort) {
 		registry.setStatus(args.id, "aborted");
 		await disposeSession();
+		// `AgentRef.session` is null exactly when parked or aborted, and until this
+		// call it was not: the flip to "aborted" left the disposing session hanging off
+		// the ref, and `ensureLive` returns `ref.session` whenever it is set, so a wake
+		// arriving inside the dispose window was handed a session being torn down. The
+		// sdk's dispose wrapper unregisters any ref that is not parked, so this ref is
+		// usually gone a moment later and needs no close budget of its own, but "usually
+		// gone" is not the invariant the field documents.
+		registry.detachSession(args.id);
 		return;
 	}
 
@@ -2307,21 +2466,36 @@ export async function finalizeSubagentLifecycle(args: {
 
 	if (args.isolated) {
 		// Isolated run: the worktree is merged + cleaned after the run, so
-		// the session is not resumable. Park the ref WITHOUT adopting — the
+		// the session is not resumable. Park the ref WITHOUT a reviver: the
 		// transcript stays reachable (history://), but ensureLive will throw.
 		// Status must flip to "parked" before dispose so the sdk dispose
 		// wrapper skips unregister.
+		registry.setWaitingOnPeer(args.id, saysItIsWaitingOnAPeer(args.signOff));
 		registry.setStatus(args.id, "parked");
 		await disposeSession();
 		registry.detachSession(args.id);
+		// Adopted only to arm the close, with no idle stage (it is already parked) and
+		// no reviver (there is nothing to revive into). These are the refs it matters
+		// most for: an isolated agent can never be woken, so leaving it listed offers
+		// the operator a peer that cannot answer. Adopting after the status flip is
+		// what lets the close deadline read `parked` and arm immediately.
+		AgentLifecycleManager.global().adopt(args.id, {
+			idleTtlMs: 0,
+			closeParkedMs: args.autoClose?.parkedMs ?? 0,
+			closeWaitingMs: args.autoClose?.waitingMs ?? 0,
+		});
 		return;
 	}
 
 	// Keep-alive: finished and failed subagents both stay interrogable.
-	// The lifecycle manager owns idle-TTL parking + revival from here on.
+	// The lifecycle manager owns idle-TTL parking + revival from here on, and the
+	// close budgets decide how long the parked ref survives after that.
+	registry.setWaitingOnPeer(args.id, saysItIsWaitingOnAPeer(args.signOff));
 	registry.setStatus(args.id, "idle");
 	AgentLifecycleManager.global().adopt(args.id, {
 		idleTtlMs: args.agentIdleTtlMs,
+		closeParkedMs: args.autoClose?.parkedMs ?? 0,
+		closeWaitingMs: args.autoClose?.waitingMs ?? 0,
 		revive: args.reviveSession ?? undefined,
 	});
 }
@@ -2400,7 +2574,7 @@ export async function runSubagentFollowUpTurn(options: FollowUpTurnOptions): Pro
 	const unsubscribe = monitor.attach(session);
 	let outcome: DriveOutcome;
 	try {
-		outcome = await driveSessionToYield(session, monitor, message);
+		outcome = await driveSessionToYield(session, monitor, message, agent.output);
 	} finally {
 		const { signal, cancel } = scopedTimeoutSignal(5000);
 		try {
@@ -2414,6 +2588,20 @@ export async function runSubagentFollowUpTurn(options: FollowUpTurnOptions): Pro
 		const active = monitor.takeActiveSession();
 		if (active) monitor.captureSalvage(active);
 		monitor.finish();
+		// The waiting flag describes the agent's LATEST word, not its first. A follow-up
+		// turn does not go through `finalizeSubagentLifecycle`, so without this an agent
+		// that once signed off "waiting on X" and has since reported done keeps the
+		// longer close grace for the rest of the session, and the operator's ordinary
+		// budget is never applied to it again.
+		//
+		// Inside the `finally`, and after `captureSalvage`, on purpose. It used to sit
+		// after the whole try/finally, which relied on `driveSessionToYield` never
+		// throwing. That happens to hold today (it catches every path into a
+		// `DriveOutcome`), so this placement fixes no reachable bug, and that is exactly
+		// why it belongs here: "the flag always tracks the latest word" was true only
+		// because of an invariant of a different 160-line function, stated nowhere, and
+		// one added `throw` there would have made it quietly false.
+		AgentRegistry.global().setWaitingOnPeer(id, saysItIsWaitingOnAPeer(subagentSignOffText(monitor)));
 	}
 
 	return finalizeRunResult({
@@ -2544,9 +2732,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		0,
 		Math.trunc(Number(options.maxRuntimeMs ?? settings.get("subagent.maxRuntimeMs") ?? 0) || 0),
 	);
-	// TTL before an adopted idle subagent is parked by the lifecycle manager.
-	// <= 0 disables parking (the session stays live until process teardown).
-	const agentIdleTtlMs = Math.trunc(Number(settings.get("subagent.idleTtlMs") ?? 420_000) || 0);
+	const agentIdleTtlMs = resolveSubagentIdleTtlMs(settings);
+	const autoCloseBudget = resolveSubagentAutoCloseBudget(settings);
 	const configuredDefaultBudget = Math.max(
 		0,
 		Math.trunc(Number(settings.get("subagent.softRequestBudget") ?? SOFT_REQUEST_BUDGET.default) || 0),
@@ -2755,8 +2942,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				thinkingLevel,
 			);
 			const effectiveThinkingLevel =
-				selectedThinkingLevel === undefined || selectedThinkingLevel === "inherit"
-					? options.parentThinkingLevel
+				selectedThinkingLevel === undefined || selectedThinkingLevel === ThinkingLevel.Inherit
+					? (options.parentThinkingLevel ?? ThinkingLevel.Inherit)
 					: selectedThinkingLevel;
 			if (model) {
 				// The badge carries the effort this agent ACTUALLY runs at, not only an effort somebody
@@ -3058,24 +3245,29 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			unsubscribe = monitor.attach(session);
 
 			checkAbort();
-			// Autoload skills via sendCustomMessage (same mechanic as /skill:<name>)
-			if (options.autoloadSkills?.length) {
-				for (const skill of options.autoloadSkills) {
-					const { message } = await buildSkillPromptMessage(skill, "", "autoload");
-					await session.sendCustomMessage(
-						{
-							customType: SKILL_PROMPT_MESSAGE_TYPE,
-							content: message,
-							display: false,
-							details: { name: skill.name, path: skill.filePath },
-						},
-						{ triggerTurn: false },
-					);
-				}
+			// Autoload skills via sendCustomMessage (same mechanic as /skill:<name>).
+			//
+			// Settled HERE, against `session.skills`, because this is the first point where the
+			// child's own skill set exists. A spawn whose `cwd` differs from the parent's inherits
+			// no skills and rediscovers its own, so the spawner cannot match the declared names: it
+			// forwards them as a `deferred` plan and they are judged present or missing against the
+			// tree the child was actually pointed at.
+			const autoloadSkills = settleAutoloadSkills(options.autoloadSkills, session.skills, agent.name);
+			for (const skill of autoloadSkills) {
+				const { message } = await buildSkillPromptMessage(skill, "", "autoload");
+				await session.sendCustomMessage(
+					{
+						customType: SKILL_PROMPT_MESSAGE_TYPE,
+						content: message,
+						display: false,
+						details: { name: skill.name, path: skill.filePath },
+					},
+					{ triggerTurn: false },
+				);
 			}
 
 			readyAt = performance.now();
-			const outcome = await driveSessionToYield(session, monitor, task);
+			const outcome = await driveSessionToYield(session, monitor, task, outputSchema);
 			failure = outcome.failure;
 			turnCutShort = outcome.turnCutShort;
 			turnAborted = outcome.turnAborted;
@@ -3127,6 +3319,10 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					keepAlive: options.keepAlive !== false,
 					isolated: worktree !== undefined,
 					agentIdleTtlMs,
+					autoClose: autoCloseBudget,
+					// `captureSalvage` ran on the line above, so the sign-off is this run's
+					// LAST assistant text rather than every assistant message it produced.
+					signOff: subagentSignOffText(monitor),
 					reviveSession,
 				});
 			}

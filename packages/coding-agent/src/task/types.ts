@@ -128,23 +128,25 @@ export type TaskSchema = typeof taskSchema;
 /** Active task tool parameter schema for the current isolation / batch flags */
 export type TaskToolSchemaInstance = DynamicTaskSchema | BaseType;
 
-const TASK_AGENT_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const taskSchemaCache = new Map<string, BaseType>();
 
-function taskAgentSchemaRule(defaultAgent: string): string {
-	const trimmed = defaultAgent.trim();
-	if (TASK_AGENT_NAME_PATTERN.test(trimmed)) {
-		return `string = '${trimmed}'`;
+function taskAgentSchemaRule(defaultAgent: string | undefined, enabledAgentNames?: readonly string[]) {
+	const trimmedDefault = defaultAgent?.trim();
+	if (enabledAgentNames === undefined) {
+		return trimmedDefault ? type("string").default(trimmedDefault) : "string";
 	}
-	return "string";
+	const names = [...new Set(enabledAgentNames.map(name => name.trim()).filter(Boolean))];
+	const enabled = type.enumerated(...names);
+	return trimmedDefault ? enabled.default(trimmedDefault) : enabled;
 }
 
 function createTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
-	defaultAgent: string;
+	defaultAgent: string | undefined;
+	enabledAgentNames?: readonly string[];
 }): BaseType {
-	const agent = taskAgentSchemaRule(options.defaultAgent);
+	const agent = taskAgentSchemaRule(options.defaultAgent, options.enabledAgentNames);
 	if (options.batchEnabled) {
 		if (options.isolationEnabled) {
 			const item = type.raw({
@@ -197,22 +199,30 @@ export function getTaskSchema(options: { isolationEnabled: boolean; batchEnabled
 export function getTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
-	defaultAgent: string;
+	defaultAgent: string | undefined;
+	enabledAgentNames?: readonly string[];
 }): TaskToolSchemaInstance;
 export function getTaskSchema(options: {
 	isolationEnabled: boolean;
 	batchEnabled: boolean;
 	defaultAgent?: string;
+	enabledAgentNames?: readonly string[];
 }): TaskToolSchemaInstance {
-	const defaultAgent = options.defaultAgent ?? "task";
-	if (defaultAgent === "task") {
+	const hasDefaultAgent = Object.hasOwn(options, "defaultAgent");
+	const defaultAgent = hasDefaultAgent ? options.defaultAgent : "task";
+	const enabledAgentNames = options.enabledAgentNames;
+	if (enabledAgentNames === undefined && defaultAgent === "task") {
 		if (options.batchEnabled) return options.isolationEnabled ? taskSchemaBatch : taskSchemaBatchNoIsolation;
 		return options.isolationEnabled ? taskSchema : taskSchemaNoIsolation;
 	}
-	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${defaultAgent}`;
+	const encodedNames =
+		enabledAgentNames === undefined
+			? "unconstrained"
+			: enabledAgentNames.map(name => `${name.length}:${name}`).join(",");
+	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${defaultAgent === undefined ? "unset" : `set:${defaultAgent.length}:${defaultAgent}`}:agents:${encodedNames}`;
 	const cached = taskSchemaCache.get(key);
 	if (cached) return cached;
-	const schema = createTaskSchema({ ...options, defaultAgent });
+	const schema = createTaskSchema({ ...options, defaultAgent, enabledAgentNames });
 	taskSchemaCache.set(key, schema);
 	return schema;
 }
