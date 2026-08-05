@@ -153,10 +153,13 @@ See [Settings: Subagents](../../../settings.md#subagents) and
 
 ## Automation note
 
-For non-interactive runs, pass the prompt and pick an approval mode that matches your trust boundary:
+For non-interactive runs, pass the prompt and pick an approval mode that matches your trust
+boundary. A headless run has no terminal to answer a prompt on, so a rung that asks turns the
+gated tool call into an error rather than a pause: the default `auto` runs every tier while the
+working-directory, credential and critical-command guards still stop the calls they cover.
 
 ```console
-$ veyyon --approval-mode auto-edit "run the unit tests and fix failures"
+$ veyyon --print "run the unit tests and fix failures"
 ```
 
 Use `--yolo` (auto-approve everything) only in trusted automation, ideally in an externally isolated environment (Docker, a VM, a CI jail), since Veyyon does not sandbox the commands it runs.

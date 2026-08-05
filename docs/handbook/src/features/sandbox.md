@@ -23,14 +23,15 @@ This page is the operator reference. For the model behind it, see
 | Mode | read | write | exec |
 | --- | --- | --- | --- |
 | `plan` | auto | ask with an active plan-mode session, denied otherwise | denied |
-| `ask` | auto | ask | ask |
-| `auto-edit` | auto | auto | ask |
+| `ask` | ask | ask | ask |
+| `ask-command` | auto | auto | ask |
+| `auto` | auto | auto | auto, with the per-tool, working-directory, credential and critical-call guards still asking |
 | `yolo` | auto | auto | auto |
 
-Schema default: **`yolo`**. Legacy aliases: `always-ask` → `ask`, `write` → `auto-edit`.
+Schema default: **`auto`**. Legacy aliases: `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`.
 
 ```console
-$ veyyon --approval-mode auto-edit
+$ veyyon --approval-mode ask-command
 $ veyyon --yolo                    # same as --auto-approve → yolo
 $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
 ```
@@ -44,10 +45,18 @@ tools:
 
 When the active mode requires approval for a tool call, the TUI shows a **Permission required**
 card. The card names the tool, states that the decision applies to this call only, separates the
-reason from the requested command or file operation, and waits on two options:
+reason from the requested command or file operation, and waits on four options:
 
-- **Approve**: run this call once without saving a policy.
+- **Approve**: run this call once. Nothing is remembered.
+- **Approve for session**: run this and every later call to this tool, until you exit.
 - **Deny**: refuse this call and return `Tool call denied by user: <name>` to the model.
+- **Deny for session**: refuse this and every later call to this tool, until you exit.
+
+The two "for session" rows are session memory, not policy: nothing is written to
+`tools.approval`, and the next launch asks again. A remembered decision also covers only
+the ordinary tier prompt. The three prompts that are about a call's ARGUMENTS rather than
+its tool name still ask every time: a `critical` bash command, a path outside the working
+directory, and a call that spends a stored credential.
 
 The selected option uses a radio marker and includes a short description. Navigate with the usual
 list keys (`up`/`down`, `enter` to confirm, `esc` to cancel; cancelling counts as a denial).
@@ -63,7 +72,7 @@ process exit status follows the run.
 
 ## Critical bash commands
 
-Some shell commands always prompt in `plan`, `ask`, and `auto-edit`, even over a per-tool
+Some shell commands always prompt in `plan`, `ask`, `ask-command` and `auto`, even over a per-tool
 `allow` override. The guard lives in `packages/coding-agent/src/tools/bash-guard.ts` and has
 two halves.
 

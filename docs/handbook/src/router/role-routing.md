@@ -6,12 +6,12 @@ Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.
 
 ## What exists today
 
-- **Subagents** via the `task` tool (`packages/coding-agent/src/task/executor.ts`) and `/agents`
-  thread switching.
-- **Explicit model slots**, not a role→model matrix: the interactive model (`/model`), plus plain
-  `subagent.model` and `compaction.model` fields in settings (`subagent.model` belongs to the Subagents area, not the role table). `default` is not a model or a role. Named
-  **roles** (`modelRoles`, scoped per profile) exist for anyone who wants specific work types pinned to
-  specific models, but editing them lives in a settings group, not the model picker. See
+- **Subagents** via the `task` tool (`packages/coding-agent/src/task/executor.ts`). `/agents` opens the
+  live hub for active and persisted agent threads.
+- **Explicit model policies**, not a role-to-model matrix: the interactive model (`/model`), profile-wide
+  subagent defaults and per-agent overrides under `subagent`, plus `compaction.model`. `default` is not
+  a model or a role. Named **roles** (`modelRoles`, scoped per profile) let you pin specific work types.
+  Edit roles under Settings → Model → Roles and subagent policy under Settings → Subagents. See
   [Compaction & project memory](../context/compaction-memory.md) and
   [Models, roles, and profiles](../using/roles-and-profiles.md).
 - **Plan / goal modes** alter prompts and tool gating (`/plan`, `/goal`). There is no `/advisor` slash
@@ -29,6 +29,6 @@ Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.
 ## No fixed role pipeline
 
 Veyyon does not enforce a staged plan → implement → verify → repair handoff. It uses lighter-weight
-spawn, model-slot, and `irc` messaging patterns instead; you compose the stages yourself.
+spawn, subagent-policy, and `irc` messaging patterns instead; you compose the stages yourself.
 
 Pair role choice with [execution-order prompts](../models/prompts.md): explore → plan → edit → verify.

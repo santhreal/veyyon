@@ -182,9 +182,69 @@ which of the four layers decided.
 
 The remaining groups in the tab are operational: how many subagents run at once
 (`subagent.maxConcurrency`), how deeply they may nest (`subagent.maxNestedSpawnDepth`),
-per-run wall clock and request budgets, how long an idle subagent stays in memory
-before being parked to disk (`idleTtlMs`), and whether their edits land in an isolated
+per-run wall clock and request budgets, how long a finished subagent stays live
+before parking (`subagent.idleTtlMs`) and how long it stays listed after that
+(`subagent.autoClose.*`), and whether its edits land in an isolated
 copy of the tree first (`subagent.isolation.*`, see [Safety](../using/safety.md)).
+
+`subagent.idleTtlMs` defaults to five minutes for every model and provider. Set
+a positive millisecond value to override it. Set `0` to keep idle agents live
+until exit. Parking releases the live session but keeps its transcript, so
+messaging or opening the agent can revive it.
+
+A parked subagent is eventually closed, which drops it from the roster so a long
+session does not accumulate every agent it ever spawned. Closing removes the
+revivable reference; it does not touch the transcript, which stays readable at
+`history://<name>`.
+
+Three settings in the Auto Close group control it. `subagent.autoClose.enabled`
+is on by default; turn it off to keep every finished subagent listed and
+revivable until you exit. `subagent.autoClose.parkedMs` is how long a parked
+subagent stays listed, counted from the moment it parked, and defaults to five
+minutes. `subagent.autoClose.waitingMs` is the same budget for a subagent whose
+last message said it was waiting on another agent, and defaults to thirty
+minutes: it stopped on purpose to let a peer finish, so it is the agent you are
+most likely to message next. Set the two equal to treat both the same.
+
+### When each budget starts counting
+
+Both budgets count from the agent's last transition, not from when it was spawned. An
+idle agent's park budget starts when it went idle. A parked agent's close budget starts
+at the moment it parked. A revived agent starts its park budget again from the revival,
+so messaging a parked agent gives it a fresh five minutes rather than resuming a clock
+that was already half spent.
+
+That is why a long-lived session does not slowly close everything at once: each agent's
+deadline moves with its own activity.
+
+### Only idle and parked agents have a deadline
+
+A `running` agent carries no deadline at all, and neither does an `aborted` one. Nothing
+parks or closes an agent that is mid-turn.
+
+This matters when an agent looks stuck. A subagent waiting for you to answer an approval
+prompt is still mid-turn, so it stays `running` and no park or close timer applies to it.
+If a finished agent is not being cleaned up, check its status first: the lifecycle only
+acts on `idle` and `parked`, so an agent stuck in `running` is a different problem and the
+auto-close settings will not affect it.
+
+### Turning it off
+
+Set `subagent.autoClose.parkedMs` to `0` and no parked agent is ever closed. That also
+forces the waiting budget to `0`, whatever `subagent.autoClose.waitingMs` says.
+
+That coupling is deliberate. If a zero parked budget still honoured a separate waiting
+budget, the only agents that ever closed would be the ones that stopped to wait on a peer,
+which are the agents you are most likely to message next. Zero means never close, for
+both kinds.
+
+### If the session cannot be saved
+
+Parking flushes the agent's session to disk before releasing it. If that flush fails, the
+park is cancelled and the agent stays live with its timer re-armed. You keep a live agent
+rather than losing unsaved state, and the attempt repeats on the next expiry.
+
+### Nesting depth
 
 `subagent.maxNestedSpawnDepth` is inclusive. The default is `0`: the top-level session,
 at depth 0, may spawn direct subagents, but those children are leaves and cannot spawn

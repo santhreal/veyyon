@@ -97,8 +97,8 @@ $ veyyon --model openai/gpt-5
 | Piece | Purpose | Config |
 | --- | --- | --- |
 | **Interactive model** | Main conversation | `/model`, `--model`; persisted as `modelRoles.default` |
-| **Roles** | Named assignments (`smol`, `slow`, `plan`, `advisor`, …) | `modelRoles` / settings → Model → Roles |
-| **Subagent model** | Spawned subagents | `subagent.model` (or a per-agent model in `subagent.agents`; unset inherits interactive) |
+| **Roles** | Named assignments (`smol`, `slow`, `plan`, `advisor`, …) | `modelRoles` / Settings → Model → Roles |
+| **Subagent policy** | Blanket and per-agent model and effort choices | `subagent.model`, `subagent.thinkingLevel`, and `subagent.agents` |
 | **Compaction override** | Compaction / handoff | `compaction.model` (else inherit interactive) |
 
 ```yaml
@@ -108,9 +108,12 @@ modelRoles:
   smol: openai/gpt-4.1-mini
   slow: anthropic/claude-opus-4-5:high
   plan: anthropic/claude-sonnet-5
-  task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat  # optional hard override for task agents
+  model: deepseek/deepseek-chat:high
+  agents:
+    reviewer:
+      enabled: true
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini
 ```
@@ -162,7 +165,7 @@ $ veyyon --model openrouter/anthropic/claude-sonnet-4
 | Constraint | Typical choice |
 | --- | --- |
 | Tool-heavy refactors | Hosted model with tool calling |
-| Long sessions / subagents | Cheaper id on `subagent.model` / `compaction.model` |
+| Long sessions / subagents | Choose cheaper models under `subagent` and `compaction.model` |
 | Low latency | Local or flash-tier cloud |
 | Offline / private code | Ollama, LM Studio, llama.cpp |
 | CI | Pin exact `provider/id` with `--model` |

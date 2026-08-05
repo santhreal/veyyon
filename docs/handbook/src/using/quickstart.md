@@ -36,7 +36,7 @@ cd my-project
 vey
 ```
 
-The first interactive launch shows the first-run setup (splash, providers, glyphs, theme, outro), then the welcome screen and composer. Resuming a session, or setting `VEYYON_SKIP_SETUP=1`, skips it. You can re-open providers later with `/setup` or `/providers`, or run `veyyon setup` from the shell.
+The first interactive launch shows the first-run setup (splash, providers, glyphs, theme, outro), then the welcome screen and composer. Resuming a session, or setting `VEYYON_SKIP_SETUP=1`, skips it. You can re-open provider setup later with `/setup`, or run `veyyon setup` from the shell. To manage the accounts you already have, use `/providers`.
 
 After setup, you should see the TUI composer, the model indicator, and your workspace path.
 

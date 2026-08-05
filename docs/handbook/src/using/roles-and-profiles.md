@@ -6,7 +6,7 @@
 | --- | --- |
 | **Default model** | The model used for the main conversation, and the one a new session starts on. Chosen with `/model` or `--model`, or in `/settings` under Model. Persisted under `modelRoles.default`, which is a slot rather than a selectable role, so it does not appear in role pickers. |
 | **Role** | A named model assignment for a kind of work (`smol`, `plan`, `advisor`, and others). Configure it in `modelRoles` or Settings → Model → Roles. |
-| **Slot override** | `subagent.model` or `compaction.model`, an ordered model chain for one subsystem. An unset slot inherits the interactive model. |
+| **Subagent policy** | The blanket model and effort plus per-agent `enabled`, `model`, `thinkingLevel`, and `maxNestedSpawnDepth` choices under `subagent`. |
 | **Profile** | User config tree at `~/.veyyon/profiles/<name>/` (including `default`). |
 
 ## Interactive model
@@ -51,21 +51,29 @@ A caller may still ask for several roles in order. Title generation, for example
 
 There is no `task` role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see [Settings: Subagents](../../../settings.md#subagents).
 
-To return an assigned role or slot to its unset state, open its picker in `/settings` and choose the first row, `(inherit main model)` (the default model's picker reads `(auto-select on launch)`). Del or Backspace with an empty search does the same.
+To return an assigned role or model policy to its unset state, open its picker in `/settings` and choose the first row, `(inherit main model)` (the default model's picker reads `(auto-select on launch)`). Del or Backspace with an empty search does the same.
 
-## Slot overrides
+## Subagent policy and compaction overrides
 
 | Setting | Effect |
 | --- | --- |
-| `subagent.model` | Ordered model chain for every subagent that has no model of its own. The first entry is primary and later entries are fallbacks. An unset chain inherits the interactive model. A per-agent model in `subagent.agents` wins over it. |
-| `compaction.model` | Ordered model chain for compaction and handoff. An unset chain inherits the interactive model. |
+| `subagent.model` | Ordered model chain for every subagent that has no model of its own. The first entry is primary and later entries are fallbacks. Unset inherits the interactive model. |
+| `subagent.thinkingLevel` | Blanket subagent effort. Unset inherits the live parent effort. |
+| `subagent.agents` | Per-agent `enabled`, `model`, `thinkingLevel`, and `maxNestedSpawnDepth` choices. Per-agent values win over the blanket policy. |
+| `subagent.delegation` | How strongly the model is prompted to delegate: `allowed`, `preferred`, or `required`. |
+| `compaction.model` | Ordered model chain for compaction. Unset inherits the interactive model. |
 
 ```yaml
 subagent:
   model: deepseek/deepseek-chat:high,anthropic/claude-sonnet-5:low
+  agents:
+    scout:
+      enabled: false
+    reviewer:
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini:low,anthropic/claude-haiku-4-5
-  strategy: handoff
+  strategy: summary
   threshold: "80%"
 ```
 
@@ -111,8 +119,8 @@ Activate: `--profile`, `VEYYON_PROFILE`, `veyyon profile default <name>`, TUI `/
 See [Profiles](../features/profiles.md), [File locations](../reference/file-locations.md).
 ## Approvals
 
-`tools.approvalMode`: `plan` | `ask` | `auto-edit` | `yolo` (schema default `yolo`).  
-Aliases: `always-ask` → `ask`, `write` → `auto-edit`.  
+`tools.approvalMode`: `plan` | `ask` | `ask-command` | `auto` | `yolo` (schema default `auto`).
+Aliases: `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`.
 See [Approvals](../features/sandbox.md).
 
 ## Related

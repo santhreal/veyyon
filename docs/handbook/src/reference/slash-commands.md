@@ -12,7 +12,9 @@ commands this build has, or drop the leading slash to send it as a message.
 ```
 
 The refusal names the command and never repeats what followed it, because the tail of a mistyped
-`/secret add` is a credential.
+`/secret` is a credential. The rule reaches further than one mistyped word: in a terminal the whole
+argument line of `/secret` is the credential, whatever it happens to spell, so there is no tail
+there that is safe to echo back.
 
 A message that merely begins with a filesystem path is prose, not a command, and is sent as usual:
 
@@ -48,6 +50,7 @@ starting with a letter, so anything holding a slash is a path.
 | `/switch` | Try a model for this session only, without saving it as default (same as alt+p) |
 | `/fast on\|off\|status` | Fast mode |
 | `/thinking [level]` (`/effort`) | Set reasoning effort; no argument opens the picker |
+| `/permissions [rung]` (`/approval`) | Set how much the agent does unasked, for this session only: `ask`, `ask-command`, `auto`, `yolo`, or `plan`. No argument reports the rung in force and where it came from; `reset` drops the session override and returns to the saved default from Settings |
 | `/yolo on\|off\|status` | Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation) |
 | `/plan` | Toggle plan mode |
 | `/plan-review` | Re-open plan review |
@@ -55,8 +58,12 @@ starting with a letter, so anything holding a slash is a path.
 | `/guided-goal` | Guided goal wizard |
 | `/loop` | Loop mode controls |
 | `/prewalk` | Prewalk edit path |
-| `/secret` | Store a credential the agent uses by placeholder and never sees. `add` (prompts with the value hidden), `list`, `rm`, `extend`, `log`. See [Secrets](../features/secrets.md) |
-| `/settings`, `/setup` | Settings UI; `/setup` / `/providers` opens provider sign-in |
+| `/secret` | Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential, a bare `/secret` opens a hidden field, and `/secret manager` opens the manager. A client with no terminal keeps the verbs `add`, `list`, `rm`, `extend`, `log`, `discard`. See [Secrets](../features/secrets.md) |
+| `/settings`, `/setup` | Settings UI; `/setup` opens first-run provider sign-in |
+| `/providers`, `/account manager` | Open the account manager: every stored account per provider, with its email, plan, health, and usage. See [Authentication](../using/authentication.md) |
+| `/account [status]` | Show which account each provider is serving this session with |
+| `/account name <text>` | Name the account this session is using, so rows read `work` instead of an email |
+| `/account switch <provider>` | Open the manager focused on one provider, to move that provider to another of your accounts |
 | `/statusline` | Settings UI, jumped to Status Line (preset/segments/separator) |
 | `/reload-plugins` | Reload extensions |
 | `/force <tool> [prompt]` (`/force:`) | Force the next turn to use a specific tool |
@@ -65,9 +72,9 @@ starting with a letter, so anything holding a slash is a path.
 
 | Command | Purpose |
 | --- | --- |
-| `/compact [summary\|handoff] [focus]` | Compact context now (`compaction.model` + type); optional type override and focus string |
+| `/compact [summary] [focus]` | Summarize older context in place; optional focus string |
 | `/shake [elide\|images]` | Shake tool-result bulk |
-| `/handoff` | Compaction handoff helper |
+| `/handoff [focus]` | Explicitly transfer context into a new session |
 | `/context` | Context usage report |
 | `/tools` | Tools visible to the model |
 | `/jobs` | Background async jobs |

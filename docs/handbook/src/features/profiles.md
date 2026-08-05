@@ -136,13 +136,13 @@ You can still create a profile implicitly by running `veyyon --profile <name>` o
 
 ## Onboarding import
 
-On first run, the setup wizard scans the machine for user-level config written for other tools (skills and `CLAUDE.md`/`AGENTS.md` from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports **copy**: skills land in the profile's `skills/`, instruction files append to the profile's `AGENTS.md` under a source marker (re-imports are idempotent). The scan runs no matter how `discovery.importForeignConfig` is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.
+On the first interactive run of a profile that has not completed setup, the setup wizard scans the machine for user-level config written for other tools (skills and `CLAUDE.md`/`AGENTS.md` from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports **copy**: skills land in the profile's `skills/`, instruction files append to the profile's `AGENTS.md` under a source marker (re-imports are idempotent). The scan runs no matter how `discovery.importForeignConfig` is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.
 
 Do not document inline `[profiles.<name>]` tables or standalone `<name>.config.yml` files as shipped; settings use `config.yml` under the active agent dir.
 
-## Model slots and roles (per profile)
+## Model policies and roles (per profile)
 
-Each profile's `config.yml` owns the three model slots and optional roles:
+Each profile's `config.yml` owns its interactive default, optional roles, subagent policy, and compaction policy:
 
 ```yaml
 modelRoles:
@@ -150,14 +150,20 @@ modelRoles:
   plan: openai/o3
   smol: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat     # optional blanket override for all subagents
+  model: deepseek/deepseek-chat     # blanket model chain for subagents
+  thinkingLevel: high
+  agents:
+    scout:
+      enabled: false
+    reviewer:
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini
-  strategy: handoff                 # or summary (the default)
+  strategy: summary
   threshold: "80%"
 ```
 
-**Unset slots and roles inherit the live main model.** The compaction model and every model role default to "inherit": when unset, they resolve to whatever the main model is *at use time*, so switching with `/model` changes them instantly. Only an explicit assignment pins a different model. (The advisor role follows the same rule, unset, it inherits the live main model; the settings UI labels each role's unset behavior.) Switching profiles switches all of these assignments with the profile.
+Unset roles and model chains inherit the live main model at use time, so switching with `/model` changes them immediately. Per-agent subagent settings override the blanket subagent model and effort; an unset per-agent value falls back to that blanket policy. Only an explicit assignment pins a different model. Switching profiles switches all of these assignments with the profile.
 
 ## See also
 

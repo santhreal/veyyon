@@ -23,27 +23,28 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
     model context window, so switching to a smaller-window model warns again).
 
   You can also compact on demand with `/compact`.
-- **Type** (`compaction.strategy`): how history is compressed:
-  - `summary`: rewrites old history into an in-place LLM summary on the current branch (the default).
-  - `handoff`: writes a structured handoff summary that preserves the task, pending questions, and
-    recent decisions, then continues from it (LLM transfer path).
-- **Model** (`compaction.model`): the models that perform LLM compaction / handoff, tried in order.
-  Unset uses your interactive model. See [Fallback models](#fallback-models) below and
-  [Models, roles, and profiles](../using/roles-and-profiles.md).
+- **Type** (`compaction.strategy`): `summary`, the sole strategy. It rewrites old
+  history into an in-place LLM summary on the current branch.
+- **Model** (`compaction.model`): the models that perform LLM compaction, tried
+  in order. Unset uses your interactive model. See [Fallback models](#fallback-models)
+  below and [Models, roles, and profiles](../using/roles-and-profiles.md).
 
-`/compact <focus>` steers a run with an "Additional focus:" directive. The most recent turns, user, assistant, and tool messages, are kept verbatim up to `compaction.keepRecentTokens` (default 20,000 tokens).
+`/compact <focus>` steers a run with an "Additional focus:" directive. The most
+recent user, assistant, and tool messages stay verbatim up to
+`compaction.keepRecentTokens` (default 20,000 tokens).
 
-You can also pick the type for a single run by naming it first: `/compact summary` or
-`/compact handoff`. The name is a one-off override, so it does not change
-`compaction.strategy`. Anything after the name is focus text, as in
-`/compact handoff keep the auth details`.
+Use `/handoff <focus>` when you explicitly want a new session. Handoff is not a
+compaction strategy, and automatic maintenance never selects it.
 
-Two older names, `soft` and `remote`, are no longer types. `remote` selected a provider-native
-compaction path and `soft` existed only to skip it; that path is removed, so there is nothing left
-for them to select. If you type one, veyyon compacts with your configured type, treats the whole argument
-as focus text, and says which name you used and what to use instead. Your text is passed
-through exactly as you typed it, because a sentence that happens to start with "soft" is a
-reasonable thing to ask for.
+Compaction and handoff both write a machine-owned continuity record separate
+from generated prose. It preserves the active objective, the original user
+contract, goal and todo state, pending blockers, changed paths, verification
+evidence, and checkpoint state. Handoff writes that record into the replacement
+session before the next turn. Reopening either session restores exact state
+instead of relying on generated prose to repeat every field.
+
+Stored legacy strategy names such as `handoff`, `snap`, `soft`, and `remote`
+migrate to `summary`. A legacy `off` value also disables compaction.
 
 ## Fallback models
 
@@ -99,14 +100,12 @@ error results, and results already elided are never deduplicated.
 The match is exact. If a command's output changes between runs, both runs are kept, because the
 later one is genuinely new information rather than a repeat.
 
-This duplicate elision runs on its own, ahead of every strategy. Whenever auto-maintenance is about
-to compact because the context crossed the threshold or overflowed, it first runs the lossless
-dedup as a Tier-0 pass, whatever your `compaction.strategy` is. The pass is recall-preserving and
-makes no model call, so it always runs before the heavier path and shrinks what that path has to
-process. If dropping the duplicates alone brings a threshold trigger back under the bar, the
-compaction is skipped entirely and your history is left intact apart from the elided copies. An
-overflow recovery always finishes its compaction, because the prompt still has to be rebuilt to fit
-the window, but it too starts from the smaller deduped history.
+Duplicate elision runs on its own before in-place compaction. Whenever automatic
+maintenance runs because context crossed the threshold or overflowed, it first
+runs this lossless Tier-0 pass. If dropping duplicates brings a threshold trigger
+back under the bar, compaction is skipped and history stays intact apart from the
+elided copies. Overflow recovery still finishes compaction because the prompt must
+be rebuilt to fit the window, but it starts from the smaller deduplicated history.
 
 ## Memory backends
 

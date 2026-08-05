@@ -36,9 +36,12 @@ and is not affected by the original tool.
 
 A separate setting, `discovery.importForeignConfig`, governs whether Veyyon
 ambiently reads other tools' context files (`CLAUDE.md`, standalone `AGENTS.md`),
-rules, and MCP servers. It ships **off**, so by default Veyyon never picks up a
-foreign `CLAUDE.md` or `GEMINI.md` from disk. Turn it on to load them as a
-machine-wide base layer:
+rules, and MCP servers. It ships **off**, so by default Veyyon reads no foreign
+tool's config directory and no `GEMINI.md`. It does still read a project's own
+`AGENTS.md` or `CLAUDE.md` on the walk from the repository root down to your
+working directory: those are the project's instructions to any agent, not another
+tool's private config. Turn the setting on to load the rest as a machine-wide
+base layer:
 
 ```yaml
 discovery:
@@ -51,16 +54,25 @@ onboarding scan always finds and offers foreign files for import, because
 importing copies a file into your profile, which is how foreign config comes in
 by default now that ambient loading is off.
 
-Veyyon's own instructions load in three layers, and only these three:
+Veyyon's own instructions load in four layers, and only these four:
 
 1. The compiled system prompt.
 2. The global `~/.veyyon/AGENTS.md`, which applies to every profile.
-3. The active profile's `AGENTS.md`
+3. The project's own context files: **one file per directory** on the walk from
+   the repository root down to your working directory. Each directory offers
+   `.veyyon/AGENTS.md` (only from the nearest non-empty `.veyyon/`), then
+   `AGENTS.md`, then `CLAUDE.md`, and the first one with content wins. The rest of
+   that directory's candidates are not read, so a `CLAUDE.md` sitting beside an
+   `AGENTS.md` is deliberately not loaded and the same rules are never inlined
+   twice. The choice is made per directory, so a repository root using `AGENTS.md`
+   and a package using `CLAUDE.md` both load.
+4. The active profile's `AGENTS.md`
    (`~/.veyyon/profiles/<name>/agent/AGENTS.md`).
 
-A project's `.veyyon/AGENTS.md` is read too when you work inside that project.
-The layers run least specific to most specific, so the global file is the
-baseline and the profile file wins where they overlap. See
+They are rendered in that order, least prominent first, so each layer overrides
+the ones above it: the global file is the baseline, a project file overrides it,
+and the profile file is last and has the final word. Within the project layer the
+file closest to your working directory is the most prominent. See
 [instruction layers](#instruction-layers) below for how to split rules between
 the global and per-profile files.
 
