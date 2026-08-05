@@ -8,6 +8,7 @@ import {
 } from "@veyyon/ai/providers/openai-completions";
 import type {
 	AssistantMessage,
+	CacheRetention,
 	Context,
 	FetchImpl,
 	Model,
@@ -115,7 +116,7 @@ function kimiZaiModel(): Model<"openai-completions"> {
 async function captureOpenAICompletionsPayload(
 	model: Model<"openai-completions">,
 	context: Context = baseContext(),
-	options?: { reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max" },
+	options?: { reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max"; cacheRetention?: CacheRetention },
 ): Promise<unknown> {
 	const { promise, resolve } = Promise.withResolvers<unknown>();
 	const fetchMock = createMockFetch(["[DONE]"]);
@@ -2335,6 +2336,61 @@ describe("anthropic cache control for OpenAI-compatible chat completions", () =>
 		const payload = await captureOpenAICompletionsPayload(claudeProxyModel(), cacheContext());
 
 		expect(getLastPayloadContent(payload)).toBe("cache me");
+	});
+
+	/**
+	 * `cacheRetention` is a cross-provider request option and this path was the
+	 * only cache implementation of the four that never read it.
+	 *
+	 * WHY THIS SUITE EXISTS. `maybeAddAnthropicCacheControl` took `(compat,
+	 * messages)` and branched on nothing else, so `none` still stamped a
+	 * breakpoint (the caller pays Anthropic's 1.25x cache-write premium on a
+	 * prefix it asked not to cache) and `long` shipped the default five-minute
+	 * window. The SAME OpenRouter Claude rows on the Responses path
+	 * (`maybeAddOpenRouterAnthropicCacheControl`) already honored both, so one
+	 * model produced two different sets of request bytes depending on whether
+	 * `VEYYON_OPENROUTER_RESPONSES=0` was set. Nothing failed either way: the
+	 * turn succeeded and only the bill moved.
+	 *
+	 * Breakpoint POSITION is asserted, not merely presence, because the whole
+	 * value of the marker is which prefix it terminates.
+	 */
+	function cacheMarkers(payload: unknown): Array<{ message: number; part: number; marker: unknown }> {
+		const found: Array<{ message: number; part: number; marker: unknown }> = [];
+		getPayloadMessages(payload).forEach((message, messageIndex) => {
+			const content = message.content;
+			if (!Array.isArray(content)) return;
+			content.forEach((rawPart, partIndex) => {
+				const part = toObject(rawPart);
+				if (part?.cache_control === undefined) return;
+				found.push({ message: messageIndex, part: partIndex, marker: part.cache_control });
+			});
+		});
+		return found;
+	}
+
+	it("writes no breakpoint at all when the caller opted out with cacheRetention none", async () => {
+		const model = getBundledModel("openrouter", "anthropic/claude-sonnet-4") as Model<"openai-completions">;
+		const payload = await captureOpenAICompletionsPayload(model, cacheContext(), { cacheRetention: "none" });
+
+		expect(cacheMarkers(payload)).toEqual([]);
+		// The message stays an unwrapped string: opting out must not even convert
+		// the content to the structured form the marker requires.
+		expect(getLastPayloadContent(payload)).toBe("cache me");
+	});
+
+	it("upgrades the breakpoint to a one-hour window for cacheRetention long", async () => {
+		const model = getBundledModel("openrouter", "anthropic/claude-sonnet-4") as Model<"openai-completions">;
+		const payload = await captureOpenAICompletionsPayload(model, cacheContext(), { cacheRetention: "long" });
+
+		expect(cacheMarkers(payload)).toEqual([{ message: 0, part: 0, marker: { type: "ephemeral", ttl: "1h" } }]);
+	});
+
+	it("keeps the default window unqualified for cacheRetention short", async () => {
+		const model = getBundledModel("openrouter", "anthropic/claude-sonnet-4") as Model<"openai-completions">;
+		const payload = await captureOpenAICompletionsPayload(model, cacheContext(), { cacheRetention: "short" });
+
+		expect(cacheMarkers(payload)).toEqual([{ message: 0, part: 0, marker: { type: "ephemeral" } }]);
 	});
 });
 describe("openrouterVariant request integration", () => {
