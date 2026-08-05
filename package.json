@@ -145,7 +145,6 @@
 		"changelog:root": "bun scripts/sync-root-changelog.ts",
 		"changelog:root:check": "bun scripts/sync-root-changelog.ts --check",
 		"fix:rs": "bun scripts/run-rs-task.ts fix:rs",
-		"ci:check:full": "bun run check:ts",
 		"ci:build:native": "bun scripts/ci-build-native.ts",
 		"ci:test:full": "bun run ci:test:ts && bun run test:rs",
 		"ci:test:ts": "bun scripts/ci-test-ts.ts all",
