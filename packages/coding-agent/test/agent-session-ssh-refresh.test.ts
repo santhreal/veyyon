@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
@@ -15,7 +14,14 @@ import { addSSHHost, removeSSHHost, updateSSHHost } from "@veyyon/coding-agent/s
 import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { loadSshTool } from "@veyyon/coding-agent/tools/ssh";
-import { captureDirOverrides, type DirOverridesSnapshot, getSSHConfigPath, restoreDirOverrides, setAgentDir, TempDir } from "@veyyon/utils";
+import {
+	captureDirOverrides,
+	type DirOverridesSnapshot,
+	getSSHConfigPath,
+	restoreDirOverrides,
+	setAgentDir,
+	TempDir,
+} from "@veyyon/utils";
 
 function createModel(): Model<"openai-responses"> {
 	return buildModel({
@@ -276,5 +282,40 @@ describe("AgentSession SSH tool refresh", () => {
 
 		const discovered = await loadCapability<SSHHost>(sshCapability.id, { cwd });
 		expect(discovered.all.map(host => host.name)).not.toContain("from-the-repo");
+	});
+
+	/**
+	 * The other direction, and the defect that pointed the opposite way: the user
+	 * scope used to resolve `getAgentDir()` (the PROCESS-BOOTED profile) no matter
+	 * which profile the caller was loading for, so a host running a session for a
+	 * non-active profile handed the model the booted profile's machines. The
+	 * loading agent dir is the whole answer to "whose ssh.json", so it is asserted
+	 * at both doors: the capability, and the tool the model actually calls.
+	 */
+	it("gives a session loading for a non-active profile its own hosts, not the booted profile's", async () => {
+		const tempDir = TempDir.createSync("@pi-ssh-refresh-");
+		tempDirs.push(tempDir);
+		const cwd = tempDir.path();
+
+		const otherProfile = TempDir.createSync("@pi-ssh-other-profile-");
+		tempDirs.push(otherProfile);
+		const otherAgentDir = otherProfile.path();
+
+		await addSSHHost(configPath, "booted-profile-host", { host: "192.0.2.71" });
+		await addSSHHost(getSSHConfigPath(otherAgentDir), "other-profile-host", { host: "192.0.2.72" });
+
+		const discovered = await loadCapability<SSHHost>(sshCapability.id, { cwd, agentDir: otherAgentDir });
+		expect(discovered.all.map(host => `${host.name} ${host.host}`)).toEqual(["other-profile-host 192.0.2.72"]);
+
+		resetCapabilities();
+		const tool = await loadSshTool({
+			cwd,
+			hasUI: false,
+			settings: await Settings.loadReadOnly({ cwd, agentDir: otherAgentDir }),
+			getSessionSpawns: () => "*",
+			getSessionFile: () => null,
+		});
+		expect(tool?.description).toContain("other-profile-host (192.0.2.72)");
+		expect(tool?.description).not.toContain("booted-profile-host");
 	});
 });

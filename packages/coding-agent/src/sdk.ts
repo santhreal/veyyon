@@ -978,9 +978,9 @@ export async function discoverRules(cwd?: string, agentDir?: string): Promise<Ca
  *
  * Resolves all three scopes, in resolution order global (`<config root>/AGENTS.md`)
  * → profile (`agentDir`'s own instruction file) → project (the walk up from `cwd`).
- * The array is returned in PROMINENCE order, least prominent first so a later
- * entry overrides an earlier one: global → project (farther from cwd first) →
- * profile, which is last and therefore wins. See
+ * The array is returned in AUTHORITY order, least authoritative first so the
+ * strongest file holds the last and highest-recency slot: project (farther from
+ * cwd first) → profile → global, which is last and therefore wins. See
  * {@link loadProjectContextFilesWithWarnings} for why those two axes differ.
  *
  * `agentDir` defaults to {@link getAgentDir} exactly the way
@@ -2618,7 +2618,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 		const mcpDiscoverOptions = {
 			onStatus: onMCPStatus,
-			enableProjectConfig: settings.get("mcp.enableProjectConfig") ?? true,
 			// Always filter Exa - we have native integration
 			filterExa: true,
 			// Filter browser MCP servers when builtin browser tool is active
