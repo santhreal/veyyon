@@ -684,6 +684,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.streamingMessage = undefined;
 		this.lastAssistantUsage = undefined;
 		this.pendingTools.clear();
+		// The subagent HUD is scoped to the VIEWED session, and every focus
+		// attach/detach (both directions, including the registry-driven
+		// auto-unfocus when the viewed agent dies) runs through here after the
+		// focus controller has already swapped the target. Re-derive the block
+		// against the new view, or the focused view keeps the parent's rows and
+		// the restored main view keeps the cleared ones until the next spawn
+		// event happens to land.
+		if (this.subagentContainer) this.#renderSubagentList();
 	}
 	readonly #uiHelpers: UiHelpers;
 	#sttController: STTController | undefined;
@@ -2147,11 +2155,18 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * editor. Driven entirely by observer-registry change events, so rows appear
 	 * on spawn and the whole block clears itself once the last subagent leaves
 	 * the "active" state.
+	 *
+	 * The block belongs to the VIEWED session, not the driving one: focused into
+	 * an agent from `/agents`, the rows are that agent's own spawns
+	 * (`getSessionsSpawnedBy`), which for a leaf agent is empty and the block
+	 * clears through the existing empty-array path. Rendering the driving
+	 * session's list inside the agent's view named agents the viewed session
+	 * never spawned, and made the two views indistinguishable.
 	 */
 	#renderSubagentList(): void {
 		this.subagentContainer.clear();
 		const lines = renderSubagentHudLines(
-			this.#observerRegistry.getSessions(),
+			this.#observerRegistry.getSessionsSpawnedBy(this.#focusController.focusedAgentId),
 			this.ui.terminal.columns,
 			settings.get("subagent.showResolvedModelBadge"),
 		);

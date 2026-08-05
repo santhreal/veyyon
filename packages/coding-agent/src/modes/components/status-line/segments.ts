@@ -103,7 +103,10 @@ function classifyProjectDir(pwd: string): { scratch: boolean; relative: string |
  * default preset in both states shows two bars with identical text.
  *
  * Focus is a mode of the whole view, not a thing you opted into on your status line, so
- * `getTopBorder` prefixes this unconditionally and no preset can drop it.
+ * the live status surface prefixes this unconditionally and no preset can drop it. The live
+ * surface is `renderQuietLine`: the borderless composer hides the editor border, so
+ * `getTopBorder` still prefixes it too but nothing in production calls that method; the
+ * quiet footline below the input is the status bar the operator actually sees.
  *
  * AND IT NAMES THE WAY OUT, which nothing persistent did. `focusAgent` prints one status flash
  * saying Esc returns to main; a second later the screen is an ordinary session with the agent's
