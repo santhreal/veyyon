@@ -36,12 +36,10 @@ describe("/compact dispatch (ACP)", () => {
 		expect(h.compact).toHaveBeenCalledWith(undefined, undefined);
 	});
 
-	it("threads each mode subcommand into compact()", async () => {
-		for (const mode of ["summary", "handoff"] as const satisfies readonly CompactMode[]) {
-			const h = acpRuntime();
-			await executeAcpBuiltinSlashCommand(`/compact ${mode}`, h.runtime);
-			expect(h.compact).toHaveBeenCalledWith(undefined, { mode });
-		}
+	it("threads the canonical summary mode into compact()", async () => {
+		const h = acpRuntime();
+		await executeAcpBuiltinSlashCommand("/compact summary", h.runtime);
+		expect(h.compact).toHaveBeenCalledWith(undefined, { mode: "summary" satisfies CompactMode });
 	});
 
 	it("splits a mode from its focus instructions", async () => {
@@ -56,10 +54,30 @@ describe("/compact dispatch (ACP)", () => {
 		expect(h.compact).toHaveBeenCalledWith("summarize the auth flow", undefined);
 	});
 
-	it("advertises the mode subcommands and input hint to ACP clients", () => {
-		const advertised = ACP_BUILTIN_SLASH_COMMANDS.find(c => c.name === "compact");
+	it("advertises only the canonical mode to ACP clients", () => {
+		const advertised = ACP_BUILTIN_SLASH_COMMANDS.find(command => command.name === "compact");
 		expect(advertised).toBeDefined();
-		expect(advertised?.input?.hint).toBe("[summary|handoff] [focus]");
+		expect(advertised?.input?.hint).toBe("[summary] [focus]");
+	});
+});
+
+describe("/compact handoff refusal", () => {
+	it("directs ACP users to the independent handoff command without compacting", async () => {
+		const h = acpRuntime();
+		await executeAcpBuiltinSlashCommand("/compact handoff keep auth", h.runtime);
+
+		expect(h.output.mock.calls.map(call => String(call[0])).join("\n")).toContain("/handoff [focus instructions]");
+		expect(h.compact).not.toHaveBeenCalled();
+	});
+
+	it("directs TUI users to the independent handoff command without compacting", async () => {
+		const h = tuiRuntime();
+		await executeBuiltinSlashCommand("/compact HANDOFF keep auth", h.runtime);
+
+		expect(h.showWarning.mock.calls.map(call => String(call[0])).join("\n")).toContain(
+			"/handoff [focus instructions]",
+		);
+		expect(h.handleCompactCommand).not.toHaveBeenCalled();
 	});
 });
 
@@ -110,24 +128,24 @@ describe("/compact with a retired mode name", () => {
 		expect(h.handleCompactCommand).toHaveBeenCalledWith("SOFT", undefined);
 	});
 
-	it("stays quiet for a live mode on both surfaces", async () => {
+	it("stays quiet for the live summary mode on both surfaces", async () => {
 		const acp = acpRuntime();
 		await executeAcpBuiltinSlashCommand("/compact summary", acp.runtime);
 		expect(acp.output.mock.calls.map(call => String(call[0])).join("\n")).not.toContain("no longer");
 
 		const tui = tuiRuntime();
-		await executeBuiltinSlashCommand("/compact handoff", tui.runtime);
+		await executeBuiltinSlashCommand("/compact summary", tui.runtime);
 		expect(tui.showWarning).not.toHaveBeenCalled();
 	});
 });
 
 describe("/compact dispatch (TUI)", () => {
-	it("routes mode + focus to handleCompactCommand and clears the editor", async () => {
+	it("routes summary + focus to handleCompactCommand and clears the editor", async () => {
 		const h = tuiRuntime();
-		const handled = await executeBuiltinSlashCommand("/compact handoff fix the bug", h.runtime);
+		const handled = await executeBuiltinSlashCommand("/compact summary fix the bug", h.runtime);
 		expect(handled).toBe(true);
 		expect(h.setText).toHaveBeenCalledWith("");
-		expect(h.handleCompactCommand).toHaveBeenCalledWith("fix the bug", "handoff");
+		expect(h.handleCompactCommand).toHaveBeenCalledWith("fix the bug", "summary");
 	});
 
 	it("passes no mode for a bare /compact", async () => {
