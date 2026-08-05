@@ -38,7 +38,7 @@ import {
 import { armArgotAfterStartup } from "./argot-cache";
 import { type AsyncJob, AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
-import { loadCapability } from "./capability";
+import { type CapabilityResult, loadCapability } from "./capability";
 import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
 import { bucketRules, type RuleBuckets } from "./capability/rule-buckets";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
@@ -453,7 +453,7 @@ function applyMCPEnvironment(result: { exaApiKeys: string[] }): void {
 export interface CreateAgentSessionOptions {
 	/** Working directory for project-local discovery. Default: getProjectDir() */
 	cwd?: string;
-	/** Global config directory. Default: ~/.veyyon/profiles/default/agent */
+	/** Agent config directory for this session. Default: `getAgentDir()`, i.e. `~/.veyyon/profiles/<active profile>/agent`. */
 	agentDir?: string;
 	/** Cross-profile vault/key root override for isolated SDK hosts. Default: getGlobalConfigRootDir() */
 	globalConfigRoot?: string;
@@ -577,7 +577,12 @@ export interface CreateAgentSessionOptions {
 	skills?: Skill[];
 	/** Rules. Default: discovered from multiple locations */
 	rules?: Rule[];
-	/** Context files (AGENTS.md content). Default: discovered walking up from cwd */
+	/**
+	 * Context files (AGENTS.md / CLAUDE.md content). Default: all three scopes via
+	 * {@link discoverContextFiles}, not the project walk alone: global
+	 * (`<config root>/AGENTS.md`), profile (`agentDir`'s own instruction file), and
+	 * project (the walk up from `cwd`).
+	 */
 	contextFiles?: Array<{ path: string; content: string }>;
 	/** Pre-built workspace tree (skips re-scanning; passed by parents to subagents). */
 	workspaceTree?: WorkspaceTree;
@@ -825,18 +830,23 @@ export async function discoverExtensions(cwd?: string): Promise<LoadExtensionsRe
  * (cached on {@link ToolSession.extensionPaths}) and rebuild Extension
  * instances themselves so each session's `ExtensionAPI` (cwd, eventBus,
  * runtime) is its own.
+ *
+ * `agentDir` names the profile whose hooks and extension modules load. Omitting
+ * it resolves the process-booted profile, which is only correct when the caller
+ * genuinely has no session profile to speak of.
  */
 export async function discoverSessionExtensionPaths(
 	options: Pick<CreateAgentSessionOptions, "disableExtensionDiscovery" | "additionalExtensionPaths">,
 	cwd: string,
 	settings: Settings,
+	agentDir?: string,
 ): Promise<string[]> {
 	if (options.disableExtensionDiscovery) {
 		return options.additionalExtensionPaths ?? [];
 	}
 	const configuredPaths = [...(options.additionalExtensionPaths ?? []), ...(settings.get("extensions") ?? [])];
 	const disabledExtensionIds = settings.get("disabledExtensions") ?? [];
-	return discoverExtensionPaths(configuredPaths, cwd, disabledExtensionIds);
+	return discoverExtensionPaths(configuredPaths, cwd, disabledExtensionIds, agentDir);
 }
 
 /**
@@ -853,8 +863,9 @@ export async function loadSessionExtensions(
 	cwd: string,
 	settings: Settings,
 	eventBus: EventBus,
+	agentDir?: string,
 ): Promise<LoadExtensionsResult> {
-	const paths = await discoverSessionExtensionPaths(options, cwd, settings);
+	const paths = await discoverSessionExtensionPaths(options, cwd, settings, agentDir);
 	const result = await logger.time("loadExtensions", loadExtensions, paths, cwd, eventBus);
 	reportExtensionLoadFailures(result);
 	return result;
@@ -889,7 +900,7 @@ function reportExtensionLoadFailures(result: LoadExtensionsResult, operatorNotic
  * (`veyyon bench`, dry-balance) build a bare {@link ModelRegistry} that only knows
  * built-in catalog providers; without this, providers contributed by an
  * extension (e.g. a custom OpenAI-compatible provider under
- * `~/.veyyon/profiles/default/agent/extensions/`) never reach model resolution. Mirrors the
+ * `~/.veyyon/profiles/<name>/agent/extensions/`) never reach model resolution. Mirrors the
  * session / `veyyon models` path: drain the queued provider registrations, then
  * `refreshRuntimeProviders` so dynamically-discovered models exist before
  * selectors are resolved.
@@ -901,6 +912,9 @@ export async function loadCliExtensionProviders(
 	options: Pick<CreateAgentSessionOptions, "disableExtensionDiscovery" | "additionalExtensionPaths"> = {},
 ): Promise<void> {
 	const eventBus = new EventBus();
+	// No agent dir: a one-shot CLI has no session profile, so the process-booted
+	// one is the right and only answer here. Stated because the same omission at
+	// the session call site was the defect.
 	const extensionsResult = await loadSessionExtensions(options, cwd, settings, eventBus);
 	const activeSources = extensionsResult.extensions.map(extension => extension.path);
 	modelRegistry.syncExtensionSources(activeSources);
@@ -915,29 +929,74 @@ export async function loadCliExtensionProviders(
 }
 
 /**
- * Discover skills from cwd and agentDir.
+ * Discover the skills for a session: the authored `<agentDir>/skills`, the
+ * auto-learn `<agentDir>/managed-skills`, and any skills shipped by plugin packages
+ * configured for the session.
+ *
+ * `agentDir` defaults to {@link getAgentDir} exactly the way
+ * {@link discoverPromptTemplates} does, and it is FORWARDED. It used to be accepted
+ * and dropped, which pinned the skill set to whichever profile the process booted
+ * with: an agent rooted in another agent dir silently got a stranger's skills, or
+ * none. Do not reintroduce that by widening the signature without threading the
+ * value. {@link loadSkillsInternal} forwards it as `LoadOptions.agentDir`, which lands
+ * on the `LoadContext` all three profile-rooted skill providers read.
  */
 export async function discoverSkills(
 	cwd?: string,
-	_agentDir?: string,
+	agentDir?: string,
 	settings?: SkillsSettings,
 ): Promise<{ skills: Skill[]; warnings: SkillWarning[] }> {
 	return await loadSkillsInternal({
 		...settings,
 		cwd: cwd ?? getProjectDir(),
+		agentDir: agentDir ?? getAgentDir(),
 	});
 }
 
 /**
- * Discover context files (AGENTS.md) walking up from cwd.
- * Returns files sorted by depth (farther from cwd first, so closer files appear last/more prominent).
+ * Discover the rules for a session: the profile's `<agentDir>/RULES.md` and
+ * `<agentDir>/rules/`, the project's `.veyyon/rules/`, and every foreign-config
+ * and plugin rule source.
+ *
+ * `agentDir` defaults to {@link getAgentDir} and is FORWARDED, exactly like
+ * {@link discoverSkills} and {@link discoverContextFiles}. Rules were the one
+ * discovered layer with no wrapper: both session call sites reached
+ * `loadCapability` directly with `{ cwd }` and no agent dir, so a session rooted
+ * in another profile got that profile's instructions and skills alongside the
+ * BOOTED profile's rules. This wrapper exists so the default lives in one place
+ * and cannot be forgotten at a call site again.
+ */
+export async function discoverRules(cwd?: string, agentDir?: string): Promise<CapabilityResult<Rule>> {
+	return await loadCapability<Rule>(ruleCapability.id, {
+		cwd: cwd ?? getProjectDir(),
+		agentDir: agentDir ?? getAgentDir(),
+	});
+}
+
+/**
+ * Discover the context files (AGENTS.md / CLAUDE.md) for a session.
+ *
+ * Resolves all three scopes, in resolution order global (`<config root>/AGENTS.md`)
+ * → profile (`agentDir`'s own instruction file) → project (the walk up from `cwd`).
+ * The array is returned in PROMINENCE order, least prominent first so a later
+ * entry overrides an earlier one: global → project (farther from cwd first) →
+ * profile, which is last and therefore wins. See
+ * {@link loadProjectContextFilesWithWarnings} for why those two axes differ.
+ *
+ * `agentDir` defaults to {@link getAgentDir} exactly the way
+ * {@link discoverPromptTemplates} does, and it is FORWARDED. It used to be
+ * accepted and dropped, which silently pinned the profile scope to whichever
+ * profile the process booted with: an agent rooted in another agent dir got
+ * someone else's profile file, or none. Do not reintroduce that by widening the
+ * signature without threading the value.
  */
 export async function discoverContextFiles(
 	cwd?: string,
-	_agentDir?: string,
+	agentDir?: string,
 ): Promise<Array<{ path: string; content: string; depth?: number }>> {
 	return await loadContextFilesInternal({
 		cwd: cwd ?? getProjectDir(),
+		agentDir: agentDir ?? getAgentDir(),
 	});
 }
 
@@ -953,9 +1012,15 @@ export async function discoverPromptTemplates(cwd?: string, agentDir?: string): 
 
 /**
  * Discover file-based slash commands from commands/ directories.
+ *
+ * `agentDir` defaults to {@link getAgentDir} exactly the way
+ * {@link discoverPromptTemplates} does, and it is FORWARDED. Without it the
+ * user scope came from whichever profile the process booted with, so a session
+ * rooted in another agent dir got that profile's AGENTS.md, skills and prompt
+ * templates but the booted profile's slash commands.
  */
-export async function discoverSlashCommands(cwd?: string): Promise<FileSlashCommand[]> {
-	return loadSlashCommandsInternal({ cwd: cwd ?? getProjectDir() });
+export async function discoverSlashCommands(cwd?: string, agentDir?: string): Promise<FileSlashCommand[]> {
+	return loadSlashCommandsInternal({ cwd: cwd ?? getProjectDir(), agentDir: agentDir ?? getAgentDir() });
 }
 
 /**
@@ -1370,7 +1435,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const STARTUP_SCAN_DEADLINE_MS = 5000;
 		const startupIncludeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
 		const workspaceTreePromise: Promise<WorkspaceTree> = prefetch(
-			options.workspaceTree
+			options.workspaceTree !== undefined
 				? Promise.resolve(options.workspaceTree)
 				: startupIncludeWorkspaceTree
 					? logger.time("buildWorkspaceTree", () =>
@@ -1382,9 +1447,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// Independent discoveries that depend only on cwd/agentDir — kicked off in parallel and awaited
 		// at their respective consumer sites. Their work can overlap with model resolution, secret loading,
 		// session-context build, tool creation, MCP discovery, and extension discovery.
+		// Presence, not truthiness. An empty array is truthy, so testing the value
+		// itself made a caller that filtered its list down to nothing read as "already
+		// resolved", which turned discovery OFF and shipped a prompt with none of the
+		// operator's AGENTS.md layers. `undefined` means "not resolved, walk the
+		// scopes"; `[]` means "resolved to nothing on purpose". A caller that cannot
+		// resolve its own list passes undefined, never []: see task/context-inheritance.ts.
+		const contextFilesResolvedByCaller = options.contextFiles !== undefined;
+		if (contextFilesResolvedByCaller && options.contextFiles?.length === 0) {
+			logger.warn("Context file discovery disabled: caller supplied an empty resolved list", { cwd, agentDir });
+		}
 		const contextFilesPromise = prefetch(
-			options.contextFiles
-				? Promise.resolve(options.contextFiles)
+			contextFilesResolvedByCaller
+				? Promise.resolve(options.contextFiles ?? [])
 				: logger.time("discoverContextFiles", discoverContextFiles, cwd, agentDir),
 		);
 		const activeRepoContextPromise = logger.time("resolveActiveRepoContext", async () => {
@@ -1403,19 +1478,28 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const advisorConfigsPromise = prefetch(
 			logger.time("discoverAdvisorConfigs", () => discoverAdvisorConfigs(cwd, agentDir)),
 		);
+		// Presence, not truthiness, for the same reason as `contextFiles` above: `[]` is
+		// truthy, so a caller that resolved its list down to nothing read as "already
+		// resolved" AND supplied nothing, silently switching discovery off. `undefined`
+		// means "not resolved, discover"; `[]` means "resolved to nothing on purpose".
 		const promptTemplatesPromise = prefetch(
-			options.promptTemplates
+			options.promptTemplates !== undefined
 				? Promise.resolve(options.promptTemplates)
 				: logger.time("discoverPromptTemplates", discoverPromptTemplates, cwd, agentDir),
 		);
 		const slashCommandsPromise = prefetch(
-			options.slashCommands
+			options.slashCommands !== undefined
 				? Promise.resolve(options.slashCommands)
-				: logger.time("discoverSlashCommands", discoverSlashCommands, cwd),
+				: logger.time("discoverSlashCommands", discoverSlashCommands, cwd, agentDir),
 		);
 		const skillsSettings = settings.getGroup("skills");
 		const disabledExtensionIds = settings.get("disabledExtensions") ?? [];
-		const discoveredSkillsPromise =
+		// Resolved either way, so the consumer below never needs a fallback. It used to be
+		// `undefined` when the caller supplied skills, and the consumer spelled that as
+		// `?? Promise.resolve({ skills: [], warnings: [] })`: unreachable, but it wrote "no
+		// skills and no warning" down as an acceptable outcome, which is the exact shape a
+		// real discovery failure would then hide behind.
+		const discoveredSkillsPromise: Promise<{ skills: Skill[]; warnings: SkillWarning[] }> =
 			options.skills === undefined
 				? prefetch(
 						logger.time("discoverSkills", discoverSkills, cwd, agentDir, {
@@ -1423,7 +1507,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							disabledExtensions: disabledExtensionIds,
 						}),
 					)
-				: undefined;
+				: Promise.resolve({ skills: options.skills, warnings: [] });
 
 		// Initialize provider preferences from settings
 		const excludedWebSearchProviders = settings.get("providers.webSearchExclude");
@@ -1763,7 +1847,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return {
 				authority,
 				broken,
-				repair: `Run ${commands} to move the unreadable file aside, then re-add the secrets it held with /secret add.`,
+				repair:
+					`Open /secret manager and move the unreadable file aside, or run ${commands} in a client with ` +
+					`no terminal. Then store the secrets it held again.`,
 			};
 		};
 
@@ -1868,7 +1954,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					if (settledForExpansion(text)) return;
 					const detail = reloadError === undefined ? "" : ` Reload failed: ${errorMessage(reloadError)}.`;
 					throw new Error(
-						`Secret expansion was refused: reloading the secret vault for ${normalizedCwd} did not produce a runtime that can resolve this text's placeholders, so no current value is available.${detail} Check the vault with /secret list, then retry.`,
+						`Secret expansion was refused: reloading the secret vault for ${normalizedCwd} did not produce a runtime that can resolve this text's placeholders, so no current value is available.${detail} Check what is stored in /secret manager, or with /secret list where there is no terminal, then retry.`,
 					);
 				},
 				assertFreshForExpansion: (text?: string) => {
@@ -1876,7 +1962,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					scheduleStaleSecretRefresh(normalizedCwd);
 					throw new Error(
 						path.resolve(sessionManager.getCwd()) === normalizedCwd
-							? "Secret expansion was refused because the vault on disk no longer matches the snapshot this request is pinned to, so a placeholder could resolve to a value the vault has already replaced. A reload is under way; retry this call, and run /secret list if it keeps failing."
+							? "Secret expansion was refused because the vault on disk no longer matches the snapshot this request is pinned to, so a placeholder could resolve to a value the vault has already replaced. A reload is under way; retry this call, and check what is stored in /secret manager if it keeps failing."
 							: `Secret expansion was refused because the vault changed under a lease pinned to ${normalizedCwd}, a directory the session has already left; the destination's own reload is the authority. Retry once the directory change has finished.`,
 					);
 				},
@@ -2090,18 +2176,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			preconnectModelHost(model.baseUrl);
 		}
 
-		let skills: Skill[];
-		if (options.skills !== undefined) {
-			skills = options.skills;
-		} else {
-			const discovered = await (discoveredSkillsPromise ?? Promise.resolve({ skills: [], warnings: [] }));
-			skills = discovered.skills;
-			// Straight into the operator channel. These used to be collected into
-			// `AgentSession.skillWarnings`, a getter no production code read, so a skill that failed to
-			// load was discarded in silence and the channel looked live from the outside.
-			for (const warning of discovered.warnings) {
-				operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
-			}
+		const discovered = await discoveredSkillsPromise;
+		const skills: Skill[] = discovered.skills;
+		// Straight into the operator channel. These used to be collected into
+		// `AgentSession.skillWarnings`, a getter no production code read, so a skill that failed to
+		// load was discarded in silence and the channel looked live from the outside.
+		for (const warning of discovered.warnings) {
+			operatorNotices.warn("skills", `${warning.skillPath}: ${warning.message}`);
 		}
 
 		// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
@@ -2116,7 +2197,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				const rulesResult =
 					options.rules !== undefined
 						? { items: options.rules, warnings: undefined }
-						: await loadCapability<Rule>(ruleCapability.id, { cwd });
+						: await discoverRules(cwd, agentDir);
 				const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
 					builtinRules: ttsrSettings.builtinRules,
 					disabledRules: ttsrSettings.disabledRules,
@@ -2542,6 +2623,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			filterExa: true,
 			// Filter browser MCP servers when builtin browser tool is active
 			filterBrowser: settings.get("browser.enabled") ?? false,
+			// The session's own profile, not the booted one: an SDK host rooted in
+			// another agent dir gets that profile's mcp.json, matching its rules,
+			// commands, skills and instructions.
+			agentDir,
 		};
 		if (enableMCP && !mcpManager) {
 			if (deferMCPDiscoveryForUI) {
@@ -2693,7 +2778,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const builtInToolNames = builtinTools.map(t => t.name);
 		const customToolPaths: ToolPathWithSource[] =
 			options.preloadedCustomToolPaths ??
-			(await logger.time("discoverCustomToolPaths", () => discoverCustomToolPaths([], cwd)));
+			(await logger.time("discoverCustomToolPaths", () => discoverCustomToolPaths([], cwd, agentDir)));
 		const customToolsLoadResult = await logger.time("loadCustomTools", () =>
 			loadCustomTools(customToolPaths, cwd, builtInToolNames, action => queueResolveHandler(toolSession, action)),
 		);
@@ -2747,7 +2832,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		} else {
 			extensionPaths = await logger.time("discoverSessionExtensionPaths", () =>
-				discoverSessionExtensionPaths(options, cwd, settings),
+				discoverSessionExtensionPaths(options, cwd, settings, agentDir),
 			);
 			extensionsResult = await logger.time("loadExtensions", loadExtensions, extensionPaths, cwd, eventBus);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
@@ -3141,6 +3226,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// Live read so a mid-session `/yolo` toggle takes effect on the next
 			// tool call (getSessionContext runs per tool-execution context build).
 			bypassAllApprovals: session.isApprovalBypassed(),
+			sessionApprovals: session.sessionToolApprovals(),
 		});
 		const toolContextStore = new ToolContextStore(getSessionContext);
 
@@ -3344,7 +3430,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					const nextRulesPromise =
 						options.rules !== undefined
 							? Promise.resolve({ items: options.rules })
-							: loadCapability<Rule>(ruleCapability.id, { cwd: liveCwd });
+							: discoverRules(liveCwd, agentDir);
 					const nextWatchdogFilesPromise = discoverWatchdogFiles(liveCwd, agentDir);
 					const nextAdvisorConfigsPromise = discoverAdvisorConfigs(liveCwd, agentDir);
 
@@ -3687,6 +3773,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			parentId: options.parentAgentId,
 			session: null,
 			sessionFile: sessionManager.getSessionFile() ?? null,
+			// The conversation this agent belongs to. A subagent inherits its
+			// parent's, so only a root session states one: its session id, which
+			// exists before the transcript has ever been written and survives a
+			// `/move` that rewrites the path.
+			scope: options.parentAgentId ? undefined : (sessionManager.getSessionId?.() ?? undefined),
 			status: "running",
 			model: getActiveModelString(),
 		});

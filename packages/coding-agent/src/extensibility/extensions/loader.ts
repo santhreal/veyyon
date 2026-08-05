@@ -447,16 +447,25 @@ async function resolveExtensionEntries(dir: string): Promise<string[] | null> {
  * `ExtensionAPI` (cwd, eventBus, runtime). Forwarding the parent's
  * `LoadExtensionsResult` directly would reuse handlers/tools/commands that
  * closed over the parent's `cwd` and event bus.
+ *
+ * `agentDir` names WHICH profile supplies the user scope for both capabilities
+ * loaded below. It defaults inside `loadCapability` (`options.agentDir ??
+ * getAgentDir()`), so omitting it resolves the process-booted profile: pass it
+ * whenever the caller has one, or a session rooted in another agent dir runs
+ * the booted profile's hooks and extension modules.
  */
 export async function discoverExtensionPaths(
 	configuredPaths: string[],
 	cwd: string,
 	disabledExtensionIds?: string[],
+	agentDir?: string,
 ): Promise<string[]> {
 	const allPaths: string[] = [];
 	const seen = new Set<string>();
 	const disabled = new Set(disabledExtensionIds ?? []);
-	const loadOptions = disabledExtensionIds ? { cwd, disabledExtensions: disabledExtensionIds } : { cwd };
+	const loadOptions = disabledExtensionIds
+		? { cwd, agentDir, disabledExtensions: disabledExtensionIds }
+		: { cwd, agentDir };
 
 	const isDisabledName = (name: string): boolean => disabled.has(`extension-module:${name}`);
 
