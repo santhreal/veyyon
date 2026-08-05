@@ -31,12 +31,14 @@ import { instrumentedCompleteSimple } from "../instrumented-complete";
 import { AGENT_PROMPTS } from "../prompts/registry";
 import type { AgentTelemetry } from "../telemetry";
 import { ThinkingLevel } from "../thinking";
+import { countTokens } from "../tokenizer";
 import type { AgentMessage } from "../types";
 import type { CompactionEntry, SessionEntry } from "./entries";
 import { CompactionCancelledError } from "./errors";
+import { LEGACY_REMOTE_PRESERVE_KEYS } from "./legacy-provider-native";
 import { hasLegacyArchive, legacyArchiveSourceText, stripLegacyArchive } from "./legacy-snapcompact-archive";
 import { type ConvertToLlm, createBranchSummaryMessage, createCustomMessage, defaultConvertToLlm } from "./messages";
-import { LEGACY_REMOTE_PRESERVE_KEYS, requestRemoteCompaction } from "./remote-summarizer";
+import { requestRemoteCompaction } from "./remote-summarizer";
 // The trigger decision moved to the module whose header owns it, and is re-exported below so no caller
 // changed. What is left here is the ENGINE: the summarizer, the cut point, the provider round trip.
 import { type CompactionSettings, DEFAULT_RESERVE_TOKENS } from "./threshold";
@@ -66,7 +68,7 @@ export { estimateTokens } from "./token-estimate";
 import {
 	computeFileLists,
 	createFileOps,
-	extractFileOpsFromMessage,
+	extractFileOpsFromMessages,
 	type FileOperations,
 	SUMMARIZATION_SYSTEM_PROMPT,
 	serializeConversationForSummary,
@@ -110,9 +112,7 @@ function extractFileOperations(
 	}
 
 	// Extract from tool calls in messages
-	for (const msg of messages) {
-		extractFileOpsFromMessage(msg, fileOps);
-	}
+	extractFileOpsFromMessages(messages, fileOps);
 
 	return fileOps;
 }
@@ -125,11 +125,15 @@ function extractFileOperations(
  * Extract AgentMessage from an entry if it produces one.
  * Returns undefined for entries that don't contribute to LLM context.
  */
-function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
+function getMessageFromEntry(
+	entry: SessionEntry,
+	excludedCustomMessageTypes?: ReadonlySet<string>,
+): AgentMessage | undefined {
 	if (entry.type === "message") {
 		return entry.message;
 	}
 	if (entry.type === "custom_message") {
+		if (excludedCustomMessageTypes?.has(entry.customType)) return undefined;
 		return createCustomMessage(
 			entry.customType,
 			entry.content,
@@ -148,7 +152,15 @@ function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
 /** Result from compact() - SessionManager adds uuid/parentUuid when saving */
 export interface CompactionResult<T = unknown> {
 	summary: string;
-	/** Short PR-style summary for display purposes. */
+	/**
+	 * Short PR-style summary, display only: it is the session-listing title
+	 * fallback (`title: header.title ?? shortSummary`) and rides the collab and
+	 * share projections. `compact()` no longer produces one, because a second
+	 * model request for display text doubles compaction input cost and veyyon
+	 * titles sessions from its own tiny-model titler instead. Compaction hooks
+	 * and sessions written before that change still supply it, so every reader
+	 * stays.
+	 */
 	shortSummary?: string;
 	firstKeptEntryId: string;
 	tokensBefore: number;
@@ -444,8 +456,6 @@ const SUMMARIZATION_PROMPT = prompt.render(AGENT_PROMPTS["compaction/compaction-
 
 const UPDATE_SUMMARIZATION_PROMPT = prompt.render(AGENT_PROMPTS["compaction/compaction-update-summary"].text);
 
-const SHORT_SUMMARY_PROMPT = prompt.render(AGENT_PROMPTS["compaction/compaction-short-summary"].text);
-
 const HANDOFF_DOCUMENT_PROMPT = prompt.render(AGENT_PROMPTS["compaction/handoff-document"].text);
 
 export const AUTO_HANDOFF_THRESHOLD_FOCUS = prompt.render(
@@ -544,8 +554,8 @@ export interface SummaryOptions {
 	/**
 	 * Optional telemetry handle. When provided, every LLM call emitted during
 	 * compaction is wrapped in an OTEL chat span tagged with
-	 * `pi.gen_ai.oneshot.kind` (`compaction_summary`, `compaction_short_summary`,
-	 * or `compaction_turn_prefix`). `undefined` keeps the call paths zero-cost.
+	 * `pi.gen_ai.oneshot.kind` (`compaction_summary` or
+	 * `compaction_turn_prefix`). `undefined` keeps the call paths zero-cost.
 	 */
 	telemetry?: AgentTelemetry;
 	/**
@@ -578,8 +588,8 @@ export interface SummaryOptions {
 	/**
 	 * Optional completion transport override for host-level request wrappers
 	 * (e.g. the coding-agent provider-concurrency limiter). When provided,
-	 * every local summarization oneshot (`generateSummary`,
-	 * `generateTurnPrefixSummary`, `generateShortSummary`) routes through it
+	 * every local summarization oneshot (`generateSummary` and
+	 * `generateTurnPrefixSummary`) routes through it
 	 * instead of the default `completeSimple`, so cap policies enforced on
 	 * the live agent turn also bracket compaction HTTP requests.
 	 */
@@ -653,6 +663,30 @@ function mergePreviousSummaryWithLegacyArchive(
 	return previousSummary ? `${previousSummary}\n\n${archiveSummary}` : archiveSummary;
 }
 
+function buildSummaryPrompt(
+	currentMessages: AgentMessage[],
+	model: Model,
+	reserveTokens: number,
+	customInstructions: string | undefined,
+	previousSummary: string | undefined,
+	options: SummaryOptions | undefined,
+): { promptText: string; maxTokens: number } {
+	let basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
+	if (options?.promptOverride) basePrompt = options.promptOverride;
+	if (customInstructions) basePrompt = `${basePrompt}\n\nAdditional focus: ${customInstructions}`;
+
+	const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(currentMessages);
+	const conversationText = serializeConversationForSummary(
+		transformSummarySourceMessages(llmMessages, options),
+		preferredDialect(model.id),
+	);
+	let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
+	if (previousSummary) promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
+	promptText += formatAdditionalContext(options?.extraContext);
+	promptText += basePrompt;
+	return { promptText, maxTokens: Math.floor(0.8 * reserveTokens) };
+}
+
 export async function generateSummary(
 	currentMessages: AgentMessage[],
 	model: Model,
@@ -663,32 +697,14 @@ export async function generateSummary(
 	previousSummary?: string,
 	options?: SummaryOptions,
 ): Promise<string> {
-	const maxTokens = Math.floor(0.8 * reserveTokens);
-
-	// Use update prompt if we have a previous summary, otherwise initial prompt
-	let basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
-	if (options?.promptOverride) {
-		basePrompt = options.promptOverride;
-	}
-	if (customInstructions) {
-		basePrompt = `${basePrompt}\n\nAdditional focus: ${customInstructions}`;
-	}
-
-	// Serialize conversation to text so model doesn't try to continue it
-	// Convert to LLM messages first (handles custom app messages when caller provides a transformer).
-	const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(currentMessages);
-	const conversationText = serializeConversationForSummary(
-		transformSummarySourceMessages(llmMessages, options),
-		preferredDialect(model.id),
+	const { promptText, maxTokens } = buildSummaryPrompt(
+		currentMessages,
+		model,
+		reserveTokens,
+		customInstructions,
+		previousSummary,
+		options,
 	);
-
-	// Build the prompt with conversation wrapped in tags
-	let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
-	if (previousSummary) {
-		promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
-	}
-	promptText += formatAdditionalContext(options?.extraContext);
-	promptText += basePrompt;
 
 	if (options?.remoteEndpoint) {
 		const endpoint = options.remoteEndpoint;
@@ -948,90 +964,6 @@ export async function generateHandoff(
 	return upsertFileOperations(document, readFiles, modifiedFiles, options.fileOps.read);
 }
 
-async function generateShortSummary(
-	recentMessages: AgentMessage[],
-	historySummary: string | undefined,
-	model: Model,
-	reserveTokens: number,
-	apiKey: ApiKey,
-	signal?: AbortSignal,
-	options?: SummaryOptions,
-): Promise<string> {
-	const maxTokens = Math.min(512, Math.floor(0.2 * reserveTokens));
-	const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(recentMessages);
-	const conversationText = serializeConversationForSummary(
-		transformSummarySourceMessages(llmMessages, options),
-		preferredDialect(model.id),
-	);
-
-	let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
-	if (historySummary) {
-		promptText += `<previous-summary>\n${historySummary}\n</previous-summary>\n\n`;
-	}
-	promptText += formatAdditionalContext(options?.extraContext);
-	promptText += SHORT_SUMMARY_PROMPT;
-
-	if (options?.remoteEndpoint) {
-		const endpoint = options.remoteEndpoint;
-		const remote = await withAuth(
-			apiKey,
-			key => {
-				const request = {
-					systemPrompt: sanitizeCompactionProviderText(SUMMARIZATION_SYSTEM_PROMPT, options),
-					prompt: sanitizeCompactionProviderText(promptText, options),
-				};
-				return requestRemoteCompaction(endpoint, request, signal, {
-					fetch: options?.fetch,
-					model,
-					apiKey: key,
-					sanitizeErrorText: text => sanitizeCompactionProviderText(text, options),
-				});
-			},
-			{ signal, missingKeyMessage: "Remote compaction credentials unavailable" },
-		);
-		return remote.summary;
-	}
-
-	const response = await withAuth(
-		apiKey,
-		async key => {
-			const attemptResponse = await instrumentedCompleteSimple(
-				model,
-				buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, promptText, options),
-				{
-					maxTokens,
-					signal,
-					apiKey: key,
-					reasoning: resolveCompactionEffort(model, options?.thinkingLevel),
-					initiatorOverride: options?.initiatorOverride,
-					metadata: options?.metadata,
-					fetch: options?.fetch,
-					sessionId: options?.sessionId,
-					promptCacheKey: options?.promptCacheKey,
-					providerSessionState: options?.providerSessionState,
-					codexCompaction: localCodexCompaction(options),
-				},
-				{
-					telemetry: options?.telemetry,
-					oneshotKind: "compaction_short_summary",
-					completeImpl: options?.completeImpl,
-				},
-			);
-			throwIfCompactionCancelled(attemptResponse);
-			if (attemptResponse.stopReason === "error") {
-				throw createSummarizationError("Short summary failed", attemptResponse, options);
-			}
-			return attemptResponse;
-		},
-		{ signal },
-	);
-
-	return response.content
-		.filter((c): c is { type: "text"; text: string } => c.type === "text")
-		.map(c => c.text)
-		.join("\n");
-}
-
 // ============================================================================
 // Compaction Preparation (for hooks)
 // ============================================================================
@@ -1072,9 +1004,79 @@ function hasReusableSummary(preserveData: Record<string, unknown> | undefined): 
 	return !LEGACY_REMOTE_PRESERVE_KEYS.some(key => key in preserveData);
 }
 
+export interface CompactionPreparationOptions {
+	/** Runtime-owned state messages reconstructed separately after compaction. */
+	excludedCustomMessageTypes?: ReadonlySet<string>;
+}
+
+/**
+ * Validate the complete result immediately before a runtime rewrites history.
+ * A malformed extension result must fail before its cut point can discard the
+ * live tail.
+ */
+export function assertValidCompactionResult(preparation: CompactionPreparation, result: CompactionResult): void {
+	if (typeof result.summary !== "string" || result.summary.trim().length === 0) {
+		throw new Error("Compaction failed: the generated summary is empty; history was left unchanged.");
+	}
+	if (result.firstKeptEntryId !== preparation.firstKeptEntryId) {
+		throw new Error(
+			`Compaction failed: firstKeptEntryId ${JSON.stringify(result.firstKeptEntryId)} does not match the safe cut point ${JSON.stringify(preparation.firstKeptEntryId)}; history was left unchanged.`,
+		);
+	}
+	if (!Number.isFinite(result.tokensBefore) || result.tokensBefore < 0) {
+		throw new Error(
+			`Compaction failed: tokensBefore must be a finite non-negative number, received ${JSON.stringify(result.tokensBefore)}; history was left unchanged.`,
+		);
+	}
+}
+
+/**
+ * Estimate the largest physical compaction request, including static prompts,
+ * previous summaries, hook context, and the requested output budget. Candidate
+ * admission uses this total because provider context windows cover input plus
+ * generated output, not conversation messages alone.
+ */
+export function estimateCompactionRequestTokens(
+	preparation: CompactionPreparation,
+	model: Model,
+	customInstructions?: string,
+	options?: SummaryOptions,
+): number {
+	const reserveTokens = preparation.settings.reserveTokens ?? DEFAULT_RESERVE_TOKENS;
+	const previousSummary = mergePreviousSummaryWithLegacyArchive(
+		preparation.previousSummary,
+		legacyArchiveSourceText(preparation.previousPreserveData),
+	);
+	const requests: number[] = [];
+	const hasHistoryRequest =
+		preparation.messagesToSummarize.length > 0 || (preparation.isSplitTurn && previousSummary !== undefined);
+	if (hasHistoryRequest) {
+		const built = buildSummaryPrompt(
+			preparation.messagesToSummarize,
+			model,
+			reserveTokens,
+			customInstructions,
+			previousSummary,
+			options,
+		);
+		requests.push(countTokens([SUMMARIZATION_SYSTEM_PROMPT, built.promptText]) + built.maxTokens);
+	}
+	if (preparation.isSplitTurn && preparation.turnPrefixMessages.length > 0) {
+		const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(preparation.turnPrefixMessages);
+		const conversationText = serializeConversationForSummary(
+			transformSummarySourceMessages(llmMessages, options),
+			preferredDialect(model.id),
+		);
+		const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${TURN_PREFIX_SUMMARIZATION_PROMPT}`;
+		requests.push(countTokens([SUMMARIZATION_SYSTEM_PROMPT, promptText]) + Math.floor(0.5 * reserveTokens));
+	}
+	return requests.length > 0 ? Math.max(...requests) : 0;
+}
+
 export function prepareCompaction(
 	pathEntries: SessionEntry[],
 	settings: CompactionSettings,
+	options?: CompactionPreparationOptions,
 ): CompactionPreparation | undefined {
 	if (pathEntries.length > 0 && pathEntries[pathEntries.length - 1].type === "compaction") {
 		return undefined;
@@ -1120,7 +1122,7 @@ export function prepareCompaction(
 	// Messages to summarize (will be discarded after summary)
 	const messagesToSummarize: AgentMessage[] = [];
 	for (let i = boundaryStart; i < historyEnd; i++) {
-		const msg = getMessageFromEntry(pathEntries[i]);
+		const msg = getMessageFromEntry(pathEntries[i], options?.excludedCustomMessageTypes);
 		if (msg) messagesToSummarize.push(msg);
 	}
 
@@ -1128,7 +1130,7 @@ export function prepareCompaction(
 	const turnPrefixMessages: AgentMessage[] = [];
 	if (cutPoint.isSplitTurn) {
 		for (let i = cutPoint.turnStartIndex; i < cutPoint.firstKeptEntryIndex; i++) {
-			const msg = getMessageFromEntry(pathEntries[i]);
+			const msg = getMessageFromEntry(pathEntries[i], options?.excludedCustomMessageTypes);
 			if (msg) turnPrefixMessages.push(msg);
 		}
 	}
@@ -1136,7 +1138,7 @@ export function prepareCompaction(
 	// Messages kept after compaction (recent history)
 	const recentMessages: AgentMessage[] = [];
 	for (let i = cutPoint.firstKeptEntryIndex; i < boundaryEnd; i++) {
-		const msg = getMessageFromEntry(pathEntries[i]);
+		const msg = getMessageFromEntry(pathEntries[i], options?.excludedCustomMessageTypes);
 		if (msg) recentMessages.push(msg);
 	}
 	// Nothing to summarize means compaction would be a no-op.
@@ -1158,9 +1160,7 @@ export function prepareCompaction(
 
 	// Also extract file ops from turn prefix if splitting
 	if (cutPoint.isSplitTurn) {
-		for (const msg of turnPrefixMessages) {
-			extractFileOpsFromMessage(msg, fileOps);
-		}
+		extractFileOpsFromMessages(turnPrefixMessages, fileOps);
 	}
 
 	return {
@@ -1202,7 +1202,6 @@ export async function compact(
 		firstKeptEntryId,
 		messagesToSummarize,
 		turnPrefixMessages,
-		recentMessages,
 		isSplitTurn,
 		tokensBefore,
 		previousSummary,
@@ -1310,12 +1309,6 @@ export async function compact(
 		summary = "No prior history.";
 	}
 
-	const shortSummary = await generateShortSummary(recentMessages, summary, model, reserveTokens, apiKey, signal, {
-		...summaryOptions,
-		extraContext: options?.extraContext,
-		thinkingLevel: options?.thinkingLevel,
-	});
-
 	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary = upsertFileOperations(summary, readFiles, modifiedFiles, fileOps.read);
@@ -1332,7 +1325,6 @@ export async function compact(
 
 	return {
 		summary,
-		shortSummary,
 		firstKeptEntryId,
 		tokensBefore,
 		details: { readFiles, modifiedFiles } as CompactionDetails,

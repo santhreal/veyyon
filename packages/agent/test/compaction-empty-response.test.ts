@@ -195,27 +195,13 @@ describe("aborted compaction completions always use the canonical cancellation e
 			);
 		});
 
-		/** `compact` must stop before its short-summary fan-out after cancellation. */
+		/** `compact` must surface a cancelled history summary rather than compacting on it. */
 		test(`compact rejects ${output.label} aborted history-summary output`, async () => {
 			await expectCanonicalCancellation(
 				compact(makePreparation(), getModel(), "test-key", undefined, undefined, {
 					completeImpl: async () => makeAborted(output.text),
 				}),
 			);
-		});
-
-		/** A late abort from the private short-summary path must also escape typed. */
-		test(`compact rejects ${output.label} aborted short-summary output`, async () => {
-			let calls = 0;
-			await expectCanonicalCancellation(
-				compact(makePreparation(), getModel(), "test-key", undefined, undefined, {
-					completeImpl: async () => {
-						calls += 1;
-						return calls === 1 ? makeEmptyStop("history summary") : makeAborted(output.text);
-					},
-				}),
-			);
-			expect(calls).toBe(2);
 		});
 
 		/** Split-turn prefix summarization is another destructive compact fan-out. */

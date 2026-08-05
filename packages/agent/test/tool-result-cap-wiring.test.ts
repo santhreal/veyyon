@@ -85,7 +85,10 @@ describe("the agent loop wiring its tool result cap", () => {
 		const message = await runToolCall("mcp__scraper__dump", oversized);
 		const text = textOf(message);
 
-		expect(Buffer.byteLength(text, "utf-8")).toBeLessThanOrEqual(DEFAULT_TOOL_RESULT_MAX_BYTES);
+		// Literal 1 MiB, not DEFAULT_TOOL_RESULT_MAX_BYTES: the cap is what keeps one
+		// tool result from eating the context window, and against the constant the
+		// assertion holds for a cap raised to 100 MiB.
+		expect(Buffer.byteLength(text, "utf-8")).toBeLessThanOrEqual(1_048_576);
 		expect(text).toContain("B elided…]");
 	});
 

@@ -28,8 +28,8 @@ import { getBundledModel } from "@veyyon/catalog/models";
 //
 // `generateHandoff` is chosen as the test vehicle because it issues exactly
 // one LLM call per invocation (simpler to assert than `compact()` which fans
-// out into summary + short-summary + turn-prefix). The contract under test
-// (`resolveCompactionEffort`) is shared across all four call sites in
+// out into summary + turn-prefix). The contract under test
+// (`resolveCompactionEffort`) is shared across all three call sites in
 // `packages/agent/src/compaction/compaction.ts`.
 
 function createAssistantMessage(content: AssistantMessage["content"]): AssistantMessage {
@@ -188,7 +188,8 @@ function makePreparation(overrides: Partial<CompactionPreparation> = {}): Compac
 	};
 }
 
-describe("compact() propagates thinkingLevel to all three summarizers (regression)", () => {
+describe("compact() propagates thinkingLevel to every durable summarizer", () => {
+	/** Disabling reasoning must apply to both split-turn summary requests. */
 	test("ThinkingLevel.Off → every fan-out call gets reasoning=undefined", async () => {
 		const spy = vi
 			.spyOn(ai, "completeSimple")
@@ -198,13 +199,14 @@ describe("compact() propagates thinkingLevel to all three summarizers (regressio
 			thinkingLevel: ThinkingLevel.Off,
 		});
 
-		// Split-turn preparation fans out into history + turn-prefix + short.
-		expect(spy).toHaveBeenCalledTimes(3);
+		// Split-turn preparation fans out into history + turn-prefix.
+		expect(spy).toHaveBeenCalledTimes(2);
 		for (const [, , opts] of spy.mock.calls) {
 			expect(opts?.reasoning).toBeUndefined();
 		}
 	});
 
+	/** Low reasoning must apply to both split-turn summary requests. */
 	test("ThinkingLevel.Low → every fan-out call gets reasoning=low", async () => {
 		const spy = vi
 			.spyOn(ai, "completeSimple")
@@ -214,12 +216,13 @@ describe("compact() propagates thinkingLevel to all three summarizers (regressio
 			thinkingLevel: ThinkingLevel.Low,
 		});
 
-		expect(spy).toHaveBeenCalledTimes(3);
+		expect(spy).toHaveBeenCalledTimes(2);
 		for (const [, , opts] of spy.mock.calls) {
 			expect(opts?.reasoning).toBe(ai.Effort.Low);
 		}
 	});
 
+	/** The historical high default must apply uniformly when no level is configured. */
 	test("undefined thinkingLevel → every fan-out call still gets reasoning=high (historical default)", async () => {
 		const spy = vi
 			.spyOn(ai, "completeSimple")
@@ -227,12 +230,13 @@ describe("compact() propagates thinkingLevel to all three summarizers (regressio
 
 		await compact(makePreparation(), getAnthropicModel(), "test-key", undefined, undefined);
 
-		expect(spy).toHaveBeenCalledTimes(3);
+		expect(spy).toHaveBeenCalledTimes(2);
 		for (const [, , opts] of spy.mock.calls) {
 			expect(opts?.reasoning).toBe(ai.Effort.High);
 		}
 	});
 
+	/** Unsupported reasoning must be clamped on both split-turn requests. */
 	test("xai-oauth/grok-4.20-0309-reasoning + ThinkingLevel.High → every fan-out call gets reasoning=undefined (clamp)", async () => {
 		const spy = vi
 			.spyOn(ai, "completeSimple")
@@ -242,11 +246,10 @@ describe("compact() propagates thinkingLevel to all three summarizers (regressio
 			thinkingLevel: ThinkingLevel.High,
 		});
 
-		expect(spy).toHaveBeenCalledTimes(3);
+		expect(spy).toHaveBeenCalledTimes(2);
 		for (const [, , opts] of spy.mock.calls) {
-			// Without the propagation fix at compaction.ts:971 / 1061, the
-			// three summarizers would see undefined → fall back to High and
-			// trip requireSupportedEffort. The fix + the wire-side strip in
+			// Without propagation, both summarizers would see undefined, fall
+			// back to High, and trip requireSupportedEffort.
 			// fix #2 keep this clean.
 			expect(opts?.reasoning).toBeUndefined();
 		}

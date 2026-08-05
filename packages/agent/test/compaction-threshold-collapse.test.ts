@@ -304,7 +304,10 @@ describe("resolveThresholdTokens over real compaction settings", () => {
 	});
 
 	it("defaults to auto, so a fresh install has no unit ambiguity to resolve", () => {
-		expect(DEFAULT_COMPACTION_SETTINGS.threshold).toBe(AUTO_COMPACTION_THRESHOLD);
+		// Literal "auto", not AUTO_COMPACTION_THRESHOLD. Both sides of the original
+		// assertion were the same constant, so renaming the sentinel to anything at
+		// all kept it green while every stored config said something else.
+		expect(DEFAULT_COMPACTION_SETTINGS.threshold).toBe("auto");
 	});
 });
 

@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { ImageContent, TextContent } from "@veyyon/ai";
-import {
-	__resetToolResultCapReportsForTests,
-	capToolResultContent,
-	DEFAULT_TOOL_RESULT_MAX_BYTES,
-} from "../src/tool-result-cap";
+import { __resetToolResultCapReportsForTests, capToolResultContent } from "../src/tool-result-cap";
 
 /**
  * A tool result too large for the request must be cut here, not by the API.
@@ -192,7 +188,8 @@ describe("the agent loop's cap on tool result size", () => {
 	 */
 	it("leaves a typical tool result alone under the default budget", () => {
 		const typical = lines(3000, "line");
-		expect(Buffer.byteLength(typical, "utf-8")).toBeLessThan(DEFAULT_TOOL_RESULT_MAX_BYTES);
+		// Literal 1 MiB: see tool-result-cap-wiring.
+		expect(Buffer.byteLength(typical, "utf-8")).toBeLessThan(1_048_576);
 
 		const result = capToolResultContent([text(typical)], "grep");
 

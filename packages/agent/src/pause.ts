@@ -18,6 +18,9 @@
  * command); library code only ever reads it.
  */
 
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
+
 /** Listener invoked with the new state on every pause/resume transition. */
 export type AgentPauseListener = (paused: boolean) => void;
 
@@ -96,8 +99,15 @@ export class AgentPauseGate {
 		for (const listener of this.#listeners) {
 			try {
 				listener(paused);
-			} catch {
-				// Host UI listeners must never break the gate.
+			} catch (error) {
+				// The loop must continue for the other listeners, which is why this is
+				// caught. It is reported because a listener that throws keeps its
+				// subscription and keeps missing transitions, so a host indicator can
+				// sit on "running" through a pause with nothing explaining the lie.
+				logger.warn("Agent pause listener threw; it missed this transition", {
+					paused,
+					error: errorMessage(error),
+				});
 			}
 		}
 	}

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	computeFileLists,
 	createFileOps,
 	extractFileOpsFromMessage,
+	extractFileOpsFromMessages,
 	formatFileOperations,
 	isUrlSchemePath,
 	stripReadSelector,
@@ -16,6 +18,18 @@ function readCall(id: string, path: string) {
 
 function writeCall(id: string, path: string) {
 	return { type: "toolCall" as const, id, name: "write", arguments: { path } };
+}
+
+function toolResult(id: string, toolName: string, details: Record<string, unknown>, isError = false): AgentMessage {
+	return {
+		role: "toolResult",
+		toolCallId: id,
+		toolName,
+		content: [],
+		details,
+		isError,
+		timestamp: 1,
+	};
 }
 
 describe("stripReadSelector", () => {
@@ -65,7 +79,7 @@ describe("extractFileOpsFromMessage", () => {
 			readCall("r1", "src/login.ts:30-80"),
 			{ type: "toolCall" as const, id: "w1", name: "write", arguments: { path: "src/login.ts" } },
 		]);
-		extractFileOpsFromMessage(message, fileOps);
+		extractFileOpsFromMessages([message, toolResult("w1", "write", { resolvedPath: "src/login.ts" })], fileOps);
 		const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 		expect(readFiles).toEqual([]);
 		expect(modifiedFiles).toEqual(["src/login.ts"]);
@@ -96,11 +110,53 @@ describe("extractFileOpsFromMessage", () => {
 			readCall("r1", "src/reader.ts"),
 			{ type: "toolCall" as const, id: "e1", name: "edit", arguments: { path: "src/patched.ts" } },
 		]);
-		extractFileOpsFromMessage(message, fileOps);
+		extractFileOpsFromMessages([message, toolResult("e1", "edit", { path: "src/patched.ts" })], fileOps);
 		expect([...fileOps.edited]).toEqual(["src/patched.ts"]);
 		const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 		expect(readFiles).toEqual(["src/reader.ts"]);
 		expect(modifiedFiles).toEqual(["src/patched.ts"]);
+	});
+
+	/** A tool call that failed did not mutate the repository and must not survive compaction as landed work. */
+	it("does not record failed edit or write calls as modifications", () => {
+		const fileOps = createFileOps();
+		const calls = createAssistantMessage([
+			{ type: "toolCall" as const, id: "e1", name: "edit", arguments: { path: "src/failed.ts" } },
+			writeCall("w1", "src/not-written.ts"),
+		]);
+
+		extractFileOpsFromMessages(
+			[
+				calls,
+				toolResult("e1", "edit", { path: "src/failed.ts" }, true),
+				toolResult("w1", "write", { resolvedPath: "src/not-written.ts" }, true),
+			],
+			fileOps,
+		);
+
+		expect(computeFileLists(fileOps).modifiedFiles).toEqual([]);
+	});
+
+	/** Applied ast_edit reports its exact affected files in result details rather than one call-level path. */
+	it("records every file from an applied ast_edit result", () => {
+		const fileOps = createFileOps();
+		const calls = createAssistantMessage([
+			{ type: "toolCall" as const, id: "a1", name: "ast_edit", arguments: { paths: ["src/*.ts"] } },
+		]);
+
+		extractFileOpsFromMessages(
+			[
+				calls,
+				toolResult("a1", "ast_edit", {
+					applied: true,
+					totalReplacements: 2,
+					files: ["src/a.ts", "src/b.ts"],
+				}),
+			],
+			fileOps,
+		);
+
+		expect(computeFileLists(fileOps).modifiedFiles).toEqual(["src/a.ts", "src/b.ts"]);
 	});
 });
 

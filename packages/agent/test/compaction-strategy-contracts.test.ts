@@ -1,194 +1,212 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { AGENT_PROMPTS } from "@veyyon/agent-core/prompts/registry";
 
 /**
- * The two compaction strategies must stay two different things.
+ * WHAT THIS FILE REPLACED, AND WHY IT HAD TO BE REPLACED.
  *
- * They had converged: both prompts demanded the same section list, and the
- * summary prompt literally opened "summarize the conversation above into a
- * structured handoff summary". A counterfactual on session 019f974f (one
- * `prepareCompaction()` shared by four arms, tokensBefore=221568) measured what
- * that cost. The summary prompt buried its evidence requirement in a trailing
- * sentence, directly after "Sections MUST be kept concise", and
- * gemini-3.6-flash's summary carried ZERO runnable gate commands and 2
- * verification numbers. The handoff prompt, which asks for "commands run" and
- * "test results" in an explicit list, got 7 gate commands out of the same model
- * on the same input.
+ * The previous version of this file asserted prompt text that existed in no
+ * shipped prompt: not in the veyyon prompt at HEAD, not in the upstream prompt
+ * that replaced it. It required "## User Requirements", "## Pending User
+ * Question", "successful commands that teach nothing", "recent turns remain
+ * beside the summary verbatim", and a "runtime canonical `<continuity-state>`
+ * block". Every one of those returns zero matches against both prompt
+ * generations, so fourteen assertions were red before the swap and stayed red
+ * after it, describing a design nobody ever wrote. They are deleted rather than
+ * repaired: a test that has never once matched the artifact it names is not
+ * coverage of anything.
  *
- * After the prompts were split by contract, gemini's summary carried 7, 7, and 8
- * gate commands across three runs (mean 7.3, up from 0) for +21 characters, while
- * still covering 9/9 of the items the session actually closed.
- *
- * These tests pin the prompt contracts that produced that. They assert structure,
- * not model output, so they stay deterministic.
+ * What is here instead asserts the prompts that actually ship.
  */
 
-describe("compaction strategy prompts state distinct contracts", () => {
-	/**
-	 * The summary strategy continues in the SAME session, so the recent turns
-	 * survive next to the summary. Without saying so, the model rewrites what is
-	 * already in context and spends its budget twice.
-	 */
-	test("the summary prompt tells the model the session continues", () => {
-		expect(AGENT_PROMPTS["compaction/compaction-summary"].text).toContain("SAME session");
-		expect(AGENT_PROMPTS["compaction/compaction-summary"].text).toMatch(/do not restate/i);
-		// It must NOT describe itself as a handoff; that framing is what made the
-		// two strategies produce one document.
-		expect(AGENT_PROMPTS["compaction/compaction-summary"].text).not.toMatch(/structured handoff summary/i);
-	});
+const summaryPrompt = AGENT_PROMPTS["compaction/compaction-summary"].text;
+const updatePrompt = AGENT_PROMPTS["compaction/compaction-update-summary"].text;
+const contextPrompt = AGENT_PROMPTS["compaction/compaction-summary-context"].text;
+const handoffPrompt = AGENT_PROMPTS["compaction/handoff-document"].text;
 
-	/**
-	 * The handoff strategy starts a NEW session where nothing survives, so it is
-	 * the only one that must carry cold-restart state.
-	 */
-	test("the handoff prompt tells the model nothing survives and demands restart state", () => {
-		expect(AGENT_PROMPTS["compaction/handoff-document"].text).toContain("NEW session");
-		expect(AGENT_PROMPTS["compaction/handoff-document"].text).toMatch(/nothing from this conversation survives/i);
-		expect(AGENT_PROMPTS["compaction/handoff-document"].text).toMatch(/working directory/i);
-		expect(AGENT_PROMPTS["compaction/handoff-document"].text).toMatch(/exact next command/i);
-	});
+/** Every `##`/`###` heading, in document order. */
+function sectionHeadings(promptText: string): string[] {
+	return promptText.split("\n").filter(line => /^#{2,3} /.test(line));
+}
 
-	/** Restart state belongs to handoff alone, or the two converge again. */
-	test("only the handoff prompt asks for cold-restart state", () => {
-		expect(AGENT_PROMPTS["compaction/compaction-summary"].text).not.toMatch(/exact next command/i);
-		expect(AGENT_PROMPTS["compaction/compaction-summary"].text).not.toMatch(/starts cold/i);
-	});
-});
-
-describe("both strategy prompts demand verification evidence", () => {
+describe("the three compaction prompts are the operator-ordered upstream text", () => {
 	/**
-	 * The measured defect: evidence was requested vaguely ("relevant tool outputs
-	 * or command results") and buried after a competing brevity instruction. Both
-	 * prompts must now ask for the three things that cannot be reconstructed from
-	 * a paraphrase.
-	 */
-	test.each([
-		["summary", AGENT_PROMPTS["compaction/compaction-summary"].text],
-		["handoff", AGENT_PROMPTS["compaction/handoff-document"].text],
-	])("%s prompt asks for commands, result numbers, and exact failures", (_name, promptText) => {
-		expect(promptText).toMatch(/commands run/i);
-		expect(promptText).toMatch(/pass\/fail counts/i);
-		expect(promptText).toMatch(/run ids/i);
-		expect(promptText).toMatch(/exact error text/i);
-	});
-
-	/**
-	 * "Be concise" and "keep every command" pull in opposite directions. The
-	 * summary prompt used to place them one sentence apart with no precedence,
-	 * and the model resolved it by dropping the commands. The precedence is now
-	 * explicit and must stay that way.
-	 */
-	test("the summary prompt resolves concision against evidence explicitly", () => {
-		expect(AGENT_PROMPTS["compaction/compaction-summary"].text).toMatch(/prose is where you are concise/i);
-		expect(AGENT_PROMPTS["compaction/compaction-summary"].text).toMatch(/evidence is where you are complete/i);
-		expect(AGENT_PROMPTS["compaction/compaction-summary"].text).toMatch(/drop the prose and keep the evidence/i);
-	});
-});
-
-describe("the overarching goal outlives the task in front of it", () => {
-	/**
-	 * The goal used to be a single field, so the model wrote whichever goal was
-	 * most concrete and most recent: on session 019f974f the Goal section held the
-	 * current sub-task and never the standing objective the session sat inside.
-	 * That is not decay across compactions, it is wrong at the FIRST one, after
-	 * which every later cycle faithfully carries the wrong thing forward.
+	 * The operator ordered these three files replaced with oh-my-pi's byte for
+	 * byte, on the measurement that upstream scores higher on their long-run
+	 * evals. That order is the contract, so the bytes are the assertion.
 	 *
-	 * All three prompts now ask for the two separately, because they change at
-	 * different speeds and a single field lets the fast one win.
+	 * These digests were taken from oh-my-pi at commit da6e80b3b (2026-07-30),
+	 * `packages/agent/src/compaction/prompts/`, and independently reproduce the
+	 * digests of the files in this repository.
+	 *
+	 * A FAILURE HERE IS NOT A TEST TO UPDATE. It means someone edited an
+	 * operator-ordered prompt. Veyyon's dominant defect class is a subsystem
+	 * that keeps compiling while its behavior is quietly replaced, and prompt
+	 * text is the least visible place that can happen: nothing type-checks it,
+	 * nothing crashes, and the only symptom is worse summaries. Restore the
+	 * bytes, or get the operator to approve the deviation and then update the
+	 * digest in the same change.
 	 */
 	test.each([
-		["summary", AGENT_PROMPTS["compaction/compaction-summary"].text],
-		["handoff", AGENT_PROMPTS["compaction/handoff-document"].text],
-		["update", AGENT_PROMPTS["compaction/compaction-update-summary"].text],
-	])("%s prompt states the overarching goal is never dropped", (_name, promptText) => {
-		expect(promptText).toMatch(/overarching goal/i);
-		expect(promptText).toMatch(/never dropped/i);
+		["compaction-summary", summaryPrompt, 1206, "36f4e78445b7103273455546325a50e6ffcd23277ab0a79a9c3d1bfef2a7ec4d"],
+		[
+			"compaction-update-summary",
+			updatePrompt,
+			1633,
+			"2b48e116ff167ca7b5dc095cab580f547089eb3a48ef0859f160eef7417b7bbe",
+		],
+		[
+			"compaction-summary-context",
+			contextPrompt,
+			285,
+			"c56e37f7a32354807317289e173960b260c01b05a20caeb875ee90f81e584d32",
+		],
+	])("%s is upstream verbatim", (_name, promptText, bytes, digest) => {
+		// Byte length is asserted alongside the digest so a failure reports how
+		// far the text moved, not only that it moved.
+		expect(Buffer.byteLength(promptText)).toBe(bytes);
+		expect(createHash("sha256").update(promptText).digest("hex")).toBe(digest);
 	});
+});
 
-	/** One shape across all three, or the strategies disagree about what a goal is. */
+describe("what both compaction prompts must guarantee", () => {
+	/**
+	 * The one instruction that stops a summarizer paraphrasing. A path, a symbol,
+	 * or an error string that gets reworded costs the next turn a rediscovery
+	 * round trip, and a reworded error string is worse than a missing one because
+	 * it reads as observed fact.
+	 */
 	test.each([
-		["summary", AGENT_PROMPTS["compaction/compaction-summary"].text],
-		["handoff", AGENT_PROMPTS["compaction/handoff-document"].text],
-		["update", AGENT_PROMPTS["compaction/compaction-update-summary"].text],
-	])("%s prompt separates the overarching goal from the current task", (_name, promptText) => {
-		expect(promptText).toContain("Current task:");
-		expect(promptText).toMatch(/carried forward unless the user changed it/i);
+		["initial", summaryPrompt],
+		["iterative", updatePrompt],
+	])("%s prompt requires identifiers preserved exactly", (_name, promptText) => {
+		expect(promptText).toContain("preserve exact file paths, function names");
+		expect(promptText).toContain("error messages");
+		expect(promptText).toContain("repository state changes (branch, uncommitted changes)");
 	});
 
 	/**
-	 * The update prompt runs on every compaction after the first, and it licenses
-	 * the model to drop anything no longer relevant. Without an explicit carve-out
-	 * the standing objective is exactly the kind of thing that reads as stale.
+	 * An unanswered question to the user cannot be reconstructed from repository
+	 * state: the user is the only place the answer lives, and a summarizer that
+	 * paraphrases it into a next step turns a blocked session into one that
+	 * silently proceeds on a guess. Both prompts carry the clause, in their own
+	 * wording, so each is asserted against its own sentence rather than a
+	 * lowest-common-denominator regex that would pass on either one alone.
 	 */
-	test("the update prompt exempts the goal from its own removal license", () => {
-		expect(AGENT_PROMPTS["compaction/compaction-update-summary"].text).toMatch(
-			/remove anything no longer relevant, except the overarching goal/i,
+	test("the initial prompt preserves a pending question verbatim", () => {
+		expect(summaryPrompt).toContain(
+			'IMPORTANT: If the conversation ends with an unanswered question or a request awaiting user response (e.g., "Please run command and paste output"), you MUST preserve that exact question/request.',
 		);
 	});
-});
 
-describe("repository state is specific enough to resume from", () => {
-	/**
-	 * A branch name alone does not say where the work started or whether any of it
-	 * is saved. Reading codex and gemini output side by side on session 019f974f
-	 * made the gap concrete: codex volunteered `main` at `a081c256c3`, a clean
-	 * initial tree, and "No commit has been made during this session", while
-	 * gemini gave the branch and nothing else. Asking for the commit explicitly
-	 * closed that gap on the cheaper model.
-	 *
-	 * Whether anything was committed is the load-bearing part: it tells the next
-	 * session whether the work exists anywhere but the working tree.
-	 */
-	test.each([
-		["summary", AGENT_PROMPTS["compaction/compaction-summary"].text],
-		["handoff", AGENT_PROMPTS["compaction/handoff-document"].text],
-		["update", AGENT_PROMPTS["compaction/compaction-update-summary"].text],
-	])("%s prompt asks for the HEAD commit and whether anything was committed", (_name, promptText) => {
-		expect(promptText).toMatch(/HEAD commit/i);
-		expect(promptText).toMatch(/whether anything was committed this session/i);
+	test("the iterative prompt files a newly pending question into Critical Context", () => {
+		expect(updatePrompt).toContain(
+			"IMPORTANT: If the new messages end with an unanswered question or request to the user, you MUST add it to Critical Context (replacing any previous pending question if answered).",
+		);
 	});
 
 	/**
-	 * Repository state is requested only where it exists. Making it unconditional
-	 * turns it into a field to fill, and a session that is not in a repository
-	 * gets an invented branch, which is the same fabrication failure the commands
-	 * rule exists to prevent.
+	 * The summarizer's output is written straight into the compaction entry as
+	 * the summary. A model that opens with "Sure, here is the summary:" puts that
+	 * sentence into permanent session history, where every later turn reads it as
+	 * part of the recovered state.
 	 */
 	test.each([
-		["summary", AGENT_PROMPTS["compaction/compaction-summary"].text],
-		["handoff", AGENT_PROMPTS["compaction/handoff-document"].text],
-	])("%s prompt makes repository state conditional, not mandatory", (_name, promptText) => {
-		expect(promptText).toMatch(/where the work is version controlled/i);
+		["initial", summaryPrompt],
+		["iterative", updatePrompt],
+	])("%s prompt forbids conversational output", (_name, promptText) => {
+		expect(promptText).toContain("You MUST output only the structured summary; you NEVER include extra text.");
+	});
+
+	/**
+	 * Iterative compaction feeds its own previous output back in. If the two
+	 * prompts disagree about the section list, every compaction cycle drops the
+	 * sections the update prompt forgot to name, and the loss compounds silently
+	 * across a long session because each cycle's input already looks complete.
+	 */
+	test("the initial and iterative prompts declare the same sections in the same order", () => {
+		expect(sectionHeadings(updatePrompt)).toEqual(sectionHeadings(summaryPrompt));
+		expect(sectionHeadings(summaryPrompt)).toEqual([
+			"## Goal",
+			"## Constraints & Preferences",
+			"## Progress",
+			"### Done",
+			"### In Progress",
+			"### Blocked",
+			"## Key Decisions",
+			"## Next Steps",
+			"## Critical Context",
+			"## Additional Notes",
+		]);
+	});
+
+	/**
+	 * `generateSummary` selects the iterative prompt exactly when it has a
+	 * previous summary to pass, and only then emits the `<previous-summary>`
+	 * block (`buildSummaryPrompt` in src/compaction/compaction.ts). An initial
+	 * prompt that referred to that block would send the model looking for a
+	 * section the builder did not write.
+	 */
+	test("only the iterative prompt references the previous-summary block", () => {
+		expect(updatePrompt).toContain("<previous-summary>");
+		expect(summaryPrompt).not.toContain("<previous-summary>");
 	});
 });
 
-describe("both strategies can record what is stopping progress", () => {
+describe("automatic compaction and explicit handoff stay distinct", () => {
 	/**
-	 * The summary prompt had a `Blocked` section and the handoff prompt did not,
-	 * which is backwards: handoff is the one whose reader starts cold with nothing
-	 * but the document, so a blocker it cannot see is a blocker it rediscovers by
-	 * walking into it.
+	 * `/handoff` starts a NEW session where nothing survives, so its document
+	 * alone must carry cold-restart state.
 	 *
-	 * Adding the section produced exactly the class of fact that cannot be
-	 * re-derived from the repository: "Triggering or mutating GitHub requires
-	 * explicit approval", and a marketplace listing needing a repository-owner UI
-	 * action. Neither is visible in any file the next session could read.
+	 * The converse assertion, that the automatic-compaction prompt does NOT
+	 * describe a cold restart, is deliberately absent. Upstream's summary prompt
+	 * opens "structured handoff summary for another LLM to resume the task",
+	 * which is false for how either fork actually compacts: both keep a 20000
+	 * token recent tail (`keepRecentTokens`) and inject the summary in front of
+	 * it in the SAME session. That mismatch is escalated to the operator as a
+	 * candidate deviation from the ordered text, and no test here presumes the
+	 * outcome in either direction.
+	 */
+	test("the handoff prompt carries cold-restart state", () => {
+		expect(handoffPrompt).toContain("NEW session");
+		expect(handoffPrompt).toMatch(/nothing from this conversation survives/i);
+		expect(handoffPrompt).toMatch(/working directory/i);
+		expect(handoffPrompt).toMatch(/exact next command/i);
+	});
+
+	/**
+	 * The durable objective and the mutable current task change at different
+	 * rates, so a concrete subtask must not overwrite the user's goal. Only the
+	 * handoff prompt still draws that line: the upstream summary prompts have one
+	 * undifferentiated `## Goal`. That gap is part of the same escalation.
+	 */
+	test("the handoff prompt separates the overarching goal from the current task", () => {
+		expect(handoffPrompt).toMatch(/overarching goal/i);
+		expect(handoffPrompt).toContain("Current task:");
+		expect(handoffPrompt).toMatch(/carried forward unless the user changed it/i);
+	});
+
+	/**
+	 * Session-owned jobs are cancelled by a replacement-session handoff. Claiming
+	 * they remain live would make the next session wait on work that cannot
+	 * finish.
+	 */
+	test("handoff distinguishes cancelled jobs from independently persistent processes", () => {
+		expect(handoffPrompt).toMatch(/session-owned async jobs are cancelled/i);
+		expect(handoffPrompt).toMatch(/never say they remain running/i);
+		expect(handoffPrompt).toMatch(/independently persistent processes/i);
+	});
+
+	/**
+	 * A blocker changes what can safely happen next, so it belongs in every
+	 * continuation form, even though pending untouched work belongs only to
+	 * handoff.
 	 */
 	test.each([
-		["summary", AGENT_PROMPTS["compaction/compaction-summary"].text],
-		["handoff", AGENT_PROMPTS["compaction/handoff-document"].text],
-		["update", AGENT_PROMPTS["compaction/compaction-update-summary"].text],
-	])("%s prompt has a Blocked section", (_name, promptText) => {
+		["initial", summaryPrompt],
+		["iterative", updatePrompt],
+		["handoff", handoffPrompt],
+	])("%s prompt retains current blockers", (_name, promptText) => {
 		expect(promptText).toContain("### Blocked");
-	});
-
-	/**
-	 * Handoff keeps `Pending` as well. Summary is injected beside the live turns
-	 * where not-yet-started work is still visible; handoff replaces everything, so
-	 * it is the only one that has to carry work nobody has touched yet.
-	 */
-	test("only the handoff prompt asks for not-yet-started work", () => {
-		expect(AGENT_PROMPTS["compaction/handoff-document"].text).toContain("### Pending");
-		expect(AGENT_PROMPTS["compaction/compaction-summary"].text).not.toContain("### Pending");
 	});
 });
