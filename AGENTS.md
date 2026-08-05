@@ -378,7 +378,7 @@ push, not a green CI run, not a waiting `## [Unreleased]` bullet.
 
 The workflow runs `scripts/release.ts` internally. It bumps public package versions,
 the root catalog, Rust workspace, native sentinel, lockfiles, and changelogs; runs
-checks; commits `chore: bump version to X.Y.Z`; and atomically pushes `main` plus the
+checks; commits `chore: bump version to vX.Y.Z`; and atomically pushes `main` plus the
 tag. If main advanced, the push fails without rebasing: validate the newer SHA and
 dispatch again. The workflow then dispatches `checks.yml` at the immutable tag,
 verifies the bump SHA is green, dispatches and waits for `ci.yml`, and verifies the
