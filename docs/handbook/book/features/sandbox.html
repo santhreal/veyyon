@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-595774d2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -225,13 +225,14 @@ below.</p>
 </thead>
 <tbody>
 <tr><td><code>plan</code></td><td>auto</td><td>ask with an active plan-mode session, denied otherwise</td><td>denied</td></tr>
-<tr><td><code>ask</code></td><td>auto</td><td>ask</td><td>ask</td></tr>
-<tr><td><code>auto-edit</code></td><td>auto</td><td>auto</td><td>ask</td></tr>
+<tr><td><code>ask</code></td><td>ask</td><td>ask</td><td>ask</td></tr>
+<tr><td><code>ask-command</code></td><td>auto</td><td>auto</td><td>ask</td></tr>
+<tr><td><code>auto</code></td><td>auto</td><td>auto</td><td>auto, with the per-tool, working-directory, credential and critical-call guards still asking</td></tr>
 <tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td></tr>
 </tbody>
 </table>
 </div>
-<p>Schema default: <strong><code>yolo</code></strong>. Legacy aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.</p>
+<p>Schema default: <strong><code>auto</code></strong>. Legacy aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>.</p>
 <pre><code class="language-console">$ veyyon --approval-mode auto-edit
 $ veyyon --yolo                    # same as --auto-approve → yolo
 $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode

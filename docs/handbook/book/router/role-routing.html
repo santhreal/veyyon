@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -201,12 +201,12 @@ role policy chooses which model, prompt, and tool surface fits a subagent or spe
 Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.</p>
 <h2 id="what-exists-today"><a class="header" href="#what-exists-today">What exists today</a></h2>
 <ul>
-<li><strong>Subagents</strong> via the <code>task</code> tool (<code>packages/coding-agent/src/task/executor.ts</code>) and <code>/agents</code>
-thread switching.</li>
-<li><strong>Explicit model slots</strong>, not a role→model matrix: the interactive model (<code>/model</code>), plus plain
-<code>subagent.model</code> and <code>compaction.model</code> fields in settings (<code>subagent.model</code> belongs to the Subagents area, not the role table). <code>default</code> is not a model or a role. Named
-<strong>roles</strong> (<code>modelRoles</code>, scoped per profile) exist for anyone who wants specific work types pinned to
-specific models, but editing them lives in a settings group, not the model picker. See
+<li><strong>Subagents</strong> via the <code>task</code> tool (<code>packages/coding-agent/src/task/executor.ts</code>). <code>/agents</code> opens the
+live hub for active and persisted agent threads.</li>
+<li><strong>Explicit model policies</strong>, not a role-to-model matrix: the interactive model (<code>/model</code>), profile-wide
+subagent defaults and per-agent overrides under <code>subagent</code>, plus <code>compaction.model</code>. <code>default</code> is not
+a model or a role. Named <strong>roles</strong> (<code>modelRoles</code>, scoped per profile) let you pin specific work types.
+Edit roles under Settings → Model → Roles and subagent policy under Settings → Subagents. See
 <a href="../context/compaction-memory.html">Compaction &amp; project memory</a> and
 <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</li>
 <li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). There is no <code>/advisor</code> slash
@@ -223,7 +223,7 @@ still spawn subagents.</li>
 </ul>
 <h2 id="no-fixed-role-pipeline"><a class="header" href="#no-fixed-role-pipeline">No fixed role pipeline</a></h2>
 <p>Veyyon does not enforce a staged plan → implement → verify → repair handoff. It uses lighter-weight
-spawn, model-slot, and <code>irc</code> messaging patterns instead; you compose the stages yourself.</p>
+spawn, subagent-policy, and <code>irc</code> messaging patterns instead; you compose the stages yourself.</p>
 <p>Pair role choice with <a href="../models/prompts.html">execution-order prompts</a>: explore → plan → edit → verify.</p>
 
                     </main>

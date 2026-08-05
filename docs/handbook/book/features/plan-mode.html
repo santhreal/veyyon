@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -220,10 +220,10 @@
 <ul>
 <li>Setting: <code>goal.enabled</code> (default <code>true</code>)</li>
 <li><code>/goal set &lt;objective&gt;</code>: create or replace</li>
-<li><code>/goal show</code>: status, tokens, budget</li>
+<li><code>/goal show</code>: status and token usage</li>
 <li><code>/goal pause</code> / <code>/goal resume</code></li>
 <li><code>/goal drop</code>: remove</li>
-<li><code>/goal budget &lt;N|off&gt;</code>: token budget</li>
+<li>Setting: <code>goal.modelBudgetsEnabled</code> (default <code>false</code>), controlled only from the interactive Settings UI</li>
 <li><code>/guided-goal</code>: interview flow before enabling</li>
 </ul>
 <h3 id="goal-state"><a class="header" href="#goal-state">Goal state</a></h3>
@@ -232,7 +232,7 @@
 </code></pre>
 <p>Statuses: <code>active</code>, <code>paused</code>, <code>budget-limited</code>, <code>complete</code>, <code>dropped</code>.</p>
 <h3 id="goal-tool"><a class="header" href="#goal-tool">Goal tool</a></h3>
-<p>When goal mode is active, the agent can call the <code>goal</code> tool with ops: <code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>. Continuation prompts inject on idle turns per <code>goal.continuationModes</code>.</p>
+<p>When goal mode is active, the agent can call the <code>goal</code> tool with ops: <code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>. The tool never accepts a budget argument. The interactive Settings UI owns <code>goal.modelBudgetsEnabled</code>, which controls whether persisted budgets are exposed and enforced. Continuation prompts inject on idle turns per <code>goal.continuationModes</code>.</p>
 <h3 id="example"><a class="header" href="#example">Example</a></h3>
 <pre><code class="language-console">$ veyyon
 </code></pre>

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -310,6 +310,25 @@ branch that works. Full behavior: <a href="../features/branching.html">Branching
 <li><strong>Memory</strong> stores durable facts across sessions when a backend is enabled.</li>
 <li><strong>Branching</strong> forks live transcript context for the current problem.</li>
 <li>Branch to explore; use memory for decisions that should outlive one session.</li>
+</ul>
+<h2 id="track-long-work-without-repeated-reminder-walls"><a class="header" href="#track-long-work-without-repeated-reminder-walls">Track long work without repeated reminder walls</a></h2>
+<p>Use the <code>todo</code> tool for work that has several independent steps. The session stores every phase,
+task, and status. Compaction and handoff keep that complete structured state, including plans with
+dozens of items.</p>
+<p>When the model tries to finish with open work, Veyyon injects one continuation instruction for that
+exact todo state. The instruction says to continue, puts the active task first, shows at most five
+open items, and reports how many more remain hidden. It does not replay an unchanged state after a
+user says <code>continue</code> or after an unrelated tool call. A real todo change makes the new state eligible
+for one reminder, up to the configured limit.</p>
+<p>Model-facing todo output and the collapsed TUI use the same sanitized, width-bounded, active-first
+projection of at most five items. The complete phases, tasks, and statuses remain in machine state,
+and expanded TUI output still shows the complete plan. To clear that state intentionally, run
+<code>/todo rm</code> without a task or phase; completing or dropping items keeps their closed history until it
+is explicitly removed.</p>
+<p>Configure the behavior under <strong>Settings → Tools → Todos</strong>:</p>
+<ul>
+<li><strong>Todo Reminders</strong> enables continuation instructions for unfinished plans.</li>
+<li><strong>Todo Reminder Limit</strong> caps distinct todo-state reminders before reminders stay silent.</li>
 </ul>
 <hr>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>

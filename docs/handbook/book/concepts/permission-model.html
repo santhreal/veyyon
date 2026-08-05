@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-595774d2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -213,7 +213,7 @@ it as the boundary.</p>
 <p>A mode approves whole tiers, not individual tools. That is why the tiers come first: once
 you know which tier a tool is in, the mode tells you whether it runs.</p>
 <h2 id="modes"><a class="header" href="#modes">Modes</a></h2>
-<p>A mode is a named choice of which tiers run without asking. There are four:</p>
+<p>A mode is a named choice of which tiers run without asking. There are five:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -221,14 +221,15 @@ you know which tier a tool is in, the mode tells you whether it runs.</p>
 </thead>
 <tbody>
 <tr><td><code>plan</code></td><td>read</td><td>write with an active plan-mode session; write and exec are otherwise denied</td></tr>
-<tr><td><code>ask</code></td><td>read</td><td>write, exec</td></tr>
-<tr><td><code>auto-edit</code></td><td>read + write</td><td>exec</td></tr>
+<tr><td><code>ask</code></td><td>nothing</td><td>read, write, exec</td></tr>
+<tr><td><code>ask-command</code></td><td>read + write</td><td>exec</td></tr>
+<tr><td><code>auto</code></td><td>all tiers</td><td>a per-tool policy, the working-directory boundary, credential use, a tool’s own critical calls</td></tr>
 <tr><td><code>yolo</code></td><td>all tiers</td><td>nothing (unless a per-tool override applies)</td></tr>
 </tbody>
 </table>
 </div>
-<p>The schema default is <code>yolo</code>. Two older names still work: <code>always-ask</code> maps to <code>ask</code>, and
-<code>write</code> maps to <code>auto-edit</code>.</p>
+<p>The schema default is <code>auto</code>. Three older names still work: <code>always-ask</code> maps to <code>ask</code>, and
+<code>write</code> and <code>auto-edit</code> both map to <code>ask-command</code>.</p>
 <p>Set the mode in config, or override it for one run:</p>
 <pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the tests and fix failures"
 </code></pre>

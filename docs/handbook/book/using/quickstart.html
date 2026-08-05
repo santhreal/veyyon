@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -205,7 +205,7 @@ vey --version
 <p>If it is missing, the one-command installer wires up your PATH, shell completions, and the <code>vey</code> alias:</p>
 <pre><code class="language-shell">curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>You can also pin a release binary with <code>curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11</code> (a bare <code>--ref</code> builds that ref from source), or build from source with <code>bun setup &amp;&amp; bun dev</code> in the repository root. See <a href="./install.html">Install</a>.</p>
+<p>You can also pin a release binary with <code>curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11</code>. The installer only ever downloads a published release binary. To run an unreleased ref instead, clone the repository yourself and run <code>bun run setup &amp;&amp; bun dev</code> in that checkout. See <a href="./install.html">Install</a>.</p>
 <h2 id="check-the-environment"><a class="header" href="#check-the-environment">Check the environment</a></h2>
 <pre><code class="language-shell">veyyon plugin doctor
 </code></pre>

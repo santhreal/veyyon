@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -286,8 +286,8 @@ compaction model. <code>/model</code> shows the current interactive model; <code
 </thead>
 <tbody>
 <tr><td><strong>Interactive model</strong></td><td>Main conversation</td><td><code>/model</code>, <code>--model</code>; persisted as <code>modelRoles.default</code></td></tr>
-<tr><td><strong>Roles</strong></td><td>Named assignments (<code>smol</code>, <code>slow</code>, <code>plan</code>, <code>advisor</code>, …)</td><td><code>modelRoles</code> / settings → Model → Roles</td></tr>
-<tr><td><strong>Subagent model</strong></td><td>Spawned subagents</td><td><code>subagent.model</code> (or a per-agent model in <code>subagent.agents</code>; unset inherits interactive)</td></tr>
+<tr><td><strong>Roles</strong></td><td>Named assignments (<code>smol</code>, <code>slow</code>, <code>plan</code>, <code>advisor</code>, …)</td><td><code>modelRoles</code> / Settings → Model → Roles</td></tr>
+<tr><td><strong>Subagent policy</strong></td><td>Blanket and per-agent model and effort choices</td><td><code>subagent.model</code>, <code>subagent.thinkingLevel</code>, and <code>subagent.agents</code></td></tr>
 <tr><td><strong>Compaction override</strong></td><td>Compaction / handoff</td><td><code>compaction.model</code> (else inherit interactive)</td></tr>
 </tbody>
 </table>
@@ -298,9 +298,12 @@ modelRoles:
   smol: openai/gpt-4.1-mini
   slow: anthropic/claude-opus-4-5:high
   plan: anthropic/claude-sonnet-5
-  task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat  # optional hard override for task agents
+  model: deepseek/deepseek-chat:high
+  agents:
+    reviewer:
+      enabled: true
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini
 </code></pre>
@@ -340,7 +343,7 @@ $ veyyon --model openrouter/anthropic/claude-sonnet-4
 </thead>
 <tbody>
 <tr><td>Tool-heavy refactors</td><td>Hosted model with tool calling</td></tr>
-<tr><td>Long sessions / subagents</td><td>Cheaper id on <code>subagent.model</code> / <code>compaction.model</code></td></tr>
+<tr><td>Long sessions / subagents</td><td>Choose cheaper models under <code>subagent</code> and <code>compaction.model</code></td></tr>
 <tr><td>Low latency</td><td>Local or flash-tier cloud</td></tr>
 <tr><td>Offline / private code</td><td>Ollama, LM Studio, llama.cpp</td></tr>
 <tr><td>CI</td><td>Pin exact <code>provider/id</code> with <code>--model</code></td></tr>

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -204,7 +204,9 @@ command your installed build does not have, you get:</p>
 commands this build has, or drop the leading slash to send it as a message.
 </code></pre>
 <p>The refusal names the command and never repeats what followed it, because the tail of a mistyped
-<code>/secret add</code> is a credential.</p>
+<code>/secret</code> is a credential. The rule reaches further than one mistyped word: in a terminal the whole
+argument line of <code>/secret</code> is the credential, whatever it happens to spell, so there is no tail
+there that is safe to echo back.</p>
 <p>A message that merely begins with a filesystem path is prose, not a command, and is sent as usual:</p>
 <pre><code class="language-text">/etc/hosts is broken
 </code></pre>
@@ -250,7 +252,7 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/guided-goal</code></td><td>Guided goal wizard</td></tr>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
-<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. <code>add</code> (prompts with the value hidden), <code>list</code>, <code>rm</code>, <code>extend</code>, <code>log</code>. See <a href="../features/secrets.html">Secrets</a></td></tr>
+<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential, a bare <code>/secret</code> opens a hidden field, and <code>/secret manager</code> opens the manager. A client with no terminal keeps the verbs <code>add</code>, <code>list</code>, <code>rm</code>, <code>extend</code>, <code>log</code>, <code>discard</code>. See <a href="../features/secrets.html">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> / <code>/providers</code> opens provider sign-in</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
@@ -265,9 +267,9 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><th>Command</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>/compact [summary|handoff] [focus]</code></td><td>Compact context now (<code>compaction.model</code> + type); optional type override and focus string</td></tr>
+<tr><td><code>/compact [summary] [focus]</code></td><td>Summarize older context in place; optional focus string</td></tr>
 <tr><td><code>/shake [elide|images]</code></td><td>Shake tool-result bulk</td></tr>
-<tr><td><code>/handoff</code></td><td>Compaction handoff helper</td></tr>
+<tr><td><code>/handoff [focus]</code></td><td>Explicitly transfer context into a new session</td></tr>
 <tr><td><code>/context</code></td><td>Context usage report</td></tr>
 <tr><td><code>/tools</code></td><td>Tools visible to the model</td></tr>
 <tr><td><code>/jobs</code></td><td>Background async jobs</td></tr>

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-595774d2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -314,7 +314,7 @@ time you launch. Veyyon retries first and reports only when the retries have not
 brief clash with another veyyon writing at the same moment stays quiet. Fix the permissions
 and change the setting again, and nothing further is reported.</p>
 <h2 id="pick-models-and-providers"><a class="header" href="#pick-models-and-providers">Pick models and providers</a></h2>
-<p>Three explicit model slots, each set on its own:</p>
+<p>Configure the interactive model, subagent policy, compaction model, and optional roles separately:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -322,9 +322,10 @@ and change the setting again, and nothing further is reported.</p>
 </thead>
 <tbody>
 <tr><td>Choose the model you talk to</td><td><code>--model</code> / <code>/model</code> (persisted as <code>modelRoles.default</code>)</td></tr>
-<tr><td>Model for spawned subagents</td><td><code>subagent.model</code> (Subagents tab)</td></tr>
-<tr><td>Model for context compaction</td><td><code>compaction.model</code></td></tr>
-<tr><td>Named model assignments (optional)</td><td><code>modelRoles</code>, per profile (settings → Model → Roles)</td></tr>
+<tr><td>Choose profile-wide subagent defaults</td><td><code>subagent.model</code> and <code>subagent.thinkingLevel</code></td></tr>
+<tr><td>Customize one subagent</td><td><code>subagent.agents.&lt;name&gt;</code> or Settings → Subagents → Agents</td></tr>
+<tr><td>Choose the model for context compaction</td><td><code>compaction.model</code></td></tr>
+<tr><td>Add named model assignments</td><td><code>modelRoles</code>, per profile (Settings → Model → Roles)</td></tr>
 <tr><td>Add a local or BYOK provider</td><td>a <code>providers:</code> entry in <code>models.yml</code> (see <a href="./models.html">Models</a>)</td></tr>
 </tbody>
 </table>
@@ -333,9 +334,13 @@ and change the setting again, and nothing further is reported.</p>
 modelRoles:
   default: openai/gpt-5           # interactive model (persisted default)
   smol: openai/gpt-4.1-mini
-  task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat   # optional; unset means subagents inherit your model
+  model: deepseek/deepseek-chat
+  thinkingLevel: high
+  agents:
+    reviewer:
+      enabled: true
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini        # optional; else inherit interactive
 </code></pre>
@@ -347,7 +352,7 @@ compaction:
 <tr><th>Goal</th><th>What to set</th></tr>
 </thead>
 <tbody>
-<tr><td>When Veyyon asks before acting</td><td><code>tools.approvalMode</code>: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (default); legacy <code>always-ask</code>/<code>write</code> accepted</td></tr>
+<tr><td>When Veyyon asks before acting</td><td><code>tools.approvalMode</code>: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (default), <code>yolo</code>; legacy <code>always-ask</code>/<code>write</code>/<code>auto-edit</code> accepted</td></tr>
 <tr><td>Per-tool policy</td><td><code>tools.approval</code>: map a tool to <code>allow</code> / <code>deny</code> / <code>prompt</code></td></tr>
 <tr><td>Advisor review pass</td><td><code>advisor.enabled</code> + <code>modelRoles.advisor</code></td></tr>
 </tbody>
@@ -385,7 +390,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 </thead>
 <tbody>
 <tr><td>Auto-compaction threshold</td><td><code>compaction.threshold</code>: <code>auto</code>, a percent (<code>85%</code>), or a token amount (<code>170000</code>)</td></tr>
-<tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
+<tr><td>Compaction type</td><td><code>compaction.strategy: summary</code>, the sole strategy</td></tr>
 <tr><td>Compaction model</td><td><code>compaction.model</code> (unset = interactive model)</td></tr>
 <tr><td>Cross-session memory backend</td><td><code>memory.backend</code>: <code>off</code> (default), <code>local</code>, <code>hindsight</code>, <code>mnemopi</code></td></tr>
 </tbody>
@@ -393,7 +398,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 </div>
 <pre><code class="language-yaml">compaction:
   threshold: "80%"
-  strategy: handoff
+  strategy: summary
   model: openai/gpt-5-mini
 
 memory:
@@ -642,7 +647,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 <ul>
 <li><a href="./getting-started.html">Getting started</a></li>
 <li><a href="./task-guides.html">Task guides</a></li>
-<li><a href="./safety.html">Safety</a>: <code>tools.approvalMode</code> (default <code>yolo</code>)</li>
+<li><a href="./safety.html">Safety</a>: <code>tools.approvalMode</code> (default <code>auto</code>)</li>
 <li><a href="./extending.html">Extending</a></li>
 <li><a href="../reference/cli.html">CLI</a></li>
 </ul>

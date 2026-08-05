@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-595774d2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -203,13 +203,13 @@
 $ vey --version
 </code></pre>
 <p>On Windows, run <code>irm https://veyyon.dev/install.ps1 | iex</code> instead.</p>
-<p>If you would rather build from a source checkout, clone the repository and run the setup script.</p>
+<p>The installer only downloads a published release binary. If you would rather build from a checkout, clone the repository yourself, into any directory you like, and run the setup script there.</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
-$ bun setup
+$ bun run setup
 $ bun dev --version
 </code></pre>
-<p><code>bun setup</code> installs the workspace dependencies and builds <code>@veyyon/natives</code>, the Rust addon. Your configuration lives under <code>~/.veyyon</code>, and the default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<p><code>bun run setup</code> installs the workspace dependencies and builds <code>@veyyon/natives</code>, the Rust addon. That checkout is yours: you chose where it lives, and the installer neither creates it nor writes into it. Your configuration lives under <code>~/.veyyon</code>, and the default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
 <p>The installer sets up shell completions for you when your shell supports them. The <a href="./install.html">Install</a> chapter has the full details.</p>
 <h2 id="2-first-launch"><a class="header" href="#2-first-launch">2. First launch</a></h2>
 <p>The first time you run <code>veyyon</code> (or any time you run <code>veyyon setup</code>), the setup UI walks you through five steps:</p>
@@ -268,13 +268,14 @@ $ veyyon
 </thead>
 <tbody>
 <tr><td><code>plan</code></td><td><code>read</code> (it proposes, but does not write)</td><td><code>write</code> only inside an active plan-mode session; <code>write</code> and <code>exec</code> are otherwise denied</td></tr>
-<tr><td><code>ask</code></td><td><code>read</code></td><td><code>write</code> and <code>exec</code></td></tr>
-<tr><td><code>auto-edit</code></td><td><code>read</code> and <code>write</code></td><td><code>exec</code></td></tr>
-<tr><td><code>yolo</code> (default)</td><td>all tiers</td><td>nothing, unless a per-tool override or a bash safety rule applies</td></tr>
+<tr><td><code>ask</code></td><td>nothing</td><td>every call, <code>read</code> included</td></tr>
+<tr><td><code>ask-command</code></td><td><code>read</code> and <code>write</code></td><td>anything that executes: <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>task</code>, <code>ssh</code></td></tr>
+<tr><td><code>auto</code> (default)</td><td>all tiers</td><td>a per-tool policy, a path outside the working directory, credential use, and a tool’s own critical calls</td></tr>
+<tr><td><code>yolo</code></td><td>all tiers</td><td>nothing, unless a per-tool override or a bash safety rule applies</td></tr>
 </tbody>
 </table>
 </div>
-<p>The older names <code>always-ask</code> and <code>write</code> still work, and map to <code>ask</code> and <code>auto-edit</code>. The schema default is <code>yolo</code>. You can change it in <code>/settings</code> or in your config. See <a href="../features/sandbox.html">Approvals</a> and <a href="./safety.html">Safety</a>.</p>
+<p>The older names still work: <code>always-ask</code> maps to <code>ask</code>, and <code>write</code> and <code>auto-edit</code> both map to <code>ask-command</code>. The schema default is <code>auto</code>. You can change it in <code>/settings</code> or in your config. See <a href="../features/sandbox.html">Approvals</a> and <a href="./safety.html">Safety</a>.</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <p>A few surfaces are worth trying early:</p>
 <ul>

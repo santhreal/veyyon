@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -230,7 +230,7 @@
 <ul>
 <li><strong>The interactive model</strong> is what you set with <code>/model</code> or <code>--model</code>, and it persists as <code>modelRoles.default</code>.</li>
 <li><strong>Roles</strong> pin a model to a kind of work, such as <code>smol</code> for cheap fast work or <code>advisor</code> for the reviewing advisor, and you can add your own in <code>modelRoles</code>. The full built-in set is listed in <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</li>
-<li><strong>Overrides</strong> let a slot win over a role. <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles at all: they live in the Subagents settings area, which owns them alone.</li>
+<li><strong>Overrides</strong> are explicit subsystem policies. <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles: profile-wide and per-agent policy in the Subagents settings area decides what they run.</li>
 <li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (which defaults to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>, often Ctrl+P.</li>
 </ul>
 <p>The full contract is in <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>

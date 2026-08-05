@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5cf6de48.js"></script>
@@ -218,7 +218,7 @@
 <p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The CLI, the TUI, the tools, the providers, and the session loop are TypeScript running on Bun. The hot paths, meaning grep, glob, PTY, and tree-sitter parsing, are Rust natives in <code>@veyyon/natives</code>. The hashline edit engine itself is TypeScript in <code>@veyyon/hashline</code>, with native helpers for block resolution.</p>
 <p>A few facts you will reach for often:</p>
 <ul>
-<li>Install with <code>curl -fsSL https://get.veyyon.dev | sh</code> (or <code>irm https://veyyon.dev/install.ps1 | iex</code> on Windows), or run <code>bun setup &amp;&amp; bun dev</code> from a source checkout.</li>
+<li>Install with <code>curl -fsSL https://get.veyyon.dev | sh</code> (or <code>irm https://veyyon.dev/install.ps1 | iex</code> on Windows), which downloads a verified release binary. To build instead, clone the repository yourself and run <code>bun run setup &amp;&amp; bun dev</code> in that checkout.</li>
 <li>The binary is <code>veyyon</code>, with the shorter alias <code>vey</code>.</li>
 <li>Configuration lives under <code>~/.veyyon</code>. The default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>, and other profiles use <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</li>
 </ul>
@@ -337,7 +337,7 @@ points you at.</p>
 <ul>
 <li><strong>The interactive model</strong> is what you set with <code>/model</code> or <code>--model</code>, and it persists as <code>modelRoles.default</code>.</li>
 <li><strong>Roles</strong> pin a model to a kind of work, such as <code>smol</code> for cheap fast work or <code>advisor</code> for the reviewing advisor, and you can add your own in <code>modelRoles</code>. The full built-in set is listed in <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
-<li><strong>Overrides</strong> let a slot win over a role. <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles at all: they live in the Subagents settings area, which owns them alone.</li>
+<li><strong>Overrides</strong> are explicit subsystem policies. <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles: profile-wide and per-agent policy in the Subagents settings area decides what they run.</li>
 <li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (which defaults to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>, often Ctrl+P.</li>
 </ul>
 <p>The full contract is in <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
@@ -573,7 +573,7 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 <h2 id="mechanisms-1"><a class="header" href="#mechanisms-1">Mechanisms</a></h2>
 <ul>
 <li>Bounded <code>read</code>, <code>glob</code>, and <code>grep</code> outputs (truncation is marked in tool results)</li>
-<li>Compaction (<code>summary</code> or <code>handoff</code>) compresses older history instead of dropping it silently</li>
+<li>In-place summary compaction compresses older history instead of dropping it silently</li>
 <li>Goal mode keeps an objective outside the raw transcript tail</li>
 <li>Edit verification and tool repair reduce failed apply/schema turns</li>
 </ul>
@@ -662,7 +662,7 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 </tbody>
 </table>
 </div>
-<p>There is no native Windows arm64 release. On Windows arm64, run the Windows x64 binary under emulation. Linux release binaries require glibc. On a musl system such as Alpine, the installer stops before downloading and tells you to install from source.</p>
+<p>There is no native Windows arm64 release. On Windows arm64, run the Windows x64 binary under emulation. Linux release binaries require glibc. On a musl system such as Alpine, the installer stops before downloading and tells you to clone the repository and build it yourself.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
 <pre><code class="language-console">$ vey --version
 </code></pre>
@@ -673,32 +673,40 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 <pre><code class="language-console">  ok  removed /home/you/.local/bin/.veyyon.download.48213 left by an interrupted install (pid 48213)
 </code></pre>
 <p>A staged file belonging to an installer that is still running is left alone, so two installs at once cannot delete each other’s download.</p>
-<h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
+<h2 id="install-a-specific-release"><a class="header" href="#install-a-specific-release">Install a specific release</a></h2>
 <h3 id="linux-or-macos"><a class="header" href="#linux-or-macos">Linux or macOS</a></h3>
 <p>The POSIX installer takes long options. Pass them after <code>-- </code> when you pipe the script:</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --help
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11   # a specific release binary
-$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11           # build that ref from a git checkout (implies --source)
-$ curl -fsSL https://get.veyyon.dev | sh -s -- --source                # build the default branch from a git checkout
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11            # the same thing: --binary is the default
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --local                  # install a binary you built yourself
 </code></pre>
 <h3 id="windows"><a class="header" href="#windows">Windows</a></h3>
 <p>The PowerShell installer uses named PowerShell parameters. Create a script block from the downloaded installer so you can pass them:</p>
 <pre><code class="language-powershell">&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Help
 &amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v1.0.11  # a specific release binary
-&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Ref v1.0.11          # build that ref from a git checkout (implies -Source)
-&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source               # build the default branch from a git checkout
+&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Ref v1.0.11          # the same thing: -Binary is the default
+&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Local                # install a binary you built yourself
 </code></pre>
 <p>You cannot append parameters to <code>irm ... | iex</code>. Use the script-block form above whenever you need an option. If you downloaded <code>install.ps1</code> as a file instead, use the same parameters with <code>pwsh -File install.ps1</code>.</p>
-<p>Release tags carry a leading <code>v</code>, and <code>--ref 1.0.11</code> on POSIX or <code>-Ref 1.0.11</code> on Windows works as well as the leading-<code>v</code> form. The installer looks for the tag you named, then for the <code>v</code> form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version, so a branch or commit is looked up once and refused once.</p>
-<p>Source mode is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. It also needs <strong><a href="https://git-lfs.com">git-lfs</a></strong> when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. Use <code>-Local</code> on Windows or <code>--local</code> on POSIX to install a binary the checkout already built instead of downloading a release.</p>
-<p>The source directory is not ownership proof. Before updating or uninstalling <code>~/.veyyon/src</code>, the installer verifies that its <code>origin</code> is the Veyyon repository. It moves any unrelated checkout to a timestamped backup path instead of resetting or deleting it. Local changes and unpushed branches in a Veyyon checkout receive the same preservation treatment.</p>
-<p>If you would rather clone and drive the workspace yourself:</p>
+<p>Release tags carry a leading <code>v</code>, and <code>--ref 1.0.11</code> on POSIX or <code>-Ref 1.0.11</code> on Windows works as well as the leading-<code>v</code> form. The installer looks for the tag you named, then for the <code>v</code> form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version. <code>--ref</code> names a published release tag and nothing else, so a branch or a commit is looked up once and then refused.</p>
+<h3 id="run-an-unreleased-ref-or-an-unsupported-platform"><a class="header" href="#run-an-unreleased-ref-or-an-unsupported-platform">Run an unreleased ref, or an unsupported platform</a></h3>
+<p>The installer only installs a published release binary. It never clones the repository, never runs <code>bun install</code>, and never builds anything. To run an unreleased branch or commit, or to get Veyyon onto a platform with no release, clone the repository yourself:</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
-$ bun setup      # installs workspace deps and builds @veyyon/natives
+$ bun run setup      # installs workspace deps and builds @veyyon/natives
 $ bun dev --version
 </code></pre>
-<p><code>bun dev</code> runs the in-repo build. Use it while you are evaluating Veyyon or contributing to it.</p>
+<p>To pin a ref, check it out before you run setup:</p>
+<pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
+$ cd veyyon
+$ git checkout v1.0.11
+$ bun run setup
+$ bun dev --version
+</code></pre>
+<p>Clone it into whatever directory you want it in. That tree is a developer checkout you own: you chose where it lives, you decide when it moves or goes away, and the installer never creates one and never writes into one. <code>bun dev</code> runs Veyyon straight from TypeScript in that tree, so there is no separate build step. Use it while you are evaluating Veyyon or contributing to it.</p>
+<p>Building from a checkout needs Bun and Git, and you install those yourself. It also needs <a href="https://git-lfs.com">git-lfs</a> if the ref you checked out tracks files through Git LFS, because without git-lfs those files arrive as small pointer text files that look present and then fail at runtime.</p>
+<p>If you build a release binary in that checkout, you can put it on your <code>PATH</code> with the installer rather than copying it by hand. Pass <code>--local</code> on POSIX or <code>-Local</code> on Windows. That installs the binary you already built, with the same alias, <code>PATH</code>, and completion handling a download gets, and it still clones nothing.</p>
 <h2 id="verify-the-install"><a class="header" href="#verify-the-install">Verify the install</a></h2>
 <pre><code class="language-console">$ vey --version
 $ vey plugin doctor
@@ -706,7 +714,7 @@ $ vey plugin doctor --fix
 </code></pre>
 <p><code>vey plugin doctor</code> checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks live in <code>vey setup status</code>. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="#diagnostics-and-health">Diagnostics</a>.</p>
 <h3 id="when-the-staged-binary-would-not-run"><a class="header" href="#when-the-staged-binary-would-not-run">When the staged binary would not run</a></h3>
-<p>The preflight runs from the staging path inside the install directory. If the binary cannot start or its native search fails, the error includes the exit status and repeats what the system said. A missing shared library means the machine needs that package. A permission error usually means the install directory is mounted <code>noexec</code>, so choose another with <code>VEYYON_INSTALL_DIR</code>. A native-addon load error usually means the release does not support that platform, so use the source installer.</p>
+<p>The preflight runs from the staging path inside the install directory. If the binary cannot start or its native search fails, the error includes the exit status and repeats what the system said. A missing shared library means the machine needs that package. A permission error usually means the install directory is mounted <code>noexec</code>, so choose another with <code>VEYYON_INSTALL_DIR</code>. A native-addon load error usually means the release does not support that platform, so clone the repository and build it yourself instead.</p>
 <p>This failure occurs before the active binary, alias, <code>PATH</code>, and completion files change. Fix the reported cause and run the installer again rather than trying to finish by hand.</p>
 <p>To ask the same questions later, on the machine as it is now, run <code>veyyon setup status</code>.
 It repeats the install checks and adds the two the installer cannot make: whether a second
@@ -770,7 +778,7 @@ Changelog for 1.0.38: https://veyyon.dev/changelog#v1-0-38
 change version you are told where to read what changed. If an update fails,
 Veyyon points you at <code>veyyon rollback</code> in the same breath, since a failed update
 is the moment you most want the way back.</p>
-<p>A source install uses the same recoverable contract. Before it fast-forwards, Veyyon requires a clean tracked tree and records the current Git revision. If dependency installation, generated artifacts, native provisioning, version verification, or the runtime search probe fails after the merge, it resets to that revision, restores the old dependencies and generated artifacts, and proves the restored launcher runs before it reports the failure.</p>
+<p>A checkout install uses the same recoverable contract. That is a <code>veyyon</code> on your <code>PATH</code> that runs out of a git clone you made yourself. Before it fast-forwards, Veyyon requires a clean tracked tree and records the current Git revision. If dependency installation, generated artifacts, native provisioning, version verification, or the runtime search probe fails after the merge, it resets to that revision, restores the old dependencies and generated artifacts, and proves the restored launcher runs before it reports the failure.</p>
 <h3 id="going-back-to-an-older-version"><a class="header" href="#going-back-to-an-older-version">Going back to an older version</a></h3>
 <p>If a release breaks something you depend on, you do not have to wait for the next
 one. <code>veyyon rollback</code> moves your install to any published version.</p>
@@ -852,7 +860,7 @@ through. If an update fails, Veyyon says so and tells you to retry with <code>ve
 <p>Veyyon works out which of the two you have by following the <code>veyyon</code> on your
 PATH to what it really runs. A symlink is followed, and so is a small wrapper
 script that hands off to something else: if what it hands off to is a checkout’s
-launcher, the install is a source install and gets the source update. That
+launcher, the install runs from that checkout and gets the checkout update. That
 matters if you keep your own wrapper in front of a checkout, to set an
 environment variable or pick a different interpreter, because without following
 it Veyyon would treat the wrapper as a binary and overwrite it with a downloaded
@@ -944,7 +952,7 @@ holding it is still running, so a <code>veyyon.new</code> or a <code>veyyon.&lt;
 outlive the update that made it. Uninstall removes those too, so the install
 directory is left empty rather than holding a few hundred megabytes you have no
 name for.</p>
-<p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost.</p>
+<p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if a checkout at <code>~/.veyyon/src</code> has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost. Older installers created that tree. The current installer never does, so uninstall only ever cleans up one an older version left behind.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>
 <p>On Windows:</p>
@@ -1046,7 +1054,7 @@ vey --version
 <p>If it is missing, the one-command installer wires up your PATH, shell completions, and the <code>vey</code> alias:</p>
 <pre><code class="language-shell">curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>You can also pin a release binary with <code>curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11</code> (a bare <code>--ref</code> builds that ref from source), or build from source with <code>bun setup &amp;&amp; bun dev</code> in the repository root. See <a href="#install">Install</a>.</p>
+<p>You can also pin a release binary with <code>curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11</code>. The installer only ever downloads a published release binary. To run an unreleased ref instead, clone the repository yourself and run <code>bun run setup &amp;&amp; bun dev</code> in that checkout. See <a href="#install">Install</a>.</p>
 <h2 id="check-the-environment"><a class="header" href="#check-the-environment">Check the environment</a></h2>
 <pre><code class="language-shell">veyyon plugin doctor
 </code></pre>
@@ -1087,13 +1095,13 @@ vey
 $ vey --version
 </code></pre>
 <p>On Windows, run <code>irm https://veyyon.dev/install.ps1 | iex</code> instead.</p>
-<p>If you would rather build from a source checkout, clone the repository and run the setup script.</p>
+<p>The installer only downloads a published release binary. If you would rather build from a checkout, clone the repository yourself, into any directory you like, and run the setup script there.</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
-$ bun setup
+$ bun run setup
 $ bun dev --version
 </code></pre>
-<p><code>bun setup</code> installs the workspace dependencies and builds <code>@veyyon/natives</code>, the Rust addon. Your configuration lives under <code>~/.veyyon</code>, and the default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<p><code>bun run setup</code> installs the workspace dependencies and builds <code>@veyyon/natives</code>, the Rust addon. That checkout is yours: you chose where it lives, and the installer neither creates it nor writes into it. Your configuration lives under <code>~/.veyyon</code>, and the default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
 <p>The installer sets up shell completions for you when your shell supports them. The <a href="#install">Install</a> chapter has the full details.</p>
 <h2 id="2-first-launch"><a class="header" href="#2-first-launch">2. First launch</a></h2>
 <p>The first time you run <code>veyyon</code> (or any time you run <code>veyyon setup</code>), the setup UI walks you through five steps:</p>
@@ -1292,8 +1300,10 @@ modelRoles:
 </code></pre>
 <h2 id="verify"><a class="header" href="#verify">Verify</a></h2>
 <pre><code class="language-console">$ veyyon models
+$ veyyon models refresh &lt;provider&gt;
 $ veyyon --model &lt;provider&gt;/&lt;id&gt; "reply with the model name you are"
 </code></pre>
+<p>The provider form bypasses the cache and contacts only the named provider. Omit it when you need to refresh every configured catalog.</p>
 <p>If discovery or auth fails, the error names the provider and the missing key or unreachable base URL,
 fix that rather than retrying with a different silent default.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
@@ -1806,6 +1816,14 @@ OpenAI-compatible endpoints.</li>
 <li>On success, the output includes a fresh <code>[path#NEW_TAG]</code> and a compact diff.</li>
 </ol>
 <p><code>write</code> strips pasted hashline prefixes when appropriate, and can mint new tags after a whole-file write.</p>
+<h2 id="verification-after-a-mutation"><a class="header" href="#verification-after-a-mutation">Verification after a mutation</a></h2>
+<p>After <code>edit</code>, <code>write</code>, or <code>ast_edit</code> changes a path, Veyyon records the mutation.
+If the model tries to finish without a later successful <code>bash</code>, <code>eval</code>, <code>debug</code>,
+or <code>browser</code> result, Veyyon gives it one targeted continuation turn. The model
+must run the check and report what the result established.</p>
+<p>A successful command is execution evidence. It does not prove that the command
+tested the right behavior. You should still read the final verification claim
+and confirm that it matches the command or browser scenario that ran.</p>
 <h2 id="safety"><a class="header" href="#safety">Safety</a></h2>
 <p>Edits honor the approval mode, just as <code>bash</code> does. A <code>tools.approval.&lt;tool&gt;: deny</code> policy keeps the tool in the model’s list but refuses every call at dispatch with an error naming the policy. Tools leave the model’s list via <code>&lt;tool&gt;.enabled: false</code>, harness-profile allowlists, <code>tools.discoveryMode</code> (BM25 hiding), extension or agent tool-set overrides, or agent definitions. Plan mode keeps the list and blocks mutations at approval time.</p>
 <p>Hashline is the primary write path, and <code>apply_patch</code> is a compatibility mode. There is no single V4A applier that routes every mutation through a <code>make_update_patch</code> envelope.</p>
@@ -1941,7 +1959,7 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <p>You often need the agent to run a command that requires a credential. A deploy needs a token. A database query needs a password. If you paste the value into chat without protection, it can reach the model provider and any session export you create.</p>
 <p>Veyyon can keep the value away from the provider while the command still works. This page shows you how, including which local surfaces can still contain it.</p>
 <h2 id="turning-it-on"><a class="header" href="#turning-it-on">Turning it on</a></h2>
-<p>Secret protection is off by default. The quickest way to turn it on is to store a credential: <code>/secret add</code> switches protection on and tells you it did, because a stored credential is only useful once the protection that substitutes it is running.</p>
+<p>Secret protection is off by default. The quickest way to turn it on is to store a credential: storing one switches protection on and tells you it did, because a stored credential is only useful once the protection that substitutes it is running.</p>
 <p>To turn it on without storing anything, use <code>/settings</code>, or write it into <code>config.yml</code>:</p>
 <pre><code class="language-yaml">secrets:
   enabled: true
@@ -1993,8 +2011,9 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 replaced whenever it appears in provider-bound text. Environment detection does
 not give the agent a readable inventory name. When the agent must choose and
 spend the credential deliberately, store the same value in the vault:</p>
-<pre><code class="language-text">/secret add deploy-token --from-env DEPLOY_TOKEN
+<pre><code class="language-text">/secret --from-env DEPLOY_TOKEN
 </code></pre>
+<p>That is the form you type in a terminal. Veyyon asks you for a name afterwards and generates one if you skip it. A client with no terminal, such as <code>--print</code> mode or an ACP editor, uses <code>/secret add deploy-token --from-env DEPLOY_TOKEN</code> instead; see <a href="#the-verb-grammar-for-a-client-with-no-terminal">The verb grammar, for a client with no terminal</a>.</p>
 <h2 id="what-the-model-sees"><a class="header" href="#what-the-model-sees">What the model sees</a></h2>
 <p>Every occurrence of a known value is replaced before provider dispatch. This boundary covers messages, dynamic system prompts, tool descriptions and schemas, resumed assistant text, replay payloads, and nested model calls such as title generation, image analysis, memory summaries, and speech rewriting.</p>
 <p>The replacement happens from raw text before trimming, truncation, JSON serialization, or other lossy preparation. Veyyon resolves the live profile, project, environment, and vault runtime again for each physical provider attempt. This includes authentication retries, fallback models, delayed queues, compaction, commit analysis, evaluation, benchmarks, memory services, TTS, and image tools. A refresh cannot leave a retry using an old set of secret values.</p>
@@ -2023,7 +2042,7 @@ spend the credential deliberately, store the same value in the vault:</p>
 <p>Four moments, and what the agent learns at each:</p>
 <p><strong>At session start, or on resume.</strong> The inventory, rebuilt from whatever the vault holds right then. Nothing else is needed. A credential you stored last week does not have to be introduced again.</p>
 <p><strong>When you add one.</strong> The inventory is rebuilt so the new name is in it, and the agent is told directly, in that turn, that the credential now exists and where its placeholder goes.</p>
-<p><strong>When you remove or extend one.</strong> Both again: the inventory is rebuilt, and the agent is told what changed. <code>/secret rm</code> says the placeholder is revoked and must not be used. <code>/secret extend</code> says the credential is still available under the same placeholder. Neither notice quotes a lifetime, because a duration written into the history is wrong a minute later, and your terminal already shows you the exact time left.</p>
+<p><strong>When you remove or extend one.</strong> Both again: the inventory is rebuilt, and the agent is told what changed. A revocation says the placeholder is revoked and must not be used. A fresh lifetime says the credential is still available under the same placeholder. Neither notice quotes a lifetime, because a duration written into the history is wrong a minute later, and your terminal already shows you the exact time left.</p>
 <p><strong>When a lifetime runs out on its own.</strong> Substitution stops at the deadline itself, not a moment after, and the name leaves the inventory on the next rebuild. There is no notice on this path, because no command ran and so there is no turn to put one in. You are warned twice before it happens, which is covered under <a href="#lifetimes">Lifetimes</a>.</p>
 <p>In none of these does the agent learn a value.</p>
 <h3 id="why-a-removal-is-stated-rather-than-left-to-the-list"><a class="header" href="#why-a-removal-is-stated-rather-than-left-to-the-list">Why a removal is stated rather than left to the list</a></h3>
@@ -2039,46 +2058,107 @@ placeholders in provider-bound text, but a stale tool call cannot spend or send
 them after expansion has been disabled.</p>
 <h2 id="the-vault-storing-a-credential-with-secret"><a class="header" href="#the-vault-storing-a-credential-with-secret">The vault: storing a credential with <code>/secret</code></a></h2>
 <p>Environment detection covers credentials that are already in your shell. For anything else, hand it to the vault. A vault entry is encrypted on disk, has a name, and expires.</p>
-<p>Name it and veyyon asks for the value with a field that shows nothing as you type:</p>
-<pre><code class="language-text">/secret add github-token
+<h3 id="storing-a-credential"><a class="header" href="#storing-a-credential">Storing a credential</a></h3>
+<p>In a terminal, everything you type after <code>/secret</code> is the credential. There is no verb to spell and no name to invent first:</p>
+<pre><code class="language-text">/secret ghp_R2d2c3poIHRva2VuIGV4YW1wbGU
 </code></pre>
-<pre><code class="language-text">Paste the value for GITHUB_TOKEN. It is hidden as you type and stored encrypted.
+<p>Veyyon takes the value off the line and asks what to call it, in a field that shows what you type, because a label is not a secret:</p>
+<pre><code class="language-text">Name this secret (optional). The model spends it by writing #NAME#. Leave empty to have one generated.
+&gt;
+  enter submit  esc cancel
+</code></pre>
+<p>Press Enter on the empty field and veyyon generates a name, <code>SECRET_1</code> and upwards. Type one and it is cleaned up and uppercased for you, so <code>github token</code> becomes <code>GITHUB_TOKEN</code>. Press escape and nothing is stored at all:</p>
+<pre><code class="language-text">Cancelled. Nothing was stored.
+</code></pre>
+<p>That order is deliberate. The credential is what you came to store, so nothing stands between you and storing it, and the name is asked afterwards where you are free to skip it.</p>
+<h4 id="pasting-into-a-hidden-field"><a class="header" href="#pasting-into-a-hidden-field">Pasting into a hidden field</a></h4>
+<p>A bare <code>/secret</code> opens a field that shows nothing as you type:</p>
+<pre><code class="language-text">/secret
+</code></pre>
+<pre><code class="language-text">Paste the secret value, not a name. You can name it afterwards. It is hidden as you type and stored encrypted.
 &gt; ••••••••••••••••••••
   enter submit  esc cancel
 </code></pre>
-<p>Your composer is cleared before the field opens, so the value never enters the input buffer and never reaches your scrollback. Press escape and nothing is stored.</p>
-<p>If the credential is already an environment variable, read it from there and skip typing altogether. This is the only form that works in a client with no terminal to hide anything on, such as <code>--print</code> mode or an ACP editor:</p>
-<pre><code class="language-text">/secret add github-token --from-env GITHUB_PAT
+<p>Your composer is cleared before the field opens, so the value never enters the input buffer and never reaches your scrollback. Press escape and nothing is stored. Submit an empty field and nothing is stored either, and veyyon says so rather than storing an empty credential. The name field follows, the same one as above.</p>
+<h4 id="reading-it-out-of-the-environment"><a class="header" href="#reading-it-out-of-the-environment">Reading it out of the environment</a></h4>
+<p>If the credential is already an environment variable, read it from there and type nothing:</p>
+<pre><code class="language-text">/secret --from-env GITHUB_PAT
 </code></pre>
-<p>You can also pass the value on the command line. It works, and veyyon tells you plainly that the value is now in terminal scrollback:</p>
-<pre><code class="language-text">/secret add github-token ghp_your_token_here
+<p>This is the recommended form, because the value never enters the input buffer and never reaches your scrollback. <code>--from-env</code> has to be the first word on the line and the variable name has to be the only thing after it. Anything else on the line is a credential again, so the parser refuses rather than storing something you did not mean:</p>
+<pre><code class="language-text">--from-env needs the name of an environment variable, and nothing else.
+</code></pre>
+<p>The name field follows here too.</p>
+<h4 id="a-value-on-the-command-line-stays-in-your-scrollback"><a class="header" href="#a-value-on-the-command-line-stays-in-your-scrollback">A value on the command line stays in your scrollback</a></h4>
+<p>The one-paste form is on screen until you clear the terminal. Veyyon says so rather than leaving you to work it out:</p>
+<pre><code class="language-text">The value was typed on screen, so it is in your scrollback. Use --from-env next time to avoid that.
 </code></pre>
 <p>Every exact <code>/secret</code> command shape, including malformed input, is excluded from persistent editor history. This prevents the command from being recovered with the Up key or written to <code>history.db</code>. It cannot erase terminal scrollback that was already rendered.</p>
-<p>The inline form preserves the credential bytes exactly, including trailing whitespace. Once credential data has started, a later word that looks like an option is refused instead of being silently discarded. Use the masked prompt or <code>--from-env</code> when a value could be mistaken for command syntax.</p>
-<p>Any of the three shows the model a placeholder built from the name:</p>
+<p>The line is kept byte for byte from its first non-space character to its last, so a passphrase may contain spaces and no part of the value is trimmed away. Use the hidden field or <code>--from-env</code> when you would rather the value were never on screen at all.</p>
+<h4 id="manager-is-the-one-reserved-word"><a class="header" href="#manager-is-the-one-reserved-word"><code>manager</code> is the one reserved word</a></h4>
+<p><code>/secret manager</code>, and only that bare word, opens the manager described below. Anything longer is a credential again, so <code>/secret manager key 8891</code> stores the text <code>manager key 8891</code>. Reserving the word is safe because no issuer mints a token that is exactly <code>manager</code>, and if you ever have to store that text the hidden field accepts it.</p>
+<h3 id="what-you-are-told-when-it-is-stored"><a class="header" href="#what-you-are-told-when-it-is-stored">What you are told when it is stored</a></h3>
+<p>Whichever form you used, veyyon confirms with the name it filed the credential under and the placeholder the model will write:</p>
 <pre><code class="language-text">Stored GITHUB_TOKEN in the profile vault, 1d left.
 The model sees #GITHUB_TOKEN# and never the value. Write that placeholder where the credential goes.
 </code></pre>
+<p>Storing over a name that already exists is called a replacement rather than a store. That write is how you rotate a credential, and it is also what a fumbled name does, so it is never reported as if nothing had been overwritten:</p>
+<pre><code class="language-text">Replaced GITHUB_TOKEN in the profile vault, 1d left.
+The previous value is gone. #GITHUB_TOKEN# now spends the credential you just stored.
+</code></pre>
 <p>The agent is told at once that a credential exists and that it should write <code>#GITHUB_TOKEN#</code> where the value belongs. It is never told the value and cannot ask for it. It also keeps knowing after this session ends, because the inventory in the system prompt is rebuilt from the vault rather than remembered from the conversation. See <a href="#what-the-agent-knows-and-when">What the agent knows, and when</a>.</p>
-<h3 id="seeing-and-removing-what-you-stored"><a class="header" href="#seeing-and-removing-what-you-stored">Seeing and removing what you stored</a></h3>
-<pre><code class="language-text">/secret list                      what is stored, never a value
-/secret rm github-token           remove it
+<h3 id="seeing-and-managing-what-you-stored-secret-manager"><a class="header" href="#seeing-and-managing-what-you-stored-secret-manager">Seeing and managing what you stored: <code>/secret manager</code></a></h3>
+<pre><code class="language-text">/secret manager
+</code></pre>
+<p>The manager is a card with two views, and in a terminal it is the whole of what you do to a credential after storing it. Left and Right move between the views, and Tab does the same if that is what your fingers reach for.</p>
+<p><strong>Secrets</strong> is the roster. One row per entry, carrying the placeholder, the scope it lives in, and how long it has left. A broken vault file gets a row of its own in the same list, covered under <a href="#when-a-vault-file-cannot-be-read">When a vault file cannot be read</a>.</p>
+<p><strong>Log</strong> is the expansion record: which credential was spent, in which tool, and what the model wrote. It is covered under <a href="#seeing-which-credential-was-used-where">Seeing which credential was used where</a>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>Tab, Shift+Tab, Left, Right</td><td>switch view</td></tr>
+<tr><td>Up, Down, <code>j</code>, <code>k</code></td><td>move the cursor, in either view</td></tr>
+<tr><td>Page Up, Page Down</td><td>move the cursor by a screenful, in either view</td></tr>
+<tr><td><code>a</code></td><td>add a credential: the value first, in a hidden field, then an optional name</td></tr>
+<tr><td><code>r</code></td><td>revoke the selected secret, after a confirmation</td></tr>
+<tr><td><code>e</code></td><td>give it a fresh lifetime</td></tr>
+<tr><td><code>n</code></td><td>rename it</td></tr>
+<tr><td><code>m</code></td><td>move it to another scope</td></tr>
+<tr><td><code>c</code></td><td>copy its placeholder</td></tr>
+<tr><td><code>i</code></td><td>show or hide the detail pane for the selected secret</td></tr>
+<tr><td><code>u</code></td><td>open the Log showing only where the selected secret was spent</td></tr>
+<tr><td><code>s</code></td><td>sort the roster by another column</td></tr>
+<tr><td><code>/</code></td><td>search: the roster in the Secrets view, the records in the Log view</td></tr>
+<tr><td><code>?</code></td><td>show the full key map</td></tr>
+<tr><td><code>d</code></td><td>discard the selected unreadable vault file, after a confirmation</td></tr>
+<tr><td>Esc</td><td>step back one level, and close from the top</td></tr>
+<tr><td><code>q</code></td><td>close the card immediately, from anywhere</td></tr>
+</tbody>
+</table>
+</div>
+<p>Esc does not close a card whose list is narrowed. It removes one narrowing per press, most recent first: a search in the Secrets view, then a search in the Log, then a Log restricted to one credential by <code>u</code>. Only once the view shows everything again does the next Esc close. Closing straight out would drop you back into the session with no sign that the list you were reading showed a subset, and the card would reopen showing everything as if you had never asked. When you do want out in one keystroke regardless of what is narrowed, press <code>q</code>.</p>
+<p>The card answers the mouse as well as the keyboard. Click a tab to switch to it, click a row to select it, and hover a stored secret to reveal an <code>[x]</code> at the end of its row. Clicking that <code>[x]</code> opens the same revoke confirmation <code>r</code> does, so a stray click cannot destroy a credential on its own.</p>
+<p>No value is shown here. It is not on the row, not truncated onto it, not behind an expand key, and <code>c</code> copies the placeholder rather than the value. A value put into the vault has stopped being visible, and a management screen that printed one to prove the entry exists would break that promise on the screen most likely to be shared.</p>
+<p>Every change the manager makes reloads the live secret runtime, so a credential you revoke stops being spendable in the session you are sitting in rather than at the next restart. A reload that fails is reported on the card rather than swallowed, because the vault write is already durable and you are the only one who can decide what to do about the gap.</p>
+<p>There is no dropdown of stored names to pick from any more. Accepting one would have typed <code>rm GITHUB_TOKEN</code> onto the command line, and under the terminal grammar that line is a credential, so a revoke would have quietly become a stored secret named after the thing you were trying to remove. The manager is the replacement, and it is better anyway: you pick a row from a list instead of recalling a name. The only thing <code>/secret</code> completes now is <code>manager</code>, which no real credential shares a prefix with, so the dropdown closes on the first character of a pasted token.</p>
+<h3 id="the-verb-grammar-for-a-client-with-no-terminal"><a class="header" href="#the-verb-grammar-for-a-client-with-no-terminal">The verb grammar, for a client with no terminal</a></h3>
+<p><code>--print</code> mode and an ACP editor have no field to hide typing in and no screen to open a manager on. There <code>/secret</code> keeps the verb grammar, unchanged:</p>
+<pre><code class="language-text">/secret add github-token --from-env GITHUB_PAT
+/secret list
+/secret rm github-token [--scope global]
 /secret extend github-token --ttl 7d
+/secret log --limit 50
+/secret discard --scope project
 </code></pre>
-<p>You do not have to remember how you spelled a name. Type <code>/secret rm </code> and veyyon offers the
-credentials you have stored, so you can pick one instead of recalling it:</p>
-<pre><code class="language-text">/secret rm git
-  GITHUB_TOKEN   stop this secret being spendable
-  GITLAB_TOKEN   stop this secret being spendable
+<p>Those are the forms for that surface only. Typed at a terminal prompt, each of them is stored as a credential, because there the argument line is the value. Going the other way, <code>/secret manager</code> on a client with no terminal is refused and told why, rather than reported as an unknown command:</p>
+<pre><code class="language-text">The secret manager is a terminal screen, and this client has none.
 </code></pre>
-<p>The list narrows as you type and ignores case, so <code>git</code> finds <code>GITHUB_TOKEN</code>. <code>extend</code> completes the
-same way and leaves the cursor after the name, ready for <code>--ttl</code>. Only names appear, which is the
-same thing <code>list</code> shows you.</p>
-<p><code>add</code> does not complete existing names. The name you give it is one you are inventing, and offering
-the stored ones there would read as a list of things to overwrite.</p>
-<p>Completion reads the names from the running redaction engine rather than from the vault on disk, so
-it needs secret protection to be on. With protection off the names are not offered, and <code>rm</code> still
-works when you type one in full.</p>
+<p><code>add</code> accepts only <code>--from-env</code> there. An inline value is refused, because a client with no terminal keeps its requests in a history you cannot clear:</p>
+<pre><code class="language-text">This non-interactive client refuses inline credentials because they would be retained in command
+history. Use /secret add &lt;name&gt; --from-env MY_TOKEN instead.
+</code></pre>
 <p><code>list</code> prints a table:</p>
 <pre><code class="language-text">2 active secrets. The agent spends one by writing its placeholder; the value is never shown.
   PLACEHOLDER         SCOPE    EXPIRES  STATUS
@@ -2086,20 +2166,21 @@ works when you type one in full.</p>
   #PROD_DB_PASSWORD#  project  1d left  expires soon
 Extend one before it lapses: /secret extend &lt;name&gt; --ttl 7d.
 </code></pre>
-<p>No part of any value appears there. A prefix of a credential is still a disclosure, and one on screen is one in a screenshot.</p>
+<p>No part of any value appears there, and none appears in the manager’s Secrets view either. A prefix of a credential is still a disclosure, and one on screen is one in a screenshot.</p>
 <p>The <code>STATUS</code> column and the closing line appear only when at least one entry has crossed a warning threshold, so a table of healthy entries is one column narrower. A cell reads <code>past halfway</code> or <code>expires soon</code>, and those are the same two thresholds that raise the warnings described under <a href="#lifetimes">Lifetimes</a>. The table and the warnings cannot disagree about which entry is in trouble.</p>
-<p>With nothing stored, <code>list</code> says so and shows you the two ways to store something rather than printing an empty table.</p>
-<p><code>rm</code> and <code>extend</code> each tell the agent what changed, so a placeholder you revoked stops being used instead of arriving at a command as literal text. See <a href="#what-the-agent-knows-and-when">What the agent knows, and when</a>.</p>
+<p>With nothing stored, <code>list</code> says so and shows the one entry form that surface has, rather than printing an empty table.</p>
+<p>Removing and extending each tell the agent what changed, whichever surface you did it from, so a placeholder you revoked stops being used instead of arriving at a command as literal text. See <a href="#what-the-agent-knows-and-when">What the agent knows, and when</a>.</p>
 <h3 id="when-a-vault-file-cannot-be-read"><a class="header" href="#when-a-vault-file-cannot-be-read">When a vault file cannot be read</a></h3>
 <p>Sometimes a vault file survives on disk and stops being readable: a disk filled up mid-write, a
-backup tool restored half of it, a sync client merged two copies. Veyyon tells you which scope, and
-what to run:</p>
+backup tool restored half of it, a sync client merged two copies. Veyyon tells you which scope, what
+it means, and what to run:</p>
 <pre><code class="language-text">Your profile vault at /home/you/.veyyon/profiles/work/agent/vault.json exists but could not be
 read, so it was skipped and the secrets stored in it are unavailable for the rest of this session:
 their placeholders will NOT expand. Every OTHER scope loaded normally, and masking of known secret
-values is unaffected. The vault is encrypted, so a hand edit cannot repair it: run
-/secret discard --scope profile to move the unreadable file aside, then re-add the secrets it held
-with /secret add.
+values is unaffected. The vault is encrypted, so a hand edit cannot repair it: open /secret manager
+and move the unreadable file aside, or run /secret discard --scope profile in a client with no
+terminal. Then store the secrets it held again. The reason it could not be read was &lt;what the
+parser complained about&gt;
 </code></pre>
 <p>A vault can also fail in a way Veyyon cannot step around, where nothing in it can be read: the key
 is gone, the key is not the one the vault was sealed with, or the file is truncated. The session
@@ -2107,19 +2188,24 @@ still starts, and says so:</p>
 <pre><code class="language-text">Your vault could not be read, so this session started WITHOUT it: nothing you have stored is
 available, and every #NAME# placeholder it held will be refused rather than sent as literal text.
 Masking of secrets from your environment and secrets.yml is unaffected and still running.
-Affected: project (/home/you/work/repo/.veyyon/vault.json). Run /secret discard --scope project to
-move the unreadable file aside, then re-add the secrets it held with /secret add.
+Affected: project (/home/you/work/repo/.veyyon/vault.json). Open /secret manager and move the
+unreadable file aside, or run /secret discard --scope project in a client with no terminal. Then
+store the secrets it held again. The reason it could not be read was &lt;what the parser complained
+about&gt;
 </code></pre>
-<p>Read the second sentence carefully, because it is the part that keeps a broken vault from becoming
-a leak. A scope Veyyon could not read is treated as unreadable, never as empty. <code>#NAME#</code> in a
-prompt is refused rather than passed through as the literal text <code>#NAME#</code>, and Veyyon will not act
-as though you had stored nothing.</p>
+<p>Both notices name the manager first, because that is the repair you can reach from a terminal: a
+scope whose file could not be read is listed as a row of its own in the same list you are already
+arrowing through, and <code>d</code> discards the selected one after a confirmation. The <code>/secret discard</code>
+form is for a client with no terminal. Do not type it at a terminal prompt: nothing is repaired by
+it, because there the whole line is read as a credential, and that string is what gets stored.</p>
+<p>Read the second sentence of the second notice carefully, because it is the part that keeps a broken
+vault from becoming a leak. A scope Veyyon could not read is treated as unreadable, never as empty.
+<code>#NAME#</code> in a prompt is refused rather than passed through as the literal text <code>#NAME#</code>, and Veyyon
+will not act as though you had stored nothing.</p>
 <p>The session starts because the repair is a command inside it. If a vault that would not open also
 stopped Veyyon from launching, the only way out would be deleting the file by hand, which is the
 one thing an encrypted store exists to stop you doing casually.</p>
-<p>That is what <code>discard</code> is for:</p>
-<pre><code class="language-text">/secret discard --scope profile
-</code></pre>
+<p>Either route runs the same repair, and prints the same result:</p>
 <pre><code class="language-text">Moved the unreadable profile vault to
 /home/you/.veyyon/profiles/work/agent/vault.json.unreadable-1753660800000-8e3a8d58, so that scope
 works again. The file still holds your sealed entries, so re-add the secrets it held rather than
@@ -2132,38 +2218,51 @@ only route back to what it held. It is still encrypted with a key that is still 
 damage is a truncated tail, the entries before the damage are still in there. Veyyon will not destroy
 a credential store to make itself usable again, so the cleanup is yours to do once you are sure you
 no longer need it.</p>
-<p><strong>You have to name the scope.</strong> Every other command that takes <code>--scope</code> defaults to <code>profile</code>,
-because there it chooses where to put something and <code>/secret list</code> shows you the result. Here it
-chooses a file to move aside, so a default would let a bare <code>/secret discard</code> move a working vault
-out from under the session you are sitting in. A bare invocation is refused and tells you the flag.</p>
-<p>Two things it refuses, both on purpose:</p>
+<p><strong>On the verb surface you have to name the scope.</strong> Every other command that takes <code>--scope</code>
+defaults to <code>profile</code>, because there it chooses where to put something and <code>/secret list</code> shows you
+the result. Here it chooses a file to move aside, so a default would let a bare <code>/secret discard</code>
+move a working vault out from under the session you are sitting in. A bare invocation is refused and
+tells you the flag. In the manager the question does not come up: you select the broken row, so the
+scope is the one you are looking at.</p>
+<p>Two things the repair refuses, both on purpose:</p>
 <ul>
-<li><strong>A scope that reads normally.</strong> This is not a second way to delete secrets. Use <code>/secret rm &lt;name&gt;</code> for that, which can tell you what it removed. The check happens at the moment you run the
-command rather than from the earlier warning, so a file that was repaired in between is left alone.</li>
+<li><strong>A scope that reads normally.</strong> This is not a second way to delete secrets. Revoke the entry
+instead, which can tell you what it removed: <code>r</code> on its row in the manager, or <code>/secret rm &lt;name&gt;</code>
+on the verb surface. The check happens at the moment you run the repair rather than from the
+earlier warning, so a file that was fixed in between is left alone.</li>
 <li><strong>A scope that shares its file with another scope.</strong> If your profile directory is your config
 root, the profile and global vaults are one file, and moving it aside as one would take the other
 with it. The refusal names the other scope so you can decide which you meant.</li>
 </ul>
-<p><code>discard</code> works from any client, not only the TUI, because a broken vault is most likely to turn up
-in a headless run.</p>
+<p>The repair is reachable from every client, not only the terminal, because a broken vault is most
+likely to turn up in a headless run.</p>
 <h3 id="lifetimes"><a class="header" href="#lifetimes">Lifetimes</a></h3>
-<p>Every entry expires. The default is one day, which you can change in <code>/settings</code> under Secret Lifetime, or per entry:</p>
+<p>Every entry expires. The default is one day, which you can change in <code>/settings</code> under Secret Lifetime.</p>
+<p>In a terminal that setting is the whole answer at the moment you store something, because the
+argument line is the credential and there is no room on it for an option. To give one entry a
+different lifetime, store it, then press <code>e</code> on its row in <code>/secret manager</code>. The lifetime you type
+there is measured from now.</p>
+<p>On a client with no terminal the lifetime is an option on the command:</p>
 <pre><code class="language-text">/secret add deploy-key --from-env DEPLOY_KEY --ttl 30m
 /secret add signing-key --from-env SIGNING_KEY --ttl never
 </code></pre>
-<p>Lifetimes are written as <code>30m</code>, <code>12h</code>, <code>7d</code>, <code>2w</code>, or <code>never</code>. Weeks are accepted and reported back in days.</p>
+<p>Lifetimes are written the same way in both places: <code>30m</code>, <code>12h</code>, <code>7d</code>, <code>2w</code>, or <code>never</code>. Weeks are accepted and reported back in days.</p>
 <p>You are warned before a lifetime runs out, once at the halfway point and again near the end:</p>
-<pre><code class="language-text">Warning: secrets: #DEPLOY_KEY# expires soon, 2h left. Extend it with
-/secret extend DEPLOY_KEY --ttl 7d, or it will be deleted.
+<pre><code class="language-text">Warning: secrets: #DEPLOY_KEY# expires soon, 2h left. Extend it with 'e' in
+/secret manager, or with /secret extend DEPLOY_KEY --ttl 7d in a client with no
+terminal, or it will be deleted.
 </code></pre>
+<p>That warning names the manager first. <code>e</code> on the row extends it there; the <code>/secret extend</code> form it also names is for a client with no terminal.</p>
 <p>The thresholds are fractions of the lifetime rather than fixed times, so one rule fits every entry. A one-day secret is mentioned after twelve hours; a ninety-day secret is mentioned on day forty-five, not on day eighty-nine. Each warning names the command that prevents expansion from being revoked.</p>
 <p><strong>Expiry revokes substitution immediately.</strong> If an expired secret merely stopped being obfuscated, its value could flow to the model provider when protection lapsed. Veyyon instead removes the in-memory expansion mapping and keeps a forward-only redaction tombstone.</p>
 <p>The deadline is enforced when the credential is used, not only when a session starts. A session left open over a weekend stops substituting a one-day secret on the day it expires and reports both the runtime and persisted state:</p>
 <pre><code class="language-text">Warning: secrets: #GITHUB_TOKEN# has expired and its in-memory expansion has been
 revoked. Its encrypted value has not yet been deleted from the vault; a successful
-vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
---from-env &lt;VAR&gt; if you still need it.
+vault refresh will prune it. Store it again with /secret --from-env &lt;VAR&gt; if you still
+need it, or /secret add GITHUB_TOKEN --from-env &lt;VAR&gt; in a client with no terminal.
 </code></pre>
+<p>In a terminal the name field that follows is where you type <code>GITHUB_TOKEN</code> to get the same
+placeholder back.</p>
 <p>The hot-path expiry check does not write to the vault. The encrypted entry remains on disk until the next successful vault refresh prunes it. It remains encrypted and cannot be expanded after the deadline.</p>
 <p>If a command still refers to an expired secret, Veyyon refuses it before the tool starts and names only the retired placeholder. It does not send an empty header or the literal placeholder to a remote service. Old transcript text containing the raw value remains covered by the forward-only redaction tombstone for the life of the same working-directory runtime.</p>
 <h3 id="scope"><a class="header" href="#scope">Scope</a></h3>
@@ -2180,25 +2279,60 @@ vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
 </tbody>
 </table>
 </div>
+<p>A credential you store in a terminal goes to the profile vault. Scope is an option, the argument line there is the credential, so there is no place on it to put one. Profile is the default because that is usually the boundary you want: a credential you use for one kind of work should not be reachable from a session you opened in another profile.</p>
+<p>To file one somewhere else, name the scope on a client that has the verb grammar:</p>
 <pre><code class="language-text">/secret add scan-token --from-env SCAN_TOKEN --scope project
 </code></pre>
-<p>Profile is the default because that is usually the boundary you want. A credential you use for one kind of work should not be reachable from a session you opened in another profile.</p>
-<p>When the same name exists in more than one scope, the narrowest wins, and <code>/secret rm</code> removes the one that is in effect. Run it again to remove the next one out.</p>
-<p><code>--scope</code> belongs to <code>add</code>, and only to <code>add</code>. Each option is refused by the subcommands that do not read it, naming the one that does:</p>
-<pre><code class="language-text">/secret rm github-token --scope project
-
-/secret rm does not take --scope, and ignoring it would look like it had been applied.
-/secret add takes it.
+<p>When the same name exists in more than one scope, <code>/secret list</code> says so. The table stays one row
+per name, because one row per name is what the agent can spend, and a sentence underneath names the
+copies it is not spending:</p>
+<pre><code class="language-text">2 active secrets. The agent spends one by writing its placeholder; the value is never shown.
+  PLACEHOLDER     SCOPE    EXPIRES
+  #SHARED_TOKEN#  project  24h left
+  #SOLO_TOKEN#    profile  24h left
+  #SHARED_TOKEN# is also stored in the global vault, shadowed by the project one. Only the project
+  copy is spent. Remove it with /secret rm SHARED_TOKEN --scope global.
 </code></pre>
-<p>That refusal exists because the alternative is worse than an error. An accepted-and-ignored <code>--scope</code> on <code>rm</code> reads as “the project copy is gone” when what actually happened is that the copy in effect was removed and the others are still there.</p>
+<p>That copy is inert, not gone. It is still on disk, still decryptable, and it becomes the live one
+the moment the copy in front of it is removed. Before the list mentioned it, the only way to find
+out was to remove the copy in effect and read what the removal told you, which is late: you learn
+about a credential at the moment it starts being spent.</p>
+<p>The narrowest copy is the one that wins, and a removal without <code>--scope</code> takes it. Removing that
+copy uncovers the next one out, and the command tells you that too:</p>
+<pre><code class="language-text">/secret rm shared-token
+
+Removed SHARED_TOKEN from the project vault. A profile secret of the same name was underneath it,
+so #SHARED_TOKEN# still spends a credential, now that one. Run /secret rm SHARED_TOKEN --scope
+profile to remove that one too.
+</code></pre>
+<p>That second sentence is the part that matters, because the placeholder keeps working. Without it
+you would read a removal, assume the name was dead, and leave a live credential reachable under a
+name you believe you revoked. The agent is told the same thing, so it does not treat the name as
+revoked either.</p>
+<p>To take a particular copy rather than the one in effect, name its scope:</p>
+<pre><code class="language-text">/secret rm shared-token --scope profile
+</code></pre>
+<p>Naming the scope of a copy that is already shadowed removes it without changing what the
+placeholder spends, and the command says that rather than implying something changed.</p>
+<p><code>--scope</code> belongs to <code>add</code>, to <code>rm</code>, and to the <code>discard</code> repair. Each option is refused by the
+subcommands that do not read it, naming the ones that do:</p>
+<pre><code class="language-text">/secret extend github-token --scope global
+
+/secret extend does not take --scope, and ignoring it would look like it had been applied.
+/secret add, /secret rm and /secret discard take it.
+</code></pre>
+<p>That refusal exists because the alternative is worse than an error. An accepted-and-ignored
+<code>--scope</code> on <code>extend</code> reads as “the global copy was given a fresh lifetime” when what actually
+happened is that the copy in effect was re-dated and the others were left alone. It is a rule of
+the verb grammar, so it is a refusal you can only meet on a client with no terminal.</p>
 <h3 id="encryption-and-what-it-does-not-do"><a class="header" href="#encryption-and-what-it-does-not-do">Encryption, and what it does not do</a></h3>
 <p>Vault files use AES-256-GCM. Each write uses a fresh 12 byte nonce and the full 16 byte authentication tag. The key is a 32 byte file at <code>~/.veyyon/vault.key</code>, created on first use. It never lives inside a project directory.</p>
 <p>On POSIX, the key is mode 0600. Its directory must be owned by you and not writable by another user. On Windows, Veyyon applies and verifies a protected owner-only ACL. Existing vault files receive the same platform permission checks before they are read.</p>
-<p>A project-scoped vault lives inside the repository you are working in, so Veyyon keeps it out of your commits. The first time it stores a project secret, it writes <code>.veyyon/.gitignore</code> covering <code>vault.json</code> and the <code>vault.json.unreadable-*</code> file that <code>/secret discard</code> renames a broken vault to. If that file already exists, Veyyon adds the two rules and leaves your own lines alone. Only the vault is ignored, so anything else you keep in <code>.veyyon/</code>, such as skills or project settings, stays trackable. Commit the generated <code>.veyyon/.gitignore</code> along with the rest of your project.</p>
-<p>Committing a vault would not expose the credentials directly, because the ciphertext is unusable without the machine key. It would still put a credential store in your history, and nobody who clones the repository can open it, including you on another machine. A vault is not a portable backup. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. If you move or recreate that directory, re-add the entries with <code>/secret add</code>.</p>
+<p>A project-scoped vault lives inside the repository you are working in, so Veyyon keeps it out of your commits. The first time it stores a project secret, it writes <code>.veyyon/.gitignore</code> covering <code>vault.json</code> and the <code>vault.json.unreadable-*</code> file that a discarded vault is renamed to. If that file already exists, Veyyon adds the two rules and leaves your own lines alone. Only the vault is ignored, so anything else you keep in <code>.veyyon/</code>, such as skills or project settings, stays trackable. Commit the generated <code>.veyyon/.gitignore</code> along with the rest of your project.</p>
+<p>Committing a vault would not expose the credentials directly, because the ciphertext is unusable without the machine key. It would still put a credential store in your history, and nobody who clones the repository can open it, including you on another machine. A vault is not a portable backup. The authenticated location includes the semantic scope, canonical path, and physical scope-directory identity. If you move or recreate that directory, store those entries again.</p>
 <p>Updates use a synchronized owner-only temporary file. Kernel no-replace and exchange operations publish the synced inode without overwriting a destination that appeared after the last check. Veyyon holds the scope directory open during the transaction, so replacing the lexical parent cannot redirect the read or write.</p>
 <p>Veyyon refuses symlinks, hard-linked files, directories, devices, insecure permissions, and paths whose resolved parent crosses the requested scope. It also refuses ciphertext copied to a different scope or physical directory.</p>
-<p>The sealed descriptor is limited to 8 MiB before it is read into memory. Writes enforce a separate 6,291,402-byte encoded plaintext limit before serialization, encryption, or Base64 expansion. A legacy version 1 envelope is refused because it is not bound to its scope and path. Re-add those entries with <code>/secret add</code> so they use the current authenticated format.</p>
+<p>The sealed descriptor is limited to 8 MiB before it is read into memory. Writes enforce a separate 6,291,402-byte encoded plaintext limit before serialization, encryption, or Base64 expansion. A legacy version 1 envelope is refused because it is not bound to its scope and path. Store those entries again so they use the current authenticated format.</p>
 <p>These failures are deliberately loud:</p>
 <ul>
 <li>A vault file present with no readable key stops the session. It is never treated as empty.</li>
@@ -2207,9 +2341,51 @@ vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
 </ul>
 <p>What this encryption does not protect against is someone who is already running as you. The key is readable by your own account by design. If you need to defend against a compromised account, use a hardware token or an external secret manager.</p>
 <h3 id="seeing-which-credential-was-used-where"><a class="header" href="#seeing-which-credential-was-used-where">Seeing which credential was used where</a></h3>
-<p>Hiding a value from the provider tells you what the agent could not see. It does not tell you what the agent did with what it could. <code>/secret log</code> answers that:</p>
-<pre><code class="language-text">/secret log
+<p>Hiding a value from the provider tells you what the agent could not see. It does not tell you what the agent did with what it could. The expansion log answers that. In a terminal it is the second view of the manager: open <code>/secret manager</code> and press Tab. On a client with no terminal it is <code>/secret log</code>.</p>
+<p>Both read the same file and honour the same limit. They lay it out differently, because a card and a command line are not the same medium. In the manager it is a table, one use per row:</p>
+<pre><code class="language-text">  WHEN      TOOL   SECRETS                      WHERE
+› 12m ago   bash   #GITHUB_TOKEN#               curl -H 'Authorization: Bearer #GITHUB_T…
+  4m ago    bash   #DEPLOY_KEY#                 scp -i #DEPLOY_KEY# build.tar deploy@hos…
+  just now  bash   #GITHUB_TOKEN# #DEPLOY_KEY#  ./release.sh --token #GITHUB_TOKEN# --ke…
+
+  curl -H 'Authorization: Bearer #GITHUB_TOKEN#' https://api.github.com/user
 </code></pre>
+<p>The command column takes whatever width is left and is cut to fit, so the selected row’s command is repeated in full underneath. Move the cursor with Up and Down, <code>j</code> and <code>k</code>, or click a row, and the line below follows it.</p>
+<h4 id="narrowing-the-log"><a class="header" href="#narrowing-the-log">Narrowing the log</a></h4>
+<p>Twenty records is a page. When you want a particular use out of it, press <code>/</code> and type: the search matches the tool, the command and the placeholders, so <code>bash</code>, <code>api.github.com</code> and <code>#GITHUB_TOKEN#</code> all work. Searching by placeholder matters because a long command is cut to fit the row, and the <code>SECRETS</code> column keeps showing the placeholders after the text of the command that carried them has gone.</p>
+<p>The other question the log answers is the one worth asking just before you revoke something: what stops working. Press <code>u</code> on a secret’s row in the Secrets view and the Log opens showing only the uses that spent that credential.</p>
+<p>Both narrowings say so above the table:</p>
+<pre><code class="language-text">Showing 2 of 3 uses of #GITHUB_TOKEN# matching "api.github.com".
+</code></pre>
+<p>That line is there because a filtered log that looks complete is worse than no log: you would read the missing records as uses that never happened. The two compose, as the example shows, so you can trace one credential and then search within its uses, and clearing the search with Esc keeps the credential restriction. Esc again widens back to every record, and only then does it close the card.</p>
+<p>The usage counts in the detail pane (<code>i</code>) always read the whole log, never the narrowed view. A count of how many uses matched your search is not a count of how many times a credential was spent, and the difference matters when you are deciding whether something is safe to revoke.</p>
+<h4 id="when-a-narrowing-leaves-nothing"><a class="header" href="#when-a-narrowing-leaves-nothing">When a narrowing leaves nothing</a></h4>
+<p>A narrowing that matched no records replaces the counting line rather than shrinking it to zero. <code>Showing 0 of 6 uses of #BACKUP_TOKEN#</code> measures the whole log against what survived, so it names six uses of the credential it just found none of, which is the question you pressed <code>u</code> to ask.</p>
+<p>Pressing <code>u</code> on a credential nothing has spent yet says so, and that is the answer you wanted before revoking it:</p>
+<pre><code class="language-text">#BACKUP_TOKEN# has not been used yet.
+Press escape to show every recorded use.
+</code></pre>
+<p>A search that matched nothing names the query and the key that changes it:</p>
+<pre><code class="language-text">No recorded use matches "kubectl".
+Press / to change the search, then escape to clear it.
+</code></pre>
+<p>The two compose here as well, so a search inside a credential restriction names both and you can tell which one hid the rows:</p>
+<pre><code class="language-text">No use of #GITHUB_TOKEN# matches "kubectl".
+</code></pre>
+<p>The tab strip still counts the whole log while the body is empty, so <code>Log (6)</code> beside any of these reads as a narrowing of six records rather than a log holding none. The footer drops what it cannot do: with no rows to move between, <code>up/down select</code> goes, and <code>/ search</code> stays for as long as there is something to search, including the state where a search is what hid everything.</p>
+<h4 id="an-empty-log-and-a-log-that-is-off"><a class="header" href="#an-empty-log-and-a-log-that-is-off">An empty log, and a log that is off</a></h4>
+<p>An empty log names the file it is empty at, so it reads as “nothing has happened here” rather than “the card failed to load something”. The path is wrapped to the card, never cut, because where the log is empty is the whole of what that state has to tell you:</p>
+<pre><code class="language-text">No secret has been used yet. The log is ~/.veyyon/profiles/work/secret-audit.jsonl.
+</code></pre>
+<p>A log that is switched off names the setting instead:</p>
+<pre><code class="language-text">Secret use is not being recorded, so there is nothing here to show.
+
+Turn on "Record Secret Use" in /settings (secrets.auditLog) to start recording which
+credential was spent, in which tool, and what the model wrote around it.
+</code></pre>
+<p>Nothing recorded and nothing being recorded support opposite conclusions about whether a credential was spent, and as an empty table they are the same picture. The tab reads <code>Log (off)</code> in the second case rather than <code>Log (0)</code>, which would claim zero uses.</p>
+<h4 id="the-transcript-form-and-what-is-recorded"><a class="header" href="#the-transcript-form-and-what-is-recorded">The transcript form, and what is recorded</a></h4>
+<p><code>/secret log</code> prints the same uses as a transcript instead, two lines each, since its output scrolls past rather than sitting in a card:</p>
 <pre><code class="language-text">3 most recent use(s), oldest first:
   12m ago  bash  #GITHUB_TOKEN#
     {"command":"curl -H 'Authorization: Bearer #GITHUB_TOKEN#' https://api.github.com/user"}
@@ -2218,7 +2394,7 @@ vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
   just now  bash  #GITHUB_TOKEN# #DEPLOY_KEY#
     {"command":"./release.sh --token #GITHUB_TOKEN# --key #DEPLOY_KEY#"}
 </code></pre>
-<p>Each line is one tool call that mentioned a secret: when it happened, which tool received it, which placeholders were substituted, and the command as the model wrote it. Pass <code>--limit 50</code> for more than the last twenty.</p>
+<p>Either way one use is when it happened, which tool received it, which placeholders were substituted, and the command as the model wrote it. Both show the last twenty. <code>/secret log --limit 50</code> asks the verb surface for more.</p>
 <p>The log belongs to the profile rather than to one session, so two veyyon windows in the same profile append to the same file. When the records you are shown come from more than one, the output says so:</p>
 <pre><code class="language-text">These records come from 2 sessions sharing this profile's log.
 </code></pre>
@@ -2230,7 +2406,7 @@ vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
   auditLog: false
 </code></pre>
 <p>The file is mode 0600 and lives in the profile rather than the project. If veyyon cannot append to it, it says so and the command still runs. The value is still protected either way.</p>
-<p>At two megabytes, roughly ten thousand uses, the log is atomically moved to <code>secret-audit.jsonl.1</code> and a fresh one is started. A cross-process lock covers the size check, rotation, append, and read snapshot, so two sessions cannot overwrite a generation or exceed the record cap at the boundary. Oversized rows bound every field and report how many placeholder references were omitted. <code>/secret log</code> reads both generations.</p>
+<p>At two megabytes, roughly ten thousand uses, the log is atomically moved to <code>secret-audit.jsonl.1</code> and a fresh one is started. A cross-process lock covers the size check, rotation, append, and read snapshot, so two sessions cannot overwrite a generation or exceed the record cap at the boundary. Oversized rows bound every field and report how many placeholder references were omitted. Both generations are read, so a report asked for right after a rotation still fills up.</p>
 <h2 id="declaring-secrets-yourself"><a class="header" href="#declaring-secrets-yourself">Declaring secrets yourself</a></h2>
 <p>Environment variable detection covers the common case. For anything else, list entries in a <code>secrets.yml</code> file. Two locations are read:</p>
 <div class="table-wrapper">
@@ -2269,6 +2445,7 @@ vault refresh will prune it. Store it again with /secret add GITHUB_TOKEN
 <p><code>obfuscate</code> mode replaces every occurrence of the value. A three-character secret would blank out fragments of unrelated words, so short values are not obfuscated.</p>
 <p>Veyyon refuses them rather than ignoring them. A plain <code>obfuscate</code> entry under 8 characters stops startup with an error naming the entry and the fix. This is deliberate: a session that starts cleanly while sending your declared secret to the provider in plain text is worse than a session that will not start.</p>
 <p>The fix is <code>mode: replace</code>, which is one way and has no minimum.</p>
+<p>The same floor applies to a credential you store in the vault, and the Secret Manager applies it at the field that takes the value. Type something shorter than 8 characters into the <code>a</code> flow’s hidden field and it is refused as you leave it, while the value is still in front of you, rather than after you have also named the secret and chosen its scope.</p>
 <p>A regex match under the floor behaves differently. A short match usually means the pattern reached into ordinary prose, so the match is skipped and the over-matching pattern is reported once. If short matches really are secret, say so on the entry:</p>
 <pre><code class="language-yaml">- type: regex
   content: "\\b[0-9]{6}\\b"
@@ -2318,7 +2495,7 @@ Set "minLength" on the entry if short matches are real secrets, or tighten the p
 <p><strong>The two stores differ on disk.</strong> Vault entries added with <code>/secret</code> are encrypted. <code>secrets.yml</code> is a plain file: it holds declarations you wrote, in the clear, and anyone who can read it has those credentials. If a value needs to be encrypted at rest, put it in the vault rather than in <code>secrets.yml</code>.</p>
 <p><strong>A command the agent runs receives the real value.</strong> So a command that prints the credential prints it for real. Its output is obfuscated again before it goes back to the model, but it reached the process, and anything that process wrote elsewhere is outside veyyon’s reach. That output is also saved to the session file as it was printed, so a command that echoes a credential puts it there. The arguments veyyon itself records are redacted, but it cannot redact what a command chose to print.</p>
 <p><strong>Protection begins when the value is known.</strong> Once you enable protection or store a value, old local transcript text containing that value is sanitized on subsequent provider requests. The local transcript is not rewritten in place.</p>
-<p><strong>A value you type on the command line is visible on screen.</strong> <code>/secret add NAME &lt;value&gt;</code> puts the credential in your scrollback. It is excluded from persistent editor history, but the obfuscator cannot scrub a terminal after the fact. Use <code>/secret add NAME</code> on its own, which prompts with the value hidden, or <code>--from-env</code>.</p>
+<p><strong>A value you type on the command line is visible on screen.</strong> <code>/secret &lt;value&gt;</code> puts the credential in your scrollback, and the confirmation says so. It is excluded from persistent editor history, but the obfuscator cannot scrub a terminal after the fact. Use a bare <code>/secret</code>, which opens a field that hides what you type, or <code>/secret --from-env &lt;VAR&gt;</code>, which types nothing at all.</p>
 <p><strong>The secret-use log records use, not intent.</strong> It tells you which credential went into which command. It cannot tell you what the command did with it once the process had it.</p>
 <h2 id="reference"><a class="header" href="#reference">Reference</a></h2>
 <p>The field-by-field schema, the merge rules between the two files, and the interaction with environment detection are in <code>docs/secrets.md</code>.</p>
@@ -2415,8 +2592,8 @@ compaction model. <code>/model</code> shows the current interactive model; <code
 </thead>
 <tbody>
 <tr><td><strong>Interactive model</strong></td><td>Main conversation</td><td><code>/model</code>, <code>--model</code>; persisted as <code>modelRoles.default</code></td></tr>
-<tr><td><strong>Roles</strong></td><td>Named assignments (<code>smol</code>, <code>slow</code>, <code>plan</code>, <code>advisor</code>, …)</td><td><code>modelRoles</code> / settings → Model → Roles</td></tr>
-<tr><td><strong>Subagent model</strong></td><td>Spawned subagents</td><td><code>subagent.model</code> (or a per-agent model in <code>subagent.agents</code>; unset inherits interactive)</td></tr>
+<tr><td><strong>Roles</strong></td><td>Named assignments (<code>smol</code>, <code>slow</code>, <code>plan</code>, <code>advisor</code>, …)</td><td><code>modelRoles</code> / Settings → Model → Roles</td></tr>
+<tr><td><strong>Subagent policy</strong></td><td>Blanket and per-agent model and effort choices</td><td><code>subagent.model</code>, <code>subagent.thinkingLevel</code>, and <code>subagent.agents</code></td></tr>
 <tr><td><strong>Compaction override</strong></td><td>Compaction / handoff</td><td><code>compaction.model</code> (else inherit interactive)</td></tr>
 </tbody>
 </table>
@@ -2427,9 +2604,12 @@ modelRoles:
   smol: openai/gpt-4.1-mini
   slow: anthropic/claude-opus-4-5:high
   plan: anthropic/claude-sonnet-5
-  task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat  # optional hard override for task agents
+  model: deepseek/deepseek-chat:high
+  agents:
+    reviewer:
+      enabled: true
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini
 </code></pre>
@@ -2469,7 +2649,7 @@ $ veyyon --model openrouter/anthropic/claude-sonnet-4
 </thead>
 <tbody>
 <tr><td>Tool-heavy refactors</td><td>Hosted model with tool calling</td></tr>
-<tr><td>Long sessions / subagents</td><td>Cheaper id on <code>subagent.model</code> / <code>compaction.model</code></td></tr>
+<tr><td>Long sessions / subagents</td><td>Choose cheaper models under <code>subagent</code> and <code>compaction.model</code></td></tr>
 <tr><td>Low latency</td><td>Local or flash-tier cloud</td></tr>
 <tr><td>Offline / private code</td><td>Ollama, LM Studio, llama.cpp</td></tr>
 <tr><td>CI</td><td>Pin exact <code>provider/id</code> with <code>--model</code></td></tr>
@@ -2764,9 +2944,13 @@ which of the four layers decided.</p>
 <h2 id="limits-and-isolation"><a class="header" href="#limits-and-isolation">Limits and isolation</a></h2>
 <p>The remaining groups in the tab are operational: how many subagents run at once
 (<code>subagent.maxConcurrency</code>), how deeply they may nest (<code>subagent.maxNestedSpawnDepth</code>),
-per-run wall clock and request budgets, how long an idle subagent stays in memory
-before being parked to disk (<code>idleTtlMs</code>), and whether their edits land in an isolated
+per-run wall clock and request budgets, how long a finished subagent stays live
+before parking (<code>subagent.idleTtlMs</code>), and whether its edits land in an isolated
 copy of the tree first (<code>subagent.isolation.*</code>, see <a href="#safety-1">Safety</a>).</p>
+<p><code>subagent.idleTtlMs</code> defaults to five minutes for every model and provider. Set
+a positive millisecond value to override it. Set <code>0</code> to keep idle agents live
+until exit. Parking releases the live session but keeps its transcript, so
+messaging or opening the agent can revive it.</p>
 <p><code>subagent.maxNestedSpawnDepth</code> is inclusive. The default is <code>0</code>: the top-level session,
 at depth 0, may spawn direct subagents, but those children are leaves and cannot spawn
 more subagents. A value of <code>1</code> also lets direct children spawn, producing children at
@@ -3238,6 +3422,25 @@ branch that works. Full behavior: <a href="#session-branching">Branching</a> and
 <li><strong>Branching</strong> forks live transcript context for the current problem.</li>
 <li>Branch to explore; use memory for decisions that should outlive one session.</li>
 </ul>
+<h2 id="track-long-work-without-repeated-reminder-walls"><a class="header" href="#track-long-work-without-repeated-reminder-walls">Track long work without repeated reminder walls</a></h2>
+<p>Use the <code>todo</code> tool for work that has several independent steps. The session stores every phase,
+task, and status. Compaction and handoff keep that complete structured state, including plans with
+dozens of items.</p>
+<p>When the model tries to finish with open work, Veyyon injects one continuation instruction for that
+exact todo state. The instruction says to continue, puts the active task first, shows at most five
+open items, and reports how many more remain hidden. It does not replay an unchanged state after a
+user says <code>continue</code> or after an unrelated tool call. A real todo change makes the new state eligible
+for one reminder, up to the configured limit.</p>
+<p>Model-facing todo output and the collapsed TUI use the same sanitized, width-bounded, active-first
+projection of at most five items. The complete phases, tasks, and statuses remain in machine state,
+and expanded TUI output still shows the complete plan. To clear that state intentionally, run
+<code>/todo rm</code> without a task or phase; completing or dropping items keeps their closed history until it
+is explicitly removed.</p>
+<p>Configure the behavior under <strong>Settings → Tools → Todos</strong>:</p>
+<ul>
+<li><strong>Todo Reminders</strong> enables continuation instructions for unfinished plans.</li>
+<li><strong>Todo Reminder Limit</strong> caps distinct todo-state reminders before reminders stay silent.</li>
+</ul>
 <hr>
 <h2 id="see-also-1"><a class="header" href="#see-also-1">See also</a></h2>
 <ul>
@@ -3313,10 +3516,10 @@ enabled. See <a href="#compaction-and-project-memory">Compaction and memory</a>.
 <ul>
 <li>Setting: <code>goal.enabled</code> (default <code>true</code>)</li>
 <li><code>/goal set &lt;objective&gt;</code>: create or replace</li>
-<li><code>/goal show</code>: status, tokens, budget</li>
+<li><code>/goal show</code>: status and token usage</li>
 <li><code>/goal pause</code> / <code>/goal resume</code></li>
 <li><code>/goal drop</code>: remove</li>
-<li><code>/goal budget &lt;N|off&gt;</code>: token budget</li>
+<li>Setting: <code>goal.modelBudgetsEnabled</code> (default <code>false</code>), controlled only from the interactive Settings UI</li>
 <li><code>/guided-goal</code>: interview flow before enabling</li>
 </ul>
 <h3 id="goal-state"><a class="header" href="#goal-state">Goal state</a></h3>
@@ -3325,7 +3528,7 @@ enabled. See <a href="#compaction-and-project-memory">Compaction and memory</a>.
 </code></pre>
 <p>Statuses: <code>active</code>, <code>paused</code>, <code>budget-limited</code>, <code>complete</code>, <code>dropped</code>.</p>
 <h3 id="goal-tool"><a class="header" href="#goal-tool">Goal tool</a></h3>
-<p>When goal mode is active, the agent can call the <code>goal</code> tool with ops: <code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>. Continuation prompts inject on idle turns per <code>goal.continuationModes</code>.</p>
+<p>When goal mode is active, the agent can call the <code>goal</code> tool with ops: <code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>. The tool never accepts a budget argument. The interactive Settings UI owns <code>goal.modelBudgetsEnabled</code>, which controls whether persisted budgets are exposed and enforced. Continuation prompts inject on idle turns per <code>goal.continuationModes</code>.</p>
 <h3 id="example"><a class="header" href="#example">Example</a></h3>
 <pre><code class="language-console">$ veyyon
 </code></pre>
@@ -4209,13 +4412,14 @@ these primary fields:</p>
 </thead>
 <tbody>
 <tr><td>Threshold</td><td><code>compaction.threshold</code></td><td><code>auto</code>, a percent of the window (<code>85%</code>), or a token amount (<code>170000</code>)</td></tr>
-<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
+<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>summary</code>, the sole strategy</td></tr>
 <tr><td>Model</td><td><code>compaction.model</code></td><td>model id; unset uses the interactive model</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>summary</code> rewrites old history into an in-place LLM summary; <code>handoff</code> writes a structured session transfer.
-Run on demand with <code>/compact</code>. See <a href="#compaction-and-project-memory">Compaction and project memory</a>.</p>
+<p><code>summary</code> rewrites old history into an in-place LLM summary. Run it on demand
+with <code>/compact</code>. Use <code>/handoff</code> only when you explicitly want a new session. See
+<a href="#compaction-and-project-memory">Compaction and project memory</a>.</p>
 <h2 id="what-the-model-sees-1"><a class="header" href="#what-the-model-sees-1">What the model sees</a></h2>
 <p>Recalled or summarized memory is <strong>background context</strong>, not instructions. Current user messages,
 tool output, and repo state win on conflict. The agent should cite memory paths when memory changes
@@ -4342,22 +4546,28 @@ $ veyyon profile default work
 <p>The instruction row copies only <code>AGENTS.md</code>. A profile switch never carries <code>RULES.md</code>; change it through settings or copy it manually when that is your intent.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
 <h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
-<p>On first run, the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The scan runs no matter how <code>discovery.importForeignConfig</code> is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.</p>
+<p>On the first interactive run of a profile that has not completed setup, the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The scan runs no matter how <code>discovery.importForeignConfig</code> is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.</p>
 <p>Do not document inline <code>[profiles.&lt;name&gt;]</code> tables or standalone <code>&lt;name&gt;.config.yml</code> files as shipped; settings use <code>config.yml</code> under the active agent dir.</p>
-<h2 id="model-slots-and-roles-per-profile"><a class="header" href="#model-slots-and-roles-per-profile">Model slots and roles (per profile)</a></h2>
-<p>Each profile’s <code>config.yml</code> owns the three model slots and optional roles:</p>
+<h2 id="model-policies-and-roles-per-profile"><a class="header" href="#model-policies-and-roles-per-profile">Model policies and roles (per profile)</a></h2>
+<p>Each profile’s <code>config.yml</code> owns its interactive default, optional roles, subagent policy, and compaction policy:</p>
 <pre><code class="language-yaml">modelRoles:
   default: openai/gpt-5             # interactive (also set live with /model)
   plan: openai/o3
   smol: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat     # optional blanket override for all subagents
+  model: deepseek/deepseek-chat     # blanket model chain for subagents
+  thinkingLevel: high
+  agents:
+    scout:
+      enabled: false
+    reviewer:
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini
-  strategy: handoff                 # or summary (the default)
+  strategy: summary
   threshold: "80%"
 </code></pre>
-<p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role follows the same rule, unset, it inherits the live main model; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
+<p>Unset roles and model chains inherit the live main model at use time, so switching with <code>/model</code> changes them immediately. Per-agent subagent settings override the blanket subagent model and effort; an unset per-agent value falls back to that blanket policy. Only an explicit assignment pins a different model. Switching profiles switches all of these assignments with the profile.</p>
 <h2 id="see-also-4"><a class="header" href="#see-also-4">See also</a></h2>
 <ul>
 <li><a href="#models-roles-and-profiles">Models, roles, and profiles</a></li>
@@ -4375,7 +4585,7 @@ compaction:
 <tbody>
 <tr><td><strong>Default model</strong></td><td>The model used for the main conversation, and the one a new session starts on. Chosen with <code>/model</code> or <code>--model</code>, or in <code>/settings</code> under Model. Persisted under <code>modelRoles.default</code>, which is a slot rather than a selectable role, so it does not appear in role pickers.</td></tr>
 <tr><td><strong>Role</strong></td><td>A named model assignment for a kind of work (<code>smol</code>, <code>plan</code>, <code>advisor</code>, and others). Configure it in <code>modelRoles</code> or Settings → Model → Roles.</td></tr>
-<tr><td><strong>Slot override</strong></td><td><code>subagent.model</code> or <code>compaction.model</code>, an ordered model chain for one subsystem. An unset slot inherits the interactive model.</td></tr>
+<tr><td><strong>Subagent policy</strong></td><td>The blanket model and effort plus per-agent <code>enabled</code>, <code>model</code>, <code>thinkingLevel</code>, and <code>maxNestedSpawnDepth</code> choices under <code>subagent</code>.</td></tr>
 <tr><td><strong>Profile</strong></td><td>User config tree at <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>).</td></tr>
 </tbody>
 </table>
@@ -4419,24 +4629,32 @@ modelRoles:
 <p>Unset selectable roles, <code>advisor</code> included, <strong>inherit the live interactive model</strong> at use time. No role carries a built-in model chain: a role you have not set names no model of its own, so nothing you did not choose ends up running.</p>
 <p>A caller may still ask for several roles in order. Title generation, for example, asks for <code>tiny</code>, then <code>commit</code>, then <code>smol</code>, and takes the first one you have set. That order belongs to the caller, not to the role: <code>tiny</code> does not fall back to <code>smol</code>, the title generator prefers <code>tiny</code> and accepts <code>smol</code>. If you have set none of them, the whole list is unset and the caller inherits the interactive model like any other unset role.</p>
 <p>There is no <code>task</code> role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see <a href="../../settings.html#subagents">Settings: Subagents</a>.</p>
-<p>To return an assigned role or slot to its unset state, open its picker in <code>/settings</code> and choose the first row, <code>(inherit main model)</code> (the default model’s picker reads <code>(auto-select on launch)</code>). Del or Backspace with an empty search does the same.</p>
-<h2 id="slot-overrides"><a class="header" href="#slot-overrides">Slot overrides</a></h2>
+<p>To return an assigned role or model policy to its unset state, open its picker in <code>/settings</code> and choose the first row, <code>(inherit main model)</code> (the default model’s picker reads <code>(auto-select on launch)</code>). Del or Backspace with an empty search does the same.</p>
+<h2 id="subagent-policy-and-compaction-overrides"><a class="header" href="#subagent-policy-and-compaction-overrides">Subagent policy and compaction overrides</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Setting</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.model</code></td><td>Ordered model chain for every subagent that has no model of its own. The first entry is primary and later entries are fallbacks. An unset chain inherits the interactive model. A per-agent model in <code>subagent.agents</code> wins over it.</td></tr>
-<tr><td><code>compaction.model</code></td><td>Ordered model chain for compaction and handoff. An unset chain inherits the interactive model.</td></tr>
+<tr><td><code>subagent.model</code></td><td>Ordered model chain for every subagent that has no model of its own. The first entry is primary and later entries are fallbacks. Unset inherits the interactive model.</td></tr>
+<tr><td><code>subagent.thinkingLevel</code></td><td>Blanket subagent effort. Unset inherits the live parent effort.</td></tr>
+<tr><td><code>subagent.agents</code></td><td>Per-agent <code>enabled</code>, <code>model</code>, <code>thinkingLevel</code>, and <code>maxNestedSpawnDepth</code> choices. Per-agent values win over the blanket policy.</td></tr>
+<tr><td><code>subagent.delegation</code></td><td>How strongly the model is prompted to delegate: <code>allowed</code>, <code>preferred</code>, or <code>required</code>.</td></tr>
+<tr><td><code>compaction.model</code></td><td>Ordered model chain for compaction. Unset inherits the interactive model.</td></tr>
 </tbody>
 </table>
 </div>
 <pre><code class="language-yaml">subagent:
   model: deepseek/deepseek-chat:high,anthropic/claude-sonnet-5:low
+  agents:
+    scout:
+      enabled: false
+    reviewer:
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini:low,anthropic/claude-haiku-4-5
-  strategy: handoff
+  strategy: summary
   threshold: "80%"
 </code></pre>
 <p>In Settings, Enter edits the highlighted chain position. <strong>Add fallback</strong>
@@ -4742,7 +4960,7 @@ time you launch. Veyyon retries first and reports only when the retries have not
 brief clash with another veyyon writing at the same moment stays quiet. Fix the permissions
 and change the setting again, and nothing further is reported.</p>
 <h2 id="pick-models-and-providers"><a class="header" href="#pick-models-and-providers">Pick models and providers</a></h2>
-<p>Three explicit model slots, each set on its own:</p>
+<p>Configure the interactive model, subagent policy, compaction model, and optional roles separately:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -4750,9 +4968,10 @@ and change the setting again, and nothing further is reported.</p>
 </thead>
 <tbody>
 <tr><td>Choose the model you talk to</td><td><code>--model</code> / <code>/model</code> (persisted as <code>modelRoles.default</code>)</td></tr>
-<tr><td>Model for spawned subagents</td><td><code>subagent.model</code> (Subagents tab)</td></tr>
-<tr><td>Model for context compaction</td><td><code>compaction.model</code></td></tr>
-<tr><td>Named model assignments (optional)</td><td><code>modelRoles</code>, per profile (settings → Model → Roles)</td></tr>
+<tr><td>Choose profile-wide subagent defaults</td><td><code>subagent.model</code> and <code>subagent.thinkingLevel</code></td></tr>
+<tr><td>Customize one subagent</td><td><code>subagent.agents.&lt;name&gt;</code> or Settings → Subagents → Agents</td></tr>
+<tr><td>Choose the model for context compaction</td><td><code>compaction.model</code></td></tr>
+<tr><td>Add named model assignments</td><td><code>modelRoles</code>, per profile (Settings → Model → Roles)</td></tr>
 <tr><td>Add a local or BYOK provider</td><td>a <code>providers:</code> entry in <code>models.yml</code> (see <a href="#models-and-providers">Models</a>)</td></tr>
 </tbody>
 </table>
@@ -4761,9 +4980,13 @@ and change the setting again, and nothing further is reported.</p>
 modelRoles:
   default: openai/gpt-5           # interactive model (persisted default)
   smol: openai/gpt-4.1-mini
-  task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat   # optional; unset means subagents inherit your model
+  model: deepseek/deepseek-chat
+  thinkingLevel: high
+  agents:
+    reviewer:
+      enabled: true
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini        # optional; else inherit interactive
 </code></pre>
@@ -4813,7 +5036,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 </thead>
 <tbody>
 <tr><td>Auto-compaction threshold</td><td><code>compaction.threshold</code>: <code>auto</code>, a percent (<code>85%</code>), or a token amount (<code>170000</code>)</td></tr>
-<tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
+<tr><td>Compaction type</td><td><code>compaction.strategy: summary</code>, the sole strategy</td></tr>
 <tr><td>Compaction model</td><td><code>compaction.model</code> (unset = interactive model)</td></tr>
 <tr><td>Cross-session memory backend</td><td><code>memory.backend</code>: <code>off</code> (default), <code>local</code>, <code>hindsight</code>, <code>mnemopi</code></td></tr>
 </tbody>
@@ -4821,7 +5044,7 @@ separate OS shell sandbox, the approval mode is the only boundary; see
 </div>
 <pre><code class="language-yaml">compaction:
   threshold: "80%"
-  strategy: handoff
+  strategy: summary
   model: openai/gpt-5-mini
 
 memory:
@@ -5189,7 +5412,7 @@ veyyon plugin doctor
 <p>If the new binary does not work for you, you can go back to the previous version without losing data.</p>
 <ol>
 <li>Close all Veyyon processes.</li>
-<li>Restore the previous binary. Run <code>veyyon rollback</code> to pick an earlier version, or re-run the <code>curl</code> installer with <code>--binary --ref v&lt;version&gt;</code> to pin that release binary (fetched from GitHub Releases; a bare <code>--ref</code> builds that ref from source instead); a source checkout goes back with <code>git checkout</code> and a rebuild.</li>
+<li>Restore the previous binary. Run <code>veyyon rollback</code> to pick an earlier version, or re-run the <code>curl</code> installer with <code>--ref v&lt;version&gt;</code> to pin that release binary (fetched from GitHub Releases). If you run Veyyon out of your own git checkout instead, go back with <code>git checkout v&lt;version&gt;</code> and rebuild.</li>
 <li>Restore profile <code>config.yml</code> (and global <code>~/.veyyon/config.yml</code> if you changed it) from the backup you made before upgrading, if the new version modified settings the old version cannot read.</li>
 <li>Leave agent-dir <code>sessions/</code>, archives, and SQLite stores in place. Rollout files are forward-compatible for recent releases; the old binary can rebuild indexes when needed.</li>
 <li>Start Veyyon and run <code>veyyon plugin doctor</code> to confirm the environment is healthy.</li>
@@ -5280,6 +5503,7 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>grievances</code></td><td></td><td>Internal grievance reporter</td></tr>
 <tr><td><code>install</code></td><td></td><td>Install or link an extension package (alias of <code>plugin install</code>/<code>plugin link</code>)</td></tr>
 <tr><td><code>join</code></td><td></td><td>Join collab session</td></tr>
+<tr><td><code>licenses</code></td><td></td><td>Print Veyyon and third-party license notices</td></tr>
 <tr><td><code>models</code></td><td></td><td>List models and providers</td></tr>
 <tr><td><code>plugin</code></td><td></td><td>Plugin lifecycle (<code>list</code>, <code>install</code>, …)</td></tr>
 <tr><td><code>profile</code></td><td><code>profiles</code></td><td>List, create, or remove self-contained profiles</td></tr>
@@ -5351,7 +5575,9 @@ command your installed build does not have, you get:</p>
 commands this build has, or drop the leading slash to send it as a message.
 </code></pre>
 <p>The refusal names the command and never repeats what followed it, because the tail of a mistyped
-<code>/secret add</code> is a credential.</p>
+<code>/secret</code> is a credential. The rule reaches further than one mistyped word: in a terminal the whole
+argument line of <code>/secret</code> is the credential, whatever it happens to spell, so there is no tail
+there that is safe to echo back.</p>
 <p>A message that merely begins with a filesystem path is prose, not a command, and is sent as usual:</p>
 <pre><code class="language-text">/etc/hosts is broken
 </code></pre>
@@ -5397,7 +5623,7 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/guided-goal</code></td><td>Guided goal wizard</td></tr>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
-<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. <code>add</code> (prompts with the value hidden), <code>list</code>, <code>rm</code>, <code>extend</code>, <code>log</code>. See <a href="#secrets">Secrets</a></td></tr>
+<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential, a bare <code>/secret</code> opens a hidden field, and <code>/secret manager</code> opens the manager. A client with no terminal keeps the verbs <code>add</code>, <code>list</code>, <code>rm</code>, <code>extend</code>, <code>log</code>, <code>discard</code>. See <a href="#secrets">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> / <code>/providers</code> opens provider sign-in</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
@@ -5412,9 +5638,9 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><th>Command</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>/compact [summary|handoff] [focus]</code></td><td>Compact context now (<code>compaction.model</code> + type); optional type override and focus string</td></tr>
+<tr><td><code>/compact [summary] [focus]</code></td><td>Summarize older context in place; optional focus string</td></tr>
 <tr><td><code>/shake [elide|images]</code></td><td>Shake tool-result bulk</td></tr>
-<tr><td><code>/handoff</code></td><td>Compaction handoff helper</td></tr>
+<tr><td><code>/handoff [focus]</code></td><td>Explicitly transfer context into a new session</td></tr>
 <tr><td><code>/context</code></td><td>Context usage report</td></tr>
 <tr><td><code>/tools</code></td><td>Tools visible to the model</td></tr>
 <tr><td><code>/jobs</code></td><td>Background async jobs</td></tr>
@@ -6624,19 +6850,19 @@ turns_completed:   # agent turns accounted to this goal
 created_at / updated_at:
 </code></pre>
 <p>The harness persists this on the session. Updates come from <code>/goal</code> commands and the <code>goal</code> tool (<code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>). User objective text is escaped before prompt injection.</p>
-<p>Token accounting includes input, output, and cache-write deltas used for provider billing. <code>turns_completed</code> counts each agent turn that ran under the goal, so it advances only while the goal is active.</p>
+<p>Token accounting includes input, output, and cache-write deltas used for provider billing. <code>turns_completed</code> counts each agent turn that ran under the goal, so it advances only while the goal is active. Goal budgets are disabled by default. Only the interactive Settings UI can toggle <code>goal.modelBudgetsEnabled</code>; the goal tool and slash-command surfaces cannot change it.</p>
 <h2 id="status-indicator"><a class="header" href="#status-indicator">Status indicator</a></h2>
-<p>While a goal is set, the mode segment in the status line reads <code>Goal</code> with a live token count. When the goal has no budget, it shows the tokens used. When you set a token budget, it shows <code>used/budget</code> and a percent, for example <code>20K/50K 40%</code>. Once the goal has burned 90% or more of its budget, the segment turns to the warning color so you see the ceiling approaching before the goal hits <code>budget-limited</code>.</p>
+<p>While a goal is set, the mode segment in the status line reads <code>Goal</code> with a live token count. When <code>goal.modelBudgetsEnabled</code> is on and you set a token budget, it shows <code>used/budget</code> and a percent, for example <code>20K/50K 40%</code>. Once the goal has burned 90% or more of its budget, the segment turns to the warning color so you see the ceiling approaching before the goal hits <code>budget-limited</code>. With the setting off, persisted budgets are inert and the segment shows only tokens used.</p>
 <p>The goal icon animates through the theme spinner frames while the agent is streaming under the goal, and holds steady when the goal is paused or idle. The animation is driven by active processing time, so it moves only while work is happening.</p>
 <p>The <code>goal.statusInFooter</code> setting no longer controls whether the token count appears (it always does). It now controls verbosity: turn it on to also render a compact <code>▰▱</code> progress bar next to the numbers.</p>
-<p>To see the full goal card, press the down arrow while the composer is empty. This opens the goal detail menu (the same menu <code>/goal</code> opens): objective, status, tokens used against budget with the progress bar, completed turns, time spent, and the pause, resume, adjust-budget, and drop actions. The down arrow only opens this while a goal is active or paused, so it never interferes with normal editing.</p>
+<p>To see the full goal card, press the down arrow while the composer is empty. This opens the goal detail menu (the same menu <code>/goal</code> opens): objective, status, tokens used, completed turns, time spent, and the pause, resume, and drop actions. When <code>goal.modelBudgetsEnabled</code> is on, the card also shows budget progress and the adjust-budget action. The down arrow only opens this while a goal is active or paused, so it never interferes with normal editing.</p>
 <h2 id="context-assembly"><a class="header" href="#context-assembly">Context assembly</a></h2>
 <p>Each turn combines system rules, goal injection (when active), active instructions, recent transcript, compaction prefix, and other session context. Compaction settings: <a href="#compaction-and-project-memory">Compaction and project memory</a>. Operator commands: <a href="#plan-mode-and-goals">Plan mode and goals</a>.</p>
 <h2 id="what-goal-mode-provides"><a class="header" href="#what-goal-mode-provides">What goal mode provides</a></h2>
 <ul>
 <li>Objective visible across turns without rereading the full transcript</li>
 <li>Idle continuation toward the objective when <code>goal.continuationModes</code> allows</li>
-<li>Token budget and pause/complete/drop lifecycle</li>
+<li>Optional token budgets when <code>goal.modelBudgetsEnabled</code> is on, plus pause/complete/drop lifecycle</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="compaction-and-project-memory"><a class="header" href="#compaction-and-project-memory">Compaction and project memory</a></h1>
@@ -6665,30 +6891,28 @@ model context window, so switching to a smaller-window model warns again).</li>
 <p>You can also compact on demand with <code>/compact</code>.</p>
 </li>
 <li>
-<p><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:</p>
-<ul>
-<li><code>summary</code>: rewrites old history into an in-place LLM summary on the current branch (the default).</li>
-<li><code>handoff</code>: writes a structured handoff summary that preserves the task, pending questions, and
-recent decisions, then continues from it (LLM transfer path).</li>
-</ul>
+<p><strong>Type</strong> (<code>compaction.strategy</code>): <code>summary</code>, the sole strategy. It rewrites old
+history into an in-place LLM summary on the current branch.</p>
 </li>
 <li>
-<p><strong>Model</strong> (<code>compaction.model</code>): the models that perform LLM compaction / handoff, tried in order.
-Unset uses your interactive model. See <a href="#fallback-models-1">Fallback models</a> below and
-<a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
+<p><strong>Model</strong> (<code>compaction.model</code>): the models that perform LLM compaction, tried
+in order. Unset uses your interactive model. See <a href="#fallback-models-1">Fallback models</a>
+below and <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
 </li>
 </ul>
-<p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. The most recent turns, user, assistant, and tool messages, are kept verbatim up to <code>compaction.keepRecentTokens</code> (default 20,000 tokens).</p>
-<p>You can also pick the type for a single run by naming it first: <code>/compact summary</code> or
-<code>/compact handoff</code>. The name is a one-off override, so it does not change
-<code>compaction.strategy</code>. Anything after the name is focus text, as in
-<code>/compact handoff keep the auth details</code>.</p>
-<p>Two older names, <code>soft</code> and <code>remote</code>, are no longer types. <code>remote</code> selected a provider-native
-compaction path and <code>soft</code> existed only to skip it; that path is removed, so there is nothing left
-for them to select. If you type one, veyyon compacts with your configured type, treats the whole argument
-as focus text, and says which name you used and what to use instead. Your text is passed
-through exactly as you typed it, because a sentence that happens to start with “soft” is a
-reasonable thing to ask for.</p>
+<p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. The most
+recent user, assistant, and tool messages stay verbatim up to
+<code>compaction.keepRecentTokens</code> (default 20,000 tokens).</p>
+<p>Use <code>/handoff &lt;focus&gt;</code> when you explicitly want a new session. Handoff is not a
+compaction strategy, and automatic maintenance never selects it.</p>
+<p>Compaction and handoff both write a machine-owned continuity record separate
+from generated prose. It preserves the active objective, the original user
+contract, goal and todo state, pending blockers, changed paths, verification
+evidence, and checkpoint state. Handoff writes that record into the replacement
+session before the next turn. Reopening either session restores exact state
+instead of relying on generated prose to repeat every field.</p>
+<p>Stored legacy strategy names such as <code>handoff</code>, <code>snap</code>, <code>soft</code>, and <code>remote</code>
+migrate to <code>summary</code>. A legacy <code>off</code> value also disables compaction.</p>
 <h2 id="fallback-models-1"><a class="header" href="#fallback-models-1">Fallback models</a></h2>
 <p><code>compaction.model</code> is an ordered list, not one model:</p>
 <pre><code class="language-yaml">compaction:
@@ -6729,14 +6953,12 @@ a duplicate is redundant however recent it is. Results from a protected tool (su
 error results, and results already elided are never deduplicated.</p>
 <p>The match is exact. If a command’s output changes between runs, both runs are kept, because the
 later one is genuinely new information rather than a repeat.</p>
-<p>This duplicate elision runs on its own, ahead of every strategy. Whenever auto-maintenance is about
-to compact because the context crossed the threshold or overflowed, it first runs the lossless
-dedup as a Tier-0 pass, whatever your <code>compaction.strategy</code> is. The pass is recall-preserving and
-makes no model call, so it always runs before the heavier path and shrinks what that path has to
-process. If dropping the duplicates alone brings a threshold trigger back under the bar, the
-compaction is skipped entirely and your history is left intact apart from the elided copies. An
-overflow recovery always finishes its compaction, because the prompt still has to be rebuilt to fit
-the window, but it too starts from the smaller deduped history.</p>
+<p>Duplicate elision runs on its own before in-place compaction. Whenever automatic
+maintenance runs because context crossed the threshold or overflowed, it first
+runs this lossless Tier-0 pass. If dropping duplicates brings a threshold trigger
+back under the bar, compaction is skipped and history stays intact apart from the
+elided copies. Overflow recovery still finishes compaction because the prompt must
+be rebuilt to fit the window, but it starts from the smaller deduplicated history.</p>
 <h2 id="memory-backends"><a class="header" href="#memory-backends">Memory backends</a></h2>
 <p>When <code>memory.backend</code> is <code>mnemopi</code> or <code>hindsight</code>, compaction can request <strong>pre-compaction context</strong>
 from the active memory backend so summaries retain project facts. See <a href="#memory">Memory</a>.</p>
@@ -6749,12 +6971,12 @@ role policy chooses which model, prompt, and tool surface fits a subagent or spe
 Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.</p>
 <h2 id="what-exists-today"><a class="header" href="#what-exists-today">What exists today</a></h2>
 <ul>
-<li><strong>Subagents</strong> via the <code>task</code> tool (<code>packages/coding-agent/src/task/executor.ts</code>) and <code>/agents</code>
-thread switching.</li>
-<li><strong>Explicit model slots</strong>, not a role→model matrix: the interactive model (<code>/model</code>), plus plain
-<code>subagent.model</code> and <code>compaction.model</code> fields in settings (<code>subagent.model</code> belongs to the Subagents area, not the role table). <code>default</code> is not a model or a role. Named
-<strong>roles</strong> (<code>modelRoles</code>, scoped per profile) exist for anyone who wants specific work types pinned to
-specific models, but editing them lives in a settings group, not the model picker. See
+<li><strong>Subagents</strong> via the <code>task</code> tool (<code>packages/coding-agent/src/task/executor.ts</code>). <code>/agents</code> opens the
+live hub for active and persisted agent threads.</li>
+<li><strong>Explicit model policies</strong>, not a role-to-model matrix: the interactive model (<code>/model</code>), profile-wide
+subagent defaults and per-agent overrides under <code>subagent</code>, plus <code>compaction.model</code>. <code>default</code> is not
+a model or a role. Named <strong>roles</strong> (<code>modelRoles</code>, scoped per profile) let you pin specific work types.
+Edit roles under Settings → Model → Roles and subagent policy under Settings → Subagents. See
 <a href="#compaction-and-project-memory">Compaction &amp; project memory</a> and
 <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
 <li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). There is no <code>/advisor</code> slash
@@ -6771,7 +6993,7 @@ still spawn subagents.</li>
 </ul>
 <h2 id="no-fixed-role-pipeline"><a class="header" href="#no-fixed-role-pipeline">No fixed role pipeline</a></h2>
 <p>Veyyon does not enforce a staged plan → implement → verify → repair handoff. It uses lighter-weight
-spawn, model-slot, and <code>irc</code> messaging patterns instead; you compose the stages yourself.</p>
+spawn, subagent-policy, and <code>irc</code> messaging patterns instead; you compose the stages yourself.</p>
 <p>Pair role choice with <a href="#execution-order-prompts">execution-order prompts</a>: explore → plan → edit → verify.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="observability"><a class="header" href="#observability">Observability</a></h1>

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -319,8 +319,10 @@ modelRoles:
 </code></pre>
 <h2 id="verify"><a class="header" href="#verify">Verify</a></h2>
 <pre><code class="language-console">$ veyyon models
+$ veyyon models refresh &lt;provider&gt;
 $ veyyon --model &lt;provider&gt;/&lt;id&gt; "reply with the model name you are"
 </code></pre>
+<p>The provider form bypasses the cache and contacts only the named provider. Omit it when you need to refresh every configured catalog.</p>
 <p>If discovery or auth fails, the error names the provider and the missing key or unreachable base URL,
 fix that rather than retrying with a different silent default.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -230,9 +230,12 @@ The copy is profile-owned from then on, so it loads like any other profile skill
 and is not affected by the original tool.</p>
 <p>A separate setting, <code>discovery.importForeignConfig</code>, governs whether Veyyon
 ambiently reads other tools’ context files (<code>CLAUDE.md</code>, standalone <code>AGENTS.md</code>),
-rules, and MCP servers. It ships <strong>off</strong>, so by default Veyyon never picks up a
-foreign <code>CLAUDE.md</code> or <code>GEMINI.md</code> from disk. Turn it on to load them as a
-machine-wide base layer:</p>
+rules, and MCP servers. It ships <strong>off</strong>, so by default Veyyon reads no foreign
+tool’s config directory and no <code>GEMINI.md</code>. It does still read a project’s own
+<code>AGENTS.md</code> and <code>CLAUDE.md</code> on the walk from the repository root down to your
+working directory: those are the project’s instructions to any agent, not another
+tool’s private config. Turn the setting on to load the rest as a machine-wide
+base layer:</p>
 <pre><code class="language-yaml">discovery:
   importForeignConfig: true
 </code></pre>
@@ -241,16 +244,19 @@ ambiently whether it is on or off. It also does not gate the import scan. The
 onboarding scan always finds and offers foreign files for import, because
 importing copies a file into your profile, which is how foreign config comes in
 by default now that ambient loading is off.</p>
-<p>Veyyon’s own instructions load in three layers, and only these three:</p>
+<p>Veyyon’s own instructions load in four layers, and only these four:</p>
 <ol>
 <li>The compiled system prompt.</li>
 <li>The global <code>~/.veyyon/AGENTS.md</code>, which applies to every profile.</li>
+<li>The project’s own context files: the nearest <code>.veyyon/AGENTS.md</code> walking up to
+the repository root, plus every bare <code>AGENTS.md</code> and <code>CLAUDE.md</code> on that walk.</li>
 <li>The active profile’s <code>AGENTS.md</code>
 (<code>~/.veyyon/profiles/&lt;name&gt;/agent/AGENTS.md</code>).</li>
 </ol>
-<p>A project’s <code>.veyyon/AGENTS.md</code> is read too when you work inside that project.
-The layers run least specific to most specific, so the global file is the
-baseline and the profile file wins where they overlap. See
+<p>They are rendered in that order, least prominent first, so each layer overrides
+the ones above it: the global file is the baseline, a project file overrides it,
+and the profile file is last and has the final word. Within the project layer the
+file closest to your working directory is the most prominent. See
 <a href="#instruction-layers">instruction layers</a> below for how to split rules between
 the global and per-profile files.</p>
 <h2 id="instruction-layers"><a class="header" href="#instruction-layers">Instruction layers</a></h2>
