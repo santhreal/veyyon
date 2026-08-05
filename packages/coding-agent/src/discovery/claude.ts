@@ -516,4 +516,3 @@ registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	priority: PRIORITY,
 	load: loadTools,
 });
-

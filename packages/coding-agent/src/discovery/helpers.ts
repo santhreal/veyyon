@@ -47,38 +47,52 @@ export const SOURCE_PATHS = {
 		get userAgent() {
 			return `${getConfigDirName()}/agent`;
 		},
+		projectDir: CONFIG_DIR_NAME,
 	},
 	claude: {
 		userBase: ".claude",
 		userAgent: ".claude",
+		projectDir: ".claude",
 	},
 	codex: {
 		userBase: ".codex",
 		userAgent: ".codex",
+		projectDir: ".codex",
 	},
 	gemini: {
 		userBase: ".gemini",
 		userAgent: ".gemini",
+		projectDir: ".gemini",
 	},
 	opencode: {
 		userBase: ".config/opencode",
 		userAgent: ".config/opencode",
+		projectDir: ".opencode",
 	},
 	cursor: {
 		userBase: ".cursor",
 		userAgent: ".cursor",
+		projectDir: ".cursor",
 	},
 	windsurf: {
 		userBase: ".codeium/windsurf",
 		userAgent: ".codeium/windsurf",
+		projectDir: ".windsurf",
 	},
 	cline: {
 		userBase: ".cline",
 		userAgent: ".cline",
+		projectDir: null, // Cline uses root-level .clinerules
 	},
 	github: {
 		userBase: null,
 		userAgent: null,
+		projectDir: ".github",
+	},
+	vscode: {
+		userBase: ".vscode",
+		userAgent: ".vscode",
+		projectDir: ".vscode",
 	},
 } as const;
 
@@ -98,6 +112,21 @@ export function getUserPath(ctx: LoadContext, source: SourceId, subpath: string)
 	const paths = SOURCE_PATHS[source];
 	if (!paths.userAgent) return null;
 	return path.join(ctx.home, paths.userAgent, subpath);
+}
+
+/**
+ * Get project-level path for a source: `<cwd>/<projectDir>/<subpath>`, or `null` for a
+ * source that keeps no project directory (Cline reads a root-level `.clinerules`).
+ *
+ * The project-level twin of {@link getUserPath}, and deliberately NOT profile-scoped: a
+ * project's `.cursor/`, `.github/`, `.vscode/` and friends belong to the checkout, not to
+ * whichever profile is loading it.
+ */
+export function getProjectPath(ctx: LoadContext, source: SourceId, subpath: string): string | null {
+	const paths = SOURCE_PATHS[source];
+	if (!paths.projectDir) return null;
+
+	return path.join(ctx.cwd, paths.projectDir, subpath);
 }
 
 /**

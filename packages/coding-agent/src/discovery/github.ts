@@ -20,21 +20,17 @@ import { parseFrontmatter } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { type Instruction, instructionCapability } from "../capability/instruction";
-import { type Prompt, promptCapability } from "../capability/prompt";
+import type { Prompt } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
-import { type Skill, skillCapability } from "../capability/skill";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 
 import {
 	buildRuleFromMarkdown,
-	calculateDepth,
 	createSourceMeta,
-	getProjectPath,
 	loadFilesFromDir,
 	parseCSV,
 	readContextFile,
 	resolveCopilotHome,
-	scanSkillsFromDir,
 } from "./helpers";
 
 const PROVIDER_ID = "github";
@@ -61,24 +57,6 @@ const PRIORITY = 30;
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
-
-	const copilotInstructionsPath = getProjectPath(ctx, "github", "copilot-instructions.md");
-	if (copilotInstructionsPath) {
-		const { content, warning } = await readContextFile(copilotInstructionsPath);
-		if (warning) warnings.push(warning);
-		if (content) {
-			const fileDir = path.dirname(copilotInstructionsPath);
-			const depth = calculateDepth(ctx.cwd, fileDir, path.sep);
-
-			items.push({
-				path: copilotInstructionsPath,
-				content,
-				level: "project",
-				depth,
-				_source: createSourceMeta(PROVIDER_ID, copilotInstructionsPath, "project"),
-			});
-		}
-	}
 
 	// User-global instructions (~/.copilot/copilot-instructions.md), applied across all repos.
 	const userInstructionsPath = path.join(resolveCopilotHome(ctx.home), "copilot-instructions.md");
@@ -116,21 +94,9 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 // Instructions
 // =============================================================================
 
-async function loadInstructions(ctx: LoadContext): Promise<LoadResult<Instruction>> {
+async function loadInstructions(_ctx: LoadContext): Promise<LoadResult<Instruction>> {
 	const items: Instruction[] = [];
 	const warnings: string[] = [];
-
-	const instructionsDir = getProjectPath(ctx, "github", "instructions");
-	if (instructionsDir) {
-		// Path-specific instructions live "within or below" .github/instructions/ → recurse.
-		const result = await loadFilesFromDir<Instruction>(instructionsDir, PROVIDER_ID, "project", {
-			extensions: ["md"],
-			transform: transformInstruction,
-			recursive: true,
-		});
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
 
 	// Each COPILOT_CUSTOM_INSTRUCTIONS_DIRS entry contributes <dir>/.github/instructions/**/*.instructions.md.
 	for (const dir of copilotCustomInstructionDirs()) {
@@ -174,11 +140,11 @@ function transformInstruction(name: string, content: string, filePath: string, s
 // Rules
 // =============================================================================
 
-async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
+async function loadRules(_ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const items: Rule[] = [];
 	const warnings: string[] = [];
 
-	const load = async (dir: string, level: "user" | "project") => {
+	const load = async (dir: string, level: "user") => {
 		const applyToWarnings: string[] = [];
 		const result = await loadFilesFromDir<Rule>(dir, PROVIDER_ID, level, {
 			extensions: ["md"],
@@ -190,11 +156,6 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 		if (result.warnings) warnings.push(...result.warnings);
 		warnings.push(...applyToWarnings);
 	};
-
-	const instructionsDir = getProjectPath(ctx, "github", "instructions");
-	if (instructionsDir) {
-		await load(instructionsDir, "project");
-	}
 
 	for (const dir of copilotCustomInstructionDirs()) {
 		await load(path.join(dir, ".github", "instructions"), "user");
@@ -250,20 +211,6 @@ function describeInstructionRule(globs: string[] | undefined): string {
 }
 
 // =============================================================================
-// Prompts
-// =============================================================================
-
-async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
-	// `.github/prompts/*.prompt.md` is the VS Code Copilot prompt-file convention (the
-	// Copilot CLI has no prompt-file feature of its own); surface them as slash commands.
-	const promptsDir = getProjectPath(ctx, "github", "prompts");
-	if (!promptsDir) return { items: [], warnings: [] };
-
-	return loadFilesFromDir<Prompt>(promptsDir, PROVIDER_ID, "project", {
-		extensions: ["md"],
-		transform: transformPrompt,
-	});
-}
 
 function transformPrompt(name: string, content: string, filePath: string, source: SourceMeta): Prompt | null {
 	// Prompt files are `*.prompt.md`; ignore other markdown that may share the dir.
@@ -280,32 +227,6 @@ function transformPrompt(name: string, content: string, filePath: string, source
 function copilotCustomInstructionDirs(): string[] {
 	const raw = process.env.COPILOT_CUSTOM_INSTRUCTIONS_DIRS;
 	return raw ? parseCSV(raw) : [];
-}
-
-// =============================================================================
-// Skills
-// =============================================================================
-
-/**
- * Load skills from `.github/skills/<name>/SKILL.md`.
- *
- * GitHub documents this layout for Copilot Agent Skills and matches the
- * non-recursive shape `scanSkillsFromDir` already expects. `requireDescription`
- * is on to match the Agent Skills spec (name + description are mandatory) and
- * the sibling `native`/`veyyon-plugins` providers.
- *
- * @see https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills
- */
-async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
-	const skillsDir = getProjectPath(ctx, "github", "skills");
-	if (!skillsDir) return { items: [], warnings: [] };
-
-	return scanSkillsFromDir({
-		dir: skillsDir,
-		providerId: PROVIDER_ID,
-		level: "project",
-		requireDescription: true,
-	});
 }
 
 // =============================================================================
@@ -335,19 +256,4 @@ registerProvider<Rule>(ruleCapability.id, {
 	description: "Load *.instructions.md from .github/instructions/ as Copilot-scoped rules",
 	priority: PRIORITY,
 	load: loadRules,
-});
-registerProvider<Skill>(skillCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load skills from .github/skills/*/SKILL.md",
-	priority: PRIORITY,
-	load: loadSkills,
-});
-
-registerProvider<Prompt>(promptCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load *.prompt.md from .github/prompts/ (VS Code Copilot prompt files)",
-	priority: PRIORITY,
-	load: loadPrompts,
 });

@@ -400,4 +400,3 @@ registerProvider(slashCommandCapability.id, {
 	priority: PRIORITY,
 	load: loadSlashCommands,
 });
-

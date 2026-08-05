@@ -25,11 +25,9 @@ import { type MCPServer, mcpCapability } from "../capability/mcp";
 import type { LoadContext, LoadResult } from "../capability/types";
 import {
 	buildExtensionModuleItems,
-	calculateDepth,
 	createSourceMeta,
 	discoverExtensionModulePaths,
 	expandEnvVarsDeep,
-	getProjectPath,
 	getUserPath,
 	readContextFile,
 } from "./helpers";
@@ -49,15 +47,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	// User-level: ~/.gemini/settings.json → mcpServers
 	const userPath = getUserPath(ctx, "gemini", "settings.json");
 	if (userPath) {
-		const result = await loadMCPFromSettings(ctx, userPath, "user");
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
-
-	// Project-level: .gemini/settings.json → mcpServers
-	const projectPath = getProjectPath(ctx, "gemini", "settings.json");
-	if (projectPath) {
-		const result = await loadMCPFromSettings(ctx, projectPath, "project");
+		const result = await loadMCPFromSettings(ctx, userPath);
 		items.push(...result.items);
 		if (result.warnings) warnings.push(...result.warnings);
 	}
@@ -65,11 +55,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	return { items, warnings };
 }
 
-async function loadMCPFromSettings(
-	_ctx: LoadContext,
-	path: string,
-	level: "user" | "project",
-): Promise<LoadResult<MCPServer>> {
+async function loadMCPFromSettings(_ctx: LoadContext, path: string): Promise<LoadResult<MCPServer>> {
 	const items: MCPServer[] = [];
 	const warnings: string[] = [];
 
@@ -109,7 +95,7 @@ async function loadMCPFromSettings(
 				? (raw.type as "stdio" | "sse" | "http")
 				: undefined,
 			timeout: typeof raw.timeout === "number" ? raw.timeout : undefined,
-			_source: createSourceMeta(PROVIDER_ID, path, level),
+			_source: createSourceMeta(PROVIDER_ID, path, "user"),
 		} as MCPServer);
 	}
 
@@ -150,24 +136,6 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 		}
 	}
 
-	const projectGeminiMd = getProjectPath(ctx, "gemini", "GEMINI.md");
-	if (projectGeminiMd) {
-		const { content, warning } = await readContextFile(projectGeminiMd);
-		if (warning) warnings.push(warning);
-		if (content) {
-			const projectBase = getProjectPath(ctx, "gemini", "");
-			const depth = projectBase ? calculateDepth(ctx.cwd, projectBase, path.sep) : 0;
-
-			items.push({
-				path: projectGeminiMd,
-				content,
-				level: "project",
-				depth,
-				_source: createSourceMeta(PROVIDER_ID, projectGeminiMd, "project"),
-			});
-		}
-	}
-
 	return { items, warnings };
 }
 
@@ -183,14 +151,6 @@ async function loadExtensions(ctx: LoadContext): Promise<LoadResult<ManifestExte
 	const userExtPath = getUserPath(ctx, "gemini", "extensions");
 	if (userExtPath) {
 		const result = await loadExtensionsFromDir(userExtPath, "user");
-		items.push(...result.items);
-		if (result.warnings) warnings.push(...result.warnings);
-	}
-
-	// Project-level: .gemini/extensions/*/gemini-extension.json
-	const projectExtPath = getProjectPath(ctx, "gemini", "extensions");
-	if (projectExtPath) {
-		const result = await loadExtensionsFromDir(projectExtPath, "project");
 		items.push(...result.items);
 		if (result.warnings) warnings.push(...result.warnings);
 	}
@@ -244,16 +204,8 @@ async function loadExtensionsFromDir(
 
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
 	const userExtensionsDir = getUserPath(ctx, "gemini", "extensions");
-	const projectExtensionsDir = getProjectPath(ctx, "gemini", "extensions");
-
-	const [userPaths, projectPaths] = await Promise.all([
-		userExtensionsDir ? discoverExtensionModulePaths(userExtensionsDir) : Promise.resolve([]),
-		projectExtensionsDir ? discoverExtensionModulePaths(projectExtensionsDir) : Promise.resolve([]),
-	]);
-
-	const items = buildExtensionModuleItems(PROVIDER_ID, userPaths, projectPaths);
-
-	return { items, warnings: [] };
+	const userPaths = userExtensionsDir ? await discoverExtensionModulePaths(userExtensionsDir) : [];
+	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
 
 // =============================================================================
@@ -291,4 +243,3 @@ registerProvider(extensionModuleCapability.id, {
 	priority: PRIORITY,
 	load: loadExtensionModules,
 });
-
