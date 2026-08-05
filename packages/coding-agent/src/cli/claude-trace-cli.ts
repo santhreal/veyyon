@@ -669,13 +669,18 @@ export class ClaudeMessagesProxy {
 		clientTls.on("end", () => {
 			try {
 				requestParser.finish();
-			} catch {}
+			} catch {
+				// The peer closed mid-message, so the parser has a partial frame. There is
+				// nothing left to capture and the socket is being torn down either way.
+			}
 			upstreamTls.end();
 		});
 		upstreamTls.on("end", () => {
 			try {
 				flushResponses(responseParser.finish());
-			} catch {}
+			} catch {
+				// Same partial-frame case on the response side of the same closing pair.
+			}
 			clientTls.end();
 		});
 		clientTls.on("error", () => upstreamTls.destroy());
@@ -686,14 +691,22 @@ export class ClaudeMessagesProxy {
 async function shutdownPty(session: PtySession, runPromise: Promise<unknown>): Promise<void> {
 	try {
 		session.write("\x03");
-	} catch {}
+	} catch {
+		// Sending Ctrl-C to a PTY that already exited; the kill below is the
+		// guarantee this function actually makes.
+	}
 	await Bun.sleep(100);
 	try {
 		session.kill();
-	} catch {}
+	} catch {
+		// Killing an already-dead session is the expected race in shutdown.
+	}
 	try {
 		await runPromise;
-	} catch {}
+	} catch {
+		// This awaits the run we just interrupted, so it rejecting is the intended
+		// outcome of the two statements above.
+	}
 }
 
 export async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}): Promise<CapturedMessagesExchange> {
@@ -714,7 +727,9 @@ export async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}
 	terminal.onData(data => {
 		try {
 			session.write(data);
-		} catch {}
+		} catch {
+			// Terminal output arriving after the PTY closed; the capture is finished.
+		}
 	});
 	const command = args.command ?? DEFAULT_COMMAND;
 	const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;

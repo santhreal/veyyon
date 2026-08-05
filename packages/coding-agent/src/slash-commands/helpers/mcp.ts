@@ -246,8 +246,14 @@ async function collectConnectedMcpLines(
 				collect(name, connection),
 			);
 			lines.push(...collected);
-		} catch {
-			// unreachable server: skip silently
+		} catch (error) {
+			// The server is simply absent from the listing, which reads exactly like a
+			// server that is up and has nothing to list. Name it so an operator whose
+			// MCP server stopped answering can tell the two apart.
+			logger.warn("MCP server could not be queried; it is missing from this listing", {
+				name,
+				error: errorMessage(error),
+			});
 		}
 	}
 	return lines;
@@ -358,7 +364,7 @@ async function handleSmitherySearchCommand(rest: string, runtime: SlashCommandRu
 		const message = errorMessage(err);
 		if (AIError.is(AIError.classify(err), AIError.Flag.AuthFailed)) {
 			return usage(
-				"Smithery authentication required. Run /mcp smithery-login in the TUI client or add an API key to ~/.veyyon/profiles/default/agent/smithery.json.",
+				"Smithery authentication required. Run /mcp smithery-login in the TUI client or add an API key to smithery.json in the active profile's agent directory (~/.veyyon/profiles/<name>/agent/smithery.json).",
 				runtime,
 			);
 		}

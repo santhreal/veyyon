@@ -86,10 +86,38 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 
 	{
 		name: "setup",
-		aliases: ["providers"],
 		description: "Open provider setup",
 		allowArgs: true,
 		subcommands: [{ name: "providers", description: "Configure sign-in and web search providers" }],
+	},
+
+	// `/providers` is its own command, NOT an alias of `/setup`. It used to be one, so typing it
+	// opened the onboarding wizard's provider scene: one row per provider with a bare "logged in"
+	// tag, no account identity, and no way to see which of several stored credentials the session
+	// was actually spending. The account manager is the answer to that question, so the name a
+	// user reaches for now leads there and `/setup` keeps the wizard.
+	{
+		name: "providers",
+		description: "Manage accounts for every provider",
+	},
+
+	{
+		name: "account",
+		textMode: true,
+		description: "Accounts this session is using, per provider",
+		acpDescription: "Show the accounts this session is using",
+		acpInputHint: "[status|manager|switch|name|refresh|usage|logout|add]",
+		allowArgs: true,
+		subcommands: [
+			{ name: "status", description: "Show the account each provider is serving this session with" },
+			{ name: "manager", description: "Open the account manager" },
+			{ name: "switch", description: "Open the account manager focused on one provider", usage: "[provider]" },
+			{ name: "name", description: "Name this session's active account for its provider", usage: "<text>" },
+			{ name: "refresh", description: "Re-probe the credentials this session is using" },
+			{ name: "usage", description: "Show provider usage and limits" },
+			{ name: "logout", description: "Log an account out", usage: "[provider]" },
+			{ name: "add", description: "Add another account for a provider", usage: "[provider]" },
+		],
 	},
 
 	{
@@ -120,7 +148,6 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{ name: "pause", description: "Pause the current goal" },
 			{ name: "resume", description: "Resume a paused goal" },
 			{ name: "drop", description: "Drop the current goal" },
-			{ name: "budget", description: "Adjust the token budget", usage: "<N|off>" },
 		],
 		inlineHint: "[objective]",
 		allowArgs: true,
@@ -187,6 +214,25 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
+		name: "permissions",
+		textMode: true,
+		aliases: ["approval"],
+		description:
+			"Set how much the agent may do unasked, for this session only (the saved default lives in /settings)",
+		acpDescription: "Set the tool approval mode for this session",
+		acpInputHint: "[ask|ask-command|auto|yolo|plan|reset]",
+		subcommands: [
+			{ name: "ask", description: "Ask about everything, reads included" },
+			{ name: "ask-command", description: "Reads and edits run; anything that executes asks" },
+			{ name: "auto", description: "Every tier runs, with the guards still on (the default)" },
+			{ name: "yolo", description: "No prompts except blatantly destructive commands" },
+			{ name: "plan", description: "Read-only planning" },
+			{ name: "reset", description: "Drop the session override and use the saved default" },
+		],
+		allowArgs: true,
+	},
+
+	{
 		name: "yolo",
 		textMode: true,
 		description: "Remove ALL permission prompts for this session (explicit deny and plan mode still block)",
@@ -234,7 +280,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Store a credential the agent can use without ever seeing it",
 		acpDescription: "Manage credentials; new values are accepted only from environment variables",
 		allowArgs: true,
-		inlineHint: "[add|list|rm|extend|log] [name] [--from-env VAR] [--ttl 7d] [--scope profile]",
+		inlineHint: "<value> | manager | --from-env VAR",
 		acpInputHint: "add <name> --from-env <VAR>",
 		subcommands: [
 			{
@@ -243,7 +289,11 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 				usage: "/secret add <name> [--from-env <VAR>] [--ttl 7d] [--scope profile|project|global]",
 			},
 			{ name: "list", description: "Show active secrets, never their values", usage: "/secret list" },
-			{ name: "rm", description: "Remove a stored secret", usage: "/secret rm <name>" },
+			{
+				name: "rm",
+				description: "Remove a stored secret",
+				usage: "/secret rm <name> [--scope profile|project|global]",
+			},
 			{
 				name: "extend",
 				description: "Give a stored secret a fresh lifetime",
@@ -501,14 +551,14 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	{
 		name: "compact",
 		textMode: true,
-		description: "Manually compact the session context",
-		acpDescription: "Compact the conversation",
+		description: "Summarize session context in place",
+		acpDescription: "Summarize the conversation in place",
 		subcommands: COMPACT_MODES.map(mode => ({
 			name: mode.name,
 			description: mode.description,
 			usage: "[focus]",
 		})),
-		acpInputHint: `[${COMPACT_MODES.map(mode => mode.name).join("|")}] [focus]`,
+		acpInputHint: "[summary] [focus]",
 		allowArgs: true,
 	},
 

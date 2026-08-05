@@ -29,7 +29,6 @@ export interface SSHCommandArgs {
 		key?: string;
 		desc?: string;
 		compat?: boolean;
-		scope?: "project" | "user";
 	};
 }
 
@@ -95,12 +94,11 @@ async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 	if (cmd.flags.desc) hostConfig.description = cmd.flags.desc;
 	if (cmd.flags.compat) hostConfig.compat = true;
 
-	const scope = cmd.flags.scope ?? "project";
-	const filePath = getSSHConfigPath(scope);
+	const filePath = getSSHConfigPath();
 
 	try {
 		await addSSHHost(filePath, name, hostConfig);
-		process.stdout.write(chalk.green(`Added SSH host "${name}" to ${scope} config\n`));
+		process.stdout.write(chalk.green(`Added SSH host "${name}"\n`));
 	} catch (err) {
 		process.stderr.write(chalk.red(`Error: ${errorMessage(err)}\n`));
 		process.exitCode = 1;
@@ -111,17 +109,16 @@ async function handleRemove(cmd: SSHCommandArgs): Promise<void> {
 	const name = cmd.args[0];
 	if (!name) {
 		process.stderr.write(chalk.red("Error: Host name required\n"));
-		process.stderr.write(chalk.dim("Usage: veyyon ssh remove <name> [--scope project|user]\n"));
+		process.stderr.write(chalk.dim("Usage: veyyon ssh remove <name>\n"));
 		process.exitCode = EXIT_USAGE;
 		return;
 	}
 
-	const scope = cmd.flags.scope ?? "project";
-	const filePath = getSSHConfigPath(scope);
+	const filePath = getSSHConfigPath();
 
 	try {
 		await removeSSHHost(filePath, name);
-		process.stdout.write(chalk.green(`Removed SSH host "${name}" from ${scope} config\n`));
+		process.stdout.write(chalk.green(`Removed SSH host "${name}"\n`));
 	} catch (err) {
 		process.stderr.write(chalk.red(`Error: ${errorMessage(err)}\n`));
 		process.exitCode = 1;
@@ -129,42 +126,23 @@ async function handleRemove(cmd: SSHCommandArgs): Promise<void> {
 }
 
 async function handleList(cmd: SSHCommandArgs): Promise<void> {
-	const projectPath = getSSHConfigPath("project");
-	const userPath = getSSHConfigPath("user");
-
-	const [projectConfig, userConfig] = await Promise.all([readSSHConfigFile(projectPath), readSSHConfigFile(userPath)]);
-
-	const projectHosts = projectConfig.hosts ?? {};
-	const userHosts = userConfig.hosts ?? {};
+	const config = await readSSHConfigFile(getSSHConfigPath());
+	const hosts = config.hosts ?? {};
 
 	if (cmd.flags.json) {
-		process.stdout.write(JSON.stringify({ project: projectHosts, user: userHosts }, null, 2));
+		process.stdout.write(JSON.stringify({ hosts }, null, 2));
 		process.stdout.write("\n");
 		return;
 	}
 
-	const hasProject = Object.keys(projectHosts).length > 0;
-	const hasUser = Object.keys(userHosts).length > 0;
-
-	if (!hasProject && !hasUser) {
+	if (Object.keys(hosts).length === 0) {
 		process.stdout.write(chalk.dim("No SSH hosts configured\n"));
 		process.stdout.write(chalk.dim("Add one with: veyyon ssh add <name> --host <address>\n"));
 		return;
 	}
 
-	if (hasProject) {
-		process.stdout.write(chalk.bold("Project SSH Hosts (.veyyon/ssh.json):\n"));
-		printHosts(projectHosts);
-	}
-
-	if (hasProject && hasUser) {
-		process.stdout.write("\n");
-	}
-
-	if (hasUser) {
-		process.stdout.write(chalk.bold("User SSH Hosts (~/.veyyon/profiles/<name>/agent/ssh.json):\n"));
-		printHosts(userHosts);
-	}
+	process.stdout.write(chalk.bold("SSH Hosts:\n"));
+	printHosts(hosts);
 }
 
 // =============================================================================

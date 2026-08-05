@@ -40,6 +40,7 @@ export default class Models extends Command {
 		`# List one provider's models (any provider name works)\n  ${APP_NAME} models openai-codex`,
 		`# Find models by substring\n  ${APP_NAME} models find minimax`,
 		`# Force a fresh catalog fetch (replaces rm -rf ~/.veyyon/models.db)\n  ${APP_NAME} models refresh`,
+		`# Refresh only one provider's catalog\n  ${APP_NAME} models refresh google-antigravity`,
 		`# Machine-readable output\n  ${APP_NAME} models --json`,
 	];
 
