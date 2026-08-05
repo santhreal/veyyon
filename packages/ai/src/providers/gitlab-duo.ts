@@ -199,7 +199,7 @@ async function getDirectAccessToken(
 	});
 
 	if (!response.ok) {
-		const detail = await response.text();
+		const detail = AIError.boundProviderErrorDetail(await response.text());
 		if (response.status === 403) {
 			throw new AIError.ProviderResponseError(
 				`GitLab Duo access denied. Ensure Duo is enabled for this account. ${detail}`,

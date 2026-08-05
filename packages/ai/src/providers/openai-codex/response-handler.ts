@@ -1,5 +1,5 @@
 import { toNumber } from "@veyyon/catalog/utils";
-import { ProviderHttpError } from "../../error";
+import { boundProviderErrorDetail, ProviderHttpError } from "../../error";
 
 export type CodexRateLimit = {
 	used_percent?: number;
@@ -86,7 +86,11 @@ export async function parseCodexError(response: Response): Promise<CodexErrorInf
 	}
 
 	return {
-		message,
+		// Bounded here rather than at each assignment above: `message` starts as
+		// the raw body and stays raw whenever the body is not a Codex JSON
+		// envelope, which is exactly the proxy-HTML case. `raw` is left intact
+		// because it feeds classification, not a rendered message.
+		message: boundProviderErrorDetail(message),
 		status: response.status,
 		code: errorCode,
 		friendlyMessage,
