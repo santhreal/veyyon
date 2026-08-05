@@ -258,7 +258,10 @@ describe("every script under scripts/ has an owner", () => {
 	it("reads a header out of each comment syntax", () => {
 		const python = headerOf("scripts/tool_io.py", SOURCES.get("scripts/tool_io.py") ?? "");
 		expect(python).toContain("Shared session-log reader");
-		const typescript = headerOf("scripts/check-spoofed-versions.ts", SOURCES.get("scripts/check-spoofed-versions.ts") ?? "");
+		const typescript = headerOf(
+			"scripts/check-spoofed-versions.ts",
+			SOURCES.get("scripts/check-spoofed-versions.ts") ?? "",
+		);
 		expect(typescript).toContain("spoofed external tool versions");
 		const shell = headerOf("scripts/demos/launch.sh", SOURCES.get("scripts/demos/launch.sh") ?? "");
 		expect(shell).toContain("demo recording");
