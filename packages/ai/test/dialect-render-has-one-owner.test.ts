@@ -23,11 +23,35 @@
 import { describe, expect, it } from "bun:test";
 import { isEffort, THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import anthropicDialect from "../src/dialect/anthropic";
+import deepseekDialect from "../src/dialect/deepseek";
+import glmDialect from "../src/dialect/glm";
+import hermesDialect from "../src/dialect/hermes";
+import kimiDialect from "../src/dialect/kimi";
 import minimaxDialect from "../src/dialect/minimax";
-import { renderFunctionResults, renderInvoke, renderInvokes, renderInvokeToolCall } from "../src/dialect/rendering";
+import piNativeDialect from "../src/dialect/pi-native";
+import qwen3Dialect from "../src/dialect/qwen3";
+import {
+	renderFunctionResults,
+	renderInvoke,
+	renderInvokes,
+	renderInvokeToolCall,
+	renderThinkTags,
+	renderToolResponseResults,
+	renderXmlThinkingTags,
+} from "../src/dialect/rendering";
 import xmlDialect from "../src/dialect/xml";
 import type { Tool, ToolCall } from "../src/types";
 import { isServiceTier, SERVICE_TIERS } from "../src/types";
+
+/** The dialects whose thinking is the bare `<think>` envelope, so all six must share one renderer. */
+const THINK_TAG_DIALECTS = [
+	["qwen3", qwen3Dialect],
+	["kimi", kimiDialect],
+	["pi-native", piNativeDialect],
+	["hermes", hermesDialect],
+	["glm", glmDialect],
+	["deepseek", deepseekDialect],
+] as const;
 
 const READ_TOOL: Tool = {
 	name: "read",
@@ -214,36 +238,33 @@ describe("the service-tier guard", () => {
 
 describe("the dialect modules", () => {
 	/**
-	 * The lock for the renderers. A reintroduced private copy would pass every test above,
-	 * because it would render the same bytes on the day it was written. That is exactly the
-	 * state the three dialects were already in.
+	 * The lock for the renderers, asserted as function IDENTITY rather than as the absence of a
+	 * `function renderInvoke(` string in the source.
+	 *
+	 * A reintroduced private copy renders the same bytes on the day it is written -- which is exactly
+	 * the state the three dialects were already in, and why every byte assertion above stayed green
+	 * through it -- but it is a different function OBJECT. Identity separates the two the moment the
+	 * copy exists rather than on the day it drifts, and it does so without caring how the copy is
+	 * spelled, which a `not.toContain("function renderInvoke(")` scan does.
 	 */
-	it("define no private copy of the shared renderers", async () => {
-		for (const name of ["anthropic.ts", "minimax.ts", "xml.ts"]) {
-			const source = await Bun.file(new URL(`../src/dialect/${name}`, import.meta.url)).text();
-
-			expect(source).not.toContain("function renderInvoke(");
-			expect(source).not.toContain("function renderInvokes(");
-			expect(source).not.toContain("function renderToolCall(");
-			expect(source).not.toContain("function renderThinking(");
-			expect(source).not.toContain("function renderTranscript(");
-			expect(source).toContain('from "./rendering"');
+	it("expose the shared renderers themselves, not copies of them", () => {
+		for (const dialect of [anthropicDialect, minimaxDialect, xmlDialect]) {
+			expect(dialect.renderToolCall, dialect.dialect).toBe(renderInvokeToolCall);
+			expect(dialect.renderThinking, dialect.dialect).toBe(renderXmlThinkingTags);
 		}
-		// And `<function_results>` is built in one place, not in the two dialects that emit it.
-		for (const name of ["anthropic.ts", "minimax.ts"]) {
-			const source = await Bun.file(new URL(`../src/dialect/${name}`, import.meta.url)).text();
-
-			expect(source).not.toContain("<function_results>");
-		}
+		// `<function_results>` is built in one place. `xml` deliberately answers with the bare
+		// `<tool_response>` form instead, and asserting that difference is what keeps the two
+		// equalities above from being satisfiable by every dialect sharing one renderer by accident.
+		expect(anthropicDialect.renderToolResults).toBe(renderFunctionResults);
+		expect(minimaxDialect.renderToolResults).toBe(renderFunctionResults);
+		expect(xmlDialect.renderToolResults).toBe(renderToolResponseResults);
+		expect(xmlDialect.renderToolResults).not.toBe(renderFunctionResults);
 	});
 
-	/** Every one of the pass-through `renderThinking` wrappers is gone, in all nine dialects. */
-	it("reference the shared thinking renderer directly", async () => {
-		for (const name of ["qwen3", "kimi", "pi-native", "hermes", "glm", "deepseek"]) {
-			const source = await Bun.file(new URL(`../src/dialect/${name}.ts`, import.meta.url)).text();
-
-			expect(source).not.toContain("function renderThinking(");
-			expect(source).toContain("renderThinking: renderThinkTags,");
+	/** Every one of the pass-through `renderThinking` wrappers is gone, in all six dialects. */
+	it("reference the shared thinking renderer directly", () => {
+		for (const [name, dialect] of THINK_TAG_DIALECTS) {
+			expect(dialect.renderThinking, name).toBe(renderThinkTags);
 		}
 	});
 

@@ -21,6 +21,7 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { GoogleOAuthFlow } from "@veyyon/ai/oauth/google-oauth-shared";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import {
 	GOOGLE_BASE_OAUTH_SCOPES,
 	GOOGLE_OAUTH_AUTH_ENDPOINT,
@@ -244,7 +245,8 @@ describe("the Google OAuth values have one owner", () => {
 	 */
 	it("imports nothing", async () => {
 		const owner = await Bun.file(path.resolve(import.meta.dir, OWNER_REL)).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
+		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 	});
 });

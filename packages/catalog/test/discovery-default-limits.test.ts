@@ -17,6 +17,7 @@
 
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import {
 	AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW,
 	AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
@@ -196,7 +197,8 @@ describe("the discovery limits have one owner", () => {
 	 */
 	it("imports nothing", async () => {
 		const owner = await Bun.file(path.join(DISCOVERY, "default-limits.ts")).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
+		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 	});
 });

@@ -38,6 +38,7 @@ import {
 import { AI_PROMPTS } from "@veyyon/ai/prompts/registry";
 import type { Tool } from "@veyyon/ai/types";
 import { validateToolArguments } from "@veyyon/ai/utils/validation";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { z } from "zod/v4";
 
 const AI_SRC = path.resolve(import.meta.dir, "../src");
@@ -482,8 +483,9 @@ describe("the vocabulary has one owner", () => {
 	 */
 	it("imports nothing", async () => {
 		const owner = await Bun.file(path.join(AI_SRC, OWNER_REL)).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
+		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 	});
 
 	/**

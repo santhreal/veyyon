@@ -21,6 +21,7 @@ import {
 	AGENT_VIEW_DATA_CHANGE_COALESCE_MS,
 	AGENT_VIEW_LEFT_TAP_WINDOW_MS,
 } from "@veyyon/coding-agent/modes/components/agent-view-timings";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC_DIR = path.resolve(import.meta.dir, "../src");
 const COMPONENTS_DIR = path.join(SRC_DIR, "modes/components");
@@ -165,8 +166,9 @@ describe("timing ownership", () => {
 	 */
 	it("imports nothing, so a timing costs one module and never the theme engine", async () => {
 		const owner = await Bun.file(OWNER).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
+		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 		const statusDisplay = await Bun.file(path.join(COMPONENTS_DIR, "agent-status-display.ts")).text();
 		expect(statusDisplay).not.toContain("AGENT_VIEW_AGE_TICK_MS");
 	});

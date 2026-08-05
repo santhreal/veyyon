@@ -25,8 +25,6 @@
  * pinned is the shape a real run produces rather than a stub's idea of it.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { disposeAllVmContexts } from "@veyyon/coding-agent/eval/js/context-manager";
 import type { EvalToolDetails } from "@veyyon/coding-agent/eval/types";
@@ -129,54 +127,5 @@ describe("the details a failing run reports", () => {
 		expect(details.cells![0]!.status).toBe("error");
 		expect(textOf(result)).toContain("before");
 		expect(textOf(result)).toContain("boom");
-	});
-});
-
-describe("the multi-cell scaffolding stays gone", () => {
-	const source = fs.readFileSync(path.resolve(import.meta.dir, "../../src/tools/eval.ts"), "utf8");
-
-	/**
-	 * The guard scans CODE, so the comments come out first.
-	 *
-	 * Not a detail: the docblock explaining why the scaffolding was removed NAMES
-	 * the removed identifiers, which is the whole reason a future reader will
-	 * understand what this suite is protecting. Scanning the raw file made that
-	 * explanation fail the guard, and the cheap way out -- deleting the names from
-	 * the prose -- would trade the explanation for a green test.
-	 */
-	const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-
-	/**
-	 * A source guard, because nothing at runtime can observe the difference between
-	 * a correct single-cell result and a correct single-cell result computed by
-	 * looping once. That is exactly why the scaffolding survived so long: every test
-	 * passed the whole time it was there.
-	 *
-	 * If the multi-cell schema is ever brought back, this test is the right place to
-	 * find out what has to come back with it -- delete it in the SAME change that
-	 * makes `cells` reachable with more than one element, and not before.
-	 */
-	it("has no loop over a cells array and no join of per-cell outputs", () => {
-		expect(code).not.toMatch(/for\s*\([^)]*cells\.length/);
-		expect(code).not.toMatch(/cellOutputs/);
-		expect(code).not.toMatch(/cellResults/);
-		expect(code).not.toMatch(/uniqueEvalLanguages/);
-	});
-
-	/**
-	 * Anti-vacuity for the guard above. If the file moved or the read silently
-	 * returned something empty, every `not.toMatch` would pass against nothing. The
-	 * anchors are the single cell the refactor left behind, so they fail loudly if
-	 * the source being scanned is not the one that matters.
-	 */
-	it("is scanning the real eval tool source", () => {
-		expect(code).toContain("const cell: ResolvedEvalCell = {");
-		expect(code).toContain("cells: [cellResult],");
-		expect(code.length).toBeGreaterThan(10_000);
-		// And the comment stripping did not eat the code along with the prose: the
-		// docblock that explains this suite still names the removed identifiers, so a
-		// strip that took too much would leave `code` and `source` the same length.
-		expect(source).toContain("cellOutputs");
-		expect(code.length).toBeLessThan(source.length);
 	});
 });

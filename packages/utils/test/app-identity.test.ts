@@ -17,6 +17,7 @@ import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { APP_DIRECTORY_SLUG, APP_DISPLAY_NAME } from "../src/app-identity";
 import { APP_NAME } from "../src/dirs";
+import { moduleSpecifiersIn } from "../src/module-reach";
 
 const PACKAGES = path.resolve(import.meta.dir, "../..");
 
@@ -153,7 +154,8 @@ describe("the product name has one owner per form", () => {
 	 */
 	it("imports nothing", async () => {
 		const owner = await Bun.file(path.join(PACKAGES, "utils/src/app-identity.ts")).text();
-		expect(owner).not.toMatch(/^\s*import\s/m);
-		expect(owner).not.toMatch(/\bfrom\s+"/);
+		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
+		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
+		expect(moduleSpecifiersIn(owner)).toEqual([]);
 	});
 });

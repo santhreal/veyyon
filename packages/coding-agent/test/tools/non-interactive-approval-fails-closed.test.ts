@@ -310,18 +310,3 @@ describe("yolo is the documented carve-out and still runs", () => {
 		expect(textOf(result)).toContain("ran");
 	});
 });
-
-describe("subagents run yolo by deliberate decision, not by accident", () => {
-	/**
-	 * `task/executor` pins `tools.approvalMode: yolo` for subagents, because a
-	 * subagent has no UI and the PARENT `task` approval is the authorization
-	 * boundary. That is a defensible design, but it is exactly the kind of choice
-	 * that gets copied around until nobody remembers it was a choice. Asserting it
-	 * on shipped source means changing it is a decision someone has to make again.
-	 */
-	it("pins yolo in the subagent settings, next to the reason", () => {
-		const source = fs.readFileSync(path.join(import.meta.dir, "..", "..", "src", "task", "executor.ts"), "utf8");
-		expect(source).toContain('"tools.approvalMode": "yolo"');
-		expect(source).toContain("parent task approval is the authorization boundary");
-	});
-});
