@@ -1019,7 +1019,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		this.#inspectImageEnabled = session.settings.get("inspect_image.enabled");
 		this.description = prompt.render(toolsPrompts["tools/read"].text, {
 			DEFAULT_LIMIT: String(this.#defaultLimit),
-			DEFAULT_MAX_LINES: String(DEFAULT_MAX_LINES),
 			IS_HL_MODE: displayMode.hashLines,
 			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
 			INSPECT_IMAGE_ENABLED: this.#inspectImageEnabled,

@@ -15,7 +15,6 @@ import {
 	createRuntimeStore,
 	currentResults,
 	findBaselineMetric,
-	findBaselineRunNumber,
 	findBestKeptMetric,
 	reconstructControlState,
 } from "./state";
@@ -324,7 +323,6 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const basePrompt = Array.isArray(event.systemPrompt) ? event.systemPrompt.join("\n\n") : "";
 		const currentSegmentResults = currentResults(state.results, state.currentSegment);
 		const baselineMetric = findBaselineMetric(state.results, state.currentSegment);
-		const baselineRunNumber = findBaselineRunNumber(state.results, state.currentSegment);
 		const bestMetric = findBestKeptMetric(state.results, state.currentSegment, state.bestDirection);
 		const bestResult = bestKeptResult(state.results, state.currentSegment, state.bestDirection);
 		const goal = runtime.goal ?? state.goal ?? state.name ?? "";
@@ -379,7 +377,6 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 					has_goal: goal.trim().length > 0,
 					goal,
 					working_dir: ctx.cwd,
-					default_metric_name: state.metricName,
 					metric_name: state.metricName,
 					has_branch: Boolean(state.branch),
 					branch: state.branch,
@@ -391,7 +388,6 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 					current_segment_run_count: currentSegmentResults.length,
 					has_baseline_metric: baselineMetric !== null,
 					baseline_metric_display: formatNum(baselineMetric, state.metricUnit),
-					baseline_run_number: baselineRunNumber,
 					has_best_result: bestResult !== null && bestMetric !== null,
 					best_metric_display: bestMetric !== null ? formatNum(bestMetric, state.metricUnit) : "-",
 					best_run_number: bestResult ? (bestResult.runNumber ?? state.results.indexOf(bestResult) + 1) : null,

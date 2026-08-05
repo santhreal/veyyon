@@ -25,8 +25,9 @@
  * settings singleton exists and reads `config.yml` directly.
  *
  * So the walk covers every workspace package, and a key counts as read if its literal
- * appears, or its group is read by `getGroup` and its own field name is used somewhere, or
- * it is listed below as one the code assembles at runtime.
+ * appears, or its group is read by `getGroup` AND its field is reached off an object as
+ * `.field` or bound out of one by destructuring, or it is listed below as one the code
+ * assembles at runtime.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -84,26 +85,38 @@ async function declaredKeys(): Promise<string[]> {
 	return keys;
 }
 
-/** All non-test source across every workspace package, joined, excluding the schema itself. */
-async function productionSourceText(): Promise<string> {
+/** All non-test source across every workspace package, excluding the schema itself. */
+async function productionFiles(): Promise<Array<{ file: string; text: string }>> {
 	const packages = await readdir(PACKAGES_DIR, { withFileTypes: true });
-	const parts: string[] = [];
+	const out: Array<{ file: string; text: string }> = [];
 	for (const pkg of packages) {
 		if (!pkg.isDirectory()) continue;
 		for (const file of await typescriptFiles(path.join(PACKAGES_DIR, pkg.name, "src"))) {
 			if (file.includes(`${path.sep}settings-domains${path.sep}`)) continue;
 			if (file.includes(`${path.sep}__tests__${path.sep}`) || file.endsWith(".test.ts")) continue;
-			parts.push(await readFile(file, "utf8"));
+			out.push({ file: path.relative(PACKAGES_DIR, file), text: await readFile(file, "utf8") });
 		}
 	}
-	return parts.join("\n");
+	return out;
 }
 
-const SOURCE = await productionSourceText();
+const FILES = await productionFiles();
+const SOURCE = FILES.map(entry => entry.text).join("\n");
 const KEYS = await declaredKeys();
 const GROUPS_READ = new Set(Array.from(SOURCE.matchAll(/getGroup\("([a-zA-Z0-9._]+)"\)/g), match => match[1]));
 
-/** How a key is reached, or `null` when nothing reads it. */
+/**
+ * How a key is reached, or `null` when nothing reads it.
+ *
+ * The group case is the loose one, so it is the one that has to be careful. Accepting a
+ * key because its group is read by `getGroup` and its bare leaf name appears ANYWHERE in
+ * a million lines of source accepts almost anything: `enabled`, `only`, `except`,
+ * `threshold` and `model` all occur thousands of times as ordinary local names, so the
+ * field half of that test was very nearly free. The field must instead be reached the way
+ * a field of a returned group object actually is — read off an object as `.field`, or
+ * bound out of one by destructuring — which is still a text match, but one a coincidental
+ * local variable does not satisfy.
+ */
 function readerOf(key: string): "literal" | "group" | "assembled" | null {
 	if (SOURCE.includes(`"${key}"`) || SOURCE.includes(`'${key}'`)) return "literal";
 	if (key in ASSEMBLED_AT_RUNTIME) return "assembled";
@@ -111,10 +124,122 @@ function readerOf(key: string): "literal" | "group" | "assembled" | null {
 	if (separator > 0) {
 		const group = key.slice(0, separator);
 		const field = key.slice(separator + 1);
-		if (GROUPS_READ.has(group) && new RegExp(`\\b${field}\\b`).test(SOURCE)) return "group";
+		if (!GROUPS_READ.has(group)) return null;
+		if (new RegExp(`\\.${field}\\b`).test(SOURCE)) return "group";
+		if (new RegExp(`[{,]\\s*${field}\\s*[,}=:]`).test(SOURCE)) return "group";
 	}
 	return null;
 }
+
+/**
+ * HAVING A READER IS NOT HAVING AN EFFECT, which is the gap that shipped a dead knob.
+ *
+ * `commands.enableClaudeProject` passed everything above. The literal was right there,
+ * `settings.get("commands.enableClaudeProject")` in `discovery/claude.ts`, so the key had
+ * a reader. What it did not have was a consumer: the value was read, returned from the
+ * toggle reader as a field of an object, and the only caller destructured the SIBLING
+ * field and dropped it. Every check above is satisfied by a read whose result goes
+ * nowhere, so the promise this file opens with, that turning a setting on changes what the
+ * agent does, was stronger than what it verified.
+ *
+ * This is the one shape of that failure that can be found mechanically: a settings read
+ * assigned to a field of an object literal, where no code anywhere reads that field back
+ * off an object or binds it out of one. It is not a proof of reachability and does not try
+ * to be. It catches the specific move of routing a setting into a field nobody collects.
+ *
+ * Two enclosing calls are excused, because in both the consumer is real and simply is not
+ * TypeScript:
+ *   - `prompt.render`, where the template consumes the field. That pairing has its own
+ *     lock, `every-prompt-render-field-reaches-its-template.test.ts`, which is what
+ *     actually holds those payloads honest.
+ *   - `logger`/`telemetry`, where recording a value without branching on it is the point.
+ */
+
+/** A comment line carries neither a read nor a consumption. */
+const COMMENT_LINE = /^\s*(?:\/\/|\*|\/\*)/;
+
+/** `field: <expression containing a settings read>`, a settings value routed into an object. */
+const SETTINGS_MAPPING = /^\s*([A-Za-z_]\w*)\s*:\s*.*?settings[\w.#?[\]"']*\.get(?:Group)?\s*\(/;
+
+/** `.field`, the field read back off an object. */
+const PROPERTY_READ = /\.([A-Za-z_]\w*)/g;
+
+/**
+ * `{ field }`, `{ field, x }`, `{ field = 1 }`, `{ field: alias }`, `f(a, field, b)`, bound
+ * out of an object or handed on as an argument.
+ *
+ * The terminator is a LOOKAHEAD, not consumed. Consuming it made a run of comma-separated
+ * names skip every other one: in `f(configuredPaths, cwd, disabledExtensionIds)` the match
+ * for `cwd` ate the comma that the match for `disabledExtensionIds` needed to start, so a
+ * genuinely collected field looked uncollected.
+ */
+const DESTRUCTURED = /[{,(]\s*([A-Za-z_]\w*)\s*(?=[,)}=:])/g;
+
+/**
+ * A multi-line destructuring entry or shorthand property, where the name is alone on its
+ * line and the brace or comma that introduces it is on the line above:
+ * `const {\n\tfield,\n\tother = 1,\n} = options;`
+ */
+const BOUND_ON_OWN_LINE = /^\s*([A-Za-z_]\w*)\s*(?:,|=[^=>])/;
+
+/**
+ * The call whose object literal a mapping sits in, when it is one of the two this lock
+ * excuses. Stops at the first line that opens a declaration, so the scan cannot wander out
+ * of the expression it started in.
+ */
+function excusedEnclosingCall(lines: string[], index: number): "log" | "render" | null {
+	for (let n = index - 1; n >= 0 && n > index - 25; n--) {
+		const line = lines[n] ?? "";
+		if (/\b(?:logger|telemetry)\.\w+\(/.test(line)) return "log";
+		if (/prompt\.render\(/.test(line)) return "render";
+		if (/^\s*(?:export\s+)?(?:async\s+)?(?:function|const|class|\w+\s*\()/.test(line)) return null;
+	}
+	return null;
+}
+
+const settingsMappings: Array<{ field: string; site: string }> = [];
+/** Where a name is CONSUMED and where it is MAPPED, so a mapping cannot satisfy itself. */
+const consumedAt = new Map<string, Set<string>>();
+const mappedAt = new Map<string, Set<string>>();
+let excusedMappings = 0;
+
+function record(index: Map<string, Set<string>>, name: string, site: string): void {
+	const existing = index.get(name);
+	if (existing) existing.add(site);
+	else index.set(name, new Set([site]));
+}
+
+for (const { file, text } of FILES) {
+	const lines = text.split("\n");
+	for (let n = 0; n < lines.length; n++) {
+		const line = lines[n] ?? "";
+		if (COMMENT_LINE.test(line)) continue;
+		const site = `${file}:${n + 1}`;
+		const mapped = SETTINGS_MAPPING.exec(line)?.[1];
+		if (mapped !== undefined) {
+			if (excusedEnclosingCall(lines, n) === null) settingsMappings.push({ field: mapped, site });
+			else excusedMappings++;
+			record(mappedAt, mapped, site);
+		}
+		for (const pattern of [PROPERTY_READ, DESTRUCTURED]) {
+			pattern.lastIndex = 0;
+			for (let hit = pattern.exec(line); hit !== null; hit = pattern.exec(line)) {
+				if (hit[1] !== undefined) record(consumedAt, hit[1], site);
+			}
+		}
+		const boundAlone = BOUND_ON_OWN_LINE.exec(line)?.[1];
+		if (boundAlone !== undefined) record(consumedAt, boundAlone, site);
+	}
+}
+
+/** A field is collected when something reads it somewhere other than a mapping of itself. */
+const unconsumedMappings = settingsMappings.filter(({ field }) => {
+	const own = mappedAt.get(field);
+	for (const site of consumedAt.get(field) ?? []) {
+		if (own?.has(site) !== true) return false;
+	}
+	return true;
+});
 
 describe("the walk this lock depends on", () => {
 	/**
@@ -127,6 +252,27 @@ describe("the walk this lock depends on", () => {
 		expect(KEYS.length).toBeGreaterThan(350);
 		expect(SOURCE.length).toBeGreaterThan(1_000_000);
 		expect(GROUPS_READ.size).toBeGreaterThan(5);
+		expect(FILES.length).toBeGreaterThan(1_000);
+	});
+
+	/**
+	 * The effect walk found real mappings to judge. Zero of them, from a broken pattern or
+	 * an empty file list, would make "none of them is unconsumed" true and meaningless.
+	 */
+	it("finds the settings values routed into objects", () => {
+		expect(settingsMappings.length).toBeGreaterThan(150);
+		expect(consumedAt.size).toBeGreaterThan(1_000);
+		expect(excusedMappings).toBeGreaterThan(0);
+	});
+
+	/**
+	 * The consumption test discriminates. `enabled` is collected off objects constantly;
+	 * a name nothing mentions is collected nowhere. Without this, a test that considered
+	 * every field consumed would make the contract below unfalsifiable.
+	 */
+	it("distinguishes a collected field from an uncollected one", () => {
+		expect(consumedAt.has("enabled")).toBe(true);
+		expect(consumedAt.has("aFieldNoConsumerCollects")).toBe(false);
 	});
 
 	/** No key is declared twice, or the counts above would be measuring duplicates. */
@@ -142,6 +288,19 @@ describe("the walk this lock depends on", () => {
 	it("distinguishes a wired key from an invented one", () => {
 		expect(readerOf("tools.approval")).not.toBeNull();
 		expect(readerOf("a.setting.that.does.not.exist")).toBeNull();
+	});
+
+	/**
+	 * The group rule does not accept a coincidental bare word. `compaction` is a group
+	 * that really is read by `getGroup`, and `instanceof` is a word this repository
+	 * contains many times but never as a field, so under the old rule an invented
+	 * `compaction.instanceof` would have been reported as wired on the strength of the
+	 * bare-word match alone. It has to be reached AS a field for the exemption to apply.
+	 */
+	it("does not accept a group field that only appears as a bare word", () => {
+		expect(GROUPS_READ.has("compaction")).toBe(true);
+		expect(/\binstanceof\b/.test(SOURCE)).toBe(true);
+		expect(readerOf("compaction.instanceof")).toBeNull();
 	});
 });
 
@@ -188,5 +347,19 @@ describe("every settings key", () => {
 		for (const group of groupsRelied) {
 			expect(GROUPS_READ.has(group), `${group} is relied on but no longer read by getGroup`).toBe(true);
 		}
+	});
+});
+
+describe("every settings value routed into an object", () => {
+	/**
+	 * THE second contract, and the one `commands.enableClaudeProject` needed. A setting
+	 * read into a field that nothing ever collects is a reader without an effect: it
+	 * satisfies every check above while the operator's choice reaches nothing.
+	 */
+	it("lands on a field something reads back", () => {
+		expect(
+			unconsumedMappings.map(entry => `${entry.field} (${entry.site})`),
+			"a settings value is assigned to this object field and no code reads that field off an object. Consume it, or stop reading the setting here",
+		).toEqual([]);
 	});
 });
