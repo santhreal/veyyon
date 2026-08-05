@@ -36,7 +36,12 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { FETCH_AVAILABLE_MODELS_PATH } from "../src/discovery/antigravity";
-import { DEVIN_EXTENSION_VERSION, DEVIN_IDE_VERSION } from "../src/discovery/devin";
+import {
+	DEVIN_EXTENSION_NAME,
+	DEVIN_EXTENSION_VERSION,
+	DEVIN_IDE_NAME,
+	DEVIN_IDE_VERSION,
+} from "../src/discovery/devin";
 import { CODEX_BASE_URL } from "../src/wire/codex";
 
 /** The workspace's `packages/` directory, from this file rather than from the cwd. */
@@ -95,14 +100,25 @@ describe("the guard on this guard", () => {
 });
 
 describe("Devin's client identity", () => {
-	/** The real values. They are sent verbatim, so the strings are the contract. */
-	it("names the IDE and extension versions the requests claim", () => {
-		expect(DEVIN_IDE_VERSION).toBe("3.2.23");
-		expect(DEVIN_EXTENSION_VERSION).toBe("1.48.2");
+	/**
+	 * The real values. They are sent verbatim, so the strings are the contract.
+	 *
+	 * `ide_name` is not cosmetic: `GetCliModelConfigs` gates entitlement on it, and claiming
+	 * to be `windsurf` came back with "Upgrade to Pro to access this model" on 167 of 168
+	 * entries for an account that sees all 169 through the native CLI. `chisel` is that CLI's
+	 * own name, and `0.0.0-dev` is the version it really ships.
+	 */
+	it("names the IDE and extension the requests claim", () => {
+		expect(DEVIN_IDE_NAME).toBe("chisel");
+		expect(DEVIN_EXTENSION_NAME).toBe("chisel");
+		expect(DEVIN_IDE_VERSION).toBe("0.0.0-dev");
+		expect(DEVIN_EXTENSION_VERSION).toBe("0.0.0-dev");
 	});
 
 	/** THE regression: `@veyyon/ai`'s provider had its own pair of these. */
 	it("is declared once for each, in the catalog", async () => {
+		expect(await declarersOf("DEVIN_IDE_NAME")).toEqual(["catalog/src/discovery/devin.ts"]);
+		expect(await declarersOf("DEVIN_EXTENSION_NAME")).toEqual(["catalog/src/discovery/devin.ts"]);
 		expect(await declarersOf("DEVIN_IDE_VERSION")).toEqual(["catalog/src/discovery/devin.ts"]);
 		expect(await declarersOf("DEVIN_EXTENSION_VERSION")).toEqual(["catalog/src/discovery/devin.ts"]);
 	});
@@ -114,6 +130,7 @@ describe("Devin's client identity", () => {
 	it("is the same value the ai provider sends", async () => {
 		const provider = await readFile(path.join(PACKAGES, "ai", "src", "providers", "devin.ts"), "utf8");
 
+		expect(provider).toContain("DEVIN_IDE_NAME,");
 		expect(provider).toContain("DEVIN_IDE_VERSION,");
 		expect(provider).toContain('from "@veyyon/catalog/discovery/devin"');
 	});

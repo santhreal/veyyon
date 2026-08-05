@@ -2,7 +2,9 @@ import { scheduler } from "node:timers/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import {
+	DEVIN_EXTENSION_NAME,
 	DEVIN_EXTENSION_VERSION,
+	DEVIN_IDE_NAME,
 	DEVIN_IDE_VERSION,
 	normalizeDevinSessionToken,
 } from "@veyyon/catalog/discovery/devin";
@@ -455,9 +457,9 @@ async function fetchDevinAuthMetadata(
 	const request = create(GetUserJwtRequestSchema, {
 		metadata: create(MetadataSchema, {
 			apiKey,
-			ideName: "windsurf",
+			ideName: DEVIN_IDE_NAME,
 			ideVersion: DEVIN_IDE_VERSION,
-			extensionName: "windsurf",
+			extensionName: DEVIN_EXTENSION_NAME,
 			extensionVersion: DEVIN_EXTENSION_VERSION,
 			locale: "en",
 		}),
@@ -522,9 +524,9 @@ function buildDevinChatRequest(
 		metadata: create(MetadataSchema, {
 			apiKey,
 			userJwt,
-			ideName: "windsurf",
+			ideName: DEVIN_IDE_NAME,
 			ideVersion: DEVIN_IDE_VERSION,
-			extensionName: "windsurf",
+			extensionName: DEVIN_EXTENSION_NAME,
 			extensionVersion: DEVIN_EXTENSION_VERSION,
 			locale: "en",
 		}),
