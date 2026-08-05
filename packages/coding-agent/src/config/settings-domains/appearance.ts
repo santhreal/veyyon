@@ -426,13 +426,13 @@ export const APPEARANCE_SETTINGS = {
 	},
 	"tui.scrollbackRebuild": {
 		type: "boolean",
-		default: false,
+		default: true,
 		ui: {
 			tab: "appearance",
 			group: "Display",
 			label: "Rewrite Scrollback",
 			description:
-				"Erase and replay terminal scrollback when a block's final form replaces its live preview. When off (default), stale preview copies remain in history and the final content is appended below.",
+				"Erase and replay terminal scrollback when a block's final form replaces its live preview. On by default: with it off, the stale preview stays in history and the final content is appended underneath, so the same paragraph appears twice. Terminal multiplexers keep the append-below behaviour either way, because erasing there would take the pane's own history with it.",
 			advanced: true,
 		},
 	},

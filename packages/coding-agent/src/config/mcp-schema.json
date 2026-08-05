@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "mcp-schema.json",
   "title": "Veyyon MCP configuration",
-  "description": "Schema for mcp.json, .mcp.json, .veyyon/mcp.json, and ~/.veyyon/profiles/default/agent/mcp.json used by the Veyyon coding agent.",
+  "description": "Schema for mcp.json, .mcp.json, .veyyon/mcp.json, and the active profile's ~/.veyyon/profiles/<name>/agent/mcp.json used by the Veyyon coding agent.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

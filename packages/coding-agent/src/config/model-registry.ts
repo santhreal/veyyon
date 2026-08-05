@@ -896,11 +896,20 @@ export class ModelRegistry {
 	 * Drives the same SQLite model cache as built-in providers, so the default
 	 * `online-if-uncached` strategy fetches at most once per cache TTL (24 h).
 	 */
-	async refreshRuntimeProviders(strategy: ModelRefreshStrategy = "online-if-uncached"): Promise<void> {
+	async refreshRuntimeProviders(
+		strategy: ModelRefreshStrategy = "online-if-uncached",
+		providerId?: string,
+	): Promise<void> {
 		if (this.#runtimeModelManagers.size === 0) {
 			return;
 		}
-		await this.#refreshRuntimeDiscoveries(strategy, new Set(this.#runtimeModelManagers.keys()));
+		const providerIds = providerId
+			? this.#runtimeModelManagers.has(providerId)
+				? new Set([providerId])
+				: new Set<string>()
+			: new Set(this.#runtimeModelManagers.keys());
+		if (providerIds.size === 0) return;
+		await this.#refreshRuntimeDiscoveries(strategy, providerIds);
 	}
 
 	#reloadStaticModels(): void {
