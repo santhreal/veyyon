@@ -13,6 +13,10 @@ import { getAgentDir, getProjectDir } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
 
 import type { Settings } from "../config/settings";
+// The slot leaf, not the store: this reads the CANONICAL settings slot rather than the
+// copy `initializeWithSettings` captured below. The leaf imports nothing at runtime, and
+// `config/settings.ts` does not import this module, so there is no cycle.
+import { settingsOrNull } from "../config/settings-instance";
 import { clearCache as clearFsCache, findRepoRoot, cacheStats as fsCacheStats, invalidate as invalidateFs } from "./fs";
 import type {
 	Capability,
@@ -137,9 +141,20 @@ async function loadImpl<T>(
 	const allItems: Array<T & { _source: SourceMeta; _shadowed?: boolean }> = [];
 	const allWarnings: string[] = [];
 	const contributingProviders: string[] = [];
+	// `settingsOrNull()`, NOT the module-global `settings` captured by
+	// `initializeWithSettings`. That capture is a SECOND reference to a store this module
+	// does not own, and nothing put it back: `resetSettingsForTest` clears the canonical
+	// slot in `config/settings.ts` and left this one holding the torn-down instance. A
+	// suite that pinned `disabledExtensions: ["context-file:project:AGENTS.md"]` therefore
+	// kept every LATER file in the process from seeing a project AGENTS.md — a failure that
+	// lands in someone else's file, only in a batch, and names nothing.
+	//
+	// Reading the slot means there is exactly one source of truth for this value and no
+	// stale copy to go out of date: when settings are torn down the slot is null and the
+	// filter is empty, which is the correct answer for "no settings initialised".
 	const disabledExtensionIds = options.includeDisabled
 		? new Set<string>()
-		: new Set<string>(options.disabledExtensions ?? settings?.get("disabledExtensions") ?? []);
+		: new Set<string>(options.disabledExtensions ?? settingsOrNull()?.get("disabledExtensions") ?? []);
 
 	const results = await Promise.all(
 		providers.map(async provider => {
