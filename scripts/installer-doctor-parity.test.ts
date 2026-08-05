@@ -205,6 +205,7 @@ describe("doctor proves the native addon loads", () => {
 		// advice, and each doctor interpolates that constant rather than
 		// rewording it.
 		expect(installSh).toContain(
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: `${REPO}` is POSIX shell expansion inside install.sh, quoted here as the fixture bytes under test.
 			'MANUAL_BUILD="build it from a checkout you own: git clone https://github.com/${REPO}.git && cd veyyon && bun run setup"',
 		);
 		expect(installPs1).toContain(

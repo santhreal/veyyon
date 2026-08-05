@@ -15,7 +15,7 @@ PROFILE="${VEYYON_DEMO_PROFILE:-demo}"
 MODEL="${VEYYON_DEMO_MODEL:-google-antigravity/gemini-3.6-flash}"
 THINKING="${VEYYON_DEMO_THINKING:-high}"
 CLI=("$BUN" "$REPO_ROOT/packages/coding-agent/src/cli.ts")
-PROFILE_AGENT_DIR="${VEYYON_HOME:-$HOME/.veyyon}/profiles/$PROFILE/agent"
+PROFILE_AGENT_DIR="$HOME/.veyyon/profiles/$PROFILE/agent"
 
 if [[ ! -d "$PROFILE_AGENT_DIR" ]]; then
   "${CLI[@]}" profile new "$PROFILE" --from blank >/dev/null

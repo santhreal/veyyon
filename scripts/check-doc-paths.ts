@@ -256,12 +256,15 @@ function resolvesFor(rootDir: string, relFile: string, target: string): boolean 
  *    `packages/server/src/database/connection.ts` that argot's docs use as a
  *    stand-in for "some long path in your repo").
  *
- * An entry here is a promise to remove it, and one has been kept: the list used
+ * An entry here is a promise to remove it, and two have been kept. The list used
  * to carry `docs/internal/natives-architecture.md:77`, which named a generator
  * script for the per-platform natives leaf packages. The script did not move, it
  * was deleted when the npm publish channel was removed, and the doc had gone on
  * describing it. The doc now describes what actually ships, so the path is gone
- * and the entry with it. Every remaining entry is one of the three kinds above.
+ * and the entry with it. It also carried `docs/context-files.md:151:docs/setup.md`,
+ * which was only the filler path in an example of trailing-punctuation trimming;
+ * the example now uses `notes/setup.md`, which names no source root, so it needs
+ * no entry at all. Every remaining entry is one of the three kinds above.
  *
  * Adding to this list is deliberately awkward: the exact line number is part of
  * the key, so an entry stops matching the moment the doc is edited around it, and
@@ -271,9 +274,8 @@ export const DEAD_PATH_BASELINE: readonly string[] = Object.freeze([
 	".veyyon/skills/tool-prompt-optimization/SKILL.md:14:scripts/probe.ts",
 	".veyyon/skills/tool-prompt-optimization/SKILL.md:28:scripts/probe-builtin.ts",
 	"docs/context-files.md:66:.github/copilot-instructions.md",
-	"docs/context-files.md:151:docs/setup.md",
-	"docs/context-files.md:158:.github/copilot-instructions.md",
-	"docs/context-files.md:217:.github/copilot-instructions.md",
+	"docs/context-files.md:171:.github/copilot-instructions.md",
+	"docs/context-files.md:230:.github/copilot-instructions.md",
 	"docs/internal/toolconv/deepseek.md:101:assets/search_tool_trajectory.html",
 	"packages/coding-agent/src/prompts/skills/user-invocation.md:8:scripts/foo.js",
 	"website/blog/argot.md:12:packages/server/src/database/connection.ts",

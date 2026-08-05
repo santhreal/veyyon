@@ -9,7 +9,6 @@ import {
 	formatCommitSummary,
 	groupCommitsByType,
 	mergePackageSection,
-	RELEASE_NOTES_BODY_LIMIT,
 } from "./ci-release-notes";
 
 const FIXTURE = [
@@ -557,7 +556,11 @@ describe("ci-release-notes end-to-end against a real tagged git repo", () => {
 		const { code, body } = runNotes("v1.1.0", "1.0.0");
 
 		expect(code).toBe(0);
-		expect(body.length).toBeLessThanOrEqual(RELEASE_NOTES_BODY_LIMIT);
+		// Literal, not RELEASE_NOTES_BODY_LIMIT: the ceiling this defends is
+		// GitHub's own 125,000-character release-body limit, and a test written
+		// against the exported constant would follow it straight past that.
+		expect(body.length).toBeLessThanOrEqual(120_000);
+		expect(body.length).toBeLessThan(125_000);
 		expect(body).toContain("shortened from");
 		expect(body).not.toContain("oversized release detail");
 	});

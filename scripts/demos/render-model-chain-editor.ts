@@ -4,10 +4,10 @@
  * The first block is the compaction chain as stored, `test/alpha:low` with
  * `test/beta:high` behind it. The second is the same submenu driven through
  * keystrokes: delete the highlighted fallback, append `gamma`, then replace the
- * highlighted first choice with `beta`. Each step asserts the string that would
- * be persisted and throws on a mismatch, so the image cannot show a chain the
- * editor did not really save. The three persisted values are printed under the
- * render as its caption.
+ * highlighted first choice with `beta`. Each step asserts the ordered string
+ * array that would be persisted and throws on a mismatch, so the image cannot
+ * show a chain the editor did not really save. The three persisted values are
+ * printed under the render as its caption.
  *
  * Takes `--width` and nothing else.
  *
@@ -59,7 +59,7 @@ const before = new ModelChainSubmenu(
 	() => {},
 );
 
-let persisted: string | undefined = chain;
+let persisted: string[] | undefined = chain.split(",");
 const transitions: string[] = [];
 const interactive = new ModelChainSubmenu(
 	"compaction.model",
@@ -72,11 +72,11 @@ const interactive = new ModelChainSubmenu(
 		persisted = value;
 	},
 );
-const expectPersisted = (label: string, expected: string): void => {
-	if (persisted !== expected) {
+const expectPersisted = (label: string, expected: string[]): void => {
+	if (JSON.stringify(persisted) !== JSON.stringify(expected)) {
 		throw new Error(`${label} persisted ${JSON.stringify(persisted)} instead of ${JSON.stringify(expected)}`);
 	}
-	transitions.push(`${label}: ${persisted}`);
+	transitions.push(`${label}: ${persisted?.join(",")}`);
 };
 const type = (value: string): void => {
 	for (const char of value) interactive.handleInput(char);
@@ -84,18 +84,18 @@ const type = (value: string): void => {
 
 interactive.handleInput("\x1b[B");
 interactive.handleInput("\x7f");
-expectPersisted("delete highlighted fallback", "test/alpha:low");
+expectPersisted("delete highlighted fallback", ["test/alpha:low"]);
 
 interactive.handleInput("\x1b[B");
 interactive.handleInput("\n");
 type("gamma");
 interactive.handleInput("\n");
-expectPersisted("append fallback", "test/alpha:low,test/gamma");
+expectPersisted("append fallback", ["test/alpha:low", "test/gamma"]);
 
 interactive.handleInput("\n");
 type("beta");
 interactive.handleInput("\n");
-expectPersisted("replace highlighted first choice", "test/beta,test/gamma");
+expectPersisted("replace highlighted first choice", ["test/beta", "test/gamma"]);
 
 const root = new Container();
 root.addChild(before);

@@ -16,12 +16,18 @@
  * thing through `dirs.ts`'s XDG redirect. An allowlist cannot forget a variable that gets
  * added to the product later, so the allowlist is what ships.
  *
+ * WHAT THE ALLOWLIST STILL CANNOT DO. It removes every variable, and a model needs none:
+ * `ollama`, `llama.cpp` and `lm-studio` are discovered at fixed loopback addresses on every
+ * launch, so an "empty" root on a desk running Ollama has a working model. `createIsolatedRoot`
+ * closes that separately, for `auth: "none"` only. See the note there.
+ *
  * The override applies to the SPAWNED CHILD ONLY. Nothing here mutates `process.env`, so the
  * harness process, the agent running it, and every sibling tool keep the real `$HOME`.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { denyHostProviderAccess } from "../../../packages/coding-agent/test/helpers/hermetic-spawn-env";
 
 /** One isolated machine: the directories a run owns and the environment that reaches them. */
 export interface IsolatedRoot {
@@ -182,6 +188,19 @@ export async function createIsolatedRoot(label: string, auth: AuthMode = "link")
 		COLUMNS: "120",
 		LINES: "40",
 	};
+	if (auth === "none") {
+		// The allowlist above already keeps every provider credential out, but a credential is not
+		// the only way to a model: `ollama`, `llama.cpp` and `lm-studio` are discovered on every
+		// launch with no key and no config, at fixed loopback defaults. So "no auth" quietly meant
+		// "a full model on any desk running Ollama", and a scenario asserting that the CLI reports
+		// no usable model passed on CI and failed there. `denyHostProviderAccess` points those
+		// knobs at a port that cannot be listening; it is the same function `hermeticSpawnEnv`
+		// uses, imported rather than restated so the two cannot drift.
+		//
+		// Gated on `auth === "none"` because `"link"` is the operator asking for a real model on
+		// purpose (it symlinks their real `shared-auth`), and a local server is a real model.
+		denyHostProviderAccess(env);
+	}
 
 	const globalConfigRoot = path.join(home, ".veyyon");
 	fs.mkdirSync(globalConfigRoot, { recursive: true });

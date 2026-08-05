@@ -111,6 +111,11 @@ stamp("task-3ac8", 9 * 60_000, 8 * 60_000);
 // agent seeded without a session, so it fails the way a message to a released
 // agent fails: a stream that showed only what landed would hide the one thing
 // an operator opens it to find.
+//
+// The fourth leg answers the third. A reply is recorded on the message and the
+// stream names who is being answered, so the proof has to contain one or the
+// picture cannot show the difference between four agents talking and four
+// agents talking past each other.
 const traffic: Array<[string, string, string, number]> = [
 	["task-7f21", MAIN_AGENT_ID, "The tab strip filters on AgentSource and nothing downstream reads it.", 260_000],
 	[MAIN_AGENT_ID, "task-b904", "Take the inspector next. Seven of nine lines are model resolution.", 190_000],
@@ -118,8 +123,12 @@ const traffic: Array<[string, string, string, number]> = [
 	["task-7f21", "task-b904", "agent-model-badge.ts. It is one owner now, shared with the task widget.", 74_000],
 	["task-b904", "task-3ac8", "Collect the theme matrix when you are done.", 22_000],
 ];
-for (const [from, to, body] of traffic) {
-	await IrcBus.global().send({ from, to, body });
+const sentIds: string[] = [];
+for (const [index, [from, to, body]] of traffic.entries()) {
+	// Leg 4 answers leg 3, by the id the bus minted for it.
+	const replyTo = index === 3 ? sentIds[2] : undefined;
+	await IrcBus.global().send({ from, to, body, ...(replyTo ? { replyTo } : {}) });
+	sentIds.push(IrcBus.global().log().at(-1)?.message.id ?? "");
 }
 // Every message was sent within the same millisecond, so the clock column would
 // read one time down the whole stream. The ages above are what the roster
@@ -158,8 +167,14 @@ const ui = {
 const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true, ui });
 
 // `\x1b[C` is right-arrow: the card opens on Live, so Comms is one step from it.
-if (view === "comms") dashboard.handleInput("\x1b[C");
-
+if (view === "comms" || view === "comms-filtered") dashboard.handleInput("\x1b[C");
+// `f` cycles the filter one agent forward. Two presses lands on the second
+// participant, which is the state worth a picture: one agent's half of a
+// four-way stream, with the summary line naming what was narrowed to.
+if (view === "comms-filtered") {
+	dashboard.handleInput("f");
+	dashboard.handleInput("f");
+}
 let lines = dashboard.render(width);
 if (view === "live-hover" || view === "termination") {
 	const scout = positionOf(lines, "scout");

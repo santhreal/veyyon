@@ -2,8 +2,8 @@
 /**
  * Compaction counterfactual: one session, four arms.
  *
- * Runs the SAME session history through both compaction strategies on both
- * models, so the only thing that varies between arms is (strategy x model):
+ * Runs the same session history through in-place compaction and explicit handoff
+ * on both models, so the only variables are workflow and model:
  *
  *     summary x gemini-3.6-flash      summary x gpt-5.6-sol
  *     handoff x gemini-3.6-flash      handoff x gpt-5.6-sol
@@ -54,16 +54,16 @@ import { migrateSessionEntries } from "@veyyon/coding-agent/session/session-migr
 import { getProjectDir } from "@veyyon/utils";
 
 interface ArmSpec {
-	strategy: "summary" | "handoff";
+	workflow: "summary" | "handoff";
 	provider: string;
 	modelId: string;
 }
 
 const ARMS: ArmSpec[] = [
-	{ strategy: "summary", provider: "google-antigravity", modelId: "gemini-3.6-flash" },
-	{ strategy: "summary", provider: "openai-codex", modelId: "gpt-5.6-sol" },
-	{ strategy: "handoff", provider: "google-antigravity", modelId: "gemini-3.6-flash" },
-	{ strategy: "handoff", provider: "openai-codex", modelId: "gpt-5.6-sol" },
+	{ workflow: "summary", provider: "google-antigravity", modelId: "gemini-3.6-flash" },
+	{ workflow: "summary", provider: "openai-codex", modelId: "gpt-5.6-sol" },
+	{ workflow: "handoff", provider: "google-antigravity", modelId: "gemini-3.6-flash" },
+	{ workflow: "handoff", provider: "openai-codex", modelId: "gpt-5.6-sol" },
 ];
 
 interface ArmResult {
@@ -177,16 +177,16 @@ async function runArm(
 	apiKey: string,
 	truth: GroundTruth,
 ): Promise<ArmResult> {
-	const label = `${spec.strategy} x ${spec.provider}/${spec.modelId}`;
+	const label = `${spec.workflow} x ${spec.provider}/${spec.modelId}`;
 	const started = Date.now();
 	let text = "";
 	let ok = true;
 	let error: string | undefined;
 
-	// Capture the provider's own usage for the arm's LLM call. Cache-read tokens
-	// are the point: the two strategies build structurally different requests
-	// (summary sends one synthetic message, handoff replays the live prefix), so
-	// only a real number settles which one hits the prompt cache.
+	// Capture the provider's own usage for the arm's model call. Cache-read tokens
+	// are the point: compaction sends one synthetic message while explicit handoff
+	// replays the live prefix, so only a real number settles which request hits the
+	// prompt cache.
 	const usage = { input: 0, cacheRead: 0, output: 0, cost: 0 };
 	const completeImpl = (async (requestModel, ctx, requestOptions) => {
 		const response = await ai.completeSimple(requestModel, ctx, requestOptions);
@@ -198,7 +198,7 @@ async function runArm(
 	}) as NonNullable<SummaryOptions["completeImpl"]>;
 
 	try {
-		if (spec.strategy === "summary") {
+		if (spec.workflow === "summary") {
 			const result = await compact(preparation, model, apiKey, undefined, undefined, { completeImpl });
 			text = result.summary;
 		} else {
@@ -206,8 +206,8 @@ async function runArm(
 				completeImpl,
 				systemPrompt: ["You are a coding agent handing off an in-progress session."],
 				tools: [],
-				// Same deterministic file block the summary strategy appends, so the
-				// arms differ by strategy and model only.
+				// Use the same deterministic file block as compaction so workflow and
+				// model are the only variables.
 				fileOps: preparation.fileOps,
 			});
 		}
@@ -341,7 +341,7 @@ async function main() {
 			`${preparation.recentMessages.length} recent, tokensBefore=${preparation.tokensBefore}`,
 	);
 	console.error(`ground truth: ${truth.files.length} files, ${truth.tools.length} tools`);
-	console.error(`arms:\n${ARMS.map(a => `  - ${a.strategy} x ${a.provider}/${a.modelId}`).join("\n")}`);
+	console.error(`arms:\n${ARMS.map(a => `  - ${a.workflow} x ${a.provider}/${a.modelId}`).join("\n")}`);
 	if (dry) return;
 
 	// Same auth + registry construction the real CLI uses (`discoverAuthStorage`
@@ -354,11 +354,11 @@ async function main() {
 	await loadCliExtensionProviders(registry, settings, cwd);
 
 	const selected = ARMS.filter(
-		a => !armsFilter || `${a.strategy} ${a.provider}/${a.modelId}`.includes(armsFilter),
+		a => !armsFilter || `${a.workflow} ${a.provider}/${a.modelId}`.includes(armsFilter),
 	).flatMap(a => Array.from({ length: repeat }, () => a));
 	const results: ArmResult[] = [];
 	for (const spec of selected) {
-		console.error(`running ${spec.strategy} x ${spec.provider}/${spec.modelId} ...`);
+		console.error(`running ${spec.workflow} x ${spec.provider}/${spec.modelId} ...`);
 		try {
 			const model = await resolveModel(registry, spec);
 			const apiKey = await authStorage.getApiKey(model.provider);
@@ -367,7 +367,7 @@ async function main() {
 		} catch (err) {
 			results.push({
 				arm: spec,
-				label: `${spec.strategy} x ${spec.provider}/${spec.modelId}`,
+				label: `${spec.workflow} x ${spec.provider}/${spec.modelId}`,
 				ok: false,
 				error: err instanceof Error ? err.message : String(err),
 				text: "",
