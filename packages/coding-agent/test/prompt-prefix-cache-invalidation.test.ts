@@ -273,6 +273,10 @@ describe("argot tools", () => {
 			hasUI: false,
 			settings: Settings.isolated({ "argot.enabled": true }),
 			getArgotSession: () => argot,
+			// Required by the interface and unused by the unload path: this test drives
+			// the prompt-rebuild reason, not session persistence.
+			getSessionFile: () => null,
+			getSessionSpawns: () => null,
 			refreshBaseSystemPrompt: async reason => {
 				reasons.push(reason);
 			},

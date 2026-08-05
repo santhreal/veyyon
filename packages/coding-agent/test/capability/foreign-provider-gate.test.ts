@@ -17,15 +17,17 @@ describe("foreign provider gate", () => {
 		"agents-md",
 		"claude",
 		"claude-plugins",
-		"cline",
 		"codex",
 		"cursor",
 		"gemini",
 		"github",
 		"opencode",
-		"vscode",
 		"windsurf",
 	];
+	// `cline` and `vscode` are deliberately absent. Both discovery providers were
+	// deleted outright along with the repo-sourced configuration they read, so
+	// there is no provider left to gate; naming either here would pin a gate over
+	// something that cannot be registered.
 
 	it("gates exactly the known foreign-tool providers and no first-party ones", () => {
 		expect([...getForeignProviderIds()].sort()).toEqual([...EXPECTED].sort());

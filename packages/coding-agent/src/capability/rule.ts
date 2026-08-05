@@ -264,32 +264,33 @@ export function buildRuleFromMarkdown(
 	options?: { stripNamePattern?: RegExp },
 ): Rule {
 	const cleanName = options?.stripNamePattern ? name.replace(options.stripNamePattern, "") : name;
-	const parsed = parseFrontmatter<RuleFrontmatter>(content);
-	const { condition, astCondition, scope } = parseRuleConditionAndScope(parsed.data);
+	// `parseFrontmatter` returns `{ frontmatter, body }` and is not generic; the
+	// shape it is asked for is asserted here rather than at each of the eleven reads.
+	const { frontmatter, body } = parseFrontmatter(content);
+	const data = frontmatter as RuleFrontmatter;
+	const { condition, astCondition, scope } = parseRuleConditionAndScope(data);
 	const interruptMode =
-		parsed.data.interruptMode === "never" ||
-		parsed.data.interruptMode === "prose-only" ||
-		parsed.data.interruptMode === "tool-only" ||
-		parsed.data.interruptMode === "always"
-			? parsed.data.interruptMode
+		data.interruptMode === "never" ||
+		data.interruptMode === "prose-only" ||
+		data.interruptMode === "tool-only" ||
+		data.interruptMode === "always"
+			? data.interruptMode
 			: undefined;
 	const pathScope =
-		parsed.data.pathScope === "outside-cwd" || parsed.data.pathScope === "inside-cwd"
-			? parsed.data.pathScope
-			: undefined;
+		data.pathScope === "outside-cwd" || data.pathScope === "inside-cwd" ? data.pathScope : undefined;
 	const repeatMode =
-		parsed.data.repeatMode === "once" || parsed.data.repeatMode === "after-gap" || parsed.data.repeatMode === "per-compact"
-			? parsed.data.repeatMode
+		data.repeatMode === "once" || data.repeatMode === "after-gap" || data.repeatMode === "per-compact"
+			? data.repeatMode
 			: undefined;
-	const repeatGap = typeof parsed.data.repeatGap === "number" && parsed.data.repeatGap > 0 ? parsed.data.repeatGap : undefined;
+	const repeatGap = typeof data.repeatGap === "number" && data.repeatGap > 0 ? data.repeatGap : undefined;
 
 	return {
 		name: cleanName,
 		path: filePath,
-		content: parsed.content,
-		globs: parsed.data.globs,
-		alwaysApply: parsed.data.alwaysApply,
-		description: parsed.data.description,
+		content: body,
+		globs: data.globs,
+		alwaysApply: data.alwaysApply,
+		description: data.description,
 		condition,
 		astCondition,
 		scope,
