@@ -78,6 +78,6 @@ crates/
 docs/
 assets/
 scripts/
-LICENSE
+/LICENSE
 AGENTS.md
 README.md

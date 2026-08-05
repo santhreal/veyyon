@@ -49,6 +49,7 @@ WORKDIR /app
 # `pip install` so it lands in the installed wheel (`static/**/*` is declared
 # as package-data in pyproject.toml).
 COPY python/veybot/pyproject.toml ./
+COPY python/veybot/LICENSE ./
 COPY python/veybot/src/ ./src/
 COPY --from=web-builder /work/python/veybot/web/dist/ ./src/static/
 
