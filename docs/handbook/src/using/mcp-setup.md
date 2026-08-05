@@ -13,7 +13,6 @@ MCP servers are configured as **JSON** in `mcp.json`, not in `config.yml`:
 
 | Scope | Path |
 | --- | --- |
-| Project | `.veyyon/mcp.json` |
 | User | `~/.veyyon/profiles/default/agent/mcp.json` (profile: `~/.veyyon/profiles/<name>/agent/mcp.json`) |
 
 Veyyon also discovers MCP entries from Claude, Cursor, VS Code, and OpenCode configs. The easiest way

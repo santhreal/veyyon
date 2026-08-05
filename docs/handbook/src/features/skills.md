@@ -69,10 +69,15 @@ Veyyon's own instructions load in four layers, and only these four:
 4. The active profile's `AGENTS.md`
    (`~/.veyyon/profiles/<name>/agent/AGENTS.md`).
 
-They are rendered in that order, least prominent first, so each layer overrides
-the ones above it: the global file is the baseline, a project file overrides it,
-and the profile file is last and has the final word. Within the project layer the
-file closest to your working directory is the most prominent. See
+That list is the order they are RESOLVED in, not the order of authority. They are
+rendered least authoritative first, so the strongest file has the last word: the
+project files come first, then the profile file, then the global
+`~/.veyyon/AGENTS.md` last of all. Your live instruction in the conversation beats
+every one of them. A narrower file may add detail a broader one does not cover,
+but it never contradicts, loosens, or forbids what a broader one allows, because a
+project file is content checked into a repository you may not have written. Within
+the project layer the file closest to your working directory is the most specific
+one. See
 [instruction layers](#instruction-layers) below for how to split rules between
 the global and per-profile files.
 

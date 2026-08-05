@@ -113,12 +113,13 @@ Codex command content is parsed with frontmatter stripping (`parseFrontmatter`),
 
 ## `opencode` provider (`opencode.ts`)
 
-Loads, subject to `commands.enableOpencodeUser` and `commands.enableOpencodeProject` settings:
+Loads, subject to the `commands.enableOpencodeUser` setting:
 
 - user: `~/.config/opencode/commands/*.md`
-- project: `<cwd>/.opencode/commands/*.md`
 
-Both sides are loaded then flattened in user-first order, so **user OpenCode commands beat project OpenCode commands** on collisions. OpenCode command content is parsed with frontmatter stripping, and command name can be overridden by frontmatter `name`; otherwise filename is used.
+A project's `.opencode/commands/` is not read: a repository does not install slash commands.
+
+OpenCode command content is parsed with frontmatter stripping, and the command name can be overridden by frontmatter `name`; otherwise the filename is used.
 
 ## `claude-plugins` provider (`claude-plugins.ts`)
 
