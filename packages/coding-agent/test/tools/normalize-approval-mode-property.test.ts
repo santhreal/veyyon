@@ -10,7 +10,7 @@ describe("normalizeApprovalMode property-style", () => {
 	it("every APPROVAL_MODE_VALUES entry normalizes without becoming ask unless typo", () => {
 		for (const mode of APPROVAL_MODE_VALUES) {
 			const n = normalizeApprovalMode(mode);
-			expect(["plan", "ask", "auto-edit", "yolo"]).toContain(n);
+			expect(["plan", "ask", "ask-command", "auto", "yolo"]).toContain(n);
 			expect(isKnownApprovalMode(mode)).toBe(true);
 		}
 	});
@@ -38,7 +38,7 @@ describe("normalizeApprovalMode property-style", () => {
 		}
 	});
 
-	it("undefined is the only non-string path to yolo default", () => {
-		expect(normalizeApprovalMode(undefined)).toBe("yolo");
+	it("undefined is the only non-string path to the shipped default", () => {
+		expect(normalizeApprovalMode(undefined)).toBe("auto");
 	});
 });
