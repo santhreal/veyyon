@@ -6,8 +6,18 @@
  *   and what it is doing. Enter hands the main view over to that agent's live
  *   session, where you read it and talk to it; Esc there returns you to your
  *   own session.
- * - Comms: the agent-to-agent traffic, streaming, oldest first. Ctrl+O expands
- *   the messages the stream folded.
+ * - Comms: the agent-to-agent traffic, streaming, oldest first, with a summary
+ *   line above it. Each message says who spoke to whom, what it answers when it
+ *   is a reply, and how it landed when that was not the ordinary live hand-off.
+ *   Ctrl+O expands the messages the stream folded; f narrows the stream to one
+ *   agent's traffic.
+ *
+ * BOTH VIEWS ARE SCOPED TO ONE CONVERSATION. The registry and the bus are
+ * process-global, and this card is not: `deps.scope` is the session id the card
+ * was opened for, and the roster and the stream are filtered to it. Without
+ * that, `/resume` in a long-lived process listed the subagents of every
+ * conversation the process had ever driven, and the stream opened on their
+ * chatter.
  *
  * WHY ONE CARD. This surface was FOUR. `/agents` carried a configuration list
  * that duplicated the Subagents settings table. `/cockpit` (alias `/hub`, and
@@ -38,6 +48,7 @@
  * - Enter: open the selected agent (Live)
  * - x: confirm termination of the selected agent (Live)
  * - Ctrl+O: expand folded messages (Comms)
+ * - f: cycle the stream through each agent's traffic (Comms)
  * - Esc, or the key that opened it: close
  */
 import type { AgentTool } from "@veyyon/agent-core";
@@ -81,11 +92,12 @@ import {
 } from "../utils/keybinding-matchers";
 import { agentType, collectLiveAgents, type LiveAgent } from "./agent-activity";
 import { modelBadgeFromSelector } from "./agent-model-badge";
-import { agentStatusGlyph, agentStatusWord } from "./agent-status-display";
+import { agentDisplayState, agentStatusGlyph, agentStatusWord } from "./agent-status-display";
 import { type AgentTranscriptRemote, AgentTranscriptViewer } from "./agent-transcript-viewer";
 import { AGENT_VIEW_AGE_TICK_MS, AGENT_VIEW_DATA_CHANGE_COALESCE_MS } from "./agent-view-timings";
 import {
 	applyModalReveal,
+	CARD_BODY_COL_INSET,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
@@ -142,10 +154,14 @@ function liveShortcuts(rosterRows: number): readonly ModalShortcut[] {
  * reaches the card at all the chip is dropped rather than shown, since a chip for
  * a gesture nothing can trigger is worse than one fewer chip.
  */
-function commsShortcuts(expandHint: string): readonly ModalShortcut[] {
+function commsShortcuts(expandHint: string, canFilter: boolean): readonly ModalShortcut[] {
 	return [
 		{ label: "up/down scroll" },
 		...(expandHint ? [{ label: `${expandHint} expand` }] : []),
+		// Dropped below two participants, by the same rule as the expand chip: with
+		// one agent in the log there is nothing to narrow to, and a key that cycles
+		// between "everything" and "everything" reads as a broken control.
+		...(canFilter ? [{ label: "f filter" }] : []),
 		{ label: "left/right view" },
 		{ label: "esc close", clickable: true, id: "close" },
 	];
@@ -322,7 +338,11 @@ class LiveRosterPane implements Component {
 				widest(agent => agentType(agent)),
 				cap,
 			),
-			status: widest(agent => agent.status),
+			// The DISPLAYED word, not `agent.status`: a waiting agent's word is
+			// longer than the `parked` it is derived from, and measuring the raw
+			// status padded the column one cell short, sliding every following
+			// column left on exactly the rows that most need reading.
+			status: widest(agent => agentDisplayState(agent)),
 			age: widest(agent => formatAge(ageSeconds(now, agent.lastActivity))),
 		};
 
@@ -390,8 +410,9 @@ class LiveRosterPane implements Component {
 		// codebase draws the same glyph in the same leading slot, so the gesture
 		// reads the same here as it does in the tree, history and plan pickers.
 		const cursor = selected ? theme.fg("accent", theme.nav.cursor) : padding(visibleWidth(theme.nav.cursor));
-		const parts = [`${cursor} ${agentStatusGlyph(agent.status)} ${name}  ${kind}`];
-		parts.push(theme.fg("dim", agentStatusWord(agent.status)) + padding(columns.status - visibleWidth(agent.status)));
+		const state = agentDisplayState(agent);
+		const parts = [`${cursor} ${agentStatusGlyph(state)} ${name}  ${kind}`];
+		parts.push(theme.fg("dim", agentStatusWord(state)) + padding(columns.status - visibleWidth(state)));
 		const age = formatAge(ageSeconds(now, agent.lastActivity));
 		parts.push(theme.fg("dim", age) + padding(columns.age - visibleWidth(age)));
 		// The model badge gets what is left, and only if what is left can still say
@@ -516,7 +537,7 @@ class AgentTerminationDialog implements Component {
 			return Array.from({ length: height }, () => padding(width));
 		}
 
-		const kindAndStatus = `${agentType(this.agent)} · ${agentStatusWord(this.agent.status)}`;
+		const kindAndStatus = `${agentType(this.agent)} · ${agentStatusWord(agentDisplayState(this.agent))}`;
 		const warning =
 			"This stops the current turn and removes the agent from the roster. Its transcript stays on disk.";
 		const body = [
@@ -543,6 +564,69 @@ class AgentTerminationDialog implements Component {
 }
 
 /**
+ * How a delivery landed, when that is worth a word on the row.
+ *
+ * `injected` is the ordinary case (the recipient was live and took it at its
+ * next step boundary) and gets nothing: a badge on every single row is a badge
+ * nobody reads. The other two say something the body cannot. `woken` means the
+ * message started a turn in an agent that had stopped, and `revived` means it
+ * brought a parked agent back from disk, which is the difference between "they
+ * were listening" and "your message is why they are running".
+ */
+const OUTCOME_BADGE: Partial<Record<IrcLogEntry["outcome"], string>> = {
+	woken: "woke",
+	revived: "revived",
+};
+
+/** One message's contribution to the stream, before it is turned into rows. */
+interface CommsPaneOptions {
+	entries: readonly IrcLogEntry[];
+	/**
+	 * Agent id to the name the Live roster shows for it.
+	 *
+	 * The two views must name the same agent the same way. The bus records raw
+	 * ids, and a spawn-scoped id (`task-3f2a…`) is exactly what call signs
+	 * exist to replace: a conversation is followed by who is speaking, and
+	 * `Kestrel → Otter` is followable where two hashes are not. An id with no
+	 * roster row prints as itself rather than as a placeholder, since an agent
+	 * that has been released still said what it said.
+	 */
+	nameFor: (id: string) => string;
+	/**
+	 * Rows scrolled past, or `"tail"` for "stay on the newest".
+	 *
+	 * `"tail"` is a state, not the number that happens to mean the bottom right
+	 * now. How many rows the stream occupies depends on the width it wraps at
+	 * and the height it is measured against, and both are only final at RENDER
+	 * time, so the tail resolves here, where the rows exist.
+	 */
+	scrollOffset: number | "tail";
+	maxVisible: number;
+	/** Ctrl+O: show every line of every message instead of the first few. */
+	expanded: boolean;
+	/**
+	 * How the fold line names the expand gesture, or `""` to name no key.
+	 *
+	 * The gesture is `app.tools.expand`, which is remappable, so the hint comes
+	 * from the keys the card was given rather than being written out here. A
+	 * hardcoded `ctrl+o` told a user who had rebound the action to press a key
+	 * that no longer unfolds anything. Empty means no expand key reached the
+	 * card, and then the fold still announces its count: a silently clipped
+	 * message reads as a short message, which is the thing this line exists to
+	 * prevent.
+	 */
+	expandHint: string;
+	/** Report the resolved start row back, so scrolling up has a number to leave from. */
+	onResolvedStart?: (start: number) => void;
+	/**
+	 * Whether `entries` is a narrowed view rather than the whole stream. Decides
+	 * which empty state the pane shows: "nothing has been said" and "nothing
+	 * matches your filter" are different facts and only one of them can be true.
+	 */
+	filtered?: boolean;
+}
+
+/**
  * The Comms stream: agent-to-agent traffic as it happens.
  *
  * The bus is the source, not the session files. A subagent's transcript shows
@@ -550,48 +634,49 @@ class AgentTerminationDialog implements Component {
  * failed to land, and only it keeps them after delivery has consumed the
  * mailbox. Reading anything else here would show a partial conversation and
  * call it the conversation.
+ *
+ * Three things ride on the head line besides who spoke, and each earns its
+ * space by answering a question the body cannot:
+ *  - the DELIVERY, when it was not the ordinary live hand-off, because a
+ *    message that woke or revived its recipient changed what that agent is
+ *    doing, and a message that failed changes what YOU do next;
+ *  - the REPLY link, because `replyTo` is recorded on every answered message
+ *    and was previously shown nowhere, leaving an interleaved four-agent stream
+ *    to be untangled by reading bodies;
+ *  - and nothing else. Latency and route are telemetry, gated on an
+ *    instrumentation level, and absent in the configuration most people run.
  */
 class CommsPane implements Component {
-	constructor(
-		private readonly entries: readonly IrcLogEntry[],
-		/**
-		 * Agent id to the name the Live roster shows for it.
-		 *
-		 * The two views must name the same agent the same way. The bus records raw
-		 * ids, and a spawn-scoped id (`task-3f2a…`) is exactly what call signs
-		 * exist to replace: a conversation is followed by who is speaking, and
-		 * `Kestrel → Otter` is followable where two hashes are not. An id with no
-		 * roster row prints as itself rather than as a placeholder, since an agent
-		 * that has been released still said what it said.
-		 */
-		private readonly nameFor: (id: string) => string,
-		/**
-		 * Rows scrolled past, or `"tail"` for "stay on the newest".
-		 *
-		 * `"tail"` is a state, not the number that happens to mean the bottom right
-		 * now. How many rows the stream occupies depends on the width it wraps at
-		 * and the height it is measured against, and both are only final at RENDER
-		 * time, so the tail resolves here, where the rows exist.
-		 */
-		private readonly scrollOffset: number | "tail",
-		private readonly maxVisible: number,
-		/** Ctrl+O: show every line of every message instead of the first few. */
-		private readonly expanded: boolean,
-		/**
-		 * How the fold line names the expand gesture, or `""` to name no key.
-		 *
-		 * The gesture is `app.tools.expand`, which is remappable, so the hint comes
-		 * from the keys the card was given rather than being written out here. A
-		 * hardcoded `ctrl+o` told a user who had rebound the action to press a key
-		 * that no longer unfolds anything. Empty means no expand key reached the
-		 * card, and then the fold still announces its count: a silently clipped
-		 * message reads as a short message, which is the thing this line exists to
-		 * prevent.
-		 */
-		private readonly expandHint: string,
-		/** Report the resolved start row back, so scrolling up has a number to leave from. */
-		private readonly onResolvedStart?: (start: number) => void,
-	) {}
+	constructor(private readonly options: CommsPaneOptions) {}
+
+	/** The head line for one message: time, speakers, delivery, and what it answers. */
+	static #head(
+		entry: IrcLogEntry,
+		replyToSender: string | undefined,
+		nameFor: (id: string) => string,
+		width: number,
+	): string {
+		const { message } = entry;
+		const parts = [
+			theme.fg("dim", clockTime(message.ts)),
+			theme.fg("accent", replaceTabs(nameFor(message.from))),
+			theme.fg("dim", "→"),
+			theme.fg("link", replaceTabs(nameFor(message.to))),
+		];
+		// A bare `↩` when the reply goes back to whoever asked, which is almost
+		// every reply: the head already reads `Otter → Juniper`, and appending
+		// `re Juniper` to it says Juniper twice and teaches nothing. The name is
+		// added only for the case it answers, a reply routed to someone OTHER than
+		// the agent being answered, where "who is this about" genuinely is not on
+		// the row.
+		if (replyToSender !== undefined) {
+			const mark = replyToSender === message.to ? "↩" : `↩ re ${replaceTabs(nameFor(replyToSender))}`;
+			parts.push(theme.fg("dim", mark));
+		}
+		const badge = OUTCOME_BADGE[entry.outcome];
+		if (badge) parts.push(theme.fg("warning", badge));
+		return truncateToWidth(parts.join(" "), width);
+	}
 
 	/** Rendered rows for the whole stream, before scrolling. Shared by render and the scroll bounds. */
 	static layout(
@@ -601,11 +686,18 @@ class CommsPane implements Component {
 		nameFor: (id: string) => string,
 		expandHint: string,
 	): string[] {
+		// Sender by message id, so a reply can name who it answers. Built from the
+		// entries this pane was handed rather than from the bus, so a filtered
+		// stream resolves against what is on screen and a reply to a message the
+		// filter hid degrades to no link instead of to a stray name.
+		const senderOf = new Map<string, string>();
+		for (const entry of entries) senderOf.set(entry.message.id, entry.message.from);
+
 		const rows: string[] = [];
 		for (const entry of entries) {
 			const { message } = entry;
-			const head = `${theme.fg("dim", clockTime(message.ts))} ${theme.fg("accent", replaceTabs(nameFor(message.from)))} ${theme.fg("dim", "→")} ${theme.fg("link", replaceTabs(nameFor(message.to)))}`;
-			rows.push(truncateToWidth(head, width));
+			const replyToSender = message.replyTo === undefined ? undefined : senderOf.get(message.replyTo);
+			rows.push(CommsPane.#head(entry, replyToSender, nameFor, width));
 
 			const wrapped: string[] = [];
 			for (const raw of message.body.split("\n")) {
@@ -634,7 +726,23 @@ class CommsPane implements Component {
 	}
 
 	render(width: number): readonly string[] {
-		if (this.entries.length === 0) {
+		const { entries, nameFor, expanded, expandHint, maxVisible, scrollOffset, onResolvedStart, filtered } =
+			this.options;
+		if (entries.length === 0) {
+			// A filter that matches nothing is a DIFFERENT state from a run that has
+			// said nothing, and saying the second while the first is true tells the
+			// operator there has been no traffic while traffic sits in the log one
+			// keypress away. It is also the only body text on screen when the log is
+			// pruned under a live filter, so getting it wrong there leaves nothing
+			// on the card that is true.
+			if (filtered) {
+				return [
+					theme.fg("muted", "  No traffic from this agent."),
+					"",
+					theme.fg("dim", "  The stream is narrowed to one agent and nothing here matches it."),
+					theme.fg("dim", "  Press f to widen it back to every agent."),
+				];
+			}
 			return [
 				theme.fg("muted", "  No agent traffic yet."),
 				"",
@@ -642,15 +750,15 @@ class CommsPane implements Component {
 				theme.fg("dim", "  including the ones that failed to reach their recipient."),
 			];
 		}
-		const rows = CommsPane.layout(this.entries, width, this.expanded, this.nameFor, this.expandHint);
+		const rows = CommsPane.layout(entries, width, expanded, nameFor, expandHint);
 		// Pre-sliced, because passing `totalRows` puts ScrollView in the mode where
 		// the CALLER windows and the component only draws the bar. Handing it the
 		// whole stream with an offset set rendered the first screen under a
 		// scrollbar parked at the bottom.
-		const maxStart = Math.max(0, rows.length - this.maxVisible);
-		const start = this.scrollOffset === "tail" ? maxStart : Math.min(this.scrollOffset, maxStart);
-		this.onResolvedStart?.(start);
-		const windowed = rows.slice(start, start + this.maxVisible);
+		const maxStart = Math.max(0, rows.length - maxVisible);
+		const start = scrollOffset === "tail" ? maxStart : Math.min(scrollOffset, maxStart);
+		onResolvedStart?.(start);
+		const windowed = rows.slice(start, start + maxVisible);
 		const sv = new ScrollView(windowed, {
 			height: windowed.length,
 			scrollbar: "auto",
@@ -685,6 +793,14 @@ export interface AgentDashboardDeps {
 	showModelBadge?: boolean;
 	/** Current main session file; seeds parked agents from previous runs. */
 	sessionFile?: string | null;
+	/**
+	 * Conversation this card is rendered for (`SessionManager.getSessionId()`).
+	 *
+	 * The registry is process-global; a roster is not. Omitted only where there
+	 * is no conversation to attribute the card to (collab guest, render-only
+	 * tests), and an omitted scope shows everything rather than nothing.
+	 */
+	scope?: string;
 	/** Collab guest: route transcript reads and actions to the host. */
 	remote?: AgentTranscriptRemote;
 	/**
@@ -724,6 +840,17 @@ export class AgentDashboard extends Container {
 	/** Start row the pane last resolved, so leaving the tail has a number to leave from. */
 	#commsResolvedStart = 0;
 	#commsExpanded = false;
+	/**
+	 * Agent id the stream is narrowed to, or `undefined` for every message.
+	 *
+	 * A four-agent run interleaves four conversations into one column, and the
+	 * question an operator actually has is almost never "what was said" but "what
+	 * did Kestrel say and hear". Cycled with `f` over the agents that appear in
+	 * the log rather than over the roster, because an agent that has since been
+	 * released still said what it said and its half of the exchange is exactly
+	 * what you go looking for after it is gone.
+	 */
+	#commsFilter: string | undefined;
 
 	#unsubscribers: Array<() => void> = [];
 	#ageTimer: NodeJS.Timeout | undefined;
@@ -799,7 +926,7 @@ export class AgentDashboard extends Container {
 		if (deps.reveal) this.#reveal.start(() => this.onRequestRender?.());
 
 		this.#refreshLiveAgents();
-		this.#comms = this.#irc.log();
+		this.#comms = this.#scopedComms();
 		// Always the roster, never "whichever view has content". A card that picks
 		// its own opening tab is a card whose first keypress means something
 		// different each time you open it, and the counts in the strip already say
@@ -814,7 +941,7 @@ export class AgentDashboard extends Container {
 		// of whatever had been said when it was opened.
 		this.#unsubscribers.push(
 			this.#irc.onMessage(() => {
-				this.#comms = this.#irc.log();
+				this.#comms = this.#scopedComms();
 				this.#rebuildAndRender();
 			}),
 		);
@@ -889,12 +1016,29 @@ export class AgentDashboard extends Container {
 	#refreshLiveAgents(): void {
 		const selectedId = this.#liveAgents[this.#liveSelectedIndex]?.id;
 		this.#liveHoveredIndex = -1;
-		this.#liveAgents = collectLiveAgents(this.#registry.list());
+		this.#liveAgents = collectLiveAgents(this.#registry.listInScope(this.#deps.scope));
 		// Keep the cursor on the AGENT, not on the row number: a spawn or a park
 		// reorders the roster under an operator who is about to press Enter.
 		const kept = selectedId ? this.#liveAgents.findIndex(agent => agent.id === selectedId) : -1;
 		this.#liveSelectedIndex =
 			kept >= 0 ? kept : clampLow(this.#liveSelectedIndex, 0, Math.max(0, this.#liveAgents.length - 1));
+	}
+
+	/**
+	 * The bus log, minus the traffic of other conversations sharing this process.
+	 *
+	 * The bus is process-global and its log is not keyed by conversation, so an
+	 * ACP or cmux host driving several sessions at once, or a session resumed
+	 * over a previous one, had every one of them reading the same stream. A
+	 * message is kept when EITHER end belongs to this conversation, which is what
+	 * keeps the last words of an agent released moments ago on screen while a
+	 * stranger's exchange stays off it.
+	 */
+	#scopedComms(): IrcLogEntry[] {
+		const scope = this.#deps.scope;
+		if (!scope) return this.#irc.log();
+		const mine = new Set(this.#registry.listInScope(scope).map(ref => ref.id));
+		return this.#irc.log().filter(entry => mine.has(entry.message.from) || mine.has(entry.message.to));
 	}
 
 	#observableFor(id: string): ObservableSession | undefined {
@@ -937,6 +1081,93 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
+	 * The traffic the stream is currently showing: everything, or one agent's
+	 * half of it (as sender OR recipient, since a conversation is both).
+	 */
+	#filteredComms(): IrcLogEntry[] {
+		const filter = this.#commsFilter;
+		if (!filter) return this.#comms;
+		return this.#comms.filter(entry => entry.message.from === filter || entry.message.to === filter);
+	}
+
+	/**
+	 * Every agent that appears in the log, in the order they first appear.
+	 *
+	 * Order matters because `f` cycles through this list: an order that shuffled
+	 * as messages arrived would move the filter under a repeated keypress, and
+	 * first-appearance is stable for a log that only ever grows at the end.
+	 */
+	#commsParticipants(): string[] {
+		const seen: string[] = [];
+		for (const entry of this.#comms) {
+			for (const id of [entry.message.from, entry.message.to]) {
+				if (!seen.includes(id)) seen.push(id);
+			}
+		}
+		return seen;
+	}
+
+	/**
+	 * `f`: advance the filter one agent, wrapping through "everything".
+	 *
+	 * Cycling rather than opening a picker: the list is the handful of agents in
+	 * this run, and a modal over a modal to choose one of three is more ceremony
+	 * than the choice is worth. Returning to the stream's top is deliberate — a
+	 * filter change replaces what is on screen, and holding a scroll offset from
+	 * the previous set lands you in the middle of a conversation you did not ask
+	 * to enter.
+	 */
+	#cycleCommsFilter(): void {
+		const participants = this.#commsParticipants();
+		// A filter with nothing left to filter still has to be clearable. The
+		// early return here used to be `participants.length === 0`, which is
+		// exactly the state `forgetAgents` produces on `/new`, `/resume` and
+		// `/handoff`: the log empties under a filter that is still set, so the
+		// pane showed `0 messages · Kestrel only`, the hint and the chip both
+		// vanished because they key off the participant count, and no key cleared
+		// it. Closing and reopening the card was the only way out.
+		if (participants.length === 0) {
+			if (this.#commsFilter === undefined) return;
+			this.#commsFilter = undefined;
+		} else {
+			const current = this.#commsFilter === undefined ? -1 : participants.indexOf(this.#commsFilter);
+			const next = current + 1;
+			this.#commsFilter = next >= participants.length ? undefined : participants[next];
+		}
+		this.#commsScrollOffset = "tail";
+		this.#buildLayout();
+		this.onRequestRender?.();
+	}
+
+	/** Whether `f` would do anything: cycle a filter, or clear one that is stuck. */
+	#canFilterComms(): boolean {
+		return this.#commsParticipants().length > 1 || this.#commsFilter !== undefined;
+	}
+
+	/**
+	 * The line above the stream: how much traffic there is, how much of it never
+	 * landed, and what the stream is narrowed to.
+	 *
+	 * The undelivered count is the reason this line exists. A failure is stated
+	 * on its own row, but a failed message five screens up is invisible, and "did
+	 * anything not arrive" is the question you ask when a run has stalled and you
+	 * are looking for why.
+	 */
+	#commsSummary(): string {
+		const shown = this.#filteredComms();
+		const failed = shown.filter(entry => entry.outcome === "failed").length;
+		const parts = [`${shown.length} ${shown.length === 1 ? "message" : "messages"}`];
+		if (failed > 0) parts.push(theme.fg("error", `${failed} undelivered`));
+		const filterHint = this.#canFilterComms() ? " (f)" : "";
+		parts.push(
+			this.#commsFilter === undefined
+				? `all agents${filterHint}`
+				: theme.fg("accent", `${replaceTabs(this.#callSignFor(this.#commsFilter))} only${filterHint}`),
+		);
+		return theme.fg("dim", " ") + parts.join(theme.fg("dim", " · "));
+	}
+
+	/**
 	 * Tab strip labels and counts.
 	 *
 	 * Live counts what is RUNNING rather than what is registered, because an idle
@@ -951,7 +1182,7 @@ export class AgentDashboard extends Container {
 			// every one of them, so a roster with three parked agents read
 			// "Live (17)" above twenty rows and the strip contradicted the body.
 			{ id: "live", label: "Live", count: this.#liveAgents.length },
-			{ id: "comms", label: "Comms", count: this.#comms.length },
+			{ id: "comms", label: "Comms", count: this.#filteredComms().length },
 		];
 	}
 
@@ -975,7 +1206,12 @@ export class AgentDashboard extends Container {
 		// showing. ModalShell owns everything outside the body, and how much that is
 		// comes from {@link #bodyBudget}, which render() takes from the shell.
 		const budget = Math.max(1, this.#bodyBudget - 2 - (this.#notice ? 2 : 0));
-		if (this.#activeView !== "live") return budget;
+		// Comms also carries its summary line and a spacer. Charging the pane for
+		// them is what keeps the stream's last row on screen: a body longer than the
+		// budget is truncated silently, so two uncounted rows at the top drop two
+		// rows off the tail, which on a feed pinned to the newest message means the
+		// newest message.
+		if (this.#activeView !== "live") return Math.max(1, budget - 2);
 		return Math.min(budget, Math.max(AgentDashboard.#MIN_ROSTER_ROWS, this.#liveAgents.length));
 	}
 
@@ -990,7 +1226,9 @@ export class AgentDashboard extends Container {
 	}
 
 	#currentShortcuts(): readonly ModalShortcut[] {
-		return this.#activeView === "live" ? liveShortcuts(this.#liveAgents.length) : commsShortcuts(this.#expandHint());
+		return this.#activeView === "live"
+			? liveShortcuts(this.#liveAgents.length)
+			: commsShortcuts(this.#expandHint(), this.#canFilterComms());
 	}
 
 	/**
@@ -1047,7 +1285,7 @@ export class AgentDashboard extends Container {
 		// to add hPad and so landed one column right on any card whose padding was
 		// not compact, which put the row-local [x] permanently out of reach of the
 		// pointer while still drawing it under the cursor.
-		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + 2;
+		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + CARD_BODY_COL_INSET;
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
@@ -1057,7 +1295,7 @@ export class AgentDashboard extends Container {
 		this.#notice = undefined;
 		this.#liveHoveredIndex = -1;
 		if (this.#activeView === "live") this.#refreshLiveAgents();
-		if (this.#activeView === "comms") this.#comms = this.#irc.log();
+		if (this.#activeView === "comms") this.#comms = this.#scopedComms();
 		this.#buildLayout();
 	}
 
@@ -1353,18 +1591,21 @@ export class AgentDashboard extends Container {
 				),
 			);
 		} else {
+			this.addChild(new Text(this.#commsSummary(), 0, 0));
+			this.addChild(new Spacer(1));
 			this.addChild(
-				new CommsPane(
-					this.#comms,
-					id => this.#callSignFor(id),
-					this.#commsScrollOffset,
-					this.#computeBodyHeight(),
-					this.#commsExpanded,
-					this.#expandHint(),
-					start => {
+				new CommsPane({
+					entries: this.#filteredComms(),
+					nameFor: id => this.#callSignFor(id),
+					scrollOffset: this.#commsScrollOffset,
+					maxVisible: this.#computeBodyHeight(),
+					expanded: this.#commsExpanded,
+					expandHint: this.#expandHint(),
+					onResolvedStart: start => {
 						this.#commsResolvedStart = start;
 					},
-				),
+					filtered: this.#commsFilter !== undefined,
+				}),
 			);
 		}
 
@@ -1588,6 +1829,12 @@ export class AgentDashboard extends Container {
 				this.onRequestRender?.();
 				return;
 			}
+		}
+
+		// `f`: narrow the stream to one agent's traffic. A plain letter, like `x`
+		// on the roster, because the card owns every key while it is open.
+		if (data === "f") {
+			this.#cycleCommsFilter();
 		}
 	}
 }
