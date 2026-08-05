@@ -62,9 +62,34 @@ describe("getAntigravityModelWireProfile", () => {
 		expect(getAntigravityModelWireProfile("nonexistent")).toBeUndefined();
 	});
 
-	it("every table entry carries a positive maxOutputTokens", () => {
-		for (const profile of Object.values(ANTIGRAVITY_MODEL_WIRE_PROFILES)) {
-			expect(profile.maxOutputTokens).toBeGreaterThan(0);
+	/**
+	 * LOCKS OUT: a wire profile whose maxOutputTokens the backend rejects.
+	 *
+	 * This replaced `expect(profile.maxOutputTokens).toBeGreaterThan(0)`, which
+	 * passed for every value the backend actually refuses. The two Claude ids are
+	 * the ones that matter: `daily-cloudcode-pa` answers 400 `Request contains an
+	 * invalid argument` above 64,000, so a copy-paste of the Gemini 65,536 into
+	 * either row breaks every Claude turn through Antigravity, and the old
+	 * assertion called it correct.
+	 *
+	 * The whole table is pinned rather than sampled, because a new row is exactly
+	 * where the wrong ceiling gets pasted.
+	 */
+	it("holds the exact per-id ceiling the backend accepts", () => {
+		expect(ANTIGRAVITY_MODEL_WIRE_PROFILES).toEqual({
+			"gemini-3.5-flash-extra-low": { modelEnum: "MODEL_PLACEHOLDER_M187", maxOutputTokens: 65536 },
+			"gemini-3.5-flash-low": { modelEnum: "MODEL_PLACEHOLDER_M20", maxOutputTokens: 65536 },
+			"gemini-3-flash-agent": { modelEnum: "MODEL_PLACEHOLDER_M132", maxOutputTokens: 65536 },
+			"gemini-3.1-pro-low": { modelEnum: "MODEL_PLACEHOLDER_M36", maxOutputTokens: 65535 },
+			"gemini-pro-agent": { modelEnum: "MODEL_PLACEHOLDER_M16", maxOutputTokens: 65535 },
+			"claude-sonnet-4-6": { maxOutputTokens: 64000 },
+			"claude-opus-4-6-thinking": { maxOutputTokens: 64000 },
+		});
+		// Named separately: every Claude id stays at or under the 64,000 the
+		// backend enforces, whatever else is added to the table above.
+		for (const [id, profile] of Object.entries(ANTIGRAVITY_MODEL_WIRE_PROFILES)) {
+			if (!id.startsWith("claude-")) continue;
+			expect(profile.maxOutputTokens).toBeLessThanOrEqual(64000);
 		}
 	});
 });

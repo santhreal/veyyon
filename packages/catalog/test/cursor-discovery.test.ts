@@ -131,9 +131,10 @@ describe("cursor discovery input modalities (issue #4726)", () => {
 		const spec = byId.get("claude-opus-4-8-99999999");
 		expect(spec?.provider).toBe("cursor");
 		expect(spec?.api).toBe("cursor-agent");
-		// Imported rather than retyped: these were two more copies of a value that four source modules also each
-		// declared, and a test carrying its own copy of the number under test can only agree with itself.
-		expect(spec?.contextWindow).toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
+		// The number, not the constant. Source modules deduplicating the value is a
+		// source concern; this test's job is to pin what a silent provider is
+		// assumed to offer, and against the constant it can only agree with itself.
+		expect(spec?.contextWindow).toBe(200_000);
 		expect(spec?.maxTokens).toBe(AGENT_GATEWAY_DEFAULT_MAX_TOKENS);
 		expect(spec?.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 	});

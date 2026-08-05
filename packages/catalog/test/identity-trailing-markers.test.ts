@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { buildModel } from "../src/build";
-import { buildModelReferenceIndex, resolveModelReference } from "../src/identity/reference";
 import * as markers from "../src/identity/markers";
+import { buildModelReferenceIndex, resolveModelReference } from "../src/identity/reference";
 import type { Api, Model, Provider } from "../src/types";
 
 function reference(id: string, provider: Provider = "openai"): Model<Api> {
