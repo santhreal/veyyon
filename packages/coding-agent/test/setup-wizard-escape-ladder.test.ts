@@ -52,7 +52,7 @@ beforeAll(async () => {
 	await initTheme(false);
 });
 
-function makeContext(terminal: { rows: number }): SetupWizardContext {
+function makeContext(terminal: { rows: number }, onRender: () => void = () => {}): SetupWizardContext {
 	return {
 		settings: Settings.isolated(),
 		session: {
@@ -63,7 +63,7 @@ function makeContext(terminal: { rows: number }): SetupWizardContext {
 		},
 		openInBrowser: () => {},
 		showError: () => {},
-		ui: { terminal, setFocus: () => {}, requestRender: () => {}, invalidate: () => {} },
+		ui: { terminal, setFocus: () => {}, requestRender: onRender, invalidate: () => {} },
 	} as unknown as SetupWizardContext;
 }
 
@@ -273,6 +273,62 @@ describe("a typed search survives a terminal resize", () => {
 		} finally {
 			vi.useRealTimers();
 			component.dispose();
+		}
+	});
+});
+
+describe("the theme step's own Esc sub-state", () => {
+	/**
+	 * "Browse all themes" is the only sub-mode any scene enters, and its own
+	 * on-screen line has always read "Esc returns to curated choices" while Esc
+	 * actually ended the run. It is also the ONE `SelectList.onCancel` the wizard
+	 * can still reach, because the wizard hands Esc to a scene only while that
+	 * scene claims it, so the branch is worth pinning against a refactor that
+	 * trims the cancel handlers around it as dead.
+	 *
+	 * Driven at the SCENE, because `escapeAction` is the value the wizard reads
+	 * to decide who gets the key and the same value the footer prints, so this is
+	 * both halves of the promise in one place.
+	 */
+	it("claims Esc while browsing all themes, and returns to the curated rows", async () => {
+		let painted: PromiseWithResolvers<void> | undefined;
+		const host = {
+			ctx: makeContext({ rows: 40 }, () => painted?.resolve()),
+			requestRender: () => painted?.resolve(),
+			finish: (result: string) => finished.push(result),
+			skipSetup: () => finished.push("skipped-setup"),
+			setFocus: () => {},
+			restoreFocus: () => {},
+		} as unknown as SetupSceneHost;
+		const finished: string[] = [];
+		const scene = themeSetupScene.mount(host);
+		try {
+			scene.render(76, 24);
+			expect(scene.escapeAction?.()).toBeUndefined();
+
+			scene.handleInput?.("4"); // move onto "Browse all…"
+			painted = Promise.withResolvers<void>();
+			scene.handleInput?.("\r"); // enter it: this reads the theme directory
+			await painted.promise;
+			while (!plain(scene.render(76, 24)).includes("Browsing all themes")) {
+				painted = Promise.withResolvers<void>();
+				await painted.promise;
+			}
+
+			// The scene now owns Esc, and says so in the words the footer prints.
+			expect(scene.escapeAction?.()).toEqual({ keys: "esc", label: "back to curated" });
+
+			scene.handleInput?.("\x1b");
+			const back = plain(scene.render(76, 24));
+			expect(back).not.toContain("Browsing all themes");
+			expect(back).toContain("Browse all…");
+			// Back in the curated list, Esc belongs to the wizard again.
+			expect(scene.escapeAction?.()).toBeUndefined();
+			// And returning from the sub-mode is not leaving the step.
+			expect(finished).toEqual([]);
+		} finally {
+			await scene.onUnmount?.();
+			scene.dispose?.();
 		}
 	});
 });

@@ -20,7 +20,11 @@
  * the age, model and activity columns left on precisely the rows that most need
  * reading; the measure and the paint have to agree on which word is drawn.
  */
+
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
@@ -191,6 +195,45 @@ describe("an agent parked waiting on a peer", () => {
 			expect(waiting.indexOf(age)).toBe(finished.indexOf(age));
 		} finally {
 			dashboard.dispose();
+		}
+	});
+});
+
+describe("a card closed before its disk scan lands", () => {
+	/**
+	 * The card scans the session tree for subagents of previous runs, which is
+	 * real filesystem work started in the constructor. A card closed while that
+	 * is in flight used to rebuild its roster and ask the host to repaint, which
+	 * is precisely the work `dispose` exists to stop: the overlay is gone, the
+	 * subscriptions are dropped and the timers are cleared, and then one more
+	 * layout is built for nobody.
+	 *
+	 * Driven with a REAL tree so the scan actually finds something and the
+	 * callback actually runs; a scan that finds nothing returns early for an
+	 * unrelated reason and would pass this test on the wrong path.
+	 */
+	test("does not rebuild or request a repaint after dispose", async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-dashboard-scan-"));
+		try {
+			const sessionFile = path.join(root, "parent.jsonl");
+			await fs.writeFile(sessionFile, "");
+			await fs.mkdir(path.join(root, "parent"), { recursive: true });
+			await fs.writeFile(path.join(root, "parent", "0-Sub.jsonl"), "");
+
+			const dashboard = new AgentDashboard({ terminalHeight: 40, sessionFile });
+			let repaints = 0;
+			dashboard.onRequestRender = () => {
+				repaints += 1;
+			};
+			dashboard.dispose();
+			await dashboard.persistedSubagentsReady;
+
+			expect(repaints).toBe(0);
+			// The scan still ran and still registered the agent: what is suppressed
+			// is the card's reaction to it, not the registry write.
+			expect(AgentRegistry.global().get("0-Sub")?.status).toBe("parked");
+		} finally {
+			await fs.rm(root, { recursive: true, force: true });
 		}
 	});
 });
