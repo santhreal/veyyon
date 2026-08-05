@@ -93,7 +93,8 @@ describe("veyyon plugin offline surfaces", () => {
 		const env = makeEnv();
 		const enable = await runPlugin(env, ["enable", "ghost-package"]);
 		expectExit(enable, 1);
-		expect(enable.stderr).toContain("not found");
+		expect(enable.stderr).toContain('No plugin named "ghost-package" is installed');
+		expect(enable.stderr).toContain("veyyon plugin list");
 		const disable = await runPlugin(env, ["disable", "ghost-package"]);
 		expectExit(disable, 1);
 	}, 30_000);
@@ -116,7 +117,7 @@ describe("veyyon plugin offline surfaces", () => {
 
 	it("rejects an unknown action with the canonical action list", async () => {
 		const run = await runPlugin(makeEnv(), ["frobnicate"]);
-		expectExit(run, 1);
+		expectExit(run, 2);
 		expect(run.stderr).toContain("Expected action to be one of");
 	}, 30_000);
 });

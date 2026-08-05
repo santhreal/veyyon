@@ -25,9 +25,13 @@ const makeSettingsPrecedenceDir = useTrackedTempDirs("veyyon-settings-precedence
  *
  *   1. the compiled schema default
  *   2. the global `config.yml` in the agent dir
- *   3. the project layer, `<cwd>/.veyyon/config.yml`
- *   4. `--config` overlays, later files winning over earlier ones
- *   5. runtime overrides: `--set` on the command line, and `set()` in-process
+ *   3. `--config` overlays, later files winning over earlier ones
+ *   4. runtime overrides: `--set` on the command line, and `set()` in-process
+ *
+ * There used to be a project layer, `<cwd>/.veyyon/config.yml`, between 2 and
+ * 3. Repo-loaded configuration was removed, and the cases that covered it now
+ * pin the refusal: the file is not read, produces no value, and the layers
+ * around where it sat are untouched.
  *
  * Each test adds exactly one layer to the one below it, so a failure names the
  * boundary that broke rather than just "the merge is wrong". The knobs are a
@@ -169,10 +173,10 @@ describe("Tier-A settings precedence", () => {
 		expectKnobs(settings, { gitEnabled: true, immuneTurns: 11, preset: "minimal" });
 	});
 
-	test("the project config wins over the global config", async () => {
-		// The boundary most likely to be wrong in practice: a per-repo setting that
-		// silently loses to the user's global one looks exactly like the repo config
-		// not being read at all.
+	test("a repository config file changes nothing: the global config stands", async () => {
+		// The project layer (`<cwd>/.veyyon/config.yml`) is gone: repo-loaded
+		// configuration was removed, so the same file that used to win now
+		// produces no value at all and the global config's knobs stand.
 		writeLayer(
 			globalFile(),
 			KNOBS.map(k => [k.path, k.global] as const),
@@ -184,7 +188,7 @@ describe("Tier-A settings precedence", () => {
 
 		const settings = await load();
 
-		expectKnobs(settings, { gitEnabled: true, immuneTurns: 22, preset: "compact" });
+		expectKnobs(settings, { gitEnabled: true, immuneTurns: 11, preset: "minimal" });
 	});
 
 	test("a --config overlay wins over both files", async () => {
@@ -245,10 +249,10 @@ describe("Tier-A settings precedence", () => {
 	});
 
 	describe("the layers are independent, not all-or-nothing", () => {
-		test("a knob set only in the global file is not erased by an unrelated project setting", async () => {
-			// Deep merge, not replace. If the project layer overwrote the global object
-			// wholesale, configuring one knob in a repo would silently reset every
-			// other knob in that group to its default.
+		test("a repository config file leaves the global file's knobs untouched", async () => {
+			// The removed project layer can neither shadow nor erase: a knob set in
+			// the repo file keeps the global value, and an unrelated global knob is
+			// exactly where it was.
 			writeLayer(globalFile(), [
 				["git.enabled", true],
 				["advisor.immuneTurns", 11],
@@ -258,7 +262,7 @@ describe("Tier-A settings precedence", () => {
 			const settings = await load();
 
 			expect(settings.get("git.enabled")).toBe(true);
-			expect(settings.get("advisor.immuneTurns")).toBe(22);
+			expect(settings.get("advisor.immuneTurns")).toBe(11);
 		});
 
 		test("an overlay that mentions one knob leaves the others on their lower layers", async () => {
@@ -268,7 +272,10 @@ describe("Tier-A settings precedence", () => {
 
 			const settings = await load({ configFiles: [overlayFile("overlay.yml")] });
 
-			expectKnobs(settings, { gitEnabled: true, immuneTurns: 33, preset: "compact" });
+			expect(settings.get("git.enabled")).toBe(true);
+			expect(settings.get("advisor.immuneTurns")).toBe(33);
+			// The repo file is not a layer anymore, so the preset is the schema default.
+			expect(settings.get("statusLine.preset")).toBe(getDefault("statusLine.preset"));
 		});
 	});
 

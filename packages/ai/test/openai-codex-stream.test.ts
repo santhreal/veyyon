@@ -1393,27 +1393,18 @@ describe("openai-codex streaming", () => {
 		const token = createCodexTestToken();
 		let capturedHeaders: Record<string, string> | undefined;
 		class HeaderCaptureWebSocket extends MockWebSocket {
-			constructor(url: string, options?: { headers?: WsHeaders }) {
-				super(url, options);
-				capturedHeaders = options?.headers;
-				this.scheduleOpen();
-			}
+				constructor(url: string, options?: { headers?: WsHeaders }) {
+					super(url, options);
+					capturedHeaders = options?.headers;
+					this.scheduleOpen();
+				}
 
-			send(): void {
-				this.sendJson({
-					type: "response.done",
-					response: {
-						id: "resp_ws",
-						status: "completed",
-						usage: {
-							input_tokens: 1,
-							output_tokens: 1,
-							total_tokens: 2,
-							input_tokens_details: { cached_tokens: 0 },
-						},
-					},
-				});
-			}
+				// A completed turn with visible text: a bare `response.done` with no
+				// content is the empty-completion failure the provider retries, and
+				// this test is about the handshake, not that policy.
+				send(): void {
+					this.emitCodexResponse({ messageId: "msg_ws", responseId: "resp_ws", text: "Hi" });
+				}
 		}
 
 		global.WebSocket = HeaderCaptureWebSocket as unknown as typeof WebSocket;

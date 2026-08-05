@@ -136,7 +136,7 @@ describe("gallery harness", () => {
 		expect(fixture.result.content.length).toBeGreaterThan(0);
 	});
 
-	it("exits 1 with the error on stderr for an unknown --tool", async () => {
+	it("exits 2 with the error on stderr for an unknown --tool", async () => {
 		// Scripts must be able to distinguish "tool doesn't exist" from an empty
 		// gallery: the refusal goes to stderr and the exit code is non-zero.
 		const cliEntry = path.resolve(import.meta.dir, "../src/cli.ts");
@@ -158,7 +158,7 @@ describe("gallery harness", () => {
 		} finally {
 			cleanup();
 		}
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(2);
 		expect(stderr).toContain("Unknown tool 'nonexistent-tool'");
 		expect(stderr).toContain("Known tools:");
 		expect(stdout).not.toContain("Unknown tool");

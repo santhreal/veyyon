@@ -25,7 +25,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clamp, collapseWhitespace, errorMessage, VERSION } from "@veyyon/utils";
+import { clamp, collapseWhitespace, errorMessage, isRecord, VERSION } from "@veyyon/utils";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../capability/rule";
 import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -3336,7 +3336,7 @@ export class SettingsSelectorComponent implements Component {
 			} catch {
 				throw new Error(`Invalid record JSON for ${path}`);
 			}
-			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+			if (!isRecord(parsed)) {
 				throw new Error(`Invalid record JSON for ${path}`);
 			}
 			if (path === "providers.maxInFlightRequests") {

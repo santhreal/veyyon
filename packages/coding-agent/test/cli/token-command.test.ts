@@ -68,7 +68,7 @@ describe("veyyon token without credentials", () => {
 
 	it("requires the provider argument", async () => {
 		const { exitCode, stderr } = await runToken([]);
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(2);
 		expect(stderr.toLowerCase()).toContain("provider");
 	}, 30_000);
 });

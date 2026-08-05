@@ -138,7 +138,7 @@ describe("machine output still goes to stdout", () => {
 		const result = await runCli(["ssh", "list", "--json"]);
 		const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
 
-		expect(Object.keys(parsed).sort()).toEqual(["project", "user"]);
+		expect(Object.keys(parsed).sort()).toEqual(["hosts"]);
 	}, 60_000);
 
 	/** `--version` answers a question, so its answer belongs on stdout. */

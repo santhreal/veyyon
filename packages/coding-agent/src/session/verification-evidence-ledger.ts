@@ -1,5 +1,5 @@
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { prompt } from "@veyyon/utils";
+import { collapseWhitespace, prompt } from "@veyyon/utils";
 import { sessionPrompts } from "../prompts/session/rows";
 
 const MUTATION_TOOLS: Record<string, true> = { edit: true, write: true, ast_edit: true };
@@ -57,7 +57,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 function boundedText(value: string): string {
-	const normalized = value.replace(/\s+/g, " ").trim();
+	const normalized = collapseWhitespace(value);
 	return normalized.length <= MAX_TEXT_LENGTH ? normalized : `${normalized.slice(0, MAX_TEXT_LENGTH - 1)}…`;
 }
 

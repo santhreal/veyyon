@@ -10,7 +10,7 @@
  * `parked` ↔ `idle`.
  */
 
-import { logger } from "@veyyon/utils";
+import { clamp, logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
 import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "./agent-registry";
 
@@ -544,7 +544,7 @@ export class AgentLifecycleManager {
 		if (!Number.isFinite(nextDeadline)) return;
 		// Node clamps larger delays to 1 ms. Bound the single scheduler delay and
 		// re-evaluate later instead of accidentally expiring a long-lived cache.
-		const delay = Math.min(Math.max(0, nextDeadline - Date.now()), 2_147_483_647);
+		const delay = clamp(nextDeadline - Date.now(), 0, 2_147_483_647);
 		this.#timer = setTimeout(() => {
 			this.#timer = undefined;
 			const now = Date.now();

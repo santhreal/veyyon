@@ -147,6 +147,20 @@ describe("azure openai responses streaming", () => {
 				return new Response("temporary", { status: 503, headers: { "retry-after": "0" } });
 			}
 			return createSseResponse([
+				// A completed turn must carry visible content: a bare `response.completed`
+				// is the empty-completion failure the provider retries, and this test
+				// counts transport retries, not that policy.
+				{
+					type: "response.output_item.done",
+					output_index: 0,
+					item: {
+						type: "message",
+						id: "msg_retry",
+						role: "assistant",
+						status: "completed",
+						content: [{ type: "output_text", text: "hello", annotations: [] }],
+					},
+				},
 				{
 					type: "response.completed",
 					response: {
@@ -188,7 +202,7 @@ describe("azure openai responses streaming", () => {
 
 		expect(result.stopReason).toBe("stop");
 		expect(bodies.map(body => body.attempt)).toEqual([1, 2]);
-		expect(order).toEqual(["payload:1", "fetch:1", "payload:2", "fetch:2", "response:200", "sse"]);
+		expect(order).toEqual(["payload:1", "fetch:1", "payload:2", "fetch:2", "response:200", "sse", "sse"]);
 	});
 
 	/** Regression: an already-aborted request remains fetch-free but still exposes its one inspectable payload. */
