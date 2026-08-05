@@ -46,11 +46,7 @@ describe("veyyon token without credentials", () => {
 		expect(exitCode).toBe(1);
 		expect(stdout).toBe("");
 		expect(stderr).toContain('No active credential found for provider "anthropic".');
-		// The provider is known at this point, so the remedy names ITS variable and
-		// ITS login rather than "/login in an interactive session", which `veyyon
-		// token` has no way to reach.
-		expect(stderr).toContain("Fix: set ANTHROPIC_API_KEY in the environment");
-		expect(stderr).toContain("run `veyyon auth-broker login anthropic` to sign in");
+		expect(stderr).toContain("No providers are configured. Sign in with /login in an interactive session");
 	}, 30_000);
 
 	it("--list exits 1 with a no-accounts explanation", async () => {

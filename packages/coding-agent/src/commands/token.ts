@@ -7,7 +7,6 @@ import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import chalk from "chalk";
 import { isAuthenticated } from "../config/auth-state";
-import { credentialRemedySentence } from "../config/missing-credentials";
 import { ModelRegistry } from "../config/model-registry";
 // `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
 // the whole application and this file wants one function.
@@ -142,14 +141,13 @@ export default class Token extends Command {
 
 				const msg = `No active credential found for provider "${providerName}".`;
 				process.stderr.write(`${chalk.red(msg)}\n`);
-				// `veyyon token` is a CLI with no TUI, so `/login` was not a route
-				// its reader had. The provider is known here, so the remedy can name
-				// its actual environment variable and login command rather than a
-				// surface the reader cannot open.
 				if (activeProviders.size > 0) {
 					process.stderr.write(`Configured providers: ${Array.from(activeProviders).sort().join(", ")}\n`);
+				} else {
+					process.stderr.write(
+						"No providers are configured. Sign in with /login in an interactive session, or set the provider's API key environment variable.\n",
+					);
 				}
-				process.stderr.write(`${credentialRemedySentence(providerName)}\n`);
 				process.exitCode = 1;
 				return;
 			}

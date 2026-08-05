@@ -8,11 +8,13 @@ import type {
 	AssistantMessageEvent,
 	AssistantTurnStatus,
 	Context,
+	IncompleteToolCall,
 	Model,
 	ToolCallStatus,
 	ToolChoice,
 	ToolResultMessage,
 	TSchema,
+	UserMessage,
 } from "@veyyon/ai";
 // Eleven runtime names, each from the module that declares it. The package entry point re-exports
 // the whole of `@veyyon/ai`; this loop legitimately reaches the streaming engine because it streams,
@@ -81,6 +83,13 @@ import {
 	startExecuteToolSpan,
 	startInvokeAgentSpan,
 } from "./telemetry";
+import {
+	buildToolBatchLedger,
+	renderToolBatchLedger,
+	type ToolBatchCallEntry,
+	type ToolBatchLedger,
+	type ToolBatchLedgerCause,
+} from "./tool-batch-ledger";
 import { capToolResultContent } from "./tool-result-cap";
 import type {
 	AgentContext,
@@ -1042,10 +1051,38 @@ async function runLoopBody(
 					const toolCallAbortMessages =
 						message.toolCallAbortMessages ??
 						(scopedAbort ? buildToolCallAbortMessages(message, scopedAbort) : undefined);
+					// Everything the harness knows about this batch at abort time. The
+					// loop's own dispatch cannot have started: `tool.execute()` has one
+					// call site, inside `executeToolCalls`, which is reached only from
+					// the runnable-stop branch below, and this branch returns first.
+					// So every retained call is "never ran".
+					//
+					// The one exception is a Cursor exec-channel call. Those run through
+					// a caller-supplied `execHandler` inside the provider stream, in this
+					// process, and their `toolCall` block is synthesized BEFORE the
+					// handler is awaited. A reset can land while one is still running, so
+					// they are never reported as "never ran": `buildAbortedTurnLedger`
+					// resolves them against the transcript and falls back to "started, no
+					// result recorded".
+					//
+					// Emitting the ledger on the first placeholder keeps it to one
+					// bounded copy per batch. When the batch left no placeholder at all
+					// the ledger travels as a turn-level notice instead; see below.
+					const batchLedger = buildAbortedTurnLedger(
+						message.stopReason === "aborted" ? "aborted" : "stream_error",
+						message,
+						currentContext.messages,
+					);
 					const toolResults: ToolResultMessage[] = [];
 					for (const toolCall of toolCalls) {
 						const errorMessage = toolCallAbortMessages?.[toolCall.id] ?? message.errorMessage;
-						const result = createAbortedToolResult(toolCall, stream, message.stopReason, errorMessage);
+						const result = createAbortedToolResult(
+							toolCall,
+							stream,
+							message.stopReason,
+							errorMessage,
+							toolResults.length === 0 ? batchLedger : undefined,
+						);
 						currentContext.messages.push(result);
 						newMessages.push(result);
 						toolResults.push(result);
@@ -1059,6 +1096,30 @@ async function runLoopBody(
 							toolName: toolCall.name,
 							status: message.stopReason === "aborted" ? "aborted" : "error",
 						});
+					}
+					if (batchLedger && toolResults.length === 0) {
+						// Every call this turn either had its `toolCall` block deleted by
+						// `retainCompletedToolCalls` (arguments still streaming) or was
+						// already dispatched out of band by Cursor's exec channel, so no
+						// placeholder result exists to carry the ledger. Dropping it here
+						// is how the one case it was written for got lost: an incomplete
+						// call has no block, no result and no placeholder, so the ledger
+						// is the only place it is named at all, and without it the model
+						// reads a turn in which it never asked for that tool.
+						//
+						// The turn-level path is the one the tool-choice reminder uses: a
+						// synthetic user message streamed and appended to the context, so
+						// it survives into the next request the same way.
+						const notice: UserMessage = {
+							role: "user",
+							content: renderToolBatchLedger(batchLedger),
+							synthetic: true,
+							timestamp: Date.now(),
+						};
+						stream.push({ type: "message_start", message: notice });
+						stream.push({ type: "message_end", message: notice });
+						currentContext.messages.push(notice);
+						newMessages.push(notice);
 					}
 					await emitTurnEnd(stream, currentContext, message, toolResults, config, signal, { willContinue: false });
 
@@ -1082,10 +1143,10 @@ async function runLoopBody(
 				// are abandoned below. (`error`/`aborted` already returned above.)
 				type ToolCallContent = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
 				// A Cursor exec-channel synthesized `toolCall` block carries
-				// `kCursorExecResolved` because Cursor already executed the tool
-				// server-side (via the bridge) and buffered the result for
-				// out-of-band emission — running it here again would duplicate the
-				// same side-effecting call (issue #4348 review by @chatgpt-codex-connector).
+				// `kCursorExecResolved` because the exec channel already dispatched the
+				// tool through the caller's `execHandler` and buffered the result for
+				// out-of-band emission. Running it here again would duplicate the same
+				// side-effecting call (issue #4348 review by @chatgpt-codex-connector).
 				const toolCalls = message.content.filter(
 					(c): c is ToolCallContent =>
 						c.type === "toolCall" && (c as CursorExecResolvedCarrier)[kCursorExecResolved] !== true,
@@ -1729,22 +1790,35 @@ async function streamAssistantResponse(
 	}
 }
 
+/**
+ * Drop `toolCall` blocks whose arguments never finished streaming, and record
+ * their identity on {@link AssistantMessage.incompleteToolCalls}.
+ *
+ * The blocks have to go: partial arguments are unsafe to run, and an unpaired
+ * `tool_use` block breaks the provider's tool_use/tool_result pairing on
+ * replay. Deleting them outright was the residual defect, because the call
+ * then had no result, no block, and no mention anywhere, so the model saw a
+ * turn in which it had never asked for that tool. The id and name arrive with
+ * the provider's block header, before any argument delta, so they are known
+ * even here and the ledger can name the call as attempted-and-never-run.
+ */
 function retainCompletedToolCalls(
 	message: AssistantMessage,
 	completedToolCallIds: ReadonlySet<string>,
 ): AssistantMessage {
 	if (message.stopReason !== "error" && message.stopReason !== "aborted") return message;
-	let droppedIncompleteToolCall = false;
+	const incompleteToolCalls: IncompleteToolCall[] = [];
 	const content = message.content.filter(block => {
 		if (block.type !== "toolCall") return true;
 		const keep = completedToolCallIds.has(block.id);
-		if (!keep) droppedIncompleteToolCall = true;
+		if (!keep) incompleteToolCalls.push({ id: block.id, name: block.name });
 		return keep;
 	});
-	if (!droppedIncompleteToolCall) return message;
+	if (incompleteToolCalls.length === 0) return message;
 	return {
 		...message,
 		content,
+		incompleteToolCalls,
 		stopDetails:
 			message.stopDetails?.type === STREAM_INTERRUPTED_AFTER_CONTENT_STOP_DETAIL
 				? message.stopDetails
@@ -1963,6 +2037,13 @@ async function executeToolCalls(
 			args: toolCall.arguments as Record<string, unknown>,
 			signal: tool?.interruptible ? interruptibleSignal : nonInterruptibleSignal,
 			started: false,
+			// `started` means the UI was told the call is running, which includes the
+			// time it spends in `beforeToolCall` (permission prompts). `entered` means
+			// control actually crossed into `tool.execute()`. The partial-completion
+			// ledger needs the second one: a call cut off while awaiting approval had
+			// no side effects and is safe to retry verbatim, and telling the model to
+			// go check state for it is a false alarm that costs it a turn.
+			entered: false,
 			// Instrumentation timing (see captureToolCallMetrics). `startedAt` stays
 			// undefined until `tool.execute()` is about to run, so a call that erred
 			// or was skipped before execution records a zero-duration, never-started
@@ -2318,6 +2399,7 @@ async function executeToolCalls(
 				// the tool runs, so `durationMs` measures the tool body alone and
 				// `queuedMs` (start − dispatch) captures the scheduling wait.
 				if (instrumentationLevel !== "off") record.startedAt = Date.now();
+				record.entered = true;
 				const rawResult = await tool.execute(
 					toolCall.id,
 					effectiveArgs,
@@ -2395,12 +2477,36 @@ async function executeToolCalls(
 					? "error"
 					: "ok";
 		record.terminalStatus = status;
-		if (interrupted && perToolAborted && isError && !completedToolExecution) {
+		if (abortedDuringExecution) {
 			// This tool's own signal fired AND it failed to produce a result: `tool.execute()`
 			// never returned (it threw on the abort), so it was genuinely cut off before
 			// producing usable output. Report it as skipped.
+			//
+			// The gate is `abortedDuringExecution` and nothing more, which is the same
+			// predicate `status` above is already derived from. It used to also require
+			// `interruptState.triggered`, and only a STEERING interrupt sets that. A plain
+			// Esc cancels the run without queuing anything, so it fell through to the
+			// branch below and the model received the thrown `AbortError`'s own message
+			// verbatim, which for an abort is the bare word "aborted". The status field
+			// already said "aborted" while the result text said nothing at all, and the
+			// interruption an operator performs most often was the one told least.
+			//
+			// `record.entered` decides WHICH skip this was, and the two call for
+			// opposite responses. Cut off before entering `tool.execute()` (still in
+			// `beforeToolCall`, e.g. an approval prompt) means nothing ran and the
+			// call is safe to retry verbatim. Cut off inside it means the tool was
+			// already running and may have applied part of its side effects, so a
+			// verbatim retry can double-apply: a half-written file, a `bash` command
+			// that got through some of its work. The batch ledger cannot carry this
+			// distinction for us here, because this result is emitted while the
+			// batch is still running and the ledger is only assembled once every
+			// call has settled; a single-call batch never reaches it at all.
 			record.skipped = true;
-			emitToolResult(record, createSkippedToolResult(interruptState.source), true);
+			emitToolResult(
+				record,
+				createSkippedToolResult(interrupted ? interruptState.source : "cancelled-run", record.entered),
+				true,
+			);
 		} else {
 			// No interrupt on this signal, or the tool finished before the interrupt landed
 			// (`completedToolExecution`) — even if the signal aborted around completion. Keep
@@ -2485,17 +2591,62 @@ async function executeToolCalls(
 	// especially when tool results are large (e.g. bash output).
 	await yieldIfDue();
 
-	for (const record of records) {
-		if (!record.toolResultMessage) {
-			record.skipped = true;
-			record.terminalStatus = "skipped";
-			recordSkippedTool(telemetry, {
-				toolCallId: record.toolCall.id,
-				toolName: record.toolCall.name,
-				status: "skipped",
-			});
-			emitToolResult(record, createSkippedToolResult(interruptState.source), true);
-		}
+	// A record with no result message never produced one: it was skipped before
+	// dispatch. `record.skipped`, not the presence of a result message, is what
+	// says a call was cut short: a call whose `tool.execute()` was aborted
+	// mid-flight was already answered above with a skipped placeholder, so it
+	// HAS a result message and an `isError` of true. Keying the ledger off the
+	// result message reported that call as "ran, failed" and then told the
+	// model its result is already in the transcript and must not be re-run,
+	// which is false twice over: nothing usable ran, and the call may have
+	// applied part of its side effects.
+	//
+	// `entered`, not `started`, is what separates "cut off inside the tool"
+	// from "cut off while waiting for approval": only the first can have
+	// applied side effects.
+	//
+	// `records.length > 1` is the noise guard: a one-call batch has no
+	// siblings to inventory, so a ledger there is a second copy of what the
+	// call's own placeholder already says. It stays, and it no longer costs the
+	// side-effect warning, because that warning now rides the placeholder text
+	// itself (`createSkippedToolResult`'s `entered`) rather than only the
+	// ledger.
+	//
+	// The ledger rides one placeholder, so it is only built when there is a
+	// placeholder left to carry it. A batch in which every cut-short call was
+	// already answered above has nothing to attach it to, and nothing to add:
+	// each of those placeholders already states its own outcome.
+	const unresolved = records.filter(record => !record.toolResultMessage);
+	const batchLedger =
+		unresolved.length > 0 && records.length > 1
+			? buildToolBatchLedger(
+					"interrupted",
+					records.map(record => ({
+						toolCallId: record.toolCall.id,
+						toolName: record.toolCall.name,
+						outcome:
+							record.skipped || !record.toolResultMessage
+								? record.entered
+									? ("interrupted" as const)
+									: ("dropped" as const)
+								: record.isError
+									? ("failed" as const)
+									: ("ok" as const),
+					})),
+				)
+			: undefined;
+	let ledgerAttached = false;
+	for (const record of unresolved) {
+		record.skipped = true;
+		record.terminalStatus = "skipped";
+		recordSkippedTool(telemetry, {
+			toolCallId: record.toolCall.id,
+			toolName: record.toolCall.name,
+			status: "skipped",
+		});
+		const ledger = ledgerAttached ? undefined : batchLedger;
+		ledgerAttached = true;
+		emitToolResult(record, createSkippedToolResult(interruptState.source, record.entered, ledger), true);
 	}
 
 	return { toolResults: emittedToolResults };
@@ -2516,18 +2667,22 @@ async function executeToolCalls(
  *
  * `source` names the assistant-side termination state that prevented
  * execution; `upstreamError` is the provider-reported message when the turn
- * ended with `stopReason === "error"`.
+ * ended with `stopReason === "error"`. `batchLedger` is present on exactly one
+ * result per cut-short batch and inventories the sibling calls, so a consumer
+ * can tell "ran and failed" from "never ran" without replaying the transcript.
  */
 export interface SyntheticToolResultDetails {
 	__synthetic: true;
 	source: "assistant_stop_aborted" | "assistant_stop_error" | "assistant_stop_skipped" | "assistant_stop_length";
 	executed: false;
 	upstreamError?: string;
+	batchLedger?: ToolBatchLedger;
 }
 
 function syntheticDetailsFor(
 	reason: "aborted" | "error" | "skipped" | "length",
 	errorMessage: string | undefined,
+	batchLedger: ToolBatchLedger | undefined,
 ): SyntheticToolResultDetails {
 	const source: SyntheticToolResultDetails["source"] =
 		reason === "aborted"
@@ -2542,7 +2697,86 @@ function syntheticDetailsFor(
 		source,
 		executed: false,
 		...(reason === "error" && errorMessage ? { upstreamError: errorMessage } : {}),
+		...(batchLedger ? { batchLedger } : {}),
 	};
+}
+
+/**
+ * Inventory a turn whose stream ended before the tool batch could be
+ * dispatched.
+ *
+ * What is actually knowable here, and nothing beyond it:
+ * - A `toolCall` block that survived `retainCompletedToolCalls` has complete
+ *   arguments and was never handed to `tool.execute()`: the runnable dispatch
+ *   at `executeToolCalls` is reached only on a `toolUse`/`stop` turn, and this
+ *   branch returns first. So it is `dropped`, with no side effects.
+ * - A block stamped `kCursorExecResolved` was dispatched by Cursor's exec
+ *   channel, which runs the tool through a caller-supplied `execHandler` in
+ *   this process, inside the provider stream. The block is synthesized before
+ *   the handler is awaited, so the call may have finished, may still be
+ *   running, or may have applied part of its side effects. Its outcome is
+ *   `ok`/`failed` once the buffered result is in the transcript, and
+ *   `interrupted` while that result is still pending, because "it ran but you
+ *   cannot see the result" is not the same claim as "it never ran".
+ * - A call whose arguments were still streaming was deleted from the message
+ *   by `retainCompletedToolCalls`, which records its id and name on
+ *   `incompleteToolCalls`. It never reached dispatch either, so it is
+ *   `dropped` too, flagged `argumentsIncomplete` because there is no block
+ *   left in the transcript for the model to copy its arguments back from.
+ *
+ * Returns `undefined` only when the ledger would restate what the transcript
+ * already says; see the lone-entry rule at the end.
+ */
+function buildAbortedTurnLedger(
+	cause: ToolBatchLedgerCause,
+	message: AssistantMessage,
+	contextMessages: ReadonlyArray<AgentMessage>,
+): ToolBatchLedger | undefined {
+	const entries: ToolBatchCallEntry[] = [];
+	let resolvedOutcomes: Map<string, boolean> | undefined;
+	for (const block of message.content) {
+		if (block.type !== "toolCall") continue;
+		if ((block as CursorExecResolvedCarrier)[kCursorExecResolved] !== true) {
+			entries.push({ toolCallId: block.id, toolName: block.name, outcome: "dropped" });
+			continue;
+		}
+		if (!resolvedOutcomes) {
+			resolvedOutcomes = new Map<string, boolean>();
+			for (const prior of contextMessages) {
+				if (prior.role === "toolResult") resolvedOutcomes.set(prior.toolCallId, prior.isError === true);
+			}
+		}
+		const isError = resolvedOutcomes.get(block.id);
+		entries.push({
+			toolCallId: block.id,
+			toolName: block.name,
+			outcome: isError === undefined ? "interrupted" : isError ? "failed" : "ok",
+		});
+	}
+	for (const incomplete of message.incompleteToolCalls ?? []) {
+		entries.push({
+			toolCallId: incomplete.id,
+			toolName: incomplete.name,
+			outcome: "dropped",
+			argumentsIncomplete: true,
+		});
+	}
+	if (entries.length === 0) return undefined;
+	// One call whose story the transcript already tells in full needs no
+	// inventory. That is a lone `dropped` call with complete arguments (its
+	// `toolCall` block survived and it gets its own placeholder result) and a
+	// lone exec-channel call that finished (block plus its real result).
+	//
+	// The other two lone shapes keep the ledger, because nothing else states
+	// them: a call whose arguments never finished has no block at all, and an
+	// exec-channel call still in flight has a block but no result, so "started,
+	// no result recorded" appears nowhere else.
+	const lone = entries.length === 1 ? entries[0] : undefined;
+	if (lone) {
+		if (lone.outcome === "ok" || lone.outcome === "failed") return undefined;
+		if (lone.outcome === "dropped" && lone.argumentsIncomplete !== true) return undefined;
+	}
+	return buildToolBatchLedger(cause, entries);
 }
 
 /**
@@ -2557,6 +2791,7 @@ function createAbortedToolResult(
 	stream: EventStream<AgentEvent, AgentMessage[]>,
 	reason: "aborted" | "error" | "skipped" | "length",
 	errorMessage?: string,
+	batchLedger?: ToolBatchLedger,
 ): ToolResultMessage {
 	const message =
 		reason === "aborted"
@@ -2566,9 +2801,12 @@ function createAbortedToolResult(
 				: reason === "skipped"
 					? "Tool call was not executed because the assistant ended its turn"
 					: "Tool call was not executed because the provider stream ended with an error before the tool could run";
-	const details = syntheticDetailsFor(reason, errorMessage);
+	const details = syntheticDetailsFor(reason, errorMessage, batchLedger);
+	const headline = errorMessage ? `${message}: ${errorMessage}` : `${message}.`;
 	const result: AgentToolResult<SyntheticToolResultDetails> = {
-		content: [{ type: "text", text: errorMessage ? `${message}: ${errorMessage}` : `${message}.` }],
+		content: [
+			{ type: "text", text: batchLedger ? `${headline}\n\n${renderToolBatchLedger(batchLedger)}` : headline },
+		],
 		details,
 	};
 
@@ -2611,7 +2849,31 @@ function createToolSignalAbortedResult(signal: AbortSignal): AgentToolResult<unk
 	};
 }
 
-function createSkippedToolResult(source: SteeringInterruptSource | "irc" | undefined): AgentToolResult<any> {
+/**
+ * Placeholder for a call the interrupt cut short.
+ *
+ * `entered` is the difference between two skips that read the same and call for
+ * opposite responses. `false`: control never crossed into `tool.execute()` (the
+ * call was dropped before dispatch, or was still in `beforeToolCall` waiting on
+ * approval), so nothing happened and a verbatim retry is safe. `true`: the tool
+ * was running when the abort landed, so it may have applied part of its side
+ * effects and a verbatim retry can double-apply them. Telling a model to
+ * "retry the skipped tool" for a half-run `bash` is the dangerous direction, so
+ * the second case replaces the retry advice with a state check.
+ *
+ * `"cancelled-run"` is the source with no blocker behind it: the operator hit
+ * Esc and the whole run is unwinding, so there is no queued message that gets
+ * "handled on the next step" and nothing to retry against. It is also the most
+ * common interruption there is, and it used to be the only one that reached the
+ * model as the raw thrown `AbortError` message, which is the bare word
+ * "aborted": no statement that a command may have half-run, on the exact path
+ * where a half-run command is likeliest.
+ */
+function createSkippedToolResult(
+	source: SteeringInterruptSource | "irc" | "cancelled-run" | undefined,
+	entered: boolean,
+	batchLedger?: ToolBatchLedger,
+): AgentToolResult<any> {
 	let reason = "pending steering message";
 	let blocker = "queued message";
 	if (source === "user") {
@@ -2623,14 +2885,25 @@ function createSkippedToolResult(source: SteeringInterruptSource | "irc" | undef
 	} else if (source === "irc") {
 		reason = "pending peer interrupt";
 		blocker = "interrupt";
+	} else if (source === "cancelled-run") {
+		reason = "the run being cancelled";
 	}
+	const advice =
+		source === "cancelled-run"
+			? entered
+				? "This tool had already started running when the run was cancelled, so it may have applied partial side effects. Check state before assuming it did or did not take effect."
+				: "It never started, so nothing was applied."
+			: entered
+				? `This tool had already started running when it was cut off, so it may have applied partial side effects. Check state before retrying it. After the ${blocker} is handled on the next step, decide from that state whether a retry is still needed.`
+				: `After the ${blocker} is handled on the next step, retry the skipped tool if it is still needed.`;
+	const headline = `Skipped due to ${reason}. Do not count this skipped result as completed work or verification. ${advice}`;
 	return {
 		content: [
 			{
 				type: "text",
-				text: `Skipped due to ${reason}. Do not count this skipped result as completed work or verification. After the ${blocker} is handled on the next step, retry the skipped tool if it is still needed.`,
+				text: batchLedger ? `${headline}\n\n${renderToolBatchLedger(batchLedger)}` : headline,
 			},
 		],
-		details: {},
+		details: batchLedger ? { batchLedger } : {},
 	};
 }

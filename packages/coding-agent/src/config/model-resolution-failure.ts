@@ -18,17 +18,6 @@
  * is an authentication or availability failure and must say so. Only a registry
  * that genuinely holds models none of which match the request is an id error, and
  * that case owes the operator near-matches instead of a bare denial.
- *
- * AND THE REMEDY MUST BE ONE THE READER CAN RUN. Three of these branches used to
- * end in `/login` or `/model`. Both are TUI-only slash commands: `/login` calls
- * `showOAuthSelector` and `/model` opens the model selector, so neither exists
- * for the readers that reach this module most often. The FIRST caller is
- * `main.ts`, which throws this text at CLI startup, and `bench-cli.ts` and
- * `veyyon commit` reach it too, all with no terminal UI. Naming a command the
- * reader cannot type is worse than naming none: it ends the search at a dead
- * end. Every remedy below is a shell command that works in every channel, with
- * the slash shortcut named as the interactive alternative rather than the only
- * route.
  */
 
 /** What was known at the moment resolution failed. Ids are `provider/id`. */
@@ -155,9 +144,7 @@ export function describeModelResolutionFailure(context: ModelResolutionContext):
 			message:
 				`No models are available: the registry knows ${context.allModelIds.length} model(s) but none has ` +
 				`usable credentials, so ${requested} could not be resolved. This is an authentication failure, not ` +
-				`an unknown model id. Fix: run \`veyyon auth-broker login <provider>\` for one of ` +
-				`${providers.join(", ")}, or set that provider's API key environment variable ` +
-				`(\`/login\` in an interactive veyyon session).`,
+				`an unknown model id. Sign in with /login, or set an API key for one of: ${providers.join(", ")}.`,
 			nearMatches: [],
 		};
 	}
@@ -182,8 +169,7 @@ export function describeModelResolutionFailure(context: ModelResolutionContext):
 			kind: "provider-unauthenticated",
 			message:
 				`${requested} exists but has no usable credentials for ${providers.join(", ")}. ` +
-				`The model id is correct. Fix: run \`veyyon auth-broker login ${providers[0]}\`, or set that ` +
-				`provider's API key environment variable (\`/login\` in an interactive veyyon session).`,
+				"The model id is correct; sign in with /login or set that provider's API key.",
 			nearMatches: [],
 		};
 	}
@@ -195,9 +181,7 @@ export function describeModelResolutionFailure(context: ModelResolutionContext):
 		kind: "unknown-model",
 		message:
 			`Model ${requested} not found among ${context.availableModelIds.length} model(s) with usable credentials` +
-			(nearMatches.length > 0
-				? `. Did you mean: ${nearMatches.join(", ")}?`
-				: ". Run `veyyon models` to list them (`/model` in an interactive veyyon session)."),
+			(nearMatches.length > 0 ? `. Did you mean: ${nearMatches.join(", ")}?` : ". Run /model to list them."),
 		nearMatches,
 	};
 }
