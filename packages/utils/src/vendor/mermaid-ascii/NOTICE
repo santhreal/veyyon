@@ -3,6 +3,11 @@ from beautiful-mermaid (https://github.com/lukilabs/beautiful-mermaid), used
 under the MIT License.
 
   Copyright (c) 2026 Craft Docs
+  Copyright (c) 2023 Alexander Grooff
+
+The ASCII canvas, drawing, grid, pathfinding, and edge-routing modules also
+carry code ported from mermaid-ascii
+(https://github.com/AlexanderGrooff/mermaid-ascii), used under the MIT License.
 
 Only the ASCII rendering pipeline is ported (flowchart/state, sequence, class,
 ER, and xychart diagrams); the SVG renderer and its `elkjs` graph-layout

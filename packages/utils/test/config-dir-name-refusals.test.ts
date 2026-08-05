@@ -28,7 +28,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, getConfigDirName, refreshDirsFromEnv } from "@veyyon/utils/dirs";
+import { getConfigDirName, refreshDirsFromEnv } from "@veyyon/utils/dirs";
 
 const KEY = "VEYYON_CONFIG_DIR";
 
@@ -152,8 +152,11 @@ describe("a blank VEYYON_CONFIG_DIR", () => {
 	/** Unset and empty both mean "I did not choose", and the default is the right
 	 * answer for both. Empty is how a shell passes an unset-but-exported variable. */
 	it("falls back to the default when unset or empty", () => {
-		expect(nameWith(undefined)).toBe(CONFIG_DIR_NAME);
-		expect(nameWith("")).toBe(CONFIG_DIR_NAME);
+		// Literal ".veyyon", not CONFIG_DIR_NAME: this is where every user's config,
+		// credentials and sessions live. Against the constant, a rename would move
+		// the whole config root and this test would call it correct.
+		expect(nameWith(undefined)).toBe(".veyyon");
+		expect(nameWith("")).toBe(".veyyon");
 	});
 
 	/** Whitespace is different: it is a value, and it would create a directory whose

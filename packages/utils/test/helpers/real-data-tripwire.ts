@@ -11,19 +11,24 @@
  *
  * ## Why a tripwire is needed on top of a sandboxed HOME
  *
- * The test runner already hands every child process a disposable `HOME`
- * (`scripts/ci-test-ts.ts`, `buildChildEnv`), which is the real prevention: with
- * a temp home, `os.homedir()` — the value every config path is built from —
- * cannot name real data in the first place. The tripwire covers what prevention
- * cannot:
+ * Every test process now starts with a disposable `HOME`, and that is the real
+ * prevention: with a temp home, `os.homedir()` -- the value every config path is
+ * built from -- cannot name real data in the first place. It comes from two places.
+ * `scripts/ci-test-ts.ts` (`buildChildEnv`) sets it at spawn time for a full run, and
+ * `./sandbox-home`, imported below, sets it in-process for every other way a suite gets
+ * started, including the bare `bun test path/to/file` that is how most of them are
+ * actually run during development. That second one used not to exist, and its absence
+ * is what let 2,829 of 4,609 test files read the operator's real home.
+ *
+ * The tripwire covers what prevention cannot:
  *
  *  - a test that hardcodes an absolute path into the real home,
- *  - a test process started WITHOUT the runner (a bare `bun test path/to/file`,
- *    which is how most of them are actually run during development),
- *  - a test that restores the real `HOME` from a saved value in `afterEach`.
+ *  - a test that restores the real `HOME` from a saved value in `afterEach`,
+ *  - a suite on the `enterRealHome` allowlist, which is deliberately back in the real
+ *    home and must still be unable to write to it.
  *
- * In all three, prevention is gone and only detection is left. So this fails
- * CLOSED and LOUDLY at the moment of the write, naming the offending path, with
+ * In all three, prevention is gone or suspended and only detection is left. So this
+ * fails CLOSED and LOUDLY at the moment of the write, naming the offending path, with
  * the write NOT performed.
  *
  * ## What is intercepted
@@ -33,23 +38,49 @@
  * NATIVE file handling and never touched a JS `fs` call at all. A tripwire that
  * only wrapped `fs` would have watched the exact write it was built to stop.
  *
- * Reads are deliberately NOT blocked: a test reading the real home is at worst
- * non-hermetic, and blocking reads would break legitimate suites that inspect
- * the developer's git config. Only mutation is forbidden.
+ * Reads are NOT blocked, and the reason has changed. It used to be argued that a
+ * test reading the real home is "at worst non-hermetic". That was wrong, and it is
+ * why nobody went looking: `$HOME/.env` is a READ, and it holds the operator's API
+ * keys. A probe measured 2,814 test files parsing it, every one of them through the
+ * module-scope dotenv load in `packages/utils/src/env.ts`. What makes reads safe to
+ * permit now is not their nature but PREVENTION: `./sandbox-home`, imported below, has
+ * already moved `os.homedir()` and `HOME` to an empty per-process sandbox by the time
+ * any test module loads, so a path built from home does not name real data and there
+ * is nothing to read. Blocking reads outright would still be wrong, because it would
+ * break the suites that legitimately inspect the developer's git config, and because
+ * failing a read is worse feedback than reading an empty sandbox. What is forbidden
+ * here remains mutation, which prevention cannot cover: a hardcoded absolute path
+ * into the real home reaches it whatever `os.homedir()` says.
  *
- * ## Why the temp-directory janitor is imported here
+ * ## Why the home redirect and the temp-directory janitor are imported here
  *
- * It is the second protection that has to run in every test process and must not be
- * opt-in, and this file is the only entry the preload list names. Bun reads `bunfig.toml`
- * from the cwd only, so each of the eighteen packages carries its own pointer to this
- * path and `scripts/ci-test-ts.ts` passes it with `--preload`; a second preload entry
- * would be twenty more places to keep in step and one more thing to forget. It is
- * imported FIRST so it captures `fs.rmSync` before the wrapping below replaces it.
+ * They are the other two protections that have to run in every test process and must
+ * not be opt-in, and this file is the only entry the preload list names. Bun reads
+ * `bunfig.toml` from the cwd only, so each of the eighteen packages carries its own
+ * pointer to this path and `scripts/ci-test-ts.ts` passes it with `--preload`; a
+ * second preload entry would be twenty more places to keep in step and one more thing
+ * to forget.
+ *
+ * ORDER AMONG THE FOUR IMPORTS BELOW does not matter, and that is an invariant rather
+ * than a happy accident. `./sandbox-home` moves `os.homedir()` by patching the object
+ * `require("node:os")` returns, and under Bun that patch is only visible to later
+ * importers if it happens before the FIRST `import * as os from "node:os"` anywhere in
+ * this graph -- the namespace is materialized for the whole graph up front and frozen.
+ * `./temp-dir-janitor` used to contain exactly that import, and it silently disabled
+ * the redirect: `HOME` moved, `os.homedir()` did not, and every config path is built
+ * from `os.homedir()`. It now takes `node:os` through `require` like everything else
+ * here, so no module in this graph holds an ESM `node:os` binding and the formatter is
+ * free to sort. `scripts/tests-never-touch-real-home.test.ts` walks this graph and
+ * fails if one reappears, which is what keeps the invariant from being re-broken.
  */
 
-import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+// For its side effect as much as its export: `os.homedir()` and `HOME` name an empty
+// per-process sandbox from here on, so nothing loaded afterwards can build a path into
+// real data. The export is the home as it was BEFORE that move, which is the one thing
+// this file cannot ask `os` for once the move has happened.
+import { REAL_HOME as PRE_REDIRECT_HOME } from "./sandbox-home";
 import { installTempDirJanitor } from "./temp-dir-janitor";
 
 // Capture the read-only primitives before the CJS export object is patched below.
@@ -84,20 +115,18 @@ const DISABLE_ENV = "VEYYON_ALLOW_REAL_DATA_WRITES";
 /**
  * Directories no test may write into, resolved absolute.
  *
- * The runner passes the pre-redirect value explicitly, because once `HOME` is a
- * sandbox the process can no longer work out what the real home was: Bun's
- * `os.homedir()` AND `os.userInfo().homedir` both follow `HOME`, so there is no
- * in-process way back to it. When the var is absent (a bare `bun test`), the
- * current home is the real one and is used directly.
+ * NEVER from `os.homedir()`, which `./sandbox-home` has already redirected by the time
+ * this runs, and which the runner may have redirected at spawn time before that. Both
+ * spellings, `os.homedir()` and `os.userInfo().homedir`, answer the sandbox, so there
+ * is no in-process way back to the real home once either redirect has happened. The
+ * value comes from the runner's `REAL_CONFIG_ROOT_ENV` when it set one, and otherwise
+ * from the home `./sandbox-home` captured before moving it.
  */
 function forbiddenRoots(): string[] {
 	const roots = new Set<string>();
 	const declared = process.env[REAL_CONFIG_ROOT_ENV];
 	if (declared) roots.add(path.resolve(declared));
-	else {
-		const home = os.homedir();
-		if (home) roots.add(path.resolve(home, ".veyyon"));
-	}
+	else if (PRE_REDIRECT_HOME) roots.add(path.resolve(PRE_REDIRECT_HOME, ".veyyon"));
 	return [...roots];
 }
 
@@ -107,15 +136,13 @@ const ENABLED = process.env[DISABLE_ENV] !== "1" && FORBIDDEN.length > 0;
 /**
  * The real home directory, for the sibling rule below.
  *
- * Derived from the declared config root rather than from `os.homedir()` whenever the
- * runner provided one, for the reason above: with a sandboxed `HOME` there is no
- * in-process way back to the real home.
+ * Derived from the declared config root when the runner provided one, and otherwise
+ * from the pre-redirect home, for the reason above.
  */
 const REAL_HOME = ((): string | undefined => {
 	const declared = process.env[REAL_CONFIG_ROOT_ENV];
 	if (declared) return path.dirname(path.resolve(declared));
-	const home = os.homedir();
-	return home ? path.resolve(home) : undefined;
+	return PRE_REDIRECT_HOME ? path.resolve(PRE_REDIRECT_HOME) : undefined;
 })();
 
 /** True when `candidate` is inside `root` (or is `root` itself). */
