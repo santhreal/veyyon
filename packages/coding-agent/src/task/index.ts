@@ -40,17 +40,21 @@ import { toolsPrompts } from "../prompts/tools/rows";
 import { truncateForPrompt } from "../tools/approval";
 import { isIrcEnabled } from "../tools/irc";
 import { formatBytes, formatDuration } from "../tools/render-utils";
+import { inheritContextFiles } from "./context-inheritance";
 import { homogeneousTriageRefusal, isHomogeneousTriageFanout } from "./delegation-policy";
+import { inheritResolvedCollection, resolveAutoloadSkills } from "./inherited-collections";
 import { classifySubagentOutcome, describeSubagentBatch, summarizeSubagentBatch } from "./outcome";
-import { resolveSpawnPolicy } from "./spawn-policy";
 import {
+	type EnabledSubagentCatalog,
 	type EnabledSubagentSource,
 	filterEnabledAgents,
 	isSubagentEnabled,
+	resolveEnabledSubagents,
 	resolveSessionMaxNestedSpawnDepth,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	subagentModelSourceLabel,
+	subagentsEnabled,
 } from "./subagent-settings";
 import {
 	type AgentDefinition,
@@ -186,23 +190,13 @@ export function formatResultOutputFallback(result: Pick<SingleResult, "output" |
  * Render the tool description from a cached agent list and current settings.
  */
 function renderDescription(
-	agents: AgentDefinition[],
+	catalog: EnabledSubagentCatalog,
 	isolationEnabled: boolean,
 	batchEnabled: boolean,
 	asyncEnabled: boolean,
 	ircEnabled: boolean,
-	parentSpawns: string,
 ): string {
-	const spawnPolicy = resolveSpawnPolicy(parentSpawns);
-	const spawningDisabled = !spawnPolicy.enabled;
-	let filteredAgents = agents;
-	if (spawningDisabled) {
-		filteredAgents = [];
-	} else if (spawnPolicy.allowedAgents !== null) {
-		const allowed = new Set(spawnPolicy.allowedAgents);
-		filteredAgents = filteredAgents.filter(a => allowed.has(a.name));
-	}
-	const renderedAgents = filteredAgents.map(agent => ({
+	const renderedAgents = catalog.agents.map(agent => ({
 		name: agent.name,
 		description: agent.description,
 		readOnly: isReadOnlyAgent(agent),
@@ -212,9 +206,11 @@ function renderDescription(
 		agents: renderedAgents,
 		agentNames: renderedAgents.map(agent => agent.name),
 		hasReadOnlyAgents: renderedAgents.some(agent => agent.readOnly),
-		spawningDisabled,
-		defaultAgent: spawnPolicy.defaultAgent,
-		allowedAgentsText: spawnPolicy.allowedPromptText,
+		spawningDisabled: renderedAgents.length === 0,
+		defaultAgent: catalog.defaultAgent,
+		hasDefaultAgent: catalog.defaultAgent !== undefined,
+		allowedAgentsText:
+			catalog.agents.length > 0 ? catalog.agents.map(agent => `\`${agent.name}\``).join(", ") : undefined,
 		isolationEnabled,
 		batchEnabled,
 		asyncEnabled,
@@ -461,14 +457,19 @@ const GENERIC_SPAWN_AGENTS: ReadonlySet<string> = new Set(["task", "sonic"]); //
  * (DepthCapacity: it currently has the `task` tool). `agentNames` are the
  * per-item resolved agent types. Returns undefined when no nudge applies.
  */
-export function buildSpecializationAdvisory(agentNames: string[], depthCapacity: boolean): string | undefined {
+export function buildSpecializationAdvisory(
+	agentNames: string[],
+	depthCapacity: boolean,
+	enabledAgentNames: readonly string[],
+): string | undefined {
 	if (!depthCapacity) return undefined;
 	const generics = agentNames.filter(name => GENERIC_SPAWN_AGENTS.has(name));
 	if (generics.length < 2) return undefined;
+	const specialists = enabledAgentNames.filter(name => !GENERIC_SPAWN_AGENTS.has(name));
+	if (specialists.length === 0) return undefined;
 	return (
 		`Tip: this call spawned ${generics.length} generic \`${generics[0]}\` workers. ` +
-		`Check the agent list for a closer specialist type — e.g. read-only research belongs on ` +
-		`\`agent: "scout"\`, which runs on a faster model.`
+		`Enabled specialist types may fit better: ${specialists.map(name => `\`${name}\``).join(", ")}.`
 	);
 }
 
@@ -501,6 +502,7 @@ export function buildCoordinationAdvisory(
  */
 export function composeSpawnAdvisory(args: {
 	agents: string[];
+	enabledAgentNames: readonly string[];
 	items: TaskItem[];
 	depthCapacity: boolean;
 	ircEnabled: boolean;
@@ -508,7 +510,7 @@ export function composeSpawnAdvisory(args: {
 }): string | undefined {
 	return (
 		[
-			buildSpecializationAdvisory(args.agents, args.depthCapacity),
+			buildSpecializationAdvisory(args.agents, args.depthCapacity, args.enabledAgentNames),
 			args.willRunAsync ? buildCoordinationAdvisory(args.items, args.depthCapacity, args.ircEnabled) : undefined,
 		]
 			.filter(Boolean)
@@ -619,8 +621,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 	get parameters(): TaskToolSchemaInstance {
 		const isolationEnabled = this.session.settings.get("subagent.isolation.mode") !== "none";
-		const defaultAgent = resolveSpawnPolicy(this.session.getSessionSpawns()).defaultAgent;
-		return getTaskSchema({ isolationEnabled, batchEnabled: this.#isBatchEnabled(), defaultAgent });
+		const catalog = this.#enabledSubagents();
+		return getTaskSchema({
+			isolationEnabled,
+			batchEnabled: this.#isBatchEnabled(),
+			defaultAgent: catalog.defaultAgent,
+			enabledAgentNames: catalog.agents.map(agent => agent.name),
+		});
 	}
 
 	renderCall(args: unknown, options: Parameters<typeof renderTaskCall>[1], theme: Theme) {
@@ -636,19 +643,18 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	 * instruction it can only fail to follow.
 	 */
 	get enabledAgentNames(): string[] {
-		return filterEnabledAgents(this.session.settings, this.#discoveredAgents).map(agent => agent.name);
+		return this.#enabledSubagents().agents.map(agent => agent.name);
 	}
 
 	/** Dynamic description listing exactly the agents this session may spawn. */
 	get description(): string {
 		const isolationMode = this.session.settings.get("subagent.isolation.mode");
 		return renderDescription(
-			filterEnabledAgents(this.session.settings, this.#discoveredAgents),
+			this.#enabledSubagents(),
 			isolationMode !== "none",
 			this.#isBatchEnabled(),
 			this.session.settings.get("async.enabled"),
 			isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0, this.session.maxNestedSpawnDepth),
-			this.session.getSessionSpawns() ?? "*",
 		);
 	}
 	private constructor(
@@ -657,6 +663,18 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	) {
 		this.#blockedAgent = $env.VEYYON_BLOCKED_AGENT;
 		this.#discoveredAgents = discoveredAgents;
+	}
+
+	#enabledSubagents(
+		agents: readonly AgentDefinition[] = this.#discoveredAgents,
+		includeTurnGrants = false,
+	): EnabledSubagentCatalog {
+		return resolveEnabledSubagents({
+			settings: this.session.settings,
+			agents,
+			parentSpawns: this.session.getSessionSpawns() ?? "*",
+			isGranted: includeTurnGrants ? name => this.session.agentGrantedThisTurn?.(name) === true : undefined,
+		});
 	}
 
 	#isBatchEnabled(): boolean {
@@ -692,31 +710,59 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>,
 	): Promise<AgentToolResult<TaskToolDetails>> {
 		const params = repairTaskParams(rawParams as TaskParams);
-		// Schema defaults fill `agent` for model calls, but internal callers
-		// and stale transcripts can bypass arktype. `spawnParamsFor` resolves each
-		// item's agent type against the session's actual default agent.
-		const spawnPolicy = resolveSpawnPolicy(this.session.getSessionSpawns());
-		const defaultAgent = spawnPolicy.defaultAgent;
 		const batchEnabled = this.#isBatchEnabled();
 		const validationError = validateShapeParams(batchEnabled, params) ?? validateSpawnParams(params, batchEnabled);
 		if (validationError) {
 			return createTaskModeError(validationError);
 		}
 
+		const { agents: discoveredAgents } = await discoverAgents(this.session.cwd);
+		const catalog = this.#enabledSubagents(discoveredAgents, true);
+		if (!subagentsEnabled(this.session.settings)) {
+			return createTaskModeError("Subagents are disabled in settings.");
+		}
 		const spawnItems = resolveSpawnItems(params);
-		const resolvedAgents = spawnItems.map(item => item.agent?.trim() || defaultAgent);
+		const resolvedAgents: string[] = [];
+		const effectiveAgents: AgentDefinition[] = [];
+		for (const item of spawnItems) {
+			const agentName = item.agent?.trim() || catalog.defaultAgent;
+			if (!agentName) {
+				return createTaskModeError(
+					"No enabled default agent exists. Specify an enabled agent type explicitly or enable the configured default.",
+				);
+			}
+			if (
+				!catalog.spawnPolicy.enabled ||
+				(catalog.spawnPolicy.allowedAgents !== null && !catalog.spawnPolicy.allowedAgents.includes(agentName))
+			) {
+				return createTaskModeError(`Cannot spawn '${agentName}'. Allowed: ${catalog.spawnPolicy.allowedErrorText}`);
+			}
+			const discoveredAgent = getAgent(discoveredAgents, agentName);
+			const available = catalog.agents.map(agent => agent.name).join(", ") || "none";
+			if (!discoveredAgent) {
+				return createTaskModeError(`Unknown agent "${agentName}". Available: ${available}`);
+			}
+			if (
+				!isSubagentEnabled(this.session.settings, discoveredAgent) &&
+				!this.session.agentGrantedThisTurn?.(agentName)
+			) {
+				return createTaskModeError(
+					`Agent "${agentName}" is disabled (subagent.agents.${agentName}.enabled is false), so it cannot be chosen. Enable it in the Subagents settings tab (/settings), or use a different agent type.${available !== "none" ? ` Enabled: ${available}` : ""}`,
+				);
+			}
+			const effectiveAgent = getAgent(catalog.agents, agentName);
+			if (!effectiveAgent) {
+				return createTaskModeError(`Cannot spawn '${agentName}'. Enabled and allowed: ${available}`);
+			}
+			resolvedAgents.push(agentName);
+			effectiveAgents.push(effectiveAgent);
+		}
+		const defaultAgent = catalog.defaultAgent ?? "";
 		const blockedAgent = resolvedAgents.find(name => this.#blockedAgent && name === this.#blockedAgent);
 		if (blockedAgent) {
 			return createTaskModeError(
 				`Cannot spawn ${blockedAgent} agent from within itself (recursion prevention). Use a different agent type.`,
 			);
-		}
-		const disallowedAgent = resolvedAgents.find(
-			name =>
-				!spawnPolicy.enabled || (spawnPolicy.allowedAgents !== null && !spawnPolicy.allowedAgents.includes(name)),
-		);
-		if (disallowedAgent) {
-			return createTaskModeError(`Cannot spawn '${disallowedAgent}'. Allowed: ${spawnPolicy.allowedErrorText}`);
 		}
 		if (isHomogeneousTriageFanout(spawnItems)) {
 			const text = homogeneousTriageRefusal(spawnItems.length);
@@ -726,9 +772,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// `blocking: true` runs inline on this turn (the parent waits on its
 		// result); every other item becomes a background job when async
 		// execution is available.
-		const itemBlocking = resolvedAgents.map(
-			name => this.#discoveredAgents.find(agent => agent.name === name)?.blocking === true,
-		);
+		const itemBlocking = effectiveAgents.map(agent => agent.blocking === true);
 		const asyncEnabled = this.session.settings.get("async.enabled");
 		const manager = asyncEnabled ? this.session.asyncJobManager : undefined;
 		if (asyncEnabled && !manager && itemBlocking.some(blocking => !blocking)) {
@@ -754,6 +798,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			? undefined
 			: composeSpawnAdvisory({
 					agents: resolvedAgents,
+					enabledAgentNames: catalog.agents.map(agent => agent.name),
 					items: asyncItems,
 					depthCapacity,
 					ircEnabled,
@@ -798,7 +843,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		for (let index = 0; index < spawnItems.length; index++) {
 			const item = spawnItems[index];
 			const agentType = resolvedAgents[index];
-			const agentSource = this.#discoveredAgents.find(agent => agent.name === agentType)?.source ?? "bundled";
+			const agentSource = effectiveAgents[index]?.source ?? "bundled";
 			const agentId = await outputManager.allocate(item.name?.trim() || generateTaskName());
 			const assignment = (item.task ?? "").trim();
 			spawns.push({
@@ -1505,18 +1550,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				agentId = await outputManager.allocate(params.name?.trim() || generateTaskName());
 			}
 
-			const availableSkills = [...(this.session.skills ?? [])];
-			// Resolve autoload skills from agent definition against available skills
-			const resolvedAutoloadSkills =
-				agent.autoloadSkills?.length && availableSkills.length > 0
-					? agent.autoloadSkills
-							.map(name => availableSkills.find(s => s.name === name))
-							.filter((s): s is NonNullable<typeof s> => s !== undefined)
-					: [];
-			const contextFiles = this.session.contextFiles?.filter(
-				file => path.basename(file.path).toLowerCase() !== "agents.md",
-			);
-			const promptTemplates = this.session.promptTemplates;
 			const parentEvalSessionId = this.session.getEvalSessionId?.() ?? undefined;
 			const mcpManager = this.session.mcpManager ?? mcpManagerInstance();
 
@@ -1564,6 +1597,55 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				};
 			}
 
+			// Resolved here, not before `spawnCwd`: whether the child inherits the
+			// parent's layers or loads its own depends on where it will run.
+			//
+			// `spawnCwd` and NOT the isolation mount, deliberately. An isolated spawn runs in a
+			// mount whose post-`start` invariant is "mirror lower's live working tree", so the
+			// parent's list describes the same content and inheriting it is not contamination.
+			// Feeding the mount path into the guard instead would force rediscovery and LOSE data
+			// twice over: the mount is rooted at the repo root rather than at `spawnCwd`, so a
+			// nested `<cwd>/AGENTS.md` would drop out of the walk, and the git-worktree seeding
+			// path copies untracked files through `ls-files --others --exclude-standard`, so any
+			// gitignored project layer is not in the mount to be found at all.
+			const contextFiles = inheritContextFiles({
+				parentContextFiles: this.session.contextFiles,
+				parentCwd: this.session.cwd,
+				spawnCwd,
+				agentName,
+			});
+			// Same rule for the other three cwd-discovered layers, and same reason it sits after
+			// `spawnCwd`: an empty list reads downstream as "already resolved", and a list from the
+			// parent's tree is wrong for a child pointed at another one.
+			const inheritedSkills = inheritResolvedCollection({
+				items: this.session.skills,
+				kind: "skills",
+				parentCwd: this.session.cwd,
+				spawnCwd,
+				agentName,
+			});
+			// Autoload names are matched against exactly what the child will run with, which is what
+			// `inheritedSkills` just decided. `undefined` there means the child rediscovers, so the
+			// names travel unmatched and are settled in the child; the old spelling matched them
+			// against `this.session.skills ?? []`, which warned "no loaded skill matches" at every
+			// spawn from a parent that had simply never resolved skills, and reported a
+			// `task(cwd: elsewhere)` child's own skill missing while that child quietly discovered it.
+			const resolvedAutoloadSkills = resolveAutoloadSkills(agent.autoloadSkills, inheritedSkills, agentName);
+			const promptTemplates = inheritResolvedCollection({
+				items: this.session.promptTemplates,
+				kind: "promptTemplates",
+				parentCwd: this.session.cwd,
+				spawnCwd,
+				agentName,
+			});
+			const inheritedRules = inheritResolvedCollection({
+				items: this.session.rules,
+				kind: "rules",
+				parentCwd: this.session.cwd,
+				spawnCwd,
+				agentName,
+			});
+
 			const sharedRunOptions = {
 				cwd: spawnCwd,
 				agent: effectiveAgent,
@@ -1602,11 +1684,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				obfuscateProviderText: this.session.obfuscateProviderText,
 				mcpManager,
 				contextFiles,
-				skills: availableSkills,
+				skills: inheritedSkills,
 				autoloadSkills: resolvedAutoloadSkills,
 				workspaceTree: this.session.workspaceTree,
 				promptTemplates,
-				rules: this.session.rules,
+				rules: inheritedRules,
 				preloadedExtensionPaths: this.session.extensionPaths,
 				preloadedCustomToolPaths: this.session.customToolPaths,
 				localProtocolOptions,

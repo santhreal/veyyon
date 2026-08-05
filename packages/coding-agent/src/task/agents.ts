@@ -3,6 +3,7 @@
  *
  * Agents are embedded at build time via Bun's import with { type: "text" }.
  */
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 // The effort ladder from its owner (`@veyyon/catalog/effort`, 1 module) rather than the
 // `@veyyon/ai` barrel that re-exports it (346).
 import { Effort } from "@veyyon/catalog/effort";
@@ -10,7 +11,6 @@ import { parseFrontmatter, prompt } from "@veyyon/utils";
 import { parseAgentFields } from "../discovery/helpers";
 import { agentsPrompts } from "../prompts/agents/rows";
 // Embed agent markdown files at build time
-import { AUTO_THINKING } from "../thinking";
 
 import type { AgentDefinition, AgentSource } from "./types";
 
@@ -47,7 +47,7 @@ const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
 			name: "task",
 			description: "General-purpose subagent with full capabilities for delegated multi-step tasks",
 			spawns: "*",
-			thinkingLevel: AUTO_THINKING,
+			thinkingLevel: ThinkingLevel.Inherit,
 		},
 		template: agentsPrompts["agents/task"].text,
 	},

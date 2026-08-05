@@ -17,9 +17,13 @@ import type { Settings } from "../config/settings";
 import type { SubagentAgentSettings } from "../config/settings-domains/subagents";
 import {
 	DEFAULT_ENABLED_BUNDLED_AGENT,
+	DEFAULT_SUBAGENT_IDLE_TTL_MS,
 	DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH,
+	DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
+	DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
 } from "../config/settings-domains/subagents";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
+import { type ResolvedSpawnPolicy, resolveSpawnPolicy } from "./spawn-policy";
 import type { AgentDefinition } from "./types";
 
 /**
@@ -50,7 +54,71 @@ export function subagentsEnabled(settings: Settings): boolean {
 	return settings.get("subagent.enabled") ?? true;
 }
 
-/** True when the task tool is offered at all. */
+/**
+ * Resolve how long a finished subagent remains live before parking.
+ *
+ * This lifecycle budget is intentionally model-independent. Provider cache
+ * policies may change request economics, but they do not justify retaining a
+ * completed agent process past the operator's configured limit.
+ */
+export function resolveSubagentIdleTtlMs(settings: Settings): number {
+	const configured = Number(settings.get("subagent.idleTtlMs") ?? DEFAULT_SUBAGENT_IDLE_TTL_MS);
+	if (!Number.isFinite(configured)) return DEFAULT_SUBAGENT_IDLE_TTL_MS;
+	return Math.max(0, Math.trunc(configured));
+}
+
+/** How long a parked subagent survives before it is closed, by whether it was waiting. */
+export interface SubagentAutoCloseBudget {
+	/** Ordinary parked agent. 0 disables closing entirely. */
+	parkedMs: number;
+	/** Parked agent whose last message said it was waiting on another agent. */
+	waitingMs: number;
+}
+
+/**
+ * Resolve when a PARKED subagent stops being listed at all.
+ *
+ * Parking already released the session; this is the second stage, and without it a
+ * long session accumulates every finished agent in `irc list` and the Control
+ * Center forever. Disabled (`subagent.autoClose.enabled` off) resolves to zero
+ * budgets, which the lifecycle manager reads as "never close", so the operator's
+ * off switch is a real off switch rather than a very long timer.
+ *
+ * A waiting agent gets its own budget because it stopped on purpose to let a peer
+ * finish: closing it on the ordinary timer would drop the one agent most likely to
+ * be messaged next. The waiting budget is floored at the ordinary one, so a
+ * misconfiguration can only ever lengthen a waiting agent's grace, never shorten
+ * it below a quiet agent's.
+ */
+export function resolveSubagentAutoCloseBudget(settings: Settings): SubagentAutoCloseBudget {
+	if ((settings.get("subagent.autoClose.enabled") ?? true) !== true) {
+		return { parkedMs: 0, waitingMs: 0 };
+	}
+	const readMs = (path: "subagent.autoClose.parkedMs" | "subagent.autoClose.waitingMs", fallback: number): number => {
+		const configured = Number(settings.get(path) ?? fallback);
+		if (!Number.isFinite(configured)) return fallback;
+		return Math.max(0, Math.trunc(configured));
+	};
+	const parkedMs = readMs("subagent.autoClose.parkedMs", DEFAULT_SUBAGENT_PARKED_CLOSE_MS);
+	const waitingMs = readMs("subagent.autoClose.waitingMs", DEFAULT_SUBAGENT_WAITING_CLOSE_MS);
+	// A zero parked budget means "never close", so a waiting budget cannot revive
+	// closing for the waiting case alone.
+	if (parkedMs === 0) return { parkedMs: 0, waitingMs: 0 };
+	return { parkedMs, waitingMs: Math.max(parkedMs, waitingMs) };
+}
+
+/**
+ * True when the task tool is offered at all: deliberately the MASTER SWITCH
+ * ({@link subagentsEnabled}) and nothing more.
+ *
+ * The name reads like "delegation can happen", which is a DIFFERENT question:
+ * that one also needs an enabled agent type, and its answer is
+ * {@link resolveDelegation}`(...).possible`. This one exists for tool PRESENCE,
+ * where the wider question would be wrong: the task tool stays built with every
+ * agent row disabled so a `/` command can grant one for a turn. Ask
+ * {@link resolveDelegation} for anything model-facing, and this only when the
+ * subject is whether the tool is offered.
+ */
 export function delegationEnabled(settings: Settings): boolean {
 	return subagentsEnabled(settings);
 }
@@ -216,6 +284,56 @@ export function isSubagentEnabled(settings: Settings, agent: AgentDefinition): b
 /** Filter a discovered agent list down to the ones the model may choose. */
 export function filterEnabledAgents(settings: Settings, agents: readonly AgentDefinition[]): AgentDefinition[] {
 	return agents.filter(agent => isSubagentEnabled(settings, agent));
+}
+
+export interface EnabledSubagentCatalog {
+	readonly agents: readonly AgentDefinition[];
+	readonly defaultAgent: string | undefined;
+	readonly spawnPolicy: ResolvedSpawnPolicy;
+}
+
+export interface ResolveEnabledSubagentsOptions {
+	settings: Settings;
+	agents: readonly AgentDefinition[];
+	parentSpawns?: string | boolean | null;
+	/** Turn-scoped user grants may expose an otherwise disabled agent to this one invocation. */
+	isGranted?: (agentName: string) => boolean;
+}
+
+/**
+ * Resolve the one effective agent catalog shared by task, eval, and Vibe.
+ *
+ * Global enablement and each agent row are profile policy; the parent spawn
+ * declaration is a recursion capability. Keeping their intersection here makes
+ * model-visible lists, defaults, and execution checks use the same answer.
+ */
+export function resolveEnabledSubagents(options: ResolveEnabledSubagentsOptions): EnabledSubagentCatalog {
+	const spawnPolicy = resolveSpawnPolicy(options.parentSpawns ?? "*");
+	if (!subagentsEnabled(options.settings) || !spawnPolicy.enabled) {
+		return { agents: [], defaultAgent: undefined, spawnPolicy };
+	}
+
+	const enabled = options.agents.filter(
+		agent => isSubagentEnabled(options.settings, agent) || options.isGranted?.(agent.name) === true,
+	);
+	let agents: AgentDefinition[];
+	if (spawnPolicy.allowedAgents === null) {
+		agents = enabled;
+	} else {
+		const enabledByName = new Map(enabled.map(agent => [agent.name, agent]));
+		const seen = new Set<string>();
+		agents = [];
+		for (const name of spawnPolicy.allowedAgents) {
+			if (seen.has(name)) continue;
+			seen.add(name);
+			const agent = enabledByName.get(name);
+			if (agent) agents.push(agent);
+		}
+	}
+	const defaultAgent = agents.some(agent => agent.name === spawnPolicy.defaultAgent)
+		? spawnPolicy.defaultAgent
+		: undefined;
+	return { agents, defaultAgent, spawnPolicy };
 }
 
 /**
