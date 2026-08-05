@@ -15,7 +15,12 @@
  * their working account is broken.
  */
 import { describe, expect, test } from "bun:test";
-import { accountNoticeLines } from "@veyyon/coding-agent/modes/components/account-manager-rows";
+import {
+	accountNoticeLines,
+	buildSidebarEntries,
+	NO_ACCOUNTS_ANNOTATION,
+	providerDisabledNote,
+} from "@veyyon/coding-agent/modes/components/account-manager-rows";
 import { type AccountRow, accountIdentityDetail } from "@veyyon/coding-agent/session/account-inventory";
 
 const NOW = 1_760_000_000_000;
@@ -126,5 +131,61 @@ describe("an account row warns only about real problems", () => {
 	/** An expired block is not a problem, so it must not linger on the row. */
 	test("says nothing once a block has expired", () => {
 		expect(accountNoticeLines(row({ health: "ok", blockedUntilMs: NOW - 1 }), NOW)).toEqual([]);
+	});
+});
+
+describe("a login torn down by a failed refresh is visible", () => {
+	/**
+	 * The silent logout in its final form, and the reason this note exists. `listAuthCredentials`
+	 * filters disabled rows, so a provider whose refresh failed reads as one you never signed into:
+	 * the user is told to log in, and never told that the login they had was thrown away or why. This
+	 * was live in the author's own store — a kimi-code grant revoked upstream, invisible on every
+	 * surface.
+	 */
+	test("names the provider and prints the upstream cause when a sibling still works", () => {
+		expect(
+			providerDisabledNote({
+				disabledCause: "oauth refresh failed: invalid_grant: the grant is invalid",
+				rows: [row()],
+			}),
+		).toEqual([
+			"a previous login was signed out: oauth refresh failed: invalid_grant: the grant is invalid",
+			"press a to sign in again",
+		]);
+	});
+
+	/**
+	 * The worse case reads differently on purpose: with no account left, "a previous login" would
+	 * understate it. The provider cannot serve anything at all until you sign in again.
+	 */
+	test("says the provider itself is signed out when no account remains", () => {
+		const [lead] = providerDisabledNote({ disabledCause: "oauth refresh failed: revoked", rows: [] });
+		expect(lead).toBe("the login for this provider was signed out: oauth refresh failed: revoked");
+	});
+
+	/** No disable, no note. A healthy provider must not carry a warning. */
+	test("says nothing when no login was torn down", () => {
+		expect(providerDisabledNote({ rows: [row()] })).toEqual([]);
+	});
+
+	/**
+	 * The sidebar mark has to fire for a torn-down login too, including when the provider has no rows
+	 * left to carry a glyph of their own — otherwise the only thing pointing at the problem is a
+	 * provider you have to already suspect.
+	 */
+	test("marks the provider in the sidebar even with no accounts left", () => {
+		const [entry] = buildSidebarEntries(
+			{
+				providers: [
+					{ provider: "kimi-code", label: "Kimi Code", rows: [], disabledCause: "oauth refresh failed: revoked" },
+				],
+				totalAccounts: 0,
+				unhealthyCount: 0,
+			},
+			[{ id: "kimi-code", label: "Kimi Code" }],
+		);
+
+		expect(entry?.hasFailure).toBe(true);
+		expect(entry?.annotation).toBe(NO_ACCOUNTS_ANNOTATION);
 	});
 });

@@ -20,23 +20,12 @@
  * or a newline in an upstream failure reason tears a card open, and those strings arrive from
  * the network.
  */
-import { truncateToWidth } from "@veyyon/tui";
 import type { AccountInventory, AccountRow } from "../../session/account-inventory";
 import { accountDisplayLabel, accountIdentityDetail, accountOriginLabel } from "../../session/account-inventory";
 import { formatDurationCoarse, formatUsageWindowLine } from "../../slash-commands/helpers/format";
 
 /** Width of the usage bar in the manager's body pane, in cells. */
 export const USAGE_BAR_WIDTH = 10;
-/** Column the short window labels ("5h", "7d") pad out to before their bar. */
-const USAGE_LABEL_COLUMN = 4;
-/**
- * Upper bound on a window label, matching `slash-commands/helpers/account-status.ts`.
- *
- * Anthropic names its windows in prose ("Claude 7 Day (Fable)"), which pushes the bar right and
- * runs the row past the pane. The two account surfaces clamp to the same 12 so a window reads
- * identically in the card and in the inline `/account status` block.
- */
-const USAGE_LABEL_MAX = 12;
 
 /** Annotation a sidebar entry carries when the provider holds no credentials at all. */
 export const NO_ACCOUNTS_ANNOTATION = "—";
@@ -104,7 +93,10 @@ export function buildSidebarEntries(
 			label: sanitizeAccountText(group.label),
 			accountCount: group.rows.length,
 			annotation: group.rows.length > 0 ? String(group.rows.length) : NO_ACCOUNTS_ANNOTATION,
-			hasFailure: group.rows.some(row => row.health === "failed"),
+			// A torn-down login counts as needing attention even when a sibling still works: the
+			// provider is the only place that fact can surface, and a provider whose ONLY login died
+			// has no row left to carry it.
+			hasFailure: group.rows.some(row => row.health === "failed") || group.disabledCause !== undefined,
 		});
 	}
 	for (const provider of providers) {
@@ -128,6 +120,20 @@ export function sidebarSummaryLine(inventory: AccountInventory): string {
 	const accounts = `${inventory.totalAccounts} ${inventory.totalAccounts === 1 ? "account" : "accounts"}`;
 	if (inventory.unhealthyCount === 0) return accounts;
 	return `${accounts} · ${inventory.unhealthyCount} ${inventory.unhealthyCount === 1 ? "error" : "errors"}`;
+}
+
+/**
+ * The note a provider shows when a previous login was torn down by a failed refresh.
+ *
+ * Prints the upstream cause verbatim, like a failed row does: `invalid_grant: The provided
+ * authorization grant is invalid` is what tells a user the grant died on the provider's side and a
+ * fresh login is the remedy, where "signed out" would leave them re-running the same broken flow.
+ */
+export function providerDisabledNote(entry: { disabledCause?: string; rows: readonly AccountRow[] }): string[] {
+	if (!entry.disabledCause) return [];
+	const lead =
+		entry.rows.length === 0 ? "the login for this provider was signed out" : "a previous login was signed out";
+	return [`${lead}: ${sanitizeAccountText(entry.disabledCause)}`, "press a to sign in again"];
 }
 
 /** The body pane's title line: `Anthropic · 3 accounts · 1 needs attention`. */

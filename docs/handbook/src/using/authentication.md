@@ -74,6 +74,30 @@ Anthropic          personal                    main model  (opus-5)
 Your choice is kept, not discarded. Once the limit resets, traffic returns to the account you picked
 with no further action.
 
+## When a login is signed out for you
+
+A stored login can stop working without you doing anything: the provider revokes the grant, or a
+token refresh fails and the credential is set aside. Veyyon does not hide that. The account manager
+marks the provider and prints the provider's own reason, so you can tell a revoked grant from a
+temporary outage:
+
+```text
+Kimi Code · 1 account
+  a previous login was signed out: oauth refresh failed:
+  invalid_grant: The provided authorization grant is invalid
+  press a to sign in again
+```
+
+If that provider had only one login, it now has none, and the card says so rather than showing the
+provider as one you never signed into. `/account` names it too, so you do not have to open the card
+to find out:
+
+```text
+1 provider has a signed-out login (Kimi Code) · /providers to sign in again
+```
+
+A logout you performed yourself is not reported this way. You already know about it.
+
 ## Headless and remote hosts
 
 For CI, servers, or a shared team credential store, use the auth broker from the shell:
