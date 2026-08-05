@@ -530,18 +530,14 @@ describe("the rendered template data carries every gate", () => {
 		expect(undefinedValues, `reaches the template as undefined: ${undefinedValues.join(", ")}`).toEqual([]);
 	});
 
-	/**
-	 * The two the edit dropped, named individually.
-	 *
-	 * The list check above would also fail if either went missing, but it fails with a computed message
-	 * that a reader has to trace back. These two have a history, so they get an assertion that says so.
+	/*
+	 * A CASE WAS DELETED HERE on 2026-08-04: "still carries the two variables an edit once dropped",
+	 * two bare `expect(data.taskIrcEnabled).toBeDefined()` calls. Its own doc comment said the list
+	 * check above "would also fail if either went missing", so it added no coverage, and `toBeDefined`
+	 * is satisfied by the key arriving as `false`, `""` or `0` -- which is the state the case beside it
+	 * ("passes through what the caller asked for, not a fixed value") is the actual guard against. A
+	 * better failure MESSAGE is not a test.
 	 */
-	it("still carries the two variables an edit once dropped", async () => {
-		const data = await renderedContext();
-
-		expect(data.taskIrcEnabled).toBeDefined();
-		expect(data.eagerTasksAlways).toBeDefined();
-	});
 
 	/**
 	 * And the value follows the option rather than being pinned to whatever the default renders. A key

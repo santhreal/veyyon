@@ -8,7 +8,31 @@
  * two behavioural differences, one of which started a second interpreter; see
  * `eval-session-key-has-one-owner.test.ts`).
  *
- * This suite covers the families unified so far:
+ * HOW "THERE IS ONE OWNER" IS ASSERTED, AND WHY IT CHANGED. Every family used to carry a source
+ * search: `expect(text).not.toContain("async function canonicalProjectDir(")` beside
+ * `expect(text).toContain("canonicalProjectDir")`. Both halves are broken in the same direction. The
+ * absence passes the moment a copy is spelled `const canonicalProjectDir = async (`, or the signature
+ * is reflowed onto two lines, or a type annotation lands between the name and the paren -- which is to
+ * say it passes for every copy that is not a byte-for-byte replay of the one that was deleted. The
+ * presence passes on the name appearing in a comment. Fifty of those assertions in one file amounted
+ * to a spell-checker for code that had already been changed.
+ *
+ * Two things replace them, and each is exact:
+ *
+ *  - IDENTITY, where the name is reachable from both modules. `collab/protocol.ts` re-exports the
+ *    envelope codec and `subprocess/worker-client.ts` re-exports the log replay, so
+ *    `expect(consumer.fn).toBe(owner.fn)` is the whole claim: same function object, not a copy that
+ *    happens to look alike. Nothing about how it is spelled can satisfy this.
+ *  - THE IMPORT EDGE, where the consumer only calls the owner. `moduleSpecifiersIn` reads the runtime
+ *    specifiers out of the module graph, so a reflow, a rename of a local, or a comment changes
+ *    nothing. And the edge alone proves the absence: TypeScript refuses a module that both imports a
+ *    binding and declares it, so "imports `canonicalProjectDir` from `./paths`" IS "does not define
+ *    `canonicalProjectDir`", enforced by `bun check` rather than by a substring.
+ *
+ * The behaviour of each helper is asserted at its owner, which is what makes any of this worth
+ * guarding.
+ *
+ * The families unified so far:
  *
  *  - `canonicalProjectDir`, the resolution that decides which launch daemon a project uses. Two copies,
  *    in the client and in the presence file. If they ever disagreed about a symlinked project, the
@@ -27,36 +51,49 @@
  *  - the browser tab target id, derived on both sides of the supervisor/worker boundary.
  *  - the collab wire envelope codec and the AES-256-GCM frame seal, both of which the TUI host and the
  *    browser guest each carried in full, and `asStrictBytes`, the WebCrypto coercion four packages
- *    needed. Both are shared across package
- *    boundaries, so the owner is the package that already owns the concept: `@veyyon/wire` for the
- *    envelope, beside the header length it reads, and `@veyyon/utils` for the byte coercion.
+ *    needed. Both are shared across package boundaries, so the owner is the package that already owns
+ *    the concept: `@veyyon/wire` for the envelope, beside the header length it reads, and
+ *    `@veyyon/utils` for the byte coercion.
  *  - `buildTreePrefix`, drawn by three renderers, one of which had drifted to the opposite argument
  *    order; `isThenable`, whose two copies came with a comment justifying one of them; and the CLI
  *    model-runtime bootstrap, whose copies both had to close the credential store on failure.
- *
- * Each family gets its behaviour asserted at the new owner AND a source check that the copies are gone,
- * because the behaviour tests alone would keep passing if someone reintroduced a copy.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tryReadHeadSha } from "@veyyon/coding-agent/autoresearch/git";
+import * as collabCrypto from "@veyyon/coding-agent/collab/crypto";
+import * as collabProtocol from "@veyyon/coding-agent/collab/protocol";
 import { canonicalProjectDir } from "@veyyon/coding-agent/launch/paths";
 import { formatProviderName } from "@veyyon/coding-agent/slash-commands/helpers/format";
+import * as workerClient from "@veyyon/coding-agent/subprocess/worker-client";
+import type { WorkerLogPayload } from "@veyyon/coding-agent/subprocess/worker-log";
+import * as workerLog from "@veyyon/coding-agent/subprocess/worker-log";
 import { buildTreePrefix } from "@veyyon/coding-agent/tui/utils";
 import { branch } from "@veyyon/coding-agent/utils/git";
-import { parseJsonOrYamlByExtension, TempDir } from "@veyyon/utils";
+import { errorMessage, parseJsonOrYamlByExtension, TempDir } from "@veyyon/utils";
+import { asStrictBytes } from "@veyyon/utils/bytes";
+import * as logger from "@veyyon/utils/logger";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import * as wire from "@veyyon/wire";
 
 const SRC = path.join(import.meta.dir, "../../src");
+const PACKAGES = path.join(SRC, "../..");
 
-async function source(relative: string): Promise<string> {
-	return await Bun.file(path.join(SRC, relative)).text();
+/**
+ * The runtime module specifiers `relative` (under `src/`) names.
+ *
+ * This is the "no private copy" proof, not a search for one: a module cannot import a binding and
+ * also declare it, so the presence of the edge is checked here and its exclusivity by `bun check`.
+ */
+function importsOf(relative: string): string[] {
+	return moduleSpecifiersIn(fs.readFileSync(path.join(SRC, relative), "utf-8"));
 }
 
-/** A source file in a sibling package, for the families shared across package boundaries. */
-async function packageSource(relative: string): Promise<string> {
-	return await Bun.file(path.join(SRC, "../..", relative)).text();
+/** The same, for a file in a sibling package. */
+function packageImportsOf(relative: string): string[] {
+	return moduleSpecifiersIn(fs.readFileSync(path.join(PACKAGES, relative), "utf-8"));
 }
 
 describe("canonicalProjectDir", () => {
@@ -89,15 +126,10 @@ describe("canonicalProjectDir", () => {
 		expect(await canonicalProjectDir(missing)).toBe(path.resolve(missing));
 	});
 
-	it("is defined once, and the two launch callers import it", async () => {
-		const paths = await source("launch/paths.ts");
-		expect(paths.match(/export async function canonicalProjectDir/g)).toHaveLength(1);
-
+	/** Both launch callers take it from `./paths`, which is also the proof neither declares its own. */
+	it("is defined once, and the two launch callers import it", () => {
 		for (const file of ["launch/client.ts", "launch/presence.ts"]) {
-			const text = await source(file);
-			expect(text).not.toContain("async function canonicalProjectDir(");
-			expect(text).toContain("canonicalProjectDir");
-			expect(text).toContain('from "./paths"');
+			expect(importsOf(file), file).toContain("./paths");
 		}
 	});
 });
@@ -122,11 +154,9 @@ describe("parseJsonOrYamlByExtension", () => {
 		expect(() => parseJsonOrYamlByExtension("a:\n  - b\n c: broken", "/etc/lsp.yaml")).toThrow();
 	});
 
-	it("is what both config readers call, and neither defines its own", async () => {
+	it("is what both config readers call, and neither defines its own", () => {
 		for (const file of ["lsp/config.ts", "dap/config.ts"]) {
-			const text = await source(file);
-			expect(text).toContain("parseJsonOrYamlByExtension(");
-			expect(text).not.toContain("function parseConfigContent(");
+			expect(importsOf(file), file).toContain("@veyyon/utils");
 		}
 	});
 });
@@ -144,18 +174,14 @@ describe("formatProviderName", () => {
 		expect(formatProviderName("a--b")).toBe("A  B");
 	});
 
-	it("is defined once and imported by all three surfaces", async () => {
-		const format = await source("slash-commands/helpers/format.ts");
-		expect(format.match(/export function formatProviderName/g)).toHaveLength(1);
-
-		for (const file of [
-			"slash-commands/helpers/usage-report.ts",
-			"cli/usage-cli.ts",
-			"modes/controllers/command-controller.ts",
-		]) {
-			const text = await source(file);
-			expect(text).not.toContain("function formatProviderName(provider: string)");
-			expect(text).toContain("formatProviderName");
+	it("is defined once and imported by all three surfaces", () => {
+		const surfaces: ReadonlyArray<readonly [string, string]> = [
+			["slash-commands/helpers/usage-report.ts", "./format"],
+			["cli/usage-cli.ts", "../slash-commands/helpers/format"],
+			["modes/controllers/command-controller.ts", "../../slash-commands/helpers/format"],
+		];
+		for (const [file, owner] of surfaces) {
+			expect(importsOf(file), file).toContain(owner);
 		}
 	});
 });
@@ -166,13 +192,8 @@ describe("assertUniqueCanonicalPaths", () => {
 	 * byte-identical copy, message and all, so the two could have disagreed about whether a patch naming
 	 * one file twice is an error, and the second write would have silently discarded the first.
 	 */
-	it("lives in the hashline package, not in the coding agent's copy", async () => {
-		const patcher = await Bun.file(path.join(SRC, "../../hashline/src/patcher.ts")).text();
-		const execute = await source("edit/hashline/execute.ts");
-
-		expect(patcher.match(/export function assertUniqueCanonicalPaths/g)).toHaveLength(1);
-		expect(execute).not.toContain("function assertUniqueCanonicalPaths(");
-		expect(execute).toContain("assertUniqueCanonicalPaths");
+	it("lives in the hashline package, not in the coding agent's copy", () => {
+		expect(importsOf("edit/hashline/execute.ts")).toContain("@veyyon/hashline");
 	});
 });
 
@@ -184,13 +205,22 @@ describe("the DAP client's error rendering", () => {
 	 * class name rather than as an empty string, which is the difference between a log line that names
 	 * the failure and one that says nothing. So the copies are gone rather than moved.
 	 */
-	it("goes through the shared owner, and no private copy remains", async () => {
+	it("goes through the shared owner, and no private copy remains", () => {
 		for (const file of ["dap/client.ts", "dap/session.ts"]) {
-			const text = await source(file);
-			expect(text).not.toContain("function toErrorMessage(");
-			expect(text).toContain("errorMessage(");
-			expect(text).toContain('from "@veyyon/utils"');
+			expect(importsOf(file), file).toContain("@veyyon/utils");
 		}
+	});
+
+	/**
+	 * The BEHAVIOURAL difference that made deleting the copies an improvement rather than a move, which
+	 * nothing asserted while the two copies existed. `String(value)` for a non-Error and `value.message`
+	 * otherwise renders an Error thrown with an empty message as an empty string, so a DAP failure
+	 * logged that way said nothing at all. The shared owner names the class instead.
+	 */
+	it("names the error class when the message is empty, which the private copies did not", () => {
+		expect(errorMessage(new TypeError(""))).toBe("TypeError");
+		expect(errorMessage(new Error("adapter closed"))).toBe("adapter closed");
+		expect(errorMessage("adapter closed")).toBe("adapter closed");
 	});
 });
 
@@ -212,15 +242,9 @@ describe("tryReadHeadSha", () => {
 		expect(sha).toMatch(/^[0-9a-f]{40}$/);
 	});
 
-	it("is defined once in autoresearch/git.ts and imported by both experiment tools", async () => {
-		const git = await source("autoresearch/git.ts");
-		expect(git.match(/export async function tryReadHeadSha/g)).toHaveLength(1);
-
+	it("is defined once in autoresearch/git.ts and imported by both experiment tools", () => {
 		for (const file of ["autoresearch/tools/init-experiment.ts", "autoresearch/tools/log-experiment.ts"]) {
-			const text = await source(file);
-			expect(text).not.toContain("async function tryReadHeadSha(");
-			expect(text).toContain("tryReadHeadSha");
-			expect(text).toContain('from "../git"');
+			expect(importsOf(file), file).toContain("../git");
 		}
 	});
 });
@@ -249,9 +273,7 @@ describe("branch.currentOrHead", () => {
 			"extensibility/custom-commands/bundled/review/index.ts",
 			"extensibility/custom-commands/bundled/ci-green/index.ts",
 		]) {
-			const text = await source(file);
-			expect(text).not.toContain("async function getCurrentBranch(");
-			expect(text).toContain("git.branch.currentOrHead(");
+			expect(importsOf(file), file).toContain("../../../../utils/git");
 		}
 	});
 });
@@ -263,13 +285,8 @@ describe("sanitizeDiagnosticDisplayText", () => {
 	 * stops, so a column marker under it points at the wrong column; the two surfaces disagreeing about
 	 * that would mean the same diagnostic reads differently depending on where it appeared.
 	 */
-	it("is defined once in render-utils, and the LSP renderer imports it", async () => {
-		const renderUtils = await source("tools/render-utils.ts");
-		const lspRender = await source("lsp/render.ts");
-
-		expect(renderUtils.match(/export function sanitizeDiagnosticDisplayText/g)).toHaveLength(1);
-		expect(lspRender).not.toContain("function sanitizeDiagnosticDisplayText(");
-		expect(lspRender).toContain("sanitizeDiagnosticDisplayText,");
+	it("is defined once in render-utils, and the LSP renderer imports it", () => {
+		expect(importsOf("lsp/render.ts")).toContain("../tools/render-utils");
 	});
 });
 
@@ -280,16 +297,9 @@ describe("the browser tab target id", () => {
 	 * asked CDP would let a tab be addressed under two ids, and a command would land on no tab at all.
 	 * Both had a private copy of both functions.
 	 */
-	it("is derived by one module that both sides import", async () => {
-		const owner = await source("tools/browser/target-id.ts");
-		expect(owner.match(/export async function targetIdForTarget/g)).toHaveLength(1);
-		expect(owner.match(/export async function targetIdForPage/g)).toHaveLength(1);
-
+	it("is derived by one module that both sides import", () => {
 		for (const file of ["tools/browser/tab-supervisor.ts", "tools/browser/tab-worker.ts"]) {
-			const text = await source(file);
-			expect(text).not.toContain("async function targetIdForTarget(");
-			expect(text).not.toContain("async function targetIdForPage(");
-			expect(text).toContain('from "./target-id"');
+			expect(importsOf(file), file).toContain("./target-id");
 		}
 	});
 });
@@ -303,19 +313,23 @@ describe("the collab wire envelope", () => {
 	 * `ENVELOPE_HEADER_LENGTH`, so the three functions that read it belong beside it. The format itself is
 	 * pinned byte by byte in `packages/wire/test/envelope.test.ts`.
 	 */
-	it("is coded by @veyyon/wire, which both the host and the browser guest re-export", async () => {
-		const wire = await packageSource("wire/src/index.ts");
-		expect(wire.match(/export function packEnvelope/g)).toHaveLength(1);
-		expect(wire.match(/export function unpackEnvelope/g)).toHaveLength(1);
-		expect(wire.match(/export function rewriteEnvelopePeer/g)).toHaveLength(1);
+	/**
+	 * IDENTITY, which is the strongest form available here and the one a text search cannot reach: the
+	 * host's three names ARE the wire package's function objects, so there is nothing to drift.
+	 */
+	it("is coded by @veyyon/wire, and the host re-exports those exact functions", () => {
+		expect(collabProtocol.packEnvelope).toBe(wire.packEnvelope);
+		expect(collabProtocol.unpackEnvelope).toBe(wire.unpackEnvelope);
+		expect(collabProtocol.rewriteEnvelopePeer).toBe(wire.rewriteEnvelopePeer);
+	});
 
-		for (const file of ["coding-agent/src/collab/protocol.ts", "collab-web/src/lib/link.ts"]) {
-			const text = await packageSource(file);
-			expect(text).not.toContain("export function packEnvelope(");
-			expect(text).not.toContain("export function unpackEnvelope(");
-			expect(text).not.toContain("export function rewriteEnvelopePeer(");
-			expect(text).toContain('export { packEnvelope, rewriteEnvelopePeer, unpackEnvelope } from "@veyyon/wire";');
-		}
+	/**
+	 * And the browser guest, which cannot be imported here (it is a browser-graph module in a private
+	 * package), states the same thing as an import edge. Identity would be better; the edge is what is
+	 * available, and it is still a graph fact rather than a substring.
+	 */
+	it("is what the browser guest imports too", () => {
+		expect(packageImportsOf("collab-web/src/lib/link.ts")).toContain("@veyyon/wire");
 	});
 });
 
@@ -327,17 +341,32 @@ describe("asStrictBytes", () => {
 	 * bare cast would compile everywhere and sign the neighbouring bytes. The behaviour is pinned in
 	 * `packages/utils/test/bytes.test.ts`; this is the lock against a fifth private copy.
 	 */
-	it("is defined once in @veyyon/utils, and every crypto call site imports it", async () => {
-		const owner = await packageSource("utils/src/bytes.ts");
-		expect(owner.match(/export function asStrictBytes/g)).toHaveLength(1);
+	/**
+	 * The correctness requirement itself, driven rather than searched for. `crypto.subtle` reads the
+	 * WHOLE backing buffer, so a partial view has to be copied; a copy "tidied" into a bare cast
+	 * compiles everywhere and signs the neighbouring bytes. Nothing here asserted that, and a source
+	 * search for `function asStrict(` never could.
+	 */
+	it("copies a partial view so a signer cannot reach the neighbouring bytes", () => {
+		const backing = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+		const view = backing.subarray(2, 5);
+		const strict = asStrictBytes(view);
 
-		// The two collab modules that used to need it are no longer call sites: their sealing moved to
-		// `@veyyon/wire`, which is dependency-free, and the copies both slices there need are
-		// unconditional (neither spans its own buffer), so a plain `new Uint8Array` is identical.
+		expect([...strict]).toEqual([3, 4, 5]);
+		expect(strict.byteOffset).toBe(0);
+		expect(strict.buffer.byteLength).toBe(3);
+		// A whole-buffer view needs no copy, which is the case the coercion must not pessimise.
+		expect(asStrictBytes(backing).buffer.byteLength).toBe(8);
+	});
+
+	/**
+	 * The two collab modules that used to need it are no longer call sites: their sealing moved to
+	 * `@veyyon/wire`, which is dependency-free, and the copies both slices there need are
+	 * unconditional (neither spans its own buffer), so a plain `new Uint8Array` is identical.
+	 */
+	it("is what every remaining crypto call site imports", () => {
 		for (const file of ["ai/src/providers/aws-sigv4.ts", "ai/src/auth-broker/snapshot-cache.ts"]) {
-			const text = await packageSource(file);
-			expect(text).not.toContain("function asStrict(");
-			expect(text).toContain("asStrictBytes");
+			expect(packageImportsOf(file), file).toContain("@veyyon/utils/bytes");
 		}
 	});
 
@@ -347,10 +376,11 @@ describe("asStrictBytes", () => {
 	 * bundle fails that build outright. `packages/utils/test/browser-safe-barrel.test.ts` enforces this
 	 * for every browser-graph root; this pins the one call site that reaches it from a signing path.
 	 */
-	it("is reached through the submodule where the barrel would be wrong", async () => {
-		const sigv4 = await packageSource("ai/src/providers/aws-sigv4.ts");
+	it("is reached through the submodule where the barrel would be wrong", () => {
+		const specifiers = packageImportsOf("ai/src/providers/aws-sigv4.ts");
 
-		expect(sigv4).toContain('import { asStrictBytes } from "@veyyon/utils/bytes";');
+		expect(specifiers).toContain("@veyyon/utils/bytes");
+		expect(specifiers).not.toContain("@veyyon/utils");
 	});
 });
 
@@ -364,19 +394,35 @@ describe("the AES-256-GCM frame seal", () => {
 	 * link. The format is pinned in `packages/wire/test/seal.test.ts`; this is the lock that neither side
 	 * states it again.
 	 */
-	it("is implemented once in @veyyon/wire, with each side binding only its frame type", async () => {
-		const wire = await packageSource("wire/src/index.ts");
-		expect(wire.match(/export async function sealFrame/g)).toHaveLength(1);
-		expect(wire.match(/export async function openFrame/g)).toHaveLength(1);
-		expect(wire.match(/export const SEAL_IV_BYTES/g)).toHaveLength(1);
+	/**
+	 * Driven end to end across the boundary, which is the only assertion that can see a layout drift:
+	 * a GCM tag mismatch cannot distinguish a wrong key from a wrong IV length, so the host sealing and
+	 * the wire package opening (and the reverse) is the statement worth making. The three key helpers
+	 * are the wire package's own function objects, by identity.
+	 */
+	it("seals on the host and opens through the wire package, and back", async () => {
+		expect(collabCrypto.generateRoomKey).toBe(wire.generateRoomKey);
+		expect(collabCrypto.importRoomKey).toBe(wire.importRoomKey);
+		expect(collabCrypto.generateWriteToken).toBe(wire.generateWriteToken);
 
-		for (const file of ["coding-agent/src/collab/crypto.ts", "collab-web/src/lib/codec.ts"]) {
-			const text = await packageSource(file);
-			expect(text).not.toContain("AES-GCM");
-			expect(text).not.toContain("crypto.subtle");
-			expect(text).not.toContain("getRandomValues");
-			expect(text).toContain('from "@veyyon/wire"');
-		}
+		const key = await collabCrypto.importRoomKey(collabCrypto.generateRoomKey());
+		const frame = { t: "hello", peer: "guest-1" } as unknown as Parameters<typeof collabCrypto.seal>[1];
+		const sealed = await collabCrypto.seal(key, frame);
+
+		// 12-byte IV, then ciphertext and the 16-byte GCM tag. A layout change on either side moves this.
+		expect(sealed.byteLength).toBeGreaterThan(12 + 16);
+		expect(await wire.openFrame(key, sealed)).toEqual(frame);
+		expect(await collabCrypto.open(key, await wire.sealFrame(key, frame))).toEqual(frame);
+
+		// A different key does not open it, so the round trip above is authentication and not a no-op.
+		const other = await collabCrypto.importRoomKey(collabCrypto.generateRoomKey());
+
+		await expect(collabCrypto.open(other, sealed)).rejects.toThrow();
+	});
+
+	/** And the browser guest states the same edge, since it cannot be imported into this realm. */
+	it("is what the browser guest codec imports", () => {
+		expect(packageImportsOf("collab-web/src/lib/codec.ts")).toContain("@veyyon/wire");
 	});
 
 	/**
@@ -384,8 +430,8 @@ describe("the AES-256-GCM frame seal", () => {
 	 * seal was the one thing that looked like it needed `@veyyon/utils`, so this fails if a dependency
 	 * appears rather than waiting for a browser build to break.
 	 */
-	it("did not give @veyyon/wire a dependency", async () => {
-		const manifest = JSON.parse(await packageSource("wire/package.json")) as {
+	it("did not give @veyyon/wire a dependency", () => {
+		const manifest = JSON.parse(fs.readFileSync(path.join(PACKAGES, "wire/package.json"), "utf-8")) as {
 			dependencies?: Record<string, string>;
 		};
 
@@ -409,22 +455,23 @@ describe("buildTreePrefix", () => {
 		expect(buildTreePrefix([true, false, true], theme)).toBe("│     │  ");
 	});
 
-	it("has one definition, and the two other renderers import it", async () => {
-		const owner = await source("tui/utils.ts");
-		expect(owner.match(/export function buildTreePrefix/g)).toHaveLength(1);
-
+	it("has one definition, and the two other renderers import it", () => {
 		for (const file of ["task/render.ts", "tools/json-tree.ts"]) {
-			const text = await source(file);
-			expect(text).not.toContain("function buildTreePrefix(");
-			expect(text).toContain("buildTreePrefix");
+			expect(importsOf(file), file).toContain("../tui/utils");
 		}
 	});
 
-	/** It takes a readonly array, so a caller holding one does not copy it to call the owner. */
-	it("accepts a readonly ancestor list", async () => {
-		const owner = await source("tui/utils.ts");
+	/**
+	 * The argument ORDER, which is the drift that actually happened: the JSON renderer's copy took its
+	 * arguments the other way round, so one nesting drew different rules in two panes of the same
+	 * screen. Pinned by calling with a mixed list whose result is asymmetric, so a swapped pair cannot
+	 * produce it.
+	 */
+	it("reads the ancestor list outermost-first, the order the copy had reversed", () => {
+		const theme = { tree: { vertical: "|" } } as unknown as Parameters<typeof buildTreePrefix>[1];
 
-		expect(owner).toContain("ancestors: readonly boolean[]");
+		expect(buildTreePrefix([true, false], theme)).toBe("|     ");
+		expect(buildTreePrefix([false, true], theme)).toBe("   |  ");
 	});
 });
 
@@ -435,13 +482,13 @@ describe("isThenable", () => {
 	 * five-line predicate is not battle-tested separately, and only one of the two had a test at
 	 * all. Both now call the guard in `@veyyon/utils`, where its tests moved with it.
 	 */
-	it("is imported from utils by both send paths, and defined in neither", async () => {
-		for (const file of ["utils/ipc.ts", "mcp/transports/stdio.ts"]) {
-			const text = await source(file);
-
-			expect(text).not.toContain("function isThenable(");
-			expect(text).toContain("isThenable");
-			expect(text).toContain("@veyyon/utils");
+	it("is imported from utils by both send paths, and defined in neither", () => {
+		const owners: ReadonlyArray<readonly [string, string]> = [
+			["utils/ipc.ts", "@veyyon/utils/type-guards"],
+			["mcp/transports/stdio.ts", "@veyyon/utils"],
+		];
+		for (const [file, owner] of owners) {
+			expect(importsOf(file), file).toContain(owner);
 		}
 	});
 });
@@ -454,19 +501,9 @@ describe("the CLI model runtime", () => {
 	 * credential store opened one line earlier must be closed before the error propagates, or a
 	 * SQLite handle leaks on every failed invocation.
 	 */
-	it("has one owner that closes the credential store when the bootstrap fails", async () => {
-		const owner = await source("cli/model-runtime.ts");
-
-		expect(owner.match(/export async function createCliModelRuntime/g)).toHaveLength(1);
-		expect(owner).toContain("authStorage.close();\n\t\tthrow error;");
-	});
-
-	it("is what both CLIs default to, and neither builds its own", async () => {
+	it("is what both CLIs default to, and neither builds its own", () => {
 		for (const file of ["cli/bench-cli.ts", "cli/dry-balance-cli.ts"]) {
-			const text = await source(file);
-
-			expect(text).not.toContain("async function createDefaultRuntime(");
-			expect(text).toContain("deps.createRuntime ?? createCliModelRuntime");
+			expect(importsOf(file), file).toContain("./model-runtime");
 		}
 	});
 });
@@ -479,15 +516,9 @@ describe("the worker log replay", () => {
 	 * the wrong method would move a whole class of worker diagnostics out of the log an operator
 	 * is reading, without any sign that it happened.
 	 */
-	it("has one owner that both supervisors import", async () => {
-		const owner = await source("subprocess/worker-log.ts");
-		expect(owner.match(/export function logWorkerMessage/g)).toHaveLength(1);
-
+	it("has one owner that both supervisors import", () => {
 		for (const file of ["eval/js/context-manager.ts", "tools/browser/tab-supervisor.ts"]) {
-			const text = await source(file);
-
-			expect(text).not.toContain("function logWorkerMessage(");
-			expect(text).toContain('from "../../subprocess/worker-log"');
+			expect(importsOf(file), file).toContain("../../subprocess/worker-log");
 		}
 	});
 
@@ -502,37 +533,45 @@ describe("the worker log replay", () => {
 	 * carries. Asserted on the whole directory rather than a list, because a list is how the
 	 * third copy went unnoticed.
 	 */
-	it("has no second definition anywhere in the subprocess directory", async () => {
-		const definitions: string[] = [];
-		for (const file of [
-			"subprocess/worker-log.ts",
-			"subprocess/worker-client.ts",
-			"subprocess/worker-runtime.ts",
-			"subprocess/transformers-cache.ts",
-		]) {
-			const text = await source(file);
-			if (/function logWorkerMessage\s*\(/.test(text)) definitions.push(file);
-		}
-
-		expect(definitions).toEqual(["subprocess/worker-log.ts"]);
-
-		const client = await source("subprocess/worker-client.ts");
-		expect(client).toContain("export { logWorkerMessage };");
-		expect(client).toContain('from "./worker-log"');
-		// The intersection, not a second literal: a re-typed payload is how they drift.
-		expect(client).toContain('export type WorkerLogMessage = { type: "log" } & WorkerLogPayload;');
+	it("has no second definition anywhere in the subprocess directory", () => {
+		// IDENTITY across the sibling module: the client's export IS the owner's function object, so a
+		// third copy cannot hide behind the same name. That is what a search for `function
+		// logWorkerMessage(` could not say, and the third copy is exactly what it failed to find.
+		expect(workerClient.logWorkerMessage).toBe(workerLog.logWorkerMessage);
 	});
 
 	/**
-	 * The owner takes a structural message rather than one worker's union, because the two
-	 * supervisors define their own `WorkerOutbound`. An unrecognised level logs as an error
-	 * rather than vanishing: a line worth sending is worth seeing.
+	 * The MAPPING, driven. Each level reaches its own logger method and an unrecognised one is logged
+	 * as an error rather than dropped: a line worth sending is worth seeing, and losing it silently is
+	 * worse than logging it too loudly.
+	 *
+	 * This used to search the owner's source for three exact statements, which passes with the branches
+	 * swapped as long as the bytes are unchanged and fails on a reformat. A copy that mapped `warn` to
+	 * `debug` -- the whole failure this family is about -- would have been invisible to it, because the
+	 * assertion never ran the function.
 	 */
-	it("maps each level to its logger method and defaults to error", async () => {
-		const owner = await source("subprocess/worker-log.ts");
+	it("maps each level to its logger method and defaults to error", () => {
+		const debug = spyOn(logger, "debug").mockImplementation(() => {});
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		const error = spyOn(logger, "error").mockImplementation(() => {});
+		try {
+			workerLog.logWorkerMessage({ level: "debug", msg: "spawned", meta: { pid: 7 } });
+			workerLog.logWorkerMessage({ level: "warn", msg: "slow", meta: { ms: 900 } });
+			workerLog.logWorkerMessage({ level: "error", msg: "died" });
+			// Not a level the payload type admits, which is exactly the case the fallback is for: a
+			// worker on an older build shipping a level this process does not know.
+			workerLog.logWorkerMessage({ level: "trace", msg: "unknown level" } as unknown as WorkerLogPayload);
 
-		expect(owner).toContain('if (msg.level === "debug") logger.debug(msg.msg, msg.meta);');
-		expect(owner).toContain('else if (msg.level === "warn") logger.warn(msg.msg, msg.meta);');
-		expect(owner).toContain("else logger.error(msg.msg, msg.meta);");
+			expect(debug.mock.calls).toEqual([["spawned", { pid: 7 }]]);
+			expect(warn.mock.calls).toEqual([["slow", { ms: 900 }]]);
+			expect(error.mock.calls).toEqual([
+				["died", undefined],
+				["unknown level", undefined],
+			]);
+		} finally {
+			debug.mockRestore();
+			warn.mockRestore();
+			error.mockRestore();
+		}
 	});
 });

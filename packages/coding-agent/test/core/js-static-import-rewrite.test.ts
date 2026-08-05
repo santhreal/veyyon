@@ -165,8 +165,11 @@ describe("rewriteImports", () => {
 
 	it("returns the input unchanged when the parser cannot make sense of the code", async () => {
 		const code = `${IMPORT} { foo from broken syntax 'unterminated`;
-		// Should not reject; should fall through to the VM which will surface the syntax error.
-		await expect(rewriteImports(code)).resolves.toBeDefined();
+		// Must not reject: it falls through to the VM, which surfaces the syntax error with a position
+		// the operator can act on. `resolves.toBeDefined()` is what this used to say, and that is
+		// satisfied by returning `""` -- which would hand the VM an empty cell and report success for
+		// code that never ran. UNCHANGED is the contract the title already claimed.
+		await expect(rewriteImports(code)).resolves.toBe(code);
 	});
 
 	it("captures the final expression even when trailing empty statements follow", async () => {
