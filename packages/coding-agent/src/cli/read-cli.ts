@@ -12,6 +12,7 @@ import type { ToolSession } from "../tools";
 import { wrapToolWithMetaNotice } from "../tools/output-meta";
 import { ReadTool } from "../tools/read";
 import { renderError } from "../tools/tool-errors";
+import { EXIT_USAGE } from "./exit-codes";
 
 export interface ReadCommandArgs {
 	path: string;
@@ -20,7 +21,7 @@ export interface ReadCommandArgs {
 export async function runReadCommand(cmd: ReadCommandArgs): Promise<void> {
 	if (!cmd.path) {
 		process.stderr.write(chalk.red("error: path is required\n"));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const cwd = getProjectDir();

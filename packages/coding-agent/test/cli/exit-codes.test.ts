@@ -7,6 +7,8 @@ import {
 	EXIT_OK,
 	EXIT_USAGE,
 } from "@veyyon/coding-agent/cli/exit-codes";
+import { APPROVAL_MODE_VALUES } from "@veyyon/coding-agent/tools/approval-modes";
+import { CLI_EXIT_USAGE } from "@veyyon/utils/cli";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 /**
@@ -160,7 +162,9 @@ describe("a usage error exits 2, distinct from a runtime failure", () => {
 
 		expect(result.code).toBe(EXIT_USAGE);
 		expect(result.stderr).toContain('Invalid --approval-mode value: "nonsense".');
-		expect(result.stderr).toContain("plan, ask, auto-edit, yolo");
+		// Derived from the one array the flag validator itself reads, so a ladder
+		// change surfaces as a real mismatch rather than a stale literal here.
+		expect(result.stderr).toContain(`Expected one of: ${APPROVAL_MODE_VALUES.join(", ")}.`);
 	}, 60_000);
 
 	/**
@@ -204,6 +208,47 @@ describe("a usage error exits 2, distinct from a runtime failure", () => {
 		expect(result.stderr).toContain("`veyyon confg` is not a command");
 		expect(result.stderr).toContain("`veyyon config`");
 	}, 60_000);
+
+	/**
+	 * EVERY BRANCH, NOT THE ONE THAT HAPPENED TO BE LOOKED AT. Root-level flag
+	 * parsing returned EXIT_USAGE while every subcommand returned 1 for the same
+	 * mistake, so `veyyon --nope` and `veyyon config --nope` disagreed and a
+	 * wrapper that stopped on the first looped forever on the second. The doc row
+	 * for `2` names three of these verbatim: an unrecognized flag, a bad flag
+	 * value, a missing required argument.
+	 *
+	 * The cases below cover every distinct code path that can reject a subcommand
+	 * command line, because the defect was that only one of them was right:
+	 *
+	 *   - `@veyyon/utils/cli` rejecting an undeclared flag,
+	 *   - `@veyyon/utils/cli` rejecting a value outside a declared `options` set,
+	 *   - `@veyyon/utils/cli` rejecting a missing required positional,
+	 *   - `completions` catching the parse error itself instead of rethrowing,
+	 *   - a hand-rolled guard that prints its own `Usage:` line and exits,
+	 *   - a hand-rolled guard in a command with no shared parse at all.
+	 *
+	 * A runtime failure is the control: it must stay 1, or the distinction the
+	 * whole code is for has been collapsed from the other direction.
+	 */
+	it.each([
+		["framework: undeclared flag", ["config", "--definitely-not-a-real-flag"], EXIT_USAGE],
+		["framework: value outside the declared options", ["config", "definitely-not-an-action"], EXIT_USAGE],
+		["framework: missing required positional", ["read"], EXIT_USAGE],
+		["completions: parse error caught in the command", ["completions", "tcsh"], EXIT_USAGE],
+		["hand-rolled: missing argument with its own usage line", ["config", "get"], EXIT_USAGE],
+		["hand-rolled: unknown setting key", ["config", "get", "no.such.setting.key"], EXIT_USAGE],
+		["hand-rolled: no shared parse", ["models", "find"], EXIT_USAGE],
+		["control: runtime failure stays 1", ["--print", "--resume", "zzzzzzzzzz", "hi"], EXIT_FAILURE],
+	])(
+		"%s",
+		async (_label, argv, expected) => {
+			const result = await runCli(argv);
+
+			expect(result.code).toBe(expected);
+			expect(result.stderr.trim().length).toBeGreaterThan(0);
+		},
+		60_000,
+	);
 });
 
 describe("the code table is the one the docs promise", () => {
@@ -218,6 +263,21 @@ describe("the code table is the one the docs promise", () => {
 		expect(EXIT_FAILURE).toBe(1);
 		expect(EXIT_USAGE).toBe(2);
 		expect(EXIT_INTERRUPTED).toBe(130);
+	});
+
+	/**
+	 * The two declarations of "the command line was wrong" hold the same number.
+	 *
+	 * `EXIT_USAGE` above and `CLI_EXIT_USAGE` in `@veyyon/utils/cli` are separate
+	 * literals on purpose: the coding-agent module sits on `cli.ts`'s static boot
+	 * graph, which `the-boot-path-stays-thin` caps, and importing the command
+	 * framework there would put the whole thing on the startup path for one
+	 * integer. Two literals need a check, and this is it. They disagreed once, and
+	 * the symptom was `veyyon --nope` exiting 2 while `veyyon config --nope`,
+	 * routed through the framework, exited 1.
+	 */
+	it("agrees with the command framework's own usage code", () => {
+		expect(CLI_EXIT_USAGE).toBe(EXIT_USAGE);
 	});
 
 	/**

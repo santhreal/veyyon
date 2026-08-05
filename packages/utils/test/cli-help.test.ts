@@ -1,5 +1,5 @@
 import { describe, expect, it, spyOn } from "bun:test";
-import { Args, Command, type CommandEntry, Flags, run, tokenizeQuotedArgs } from "../src/cli";
+import { Args, CLI_EXIT_USAGE, Command, type CommandEntry, Flags, run, tokenizeQuotedArgs } from "../src/cli";
 
 class GoodCommand extends Command {
 	static description = "prints good things";
@@ -187,7 +187,7 @@ describe("run() usage errors", () => {
 			stderrSpy.mockRestore();
 			process.exitCode = prevExitCode ?? 0;
 		}
-		expect(observedExitCode).toBe(1);
+		expect(observedExitCode).toBe(CLI_EXIT_USAGE);
 		const out = errs.join("");
 		expect(out).toContain('Error: Unexpected argument: "anthropic"');
 	});
@@ -226,13 +226,15 @@ describe("run() usage errors", () => {
 		expect(errs.join("")).not.toContain("Unexpected");
 	});
 
-	// Contract: an unknown command name exits 1 with one consistent message, on
-	// both the run path and the `--help` path — `veyyon <typo> --help` used to
-	// print a different message and exit 0, reporting the typo as success.
+	// Contract: an unknown command name exits CLI_EXIT_USAGE with one consistent
+	// message, on both the run path and the `--help` path. `veyyon <typo> --help`
+	// used to print a different message and exit 0, reporting the typo as success,
+	// and both paths then exited 1, which told a wrapper script that retrying an
+	// invocation that can never succeed might help.
 	it.each([
 		["run path", ["nope"]],
 		["help path", ["nope", "--help"]],
-	])("reports an unknown command consistently and exits 1 (%s)", async (_label, argv) => {
+	])("reports an unknown command consistently and exits 2 (%s)", async (_label, argv) => {
 		const commands: CommandEntry[] = [{ name: "bench", load: async () => BenchLikeCommand }];
 		const errs: string[] = [];
 		const stderrSpy = spyOn(process.stderr, "write").mockImplementation(chunk => {
@@ -248,7 +250,7 @@ describe("run() usage errors", () => {
 			stderrSpy.mockRestore();
 			process.exitCode = prevExitCode ?? 0;
 		}
-		expect(observedExitCode).toBe(1);
+		expect(observedExitCode).toBe(CLI_EXIT_USAGE);
 		expect(errs.join("")).toContain("Error: Unknown command 'nope'");
 	});
 });

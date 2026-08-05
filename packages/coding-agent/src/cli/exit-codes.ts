@@ -25,8 +25,8 @@
  * information a caller may want.
  *
  * When you add an exit, use one of these constants. When you need a new class,
- * add it here with a description first, and update `docs/exit-codes.md` in the
- * same change.
+ * add it here with a description first, and update
+ * `docs/handbook/src/reference/exit-codes.md` in the same change.
  */
 
 /** The command completed successfully. */
@@ -49,6 +49,15 @@ export const EXIT_FAILURE = 1;
  * This is the conventional Unix "command line usage error", and keeping it
  * distinct from {@link EXIT_FAILURE} is what lets a wrapping script stop rather
  * than loop.
+ *
+ * Declared here as a literal rather than imported from the command framework's
+ * `CLI_EXIT_USAGE`, which holds the same number. This module is on `cli.ts`'s
+ * static boot graph and `@veyyon/utils/cli` is deliberately not (the command
+ * table is loaded through `await import`), so importing it would put the whole
+ * framework on the startup path for one integer. The two are held equal by an
+ * assertion in `test/cli/exit-codes.test.ts`, which is what stops them drifting:
+ * they disagreed once already, and the visible symptom was `veyyon --nope`
+ * exiting 2 while `veyyon config --nope` exited 1.
  */
 export const EXIT_USAGE = 2;
 

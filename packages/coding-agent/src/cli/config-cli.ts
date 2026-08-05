@@ -22,6 +22,7 @@ import {
 import { isSettingPath, retiredBy, SETTINGS_SCHEMA } from "../config/settings-schema";
 import { theme } from "../modes/theme/theme";
 import { initXdg } from "./commands/init-xdg";
+import { EXIT_USAGE } from "./exit-codes";
 
 // =============================================================================
 // Types
@@ -377,13 +378,13 @@ function handleGet(key: string | undefined, flags: { json?: boolean }): void {
 	if (!key) {
 		console.error(chalk.red(`Usage: ${APP_NAME} config get <key>`));
 		console.error(chalk.dim(`\nRun '${APP_NAME} config list' to see available keys`));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const def = findSettingDef(key);
 	if (!def) {
 		reportUnknownSetting(key);
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const value = settings.get(def.path);
@@ -434,20 +435,20 @@ async function handleSet(key: string | undefined, value: string | undefined, fla
 	if (!key || value === undefined) {
 		console.error(chalk.red(`Usage: ${APP_NAME} config set <key> <value>`));
 		console.error(chalk.dim(`\nRun '${APP_NAME} config list' to see available keys`));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const def = findSettingDef(key);
 	if (!def) {
 		reportUnknownSetting(key);
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	try {
 		parseAndSetValue(def.path, value);
 	} catch (err) {
 		console.error(chalk.red(String(err)));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	await persistOrExit();
@@ -472,13 +473,13 @@ async function handleReset(key: string | undefined, flags: { json?: boolean }): 
 	if (!key) {
 		console.error(chalk.red(`Usage: ${APP_NAME} config reset <key>`));
 		console.error(chalk.dim(`\nRun '${APP_NAME} config list' to see available keys`));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const def = findSettingDef(key);
 	if (!def) {
 		reportUnknownSetting(key);
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const path = def.path as SettingPath;

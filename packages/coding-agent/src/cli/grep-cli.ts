@@ -8,6 +8,7 @@ import { GrepOutputMode, grep } from "@veyyon/natives";
 import { errorMessage } from "@veyyon/utils";
 
 import chalk from "chalk";
+import { EXIT_USAGE } from "./exit-codes";
 
 export interface GrepCommandArgs {
 	pattern: string;
@@ -23,7 +24,7 @@ export async function runGrepCommand(cmd: GrepCommandArgs): Promise<void> {
 	if (!cmd.pattern) {
 		console.error(chalk.red("Error: Pattern is required"));
 		console.error(chalk.dim('Usage: veyyon grep <pattern> [path] — e.g. `veyyon grep "TODO" src/`'));
-		process.exit(1);
+		process.exit(EXIT_USAGE);
 	}
 
 	const searchPath = path.resolve(cmd.path);
