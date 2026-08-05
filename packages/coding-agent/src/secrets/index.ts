@@ -21,6 +21,56 @@ const SECRET_FILE_FIELDS: Readonly<Record<string, true>> = {
 	minLength: true,
 };
 
+/**
+ * The ceiling on a refusal about this file, and the reason there is one.
+ *
+ * Every refusal below collects EVERY problem before throwing, which is deliberate: an operator with
+ * three typos should fix three typos and restart once. Composed without a cap it is also a way to
+ * turn a file into an unreadable error. Measured against the uncapped version: one `type: regex`
+ * entry whose 50,001-character pattern does not compile produced a 50,393-character refusal, because
+ * the pattern is quoted back whole; 5,000 entries with an unrecognised `type` produced 479,069
+ * characters over 5,001 lines, each line short and none of them bounding the total; and 5,000
+ * declared secrets under the obfuscation floor produced 1,164,148 characters. A fatal message
+ * printed to a terminal is the operator's problem the moment it is longer than the screen, and this
+ * is the exact shape that shipped here as a 50,437-character validation error: per-field limits that
+ * never compose into a ceiling.
+ *
+ * THREE CAPS, BECAUSE THERE ARE THREE WAYS TO GROW. One complaint can be long (a quoted pattern),
+ * there can be many complaints, and a single quoted field inside a complaint can be long on its own.
+ * Capping only the total would cut the remedy sentence off the end of the first complaint, which is
+ * the half of the message worth keeping.
+ */
+const MAX_ECHOED_PATTERN_CHARS = 120;
+const MAX_PROBLEM_CHARS = 400;
+const MAX_REPORTED_PROBLEMS = 20;
+
+/**
+ * Quote at most `maxChars` of `value`, marking the cut so a truncated pattern cannot be mistaken
+ * for the whole one. Never splits a surrogate pair, so the result is always well-formed UTF-16.
+ */
+function boundedQuote(value: string, maxChars: number): string {
+	if (value.length <= maxChars) return value;
+	const end = maxChars - 1;
+	const first = value.charCodeAt(end - 1);
+	const cut = first >= 0xd800 && first <= 0xdbff ? end - 1 : end;
+	return `${value.slice(0, cut)}…`;
+}
+
+/**
+ * The indented complaint block, bounded in both directions, with the withheld count STATED.
+ *
+ * Printing the first twenty silently would tell an operator with 5,000 malformed entries that they
+ * have twenty, and they would fix twenty and be refused again.
+ */
+function formatProblems(problems: readonly string[]): string {
+	const shown = problems.slice(0, MAX_REPORTED_PROBLEMS).map(line => `  - ${boundedQuote(line, MAX_PROBLEM_CHARS)}`);
+	const withheld = problems.length - shown.length;
+	// NOT the `  - ` complaint prefix: this line is a count of what was withheld, and reading as a
+	// twenty-first complaint would put a fabricated entry in a list of the operator's real ones.
+	if (withheld > 0) shown.push(`  …and ${withheld} more entries not listed here.`);
+	return shown.join("\n");
+}
+
 export {
 	buildExpansionRecord,
 	decodeLog,
@@ -121,7 +171,7 @@ function refuseUnprotectableEntries(entries: SecretEntry[], paths: { profilePath
 		`Refusing to start: ${unprotectable.length} declared secret(s) cannot be obfuscated, and starting anyway ` +
 			`would send them to the model provider in plain text.\n` +
 			`Checked ${paths.projectPath} and ${paths.profilePath}.\n` +
-			complaints.map(line => `  - ${line}`).join("\n"),
+			formatProblems(complaints),
 	);
 }
 
@@ -219,7 +269,7 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 				`${problems.length === 1 ? "is" : "are"} not a valid secret declaration, and skipping ` +
 				`${problems.length === 1 ? "it" : "them"} would leave the value${problems.length === 1 ? "" : "s"} ` +
 				`${problems.length === 1 ? "it declares" : "they declare"} unprotected.\n` +
-				problems.map(line => `  - ${line}`).join("\n"),
+				formatProblems(problems),
 		);
 	}
 	return entries;
@@ -343,8 +393,10 @@ function validateEntry(entry: unknown, index: number, problems: string[]): entry
 			// class of secret and got no coverage for it. Patterns are not secret, so the message
 			// quotes it; plain secret values still never reach this branch.
 			problems.push(
-				`${at} is a regex that does not compile or cannot be scanned safely (${errorMessage(error)}). ` +
-					`Pattern: ${e.content}. Every secret it was meant to match is unprotected until it is fixed or removed.`,
+				`${at} is a regex that does not compile or cannot be scanned safely ` +
+					`(${boundedQuote(errorMessage(error), MAX_ECHOED_PATTERN_CHARS)}). ` +
+					`Pattern: ${boundedQuote(e.content, MAX_ECHOED_PATTERN_CHARS)}. ` +
+					`Every secret it was meant to match is unprotected until it is fixed or removed.`,
 			);
 			return false;
 		}

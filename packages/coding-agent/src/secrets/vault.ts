@@ -416,7 +416,7 @@ export function generateSecretName(taken: ReadonlySet<string>): string {
 		const candidate = `${GENERATED_NAME_PREFIX}${n}`;
 		if (candidate.length <= MAX_SECRET_NAME_LENGTH && !taken.has(candidate)) return candidate;
 	}
-	throw new Error("Could not invent an unused secret name. Remove some entries with /secret rm.");
+	throw new Error("Could not invent an unused secret name. Remove some entries from /secret manager.");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -804,15 +804,35 @@ async function pinVaultScope(scope: VaultScope, vaultPath: string): Promise<Vaul
 
 	let directoryHandle: fs.FileHandle | undefined;
 	try {
-		directoryHandle = await fs.open(
-			directory,
-			fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | fsConstants.O_NOFOLLOW,
-		);
+		try {
+			directoryHandle = await fs.open(
+				directory,
+				fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | fsConstants.O_NOFOLLOW,
+			);
+		} catch (error) {
+			// The `lstat` above describes its own failures; this open had no catch at all, so a
+			// directory that stats and will not open escaped as the bare `EACCES: permission denied,
+			// open '<dir>'`. That string is quoted verbatim into an operator notice by
+			// `noteFailedVaultLoad`, where it named no scope, no vault and no secret: an operator whose
+			// profile directory carried the wrong mode was handed a path and left to guess the subject.
+			// It was also the one path in this file that reached a terminal without `safeText`.
+			throw new Error(
+				`The ${scope} vault directory at ${safeText(directory)} could not be opened safely (${safeError(error)}).`,
+			);
+		}
 		const opened = await directoryHandle.stat();
 		if (!opened.isDirectory() || !sameInode(before, opened)) {
 			throw new Error(`The ${scope} vault directory changed while its descriptor was being pinned.`);
 		}
-		const canonical = comparableVaultPath(path.join(await fs.realpath(directory), path.basename(vaultPath)));
+		let canonical: string;
+		try {
+			canonical = comparableVaultPath(path.join(await fs.realpath(directory), path.basename(vaultPath)));
+		} catch (error) {
+			// Same uncaught shape as the open above, on the call that resolves the physical identity.
+			throw new Error(
+				`The ${scope} vault directory at ${safeText(directory)} could not be resolved safely (${safeError(error)}).`,
+			);
+		}
 		const after = await fs.lstat(directory);
 		if (!after.isDirectory() || after.isSymbolicLink() || !sameInode(opened, after)) {
 			throw new Error(`The ${scope} vault directory changed while its physical identity was being pinned.`);
@@ -1389,9 +1409,9 @@ function noteUnreadableVault(scope: VaultScope, vaultPath: string, error: unknow
 		`Your ${scope} vault at ${safeText(vaultPath)} exists but could not be read, so it was skipped ` +
 			`and the secrets stored in it are unavailable for the rest of this session: their placeholders ` +
 			`will NOT expand. Every OTHER scope loaded normally, and masking of known secret values is ` +
-			`unaffected. The vault is encrypted, so a hand edit cannot repair it: run ` +
-			`/secret discard --scope ${scope} to move the unreadable file aside, then re-add the secrets ` +
-			`it held with /secret add. The reason it could not be read was ` +
+			`unaffected. The vault is encrypted, so a hand edit cannot repair it: open /secret manager and ` +
+			`move the unreadable file aside, or run /secret discard --scope ${scope} in a client with no ` +
+			`terminal. Then store the secrets it held again. The reason it could not be read was ` +
 			`${safeError(error)}`,
 	);
 }
@@ -1414,9 +1434,9 @@ function noteFailedVaultLoad(locations: VaultLocations, unreadable: readonly Vau
 	const repair =
 		unreadable.length === 0
 			? `No vault file was found to move aside, so this is a fault in the key or the vault directory rather than in a stored file.`
-			: `Run ${unreadable.map(scope => `/secret discard --scope ${scope}`).join(" and ")} to move the ` +
-				`unreadable file aside, then re-add the secrets it held with /secret add. That works here, ` +
-				`not only in the full-screen interface.`;
+			: `Open /secret manager and move the unreadable ${unreadable.length === 1 ? "file" : "files"} aside, ` +
+				`or run ${unreadable.map(scope => `/secret discard --scope ${scope}`).join(" and ")} in a client ` +
+				`with no terminal. Then store the secrets it held again.`;
 	const where = unreadable.map(scope => `${scope} (${safeText(vaultPathFor(locations, scope))})`).join(", ");
 	noteSecretsCondition(
 		`Your vault could not be read, so this session started WITHOUT it: nothing you have stored is ` +
@@ -1541,8 +1561,39 @@ export class SecretVault {
 	 * the vault is also what prunes it and a value cannot linger on disk after its lifetime.
 	 */
 	async load(): Promise<ScopedVaultEntry[]> {
-		const now = this.#now();
 		const byName = new Map<string, ScopedVaultEntry>();
+		for (const entry of await this.#loadEveryScope()) {
+			// Map.set updates a value in place. Delete first so an override is ordered
+			// with the narrower scope that owns the winning value.
+			byName.delete(entry.name);
+			byName.set(entry.name, entry);
+		}
+		return [...byName.values()];
+	}
+
+	/**
+	 * Every live entry in every scope, INCLUDING a name that a narrower scope shadows.
+	 *
+	 * {@link load} collapses a repeated name to the narrowest holder, which is right for spending:
+	 * one placeholder resolves to one value. It is wrong for any question ABOUT the scopes, and
+	 * planning a move between them is exactly that. Asked through `load`, "does the destination
+	 * already hold this name" is unanswerable, because the entry that would collide is the one
+	 * `load` dropped. The planner would then see no conflict, the move would overwrite a live
+	 * credential and delete the one being moved, and both would be gone.
+	 */
+	async loadEverywhere(): Promise<ScopedVaultEntry[]> {
+		return await this.#loadEveryScope();
+	}
+
+	/**
+	 * Walk every scope widest first, pruning expired entries and recording unreadable files.
+	 *
+	 * Shared by the collapsed and uncollapsed reads so the pruning and the unreadable bookkeeping
+	 * happen once per read and cannot drift apart between the two.
+	 */
+	async #loadEveryScope(): Promise<ScopedVaultEntry[]> {
+		const now = this.#now();
+		const all: ScopedVaultEntry[] = [];
 		const unreadable = new Set<VaultScope>();
 		for (const scope of VAULT_SCOPES) {
 			const vaultPath = vaultPathFor(this.#locations, scope);
@@ -1557,12 +1608,7 @@ export class SecretVault {
 				// One physical file cannot carry two semantic scope bindings, so the widest
 				// configured owner reads it exactly once.
 				if ((await this.#scopePathOwner(scope, pin)) !== scope) continue;
-				for (const entry of await this.#loadScope(scope, pin, now)) {
-					// Map.set updates a value in place. Delete first so an override is ordered
-					// with the narrower scope that owns the winning value.
-					byName.delete(entry.name);
-					byName.set(entry.name, { ...entry, scope });
-				}
+				for (const entry of await this.#loadScope(scope, pin, now)) all.push({ ...entry, scope });
 				// This path read cleanly, so any earlier complaint about it is spent. Clearing on
 				// success, rather than trusting the last state we reported, is what lets a
 				// break/repair/break sequence in one session raise the notice both times.
@@ -1581,7 +1627,7 @@ export class SecretVault {
 			}
 		}
 		this.#unreadableScopes = unreadable;
-		return [...byName.values()];
+		return all;
 	}
 
 	/**
@@ -2017,12 +2063,20 @@ export class SecretVault {
 		return { ...entry, scope };
 	}
 
-	/** Remove one entry by name. Returns the scope it was removed from, or `null`. */
-	async remove(name: string): Promise<VaultScope | null> {
+	/**
+	 * Remove one entry by name. Returns the scope it was removed from, or `null`.
+	 *
+	 * `scope` restricts the search to a single vault instead of walking narrowest first. A move
+	 * between scopes needs that: it writes the credential to the destination and then deletes the
+	 * source, and an unrestricted delete would find whichever copy is narrower. When the
+	 * destination is the narrower one that is the copy just written, so the move would report
+	 * success having deleted the new entry and left the old one in place.
+	 */
+	async remove(name: string, scope?: VaultScope): Promise<VaultScope | null> {
 		const wanted = normaliseSecretName(name);
 		const now = this.#now();
-		for (const scope of VAULT_SCOPES_NARROWEST_FIRST) {
-			const removed = await this.#withScopeLocked(scope, (current, exists) => {
+		for (const candidate of scope === undefined ? VAULT_SCOPES_NARROWEST_FIRST : [scope]) {
+			const removed = await this.#withScopeLocked(candidate, (current, exists) => {
 				const live = current.filter(entry => !isExpired(entry, now));
 				const found = live.some(entry => entry.name === wanted);
 				const next = found ? live.filter(entry => entry.name !== wanted) : live;
@@ -2032,7 +2086,7 @@ export class SecretVault {
 					write: exists && next.length !== current.length,
 				};
 			});
-			if (removed) return scope;
+			if (removed) return candidate;
 		}
 		return null;
 	}
@@ -2068,6 +2122,59 @@ export class SecretVault {
 				};
 			});
 			if (updated !== null) return { ...updated, scope };
+		}
+		return null;
+	}
+
+	/**
+	 * Rename an entry in place, keeping its value, creation time and expiry.
+	 *
+	 * REFUSES a target name that is already taken rather than overwriting it. `add` deliberately
+	 * overwrites, because storing a new value under an existing name is how a credential is
+	 * rotated, and it reports the replacement so the operator can tell a rotation from a typo. A
+	 * rename has no such legitimate reading: it carries no new value, so landing on an occupied
+	 * name could only destroy the credential already there in exchange for nothing. Removing the
+	 * occupant first is the only way to mean it.
+	 *
+	 * The lifetime is carried across untouched rather than restarted from now, so relabelling a
+	 * secret cannot quietly lengthen or shorten how long it lives.
+	 */
+	async rename(from: string, to: string): Promise<{ scope: VaultScope; name: string } | null> {
+		// Both names are validated BEFORE the lock, so a bad name fails fast without contending.
+		const wanted = normaliseSecretName(from);
+		const renamed = normaliseSecretName(to);
+		const now = this.#now();
+		for (const scope of VAULT_SCOPES_NARROWEST_FIRST) {
+			const found = await this.#withScopeLocked<boolean>(scope, (current, exists) => {
+				const live = current.filter(entry => !isExpired(entry, now));
+				const target = live.find(entry => entry.name === wanted);
+				// Nothing to rename here, so the only reason to write is a prune that dropped something.
+				const pruneOnly = {
+					entries: live,
+					result: false,
+					write: exists && live.length !== current.length,
+				};
+				if (target === undefined) return pruneOnly;
+				// Renaming a secret to the name it already has is an answer, not a write.
+				if (renamed === wanted) return { ...pruneOnly, result: true };
+				if (live.some(entry => entry.name === renamed)) {
+					throw new Error(
+						`The ${scope} vault already has a secret named ${renamed}. Renaming ${wanted} onto it would ` +
+							`destroy that credential. Remove ${renamed} first if that is what you want.`,
+					);
+				}
+				const next: VaultEntry = { ...target, name: renamed };
+				// Rename every copy of the old name, then collapse them the way any other in-place
+				// replacement does: the entry keeps its position and malformed duplicates do not survive.
+				return {
+					entries: replaceVaultEntry(
+						live.map(entry => (entry.name === wanted ? next : entry)),
+						next,
+					),
+					result: true,
+				};
+			});
+			if (found) return { scope, name: renamed };
 		}
 		return null;
 	}

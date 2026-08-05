@@ -386,8 +386,9 @@ describe("the two implementations", () => {
  *
  * Two atomic-write implementations are a deliberate cost. A third would be the point where nobody can
  * say which semantics a given call site got, so a new temp-plus-rename has to earn its place here with
- * a reason. Four modules do earn it, and none of them is writing bytes to a file: each stages
- * something the writers cannot express, which is precisely why "just call the writer" is not the fix.
+ * a reason. Five modules do earn it, and none of them is writing bytes to a file the way the writers
+ * do: each stages something the writers cannot express, which is precisely why "just call the writer"
+ * is not the fix.
  */
 const JUSTIFIED_TEMP_RENAMES: ReadonlyMap<string, string> = new Map([
 	["utils/src/atomic-write.ts", "the primary implementation"],
@@ -413,6 +414,18 @@ const JUSTIFIED_TEMP_RENAMES: ReadonlyMap<string, string> = new Map([
 		"utils/src/dirs.ts",
 		"renames individual entries while migrating a legacy config layout, which moves files between " +
 			"directories rather than replacing a file's contents.",
+	],
+	[
+		"coding-agent/src/secrets/vault.ts",
+		"publishes through the kernel's no-replace and exchange operations (secrets/atomic-path.ts: " +
+			"renameat2 RENAME_NOREPLACE / RENAME_EXCHANGE, renameatx_np, ReplaceFileW) rather than a " +
+			"plain rename, because the vault replacement is a compare-and-swap: it must refuse when the " +
+			"destination appeared under it, and on a replace it inspects the DISPLACED inode's identity " +
+			"and content hash and atomically rolls the old vault back when another writer won the race. " +
+			"It also stages and publishes through a pinned directory descriptor (/proc/self/fd/N) with " +
+			"O_EXCL|O_NOFOLLOW and mode 600, so no step of the transaction can be redirected by a " +
+			"swapped parent directory. Both writers take a lexical path and rename unconditionally, so " +
+			"calling one would drop the CAS, the rollback and the directory pin at once.",
 	],
 ]);
 
