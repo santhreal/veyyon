@@ -32,15 +32,40 @@ import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 // spawn. `/dev/null` is the documented way to tell git "use no config from
 // this scope". `GIT_TERMINAL_PROMPT=0` + `GIT_ASKPASS=true` guarantee git
 // never blocks on stdin waiting for credentials or a GPG passphrase.
-process.env.GIT_CONFIG_GLOBAL = "/dev/null";
-process.env.GIT_CONFIG_SYSTEM = "/dev/null";
-process.env.GIT_CONFIG_NOSYSTEM = "1";
-process.env.GIT_TERMINAL_PROMPT = "0";
-process.env.GIT_ASKPASS = "true";
 // `XDG_CONFIG_HOME`, if set, lets git re-discover a global config under
-// `$XDG_CONFIG_HOME/git/config` even after we pin `GIT_CONFIG_GLOBAL`. Clear
-// it so the override is absolute.
-delete process.env.XDG_CONFIG_HOME;
+// `$XDG_CONFIG_HOME/git/config` even after `GIT_CONFIG_GLOBAL` is pinned, so it
+// is cleared to make the override absolute.
+//
+// Applied in a hook rather than at module scope: `bun test` runs every file in
+// ONE process, so a bare top-level assignment stayed in force for every file
+// that ran after this one. A later suite spawning git would silently inherit
+// `GIT_CONFIG_NOSYSTEM=1` and a deleted `XDG_CONFIG_HOME` and pass or fail on
+// this file's environment. The top-level `beforeAll` still runs before the
+// describe-scoped fixture builder below, so the isolation covers fixture setup.
+const GIT_ISOLATION_ENV: Readonly<Record<string, string | undefined>> = {
+	GIT_CONFIG_GLOBAL: "/dev/null",
+	GIT_CONFIG_SYSTEM: "/dev/null",
+	GIT_CONFIG_NOSYSTEM: "1",
+	GIT_TERMINAL_PROMPT: "0",
+	GIT_ASKPASS: "true",
+	XDG_CONFIG_HOME: undefined,
+};
+const savedGitEnv: Record<string, string | undefined> = {};
+
+beforeAll(() => {
+	for (const [key, value] of Object.entries(GIT_ISOLATION_ENV)) {
+		savedGitEnv[key] = process.env[key];
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+});
+
+afterAll(() => {
+	for (const [key, value] of Object.entries(savedGitEnv)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+});
 
 function createSession(
 	cwd: string = "/tmp/test",

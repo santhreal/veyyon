@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { runOnboardingSetup } from "@veyyon/coding-agent/commands/setup";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -54,28 +54,39 @@ function testScene(id: string, minVersion: number, shouldRun?: () => boolean): S
 	};
 }
 
-afterEach(async () => {
-	await initTheme(false, "unicode", false, "titanium", "light");
-});
-
 // The import-config scene's shouldRun scans the real home for foreign configs
 // (~/.claude etc.), which makes "all scenes selected" assertions depend on the
-// developer's machine. mock.module is process-global in bun and leaks into
-// sibling test files even with an afterAll restore (their imports link while
-// the mock is live), so the mock DELEGATES: explicit-home calls (what
-// import-scan.test.ts and production tests pass) hit the real implementation;
-// only the wizard's no-arg real-home scan is pinned to a deterministic
-// non-empty result. The real function is snapshotted BY VALUE here because
-// mock.module rewrites the namespace's live bindings — delegating through
-// `realImportScan.scanForeignConfig` at call time would recurse into the mock.
-const realScanForeignConfig = realImportScan.scanForeignConfig;
-mock.module("@veyyon/coding-agent/discovery/import-scan", () => ({
-	...realImportScan,
-	scanForeignConfig: async (cwd?: string, home?: string) =>
+// developer's machine. The stub is a per-test spy on the imported namespace,
+// undone by `restoreAllMocks` below. `mock.module` rewrites bun's PROCESS-GLOBAL
+// module registry, so it stayed installed for every sibling file that linked its
+// imports while this file was loaded, no matter what this file did afterwards.
+//
+// The stub DELEGATES: explicit-home calls (what import-scan.test.ts and the
+// production tests pass) reach the real implementation; only the wizard's no-arg
+// real-home scan is pinned to a deterministic non-empty result. The real function
+// is read inside `beforeEach`, when the property is un-spied, so delegating never
+// recurses into the spy.
+beforeEach(async () => {
+	// The theme singleton is initialised BEFORE each test, not only after. Scenes
+	// render through `theme.fg(...)` the moment a selection is applied, and this
+	// file used to seed the singleton only in `afterEach`, so whichever test ran
+	// first found `theme` undefined. That is invisible in declaration order and
+	// fires under `bun test --randomize`: seed=2 put "can select the last provider
+	// in the setup TUI list" first and it died in web-search.ts on `theme.fg`.
+	await initTheme(false, "unicode", false, "titanium", "light");
+
+	const realScanForeignConfig = realImportScan.scanForeignConfig;
+	vi.spyOn(realImportScan, "scanForeignConfig").mockImplementation(async (cwd?: string, home?: string) =>
 		home !== undefined
 			? realScanForeignConfig(cwd, home)
 			: [{ kind: "skill", name: "probe", providerName: "Claude Code", sourcePath: "/nonexistent/probe" }],
-}));
+	);
+});
+
+afterEach(async () => {
+	vi.restoreAllMocks();
+	await initTheme(false, "unicode", false, "titanium", "light");
+});
 
 describe("setup wizard scene selection", () => {
 	it("runs all v1 scenes for a new user", async () => {

@@ -248,12 +248,19 @@ describe("resolveConfigValue reports why a credential command produced nothing",
 	it("leaves a plain environment-variable value alone", async () => {
 		// Only `!` values run commands. A literal or env lookup has no failure to
 		// report, and reporting one would be noise on the common path.
+		//
+		// try/finally rather than a trailing `delete`: a failed assertion below
+		// would skip that line and leave the variable set for every later file in
+		// the same `bun test` process.
+		const previous = process.env.VEYYON_TEST_CONFIG_VALUE;
 		process.env.VEYYON_TEST_CONFIG_VALUE = "from-env";
-
-		await expect(resolveConfigValue("VEYYON_TEST_CONFIG_VALUE")).resolves.toBe("from-env");
-		expect(reports()).toEqual([]);
-
-		delete process.env.VEYYON_TEST_CONFIG_VALUE;
+		try {
+			await expect(resolveConfigValue("VEYYON_TEST_CONFIG_VALUE")).resolves.toBe("from-env");
+			expect(reports()).toEqual([]);
+		} finally {
+			if (previous === undefined) delete process.env.VEYYON_TEST_CONFIG_VALUE;
+			else process.env.VEYYON_TEST_CONFIG_VALUE = previous;
+		}
 	});
 });
 
