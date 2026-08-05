@@ -208,6 +208,7 @@ import {
 	toAgentCompactionSettings,
 } from "../config/compaction-strategy";
 import { type EffortSource, resolveEffort, withLegacyDefaultEffort } from "../config/effort-resolver";
+import { missingCredentialsMessage } from "../config/missing-credentials";
 import type { ModelRegistry } from "../config/model-registry";
 import {
 	extractExplicitThinkingSelector,
@@ -414,6 +415,7 @@ import {
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
 import { findCompactMode } from "./compact-modes";
+import { CommitDriftTracker } from "./commit-drift";
 import { type ContentBlockLike, contentText } from "./content-text";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
@@ -2336,6 +2338,8 @@ export class AgentSession {
 	 *  These are folded into the matched tool call's `toolResult` content as an
 	 *  in-band system reminder, instead of spawning a separate follow-up turn. */
 	#perToolTtsrInjections = new Map<string, Rule[]>();
+	/** Drives the `commit-drift` rule: this session's edits that are not committed yet. */
+	readonly #commitDrift = new CommitDriftTracker();
 	#ttsrAbortPending = false;
 	#ttsrRetryToken = 0;
 	#ttsrResumePromise: Promise<void> | undefined = undefined;
@@ -6213,6 +6217,8 @@ export class AgentSession {
 	 * - `cwd` lets a rule say where the session currently is.
 	 * - `matchedPath` lets a rule name what triggered it; it is set only for a rule with a
 	 *   `pathScope`, so a body that uses it must guard the reference.
+	 * - `commitDrift` carries the uncommitted count and file list, and is absent when there is
+	 *   nothing to report — so a rule body gated on it stays silent rather than saying "0 files".
 	 */
 	#renderRuleBody(rule: Rule): string {
 		const argotEnabled = this.settings.get("argot.enabled") === true;
@@ -6225,6 +6231,14 @@ export class AgentSession {
 			argotUnloaded: argotEnabled && this.#argot?.loaded !== true,
 			cwd: this.sessionManager.getCwd(),
 			matchedPath: this.#ttsrManager?.lastMatchedPath(rule.name),
+			// Undefined rather than a zero count when the nudge should not fire: the gate
+			// that decides is `{{#if commitDrift}}`, and a `{ count: 0 }` object is truthy.
+			commitDrift: this.settings.get("git.enabled")
+				? this.#commitDrift.summary(
+						this.sessionManager.getCwd(),
+						this.settings.get("commit.nudgeAfterFiles"),
+					)
+				: undefined,
 		});
 	}
 
@@ -6379,6 +6393,12 @@ export class AgentSession {
 			this.#markTerminalYieldToolCall(ctx.toolCall.id);
 			this.#synchronouslyTerminatedYieldToolCallIds.add(ctx.toolCall.id);
 			this.agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
+		}
+		// Before the TTSR delivery below, so `commit-drift` counts the edit that just
+		// landed. Recording after it would make the nudge describe the tree as it was one
+		// edit ago, and it fires on exactly the tools that change that number.
+		if (!ctx.isError && this.settings.get("git.enabled")) {
+			this.#commitDrift.record(ctx.toolCall.name, ctx.result?.details, this.sessionManager.getCwd());
 		}
 		return this.#ttsrAfterToolCall(ctx);
 	}
@@ -11627,7 +11647,7 @@ export class AgentSession {
 	): Promise<{ switched: boolean }> {
 		const previousEditMode = this.#resolveActiveEditMode();
 		if (!this.#modelRegistry.hasConfiguredAuth(model)) {
-			throw new Error(`No API key for ${model.provider}/${model.id}`);
+			throw new Error(missingCredentialsMessage(model.provider, model.id, "the requested model"));
 		}
 
 		const targetModel = await this.#modelRegistry.refreshSelectedModelMetadata(model);
@@ -11669,7 +11689,7 @@ export class AgentSession {
 	): Promise<void> {
 		const previousEditMode = this.#resolveActiveEditMode();
 		if (!this.#modelRegistry.hasConfiguredAuth(model)) {
-			throw new Error(`No API key for ${model.provider}/${model.id}`);
+			throw new Error(missingCredentialsMessage(model.provider, model.id, "the requested model"));
 		}
 
 		const targetModel = await this.#modelRegistry.refreshSelectedModelMetadata(model);
@@ -11866,7 +11886,7 @@ export class AgentSession {
 
 		const apiKey = await this.#modelRegistry.getApiKey(nextModel, this.sessionId);
 		if (!apiKey) {
-			throw new Error(`No API key for ${nextModel.provider}/${nextModel.id}`);
+			throw new Error(missingCredentialsMessage(nextModel.provider, nextModel.id, "the next model in the cycle"));
 		}
 
 		this.#modelRegistry.clearSuppressedSelector(formatModelStringWithRouting(nextModel));
@@ -12824,7 +12844,7 @@ export class AgentSession {
 			}
 			const apiKey = await this.#modelRegistry.getApiKey(model, this.sessionId);
 			if (!apiKey) {
-				throw new Error(`No API key for ${model.provider}`);
+				throw new Error(missingCredentialsMessage(model.provider, model.id, "the handoff summary model"));
 			}
 
 			// Build the handoff request through the SAME pipeline a live turn uses
@@ -16249,7 +16269,7 @@ export class AgentSession {
 		}
 		const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
 		if (!apiKey) {
-			throw new Error(`No API key for retry fallback ${selector.raw}`);
+			throw new Error(missingCredentialsMessage(candidate.provider, candidate.id, `retry fallback ${selector.raw}`));
 		}
 
 		// Capture the configured selector (auto-aware) so a fallback chain preserves
@@ -18176,7 +18196,7 @@ export class AgentSession {
 			const model = this.model!;
 			const apiKey = await this.#modelRegistry.getApiKey(model, this.sessionId);
 			if (!apiKey) {
-				throw new Error(`No API key for ${model.provider}`);
+				throw new Error(missingCredentialsMessage(model.provider, model.id, "the branch summary model"));
 			}
 			await this.leaseSecretRuntime();
 			const branchSummarySettings = this.settings.getGroup("branchSummary");
