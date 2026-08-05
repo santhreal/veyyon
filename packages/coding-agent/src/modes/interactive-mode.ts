@@ -1877,7 +1877,12 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.syncRunningSubagentBadge();
 			});
 		}
-		const count = countRunningSubagentBadgeAgents(registry);
+		// The collab guest's mirrored registry has no local scope; the local one is
+		// this driving session's conversation and must not count another's spawns.
+		const count = countRunningSubagentBadgeAgents(
+			registry,
+			this.collabGuest ? undefined : this.sessionManager.getSessionId(),
+		);
 		this.statusLine.setSubagentCount(count);
 		if (options.requestRender !== false) this.ui.requestRender();
 	}

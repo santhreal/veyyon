@@ -6,13 +6,19 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage, getAgentDir, getProjectDir, isEnoent, logger } from "@veyyon/utils";
+import { errorMessage, getAgentDir, getProjectDir, isEnoent, readdirIfPresent, reportFault } from "@veyyon/utils";
 import * as arktype from "arktype";
 import * as zodModule from "zod/v4";
 import { getConfigDirs } from "../../config";
 import { execCommand } from "../../exec/exec";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { loadCodingAgentApi } from "../coding-agent-api";
+import {
+	factoryExportMissingMessage,
+	invalidArtifactFieldMessage,
+	moduleImportFailedMessage,
+	nameConflictMessage,
+} from "../load-failure";
 import * as typebox from "../typebox";
 import { GreenCommand } from "./bundled/ci-green";
 import { ReviewCommand } from "./bundled/review";
@@ -39,7 +45,7 @@ async function loadCommandModule(
 		const factory = (module.default ?? module) as CustomCommandFactory;
 
 		if (typeof factory !== "function") {
-			return { commands: null, error: "Command must export a default function" };
+			return { commands: null, error: factoryExportMissingMessage("custom command") };
 		}
 
 		const result = await factory(sharedApi);
@@ -48,20 +54,40 @@ async function loadCommandModule(
 		// Validate commands
 		for (const cmd of commands) {
 			if (!cmd.name || typeof cmd.name !== "string") {
-				return { commands: null, error: "Command must have a name" };
+				return {
+					commands: null,
+					error: invalidArtifactFieldMessage(
+						"custom command",
+						"name",
+						"it must be a non-empty string, and it is the word typed after the slash",
+					),
+				};
 			}
 			if (!cmd.description || typeof cmd.description !== "string") {
-				return { commands: null, error: `Command "${cmd.name}" must have a description` };
+				return {
+					commands: null,
+					error: invalidArtifactFieldMessage(
+						"custom command",
+						"description",
+						`it must be a non-empty string, and it is the one line "/${cmd.name}" shows in the command list`,
+					),
+				};
 			}
 			if (typeof cmd.execute !== "function") {
-				return { commands: null, error: `Command "${cmd.name}" must have an execute function` };
+				return {
+					commands: null,
+					error: invalidArtifactFieldMessage(
+						"custom command",
+						"execute",
+						`it must be a function, and it is what running "/${cmd.name}" calls`,
+					),
+				};
 			}
 		}
 
 		return { commands, error: null };
 	} catch (err) {
-		const message = errorMessage(err);
-		return { commands: null, error: `Failed to load command: ${message}` };
+		return { commands: null, error: moduleImportFailedMessage("custom command", errorMessage(err)) };
 	}
 }
 
@@ -75,6 +101,17 @@ export interface DiscoverCustomCommandsOptions {
 export interface DiscoverCustomCommandsResult {
 	/** Paths to command modules */
 	paths: Array<{ path: string; source: CustomCommandSource }>;
+}
+
+/**
+ * Whether a directory under `commands/` is a MARKDOWN command tree rather than a
+ * broken TypeScript one. `slash-commands.ts` loads `.md` commands and this
+ * loader must not report those as missing an entry point: doing so would fire a
+ * fault on every working Claude-style command directory.
+ */
+async function holdsMarkdownCommand(commandDir: string): Promise<boolean> {
+	const entries = await readdirIfPresent(commandDir, "custom command directory");
+	return entries.some(entry => entry.name.endsWith(".md"));
 }
 
 /**
@@ -118,20 +155,59 @@ export async function discoverCustomCommands(
 			entries = await fs.promises.readdir(commandsDir, { withFileTypes: true });
 		} catch (error) {
 			if (!isEnoent(error)) {
-				logger.warn("Failed to read custom commands directory", { path: commandsDir, error: String(error) });
+				reportFault({
+					source: "commands",
+					text:
+						`The custom commands directory ${commandsDir} could not be read, so none of the commands ` +
+						`inside it are available in this run: ${errorMessage(error)}. ` +
+						"Fix: check its permissions and whether its filesystem is mounted.",
+					context: { path: commandsDir, error: String(error) },
+				});
 			}
 			continue;
 		}
 		for (const entry of entries) {
-			if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+			if (entry.name.startsWith(".")) continue;
+			// A LOOSE FILE IS NOT A COMMAND, AND SAYING SO IS THE POINT. This scan
+			// only ever accepted `<commandsDir>/<name>/index.{ts,js,mjs,cjs}`, and
+			// anything else it met it dropped without a word: a `commands/foo.ts`
+			// written flat, or a `commands/foo/` holding `command.ts`, produced a
+			// session with the command absent and nothing anywhere to explain it.
+			// Markdown is excluded because it is not this loader's job -- a `.md`
+			// slash command is loaded by `slash-commands.ts` and works.
+			if (!entry.isDirectory()) {
+				if (/\.(ts|js|mjs|cjs)$/.test(entry.name)) {
+					reportFault({
+						source: "commands",
+						text:
+							`${path.join(commandsDir, entry.name)} is not loaded as a custom command, because a ` +
+							"TypeScript command must sit in its own directory. " +
+							`Fix: move it to ${path.join(commandsDir, entry.name.replace(/\.[^.]+$/, ""), "index.ts")}.`,
+						context: { path: path.join(commandsDir, entry.name) },
+					});
+				}
+				continue;
+			}
 			const commandDir = path.join(commandsDir, entry.name);
 
+			let loaded = false;
 			for (const filename of indexCandidates) {
 				const candidate = path.join(commandDir, filename);
 				if (fs.existsSync(candidate)) {
 					addPath(candidate, source);
+					loaded = true;
 					break;
 				}
+			}
+			if (!loaded && !(await holdsMarkdownCommand(commandDir))) {
+				reportFault({
+					source: "commands",
+					text:
+						`${commandDir} holds no command entry point, so nothing from it is available in this run. ` +
+						`Fix: add ${path.join(commandDir, "index.ts")} with a default export that returns the command, ` +
+						"or delete the directory so it stops being scanned.",
+					context: { path: commandDir, tried: indexCandidates },
+				});
 			}
 		}
 	}
@@ -233,10 +309,12 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 						commands.splice(existingIdx, 1);
 						seenNames.delete(command.name);
 					} else {
-						// Conflict between user/project commands
+						// The loser names the WINNER's file. "conflicts with existing
+						// command" left the operator holding two files and no way to
+						// tell which of them is the one that is actually running.
 						errors.push({
 							path: commandPath,
-							error: `Command name "${command.name}" conflicts with existing command`,
+							error: nameConflictMessage("custom command", command.name, existing.path),
 						});
 						continue;
 					}

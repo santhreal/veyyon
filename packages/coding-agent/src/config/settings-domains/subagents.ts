@@ -279,10 +279,18 @@ export const SUBAGENTS_SETTINGS = {
 		default: DEFAULT_SUBAGENT_IDLE_TTL_MS,
 		ui: {
 			tab: "subagents",
-			group: "Limits",
-			label: "Idle TTL",
+			// Stage ONE of the same two-stage lifecycle the close budgets below finish, so it
+			// belongs in their group rather than under Limits: an operator reading "Close After"
+			// needs to see what has to happen first. Labelled "Park After" for the same reason,
+			// so the group reads as a sequence rather than as one stray timeout beside two others.
+			//
+			// Deliberately NOT gated on `subagentAutoCloseEnabled`. Parking is what releases the
+			// session and it happens whether or not the ref is eventually dropped, so hiding this
+			// row when closing is off would hide the only control over stage one.
+			group: "Auto Close",
+			label: "Park After",
 			description:
-				"How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parked agents keep their transcript and revive automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session.",
+				"How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. Counted from the agent's last activity, so a revived agent starts this budget again from the revival.",
 			// A numeric setting with no option list is dropped by the UI adapter
 			// (`pathToSettingDef` treats optionless numbers as schema-only), so stage one
 			// of the park/close lifecycle was documented, defaulted and honored while

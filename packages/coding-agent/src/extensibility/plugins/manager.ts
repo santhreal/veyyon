@@ -56,11 +56,18 @@ function validatePackageName(name: string): void {
 	// Remove version specifier for validation
 	const baseName = extractPackageName(name);
 	if (!VALID_PACKAGE_NAME.test(baseName)) {
-		throw new Error(`Invalid package name: ${name}`);
+		throw new Error(
+			`"${name}" is not a valid npm package name, so nothing was installed. ` +
+				"Fix: an npm plugin is `name`, `@scope/name`, or either with `@version`. " +
+				"For a git plugin use the git form instead, e.g. `veyyon plugin install github:user/repo`.",
+		);
 	}
 	// Extra safety: no shell metacharacters
 	if (/[;&|`$(){}[\]<>\\]/.test(name)) {
-		throw new Error(`Invalid characters in package name: ${name}`);
+		throw new Error(
+			`"${name}" contains characters that are never part of a package name, so nothing was installed. ` +
+				"Fix: pass just the package name, with no shell punctuation.",
+		);
 	}
 }
 
@@ -73,8 +80,25 @@ function validatePackageName(name: string): void {
  */
 function validateGitSpec(spec: string): void {
 	if (SHELL_METACHARS.test(spec)) {
-		throw new Error(`Invalid characters in plugin source: ${spec}`);
+		throw new Error(
+			`"${spec}" contains shell punctuation, so nothing was installed. ` +
+				"Fix: pass the plain source, e.g. `github:user/repo` or `https://github.com/user/repo`.",
+		);
 	}
+}
+
+/**
+ * One sentence for the two sites (`setEnabled` and `setFeatures`) that were
+ * asked about a plugin the runtime config has never heard of. Both said
+ * `Plugin x not found in runtime config`, which names an internal file and no
+ * action: the operator's real question is whether they typed the name wrong or
+ * never installed it, and one command answers both.
+ */
+function pluginNotInRuntimeConfigMessage(name: string): string {
+	return (
+		`No plugin named "${name}" is installed, so nothing was changed. ` +
+		`Fix: run \`veyyon plugin list\` to see the installed names, or \`veyyon plugin install ${name}\` to add it.`
+	);
 }
 
 function gitInstallSpec(original: string, source: GitSource): string {
@@ -140,7 +164,13 @@ export class PluginManager {
 			return normalizePluginRuntimeConfig(await Bun.file(lockPath).json());
 		} catch (err) {
 			if (isEnoent(err)) return normalizePluginRuntimeConfig({});
-			logger.warn("Failed to load plugin runtime config", { path: lockPath, error: String(err) });
+			logger.warn(
+				`The plugin runtime config at ${lockPath} could not be read, so every plugin is treated as ` +
+					`enabled with default settings for this run: ${String(err)}. ` +
+					"Fix: check that file's permissions, or delete it and re-apply your choices with " +
+					"`veyyon plugin enable <name>` and `veyyon plugin disable <name>`.",
+				{ path: lockPath, error: String(err) },
+			);
 			return normalizePluginRuntimeConfig({});
 		}
 	}
@@ -163,7 +193,12 @@ export class PluginManager {
 			return await Bun.file(overridesPath).json();
 		} catch (err) {
 			if (isEnoent(err)) return {};
-			logger.warn("Failed to load project plugin overrides", { path: overridesPath, error: String(err) });
+			logger.warn(
+				`The project plugin overrides at ${overridesPath} could not be read, so this project's plugin ` +
+					`choices are ignored and the user-level ones apply instead: ${String(err)}. ` +
+					"Fix: check that file's permissions, or delete it to drop the project overrides deliberately.",
+				{ path: overridesPath, error: String(err) },
+			);
 			return {};
 		}
 	}
@@ -392,7 +427,11 @@ export class PluginManager {
 		}
 
 		if (errors.length > 0) {
-			throw new Error(`Plugin ${plugin.name} extension validation failed:\n${errors.join("\n")}`);
+			throw new Error(
+				`The plugin ${plugin.name} declares extensions that do not load, so the install was rolled back ` +
+					`and nothing changed:\n${errors.join("\n")}\n` +
+					"Fix: report this to the plugin's author; there is no local repair for a broken extension entry.",
+			);
 		}
 	}
 
@@ -495,7 +534,11 @@ export class PluginManager {
 				readPipeText(installProc.stderr),
 			]);
 			if (installExit !== 0) {
-				throw new Error(`bun install failed: ${installStderr}`);
+				throw new Error(
+					`\`bun install\` failed in ${getPluginsDir()}, so the plugin is not installed: ${installStderr}. ` +
+						"Fix: read that output; a network failure, a version that does not exist, and a missing `bun` " +
+						"on PATH all land here.",
+				);
 			}
 			// Resolve actual package name. npm specs encode the name (strip version);
 			// git specs do not, so diff plugins/package.json deps to find the new entry.
@@ -517,7 +560,9 @@ export class PluginManager {
 				}
 				if (!resolved) {
 					throw new Error(
-						`Installed ${spec.packageName} but could not determine package name from plugins/package.json`,
+						`${spec.packageName} installed, but no new entry appeared in ${getPluginsPackageJson()}, so ` +
+							"veyyon cannot tell which package to enable and the install was rolled back. " +
+							"Fix: run `veyyon plugin doctor` to see the current state, then install again.",
 					);
 				}
 				actualName = resolved;
@@ -548,7 +593,11 @@ export class PluginManager {
 					readPipeText(updateProc.stderr),
 				]);
 				if (updateExit !== 0) {
-					throw new Error(`bun update ${actualName} failed: ${updateStderr}`);
+					throw new Error(
+						`\`bun update ${actualName}\` failed, so the plugin stays pinned to its previous commit: ` +
+							`${updateStderr}. Fix: read that output, then run \`veyyon plugin install\` again with the ` +
+							"same source to retry.",
+					);
 				}
 			}
 
@@ -558,7 +607,11 @@ export class PluginManager {
 				pkg = await Bun.file(pkgPath).json();
 			} catch (err) {
 				if (isEnoent(err)) {
-					throw new Error(`Package installed but package.json not found at ${pkgPath}`);
+					throw new Error(
+						`The plugin installed but has no package.json at ${pkgPath}, so its manifest cannot be read ` +
+							"and the install was rolled back. " +
+							"Fix: report this to the plugin's author; the published package is incomplete.",
+					);
 				}
 				throw err;
 			}
@@ -577,7 +630,8 @@ export class PluginManager {
 						for (const feat of spec.features) {
 							if (!(feat in manifest.features)) {
 								throw new Error(
-									`Unknown feature "${feat}" in ${actualName}. Available: ${Object.keys(manifest.features).join(", ")}`,
+									`${actualName} has no feature named "${feat}", so the install was rolled back. ` +
+										`Fix: it offers ${Object.keys(manifest.features).join(", ")}; pass one of those.`,
 								);
 							}
 						}
@@ -622,7 +676,10 @@ export class PluginManager {
 			} catch (rollbackErr) {
 				const message = errorMessage(err);
 				const rollbackMessage = errorMessage(rollbackErr);
-				throw new Error(`${message}\nRollback failed: ${rollbackMessage}`);
+				throw new Error(
+					`${message}\nThe rollback then failed too, so the plugins directory is in a mixed state: ` +
+						`${rollbackMessage}. Fix: run \`veyyon plugin doctor --fix\` to reinstall from the manifest.`,
+				);
 			}
 			throw err;
 		} finally {
@@ -655,9 +712,19 @@ export class PluginManager {
 
 		// Drain both pipes concurrently with proc.exited to avoid a pipe-buffer
 		// deadlock if bun uninstall floods stdout/stderr.
-		const [exitCode] = await Promise.all([proc.exited, readPipeText(proc.stdout), readPipeText(proc.stderr)]);
+		const [exitCode, , uninstallStderr] = await Promise.all([
+			proc.exited,
+			readPipeText(proc.stdout),
+			readPipeText(proc.stderr),
+		]);
 		if (exitCode !== 0) {
-			throw new Error(`npm uninstall failed for ${name}`);
+			// It spawns `bun uninstall` and reported `npm uninstall failed`, naming a
+			// tool this path never runs, and it dropped the stderr it had just read.
+			throw new Error(
+				`\`bun uninstall ${name}\` failed in ${getPluginsDir()}, so the plugin is still installed` +
+					`${uninstallStderr.trim() ? `: ${uninstallStderr.trim()}` : "."} ` +
+					"Fix: read that output, then run `veyyon plugin doctor` to see the current state.",
+			);
 		}
 
 		// Remove from runtime config
@@ -734,11 +801,18 @@ export class PluginManager {
 		try {
 			pkg = await Bun.file(pkgFilePath).json();
 		} catch (err) {
-			if (isEnoent(err)) throw new Error(`package.json not found at ${absolutePath}`);
+			if (isEnoent(err))
+				throw new Error(
+					`No package.json at ${absolutePath}, so there is nothing to link. ` +
+						"Fix: point `veyyon plugin link` at the plugin's own root, the directory holding its package.json.",
+				);
 			throw err;
 		}
 		if (!pkg.name) {
-			throw new Error("package.json must have a name field");
+			throw new Error(
+				`The package.json at ${absolutePath} has no \`name\`, so the plugin cannot be registered under any ` +
+					"name. Fix: add a `name` field to it.",
+			);
 		}
 
 		await this.#ensurePluginsDir();
@@ -795,7 +869,7 @@ export class PluginManager {
 	async setEnabled(name: string, enabled: boolean): Promise<void> {
 		const config = await this.#ensureConfigLoaded();
 		if (!config.plugins[name]) {
-			throw new Error(`Plugin ${name} not found in runtime config`);
+			throw new Error(pluginNotInRuntimeConfigMessage(name));
 		}
 		config.plugins[name].enabled = enabled;
 		await this.#saveRuntimeConfig();
@@ -819,7 +893,7 @@ export class PluginManager {
 	async setEnabledFeatures(name: string, features: string[] | null): Promise<void> {
 		const config = await this.#ensureConfigLoaded();
 		if (!config.plugins[name]) {
-			throw new Error(`Plugin ${name} not found in runtime config`);
+			throw new Error(pluginNotInRuntimeConfigMessage(name));
 		}
 
 		// Validate features if setting specific ones
@@ -830,7 +904,8 @@ export class PluginManager {
 				for (const feat of features) {
 					if (!(feat in plugin.manifest.features)) {
 						throw new Error(
-							`Unknown feature "${feat}" in ${name}. Available: ${Object.keys(plugin.manifest.features).join(", ")}`,
+							`${name} has no feature named "${feat}", so nothing was changed. ` +
+								`Fix: it offers ${Object.keys(plugin.manifest.features).join(", ")}; pass one of those.`,
 						);
 					}
 				}
@@ -981,7 +1056,12 @@ export class PluginManager {
 				: nodeModulesState === "unreadable"
 					? `Exists at ${nodeModulesPath} but could not be read, so no installed plugin can load. Check its permissions.`
 					: hasPkgJson
-						? "Missing (run npm install in plugins dir)"
+						? // NOT `npm install`. Every install path in this file spawns `bun
+							// install`, so telling the operator to run npm against a bun
+							// lockfile in a directory veyyon owns was advice that either
+							// failed or rewrote state veyyon manages.
+							"Missing, so no installed plugin can load. Fix: run `veyyon plugin doctor --fix`, which " +
+							"reinstalls from the manifest."
 						: // "Not needed" is a claim about the dependency list, so it may only be made when that
 							// list was actually read. `hasPkgJson` is also false for an UNREADABLE manifest, and
 							// saying "no plugins installed" there states as fact the very thing the check above
@@ -1007,7 +1087,11 @@ export class PluginManager {
 				checks.push({
 					name: "plugin_config",
 					status: "error",
-					message: `The plugin runtime config could not be read (${errorMessage(err)}), so no plugin's enabled state is known. Every plugin below is reported from the manifest alone.`,
+					message:
+						`The plugin runtime config could not be read (${errorMessage(err)}), so no plugin's enabled ` +
+						"state is known and every plugin below is reported from the manifest alone. " +
+						"Fix: check that file's permissions, or delete it and re-enable your plugins with " +
+						"`veyyon plugin enable <name>`.",
 				});
 				return normalizePluginRuntimeConfig({});
 			}),
@@ -1039,7 +1123,9 @@ export class PluginManager {
 							checks.push({
 								name: `plugin:${name}`,
 								status: "error",
-								message: "Missing from node_modules",
+								message:
+									"In the manifest but missing from node_modules, so it cannot load. " +
+									"Fix: run `veyyon plugin doctor --fix`, which reinstalls from the manifest.",
 								fixed,
 							});
 						} else {

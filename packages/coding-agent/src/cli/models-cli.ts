@@ -225,7 +225,10 @@ function renderProviderModels(
 		return;
 	}
 	if (filtered.length === 0) {
-		writeLine(`No models matching "${pattern}"`);
+		writeLine(
+			`No models matching "${pattern}". ` +
+				"Fix: run `veyyon models` with no pattern to list every model this install can reach.",
+		);
 		return;
 	}
 
@@ -313,7 +316,10 @@ export async function runModelsListing(options: RunModelsListingOptions): Promis
 			);
 
 	for (const { path: extPath, error } of extensionsResult.errors) {
-		process.stderr.write(`Failed to load extension: ${extPath}: ${error}\n`);
+		// The loader's own sentence already begins with the diagnosis, so a second
+		// `Failed to load extension:` here printed the phrase twice and the path
+		// once between the two copies.
+		process.stderr.write(`${extPath}: ${error}\n`);
 	}
 
 	// Mirror sdk.ts: drain pending provider registrations into the registry.

@@ -35,7 +35,7 @@ import type { ModelRegistry } from "../config/model-registry";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { CustomTool } from "../extensibility/custom-tools/types";
-import { resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
+import { missingXAICredentialsMessage, resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { canonicalizeImageContent } from "../utils/image-resize";
@@ -1349,15 +1349,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 					}
 					const xaiCreds = await resolveXAIHttpCredentials(ctx.modelRegistry, resolvedModel);
 					if (!xaiCreds) {
-						// This is a TOOL error, so the first reader is the model, which
-						// cannot open a selector. `Run /login → xAI Grok OAuth` named a
-						// TUI menu path and nothing the model or a headless operator
-						// could act on. The login provider id is `xai-oauth`, not `xai`
-						// (`registry/xai-oauth.ts`); `xai` has no `login` and would be
-						// refused as an unknown OAuth provider.
-						throw new Error(
-							"No xAI credentials. Fix: set XAI_API_KEY in the environment, or run `veyyon auth-broker login xai-oauth` to sign in with a SuperGrok or X Premium+ account (`/login` in an interactive veyyon session).",
-						);
+						throw new Error(missingXAICredentialsMessage("no image can be generated"));
 					}
 
 					const aspectRatio = params.aspect_ratio ?? "1:1";

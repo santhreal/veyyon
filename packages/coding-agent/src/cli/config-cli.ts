@@ -193,6 +193,19 @@ function getTypeDisplay(def: CliSettingDef): string {
 // Schema-Driven Value Parsing
 // =============================================================================
 
+/**
+ * The one sentence every rejected `config set` value ends with.
+ *
+ * A config error has an unusually good remedy available -- the command the
+ * reader just ran, spelled correctly with a value that works -- and none of the
+ * five rejections below used it. `Invalid array JSON: foo` named neither the
+ * setting nor a way to write it, which for a shell-quoting mistake (the usual
+ * cause) is the whole of what the reader needed.
+ */
+function configSetRemedy(path: SettingPath, example: string): string {
+	return `Fix: run \`${APP_NAME} config set ${path} ${example}\`.`;
+}
+
 function parseAndSetValue(path: SettingPath, rawValue: string): void {
 	const schemaType = getType(path);
 	let parsedValue: unknown;
@@ -203,17 +216,27 @@ function parseAndSetValue(path: SettingPath, rawValue: string): void {
 			const lower = trimmed.toLowerCase();
 			if (["true", "1", "yes", "on"].includes(lower)) parsedValue = true;
 			else if (["false", "0", "no", "off"].includes(lower)) parsedValue = false;
-			else throw new Error(`Invalid boolean value: ${rawValue}. Use true/false, yes/no, on/off, or 1/0`);
+			else {
+				throw new Error(
+					`${path} is a boolean and "${rawValue}" is not one. ` +
+						`Accepted: true/false, yes/no, on/off, 1/0. ${configSetRemedy(path, "true")}`,
+				);
+			}
 			break;
 		}
 		case "number":
 			parsedValue = Number(trimmed);
-			if (!Number.isFinite(parsedValue)) throw new Error(`Invalid number: ${rawValue}`);
+			if (!Number.isFinite(parsedValue)) {
+				throw new Error(`${path} is a number and "${rawValue}" is not one. ${configSetRemedy(path, "250")}`);
+			}
 			break;
 		case "enum": {
 			const valid = getEnumValues(path);
 			if (valid && !valid.includes(trimmed)) {
-				throw new Error(`Invalid value: ${rawValue}. Valid values: ${valid.join(", ")}`);
+				throw new Error(
+					`${path} accepts only ${valid.join(", ")}, and "${rawValue}" is none of them. ` +
+						configSetRemedy(path, valid[0]),
+				);
 			}
 			parsedValue = trimmed;
 			break;
@@ -223,10 +246,19 @@ function parseAndSetValue(path: SettingPath, rawValue: string): void {
 			try {
 				parsed = JSON.parse(trimmed);
 			} catch {
-				throw new Error(`Invalid array JSON: ${rawValue}`);
+				// TWO DIFFERENT MISTAKES, and both said `Invalid array JSON`. This one
+				// is a quoting slip: the shell ate the brackets before veyyon saw them.
+				throw new Error(
+					`${path} is a list and "${rawValue}" is not valid JSON. ` +
+						`${configSetRemedy(path, `'[]'`)} Quote the value so the shell keeps the brackets.`,
+				);
 			}
 			if (!Array.isArray(parsed)) {
-				throw new Error(`Invalid array JSON: ${rawValue}`);
+				// Parsed fine and is the wrong shape, which is a different fix.
+				throw new Error(
+					`${path} is a list and ${rawValue} is valid JSON but not an array. ` +
+						configSetRemedy(path, `'["one","two"]'`),
+				);
 			}
 			parsedValue = parsed;
 			break;
@@ -236,10 +268,16 @@ function parseAndSetValue(path: SettingPath, rawValue: string): void {
 			try {
 				parsed = JSON.parse(trimmed);
 			} catch {
-				throw new Error(`Invalid record JSON: ${rawValue}`);
+				throw new Error(
+					`${path} is a table and "${rawValue}" is not valid JSON. ` +
+						`${configSetRemedy(path, `'{}'`)} Quote the value so the shell keeps the braces.`,
+				);
 			}
 			if (!isRecord(parsed)) {
-				throw new Error(`Invalid record JSON: ${rawValue}`);
+				throw new Error(
+					`${path} is a table and ${rawValue} is valid JSON but not an object. ` +
+						configSetRemedy(path, `'{"key":"value"}'`),
+				);
 			}
 			if (path === "providers.maxInFlightRequests") {
 				parsed = validateProviderMaxInFlightRequests(parsed);

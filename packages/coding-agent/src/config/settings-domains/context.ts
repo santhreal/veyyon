@@ -458,6 +458,15 @@ export const CONTEXT_SETTINGS = {
 	// separate toggle rather than a third value of one dropdown because the two
 	// questions are different: "do I want to hear about it" is a preference, and
 	// "should a rejection stop the run" is a risk decision.
+	//
+	// BOTH ARE ANTHROPIC-ONLY, and the descriptions say so because an unqualified
+	// toggle is worse than a missing one: an operator on Bedrock or OpenAI turns
+	// Report on, never sees a rejection, and concludes their cache is healthy.
+	// `packages/ai/src/cache` has exactly one production importer,
+	// `providers/anthropic.ts`, verified across the module path, the class, the
+	// state field and the resolver. Bedrock, OpenAI Responses, Azure and the
+	// chat-completions path have no cache tracking at all. Widen the wording when a
+	// second provider actually reports a verdict, not when one gains a cache.
 	"cache.reportRejection": {
 		type: "boolean",
 		default: true,
@@ -465,7 +474,8 @@ export const CONTEXT_SETTINGS = {
 			tab: "context",
 			group: "Prompt cache",
 			label: "Report Cache Rejections",
-			description: "Warn when a turn asked the provider to cache a prefix and the provider cached nothing",
+			description:
+				"Warn when a turn asked the provider to cache a prefix and the provider cached nothing. Anthropic only; other providers do not report cache rejection",
 		},
 	},
 
@@ -477,7 +487,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Prompt cache",
 			label: "Block On Cache Rejection",
 			description:
-				"Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money",
+				"Anthropic only. Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money",
 			condition: "cacheRejectionReported",
 		},
 	},

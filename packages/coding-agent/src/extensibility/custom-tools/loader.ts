@@ -18,6 +18,7 @@ import type { HookUIContext } from "../../extensibility/hooks/types";
 import { getAllPluginToolPaths } from "../../extensibility/plugins/loader";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
+import { factoryExportMissingMessage, moduleImportFailedMessage, nameConflictMessage } from "../load-failure";
 import * as typebox from "../typebox";
 import { createNoOpUIContext, resolvePath, withExitGuard } from "../utils";
 import type { CustomToolAPI, CustomToolFactory, LoadedCustomTool, ToolLoadError } from "./types";
@@ -43,9 +44,17 @@ function isLoadableCustomTool(value: unknown): value is LoadedCustomTool["tool"]
 }
 
 function invalidToolError(path: string, index: number, source: ToolLoadError["source"]): ToolLoadError {
+	// Not `invalidArtifactFieldMessage`: the factory may return an array, so the
+	// reader needs to know WHICH element failed, and any of four fields may be
+	// the missing one. The index is meaningless for a single-tool factory, so it
+	// is only stated when there is more than one position to choose between.
+	const which = index === 0 ? "The tool" : `Tool #${index + 1} in the array`;
 	return {
 		path,
-		error: `Tool factory returned invalid tool at index ${index}: expected object with string name, string description, parameters, and execute function`,
+		error:
+			`${which} this custom tool's default export returned is not usable, so it is not active in this run. ` +
+			"Fix: return an object with a non-empty string `name`, a string `description`, a `parameters` schema " +
+			"and an `execute` function, then start a new veyyon session.",
 		source,
 	};
 }
@@ -68,7 +77,10 @@ async function loadTool(
 			errors: [
 				{
 					path: toolPath,
-					error: "Declarative tool files (.md, .json) cannot be loaded as executable modules",
+					error:
+						"Veyyon runs custom tools as JS/TS modules, and a declarative .md or .json tool file cannot be " +
+						"imported, so it is not active in this run. Fix: rewrite it as a .ts file whose default export " +
+						"returns the tool, or delete it from the tools directory so it stops being reported.",
 					source,
 				},
 			],
@@ -80,7 +92,7 @@ async function loadTool(
 		const factory = (module.default ?? module) as CustomToolFactory;
 
 		if (typeof factory !== "function") {
-			return { tools: [], errors: [{ path: toolPath, error: "Tool must export a default function", source }] };
+			return { tools: [], errors: [{ path: toolPath, error: factoryExportMissingMessage("custom tool"), source }] };
 		}
 
 		const toolResult: unknown = await withExitGuard(async () => factory(sharedApi));
@@ -104,8 +116,10 @@ async function loadTool(
 
 		return { tools: loadedTools, errors };
 	} catch (err) {
-		const message = errorMessage(err);
-		return { tools: [], errors: [{ path: toolPath, error: `Failed to load tool: ${message}`, source }] };
+		return {
+			tools: [],
+			errors: [{ path: toolPath, error: moduleImportFailedMessage("custom tool", errorMessage(err)), source }],
+		};
 	}
 }
 
@@ -129,6 +143,9 @@ export class CustomToolLoader {
 	errors: ToolLoadError[] = [];
 	#sharedApi: CustomToolAPI;
 	#seenNames: Set<string>;
+	/** Separate from `#seenNames`, which grows: this is only the built-ins, so a
+	 * conflict can say whether the operator is fighting veyyon or their own copy. */
+	#builtInNames: ReadonlySet<string>;
 
 	constructor(
 		pi: CodingAgentApi,
@@ -164,6 +181,7 @@ export class CustomToolLoader {
 				});
 			},
 		};
+		this.#builtInNames = new Set<string>(builtInToolNames);
 		this.#seenNames = new Set<string>(builtInToolNames);
 	}
 
@@ -175,9 +193,15 @@ export class CustomToolLoader {
 			for (const loadedTool of loadedTools) {
 				// Check for name conflicts
 				if (this.#seenNames.has(loadedTool.tool.name)) {
+					// WHICH owner decides the remedy. Against a built-in the operator
+					// must rename their own tool, because the built-in is not going
+					// anywhere; against an earlier custom tool either copy can go.
+					const owner = this.#builtInNames.has(loadedTool.tool.name)
+						? "a built-in veyyon tool"
+						: "a custom tool that loaded earlier";
 					this.errors.push({
 						path: toolPath,
-						error: `Tool name "${loadedTool.tool.name}" conflicts with existing tool`,
+						error: nameConflictMessage("custom tool", loadedTool.tool.name, owner),
 						source,
 					});
 					continue;

@@ -208,7 +208,7 @@ import {
 	toAgentCompactionSettings,
 } from "../config/compaction-strategy";
 import { type EffortSource, resolveEffort, withLegacyDefaultEffort } from "../config/effort-resolver";
-import { missingCredentialsMessage } from "../config/missing-credentials";
+import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import type { ModelRegistry } from "../config/model-registry";
 import {
 	extractExplicitThinkingSelector,
@@ -414,8 +414,8 @@ import {
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
-import { findCompactMode } from "./compact-modes";
 import { CommitDriftTracker } from "./commit-drift";
+import { findCompactMode } from "./compact-modes";
 import { type ContentBlockLike, contentText } from "./content-text";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
@@ -4444,8 +4444,10 @@ export class AgentSession {
 		//
 		// Forget this agent's own legs too. `forgetAgents` drops a line when
 		// EITHER endpoint is named, and every line of the conversation that just
-		// ended has either a released child or this agent on it.
-		IrcBus.global().forgetAgents([...descendants, id]);
+		// ended has either a released child or this agent on it. Bounded by the
+		// ENDING scope so the purge cannot reach a line another conversation in
+		// this process recorded under a recycled agent name.
+		IrcBus.global().forgetAgents([...descendants, id], endingScope);
 		// Standing approval grants die with the conversation they were given in.
 		// "Allow bash for this session" is an answer about the work in front of
 		// you, and `/new` or `/resume` replaces that work entirely; carrying the
@@ -6234,10 +6236,7 @@ export class AgentSession {
 			// Undefined rather than a zero count when the nudge should not fire: the gate
 			// that decides is `{{#if commitDrift}}`, and a `{ count: 0 }` object is truthy.
 			commitDrift: this.settings.get("git.enabled")
-				? this.#commitDrift.summary(
-						this.sessionManager.getCwd(),
-						this.settings.get("commit.nudgeAfterFiles"),
-					)
+				? this.#commitDrift.summary(this.sessionManager.getCwd(), this.settings.get("commit.nudgeAfterFiles"))
 				: undefined,
 		});
 	}
@@ -10304,10 +10303,19 @@ export class AgentSession {
 
 			// Validate model
 			if (!this.model) {
+				// Every command named here has to work in the channel the reader is in.
+				// `/login` carries no `textMode: true` in
+				// `slash-commands/builtin-declarations.ts`, so it is TUI-only, and
+				// `veyyon setup` hard-exits with "requires an interactive TTY" when
+				// stdin or stdout is not a terminal (see `commands/setup.ts`). This error
+				// reaches `--print` runs and ACP clients too, so the terminal path is
+				// named separately from the interactive one and the environment variable
+				// is named for the case where neither is available.
 				throw new Error(
-					"No model selected.\n\n" +
-						"Use /login (or `veyyon setup`) to sign in to a provider, or set the provider's API key environment variable.\n\n" +
-						"Then use /model to select a model.",
+					"No model selected, so there is nothing to send the prompt to.\n\n" +
+						"Fix: in an interactive veyyon session, run /login to sign in and then /model to choose a model. " +
+						"From a terminal, run `veyyon auth-broker login` to sign in and `veyyon models` to see what is available. " +
+						"With no terminal at all, set the provider's API key environment variable and pass `--model <provider>/<id>`.",
 				);
 			}
 
@@ -10338,15 +10346,18 @@ export class AgentSession {
 					signedIn
 						? `Signed in to ${provider}, but could not get a usable token right now.\n\n` +
 								`The stored token may have expired and its refresh failed, or ${provider} rejected it ` +
-								`(for example a lapsed subscription or unpaid balance). Run /login to refresh it, or check your ${provider} account. ` +
+								`(for example a lapsed subscription or unpaid balance). ` +
+								`${credentialRemedySentence(provider)} ` +
+								`If signing in again succeeds and the next call still fails the same way, the problem is on the ${provider} side: check that account's billing and plan status. ` +
 								`Your credentials are still stored in ${getActiveAuthDbPath()}.`
 						: disabledCause
 							? `Your ${provider} login was disabled after a token refresh failed, so there is no usable credential right now.\n\n` +
 								`The provider rejected the refresh with: ${disabledCause}\n\n` +
 								`This usually means the refresh token was already spent or revoked, which a crash mid-refresh can cause. ` +
-								`Run /login to sign in again. The disabled credential is still recorded in ${getActiveAuthDbPath()}.`
+								`${credentialRemedySentence(provider)} ` +
+								`The disabled credential is still recorded in ${getActiveAuthDbPath()} and signing in replaces it.`
 							: `No API key found for ${provider}.\n\n` +
-								`Use /login (or \`veyyon setup\`) to sign in to ${provider}, or set its API key environment variable. ` +
+								`${credentialRemedySentence(provider)} ` +
 								`Stored credentials live in ${getActiveAuthDbPath()}.`,
 				);
 			}
@@ -12557,7 +12568,9 @@ export class AgentSession {
 			this.#disconnectFromAgent();
 			await this.abort({ goalReason: "internal", preserveCompaction: true });
 			if (!this.model) {
-				throw new Error("No model selected");
+				throw new Error(
+					"No model selected, so compaction has nothing to summarize with. Fix: in an interactive veyyon session run /model to choose one; from a terminal pass `--model <provider>/<id>`, or set `compaction.model` so compaction uses its own model regardless of the session's.",
+				);
 			}
 
 			const compactionSettings = this.settings.getGroup("compaction");
@@ -12840,7 +12853,9 @@ export class AgentSession {
 
 			const model = this.model;
 			if (!model) {
-				throw new Error("No model selected for handoff");
+				throw new Error(
+					"No model selected, so the handoff summary cannot be written. Fix: in an interactive veyyon session run /model to choose one; from a terminal pass `--model <provider>/<id>`. `veyyon models` lists what this profile can reach.",
+				);
 			}
 			const apiKey = await this.#modelRegistry.getApiKey(model, this.sessionId);
 			if (!apiKey) {

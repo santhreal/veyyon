@@ -20,6 +20,7 @@ import type { CustomMessagePayload } from "../../session/messages";
 import { EventBus } from "../../utils/event-bus";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
+import { factoryExportMissingMessage, moduleImportFailedMessage } from "../load-failure";
 import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "../plugins/legacy-pi-compat";
 import { getAllPluginExtensionPaths } from "../plugins/loader";
@@ -52,7 +53,13 @@ function getExtensionFactory(module: LoadedExtensionModule): ExtensionFactory | 
 
 export class ExtensionRuntimeNotInitializedError extends Error {
 	constructor() {
-		super("Extension runtime not initialized. Action methods cannot be called during extension loading.");
+		// Read by the EXTENSION AUTHOR, not the operator: the only way to reach it
+		// is to call an action method from the factory body. Say when the runtime
+		// does exist, because "not initialized" reads like a veyyon fault.
+		super(
+			"The extension runtime does not exist yet, so this action method cannot be called from the factory body. " +
+				"Fix: move the call into a handler registered with `api.on(...)`, which runs once the session is up.",
+		);
 	}
 }
 
@@ -297,7 +304,7 @@ async function loadExtension(
 		if (typeof factory !== "function") {
 			return {
 				extension: null,
-				error: `Extension does not export a valid factory function: ${extensionPath}`,
+				error: factoryExportMissingMessage("extension"),
 			};
 		}
 
@@ -309,8 +316,7 @@ async function loadExtension(
 
 		return { extension, error: null };
 	} catch (err) {
-		const message = errorMessage(err);
-		return { extension: null, error: `Failed to load extension: ${message}` };
+		return { extension: null, error: moduleImportFailedMessage("extension", errorMessage(err)) };
 	}
 }
 
@@ -377,7 +383,12 @@ async function readExtensionManifest(packageJsonPath: string): Promise<Extension
 		if (isEnoent(error) || isEacces(error) || hasFsCode(error, "EPERM")) {
 			return null;
 		}
-		logger.warn("Failed to read extension manifest", { path: packageJsonPath, error: String(error) });
+		logger.warn(
+			`The extension manifest ${packageJsonPath} could not be read, so this directory's declared entry points ` +
+				`are not loaded and only its index.ts/index.js is tried: ${String(error)}. ` +
+				"Fix: check the file's permissions and that it is valid JSON.",
+			{ path: packageJsonPath, error: String(error) },
+		);
 		return null;
 	}
 }
@@ -538,7 +549,12 @@ export async function discoverExtensionPaths(
 	for (const warning of [...discovered.warnings, ...hooks.warnings]) {
 		reportFault({
 			source: "extensions",
-			text: `${warning}. That extension is not loaded in this run.`,
+			// The warning itself is the user's own `extensions:` entry failing, so the
+			// remedy is always the same edit: the settings list that named it.
+			text:
+				`${warning}. That extension is not loaded in this run. ` +
+				"Fix: correct or drop that entry in the `extensions` setting, with " +
+				"`veyyon config set extensions '[]'` to clear the list.",
 			context: { warning },
 		});
 	}

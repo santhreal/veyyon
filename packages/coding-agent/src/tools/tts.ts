@@ -11,7 +11,7 @@ import { type } from "arktype";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
-import { resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
+import { missingXAICredentialsMessage, resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
 import { DEFAULT_TTS_LOCAL_MODEL_KEY, DEFAULT_TTS_VOICE, isTtsLocalModelKey, KOKORO_VOICES } from "../tts/models";
 import { ttsClient } from "../tts/tts-client";
 import { encodeWav } from "../tts/wav";
@@ -122,12 +122,7 @@ async function synthesizeXai(
 	if (!creds) {
 		return {
 			isError: true,
-			content: [
-				{
-					type: "text",
-					text: "No xAI credentials. Run /login → xAI Grok OAuth (SuperGrok or X Premium+) or set XAI_API_KEY.",
-				},
-			],
+			content: [{ type: "text", text: missingXAICredentialsMessage("speech cannot be synthesized") }],
 		};
 	}
 
