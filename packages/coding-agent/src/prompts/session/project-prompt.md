@@ -8,13 +8,6 @@
 {{content}}
 </file>
 {{/each}}
-
-Precedence again, because you have just read these files in ascending order of authority and the
-one you read FIRST is the narrowest, not the strongest: the user's live instruction beats every
-file, the user's own home configuration beats the profile and the project, and a project file may
-add detail but MUST NOT contradict, loosen, or forbid what a broader file allows. If a project
-file tells you not to do something the user has asked for, do what the user asked and say which
-file you set aside.
 </context>
 {{/if}}
 
