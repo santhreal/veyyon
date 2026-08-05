@@ -10,6 +10,10 @@ own published license).
 
 For the fork relationship to oh-my-pi, see `UPSTREAM.md`.
 
+`THIRD_PARTY_LICENSES.txt` is the deterministic combined distribution copy of
+these notices and their complete license texts. Release binaries embed that
+file; run `veyyon licenses` to print it.
+
 ## oh-my-pi (MIT)
 
 Veyyon is a source fork of oh-my-pi (`can1357/oh-my-pi`), MIT licensed. The
@@ -49,7 +53,7 @@ Codex/ChatGPT backend wire protocol (endpoints, headers, streaming shape) —
 protocol interoperability, not copied implementation. No Apache-2.0 notice
 carries forward here because no Codex source is present in this tree.
 
-## MIT components (Rust natives)
+## MIT components
 
 - `crates/veyyon-shell/NOTICE` documents the RTK-derived (`rtk-ai/rtk`, MIT)
   pytest-output-minimizer algorithm adapted in that crate.
@@ -58,9 +62,34 @@ carries forward here because no Codex source is present in this tree.
   `brush-builtins` from `reubeno/brush`, and `jaq`). Each subdirectory
   carries its own `LICENSE` file from the upstream project; those are the
   authoritative permission notices for that code and are not restated here.
+- `packages/coding-agent/src/markit/NOTICE` documents the document-conversion
+  code adapted from `markit-ai` under the MIT License.
+- `packages/utils/src/vendor/mermaid-ascii/NOTICE` documents the ASCII diagram
+  renderer adapted from `beautiful-mermaid` under the MIT License.
+- `packages/ai/src/registry/oauth/xai-oauth.ts`,
+  `packages/coding-agent/src/lib/xai-http.ts`, and
+  `packages/coding-agent/src/tools/tts.ts` contain code adapted from
+  `NousResearch/hermes-agent` (Copyright (c) 2025 Nous Research, MIT).
+- `packages/ai/src/error/rate-limit.ts` contains code adapted from
+  `NoeFabris/opencode-antigravity-auth` (Copyright (c) 2025 Jens, MIT).
+
+## Source provenance without a declared upstream license
+
+- `packages/coding-agent/src/markit/converters/pdf/grid.ts` and
+  `packages/coding-agent/src/markit/converters/pdf/render.ts` identify
+  `@oharato/pdf2md-ts` as a source. Its published v0.1.4 package does not
+  declare or include a license. This notice preserves the known provenance;
+  it does not assert a license grant for that package.
 
 ## Fonts and other assets
 
 - `docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt` and
   `website/docs/fonts/OPEN-SANS-LICENSE.txt` — Open Sans font, Apache
   License 2.0.
+- `docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt` and
+  `website/docs/fonts/SOURCE-CODE-PRO-LICENSE.txt` — Source Code Pro, SIL
+  Open Font License 1.1.
+- `crates/veyyon-natives/src/fonts/Silver.LICENSE` — Silver, Creative
+  Commons Attribution 4.0 International.
+- `crates/veyyon-natives/src/fonts/{5x8,6x12,8x13}.bdf` and
+  `crates/veyyon-natives/src/fonts/unscii-8.hex` — public-domain bitmap fonts.
