@@ -20,7 +20,7 @@ import type { AgentRef } from "../registry/agent-registry";
 import { AgentRegistry } from "../registry/agent-registry";
 import { formatSessionHistoryMarkdown } from "../session/session-history-format";
 import { loadSessionMessagesReadOnly } from "../session/session-loader";
-import { sessionFilesFromDisk } from "./registry-helpers";
+import { ambiguousSessionFileIds, sessionFilesFromDisk } from "./registry-helpers";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
 
 /** Humanize a last-activity timestamp as `Ns/Nm/Nh/Nd ago`. */
@@ -85,6 +85,23 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 			// Serve its transcript straight from disk if the session file persists.
 			const disk = await this.#resolveFromDisk(agentId);
 			if (disk) return { ...disk, url: url.href };
+
+			// AMBIGUOUS is not UNKNOWN, and saying the wrong one sends the operator
+			// looking for a lost transcript that is not lost. Two conversations in this
+			// process each ran an agent by this name, so `sessionFilesFromDisk` dropped
+			// it rather than hand back whichever dir was enumerated first.
+			const ambiguous = await ambiguousSessionFileIds();
+			const collided = ambiguous.has(agentId)
+				? agentId
+				: [...ambiguous].find(id => id.toLowerCase() === agentId.toLowerCase());
+			if (collided !== undefined) {
+				throw new Error(
+					`Ambiguous agent: ${collided}\n` +
+						`More than one conversation in this process has an agent with that name, so the id alone ` +
+						`cannot say which transcript you mean, and returning either one would be a guess.\n` +
+						`Read it from the session that spawned it, or open the transcript file directly.`,
+				);
+			}
 
 			const known = visible.map(candidate => candidate.id);
 			const knownStr = known.length > 0 ? known.join(", ") : "none";
