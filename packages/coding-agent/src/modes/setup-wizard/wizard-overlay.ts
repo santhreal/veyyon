@@ -9,6 +9,7 @@ import {
 	TERMINAL,
 	truncateToWidth,
 	visibleWidth,
+	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { SGR_RESET } from "@veyyon/tui/ansi";
 import { APP_NAME } from "@veyyon/utils";
@@ -32,6 +33,8 @@ const SCENE_MARGIN_X = 4;
 const MIN_CONTENT_WIDTH = 20;
 /** Cross-dissolve duration from the splash into the first scene. */
 const SCENE_TRANSITION_MS = 420;
+/** Between two footer hints, and the only place a hint row may break. */
+const HINT_SEPARATOR = "  ·  ";
 
 /**
  * In-scene hints for a scene that declares none: a list you move through and
@@ -164,11 +167,22 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			return;
 		}
 		// Esc leaves setup. It used to fall through to the active scene, where no
-		// scene claimed it, so the only advertised way out was ctrl+c — a key
+		// scene claimed it, so the only advertised way out was ctrl+c, a key
 		// users read as "kill the program", not "I'll finish this later". Leaving
 		// is deliberately not confirmed: the complaint was that setup is hard to
 		// get out of, and a "are you sure?" step makes that worse.
+		//
+		// A scene that is itself in a sub-state (browsing every theme, an OAuth
+		// login in flight) claims Esc through `escapeAction`, and then gets the
+		// keystroke. Without that claim the theme step's own "Esc returns to
+		// curated choices" line ended the entire run, and the sign-in panel's
+		// abort branch could never fire. The footer names whichever meaning is
+		// live, so the key on screen is the key that acts.
 		if (matchesKey(data, "escape")) {
+			if (this.#activeScene?.escapeAction?.()) {
+				this.#activeScene.handleInput?.(data);
+				return;
+			}
 			this.#beginOutro();
 			return;
 		}
@@ -292,16 +306,54 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	 * "enter confirm" left no way to tell which one kept your choice. And the
 	 * only key that ended the run was advertised as "ctrl+c skip", conflating
 	 * "skip this step" with "leave setup" under the key that means "kill it".
+	 *
+	 * When the active scene claims Esc for a sub-state of its own, its meaning
+	 * takes the Esc slot and `ctrl+c leave setup` is named instead, because the
+	 * user must always be able to read one key that ends the run.
 	 */
-	#footerHints(): string {
+	#footerHints(): SetupKeyHint[] {
 		const inScene = this.#activeScene?.keyHints?.() ?? DEFAULT_SCENE_HINTS;
 		const isLastScene = this.#sceneIndex >= this.scenes.length - 1;
 		const hints: SetupKeyHint[] = [...inScene];
 		if (this.#sceneIndex > 0) {
 			hints.push({ keys: "←", label: "back" });
 		}
-		hints.push({ keys: "→", label: isLastScene ? "skip" : "skip step" }, { keys: "esc", label: "leave setup" });
-		return hints.map(hint => `${hint.keys} ${hint.label}`).join("  ·  ");
+		hints.push({ keys: "→", label: isLastScene ? "skip" : "skip step" });
+		const sceneEscape = this.#activeScene?.escapeAction?.();
+		if (sceneEscape) hints.push(sceneEscape, { keys: "ctrl+c", label: "leave setup" });
+		else hints.push({ keys: "esc", label: "leave setup" });
+		return hints;
+	}
+
+	/**
+	 * The hint rows for this frame, wrapped to the width instead of cut.
+	 *
+	 * It used to be one row, truncated. At 80 columns the six hints of the
+	 * subagents and import steps ran past the frame, and what fell off the end
+	 * was `esc leave setup`: the one hint a stuck user needs was the first to
+	 * go, on exactly the terminal size where being stuck is most likely. Rows
+	 * break between hints, never inside one, so no line ends on a bare key.
+	 *
+	 * The count is computed before the body budget, so a second row costs the
+	 * scene a row rather than overflowing the frame. A single hint too long for
+	 * the width is still truncated: it cannot be broken, and a row wider than
+	 * the frame would push the layout.
+	 */
+	#footerRows(width: number): string[] {
+		const rows: string[] = [];
+		let current = "";
+		for (const hint of this.#footerHints()) {
+			const text = `${hint.keys} ${hint.label}`;
+			const candidate = current === "" ? text : `${current}${HINT_SEPARATOR}${text}`;
+			if (current !== "" && visibleWidth(candidate) > width) {
+				rows.push(current);
+				current = text;
+				continue;
+			}
+			current = candidate;
+		}
+		if (current !== "") rows.push(current);
+		return rows.map(row => truncateToWidth(row, width));
 	}
 
 	#renderScene(width: number, height: number): string[] {
@@ -324,15 +376,21 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			indentLine(theme.bold(title), width, marginX),
 		];
 		if (subtitle) {
-			header.push(indentLine(theme.fg("muted", subtitle), width, marginX));
+			// Wrapped, not cut. The approvals step's subtitle is 76 columns of
+			// prose and the content column is 72 at an 80-column terminal, so the
+			// sentence that names where the setting lives afterwards ended as
+			// "…for one session with /permissi…".
+			for (const line of wrapTextWithAnsi(subtitle, contentWidth)) {
+				header.push(indentLine(theme.fg("muted", line), width, marginX));
+			}
 		}
 		header.push("");
 		this.#bodyRowStart = header.length;
 
-		// One line, always: on a narrow terminal the tail is cut rather than
-		// wrapped, so the frame height does not change with the hint text.
-		const hintText = truncateToWidth(this.#footerHints(), Math.max(0, width - marginX));
-		const footer = ["", indentLine(theme.fg("dim", hintText), width, marginX)];
+		const footer = [
+			"",
+			...this.#footerRows(contentWidth).map(row => indentLine(theme.fg("dim", row), width, marginX)),
+		];
 		const maxBodyLines = Math.max(0, height - header.length - footer.length);
 		// The scene is told its row budget so it can size its own list to the
 		// viewport. A scene that still overruns is clipped, but never silently:
@@ -463,7 +521,11 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 
 	#unmountActiveScene(): void {
 		this.#sceneFocusTarget = undefined;
-		this.#activeScene?.onUnmount?.();
+		// A scene may return a promise here (the theme and glyph steps hand back a
+		// live preview asynchronously). Unmounting must not block the next scene's
+		// mount on it, so the promise is intentionally dropped; the scene owns
+		// reporting its own failure.
+		void this.#activeScene?.onUnmount?.();
 		this.#activeScene?.dispose?.();
 		this.#activeScene = undefined;
 	}

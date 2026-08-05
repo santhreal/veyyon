@@ -55,7 +55,14 @@ export interface SetupSceneController extends Component {
 	 */
 	render(width: number, rows?: number): readonly string[];
 	onMount?(): void | Promise<void>;
-	onUnmount?(): void;
+	/**
+	 * Called when the scene leaves the screen for ANY reason: Esc, ctrl+c, `→`,
+	 * `←`, or the wizard being disposed. A scene that applied anything to the
+	 * running session for preview undoes it here, because this is the only hook
+	 * every exit passes through. May return a promise so a caller can await the
+	 * undo; the wizard does not wait for it.
+	 */
+	onUnmount?(): void | Promise<void>;
 	dispose?(): void;
 	/**
 	 * Route an SGR mouse report (tracking is on while the wizard holds the
@@ -71,6 +78,20 @@ export interface SetupSceneController extends Component {
 	 * knows whether another step follows.
 	 */
 	keyHints?(): readonly SetupKeyHint[];
+	/**
+	 * What Esc means inside this scene RIGHT NOW, or `undefined` to let the
+	 * wizard's Esc (leave setup) win.
+	 *
+	 * Esc is the wizard's exit, so a scene that has entered a sub-state has no
+	 * way to back out of it: the theme step printed "Esc returns to curated
+	 * choices" while Esc actually ended the whole run, and the sign-in panel's
+	 * abort-the-login branch was unreachable code. A scene that returns a hint
+	 * here receives the Esc keystroke instead, and the returned hint replaces
+	 * `esc leave setup` in the footer so the advertised key is the one that
+	 * fires. The wizard then advertises `ctrl+c leave setup`, which is the exit
+	 * that still works, rather than leaving the user with no stated way out.
+	 */
+	escapeAction?(): SetupKeyHint | undefined;
 }
 
 /**
@@ -89,6 +110,17 @@ export interface SetupTab {
 	render(width: number, rows?: number): readonly string[];
 	handleInput(data: string): void;
 	invalidate(): void;
+	/**
+	 * What Esc means inside this panel RIGHT NOW; see
+	 * {@link SetupSceneController.escapeAction}, whose contract this is.
+	 *
+	 * A tabbed scene cannot answer for its panels: the sign-in panel wants Esc
+	 * while a login is in flight, the web-search panel wants it while its list is
+	 * being filtered, and the scene knows neither. It forwards the question to
+	 * the active tab, so the panel that will receive the keystroke is the one
+	 * that decides whether to claim it.
+	 */
+	escapeAction?(): SetupKeyHint | undefined;
 	/** Called when the tab becomes active (including initial mount). */
 	onActivate?(): void;
 	/** Mouse routing at tab-local coordinates; see {@link SetupSceneController.routeMouse}. */

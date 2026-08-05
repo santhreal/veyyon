@@ -433,7 +433,15 @@ describe("setup wizard scene footer copy", () => {
 		};
 	}
 
-	/** Drive the wizard to its first scene and return that frame's footer row. */
+	/**
+	 * Drive the wizard to its first scene and return that frame's footer, one
+	 * line per rendered hint row.
+	 *
+	 * The footer is the trailing run of non-blank rows: the scenes here render an
+	 * empty body, so everything above it is padding. It used to be `frame.at(-1)`,
+	 * a single row, which stopped describing the footer once the hints started
+	 * wrapping rather than being cut.
+	 */
 	async function footerOf(scenes: readonly SetupScene[], width = 100): Promise<string> {
 		await initTheme(false, "unicode", false, "titanium", "light");
 		const ctx = {
@@ -469,7 +477,11 @@ describe("setup wizard scene footer copy", () => {
 			vi.advanceTimersByTime(500); // dissolve (420ms) completes → scene
 			const frame = component.render(width);
 			expect(frame.length).toBe(24);
-			return stripVTControlCharacters(frame.at(-1) ?? "").trim();
+			const rows = stripVTControlCharacters(frame.join("\n"))
+				.split("\n")
+				.map(row => row.trim());
+			const firstFooterRow = rows.lastIndexOf("") + 1;
+			return rows.slice(firstFooterRow).join("\n");
 		} finally {
 			vi.useRealTimers();
 			component.dispose();
@@ -512,14 +524,22 @@ describe("setup wizard scene footer copy", () => {
 
 	it("the real Providers scene, the one users could not get out of, names Tab first", async () => {
 		expect(await footerOf([providersSetupScene])).toBe(
-			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  → skip  ·  esc leave setup",
+			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  → skip\nesc leave setup",
 		);
 	});
 
-	it("stays one line when the hints outrun the terminal", async () => {
-		expect(await footerOf([providersSetupScene], 60)).toBe(
-			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  → …",
-		);
+	/**
+	 * THE BUG: the footer was one row, truncated, and the hints are ordered with
+	 * the wizard's own keys last, so the row that ran past the frame lost `esc
+	 * leave setup` first. At 80 columns that is every step with six hints, and
+	 * the assertion this replaces pinned exactly that loss (it expected the row
+	 * to end "→ …"). Wrapping keeps the exit on screen; a row still breaks only
+	 * between hints, so no line ends on a bare key with no label.
+	 */
+	it("wraps the hints instead of cutting the way out off the end", async () => {
+		const footer = await footerOf([providersSetupScene], 60);
+		expect(footer).toBe("tab switch panel  ·  ↑↓ select  ·  enter confirm\n→ skip  ·  esc leave setup");
+		for (const row of footer.split("\n")) expect(row.endsWith("…")).toBe(false);
 	});
 });
 
@@ -546,7 +566,9 @@ describe("setup wizard navigation and skip behavior", () => {
 					title: id,
 					render: () => [],
 					invalidate: () => {},
-					onUnmount: () => unmounted.push(id),
+					onUnmount: () => {
+						unmounted.push(id);
+					},
 				};
 			},
 		};
@@ -639,17 +661,26 @@ describe("setup wizard theme previews", () => {
 	}
 
 	/**
-	 * Skipping the step puts back the glyph preset a preview changed.
+	 * Leaving the step puts back the glyph preset a preview changed.
 	 *
 	 * This is the guarantee that makes previewing safe to do at all: the step
 	 * repaints the live theme as you move through it, so a user who arrives with
-	 * Nerd Font glyphs, turns ASCII on to look at it, and then presses Esc must
-	 * get their glyphs back. Nothing else covers it. The test this replaced
-	 * asserted the same restore against an "ANSI-safe" ROW that ended the step,
-	 * which is the design the toggles removed; see
+	 * Nerd Font glyphs, turns ASCII on to look at it, and then leaves must get
+	 * their glyphs back. Nothing else covers it. The test this replaced asserted
+	 * the same restore against an "ANSI-safe" ROW that ended the step, which is
+	 * the design the toggles removed; see
 	 * `test/modes/setup-wizard/theme-scene-modifiers-compose.test.ts`.
+	 *
+	 * THE EXIT IS `onUnmount`, NOT AN ESCAPE KEYSTROKE. This case used to send
+	 * `\x1b` straight to the controller, which reached the list's cancel ladder
+	 * and a `SelectList.onCancel` that restored and finished. No user can do
+	 * that: the wizard owns Escape and only forwards it to a scene that claims
+	 * it, which this one does only while browsing all themes. So the test passed
+	 * on a path that did not exist, while every real way out of the step — Esc,
+	 * `→`, `←`, ctrl+c — left the previewed preset applied for the rest of the
+	 * session. All four now run through `onUnmount`, and so does this.
 	 */
-	it("restores the glyph preset when the step is skipped after previewing ASCII", async () => {
+	it("restores the glyph preset when the step is left after previewing ASCII", async () => {
 		await initTheme(false, "nerd", false, "titanium", "light");
 		const settings = Settings.isolated({ symbolPreset: "nerd", colorBlindMode: false });
 		const { controller, finished } = await mountThemeScene(settings);
@@ -664,9 +695,9 @@ describe("setup wizard theme previews", () => {
 		await Bun.sleep(20);
 		expect(theme.getSymbolPreset()).toBe("ascii");
 
-		controller.handleInput?.("\x1b");
-		await Bun.sleep(20);
-		expect(finished).toEqual(["skipped"]);
+		await controller.onUnmount?.();
+		// Leaving is the wizard's business, so the scene reports no result at all.
+		expect(finished).toEqual([]);
 		expect(theme.getSymbolPreset()).toBe("nerd");
 		expect(settings.get("symbolPreset")).toBe("nerd");
 	});
