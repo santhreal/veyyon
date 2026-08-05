@@ -20,8 +20,6 @@ import { readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import type { Rule } from "../capability/rule";
 import { ruleCapability } from "../capability/rule";
-import type { Settings } from "../capability/settings";
-import { settingsCapability } from "../capability/settings";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 import {
 	buildRuleFromMarkdown,
@@ -116,13 +114,13 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 
 	const [userResult, projectResult] = await Promise.all([
 		userRulesPath
-			? loadFilesFromDir<Rule>(ctx, userRulesPath, PROVIDER_ID, "user", {
+			? loadFilesFromDir<Rule>(userRulesPath, PROVIDER_ID, "user", {
 					extensions: ["mdc", "md"],
 					transform: transformMDCRule,
 				})
 			: Promise.resolve({ items: [] as Rule[], warnings: undefined }),
 		projectRulesPath
-			? loadFilesFromDir<Rule>(ctx, projectRulesPath, PROVIDER_ID, "project", {
+			? loadFilesFromDir<Rule>(projectRulesPath, PROVIDER_ID, "project", {
 					extensions: ["mdc", "md"],
 					transform: transformMDCRule,
 				})
@@ -140,55 +138,6 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 
 function transformMDCRule(name: string, content: string, path: string, source: SourceMeta): Rule {
 	return buildRuleFromMarkdown(name, content, path, source, { stripNamePattern: /\.(mdc|md)$/ });
-}
-
-// =============================================================================
-// Settings
-// =============================================================================
-
-async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
-	const items: Settings[] = [];
-	const warnings: string[] = [];
-
-	const userPath = getUserPath(ctx, "cursor", "settings.json");
-
-	const [userContent, projectPath] = await Promise.all([
-		userPath ? readFile(userPath) : Promise.resolve(null),
-		getProjectPath(ctx, "cursor", "settings.json"),
-	]);
-
-	const projectContentPromise = projectPath ? readFile(projectPath) : Promise.resolve(null);
-
-	if (userContent && userPath) {
-		const parsed = tryParseJson<Record<string, unknown>>(userContent);
-		if (parsed) {
-			items.push({
-				path: userPath,
-				data: parsed,
-				level: "user",
-				_source: createSourceMeta(PROVIDER_ID, userPath, "user"),
-			});
-		} else {
-			warnings.push(`${userPath}: invalid JSON`);
-		}
-	}
-
-	const projectContent = await projectContentPromise;
-	if (projectContent && projectPath) {
-		const parsed = tryParseJson<Record<string, unknown>>(projectContent);
-		if (parsed) {
-			items.push({
-				path: projectPath,
-				data: parsed,
-				level: "project",
-				_source: createSourceMeta(PROVIDER_ID, projectPath, "project"),
-			});
-		} else {
-			warnings.push(`${projectPath}: invalid JSON`);
-		}
-	}
-
-	return { items, warnings };
 }
 
 // =============================================================================
@@ -211,10 +160,3 @@ registerProvider(ruleCapability.id, {
 	load: loadRules,
 });
 
-registerProvider(settingsCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load settings from ~/.cursor/settings.json and .cursor/settings.json",
-	priority: PRIORITY,
-	load: loadSettings,
-});

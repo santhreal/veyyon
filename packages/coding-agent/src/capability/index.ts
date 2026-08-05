@@ -8,7 +8,7 @@
  */
 import * as os from "node:os";
 import * as path from "node:path";
-import { getProjectDir } from "@veyyon/utils/dirs";
+import { getAgentDir, getProjectDir } from "@veyyon/utils/dirs";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 
@@ -278,7 +278,8 @@ export async function loadCapability<T>(capabilityId: string, options: LoadOptio
 	const cwd = options.cwd ?? getProjectDir();
 	const home = options.home ?? os.homedir();
 	const repoRoot = await findRepoRoot(cwd);
-	const ctx: LoadContext = { cwd, home, repoRoot };
+	// Always populated so a provider never has to reach for the process-global agent dir.
+	const ctx: LoadContext = { cwd, home, repoRoot, agentDir: options.agentDir ?? getAgentDir() };
 	const providers = filterProviders(capability, options);
 
 	return await loadImpl(capability, providers, ctx, options);

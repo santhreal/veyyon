@@ -50,7 +50,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	// Check if .clinerules is a directory or file
 	if (found.isDir) {
 		// Directory format: load all *.md files
-		const result = await loadFilesFromDir(ctx, found.path, PROVIDER_ID, "project", {
+		const result = await loadFilesFromDir(found.path, PROVIDER_ID, "project", {
 			extensions: ["md"],
 			transform: (name, content, path, source) =>
 				buildRuleFromMarkdown(name, content, path, source, { stripNamePattern: /\.md$/ }),

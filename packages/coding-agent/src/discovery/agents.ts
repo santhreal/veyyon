@@ -8,7 +8,6 @@
 import * as path from "node:path";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { readFile } from "../capability/fs";
 import { type Prompt, promptCapability } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
 import { type Skill, skillCapability } from "../capability/skill";
@@ -19,6 +18,7 @@ import {
 	calculateDepth,
 	createSourceMeta,
 	loadFilesFromDir,
+	readContextFile,
 	scanSkillsFromDir,
 } from "./helpers";
 
@@ -62,10 +62,10 @@ export function getProjectPathCandidates(ctx: LoadContext, ...segments: string[]
 // Skills
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	const projectScans = getProjectPathCandidates(ctx, "skills").map(dir =>
-		scanSkillsFromDir(ctx, { dir, providerId: PROVIDER_ID, level: "project" }),
+		scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
 	);
 	const userScans = getUserPathCandidates(ctx, "skills").map(dir =>
-		scanSkillsFromDir(ctx, { dir, providerId: PROVIDER_ID, level: "user" }),
+		scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "user" }),
 	);
 
 	const results = await Promise.all([...projectScans, ...userScans]);
@@ -87,7 +87,7 @@ registerProvider<Skill>(skillCapability.id, {
 // Rules
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const load = (dir: string, level: "user" | "project") =>
-		loadFilesFromDir<Rule>(ctx, dir, PROVIDER_ID, level, {
+		loadFilesFromDir<Rule>(dir, PROVIDER_ID, level, {
 			extensions: ["md", "mdc"],
 			transform: (name, content, filePath, source) =>
 				buildRuleFromMarkdown(name, content, filePath, source, { stripNamePattern: /\.(md|mdc)$/ }),
@@ -115,7 +115,7 @@ registerProvider<Rule>(ruleCapability.id, {
 // Prompts
 async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 	const load = (dir: string, level: "user" | "project") =>
-		loadFilesFromDir<Prompt>(ctx, dir, PROVIDER_ID, level, {
+		loadFilesFromDir<Prompt>(dir, PROVIDER_ID, level, {
 			extensions: ["md"],
 			transform: (name, content, filePath, source) => ({
 				name: name.replace(/\.md$/, ""),
@@ -147,7 +147,7 @@ registerProvider<Prompt>(promptCapability.id, {
 // Slash Commands
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const load = (dir: string, level: "user" | "project") =>
-		loadFilesFromDir<SlashCommand>(ctx, dir, PROVIDER_ID, level, {
+		loadFilesFromDir<SlashCommand>(dir, PROVIDER_ID, level, {
 			extensions: ["md"],
 			transform: (name, content, filePath, source) => ({
 				name: name.replace(/\.md$/, ""),
@@ -177,12 +177,31 @@ registerProvider<SlashCommand>(slashCommandCapability.id, {
 	load: loadSlashCommands,
 });
 
-// Context Files (AGENTS.md)
+/**
+ * Load AGENTS.md from `.agent/` and `.agents/` directories.
+ *
+ * Scopes: PROJECT (walk up from cwd to the repo root) and a home-level layer
+ * emitted as `level: "user"`.
+ *
+ * "user" here means `~/.agent[s]/AGENTS.md`, the tool-neutral home directory,
+ * NOT veyyon's active profile. The `.agent`/`.agents` convention has no profile
+ * concept at all, so there is nothing here to map onto the profile scope, and
+ * GLOBAL scope does not apply either: veyyon's global layer is its own
+ * `<globalConfigRoot>/AGENTS.md`, owned by the native provider.
+ *
+ * The two nonetheless share the capability's single home-level slot. That is
+ * resolved by priority, not by accident: the native provider is priority 100
+ * and this one is 70, so a real profile AGENTS.md always wins, and
+ * `~/.agent[s]/AGENTS.md` is only consulted as a fallback by a user who
+ * deliberately turned `discovery.importForeignConfig` on.
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
+	const warnings: string[] = [];
 	const load = async (filePath: string, level: "user" | "project"): Promise<ContextFile | null> => {
-		const content = await readFile(filePath);
+		const { content, warning } = await readContextFile(filePath);
+		if (warning) warnings.push(warning);
 		if (!content) return null;
-		// filePath is <ancestor>/.agent(s)/AGENTS.md — go up past the config dir to the ancestor
+		// filePath is <ancestor>/.agent(s)/AGENTS.md, so go up past the config dir to the ancestor
 		const ancestorDir = path.dirname(path.dirname(filePath));
 		const depth = level === "project" ? calculateDepth(ctx.cwd, ancestorDir, path.sep) : undefined;
 		return { path: filePath, content, level, depth, _source: createSourceMeta(PROVIDER_ID, filePath, level) };
@@ -193,7 +212,7 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 		...getUserPathCandidates(ctx, "AGENTS.md").map(p => load(p, "user")),
 	]);
 
-	return { items: results.filter((r): r is ContextFile => r !== null), warnings: [] };
+	return { items: results.filter((r): r is ContextFile => r !== null), warnings };
 }
 
 registerProvider<ContextFile>(contextFileCapability.id, {

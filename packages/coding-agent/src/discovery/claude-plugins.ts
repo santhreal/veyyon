@@ -6,7 +6,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { errorMessage, isRecord, logger } from "@veyyon/utils";
+import { errorMessage, getAgentDir, isEnoent, isRecord, logger } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { readFile } from "../capability/fs";
 import { type Hook, hookCapability } from "../capability/hook";
@@ -21,6 +21,7 @@ import {
 	expandEnvVarsDeep,
 	listClaudePluginRoots,
 	loadFilesFromDir,
+	pluginsRootFor,
 	scanSkillsFromDir,
 } from "./helpers";
 
@@ -190,7 +191,11 @@ async function resolvePluginDir(
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	const items: Skill[] = [];
 	const warnings: string[] = [];
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(ctx.home, ctx.cwd);
+	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
+		ctx.home,
+		ctx.cwd,
+		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+	);
 	warnings.push(...rootWarnings);
 	const results = await Promise.all(
 		roots.map(async root => {
@@ -205,7 +210,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 			resolveWarnings.push(...dirWarnings);
 			const scanResults = await Promise.all(
 				skillsDirs.map(dir =>
-					scanSkillsFromDir(ctx, {
+					scanSkillsFromDir({
 						dir,
 						providerId: PROVIDER_ID,
 						level: root.scope,
@@ -239,7 +244,11 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	const items: SlashCommand[] = [];
 	const warnings: string[] = [];
 
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(ctx.home, ctx.cwd);
+	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
+		ctx.home,
+		ctx.cwd,
+		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+	);
 	warnings.push(...rootWarnings);
 
 	const results = await Promise.all(
@@ -272,10 +281,21 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 								warnings: [],
 							};
 						}
-					} catch {
-						// Missing entries behave like missing directories: no items, no warning.
+					} catch (error) {
+						// A missing entry is the normal case and still falls through to the
+						// directory loader below, which reports nothing for a missing dir.
+						// Anything else (a permission denial, a broken symlink, a path that
+						// is not a directory) used to be indistinguishable from "this plugin
+						// ships no commands", so the operator's plugin slash commands just
+						// stopped existing with no line anywhere saying why.
+						if (!isEnoent(error)) {
+							return {
+								items: [],
+								warnings: [`Failed to read plugin commands path ${dir}: ${errorMessage(error)}`],
+							};
+						}
 					}
-					return loadFilesFromDir<SlashCommand>(ctx, dir, PROVIDER_ID, root.scope, {
+					return loadFilesFromDir<SlashCommand>(dir, PROVIDER_ID, root.scope, {
 						extensions: ["md"],
 						transform: (name, content, filePath, source) => {
 							const cmdName = name.replace(/\.md$/, "");
@@ -313,7 +333,11 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const items: Hook[] = [];
 	const warnings: string[] = [];
 
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(ctx.home, ctx.cwd);
+	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
+		ctx.home,
+		ctx.cwd,
+		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+	);
 	warnings.push(...rootWarnings);
 
 	const hookTypes = ["pre", "post"] as const;
@@ -328,7 +352,7 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const results = await Promise.all(
 		loadTasks.map(async ({ root, hookType }) => {
 			const hooksDir = path.join(root.path, "hooks", hookType);
-			return loadFilesFromDir<Hook>(ctx, hooksDir, PROVIDER_ID, root.scope, {
+			return loadFilesFromDir<Hook>(hooksDir, PROVIDER_ID, root.scope, {
 				transform: (name, _content, filePath, source) => {
 					const toolName = name.replace(/\.(sh|bash|zsh|fish)$/, "");
 					return {
@@ -360,13 +384,17 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 	const items: DiscoveredCustomTool[] = [];
 	const warnings: string[] = [];
 
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(ctx.home, ctx.cwd);
+	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
+		ctx.home,
+		ctx.cwd,
+		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+	);
 	warnings.push(...rootWarnings);
 
 	const results = await Promise.all(
 		roots.map(async root => {
 			const toolsDir = path.join(root.path, "tools");
-			return loadFilesFromDir<DiscoveredCustomTool>(ctx, toolsDir, PROVIDER_ID, root.scope, {
+			return loadFilesFromDir<DiscoveredCustomTool>(toolsDir, PROVIDER_ID, root.scope, {
 				transform: (name, _content, filePath, source) => {
 					const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
 					return {
@@ -397,7 +425,11 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	const items: MCPServer[] = [];
 	const warnings: string[] = [];
 
-	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(ctx.home, ctx.cwd);
+	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
+		ctx.home,
+		ctx.cwd,
+		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+	);
 	warnings.push(...rootWarnings);
 
 	for (const root of roots) {

@@ -11,6 +11,7 @@ import {
 	getProjectDir,
 	isEacces,
 	isEnoent,
+	isMissingPath,
 	logger,
 	parseFrontmatter,
 	tryParseJson,
@@ -27,7 +28,16 @@ import { normalizeToolNames, TOOL } from "../tools/builtin-names";
 import { buildPluginDirRoot } from "./plugin-dir-roots";
 
 /**
- * Standard paths for each config source.
+ * Where each tool keeps its USER-level configuration, relative to home.
+ *
+ * There is deliberately no project entry. Each of these tools also defines a
+ * per-repository directory (`.claude`, `.cursor`, `.codex`, `.gemini`,
+ * `.opencode`, `.windsurf`, `.github`, `.vscode`, `.clinerules`) and every one
+ * of them used to be scanned from `ctx.cwd` and registered against the same
+ * capability ids as veyyon's own. A cloned repository therefore needed no
+ * `.veyyon` directory to install a rule, a hook or an MCP server: an ordinary
+ * `.cursor/rules/` was the same door under a different name. Config comes from
+ * home; the only thing a working tree contributes is the context-file walk.
  */
 export const SOURCE_PATHS = {
 	native: {
@@ -37,52 +47,42 @@ export const SOURCE_PATHS = {
 		get userAgent() {
 			return `${getConfigDirName()}/agent`;
 		},
-		projectDir: CONFIG_DIR_NAME,
 	},
 	claude: {
 		userBase: ".claude",
 		userAgent: ".claude",
-		projectDir: ".claude",
 	},
 	codex: {
 		userBase: ".codex",
 		userAgent: ".codex",
-		projectDir: ".codex",
 	},
 	gemini: {
 		userBase: ".gemini",
 		userAgent: ".gemini",
-		projectDir: ".gemini",
 	},
 	opencode: {
 		userBase: ".config/opencode",
 		userAgent: ".config/opencode",
-		projectDir: ".opencode",
 	},
 	cursor: {
 		userBase: ".cursor",
 		userAgent: ".cursor",
-		projectDir: ".cursor",
 	},
 	windsurf: {
 		userBase: ".codeium/windsurf",
 		userAgent: ".codeium/windsurf",
-		projectDir: ".windsurf",
 	},
 	cline: {
 		userBase: ".cline",
 		userAgent: ".cline",
-		projectDir: null, // Cline uses root-level .clinerules
 	},
 	github: {
 		userBase: null,
 		userAgent: null,
-		projectDir: ".github",
 	},
 	vscode: {
 		userBase: ".vscode",
 		userAgent: ".vscode",
-		projectDir: ".vscode",
 	},
 } as const;
 
@@ -92,24 +92,16 @@ export type SourceId = keyof typeof SOURCE_PATHS;
  * Get user-level path for a source.
  */
 export function getUserPath(ctx: LoadContext, source: SourceId, subpath: string): string | null {
-	// Native user config is profile-scoped via getAgentDir() (the active profile's
-	// agent dir), matching builtin.ts and getMCPConfigPath("user"). External tools
-	// (~/.claude, ~/.gemini, …) are intentionally not profile-scoped, so they keep
-	// resolving against ctx.home below.
-	if (source === "native") return path.join(getAgentDir(), subpath);
+	// Native user config is profile-scoped: `ctx.agentDir` is the profile the CALLER is
+	// loading for (loadCapability always sets it; a hand-built context falls back to the
+	// active profile). It used to call getAgentDir() directly, which meant a load for a
+	// non-active profile silently read the active one. External tools (~/.claude,
+	// ~/.gemini, …) are intentionally not profile-scoped and keep resolving against
+	// ctx.home below.
+	if (source === "native") return path.join(ctx.agentDir ?? getAgentDir(), subpath);
 	const paths = SOURCE_PATHS[source];
 	if (!paths.userAgent) return null;
 	return path.join(ctx.home, paths.userAgent, subpath);
-}
-
-/**
- * Get project-level path for a source (cwd only).
- */
-export function getProjectPath(ctx: LoadContext, source: SourceId, subpath: string): string | null {
-	const paths = SOURCE_PATHS[source];
-	if (!paths.projectDir) return null;
-
-	return path.join(ctx.cwd, paths.projectDir, subpath);
 }
 
 /**
@@ -133,6 +125,48 @@ export function createSourceMeta(provider: string, filePath: string, level: "use
 		path: path.resolve(filePath),
 		level,
 	};
+}
+
+/**
+ * Read a context file for a discovery scope, telling "absent" apart from
+ * "present but unreadable".
+ *
+ * {@link readFile} collapses both into `null` and only logs the second case, so
+ * a provider that just checks for `null` reports an empty `items` list and no
+ * warning when a real AGENTS.md/CLAUDE.md was on disk but could not be read.
+ * Instructions vanishing from the prompt with no operator-visible signal is the
+ * exact failure this returns a warning for; callers push it onto the
+ * `LoadResult.warnings` channel they already return.
+ *
+ * The extra `stat` runs only when the read produced nothing, so the hit path
+ * (and the far more common genuinely-absent path, which stats once and stops at
+ * ENOENT) costs no more than before. When the stat says a regular file is there,
+ * the file is re-read directly to recover the errno the cached reader swallowed:
+ * this is the ONE report the operator gets for that path (the scope loader in
+ * system-prompt.ts defers to it), so "could not be read" without EACCES/EIO left
+ * them nothing to act on.
+ */
+export async function readContextFile(filePath: string): Promise<{ content: string | null; warning?: string }> {
+	const content = await readFile(filePath);
+	if (content !== null) return { content };
+	try {
+		const stats = await fs.promises.stat(filePath);
+		if (!stats.isFile()) {
+			return { content: null, warning: `${filePath} exists but is not a regular file; skipped` };
+		}
+		try {
+			await fs.promises.readFile(filePath);
+			return { content: null, warning: `${filePath} exists but could not be read; dropped from context` };
+		} catch (err) {
+			return { content: null, warning: `${filePath} exists but could not be read: ${errorMessage(err)}` };
+		}
+	} catch (err) {
+		if (isMissingPath(err)) return { content: null };
+		return {
+			content: null,
+			warning: `${filePath} exists but could not be read: ${errorMessage(err)}`,
+		};
+	}
 }
 
 export function parseBoolean(value: unknown): boolean | undefined {
@@ -406,10 +440,14 @@ export function compareSkillOrder(aName: string, aPath: string, bName: string, b
 	return cmp(aPath, bPath);
 }
 
-export async function scanSkillsFromDir(
-	_ctx: LoadContext,
-	options: ScanSkillsFromDirOptions,
-): Promise<LoadResult<Skill>> {
+/**
+ * Scan `options.dir` for `<name>/SKILL.md` children (plus `dir/SKILL.md` itself when
+ * `includeSelf` is set). Every input is explicit in `options`: the directory is already
+ * resolved by the caller, so there is no `LoadContext` parameter. One used to be accepted
+ * and never read, which made the signature imply the scan was context-relative when it is
+ * not.
+ */
+export async function scanSkillsFromDir(options: ScanSkillsFromDirOptions): Promise<LoadResult<Skill>> {
 	const items: Skill[] = [];
 	const warnings: string[] = [];
 	const { dir, level, providerId, requireDescription = false } = options;
@@ -507,11 +545,14 @@ export function expandEnvVarsDeep<T>(obj: T, extraEnv?: Record<string, string>):
 }
 
 /**
- * Load files from a directory matching extensions.
+ * Load files from `dir` matching `options.extensions`.
  * Uses native glob for fast filesystem scanning with gitignore support.
+ *
+ * `dir` is already resolved by the caller, so there is no `LoadContext` parameter. One
+ * used to be accepted and never read, which made the signature imply the scan was
+ * context-relative when it is not.
  */
 export async function loadFilesFromDir<T>(
-	_ctx: LoadContext,
 	dir: string,
 	provider: string,
 	level: "user" | "project",
@@ -942,18 +983,43 @@ export function registerPluginCacheInvalidator(invalidator: () => void): void {
 }
 
 /**
+ * The `plugins` root that belongs to `agentDir`, or undefined when `agentDir` IS the
+ * active profile and {@link getPluginsDir} should resolve it (that path is XDG-aware;
+ * this derivation is not, so it must not displace it for the default case).
+ *
+ * A profile lays out `<profile root>/agent` and `<profile root>/plugins` as siblings,
+ * the same derivation `getProfileAgentsCandidates` uses to find a profile's instruction
+ * file from its agent dir.
+ */
+export function pluginsRootFor(agentDir: string): string | undefined {
+	const resolved = path.resolve(agentDir);
+	if (resolved === path.resolve(getAgentDir())) return undefined;
+	return path.join(path.dirname(resolved), "plugins");
+}
+
+/**
  * List all installed Claude Code plugin roots from the plugin cache.
  * Reads ~/.claude/plugins/installed_plugins.json and profile plugins/installed_plugins.json,
  * and optionally the nearest project-scoped registry resolved from `cwd`.
  *
- * Results are cached per `home:resolvedProjectPath` key to avoid repeated parsing.
+ * `pluginsRoot` names WHICH profile's marketplace registry to read; it defaults to the
+ * process-active profile's via {@link getPluginsDir}. Callers that load on behalf of
+ * another agent dir pass {@link pluginsRootFor}, because reading the active profile's
+ * registry there hands that profile's plugin rules, commands, hooks and MCP servers to
+ * a session that asked for a different profile.
+ *
+ * Results are cached per `home:resolvedProjectPath:pluginsRoot` key to avoid repeated
+ * parsing. The plugins root is part of the key: leaving it out served the first
+ * profile's roots to every later profile out of cache.
  */
 export async function listClaudePluginRoots(
 	home: string,
 	cwd?: string,
+	pluginsRoot?: string,
 ): Promise<{ roots: ClaudePluginRoot[]; warnings: string[] }> {
 	const resolvedProjectPath = cwd ? await resolveActiveProjectRegistryPath(cwd) : null;
-	const cacheKey = `${home}:${resolvedProjectPath ?? ""}`;
+	const resolvedPluginsRoot = pluginsRoot ?? getPluginsDir(home);
+	const cacheKey = `${home}:${resolvedProjectPath ?? ""}:${resolvedPluginsRoot}`;
 	const cached = pluginRootsCache.get(cacheKey);
 	if (cached) return cached;
 
@@ -1007,10 +1073,12 @@ export async function listClaudePluginRoots(
 
 	// ── veyyon installed plugins registry ───────────────────────────────────────
 	// veyyon registry is authoritative: its entries replace Claude's entries for the same plugin ID.
-	// In production `home` is `os.homedir()`, so `getPluginsDir(home)` resolves to the
-	// same XDG-aware path the marketplace writer uses (reads and writes always agree).
-	// Tests pass a temp dir, which short-circuits the resolver for deterministic isolation.
-	const ompRegistryPath = path.join(getPluginsDir(home), "installed_plugins.json");
+	// In production the caller passes no `pluginsRoot` and `home` is `os.homedir()`, so
+	// `getPluginsDir(home)` resolves to the same XDG-aware path the marketplace writer
+	// uses (reads and writes always agree). Tests pass a temp dir, which short-circuits
+	// the resolver for deterministic isolation. A caller loading for a non-active
+	// profile passes that profile's plugins root instead.
+	const ompRegistryPath = path.join(resolvedPluginsRoot, "installed_plugins.json");
 	const ompContent = await readFile(ompRegistryPath);
 	if (ompContent) {
 		const ompRegistry = parseClaudePluginsRegistry(ompContent);

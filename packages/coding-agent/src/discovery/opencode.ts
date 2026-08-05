@@ -23,7 +23,6 @@ import { type ContextFile, contextFileCapability } from "../capability/context-f
 import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
 import { readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
@@ -38,6 +37,7 @@ import {
 	getProjectPath,
 	getUserPath,
 	loadFilesFromDir,
+	readContextFile,
 	scanSkillsFromDir,
 } from "./helpers";
 
@@ -65,14 +65,28 @@ async function loadJsonConfig(configPath: string): Promise<Record<string, unknow
 // Context Files (AGENTS.md)
 // =============================================================================
 
+/**
+ * Load OpenCode context files.
+ *
+ * Scopes: a home-level layer only, emitted as `level: "user"`
+ * (`~/.config/opencode/AGENTS.md`).
+ *
+ * PROFILE scope does not apply: OpenCode has no profile concept, so there is no
+ * per-profile file to read, and the home-level file loses veyyon's single home
+ * slot to a real profile AGENTS.md on priority (native 100 against 55). GLOBAL
+ * scope does not apply either: that layer is veyyon's own
+ * `<globalConfigRoot>/AGENTS.md`, owned by the native provider. PROJECT scope is
+ * absent from the OpenCode convention, which keeps its AGENTS.md under the
+ * user's XDG config directory rather than in the checkout.
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
 
-	// User-level only: ~/.config/opencode/AGENTS.md
 	const userAgentsMd = getUserPath(ctx, "opencode", "AGENTS.md");
 	if (userAgentsMd) {
-		const content = await readFile(userAgentsMd);
+		const { content, warning } = await readContextFile(userAgentsMd);
+		if (warning) warnings.push(warning);
 		if (content) {
 			items.push({
 				path: userAgentsMd,
@@ -235,7 +249,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 
 	if (userSkillsDir) {
 		promises.push(
-			scanSkillsFromDir(ctx, {
+			scanSkillsFromDir({
 				dir: userSkillsDir,
 				providerId: PROVIDER_ID,
 				level: "user",
@@ -245,7 +259,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 
 	if (projectSkillsDir) {
 		promises.push(
-			scanSkillsFromDir(ctx, {
+			scanSkillsFromDir({
 				dir: projectSkillsDir,
 				providerId: PROVIDER_ID,
 				level: "project",
@@ -320,7 +334,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 
 	if (userCommandsDir) {
 		promises.push(
-			loadFilesFromDir(ctx, userCommandsDir, PROVIDER_ID, "user", {
+			loadFilesFromDir(userCommandsDir, PROVIDER_ID, "user", {
 				extensions: ["md"],
 				transform: transformCommand("user"),
 			}),
@@ -329,7 +343,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 
 	if (projectCommandsDir) {
 		promises.push(
-			loadFilesFromDir(ctx, projectCommandsDir, PROVIDER_ID, "project", {
+			loadFilesFromDir(projectCommandsDir, PROVIDER_ID, "project", {
 				extensions: ["md"],
 				transform: transformCommand("project"),
 			}),
@@ -339,53 +353,6 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	const results = await Promise.all(promises);
 	const items = results.flatMap(r => r.items);
 	const warnings = results.flatMap(r => r.warnings || []);
-
-	return { items, warnings };
-}
-
-// =============================================================================
-// Settings (opencode.json)
-// =============================================================================
-
-async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
-	const items: Settings[] = [];
-	const warnings: string[] = [];
-
-	// User-level: ~/.config/opencode/opencode.json
-	const userConfigPath = getUserPath(ctx, "opencode", "opencode.json");
-	if (userConfigPath) {
-		const content = await readFile(userConfigPath);
-		if (content) {
-			const parsed = tryParseJson<Record<string, unknown>>(content);
-			if (parsed) {
-				items.push({
-					path: userConfigPath,
-					data: parsed,
-					level: "user",
-					_source: createSourceMeta(PROVIDER_ID, userConfigPath, "user"),
-				});
-			} else {
-				warnings.push(`Invalid JSON in ${userConfigPath}`);
-			}
-		}
-	}
-
-	// Project-level: opencode.json in project root
-	const projectConfigPath = path.join(ctx.cwd, "opencode.json");
-	const content = await readFile(projectConfigPath);
-	if (content) {
-		const parsed = tryParseJson<Record<string, unknown>>(content);
-		if (parsed) {
-			items.push({
-				path: projectConfigPath,
-				data: parsed,
-				level: "project",
-				_source: createSourceMeta(PROVIDER_ID, projectConfigPath, "project"),
-			});
-		} else {
-			warnings.push(`Invalid JSON in ${projectConfigPath}`);
-		}
-	}
 
 	return { items, warnings };
 }
@@ -434,10 +401,3 @@ registerProvider(slashCommandCapability.id, {
 	load: loadSlashCommands,
 });
 
-registerProvider(settingsCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load settings from opencode.json",
-	priority: PRIORITY,
-	load: loadSettings,
-});

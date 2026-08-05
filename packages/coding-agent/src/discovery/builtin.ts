@@ -19,7 +19,6 @@ import { type Instruction, instructionCapability } from "../capability/instructi
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Prompt, promptCapability } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
-import { type Settings, settingsCapability } from "../capability/settings";
 import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
@@ -33,6 +32,7 @@ import {
 	expandEnvVarsDeep,
 	getExtensionNameFromPath,
 	loadFilesFromDir,
+	readContextFile,
 	SOURCE_PATHS,
 	scanSkillsFromDir,
 } from "./helpers";
@@ -55,21 +55,23 @@ async function ifNonEmptyDir(...seg: string[]): Promise<string | null> {
 	return null;
 }
 
+/**
+ * The config directories this provider scans, which come from HOME and only from HOME.
+ *
+ * A checked-out working tree is untrusted input: the operator opens repositories
+ * they did not write. `<cwd>/.veyyon` used to be pushed here at level "project",
+ * and six capabilities read it through this one helper (slash commands, rules,
+ * prompts, instructions, hooks, tools) plus extension modules and settings. One
+ * line in a cloned repo therefore configured the agent. The only thing a
+ * repository still contributes is the context-file walk below, which is prose
+ * the model reads rather than a capability grant.
+ *
+ * The user scope is profile-scoped: `ctx.agentDir` names the profile the CALLER
+ * is loading for, not whichever profile the process booted with.
+ */
 async function getConfigDirs(ctx: LoadContext): Promise<Array<{ dir: string; level: "user" | "project" }>> {
-	const result: Array<{ dir: string; level: "user" | "project" }> = [];
-
-	const projectDir = await ifNonEmptyDir(ctx.cwd, PATHS.projectDir);
-	if (projectDir) {
-		result.push({ dir: projectDir, level: "project" });
-	}
-	// Native user config is profile-scoped: getAgentDir() points at the active
-	// profile's agent dir (~/.veyyon/profiles/<name>/agent), like sessions and MCP.
-	const userDir = await ifNonEmptyDir(getAgentDir());
-	if (userDir) {
-		result.push({ dir: userDir, level: "user" });
-	}
-
-	return result;
+	const userDir = await ifNonEmptyDir(ctx.agentDir ?? getAgentDir());
+	return userDir ? [{ dir: userDir, level: "user" }] : [];
 }
 
 function getAncestorDirs(cwd: string, stopAt?: string | null): Array<{ dir: string; depth: number }> {
@@ -198,12 +200,11 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		return result;
 	};
 
-	// User scope tracks the active profile via getAgentDir() (not ctx.home), so it
-	// stays in sync with getMCPConfigPath("user") and the /mcp config writer.
-	const userAgentDir = getAgentDir();
+	// User scope tracks the profile the CALLER is loading for (`ctx.agentDir`, not
+	// ctx.home), so it stays in sync with getMCPConfigPath("user") and the /mcp config
+	// writer. It used to read the process-global getAgentDir().
+	const userAgentDir = ctx.agentDir ?? getAgentDir();
 	const paths = [
-		{ path: path.join(ctx.cwd, PATHS.projectDir, "mcp.json"), level: "project" as const },
-		{ path: path.join(ctx.cwd, PATHS.projectDir, ".mcp.json"), level: "project" as const },
 		{ path: path.join(userAgentDir, "mcp.json"), level: "user" as const },
 		{ path: path.join(userAgentDir, ".mcp.json"), level: "user" as const },
 	];
@@ -238,13 +239,16 @@ registerProvider<MCPServer>(mcpCapability.id, {
 
 // Skills
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
-	// Skills come only from the active profile's agent dir
+	// Skills come only from the agent dir this load is FOR
 	// (~/.veyyon/profiles/<name>/agent/skills). Project-local `.veyyon/skills`
 	// directories are deliberately NOT scanned: skills belong to your profile, so
 	// switching profiles switches skills, and no repository you enter can inject
 	// its own skills into a session by ambient autodiscovery.
-	return scanSkillsFromDir(ctx, {
-		dir: path.join(getAgentDir(), "skills"),
+	//
+	// `ctx.agentDir` rather than getAgentDir(): a caller loading for another profile used
+	// to get the booted profile's skills with nothing reported.
+	return scanSkillsFromDir({
+		dir: path.join(ctx.agentDir ?? getAgentDir(), "skills"),
 		providerId: PROVIDER_ID,
 		level: "user",
 		requireDescription: true,
@@ -257,8 +261,8 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 // managed dir is a no-op); only writing/nudging is gated by `autolearn.enabled`.
 const MANAGED_SKILLS_PRIORITY = 5;
 async function loadManagedSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
-	return scanSkillsFromDir(ctx, {
-		dir: getManagedSkillsDir(),
+	return scanSkillsFromDir({
+		dir: getManagedSkillsDir(ctx.agentDir ?? getAgentDir()),
 		providerId: MANAGED_SKILLS_PROVIDER_ID,
 		level: "user",
 		requireDescription: true,
@@ -276,7 +280,7 @@ registerProvider<Skill>(skillCapability.id, {
 registerProvider<Skill>(skillCapability.id, {
 	id: MANAGED_SKILLS_PROVIDER_ID,
 	displayName: "Managed Skills (auto-learn)",
-	description: "Auto-generated managed skills from ~/.veyyon/profiles/default/agent/managed-skills",
+	description: "Auto-generated managed skills from the active profile's agent/managed-skills directory",
 	priority: MANAGED_SKILLS_PRIORITY,
 	load: loadManagedSkills,
 });
@@ -288,7 +292,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 
 	for (const { dir, level } of await getConfigDirs(ctx)) {
 		const commandsDir = path.join(dir, "commands");
-		const result = await loadFilesFromDir<SlashCommand>(ctx, commandsDir, PROVIDER_ID, level, {
+		const result = await loadFilesFromDir<SlashCommand>(commandsDir, PROVIDER_ID, level, {
 			extensions: ["md"],
 			transform: (name, content, path, source) => ({
 				name: name.replace(/\.md$/, ""),
@@ -320,7 +324,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 
 	for (const { dir, level } of await getConfigDirs(ctx)) {
 		const rulesDir = path.join(dir, "rules");
-		const result = await loadFilesFromDir<Rule>(ctx, rulesDir, PROVIDER_ID, level, {
+		const result = await loadFilesFromDir<Rule>(rulesDir, PROVIDER_ID, level, {
 			extensions: ["md", "mdc"],
 			transform: (name, content, path, source) =>
 				buildRuleFromMarkdown(name, content, path, source, { stripNamePattern: /\.(md|mdc)$/ }),
@@ -332,32 +336,25 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	// Top-level RULES.md is a sticky always-apply rule. Documented in
 	// https://veyyon.dev/docs/context as the file that gets "re-injected near
 	// the current turn so they keep hold across long conversations".
-	// User scope:    ~/.veyyon/profiles/default/agent/RULES.md
-	// Project scope: nearest .veyyon/RULES.md walking up from cwd to repoRoot
-	const userRulesFile = path.join(getAgentDir(), "RULES.md");
+	// User scope only: <the loading profile's agent dir>/RULES.md, i.e. `ctx.agentDir`.
+	// A repository's `.veyyon/RULES.md` used to be honored here too, which made a
+	// cloned repo a standing instruction on every single request.
+	const userRulesFile = path.join(ctx.agentDir ?? getAgentDir(), "RULES.md");
 	const userRule = await loadStickyRulesFile(userRulesFile, "user");
 	if (userRule) items.push(userRule);
-
-	const nearestProjectConfigDir = await findNearestProjectConfigDir(ctx.cwd, ctx.repoRoot);
-	if (nearestProjectConfigDir) {
-		const projectRulesFile = path.join(nearestProjectConfigDir.dir, "RULES.md");
-		const projectRule = await loadStickyRulesFile(projectRulesFile, "project");
-		if (projectRule) items.push(projectRule);
-	}
 
 	return { items, warnings };
 }
 
 /**
- * Read a top-level `RULES.md` and synthesize an always-apply rule.
+ * Read the profile's top-level `RULES.md` and synthesize an always-apply rule.
  * Returns null when the file is absent or empty so callers can short-circuit.
  */
-async function loadStickyRulesFile(filePath: string, level: "user" | "project"): Promise<Rule | null> {
+async function loadStickyRulesFile(filePath: string, level: "user"): Promise<Rule | null> {
 	const content = await readFile(filePath);
 	if (!content) return null;
 	const source = createSourceMeta(PROVIDER_ID, filePath, level);
-	const ruleName = level === "project" ? "RULES@project" : "RULES";
-	const rule = buildRuleFromMarkdown("RULES.md", content, filePath, source, { ruleName });
+	const rule = buildRuleFromMarkdown("RULES.md", content, filePath, source, { ruleName: "RULES" });
 	// Force alwaysApply regardless of frontmatter — the whole point of RULES.md
 	// is to be reattached every turn.
 	return { ...rule, alwaysApply: true };
@@ -378,7 +375,7 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 
 	for (const { dir, level } of await getConfigDirs(ctx)) {
 		const promptsDir = path.join(dir, "prompts");
-		const result = await loadFilesFromDir<Prompt>(ctx, promptsDir, PROVIDER_ID, level, {
+		const result = await loadFilesFromDir<Prompt>(promptsDir, PROVIDER_ID, level, {
 			extensions: ["md"],
 			transform: (name, content, path, source) => ({
 				name: name.replace(/\.md$/, ""),
@@ -585,7 +582,7 @@ async function loadInstructions(ctx: LoadContext): Promise<LoadResult<Instructio
 
 	for (const { dir, level } of await getConfigDirs(ctx)) {
 		const instructionsDir = path.join(dir, "instructions");
-		const result = await loadFilesFromDir<Instruction>(ctx, instructionsDir, PROVIDER_ID, level, {
+		const result = await loadFilesFromDir<Instruction>(instructionsDir, PROVIDER_ID, level, {
 			extensions: ["md"],
 			transform: (name, content, path, source) => {
 				const { frontmatter, body } = parseFrontmatter(content, { source: path });
@@ -695,7 +692,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 		const toolsDir = path.join(dir, "tools");
 
 		fileLoadPromises.push(
-			loadFilesFromDir<DiscoveredCustomTool>(ctx, toolsDir, PROVIDER_ID, level, {
+			loadFilesFromDir<DiscoveredCustomTool>(toolsDir, PROVIDER_ID, level, {
 				extensions: ["json", "md", "ts", "js", "sh", "bash", "py"],
 				transform: (name, content, path, source) => {
 					if (name.endsWith(".json")) {
@@ -788,92 +785,75 @@ registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	load: loadTools,
 });
 
-// Settings
-async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
-	const items: Settings[] = [];
-	const warnings: string[] = [];
-
-	const parseYamlSettings = (content: string, filePath: string): Record<string, unknown> | null => {
-		try {
-			const data = YAML.parse(content);
-			if (!isRecord(data)) return {};
-			return data as Record<string, unknown>;
-		} catch {
-			warnings.push(`Failed to parse ${filePath}`);
-			return null;
-		}
-	};
-
-	for (const { dir, level } of await getConfigDirs(ctx)) {
-		const settingsPath = path.join(dir, "settings.json");
-		const settingsContent = await readFile(settingsPath);
-		if (settingsContent) {
-			const data = tryParseJson<Record<string, unknown>>(settingsContent);
-			if (data) {
-				items.push({
-					path: settingsPath,
-					data,
-					level,
-					_source: createSourceMeta(PROVIDER_ID, settingsPath, level),
-				});
-			} else {
-				warnings.push(`Failed to parse ${settingsPath}`);
-			}
-		}
-
-		const configPath = path.join(dir, "config.yml");
-		const configContent = await readFile(configPath);
-		if (!configContent) continue;
-
-		const data = parseYamlSettings(configContent, configPath);
-		if (!data) continue;
-
-		items.push({
-			path: configPath,
-			data,
-			level,
-			_source: createSourceMeta(PROVIDER_ID, configPath, level),
-		});
-	}
-
-	return { items, warnings };
-}
-
-registerProvider<Settings>(settingsCapability.id, {
-	id: PROVIDER_ID,
-	displayName: APP_DISPLAY_NAME,
-	description: DESCRIPTION,
-	priority: PRIORITY,
-	load: loadSettings,
-});
-
 /**
- * Bare project rule files, in PRECEDENCE order within a single directory.
+ * PROJECT CONTEXT PRECEDENCE, ONE DIRECTORY LEVEL AT A TIME.
  *
- * This is an order, not a list of things that all load. The context-file
- * capability keys project items as `project:<depth>`, deliberately keeping one
- * project file per directory depth so that providers at the same scope shadow
- * each other rather than stacking. So when a directory holds both names, the
- * first one found here is the one that survives.
+ * This comment is the single owner of the rule. Everything else in this file,
+ * in `capability/context-file.ts`, and in `docs/context-files.md` points here
+ * instead of restating it: precedence prose that lives in four places is how the
+ * resolution-order axis and the prominence axis got confused before.
  *
- * `AGENTS.md` wins because it is the tool-neutral convention and the one other
- * tools read too. A project carrying both is almost always stating the same rules
- * twice for two different tools, and picking deterministically is better than
- * letting directory-read order decide.
+ * The project scope walks from the repo root down to cwd and each directory
+ * level contributes AT MOST ONE file. Candidates at one level, in order:
+ *
+ *   1. `<dir>/.veyyon/AGENTS.md` - the veyyon-native project file. Handled by
+ *      scope 3a below, which claims that level's rung outright, so the plain
+ *      files beside it are never read.
+ *   2. `<dir>/AGENTS.md`         - the tool-neutral agents.md convention.
+ *   3. `<dir>/CLAUDE.md`         - fallback only, and only when no name above it
+ *      contributed at this same level.
+ *
+ * `CLAUDE.md` is last because `AGENTS.md` is the tool-neutral convention other
+ * tools read too. A project carrying both is nearly always stating the same
+ * rules twice for two tools, so reading both would inline duplicate rules and
+ * let a stale `CLAUDE.md` contradict a maintained `AGENTS.md`.
+ *
+ * The ladder stops at the first candidate that CONTRIBUTES, not the first that
+ * exists, matching the profile ladder in {@link getProfileAgentsCandidates}: a
+ * file that is absent, empty, or unreadable contributes nothing and therefore
+ * shadows nothing. Silently swallowing a level because a zero-byte `AGENTS.md`
+ * happens to sit there would be the same class of defect as the truncation
+ * described in scope 3a.
+ *
+ * PER LEVEL, NOT PER WALK. The fallback is resolved inside each directory. A
+ * repo root holding `AGENTS.md` does not suppress a nested `CLAUDE.md`, and that
+ * nested `CLAUDE.md` does not outrank the root `AGENTS.md` either: each keeps its
+ * own depth, and the consumer still orders deeper over shallower.
  */
 const PROJECT_RULE_FILE_NAMES = ["AGENTS.md", "CLAUDE.md"] as const;
 
-// Context Files (AGENTS.md)
+/**
+ * Context files for veyyon's own three scopes, in contract order:
+ *
+ * 1. GLOBAL: the cross-profile `<globalConfigRoot>/AGENTS.md`, via
+ *    {@link getGlobalAgentsPath}.
+ * 2. PROFILE (`level: "user"`): the instruction file of the profile the CALLER is
+ *    loading for (`ctx.agentDir`), via the {@link getProfileAgentsCandidates} ladder.
+ * 3. PROJECT: one file per directory level, from the repo root down to cwd, each
+ *    carrying its true depth so the closest file is the most prominent. Which
+ *    file a level contributes is {@link PROJECT_RULE_FILE_NAMES}; do not restate
+ *    that rule here.
+ *
+ * Later scopes override earlier ones. This is the only provider that resolves
+ * all three: the foreign-tool providers know nothing about veyyon profiles and
+ * cover their own tool's conventions instead.
+ *
+ * Every scope reports an unreadable-but-present file through `warnings`. A file
+ * that exists and reads as empty (or as nothing but the managed guidance header)
+ * contributes no item, which is legitimate, but it never suppresses another
+ * scope.
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
 
-	// Layer 1 (least prominent): the cross-profile global ~/.veyyon/AGENTS.md.
+	// Scope 1 (least prominent): the cross-profile global AGENTS.md.
 	// Its managed guidance header is stripped so only real instructions load.
 	const globalPath = getGlobalAgentsPath();
-	const globalContent = await readFile(globalPath);
-	if (globalContent) {
-		const stripped = stripManagedGuidance(globalContent);
+	const global = await readContextFile(globalPath);
+	if (global.warning) warnings.push(global.warning);
+	if (global.content) {
+		const stripped = stripManagedGuidance(global.content);
 		if (stripped.trim().length > 0) {
 			items.push({
 				path: globalPath,
@@ -885,51 +865,80 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 		}
 	}
 
-	// Layer 2: the active profile's own AGENTS.md or agent.md candidates.
-	for (const candidatePath of getProfileAgentsCandidates()) {
-		const userContent = await readFile(candidatePath);
-		if (userContent) {
-			const stripped = stripManagedGuidance(userContent);
-			if (stripped.trim().length > 0) {
-				items.push({
-					path: candidatePath,
-					content: stripped,
-					level: "user",
-					_source: createSourceMeta(PROVIDER_ID, candidatePath, "user"),
-				});
-				break;
-			}
-		}
+	// Scope 2: the loading profile's own AGENTS.md or agent.md candidates.
+	//
+	// The ladder is resolved from `ctx.agentDir`, the profile the CALLER asked for,
+	// exactly like the rules, commands, prompts and skills scopes above. It used to
+	// call `getProfileAgentsCandidates()` with no argument, which reads the
+	// process-global active profile: a session rooted in another agent dir got the
+	// booted profile's instruction file here. The loader downstream used to filter this
+	// item back out and re-read the caller's ladder itself, which is the only reason the
+	// final output looked right; that compensation has been deleted, so this provider is
+	// now the single owner of the profile scope and a regression here is visible.
+	//
+	// The ladder stops at the first candidate that carries real instructions. A
+	// candidate that exists but holds nothing beyond the seeded guidance header
+	// is not a match, so a freshly created profile (whose AGENTS.md is only the
+	// preamble) falls through the whole ladder and contributes nothing, which is
+	// correct: it has nothing to say. It must not, and here does not, stop the
+	// global or project scopes from loading.
+	for (const candidatePath of getProfileAgentsCandidates(ctx.agentDir ?? getAgentDir())) {
+		const profile = await readContextFile(candidatePath);
+		if (profile.warning) warnings.push(profile.warning);
+		if (!profile.content) continue;
+		const stripped = stripManagedGuidance(profile.content);
+		if (stripped.trim().length === 0) continue;
+		items.push({
+			path: candidatePath,
+			content: stripped,
+			level: "user",
+			_source: createSourceMeta(PROVIDER_ID, candidatePath, "user"),
+		});
+		break;
 	}
 
+	// Scope 3a: `<nearest project config dir>/AGENTS.md`, the top candidate at its
+	// own level (see {@link PROJECT_RULE_FILE_NAMES}). When it contributes it CLAIMS
+	// that one depth rung, so the bare walk below skips that rung and reads neither
+	// plain name there; every OTHER rung still loads.
+	//
+	// Claiming one rung is the whole rule. Returning early here instead, as this
+	// used to, threw away the entire repo-root-to-cwd walk the moment a project
+	// carried a config-dir AGENTS.md: one file at one depth silently deleted the
+	// whole project scope, with no warning. Never turn this back into a `return`.
+	//
+	// `findNearestProjectConfigDir` stops at the nearest NON-EMPTY `.veyyon/`
+	// directory, not at the nearest `.veyyon/AGENTS.md`. A deeper `.veyyon/` holding
+	// only, say, `mcp.json` therefore hides a shallower `.veyyon/AGENTS.md`, and the
+	// shallower level then falls through to its plain files. That is the behavior,
+	// stated so a reader does not have to rediscover it.
+	let claimedDepth: number | null = null;
 	const nearestProjectConfigDir = await findNearestProjectConfigDir(ctx.cwd, ctx.repoRoot);
 	if (nearestProjectConfigDir) {
 		const projectPath = path.join(nearestProjectConfigDir.dir, "AGENTS.md");
-		const projectContent = await readFile(projectPath);
-		if (projectContent) {
+		const project = await readContextFile(projectPath);
+		if (project.warning) warnings.push(project.warning);
+		if (project.content) {
+			claimedDepth = nearestProjectConfigDir.depth;
 			items.push({
 				path: projectPath,
-				content: projectContent,
+				content: project.content,
 				level: "project",
 				depth: nearestProjectConfigDir.depth,
 				_source: createSourceMeta(PROVIDER_ID, projectPath, "project"),
 			});
-			return { items, warnings };
 		}
 	}
 
-	// Layer 3: bare `AGENTS.md` / `CLAUDE.md` sitting in the project itself, walking
-	// up from cwd.
+	// Scope 3b: bare `AGENTS.md` / `CLAUDE.md` sitting in the project itself,
+	// walking up from cwd.
 	//
 	// This is the agents.md convention and the one most repositories actually use,
-	// including this one, and until this walk existed NOTHING loaded it. The three
-	// context-file providers each looked somewhere else: this one resolved the
-	// project file as `<nearest .veyyon dir>/AGENTS.md`, which needs a `.veyyon/`
-	// directory that most checkouts do not have; the codex provider is user-level
-	// only; the claude provider reads `<cwd>/.claude/CLAUDE.md`. Measured on the
-	// veyyon repo, which carries a 39 KB root `AGENTS.md`, the capability returned
-	// exactly one file — the global `~/.veyyon/AGENTS.md` — from the repo root, from
-	// a subpackage, and from the parent directory alike.
+	// including this one. Scope 3a alone does not cover it: it resolves the project
+	// file as `<nearest .veyyon dir>/AGENTS.md`, which needs a `.veyyon/` directory
+	// that most checkouts do not have. The foreign-tool providers do not cover it
+	// either, and they are gated off by default anyway, so without this walk a repo
+	// carrying a plain root `AGENTS.md` contributed nothing at all.
 	//
 	// The workspace tree did not cover the gap either. It lists AGENTS.md files it
 	// finds BELOW cwd, so the root file is missing from the root's own listing, and
@@ -941,24 +950,35 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	//
 	// EVERY ancestor is collected rather than only the nearest, because the prompt
 	// already promises "deeper rules override higher ones" and that ordering only
-	// works if the higher file is present to be overridden. `loadProjectContextFiles`
-	// sorts project files by descending depth, so recording the true depth here puts
-	// the repo-root file first and the closest one last, which is the precedence the
+	// works if the higher file is present to be overridden. The consumer sorts
+	// project files by descending depth, so recording the true depth here puts the
+	// repo-root file first and the closest one last, which is the precedence the
 	// prompt describes.
 	//
 	// One walk owns both filenames on purpose. Splitting `CLAUDE.md` into the claude
 	// provider would give two independent walks that cannot order against each
 	// other, and a root `CLAUDE.md` would then be unable to override a deeper
 	// `AGENTS.md` or the reverse.
+	//
+	// Within one rung the names are a LADDER, not a list: the loop below breaks at
+	// the first name that contributes, so a `CLAUDE.md` beside an `AGENTS.md` is
+	// never even read. See {@link PROJECT_RULE_FILE_NAMES} for the order and why.
 	const seen = new Set(items.map(item => item.path));
 	// Bounded by the repo root, or by the home directory when there is no repo, so a
 	// directory outside any project never pulls in a stranger's file from `/`.
 	const stopAt = ctx.repoRoot ?? ctx.home;
 	for (const ancestor of getAncestorDirs(ctx.cwd, stopAt)) {
+		if (ancestor.depth === claimedDepth) continue;
 		for (const fileName of PROJECT_RULE_FILE_NAMES) {
 			const candidate = path.join(ancestor.dir, fileName);
-			if (seen.has(candidate)) continue;
-			const content = await readFile(candidate);
+			// Already contributed by an earlier scope, so this level is represented and
+			// the lower-priority names at it stay unread, exactly as if it had just won
+			// the ladder here.
+			if (seen.has(candidate)) break;
+			const { content, warning } = await readContextFile(candidate);
+			if (warning) warnings.push(warning);
+			// Nothing to contribute (absent, empty, or unreadable), so it shadows
+			// nothing and the next name down the ladder gets its turn.
 			if (!content) continue;
 			seen.add(candidate);
 			items.push({
@@ -968,6 +988,7 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 				depth: ancestor.depth,
 				_source: createSourceMeta(PROVIDER_ID, candidate, "project"),
 			});
+			break;
 		}
 	}
 
@@ -977,7 +998,7 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 registerProvider<ContextFile>(contextFileCapability.id, {
 	id: PROVIDER_ID,
 	displayName: APP_DISPLAY_NAME,
-	description: "Load AGENTS.md and CLAUDE.md from the project tree and .veyyon/ directories",
+	description: "Load one context file per project directory (.veyyon/AGENTS.md, else AGENTS.md, else CLAUDE.md)",
 	priority: PRIORITY,
 	load: loadContextFiles,
 });

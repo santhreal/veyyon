@@ -19,8 +19,6 @@ import type { MCPServer } from "../capability/mcp";
 import { mcpCapability } from "../capability/mcp";
 import type { Prompt } from "../capability/prompt";
 import { promptCapability } from "../capability/prompt";
-import type { Settings } from "../capability/settings";
-import { settingsCapability } from "../capability/settings";
 import type { Skill } from "../capability/skill";
 import { skillCapability } from "../capability/skill";
 import type { SlashCommand } from "../capability/slash-command";
@@ -34,6 +32,7 @@ import {
 	createSourceMeta,
 	discoverExtensionModulePaths,
 	loadFilesFromDir,
+	readContextFile,
 	SOURCE_PATHS,
 	scanSkillsFromDir,
 } from "./helpers";
@@ -50,17 +49,31 @@ function getProjectCodexDir(ctx: LoadContext): string {
 // Context Files (AGENTS.md)
 // =============================================================================
 
+/**
+ * Load Codex context files.
+ *
+ * Scopes: a home-level layer only, emitted as `level: "user"`
+ * (`~/.codex/AGENTS.md`).
+ *
+ * PROFILE scope does not apply: Codex has no profile concept, so there is no
+ * per-profile file to read, and the home-level file loses veyyon's single home
+ * slot to a real profile AGENTS.md on priority (native 100 against 70). GLOBAL
+ * scope does not apply either: that layer is veyyon's own
+ * `<globalConfigRoot>/AGENTS.md`, owned by the native provider. PROJECT scope is
+ * genuinely absent from the Codex convention, which puts its AGENTS.md in the
+ * user's home directory rather than in the checkout.
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
 
-	// User level only: ~/.codex/AGENTS.md
 	const agentsMd = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "AGENTS.md");
-	const agentsContent = await readFile(agentsMd);
-	if (agentsContent) {
+	const { content, warning } = await readContextFile(agentsMd);
+	if (warning) warnings.push(warning);
+	if (content) {
 		items.push({
 			path: agentsMd,
-			content: agentsContent,
+			content,
 			level: "user",
 			_source: createSourceMeta(PROVIDER_ID, agentsMd, "user"),
 		});
@@ -217,12 +230,12 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	const projectSkillsDir = path.join(codexDir, "skills");
 
 	const results = await Promise.all([
-		scanSkillsFromDir(ctx, {
+		scanSkillsFromDir({
 			dir: userSkillsDir,
 			providerId: PROVIDER_ID,
 			level: "user",
 		}),
-		scanSkillsFromDir(ctx, {
+		scanSkillsFromDir({
 			dir: projectSkillsDir,
 			providerId: PROVIDER_ID,
 			level: "project",
@@ -279,11 +292,11 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 		};
 
 	const results = await Promise.all([
-		loadFilesFromDir(ctx, userCommandsDir, PROVIDER_ID, "user", {
+		loadFilesFromDir(userCommandsDir, PROVIDER_ID, "user", {
 			extensions: ["md"],
 			transform: transformCommand("user"),
 		}),
-		loadFilesFromDir(ctx, projectCommandsDir, PROVIDER_ID, "project", {
+		loadFilesFromDir(projectCommandsDir, PROVIDER_ID, "project", {
 			extensions: ["md"],
 			transform: transformCommand("project"),
 		}),
@@ -317,11 +330,11 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 	};
 
 	const results = await Promise.all([
-		loadFilesFromDir(ctx, userPromptsDir, PROVIDER_ID, "user", {
+		loadFilesFromDir(userPromptsDir, PROVIDER_ID, "user", {
 			extensions: ["md"],
 			transform: transformPrompt,
 		}),
-		loadFilesFromDir(ctx, projectPromptsDir, PROVIDER_ID, "project", {
+		loadFilesFromDir(projectPromptsDir, PROVIDER_ID, "project", {
 			extensions: ["md"],
 			transform: transformPrompt,
 		}),
@@ -367,11 +380,11 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 		};
 
 	const results = await Promise.all([
-		loadFilesFromDir<Hook>(ctx, userHooksDir, PROVIDER_ID, "user", {
+		loadFilesFromDir<Hook>(userHooksDir, PROVIDER_ID, "user", {
 			extensions: ["ts", "js"],
 			transform: transformHook("user"),
 		}),
-		loadFilesFromDir<Hook>(ctx, projectHooksDir, PROVIDER_ID, "project", {
+		loadFilesFromDir<Hook>(projectHooksDir, PROVIDER_ID, "project", {
 			extensions: ["ts", "js"],
 			transform: transformHook("project"),
 		}),
@@ -404,11 +417,11 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 		};
 
 	const results = await Promise.all([
-		loadFilesFromDir(ctx, userToolsDir, PROVIDER_ID, "user", {
+		loadFilesFromDir(userToolsDir, PROVIDER_ID, "user", {
 			extensions: ["ts", "js"],
 			transform: transformTool("user"),
 		}),
-		loadFilesFromDir(ctx, projectToolsDir, PROVIDER_ID, "project", {
+		loadFilesFromDir(projectToolsDir, PROVIDER_ID, "project", {
 			extensions: ["ts", "js"],
 			transform: transformTool("project"),
 		}),
@@ -416,39 +429,6 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 
 	const items = results.flatMap(r => r.items);
 	const warnings = results.flatMap(r => r.warnings || []);
-
-	return { items, warnings };
-}
-
-// =============================================================================
-// Settings (config.toml)
-// =============================================================================
-
-async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
-	const warnings: string[] = [];
-
-	const userConfigPath = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "config.toml");
-	const codexDir = getProjectCodexDir(ctx);
-	const projectConfigPath = path.join(codexDir, "config.toml");
-
-	const [userConfig, projectConfig] = await Promise.all([
-		loadTomlConfig(ctx, userConfigPath),
-		loadTomlConfig(ctx, projectConfigPath),
-	]);
-
-	const items: Settings[] = [];
-	if (userConfig) {
-		items.push({
-			...userConfig,
-			_source: createSourceMeta(PROVIDER_ID, userConfigPath, "user"),
-		} as Settings);
-	}
-	if (projectConfig) {
-		items.push({
-			...projectConfig,
-			_source: createSourceMeta(PROVIDER_ID, projectConfigPath, "project"),
-		} as Settings);
-	}
 
 	return { items, warnings };
 }
@@ -521,10 +501,3 @@ registerProvider<DiscoveredCustomTool>(toolCapability.id, {
 	load: loadTools,
 });
 
-registerProvider<Settings>(settingsCapability.id, {
-	id: PROVIDER_ID,
-	displayName: DISPLAY_NAME,
-	description: "Load settings from config.toml",
-	priority: PRIORITY,
-	load: loadSettings,
-});

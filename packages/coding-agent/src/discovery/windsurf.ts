@@ -114,7 +114,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	// Project-level: .windsurf/rules/*.md
 	const projectRulesDir = getProjectPath(ctx, "windsurf", "rules");
 	if (projectRulesDir) {
-		const result = await loadFilesFromDir<Rule>(ctx, projectRulesDir, PROVIDER_ID, "project", {
+		const result = await loadFilesFromDir<Rule>(projectRulesDir, PROVIDER_ID, "project", {
 			extensions: ["md"],
 			transform: (name, content, path, source) =>
 				buildRuleFromMarkdown(name, content, path, source, { stripNamePattern: /\.md$/ }),

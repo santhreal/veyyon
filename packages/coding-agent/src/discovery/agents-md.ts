@@ -8,15 +8,21 @@
 import * as path from "node:path";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { readFile } from "../capability/fs";
 import type { LoadContext, LoadResult } from "../capability/types";
-import { calculateDepth, createSourceMeta } from "./helpers";
+import { calculateDepth, createSourceMeta, readContextFile } from "./helpers";
 
 const PROVIDER_ID = "agents-md";
 const DISPLAY_NAME = "AGENTS.md";
 
 /**
  * Load standalone AGENTS.md files.
+ *
+ * Scopes: PROJECT only, walking up from cwd to the repo root (or home when the
+ * cwd is not in a repo). Global and profile scope do not apply: those are
+ * veyyon's own two home-level layers, resolved by the native provider from the
+ * global config root and the active profile's agent dir. This provider only
+ * knows the tool-neutral agents.md convention, which is a project-tree
+ * convention and has no home-level or per-profile location of its own.
  */
 async function loadAgentsMd(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
@@ -27,7 +33,8 @@ async function loadAgentsMd(ctx: LoadContext): Promise<LoadResult<ContextFile>> 
 
 	while (true) {
 		const candidate = path.join(current, "AGENTS.md");
-		const content = await readFile(candidate);
+		const { content, warning } = await readContextFile(candidate);
+		if (warning) warnings.push(warning);
 
 		if (content !== null) {
 			const parent = path.dirname(candidate);

@@ -45,10 +45,10 @@ const PRIORITY = 90;
 // =============================================================================
 
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
-	const roots = await listVeyyonExtensionRoots(ctx);
+	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const results = await Promise.all(
 		roots.map(root =>
-			scanSkillsFromDir(ctx, {
+			scanSkillsFromDir({
 				dir: path.join(root.path, "skills"),
 				providerId: PROVIDER_ID,
 				level: root.level,
@@ -67,10 +67,10 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 // =============================================================================
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
-	const roots = await listVeyyonExtensionRoots(ctx);
+	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const results = await Promise.all(
 		roots.map(root =>
-			loadFilesFromDir<SlashCommand>(ctx, path.join(root.path, "commands"), PROVIDER_ID, root.level, {
+			loadFilesFromDir<SlashCommand>(path.join(root.path, "commands"), PROVIDER_ID, root.level, {
 				extensions: ["md"],
 				transform: (name, content, filePath, source) => ({
 					name: name.replace(/\.md$/, ""),
@@ -93,10 +93,10 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 // =============================================================================
 
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
-	const roots = await listVeyyonExtensionRoots(ctx);
+	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const results = await Promise.all(
 		roots.map(root =>
-			loadFilesFromDir<Rule>(ctx, path.join(root.path, "rules"), PROVIDER_ID, root.level, {
+			loadFilesFromDir<Rule>(path.join(root.path, "rules"), PROVIDER_ID, root.level, {
 				extensions: ["md", "mdc"],
 				transform: (name, content, filePath, source) =>
 					buildRuleFromMarkdown(name, content, filePath, source, { stripNamePattern: /\.(md|mdc)$/ }),
@@ -114,10 +114,10 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 // =============================================================================
 
 async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
-	const roots = await listVeyyonExtensionRoots(ctx);
+	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const results = await Promise.all(
 		roots.map(root =>
-			loadFilesFromDir<Prompt>(ctx, path.join(root.path, "prompts"), PROVIDER_ID, root.level, {
+			loadFilesFromDir<Prompt>(path.join(root.path, "prompts"), PROVIDER_ID, root.level, {
 				extensions: ["md"],
 				transform: (name, content, filePath, source) => ({
 					name: name.replace(/\.md$/, ""),
@@ -141,7 +141,7 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 const HOOK_TYPES: ReadonlyArray<"pre" | "post"> = ["pre", "post"];
 
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
-	const roots = await listVeyyonExtensionRoots(ctx);
+	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const tasks: Array<{ root: VeyyonExtensionRoot; hookType: "pre" | "post" }> = [];
 	for (const root of roots) {
 		for (const hookType of HOOK_TYPES) {
@@ -150,7 +150,7 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	}
 	const results = await Promise.all(
 		tasks.map(({ root, hookType }) =>
-			loadFilesFromDir<Hook>(ctx, path.join(root.path, "hooks", hookType), PROVIDER_ID, root.level, {
+			loadFilesFromDir<Hook>(path.join(root.path, "hooks", hookType), PROVIDER_ID, root.level, {
 				transform: (name, _content, filePath, source) => {
 					const baseName = name.includes(".") ? name.slice(0, name.lastIndexOf(".")) : name;
 					const tool = baseName === "*" ? "*" : baseName;
@@ -179,12 +179,12 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 const TOOL_EXTENSIONS = ["json", "md", "ts", "js", "sh", "bash", "py"];
 
 async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
-	const roots = await listVeyyonExtensionRoots(ctx);
+	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const perRoot = await Promise.all(
 		roots.map(async root => {
 			const toolsDir = path.join(root.path, "tools");
 			const [filesResult, entries] = await Promise.all([
-				loadFilesFromDir<DiscoveredCustomTool>(ctx, toolsDir, PROVIDER_ID, root.level, {
+				loadFilesFromDir<DiscoveredCustomTool>(toolsDir, PROVIDER_ID, root.level, {
 					extensions: TOOL_EXTENSIONS,
 					transform: (name, content, filePath, source) => {
 						if (name.endsWith(".json")) {
@@ -271,7 +271,7 @@ interface RawMcpServer {
 }
 
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
-	const roots = await listVeyyonExtensionRoots(ctx);
+	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const items: MCPServer[] = [];
 	const warnings: string[] = [];
 

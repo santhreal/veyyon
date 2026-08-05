@@ -19,7 +19,6 @@ import * as path from "node:path";
 import { parseFrontmatter } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { readFile } from "../capability/fs";
 import { type Instruction, instructionCapability } from "../capability/instruction";
 import { type Prompt, promptCapability } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
@@ -33,6 +32,7 @@ import {
 	getProjectPath,
 	loadFilesFromDir,
 	parseCSV,
+	readContextFile,
 	resolveCopilotHome,
 	scanSkillsFromDir,
 } from "./helpers";
@@ -45,13 +45,27 @@ const PRIORITY = 30;
 // Context Files
 // =============================================================================
 
+/**
+ * Load GitHub Copilot context files.
+ *
+ * Scopes: PROJECT (`<cwd>/.github/copilot-instructions.md`) and a home-level
+ * layer emitted as `level: "user"` (`<copilotHome>/copilot-instructions.md`
+ * plus an `AGENTS.md` from each `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` entry).
+ *
+ * GLOBAL and PROFILE scope do not apply. Copilot has no profile concept, so
+ * there is no per-profile file to read, and veyyon's global layer
+ * (`<globalConfigRoot>/AGENTS.md`) belongs to the native provider. The
+ * home-level entries share veyyon's single home slot with the active profile's
+ * AGENTS.md and lose to it on priority (native 100 against 30).
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
 
 	const copilotInstructionsPath = getProjectPath(ctx, "github", "copilot-instructions.md");
 	if (copilotInstructionsPath) {
-		const content = await readFile(copilotInstructionsPath);
+		const { content, warning } = await readContextFile(copilotInstructionsPath);
+		if (warning) warnings.push(warning);
 		if (content) {
 			const fileDir = path.dirname(copilotInstructionsPath);
 			const depth = calculateDepth(ctx.cwd, fileDir, path.sep);
@@ -68,11 +82,12 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 
 	// User-global instructions (~/.copilot/copilot-instructions.md), applied across all repos.
 	const userInstructionsPath = path.join(resolveCopilotHome(ctx.home), "copilot-instructions.md");
-	const userContent = await readFile(userInstructionsPath);
-	if (userContent) {
+	const user = await readContextFile(userInstructionsPath);
+	if (user.warning) warnings.push(user.warning);
+	if (user.content) {
 		items.push({
 			path: userInstructionsPath,
-			content: userContent,
+			content: user.content,
 			level: "user",
 			_source: createSourceMeta(PROVIDER_ID, userInstructionsPath, "user"),
 		});
@@ -83,11 +98,12 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	// by loadInstructions). copilot-instructions.md is NOT part of the custom-dir spec.
 	for (const dir of copilotCustomInstructionDirs()) {
 		const agentsMdPath = path.join(dir, "AGENTS.md");
-		const agentsMdContent = await readFile(agentsMdPath);
-		if (agentsMdContent) {
+		const { content, warning } = await readContextFile(agentsMdPath);
+		if (warning) warnings.push(warning);
+		if (content) {
 			items.push({
 				path: agentsMdPath,
-				content: agentsMdContent,
+				content,
 				level: "user",
 				_source: createSourceMeta(PROVIDER_ID, agentsMdPath, "user"),
 			});
@@ -107,7 +123,7 @@ async function loadInstructions(ctx: LoadContext): Promise<LoadResult<Instructio
 	const instructionsDir = getProjectPath(ctx, "github", "instructions");
 	if (instructionsDir) {
 		// Path-specific instructions live "within or below" .github/instructions/ → recurse.
-		const result = await loadFilesFromDir<Instruction>(ctx, instructionsDir, PROVIDER_ID, "project", {
+		const result = await loadFilesFromDir<Instruction>(instructionsDir, PROVIDER_ID, "project", {
 			extensions: ["md"],
 			transform: transformInstruction,
 			recursive: true,
@@ -119,7 +135,7 @@ async function loadInstructions(ctx: LoadContext): Promise<LoadResult<Instructio
 	// Each COPILOT_CUSTOM_INSTRUCTIONS_DIRS entry contributes <dir>/.github/instructions/**/*.instructions.md.
 	for (const dir of copilotCustomInstructionDirs()) {
 		const customInstructionsDir = path.join(dir, ".github", "instructions");
-		const result = await loadFilesFromDir<Instruction>(ctx, customInstructionsDir, PROVIDER_ID, "user", {
+		const result = await loadFilesFromDir<Instruction>(customInstructionsDir, PROVIDER_ID, "user", {
 			extensions: ["md"],
 			transform: transformInstruction,
 			recursive: true,
@@ -164,7 +180,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 
 	const load = async (dir: string, level: "user" | "project") => {
 		const applyToWarnings: string[] = [];
-		const result = await loadFilesFromDir<Rule>(ctx, dir, PROVIDER_ID, level, {
+		const result = await loadFilesFromDir<Rule>(dir, PROVIDER_ID, level, {
 			extensions: ["md"],
 			transform: (name, content, filePath, source) =>
 				transformInstructionRule(name, content, filePath, source, applyToWarnings),
@@ -243,7 +259,7 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 	const promptsDir = getProjectPath(ctx, "github", "prompts");
 	if (!promptsDir) return { items: [], warnings: [] };
 
-	return loadFilesFromDir<Prompt>(ctx, promptsDir, PROVIDER_ID, "project", {
+	return loadFilesFromDir<Prompt>(promptsDir, PROVIDER_ID, "project", {
 		extensions: ["md"],
 		transform: transformPrompt,
 	});
@@ -284,7 +300,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	const skillsDir = getProjectPath(ctx, "github", "skills");
 	if (!skillsDir) return { items: [], warnings: [] };
 
-	return scanSkillsFromDir(ctx, {
+	return scanSkillsFromDir({
 		dir: skillsDir,
 		providerId: PROVIDER_ID,
 		level: "project",
