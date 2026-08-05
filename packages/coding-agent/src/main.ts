@@ -87,7 +87,7 @@ import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
-import { resolveSubagentIdleTtlMs } from "./task/subagent-settings";
+import { resolveSubagentAutoCloseBudget, resolveSubagentIdleTtlMs } from "./task/subagent-settings";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import type { LspStartupServerInfo } from "./tools";
 import { decideUpdateNotice, readLastChangelogVersion, writeLastChangelogVersion } from "./utils/changelog";
@@ -1777,6 +1777,10 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				enableLsp: sessionOptions.enableLsp ?? true,
 			}),
 			resolveSubagentIdleTtlMs(settingsInstance),
+			// The operator's current close budgets, so a ref revived from disk rejoins the
+			// close stage instead of staying listed for the rest of the session. Read here
+			// rather than defaulted in the manager because this is where the settings are.
+			resolveSubagentAutoCloseBudget(settingsInstance),
 		);
 		if (parsedArgs.apiKey && !sessionOptions.model && session.model) {
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);

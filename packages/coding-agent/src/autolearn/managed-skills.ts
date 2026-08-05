@@ -2,8 +2,9 @@
  * Managed-skills primitives for the experimental auto-learn feature.
  *
  * Managed skills are auto-generated/enhanced `SKILL.md` files kept in an
- * isolated directory (`~/.veyyon/profiles/default/agent/managed-skills`) separate from
- * user-authored skills (`~/.veyyon/profiles/default/agent/skills`). They are discovered and
+ * isolated `managed-skills/` directory inside the agent dir this call names
+ * (the active profile's by default, `~/.veyyon/profiles/<name>/agent`), separate
+ * from the user-authored `skills/` beside it. They are discovered and
  * surfaced like normal skills, but every write here is confined to
  * `getManagedSkillsDir()` — auto-management can never touch authored skills.
  */
@@ -22,7 +23,7 @@ export const MAX_MANAGED_SKILL_BYTES = 64_000;
 
 const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-/** Resolve the isolated managed-skills directory (`~/.veyyon/profiles/default/agent/managed-skills`). */
+/** Resolve the isolated managed-skills directory (`<agentDir>/managed-skills`; default `~/.veyyon/profiles/<name>/agent/managed-skills`). */
 export function getManagedSkillsDir(agentDir: string = getAgentDir()): string {
 	return path.join(agentDir, "managed-skills");
 }

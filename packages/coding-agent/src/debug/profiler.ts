@@ -120,7 +120,10 @@ export async function startCpuProfile(): Promise<ProfilerSession> {
 		// `setFlagsFromString` (oven-sh/bun#1702) but the CPU profiler itself
 		// works without it, so swallow the error and continue.
 		v8.setFlagsFromString("--allow-natives-syntax");
-	} catch {}
+	} catch {
+		// Documented above: Bun does not implement this, and the profiler works
+		// without it.
+	}
 
 	const { Session } = await import("node:inspector/promises");
 	const session = new Session();

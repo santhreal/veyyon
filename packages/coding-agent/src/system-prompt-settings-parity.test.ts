@@ -1,8 +1,16 @@
 import { describe, expect, it } from "bun:test";
+import { Settings } from "./config/settings";
 import type { Skill } from "./extensibility/skills";
 import { buildSystemPrompt } from "./system-prompt";
 import { RUNTIME_SECTIONS } from "./system-prompt-builder/section-registry";
 import { PROMPT_STATEMENTS, type StatementCondition } from "./system-prompt-builder/statement-registry";
+import { delegationEnabled } from "./task/subagent-settings";
+import { AstGrepTool } from "./tools/ast-grep";
+import { TOOL } from "./tools/builtin-names";
+import { GlobTool } from "./tools/glob";
+import { GrepTool } from "./tools/grep";
+import type { ToolSession } from "./tools/index";
+import { type BuiltinToolPermissionInputs, isBuiltinToolAllowed } from "./tools/loading/policy";
 import type { ActiveRepoContext } from "./utils/active-repo-context";
 
 /**
@@ -106,6 +114,48 @@ function demoRepoContext(): ActiveRepoContext {
 /** Minimal skill shaped for the `<skills>` block; template reads name/description/hide. */
 function demoSkills(): Skill[] {
 	return [{ name: "demo-skill", description: "a demo skill", hide: false }] as unknown as Skill[];
+}
+
+/**
+ * Any word a tool description would use to state delegation policy. Not global,
+ * so `test` does not carry a lastIndex between cells.
+ */
+const DELEGATION_MENTION = /delegat|subagent|task tool|`task`/i;
+
+/**
+ * The three search tools' live descriptions under one subagent configuration.
+ *
+ * A tool description describes the tool: its inputs, its results, its usage
+ * hints. Delegation is policy, it belongs to the prompt's Delegation section,
+ * and these three carried it anyway (`grep` and `ast_grep` behind a
+ * master-switch-only `canDelegate` gate, `glob` behind no gate at all), so they
+ * ordered a handoff to a `task` subagent in states where the section itself was
+ * correctly suppressed. The settings are varied here to prove the descriptions
+ * no longer read the delegation settings at all.
+ */
+function searchToolDescriptions(subagentsEnabled: boolean, delegation: string): string[] {
+	const session = {
+		cwd: import.meta.dir,
+		settings: Settings.isolated({ "subagent.enabled": subagentsEnabled, "subagent.delegation": delegation }),
+	} as unknown as ToolSession;
+	return [new GrepTool(session).description, new GlobTool(session).description, new AstGrepTool(session).description];
+}
+
+/**
+ * Whether the `task` tool is offered, through the real permission table.
+ *
+ * Presence answers to `subagent.enabled` alone: delegation STRENGTH must never
+ * remove the tool, or the operator loses the ability to ask for delegation
+ * outright at the lower levels. Only the `task` branch of the table is
+ * exercised, so the remaining inputs are irrelevant and the object is cast
+ * rather than filled in.
+ */
+function taskToolOffered(subagentsEnabled: boolean, delegation: string): boolean {
+	const settings = Settings.isolated({ "subagent.enabled": subagentsEnabled, "subagent.delegation": delegation });
+	return isBuiltinToolAllowed(TOOL.task, {
+		delegationEnabled: delegationEnabled(settings),
+		canSpawnAtDepth: true,
+	} as BuiltinToolPermissionInputs);
 }
 
 /**
@@ -328,12 +378,35 @@ describe("system prompt settings parity: delegation (the regression this harness
 		).not.toContain("# Delegation");
 	});
 
+	/**
+	 * The three `subagent.delegation` levels as the builder sees them (`eagerTasks`
+	 * is `preferred`-or-stronger, `eagerTasksAlways` is `required`), each with the
+	 * one sentence it must produce. Shared by both tables below so a level cannot
+	 * gain a sentence in one table and be forgotten in the other, which is how
+	 * `allowed` came to render the Delegation heading, its gates and its
+	 * subagent-value bullets with nothing saying when spawning is appropriate.
+	 */
+	const STRENGTHS = [
+		{
+			level: "allowed",
+			eagerTasks: false,
+			eagerTasksAlways: false,
+			marker: "Delegation is available, not asked for",
+		},
+		{ level: "preferred", eagerTasks: true, eagerTasksAlways: false, marker: "Delegation is preferred" },
+		{ level: "required", eagerTasks: true, eagerTasksAlways: true, marker: "Delegation is the default here" },
+	] as const;
+
 	it(`${asserted("eagerTasks")} toggles the delegation-mode paragraph`, async () => {
 		const on = await renderDelegating({ eagerTasks: true, eagerTasksAlways: false });
 		const off = await renderDelegating({ eagerTasks: false });
 		expect(on).toContain("Delegation is preferred");
+		expect(on).not.toContain("Delegation is available, not asked for");
 		expect(off).not.toContain("Delegation is preferred");
 		expect(off).not.toContain("Delegation is the default");
+		// `allowed` is a strength, not the absence of one: the ability stays and an
+		// explicit request is what triggers it.
+		expect(off).toContain("Delegation is available, not asked for");
 	});
 
 	it(`${asserted("eagerTasksAlways")} escalates preferred delegation to mandatory`, async () => {
@@ -371,11 +444,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 			{ names: ["designer", "reviewer"], routing: "Specialists only" },
 			{ names: ["task", "designer", "reviewer"], routing: "Route by exact role" },
 		];
-		const strengths = [
-			{ eagerTasks: false, eagerTasksAlways: false, marker: null },
-			{ eagerTasks: true, eagerTasksAlways: false, marker: "Delegation is preferred" },
-			{ eagerTasks: true, eagerTasksAlways: true, marker: "Delegation is the default here" },
-		];
+		const strengths = STRENGTHS;
 
 		for (const roles of roleSets) {
 			for (const strength of strengths) {
@@ -388,14 +457,80 @@ describe("system prompt settings parity: delegation (the regression this harness
 				expect(rendered).toContain(`Enabled roles (\`${roles.names.join(", ")}\`)`);
 				expect(rendered).not.toContain("Executing agents");
 				expect(rendered).not.toContain("Investigative agents");
-				if (strength.marker === null) {
-					expect(rendered).not.toContain("Delegation is preferred");
-					expect(rendered).not.toContain("Delegation is the default here");
-				} else {
-					expect(rendered).toContain(strength.marker);
+				for (const other of STRENGTHS) {
+					if (other.level === strength.level) {
+						expect(rendered).toContain(other.marker);
+					} else {
+						expect(rendered).not.toContain(other.marker);
+					}
 				}
 			}
 		}
+	});
+
+	/**
+	 * THE NINE CELLS: {subagents off, on with zero enabled agent types, on with
+	 * one} x {allowed, preferred, required}, rendered as one table so every cell is
+	 * visible at once and a diff names the cell that moved.
+	 *
+	 * Two invariants, and both were violated. No cell may order delegation while
+	 * nothing can be spawned: the search tools carried a "hand it to a `task`
+	 * subagent" line gated only on the master switch, so with every agent type
+	 * disabled the Delegation section was correctly absent and the tool
+	 * descriptions still ordered a handoff to nothing. And no cell may render the
+	 * section without a strength sentence, which is what `allowed` did. Tool
+	 * descriptions now describe the tool only: delegation policy lives in the
+	 * Delegation section and nowhere else, in all nine cells.
+	 */
+	it("keeps every subagent-enablement x delegation-strength cell self-consistent", async () => {
+		const enablement = [
+			{
+				label: "subagents off",
+				toolNames: DELEGATION_TOOLS.filter(name => name !== "task"),
+				subagentNames: [] as string[],
+				subagentsEnabled: false,
+			},
+			{ label: "on, no agent type enabled", toolNames: DELEGATION_TOOLS, subagentNames: [], subagentsEnabled: true },
+			{
+				label: "on, one agent type enabled",
+				toolNames: DELEGATION_TOOLS,
+				subagentNames: ["task"],
+				subagentsEnabled: true,
+			},
+		];
+
+		const rows: string[] = [];
+		for (const state of enablement) {
+			for (const strength of STRENGTHS) {
+				const rendered = await renderBlock0({
+					toolNames: state.toolNames,
+					subagentNames: state.subagentNames,
+					eagerTasks: strength.eagerTasks,
+					eagerTasksAlways: strength.eagerTasksAlways,
+				});
+				const sentences = STRENGTHS.filter(candidate => rendered.includes(candidate.marker)).map(
+					candidate => candidate.level,
+				);
+				const mentions = searchToolDescriptions(state.subagentsEnabled, strength.level).filter(description =>
+					DELEGATION_MENTION.test(description),
+				);
+				rows.push(
+					`${state.label} @ ${strength.level}: section=${rendered.includes("# Delegation") ? "yes" : "no"} strength=${sentences.join("+") || "none"} taskTool=${taskToolOffered(state.subagentsEnabled, strength.level) ? "offered" : "absent"} toolDescriptionsNamingDelegation=${mentions.length}`,
+				);
+			}
+		}
+
+		expect(rows).toEqual([
+			"subagents off @ allowed: section=no strength=none taskTool=absent toolDescriptionsNamingDelegation=0",
+			"subagents off @ preferred: section=no strength=none taskTool=absent toolDescriptionsNamingDelegation=0",
+			"subagents off @ required: section=no strength=none taskTool=absent toolDescriptionsNamingDelegation=0",
+			"on, no agent type enabled @ allowed: section=no strength=none taskTool=offered toolDescriptionsNamingDelegation=0",
+			"on, no agent type enabled @ preferred: section=no strength=none taskTool=offered toolDescriptionsNamingDelegation=0",
+			"on, no agent type enabled @ required: section=no strength=none taskTool=offered toolDescriptionsNamingDelegation=0",
+			"on, one agent type enabled @ allowed: section=yes strength=allowed taskTool=offered toolDescriptionsNamingDelegation=0",
+			"on, one agent type enabled @ preferred: section=yes strength=preferred taskTool=offered toolDescriptionsNamingDelegation=0",
+			"on, one agent type enabled @ required: section=yes strength=required taskTool=offered toolDescriptionsNamingDelegation=0",
+		]);
 	});
 
 	it(`${asserted("taskBatch")} selects the batched vs parallel-calls call shape`, async () => {

@@ -984,16 +984,21 @@
 
         // Fallback for HTTP or when Clipboard API is unavailable
         if (!success) {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
           try {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
             textarea.select();
             success = document.execCommand('copy');
-            document.body.removeChild(textarea);
           } catch {
+            // `execCommand` is the last resort; a browser that refuses it leaves
+            // `success` false, which is what the button feedback below reads.
+          } finally {
+            // In a `finally` because a throw above used to leave the offscreen
+            // textarea attached to the document, one per failed copy.
+            textarea.remove();
           }
         }
 

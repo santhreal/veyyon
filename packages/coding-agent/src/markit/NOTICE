@@ -11,6 +11,11 @@ ipynb, iwork, zip, xml) were dropped. Legacy binary `.doc`/`.ppt`/`.xls` and
 a conversion error, exactly as upstream markit did. Logic is ported faithfully
 so conversion output matches the upstream package.
 
+The PDF grid and rendering modules also identify `@oharato/pdf2md-ts` v0.1.4
+as a source. That published package does not declare or include a license.
+This notice preserves the known provenance; it does not assert a license grant
+for that package.
+
 MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

@@ -153,10 +153,15 @@ export class StreamingAudioPlayer {
 			// pipe here is expected — swallow the rejection (it otherwise surfaces
 			// as an unhandled EPIPE right as speech ends).
 			void Promise.resolve(this.#sink?.end()).catch(() => {});
-		} catch {}
+		} catch {
+			// Teardown on a sink that is already gone; the SIGKILL below is the
+			// guarantee, not this.
+		}
 		try {
 			this.#proc?.kill("SIGKILL");
-		} catch {}
+		} catch {
+			// Killing a process that already exited is the expected race here.
+		}
 	}
 
 	/**
@@ -241,11 +246,17 @@ export class StreamingAudioPlayer {
 			if (!this.#stopped && this.#mode === "stream") {
 				try {
 					await this.#sink?.end();
-				} catch {}
+				} catch {
+					// A broken pipe on flush means the backend is already gone, which the
+					// exit await below observes properly.
+				}
 				if (this.#proc) {
 					try {
 						await this.#proc.exited;
-					} catch {}
+					} catch {
+						// Waiting on an already-reaped process; there is nothing left to do
+						// with the outcome at this point in teardown.
+					}
 				}
 			}
 		} catch (error) {
