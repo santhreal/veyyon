@@ -1,11 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { dataDir as configuredDataDir, DEFAULT_DB_FILENAME } from "../config";
 import { closeQuietly, openDatabase } from "../db";
-
-export const DEFAULT_DATA_DIR = join(homedir(), ".hermes", "mnemopi", "data");
-export const BANKS_DIR = join(DEFAULT_DATA_DIR, "banks");
 
 export class ValueError extends Error {
 	override name = "ValueError";
@@ -23,10 +19,19 @@ export class BankManager {
 	readonly dataDir: string;
 	readonly banksDir: string;
 
+	/**
+	 * Resolves the bank paths and creates NOTHING.
+	 *
+	 * This used to `mkdirSync(this.banksDir)`, which made every read a write. `bankDbPath()`,
+	 * `bankExists()`, `listBanks()` and `getBankStats()` each construct a manager to answer a
+	 * question, and `resolveDbPath()` in `core/memory.ts` constructs one just to spell a path,
+	 * so merely asking where a bank lives created `~/.hermes/mnemopi/data/banks` in the real
+	 * home. `createBank()` is the one operator action that needs the directory, and its own
+	 * recursive `mkdirSync` already makes it.
+	 */
 	constructor(dataDir?: string) {
 		this.dataDir = dataDir ?? configuredDataDir();
 		this.banksDir = join(this.dataDir, "banks");
-		mkdirSync(this.banksDir, { recursive: true });
 	}
 
 	createBank(name: string): string {
