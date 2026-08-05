@@ -8392,17 +8392,44 @@ export class AgentSession {
 	#currentPromptModelKey(): string | undefined {
 		const model = this.model ? formatModelString(this.model) : undefined;
 		if (!model || this.settings.get("includeModelInPrompt")) return model;
-		return usesCodexTaskPrompt(model) ? "task-policy:gpt-5.6" : "task-policy:default";
+		const taskPolicy = usesCodexTaskPrompt(model) ? "task-policy:gpt-5.6" : "task-policy:default";
+		// Context-file delivery is model policy too: cursor-agent models inline no context
+		// files (operator layers travel as requestContext rules, repository files nowhere),
+		// so switching to or from one must rebuild the prompt even when both models share
+		// a task-policy cohort and this key would otherwise not change.
+		return usesCursorRuleDelivery(this.model) ? `${taskPolicy}:cursor-rules` : taskPolicy;
 	}
 
+	/**
+	 * Rebuild the prompt for a model switch, when the switch actually moved a
+	 * prompt input.
+	 *
+	 * EVERY caller of this method has just switched models, so every reason it
+	 * records names that switch. It used to record a bare `edit-mode-change`
+	 * whenever the edit variant differed, which describes a trigger no session can
+	 * produce: nothing re-resolves the edit mode except a model switch, because
+	 * `edit.mode` is not a prompt gate (see `system-prompt-builder/gate-registry`)
+	 * and the only reads of `#resolveActiveEditMode` for this purpose are the four
+	 * `setModel`/`cycleModel` paths. So a reader triaging `cacheRead: 0` turns off
+	 * the invalidation record chased a phantom settings flip, when the entry
+	 * actually describes the ONE invalidation that is unavoidable: a different
+	 * model is a different provider cache namespace, so the prefix was already
+	 * dead and the rebuild cost nothing extra.
+	 *
+	 * Which inputs moved is still recorded, because that is the actionable half:
+	 * `edit-mode` means the two models share a prompt cohort and only the edit
+	 * variant forced the rebuild.
+	 */
 	async #syncAfterModelChange(previousEditMode: EditMode): Promise<void> {
 		const currentEditMode = this.#resolveActiveEditMode();
 		const editModeChanged = previousEditMode !== currentEditMode && this.getActiveToolNames().includes(TOOL.edit);
 		// The system prompt selects model-specific policy even when it does not display the model id.
 		const modelChanged = this.#currentPromptModelKey() !== this.#promptModelKey;
-		if (editModeChanged || modelChanged) {
-			await this.refreshBaseSystemPrompt(editModeChanged ? "edit-mode-change" : "model-change");
-		}
+		if (!editModeChanged && !modelChanged) return;
+		const moved = [modelChanged ? "prompt-model-key" : undefined, editModeChanged ? "edit-mode" : undefined]
+			.filter(part => part !== undefined)
+			.join("+");
+		await this.refreshBaseSystemPrompt(`model-switch:${moved}`);
 	}
 
 	isMCPDiscoveryEnabled(): boolean {

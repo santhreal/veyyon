@@ -263,8 +263,13 @@ async function installPrimaryState(
 
 	// Kick off mental-model bootstrap. Resolves asynchronously; the first
 	// turn races and is covered in `beforeAgentStartPrompt` via
-	// `mentalModelsLoadPromise`. Subsequent turns see the populated cache
-	// because `runMentalModelLoad` calls `refreshBaseSystemPrompt`.
+	// `mentalModelsLoadPromise`. Subsequent turns see the populated snippet
+	// because `runMentalModelLoad` ends in `publishVolatileMemoryContext`, which
+	// delivers the block as a MESSAGE at the tail of the context. It must stay
+	// that way: the snippet arrives mid-session and reloads on a TTL, so putting
+	// it in the system prompt would re-prefill the whole conversation every time
+	// the bank changed. This comment named `refreshBaseSystemPrompt`, which is
+	// exactly the call that would do that.
 	if (config.mentalModelsEnabled) {
 		state.mentalModelsLoadPromise = state.runMentalModelLoad(scope).catch(err => {
 			logger.debug("Hindsight: mental-model bootstrap failed", { bankId: state.bankId, error: String(err) });
