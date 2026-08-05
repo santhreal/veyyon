@@ -1,9 +1,9 @@
 /**
  * Reusable searchable model selector with auth status on each row.
  *
- * Used by settings (roles / subagent.model / compaction.model) and any other
- * surface that needs "pick a model from the catalog" without reimplementing
- * search, auth badges, or clear/unset.
+ * Used by settings roles, subagent profiles, compaction, and any other surface
+ * that needs "pick a model from the catalog" without reimplementing search,
+ * auth badges, or clear/unset.
  */
 import type { Model } from "@veyyon/ai";
 import { type Component, Container, matchesKey, Spacer, Text, truncateToWidth } from "@veyyon/tui";

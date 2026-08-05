@@ -3,20 +3,14 @@
  *
  * Handles /ssh subcommands for managing SSH host configurations.
  */
-import { CONFIG_DIR_NAME, errorMessage, getProjectDir, getSSHConfigPath, logger } from "@veyyon/utils";
+import { errorMessage, getProjectDir, getSSHConfigPath, logger } from "@veyyon/utils";
 import { type SSHHost, sshCapability } from "../../capability/ssh";
 import { loadCapability } from "../../discovery";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../../ssh/config-writer";
 import { parseCommandArgs } from "../shared";
 import { theme } from "../theme/theme";
 import type { InteractiveModeContext } from "../types";
-import {
-	groupBySource,
-	parseRemoveArgs,
-	readScopeFlag,
-	type ScopeValue,
-	showCommandMessage,
-} from "./command-controller-shared";
+import { groupBySource, parseRemoveArgs, showCommandMessage } from "./command-controller-shared";
 
 /**
  * The slice of the interactive context this controller uses: 2 members of the
@@ -69,9 +63,9 @@ export class SSHCommandController {
 			"Manage SSH host configurations for remote command execution.",
 			"",
 			theme.fg("accent", "Commands:"),
-			"  /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--desc <description>] [--compat] [--scope project|user]",
+			"  /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--desc <description>] [--compat]",
 			"  /ssh list             List all configured SSH hosts",
-			"  /ssh remove <name> [--scope project|user]    Remove an SSH host (default: project)",
+			"  /ssh remove <name>    Remove an SSH host",
 			"  /ssh help             Show this help message",
 			"",
 		].join("\n");
@@ -87,7 +81,7 @@ export class SSHCommandController {
 		const rest = prefixMatch?.[1]?.trim() ?? "";
 		if (!rest) {
 			this.ctx.showError(
-				"Usage: /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--desc <description>] [--compat] [--scope project|user]",
+				"Usage: /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--desc <description>] [--compat]",
 			);
 			return;
 		}
@@ -95,13 +89,12 @@ export class SSHCommandController {
 		const tokens = parseCommandArgs(rest);
 		if (tokens.length === 0) {
 			this.ctx.showError(
-				"Usage: /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--desc <description>] [--compat] [--scope project|user]",
+				"Usage: /ssh add <name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--desc <description>] [--compat]",
 			);
 			return;
 		}
 
 		let name: string | undefined;
-		let scope: ScopeValue = "project";
 		let host: string | undefined;
 		let username: string | undefined;
 		let port: number | undefined;
@@ -177,16 +170,6 @@ export class SSHCommandController {
 				i += 1;
 				continue;
 			}
-			if (argToken === "--scope") {
-				const r = readScopeFlag(tokens[i + 1]);
-				if (!r.ok) {
-					this.ctx.showError(r.error);
-					return;
-				}
-				scope = r.scope;
-				i += 2;
-				continue;
-			}
 			this.ctx.showError(`Unknown option: ${argToken}`);
 			return;
 		}
@@ -202,8 +185,7 @@ export class SSHCommandController {
 		}
 
 		try {
-			const cwd = getProjectDir();
-			const filePath = getSSHConfigPath(scope, cwd);
+			const filePath = getSSHConfigPath();
 
 			const hostConfig: SSHHostConfig = { host };
 			if (username) hostConfig.username = username;
@@ -215,10 +197,9 @@ export class SSHCommandController {
 			await addSSHHost(filePath, name, hostConfig);
 			await this.ctx.session.refreshSshTool({ activateIfAvailable: true });
 
-			const scopeLabel = scope === "user" ? "user" : "project";
 			const lines = [
 				"",
-				theme.fg("success", `+ Added SSH host "${name}" to ${scopeLabel} config`),
+				theme.fg("success", `+ Added SSH host "${name}"`),
 				"",
 				`  Host: ${host}`,
 			];
@@ -250,21 +231,11 @@ export class SSHCommandController {
 	async #handleList(): Promise<void> {
 		try {
 			const cwd = getProjectDir();
-
-			// Load from both user and project configs
-			const userPath = getSSHConfigPath("user", cwd);
-			const projectPath = getSSHConfigPath("project", cwd);
-
-			const [userConfig, projectConfig] = await Promise.all([
-				readSSHConfigFile(userPath),
-				readSSHConfigFile(projectPath),
-			]);
-
+			const userConfig = await readSSHConfigFile(getSSHConfigPath());
 			const userHosts = Object.keys(userConfig.hosts ?? {});
-			const projectHosts = Object.keys(projectConfig.hosts ?? {});
 
 			// Load discovered hosts via capability system
-			const configHostNames = new Set([...userHosts, ...projectHosts]);
+			const configHostNames = new Set(userHosts);
 			let discoveredHosts: SSHHost[] = [];
 			try {
 				const result = await loadCapability<SSHHost>(sshCapability.id, { cwd });
@@ -277,7 +248,7 @@ export class SSHCommandController {
 				});
 			}
 
-			if (userHosts.length === 0 && projectHosts.length === 0 && discoveredHosts.length === 0) {
+			if (userHosts.length === 0 && discoveredHosts.length === 0) {
 				this.#showMessage(
 					[
 						"",
@@ -292,9 +263,9 @@ export class SSHCommandController {
 
 			const lines: string[] = ["", theme.bold("Configured SSH Hosts"), ""];
 
-			// Show user-level hosts
+			// Hosts configured in the active profile
 			if (userHosts.length > 0) {
-				lines.push(theme.fg("accent", "User level") + theme.fg("muted", ` (~/.veyyon/agent/ssh.json):`));
+				lines.push(theme.fg("accent", "Profile level") + theme.fg("muted", " (ssh.json):"));
 				for (const name of userHosts) {
 					const config = userConfig.hosts![name];
 					const details = this.#formatHostDetails(config);
@@ -303,18 +274,7 @@ export class SSHCommandController {
 				lines.push("");
 			}
 
-			// Show project-level hosts
-			if (projectHosts.length > 0) {
-				lines.push(theme.fg("accent", "Project level") + theme.fg("muted", ` (${CONFIG_DIR_NAME}/ssh.json):`));
-				for (const name of projectHosts) {
-					const config = projectConfig.hosts![name];
-					const details = this.#formatHostDetails(config);
-					lines.push(`  ${theme.fg("accent", name)} ${details}`);
-				}
-				lines.push("");
-			}
-
-			// Show discovered hosts (from ssh.json, .ssh.json in project root, etc.)
+			// Read-only hosts contributed by a discovery provider
 			if (discoveredHosts.length > 0) {
 				for (const { providerName, shortPath, items: hosts } of groupBySource(discoveredHosts, h => h._source)) {
 					lines.push(
@@ -362,27 +322,24 @@ export class SSHCommandController {
 			this.ctx.showError(parsed.error);
 			return;
 		}
-		const { name, scope } = parsed.value;
+		const { name } = parsed.value;
 		if (!name) {
-			this.ctx.showError("Host name required. Usage: /ssh remove <name> [--scope project|user]");
+			this.ctx.showError("Host name required. Usage: /ssh remove <name>");
 			return;
 		}
 
 		try {
-			const cwd = getProjectDir();
-			const filePath = getSSHConfigPath(scope, cwd);
+			const filePath = getSSHConfigPath();
 			const config = await readSSHConfigFile(filePath);
 			if (!config.hosts?.[name]) {
-				this.ctx.showError(`Host "${name}" not found in ${scope} config.`);
+				this.ctx.showError(`Host "${name}" not found.`);
 				return;
 			}
 
 			await removeSSHHost(filePath, name);
 			await this.ctx.session.refreshSshTool();
 
-			this.#showMessage(
-				["", theme.fg("success", `- Removed SSH host "${name}" from ${scope} config`), ""].join("\n"),
-			);
+			this.#showMessage(["", theme.fg("success", `- Removed SSH host "${name}"`), ""].join("\n"));
 		} catch (error) {
 			this.ctx.showError(`Failed to remove host: ${errorMessage(error)}`);
 		}

@@ -478,6 +478,15 @@ export interface ModalShellInput {
 	showClose?: boolean;
 }
 
+/**
+ * Columns between a card's left edge and its body text: the border and one space of padding.
+ *
+ * Owned by the shell because the shell is what draws them. Every card that hit-tests its own body
+ * needs the same number, and each one that spelled it `cardColStart + 2` locally was a separate
+ * place to be wrong the next time the border changes.
+ */
+export const CARD_BODY_COL_INSET = 2;
+
 export interface ModalShellGeometry {
 	leftPad: number;
 	topPad: number;

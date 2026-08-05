@@ -82,7 +82,10 @@ function normalizeConditionRegex(condition: string): { condition: string } | { e
 			try {
 				new RegExp(repaired);
 				return { condition: repaired };
-			} catch {}
+			} catch {
+				// The repair did not help; the original error is what gets reported
+				// to the operator below, which is the more useful message.
+			}
 		}
 		const message = errorMessage(originalError);
 		return { error: `Invalid condition regex ${JSON.stringify(condition)}: ${message}` };

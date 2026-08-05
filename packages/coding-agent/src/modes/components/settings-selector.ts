@@ -25,7 +25,8 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clamp, errorMessage, VERSION } from "@veyyon/utils";
+import { clamp, collapseWhitespace, errorMessage, VERSION } from "@veyyon/utils";
+import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../capability/rule";
 import { ANY_MODEL_EFFORT_KEY, withLegacyDefaultEffort } from "../../config/effort-resolver";
 import type { ModelRegistry } from "../../config/model-registry";
 import {
@@ -58,6 +59,7 @@ import type {
 	SubmenuOption,
 } from "../../config/settings-schema";
 import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
+import { loadCapability } from "../../discovery";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
@@ -850,6 +852,161 @@ class ModelRolesSubmenu extends Container {
 		this.onChange();
 		this.#showRoleList();
 		this.requestRender?.();
+	}
+
+	handleInput(data: string): void {
+		if (this.#selectList) {
+			this.#selectList.handleInput(data);
+			return;
+		}
+		this.children[0]?.handleInput?.(data);
+	}
+}
+
+/**
+ * The rule list: every rule this project loads, each on or off.
+ *
+ * Backed by `ttsr.disabledRules`, which stores exceptions only. The list itself is
+ * DISCOVERED rather than read from that setting, for the same reason the agents table is
+ * discovered: a setting that holds only what you turned off describes an empty list on a
+ * stock install, so a settings-driven list would show nothing at all while thirty rules
+ * were quietly running. Discovery is also the only way to learn the names, and a name is
+ * what the old comma-separated text box demanded before it would let you disable
+ * anything.
+ *
+ * Enter toggles in place. There is nothing to drill into: a rule is on or it is not.
+ */
+class RulesSubmenu extends Container {
+	#selectList: SelectList | undefined;
+	#rules: Rule[] = [];
+	#loadError: string | undefined;
+	#loaded = false;
+	/** Kept by NAME, not index: toggling re-sorts nothing but re-creates the list. */
+	#focused: string | undefined;
+
+	constructor(
+		private readonly cwd: string,
+		private readonly onChange: () => void,
+		private readonly onCancel: () => void,
+		private readonly requestRender?: () => void,
+	) {
+		super();
+		this.#show();
+		void this.#load();
+	}
+
+	async #load(): Promise<void> {
+		try {
+			const result = await loadCapability<Rule>(ruleCapability.id, { cwd: this.cwd });
+			// First wins by name: providers arrive in priority order and a project rule
+			// overriding a bundled one of the same name is ONE rule, shown once, whose
+			// toggle governs whichever copy actually loads.
+			const byName = new Map<string, Rule>();
+			for (const rule of result.items) if (!byName.has(rule.name)) byName.set(rule.name, rule);
+			this.#rules = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+		} catch (error) {
+			// Loud: a partial list reads as "these are all the rules there are", and the
+			// reader would turn one off believing the rest do not exist.
+			this.#loadError = errorMessage(error);
+		}
+		this.#loaded = true;
+		this.#show();
+		this.requestRender?.();
+	}
+
+	/** Names currently turned off, trimmed the same way `bucketRules` trims them. */
+	#disabled(): Set<string> {
+		const stored = settings.get("ttsr.disabledRules");
+		const names = Array.isArray(stored) ? stored : [];
+		return new Set(names.map(name => String(name).trim()).filter(name => name.length > 0));
+	}
+
+	#toggle(name: string): void {
+		const disabled = this.#disabled();
+		if (disabled.has(name)) disabled.delete(name);
+		else disabled.add(name);
+		settings.set("ttsr.disabledRules", [...disabled].sort());
+		this.onChange();
+		this.#focused = name;
+		this.#show();
+		this.requestRender?.();
+	}
+
+	/**
+	 * How this rule reaches the model, which decides what turning it off costs.
+	 *
+	 * The three buckets are `bucketRules`', in its precedence order, so this cannot
+	 * describe a rule differently from the funnel that routes it.
+	 */
+	#kind(rule: Rule): string {
+		if ((rule.condition?.length ?? 0) > 0 || (rule.astCondition?.length ?? 0) > 0) return "on match";
+		if (rule.alwaysApply === true) return "always";
+		if (rule.description) return "on request";
+		return "inert";
+	}
+
+	#show(): void {
+		this.clear();
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Rules")), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(theme.fg("muted", "Every rule this project loads. Enter turns one off, or back on."), 0, 0),
+		);
+		this.addChild(new Spacer(1));
+		this.#selectList = undefined;
+
+		if (this.#loadError) {
+			this.addChild(new Text(theme.fg("error", `  Could not read the rule sources: ${this.#loadError}`), 0, 0));
+			this.addChild(new Spacer(1));
+			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			return;
+		}
+		if (!this.#loaded) {
+			this.addChild(new Text(theme.fg("dim", "  Reading rules…"), 0, 0));
+			return;
+		}
+
+		// Two settings above this one can make every row here inert, and neither is
+		// visible while you are looking at this list. Saying so beats a screen of rows
+		// marked "on" that do nothing.
+		if (settings.get("ttsr.enabled") !== true) {
+			this.addChild(new Text(theme.fg("warning", "  Rule matching is off (Rules (TTSR) → Enabled)."), 0, 0));
+			this.addChild(new Spacer(1));
+		}
+		const builtinOff = settings.get("ttsr.builtinRules") !== true;
+		if (builtinOff) {
+			this.addChild(new Text(theme.fg("warning", "  Built-in rules are off, so every bundled row below is."), 0, 0));
+			this.addChild(new Spacer(1));
+		}
+
+		const disabled = this.#disabled();
+		const items: SelectItem[] = this.#rules.map(rule => {
+			const builtin = rule._source?.provider === BUILTIN_DEFAULTS_PROVIDER_ID;
+			const off = disabled.has(rule.name) || (builtin && builtinOff);
+			const state = off ? theme.fg("dim", "off") : theme.fg("success", "on");
+			const origin = builtin ? "built-in" : (rule._source?.provider ?? "project");
+			const detail = rule.description ? ` · ${collapseWhitespace(rule.description)}` : "";
+			return {
+				value: rule.name,
+				label: rule.name,
+				description: `${state} · ${this.#kind(rule)} · ${origin}${detail}`,
+			};
+		});
+		if (items.length === 0) {
+			this.addChild(new Text(theme.fg("dim", "  No rules found."), 0, 0));
+			this.addChild(new Spacer(1));
+			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			return;
+		}
+
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
+		const focusedIndex = this.#focused ? items.findIndex(item => item.value === this.#focused) : -1;
+		if (focusedIndex >= 0) this.#selectList.setSelectedIndex(focusedIndex);
+		this.#selectList.onSelect = item => this.#toggle(item.value);
+		this.#selectList.onCancel = this.onCancel;
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to toggle · type to filter · Esc to go back"), 0, 0));
 	}
 
 	handleInput(data: string): void {
@@ -1764,7 +1921,6 @@ const MIN_SETTINGS_CONTENT_WIDTH = 32;
 const SETTING_SOURCE_LABELS: Record<SettingSource, string> = {
 	default: "default",
 	profile: "profile",
-	project: "project config",
 	"config-file": "--config file",
 	runtime: "runtime override",
 	global: "global config",
@@ -2532,7 +2688,7 @@ export class SettingsSelectorComponent implements Component {
 		if (def.type === "defaultModel") return searchable;
 
 		const source = settings.getSource(def.path);
-		if (source !== "project" && source !== "config-file" && source !== "runtime") return searchable;
+		if (source !== "config-file" && source !== "runtime") return searchable;
 		const sourceLabel = SETTING_SOURCE_LABELS[source];
 		// The composite is built from the LABELLED value, and the labeller is dropped with
 		// it: once the value is wrapped in "<source> · ...", no option can match it, so a
@@ -2666,11 +2822,21 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 
+			case "rules":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: this.#formatRulesValue(),
+					submenu: (_cv, done) => this.#createRulesInput(done),
+					changed,
+				};
+
 			case "defaultModel": {
 				const active = settings.getModelRole(DEFAULT_MODEL_SLOT);
 				const source = settings.getModelRoleSource(DEFAULT_MODEL_SLOT);
 				const overridden =
-					(source === "project" || source === "config-file" || source === "runtime") &&
+					(source === "config-file" || source === "runtime") &&
 					typeof active === "string" &&
 					active.trim() !== currentValue;
 				if (overridden) this.#expandedIds.add(def.path);
@@ -3054,6 +3220,32 @@ export class SettingsSelectorComponent implements Component {
 				this.callbacks.onChange("subagent.agents", settings.get("subagent.agents"));
 			},
 			() => done(this.#formatSubagentAgentsValue()),
+			this.context.requestRender,
+		);
+	}
+
+	/**
+	 * Row summary: how many rules are turned off, since that is the whole of what this
+	 * setting stores. It deliberately does NOT say how many rules exist — discovery is
+	 * async, and a synchronous "29 rules" printed on the settings row would be a guess.
+	 */
+	#formatRulesValue(): string {
+		const stored = settings.get("ttsr.disabledRules");
+		const off = Array.isArray(stored) ? stored.filter(name => String(name).trim().length > 0).length : 0;
+		if (settings.get("ttsr.builtinRules") !== true) {
+			return off === 0 ? "built-ins off" : `built-ins off, ${off} more off`;
+		}
+		if (off === 0) return "all on";
+		return `${off} off`;
+	}
+
+	#createRulesInput(done: (value?: string) => void): Container {
+		return new RulesSubmenu(
+			this.context.cwd,
+			() => {
+				this.callbacks.onChange("ttsr.disabledRules", settings.get("ttsr.disabledRules"));
+			},
+			() => done(this.#formatRulesValue()),
 			this.context.requestRender,
 		);
 	}

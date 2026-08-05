@@ -158,7 +158,6 @@ import type { HookSelectorComponent, HookSelectorSlider } from "./components/hoo
 import { modalRevealEnabled } from "./components/modal-shell";
 import { PlanReviewOverlay } from "./components/plan-review-overlay";
 import { StatusLineComponent } from "./components/status-line";
-import { goalProgressBar } from "./components/status-line/segments";
 import { renderSunsetField } from "./components/sun";
 import type { ToolExecutionHandle } from "./components/tool-execution";
 import { TranscriptContainer } from "./components/transcript-container";
@@ -319,9 +318,15 @@ export function computeEditorMaxHeight(terminalRows: number): number {
 	return clampLow(comfortable, EDITOR_MIN_RENDERED_ROWS, rows - EDITOR_MIN_CHROME_ROWS);
 }
 
-type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop" | "budget";
+type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop";
 
-const GOAL_SUBCOMMANDS = new Set<GoalSubcommand>(["set", "show", "pause", "resume", "drop", "budget"]);
+const GOAL_SUBCOMMANDS: Record<GoalSubcommand, true> = {
+	set: true,
+	show: true,
+	pause: true,
+	resume: true,
+	drop: true,
+};
 const PLAN_KEEP_CONTEXT_OPTION_INDEX = 2;
 const PLAN_KEEP_CONTEXT_DISABLE_THRESHOLD_PERCENT = 95;
 
@@ -331,7 +336,7 @@ function parseGoalSubcommand(args: string): { sub: GoalSubcommand | undefined; r
 	const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(trimmed);
 	if (!match) return { sub: undefined, rest: trimmed };
 	const first = match[1].toLowerCase();
-	if (GOAL_SUBCOMMANDS.has(first as GoalSubcommand)) {
+	if (first in GOAL_SUBCOMMANDS) {
 		return { sub: first as GoalSubcommand, rest: match[2]?.trim() ?? "" };
 	}
 	return { sub: undefined, rest: trimmed };
@@ -607,6 +612,8 @@ export class InteractiveMode implements InteractiveModeContext {
 	#goalTurnHadToolCalls = false;
 	#goalContinuationTurnInFlight = false;
 	#goalSuppressNextContinuation = false;
+	#goalUserContinuationSuppressed = false;
+	#goalUserTurnInFlight = false;
 	#planModePreviousModelState: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#pendingModelSwitch: { model: Model; thinkingLevel?: ConfiguredThinkingLevel } | undefined;
 	#planModeHasEntered = false;
@@ -1531,7 +1538,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (!this.session.settings.get("goal.continuationModes").includes("interactive")) return;
 		if (this.planModeEnabled || this.planModePaused) return;
 		if (!this.goalModeEnabled || this.goalModePaused) return;
-		if (this.#goalSuppressNextContinuation) return;
+		if (this.#goalSuppressNextContinuation || this.#goalUserContinuationSuppressed) return;
 		if (this.#pendingSubmittedInput) return;
 		if (this.editor.getText().trim().length > 0) return;
 		if ((this.editor.pendingImages?.length ?? 0) > 0) return;
@@ -1722,7 +1729,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		};
 		this.#pendingSubmittedInput = submission;
 		if (!submission.customType) {
-			this.#resetGoalContinuationSuppression();
+			this.#goalUserTurnInFlight = true;
+			this.#goalUserContinuationSuppressed = true;
+			this.#cancelGoalContinuation();
 			this.#transcriptComposer.showOptimistic(submission);
 		} else {
 			this.#transcriptComposer.clearOptimistic();
@@ -1764,6 +1773,9 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.editor.pendingImageLinks = submission.imageLinks ? [...submission.imageLinks] : [];
 			this.editor.imageLinks = this.editor.pendingImageLinks;
 			this.rebuildChatFromMessages();
+			this.#resetGoalContinuationSuppression();
+			this.#goalUserTurnInFlight = false;
+			this.#scheduleGoalContinuation();
 			this.editor.setText(submission.text);
 		}
 		this.updateEditorBorderColor();
@@ -2191,6 +2203,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	#resetGoalContinuationSuppression(): void {
 		this.#goalSuppressNextContinuation = false;
+		this.#goalUserContinuationSuppressed = false;
 	}
 
 	#getPausedGoalState(): GoalModeState | undefined {
@@ -2238,13 +2251,20 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		if (event.type === "tool_execution_start") {
 			this.#goalTurnHadToolCalls = true;
-			if (!this.#goalContinuationTurnInFlight) {
+			// A visible user turn pauses autonomous goal continuation unless the
+			// turn actually resumes execution. Merely producing prose is not
+			// evidence that the user intended goal mode to take control again.
+			const pendingVisibleUserTurn =
+				this.#pendingSubmittedInput !== undefined && !this.#pendingSubmittedInput.customType;
+			if (this.#goalUserTurnInFlight || pendingVisibleUserTurn) {
 				this.#resetGoalContinuationSuppression();
 			}
 			return;
 		}
 		if (event.type === "message_start" && event.message.role === "user" && !event.message.synthetic) {
-			this.#resetGoalContinuationSuppression();
+			this.#goalUserTurnInFlight = true;
+			this.#goalUserContinuationSuppressed = true;
+			this.#cancelGoalContinuation();
 			return;
 		}
 		if (event.type === "goal_updated") {
@@ -2269,6 +2289,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#goalSuppressNextContinuation = !this.#goalTurnHadToolCalls;
 			this.#goalContinuationTurnInFlight = false;
 		}
+		this.#goalUserTurnInFlight = false;
 		if (this.session.getGoalModeState()?.mode === "exiting") {
 			await this.#exitGoalMode({ reason: "completed", silent: true });
 			return;
@@ -2342,7 +2363,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#goalModePreviousTools = undefined;
 			this.#goalTurnHadToolCalls = false;
 			this.#goalContinuationTurnInFlight = false;
-			this.#goalSuppressNextContinuation = false;
+			this.#resetGoalContinuationSuppression();
+			this.#goalUserTurnInFlight = false;
 			this.#cancelGoalContinuation();
 			this.#updateGoalModeStatus();
 		}
@@ -2646,6 +2668,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.goalModePaused = options?.paused ?? false;
 		this.#goalModePreviousTools = undefined;
 		this.#goalContinuationTurnInFlight = false;
+		this.#resetGoalContinuationSuppression();
+		this.#goalUserTurnInFlight = false;
 		this.#cancelGoalContinuation();
 		this.#updateGoalModeStatus();
 		if (!options?.silent) {
@@ -3227,32 +3251,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		);
 	}
 
-	async #handleGoalBudgetCommand(rawBudget: string): Promise<void> {
-		const state = this.session.getGoalModeState();
-		if (!this.goalModeEnabled || !state?.enabled) {
-			this.showWarning("No active goal.");
-			return;
-		}
-		if (state.goal.status === "complete") {
-			this.showStatus("Goal is already complete.");
-			return;
-		}
-		const trimmed = rawBudget.trim().toLowerCase();
-		let nextBudget: number | undefined;
-		if (trimmed !== "off") {
-			const parsed = Number.parseInt(trimmed, 10);
-			if (!Number.isInteger(parsed) || parsed <= 0) {
-				this.showError("Goal budget must be a positive integer or `off`.");
-				return;
-			}
-			nextBudget = parsed;
-		}
-		await this.session.goalRuntime.onBudgetMutated(nextBudget);
-		this.#resetGoalContinuationSuppression();
-		this.#scheduleGoalContinuation();
-		this.showStatus(nextBudget === undefined ? "Goal budget cleared." : `Goal budget set to ${nextBudget}.`);
-	}
-
 	async handleGoalModeCommand(rest?: string): Promise<void> {
 		try {
 			if (this.planModeEnabled || this.planModePaused) {
@@ -3388,19 +3386,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			case "drop":
 				await this.#confirmAndDropGoal();
 				return;
-			case "budget":
-				if (!this.goalModeEnabled) {
-					this.showWarning(
-						this.#getPausedGoalState() ? "Resume the goal before adjusting the budget." : "No active goal.",
-					);
-					return;
-				}
-				if (!rest) {
-					await this.#promptGoalBudgetEdit();
-					return;
-				}
-				await this.#handleGoalBudgetCommand(rest);
-				return;
 		}
 	}
 
@@ -3409,18 +3394,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (!goal) return;
 		const summary = goal.objective.length > 48 ? `${goal.objective.slice(0, 47)}…` : goal.objective;
 		const title = state === "active" ? `Goal: ${summary} (${goal.status})` : `Goal paused: ${summary}`;
-		const items =
-			state === "active"
-				? ["Show details", "Adjust budget…", "Pause", "Drop"]
-				: ["Resume", "Show details", "Adjust budget…", "Drop"];
+		const items = state === "active" ? ["Show details", "Pause", "Drop"] : ["Resume", "Show details", "Drop"];
 		const choice = await this.showHookSelector(title, items);
 		if (!choice) return;
 		switch (choice) {
 			case "Show details":
 				this.#showGoalDetails();
-				return;
-			case "Adjust budget…":
-				await this.#promptGoalBudgetEdit();
 				return;
 			case "Pause":
 				await this.#pauseGoalAction();
@@ -3442,19 +3421,16 @@ export class InteractiveMode implements InteractiveModeContext {
 			return;
 		}
 		const used = goal.tokensUsed.toLocaleString();
-		let budgetLine: string;
-		if (goal.tokenBudget !== undefined) {
+		let tokensLine = used;
+		if (this.session.settings.get("goal.modelBudgetsEnabled") && goal.tokenBudget !== undefined) {
 			const left = Math.max(0, goal.tokenBudget - goal.tokensUsed);
 			const pct = goal.tokenBudget > 0 ? Math.min(999, Math.round((goal.tokensUsed / goal.tokenBudget) * 100)) : 0;
-			const bar = goalProgressBar(goal.tokenBudget > 0 ? goal.tokensUsed / goal.tokenBudget : 0);
-			budgetLine = `${used} / ${goal.tokenBudget.toLocaleString()} (${pct}%, ${left.toLocaleString()} left) ${bar}`;
-		} else {
-			budgetLine = `${used} (no budget)`;
+			tokensLine = `${used} / ${goal.tokenBudget.toLocaleString()} (${pct}%, ${left.toLocaleString()} left)`;
 		}
 		const lines = [
 			`Objective: ${goal.objective}`,
 			`Status: ${goal.status}${state?.enabled ? "" : " (paused)"}`,
-			`Tokens: ${budgetLine}`,
+			`Tokens: ${tokensLine}`,
 			`Turns: ${goal.turnsCompleted}`,
 			`Time spent: ${formatDurationCoarse(goal.timeUsedSeconds * 1000)}`,
 		];
@@ -3475,18 +3451,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.#getPausedGoalState()) {
 			await this.#openGoalMenu("paused");
 		}
-	}
-
-	async #promptGoalBudgetEdit(): Promise<void> {
-		const goal = this.session.getGoalModeState()?.goal;
-		const prefill = goal?.tokenBudget !== undefined ? String(goal.tokenBudget) : "";
-		const input = (
-			await this.showHookEditor("Goal budget (number, `off`, or empty to cancel)", prefill, undefined, {
-				promptStyle: true,
-			})
-		)?.trim();
-		if (!input) return;
-		await this.#handleGoalBudgetCommand(input);
 	}
 
 	async #pauseGoalAction(): Promise<void> {
@@ -4547,6 +4511,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#selectorController.showAgentsDashboard(this.#observerRegistry, options);
 	}
 
+	showSecretManager(): void {
+		this.#selectorController.showSecretManager();
+	}
+
 	showModelSelector(options?: { temporaryOnly?: boolean }): void {
 		this.#selectorController.showModelSelector(options);
 	}
@@ -4584,6 +4552,10 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	handleSessionDeleteCommand(): Promise<void> {
 		return this.#selectorController.handleSessionDeleteCommand();
+	}
+
+	showAccountManager(providerId?: string): Promise<void> {
+		return this.#selectorController.showAccountManager(providerId);
 	}
 
 	showOAuthSelector(mode: "login" | "logout", providerId?: string): Promise<void> {
@@ -4786,7 +4758,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#extensionUiController.showAskDialog(questions, dialogOptions);
 	}
 
-	showHookInput(title: string, placeholder?: string, inputOptions?: { mask?: string }): Promise<string | undefined> {
+	showHookInput(
+		title: string,
+		placeholder?: string,
+		inputOptions?: { mask?: string; hint?: string },
+	): Promise<string | undefined> {
 		return this.#extensionUiController.showHookInput(title, placeholder, undefined, inputOptions);
 	}
 

@@ -387,6 +387,8 @@ export interface InteractiveModeContext {
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;
 	showAgentsDashboard(options?: { requireContent?: boolean }): void;
+	/** Opens the secret manager: the one screen `/secret manager` reserves a word for. */
+	showSecretManager(): void;
 	showModelSelector(options?: { temporaryOnly?: boolean }): void;
 	showThinkingSelector(): void;
 	showPluginSelector(mode?: "install" | "uninstall"): void;
@@ -396,6 +398,15 @@ export interface InteractiveModeContext {
 	showSessionSelector(): void;
 	handleResumeSession(sessionPath: string): Promise<void>;
 	handleSessionDeleteCommand(): Promise<void>;
+	/**
+	 * The account manager: one row per stored CREDENTIAL, grouped by provider.
+	 *
+	 * `showProviderSetup` above is a different surface and stays one: that is onboarding, which
+	 * walks a first-time user into a first login. This manages the accounts an existing user
+	 * already has. `/providers` used to alias the wizard, which is why a multi-account user had
+	 * nowhere to see their accounts at all.
+	 */
+	showAccountManager(providerId?: string): Promise<void>;
 	showOAuthSelector(mode: "login" | "logout", providerId?: string): Promise<void>;
 	showResetUsageSelector(): Promise<void>;
 	showProviderSetup(): Promise<void>;
@@ -469,7 +480,11 @@ export interface InteractiveModeContext {
 	 * and editor dialogs, this one is never raced against a collab guest, so a masked prompt
 	 * cannot be answered from another machine.
 	 */
-	showHookInput(title: string, placeholder?: string, inputOptions?: { mask?: string }): Promise<string | undefined>;
+	showHookInput(
+		title: string,
+		placeholder?: string,
+		inputOptions?: { mask?: string; hint?: string },
+	): Promise<string | undefined>;
 	hideHookInput(): void;
 	showHookEditor(
 		title: string,

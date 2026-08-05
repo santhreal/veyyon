@@ -9,5 +9,5 @@ export function getRunningSubagentBadgeRegistry(collabGuest: RunningSubagentRegi
 }
 
 export function countRunningSubagentBadgeAgents(registry: AgentRegistry): number {
-	return registry.list().filter(ref => ref.kind === "sub" && ref.status === "running").length;
+	return registry.runningSubagentCount();
 }

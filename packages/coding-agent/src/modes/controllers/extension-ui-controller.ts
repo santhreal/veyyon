@@ -353,7 +353,9 @@ export class ExtensionUiController {
 		if (Array.isArray(content)) {
 			const container = new Container();
 			for (const line of content.slice(0, MAX_WIDGET_LINES)) {
-				container.addChild(new Text(line, 1, 0));
+				// A whitespace-only Text renders zero rows, so a deliberate blank separator in
+				// extension-supplied content needs a Spacer to survive.
+				container.addChild(line.trim() === "" ? new Spacer(1) : new Text(line, 1, 0));
 			}
 			if (content.length > MAX_WIDGET_LINES) {
 				container.addChild(new Text(theme.fg("muted", "... (widget truncated)"), 1, 0));
@@ -1001,7 +1003,7 @@ export class ExtensionUiController {
 		 * {@link showHookEditor} keeps `editorOptions` separate: presentation is not an extension
 		 * API concern, and masking must not become something a remote extension can switch off.
 		 */
-		inputOptions?: { mask?: string },
+		inputOptions?: { mask?: string; hint?: string },
 	): Promise<string | undefined> {
 		return this.#presentDialog(dialogOptions?.signal, settle => {
 			this.ctx.hookInput = new HookInputComponent(
@@ -1014,6 +1016,7 @@ export class ExtensionUiController {
 					onTimeout: dialogOptions?.onTimeout,
 					tui: this.ctx.ui,
 					mask: inputOptions?.mask,
+					hint: inputOptions?.hint,
 				},
 			);
 			this.ctx.editorContainer.clear();

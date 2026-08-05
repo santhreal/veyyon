@@ -523,7 +523,7 @@ export class CommandController {
 		if (action === "reset" || action === "clear") {
 			try {
 				await backend.clear(agentDir, this.ctx.sessionManager.getCwd(), this.ctx.session);
-				await this.ctx.session.refreshBaseSystemPrompt();
+				await this.ctx.session.refreshBaseSystemPrompt("memory-clear");
 				this.ctx.showStatus("Memory data cleared and system prompt refreshed.");
 			} catch (error) {
 				this.ctx.showError(`Memory clear failed: ${errorMessage(error)}`);

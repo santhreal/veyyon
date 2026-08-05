@@ -16,6 +16,8 @@ import {
 import { PRIORITY_TIER_LABEL } from "../../../config/service-tier";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
+import { normalizeApprovalMode } from "../../../tools/approval";
+import { AUTONOMY_LABEL } from "../../../tools/approval-modes";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
@@ -267,7 +269,9 @@ function goalSpinnerIcon(activeMs: number): string {
 
 function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: boolean }): RenderedSegment {
 	const goal = ctx.session.getGoalModeState()?.goal;
-	const status = goal?.status ?? (mode.paused ? "paused" : "active");
+	const modelBudgetsEnabled = ctx.session.settings.get("goal.modelBudgetsEnabled");
+	const persistedStatus = goal?.status ?? (mode.paused ? "paused" : "active");
+	const status = !modelBudgetsEnabled && persistedStatus === "budget-limited" ? "active" : persistedStatus;
 
 	let icon: string = theme.icon.goal;
 	// Modes carry the cool arc's mode hue (violet on titanium); semantic
@@ -295,7 +299,7 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 	}
 
 	const tokensUsed = goal?.tokensUsed ?? 0;
-	const tokenBudget = goal?.tokenBudget;
+	const tokenBudget = modelBudgetsEnabled ? goal?.tokenBudget : undefined;
 	const running = status === "active";
 
 	// Near-budget soft warning: before the hard `budget-limited` status trips, a
@@ -355,6 +359,41 @@ function renderBaseMode(ctx: SegmentContext): RenderedSegment {
 	return { content: "", visible: false };
 }
 
+/**
+ * How much the agent may do unasked, as a label the operator can read at a
+ * glance.
+ *
+ * Colored by how much rope it grants, not by taste: the two asking rungs are
+ * the same cool mode hue as every other mode label, `auto` is a warning, and
+ * `yolo` is an error. A rung that turns prompts off should not look like a
+ * neutral preference.
+ *
+ * Reads the ENFORCED rung, not `tools.approvalMode`. Two things outrank the
+ * stored value: `--yolo` / `--auto-approve` forces `yolo` for the run, and an
+ * active plan session caps to `plan`. Reading the setting directly made
+ * `veyyon --yolo` render `Ask all` over a session running every tool unasked,
+ * which is precisely the lie this segment was added to stop telling.
+ *
+ * Returns "" for `plan`, because the base label already says Plan and the pair
+ * would render "Plan Plan".
+ */
+function renderApprovalRung(ctx: SegmentContext): string {
+	// The rung is suppressed only when the BASE label is already saying Plan,
+	// which is what `ctx.planMode.enabled` decides. Suppressing it whenever the
+	// enforced rung is `plan` was wrong: `/permissions plan` sets that rung with
+	// no plan session open, so `renderBaseMode` says nothing, the rung said
+	// nothing, and the whole segment disappeared — in the one state where every
+	// write tool is denied and the operator most needs to know why.
+	if (ctx.planMode?.enabled) return "";
+	// A host that supplies no session accessor gets no rung rather than a thrown
+	// status line. The accessor is non-optional on `AgentSession`; this guard is
+	// for the embedders and stubs that satisfy the narrower `SegmentContext`.
+	const level = normalizeApprovalMode(ctx.session.effectiveApprovalMode?.());
+	const color: ThemeColor =
+		level === "yolo" ? "error" : level === "auto" ? "warning" : level === "plan" ? "warning" : "modeAccent";
+	return theme.fg(color, AUTONOMY_LABEL[level]);
+}
+
 const modeSegment: StatusLineSegment = {
 	id: "mode",
 	render(ctx) {
@@ -363,12 +402,23 @@ const modeSegment: StatusLineSegment = {
 		// state to surface, so it prefixes whatever mode is active rather than
 		// replacing it. The red editor border is the always-on guarantee; this text
 		// is the label. Errs loud (Law 10 — a silent bypass would be a safety bug).
+		// It also REPLACES the rung label: the bypass outranks the configured rung,
+		// and "YOLO Ask all" would name the rung that is not being enforced.
 		if (ctx.session.isApprovalBypassed()) {
 			const marker = theme.fg("error", `${theme.symbol("status.warning")} YOLO`);
 			const content = base.visible && base.content ? `${marker} ${base.content}` : marker;
 			return { content, visible: true };
 		}
-		return base;
+		// Always visible, even with no mode active. The approval rung is the one
+		// piece of session state whose absence is dangerous rather than merely
+		// unknown: an operator who cannot see it has to guess whether the next
+		// command will ask, and this segment used to render nothing at all in the
+		// ordinary case, which is how "there are no permissions" became the honest
+		// reading of a product that had a whole ladder.
+		const rung = renderApprovalRung(ctx);
+		const parts = [base.visible && base.content ? base.content : "", rung].filter(part => part !== "");
+		if (parts.length === 0) return { content: "", visible: false };
+		return { content: parts.join(" "), visible: true };
 	},
 };
 
