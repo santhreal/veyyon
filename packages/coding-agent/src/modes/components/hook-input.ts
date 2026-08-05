@@ -25,6 +25,16 @@ export interface HookInputOptions {
 	 * this automatically; the explicit flag keeps the mode named and testable.
 	 */
 	credentialMode?: boolean;
+	/**
+	 * Mechanical facts about the field, shown beside the key legend rather than in the title.
+	 *
+	 * A title is what the operator must DO. Things the field simply is, such as whether it hides
+	 * what is typed or where the value ends up, are a different kind of fact and belong with the
+	 * other mechanics at the bottom. Folding them into the title is what turned the credential
+	 * prompt into a four-clause paragraph in one accent colour, where the imperative it opens with
+	 * carries no more weight than the reassurance it ends with and nothing lands.
+	 */
+	hint?: string;
 }
 
 export class HookInputComponent extends Container {
@@ -76,7 +86,11 @@ export class HookInputComponent extends Container {
 		this.#input.onEscape = () => this.#onCancelCallback();
 		this.addChild(this.#input);
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "enter submit  esc cancel"), 1, 0));
+		// The hint leads, because it describes THIS field, while the key legend is the same two
+		// bindings on every dialog in the app and is read once and then ignored.
+		const legend =
+			opts?.hint === undefined ? "enter submit  esc cancel" : `${opts.hint}  ·  enter submit  esc cancel`;
+		this.addChild(new Text(theme.fg("dim", legend), 1, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder());
 	}

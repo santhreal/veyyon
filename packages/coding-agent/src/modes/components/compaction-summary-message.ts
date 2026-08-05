@@ -123,9 +123,9 @@ export class CompactionSummaryMessageComponent implements Component {
 }
 
 /**
- * Handoff is a compaction strategy too, but it is persisted as a custom message
- * so the LLM sees the handoff-specific developer context. Render it with the
- * same divider affordance as `/compact` instead of the generic `[handoff]` box.
+ * A manual handoff is persisted as a custom message so the replacement session
+ * receives its developer context. Render it with the same divider affordance as
+ * `/compact` instead of the generic `[handoff]` box.
  */
 export class HandoffSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;

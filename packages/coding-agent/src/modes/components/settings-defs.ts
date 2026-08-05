@@ -133,6 +133,20 @@ export interface DefaultModelSettingDef extends BaseSettingDef {
 	type: "defaultModel";
 }
 
+/**
+ * The rule list: every discovered rule, each on or off.
+ *
+ * Backed by `ttsr.disabledRules`, which stores only the exceptions. That inversion is
+ * the point — a rule is on unless its name is listed, so a bundled rule added in a later
+ * release arrives on rather than waiting for every existing config to opt in. The row
+ * used to render as a text box holding a comma-separated list of names, which required
+ * knowing a rule's exact name before you could turn it off and offered no way to find
+ * out what the names were.
+ */
+export interface RulesSettingDef extends BaseSettingDef {
+	type: "rules";
+}
+
 export type SettingDef =
 	| BooleanSettingDef
 	| EnumSettingDef
@@ -144,7 +158,8 @@ export type SettingDef =
 	| ModelRolesSettingDef
 	| SubagentAgentsSettingDef
 	| DefaultEffortSettingDef
-	| DefaultModelSettingDef;
+	| DefaultModelSettingDef
+	| RulesSettingDef;
 
 /**
  * Synthetic settings id for the {@link DefaultModelSettingDef}. Not a real
@@ -333,6 +348,9 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	// schema type, so a `ui`-annotated array is reachable instead of silently
 	// dropped. Arrays with no `ui` block are still TOML/CLI-only, as before.
 	if (schemaType === "array") {
+		// The one array that is a set of exceptions rather than a list of values, so it
+		// reads as the thing it controls: every rule, each on or off.
+		if (path === "ttsr.disabledRules") return { ...base, type: "rules" };
 		return { ...base, type: "text" };
 	}
 

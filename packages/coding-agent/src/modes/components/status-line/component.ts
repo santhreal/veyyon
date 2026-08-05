@@ -44,6 +44,17 @@ const SESSION_CLOCK_GAP = "      ";
  */
 type QuietPart = { id: string; content: string };
 
+/**
+ * Right-group parts the width shed walks PAST rather than drops.
+ *
+ * Both carry live operating state rather than chrome: `subagents` is a running count, and
+ * `location_right` is the owner-supplied zone holding the composer's draft token readout.
+ * Everything else on the right is a badge the operator can re-read at any time, so it sheds
+ * first. Membership here is a claim that losing the part mid-task costs more than losing a
+ * badge, not that the part is important in the abstract.
+ */
+const PROTECTED_RIGHT_PARTS: Record<string, true> = { subagents: true, location_right: true };
+
 /** One segment's slot on the rendered quiet footline (0-based columns, end exclusive). */
 export interface QuietSegmentBounds {
 	id: string;
@@ -453,10 +464,10 @@ export class StatusLineComponent implements Component {
 	}
 
 	setSubagentCount(count: number): void {
-		this.#subagentCount = count;
+		this.#subagentCount = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
 	}
 
-	/** Active subagent count as currently displayed (collab state mirroring). */
+	/** Currently executing subagents shown on every interactive status surface. */
 	get subagentCount(): number {
 		return this.#subagentCount;
 	}
@@ -1219,10 +1230,23 @@ export class StatusLineComponent implements Component {
 		};
 	}
 
-	#subagentBadgeText(): string | undefined {
-		if (this.#subagentCount === 0) return undefined;
-		const noun = this.#subagentCount === 1 ? "agent" : "agents";
-		return theme.fg("statusLineSubagents", withIcon(theme.icon.agents, `${this.#subagentCount} ${noun}`));
+	#subagentBadgeText(): string {
+		return theme.fg("statusLineSubagents", withIcon(theme.icon.agents, `${this.#subagentCount}`));
+	}
+
+	/**
+	 * Running background jobs the SUBAGENT badge does not already stand for.
+	 *
+	 * A `task` spawn registers an async job (`type: "task"`, see `task/index.ts`) AND counts as a
+	 * running subagent, so counting every job here printed the same three agents twice: the bar
+	 * read `3 · 3`, two badges whose numbers moved together and neither of which said what it
+	 * was counting. Async bash, debug and launch jobs are real background work with no subagent
+	 * behind them, and those are what this badge is for.
+	 */
+	#backgroundJobBadgeCount(): number {
+		const running = this.session.getAsyncJobSnapshot()?.running;
+		if (!running) return 0;
+		return running.reduce((count, job) => (job.type === "task" ? count : count + 1), 0);
 	}
 
 	#buildStatusLine(width: number): string {
@@ -1264,7 +1288,7 @@ export class StatusLineComponent implements Component {
 		const leftParts: string[] = [];
 		const leftSegIds: StatusLineSegmentId[] = [];
 		for (const segId of effectiveSettings.leftSegments) {
-			if (subagentBadge && segId === "subagents") continue;
+			if (segId === "subagents") continue;
 			const rendered = renderSegment(segId, ctx);
 			if (rendered.visible && rendered.content) {
 				leftParts.push(rendered.content);
@@ -1274,20 +1298,18 @@ export class StatusLineComponent implements Component {
 
 		const rightParts: string[] = [];
 		for (const segId of effectiveSettings.rightSegments) {
-			if (subagentBadge && segId === "subagents") continue;
+			if (segId === "subagents") continue;
 			const rendered = renderSegment(segId, ctx);
 			if (rendered.visible && rendered.content) {
 				rightParts.push(rendered.content);
 			}
 		}
 
-		const runningBackgroundJobs = this.session.getAsyncJobSnapshot()?.running.length ?? 0;
+		const runningBackgroundJobs = this.#backgroundJobBadgeCount();
 		if (runningBackgroundJobs > 0) {
 			rightParts.unshift(theme.fg("statusLineSubagents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
 		}
-		if (subagentBadge) {
-			rightParts.unshift(subagentBadge);
-		}
+		rightParts.unshift(subagentBadge);
 		const topFillWidth = Math.max(0, width);
 		const left = [...leftParts];
 		const right = [...rightParts];
@@ -1349,10 +1371,20 @@ export class StatusLineComponent implements Component {
 				}
 			}
 			const leftOverflowDropIndex = (): number => {
-				// Preserve the current working directory as long as possible. The
-				// previous right-to-left pop could collapse a normal-width bar to
-				// just the model segment, hiding the path before less-critical left
-				// segments such as model/mode/collab were removed.
+				// Drop right-to-left, but keep two segments to the last: the working
+				// directory, and the mode segment.
+				//
+				// `mode` was on the "less critical" list, which was true when it only
+				// named plan/goal/vibe. It now carries the approval rung, so it is the
+				// one place that says whether the next command will ask before it
+				// runs, and shedding it first meant a narrow terminal silently stopped
+				// reporting that while keeping the profile and the model name. Safety
+				// state outranks identity.
+				for (let i = leftSegIds.length - 1; i >= 0; i--) {
+					if (leftSegIds[i] !== "path" && leftSegIds[i] !== "mode") return i;
+				}
+				// Everything else is gone; give up `mode` before the path, since the
+				// path is what tells you which project you are about to act on.
 				for (let i = leftSegIds.length - 1; i >= 0; i--) {
 					if (leftSegIds[i] !== "path") return i;
 				}
@@ -1480,7 +1512,7 @@ export class StatusLineComponent implements Component {
 		const capLeft: QuietPart[] = [];
 		const capRight: QuietPart[] = [];
 		const push = (id: StatusLineSegmentId, out: QuietPart[]) => {
-			if (subagentBadge && id === "subagents") return;
+			if (id === "subagents") return;
 			const rendered = renderSegment(id, ctx);
 			if (rendered.visible && rendered.content) out.push({ id, content: rendered.content });
 		};
@@ -1504,14 +1536,14 @@ export class StatusLineComponent implements Component {
 			else push(id, capRight);
 		}
 		capRight.push(...contextFromLeft);
-		const runningBackgroundJobs = this.session.getAsyncJobSnapshot()?.running.length ?? 0;
+		const runningBackgroundJobs = this.#backgroundJobBadgeCount();
 		const badgeParts: string[] = [];
-		if (subagentBadge) badgeParts.push(subagentBadge);
 		if (runningBackgroundJobs > 0) {
 			badgeParts.push(theme.fg("statusLineSubagents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
 		}
 		const badgeSlot = this.#animatedBadgeSlot(badgeParts);
 		if (badgeSlot !== null) capRight.unshift({ id: "badges", content: badgeSlot });
+		capRight.unshift({ id: "subagents", content: subagentBadge });
 		return { location, capLeft, capRight };
 	}
 
@@ -1520,17 +1552,17 @@ export class StatusLineComponent implements Component {
 	// matches the line currently on screen; empty when no footline rendered.
 	#quietLineBounds: QuietSegmentBounds[] = [];
 
-	// Badge slot animation state. Badges ease in/out over BADGE_ANIM_MS so a
-	// spawn or finish reads as intentional motion — a smooth merge — instead
-	// of the right group jumping sideways by the badge width (grok lesson:
-	// state changes must not shift stable geometry; the motion carries the
-	// change). Between animations the slot is exactly the badges' width, so
-	// there is no permanent dead space either.
+	// Background-job badge animation state. Jobs ease in/out over
+	// BADGE_ANIM_MS so a start or finish reads as an intentional merge instead
+	// of the right group jumping sideways. The running-subagent count does not
+	// enter this slot: it is persistent state and must update synchronously.
+	// Between animations the slot is exactly the job badge's width, so there is
+	// no permanent dead space either.
 	#badgeSlotFromWidth = 0;
 	#badgeSlotTargetWidth = 0;
 	#badgeSlotAnimStartMs = 0;
-	// The badge text being clipped during a close; the count drops to zero
-	// before the slot finishes shrinking, so the last text must outlive it.
+	// The job badge text being clipped during a close; the running-job count
+	// reaches zero before the slot finishes shrinking, so its text outlives it.
 	#badgeSlotText = "";
 	static readonly #BADGE_ANIM_MS = 240;
 
@@ -1604,7 +1636,7 @@ export class StatusLineComponent implements Component {
 		// degrades FIRST — its roomy gap shrinks to two cells, then the clock
 		// drops entirely — so it can never squeeze a segment off the line.
 		let clockStage = 0;
-		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
+		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
 				left = this.#locationWithRunClock(locationContents, sep, "  ");
@@ -1615,8 +1647,27 @@ export class StatusLineComponent implements Component {
 				left = locationContents.join(sep);
 				continue;
 			}
-			rightParts.pop();
-			right = rightParts.map(part => part.content).join(sep);
+			let dropIndex = rightParts.length - 1;
+			// `location_right` is protected for the same reason `subagents` is: it carries live
+			// operating state, not chrome. It is pushed LAST, and the shed walks from the end, so
+			// without this it is always the FIRST casualty however important it is. That is how the
+			// always-visible approval rung silently evicted the composer's draft token counter at
+			// 100 columns: nothing removed the counter, the rung widened the right group by one
+			// label and the counter fell off the end. Losing the count while the operator is
+			// actively typing is a worse trade than dropping a capability badge they can re-read
+			// any time. When only protected parts remain the walk lands at -1 and the fall-through
+			// below shortens the location instead, so a long owner string cannot spin here.
+			while (dropIndex >= 0 && PROTECTED_RIGHT_PARTS[rightParts[dropIndex]?.id ?? ""]) dropIndex--;
+			if (dropIndex >= 0) {
+				rightParts.splice(dropIndex, 1);
+				right = rightParts.map(part => part.content).join(sep);
+				continue;
+			}
+			// The count is persistent operating state. Once every optional
+			// right-hand part is gone, shorten location instead of hiding it.
+			const leftBudget = Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0));
+			left = truncateToWidth(locationContents.join(sep), leftBudget);
+			break;
 		}
 		if (!left && !right) {
 			this.#quietLineBounds = [];
