@@ -9,6 +9,12 @@
  * revival) and are only removed on explicit release/teardown.
  */
 
+// Owner subpaths, not the "@veyyon/utils" barrel. This module is the SOLE path by which
+// `tools/read.ts` reaches that barrel, and the barrel brings 23 modules onto the file-read
+// closure that nothing there asks for. See the barrel absence in
+// `test/architecture/leveraged-imports-stay-cut.test.ts`.
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import type { AgentSession } from "../session/agent-session";
 import { oneLineLabel } from "../task/types";
 
@@ -30,6 +36,30 @@ export type AgentStatus = "running" | "idle" | "parked" | "aborted";
  */
 export type AgentKind = "main" | "sub" | "advisor";
 
+/**
+ * A tool call that has stopped and is waiting for a human to answer it.
+ *
+ * This exists as REAL STATE rather than a private boolean inside the approval
+ * wrapper because three separate consumers have to distinguish "blocked on a
+ * person" from "quiet", and each of them gets it wrong otherwise:
+ *
+ *   - the runtime budget, which must not spend an operator's reading time
+ *     (`subagent.maxRuntimeMs` would otherwise abort an agent whose card is
+ *     still on screen, which is abandonment with the prompt still visible),
+ *   - the agent dashboard and rosters, which cannot today tell a blocked agent
+ *     from a working one, so a stuck spawn looks like a busy spawn,
+ *   - the operator's own prompt queue, which needs the attribution below to say
+ *     WHO is asking and for WHAT the moment two agents ask at once.
+ */
+export interface PendingApproval {
+	/** The tool whose call is blocked. */
+	toolName: string;
+	/** Why permission is required, as it is shown on the card. Absent for a bare tier prompt. */
+	reason?: string;
+	/** When the wait began, so a consumer can subtract the interval it must not charge. */
+	since: number;
+}
+
 export interface AgentRef {
 	id: string;
 	displayName: string;
@@ -41,10 +71,66 @@ export interface AgentRef {
 	sessionFile: string | null;
 	createdAt: number;
 	lastActivity: number;
+	/**
+	 * The conversation this agent belongs to: the SessionManager session id of
+	 * the root `main` session it was spawned under.
+	 *
+	 * The session id rather than the transcript path, because the two disagree in
+	 * both directions. A brand-new session has an id before it has ever been
+	 * written to disk, so a path-keyed scope would be undefined for exactly the
+	 * window in which the first subagents spawn; and `/move` rewrites the path of
+	 * a conversation that never ended, which a path-keyed scope would read as a
+	 * new one.
+	 *
+	 * The registry is process-global, but an agent roster is not. One process
+	 * holds several conversations at once — `/new` and `/resume` re-root the
+	 * driving session, ACP and cmux hosts register one `main` per client
+	 * session, and the SDK embeds more — and without this every one of them
+	 * listed every other one's subagents. Two rosters that disagree about what
+	 * exists is the mild version; messaging an agent that belongs to a
+	 * conversation you closed an hour ago is the real one.
+	 *
+	 * Undefined means "not attributable to a conversation" (a collab guest
+	 * mirror, a hand-built ref in a test). Scoping treats an unknown scope on
+	 * EITHER side as visible, so the filter can only ever hide an agent both
+	 * sides positively agree belongs somewhere else.
+	 */
+	scope?: string;
 	/** Short gist of what the agent is currently doing (latest intent or tool), for the work-aware roster. Display-only. */
 	activity?: string;
 	/** Model the agent runs on, as a `provider/id` string. Display-only; undefined when not known at registration. */
 	model?: string;
+	/**
+	 * The agent's last message said it was waiting on another agent, so it stopped
+	 * on purpose rather than simply going quiet. Read by the lifecycle manager to
+	 * grant it a longer grace before a parked agent is closed for good: it is the
+	 * one most likely to be messaged next, and closing it on the ordinary timer
+	 * throws away exactly the peer the operator is about to need.
+	 */
+	waitingOnPeer?: boolean;
+	/**
+	 * Set while this agent has a tool call stopped at an approval prompt, cleared
+	 * the moment the prompt is answered, abandoned or refused. See
+	 * {@link PendingApproval}.
+	 *
+	 * A blocked agent is `running`, because it is mid-turn, and is therefore
+	 * indistinguishable from a working one by status alone. That is the gap this
+	 * closes: without it, a spawn waiting on a person and a spawn grinding through
+	 * a build look identical to every consumer in the process.
+	 */
+	pendingApproval?: PendingApproval;
+	/**
+	 * Total milliseconds this agent has spent stopped at approval prompts that are
+	 * now CLOSED. Undefined until it has waited at least once.
+	 *
+	 * Separate from {@link pendingApproval} because a live interval and a finished
+	 * one answer different questions, and a consumer that reads only the live one
+	 * gets the wrong number. An agent that answered three forty-second prompts and
+	 * is now working has no `pendingApproval` at all, so a runtime budget reading
+	 * only `since` would charge it the full two minutes of the operator's reading
+	 * time. The full exclusion is this total PLUS the open interval, if any.
+	 */
+	approvalWaitedMs?: number;
 }
 
 export type RegistryEvent =
@@ -61,6 +147,8 @@ export interface RegisterInput {
 	parentId?: string;
 	session: AgentSession | null;
 	sessionFile?: string | null;
+	/** Conversation root; inherited from `parentId` when omitted. See {@link AgentRef.scope}. */
+	scope?: string;
 	status?: AgentStatus;
 	/** Model the agent runs on, as a `provider/id` string. */
 	model?: string;
@@ -84,6 +172,15 @@ export class AgentRegistry {
 	readonly #refs = new Map<string, AgentRef>();
 	readonly #listeners = new Set<RegistryListener>();
 
+	/**
+	 * Register an agent, deriving its conversation {@link AgentRef.scope} when the
+	 * caller does not state one.
+	 *
+	 * Derivation is by LINEAGE, not by the agent's own transcript: a subagent
+	 * writes its session file inside its parent's directory, so its own path
+	 * names a different string for the same conversation. Taking the parent's
+	 * scope makes a whole spawn tree one scope, however deep it nests.
+	 */
 	register(input: RegisterInput): AgentRef {
 		const now = Date.now();
 		const ref: AgentRef = {
@@ -97,10 +194,21 @@ export class AgentRegistry {
 			createdAt: now,
 			lastActivity: now,
 			model: input.model,
+			scope: input.scope ?? this.#deriveScope(input),
 		};
 		this.#refs.set(ref.id, ref);
 		this.#emit({ type: "registered", ref });
 		return ref;
+	}
+
+	#deriveScope(input: RegisterInput): string | undefined {
+		if (input.parentId) return this.#refs.get(input.parentId)?.scope;
+		// A root session names its own conversation, and its caller states the id.
+		// The transcript path is the fallback for a caller that has no id to give.
+		// A parentless SUBAGENT is left unattributed on purpose: it is an orphan
+		// nobody claimed, and inventing a scope from its own path would produce a
+		// name nothing else shares, hiding it from the roster that should show it.
+		return input.kind === "main" ? (input.sessionFile ?? undefined) : undefined;
 	}
 
 	setStatus(id: string, status: AgentStatus): void {
@@ -138,6 +246,81 @@ export class AgentRegistry {
 		ref.activity = gist;
 	}
 
+	/**
+	 * Record whether the agent's last message said it was waiting on another agent.
+	 *
+	 * Emits nothing and does not touch `lastActivity`: this is a property OF the
+	 * stop that just happened, not new activity, and bumping the timestamp would
+	 * push out the very deadline the flag exists to lengthen. Set once at the end of
+	 * a run, before the status flips.
+	 */
+	setWaitingOnPeer(id: string, waiting: boolean): void {
+		const ref = this.#refs.get(id);
+		if (!ref) return;
+		ref.waitingOnPeer = waiting;
+	}
+
+	/**
+	 * Mark this agent as stopped at an approval prompt, or clear the mark.
+	 *
+	 * Emits `status_changed` so a roster or dashboard repaints the moment an agent
+	 * starts or stops waiting on a person: the whole point of the state is that it
+	 * is VISIBLE, and a silent field would leave the dashboard showing a blocked
+	 * spawn as a working one until something else happened to trigger a repaint.
+	 *
+	 * Does NOT touch `lastActivity`. Waiting on a human is not agent activity, and
+	 * bumping the timestamp would push out deadlines that are measured from real
+	 * work, which is the opposite of what {@link pendingApprovalSince} is for.
+	 *
+	 * Clearing an open wait BANKS its duration into {@link AgentRef.approvalWaitedMs}
+	 * first. Without that, an agent that answered a prompt and went back to work
+	 * reports nothing, and a budget reading only the open interval charges it every
+	 * second the operator spent reading. The banking happens here rather than at the
+	 * call site so no caller can forget it and silently under-credit the agent.
+	 */
+	setPendingApproval(id: string, pending: PendingApproval | undefined): void {
+		const ref = this.#refs.get(id);
+		if (!ref) return;
+		const open = ref.pendingApproval;
+		if (open === undefined && pending === undefined) return;
+		if (open !== undefined) {
+			// `Math.max(0, …)` because a clock step backwards must never subtract from
+			// the banked total: a negative contribution would make the exclusion
+			// smaller than the waits already recorded, which is worse than not counting
+			// this one at all.
+			ref.approvalWaitedMs = (ref.approvalWaitedMs ?? 0) + Math.max(0, Date.now() - open.since);
+		}
+		ref.pendingApproval = pending;
+		this.#emit({ type: "status_changed", ref });
+	}
+
+	/**
+	 * When this agent began waiting on a human, or undefined if it is not waiting.
+	 *
+	 * The OPEN interval only. A runtime budget must exclude
+	 * {@link approvalWaitedMs} as well, or it charges the agent for every prompt
+	 * already answered: a budget is meant to bound the AGENT's work, not the
+	 * operator's reading speed, and an agent killed while its card is on screen
+	 * loses its work and leaves the operator answering a prompt for something
+	 * already dead.
+	 */
+	pendingApprovalSince(id: string): number | undefined {
+		return this.#refs.get(id)?.pendingApproval?.since;
+	}
+
+	/**
+	 * Total milliseconds already banked from CLOSED approval waits; 0 if none.
+	 *
+	 * Compose with {@link pendingApprovalSince} for the full exclusion:
+	 * `approvalWaitedMs(id) + (since === undefined ? 0 : now - since)`. Returning 0
+	 * rather than undefined is deliberate: this value is only ever summed, and an
+	 * undefined that a caller forgets to coalesce turns the whole exclusion into
+	 * `NaN`, which compares false against every budget and silently disables it.
+	 */
+	approvalWaitedMs(id: string): number {
+		return this.#refs.get(id)?.approvalWaitedMs ?? 0;
+	}
+
 	attachSession(id: string, session: AgentSession, sessionFile?: string | null): void {
 		const ref = this.#refs.get(id);
 		if (!ref) return;
@@ -159,12 +342,58 @@ export class AgentRegistry {
 		this.#emit({ type: "removed", ref });
 	}
 
+	/**
+	 * Re-root this agent's conversation scope, for a driving session that has
+	 * switched to a different transcript (`/new`, `/resume`, ACP load, an
+	 * extension `switchSession`).
+	 *
+	 * Only the agent named here moves. Its former children keep the old scope on
+	 * purpose: they belong to the conversation that just ended, and the caller
+	 * that re-roots a session is expected to release them (see
+	 * `AgentSession.#rescopeAgentRegistry`). Anything that survives the release —
+	 * a ref another owner is holding — is then correctly invisible to the new
+	 * conversation rather than silently inherited by it.
+	 */
+	rescope(id: string, scope: string | undefined): void {
+		const ref = this.#refs.get(id);
+		if (!ref || ref.scope === scope) return;
+		ref.scope = scope;
+		this.#emit({ type: "status_changed", ref });
+	}
+
+	/**
+	 * Whether two conversation scopes may see each other.
+	 *
+	 * Deliberately permissive: an unknown scope on either side is visible. A
+	 * filter that hid everything it could not attribute would empty the roster of
+	 * a collab guest (whose refs are mirrored from the host and carry no local
+	 * scope) and of every render-only test, which is a worse failure than the one
+	 * scoping exists to fix.
+	 */
+	static sameScope(a: string | undefined, b: string | undefined): boolean {
+		return !a || !b || a === b;
+	}
+
+	/** Every agent belonging to `scope`, for a roster rendered on behalf of one conversation. */
+	listInScope(scope: string | undefined): AgentRef[] {
+		return this.list().filter(ref => AgentRegistry.sameScope(ref.scope, scope));
+	}
+
 	get(id: string): AgentRef | undefined {
 		return this.#refs.get(id);
 	}
 
 	list(): AgentRef[] {
 		return [...this.#refs.values()];
+	}
+
+	/** Number of task subagents with a turn currently executing. */
+	runningSubagentCount(): number {
+		let count = 0;
+		for (const ref of this.#refs.values()) {
+			if (ref.kind === "sub" && ref.status === "running") count++;
+		}
+		return count;
 	}
 
 	/**
@@ -203,13 +432,23 @@ export class AgentRegistry {
 	}
 
 	/**
-	 * Returns every alive agent (running | idle) except the caller. Advisor refs
-	 * are observability-only transcripts, never peers, so they are excluded.
-	 * Flat namespace: every other agent is visible.
+	 * Returns every alive agent (running | idle) in the CALLER's conversation,
+	 * except the caller. Advisor refs are observability-only transcripts, never
+	 * peers, so they are excluded.
+	 *
+	 * Flat namespace within a conversation: every other agent of the same scope
+	 * is visible, at any depth. Across conversations nothing is, which is what
+	 * stops `irc list` in a resumed session from offering peers that belong to
+	 * the transcript it replaced.
 	 */
 	listVisibleTo(id: string): AgentRef[] {
+		const scope = this.#refs.get(id)?.scope;
 		return this.list().filter(
-			ref => ref.id !== id && ref.kind !== "advisor" && (ref.status === "running" || ref.status === "idle"),
+			ref =>
+				ref.id !== id &&
+				ref.kind !== "advisor" &&
+				(ref.status === "running" || ref.status === "idle") &&
+				AgentRegistry.sameScope(ref.scope, scope),
 		);
 	}
 
@@ -222,8 +461,15 @@ export class AgentRegistry {
 		for (const listener of this.#listeners) {
 			try {
 				listener(event);
-			} catch {
-				// listeners must not break the dispatch loop
+			} catch (error) {
+				// A listener throwing is a bug in the listener, not an expected condition:
+				// it keeps its subscription and keeps missing events, so whatever it
+				// renders (the agent roster, a status line) silently stops tracking
+				// reality. The dispatch loop still continues for the other listeners.
+				logger.warn("Agent registry listener threw; it missed this event", {
+					event: event.type,
+					error: errorMessage(error),
+				});
 			}
 		}
 	}

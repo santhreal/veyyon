@@ -40,8 +40,29 @@ import { PACKAGES, reach, reachedNames } from "../helpers/module-reach-gate";
  * `JSON.parse`. The lock file it reads is JSON, so the parse is real work on this path either way; what
  * changed is that the one owner does it. Raised deliberately, and only by the one module the owner
  * costs: `json.ts` imports `type-guards` and nothing else.
+ *
+ * 36 from 2026-08-04. The module is `@veyyon/utils/cli-exit-codes`, reached through
+ * `cli/exit-codes.ts`, and it exists because the two places that decide what a command-line mistake
+ * exits with had disagreed: the root-flag path returned 2 and the command framework returned 1, so
+ * `veyyon --nope` and `veyyon config --nope` reported the same mistake with different statuses. The
+ * alternative to the edge is a second copy of the literal, which is the one-place violation this tree
+ * fails elsewhere.
+ *
+ * MEASURED, because a raise argued only on merit is how a ceiling stops meaning anything. The
+ * marginal cost of one zero-import leaf on this graph is BELOW THE MEASUREMENT FLOOR of a loaded
+ * machine, in both clocks and in both directions. Two arms, one importing a one-line constant module
+ * and one inlining the same constant, order-balanced so a per-block warmup lands on both equally:
+ * 240 spawns per arm gave 29.59 ms vs 30.06 ms of wall per spawn, and 300 spawns per arm gave
+ * 10.93 ms vs 11.27 ms of user+sys CPU per spawn. The arm WITH the extra module measured faster in
+ * both, which is the honest way of saying the cost is under about 0.35 ms and its sign does not
+ * resolve. An earlier unbalanced run of the same arms reported +5.3 ms; that was block-order bias,
+ * not a cost, and it is recorded here because it is the trap this measurement is easy to fall into.
+ *
+ * So the leaf is admitted on the same terms as `json.ts` above: one module, zero imports of its own,
+ * so the edge cannot grow, and no measurable time. A raise for a module that pulls a graph behind it
+ * is a different question and this precedent does not cover it.
  */
-const BOOT_CEILING = 35;
+const BOOT_CEILING = 36;
 
 /** The same measurement as a floor, so a broken walk fails instead of passing quietly. */
 const BOOT_FLOOR = 25;
