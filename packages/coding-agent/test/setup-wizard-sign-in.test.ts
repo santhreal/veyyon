@@ -93,6 +93,63 @@ describe("SignInTab", () => {
 		}
 	});
 
+	it("routes multi-character terminal paste to the prompt and skips without submitting partial input", async () => {
+		const promptShown = Promise.withResolvers<void>();
+		const submittedCodes: string[] = [];
+		let focusTarget: (Component & { pasteText(text: string): void }) | undefined;
+		const skipSetup = vi.fn();
+		const finish = vi.fn();
+
+		const authStorage = {
+			has: (_providerId: string) => false,
+			hasAuth: (_providerId: string) => false,
+			getCredentialOrigin: (_providerId: string) => undefined,
+			async login(_provider: OAuthProviderId, ctrl: OAuthLoginCallbacks): Promise<void> {
+				const prompt = ctrl.onManualCodeInput?.();
+				promptShown.resolve();
+				submittedCodes.push((await prompt) ?? "");
+			},
+		} as unknown as AuthStorage;
+
+		const host = {
+			ctx: {
+				openInBrowser(): void {},
+				session: {
+					modelRegistry: {
+						authStorage,
+						async refresh(): Promise<void> {},
+					},
+				},
+			},
+			requestRender(): void {},
+			finish,
+			skipSetup,
+			setFocus(component: Component | null): void {
+				focusTarget = (component as (Component & { pasteText(text: string): void }) | null) ?? undefined;
+			},
+			restoreFocus(): void {},
+		} as unknown as SetupSceneHost;
+
+		const tab = new SignInTab(host);
+		try {
+			for (const char of "anthropic") tab.handleInput(char);
+			tab.handleInput("\n");
+			await promptShown.promise;
+
+			expect(focusTarget).toBeDefined();
+			focusTarget?.pasteText("code-from-terminal-paste");
+			expect(Bun.stripANSI(tab.render(80).join("\n"))).toContain("> code-from-terminal-paste");
+
+			focusTarget?.handleInput?.("\x03");
+			expect(skipSetup).toHaveBeenCalledTimes(1);
+			expect(finish).not.toHaveBeenCalled();
+			expect(submittedCodes).toEqual([]);
+		} finally {
+			tab.dispose();
+			await Promise.resolve();
+		}
+	});
+
 	it("copies the active login URL from the keyboard while the setup TUI owns selection", async () => {
 		const url = "https://example.com/oauth/authorize?client_id=veyyon&state=copy";
 		const loginGate = Promise.withResolvers<void>();

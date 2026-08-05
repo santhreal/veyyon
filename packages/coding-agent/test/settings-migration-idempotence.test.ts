@@ -213,21 +213,21 @@ describe("settings migrations are fixed points", () => {
 
 		const { first, second } = await loadTwice("compaction.strategy");
 
-		expect(first).toBe("handoff");
-		expect(second).toBe("handoff");
+		expect(first).toBe("summary");
+		expect(second).toBe("summary");
 	});
 
 	/**
-	 * `off` is the one strategy that carries a second effect: it becomes `handoff`
-	 * AND disables compaction. Both halves must survive the second pass, or a user
+	 * `off` is the one strategy that carries a second effect: it becomes `summary`
+	 * and disables compaction. Both halves must survive the second pass, or a user
 	 * who had compaction off would find it back on after one relaunch.
 	 */
 	test("keeps compaction disabled after migrating the off strategy", async () => {
 		writeConfig({ compaction: { strategy: "off" } });
 
 		const strategy = await loadTwice("compaction.strategy");
-		expect(strategy.first).toBe("handoff");
-		expect(strategy.second).toBe("handoff");
+		expect(strategy.first).toBe("summary");
+		expect(strategy.second).toBe("summary");
 		expect(await loadValue("compaction.enabled")).toBe(false);
 	});
 

@@ -28,18 +28,38 @@
  * regression that made onboarding content unreachable in the first place.
  */
 import { beforeAll, describe, expect, it, vi } from "bun:test";
+import * as os from "node:os";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { agentsSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/agents";
-import { importSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/import";
+import * as importScanModule from "@veyyon/coding-agent/discovery/import-scan";
+import { AgentsSceneController, agentsSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/agents";
+import { ImportSceneController, importSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/import";
 import { providersSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/providers";
 import { themeSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/theme";
 import type {
 	SetupScene,
 	SetupSceneController,
+	SetupSceneHost,
 	SetupWizardContext,
 } from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
 import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
+import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { useTempHome } from "./helpers/temp-home";
+
+/**
+ * Registered before anything else in the file so the `os.homedir` redirect is
+ * in force for every case, and so its own assertions run before any test body.
+ *
+ * This suite used to drive `scene.shouldRun()` on the REAL scenes to fill their
+ * candidate lists. `importSetupScene.shouldRun` calls `scanForeignConfig()` with
+ * no home argument, which resolves it from `os.homedir()`: measured at 39 reads
+ * under the developer's real home in a single call, including `~/.env` and
+ * `~/.veyyon/profiles/<name>/.env`, returning the developer's own Claude skills
+ * as import candidates. The operator has forbidden that outright, and it also
+ * made the assertions below depend on what happens to be installed.
+ */
+const tempHome = useTempHome();
 
 beforeAll(async () => {
 	await Settings.init({ inMemory: true });
@@ -340,26 +360,70 @@ describe("the progress breadcrumb names the steps", () => {
 });
 
 describe("every real scene fits the viewport it is given", () => {
+	/**
+	 * Six roles is what `discoverAgents` returns for a stock install, and a name
+	 * plus a full sentence of description is the shape that made this step
+	 * overflow in the first place.
+	 */
+	const AGENT_FIXTURE: readonly AgentDefinition[] = [
+		"task",
+		"scout",
+		"designer",
+		"reviewer",
+		"librarian",
+		"sonic",
+	].map(name => ({
+		name,
+		description: `The ${name} subagent, described in one full sentence so the detail block has real text to wrap.`,
+		systemPrompt: "",
+		source: "bundled" as const,
+	}));
+
+	/** Two foreign providers' worth of importable files, with real-looking paths. */
+	const IMPORT_FIXTURE: readonly importScanModule.ImportCandidate[] = [
+		{ kind: "skill", name: "code-review", providerName: "Claude Code", sourcePath: "/fixture/.claude/skills/cr.md" },
+		{ kind: "skill", name: "release", providerName: "Claude Code", sourcePath: "/fixture/.claude/skills/rel.md" },
+		{ kind: "instructions", name: "CLAUDE.md", providerName: "Claude Code", sourcePath: "/fixture/CLAUDE.md" },
+		{ kind: "instructions", name: "AGENTS.md", providerName: "Codex", sourcePath: "/fixture/.codex/AGENTS.md" },
+	];
+
+	/**
+	 * The two discovering scenes, mounted on fixture data instead of on whatever
+	 * the developer's machine holds. Their real `shouldRun` is what scanned the
+	 * real home; their controllers take the discovered rows as an argument, so
+	 * the scene under test is the same code with a known input.
+	 */
 	const scenes: ReadonlyArray<readonly [string, SetupScene]> = [
 		["providers", providersSetupScene],
-		["subagents", agentsSetupScene],
+		[
+			"subagents",
+			{
+				...agentsSetupScene,
+				shouldRun: undefined,
+				mount: (host: SetupSceneHost) => new AgentsSceneController(host, AGENT_FIXTURE),
+			},
+		],
 		["theme", themeSetupScene],
-		["import", importSetupScene],
+		[
+			"import",
+			{
+				...importSetupScene,
+				shouldRun: undefined,
+				mount: (host: SetupSceneHost) => new ImportSceneController(host, [...IMPORT_FIXTURE]),
+			},
+		],
 	];
 
 	/**
 	 * The regression that made onboarding content unreachable. Each shipped scene
 	 * is mounted for real and must render inside its budget, so none of them needs
 	 * the overflow notice at an ordinary terminal size. A scene that regresses
-	 * here is a scene whose tail a user cannot reach — and the tail is where
+	 * here is a scene whose tail a user cannot reach, and the tail is where
 	 * "Browse all…" and the last providers live.
 	 */
 	for (const [name, scene] of scenes) {
-		it(`${name} needs no overflow notice at 100x30`, async () => {
-			const ctx = makeContext(30);
-			// Scenes that discover their own rows fill them in `shouldRun`.
-			await scene.shouldRun?.(ctx);
-			const component = new SetupWizardComponent(ctx, [scene]);
+		it(`${name} needs no overflow notice at 100x30`, () => {
+			const component = new SetupWizardComponent(makeContext(30), [scene]);
 			try {
 				expect(hasRow(sceneFrame(component, 100), "more row")).toBe(false);
 			} finally {
@@ -367,4 +431,38 @@ describe("every real scene fits the viewport it is given", () => {
 			}
 		});
 	}
+
+	/**
+	 * The isolation itself, asserted rather than intended.
+	 *
+	 * `useTempHome` already proves `os.homedir()` no longer names the developer's
+	 * home. This proves the second half: the two machine-scanning entry points
+	 * are never reached at all, so no future edit can reintroduce the scan by
+	 * calling `shouldRun` again "just to fill the rows". Both spies are installed
+	 * fresh here and the scenes are driven exactly as the cases above drive them.
+	 *
+	 * IF IT REGRESSES: this suite reads the operator's `~/.claude`, `~/.codex`
+	 * and `~/.env`, and its pass/fail depends on what they have installed.
+	 */
+	it("scans nothing on the machine it runs on", () => {
+		const scan = vi.spyOn(importScanModule, "scanForeignConfig");
+		const discover = vi.spyOn(discoveryModule, "discoverAgents");
+		try {
+			expect(os.homedir()).toBe(tempHome());
+			for (const [, scene] of scenes) {
+				expect(scene.shouldRun).toBeUndefined();
+				const component = new SetupWizardComponent(makeContext(30), [scene]);
+				try {
+					sceneFrame(component, 100);
+				} finally {
+					component.dispose();
+				}
+			}
+			expect(scan).not.toHaveBeenCalled();
+			expect(discover).not.toHaveBeenCalled();
+		} finally {
+			scan.mockRestore();
+			discover.mockRestore();
+		}
+	});
 });

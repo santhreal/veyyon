@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { __resetDirsFromEnvForTests, getAgentDir, removeWithRetries, setAgentDir, TempDir } from "@veyyon/utils";
+import { getAgentDir, removeWithRetries, setAgentDir, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const tempDirs: TempDir[] = [];
 
@@ -18,19 +19,25 @@ function makeTempDir(prefix: string): string {
 // `~/.veyyon/profiles/<profile>/agent/sessions/<slug>` in the developer's real
 // data directory. It passed for a long time because the test runner sandboxes
 // HOME; run bare, the tripwire catches it immediately.
-let savedAgentDirEnv: string | undefined;
+// Restoring `VEYYON_CODING_AGENT_DIR` by hand is NOT enough, and this file proved it:
+// `setAgentDir` also deletes `VEYYON_PROFILE` and overwrites the module's pre-profile
+// baseline, neither of which that variable can put back. On a machine running with a
+// named profile the suite handed an UNSET profile to every file scheduled after it, so
+// they resolved under `profiles/default/` instead of the real one. `captureDirOverrides`
+// snapshots all four inputs and `restoreDirOverrides` is the single owner of putting
+// them back; the hand-rolled two-liner is what `scripts/find-test-leaks.ts` flagged.
+let dirOverrides: DirOverridesSnapshot | undefined;
 let agentRoot: string | undefined;
 
 beforeEach(() => {
-	savedAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
+	dirOverrides = captureDirOverrides();
 	agentRoot = makeTempDir("@pi-cwd-agent-");
 	setAgentDir(agentRoot);
 });
 
 afterEach(async () => {
-	if (savedAgentDirEnv === undefined) delete process.env.VEYYON_CODING_AGENT_DIR;
-	else process.env.VEYYON_CODING_AGENT_DIR = savedAgentDirEnv;
-	__resetDirsFromEnvForTests();
+	if (dirOverrides !== undefined) restoreDirOverrides(dirOverrides);
+	dirOverrides = undefined;
 	agentRoot = undefined;
 	await Promise.all(tempDirs.splice(0).map(dir => dir.remove()));
 });

@@ -14,12 +14,26 @@ import {
 	ExtensionRunner,
 	testSetExtensionHandlerTimeoutMs,
 } from "@veyyon/coding-agent/extensibility/extensions/runner";
-import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
+import { APPROVAL_SELECT_OPTIONS, ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { HookRunner } from "@veyyon/coding-agent/extensibility/hooks/runner";
 import { Type } from "@veyyon/coding-agent/extensibility/typebox";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
+
+/**
+ * Execution context for a test whose subject is NOT approval.
+ *
+ * These tests run headless, so any rung that prompts turns "did the tool_result
+ * handler rewrite this?" into "the wrapper threw because nobody could answer a
+ * prompt". Naming `auto` states the intent instead of inheriting whatever the
+ * product default happens to be: the tool is meant to run, and `auto` is the
+ * lowest rung that runs an ordinary call of any tier unasked while leaving the
+ * per-tool policies and the cwd/secret boundaries in place.
+ */
+const runsUnaskedContext = {
+	settings: { get: (key: string) => (key === "tools.approvalMode" ? "auto" : {}) },
+} as never;
 
 describe("ExtensionRunner", () => {
 	let tempDir: TempDir;
@@ -967,7 +981,7 @@ describe("ExtensionRunner", () => {
 				}
 			`);
 			const wrapper = new ExtensionToolWrapper(throwingTool, runner);
-			const res = await wrapper.execute("call-rewrite", {} as never, undefined, undefined, undefined);
+			const res = await wrapper.execute("call-rewrite", {} as never, undefined, undefined, runsUnaskedContext);
 			expect(firstText(res)).toBe("Enriched recovery guidance");
 			expect(res.isError).toBe(true);
 			expect(res.details).toEqual({ enriched: true });
@@ -980,9 +994,9 @@ describe("ExtensionRunner", () => {
 				}
 			`);
 			const wrapper = new ExtensionToolWrapper(throwingTool, runner);
-			await expect(wrapper.execute("call-untouched", {} as never, undefined, undefined, undefined)).rejects.toThrow(
-				"original explosion",
-			);
+			await expect(
+				wrapper.execute("call-untouched", {} as never, undefined, undefined, runsUnaskedContext),
+			).rejects.toThrow("original explosion");
 		});
 
 		it("converts a failure to success when a handler clears isError", async () => {
@@ -995,7 +1009,7 @@ describe("ExtensionRunner", () => {
 				}
 			`);
 			const wrapper = new ExtensionToolWrapper(throwingTool, runner);
-			const res = await wrapper.execute("call-cleared", {} as never, undefined, undefined, undefined);
+			const res = await wrapper.execute("call-cleared", {} as never, undefined, undefined, runsUnaskedContext);
 			expect(firstText(res)).toBe("recovered");
 			expect(res.isError).toBeUndefined();
 		});
@@ -1010,7 +1024,7 @@ describe("ExtensionRunner", () => {
 				}
 			`);
 			const wrapper = new ExtensionToolWrapper(okTool, runner);
-			const res = await wrapper.execute("call-flagged", {} as never, undefined, undefined, undefined);
+			const res = await wrapper.execute("call-flagged", {} as never, undefined, undefined, runsUnaskedContext);
 			expect(firstText(res)).toBe("now failing");
 			expect(res.isError).toBe(true);
 		});
@@ -1125,9 +1139,11 @@ describe("ExtensionRunner", () => {
 			const wrapped = new ExtensionToolWrapper(tool, runner);
 
 			const startedAt = performance.now();
-			await expect(wrapped.execute("tool-call-id", {})).rejects.toThrow(
-				`Extension ${hangExtensionPath} timed out after 10ms`,
-			);
+			await expect(
+				// Ordinary tool that is meant to run: the gate-handler timeout must be
+				// the only thing that stops it, so the rung is named rather than left open.
+				wrapped.execute("tool-call-id", {}, undefined, undefined, runsUnaskedContext),
+			).rejects.toThrow(`Extension ${hangExtensionPath} timed out after 10ms`);
 			const elapsedMs = performance.now() - startedAt;
 
 			expect(elapsedMs).toBeGreaterThanOrEqual(8);
@@ -1408,6 +1424,8 @@ describe("ExtensionRunner", () => {
 				isIdle: () => true,
 				hasQueuedMessages: () => false,
 				abort: () => {},
+				// Kept: the subject IS the approval prompt. `always-ask` is the legacy
+				// alias for `ask`, and `dangerous_tool` must still reach a prompt there.
 				settings: { get: (key: string) => (key === "tools.approvalMode" ? "always-ask" : {}) } as never,
 			});
 
@@ -1418,10 +1436,10 @@ describe("ExtensionRunner", () => {
 			]);
 			expect(select).toHaveBeenCalledWith(
 				expect.stringContaining("## Permission required\n**Tool:** `dangerous_tool`\n**Scope:** This call only"),
-				[
-					{ label: "Approve", description: "Run this call once. No policy is saved." },
-					{ label: "Deny", description: "Do not run this call." },
-				],
+				// The prompt's option list is one exported array; pin the identity of
+				// the choices rather than a copy that goes stale when a rung changes
+				// which of them the operator is offered.
+				APPROVAL_SELECT_OPTIONS,
 				{
 					selectionMarker: "radio",
 					helpText: "↑/↓ navigate  enter confirm  esc cancel",
@@ -1469,6 +1487,8 @@ describe("ExtensionRunner", () => {
 					isIdle: () => true,
 					hasQueuedMessages: () => false,
 					abort: () => {},
+					// Kept for the same reason as the approved case: this test wants the
+					// prompt so it can answer Deny.
 					settings: { get: (key: string) => (key === "tools.approvalMode" ? "always-ask" : {}) } as never,
 				}),
 			).rejects.toThrow("Tool call denied by user: dangerous_tool");
@@ -1520,6 +1540,7 @@ describe("ExtensionRunner", () => {
 					isIdle: () => true,
 					hasQueuedMessages: () => false,
 					abort: () => {},
+					// Kept: an aborted dialog only happens if a prompt was raised.
 					settings: { get: (key: string) => (key === "tools.approvalMode" ? "always-ask" : {}) } as never,
 				}),
 			).rejects.toThrow("dialog aborted");
@@ -1567,6 +1588,7 @@ describe("ExtensionRunner", () => {
 			const wrapper = new ExtensionToolWrapper(approvalTool, runner);
 			await expect(
 				(wrapper as ExtensionToolWrapper<any>).execute("call-partial-context", {}, undefined, undefined, {
+					// Kept: headless plus a prompting rung is exactly the case under test.
 					settings: { get: (key: string) => (key === "tools.approvalMode" ? "always-ask" : {}) },
 				} as never),
 			).rejects.toThrow('Tool "dangerous_tool" requires approval but no interactive UI available.');
@@ -1626,9 +1648,15 @@ describe("ExtensionRunner", () => {
 			);
 			const wrapped = new ExtensionToolWrapper(createHashlineEditTool(), runner);
 
-			const resultMessage = await wrapped.execute("tool-call-id", {
-				input: "¶plans/switch-case-array-syntax.md#ABC1\n27 27\n+new content",
-			});
+			// Ordinary edit that is meant to run: the subject is the path the gate
+			// handler sees, so the rung that lets it run is named rather than left open.
+			const resultMessage = await wrapped.execute(
+				"tool-call-id",
+				{ input: "¶plans/switch-case-array-syntax.md#ABC1\n27 27\n+new content" },
+				undefined,
+				undefined,
+				runsUnaskedContext,
+			);
 
 			expect(resultMessage.content).toEqual([{ type: "text", text: "ok" }]);
 			const events = fs
@@ -1667,9 +1695,13 @@ describe("ExtensionRunner", () => {
 			);
 			const wrapped = new ExtensionToolWrapper(createHashlineEditTool(), runner);
 
-			await wrapped.execute("tool-call-id", {
-				input: "¶plans/foo.md#notatag\n27 27\n+new content",
-			});
+			await wrapped.execute(
+				"tool-call-id",
+				{ input: "¶plans/foo.md#notatag\n27 27\n+new content" },
+				undefined,
+				undefined,
+				runsUnaskedContext,
+			);
 
 			const events = fs
 				.readFileSync(eventsPath, "utf8")
@@ -1706,10 +1738,13 @@ describe("ExtensionRunner", () => {
 			);
 			const wrapped = new ExtensionToolWrapper(createHashlineEditTool(), runner);
 
-			await wrapped.execute("tool-call-id", {
-				_path: "plans/allowed.md",
-				input: "¶src/secret.ts#ABC1\n27 27\n+evil content",
-			});
+			await wrapped.execute(
+				"tool-call-id",
+				{ _path: "plans/allowed.md", input: "¶src/secret.ts#ABC1\n27 27\n+evil content" },
+				undefined,
+				undefined,
+				runsUnaskedContext,
+			);
 
 			const events = fs
 				.readFileSync(eventsPath, "utf8")
@@ -1750,9 +1785,15 @@ describe("ExtensionRunner", () => {
 			const wrapped = new ExtensionToolWrapper(createHashlineEditTool(), runner);
 
 			await expect(
-				wrapped.execute("tool-call-id", {
-					input: "¶plans/switch-case-array-syntax.md#ABC1\n27 27\n+new content\n¶packages/coding-agent/src/main.ts#DEF2\n1 1\n+changed",
-				}),
+				wrapped.execute(
+					"tool-call-id",
+					{
+						input: "¶plans/switch-case-array-syntax.md#ABC1\n27 27\n+new content\n¶packages/coding-agent/src/main.ts#DEF2\n1 1\n+changed",
+					},
+					undefined,
+					undefined,
+					runsUnaskedContext,
+				),
 			).rejects.toThrow("Blocked: undefined");
 
 			const events = fs

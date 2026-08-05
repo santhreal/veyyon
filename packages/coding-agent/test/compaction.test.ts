@@ -278,28 +278,15 @@ describe("shouldCompact", () => {
 	});
 
 	/**
-	 * `off` is not a strategy any more, and there is no second off switch.
-	 *
-	 * `strategy` used to admit `"off"`, so `enabled: true, strategy: "off"` was a
-	 * legal and self-contradicting configuration that `shouldCompact` resolved by
-	 * checking both fields. Two fields that can each disable a feature can
-	 * disagree about whether it is disabled, and only one of them is the one a
-	 * user sets. The strategy union is now `handoff | summary`, `enabled` is the
-	 * only off switch, and a stored `off` migrates to `enabled: false` (asserted
-	 * in `compaction-strategy-settings.test.ts`, which owns the migration).
-	 *
-	 * This case pins the consequence: with the strategy the migration produces,
-	 * turning compaction off is `enabled: false` and nothing else.
+	 * `enabled` is the only off switch. Legacy `off` strategy values migrate to
+	 * `summary` while setting `enabled: false`, so the canonical strategy itself
+	 * never changes whether compaction runs.
 	 */
-	it("does not compact when disabled, whichever strategy is stored", () => {
+	it("does not compact when the canonical strategy is disabled", () => {
 		const base = { thresholdPercent: 1, reserveTokens: 10000, keepRecentTokens: 20000 };
 
-		for (const strategy of ["handoff", "summary"] as const) {
-			expect(shouldCompact(99_000, 100_000, { enabled: false, strategy, ...base })).toBe(false);
-			// The positive control: the same settings with `enabled` on DO compact,
-			// so the assertion above is about `enabled` and not about the threshold.
-			expect(shouldCompact(99_000, 100_000, { enabled: true, strategy, ...base })).toBe(true);
-		}
+		expect(shouldCompact(99_000, 100_000, { enabled: false, strategy: "summary", ...base })).toBe(false);
+		expect(shouldCompact(99_000, 100_000, { enabled: true, strategy: "summary", ...base })).toBe(true);
 	});
 
 	it("should return false when disabled", () => {
@@ -697,6 +684,31 @@ describe("buildSessionContext", () => {
 		expect((loaded.messages[0] as any).summary).toContain("Summary of 1,a,2,b");
 	});
 
+	/**
+	 * Removed provider-native compaction entries contain only an unreadable
+	 * provider blob and a placeholder summary. Resume must immediately replay
+	 * the original persisted messages instead of waiting for another compaction.
+	 */
+	it("re-expands original messages behind an unusable legacy provider compaction on resume", () => {
+		const u1 = createMessageEntry(createUserMessage("pre-compaction user evidence"));
+		const a1 = createMessageEntry(createAssistantMessage("pre-compaction assistant evidence"));
+		const u2 = createMessageEntry(createUserMessage("retained request"));
+		const legacyCompaction: CompactionEntry = {
+			...createCompactionEntry("Remote compaction preserved provider-native history for this session.", u2.id),
+			preserveData: { openaiRemoteCompaction: { provider: "openai-codex", replacementHistory: [{}] } },
+		};
+		const u3 = createMessageEntry(createUserMessage("post-compaction continuation"));
+
+		const loaded = buildSessionContext([u1, a1, u2, legacyCompaction, u3]);
+		const contextText = JSON.stringify(loaded.messages);
+
+		expect(loaded.messages.map(message => message.role)).toEqual(["user", "assistant", "user", "user"]);
+		expect(contextText).toContain("pre-compaction user evidence");
+		expect(contextText).toContain("pre-compaction assistant evidence");
+		expect(contextText).toContain("post-compaction continuation");
+		expect(contextText).not.toContain("Remote compaction preserved provider-native history");
+	});
+
 	// The removed image-archive engine stored the full source under `text`
 	// alongside its (now-defunct) image frames. On rebuild that source must be
 	// recovered as a single text block and the frames must NEVER rehydrate as
@@ -790,7 +802,7 @@ describe("buildSessionContext", () => {
 		expect(transcript.cacheMissExplainedAt).toEqual([false, false, false]);
 	});
 
-	it("keeps kept turns visible when collapsing a remote (OpenAI) compaction", () => {
+	it("replays original turns when collapsing an unusable legacy provider compaction", () => {
 		const uOld = createMessageEntry(createUserMessage("old-before-keep"));
 		const uKept = createMessageEntry(createUserMessage("kept-user"));
 		const aKept = createMessageEntry(createAssistantMessage("kept-assistant"));
@@ -813,11 +825,12 @@ describe("buildSessionContext", () => {
 			collapseCompactedHistory: true,
 		});
 
-		// The provider payload is attached to the summary for LLM replay only; the
-		// collapsed display must still emit the kept SessionEntry rows so a
-		// remotely-compacted session keeps its recent turns visible.
-		expect(transcript.messages.map(m => m.role)).toEqual(["user", "assistant", "compactionSummary", "user"]);
+		// The encrypted provider payload is unusable. Even collapsed resume must
+		// recover every original row and omit the placeholder summary.
+		expect(transcript.messages.map(m => m.role)).toEqual(["user", "user", "assistant", "user"]);
 		const dump = JSON.stringify(transcript.messages);
+		expect(dump).toContain("old-before-keep");
+		expect(dump).not.toContain("Remote summary");
 		expect(dump).toContain("kept-user");
 		expect(dump).toContain("kept-assistant");
 		expect(dump).toContain("after-compact");

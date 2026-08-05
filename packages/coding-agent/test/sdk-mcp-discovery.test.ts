@@ -135,6 +135,49 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 		expect(session.getDiscoverableTools({ source: "mcp" })).toHaveLength(TOOL_DISCOVERY_AUTO_THRESHOLD + 1);
 	});
 
+	/**
+	 * The other side of the threshold from the case above: a catalog that stays
+	 * under it buys no discovery turn at all. `auto` resolves to `mcp-only` only
+	 * once the tool count exceeds `TOOL_DISCOVERY_AUTO_THRESHOLD`
+	 * (`resolveToolDiscoveryMode`), so one MCP tool leaves the session exactly as
+	 * it would be with no MCP at all: every built-in directly callable, the MCP
+	 * tool directly callable beside them, and no `search_tool_bm25` spending
+	 * tokens to index 21 tools the model can already see.
+	 *
+	 * This replaces assertions that had it backwards — that default `auto` strips
+	 * built-in schemas for any catalog size. Nothing implements that: `auto` is
+	 * gated on the count, and the mode it escalates to is `mcp-only`, which hides
+	 * MCP tools rather than built-ins.
+	 */
+	it("leaves a small MCP catalog and every built-in directly callable, with no discovery turn", async () => {
+		const mcpTool = createMcpCustomTool("mcp__small_echo", "small", "echo");
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			modelRegistry,
+			sessionManager: SessionManager.inMemory(),
+			settings: Settings.isolated({}),
+			model: getBundledModel("openai", "gpt-4o-mini"),
+			disableExtensionDiscovery: true,
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			customTools: [mcpTool],
+		});
+
+		const activeNames = session.getActiveToolNames();
+		expect(session.isToolDiscoveryEnabled()).toBe(false);
+		expect(activeNames).not.toContain("search_tool_bm25");
+		expect(activeNames).toContain("mcp__small_echo");
+		expect(activeNames).toContain("browser");
+		expect(session.getDiscoverableTools({ source: "builtin" })).toEqual([]);
+		expect(session.getDiscoverableTools({ source: "mcp" })).toEqual([]);
+		await session.dispose();
+	});
+
 	it("advertises discovery guidance for builtin-only tools.discoveryMode all sessions", async () => {
 		const { session } = await createAgentSession({
 			cwd: tempDir,

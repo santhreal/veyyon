@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { contextFileCapability } from "@veyyon/coding-agent/capability/context-file";
 import {
-	ensureActiveProfileAgentsFile,
+	ensureProfileAgentsFile,
 	ensureProfileAgentsFileAt,
 	GLOBAL_AGENTS_GUIDANCE,
 	PROFILE_AGENTS_GUIDANCE,
@@ -79,7 +79,7 @@ describe("ensureProfileAgentsFileAt", () => {
 	});
 });
 
-describe("ensureActiveProfileAgentsFile (startup back-fill for pre-existing profiles)", () => {
+describe("ensureProfileAgentsFile (startup back-fill for pre-existing profiles)", () => {
 	// A profile that predates profile-creation seeding would otherwise never get a
 	// persistent AGENTS.md, which is what pushed a user to edit a file inside the
 	// git checkout that every update reset away. These pin the back-fill AND its
@@ -114,7 +114,7 @@ describe("ensureActiveProfileAgentsFile (startup back-fill for pre-existing prof
 		try {
 			const agentDir = path.join(tempDir.path(), "agent");
 			const agentsPath = path.join(agentDir, "AGENTS.md");
-			await withAgentDir(agentDir, () => ensureActiveProfileAgentsFile());
+			await withAgentDir(agentDir, () => ensureProfileAgentsFile());
 			expect(fs.readFileSync(agentsPath, "utf-8")).toBe(PROFILE_AGENTS_GUIDANCE);
 			expect(fs.statSync(agentsPath).mode & 0o777).toBe(0o644);
 		} finally {
@@ -133,7 +133,7 @@ describe("ensureActiveProfileAgentsFile (startup back-fill for pre-existing prof
 			const userRules = "My real profile rules live in agent.md.\n";
 			fs.writeFileSync(lowerPath, userRules);
 
-			await withAgentDir(agentDir, () => ensureActiveProfileAgentsFile());
+			await withAgentDir(agentDir, () => ensureProfileAgentsFile());
 
 			expect(fs.existsSync(path.join(agentDir, "AGENTS.md"))).toBe(false);
 			expect(fs.readFileSync(lowerPath, "utf-8")).toBe(userRules);
@@ -151,7 +151,7 @@ describe("ensureActiveProfileAgentsFile (startup back-fill for pre-existing prof
 			const userContent = "Existing top-priority rules.\n";
 			fs.writeFileSync(agentsPath, userContent);
 
-			await withAgentDir(agentDir, () => ensureActiveProfileAgentsFile());
+			await withAgentDir(agentDir, () => ensureProfileAgentsFile());
 			expect(fs.readFileSync(agentsPath, "utf-8")).toBe(userContent);
 		} finally {
 			await tempDir.remove().catch(() => {});
@@ -169,7 +169,7 @@ describe("ensureActiveProfileAgentsFile (startup back-fill for pre-existing prof
 			const agentsPath = path.join(agentDir, "AGENTS.md");
 			fs.symlinkSync(externalTarget, agentsPath);
 
-			await withAgentDir(agentDir, () => ensureActiveProfileAgentsFile());
+			await withAgentDir(agentDir, () => ensureProfileAgentsFile());
 
 			// The symlink is preserved: still a link, still pointing at the target,
 			// and its content is the external file, not the seeded header.

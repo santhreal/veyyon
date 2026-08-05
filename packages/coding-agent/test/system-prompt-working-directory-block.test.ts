@@ -17,12 +17,12 @@
  * either way, and only the tool list decides whether it is true.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildSystemPrompt, type SystemPromptToolMetadata } from "@veyyon/coding-agent/system-prompt";
 import { SET_CWD_TOOL_NAME } from "@veyyon/coding-agent/tools/reroot-hint";
-import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { useTempHome } from "./helpers/temp-home";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.
@@ -30,7 +30,6 @@ import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 // directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
 // reintroduce the leak by forgetting an `afterAll`.
 const makeWdBlockDir = useTrackedTempDirs("veyyon-wd-block-");
-const makeWdHomeDir = useTrackedTempDirs("veyyon-wd-home-");
 
 function toolMetadata(names: string[]): Map<string, SystemPromptToolMetadata> {
 	return new Map(names.map(name => [name, { label: name, description: `The ${name} tool.` }]));
@@ -38,17 +37,14 @@ function toolMetadata(names: string[]): Map<string, SystemPromptToolMetadata> {
 
 describe("the working-directory block and the tool it names", () => {
 	let tempDir = "";
-	let tempHomeDir = "";
-	let originalHome: string | undefined;
+
+	// The config root moves with HOME, not just the variable: this suite renders the whole
+	// prompt, which pulls the global `AGENTS.md` from a path built on `os.homedir()`.
+	useTempHome();
 
 	beforeEach(() => {
 		tempDir = makeWdBlockDir();
-		tempHomeDir = makeWdHomeDir();
-		originalHome = process.env.HOME;
-		process.env.HOME = tempHomeDir;
 	});
-
-	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
 
 	async function promptWithTools(toolNames: string[]): Promise<string> {
 		const { systemPrompt } = await buildSystemPrompt({

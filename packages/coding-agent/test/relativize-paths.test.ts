@@ -3,8 +3,8 @@ import type { AssistantMessage, Message, ToolResultMessage, Usage } from "@veyyo
 import { normalizeRoots, relativizePathsUnderRoots } from "@veyyon/coding-agent/session/relativize-paths";
 import { escapeRegExp } from "@veyyon/utils";
 
-const ROOT = "/media/mukund-thiru/SanthData/Santh/software/veyyon/veyyon";
-const OTHER = "/media/mukund-thiru/other-checkout";
+const ROOT = "/tmp/veyyon-fixture";
+const OTHER = "/tmp/other-checkout";
 
 function usage(): Usage {
 	return {

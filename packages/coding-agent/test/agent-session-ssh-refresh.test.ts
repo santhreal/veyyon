@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
@@ -12,7 +15,7 @@ import { addSSHHost, removeSSHHost, updateSSHHost } from "@veyyon/coding-agent/s
 import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { loadSshTool } from "@veyyon/coding-agent/tools/ssh";
-import { getSSHConfigPath, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, getSSHConfigPath, restoreDirOverrides, setAgentDir, TempDir } from "@veyyon/utils";
 
 function createModel(): Model<"openai-responses"> {
 	return buildModel({
@@ -29,14 +32,34 @@ function createModel(): Model<"openai-responses"> {
 	});
 }
 
+/**
+ * SSH hosts are read from the loading PROFILE's `ssh.json` and nowhere else.
+ *
+ * This suite used to write `<cwd>/.veyyon/ssh.json` and assert the tool picked
+ * it up, which was a green test defending the defect: a repository could name
+ * the machines the ssh tool connects to. It now writes the profile file, so it
+ * still measures the refresh mechanics, and the last case pins the removal.
+ */
 describe("AgentSession SSH tool refresh", () => {
 	const tempDirs: TempDir[] = [];
 	const sessions: AgentSession[] = [];
+	let configPath: string;
+	let dirOverrides: DirOverridesSnapshot;
+
+	beforeEach(() => {
+		const agentHome = TempDir.createSync("@pi-ssh-agent-");
+		tempDirs.push(agentHome);
+		dirOverrides = captureDirOverrides();
+		setAgentDir(agentHome.path());
+		configPath = getSSHConfigPath();
+		fs.mkdirSync(path.dirname(configPath), { recursive: true });
+	});
 
 	afterEach(async () => {
 		for (const session of sessions.splice(0)) {
 			await session.dispose();
 		}
+		restoreDirOverrides(dirOverrides);
 		for (const tempDir of tempDirs.splice(0)) {
 			tempDir.removeSync();
 		}
@@ -93,7 +116,7 @@ describe("AgentSession SSH tool refresh", () => {
 		expect(preWrite.items).toHaveLength(0);
 
 		const session = createSession(cwd);
-		await addSSHHost(getSSHConfigPath("project", cwd), "staging", { host: "192.0.2.10" });
+		await addSSHHost(configPath, "staging", { host: "192.0.2.10" });
 		await session.refreshSshTool({ activateIfAvailable: true });
 
 		expect(session.getAllToolNames()).toContain("ssh");
@@ -106,7 +129,6 @@ describe("AgentSession SSH tool refresh", () => {
 		const tempDir = TempDir.createSync("@pi-ssh-refresh-");
 		tempDirs.push(tempDir);
 		const cwd = tempDir.path();
-		const configPath = getSSHConfigPath("project", cwd);
 
 		await addSSHHost(configPath, "prod", { host: "203.0.113.9" });
 		const sshTool = await loadSshTool({
@@ -130,7 +152,6 @@ describe("AgentSession SSH tool refresh", () => {
 		const tempDir = TempDir.createSync("@pi-ssh-refresh-");
 		tempDirs.push(tempDir);
 		const cwd = tempDir.path();
-		const configPath = getSSHConfigPath("project", cwd);
 
 		await addSSHHost(configPath, "dev", { host: "192.0.2.20" });
 		const sshTool = await loadSshTool({
@@ -156,7 +177,7 @@ describe("AgentSession SSH tool refresh", () => {
 		const newProject = TempDir.createSync("@pi-ssh-refresh-new-");
 		tempDirs.push(oldProject, newProject);
 		await SessionManager.inMemory(oldProject.path()).moveTo?.(newProject.path());
-		await addSSHHost(getSSHConfigPath("project", newProject.path()), "moved", { host: "198.51.100.8" });
+		await addSSHHost(configPath, "moved", { host: "198.51.100.8" });
 		const movedTool = await loadSshTool({
 			cwd: newProject.path(),
 			hasUI: false,
@@ -179,7 +200,6 @@ describe("AgentSession SSH tool refresh", () => {
 		const tempDir = TempDir.createSync("@pi-ssh-refresh-");
 		tempDirs.push(tempDir);
 		const cwd = tempDir.path();
-		const configPath = getSSHConfigPath("project", cwd);
 
 		await addSSHHost(configPath, "prod", { host: "203.0.113.9" });
 		const initialTool = await loadSshTool({
@@ -204,7 +224,6 @@ describe("AgentSession SSH tool refresh", () => {
 		const tempDir = TempDir.createSync("@pi-ssh-refresh-");
 		tempDirs.push(tempDir);
 		const cwd = tempDir.path();
-		const configPath = getSSHConfigPath("project", cwd);
 
 		await addSSHHost(configPath, "fresh", { host: "203.0.113.11" });
 		const session = createSession(cwd);
@@ -218,7 +237,6 @@ describe("AgentSession SSH tool refresh", () => {
 		const tempDir = TempDir.createSync("@pi-ssh-refresh-");
 		tempDirs.push(tempDir);
 		const cwd = tempDir.path();
-		const configPath = getSSHConfigPath("project", cwd);
 		const blockedTool: AgentTool = {
 			name: "ssh",
 			label: "SSH",
@@ -237,5 +255,26 @@ describe("AgentSession SSH tool refresh", () => {
 
 		expect(session.getAllToolNames()).toContain("ssh");
 		expect(session.getActiveToolNames()).not.toContain("ssh");
+	});
+
+	it("ignores an ssh.json checked into the working tree", async () => {
+		const tempDir = TempDir.createSync("@pi-ssh-refresh-");
+		tempDirs.push(tempDir);
+		const cwd = tempDir.path();
+
+		// All three candidates a repository could once supply.
+		for (const relative of [path.join(".veyyon", "ssh.json"), "ssh.json", ".ssh.json"]) {
+			const repoFile = path.join(cwd, relative);
+			fs.mkdirSync(path.dirname(repoFile), { recursive: true });
+			await addSSHHost(repoFile, "from-the-repo", { host: "hostile.invalid" });
+		}
+
+		const session = createSession(cwd);
+		await session.refreshSshTool({ activateIfAvailable: true });
+
+		expect(session.getAllToolNames()).not.toContain("ssh");
+
+		const discovered = await loadCapability<SSHHost>(sshCapability.id, { cwd });
+		expect(discovered.all.map(host => host.name)).not.toContain("from-the-repo");
 	});
 });

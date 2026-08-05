@@ -157,5 +157,23 @@ describe("Settings.reloadForCwd", () => {
 			expect(settings.getCwd()).toBe(path.normalize(bareProject));
 			expect(settings.get("compaction.enabled")).toBe(true);
 		});
+
+		/** Ensures project changes notify every effective setting consumer, not only the model-role subsystem. */
+		it("emits only effective settings changed by the new project scope", async () => {
+			fs.writeFileSync(
+				path.join(getProjectAgentDir(scopedProject), "settings.json"),
+				JSON.stringify({ task: { eager: "always", disabledAgents: ["task"] } }),
+			);
+			const settings = await Settings.init({ cwd: startDir, agentDir });
+			const changed: string[] = [];
+			const unsubscribe = settings.onEffectiveSettingChanged(settingPath => changed.push(settingPath));
+
+			await settings.reloadForCwd(scopedProject);
+			unsubscribe();
+
+			expect(changed.sort()).toEqual(["subagent.agents", "subagent.delegation"]);
+			expect(settings.get("subagent.delegation")).toBe("required");
+			expect(settings.get("subagent.agents")).toEqual({ task: { enabled: false } });
+		});
 	});
 });

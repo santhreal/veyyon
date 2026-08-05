@@ -212,7 +212,11 @@ describe("a real binary swap and the config beside it", () => {
 		const staged = await stage();
 		await swap(staged);
 
-		expect((await fs.readdir(path.dirname(staged.binaryPath))).sort()).toEqual(["vey"]);
+		// The owner receipt is asserted PRESENT, not filtered: this case performs a real successful
+		// swap, and the updater restamps `.<basename>.veyyon-owner` on every one of those because an
+		// install missing its receipt is refused by its own uninstaller. Here the binary is `vey`, so
+		// the receipt is `.vey.veyyon-owner`. A directory holding only `vey` would be the defect.
+		expect((await fs.readdir(path.dirname(staged.binaryPath))).sort()).toEqual([".vey.veyyon-owner", "vey"]);
 	});
 });
 

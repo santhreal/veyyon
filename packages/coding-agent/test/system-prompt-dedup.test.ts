@@ -9,7 +9,7 @@ import {
 	type SystemPromptToolMetadata,
 } from "@veyyon/coding-agent/system-prompt";
 import { escapeRegExp } from "@veyyon/utils";
-import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { useTempHome } from "./helpers/temp-home";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.
@@ -17,7 +17,6 @@ import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 // directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
 // reintroduce the leak by forgetting an `afterAll`.
 const makePiSystemPromptDir = useTrackedTempDirs("pi-system-prompt-");
-const makePiSystemHomeDir = useTrackedTempDirs("pi-system-home-");
 
 // Discovering a bare project AGENTS.md (not under .veyyon/) is the foreign
 // agents-md convention, gated behind the (default-off) importForeignConfig
@@ -39,17 +38,18 @@ const READ_TOOL = new Map<string, SystemPromptToolMetadata>([
 
 describe("prompt source isolation and deduplication", () => {
 	let tempDir = "";
-	let tempHomeDir = "";
-	let originalHome: string | undefined;
+
+	// The config root moves with HOME, not just the variable. The global `AGENTS.md` this
+	// suite deduplicates against is resolved from `os.homedir()`, so a suite that assigned
+	// `process.env.HOME` and stopped there was deduplicating against the developer's real
+	// `~/.veyyon` and would pass or fail on what they happen to have installed.
+	// Per CASE, not per file: one case authors a profile SYSTEM.md into the home, and the
+	// cases that assert it is absent run after it.
+	const tempHome = useTempHome("test");
 
 	beforeEach(() => {
 		tempDir = makePiSystemPromptDir();
-		tempHomeDir = makePiSystemHomeDir();
-		originalHome = process.env.HOME;
-		process.env.HOME = tempHomeDir;
 	});
-
-	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
 
 	/**
 	 * A repository file must not bypass the assembled system prompt. This locks
@@ -183,7 +183,7 @@ describe("prompt source isolation and deduplication", () => {
 	 */
 	it("ignores project and profile SYSTEM.md files together", async () => {
 		const projectDir = path.join(tempDir, "project");
-		const agentDir = path.join(tempHomeDir, ".veyyon", "profiles", "default", "agent");
+		const agentDir = path.join(tempHome(), ".veyyon", "profiles", "default", "agent");
 		const projectPrompt = "REMOVED PROJECT SYSTEM PROMPT";
 		const profilePrompt = "REMOVED PROFILE SYSTEM PROMPT";
 		fs.mkdirSync(path.join(projectDir, ".veyyon"), { recursive: true });

@@ -6,11 +6,11 @@ import { SILENT_UPDATE_REPORTER, updateViaBinaryAt } from "@veyyon/coding-agent/
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { removeWithRetries } from "@veyyon/utils";
+import { enterTempHome, type TempHome } from "./helpers/temp-home";
 
 const VERSION = "9.9.9";
 const tempDirs: string[] = [];
-const originalHome = process.env.HOME;
-const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+let tempHome: TempHome | undefined;
 
 beforeAll(async () => {
 	await Settings.init({ inMemory: true });
@@ -19,10 +19,8 @@ beforeAll(async () => {
 
 afterEach(async () => {
 	vi.restoreAllMocks();
-	if (originalHome === undefined) delete process.env.HOME;
-	else process.env.HOME = originalHome;
-	if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
-	else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+	tempHome?.restore();
+	tempHome = undefined;
 	await Promise.all(tempDirs.splice(0).map(dir => removeWithRetries(dir)));
 });
 
@@ -86,9 +84,13 @@ describe.skipIf(process.platform === "win32")("concurrent explicit binary update
 		const targetPath = path.join(dir, "veyyon");
 		await fs.writeFile(targetPath, fakeBinaryScript("1.0.0"), { mode: 0o755 });
 
-		const home = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-update-concurrency-home-"));
-		tempDirs.push(home);
-		process.env.HOME = home;
+		// A completed update refreshes the shell completions it finds under HOME, and the
+		// updater resolves its own config root from `os.homedir()`. `enterTempHome` moves
+		// both, so neither the developer's dotfiles nor their `~/.veyyon` is in reach, and
+		// the redirect is asserted rather than assumed.
+		tempHome = enterTempHome();
+		const home = tempHome.home;
+		expect(os.homedir()).toBe(home);
 		process.env.XDG_CONFIG_HOME = path.join(home, ".config");
 
 		const completeBinary = fakeBinaryScript(VERSION);
@@ -159,7 +161,7 @@ describe.skipIf(process.platform === "win32")("concurrent explicit binary update
 		await firstAttempt;
 
 		expect(await fs.readFile(targetPath, "utf8")).toBe(completeBinary);
-		const artifacts = (await fs.readdir(dir)).filter(entry => entry !== "veyyon");
+		const artifacts = (await fs.readdir(dir)).filter(entry => entry !== "veyyon" && !entry.endsWith(".veyyon-owner"));
 		expect(artifacts).toEqual([]);
 	});
 });

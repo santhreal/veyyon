@@ -11,54 +11,32 @@ import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/setting
 import { resolveSubagentModel } from "@veyyon/coding-agent/task/subagent-settings";
 
 describe("compaction strategy settings", () => {
-	// After the image-archive engine was removed, every in-session strategy
-	// (`snap`/`snapcompact`/`context-full`/`shake`) folds to the pure-LLM
-	// `summary` strategy; only `handoff` (session transfer) stays distinct.
-	it("normalizes legacy strategy tokens to handoff or summary only", () => {
-		expect(normalizeCompactionStrategy("snapcompact")).toBe("summary");
-		expect(normalizeCompactionStrategy("snap")).toBe("summary");
-		expect(normalizeCompactionStrategy("summary")).toBe("summary");
-		expect(normalizeCompactionStrategy("context-full")).toBe("summary");
-		expect(normalizeCompactionStrategy("shake")).toBe("summary");
-		expect(normalizeCompactionStrategy("handoff")).toBe("handoff");
-		expect(normalizeCompactionStrategy("off")).toBe("summary");
-		expect(migrateCompactionStrategyValue("snapcompact")).toBe("summary");
+	// Every historical strategy token now folds to the sole in-place `summary`
+	// strategy. Session transfer is owned only by the explicit `/handoff` command.
+	it("normalizes every legacy strategy token to summary", () => {
+		for (const strategy of ["snapcompact", "snap", "summary", "context-full", "shake", "handoff", "off"]) {
+			expect(normalizeCompactionStrategy(strategy)).toBe("summary");
+			expect(migrateCompactionStrategyValue(strategy)).toBe("summary");
+		}
 	});
 
 	it("migrates persisted compaction.strategy values on settings load", () => {
-		// A persisted `snap`/`snapcompact` strategy from before the removal now
-		// loads as `summary` (in-place LLM summarization).
-		const fromSnapcompact = Settings.isolated({ "compaction.strategy": "snapcompact" });
-		expect(fromSnapcompact.get("compaction.strategy")).toBe("summary");
-
-		const fromContextFull = Settings.isolated({ "compaction.strategy": "context-full" });
-		expect(fromContextFull.get("compaction.strategy")).toBe("summary");
+		for (const strategy of ["snapcompact", "context-full", "shake-summary", "handoff"]) {
+			const migrated = Settings.isolated({ "compaction.strategy": strategy });
+			expect(migrated.get("compaction.strategy")).toBe("summary");
+		}
 
 		const fromOff = Settings.isolated({ "compaction.strategy": "off" });
-		expect(fromOff.get("compaction.strategy")).toBe("handoff");
+		expect(fromOff.get("compaction.strategy")).toBe("summary");
 		expect(fromOff.get("compaction.enabled")).toBe(false);
 	});
 
-	/**
-	 * There are exactly two strategies, and nothing can produce a third.
-	 *
-	 * The settings enum said `handoff | summary` while the engine's
-	 * `CompactionSettings.strategy` still admitted `"context-full"`, `"shake"`
-	 * and `"off"`, so the type behind the setting disagreed with the setting. The
-	 * first two are engine ACTIONS rather than user strategies; `"off"` was a
-	 * second way to spell `enabled: false`, which let two fields disagree about
-	 * whether compaction runs at all.
-	 *
-	 * These cases pin the collapsed shape from both ends: the enum a user can
-	 * choose from, and the normalizer everything passes through. Without the
-	 * second, a value that never appears in the enum could still reach the engine
-	 * from a hand-edited config or an older session artifact.
-	 */
-	it("offers exactly the two strategies in the settings enum", () => {
+	it("offers summary as the only strategy in settings", () => {
 		const entry = SETTINGS_SCHEMA["compaction.strategy"];
 
 		expect(entry.type).toBe("enum");
-		expect([...(entry as { values: readonly string[] }).values].sort()).toEqual(["handoff", "summary"]);
+		expect(entry.values).toEqual(["summary"]);
+		expect(entry.ui?.options?.map(option => option.value)).toEqual(["summary"]);
 	});
 
 	it("normalizes every unrecognized strategy to summary rather than passing it through", () => {
@@ -72,13 +50,9 @@ describe("compaction strategy settings", () => {
 		expect(normalizeCompactionStrategy(undefined)).toBe("summary");
 	});
 
-	it("keeps handoff the only value that is not summary", () => {
-		// Guards the normalizer against becoming a pass-through: every legacy token
-		// plus a sample of junk must land in a two-element set.
+	it("maps every known and unknown string to summary", () => {
 		const inputs = ["handoff", "summary", "snap", "snapcompact", "context-full", "shake", "off", "nonsense"];
-		const results = new Set(inputs.map(value => normalizeCompactionStrategy(value)));
-
-		expect([...results].sort()).toEqual(["handoff", "summary"]);
+		expect(inputs.map(value => normalizeCompactionStrategy(value))).toEqual(inputs.map(() => "summary"));
 	});
 
 	it("migrates compactionModel into compaction.model when unset", () => {

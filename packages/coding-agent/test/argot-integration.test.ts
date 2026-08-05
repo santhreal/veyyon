@@ -13,7 +13,7 @@
  * are real and safe", not "adoption happens".
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
@@ -23,7 +23,7 @@ import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import { RUNTIME_SECTIONS, withSectionBanner } from "@veyyon/coding-agent/system-prompt-builder/section-registry";
 import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot";
 import { ArgotParseError, ArgotSession, DICT_FILENAME, parseDict, renderPreamble } from "argot";
-import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { useTempHome } from "./helpers/temp-home";
 import { makeToolSession } from "./helpers/tool-session";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
@@ -32,7 +32,6 @@ import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 // directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
 // reintroduce the leak by forgetting an `afterAll`.
 const makePiArgotPromptDir = useTrackedTempDirs("pi-argot-prompt-");
-const makePiArgotPromptHomeDir = useTrackedTempDirs("pi-argot-prompt-home-");
 
 const EMPTY_TREE = {
 	rootPath: "",
@@ -276,17 +275,14 @@ const NOTATION_PREAMBLE = renderPreamble({ tools: true });
 
 describe("argot preamble and handle-table injection into the system prompt", () => {
 	let tempDir = "";
-	let tempHomeDir = "";
-	let originalHome: string | undefined;
+
+	// The config root moves with HOME, not just the variable: the assembled prompt reads
+	// the global `AGENTS.md` from a path built on `os.homedir()`.
+	useTempHome();
 
 	beforeEach(() => {
 		tempDir = makePiArgotPromptDir();
-		tempHomeDir = makePiArgotPromptHomeDir();
-		originalHome = process.env.HOME;
-		process.env.HOME = tempHomeDir;
 	});
-
-	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
 
 	const baseOptions = () => ({
 		cwd: tempDir,

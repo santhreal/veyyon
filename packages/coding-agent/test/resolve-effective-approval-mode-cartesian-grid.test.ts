@@ -6,7 +6,17 @@ import { describe, expect, it } from "bun:test";
 import { resolveEffectiveApprovalMode } from "../src/tools/approval";
 
 describe("resolveEffectiveApprovalMode cartesian grid", () => {
-	const configs = [undefined, "yolo", "ask", "plan", "auto-edit", "write", "always-ask"] as const;
+	const configs = [
+		undefined,
+		"yolo",
+		"ask",
+		"ask-command",
+		"auto",
+		"plan",
+		"auto-edit",
+		"write",
+		"always-ask",
+	] as const;
 
 	for (const c of configs) {
 		for (const cli of [false, true]) {
@@ -20,7 +30,7 @@ describe("resolveEffectiveApprovalMode cartesian grid", () => {
 					// the expected fallback is a plain string, so widen the matcher.
 					if (cli) expect(got).toBe("yolo");
 					else if (plan) expect(got).toBe("plan");
-					else expect(got).toBe<string>(c ?? "yolo");
+					else expect(got).toBe<string>(c ?? "auto");
 				});
 			}
 		}

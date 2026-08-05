@@ -1,8 +1,6 @@
 /**
- * parseCompactArgs adversarial against the shipped COMPACT_MODES registry
- * (summary + handoff, the two compaction strategies). Unknown first token is
- * full instructions (backward compat), which is also what retired mode names
- * degrade to.
+ * `parseCompactArgs` adversarial coverage for the single shipped `summary`
+ * mode, backward-compatible focus text, and the explicit handoff refusal.
  */
 import { describe, expect, it } from "bun:test";
 import {
@@ -13,28 +11,29 @@ import {
 } from "@veyyon/coding-agent/session/compact-modes";
 
 describe("parseCompactArgs adversarial matrix", () => {
-	for (const mode of ["summary", "handoff"] as const) {
-		for (const casing of [mode, mode.toUpperCase(), mode[0].toUpperCase() + mode.slice(1)]) {
-			it(`mode token ${JSON.stringify(casing)}`, () => {
-				expect(parseCompactArgs(casing)).toEqual({ mode });
-			});
-		}
+	for (const casing of ["summary", "SUMMARY", "Summary"]) {
+		it(`mode token ${JSON.stringify(casing)}`, () => {
+			expect(parseCompactArgs(casing)).toEqual({ mode: "summary" });
+		});
 	}
 
-	it("leading/trailing whitespace on bare mode", () => {
+	it("leading/trailing whitespace on bare summary mode", () => {
 		expect(parseCompactArgs("  summary  ")).toEqual({ mode: "summary" });
-		expect(parseCompactArgs("\thandoff\n")).toEqual({ mode: "handoff" });
 	});
 
-	it("summary/handoff accept focus", () => {
+	it("summary accepts focus", () => {
 		expect(parseCompactArgs("summary keep auth")).toEqual({
 			mode: "summary",
 			instructions: "keep auth",
 		});
-		expect(parseCompactArgs("handoff   multi  spaces")).toEqual({
-			mode: "handoff",
-			instructions: "multi  spaces",
-		});
+	});
+
+	it("handoff fails rather than becoming a compaction mode or focus text", () => {
+		for (const args of ["handoff", "\tHANDOFF\n", "Handoff   multi  spaces"]) {
+			const result = parseCompactArgs(args);
+			expect(result).toHaveProperty("error");
+			if ("error" in result) expect(result.error).toContain("/handoff");
+		}
 	});
 
 	it("unknown first token is full instructions (backward compat)", () => {
@@ -70,15 +69,10 @@ describe("parseCompactArgs adversarial matrix", () => {
 });
 
 describe("findCompactMode registry contract", () => {
-	/**
-	 * The registry must stay exactly the two strategies. `soft` and `remote` were
-	 * the provider-native remote compaction steering modes; their return would
-	 * mean a per-provider compaction path came back.
-	 */
-	it("ships summary and handoff only", () => {
-		expect(COMPACT_MODES.map(m => m.name).sort()).toEqual(["handoff", "summary"]);
+	it("ships summary only", () => {
+		expect(COMPACT_MODES.map(mode => mode.name)).toEqual(["summary"]);
 		expect(findCompactMode("summary")?.name).toBe("summary");
-		expect(findCompactMode("handoff")?.name).toBe("handoff");
+		expect(findCompactMode("handoff")).toBeUndefined();
 		expect(findCompactMode("soft")).toBeUndefined();
 		expect(findCompactMode("remote")).toBeUndefined();
 		expect(findCompactMode("snapcompact")).toBeUndefined();

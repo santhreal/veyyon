@@ -26,9 +26,9 @@ describe("resolveApproval tier rank property", () => {
 		expect(resolveApproval(tool("e", "exec"), {}, "auto-edit", {}).policy).toBe("prompt");
 	});
 
-	it("ask/always-ask allow only read", () => {
+	it("ask/always-ask prompt on every tier, reads included", () => {
 		for (const mode of ["ask", "always-ask"] as const) {
-			expect(resolveApproval(tool("r", "read"), {}, mode, {}).policy).toBe("allow");
+			expect(resolveApproval(tool("r", "read"), {}, mode, {}).policy).toBe("prompt");
 			expect(resolveApproval(tool("w", "write"), {}, mode, {}).policy).toBe("prompt");
 			expect(resolveApproval(tool("e", "exec"), {}, mode, {}).policy).toBe("prompt");
 		}

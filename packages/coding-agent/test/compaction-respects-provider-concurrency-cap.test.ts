@@ -115,8 +115,8 @@ describe("issue #3751: compaction summaries respect provider concurrency cap", (
 			completeImpl: override,
 		});
 
-		// Split-turn preparation fans out into history + turn-prefix + short.
-		expect(overrideCalls).toHaveLength(3);
+		// Split-turn preparation fans out into history and turn-prefix summaries.
+		expect(overrideCalls).toHaveLength(2);
 		expect(defaultSpy).not.toHaveBeenCalled();
 		// Each summarizer ships the system prompt that documents the compaction
 		// contract; we just sanity-check the override actually saw the request
@@ -179,12 +179,11 @@ describe("issue #3751: compaction summaries respect provider concurrency cap", (
 		await Promise.resolve();
 		expect(gates).toHaveLength(1);
 
-		// Drain in submission order: 4 HTTP requests total = 3 compaction
+		// Drain in submission order: 3 HTTP requests total = 2 compaction
 		// summarizers + 1 concurrent side request. We intentionally do NOT
-		// distinguish which gate is which — that's the whole point of the
-		// shared cap. Whatever order the limiter admits them in, peak
-		// in-flight must never exceed 1.
-		for (let i = 0; i < 4; i++) {
+		// distinguish which gate is which because the shared cap is the contract.
+		// Whatever order the limiter admits them in, peak in-flight stays at 1.
+		for (let i = 0; i < 3; i++) {
 			await waitFor(() => gates.length > i, `request ${i + 1} admitted`);
 			expect(inFlight).toBe(1);
 			gates[i]!.resolve();

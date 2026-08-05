@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { buildAvailableSlashCommands } from "@veyyon/coding-agent/slash-commands/available-commands";
+import { buildTuiBuiltinSlashCommands } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 
 describe("buildAvailableSlashCommands", () => {
 	test("returns RPC-safe command metadata with stable sources", async () => {
@@ -59,6 +61,20 @@ describe("buildAvailableSlashCommands", () => {
 		expect(byName["server:prompt"].source).toBe("mcp_prompt");
 		expect(byName["custom:hello"].source).toBe("custom");
 		expect(byName.notes.source).toBe("file");
+	});
+
+	/**
+	 * Command discovery must never advertise a goal-budget mutation path, even
+	 * when the human has enabled budget enforcement in Settings.
+	 */
+	test("never advertises a goal budget subcommand", () => {
+		for (const enabled of [false, true]) {
+			const settings = Settings.isolated({ "goal.modelBudgetsEnabled": enabled });
+			const goal = buildTuiBuiltinSlashCommands({ ctx: { settings } as never }).find(
+				command => command.name === "goal",
+			);
+			expect(goal?.subcommands?.map(command => command.name)).toEqual(["set", "show", "pause", "resume", "drop"]);
+		}
 	});
 
 	test("loads file commands into the session before advertising them", async () => {

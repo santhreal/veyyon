@@ -15,6 +15,13 @@ describe("normalizeApprovalMode case and whitespace reject", () => {
 		"PLAN",
 		"Ask",
 		"ASK",
+		"Ask-Command",
+		"ASK-COMMAND",
+		"ask-command ",
+		" ask-command",
+		"Auto",
+		"AUTO",
+		"auto ",
 		"Always-Ask",
 		"ALWAYS-ASK",
 		"Auto-Edit",
@@ -32,12 +39,14 @@ describe("normalizeApprovalMode case and whitespace reject", () => {
 		});
 	}
 
-	it("exact lowercase still work", () => {
+	it("accepts the exact lowercase ladder rungs and maps each legacy alias to its rung", () => {
 		expect(normalizeApprovalMode("yolo")).toBe("yolo");
 		expect(normalizeApprovalMode("plan")).toBe("plan");
 		expect(normalizeApprovalMode("ask")).toBe("ask");
+		expect(normalizeApprovalMode("ask-command")).toBe("ask-command");
+		expect(normalizeApprovalMode("auto")).toBe("auto");
 		expect(normalizeApprovalMode("always-ask")).toBe("ask");
-		expect(normalizeApprovalMode("auto-edit")).toBe("auto-edit");
-		expect(normalizeApprovalMode("write")).toBe("auto-edit");
+		expect(normalizeApprovalMode("auto-edit")).toBe("ask-command");
+		expect(normalizeApprovalMode("write")).toBe("ask-command");
 	});
 });

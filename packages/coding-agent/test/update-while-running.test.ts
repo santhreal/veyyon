@@ -145,7 +145,11 @@ describe("replacing the binary that is currently running", () => {
 
 			await swap(layout);
 
-			expect(await fs.readdir(layout.dir)).toEqual(["veyyon"]);
+			// Sorted, and the owner receipt is asserted PRESENT rather than filtered out. The
+			// updater restamps `.<basename>.veyyon-owner` on every swap because an install with no
+			// receipt is refused by its own uninstaller, so a directory holding only the binary
+			// would be the bug, not the clean result this test used to expect.
+			expect((await fs.readdir(layout.dir)).sort()).toEqual([".veyyon.veyyon-owner", "veyyon"]);
 			// The still-running process is unaffected by losing the backup's name.
 			expect(await running.exited).toBe(0);
 		} finally {

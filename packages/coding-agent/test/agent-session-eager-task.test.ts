@@ -21,6 +21,7 @@ type ObservedPromptCall = {
 	toolNames: string[];
 	messageRoles: AgentMessage["role"][];
 	messageTexts: string[];
+	systemPrompt: string;
 	lastMessageRole: AgentMessage["role"];
 	lastMessageText: string;
 };
@@ -29,6 +30,7 @@ type Harness = {
 	session: AgentSession;
 	observedCalls: ObservedPromptCall[];
 	authStorage: AuthStorage;
+	settings: Settings;
 };
 
 function isTextContentBlock(value: unknown): value is TextContent {
@@ -97,6 +99,7 @@ describe("AgentSession eager task prelude", () => {
 		taskWireName?: string,
 		agentKind?: "main" | "sub",
 		enabledAgentNames: string[] = SPAWNABLE_AGENTS,
+		promptRefreshGate?: Promise<void>,
 	): Promise<Harness> {
 		const observedCalls: ObservedPromptCall[] = [];
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
@@ -164,6 +167,7 @@ describe("AgentSession eager task prelude", () => {
 					toolNames: (context.tools ?? []).map(tool => tool.name),
 					messageRoles: context.messages.map(message => message.role),
 					messageTexts: context.messages.map(message => getMessageText(message)),
+					systemPrompt: context.systemPrompt?.join("\n\n") ?? "",
 					lastMessageRole: lastMessage.role,
 					lastMessageText: getMessageText(lastMessage),
 				});
@@ -191,9 +195,13 @@ describe("AgentSession eager task prelude", () => {
 			toolRegistry,
 			agentId,
 			agentKind,
+			rebuildSystemPrompt: async () => {
+				if (promptRefreshGate) await promptRefreshGate;
+				return { systemPrompt: [`subagent.batch:${settings.get("subagent.batch")}`] };
+			},
 		});
 
-		const harness = { session, observedCalls, authStorage };
+		const harness = { session, observedCalls, authStorage, settings };
 		harnesses.push(harness);
 		return harness;
 	}
@@ -213,6 +221,32 @@ describe("AgentSession eager task prelude", () => {
 			observedCalls[0]?.messageTexts.filter(text => text.includes("refactor the parser across modules")),
 		).toHaveLength(1);
 		expect(observedCalls[0]?.messageTexts[0]).not.toContain("refactor the parser across modules");
+	});
+
+	/**
+	 * A prompt started immediately after a task-prompt setting write must wait for
+	 * the queued rebuild rather than sending stale system-prompt bytes.
+	 */
+	it("applies a subagent setting change before the immediately following turn", async () => {
+		const refresh = Promise.withResolvers<void>();
+		const { session, settings, observedCalls } = await createHarness(
+			{ "subagent.delegation": "off" },
+			undefined,
+			undefined,
+			undefined,
+			SPAWNABLE_AGENTS,
+			refresh.promise,
+		);
+
+		settings.set("subagent.batch", false);
+		const pendingPrompt = session.prompt("continue the work");
+		await Promise.resolve();
+		expect(observedCalls).toHaveLength(0);
+
+		refresh.resolve();
+		await pendingPrompt;
+		expect(observedCalls).toHaveLength(1);
+		expect(observedCalls[0]?.systemPrompt).toBe("subagent.batch:false");
 	});
 
 	it("skips eager task prelude for prompts ending with a question mark", async () => {

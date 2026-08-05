@@ -237,7 +237,7 @@ describe("AgentSession refreshMCPTools rebuild skipping", () => {
 
 		// Explicit refresh must always rebuild (callers use it to pick up env-side changes
 		// such as edit mode toggles, which are invisible to our tool signature).
-		await session.refreshBaseSystemPrompt();
+		await session.refreshBaseSystemPrompt("explicit-refresh");
 		expect(rebuildCount).toBe(2);
 
 		// Subsequent identical MCP refresh should still skip after the explicit refresh
@@ -257,7 +257,7 @@ describe("AgentSession refreshMCPTools rebuild skipping", () => {
 		const { session } = newSession(async toolNames => `tools:${toolNames.join(",")}`);
 
 		await session.setActiveToolsByName(["read"]);
-		const returned = await session.refreshBaseSystemPrompt();
+		const returned = await session.refreshBaseSystemPrompt("argot-arm");
 		// The exact bytes the rebuild hook produced, not a placeholder or a stale
 		// prompt: a probe that cannot see the real content cannot verify anything.
 		expect(returned).toEqual(["tools:read"]);
@@ -286,9 +286,9 @@ describe("AgentSession refreshMCPTools rebuild skipping", () => {
 		// own base prompt, which a hookless session never changes; what matters for
 		// the probe is that the degenerate path still yields an inspectable array
 		// rather than undefined, which a caller would have to special-case.
-		const first = await session.refreshBaseSystemPrompt();
+		const first = await session.refreshBaseSystemPrompt("hookless-probe");
 		expect(Array.isArray(first)).toBe(true);
-		expect(await session.refreshBaseSystemPrompt()).toEqual(first);
+		expect(await session.refreshBaseSystemPrompt("hookless-probe")).toEqual(first);
 	});
 
 	it("ignores incidental insertion order in the refresh argument", async () => {

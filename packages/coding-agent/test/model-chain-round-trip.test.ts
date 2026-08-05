@@ -1,25 +1,30 @@
 /**
  * Contract: one encoding for a model chain, read the same way by every consumer.
  *
- * `compaction.model` and `subagent.model` both hold an ORDERED chain. The
- * settings picker persists it as a comma-separated string; compaction and the
- * subagent spawner each read it back through `normalizeModelPatternList`. If
- * those two ever disagree, the picker shows a chain the runtime does not run,
+ * The settings picker persists it as a string array; legacy configs may still
+ * hold a comma-separated string. Compaction and the subagent spawner read both
+ * through `normalizeModelPatternList`. If those two ever disagree, the picker
+ * shows a chain the runtime does not run,
  * which is the worst kind of settings bug: it looks configured and does nothing.
  *
  * These are value-level tests on the one splitter and the two readers, not on
  * the TUI, because the splitter is where the encoding is actually decided.
  */
+
 import { describe, expect, it } from "bun:test";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { normalizeModelPatternList, resolveCompactionModelPatterns } from "@veyyon/coding-agent/config/model-resolver";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { resolveSubagentModel } from "@veyyon/coding-agent/task/subagent-settings";
+import { TempDir } from "@veyyon/utils";
+import { YAML } from "bun";
 
 describe("model chain encoding", () => {
 	/**
-	 * The picker writes `"a,b,c"`. Anything that reads the setting must get back
-	 * exactly three entries in exactly that order, because order IS the feature:
-	 * entry one is the choice and the rest are ranked fallbacks.
+	 * A legacy comma string must still read as exactly three entries in exactly
+	 * that order, because order IS the feature: entry one is the choice and the
+	 * rest are ranked fallbacks.
 	 */
 	it("splits a comma-separated chain into ordered entries", () => {
 		expect(normalizeModelPatternList("anthropic/opus,anthropic/sonnet,anthropic/haiku")).toEqual([
@@ -105,5 +110,37 @@ describe("model chain encoding", () => {
 		const resolved = resolveSubagentModel({ settings, agentName: "reviewer", agentModel: undefined });
 		expect(resolved.source).toBe("agent");
 		expect(resolved.patterns).toEqual(["openai/gpt-5"]);
+	});
+});
+
+describe("compaction model preference persistence", () => {
+	it("preserves the selected ordered list and fallback policy across save and reload", async () => {
+		const tempDir = TempDir.createSync("@veyyon-compaction-model-roundtrip-");
+		try {
+			const agentDir = tempDir.join("agent");
+			const cwd = tempDir.join("project");
+			await mkdir(agentDir, { recursive: true });
+			await mkdir(cwd, { recursive: true });
+
+			const selected = ["anthropic/claude-opus:high", "openai/gpt-5:medium", "google/gemini-pro:low"];
+			const first = await Settings.init({ cwd, agentDir });
+			first.set("compaction.model", selected);
+			first.set("compaction.modelFallbackStrategy", "configured-only");
+			await first.flush();
+
+			const persisted = YAML.parse(await Bun.file(join(agentDir, "config.yml")).text());
+			expect(persisted).toEqual({
+				compaction: {
+					model: selected,
+					modelFallbackStrategy: "configured-only",
+				},
+			});
+
+			const reloaded = await Settings.init({ cwd, agentDir });
+			expect(reloaded.get("compaction.model")).toEqual(selected);
+			expect(reloaded.get("compaction.modelFallbackStrategy")).toBe("configured-only");
+		} finally {
+			await tempDir.remove();
+		}
 	});
 });

@@ -150,6 +150,51 @@ describe("provider prompt-cache key session affinity", () => {
 		}
 	});
 
+	/**
+	 * A discard of the inherited key must name its cause, because that discard is a
+	 * full re-prefill of the retained history.
+	 *
+	 * `#clearInheritedProviderPromptCacheKey` is the choke point for every such
+	 * event (model switch, thinking-level switch, tool-signature change, session
+	 * switch, branch) and it used to record nothing, so only system-prompt rebuilds
+	 * appeared in a session's cost evidence. A measured session showed the gap
+	 * exactly: its record listed four cwd-driven prompt rebuilds while its single
+	 * most expensive turn read 0 cached tokens and rewrote 67,528 immediately after
+	 * an auto-thinking reclassification, which appeared nowhere. This drives the
+	 * model-switch arm because it is deterministic on any bundled pair; every other
+	 * arm records through the same list.
+	 */
+	it("names the cause when a fork discards its inherited prompt-cache key", async () => {
+		using tempDir = TempDir.createSync("@veyyon-prompt-cache-discard-");
+		const source = await createSourceSessionFixture(tempDir, "discard-cache-session");
+		const forkedManager = await SessionManager.forkFrom(source.sourceFile, source.cwd, source.forkSessionDir);
+		let session: AgentSession | undefined;
+		let authStorage: AuthStorage | undefined;
+		try {
+			const created = await createMinimalSession(tempDir, {
+				cwd: source.cwd,
+				sessionManager: forkedManager,
+			});
+			session = created.session;
+			authStorage = created.authStorage;
+
+			// The fork really did inherit the parent's affinity, so there is
+			// something to lose. Without this the rest would pass vacuously.
+			expect(session.agent.promptCacheKey).toBe(source.sourceHeader.id);
+			expect(session.providerCacheKeyDiscards()).toEqual([]);
+
+			const otherModel = getBundledModel("openai", "gpt-4.1-mini");
+			await session.setModel(otherModel);
+
+			expect(session.providerCacheKeyDiscards()).toEqual(["model-change"]);
+			// And the key is actually gone, not merely accounted for.
+			expect(session.agent.promptCacheKey).toBeUndefined();
+		} finally {
+			await session?.dispose();
+			authStorage?.close();
+		}
+	});
+
 	it("does not auto-inherit parent prompt-cache affinity when fork startup changes request-shaping inputs", async () => {
 		const cases: Array<{ name: string; options: CreateAgentSessionOptions }> = [
 			{

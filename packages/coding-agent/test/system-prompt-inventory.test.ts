@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { buildSystemPrompt as buildSdkSystemPrompt } from "@veyyon/coding-agent/sdk";
@@ -8,7 +8,7 @@ import {
 	type SystemPromptToolMetadata,
 } from "@veyyon/coding-agent/system-prompt";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
-import { cleanupTempHome } from "./helpers/temp-home-cleanup";
+import { useTempHome } from "./helpers/temp-home";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.
@@ -16,7 +16,6 @@ import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 // directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
 // reintroduce the leak by forgetting an `afterAll`.
 const makePiPromptInvDir = useTrackedTempDirs("pi-prompt-inv-");
-const makePiPromptInvHomeDir = useTrackedTempDirs("pi-prompt-inv-home-");
 
 const EMPTY_TREE = {
 	rootPath: "",
@@ -58,17 +57,15 @@ const SDK_TOOL: Tool = {
 
 describe("system prompt tool inventory", () => {
 	let tempDir = "";
-	let tempHomeDir = "";
-	let originalHome: string | undefined;
+
+	// The config root moves with HOME, not just the variable: the assembled prompt reads
+	// the global `AGENTS.md` from a path built on `os.homedir()`, so a bare
+	// `process.env.HOME` assignment left this suite rendering the developer's real one.
+	useTempHome();
 
 	beforeEach(() => {
 		tempDir = makePiPromptInvDir();
-		tempHomeDir = makePiPromptInvHomeDir();
-		originalHome = process.env.HOME;
-		process.env.HOME = tempHomeDir;
 	});
-
-	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
 
 	async function render(opts: { nativeTools: boolean; inlineToolDescriptors: boolean }): Promise<string> {
 		const { systemPrompt } = await buildSystemPrompt({

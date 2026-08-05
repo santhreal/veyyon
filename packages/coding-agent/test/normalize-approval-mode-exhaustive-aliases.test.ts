@@ -12,13 +12,15 @@ import {
 
 describe("normalizeApprovalMode exhaustive aliases", () => {
 	const table: [string | undefined, string][] = [
-		[undefined, "yolo"],
+		[undefined, "auto"],
 		["yolo", "yolo"],
 		["plan", "plan"],
 		["ask", "ask"],
+		["ask-command", "ask-command"],
+		["auto", "auto"],
 		["always-ask", "ask"],
-		["auto-edit", "auto-edit"],
-		["write", "auto-edit"],
+		["auto-edit", "ask-command"],
+		["write", "ask-command"],
 	];
 
 	for (const [input, out] of table) {

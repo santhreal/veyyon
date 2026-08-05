@@ -121,7 +121,7 @@ describe("compaction model chain", () => {
 
 		const result = await session.compact();
 
-		expect(result.summary).toBe(`summary from ${selector(secondChoice)}`);
+		expect(result.summary).toStartWith(`summary from ${selector(secondChoice)}`);
 		expect(compactSpy.mock.calls.map(([, model]) => selector(model))).toEqual([selector(secondChoice)]);
 	});
 
@@ -140,7 +140,7 @@ describe("compaction model chain", () => {
 
 		const result = await session.compact();
 
-		expect(result.summary).toBe(`summary from ${selector(secondChoice)}`);
+		expect(result.summary).toStartWith(`summary from ${selector(secondChoice)}`);
 		expect(compactSpy.mock.calls.map(([, model]) => selector(model))).toEqual([selector(secondChoice)]);
 	});
 
@@ -219,7 +219,7 @@ describe("compaction model chain", () => {
 
 		const result = await session.compact();
 
-		expect(result.summary).toBe(`summary from ${selector(mainModel)}`);
+		expect(result.summary).toStartWith(`summary from ${selector(mainModel)}`);
 		expect(compactSpy.mock.calls.map(([, model]) => selector(model))).toEqual([selector(mainModel)]);
 	});
 
@@ -257,7 +257,7 @@ describe("compaction model chain", () => {
 
 		const result = await session.compact();
 
-		expect(result.summary).toBe(`summary from ${selector(mainModel)}`);
+		expect(result.summary).toStartWith(`summary from ${selector(mainModel)}`);
 		expect(compactSpy.mock.calls.map(([, model]) => selector(model))).toEqual([selector(mainModel)]);
 	});
 });

@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
+import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
 
 beforeAll(async () => {
 	await initTheme();
@@ -29,6 +31,7 @@ function createGoalContext(opts: {
 	verbose?: boolean;
 	activeMs?: number;
 	paused?: boolean;
+	modelBudgetsEnabled?: boolean;
 }): SegmentContext {
 	const goal = opts.goal;
 	return {
@@ -36,7 +39,13 @@ function createGoalContext(opts: {
 			isApprovalBypassed: () => false,
 			isStreaming: opts.streaming ?? false,
 			getGoalModeState: () => (goal ? { goal } : undefined),
-			settings: { get: (key: string) => (key === "goal.statusInFooter" ? (opts.verbose ?? false) : false) },
+			settings: {
+				get: (key: string) => {
+					if (key === "goal.statusInFooter") return opts.verbose ?? false;
+					if (key === "goal.modelBudgetsEnabled") return opts.modelBudgetsEnabled ?? true;
+					return false;
+				},
+			},
 		} as unknown as SegmentContext["session"],
 		width: 120,
 		compactThinkingLevel: false,
@@ -79,10 +88,23 @@ function plain(ctx: SegmentContext): string {
 	return Bun.stripANSI(renderSegment("mode", ctx).content);
 }
 
+/**
+ * The `mode` segment carries the approval rung after the mode label (see
+ * `test/modes/components/status-line/approval-rung-segment.test.ts`), and this
+ * stub session names no `effectiveApprovalMode`, so the rung resolves to the
+ * default. Every expectation here is the whole segment, so it has to include it.
+ */
+const RUNG = AUTONOMY_LABEL[normalizeApprovalMode(undefined)];
+
 /** Mirror `withIcon`: an empty icon (some themes) drops the leading space. */
-function goalLabel(icon: string, readout: string): string {
+function modeLabel(icon: string, readout: string): string {
 	const base = icon ? `${icon} Goal` : "Goal";
 	return readout ? `${base} ${readout}` : base;
+}
+
+/** The whole `mode` segment: the goal readout, then the rung. */
+function goalLabel(icon: string, readout: string): string {
+	return `${modeLabel(icon, readout)} ${RUNG}`;
 }
 
 /** The spinner frame the segment must show for a given active-ms (period 120ms). */
@@ -102,6 +124,21 @@ describe("goal status-line segment (GMI-1)", () => {
 		const ctx = createGoalContext({ goal: { tokensUsed: 20_000, tokenBudget: 50_000 }, verbose: false });
 		// 20K/50K, 20000/50000 = 40%.
 		expect(plain(ctx)).toBe(goalLabel(theme.icon.goal, "20K/50K 40%"));
+	});
+
+	/**
+	 * Turning model goal budgets off must remove a persisted budget and its
+	 * warning semantics from the footer instead of leaving a disabled feature live.
+	 */
+	it("renders only token usage when model goal budgets are disabled", () => {
+		const ctx = createGoalContext({
+			goal: { status: "budget-limited", tokensUsed: 50_000, tokenBudget: 50_000 },
+			modelBudgetsEnabled: false,
+		});
+		expect(plain(ctx)).toBe(goalLabel(theme.icon.goal, "50K"));
+		expect(renderSegment("mode", ctx).content).toBe(
+			`${theme.fg("accent", modeLabel(theme.icon.goal, "50K"))} ${theme.fg("warning", RUNG)}`,
+		);
 	});
 
 	it("appends a compact progress bar only in verbose mode", () => {

@@ -1,19 +1,20 @@
 /**
- * normalizeApprovalMode: every accepted alias and fail-closed unknown → ask.
- * Why: typo modes must not silently stay yolo.
+ * normalizeApprovalMode: every accepted alias, plus fail-closed unknowns.
+ * Why: an unset value takes the shipped default (`auto`), and a typo must fail
+ * closed to `ask` rather than inherit that default.
  */
 import { describe, expect, it } from "bun:test";
 import { normalizeApprovalMode } from "../src/tools/approval";
 
 describe("normalizeApprovalMode full alias grid", () => {
 	const cases: Array<[string | undefined, string]> = [
-		[undefined, "yolo"],
+		[undefined, "auto"],
 		["yolo", "yolo"],
 		["plan", "plan"],
 		["ask", "ask"],
 		["always-ask", "ask"],
-		["auto-edit", "auto-edit"],
-		["write", "auto-edit"],
+		["auto-edit", "ask-command"],
+		["write", "ask-command"],
 	];
 
 	for (const [input, want] of cases) {
