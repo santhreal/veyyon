@@ -444,7 +444,8 @@ export class AgentRegistry {
 	}
 
 	/**
-	 * Number of task subagents with a turn currently executing in `scope`.
+	 * Number of task subagents with a turn currently executing in `scope`, and,
+	 * when `under` is given, below that agent in the spawn tree.
 	 *
 	 * Scoped because the number is a badge an operator reads as "how much work is
 	 * mine right now". Counting the whole process makes a session that spawned
@@ -452,12 +453,18 @@ export class AgentRegistry {
 	 * conversation's UI that accounts for them. An omitted scope counts
 	 * everything, for a caller with no conversation to name (a collab guest's
 	 * mirrored registry).
+	 *
+	 * `under` is the same argument one level down: while the view is focused on
+	 * an agent, "mine" is that agent's subtree, and the surfaces beside the badge
+	 * (the subagent HUD) already scope themselves that way.
 	 */
-	runningSubagentCount(scope?: string): number {
+	runningSubagentCount(scope?: string, under?: string): number {
+		const subtree = under === undefined ? undefined : new Set(this.descendantsOf(under));
 		let count = 0;
 		for (const ref of this.#refs.values()) {
 			if (ref.kind !== "sub" || ref.status !== "running") continue;
 			if (!AgentRegistry.sameScope(ref.scope, scope)) continue;
+			if (subtree && !subtree.has(ref.id)) continue;
 			count++;
 		}
 		return count;

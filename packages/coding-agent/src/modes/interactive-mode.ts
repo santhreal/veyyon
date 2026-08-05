@@ -684,6 +684,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.streamingMessage = undefined;
 		this.lastAssistantUsage = undefined;
 		this.pendingTools.clear();
+		// A pinned error banner belongs to the turn that failed, in ONE session.
+		// `resetTranscriptAnchors` already drops the transcript component the
+		// banner mirrors, so leaving the container alone left a banner on screen
+		// with nothing behind it: the main session's failure stayed pinned above
+		// the composer for the whole time the view was inside an agent, and an
+		// agent's failure stayed pinned after Esc returned to main.
+		this.clearPinnedError();
 		// The subagent HUD is scoped to the VIEWED session, and every focus
 		// attach/detach (both directions, including the registry-driven
 		// auto-unfocus when the viewed agent dies) runs through here after the
@@ -692,6 +699,21 @@ export class InteractiveMode implements InteractiveModeContext {
 		// the restored main view keeps the cleared ones until the next spawn
 		// event happens to land.
 		if (this.subagentContainer) this.#renderSubagentList();
+		// Todos are per-session state (`AgentSession#todoPhases`), and the todo
+		// HUD is the loudest block above the composer. Every OTHER session switch
+		// (new, resume, branch, handoff, collab welcome) reloads it explicitly;
+		// the focus transitions never did, so the focused view kept painting the
+		// driving session's board as if the agent owned it. Same choke point, so
+		// the surface cannot drift out of step with the HUD beside it.
+		if (this.todoContainer) this.#syncTodoSurfaceToView();
+		// The running-agent badge counts the same set the HUD lists, one number
+		// wide, so it re-scopes here too.
+		this.syncRunningSubagentBadge({ requestRender: false });
+		// The composer chip band advertises keys whose meaning changes with the
+		// view: `esc` interrupts in the main session and leaves the view inside an
+		// agent, and the dequeue key always drains the DRIVING session's queue.
+		// Rebuilt here so a focus transition cannot leave the wrong pair on screen.
+		if (this.composerShortcuts) this.#refreshComposerShortcuts();
 	}
 	readonly #uiHelpers: UiHelpers;
 	#sttController: STTController | undefined;
@@ -859,6 +881,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.hookWidgetContainerBelow = new Container();
 		this.editorContainer = new Container();
 		this.editorContainer.addChild(this.editor);
+		// Before the composer chip band: the band's contents depend on whether the
+		// view is proxied onto an agent, and `focusedAgentId` reads through this
+		// controller. Everything else it needs from the host is read lazily.
+		this.#focusController = new SessionFocusController(this);
 		this.composerShortcuts = new ComposerShortcutsBar();
 		this.#refreshComposerShortcuts();
 		this.#bashForegroundUnsubscribe = onForegroundBashWaitChange(() => this.#refreshComposerShortcuts());
@@ -943,7 +969,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#commandController = new CommandController(this);
 		this.#todoCommandController = new TodoCommandController(this);
 		this.#selectorController = new SelectorController(this);
-		this.#focusController = new SessionFocusController(this);
 		this.#inputController = new InputController(this);
 		this.#observerRegistry = new SessionObserverRegistry();
 	}
@@ -1164,7 +1189,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		});
 
 		// Load initial todos
-		await this.#loadTodoList();
+		this.#syncTodoSurfaceToView();
 
 		// Start the UI. The first paint always clears the viewport (ED 2), so the
 		// welcome frame never appends over the previous run's frame. Erasing the
@@ -1602,6 +1627,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				busy: this.#isAutoSubmitBlocked(),
 				hasDraft: this.editor.getText().trim().length > 0,
 				hasQueue: this.session.queuedMessageCount > 0,
+				focused: this.focusedAgentId !== undefined,
 				canBackgroundBash: hasForegroundBashWait(),
 			}),
 		);
@@ -1890,9 +1916,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		// The collab guest's mirrored registry has no local scope; the local one is
 		// this driving session's conversation and must not count another's spawns.
+		//
+		// `focusedAgentId` narrows it again while the view is proxied onto an
+		// agent. The badge is the one-number summary of the block the HUD lists,
+		// and the HUD already shows only the viewed agent's spawns; a badge still
+		// counting the whole conversation reported running agents that had no row
+		// anywhere in that view, which is the HUD's own defect one number wide.
 		const count = countRunningSubagentBadgeAgents(
 			registry,
 			this.collabGuest ? undefined : this.sessionManager.getSessionId(),
+			this.focusedAgentId,
 		);
 		this.statusLine.setSubagentCount(count);
 		if (options.requestRender !== false) this.ui.requestRender();
@@ -1919,10 +1952,18 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 	}
 
+	/**
+	 * Descriptions of the spawns the VIEWED session has in flight, for the todo
+	 * board's "this task is being worked on right now" accent.
+	 *
+	 * Scoped the same way the HUD beside it is (`getSessionsSpawnedBy`): the
+	 * board is the viewed session's, so the agents allowed to light a row up are
+	 * the ones that session spawned. Matching the driving session's spawns
+	 * against an agent's board accented rows on a coincidence of wording.
+	 */
 	#getActiveSubagentDescriptions(): string[] {
 		const out: string[] = [];
-		for (const session of this.#observerRegistry.getSessions()) {
-			if (session.kind !== "subagent") continue;
+		for (const session of this.#observerRegistry.getSessionsSpawnedBy(this.focusedAgentId)) {
 			if (session.status !== "active") continue;
 			const candidate =
 				session.description?.trim() || session.progress?.description?.trim() || session.label?.trim();
@@ -1940,11 +1981,16 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * stay open so the user (or the next agent turn) can decide what to do.
 	 *
 	 * Idempotent: only flips open tasks, never re-touches completed ones.
+	 *
+	 * Every side of this is the VIEWED session's: the spawns consulted, the
+	 * board read, and the session written back to. `this.todoPhases` is the
+	 * viewed board, so persisting it into `session` while the view sat inside an
+	 * agent copied that agent's board onto the driving session and persisted it
+	 * there — a write-side version of the same leak.
 	 */
 	#reconcileTodosWithSubagents(): void {
 		const completedDescs: string[] = [];
-		for (const session of this.#observerRegistry.getSessions()) {
-			if (session.kind !== "subagent") continue;
+		for (const session of this.#observerRegistry.getSessionsSpawnedBy(this.focusedAgentId)) {
 			if (session.status !== "completed") continue;
 			const candidate =
 				session.description?.trim() || session.progress?.description?.trim() || session.label?.trim();
@@ -1963,7 +2009,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			}),
 		}));
 		if (!mutated) return;
-		this.session.setTodoPhases(next);
+		this.viewSession.setTodoPhases(next);
 		this.setTodos(next);
 	}
 
@@ -2174,8 +2220,18 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.subagentContainer.addChild(new Text(lines.join("\n"), 1, 0));
 	}
 
-	async #loadTodoList(): Promise<void> {
-		this.todoPhases = this.session.getTodoPhases();
+	/**
+	 * Re-derive the todo HUD from the session currently ON SCREEN.
+	 *
+	 * `viewSession`, not `session`: while the view is proxied onto an agent the
+	 * board above the composer has to be that agent's, and the driving session's
+	 * board has to come back intact on the way out. Both directions run through
+	 * `clearTransientSessionUi`, which is the only caller that needs it
+	 * synchronously; the async `reloadTodos` the session-switch paths already
+	 * use is the same work plus a render request.
+	 */
+	#syncTodoSurfaceToView(): void {
+		this.todoPhases = this.viewSession.getTodoPhases();
 		this.#syncTodoAutoClearTimer();
 		this.#renderTodoList();
 	}
@@ -4806,7 +4862,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async reloadTodos(): Promise<void> {
-		await this.#loadTodoList();
+		this.#syncTodoSurfaceToView();
 		this.ui.requestRender();
 	}
 

@@ -22,6 +22,18 @@ export type ComposerContext = {
 	 * would fall through to its other meaning is worse than no hint at all.
 	 */
 	canBackgroundBash: boolean;
+	/**
+	 * The view is proxied onto a subagent's session.
+	 *
+	 * Both the interrupt and the dequeue chip name keys that do NOT do what the
+	 * chip says from inside an agent's view: `esc` returns to the main session
+	 * rather than interrupting (InputController: "Esc never interrupts the
+	 * focused agent's turn"), and the dequeue key drains the DRIVING session's
+	 * queue, invisibly, into the editor the agent is looking at. Both are
+	 * suppressed there. The footline's focus badge already names the one thing
+	 * `esc` does in that view, so nothing replaces them.
+	 */
+	focused: boolean;
 };
 
 /**
@@ -35,7 +47,7 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 	// Chips appear only when there is a live action to surface: an interrupt
 	// while the agent is streaming, or a queued message to dequeue.
 	const chips: ModalShortcut[] = [];
-	if (ctx.busy) {
+	if (ctx.busy && !ctx.focused) {
 		chips.push({ label: `${appKey(keybindings, "app.interrupt")} interrupt` });
 	}
 	if (ctx.canBackgroundBash) {
@@ -45,7 +57,7 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 		// a plain streaming turn does not land on a different chip here.
 		chips.push({ label: `${appKey(keybindings, "app.bash.background")} background` });
 	}
-	if (ctx.hasQueue) {
+	if (ctx.hasQueue && !ctx.focused) {
 		chips.push({ label: `${appKey(keybindings, "app.message.dequeue")} dequeue` });
 	}
 	return chips;
