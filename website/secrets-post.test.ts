@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 const html = await Bun.file(`${import.meta.dir}/blog/secrets.html`).text();
 
 describe("secrets blog walkthrough", () => {
-	/** A reader with a credential in hand must reach the masked fast path before learning optional policy controls. */
+	/** A reader with a credential in hand must reach the verbless terminal fast path before learning optional policy controls. */
 	it("starts with the shortest interactive path and then adds granular controls", () => {
 		const fastPath = html.indexOf("<h2>Store one now</h2>");
 		const namedPath = html.indexOf("<h2>Give it a useful name</h2>");
@@ -11,7 +11,7 @@ describe("secrets blog walkthrough", () => {
 		const settingsPath = html.indexOf("<h2>Settings</h2>");
 
 		expect(fastPath).toBeGreaterThan(-1);
-		expect(html.slice(fastPath, namedPath)).toContain('<code class="language-text">/secret add</code>');
+		expect(html.slice(fastPath, namedPath)).toContain('<code class="language-text">/secret</code>');
 		expect(namedPath).toBeGreaterThan(fastPath);
 		expect(scopePath).toBeGreaterThan(namedPath);
 		expect(settingsPath).toBeGreaterThan(scopePath);
