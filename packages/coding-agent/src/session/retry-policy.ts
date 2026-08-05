@@ -24,6 +24,8 @@
  * settings, so a backend nobody has characterized behaves exactly as before.
  */
 
+import { isRecord } from "@veyyon/utils";
+
 /** The resolved, fully-populated policy the retry loop runs under. */
 export interface RetryPolicy {
 	maxRetries: number;
@@ -123,7 +125,7 @@ function selectOverride(
 	let best: { key: string; override: RetryPolicyOverride; score: number } | undefined;
 	for (const key in overrides) {
 		const override = overrides[key];
-		if (!override || typeof override !== "object" || Array.isArray(override)) continue;
+		if (!isRecord(override)) continue;
 		const score = keySpecificity(key, provider, modelId);
 		if (score === undefined) continue;
 		if (!best || score > best.score) best = { key, override, score };

@@ -120,9 +120,9 @@ describe("veyyon grep", () => {
 		expect(stderr).toContain("Path not found");
 	}, 30_000);
 
-	it("exits 1 with usage when the pattern is missing", async () => {
+	it("exits 2 with usage when the pattern is missing", async () => {
 		const { exitCode, stderr } = await runGrep([]);
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(2);
 		expect(stderr).toContain("Pattern is required");
 	}, 30_000);
 

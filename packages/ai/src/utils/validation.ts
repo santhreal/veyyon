@@ -2023,16 +2023,29 @@ function schemaNodeAtIssuePath(json: unknown, path: string): unknown {
  * succeed.
  */
 function annotateIssuesWithAcceptedValues(json: unknown, messages: readonly string[]): string[] {
-	return messages.map(message => {
+	const annotated = messages.map(message => {
 		const match = /^\s*-\s([^:]+):\s/.exec(message);
-		if (!match) return message;
+		if (!match) return { message, namesTheSet: false };
 		const values = schemaLiteralValues(schemaNodeAtIssuePath(json, match[1]));
-		if (!values || values.length === 0) return message;
+		if (!values || values.length === 0) return { message, namesTheSet: false };
 		// Some validators (arktype) already spell the set out. Re-listing it would
 		// double the line for no gain, so annotate only what is actually absent.
-		if (values.every(value => message.includes(value))) return message;
-		return `${message} (accepted: ${values.join(" | ")})`;
+		// Spelled out means a standalone token: raw substring matching reads the
+		// boilerplate "must be one of the allowed enum values" as already listing
+		// `a` (inside "allowed") and `b` (inside "be"), so every set whose values
+		// are all short enough to hide inside words silently lost its hint.
+		const tokens = new Set(message.split(/[^A-Za-z0-9_$-]+/).filter(token => token.length > 0));
+		if (values.every(value => tokens.has(value))) return { message, namesTheSet: true };
+		return { message: `${message} (accepted: ${values.join(" | ")})`, namesTheSet: true };
 	});
+	// boundErrorText keeps the head and issues arrive in schema-property order,
+	// so a wide rejection spent the whole budget on generic "is required" lines
+	// and cut the one line that names a legal value. The set-naming lines are
+	// the actionable ones; they lead, stably.
+	return [
+		...annotated.filter(line => line.namesTheSet),
+		...annotated.filter(line => !line.namesTheSet),
+	].map(line => line.message);
 }
 
 /**

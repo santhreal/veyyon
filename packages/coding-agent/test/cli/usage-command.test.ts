@@ -43,10 +43,11 @@ async function runUsage(args: string[]): Promise<{ stdout: string; stderr: strin
 }
 
 describe("veyyon usage without credentials", () => {
-	it("human mode exits 1 with the /login hint", async () => {
+	it("human mode exits 1 with the sign-in remedy", async () => {
 		const { stderr, exitCode } = await runUsage([]);
 		expect(exitCode).toBe(1);
-		expect(stderr).toContain("No credentials found. Run `veyyon` and use /login to add accounts.");
+		expect(stderr).toContain("No credentials found.");
+		expect(stderr).toContain("veyyon auth-broker login");
 	}, 30_000);
 
 	it("--json emits a well-formed empty payload at exit 0", async () => {

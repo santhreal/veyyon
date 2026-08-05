@@ -27,6 +27,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import { extractBenchmarkFixtures } from "./argot-bench";
 import { discoverSharedInfra, InProcessClient, type SharedInfra } from "./in-process-client";
 import { type EditTask, loadTasksFromDir } from "./tasks";
@@ -94,7 +95,7 @@ async function runTask(task: EditTask, model: string, shared: SharedInfra): Prom
 			inputTokens: 0,
 			outputTokens: 0,
 			durationMs: performance.now() - startedAt,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		};
 	} finally {
 		await client.dispose();

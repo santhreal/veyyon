@@ -19,14 +19,18 @@
  * zero callers in `src/`. These cases pin both halves: the configured values reach the rendered
  * text, and inspecting a prompt still leaves no trace on disk.
  *
- * Project settings rather than a global config file, deliberately: project settings merge OVER
- * the global ones (`Settings.#rebuildMerged`), so these assertions hold whatever the developer
- * running them has in `~/.veyyon/config.yml`.
+ * The lever is the operator's own global config inside an isolated config root: repo-loaded
+ * project settings are gone (a `<cwd>/.veyyon/` file produces no source and no value), so each
+ * gate case seeds `config.yml` in a fresh root and runs the command inside it, and one case pins
+ * that a repository file changes nothing.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { runPromptCommand } from "../../src/cli/prompt-cli";
+import * as YAML from "yaml";
+import { getAgentDir } from "@veyyon/utils";
+import { runPromptCommand, type PromptCommandFlags, type PromptCommandResult } from "../../src/cli/prompt-cli";
+import { withIsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 /** The project config directory the discovery layer reads `settings.json` from. */
@@ -62,15 +66,32 @@ function tree(dir: string): string[] {
 	return found.sort();
 }
 
+/**
+ * Run the command with `settings` as the operator's global config: an isolated
+ * config root holds the seeded `config.yml`, so the case is deterministic
+ * whatever the developer's own root contains, and the root is deleted after.
+ */
+async function runWithConfig(
+	settings: Record<string, unknown>,
+	flags: PromptCommandFlags,
+): Promise<PromptCommandResult> {
+	return withIsolatedConfigRoot("prompt-follows-configuration", () => {
+		const agentDir = getAgentDir();
+		fs.mkdirSync(agentDir, { recursive: true });
+		fs.writeFileSync(path.join(agentDir, "config.yml"), YAML.stringify(settings));
+		return runPromptCommand(flags);
+	});
+}
+
 describe("veyyon prompt reads the real configuration", () => {
 	/**
 	 * `subagent.delegation=required` is the gate the finding was reproduced with. The section
 	 * carries two different paragraphs for `preferred` and `required`, so asserting the MUST
 	 * wording proves the setting was READ, not merely that some prompt rendered.
 	 */
-	it("renders the required-delegation wording when the project asks for it", async () => {
-		const result = await runPromptCommand({
-			cwd: workspace({ subagent: { delegation: "required" } }),
+	it("renders the required-delegation wording when the operator asks for it", async () => {
+		const result = await runWithConfig({ subagent: { delegation: "required" } }, {
+			cwd: workspace(),
 			section: "tool-policy",
 		});
 
@@ -83,12 +104,28 @@ describe("veyyon prompt reads the real configuration", () => {
 	});
 
 	/**
+	 * The removed layer, pinned as a refusal: a `.veyyon/settings.json` in the
+	 * working tree used to merge over the operator's config. It is no longer
+	 * read, so the same file that selects `required` above changes nothing here.
+	 */
+	it("ignores a repository settings file: the defaults stand", async () => {
+		const result = await runPromptCommand({
+			cwd: workspace({ personality: "none", subagent: { delegation: "required" } }),
+			section: "tool-policy",
+		});
+
+		expect(result.exitCode).toBe(0);
+		expect(result.output).toContain("Delegation is preferred");
+		expect(result.output).not.toContain("MUST delegate substantial work");
+	});
+
+	/**
 	 * The weaker explicit value is the negative twin. It overrides any global profile setting,
 	 * so the suite remains deterministic while still proving both project-level branches.
 	 */
-	it("renders the preferred-delegation wording when the project asks for it", async () => {
-		const result = await runPromptCommand({
-			cwd: workspace({ subagent: { delegation: "preferred" } }),
+	it("renders the preferred-delegation wording when the operator asks for it", async () => {
+		const result = await runWithConfig({ subagent: { delegation: "preferred" } }, {
+			cwd: workspace(),
 			section: "tool-policy",
 		});
 
@@ -102,8 +139,8 @@ describe("veyyon prompt reads the real configuration", () => {
 	 * delegation one -- the old code rendered content the configuration had turned off, where
 	 * delegation rendered the weaker of two alternatives. One case cannot cover both shapes.
 	 */
-	it("omits the personality block when the project sets personality to none", async () => {
-		const result = await runPromptCommand({ cwd: workspace({ personality: "none" }), section: "delivery-contract" });
+	it("omits the personality block when the operator sets personality to none", async () => {
+		const result = await runWithConfig({ personality: "none" }, { cwd: workspace(), section: "delivery-contract" });
 
 		expect(result.output).not.toContain("<personality>");
 		expect(result.output).not.toContain("terse, evidence-first engineer");
@@ -122,9 +159,10 @@ describe("veyyon prompt reads the real configuration", () => {
 	 * this covers the path an operator actually runs (`veyyon prompt` with no flags).
 	 */
 	it("applies every configured gate to the full rendered prompt", async () => {
-		const cwd = workspace({ personality: "none", subagent: { delegation: "required", batch: false } });
-
-		const result = await runPromptCommand({ cwd });
+		const result = await runWithConfig(
+			{ personality: "none", subagent: { delegation: "required", batch: false } },
+			{ cwd: workspace() },
+		);
 
 		expect(result.exitCode).toBe(0);
 		expect(result.output).toContain("MUST delegate substantial work");
@@ -139,12 +177,12 @@ describe("veyyon prompt reads the real configuration", () => {
 	 * defaults there would make every diff between two configurations empty.
 	 */
 	it("follows the configuration through --json as well", async () => {
-		const configured = await runPromptCommand({
-			cwd: workspace({ subagent: { delegation: "required" } }),
+		const configured = await runWithConfig({ subagent: { delegation: "required" } }, {
+			cwd: workspace(),
 			json: true,
 		});
-		const plain = await runPromptCommand({
-			cwd: workspace({ subagent: { delegation: "preferred" } }),
+		const plain = await runWithConfig({ subagent: { delegation: "preferred" } }, {
+			cwd: workspace(),
 			json: true,
 		});
 
@@ -209,12 +247,12 @@ describe("veyyon prompt --statements prices each rule against the real configura
 	it("charges for the delegation rules a configured session actually receives", async () => {
 		// `required` selects a different, longer delegation paragraph than the default `preferred`, so
 		// the two runs must charge DIFFERENT rows, not merely produce different totals.
-		const configured = await runPromptCommand({
-			cwd: workspace({ subagent: { delegation: "required" } }),
+		const configured = await runWithConfig({ subagent: { delegation: "required" } }, {
+			cwd: workspace(),
 			statements: true,
 		});
-		const plain = await runPromptCommand({
-			cwd: workspace({ subagent: { delegation: "preferred" } }),
+		const plain = await runWithConfig({ subagent: { delegation: "preferred" } }, {
+			cwd: workspace(),
 			statements: true,
 		});
 
@@ -229,7 +267,7 @@ describe("veyyon prompt --statements prices each rule against the real configura
 		// `personality: none` removes the personality block. Reporting it as absent WITH its condition
 		// is the difference between "this rule costs nothing" and "this rule is not here", which is the
 		// distinction an operator needs and a zero row cannot make.
-		const result = await runPromptCommand({ cwd: workspace({ personality: "none" }), statements: true });
+		const result = await runWithConfig({ personality: "none" }, { cwd: workspace(), statements: true });
 
 		expect(result.output).toContain("not in this prompt");
 		expect(result.output).toMatch(/delivery-contract\/personality\s+needs personality/);

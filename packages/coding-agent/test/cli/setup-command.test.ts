@@ -53,8 +53,8 @@ describe("veyyon setup --check", () => {
 		expect(stdout).toMatch(/\[(ok|missing)\]/);
 	}, 30_000);
 
-	it("rejects an unknown component with exit 1", async () => {
+	it("rejects an unknown component with exit 2", async () => {
 		const { exitCode } = await runSetup(["bogus", "--check"]);
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(2);
 	}, 30_000);
 });

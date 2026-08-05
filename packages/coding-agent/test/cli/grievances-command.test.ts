@@ -186,10 +186,10 @@ describe("veyyon grievances", () => {
 		seedDb(home);
 		const env = makeEnv(home);
 		const none = await runGrievances(env, ["clean"]);
-		expect(none.exitCode).toBe(1);
+		expect(none.exitCode).toBe(2);
 		expect(none.stderr).toContain("exactly one of --id, --tool, or --all");
 		const both = await runGrievances(env, ["clean", "--id", "1", "--all"]);
-		expect(both.exitCode).toBe(1);
+		expect(both.exitCode).toBe(2);
 		expect(both.stderr).toContain("mutually exclusive");
 		// Neither refusal deleted anything.
 		const rows = JSON.parse((await runGrievances(env, ["--json"])).stdout) as unknown[];

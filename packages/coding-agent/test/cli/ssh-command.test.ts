@@ -51,25 +51,25 @@ describe("veyyon ssh", () => {
 		expect(stdout).toContain("veyyon ssh add");
 	}, 30_000);
 
-	it("add writes project scope by default, --scope user writes the home config", async () => {
+	it("add writes the home config, and the working tree gets no ssh.json", async () => {
 		const dirs = makeDirs();
 		const added = await runSsh(dirs, ["add", "box", "--host", "10.0.0.5", "--user", "root", "--port", "2222"]);
 		expect(added.exitCode).toBe(0);
-		expect(added.stdout).toContain('Added SSH host "box" to project config');
-		expect(existsSync(path.join(dirs.cwd, ".veyyon", "ssh.json"))).toBe(true);
-
-		const userAdd = await runSsh(dirs, ["add", "homebox", "--host", "192.168.1.9", "--scope", "user"]);
-		expect(userAdd.exitCode).toBe(0);
-		expect(userAdd.stdout).toContain('Added SSH host "homebox" to user config');
+		expect(added.stdout).toContain('Added SSH host "box"');
+		// Repo-loaded configuration is gone: the one scope left is the home
+		// config, and nothing is written into the working tree.
+		expect(existsSync(path.join(dirs.cwd, ".veyyon", "ssh.json"))).toBe(false);
 
 		const listed = await runSsh(dirs, ["list", "--json"]);
 		expect(listed.exitCode).toBe(0);
 		const parsed = JSON.parse(listed.stdout) as {
-			project: Record<string, { host: string; username?: string; port?: number }>;
-			user: Record<string, { host: string }>;
+			hosts: Record<string, { host: string; username?: string; port?: number }>;
 		};
-		expect(parsed.project.box).toEqual({ host: "10.0.0.5", username: "root", port: 2222 });
-		expect(parsed.user.homebox).toEqual({ host: "192.168.1.9" });
+		expect(parsed.hosts.box).toEqual({ host: "10.0.0.5", username: "root", port: 2222 });
+
+		// The scope flag went with the project layer; asking for it is a usage error.
+		const scoped = await runSsh(dirs, ["add", "homebox", "--host", "192.168.1.9", "--scope", "user"]);
+		expect(scoped.exitCode).toBe(2);
 	}, 30_000);
 
 	it("remove deletes the host and refuses an unknown one", async () => {
@@ -84,9 +84,9 @@ describe("veyyon ssh", () => {
 		expect(missing.exitCode).toBe(1);
 	}, 30_000);
 
-	it("add without --host exits 1", async () => {
+	it("add without --host exits 2", async () => {
 		const dirs = makeDirs();
 		const { exitCode } = await runSsh(dirs, ["add", "nohost"]);
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(2);
 	}, 30_000);
 });

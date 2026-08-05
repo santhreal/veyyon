@@ -57,7 +57,7 @@ describe("say --voices", () => {
 
 	it("rejects an unknown --model at parse time with the accepted values", async () => {
 		const { exitCode, stderr } = await runSay(["--model", "nope", "hello"]);
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(2);
 		expect(stderr).toContain("Expected --model to be one of: kokoro");
 	}, 30_000);
 });

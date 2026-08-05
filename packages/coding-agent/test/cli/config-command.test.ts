@@ -94,7 +94,7 @@ describe("veyyon config", () => {
 		expect(JSON.parse(stdout)).toMatchObject({ key: "shellPath", value: null, type: "string" });
 	}, 30_000);
 
-	it("rejects an unknown key with exit 1 and a list hint", async () => {
+	it("rejects an unknown key with exit 2 and a list hint", async () => {
 		const env = makeEnv(makeTempDir());
 		for (const args of [
 			["get", "no.such.key"],
@@ -102,24 +102,24 @@ describe("veyyon config", () => {
 			["reset", "no.such.key"],
 		]) {
 			const { stderr, exitCode } = await runConfig(env, args);
-			expect(exitCode).toBe(1);
+			expect(exitCode).toBe(2);
 			expect(stderr).toContain("Unknown setting: no.such.key");
 			expect(stderr).toContain("config list");
 		}
 	}, 30_000);
 
-	it("rejects an invalid boolean value with exit 1 without changing the setting", async () => {
+	it("rejects an invalid boolean value with exit 2 without changing the setting", async () => {
 		const env = makeEnv(makeTempDir());
 		const set = await runConfig(env, ["set", "git.enabled", "maybe"]);
-		expect(set.exitCode).toBe(1);
+		expect(set.exitCode).toBe(2);
 		const get = await runConfig(env, ["get", "git.enabled"]);
 		expect(get.stdout.trim()).toBe("true");
 	}, 30_000);
 
-	it("missing key argument exits 1 with usage", async () => {
+	it("missing key argument exits 2 with usage", async () => {
 		const env = makeEnv(makeTempDir());
 		const { stderr, exitCode } = await runConfig(env, ["get"]);
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(2);
 		expect(stderr).toContain("config get <key>");
 	}, 30_000);
 
