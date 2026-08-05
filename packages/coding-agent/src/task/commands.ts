@@ -68,12 +68,19 @@ export function loadBundledCommands(): WorkflowCommand[] {
  * Discover all available commands.
  *
  * Precedence (highest wins): .veyyon > .pi > .claude (project before user), then bundled
+ *
+ * `agentDir` names WHICH profile supplies the user scope (`<agentDir>/commands`
+ * and that profile's plugin roots). It defaults inside `loadCapability`
+ * (`options.agentDir ?? getAgentDir()`), so omitting it still resolves the
+ * process-active profile. Pass it whenever you have one: dropping it is how a
+ * session rooted in another agent dir ended up listing the booted profile's
+ * commands.
  */
-export async function discoverCommands(cwd: string): Promise<WorkflowCommand[]> {
+export async function discoverCommands(cwd: string, agentDir?: string): Promise<WorkflowCommand[]> {
 	const resolvedCwd = path.resolve(cwd);
 
 	// Load slash commands from capability API
-	const result = await loadCapability<SlashCommand>(slashCommandCapability.id, { cwd: resolvedCwd });
+	const result = await loadCapability<SlashCommand>(slashCommandCapability.id, { cwd: resolvedCwd, agentDir });
 
 	const commands: WorkflowCommand[] = [];
 	const seen = new Set<string>();

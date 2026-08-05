@@ -2213,10 +2213,21 @@ export function getProjectPluginOverridesPath(cwd: string = getProjectDir()): st
 // MCP config paths
 // =============================================================================
 
-/** Get the primary MCP config file path (first candidate). */
-export function getMCPConfigPath(scope: "user" | "project", cwd: string = getProjectDir()): string {
+/**
+ * Get the primary MCP config file path (first candidate).
+ *
+ * `agentDir` names WHICH profile owns the user-scope file. It defaults to the
+ * process-active profile, so every existing caller is unchanged; a caller
+ * loading on behalf of another profile passes that profile's agent dir so the
+ * server list and the disable/force-enable lists come out of the same file.
+ */
+export function getMCPConfigPath(
+	scope: "user" | "project",
+	cwd: string = getProjectDir(),
+	agentDir: string = getAgentDir(),
+): string {
 	if (scope === "user") {
-		return path.join(getAgentDir(), "mcp.json");
+		return path.join(agentDir, "mcp.json");
 	}
 	return path.join(getProjectAgentDir(cwd), "mcp.json");
 }

@@ -482,9 +482,15 @@ export function resolvePluginExtensionPaths(plugin: InstalledPlugin): string[] {
 
 /**
  * Get all tool paths from all enabled plugins.
+ *
+ * `pluginsRoot` names WHICH profile's plugins directory supplies the user
+ * scope, the same contract as {@link GetEnabledPluginsOptions.pluginsRoot}.
+ * Undefined means the process-active profile, which is what
+ * {@link pluginsRootFor} returns for the active agent dir, so a caller can
+ * forward that result unconditionally.
  */
-export async function getAllPluginToolPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
+export async function getAllPluginToolPaths(cwd: string, pluginsRoot?: string): Promise<string[]> {
+	const plugins = await getEnabledPlugins(cwd, { pluginsRoot });
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {

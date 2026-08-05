@@ -169,6 +169,12 @@ export interface MCPDiscoverOptions {
 	filterExa?: boolean;
 	/** Whether to filter out browser MCP servers when builtin browser tool is enabled (default: false) */
 	filterBrowser?: boolean;
+	/**
+	 * WHICH profile owns the user-scope `mcp.json`. Default: the process-active
+	 * profile. A session rooted in another agent dir passes that dir so its MCP
+	 * servers come from the same profile as its rules, commands and skills.
+	 */
+	agentDir?: string;
 	/** Called when MCP server connection state changes. */
 	onStatus?: (event: McpConnectionStatusEvent) => void;
 }
@@ -346,6 +352,7 @@ export class MCPManager {
 				enableProjectConfig: options?.enableProjectConfig,
 				filterExa: options?.filterExa,
 				filterBrowser: options?.filterBrowser,
+				agentDir: options?.agentDir,
 			});
 		} catch (error) {
 			const message = errorMessage(error);
