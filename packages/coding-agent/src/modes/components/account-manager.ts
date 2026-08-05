@@ -34,6 +34,7 @@ import {
 import { clampLow } from "@veyyon/utils";
 import type { AccountInventory, AccountRow } from "../../session/account-inventory";
 import { accountsForProvider, pinnedButRotated } from "../../session/account-inventory";
+import { formatProviderName } from "../../slash-commands/helpers/format";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
@@ -163,11 +164,7 @@ export class AccountManagerComponent implements Component {
 	#bodyLines: BodyLine[] = [];
 	#reveal = new ModalRevealDriver();
 
-	constructor(
-		inventory: AccountInventory,
-		callbacks: AccountManagerCallbacks,
-		options: AccountManagerOptions = {},
-	) {
+	constructor(inventory: AccountInventory, callbacks: AccountManagerCallbacks, options: AccountManagerOptions = {}) {
 		this.#inventory = inventory;
 		this.#callbacks = callbacks;
 		this.#requestRender = options.requestRender;
@@ -206,7 +203,16 @@ export class AccountManagerComponent implements Component {
 	#rebuildEntries(): void {
 		this.#entries = buildSidebarEntries(
 			this.#inventory,
-			getOAuthProviders().map(provider => ({ id: provider.storeCredentialsAs ?? provider.id, label: provider.name })),
+			// `formatProviderName`, the SAME rule the inventory labels a populated provider with, not
+			// the catalog's marketing name. One list cannot label the same provider two ways depending
+			// on whether you happen to hold an account: `openai-codex` read as "Openai Codex" once it
+			// had a credential and "ChatGPT Plus/Pro (Codex Sub…" while it did not. The catalog names
+			// also carry parenthetical model lists that only ever render truncated in a 30-column
+			// sidebar, so the short form is both consistent and more readable here.
+			getOAuthProviders().map(provider => {
+				const id = provider.storeCredentialsAs ?? provider.id;
+				return { id, label: formatProviderName(id) };
+			}),
 		);
 		if (!this.#entries.some(entry => entry.providerId === this.#activeProviderId)) {
 			this.#activeProviderId = this.#entries[0]?.providerId ?? "";
@@ -556,8 +562,14 @@ export class AccountManagerComponent implements Component {
 			const detail = head.detail ? `  ${theme.fg("muted", head.detail)}` : "";
 			const tag = head.tag ? theme.fg(row.activeForSession ? "success" : "warning", head.tag) : "";
 			const left = ` ${cursor} ${glyph} ${label}${detail}`;
-			const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(tag));
-			let text = truncateToWidth(`${left}${" ".repeat(gap)}${tag}`, width);
+			// A tag that does not fit is DROPPED, not truncated. `truncateToWidth` over the joined row
+			// cut the right-aligned tag instead of the left text, so a long email left `needs …` on
+			// screen: an ellipsis where a status word belongs, and the least informative element on the
+			// row winning space from the identity. The glyph already carries the state, so losing the
+			// word costs nothing, while one gap column is the minimum that keeps them apart.
+			const tagFits = tag.length > 0 && visibleWidth(left) + 1 + visibleWidth(tag) <= width;
+			const gap = tagFits ? width - visibleWidth(left) - visibleWidth(tag) : 0;
+			let text = tagFits ? `${left}${" ".repeat(gap)}${tag}` : truncateToWidth(left, width);
 			if (selected) text = selectionBand(text, width);
 			lines.push({ text, credentialId: row.credentialId });
 
@@ -591,7 +603,10 @@ export class AccountManagerComponent implements Component {
 			lines.push({ text: "" });
 		}
 		lines.push({
-			text: theme.fg("accent", truncateToWidth(`  + add another ${sanitizeAccountText(entry.label)} account (a)`, width)),
+			text: theme.fg(
+				"accent",
+				truncateToWidth(`  + add another ${sanitizeAccountText(entry.label)} account (a)`, width),
+			),
 		});
 		return lines;
 	}
