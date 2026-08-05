@@ -15,6 +15,13 @@ import { describeJsonRpcError, isUnattributableError, rejectAllPending } from ".
 import { rebuildMCPToolCallParamsForAttempt } from "./http";
 import { mcpHttpFailureMessage } from "./http-failure";
 import { reportUndeliveredServerResponse } from "./server-response-delivery";
+import {
+	describeMCPTarget,
+	mcpEmptyResponseBodyMessage,
+	mcpNotConnectedMessage,
+	mcpStreamClosedMessage,
+	mcpTimeoutMessage,
+} from "./transport-failure";
 
 interface MCPTimeoutOperation {
 	signal?: AbortSignal;
@@ -81,7 +88,7 @@ export class LegacySseTransport implements MCPTransport {
 				throw new Error(mcpHttpFailureMessage(this.#config.url, response.status, text));
 			}
 			if (!response.body) {
-				throw new Error("Legacy SSE response did not include a body");
+				throw new Error(mcpEmptyResponseBodyMessage({ url: this.#config.url }));
 			}
 
 			void this.#readSSEStream(response.body, operation, endpointReady).finally(() => {
@@ -95,7 +102,9 @@ export class LegacySseTransport implements MCPTransport {
 			if (this.#sseConnection === connection) this.#sseConnection = null;
 			connection.abort();
 			if (operation.isTimeoutAbort(error)) {
-				throw new Error(`Legacy SSE endpoint timeout after ${timeout}ms`);
+				throw new Error(
+					mcpTimeoutMessage({ url: this.#config.url }, "the legacy SSE handshake (its `endpoint` event)", timeout),
+				);
 			}
 			throw error;
 		}
@@ -115,8 +124,13 @@ export class LegacySseTransport implements MCPTransport {
 						const endpointUrl = new URL(event.data, this.#config.url);
 						const configuredUrl = new URL(this.#config.url);
 						if (endpointUrl.origin !== configuredUrl.origin) {
+							// The remedy must not be "trust the new origin". This branch is
+							// the defence against a server redirecting our Authorization
+							// header to somewhere else, so a message that said "point the
+							// url at ${endpointUrl.origin}" would talk the operator into
+							// performing the attack by hand.
 							throw new Error(
-								`Legacy SSE endpoint origin mismatch: expected ${configuredUrl.origin}, received ${endpointUrl.origin}`,
+								`${describeMCPTarget({ url: this.#config.url })} advertised its message endpoint on a different origin: expected ${configuredUrl.origin}, received ${endpointUrl.origin}. Refusing it, because POSTing there would send this server's credentials to an origin you did not configure. Fix: do not point the config at ${endpointUrl.origin} to make this go away. Check this server's \`url\` in your MCP config, and if its operator has genuinely moved the server, verify the new origin with them before changing it.`,
 							);
 						}
 						this.#endpointUrl = endpointUrl.href;
@@ -134,7 +148,9 @@ export class LegacySseTransport implements MCPTransport {
 					payload = JSON.parse(event.data) as unknown;
 				} catch (error) {
 					if (error instanceof SyntaxError) {
-						throw new Error(`Legacy SSE message event contained non-JSON data: ${event.data}`);
+						throw new Error(
+							`${describeMCPTarget({ url: this.#config.url })} sent a legacy SSE message that is not JSON: ${event.data}. Fix: this is a bug in the server; check its own logs. If the server is behind a proxy, the proxy may be rewriting the event stream.`,
+						);
 					}
 					throw error;
 				}
@@ -146,7 +162,11 @@ export class LegacySseTransport implements MCPTransport {
 				}
 			}
 			if (!endpointReceived) {
-				endpointReady.reject(new Error("Legacy SSE endpoint event not received"));
+				endpointReady.reject(
+					new Error(
+						`${describeMCPTarget({ url: this.#config.url })} opened an SSE stream but never sent the \`endpoint\` event the legacy HTTP+SSE protocol requires, so there is no address to POST requests to. Fix: this server is probably not a legacy SSE server. Change its \`type\` to \`"http"\` in your MCP config, or run \`/mcp test <name>\` to see what it does answer.`,
+					),
+				);
 			}
 		} catch (error) {
 			if (!endpointReceived) {
@@ -159,7 +179,7 @@ export class LegacySseTransport implements MCPTransport {
 		} finally {
 			operation.clear();
 			if (endpointReceived) {
-				this.#rejectPending(new Error("Transport closed: legacy SSE stream closed"));
+				this.#rejectPending(new Error(mcpStreamClosedMessage({ url: this.#config.url }, "its SSE stream ended")));
 			}
 		}
 	}
@@ -215,7 +235,7 @@ export class LegacySseTransport implements MCPTransport {
 		options?: MCPRequestOptions,
 	): Promise<T> {
 		if (!this.#connected || !this.#endpointUrl) {
-			throw new Error("Transport not connected");
+			throw new Error(mcpNotConnectedMessage({ url: this.#config.url }, `request "${method}"`));
 		}
 
 		const id = Snowflake.next();
@@ -245,7 +265,7 @@ export class LegacySseTransport implements MCPTransport {
 				deferred.reject(
 					options?.signal?.aborted && options.signal.reason instanceof Error
 						? options.signal.reason
-						: new Error(`Legacy SSE response timeout after ${timeout}ms`),
+						: new Error(mcpTimeoutMessage({ url: this.#config.url }, `request "${method}"`, timeout)),
 				);
 			};
 			operation.signal.addEventListener("abort", pending.abortHandler, { once: true });
@@ -265,7 +285,7 @@ export class LegacySseTransport implements MCPTransport {
 			operation.clear();
 			if (pending.abortHandler) operation.signal?.removeEventListener("abort", pending.abortHandler);
 			if (operation.isTimeoutAbort(error)) {
-				throw new Error(`Request timeout after ${timeout}ms`);
+				throw new Error(mcpTimeoutMessage({ url: this.#config.url }, `request "${method}"`, timeout));
 			}
 			throw error;
 		}
@@ -273,7 +293,7 @@ export class LegacySseTransport implements MCPTransport {
 
 	async notify(method: string, params?: Record<string, unknown>): Promise<void> {
 		if (!this.#connected || !this.#endpointUrl) {
-			throw new Error("Transport not connected");
+			throw new Error(mcpNotConnectedMessage({ url: this.#config.url }, `notification "${method}"`));
 		}
 
 		const timeout = resolveMCPTimeoutMs(this.#config.timeout);
@@ -296,7 +316,7 @@ export class LegacySseTransport implements MCPTransport {
 		} catch (error) {
 			operation.clear();
 			if (operation.isTimeoutAbort(error)) {
-				throw new Error(`Notify timeout after ${timeout}ms`);
+				throw new Error(mcpTimeoutMessage({ url: this.#config.url }, `notification "${method}"`, timeout));
 			}
 			throw error;
 		}
@@ -307,7 +327,7 @@ export class LegacySseTransport implements MCPTransport {
 		signal?: AbortSignal,
 	): Promise<Response> {
 		const endpointUrl = this.#endpointUrl;
-		if (!endpointUrl) throw new Error("Transport not connected");
+		if (!endpointUrl) throw new Error(mcpNotConnectedMessage({ url: this.#config.url }, "POST"));
 		let headers: Record<string, string> = {
 			"Content-Type": "application/json",
 			Accept: "application/json, text/event-stream",
@@ -405,7 +425,11 @@ export class LegacySseTransport implements MCPTransport {
 			this.#sseConnection.abort();
 			this.#sseConnection = null;
 		}
-		this.#rejectPending(new Error("Transport closed"));
+		this.#rejectPending(
+			new Error(
+				`${describeMCPTarget({ url: this.#config.url })} was disconnected by this client while requests were still in flight, so they failed. Fix: if you did not expect this, run \`/mcp reconnect <name>\` and retry; \`/mcp list\` gives the name.`,
+			),
+		);
 		if (wasConnected) this.onClose?.();
 		this.onClose = undefined;
 	}

@@ -548,14 +548,18 @@ export const TOOLS_SETTINGS = {
 			group: "Execution",
 			label: "Max Poll Time",
 			description:
-				"How long the poll tool waits for background job updates before returning the current state. A fixed value waits that exact duration every time. `smart` adapts: it starts at 5s and lengthens with each back-to-back poll (up to 5m), then resets to 5s after about a minute without polling.",
+				"How long the poll tool waits for background job updates before returning the current state. A fixed value waits that exact duration every time. `smart` adapts: it starts at 30s and climbs to 4m on a back-to-back poll, then resets to 30s after about a minute without polling. The 4m ceiling stays below the 5-minute prompt-cache boundary.",
 			options: [
 				{ value: "5s", label: "5 seconds" },
 				{ value: "10s", label: "10 seconds" },
 				{ value: "30s", label: "30 seconds" },
 				{ value: "1m", label: "1 minute" },
 				{ value: "5m", label: "5 minutes" },
-				{ value: "smart", label: "Smart", description: "Default — adaptive 5s→5m, resets when you stop polling" },
+				{
+					value: "smart",
+					label: "Smart",
+					description: "Default: adaptive 30s to 4m, resets when you stop polling",
+				},
 			],
 		},
 	},
@@ -645,17 +649,6 @@ export const TOOLS_SETTINGS = {
 	},
 
 	// MCP
-	"mcp.enableProjectConfig": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Discovery & MCP",
-			label: "MCP Project Config",
-			description: "Load .mcp.json/mcp.json from project root",
-		},
-	},
-
 	"mcp.discoveryMode": {
 		type: "boolean",
 		default: false,

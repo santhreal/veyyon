@@ -65,9 +65,16 @@ function createController() {
 	return { controller, mcpManager, refreshMCPTools };
 }
 
-async function writeProjectConfig(projectDir: string, servers: Record<string, MCPServerConfig>): Promise<void> {
+/**
+ * The fixture lives in the PROFILE-scoped `<agentDir>/mcp.json`, which is where MCP
+ * config comes from. It used to be written to `<cwd>/.veyyon/mcp.json`; a repository
+ * does not name the servers an agent connects to, and `/mcp enable` resolves the
+ * server it reconnects through `loadAllMCPConfigs`, so a project fixture now names
+ * nothing. The subject here is the toggle's blast radius, not the scope.
+ */
+async function writeUserConfig(agentDir: string, servers: Record<string, MCPServerConfig>): Promise<void> {
 	await Bun.write(
-		getMCPConfigPath("project", projectDir),
+		getMCPConfigPath("user", getProjectDir(), agentDir),
 		`${JSON.stringify(
 			{
 				mcpServers: servers,
@@ -102,7 +109,7 @@ describe("/mcp enable and disable", () => {
 	});
 
 	test("disabling one configured server does not reload other MCP servers", async () => {
-		await writeProjectConfig(projectDir, {
+		await writeUserConfig(agentDir, {
 			mcp1: { type: "stdio", command: "mcp-one" },
 			mcp2: { type: "stdio", command: "mcp-two" },
 		});
@@ -118,7 +125,7 @@ describe("/mcp enable and disable", () => {
 	});
 
 	test("enabling one configured server connects only that MCP server", async () => {
-		await writeProjectConfig(projectDir, {
+		await writeUserConfig(agentDir, {
 			mcp1: { type: "stdio", command: "mcp-one", enabled: false },
 			mcp2: { type: "stdio", command: "mcp-two" },
 		});

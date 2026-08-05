@@ -138,7 +138,15 @@ describe.skipIf(process.platform === "win32")("StdioTransport request write stal
 			if (!(outcome.error instanceof Error)) {
 				throw new Error(`expected Error rejection, got ${String(outcome.error)}`);
 			}
-			expect(outcome.error.message).toContain(`Request timeout after ${timeoutMs}ms`);
+			// The whole sentence: which server, which request, the deadline that
+			// expired, and the two knobs that move it. A bare "Request timeout after
+			// 400ms" named none of the four.
+			expect(outcome.error.message).toBe(
+				`MCP server "sleep" did not complete request "tools/call" within ${timeoutMs}ms. ` +
+					'Fix: raise this server\'s deadline with `"timeout": <milliseconds>` on its entry in your MCP config, ' +
+					"or set `VEYYON_MCP_TIMEOUT_MS` (`0` disables the deadline entirely). " +
+					"Run `/mcp test <name>` to check whether the server answers at all.",
+			);
 			// Generous ceiling: bare rejection latency plus room for slow CI. The
 			// pre-fix behavior was an unbounded hang, not a slightly-late reject.
 			expect(elapsedMs).toBeLessThan(timeoutMs + 1500);

@@ -79,10 +79,10 @@ async function mutateMCPConfigFile(filePath: string, mutate: (current: MCPConfig
  */
 export function validateServerName(name: string): string | undefined {
 	if (!name) {
-		return "Server name cannot be empty";
+		return "Server name cannot be empty. Fix: give the server a short id you will type in `/mcp` commands, for example `filesystem`.";
 	}
 	if (name.length > 100) {
-		return "Server name is too long (max 100 characters)";
+		return `Server name is too long: ${name.length} characters, and the maximum is 100. Fix: shorten it to a short id you will type in \`/mcp\` commands, for example \`filesystem\`.`;
 	}
 	// Check for invalid characters. Colon is allowed so namespaced plugin servers
 	// (e.g. "cloudflare:cloudflare-api" from a Claude Code marketplace plugin) can
@@ -90,12 +90,12 @@ export function validateServerName(name: string): string | undefined {
 	// sanitize them via createMCPToolName) and `/mcp reauth` writes such names back
 	// as a user-config override that shadows the discovered entry.
 	if (!/^[a-zA-Z0-9_.:-]+$/.test(name)) {
-		return "Server name can only contain letters, numbers, dash, underscore, dot, and colon";
+		return `Server name "${name}" can only contain letters, numbers, dash, underscore, dot, and colon. Fix: replace the other characters, for example \`my-server\` rather than \`my server\`.`;
 	}
 	// Reject pure dot-path tokens; they are never legitimate server ids and can
 	// confuse filesystem-shaped consumers that treat the name as a path segment.
 	if (name === "." || name === ".." || name.split(/[.:]/).every(p => p === "" || p === "." || p === "..")) {
-		return "Server name cannot be a path segment like '.' or '..'";
+		return `Server name "${name}" cannot be a path segment like '.' or '..', because consumers that treat the name as a filename would misread it. Fix: give the server a real id, for example \`local-fs\`.`;
 	}
 	return undefined;
 }
@@ -116,7 +116,7 @@ export async function addMCPServer(filePath: string, name: string, config: MCPSe
 	// Validate the config
 	const errors = validateServerConfig(name, config);
 	if (errors.length > 0) {
-		throw new Error(`Invalid server config: ${errors.join("; ")}`);
+		throw new Error(`Cannot add MCP server "${name}" to ${filePath}: ${errors.join("; ")}`);
 	}
 
 	// The duplicate check reads the current on-disk state, so it must run inside
@@ -124,7 +124,12 @@ export async function addMCPServer(filePath: string, name: string, config: MCPSe
 	// and our write.
 	await mutateMCPConfigFile(filePath, existing => {
 		if (existing.mcpServers?.[name]) {
-			throw new Error(`Server "${name}" already exists in ${filePath}`);
+			throw new Error(
+				// Keep the words "already exists": `#handleWizardComplete` in
+				// `modes/controllers/mcp-command-controller.ts` matches that phrase to
+				// decide which tip to append, so rewording it silently drops the tip.
+				`MCP server "${name}" already exists in ${filePath}, and adding it again would silently replace a working entry. Fix: pick a different name, or run \`/mcp remove ${name}\` first, or edit ${filePath} directly to change the existing entry.`,
+			);
 		}
 		return {
 			...existing,
@@ -152,7 +157,7 @@ export async function updateMCPServer(filePath: string, name: string, config: MC
 	// Validate the config
 	const errors = validateServerConfig(name, config);
 	if (errors.length > 0) {
-		throw new Error(`Invalid server config: ${errors.join("; ")}`);
+		throw new Error(`Cannot update MCP server "${name}" in ${filePath}: ${errors.join("; ")}`);
 	}
 
 	await mutateMCPConfigFile(filePath, existing => ({
@@ -174,7 +179,9 @@ export async function removeMCPServer(filePath: string, name: string): Promise<v
 	// the lock alongside the removal.
 	await mutateMCPConfigFile(filePath, existing => {
 		if (!existing.mcpServers?.[name]) {
-			throw new Error(`Server "${name}" not found in ${filePath}`);
+			throw new Error(
+				`MCP server "${name}" was not found in ${filePath}, so there is nothing to remove. Fix: run \`/mcp list\` to see the configured servers and which file each one comes from; \`/mcp remove\` only edits your profile's mcp.json, and a server listed under another provider is removed by editing that provider's own file.`,
+			);
 		}
 		const { [name]: _removed, ...remaining } = existing.mcpServers;
 		return {
@@ -202,10 +209,33 @@ export async function listMCPServers(filePath: string): Promise<string[]> {
 }
 
 /**
+ * Read a config file for a QUERY: an unparseable file answers "nothing", not an
+ * exception.
+ *
+ * {@link readMCPConfigFile} rethrows a parse failure on purpose, because a
+ * mutation must never overwrite a file it could not read. The two toggle-list
+ * readers below are pure reads on the boot path (`loadAllMCPConfigs` calls both
+ * before it can return anything), and a mistyped comma in the operator's own
+ * `<agentDir>/mcp.json` therefore threw a raw `SyntaxError` out of the loader and
+ * took the whole MCP subsystem down with it. A file that does not parse carries
+ * no denylist and no allowlist. The failure is not swallowed: the `native`
+ * discovery provider reports the same file through `warnings`, which is the
+ * channel `/mcp list` and the boot health zone render.
+ */
+async function readMCPConfigFileForQuery(filePath: string): Promise<MCPConfigFile> {
+	try {
+		return await readMCPConfigFile(filePath);
+	} catch (error) {
+		if (error instanceof SyntaxError) return { mcpServers: {} };
+		throw error;
+	}
+}
+
+/**
  * Read the disabled servers list from a config file.
  */
 export async function readDisabledServers(filePath: string): Promise<string[]> {
-	const config = await readMCPConfigFile(filePath);
+	const config = await readMCPConfigFileForQuery(filePath);
 	return Array.isArray(config.disabledServers) ? config.disabledServers : [];
 }
 
@@ -240,7 +270,7 @@ export async function setServerDisabled(filePath: string, name: string, disabled
  * non-writable source config's `enabled: false`).
  */
 export async function readEnabledServers(filePath: string): Promise<string[]> {
-	const config = await readMCPConfigFile(filePath);
+	const config = await readMCPConfigFileForQuery(filePath);
 	return Array.isArray(config.enabledServers) ? config.enabledServers : [];
 }
 

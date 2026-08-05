@@ -65,7 +65,12 @@ async function defaultRequestHandler(method: string, _params: unknown): Promise<
 			};
 		}
 		default:
-			throw Object.assign(new Error(`Unsupported server request: ${method}`), { code: -32601 });
+			throw Object.assign(
+				new Error(
+					`This MCP client does not implement the server-to-client request "${method}". It answers "ping" and "roots/list" only. Fix: nothing for the operator to do; the server should treat -32601 as "unsupported" and continue. If it does not, report the method name to the server's maintainer.`,
+				),
+				{ code: -32601 },
+			);
 	}
 }
 
@@ -83,7 +88,9 @@ async function createTransport(config: MCPServerConfig): Promise<MCPTransport> {
 		case "sse":
 			return createSseTransport(config as MCPSseServerConfig);
 		default:
-			throw new Error(`Unknown server type: ${serverType}`);
+			throw new Error(
+				`MCP server type "${serverType}" is not supported. Fix: set "type" to "stdio" (a server this machine spawns), "http" (a remote Streamable HTTP server) or "sse" (a legacy 2024-11-05 HTTP+SSE server) on this server's entry in your MCP config.`,
+			);
 	}
 }
 

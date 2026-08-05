@@ -21,6 +21,12 @@ import { toJsonRpcError } from "../../mcp/types";
 import { createMCPTimeout, getNeverAbortSignal, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 import { mcpHttpFailureMessage } from "./http-failure";
 import { reportUndeliveredServerResponse } from "./server-response-delivery";
+import {
+	mcpEmptyResponseBodyMessage,
+	mcpNoResponseForRequestMessage,
+	mcpNotConnectedMessage,
+	mcpTimeoutMessage,
+} from "./transport-failure";
 
 const HTTP_SSE_CONNECT_TIMEOUT_MS = 1_000;
 
@@ -250,7 +256,7 @@ export class HttpTransport implements MCPTransport {
 		options: MCPRequestOptions | undefined,
 	): Promise<T> {
 		if (!this.#connected) {
-			throw new Error("Transport not connected");
+			throw new Error(mcpNotConnectedMessage({ url: this.config.url }, `request "${method}"`));
 		}
 
 		const id = Snowflake.next();
@@ -318,7 +324,7 @@ export class HttpTransport implements MCPTransport {
 			return result.result as T;
 		} catch (error) {
 			if (operation.isTimeoutAbort(error)) {
-				throw new Error(`Request timeout after ${timeout}ms`);
+				throw new Error(mcpTimeoutMessage({ url: this.config.url }, `request "${method}"`, timeout));
 			}
 			throw error;
 		} finally {
@@ -328,7 +334,7 @@ export class HttpTransport implements MCPTransport {
 
 	#parseSSEResponse<T>(response: Response, expectedId: string | number, options?: MCPRequestOptions): Promise<T> {
 		if (!response.body) {
-			throw new Error("No response body");
+			throw new Error(mcpEmptyResponseBodyMessage({ url: this.config.url }));
 		}
 
 		const timeout = resolveMCPTimeoutMs(this.config.timeout);
@@ -369,12 +375,16 @@ export class HttpTransport implements MCPTransport {
 					}
 				}
 				if (!captured) {
-					reject(new Error(`No response received for request ID ${expectedId}`));
+					reject(new Error(mcpNoResponseForRequestMessage({ url: this.config.url }, expectedId)));
 				}
 			} catch (error) {
 				if (captured) return;
 				if (operation.isTimeoutAbort(error)) {
-					reject(new Error(`SSE response timeout after ${timeout}ms`));
+					reject(
+						new Error(
+							mcpTimeoutMessage({ url: this.config.url }, "its streamed response to this request", timeout),
+						),
+					);
 				} else {
 					reject(error as Error);
 				}
@@ -476,7 +486,7 @@ export class HttpTransport implements MCPTransport {
 
 	async notify(method: string, params?: Record<string, unknown>): Promise<void> {
 		if (!this.#connected) {
-			throw new Error("Transport not connected");
+			throw new Error(mcpNotConnectedMessage({ url: this.config.url }, `notification "${method}"`));
 		}
 
 		const body = {
@@ -529,7 +539,7 @@ export class HttpTransport implements MCPTransport {
 			}
 		} catch (error) {
 			if (operation.isTimeoutAbort(error)) {
-				throw new Error(`Notify timeout after ${timeout}ms`);
+				throw new Error(mcpTimeoutMessage({ url: this.config.url }, `notification "${method}"`, timeout));
 			}
 			throw error;
 		} finally {

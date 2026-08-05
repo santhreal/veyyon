@@ -29,8 +29,6 @@ export interface MCPToolsLoadResult {
 export interface MCPToolsLoadOptions {
 	/** Called when MCP server connection state changes. */
 	onStatus?: (event: McpConnectionStatusEvent) => void;
-	/** Whether to load project-level config (default: true) */
-	enableProjectConfig?: boolean;
 	/** Whether to filter out Exa MCP servers (default: true) */
 	filterExa?: boolean;
 	/** Whether to filter out browser MCP servers when builtin browser tool is enabled (default: false) */
@@ -53,7 +51,8 @@ async function resolveToolCache(storage: AgentStorage | null | undefined): Promi
 }
 
 /**
- * Discover and load MCP tools from .mcp.json files.
+ * Discover and load MCP tools from the profile's mcp.json and the editor
+ * configs the capability system reads.
  *
  * @param cwd Working directory (project root)
  * @param options Load options including progress callbacks
@@ -70,7 +69,6 @@ export async function discoverAndLoadMCPTools(cwd: string, options?: MCPToolsLoa
 	try {
 		result = await manager.discoverAndConnect({
 			onStatus: options?.onStatus,
-			enableProjectConfig: options?.enableProjectConfig,
 			filterExa: options?.filterExa,
 			filterBrowser: options?.filterBrowser,
 		});
