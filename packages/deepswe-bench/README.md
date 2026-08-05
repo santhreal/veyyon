@@ -426,6 +426,44 @@ bun run.ts \
   --out ../../runs/deepswe/argot-pilot
 ```
 
+### Cross-system real-session replay
+
+The comparison lane is separate from config-overlay arms. It always runs
+`veyyon,factory,hermes` on the unchanged `tasks/pilot-10.txt` task set with
+`google-antigravity/gemini-3.6-flash`; different systems, models, task lists,
+limits, missing credentials, or missing binaries are refused rather than
+silently substituted.
+
+Each task has one `<task>.json` replay manifest under an absolute replay root.
+The portable contract is `replay-manifest.schema.json`: it points at an absolute
+frozen worktree and source-session artifacts, carries their checkpoint digest
+and the actual source compaction threshold/boundary, contains ordered **user
+turns only**, and withholds exactly one continuation. Every adapter consumes the
+same manifest bytes, performs native compaction immediately after the final
+prefix user turn, then issues only that held-out continuation.
+
+```bash
+bun run.ts \
+  --systems veyyon,factory,hermes \
+  --replay-root /absolute/path/to/replay-corpus \
+  --factory-binary /absolute/path/to/droid \
+  --factory-auth /absolute/path/to/factory-api-key \
+  --hermes-auth /absolute/path/to/hermes.env \
+  --jobs 2 \
+  --out ../../runs/deepswe/system-comparison
+```
+
+The generated report pairs by task and rejects errors, missing cells, model
+fallbacks, missing native-compaction/artifact evidence, and zero-token results.
+It reports verifier and externally judged qualitative quality, recovery
+reads/tokens, wall time, input/output/cache/total tokens, and provider cost. A
+provider that does not report cost is labelled `unsupported`; that state can
+never satisfy the price gate. Missing judge or recovery telemetry similarly
+leaves the replay quality gate unsupported. The four per-competitor hard gates
+are Veyyon quality higher, wall time
+lower, total tokens at most `0.5x`, and provider price strictly below `0.5x`.
+The report passes only when all four hold against both competitors.
+
 Flags:
 
 - `--tasks <file>` — newline list of task names (comments with `#`). Omit to
@@ -455,6 +493,17 @@ Flags:
   sessions, so accounting fixes apply retroactively).
 - `--arms <a,b,c>` — which `arms/*.yml` overlays to run. Every arm runs every
   task.
+- `--systems veyyon,factory,hermes` — select the fixed cross-system lane. It is
+  mutually exclusive with `--arms`, requires all three names exactly once, pins
+  the model and shared 10-task list, and disables `--limit`.
+- `--replay-root <absolute-dir>` — real-session replay corpus for `--systems`,
+  with one validated `<task>.json` manifest per shared task.
+- `--factory-binary <file>`, `--factory-auth <file>`, and optional
+  `--factory-settings <file>` — exact Factory CLI executable and credential/
+  settings assets. The runner stages these without printing credentials.
+- `--hermes-auth <file>` — nonempty Hermes-compatible `.env` credential file.
+  Hermes itself is pinned and installed by its Pier adapter; unavailable exact
+  model/auth/native-compaction paths fail the trial loudly.
 - `--limit N` — sample N tasks for a smoke run. The picks are spread evenly
   across the sorted task list (an even stride), not the first N: task names are
   repo-prefixed, so the first N would cluster on one repo and bias the pass rate.
@@ -767,10 +816,13 @@ settled result.
 - Tasks, images, verifiers, and grading all come from the public bench
   unchanged. Pier executes: the agent works in the task's isolated container,
   commits its work, and the verifier grades the patch in a pristine container.
-- `pier_agent/veyyon_agent.py` is the only custom piece: a Pier agent that
-  uploads the locally built `vey` binary, auth DB, arm overlay, any `.rule.md`,
-  and any per-section prompt override into the container, runs `vey --print`
-  with `--config` (setting `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` only when the arm
+- `pier_agent/veyyon_agent.py` is the only custom piece. It uploads the locally
+  built `vey` binary, auth DB, arm overlay, any `.rule.md`, and any per-section
+  prompt override into the container. It then refreshes the requested provider's
+  model catalog before selecting the model. This priming step is required for
+  dynamic-only models such as Antigravity Gemini releases, which do not exist in
+  a clean container's bundled snapshot. The agent runs `vey --print` with
+  `--config` (setting `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` only when the arm
   carries an override), copies the persisted session out, and reports usage to
   Pier's `agent_result`.
 - `pier_agent/oneshot_prompt.md.j2` wraps every task instruction in a

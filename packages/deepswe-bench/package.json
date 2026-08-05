@@ -1,6 +1,7 @@
 {
 	"name": "@veyyon/deepswe-bench",
 	"private": true,
+	"license": "MIT",
 	"version": "0.1.0",
 	"description": "DeepSWE bench runner for perf-affecting veyyon features (see README.md)",
 	"author": "santhreal",
@@ -11,6 +12,6 @@
 	"scripts": {
 		"check:types": "tsgo -p tsconfig.json --noEmit",
 		"bench": "bun run.ts",
-		"test": "bun test ./*.test.ts"
+		"test": "bun test ./*.test.ts && python3 -m unittest discover -s pier_agent -p '*_test.py'"
 	}
 }

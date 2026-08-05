@@ -100,6 +100,21 @@ import {
 import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "./auth-seed";
 import { resolveBinaryPin } from "./binary-pin";
 import { conversationCollapsed, measureRunPrefix, PREFIX_CATEGORIES, prefixShares } from "./prefix-composition";
+import { type LoadedReplayManifest, loadReplayManifest } from "./replay-manifest";
+import {
+	aggregateSystemComparison,
+	COMPARISON_MODEL,
+	COMPARISON_SYSTEMS,
+	COMPARISON_TASK_LIST,
+	COMPARISON_TASK_LIST_SHA256,
+	type ComparisonArmResult,
+	type ComparisonExecution,
+	type ComparisonSystem,
+	comparisonTrialsFromArmResults,
+	type NativeCompactionEvidence,
+	renderSystemComparison,
+	type SystemComparison,
+} from "./system-comparison";
 import {
 	encodeArmModelMismatch,
 	encodePreambleSilentlyDropped,
@@ -330,6 +345,7 @@ function sha256File(p: string): string {
  */
 function parseSessionsUsage(trialDir: string): {
 	usage: SessionUsage;
+	resolvedModel: string | null;
 	preambleTaught: boolean | null;
 	argotHandlesLoaded: number | null;
 	handlesTaughtInPrompt: boolean | null;
@@ -359,6 +375,7 @@ function parseSessionsUsage(trialDir: string): {
 	// same pass reads the session_init system prompt for the preamble probe and the
 	// argot_armed record for the loaded handle count.
 	const messages: Array<Record<string, unknown>> = [];
+	let resolvedModel: string | null = null;
 	let preambleTaught: boolean | null = null;
 	let argotHandlesLoaded: number | null = null;
 	let handlesTaughtInPrompt: boolean | null = null;
@@ -374,8 +391,15 @@ function parseSessionsUsage(trialDir: string): {
 					customType?: string;
 					details?: { handles?: unknown; entries?: unknown; inPrompt?: unknown; reason?: unknown };
 					systemPrompt?: unknown;
+					model?: unknown;
 				};
 				if (entry.message) messages.push(entry.message);
+				if (entry.type === "model_change" && typeof entry.model === "string") {
+					resolvedModel =
+						resolvedModel === null || resolvedModel === entry.model
+							? entry.model
+							: `<multiple:${resolvedModel},${entry.model}>`;
+				}
 				if (entry.type === "session_init" && typeof entry.systemPrompt === "string") {
 					// Any session_init that taught the preamble means encode fired; only
 					// downgrade to false when a system prompt was seen and none taught it.
@@ -422,6 +446,7 @@ function parseSessionsUsage(trialDir: string): {
 	const headroom = vocabEntries === null ? null : encodeHeadroom(collectEmittedText(messages), vocabEntries);
 	return {
 		usage: tallyUsage(messages),
+		resolvedModel,
 		preambleTaught,
 		argotHandlesLoaded,
 		handlesTaughtInPrompt,
@@ -440,15 +465,88 @@ function parseSessionsUsage(trialDir: string): {
 function readIfPresent(file: string): string | null {
 	return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
 }
+interface TrialComparisonContext {
+	system: ComparisonSystem;
+	requestedModel: string;
+	execution: ComparisonExecution;
+	replayManifest: LoadedReplayManifest | null;
+}
 
-function parseTrialResult(arm: string, task: string, repeat: number, jobDir: string): ArmResult {
-	const result: ArmResult = emptyArmResult(arm, task, repeat);
+function artifactPath(metadataValue: unknown, fallback: string, trialDir: string): string {
+	if (typeof metadataValue !== "string" || metadataValue.length === 0) return fallback;
+	return path.isAbsolute(metadataValue) ? metadataValue : path.resolve(trialDir, metadataValue);
+}
+
+function parsedNativeCompaction(value: unknown): NativeCompactionEvidence | null {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+	const raw = value as Record<string, unknown>;
+	return {
+		native: raw.native === true,
+		artifact: typeof raw.artifact === "string" ? raw.artifact : "",
+		beforeTokens: typeof raw.before_tokens === "number" ? raw.before_tokens : null,
+		afterTokens: typeof raw.after_tokens === "number" ? raw.after_tokens : null,
+	};
+}
+
+function parseTrialResult(
+	arm: string,
+	task: string,
+	repeat: number,
+	jobDir: string,
+	comparison: TrialComparisonContext | null = null,
+): ComparisonArmResult {
+	const result: ComparisonArmResult = emptyArmResult(arm, task, repeat);
 	// Pier truncates long task names in trial dir names, and a job has exactly
 	// one trial, so match the single subdirectory.
 	const trialDir = fs.readdirSync(jobDir, { withFileTypes: true }).find(d => d.isDirectory());
 	if (!trialDir) throw new Error(`no trial dir under ${jobDir}`);
 	const trialDirPath = path.join(jobDir, trialDir.name);
 	const trial = JSON.parse(fs.readFileSync(path.join(trialDirPath, "result.json"), "utf8"));
+	const agent = trial.agent_result ?? {};
+	const metadata = (agent.metadata ?? {}) as Record<string, unknown>;
+	if (comparison) {
+		const patch = path.join(trialDirPath, "artifacts", "model.patch");
+		const transcript = path.join(trialDirPath, "agent", "sessions");
+		const log = path.join(trialDirPath, "agent", `${comparison.system}.txt`);
+		result.system = comparison.system;
+		result.requestedModel = comparison.requestedModel;
+		result.qualitativeScore = typeof metadata.qualitative_score === "number" ? metadata.qualitative_score : null;
+		result.recoveryReads = typeof metadata.recovery_reads === "number" ? metadata.recovery_reads : null;
+		result.recoveryTokens = typeof metadata.recovery_tokens === "number" ? metadata.recovery_tokens : null;
+		result.providerCostSupported =
+			typeof metadata.provider_cost_supported === "boolean" ? metadata.provider_cost_supported : null;
+		result.artifacts = {
+			patch: artifactPath(metadata.patch_path, patch, trialDirPath),
+			transcript: artifactPath(metadata.transcript_path, transcript, trialDirPath),
+			log: artifactPath(metadata.log_path, log, trialDirPath),
+		};
+		result.execution = comparison.execution;
+		result.nativeCompaction = parsedNativeCompaction(metadata.native_compaction);
+		if (comparison.replayManifest) {
+			const manifest = comparison.replayManifest;
+			result.replay = {
+				manifestSha256: typeof metadata.replay_manifest_sha256 === "string" ? metadata.replay_manifest_sha256 : "",
+				sourceSessionId: manifest.manifest.source_session_id,
+				sourceSessionArtifacts: manifest.manifest.source_session_artifacts,
+				repositoryCheckpoint: manifest.manifest.repository_checkpoint,
+				compactionBoundary:
+					`${manifest.manifest.compaction_checkpoint.source_boundary_id}` +
+					`@user-${manifest.manifest.compaction_checkpoint.after_user_turn}`,
+				sourceThresholdTokens: manifest.manifest.compaction_checkpoint.source_threshold_tokens,
+				sourceContextTokens: manifest.manifest.compaction_checkpoint.source_context_tokens,
+				continuationId: manifest.manifest.held_out_continuation.id,
+				continuationArtifact:
+					typeof metadata.continuation_artifact === "string" ? metadata.continuation_artifact : "",
+			};
+			if (result.replay.manifestSha256 !== manifest.sha256) {
+				result.error =
+					`adapter replay manifest hash ${JSON.stringify(result.replay.manifestSha256)} ` +
+					`did not match staged bytes ${manifest.sha256}`;
+			}
+		} else {
+			result.replay = null;
+		}
+	}
 	const rewards = trial.verifier_result?.rewards ?? {};
 	result.reward = rewards.reward ?? null;
 	result.partial = rewards.partial ?? null;
@@ -458,6 +556,9 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 	// frozen at run time, and recomputing keeps reaggregated reports correct
 	// even when the accounting code changes after a run.
 	const parsed = parseSessionsUsage(trialDirPath);
+	if (comparison)
+		result.resolvedModel =
+			parsed?.resolvedModel ?? (typeof metadata.resolved_model === "string" ? metadata.resolved_model : null);
 	if (parsed) {
 		const { usage } = parsed;
 		result.inputTokens = usage.inputTokens ?? null;
@@ -474,8 +575,10 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		result.promptCacheInvalidations = parsed.promptCacheInvalidations;
 		result.encodeHeadroom = parsed.headroom;
 		result.toolCalls = usage.toolCalls ?? null;
+		if (comparison && result.providerCostSupported === null) {
+			result.providerCostSupported = (usage.costUsd ?? 0) > 0;
+		}
 	} else {
-		const agent = trial.agent_result ?? {};
 		result.inputTokens = agent.n_input_tokens ?? null;
 		result.outputTokens = agent.n_output_tokens ?? null;
 		result.cacheTokens = agent.n_cache_tokens ?? null;
@@ -483,6 +586,19 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 		result.argotLoadCalls = agent.metadata?.argot_load_calls ?? null;
 		result.assistantMsgsWithSigil = agent.metadata?.assistant_msgs_with_sigil ?? null;
 		result.toolCalls = agent.metadata?.tool_calls ?? null;
+		if (comparison) {
+			result.resolvedModel = typeof metadata.resolved_model === "string" ? metadata.resolved_model : null;
+		}
+	}
+	if (comparison && result.providerCostSupported === false) result.costUsd = null;
+	if (comparison) {
+		const missingArtifacts = Object.entries(result.artifacts ?? {})
+			.filter(([, artifact]) => typeof artifact !== "string" || !fs.existsSync(artifact))
+			.map(([name]) => name);
+		if (missingArtifacts.length > 0) {
+			const message = `missing comparison artifact(s): ${missingArtifacts.join(", ")}`;
+			result.error = result.error ? `${result.error}; ${message}` : message;
+		}
 	}
 	if (trial.agent_execution?.started_at && trial.agent_execution?.finished_at) {
 		result.agentSeconds =
@@ -532,7 +648,7 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 			const quota = providerQuotaStop(tail);
 			if (quota) err += ` ${quotaStopMarker(quota)}`;
 		}
-		result.error = err;
+		result.error = result.error ? `${result.error}; ${err}` : err;
 	}
 	// Fail closed on an unscored trial: if the agent ran without an exception but the
 	// verifier produced no numeric reward, the trial was NOT scored — do not let the
@@ -549,12 +665,43 @@ function parseTrialResult(arm: string, task: string, repeat: number, jobDir: str
 function reaggregate(runDir: string): void {
 	const configDir = path.join(runDir, "configs");
 	const jobsRoot = path.join(runDir, "jobs");
-	const results: ArmResult[] = [];
+	let prior: Record<string, any> | null = null;
+	try {
+		prior = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
+	} catch {
+		/* first aggregation */
+	}
+	const priorByCell = new Map<string, ComparisonArmResult>(
+		((prior?.results ?? []) as ComparisonArmResult[]).map(result => [
+			`${result.arm}\u0000${result.task}\u0000${result.repeat}`,
+			result,
+		]),
+	);
+	const results: ComparisonArmResult[] = [];
 	for (const file of fs.readdirSync(configDir).filter(f => f.endsWith(".yaml"))) {
 		const jobName = file.slice(0, -".yaml".length);
 		const { arm, task, repeat } = parseJobName(jobName);
 		try {
-			results.push(parseTrialResult(arm, task, repeat, path.join(jobsRoot, jobName)));
+			const refreshed = parseTrialResult(arm, task, repeat, path.join(jobsRoot, jobName));
+			const old = priorByCell.get(`${arm}\u0000${task}\u0000${repeat}`);
+			results.push(
+				old
+					? {
+							...refreshed,
+							system: old.system,
+							requestedModel: old.requestedModel,
+							resolvedModel: old.resolvedModel,
+							providerCostSupported: old.providerCostSupported,
+							qualitativeScore: old.qualitativeScore,
+							recoveryReads: old.recoveryReads,
+							recoveryTokens: old.recoveryTokens,
+							artifacts: old.artifacts,
+							execution: old.execution,
+							replay: old.replay,
+							nativeCompaction: old.nativeCompaction,
+						}
+					: refreshed,
+			);
 		} catch (err) {
 			results.push({ ...emptyArmResult(arm, task, repeat), error: String(err) });
 		}
@@ -583,8 +730,7 @@ function reaggregate(runDir: string): void {
 	// list to re-parse). Absent on older runs → undefined → no banner, as before.
 	let taskSet: (TaskSetProvenance & { file: string | null }) | undefined;
 	let incomplete = false;
-	try {
-		const prior = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
+	if (prior) {
 		model = prior.model ?? model;
 		limit = prior.limit ?? null;
 		totalTasksAvailable = prior.totalTasksAvailable ?? null;
@@ -597,23 +743,36 @@ function reaggregate(runDir: string): void {
 		// cut short, and quietly clearing the flag would let a quota-truncated run
 		// look complete once it had been re-rendered.
 		incomplete = prior.incomplete === true;
-	} catch {
-		/* first aggregation */
 	}
 	const repeats = results.length ? Math.max(...results.map(r => r.repeat)) + 1 : 1;
+	const comparisonRun = prior?.comparison?.run ?? prior?.comparison ?? null;
+	const comparisonMode = Array.isArray(comparisonRun?.systems);
+	const orderedTasks: string[] = Array.isArray(prior?.tasks) ? prior.tasks : tasks;
+	let systemComparison: SystemComparison | null = null;
+	let comparisonRejection: string | null = null;
+	if (comparisonMode) {
+		try {
+			systemComparison = aggregateSystemComparison(comparisonTrialsFromArmResults(results), orderedTasks, model);
+		} catch (error) {
+			comparisonRejection = error instanceof Error ? error.message : String(error);
+		}
+	}
 	fs.writeFileSync(
 		path.join(runDir, "results.json"),
 		JSON.stringify(
 			{
 				model,
 				binarySha,
+				comparison: comparisonMode
+					? { run: comparisonRun, aggregate: systemComparison, rejected: comparisonRejection }
+					: null,
 				limit,
 				totalTasksAvailable,
 				sampling,
 				armFingerprints,
 				taskSet,
 				arms,
-				tasks,
+				tasks: orderedTasks,
 				repeats,
 				incomplete,
 				results,
@@ -622,15 +781,25 @@ function reaggregate(runDir: string): void {
 			2,
 		),
 	);
-	fs.writeFileSync(
-		path.join(runDir, "report.md"),
-		renderReport(results, model, new Date().toISOString(), repeats, taskSet),
-	);
+	if (comparisonRejection) {
+		console.error(
+			`\n${comparisonRejection}\nRaw results and artifacts were retained; no comparison report was written.`,
+		);
+		process.exit(1);
+	}
+	const report = systemComparison
+		? renderSystemComparison(systemComparison)
+		: renderReport(results, model, new Date().toISOString(), repeats, taskSet);
+	fs.writeFileSync(path.join(runDir, "report.md"), report);
 	console.log(`reaggregated ${results.length} runs into ${path.join(runDir, "report.md")}`);
-	// A reaggregate is what you run after a quota truncation, which is exactly the
-	// case the prediction check has to be right about: an arm whose trials all died
-	// bills nothing and must read as no measurement, never as a total saving.
-	reportPredictedVsActual(runDir, [...new Set(results.map(r => r.arm))], results);
+	if (systemComparison) {
+		if (systemComparison.overall !== "pass") process.exitCode = 1;
+	} else {
+		// A reaggregate is what you run after a quota truncation, which is exactly the
+		// case the prediction check has to be right about: an arm whose trials all died
+		// bills nothing and must read as no measurement, never as a total saving.
+		reportPredictedVsActual(runDir, [...new Set(results.map(r => r.arm))], results);
+	}
 }
 
 /**
@@ -729,14 +898,31 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 	const tasksRoot = path.resolve(BENCH_DIR, tasksRootArg);
-	const armsArg = args.arms ?? "baseline,full";
-	const arms = armsArg
+	const comparisonMode = args.systems !== undefined;
+	if (comparisonMode && args.arms !== undefined) {
+		console.error("error: --systems and --arms are mutually exclusive");
+		process.exit(1);
+	}
+	const armsArg = comparisonMode ? args.systems : (args.arms ?? "baseline,full");
+	const arms = (armsArg ?? "")
 		.split(",")
 		.map(a => a.trim())
 		.filter(Boolean);
 	if (arms.length === 0) {
-		console.error("error: --arms must specify at least one valid arm name");
+		console.error(`error: --${comparisonMode ? "systems" : "arms"} must specify at least one name`);
 		process.exit(1);
+	}
+	if (comparisonMode) {
+		const selected = new Set(arms);
+		const invalid = arms.filter(arm => !COMPARISON_SYSTEMS.includes(arm as ComparisonSystem));
+		const missing = COMPARISON_SYSTEMS.filter(system => !selected.has(system));
+		if (invalid.length > 0 || missing.length > 0 || selected.size !== arms.length) {
+			console.error(
+				`error: --systems must name each comparison arm exactly once: ${COMPARISON_SYSTEMS.join(",")} ` +
+					`(invalid: ${invalid.join(",") || "none"}; missing: ${missing.join(",") || "none"})`,
+			);
+			process.exit(1);
+		}
 	}
 	// Name the model you actually want to bench. The default is a model with a
 	// KNOWN-GOOD RECENT RUN, which is all it is: it is not a claim that any other
@@ -760,7 +946,11 @@ async function main(): Promise<void> {
 	// Requested == resolved matters independently: the 3.6→3.5 alias was removed,
 	// so the encode gate, which matches the RESOLVED id against an arm's
 	// allowlist, fires for the encode arms rather than silently degrading.
-	const model = args.model ?? "google-antigravity/gemini-3.5-flash";
+	const model = args.model ?? (comparisonMode ? COMPARISON_MODEL : "google-antigravity/gemini-3.5-flash");
+	if (comparisonMode && model !== COMPARISON_MODEL) {
+		console.error(`error: cross-system comparisons require exact model ${COMPARISON_MODEL}, got ${model}`);
+		process.exit(1);
+	}
 	const rawRepeats = Number(args.repeats ?? "1");
 	if (!Number.isFinite(rawRepeats) || rawRepeats < 1 || !Number.isInteger(rawRepeats)) {
 		console.error(`error: --repeats must be a positive integer (got ${JSON.stringify(args.repeats)})`);
@@ -788,14 +978,33 @@ async function main(): Promise<void> {
 		}
 		limit = parsedLimit;
 	}
+	if (comparisonMode && limit !== undefined) {
+		console.error(
+			`error: cross-system comparisons use all tasks from ${COMPARISON_TASK_LIST}; --limit is not allowed`,
+		);
+		process.exit(1);
+	}
 	const outRoot = path.resolve(
 		args.out ?? path.join(BENCH_DIR, "runs", new Date().toISOString().replace(/[:.]/g, "-")),
 	);
-	const taskListFile = args.tasks ? path.resolve(BENCH_DIR, args.tasks) : undefined;
+	const comparisonTaskList = path.resolve(BENCH_DIR, COMPARISON_TASK_LIST);
+	const taskListFile = args.tasks
+		? path.resolve(BENCH_DIR, args.tasks)
+		: comparisonMode
+			? comparisonTaskList
+			: undefined;
+	if (comparisonMode && taskListFile !== comparisonTaskList) {
+		console.error(`error: initial cross-system comparisons must use ${COMPARISON_TASK_LIST} unchanged`);
+		process.exit(1);
+	}
 	let tasks: string[];
 	let taskSetProvenance: TaskSetProvenance;
 	if (taskListFile) {
 		const content = fs.readFileSync(taskListFile, "utf8");
+		if (comparisonMode && createHash("sha256").update(content).digest("hex") !== COMPARISON_TASK_LIST_SHA256) {
+			console.error(`error: ${COMPARISON_TASK_LIST} changed; restore the pinned shared task list before comparison`);
+			process.exit(1);
+		}
 		taskSetProvenance = parseTaskListProvenance(content);
 		tasks = content
 			.split("\n")
@@ -809,6 +1018,12 @@ async function main(): Promise<void> {
 		// The whole corpus is by definition the unbiased superset, so a directory scan is
 		// a headline set even though it carries no header directive to parse.
 		taskSetProvenance = { marked: true, biased: false, note: "full task corpus (directory scan)" };
+	}
+	if (comparisonMode && tasks.length !== 10) {
+		console.error(
+			`error: ${COMPARISON_TASK_LIST} must contain the unchanged shared 10-task set; found ${tasks.length}`,
+		);
+		process.exit(1);
 	}
 	const totalTasksAvailable = tasks.length;
 	if (limit !== undefined && limit < totalTasksAvailable) {
@@ -852,8 +1067,12 @@ async function main(): Promise<void> {
 	ensureAuthDbSeeded();
 	await requireStagedAuthCanServeToken(model, args["dry-run"] !== undefined);
 	requireFile(pinnedBinary ?? VEY_BINARY, "build it: cd ../coding-agent && bun scripts/build-binary.ts");
-	for (const arm of arms) {
-		requireFile(path.join(BENCH_DIR, "arms", `${arm}.yml`), `create arms/${arm}.yml`);
+	if (comparisonMode) {
+		requireFile(path.join(BENCH_DIR, "arms", "baseline.yml"), "the Veyyon comparison arm requires arms/baseline.yml");
+	} else {
+		for (const arm of arms) {
+			requireFile(path.join(BENCH_DIR, "arms", `${arm}.yml`), `create arms/${arm}.yml`);
+		}
 	}
 	// Resolve every task's timeout up front rather than inside runOne, so a task
 	// with an unreadable budget fails at preflight instead of forty containers in.
@@ -867,6 +1086,21 @@ async function main(): Promise<void> {
 		} catch (err) {
 			console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
 			process.exit(1);
+		}
+	}
+	const replayManifests = new Map<string, LoadedReplayManifest>();
+	if (comparisonMode) {
+		const replayRootArg = args["replay-root"];
+		if (!replayRootArg) {
+			console.error(
+				"error: --systems requires --replay-root <absolute-dir> with one validated <task>.json real-session manifest per task",
+			);
+			process.exit(1);
+		}
+		const replayRoot = path.resolve(replayRootArg);
+		for (const task of tasks) {
+			const loaded = loadReplayManifest(path.join(replayRoot, `${task}.json`));
+			replayManifests.set(task, loaded);
 		}
 	}
 	const truncation = truncationWarning(trialTimeouts);
@@ -887,6 +1121,60 @@ async function main(): Promise<void> {
 		console.error("pier not found on PATH or ~/.local/bin — uv tool install datacurve-pier");
 		process.exit(1);
 	}
+	let factoryBinary: string | null = null;
+	let factoryBinarySha: string | null = null;
+	let factoryAuth: string | null = null;
+	let factorySettings: string | null = null;
+	let hermesAuth: string | null = null;
+	if (comparisonMode) {
+		factoryBinary = args["factory-binary"] ? path.resolve(args["factory-binary"]) : (Bun.which("droid") ?? null);
+		if (!factoryBinary) {
+			console.error("error: Factory CLI binary unavailable; pass --factory-binary or install droid on PATH");
+			process.exit(1);
+		}
+		requireFile(factoryBinary, "Factory comparison cannot fall back to another agent or binary");
+		if (!fs.statSync(factoryBinary).isFile()) {
+			console.error(`error: Factory CLI path is not a file: ${factoryBinary}`);
+			process.exit(1);
+		}
+		factoryBinarySha = sha256File(factoryBinary);
+		factoryAuth = args["factory-auth"] ? path.resolve(args["factory-auth"]) : null;
+		if (!factoryAuth) {
+			console.error("error: Factory auth unavailable; pass --factory-auth <nonempty API-key file>");
+			process.exit(1);
+		}
+		requireFile(factoryAuth, "Factory comparison requires an explicit credential path");
+		if (!fs.statSync(factoryAuth).isFile()) {
+			console.error(`error: Factory auth path is not a file: ${factoryAuth}`);
+			process.exit(1);
+		}
+		if (fs.statSync(factoryAuth).size === 0) {
+			console.error(`error: Factory auth file is empty: ${factoryAuth}`);
+			process.exit(1);
+		}
+		if (args["factory-settings"]) {
+			factorySettings = path.resolve(args["factory-settings"]);
+			requireFile(factorySettings, "Factory settings path was supplied but is unavailable");
+			if (!fs.statSync(factorySettings).isFile()) {
+				console.error(`error: Factory settings path is not a file: ${factorySettings}`);
+				process.exit(1);
+			}
+		}
+		hermesAuth = args["hermes-auth"] ? path.resolve(args["hermes-auth"]) : null;
+		if (!hermesAuth) {
+			console.error("error: Hermes auth unavailable; pass --hermes-auth <nonempty .env file>");
+			process.exit(1);
+		}
+		requireFile(hermesAuth, "Hermes comparison requires an explicit credential path");
+		if (!fs.statSync(hermesAuth).isFile()) {
+			console.error(`error: Hermes auth path is not a file: ${hermesAuth}`);
+			process.exit(1);
+		}
+		if (fs.statSync(hermesAuth).size === 0) {
+			console.error(`error: Hermes auth file is empty: ${hermesAuth}`);
+			process.exit(1);
+		}
+	}
 
 	const binarySha = sha256File(pinnedBinary ?? VEY_BINARY);
 
@@ -896,6 +1184,15 @@ async function main(): Promise<void> {
 	fs.copyFileSync(pinnedBinary ?? VEY_BINARY, path.join(assetsDir, "vey"));
 	fs.chmodSync(path.join(assetsDir, "vey"), 0o755);
 	fs.copyFileSync(AUTH_DB, path.join(assetsDir, "auth-agent.db"));
+	if (comparisonMode) {
+		fs.copyFileSync(factoryBinary!, path.join(assetsDir, "droid"));
+		fs.chmodSync(path.join(assetsDir, "droid"), 0o755);
+		fs.copyFileSync(factoryAuth!, path.join(assetsDir, "factory-api-key"));
+		fs.chmodSync(path.join(assetsDir, "factory-api-key"), 0o600);
+		if (factorySettings) fs.copyFileSync(factorySettings, path.join(assetsDir, "settings.json"));
+		fs.copyFileSync(hermesAuth!, path.join(assetsDir, "hermes.env"));
+		fs.chmodSync(path.join(assetsDir, "hermes.env"), 0o600);
+	}
 	// Stage each arm's config overlay, an optional per-section prompt override,
 	// and an optional .rule.md, then fingerprint the exact inputs the container
 	// will see. A per-section prompt experiment lives in a SEPARATE
@@ -915,12 +1212,14 @@ async function main(): Promise<void> {
 	// Refuse a typo and an attachment name before anything is staged. The predicate lives in
 	// `arm-fingerprint.ts` so it is unit-testable: this file ends in a top-level `await main()`, so a
 	// test that imported it would run a bench.
-	const available = armNamesIn(fs.readdirSync(path.join(BENCH_DIR, "arms")));
-	for (const arm of arms) {
-		const problem = armSelectionError(arm, available);
-		if (problem !== null) {
-			console.error(`error: ${problem}`);
-			process.exit(1);
+	if (!comparisonMode) {
+		const available = armNamesIn(fs.readdirSync(path.join(BENCH_DIR, "arms")));
+		for (const arm of arms) {
+			const problem = armSelectionError(arm, available);
+			if (problem !== null) {
+				console.error(`error: ${problem}`);
+				process.exit(1);
+			}
 		}
 	}
 	const armFingerprints = new Map<string, string>();
@@ -931,7 +1230,13 @@ async function main(): Promise<void> {
 	// (the pre-run allowlist guard cannot catch a post-resolution model mismatch).
 	const encodeArms = new Set<string>();
 	for (const arm of arms) {
-		const ymlText = fs.readFileSync(path.join(BENCH_DIR, "arms", `${arm}.yml`), "utf8");
+		if (comparisonMode && arm !== "veyyon") {
+			armTemperature.set(arm, PINNED_TEMPERATURE);
+			armFingerprints.set(arm, createHash("sha256").update(`system-adapter:${arm}`).digest("hex"));
+			continue;
+		}
+		const configArm = comparisonMode ? "baseline" : arm;
+		const ymlText = fs.readFileSync(path.join(BENCH_DIR, "arms", `${configArm}.yml`), "utf8");
 		let config: unknown;
 		try {
 			config = YAML.parse(ymlText) ?? {};
@@ -1006,7 +1311,7 @@ async function main(): Promise<void> {
 			process.exit(1);
 		}
 		let sections: unknown;
-		const sectionsPath = path.join(BENCH_DIR, "arms", `${arm}.sections.yml`);
+		const sectionsPath = path.join(BENCH_DIR, "arms", `${configArm}.sections.yml`);
 		if (fs.existsSync(sectionsPath)) {
 			try {
 				sections = YAML.parse(fs.readFileSync(sectionsPath, "utf8")) ?? {};
@@ -1029,7 +1334,7 @@ async function main(): Promise<void> {
 		// ablate the rule`. A section override is the wrong instrument for an ablation, since TOOL POLICY
 		// is 34 rules in one region and a score change across it cannot be attributed to a cause.
 		let statements: unknown;
-		const statementsPath = path.join(BENCH_DIR, "arms", `${arm}.statements.yml`);
+		const statementsPath = path.join(BENCH_DIR, "arms", `${configArm}.statements.yml`);
 		if (fs.existsSync(statementsPath)) {
 			try {
 				statements = YAML.parse(fs.readFileSync(statementsPath, "utf8")) ?? {};
@@ -1063,7 +1368,7 @@ async function main(): Promise<void> {
 			fs.writeFileSync(path.join(assetsDir, "statements", `${arm}.json`), JSON.stringify(statements));
 		}
 		let rule: Uint8Array | undefined;
-		const rulePath = path.join(BENCH_DIR, "arms", `${arm}.rule.md`);
+		const rulePath = path.join(BENCH_DIR, "arms", `${configArm}.rule.md`);
 		if (fs.existsSync(rulePath)) {
 			rule = fs.readFileSync(rulePath);
 			fs.mkdirSync(path.join(assetsDir, "rules"), { recursive: true });
@@ -1098,7 +1403,25 @@ async function main(): Promise<void> {
 		}
 	}
 
-	const results: ArmResult[] = [];
+	const comparisonExecutionByTask = new Map<string, ComparisonExecution>();
+	if (comparisonMode) {
+		for (const task of tasks) {
+			const timeout = trialTimeouts.get(task);
+			const replay = replayManifests.get(task);
+			if (!timeout || !replay) throw new Error(`internal: incomplete comparison provenance for ${task}`);
+			const instructionPath = path.join(tasksRoot, task, "instruction.md");
+			requireFile(instructionPath, `task ${task} has no instruction.md`);
+			comparisonExecutionByTask.set(task, {
+				taskInstructionsHash: sha256File(instructionPath),
+				repositoryStateHash: replay.manifest.repository_checkpoint_sha256,
+				wallClockLimitSeconds: timeout.timeoutSec,
+				temperature: PINNED_TEMPERATURE,
+				samplingDescription:
+					"temperature 0 where the native API exposes sampling; otherwise native fixed/default sampling",
+			});
+		}
+	}
+	const results: ComparisonArmResult[] = [];
 	const queue = trialQueue(arms, tasks, repeats);
 	// Fail-fast canary state (see runOne). The canary window is the first wave of
 	// completed jobs — the smaller of the worker-pool width and the total queue —
@@ -1202,6 +1525,16 @@ async function main(): Promise<void> {
 	const provenance = {
 		model,
 		binarySha,
+		comparison: comparisonMode
+			? {
+					systems: COMPARISON_SYSTEMS,
+					taskList: COMPARISON_TASK_LIST,
+					replayManifests: Object.fromEntries(
+						tasks.map(task => [task, replayManifests.get(task)?.sha256 ?? null]),
+					),
+					factoryBinarySha,
+				}
+			: null,
 		limit: limit ?? null,
 		totalTasksAvailable,
 		sampling: {
@@ -1210,7 +1543,7 @@ async function main(): Promise<void> {
 			note: "greedy at temperature 0: top-p / top-k are irrelevant, so temperature alone fixes the regime",
 		},
 		armFingerprints: Object.fromEntries(arms.map(a => [a, armFingerprints.get(a) ?? null])),
-		taskSet: { file: args.tasks ?? null, ...taskSetProvenance },
+		taskSet: { file: args.tasks ?? (comparisonMode ? COMPARISON_TASK_LIST : null), ...taskSetProvenance },
 		arms,
 		tasks,
 		repeats,
@@ -1227,23 +1560,46 @@ async function main(): Promise<void> {
 		const configDir = path.join(outRoot, "configs");
 		fs.mkdirSync(configDir, { recursive: true });
 		const configPath = path.join(configDir, `${jobName}.yaml`);
-		const yaml = [
-			`job_name: ${jobName}`,
-			`jobs_dir: ${path.join(outRoot, "jobs")}`,
+		const common = [
+			`job_name: ${JSON.stringify(jobName)}`,
+			`jobs_dir: ${JSON.stringify(path.join(outRoot, "jobs"))}`,
 			"quiet: true",
 			"n_concurrent_trials: 1",
 			"tasks:",
-			`  - path: ${path.join(tasksRoot, task)}`,
+			`  - path: ${JSON.stringify(path.join(tasksRoot, task))}`,
 			"agents:",
-			"  - import_path: veyyon_agent:VeyyonAgent",
-			`    model_name: ${model}`,
-			"    kwargs:",
-			`      arm_name: ${arm}`,
-			`      assets_dir: ${assetsDir}`,
-			`      binary_sha: ${binarySha}`,
-			`      prompt_template_path: ${path.join(BENCH_DIR, "pier_agent", "oneshot_prompt.md.j2")}`,
-			"",
-		].join("\n");
+		];
+		let agent: string[];
+		if (!comparisonMode || arm === "veyyon") {
+			agent = [
+				"  - import_path: veyyon_agent:VeyyonAgent",
+				`    model_name: ${JSON.stringify(model)}`,
+				"    kwargs:",
+				`      arm_name: ${JSON.stringify(arm)}`,
+				`      assets_dir: ${JSON.stringify(assetsDir)}`,
+				`      binary_sha: ${JSON.stringify(binarySha)}`,
+				`      prompt_template_path: ${JSON.stringify(path.join(BENCH_DIR, "pier_agent", "oneshot_prompt.md.j2"))}`,
+				...(comparisonMode ? [`      replay_path: ${JSON.stringify(replayManifests.get(task)?.path)}`] : []),
+			];
+		} else if (arm === "factory") {
+			agent = [
+				"  - import_path: factory_agent:FactoryAgent",
+				`    model_name: ${JSON.stringify(model)}`,
+				"    kwargs:",
+				`      assets_dir: ${JSON.stringify(assetsDir)}`,
+				`      binary_sha: ${JSON.stringify(factoryBinarySha)}`,
+				`      replay_path: ${JSON.stringify(replayManifests.get(task)?.path)}`,
+			];
+		} else {
+			agent = [
+				"  - import_path: hermes_agent:HermesAgent",
+				`    model_name: ${JSON.stringify(model)}`,
+				"    kwargs:",
+				`      replay_path: ${JSON.stringify(replayManifests.get(task)?.path)}`,
+				`      auth_path: ${JSON.stringify(path.join(assetsDir, "hermes.env"))}`,
+			];
+		}
+		const yaml = [...common, ...agent, ""].join("\n");
 		fs.writeFileSync(configPath, yaml);
 		return configPath;
 	}
@@ -1284,10 +1640,18 @@ async function main(): Promise<void> {
 		const stdout = await readPipeText(proc.stdout);
 		const stderr = await readPipeText(proc.stderr);
 
-		let result: ArmResult;
+		let result: ComparisonArmResult;
 		try {
 			if (timedOut) throw new Error(`trial timed out after ${trialTimeoutSec}s`);
-			result = parseTrialResult(arm, task, repeat, jobDir);
+			const comparisonContext: TrialComparisonContext | null = comparisonMode
+				? {
+						system: arm as ComparisonSystem,
+						requestedModel: model,
+						execution: comparisonExecutionByTask.get(task)!,
+						replayManifest: replayManifests.get(task) ?? null,
+					}
+				: null;
+			result = parseTrialResult(arm, task, repeat, jobDir, comparisonContext);
 		} catch (err) {
 			const errStr = `${err}; pier exit ${exitCode}; ${stderr.slice(-300) || stdout.slice(-300)}`;
 			if (
@@ -1304,6 +1668,7 @@ async function main(): Promise<void> {
 			}
 			result = { ...emptyArmResult(arm, task, repeat), error: errStr };
 		}
+		if (comparisonMode) result.agentSeconds = (Date.now() - started) / 1000;
 		results.push(result);
 		const mark = result.error ? "ERROR" : result.reward === 1 ? "pass" : `reward=${result.reward}`;
 		// Denominator is the STABLE total (`totalQueued`), not `queue.length`: the
@@ -1397,12 +1762,28 @@ async function main(): Promise<void> {
 	}
 
 	results.sort((a, b) => a.arm.localeCompare(b.arm) || a.task.localeCompare(b.task) || a.repeat - b.repeat);
+	let systemComparison: SystemComparison | null = null;
+	let comparisonRejection: string | null = null;
+	if (comparisonMode) {
+		try {
+			systemComparison = aggregateSystemComparison(comparisonTrialsFromArmResults(results), tasks, model);
+		} catch (error) {
+			comparisonRejection = error instanceof Error ? error.message : String(error);
+		}
+	}
 	fs.writeFileSync(
 		path.join(outRoot, "results.json"),
 		JSON.stringify(
 			{
 				model,
 				binarySha,
+				comparison: comparisonMode
+					? {
+							run: provenance.comparison,
+							aggregate: systemComparison,
+							rejected: comparisonRejection,
+						}
+					: null,
 				limit: limit ?? null,
 				totalTasksAvailable,
 				sampling: {
@@ -1419,7 +1800,7 @@ async function main(): Promise<void> {
 				// Whether the task set is safe to headline or a selection-biased best case,
 				// stamped so a reaggregate reprints the same provenance banner and a biased
 				// run can never be silently promoted to a headline number later.
-				taskSet: { file: args.tasks ?? null, ...taskSetProvenance },
+				taskSet: { file: args.tasks ?? (comparisonMode ? COMPARISON_TASK_LIST : null), ...taskSetProvenance },
 				arms,
 				tasks,
 				repeats,
@@ -1432,13 +1813,23 @@ async function main(): Promise<void> {
 			2,
 		),
 	);
-	fs.writeFileSync(
-		path.join(outRoot, "report.md"),
-		renderReport(results, model, new Date().toISOString(), repeats, taskSetProvenance),
-	);
+	if (comparisonRejection) {
+		console.error(
+			`\n${comparisonRejection}\nRaw results and artifacts were retained; no comparison report was written.`,
+		);
+		process.exit(1);
+	}
+	const report = systemComparison
+		? renderSystemComparison(systemComparison)
+		: renderReport(results, model, new Date().toISOString(), repeats, taskSetProvenance);
+	fs.writeFileSync(path.join(outRoot, "report.md"), report);
 	console.log(`\nwrote ${path.join(outRoot, "report.md")} and results.json`);
 
-	reportPredictedVsActual(outRoot, arms, results);
+	if (systemComparison) {
+		if (systemComparison.overall !== "pass") process.exitCode = 1;
+	} else {
+		reportPredictedVsActual(outRoot, arms, results);
+	}
 
 	// Authoritative post-run treatment check. The pre-run allowlist guard matched the
 	// REQUESTED --model, but the runtime resolves that id through the catalog (provider

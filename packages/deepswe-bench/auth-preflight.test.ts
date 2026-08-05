@@ -346,7 +346,7 @@ describe("exhaustedPoolFor reads the shape checkCredentials actually returns", (
 		provider: "google-antigravity",
 		type: "oauth",
 		ok: true,
-		email: "contactmukundthiru@gmail.com",
+		email: "contact@santh.dev",
 		report: {
 			provider: "google-antigravity",
 			limits: [

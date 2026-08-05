@@ -148,8 +148,10 @@ describe("the declared test script does not scan the vendored trees", () => {
 		scripts?: Record<string, string>;
 	};
 
-	it("scopes the test script to the root test files", () => {
-		expect(pkg.scripts?.test).toBe("bun test ./*.test.ts");
+	it("scopes test discovery to root TypeScript tests and Pier agent unit tests", () => {
+		expect(pkg.scripts?.test).toBe(
+			"bun test ./*.test.ts && python3 -m unittest discover -s pier_agent -p '*_test.py'",
+		);
 	});
 
 	/** The scoping is only safe while every test file IS at the root. A future test

@@ -863,13 +863,13 @@ describe("isAgentTimeout — the one place that decides what a timeout is", () =
  * predicate drift away from the text it has to classify.
  */
 const KILLED_MID_RUN_JOB_LOG = [
-	'  File "/home/mukund-thiru/.local/share/uv/tools/datacurve-pier/lib/python3.14/site-packages/pier/cli/jobs.py", line 149, in _handle_sigterm',
+	'  File "/home/user/.local/share/uv/tools/datacurve-pier/lib/python3.14/site-packages/pier/cli/jobs.py", line 149, in _handle_sigterm',
 	"    raise KeyboardInterrupt",
 	"KeyboardInterrupt",
 	"",
 	"asyncio.exceptions.CancelledError",
 	"",
-	'  File "/home/mukund-thiru/.local/share/uv/tools/datacurve-pier/lib/python3.14/site-packages/pier/trial/artifact_handler.py", line 195, in _download_artifact',
+	'  File "/home/user/.local/share/uv/tools/datacurve-pier/lib/python3.14/site-packages/pier/trial/artifact_handler.py", line 195, in _download_artifact',
 	"RuntimeError: Docker compose command failed for environment datacurve/scriggo-method-declarations.",
 	"Error response from daemon: Could not find the file /logs/artifacts/model.patch in container 90cc95e883d14c6ce5ae00d9259a9c8c3df39cabd001e05990e599ae38a6e49d",
 ].join("\n");
@@ -881,7 +881,7 @@ const KILLED_MID_RUN_JOB_LOG = [
  * cancellation, which is exactly what makes the two opposite facts.
  */
 const FINISHED_WITHOUT_PATCH_JOB_LOG = [
-	'  File "/home/mukund-thiru/.local/share/uv/tools/datacurve-pier/lib/python3.14/site-packages/pier/trial/artifact_handler.py", line 195, in _download_artifact',
+	'  File "/home/user/.local/share/uv/tools/datacurve-pier/lib/python3.14/site-packages/pier/trial/artifact_handler.py", line 195, in _download_artifact',
 	"RuntimeError: Docker compose command failed for environment datacurve/scriggo-method-declarations.",
 	"Error response from daemon: Could not find the file /logs/artifacts/model.patch in container 90cc95e883d14c6ce5ae00d9259a9c8c3df39cabd001e05990e599ae38a6e49d",
 ].join("\n");
