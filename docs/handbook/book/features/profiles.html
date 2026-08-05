@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -302,22 +302,28 @@ $ veyyon profile default work
 <p>The instruction row copies only <code>AGENTS.md</code>. A profile switch never carries <code>RULES.md</code>; change it through settings or copy it manually when that is your intent.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
 <h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
-<p>On first run, the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The scan runs no matter how <code>discovery.importForeignConfig</code> is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.</p>
+<p>On the first interactive run of a profile that has not completed setup, the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into the active profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The scan runs no matter how <code>discovery.importForeignConfig</code> is set, because importing is how foreign config comes in by default: ambient loading of the originals stays off unless you turn that setting on.</p>
 <p>Do not document inline <code>[profiles.&lt;name&gt;]</code> tables or standalone <code>&lt;name&gt;.config.yml</code> files as shipped; settings use <code>config.yml</code> under the active agent dir.</p>
-<h2 id="model-slots-and-roles-per-profile"><a class="header" href="#model-slots-and-roles-per-profile">Model slots and roles (per profile)</a></h2>
-<p>Each profile’s <code>config.yml</code> owns the three model slots and optional roles:</p>
+<h2 id="model-policies-and-roles-per-profile"><a class="header" href="#model-policies-and-roles-per-profile">Model policies and roles (per profile)</a></h2>
+<p>Each profile’s <code>config.yml</code> owns its interactive default, optional roles, subagent policy, and compaction policy:</p>
 <pre><code class="language-yaml">modelRoles:
   default: openai/gpt-5             # interactive (also set live with /model)
   plan: openai/o3
   smol: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat     # optional blanket override for all subagents
+  model: deepseek/deepseek-chat     # blanket model chain for subagents
+  thinkingLevel: high
+  agents:
+    scout:
+      enabled: false
+    reviewer:
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini
-  strategy: handoff                 # or summary (the default)
+  strategy: summary
   threshold: "80%"
 </code></pre>
-<p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role follows the same rule, unset, it inherits the live main model; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
+<p>Unset roles and model chains inherit the live main model at use time, so switching with <code>/model</code> changes them immediately. Per-agent subagent settings override the blanket subagent model and effort; an unset per-agent value falls back to that blanket policy. Only an explicit assignment pins a different model. Switching profiles switches all of these assignments with the profile.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
 <ul>
 <li><a href="../using/roles-and-profiles.html">Models, roles, and profiles</a></li>

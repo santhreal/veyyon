@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-595774d2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -205,7 +205,7 @@
 <tbody>
 <tr><td><strong>Default model</strong></td><td>The model used for the main conversation, and the one a new session starts on. Chosen with <code>/model</code> or <code>--model</code>, or in <code>/settings</code> under Model. Persisted under <code>modelRoles.default</code>, which is a slot rather than a selectable role, so it does not appear in role pickers.</td></tr>
 <tr><td><strong>Role</strong></td><td>A named model assignment for a kind of work (<code>smol</code>, <code>plan</code>, <code>advisor</code>, and others). Configure it in <code>modelRoles</code> or Settings → Model → Roles.</td></tr>
-<tr><td><strong>Slot override</strong></td><td><code>subagent.model</code> or <code>compaction.model</code>, an ordered model chain for one subsystem. An unset slot inherits the interactive model.</td></tr>
+<tr><td><strong>Subagent policy</strong></td><td>The blanket model and effort plus per-agent <code>enabled</code>, <code>model</code>, <code>thinkingLevel</code>, and <code>maxNestedSpawnDepth</code> choices under <code>subagent</code>.</td></tr>
 <tr><td><strong>Profile</strong></td><td>User config tree at <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>).</td></tr>
 </tbody>
 </table>
@@ -249,24 +249,32 @@ modelRoles:
 <p>Unset selectable roles, <code>advisor</code> included, <strong>inherit the live interactive model</strong> at use time. No role carries a built-in model chain: a role you have not set names no model of its own, so nothing you did not choose ends up running.</p>
 <p>A caller may still ask for several roles in order. Title generation, for example, asks for <code>tiny</code>, then <code>commit</code>, then <code>smol</code>, and takes the first one you have set. That order belongs to the caller, not to the role: <code>tiny</code> does not fall back to <code>smol</code>, the title generator prefers <code>tiny</code> and accepts <code>smol</code>. If you have set none of them, the whole list is unset and the caller inherits the interactive model like any other unset role.</p>
 <p>There is no <code>task</code> role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see <a href="../../../settings.html#subagents">Settings: Subagents</a>.</p>
-<p>To return an assigned role or slot to its unset state, open its picker in <code>/settings</code> and choose the first row, <code>(inherit main model)</code> (the default model’s picker reads <code>(auto-select on launch)</code>). Del or Backspace with an empty search does the same.</p>
-<h2 id="slot-overrides"><a class="header" href="#slot-overrides">Slot overrides</a></h2>
+<p>To return an assigned role or model policy to its unset state, open its picker in <code>/settings</code> and choose the first row, <code>(inherit main model)</code> (the default model’s picker reads <code>(auto-select on launch)</code>). Del or Backspace with an empty search does the same.</p>
+<h2 id="subagent-policy-and-compaction-overrides"><a class="header" href="#subagent-policy-and-compaction-overrides">Subagent policy and compaction overrides</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Setting</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.model</code></td><td>Ordered model chain for every subagent that has no model of its own. The first entry is primary and later entries are fallbacks. An unset chain inherits the interactive model. A per-agent model in <code>subagent.agents</code> wins over it.</td></tr>
-<tr><td><code>compaction.model</code></td><td>Ordered model chain for compaction and handoff. An unset chain inherits the interactive model.</td></tr>
+<tr><td><code>subagent.model</code></td><td>Ordered model chain for every subagent that has no model of its own. The first entry is primary and later entries are fallbacks. Unset inherits the interactive model.</td></tr>
+<tr><td><code>subagent.thinkingLevel</code></td><td>Blanket subagent effort. Unset inherits the live parent effort.</td></tr>
+<tr><td><code>subagent.agents</code></td><td>Per-agent <code>enabled</code>, <code>model</code>, <code>thinkingLevel</code>, and <code>maxNestedSpawnDepth</code> choices. Per-agent values win over the blanket policy.</td></tr>
+<tr><td><code>subagent.delegation</code></td><td>How strongly the model is prompted to delegate: <code>allowed</code>, <code>preferred</code>, or <code>required</code>.</td></tr>
+<tr><td><code>compaction.model</code></td><td>Ordered model chain for compaction. Unset inherits the interactive model.</td></tr>
 </tbody>
 </table>
 </div>
 <pre><code class="language-yaml">subagent:
   model: deepseek/deepseek-chat:high,anthropic/claude-sonnet-5:low
+  agents:
+    scout:
+      enabled: false
+    reviewer:
+      thinkingLevel: auto
 compaction:
   model: openai/gpt-5-mini:low,anthropic/claude-haiku-4-5
-  strategy: handoff
+  strategy: summary
   threshold: "80%"
 </code></pre>
 <p>In Settings, Enter edits the highlighted chain position. <strong>Add fallback</strong>
@@ -302,7 +310,9 @@ appends a position. Delete removes only the highlighted position.</p>
 </ol>
 <p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profiles</code> picker or <code>/profile &lt;name&gt;</code> (relaunch).<br>See <a href="../features/profiles.html">Profiles</a>, <a href="../reference/file-locations.html">File locations</a>.</p>
 <h2 id="approvals"><a class="header" href="#approvals">Approvals</a></h2>
-<p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>auto-edit</code> | <code>yolo</code> (schema default <code>yolo</code>).<br>Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.<br>See <a href="../features/sandbox.html">Approvals</a>.</p>
+<p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>ask-command</code> | <code>auto</code> | <code>yolo</code> (schema default <code>auto</code>).
+Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>.
+See <a href="../features/sandbox.html">Approvals</a>.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="./models.html">Models and providers</a></li>

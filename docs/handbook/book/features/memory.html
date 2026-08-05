@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -247,13 +247,14 @@ these primary fields:</p>
 </thead>
 <tbody>
 <tr><td>Threshold</td><td><code>compaction.threshold</code></td><td><code>auto</code>, a percent of the window (<code>85%</code>), or a token amount (<code>170000</code>)</td></tr>
-<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>summary</code> or <code>handoff</code> (schema default <code>summary</code>)</td></tr>
+<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>summary</code>, the sole strategy</td></tr>
 <tr><td>Model</td><td><code>compaction.model</code></td><td>model id; unset uses the interactive model</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>summary</code> rewrites old history into an in-place LLM summary; <code>handoff</code> writes a structured session transfer.
-Run on demand with <code>/compact</code>. See <a href="../context/compaction-memory.html">Compaction and project memory</a>.</p>
+<p><code>summary</code> rewrites old history into an in-place LLM summary. Run it on demand
+with <code>/compact</code>. Use <code>/handoff</code> only when you explicitly want a new session. See
+<a href="../context/compaction-memory.html">Compaction and project memory</a>.</p>
 <h2 id="what-the-model-sees"><a class="header" href="#what-the-model-sees">What the model sees</a></h2>
 <p>Recalled or summarized memory is <strong>background context</strong>, not instructions. Current user messages,
 tool output, and repo state win on conflict. The agent should cite memory paths when memory changes

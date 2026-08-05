@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -221,30 +221,28 @@ model context window, so switching to a smaller-window model warns again).</li>
 <p>You can also compact on demand with <code>/compact</code>.</p>
 </li>
 <li>
-<p><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:</p>
-<ul>
-<li><code>summary</code>: rewrites old history into an in-place LLM summary on the current branch (the default).</li>
-<li><code>handoff</code>: writes a structured handoff summary that preserves the task, pending questions, and
-recent decisions, then continues from it (LLM transfer path).</li>
-</ul>
+<p><strong>Type</strong> (<code>compaction.strategy</code>): <code>summary</code>, the sole strategy. It rewrites old
+history into an in-place LLM summary on the current branch.</p>
 </li>
 <li>
-<p><strong>Model</strong> (<code>compaction.model</code>): the models that perform LLM compaction / handoff, tried in order.
-Unset uses your interactive model. See <a href="#fallback-models">Fallback models</a> below and
-<a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
+<p><strong>Model</strong> (<code>compaction.model</code>): the models that perform LLM compaction, tried
+in order. Unset uses your interactive model. See <a href="#fallback-models">Fallback models</a>
+below and <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 </li>
 </ul>
-<p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. The most recent turns, user, assistant, and tool messages, are kept verbatim up to <code>compaction.keepRecentTokens</code> (default 20,000 tokens).</p>
-<p>You can also pick the type for a single run by naming it first: <code>/compact summary</code> or
-<code>/compact handoff</code>. The name is a one-off override, so it does not change
-<code>compaction.strategy</code>. Anything after the name is focus text, as in
-<code>/compact handoff keep the auth details</code>.</p>
-<p>Two older names, <code>soft</code> and <code>remote</code>, are no longer types. <code>remote</code> selected a provider-native
-compaction path and <code>soft</code> existed only to skip it; that path is removed, so there is nothing left
-for them to select. If you type one, veyyon compacts with your configured type, treats the whole argument
-as focus text, and says which name you used and what to use instead. Your text is passed
-through exactly as you typed it, because a sentence that happens to start with “soft” is a
-reasonable thing to ask for.</p>
+<p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. The most
+recent user, assistant, and tool messages stay verbatim up to
+<code>compaction.keepRecentTokens</code> (default 20,000 tokens).</p>
+<p>Use <code>/handoff &lt;focus&gt;</code> when you explicitly want a new session. Handoff is not a
+compaction strategy, and automatic maintenance never selects it.</p>
+<p>Compaction and handoff both write a machine-owned continuity record separate
+from generated prose. It preserves the active objective, the original user
+contract, goal and todo state, pending blockers, changed paths, verification
+evidence, and checkpoint state. Handoff writes that record into the replacement
+session before the next turn. Reopening either session restores exact state
+instead of relying on generated prose to repeat every field.</p>
+<p>Stored legacy strategy names such as <code>handoff</code>, <code>snap</code>, <code>soft</code>, and <code>remote</code>
+migrate to <code>summary</code>. A legacy <code>off</code> value also disables compaction.</p>
 <h2 id="fallback-models"><a class="header" href="#fallback-models">Fallback models</a></h2>
 <p><code>compaction.model</code> is an ordered list, not one model:</p>
 <pre><code class="language-yaml">compaction:
@@ -285,14 +283,12 @@ a duplicate is redundant however recent it is. Results from a protected tool (su
 error results, and results already elided are never deduplicated.</p>
 <p>The match is exact. If a command’s output changes between runs, both runs are kept, because the
 later one is genuinely new information rather than a repeat.</p>
-<p>This duplicate elision runs on its own, ahead of every strategy. Whenever auto-maintenance is about
-to compact because the context crossed the threshold or overflowed, it first runs the lossless
-dedup as a Tier-0 pass, whatever your <code>compaction.strategy</code> is. The pass is recall-preserving and
-makes no model call, so it always runs before the heavier path and shrinks what that path has to
-process. If dropping the duplicates alone brings a threshold trigger back under the bar, the
-compaction is skipped entirely and your history is left intact apart from the elided copies. An
-overflow recovery always finishes its compaction, because the prompt still has to be rebuilt to fit
-the window, but it too starts from the smaller deduped history.</p>
+<p>Duplicate elision runs on its own before in-place compaction. Whenever automatic
+maintenance runs because context crossed the threshold or overflowed, it first
+runs this lossless Tier-0 pass. If dropping duplicates brings a threshold trigger
+back under the bar, compaction is skipped and history stays intact apart from the
+elided copies. Overflow recovery still finishes compaction because the prompt must
+be rebuilt to fit the window, but it starts from the smaller deduplicated history.</p>
 <h2 id="memory-backends"><a class="header" href="#memory-backends">Memory backends</a></h2>
 <p>When <code>memory.backend</code> is <code>mnemopi</code> or <code>hindsight</code>, compaction can request <strong>pre-compaction context</strong>
 from the active memory backend so summaries retain project facts. See <a href="../features/memory.html">Memory</a>.</p>

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -238,7 +238,7 @@
 </tbody>
 </table>
 </div>
-<p>There is no native Windows arm64 release. On Windows arm64, run the Windows x64 binary under emulation. Linux release binaries require glibc. On a musl system such as Alpine, the installer stops before downloading and tells you to install from source.</p>
+<p>There is no native Windows arm64 release. On Windows arm64, run the Windows x64 binary under emulation. Linux release binaries require glibc. On a musl system such as Alpine, the installer stops before downloading and tells you to clone the repository and build it yourself.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
 <pre><code class="language-console">$ vey --version
 </code></pre>
@@ -249,32 +249,40 @@
 <pre><code class="language-console">  ok  removed /home/you/.local/bin/.veyyon.download.48213 left by an interrupted install (pid 48213)
 </code></pre>
 <p>A staged file belonging to an installer that is still running is left alone, so two installs at once cannot delete each other’s download.</p>
-<h2 id="install-a-specific-version-or-from-source"><a class="header" href="#install-a-specific-version-or-from-source">Install a specific version, or from source</a></h2>
+<h2 id="install-a-specific-release"><a class="header" href="#install-a-specific-release">Install a specific release</a></h2>
 <h3 id="linux-or-macos"><a class="header" href="#linux-or-macos">Linux or macOS</a></h3>
 <p>The POSIX installer takes long options. Pass them after <code>-- </code> when you pipe the script:</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --help
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref v1.0.11   # a specific release binary
-$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11           # build that ref from a git checkout (implies --source)
-$ curl -fsSL https://get.veyyon.dev | sh -s -- --source                # build the default branch from a git checkout
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11            # the same thing: --binary is the default
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --local                  # install a binary you built yourself
 </code></pre>
 <h3 id="windows"><a class="header" href="#windows">Windows</a></h3>
 <p>The PowerShell installer uses named PowerShell parameters. Create a script block from the downloaded installer so you can pass them:</p>
 <pre><code class="language-powershell">&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Help
 &amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v1.0.11  # a specific release binary
-&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Ref v1.0.11          # build that ref from a git checkout (implies -Source)
-&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source               # build the default branch from a git checkout
+&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Ref v1.0.11          # the same thing: -Binary is the default
+&amp; ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Local                # install a binary you built yourself
 </code></pre>
 <p>You cannot append parameters to <code>irm ... | iex</code>. Use the script-block form above whenever you need an option. If you downloaded <code>install.ps1</code> as a file instead, use the same parameters with <code>pwsh -File install.ps1</code>.</p>
-<p>Release tags carry a leading <code>v</code>, and <code>--ref 1.0.11</code> on POSIX or <code>-Ref 1.0.11</code> on Windows works as well as the leading-<code>v</code> form. The installer looks for the tag you named, then for the <code>v</code> form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version, so a branch or commit is looked up once and refused once.</p>
-<p>Source mode is for running an unreleased branch or contributing. It keeps a real checkout under <code>~/.veyyon/src</code>, installs the workspace once with Bun, and links a launcher that runs Veyyon straight from TypeScript, so there is no separate build step. A source install needs <strong>Bun</strong> and <strong>Git</strong>; the installer installs Bun for you when it is missing. It also needs <strong><a href="https://git-lfs.com">git-lfs</a></strong> when the checkout tracks files through Git LFS, and it stops with that message rather than continuing: without git-lfs those files are written as small pointer text files, which look present and then fail at runtime. If nothing in the checkout is LFS-tracked, git-lfs is not required and the installer does not ask for it. The native addon is provisioned automatically: the installer (and the launcher, if the addon ever goes missing) downloads the prebuilt addon for your platform from the matching release, and falls back to a local Rust build only when no prebuilt exists. Use <code>-Local</code> on Windows or <code>--local</code> on POSIX to install a binary the checkout already built instead of downloading a release.</p>
-<p>The source directory is not ownership proof. Before updating or uninstalling <code>~/.veyyon/src</code>, the installer verifies that its <code>origin</code> is the Veyyon repository. It moves any unrelated checkout to a timestamped backup path instead of resetting or deleting it. Local changes and unpushed branches in a Veyyon checkout receive the same preservation treatment.</p>
-<p>If you would rather clone and drive the workspace yourself:</p>
+<p>Release tags carry a leading <code>v</code>, and <code>--ref 1.0.11</code> on POSIX or <code>-Ref 1.0.11</code> on Windows works as well as the leading-<code>v</code> form. The installer looks for the tag you named, then for the <code>v</code> form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version. <code>--ref</code> names a published release tag and nothing else, so a branch or a commit is looked up once and then refused.</p>
+<h3 id="run-an-unreleased-ref-or-an-unsupported-platform"><a class="header" href="#run-an-unreleased-ref-or-an-unsupported-platform">Run an unreleased ref, or an unsupported platform</a></h3>
+<p>The installer only installs a published release binary. It never clones the repository, never runs <code>bun install</code>, and never builds anything. To run an unreleased branch or commit, or to get Veyyon onto a platform with no release, clone the repository yourself:</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
-$ bun setup      # installs workspace deps and builds @veyyon/natives
+$ bun run setup      # installs workspace deps and builds @veyyon/natives
 $ bun dev --version
 </code></pre>
-<p><code>bun dev</code> runs the in-repo build. Use it while you are evaluating Veyyon or contributing to it.</p>
+<p>To pin a ref, check it out before you run setup:</p>
+<pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
+$ cd veyyon
+$ git checkout v1.0.11
+$ bun run setup
+$ bun dev --version
+</code></pre>
+<p>Clone it into whatever directory you want it in. That tree is a developer checkout you own: you chose where it lives, you decide when it moves or goes away, and the installer never creates one and never writes into one. <code>bun dev</code> runs Veyyon straight from TypeScript in that tree, so there is no separate build step. Use it while you are evaluating Veyyon or contributing to it.</p>
+<p>Building from a checkout needs Bun and Git, and you install those yourself. It also needs <a href="https://git-lfs.com">git-lfs</a> if the ref you checked out tracks files through Git LFS, because without git-lfs those files arrive as small pointer text files that look present and then fail at runtime.</p>
+<p>If you build a release binary in that checkout, you can put it on your <code>PATH</code> with the installer rather than copying it by hand. Pass <code>--local</code> on POSIX or <code>-Local</code> on Windows. That installs the binary you already built, with the same alias, <code>PATH</code>, and completion handling a download gets, and it still clones nothing.</p>
 <h2 id="verify-the-install"><a class="header" href="#verify-the-install">Verify the install</a></h2>
 <pre><code class="language-console">$ vey --version
 $ vey plugin doctor
@@ -282,7 +290,7 @@ $ vey plugin doctor --fix
 </code></pre>
 <p><code>vey plugin doctor</code> checks plugin installation health (directories, manifests, entry paths, enabled features). Binary and provider-key checks live in <code>vey setup status</code>. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="../features/doctor.html">Diagnostics</a>.</p>
 <h3 id="when-the-staged-binary-would-not-run"><a class="header" href="#when-the-staged-binary-would-not-run">When the staged binary would not run</a></h3>
-<p>The preflight runs from the staging path inside the install directory. If the binary cannot start or its native search fails, the error includes the exit status and repeats what the system said. A missing shared library means the machine needs that package. A permission error usually means the install directory is mounted <code>noexec</code>, so choose another with <code>VEYYON_INSTALL_DIR</code>. A native-addon load error usually means the release does not support that platform, so use the source installer.</p>
+<p>The preflight runs from the staging path inside the install directory. If the binary cannot start or its native search fails, the error includes the exit status and repeats what the system said. A missing shared library means the machine needs that package. A permission error usually means the install directory is mounted <code>noexec</code>, so choose another with <code>VEYYON_INSTALL_DIR</code>. A native-addon load error usually means the release does not support that platform, so clone the repository and build it yourself instead.</p>
 <p>This failure occurs before the active binary, alias, <code>PATH</code>, and completion files change. Fix the reported cause and run the installer again rather than trying to finish by hand.</p>
 <p>To ask the same questions later, on the machine as it is now, run <code>veyyon setup status</code>.
 It repeats the install checks and adds the two the installer cannot make: whether a second
@@ -346,7 +354,7 @@ Changelog for 1.0.38: https://veyyon.dev/changelog#v1-0-38
 change version you are told where to read what changed. If an update fails,
 Veyyon points you at <code>veyyon rollback</code> in the same breath, since a failed update
 is the moment you most want the way back.</p>
-<p>A source install uses the same recoverable contract. Before it fast-forwards, Veyyon requires a clean tracked tree and records the current Git revision. If dependency installation, generated artifacts, native provisioning, version verification, or the runtime search probe fails after the merge, it resets to that revision, restores the old dependencies and generated artifacts, and proves the restored launcher runs before it reports the failure.</p>
+<p>A checkout install uses the same recoverable contract. That is a <code>veyyon</code> on your <code>PATH</code> that runs out of a git clone you made yourself. Before it fast-forwards, Veyyon requires a clean tracked tree and records the current Git revision. If dependency installation, generated artifacts, native provisioning, version verification, or the runtime search probe fails after the merge, it resets to that revision, restores the old dependencies and generated artifacts, and proves the restored launcher runs before it reports the failure.</p>
 <h3 id="going-back-to-an-older-version"><a class="header" href="#going-back-to-an-older-version">Going back to an older version</a></h3>
 <p>If a release breaks something you depend on, you do not have to wait for the next
 one. <code>veyyon rollback</code> moves your install to any published version.</p>
@@ -428,7 +436,7 @@ through. If an update fails, Veyyon says so and tells you to retry with <code>ve
 <p>Veyyon works out which of the two you have by following the <code>veyyon</code> on your
 PATH to what it really runs. A symlink is followed, and so is a small wrapper
 script that hands off to something else: if what it hands off to is a checkout’s
-launcher, the install is a source install and gets the source update. That
+launcher, the install runs from that checkout and gets the checkout update. That
 matters if you keep your own wrapper in front of a checkout, to set an
 environment variable or pick a different interpreter, because without following
 it Veyyon would treat the wrapper as a binary and overwrite it with a downloaded
@@ -520,7 +528,7 @@ holding it is still running, so a <code>veyyon.new</code> or a <code>veyyon.&lt;
 outlive the update that made it. Uninstall removes those too, so the install
 directory is left empty rather than holding a few hundred megabytes you have no
 name for.</p>
-<p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if your source checkout has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost.</p>
+<p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if a checkout at <code>~/.veyyon/src</code> has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost. Older installers created that tree. The current installer never does, so uninstall only ever cleans up one an older version left behind.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>
 <p>On Windows:</p>

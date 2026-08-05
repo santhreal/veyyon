@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ab2f7373.js";
+            window.path_to_searchindex_js = "../searchindex-336fa523.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5cf6de48.js"></script>
@@ -343,9 +343,13 @@ which of the four layers decided.</p>
 <h2 id="limits-and-isolation"><a class="header" href="#limits-and-isolation">Limits and isolation</a></h2>
 <p>The remaining groups in the tab are operational: how many subagents run at once
 (<code>subagent.maxConcurrency</code>), how deeply they may nest (<code>subagent.maxNestedSpawnDepth</code>),
-per-run wall clock and request budgets, how long an idle subagent stays in memory
-before being parked to disk (<code>idleTtlMs</code>), and whether their edits land in an isolated
+per-run wall clock and request budgets, how long a finished subagent stays live
+before parking (<code>subagent.idleTtlMs</code>), and whether its edits land in an isolated
 copy of the tree first (<code>subagent.isolation.*</code>, see <a href="../using/safety.html">Safety</a>).</p>
+<p><code>subagent.idleTtlMs</code> defaults to five minutes for every model and provider. Set
+a positive millisecond value to override it. Set <code>0</code> to keep idle agents live
+until exit. Parking releases the live session but keeps its transcript, so
+messaging or opening the agent can revive it.</p>
 <p><code>subagent.maxNestedSpawnDepth</code> is inclusive. The default is <code>0</code>: the top-level session,
 at depth 0, may spawn direct subagents, but those children are leaves and cannot spawn
 more subagents. A value of <code>1</code> also lets direct children spawn, producing children at
