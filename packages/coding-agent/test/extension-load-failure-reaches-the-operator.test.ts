@@ -289,3 +289,86 @@ describe("an extensions: entry pointing nowhere is reported", () => {
 		expect(faults.filter(fault => fault.source === "extensions")).toEqual([]);
 	});
 });
+
+/**
+ * The third silence in the same function, and the only one where the operator is shown a row
+ * claiming the opposite of what happens.
+ *
+ * THE BUG. Every hook provider discovers ANY file under `hooks/{pre,post}/`: the native provider
+ * takes each directory entry, and the claude and codex providers strip `.sh`/`.bash`/`.zsh`/`.fish`
+ * off the tool name, so a shell hook is a shape they explicitly expect. `docs/config-usage.md`
+ * documents the pattern as `hooks/pre/*`, and the plugins page promises "hooks from executable
+ * files". But `discoverExtensionPaths` is the only production consumer of `hookCapability`, and it
+ * filtered the discovered set down to `.ts`/`.js` and dropped the rest without a word.
+ *
+ * WHAT THE OPERATOR SAW. `modes/components/extensions/state-manager.ts` builds the `/extensions`
+ * panel from the same capability load and labels an undisabled, unshadowed hook `state: "active"`.
+ * So a shell hook sat on disk, appeared in the panel as active, and never ran, with nothing
+ * anywhere saying why. Reproduced before the fix: discovery returned `["bash.sh", "policy.ts"]`,
+ * `discoverExtensionPaths` returned `["policy.ts"]`, and `warnings` was `[]`.
+ *
+ * WHAT THIS LOCKS. The drop is named on the same `reportFault` channel the two suites above use,
+ * the loadable hook still loads, and the report says what to do about it. The negative case keeps
+ * the channel from becoming noise on an ordinary all-JS/TS hooks directory.
+ */
+describe("a hook that cannot be bound as an extension module is reported", () => {
+	let tempHome = "";
+	let projectDir = "";
+	let faults: Fault[] = [];
+	let detach: DetachFaultSink | undefined;
+	let settingsState: SettingsTestState | undefined;
+
+	async function writeHook(name: string, body: string): Promise<string> {
+		const hookPath = path.join(projectDir, ".veyyon", "hooks", "pre", name);
+		await fsp.mkdir(path.dirname(hookPath), { recursive: true });
+		await fsp.writeFile(hookPath, body, { mode: 0o755 });
+		return hookPath;
+	}
+
+	beforeEach(async () => {
+		settingsState = beginSettingsTest();
+		tempHome = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-hook-drop-home-"));
+		projectDir = path.join(tempHome, "project");
+		await fsp.mkdir(path.join(projectDir, ".veyyon"), { recursive: true });
+		process.env.HOME = tempHome;
+		vi.spyOn(os, "homedir").mockReturnValue(tempHome);
+		faults = [];
+		detach = attachFaultSink(fault => faults.push(fault));
+		clearFsCache();
+	});
+
+	afterEach(async () => {
+		detach?.();
+		detach = undefined;
+		clearFsCache();
+		vi.restoreAllMocks();
+		restoreSettingsTestState(settingsState);
+		settingsState = undefined;
+		await removeWithRetries(tempHome);
+	});
+
+	it("names the shell hook it dropped while still loading the JS/TS one beside it", async () => {
+		const shellHook = await writeHook("bash.sh", "#!/bin/sh\nexit 1\n");
+		const moduleHook = await writeHook("policy.ts", "export default function hook() {}\n");
+
+		const paths = await discoverExtensionPaths([], projectDir, []);
+
+		// The loadable hook is unaffected: this is a report, not a new refusal.
+		expect(paths).toContain(moduleHook);
+		// The shell hook genuinely is not bound. That half was never the bug.
+		expect(paths).not.toContain(shellHook);
+
+		expect(faults.filter(fault => fault.source === "extensions").map(fault => fault.text)).toEqual([
+			`Hook ${shellHook} is not a JS/TS module, so it is not loaded in this run. Hooks run as extension modules: rename it to .ts or .js and export a factory.`,
+		]);
+	});
+
+	it("stays quiet when every discovered hook is a JS/TS module", async () => {
+		await writeHook("policy.ts", "export default function hook() {}\n");
+		await writeHook("audit.js", "export default function hook() {}\n");
+
+		await discoverExtensionPaths([], projectDir, []);
+
+		expect(faults.filter(fault => fault.source === "extensions")).toEqual([]);
+	});
+});
