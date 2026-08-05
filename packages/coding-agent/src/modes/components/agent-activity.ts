@@ -87,6 +87,23 @@ export interface LiveAgent {
 	sessionFile: string | null;
 	createdAt: number;
 	lastActivity: number;
+	/**
+	 * The agent's sign-off said it had stopped to wait on a peer.
+	 *
+	 * Carried onto the row because it is the only thing that separates an agent
+	 * blocked on a reply that may never come from one that simply finished:
+	 * `AgentStatus` calls both of them `parked`. See `agentDisplayState`.
+	 */
+	waitingOnPeer?: boolean;
+	/**
+	 * A tool call of this agent's is stopped at an approval prompt right now.
+	 *
+	 * A blocked agent's status is `running`, because it IS mid-turn, so nothing
+	 * else on the row separates a spawn waiting on a person from one grinding
+	 * through a build. Reduced to a boolean here because that is all a roster
+	 * row spends it on; the prompt's own detail stays on the registry ref.
+	 */
+	blockedOnApproval?: boolean;
 }
 
 /**
@@ -152,6 +169,8 @@ export function collectLiveAgents(refs: readonly AgentRef[]): LiveAgent[] {
 			sessionFile: ref.sessionFile,
 			createdAt: ref.createdAt,
 			lastActivity: ref.lastActivity,
+			waitingOnPeer: ref.waitingOnPeer,
+			blockedOnApproval: ref.pendingApproval !== undefined,
 		};
 	});
 }

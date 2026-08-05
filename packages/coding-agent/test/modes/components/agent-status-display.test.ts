@@ -9,15 +9,22 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import {
+	type AgentDisplayState,
+	agentDisplayState,
 	agentStatusColor,
 	agentStatusGlyph,
 	agentStatusWord,
 } from "@veyyon/coding-agent/modes/components/agent-status-display";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
 import { useFullColor } from "../../helpers/theme-assertions";
 
-const ALL_STATUSES: AgentStatus[] = ["running", "idle", "parked", "aborted"];
+/**
+ * Every state a surface may draw, which is finer than `AgentStatus`: `blocked`
+ * and `waiting` are derived, and they exist precisely because the raw status
+ * cannot tell a stopped-on-a-person or stopped-on-a-peer agent from a busy or a
+ * finished one.
+ */
+const ALL_STATUSES: AgentDisplayState[] = ["running", "blocked", "idle", "waiting", "parked", "aborted"];
 
 describe("agent status display (ONE-PLACE)", () => {
 	useFullColor();
@@ -28,9 +35,30 @@ describe("agent status display (ONE-PLACE)", () => {
 
 	it("maps each status to its canonical color", () => {
 		expect(agentStatusColor("running")).toBe("accent");
+		expect(agentStatusColor("blocked")).toBe("warning");
 		expect(agentStatusColor("idle")).toBe("success");
+		expect(agentStatusColor("waiting")).toBe("link");
 		expect(agentStatusColor("parked")).toBe("muted");
 		expect(agentStatusColor("aborted")).toBe("error");
+	});
+
+	/**
+	 * The derivation itself, which every surface goes through so none of them can
+	 * disagree about when an agent counts as blocked or waiting.
+	 *
+	 * The last case is the one that bites: `waitingOnPeer` is written at the end
+	 * of a run and left in place while the agent is woken again, so a surface
+	 * reading it on a `running` row would report the reason it stopped LAST time
+	 * as the reason it is stopped now.
+	 */
+	it("derives blocked and waiting from the ref, with the approval winning", () => {
+		expect(agentDisplayState({ status: "running" })).toBe("running");
+		expect(agentDisplayState({ status: "running", blockedOnApproval: true })).toBe("blocked");
+		expect(agentDisplayState({ status: "parked", waitingOnPeer: true })).toBe("waiting");
+		expect(agentDisplayState({ status: "idle", waitingOnPeer: true })).toBe("waiting");
+		expect(agentDisplayState({ status: "parked", waitingOnPeer: false })).toBe("parked");
+		expect(agentDisplayState({ status: "running", waitingOnPeer: true })).toBe("running");
+		expect(agentDisplayState({ status: "parked", waitingOnPeer: true, blockedOnApproval: true })).toBe("blocked");
 	});
 
 	it("renders the glyph and word of a status in the same color", () => {
@@ -41,13 +69,13 @@ describe("agent status display (ONE-PLACE)", () => {
 		}
 	});
 
-	it("renders the status name as the word body", () => {
+	it("renders the state name as the word body", () => {
 		for (const status of ALL_STATUSES) {
 			expect(Bun.stripANSI(agentStatusWord(status))).toBe(status);
 		}
 	});
 
-	it("gives the four statuses four distinct colors", () => {
+	it("gives every display state its own color", () => {
 		const colors = new Set(ALL_STATUSES.map(agentStatusColor));
 		expect(colors.size).toBe(ALL_STATUSES.length);
 	});
