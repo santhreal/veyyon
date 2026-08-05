@@ -1,25 +1,33 @@
+/**
+ * `${VAR}` placeholders in an MCP server entry are expanded from the environment,
+ * including the `auth` and `oauth` blocks that carry the OAuth client material.
+ *
+ * These cases used to run against the `mcp-json` provider and a standalone
+ * `mcp.json` / `.mcp.json` in the PROJECT ROOT. That provider is gone: a
+ * repository does not name the MCP servers an agent connects to. Expansion is a
+ * property of the config format, not of where the file sits, so the fixtures
+ * moved to the profile-scoped `<agentDir>/mcp.json` and `<agentDir>/.mcp.json`
+ * that the `native` provider reads. The last case locks the removal: the same
+ * bytes in the working tree contribute nothing.
+ */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/capability/mcp";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
-import { removeWithRetries } from "@veyyon/utils";
-
-async function loadStandaloneMcpConfig(cwd: string): Promise<MCPServer[]> {
-	const result = await loadCapability<MCPServer>(mcpCapability.id, {
-		cwd,
-		providers: ["mcp-json"],
-	});
-	return result.items;
-}
+import { removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 function envPlaceholder(name: string): string {
 	return `\${${name}}`;
 }
 
-describe("standalone mcp.json oauth env expansion", () => {
-	let tempDir = "";
+describe("MCP server env expansion in the profile config", () => {
+	let agentDir = "";
+	let projectDir = "";
+	const dirOverrides = captureDirOverrides();
 	const originalEnv = {
 		VEYYON_OAUTH_TOKEN_URL: process.env.VEYYON_OAUTH_TOKEN_URL,
 		VEYYON_OAUTH_CLIENT_ID: process.env.VEYYON_OAUTH_CLIENT_ID,
@@ -31,8 +39,16 @@ describe("standalone mcp.json oauth env expansion", () => {
 		VEYYON_MCP_ENV: process.env.VEYYON_MCP_ENV,
 	};
 
+	async function loadProfileServers(): Promise<MCPServer[]> {
+		clearFsCache();
+		const result = await loadCapability<MCPServer>(mcpCapability.id, { cwd: projectDir, providers: ["native"] });
+		return result.items;
+	}
+
 	beforeEach(async () => {
-		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-json-"));
+		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-env-agent-"));
+		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-env-project-"));
+		setAgentDir(agentDir);
 		process.env.VEYYON_OAUTH_TOKEN_URL = "https://provider.example/token";
 		process.env.VEYYON_OAUTH_CLIENT_ID = "oauth-client-id";
 		process.env.VEYYON_OAUTH_CLIENT_SECRET = "oauth-client-secret";
@@ -41,10 +57,14 @@ describe("standalone mcp.json oauth env expansion", () => {
 		process.env.VEYYON_MCP_HEADER = "Bearer test-token";
 		process.env.VEYYON_MCP_URL = "https://mcp.example.com";
 		process.env.VEYYON_MCP_ENV = "env-value";
+		clearFsCache();
 	});
 
 	afterEach(async () => {
-		await removeWithRetries(tempDir);
+		clearFsCache();
+		restoreDirOverrides(dirOverrides);
+		await removeWithRetries(agentDir);
+		await removeWithRetries(projectDir);
 		for (const [key, value] of Object.entries(originalEnv)) {
 			if (value === undefined) {
 				delete process.env[key];
@@ -54,9 +74,9 @@ describe("standalone mcp.json oauth env expansion", () => {
 		}
 	});
 
-	test("expands standalone auth and oauth fields alongside existing env-expanded fields", async () => {
+	test("expands auth and oauth fields alongside existing env-expanded fields", async () => {
 		await fs.writeFile(
-			path.join(tempDir, "mcp.json"),
+			path.join(agentDir, "mcp.json"),
 			JSON.stringify({
 				mcpServers: {
 					figma: {
@@ -81,7 +101,7 @@ describe("standalone mcp.json oauth env expansion", () => {
 			}),
 		);
 
-		const [server] = await loadStandaloneMcpConfig(tempDir);
+		const [server] = await loadProfileServers();
 		expect(server).toBeDefined();
 		expect(server?.url).toBe("https://mcp.example.com/mcp");
 		expect(server?.headers).toEqual({ Authorization: "Bearer test-token" });
@@ -101,9 +121,9 @@ describe("standalone mcp.json oauth env expansion", () => {
 		});
 	});
 
-	test("expands only the standalone oauth fields that are present", async () => {
+	test("expands only the oauth fields that are present", async () => {
 		await fs.writeFile(
-			path.join(tempDir, ".mcp.json"),
+			path.join(agentDir, ".mcp.json"),
 			JSON.stringify({
 				mcpServers: {
 					slack: {
@@ -117,12 +137,29 @@ describe("standalone mcp.json oauth env expansion", () => {
 			}),
 		);
 
-		const [server] = await loadStandaloneMcpConfig(tempDir);
+		const [server] = await loadProfileServers();
 		expect(server).toBeDefined();
 		expect(server?.oauth).toEqual({
 			redirectUri: "https://public.example/oauth/callback",
 			callbackPath: "/oauth/callback",
 		});
 		expect(server?.auth).toBeUndefined();
+	});
+
+	/**
+	 * The inversion. The same two filenames in the project root were the
+	 * `mcp-json` provider's whole surface. Re-registering it turns this red.
+	 */
+	test("a standalone mcp.json in the working tree is not a source of MCP servers", async () => {
+		const body = JSON.stringify({
+			mcpServers: { repo: { url: `${envPlaceholder("VEYYON_MCP_URL")}/mcp` } },
+		});
+		await fs.writeFile(path.join(projectDir, "mcp.json"), body);
+		await fs.writeFile(path.join(projectDir, ".mcp.json"), body);
+		clearFsCache();
+
+		const result = await loadCapability<MCPServer>(mcpCapability.id, { cwd: projectDir, includeDisabled: true });
+		expect(result.all.map(server => server.name)).not.toContain("repo");
+		expect(result.all.filter(server => server._source.path.startsWith(projectDir))).toEqual([]);
 	});
 });

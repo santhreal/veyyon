@@ -174,35 +174,53 @@ describe("validateServerName", () => {
 		}
 	});
 
-	it("rejects empty, too long, bad chars, path segments", () => {
-		expect(validateServerName("")).toBe("Server name cannot be empty");
-		expect(validateServerName("a".repeat(101))).toContain("too long");
-		expect(validateServerName("has space")).toContain("can only contain");
-		expect(validateServerName("has/slash")).toContain("can only contain");
-		expect(validateServerName(".")).toContain("path segment");
-		expect(validateServerName("..")).toContain("path segment");
+	it("rejects empty, too long, bad chars, path segments, and names the fix in each", () => {
+		expect(validateServerName("")).toBe(
+			"Server name cannot be empty. Fix: give the server a short id you will type in `/mcp` commands, for example `filesystem`.",
+		);
+		expect(validateServerName("a".repeat(101))).toBe(
+			"Server name is too long: 101 characters, and the maximum is 100. Fix: shorten it to a short id you will type in `/mcp` commands, for example `filesystem`.",
+		);
+		expect(validateServerName("has space")).toBe(
+			'Server name "has space" can only contain letters, numbers, dash, underscore, dot, and colon. Fix: replace the other characters, for example `my-server` rather than `my server`.',
+		);
+		expect(validateServerName("has/slash")).toContain("Fix: replace the other characters");
+		expect(validateServerName(".")).toBe(
+			"Server name \".\" cannot be a path segment like '.' or '..', because consumers that treat the name as a filename would misread it. Fix: give the server a real id, for example `local-fs`.",
+		);
+		expect(validateServerName("..")).toContain("Fix: give the server a real id");
 	});
 });
 
 describe("validateServerConfig / isBrowserMCPServer", () => {
-	it("stdio requires command", () => {
+	it("stdio requires command, and says what a command looks like", () => {
 		expect(validateServerConfig("s", { command: "npx" } as never)).toEqual([]);
-		expect(validateServerConfig("s", {} as never)).toEqual(['Server "s": stdio server requires "command" field']);
+		expect(validateServerConfig("s", {} as never)).toEqual([
+			'Server "s" is a stdio server with no "command" to spawn. Fix: add the executable, for example `"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]`. If this is a remote server, set `"type": "http"` and give it a "url" instead.',
+		]);
 	});
 
-	it("http/sse require url", () => {
+	it("http/sse require url, and name the other transport as the alternative", () => {
 		expect(validateServerConfig("h", { type: "http", url: "https://x" })).toEqual([]);
 		expect(validateServerConfig("h", { type: "http" } as never)).toEqual([
-			'Server "h": http server requires "url" field',
+			'Server "h" is a http server with no "url" to connect to. Fix: add `"url": "https://…"`. If this is a local server you want spawned, set `"type": "stdio"` and give it a "command" instead.',
 		]);
 		expect(validateServerConfig("s", { type: "sse" } as never)).toEqual([
-			'Server "s": sse server requires "url" field',
+			'Server "s" is a sse server with no "url" to connect to. Fix: add `"url": "https://…"`. If this is a local server you want spawned, set `"type": "stdio"` and give it a "command" instead.',
 		]);
 	});
 
-	it("rejects command+url conflict", () => {
+	it("unknown type names the three real types", () => {
+		expect(validateServerConfig("x", { type: "grpc" } as never)).toEqual([
+			'Server "x" has an unknown "type": "grpc". Fix: use "stdio" for a server this machine spawns, "http" for a remote Streamable HTTP server, or "sse" for a legacy 2024-11-05 HTTP+SSE server.',
+		]);
+	});
+
+	it("rejects command+url conflict and says to delete one", () => {
 		const errors = validateServerConfig("bad", { command: "npx", url: "https://x" } as never);
-		expect(errors.some(e => e.includes('both "command" and "url"'))).toBe(true);
+		expect(errors).toContain(
+			'Server "bad" sets both "command" and "url", but a server is either stdio (a "command" it spawns) or http/sse (a "url" it POSTs to), never both. Fix: delete whichever one is wrong, and set "type" to "stdio" or "http" so the intent is explicit.',
+		);
 	});
 
 	it("isBrowserMCPServer by name and package pattern", () => {

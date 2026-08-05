@@ -566,17 +566,23 @@ describe("StdioTransport.notify", () => {
 		transport = undefined;
 	});
 
-	it("rejects synchronously when called before connect()", async () => {
+	it("names the server, the lost notification and the reconnect when called before connect()", async () => {
 		transport = new StdioTransport({
 			type: "stdio",
 			command: "bun",
 			args: ["-e", "process.exit(0)"],
 		});
 
-		await expect(transport.notify("noop")).rejects.toThrow("Transport not connected");
+		// A dropped notification is retried by nothing, so the message has to say
+		// which one was lost as well as which server was down.
+		await expect(transport.notify("noop")).rejects.toThrow(
+			'MCP server "bun" is not connected, so the notification "noop" was not sent. ' +
+				"Fix: run `/mcp list` to find this server's name, then `/mcp reconnect <name>`. " +
+				"If reconnecting fails, `/mcp test <name>` reports why.",
+		);
 	});
 
-	it("rejects with 'Transport not connected' after close()", async () => {
+	it("reports the same not-connected detail after close()", async () => {
 		transport = new StdioTransport({
 			type: "stdio",
 			command: "bun",
@@ -586,7 +592,9 @@ describe("StdioTransport.notify", () => {
 		await transport.connect();
 		await transport.close();
 
-		await expect(transport.notify("noop")).rejects.toThrow("Transport not connected");
+		await expect(transport.notify("noop")).rejects.toThrow(
+			'MCP server "bun" is not connected, so the notification "noop" was not sent.',
+		);
 	});
 
 	it("does not surface unhandled rejections when the subprocess exits before notify settles", async () => {

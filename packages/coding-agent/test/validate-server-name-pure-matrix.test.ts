@@ -14,13 +14,16 @@ describe("validateServerName pure matrix", () => {
 		});
 	}
 
-	it("empty", () => {
-		expect(validateServerName("")).toBe("Server name cannot be empty");
+	it("empty names the fix", () => {
+		expect(validateServerName("")).toBe(
+			"Server name cannot be empty. Fix: give the server a short id you will type in `/mcp` commands, for example `filesystem`.",
+		);
 	});
 
-	it("too long", () => {
-		const long = "a".repeat(101);
-		expect(validateServerName(long)).toContain("too long");
+	it("too long reports the actual length and the limit", () => {
+		expect(validateServerName("a".repeat(101))).toBe(
+			"Server name is too long: 101 characters, and the maximum is 100. Fix: shorten it to a short id you will type in `/mcp` commands, for example `filesystem`.",
+		);
 	});
 
 	it("exactly 100 ok", () => {
@@ -33,6 +36,7 @@ describe("validateServerName pure matrix", () => {
 			const err = validateServerName(name);
 			expect(err).toBeDefined();
 			expect(err!).toMatch(/letters|numbers|dash|underscore|dot|colon/i);
+			expect(err!).toContain("Fix: replace the other characters");
 		});
 	}
 
@@ -42,6 +46,7 @@ describe("validateServerName pure matrix", () => {
 			const err = validateServerName(name);
 			expect(err).toBeDefined();
 			expect(err!).toMatch(/path segment|\.|cannot be empty|letters/i);
+			expect(err!).toMatch(/Fix: give the server a real id|Fix: replace the other characters/);
 		});
 	}
 });

@@ -64,8 +64,14 @@ describe("MCP Streamable HTTP transport timeouts", () => {
 		});
 		const transport = await connectedTransport();
 
+		// The URL is the only identifier this layer has (the transport config
+		// carries no server name), and the two knobs that move the deadline are
+		// what the reader needs next.
 		await expect(withPendingGuard(transport.request("tools/list"), "request")).rejects.toThrow(
-			`Request timeout after ${REQUEST_TIMEOUT_MS}ms`,
+			`MCP server at http://127.0.0.1:${server.port}/mcp did not complete request "tools/list" within ${REQUEST_TIMEOUT_MS}ms. ` +
+				'Fix: raise this server\'s deadline with `"timeout": <milliseconds>` on its entry in your MCP config, ' +
+				"or set `VEYYON_MCP_TIMEOUT_MS` (`0` disables the deadline entirely). " +
+				"Run `/mcp test <name>` to check whether the server answers at all.",
 		);
 	});
 
@@ -82,7 +88,8 @@ describe("MCP Streamable HTTP transport timeouts", () => {
 		const transport = await connectedTransport();
 
 		await expect(withPendingGuard(transport.notify("notifications/initialized"), "notify")).rejects.toThrow(
-			`Notify timeout after ${REQUEST_TIMEOUT_MS}ms`,
+			`did not complete notification "notifications/initialized" within ${REQUEST_TIMEOUT_MS}ms. ` +
+				'Fix: raise this server\'s deadline with `"timeout": <milliseconds>`',
 		);
 	});
 

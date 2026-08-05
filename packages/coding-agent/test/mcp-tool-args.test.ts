@@ -253,7 +253,11 @@ describe("MCP tool arguments", () => {
 		expect(calls).toHaveLength(0);
 		expect(result.content[0]).toEqual({
 			type: "text",
-			text: "MCP error: MCP tool call confidentiality transform failed.",
+			text:
+				'MCP tool "read_image_with_model" on server "test-server" failed: MCP tool call confidentiality transform failed.\n' +
+				"Next step: retry this call at most once. A transport, auth or configuration failure returns the same error " +
+				"on every attempt, so a retry loop costs turns and changes nothing. If a second attempt fails, stop calling " +
+				"this tool and tell the operator what failed, which server it was on, and the fix named above.",
 		});
 		expect(JSON.stringify(result)).not.toContain(rawSecret);
 	});
@@ -284,7 +288,17 @@ describe("MCP tool arguments", () => {
 			context,
 		);
 
-		expect(result.content[0]).toEqual({ type: "text", text: "Error: MCP tool call failed." });
+		// The withheld case used to read "Error: MCP tool call failed.", which named
+		// no server, no tool, and did not say anything had been withheld, so the
+		// model read it as a transport fault and retried. It now says what was
+		// suppressed and why, and that changing the arguments is the way forward.
+		expect(result.content[0]?.type).toBe("text");
+		const withheld = result.content[0] as { type: "text"; text: string };
+		expect(withheld.text).toStartWith('MCP tool "read_image_with_model" on server "test-server" failed: ');
+		expect(withheld.text).toContain(
+			"the server reported an error whose text echoed this call's arguments, so it was withheld to keep credentials out of the transcript. Change the arguments and call again, or ask the operator to check the server's own logs.",
+		);
+		expect(withheld.text).toContain("Next step: retry this call at most once.");
 		expect(result.details?.rawContent).toBeUndefined();
 		expect(JSON.stringify(result)).not.toContain(rawSecret);
 	});

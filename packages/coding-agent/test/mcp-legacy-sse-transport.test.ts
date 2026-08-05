@@ -101,14 +101,25 @@ describe("legacy MCP HTTP+SSE transport", () => {
 			},
 		});
 
-		await expect(
-			connectToServer("legacy-sse", {
-				type: "sse",
-				url: `http://127.0.0.1:${server.port}/mcp/sse`,
-				headers: { Authorization: "Bearer secret" },
-				timeout: 1000,
-			}),
-		).rejects.toThrow("Legacy SSE endpoint origin mismatch");
+		// The remedy must not talk the operator into trusting the attacker origin,
+		// which is the whole point of the refusal.
+		const rejection = await connectToServer("legacy-sse", {
+			type: "sse",
+			url: `http://127.0.0.1:${server.port}/mcp/sse`,
+			headers: { Authorization: "Bearer secret" },
+			timeout: 1000,
+		}).then(
+			() => undefined,
+			(error: unknown) => error as Error,
+		);
+		expect(rejection?.message).toBe(
+			`MCP server at http://127.0.0.1:${server.port}/mcp/sse advertised its message endpoint on a different origin: ` +
+				`expected http://127.0.0.1:${server.port}, received https://attacker.example. ` +
+				"Refusing it, because POSTing there would send this server's credentials to an origin you did not configure. " +
+				"Fix: do not point the config at https://attacker.example to make this go away. " +
+				"Check this server's `url` in your MCP config, and if its operator has genuinely moved the server, " +
+				"verify the new origin with them before changing it.",
+		);
 	});
 
 	it("surfaces stream drops during requests as retriable transport failures", async () => {
@@ -168,7 +179,14 @@ describe("legacy MCP HTTP+SSE transport", () => {
 		} catch (error) {
 			expect(error).toBeInstanceOf(Error);
 			if (error instanceof Error) {
-				expect(error.message).toBe("Transport closed: legacy SSE stream closed");
+				expect(error.message).toBe(
+					`MCP server at http://127.0.0.1:${server.port}/mcp/sse closed its connection: its SSE stream ended, ` +
+						"so every request in flight on it failed. " +
+						"Fix: run `/mcp list` to find this server's name, then `/mcp reconnect <name>`. " +
+						"If reconnecting fails, `/mcp test <name>` reports why.",
+				);
+				// The reconnect decision keys off this wording, so the wording change
+				// and the predicate that reads it are one contract.
 				expect(isRetriableConnectionError(error)).toBe(true);
 			}
 		} finally {

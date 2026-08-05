@@ -5,7 +5,7 @@ import * as path from "node:path";
 import * as mcpClient from "@veyyon/coding-agent/mcp/client";
 import { MCPCommandController } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { getProjectDir, removeWithRetries, setAgentDir, setProjectDir } from "@veyyon/utils";
+import { getMCPConfigPath, getProjectDir, removeWithRetries, setAgentDir, setProjectDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 const originalProjectDir = getProjectDir();
@@ -15,6 +15,12 @@ const originalProjectDir = getProjectDir();
 const dirOverrides = captureDirOverrides();
 
 describe("issue #956: interactive /mcp test", () => {
+	// The fixture used to be `<projectDir>/.mcp.json`, a working-tree file, and
+	// the regression this guards was `/mcp test` reporting "not found" for a
+	// server it had just listed. `/mcp test` no longer resolves any repository
+	// file, so the same regression is now guarded from the profile config the
+	// command actually reads; `mcp-command-ignores-repo-config.test.ts` owns the
+	// other half, that the repository files stay invisible.
 	let projectDir = "";
 	let agentDir = "";
 
@@ -29,7 +35,7 @@ describe("issue #956: interactive /mcp test", () => {
 		setAgentDir(agentDir);
 
 		await fs.writeFile(
-			path.join(projectDir, ".mcp.json"),
+			getMCPConfigPath("user", projectDir, agentDir),
 			JSON.stringify(
 				{
 					mcpServers: {
@@ -54,7 +60,7 @@ describe("issue #956: interactive /mcp test", () => {
 		await removeWithRetries(agentDir);
 	});
 
-	it("tests a connected server discovered from standalone .mcp.json", async () => {
+	it("tests a connected server configured in the profile's mcp.json", async () => {
 		const transport = {
 			connected: true,
 			request: vi.fn(),
