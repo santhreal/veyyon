@@ -34,7 +34,7 @@ import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-works
  * import cycle by accident. The number is the only thing that moves, so the number is what is pinned,
  * plus the specific edges by name so a failure says what to undo instead of printing a count.
  *
- * NOT A MEMORY GATE. `packages/coding-agent/test/architecture/test-suite-module-reach.test.ts` records
+ * NOT A MEMORY GATE. `docs/internal/testing.md` records
  * the 2026-07-26 measurement: Bun caches modules across test files, so a run costs the UNION of what
  * its files reach and not the sum. These ceilings are architecture, not RAM.
  *

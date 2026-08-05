@@ -8,7 +8,7 @@
  * the copies had drifted exactly the way the walk's copies had:
  *
  *   - `packages/coding-agent/test/architecture/leveraged-imports-stay-cut.test.ts` listed seven packages.
- *   - `packages/coding-agent/test/architecture/test-suite-module-reach.test.ts` listed four of those seven.
+ *   - the suite-total gate beside it (since deleted) listed four of those seven.
  *   - both listed `@veyyon/agent`, which is not the name of any package in this workspace. The directory
  *     is `packages/agent` and the package is `@veyyon/agent-core`, so all 569 `@veyyon/agent-core`
  *     specifiers in the repository resolved to nothing in both gates.

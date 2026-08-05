@@ -12,7 +12,7 @@
  * work and every test would pass; what degrades is the honesty of the dependency graph, the cold
  * start of everything that imports the barrel, and the ease of closing an import cycle by accident.
  *
- * This is an architecture gate first. `packages/coding-agent/test/architecture/test-suite-module-reach.test.ts`
+ * This is an architecture gate first. `docs/internal/testing.md`
  * explains what was measured on 2026-07-26, and the answer depends on how the suite is run: under
  * bun's default parallelism a run costs the UNION of what its files reach, which is small, but under
  * `--parallel=1` workspace source is re-instantiated per file and never freed, so it costs the SUM
@@ -29,7 +29,7 @@ const BARREL = path.join(SRC, "index.ts");
 
 /**
  * THE WALK IS NOT DEFINED HERE. It used to be, and so did a near-identical copy in
- * `packages/coding-agent/test/architecture/test-suite-module-reach.test.ts`, and the two did not
+ * `packages/coding-agent/test/architecture/`'s since-deleted suite-total gate, and the two did not
  * resolve the same things. Both gates are upper bounds, so a resolver that resolves less reports a
  * smaller number and the gate passes while measuring less than it claims. `@veyyon/utils/module-reach`
  * owns it now and `packages/utils/test/module-reach.test.ts` tests it against fixtures with known

@@ -43,7 +43,7 @@ import {
 import {
 	createModuleReachCache,
 	type ModuleReachResolution,
-	moduleReachCount,
+	moduleReach,
 	moduleSpecifiersIn,
 } from "@veyyon/utils/module-reach";
 import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-workspace";
@@ -54,8 +54,9 @@ const REPO_ROOT = path.join(SRC, "..", "..", "..");
 const RESOLUTION: ModuleReachResolution = workspaceModuleReachResolution(REPO_ROOT);
 const CACHE = createModuleReachCache();
 
-function reach(relative: string): number {
-	return moduleReachCount(path.join(SRC, relative), RESOLUTION, CACHE);
+/** Every module `relative` statically reaches, as absolute paths, so an absence can be stated by name. */
+function reachedFrom(relative: string): string[] {
+	return [...moduleReach(path.join(SRC, relative), RESOLUTION, CACHE)];
 }
 
 function source(relative: string): string {
@@ -67,35 +68,44 @@ const DECLARATIONS: readonly BuiltinSlashCommandDeclaration[] = BUILTIN_SLASH_CO
 
 describe("the text-mode view is a leaf", () => {
 	/**
-	 * The whole point of the split. If this ceiling ever rises past a handful, something in the chain
-	 * started importing a handler again and every consumer below pays for it.
+	 * Locks out: `text-mode-builtins.ts` growing an edge back into the handler registry, directly or
+	 * through an intermediate, which puts every command implementation on the graph of everything that
+	 * only wants to know a command's NAME.
+	 *
+	 * Stated as a named absence in both forms rather than as a module count. The count that used to be
+	 * here (`<= 6`) predicts nothing an operator can see and drifts on growth anywhere in the two
+	 * modules it legitimately reaches; the absence fails exactly when the edge comes back and names it.
 	 */
-	it("reaches only the declarations it reads", () => {
-		expect(reach("slash-commands/text-mode-builtins.ts")).toBeLessThanOrEqual(6);
-	});
-
-	/**
-	 * Named absence, not just a number. A ceiling can be satisfied by a module that imports the
-	 * registry through a path the counter fails to resolve, and this states the one specifier that
-	 * must never appear.
-	 */
-	it("does not import the registry", () => {
+	it("does not reach the registry, directly or by any path", () => {
 		const specifiers = moduleSpecifiersIn(source("slash-commands/text-mode-builtins.ts"));
 
 		expect(specifiers).not.toContain("./builtin-registry");
 		expect(specifiers).toContain("./builtin-declarations");
+
+		const reached = reachedFrom("slash-commands/text-mode-builtins.ts");
+
+		expect(reached).not.toContain(path.join(SRC, "slash-commands", "builtin-registry.ts"));
+		// The control: the walk really crossed into this directory, so the absence is about a path that
+		// exists to be found and not about a walk that stopped at the entry file.
+		expect(reached).toContain(path.join(SRC, "slash-commands", "builtin-declarations.ts"));
 	});
 
 	/**
-	 * The consumer that motivated the split. `available-commands.ts` builds the list a client renders,
-	 * and every field it reads is metadata, so it has no business loading a handler.
+	 * Locks out: the consumer that motivated the split taking the edge back. `available-commands.ts`
+	 * builds the list a text client renders, and every field it reads is metadata, so a handler on its
+	 * graph is 767 modules loaded to answer "which commands exist".
+	 *
+	 * It does NOT fall to a handful and should not: it also loads the FILE, skill, custom and
+	 * MCP-prompt commands, which is real work this module owns. That is exactly why the old `<= 200`
+	 * count was the wrong shape here -- the number is dominated by work that is supposed to be there.
 	 */
 	it("available-commands no longer reaches the handlers", () => {
-		// 959 before, 192 after. It does not fall to a handful, and should not: it also loads the
-		// FILE, skill, custom and MCP-prompt commands, which is real work this module owns. What went
-		// away is the 767 modules it paid to ask which builtins a text client can drive.
-		expect(reach("slash-commands/available-commands.ts")).toBeLessThanOrEqual(200);
 		expect(moduleSpecifiersIn(source("slash-commands/available-commands.ts"))).not.toContain("./builtin-registry");
+
+		const reached = reachedFrom("slash-commands/available-commands.ts");
+
+		expect(reached).not.toContain(path.join(SRC, "slash-commands", "builtin-registry.ts"));
+		expect(reached).toContain(path.join(SRC, "slash-commands", "text-mode-builtins.ts"));
 	});
 
 	/**
@@ -118,16 +128,18 @@ describe("the text-mode view is a leaf", () => {
 
 		// Statically cheap: no edge to the registry at all.
 		expect(moduleSpecifiersIn(text)).not.toContain("./builtin-registry");
-		// Measured at 92, from 941. What is left is the parse leaf, the types and the metadata view
-		// this module re-exports; the 740 modules of handlers are behind the deferred edge below.
-		expect(reach("slash-commands/acp-builtins.ts")).toBeLessThanOrEqual(100);
-		// And the deferred edge is there, inside the function that runs a command, after the parse.
-		expect(text).toContain('const { lookupBuiltinSlashCommand } = await import("./builtin-registry");');
-		const parseAt = text.indexOf("const parsed = parseSlashCommand(text);");
-		const loadAt = text.indexOf('await import("./builtin-registry")');
+		// And no edge to it by ANY path, which the direct check alone cannot say: one intermediate module
+		// naming the registry statically puts all 740 handler modules back on the startup graph while the
+		// direct-specifier assertion above stays green. Stated as an absence by name rather than as a
+		// module count, and never as a search of the source text: this file's own comments name the
+		// module, so a text scan would fail for the opposite of its purpose, and it would also pass while
+		// the edge came back through a rename.
+		const reached = reachedFrom("slash-commands/acp-builtins.ts");
 
-		expect(parseAt).toBeGreaterThan(-1);
-		expect(loadAt).toBeGreaterThan(parseAt);
+		expect(reached).not.toContain(path.join(SRC, "slash-commands", "builtin-registry.ts"));
+		// The control: the walk did happen and does cross into this directory, so the absence above is a
+		// statement about a path that exists to be found rather than about a walk that stopped early.
+		expect(reached).toContain(path.join(SRC, "slash-commands", "builtin-declarations.ts"));
 	});
 
 	/**
@@ -193,17 +205,22 @@ describe("the declared flag and the handler table agree", () => {
 	});
 
 	/**
-	 * The counts, pinned. 29 of the 67 builtins are drivable from text; the rest are TUI surfaces such
+	 * The counts, pinned. 30 of the 68 builtins are drivable from text; the rest are TUI surfaces such
 	 * as `/settings`, `/cockpit` and `/quit` that an ACP client cannot render. A change to either
 	 * number is a real product change and should be a deliberate edit here.
 	 *
-	 * Both numbers last moved when `/secret` was added: it is text-drivable on purpose, because its
-	 * recommended form (`--from-env`) never needs a terminal to type a value into, and a headless
-	 * client is exactly where reading a credential out of the environment is the only sane option.
+	 * They moved when `/secret` was added: it is text-drivable on purpose, because its recommended
+	 * form (`--from-env`) never needs a terminal to type a value into, and a headless client is
+	 * exactly where reading a credential out of the environment is the only sane option.
+	 *
+	 * They moved again for `/permissions`, which is text-drivable for a stronger reason: it names the
+	 * approval rung, and a headless client is the surface where a rung that prompts cannot be
+	 * answered at all. Denying it the one command that changes the rung would leave such a client
+	 * with no route out of a configuration that blocks every write.
 	 */
-	it("29 of the 67 builtins are text-drivable", () => {
-		expect(DECLARATIONS.length).toBe(67);
-		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(29);
+	it("30 of the 68 builtins are text-drivable", () => {
+		expect(DECLARATIONS.length).toBe(68);
+		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(30);
 	});
 
 	/**

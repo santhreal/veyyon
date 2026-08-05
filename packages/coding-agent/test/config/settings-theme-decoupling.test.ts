@@ -25,7 +25,7 @@
  * THEN THE COST MOVED ONE STEP OUT. Breaking the cycle left settings importing
  * `modes/theme/builtin-themes`, which statically embeds one JSON module per bundled theme. The cycle
  * was gone, but settings still dragged 103 modules of theme data for one boolean, and so did every file
- * that imports `Settings`: the reach ratchet in `test/architecture/test-suite-module-reach.test.ts`
+ * that imports `Settings`: the suite-total reach ratchet (since deleted, see `docs/internal/testing.md`)
  * measured 33,242 module instantiations across a full run. `modes/theme/theme-luminance` now owns the
  * light/dark question as a table, and settings imports that. So this suite guards two edges, not one:
  * settings must stay out of the cycle, AND out of the theme JSON.
@@ -111,7 +111,7 @@ describe("config/settings stays out of the theme engine", () => {
 	 * breaks the import cycle but statically embeds one JSON module per bundled theme, so settings
 	 * reaching through it carried theme data nothing on that path reads, and carried it again into every
 	 * one of the ~1,500 test files that import `Settings`. The reach ratchet in
-	 * `test/architecture/test-suite-module-reach.test.ts` measured 33,242 module instantiations of it.
+	 * the suite-total reach ratchet measured 33,242 module instantiations of it before it was deleted.
 	 * `theme-luminance` answers the same question from a table.
 	 */
 	it("reaches the light/dark classifier through the classifier leaf, not the JSON one", () => {
