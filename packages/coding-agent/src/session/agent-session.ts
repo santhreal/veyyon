@@ -459,6 +459,7 @@ import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
 import { disposeOwnedResources } from "./owned-resources";
 import { ProviderContextCanonicalizer } from "./provider-context-canonicalizer";
 import { normalizeRoots } from "./relativize-paths";
+import { describeRetryPolicySource, type ResolvedRetryPolicy, resolveRetryPolicy } from "./retry-policy";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
@@ -710,6 +711,12 @@ export type AgentSessionEvent =
 			delayMs: number;
 			errorMessage: string;
 			errorId?: number;
+			/**
+			 * Why this attempt budget applies, when it is not simply the global
+			 * setting (e.g. `cursor provider default`). Shown to the user so a
+			 * limit they never configured is explainable rather than mysterious.
+			 */
+			policySource?: string;
 	  }
 	| {
 			type: "auto_retry_end";
@@ -16270,6 +16277,26 @@ export class AgentSession {
 	}
 
 	/**
+	 * Merge the global `retry.*` settings with any per-provider policy for the
+	 * active model. With no model resolved there is nothing to key on, so the
+	 * global settings stand unchanged.
+	 */
+	#resolveRetryPolicy(retrySettings: {
+		maxRetries: number;
+		baseDelayMs: number;
+		maxDelayMs: number;
+	}): ResolvedRetryPolicy {
+		const global = {
+			maxRetries: retrySettings.maxRetries,
+			baseDelayMs: retrySettings.baseDelayMs,
+			maxDelayMs: retrySettings.maxDelayMs,
+		};
+		const model = this.model;
+		if (!model) return { ...global, source: "global" };
+		return resolveRetryPolicy(global, this.settings.get("retry.perProvider"), model);
+	}
+
+	/**
 	 * Handle retryable errors with exponential backoff, credential rotation, and
 	 * model-fallback chains. Also entered for NON-retryable errors when a switch
 	 * is the recovery (`fireworksFastFallback`, `hardErrorFallback`): then a
@@ -16282,6 +16309,10 @@ export class AgentSession {
 		options?: { allowModelFallback?: boolean; fireworksFastFallback?: boolean; hardErrorFallback?: boolean },
 	): Promise<boolean> {
 		const retrySettings = this.settings.getGroup("retry");
+		// A backend that runs its own agent loop remotely fails slowly and
+		// expensively, so the global attempt count and backoff are resolved
+		// against the active model before anything below reads them.
+		const retryPolicy = this.#resolveRetryPolicy(retrySettings);
 		// The Fireworks Fast→base degrade is an intrinsic model-selection safety net,
 		// not a retry loop, so it runs even when the user disabled retries: it switches
 		// the model once and lets the base turn proceed.
@@ -16305,7 +16336,7 @@ export class AgentSession {
 		// (every rotation sets switchedCredential and skips it), so without
 		// this last resort a provider-wide usage cap never fails over to the
 		// configured chain.
-		const retryBudgetExhausted = this.#retryAttempt > retrySettings.maxRetries;
+		const retryBudgetExhausted = this.#retryAttempt > retryPolicy.maxRetries;
 
 		const errorMessage = message.errorMessage || "Unknown error";
 		const id = this.#classifyRetryMessage(message);
@@ -16313,7 +16344,7 @@ export class AgentSession {
 		const parsedRetryAfterMs = this.#parseRetryAfterMsFromError(errorMessage);
 		let delayMs = staleOpenAIResponsesReplayError
 			? 0
-			: calculateRetryBackoffDelayMs(retrySettings.baseDelayMs, this.#retryAttempt);
+			: calculateRetryBackoffDelayMs(retryPolicy.baseDelayMs, this.#retryAttempt);
 		let switchedCredential = false;
 		let switchedModel = false;
 		// Set when a usage-limit error pinned the wait to credential
@@ -16443,7 +16474,7 @@ export class AgentSession {
 		// subagent (or interactive session) silently hung. The original
 		// assistant error message is preserved in agent state so the caller
 		// can act on it.
-		const maxDelayMs = retrySettings.maxDelayMs;
+		const maxDelayMs = retryPolicy.maxDelayMs;
 		if (maxDelayMs > 0 && delayMs > maxDelayMs && !switchedCredential && !switchedModel) {
 			await this.#persistRetryLifecycleErrorMessage(message);
 			const attempt = this.#retryAttempt;
@@ -16464,7 +16495,8 @@ export class AgentSession {
 		await this.#emitSessionEvent({
 			type: "auto_retry_start",
 			attempt: this.#retryAttempt,
-			maxAttempts: retrySettings.maxRetries,
+			maxAttempts: retryPolicy.maxRetries,
+			policySource: describeRetryPolicySource(retryPolicy),
 			delayMs,
 			errorMessage,
 			errorId: message.errorId,
