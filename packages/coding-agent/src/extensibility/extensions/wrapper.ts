@@ -6,6 +6,7 @@ import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
 import { isCancellation } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
 import type { Theme } from "../../modes/theme/theme";
+import { AgentRegistry } from "../../registry/agent-registry";
 import {
 	type ApprovalMode,
 	formatApprovalCard,
@@ -19,16 +20,54 @@ import { applyToolProxy } from "../tool-proxy";
 import type { ExtensionRunner } from "./runner";
 import type {
 	ExtensionUIDialogOptions,
-	ExtensionUISelectItem,
+	ExtensionUISelectOption,
 	RegisteredTool,
 	ToolCallEventResult,
 	ToolRenderResultOptions,
 } from "./types";
 
-/** Shared presentation contract for interactive one-call tool approval. */
-export const APPROVAL_SELECT_OPTIONS: ExtensionUISelectItem[] = [
-	{ label: "Approve", description: "Run this call once. No policy is saved." },
-	{ label: "Deny", description: "Do not run this call." },
+/**
+ * The four row labels, named ONCE.
+ *
+ * The dialog returns the selected row's label as a bare string, and `execute`
+ * decides what happened by comparing it. Those comparisons used to be four more
+ * literals restating this list, so renaming a row here without editing all four
+ * turned that row into a silent denial: the operator picks "Approve", the
+ * comparison misses, and the call is refused with "denied by user". Nothing on
+ * screen would say the two lists had drifted.
+ */
+const APPROVAL_CHOICE = {
+	approveOnce: "Approve",
+	approveSession: "Approve for session",
+	denyOnce: "Deny",
+	denySession: "Deny for session",
+} as const;
+
+/**
+ * The choices offered at an interactive one-call approval.
+ *
+ * The two "for this session" rows are what make the `ask` and `ask-command`
+ * rungs usable rather than merely safe. A run that edits twenty files asks
+ * twenty times without them, and an operator who has to answer that many
+ * identical prompts turns approvals off entirely, so a dialog with no memory is
+ * not a stricter product, it is the same yolo reached by a worse road.
+ *
+ * The memory is SESSION-scoped and never written to settings. A standing grant
+ * in `tools.approval` outlives the task it was granted for and is invisible the
+ * next time you launch; this one dies with the session, so tomorrow asks again.
+ * Writing a permanent policy stays an explicit act in `/settings`.
+ */
+export const APPROVAL_SELECT_OPTIONS: ExtensionUISelectOption[] = [
+	{ label: APPROVAL_CHOICE.approveOnce, description: "Run this call once. Nothing is remembered." },
+	{
+		label: APPROVAL_CHOICE.approveSession,
+		description: "Run this and every later call to this tool, until you exit.",
+	},
+	{ label: APPROVAL_CHOICE.denyOnce, description: "Do not run this call." },
+	{
+		label: APPROVAL_CHOICE.denySession,
+		description: "Refuse this and every later call to this tool, until you exit.",
+	},
 ];
 export const APPROVAL_DIALOG_OPTIONS: ExtensionUIDialogOptions = {
 	selectionMarker: "radio",
@@ -147,7 +186,13 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 		// User `tools.approval.<tool>` policies are still applied in all modes.
 		const cliAutoApprove = context?.autoApprove === true;
 		const settings: Settings | undefined = context?.settings;
-		const configuredMode = (settings?.get("tools.approvalMode") ?? "yolo") as ApprovalMode;
+		// No fallback spelled here. An absent `Settings` means nothing is
+		// configured, and `resolveEffectiveApprovalMode` decides that case from
+		// `DEFAULT_APPROVAL_MODE`, the schema's own default. A literal here would
+		// be a second source of truth: a `yolo` one used to silently outrank a
+		// missing setting, which is how an approval system nobody had configured
+		// became an approval system that never fired.
+		const configuredMode = settings?.get("tools.approvalMode") as ApprovalMode | undefined;
 		const planModeActive = context?.planModeActive === true;
 		const bypassAllApprovals = context?.bypassAllApprovals === true;
 		const approvalMode = resolveEffectiveApprovalMode(configuredMode, { planModeActive, cliAutoApprove });
@@ -187,7 +232,37 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				.filter((part): part is string => part !== undefined)
 				.join(" ") || undefined;
 
-		if (approvalRequired) {
+		// A standing answer the operator already gave at this dialog, this session.
+		//
+		// IT IS AN ANSWER ABOUT A TOOL NAME, so it may only retire a prompt that
+		// was raised about the tool name: the ordinary tier/policy one. Three
+		// prompts are raised about these ARGUMENTS instead, and no answer given on
+		// an earlier call can have been about them:
+		//
+		//   - `critical`: the bash guard judged THIS command destructive.
+		//   - the cwd boundary: THIS path leaves the working directory.
+		//   - the secret-use boundary: THESE arguments spend a stored credential.
+		//
+		// Without this bound the grant defeated all three. Measured: rung `ask`,
+		// `bash ls`, answer "Approve for session", then `bash rm -rf $HOME` ran
+		// with no prompt at all — including under `yolo`, whose critical floor
+		// exists because "every published home-directory wipe happened in exactly
+		// that configuration". The dialog says "Run this and every later call to
+		// this tool"; an operator reading that has not consented to a later call
+		// that wipes their home directory, and the card they read it on says the
+		// scope is this call only.
+		//
+		// A `deny` grant is not bounded the same way. It only ever refuses more,
+		// so applying it everywhere is the safe direction.
+		const sessionApprovals = context?.sessionApprovals;
+		const grantMayApply =
+			approvalCheck.critical !== true && boundaryReason === undefined && secretReason === undefined;
+		const standing = approvalRequired ? sessionApprovals?.get(this.tool.name) : undefined;
+		if (standing === "deny") {
+			throw new Error(`Tool call denied for this session: ${this.tool.name}`);
+		}
+
+		if (approvalRequired && !(standing === "allow" && grantMayApply)) {
 			const hasApprovalHandlers =
 				this.runner.hasHandlers("tool_approval_requested") || this.runner.hasHandlers("tool_approval_resolved");
 			const sessionId = context?.sessionManager?.getSessionId() ?? "";
@@ -214,6 +289,11 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				});
 			};
 
+			// The agent this call belongs to, when it is a spawned subagent. Both
+			// the byline on the card and the observable waiting state below are
+			// keyed off it, and a root session has neither.
+			const requester = this.runner.agentId;
+
 			// Check if UI is available
 			if (!this.runner.hasUI()) {
 				const reason = "no interactive UI available";
@@ -221,29 +301,66 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				// Lead with the specific reason (e.g. the cwd-boundary path) so a
 				// headless run reports WHY it was blocked, not only that a prompt was
 				// needed.
+				//
+				// A subagent reaches here only when the ROOT session has no UI either,
+				// because the spawner hands the root's surface down (see
+				// `resolveRootUIContext` in `task/executor.ts`). So the refusal has to
+				// read as a decision about the run's configuration rather than as a
+				// crash inside the child: this text is the entire explanation the
+				// child's tool result carries, and the operator sees it attributed to
+				// the child with no card ever having been drawn.
 				const detail = approvalReason ? `${approvalReason}\n` : "";
+				const forAgent = requester ? ` (requested by ${requester})` : "";
 				throw new Error(
-					`${detail}Tool "${this.tool.name}" requires approval but no interactive UI available.\n` +
+					`${detail}Tool "${this.tool.name}"${forAgent} requires approval but no interactive UI available.\n` +
 						`Options:\n` +
-						`  1. Set tools.approvalMode: yolo (or auto-edit / ask) in /settings\n` +
+						`  1. Raise tools.approvalMode (ask-command / auto / yolo) in /settings, or pass --approval-mode\n` +
 						`  2. Add tools.approval.${this.tool.name}: allow to config\n` +
 						`  3. Use an interactive UI to approve the tool call`,
 				);
 			}
 
 			const uiContext = this.runner.getUIContext();
+			const registry = AgentRegistry.global();
 			let choice: string | undefined;
+			// Observable waiting state, published for the whole process rather than
+			// kept as a private boolean here. A blocked agent's status is `running`
+			// (it is mid-turn), so nothing downstream can otherwise tell an agent
+			// stopped at a prompt from an agent grinding through a build: the runtime
+			// budget charges it the operator's reading time and the dashboard renders
+			// it as busy. Set immediately before the await and cleared in the
+			// `finally` that also covers the throw, so no abort, refusal or dialog
+			// error can leave it stuck on.
+			if (requester) {
+				registry.setPendingApproval(requester, {
+					toolName: this.tool.name,
+					...(approvalReason ? { reason: approvalReason } : {}),
+					since: Date.now(),
+				});
+			}
 			try {
 				choice = await uiContext.select(
-					formatApprovalCard(this.tool, params, approvalReason),
+					formatApprovalCard(this.tool, params, approvalReason, requester),
 					APPROVAL_SELECT_OPTIONS,
 					APPROVAL_DIALOG_OPTIONS,
 				);
 			} catch (err) {
 				await resolveApproval(false, err instanceof Error ? err.message : "approval aborted");
 				throw err;
+			} finally {
+				if (requester) registry.setPendingApproval(requester, undefined);
 			}
-			const approved = choice === "Approve";
+			const approved = choice === APPROVAL_CHOICE.approveOnce || choice === APPROVAL_CHOICE.approveSession;
+			// Record a grant only from an ordinary prompt. A critical or boundary
+			// prompt is about THESE arguments, so "for session" answered there says
+			// nothing about the tool in general, and storing it would put a
+			// tool-wide allow on the books off the back of the scariest card the
+			// operator ever sees. The call itself still proceeds; nothing is
+			// remembered.
+			if (grantMayApply) {
+				if (choice === APPROVAL_CHOICE.approveSession) sessionApprovals?.set(this.tool.name, "allow");
+				else if (choice === APPROVAL_CHOICE.denySession) sessionApprovals?.set(this.tool.name, "deny");
+			}
 			await resolveApproval(approved, approved ? undefined : "denied by user");
 			if (!approved) {
 				throw new Error(`Tool call denied by user: ${this.tool.name}`);
