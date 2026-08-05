@@ -358,10 +358,16 @@ export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermission
 		return inputs.autolearnEnabled && inputs.isTopLevelSession && learnToolBackendEnabled(inputs.memoryBackend);
 	}
 	if (name === TOOL.task) {
-		// `subagent.delegation: off` means this session does not delegate at all,
-		// so the tool itself is absent rather than present-but-discouraged. A
-		// prompt that says "do not spawn subagents" while still shipping the tool
-		// description spends tokens describing something the operator turned off.
+		// `subagent.enabled: false` takes subagents away entirely, so the tool
+		// itself is absent rather than present-but-discouraged: a prompt that says
+		// "do not spawn subagents" while still shipping the tool description
+		// spends tokens describing something the operator turned off.
+		//
+		// Delegation STRENGTH (`subagent.delegation`) does NOT reach this table.
+		// Its three levels (`allowed`, `preferred`, `required`) all keep the tool,
+		// because every one of them must leave an explicit operator request to
+		// delegate possible; strength only changes how hard the Delegation section
+		// pushes the model to spawn on its own initiative.
 		if (!inputs.delegationEnabled) return false;
 		return inputs.canSpawnAtDepth;
 	}

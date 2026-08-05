@@ -555,7 +555,10 @@ export async function releaseTab(name: string, opts: ReleaseTabOptions = {}): Pr
 		if (tab.backend === "worker") {
 			try {
 				tab.worker.send({ type: "abort", id, expectedCleanup: true });
-			} catch {}
+			} catch {
+				// The tab is already marked dead: a worker that has exited cannot be
+				// told to abort, and the abort below cancels the call regardless.
+			}
 		}
 		for (const ctrl of pending.toolCalls.values()) ctrl.abort(closeError);
 		// Propagate the closure into the cmux run's abort signal so

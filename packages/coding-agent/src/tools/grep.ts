@@ -28,7 +28,6 @@ import {
 	truncateHead,
 	truncateLine,
 } from "../session/streaming-output";
-import { delegationEnabled } from "../task/subagent-settings";
 import {
 	Ellipsis,
 	fileHyperlink,
@@ -921,10 +920,6 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 		this.description = prompt.render(toolsPrompts["tools/grep"].text, {
 			IS_HL_MODE: displayMode.hashLines,
 			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
-			// Only tell the model to hand a search off when this session can delegate
-			// at all; with `subagent.delegation: off` there is no task tool to hand it
-			// to, and the rule would be an instruction it can only fail.
-			canDelegate: delegationEnabled(session.settings),
 		});
 	}
 

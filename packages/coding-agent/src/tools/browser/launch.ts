@@ -235,7 +235,10 @@ function systemChromiumCandidates(): string[] {
 			let onNixos = false;
 			try {
 				onNixos = fs.existsSync("/etc/NIXOS");
-			} catch {}
+			} catch {
+				// Probing for NixOS. Unreadable `/etc` means not-NixOS for this purpose,
+				// and the candidate list below is unaffected either way.
+			}
 			if (onNixos) {
 				candidates.push(path.join(home, ".nix-profile/bin/chromium"), "/run/current-system/sw/bin/chromium");
 			}
@@ -655,6 +658,10 @@ const STEALTH_PATCH_SCRIPTS = [
 ];
 
 function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_SCRIPTS): string {
+	// Each patch is wrapped in its own in-page `try`/`catch` on purpose: the
+	// patches are independent, and one that throws on a given browser build must
+	// not take the other thirteen down with it. There is no channel back from a
+	// document-start preload, so the isolation is the whole contract.
 	const joint = scripts
 		.map(
 			script => `

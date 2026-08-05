@@ -339,15 +339,106 @@ export function splitWords(segment: string): { text: string; literal: boolean }[
 const EXPANSION = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)|\$\(|`/;
 
 /**
+ * A variable value the guard is willing to substitute textually.
+ *
+ * Expansion here is plain string substitution into ONE word. The shell does
+ * more than that: it word-splits and glob-expands an unquoted result. So a
+ * value the guard pastes in is only faithful when neither of those can fire,
+ * and a value that could fire either is refused and the word stays unknown.
+ *
+ * The three shapes this rejects were each a proven fail-open:
+ *
+ *     SPLITVAR="/ /tmp/x"   shell: rm -rf / /tmp/x   guard saw one odd path
+ *     GLOBVAR="/*"          shell: every top-level entry
+ *     WEIRD='$OTHER'        a second round of expansion the guard does not model
+ *
+ * Rejecting is free: an unknown expansion in a recursive delete is already
+ * treated as critical, so the cost of refusing is one prompt and the cost of
+ * accepting is the incident this module is named after.
+ */
+function isQuietlySubstitutable(value: string): boolean {
+	return !/[\s*?[\]{}$`~\\]/.test(value);
+}
+
+/**
+ * Variables the SHELL maintains, whose value at the moment the command runs is
+ * not the value this process holds.
+ *
+ * `cd / && rm -rf $PWD` is the case that matters and it is not exotic: `cd`
+ * rewrites `PWD` inside the very command being judged, so the guard read
+ * `/tmp`, judged it harmless, and the shell deleted the root. `pushd` does the
+ * same, and so does any earlier segment of the same line. There is no reading
+ * of the process environment that can be right here, because the value does not
+ * exist yet when the judgement is made.
+ *
+ * Refusing them costs a prompt on a delete that names `$PWD`, which is a thing
+ * worth being asked about anyway: it is the one variable whose whole purpose is
+ * to change under you.
+ */
+const SHELL_MAINTAINED_VARIABLES: ReadonlySet<string> = new Set([
+	"PWD",
+	"OLDPWD",
+	"IFS",
+	"RANDOM",
+	"SECONDS",
+	"LINENO",
+	"SHLVL",
+	"BASH_SUBSHELL",
+	"REPLY",
+]);
+
+/**
+ * Any `${…}` form carrying an OPERATOR, which this module does not model.
+ *
+ * `${VAR:-/}`, `${VAR%%/*}`, `${VAR#x}`, `${VAR/a/b}`, `${!VAR}`, `${#VAR}`.
+ * The plain-name regex below matches none of them, so before this they fell
+ * through as `unknown: false` with their literal text, which does not start
+ * with `/`, and `judgeDeleteTarget` waved them past: `rm -rf ${VAR:-/}` with
+ * VAR unset runs `rm -rf /`. Treated as unknown, which is what every other
+ * expansion the guard cannot resolve is.
+ */
+const OPERATOR_EXPANSION = /\$\{[^}]*[^A-Za-z0-9_}][^}]*\}|\$\{[^A-Za-z_]/;
+
+/**
  * Expand the parts of a word whose value is knowable, and say so when a part is
  * not.
  *
- * Only `HOME` and a leading `~` are resolved, because those are the only
- * expansions whose value the guard can be sure of without running the shell,
- * and they are the ones the published incidents turned on. Everything else is
- * reported as unknown rather than guessed at.
+ * A leading `~`, `$HOME`, and any variable set in `env` whose value is quiet
+ * enough to paste (see {@link isQuietlySubstitutable}) are resolved. Everything
+ * else stays unknown, and unknown means critical in a recursive delete.
+ *
+ * WHY READING THE ENVIRONMENT IS NOT GUESSING. The command runs in a shell
+ * spawned from this process, so `$TMPDIR` in the command text and `TMPDIR` in
+ * the environment that shell inherits are the same lookup with the same answer.
+ * Only `HOME` was resolved before, so every other variable was unknown and
+ * therefore critical, and that made ordinary commands prompt in a mode whose
+ * whole promise is that it does not: `rm -rf $TMPDIR/scratch` and
+ * `rm -rf ${CARGO_TARGET_DIR}/debug` both blocked. A guard that cries wolf on
+ * `$TMPDIR` gets switched off before it ever sees a real one.
+ *
+ * `env` MUST be the environment the command will actually run with, not
+ * `process.env`. The bash tool takes an `env` argument that is spread over the
+ * inherited environment for the child, so judging against `process.env` let the
+ * caller hand the guard one value and the shell another:
+ * `bash({command:"rm -rf $LANG", env:{LANG:"/"}})` was allowed and ran
+ * `rm -rf /`. Inline `VAR=value` assignments in the command text are the same
+ * hole by a different route (`PWD=/ rm -rf $PWD`) and are applied by the caller
+ * before this runs.
+ *
+ * A variable that is UNSET stays unknown, which is the case the fail-closed
+ * rule was written for: `rm -rf "$dir"/*` where the script assigns `dir` itself
+ * has no safe reading, because an empty `dir` starts the delete at the root. A
+ * variable set to the EMPTY string expands to empty, the same substitution the
+ * shell performs, and the collapsed word reaches the protected-root judgement.
+ *
+ * Command substitution (`$(…)`, backticks) stays unknown. Its value cannot be
+ * had without running it, and running it is what the guard exists to precede.
  */
-export function expandWord(word: { text: string; literal: boolean }, home: string): ExpandedWord {
+export function expandWord(
+	word: { text: string; literal: boolean },
+	home: string,
+	env: NodeJS.ProcessEnv = process.env,
+): ExpandedWord {
 	if (word.literal && !word.text.includes("$") && !word.text.startsWith("~")) {
 		return { text: word.text, unknown: false, emptied: false };
 	}
@@ -369,7 +460,33 @@ export function expandWord(word: { text: string; literal: boolean }, home: strin
 	}
 
 	if (!word.literal) {
+		// An operator form is unmodelled, and unmodelled is unknown. Checked
+		// before any substitution so a `${VAR:-/}` cannot be partly rewritten.
+		if (OPERATOR_EXPANSION.test(text)) return { text, unknown: true, emptied: false };
+
 		text = text.replace(/\$\{HOME\}|\$HOME\b/g, home);
+		let emptiedByEnv = false;
+		const substitute = (name: string, whole: string): string => {
+			// A shell-maintained variable is never substituted: its value at the
+			// moment the command runs is not the one this process holds, and
+			// leaving the literal `$NAME` makes the word unknown, which is correct.
+			if (SHELL_MAINTAINED_VARIABLES.has(name)) return whole;
+			const value = env[name];
+			if (value === undefined) return whole;
+			// A value that would word-split or glob is left as the literal `$NAME`,
+			// which the unknown test below then catches.
+			if (!isQuietlySubstitutable(value)) return whole;
+			if (value === "") emptiedByEnv = true;
+			return value;
+		};
+		text = text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name: string) => substitute(name, whole));
+		text = text.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (whole, name: string) => substitute(name, whole));
+		if (emptiedByEnv && !EXPANSION.test(text)) {
+			// The shell would produce this exact word. An empty expansion inside a
+			// path is the `rm -rf "$EMPTY"/*` shape, so hand the collapsed text to
+			// the protected-root judgement rather than calling it resolved-and-safe.
+			return { text, unknown: false, emptied: text === "" || text.startsWith("/") };
+		}
 	}
 
 	// A `~user` form, a command substitution, or any variable we did not
@@ -441,15 +558,29 @@ function isAtOrUnder(candidate: string, ancestor: string): boolean {
 /**
  * Judge one expanded target of a recursive delete.
  *
- * Returns the reason it is refused, or `undefined` when it is fine. A relative
- * path is always fine: the damage in every incident came from a path that
- * escaped the workspace, and refusing relative paths would refuse the ordinary
- * work the agent exists to do.
+ * Returns the reason it is refused, or `undefined` when it is fine.
+ *
+ * A RELATIVE path is resolved against `cwd` and then judged like any other.
+ * This used to return `undefined` for anything not starting with `/`, on the
+ * reasoning that the published incidents all involved absolute paths and that
+ * refusing relative paths would refuse the ordinary work the agent exists to
+ * do. The second half is right and the first half does not follow:
+ * `rm -rf ../../../../../..` reaches the root from any depth of six or less,
+ * and it was allowed. Resolving instead of refusing keeps every ordinary
+ * relative delete working — `rm -rf ../build` in a monorepo lands on a sibling
+ * directory, which is not protected and still runs unasked — while a relative
+ * path that climbs out to `/` or to the home directory is refused for exactly
+ * the reason its absolute spelling would be.
+ *
+ * Without a `cwd` the old behaviour stands: a relative path cannot be resolved,
+ * so it cannot be judged, and refusing every one of them blind would be the
+ * noise the original reasoning was avoiding.
  */
 export function judgeDeleteTarget(
 	target: ExpandedWord,
 	home: string,
 	extra: readonly string[] = [],
+	cwd = "",
 ): string | undefined {
 	if (target.emptied) {
 		return "a path relative to a home directory this process cannot locate, so there is no way to tell what it names";
@@ -457,7 +588,10 @@ export function judgeDeleteTarget(
 	if (target.unknown) {
 		return "an expansion whose value is not knowable from the command text, which is the shape that starts at the root when the variable is empty";
 	}
-	if (!target.text.startsWith("/")) return undefined;
+	if (!target.text.startsWith("/")) {
+		if (cwd === "" || !cwd.startsWith("/")) return undefined;
+		return judgeDeleteTarget({ text: `${cwd}/${target.text}`, unknown: false, emptied: false }, home, extra);
+	}
 
 	const normalized = normalizeAbsolutePath(target.text);
 	const normalizedHome = home === "" ? "" : normalizeAbsolutePath(home);
@@ -571,14 +705,48 @@ function isFlag(word: ExpandedWord): boolean {
  * test can state the whole rule without depending on the machine it runs on,
  * and so a session with a different `HOME` than the process is judged against
  * the one the command will actually see.
+ *
+ * `env` is the environment the command will RUN with. The bash tool spreads its
+ * `env` argument over the inherited environment for the child, so judging
+ * against `process.env` let a caller hand the guard one value and the shell
+ * another: `bash({command:"rm -rf $LANG", env:{LANG:"/"}})` was allowed and ran
+ * `rm -rf /`.
  */
 export function findCriticalBashRisk(
 	command: string,
 	home: string = resolveGuardHome(),
 	extraProtectedPaths: readonly string[] = [],
+	env: NodeJS.ProcessEnv = process.env,
+	/**
+	 * Directory a relative delete target resolves against: the call's own `cwd`
+	 * argument when it has one, else the session's. Empty leaves relative targets
+	 * unjudged, which is the old behaviour.
+	 */
+	cwd = "",
 ): CriticalBashRisk | undefined {
 	for (const segment of splitCommandSegments(command)) {
-		const words = splitWords(segment).map(word => expandWord(word, home));
+		// Inline `VAR=value` assignments bind for this segment, and the shell
+		// honours them. They were skipped as prefix words and never applied, so
+		// `PWD=/ rm -rf $PWD` expanded `$PWD` from the ambient environment, judged
+		// a harmless directory, and ran `rm -rf /`. Applied first, over a COPY, so
+		// one segment's assignment cannot leak into the next.
+		//
+		// Wrapper words are stepped over rather than stopping the scan, because
+		// `env PWD=/ rm -rf $PWD` and `sudo -E FOO=/ rm -rf $FOO` set the variable
+		// just as effectively as the bare form. Stopping at the first non-
+		// assignment word left exactly those spellings reading the ambient value.
+		const rawWords = splitWords(segment);
+		let segmentEnv = env;
+		for (const word of rawWords) {
+			const assignment = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(word.text);
+			if (!assignment) {
+				if (isPrefixCommand(word.text)) continue;
+				break;
+			}
+			if (segmentEnv === env) segmentEnv = { ...env };
+			segmentEnv[assignment[1] as string] = assignment[2] ?? "";
+		}
+		const words = rawWords.map(word => expandWord(word, home, segmentEnv));
 		if (words.length === 0) continue;
 
 		const overwrite = findTruncatingWriteRisk(words, home);
@@ -594,7 +762,7 @@ export function findCriticalBashRisk(
 		for (const candidate of argv.slice(1)) {
 			if (isFlag(candidate)) continue;
 			if (commandName === "find" && candidate.text.startsWith("-")) continue;
-			const reason = judgeDeleteTarget(candidate, home, extraProtectedPaths);
+			const reason = judgeDeleteTarget(candidate, home, extraProtectedPaths, cwd);
 			if (reason === undefined) continue;
 			return {
 				command: commandName,
@@ -654,4 +822,49 @@ function isPrefixCommand(word: string): boolean {
 	if (name === "sudo" || name === "doas" || name === "nice" || name === "ionice" || name === "env") return true;
 	// `FOO=bar rm -rf /` puts an assignment where the command word would be.
 	return /^[A-Za-z_][A-Za-z0-9_]*=/.test(word);
+}
+
+/**
+ * Absolute paths a bash command names that sit inside a credentials directory.
+ *
+ * WHY BASH NEEDS THIS AT ALL. The cwd and secret boundaries only look at tools
+ * that declare `filesystemTargets`, and `bash` declared none, so the boundary
+ * governed `read` and not `cat`. At every rung below `yolo` that produced a
+ * boundary with a hole in the middle of it:
+ *
+ *     read  {path: "~/.ssh/id_rsa"}      asks
+ *     bash  {command: "cat ~/.ssh/id_rsa"}  ran, silently
+ *
+ * An agent does not have to intend anything to walk through that; `cat` is
+ * simply the more natural way to say it.
+ *
+ * DELIBERATELY NARROW. It reports only paths under {@link SECRET_HOME_DIRECTORIES},
+ * not every absolute path in the command. Running the whole boundary over bash
+ * would prompt on `/usr/bin/env`, `/etc/hosts` and every toolchain path a build
+ * mentions, which is the false-positive noise that makes people turn approvals
+ * off — the same failure mode as the guard blocking `rm -rf $TMPDIR`. Credential
+ * directories are the case where the boundary earns an interruption.
+ *
+ * Writes into those directories are already covered (`findTruncatingWriteRisk`);
+ * this is the READ half, which nothing covered.
+ */
+export function bashCredentialTargets(command: string, env: NodeJS.ProcessEnv = process.env): string[] {
+	if (typeof command !== "string" || command === "") return [];
+	const home = resolveGuardHome(env);
+	if (home === "") return [];
+	const normalizedHome = normalizeAbsolutePath(home);
+	const directories = SECRET_HOME_DIRECTORIES.map(secret => `${normalizedHome}/${secret}`);
+	const found = new Set<string>();
+	for (const segment of splitCommandSegments(command)) {
+		for (const word of splitWords(segment)) {
+			const expanded = expandWord(word, home, env);
+			// An unknown expansion is not reported here. This surface adds a
+			// PROMPT, and the destructive shapes an unknown expansion can hide are
+			// already caught by `findCriticalBashRisk`, which fails closed on them.
+			if (expanded.unknown || !expanded.text.startsWith("/")) continue;
+			const normalized = normalizeAbsolutePath(expanded.text);
+			if (directories.some(directory => isAtOrUnder(normalized, directory))) found.add(normalized);
+		}
+	}
+	return [...found];
 }

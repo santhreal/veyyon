@@ -12,7 +12,10 @@ import type { EvalCellResult, EvalDisplayOutput, EvalLanguage, EvalStatusEvent, 
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { DEFAULT_MAX_BYTES, OutputSink, type OutputSummary, TailBuffer } from "../session/streaming-output";
+import { discoverAgents } from "../task/discovery";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
+import { type EnabledSubagentCatalog, resolveEnabledSubagents } from "../task/subagent-settings";
+import type { AgentDefinition } from "../task/types";
 import { webpExclusionForModel } from "../utils/image-loading";
 import { formatDimensionNote, resizeImage } from "../utils/image-resize";
 import type { ToolSession } from ".";
@@ -170,6 +173,10 @@ export interface EvalToolDescriptionOptions {
 	 * `false`/`""` hides `agent()`, and a comma list drives the advertised default.
 	 */
 	spawns?: boolean | string | null;
+	/** Effective discovered agent names after enable settings and parent spawn policy. */
+	effectiveAgents?: readonly string[];
+	/** Configured default when it remains in `effectiveAgents`; otherwise omitted. */
+	effectiveDefaultAgent?: string;
 }
 
 export function getEvalToolDescription(options: EvalToolDescriptionOptions = {}): string {
@@ -178,19 +185,30 @@ export function getEvalToolDescription(options: EvalToolDescriptionOptions = {})
 	const rb = options.rb ?? false;
 	const jl = options.jl ?? false;
 	const spawnPolicy = resolveSpawnPolicy(options.spawns ?? true);
+	const hasEffectiveCatalog = options.effectiveAgents !== undefined;
+	const effectiveAgents = options.effectiveAgents ?? [];
+	const spawns = hasEffectiveCatalog ? effectiveAgents.length > 0 : spawnPolicy.enabled;
+	const spawnDefaultAgent = hasEffectiveCatalog ? options.effectiveDefaultAgent : spawnPolicy.defaultAgent;
+	const spawnAllowedAgentsText = hasEffectiveCatalog
+		? effectiveAgents.map(agent => `\`${agent}\``).join(", ")
+		: spawnPolicy.allowedPromptText;
 	return prompt.render(toolsPrompts["tools/eval"].text, {
 		py,
 		js,
 		rb,
 		jl,
-		spawns: spawnPolicy.enabled,
-		spawnDefaultAgent: spawnPolicy.defaultAgent,
-		spawnAllowedAgentsText: spawnPolicy.allowedPromptText,
+		spawns,
+		spawnDefaultAgent,
+		hasSpawnDefaultAgent: spawnDefaultAgent !== undefined,
+		spawnAllowedAgentsText,
+		spawnAgentListLabel: hasEffectiveCatalog ? "Enabled agents" : "Allowed agents",
 	});
 }
 
 export interface EvalToolOptions {
 	proxyExecutor?: EvalProxyExecutor;
+	/** Create-time discovery snapshot used by model-visible description metadata. */
+	discoveredAgents?: readonly AgentDefinition[];
 }
 
 interface ResolvedBackend {
@@ -347,13 +365,14 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 	get description(): string {
 		if (!this.session) return getEvalToolDescription();
 		const backends = resolveEvalBackends(this.session);
-		const sessionSpawns = this.session.getSessionSpawns?.() ?? "*";
+		const catalog = this.#enabledSubagents();
 		return getEvalToolDescription({
 			py: backends.python,
 			js: backends.js,
 			rb: backends.ruby,
 			jl: backends.julia,
-			spawns: sessionSpawns,
+			effectiveAgents: catalog.agents.map(agent => agent.name),
+			effectiveDefaultAgent: catalog.defaultAgent,
 		});
 	}
 	/** All reuse-chain examples; the `examples` getter filters by enabled languages. */
@@ -422,6 +441,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 	};
 
 	readonly #proxyExecutor?: EvalProxyExecutor;
+	readonly #discoveredAgents: readonly AgentDefinition[];
 
 	#paramsKey?: string;
 	#cachedParams?: typeof evalSchema;
@@ -434,11 +454,28 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 		return this.session ? enabledEvalLanguages(resolveEvalBackends(this.session)) : ["py", "js"];
 	}
 
+	#enabledSubagents(): EnabledSubagentCatalog {
+		if (!this.session) {
+			throw new ToolError("Eval tool requires a session to resolve enabled subagents");
+		}
+		return resolveEnabledSubagents({
+			settings: this.session.settings,
+			agents: this.#discoveredAgents,
+			parentSpawns: this.session.getSessionSpawns?.() ?? "*",
+		});
+	}
+
 	constructor(
 		private readonly session: ToolSession | null,
 		options?: EvalToolOptions,
 	) {
 		this.#proxyExecutor = options?.proxyExecutor;
+		this.#discoveredAgents = options?.discoveredAgents ?? [];
+	}
+
+	static async create(session: ToolSession): Promise<EvalTool> {
+		const { agents } = await discoverAgents(session.cwd);
+		return new EvalTool(session, { discoveredAgents: agents });
 	}
 
 	async execute(

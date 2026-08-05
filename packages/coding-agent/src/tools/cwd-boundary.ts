@@ -181,14 +181,24 @@ export function cwdEscapingTargets(tool: unknown, args: unknown, cwd: string): s
 
 /**
  * The permission-prompt reason shown when a call escapes the working directory.
- * States the boundary, the cwd, the offending path(s), and the two ways forward
- * (approve once, or switch to yolo to stop being asked).
+ * States the boundary, the cwd, the offending path(s), and the routes that
+ * actually clear it.
+ *
+ * The routes are named precisely because the obvious guesses do not work. This
+ * boundary is applied ON TOP of the rung, so raising the rung to `ask-command`
+ * or `auto` does NOT lift it, and neither does a per-tool
+ * `tools.approval.<tool>: allow`, which the rung consults and the boundary does
+ * not. The message used to offer `tools.approvalMode: yolo` as a bare
+ * suggestion, which is true but is the largest hammer there is; `set_cwd` is
+ * the answer most of the time, because a path you keep reaching for is usually
+ * a working directory you have not moved to yet.
  */
 export function formatCwdBoundaryReason(cwd: string, escapingTargets: readonly string[]): string {
 	const targets = escapingTargets.join(", ");
 	return (
 		`Path is outside the session working directory (${cwd}): ${targets}. ` +
-		`Approve to allow filesystem access outside the working directory, ` +
-		`or set tools.approvalMode: yolo to allow it without prompting.`
+		`Approve to allow this call, move the session with set_cwd if you will keep working there, ` +
+		`or set tools.approvalMode: yolo to stop being asked at all. ` +
+		`Raising the rung to ask-command or auto does not lift this boundary.`
 	);
 }
