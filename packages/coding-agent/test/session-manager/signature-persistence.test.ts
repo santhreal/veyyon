@@ -5,7 +5,8 @@ import * as path from "node:path";
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { __resetDirsFromEnvForTests, getBlobsDir, setAgentDir, TempDir } from "@veyyon/utils";
+import { getBlobsDir, setAgentDir, TempDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 function isAssistantSessionEntry(entry: unknown): entry is SessionMessageEntry & { message: AssistantMessage } {
 	return (
@@ -32,19 +33,22 @@ describe("SessionManager signature persistence", () => {
 	// — not off the temp dir each test passes to `SessionManager.create`. Without
 	// moving that root these tests write real blobs into the developer's
 	// `~/.veyyon`; the runner's sandbox HOME hid it until the suite was run bare.
-	let savedAgentDirEnv: string | undefined;
+	// The whole snapshot, not just `VEYYON_CODING_AGENT_DIR`: `setAgentDir` also deletes
+	// `VEYYON_PROFILE` and overwrites the pre-profile baseline, and restoring the one
+	// variable by hand left this file handing an unset profile to every suite scheduled
+	// after it. `restoreDirOverrides` is the single owner of putting all of it back.
+	let dirOverrides: DirOverridesSnapshot | undefined;
 	let agentRoot: TempDir | undefined;
 
 	beforeEach(() => {
-		savedAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
+		dirOverrides = captureDirOverrides();
 		agentRoot = TempDir.createSync("@pi-session-signature-agent-");
 		setAgentDir(agentRoot.path());
 	});
 
 	afterEach(async () => {
-		if (savedAgentDirEnv === undefined) delete process.env.VEYYON_CODING_AGENT_DIR;
-		else process.env.VEYYON_CODING_AGENT_DIR = savedAgentDirEnv;
-		__resetDirsFromEnvForTests();
+		if (dirOverrides !== undefined) restoreDirOverrides(dirOverrides);
+		dirOverrides = undefined;
 		await agentRoot?.remove();
 		agentRoot = undefined;
 	});

@@ -272,6 +272,120 @@ describe("AgentLifecycleManager", () => {
 		expect(revived.disposeCalls()).toBe(1);
 	});
 
+	/**
+	 * A ref revived from disk must rejoin the CLOSE stage, not just the park stage.
+	 *
+	 * It used to be cold-adopted with both close budgets hardcoded to zero, so an agent
+	 * restored from disk and woken once parked on its idle TTL and then stayed listed for
+	 * the rest of the session whatever `subagent.autoClose.*` said. Resume a session,
+	 * message a few old agents, and the roster grew monotonically, which is the one thing
+	 * the close stage exists to prevent. Locks the budgets travelling through the same
+	 * injected seam as the idle TTL.
+	 */
+	it("closes a cold-revived ref on the injected close budget instead of listing it forever", async () => {
+		vi.useFakeTimers();
+		const revived = makeSessionStub();
+		registry.register({
+			id: "Cold-Closes",
+			displayName: "task",
+			kind: "sub",
+			session: null,
+			sessionFile: "/tmp/Cold-Closes.jsonl",
+			status: "parked",
+		});
+		lifecycle.setPersistedSubagentReviverFactory(async () => async () => revived.session, TTL, {
+			parkedMs: TTL * 3,
+			waitingMs: TTL * 3,
+		});
+
+		await lifecycle.ensureLive("Cold-Closes");
+		expect(registry.get("Cold-Closes")?.status).toBe("idle");
+
+		// Parks on the idle TTL, exactly as before.
+		vi.advanceTimersByTime(TTL);
+		await flushAsync();
+		expect(registry.get("Cold-Closes")?.status).toBe("parked");
+
+		// And is then CLOSED on the injected budget. Before the fix it stayed parked here
+		// forever, so this is the assertion that goes red on a hardcoded zero.
+		vi.advanceTimersByTime(TTL * 3);
+		await flushAsync();
+		expect(registry.get("Cold-Closes")).toBeUndefined();
+		expect(lifecycle.has("Cold-Closes")).toBe(false);
+	});
+
+	/**
+	 * A cold-revived ref that stopped to wait on a peer gets the LONGER budget.
+	 *
+	 * The waiting budget exists because an agent that stopped to let a peer finish is the
+	 * one you are most likely to message next. That reasoning does not stop applying just
+	 * because the ref came from disk, so the waiting budget has to survive the cold-adopt
+	 * path too rather than collapsing to the quiet one.
+	 */
+	it("spends the waiting budget on a cold-revived ref that is waiting on a peer", async () => {
+		vi.useFakeTimers();
+		const revived = makeSessionStub();
+		registry.register({
+			id: "Cold-Waits",
+			displayName: "task",
+			kind: "sub",
+			session: null,
+			sessionFile: "/tmp/Cold-Waits.jsonl",
+			status: "parked",
+		});
+		lifecycle.setPersistedSubagentReviverFactory(async () => async () => revived.session, TTL, {
+			parkedMs: TTL * 2,
+			waitingMs: TTL * 6,
+		});
+
+		await lifecycle.ensureLive("Cold-Waits");
+		registry.setWaitingOnPeer("Cold-Waits", true);
+		vi.advanceTimersByTime(TTL);
+		await flushAsync();
+		expect(registry.get("Cold-Waits")?.status).toBe("parked");
+
+		// The quiet budget has elapsed and it is STILL listed, because the waiting budget
+		// is the one being spent.
+		vi.advanceTimersByTime(TTL * 2);
+		await flushAsync();
+		expect(registry.get("Cold-Waits")?.status).toBe("parked");
+
+		vi.advanceTimersByTime(TTL * 4);
+		await flushAsync();
+		expect(registry.get("Cold-Waits")).toBeUndefined();
+	});
+
+	/**
+	 * A host that installs a factory WITHOUT budgets keeps the old never-close behaviour.
+	 *
+	 * The control for the two cases above. ACP installs no factory at all and other
+	 * embedders may install one without budgets, so the default must not silently acquire
+	 * a close stage nobody asked for. This also stops the two tests above from passing
+	 * because closing became unconditional.
+	 */
+	it("never closes a cold-revived ref when the host injected no close budget", async () => {
+		vi.useFakeTimers();
+		const revived = makeSessionStub();
+		registry.register({
+			id: "Cold-Stays",
+			displayName: "task",
+			kind: "sub",
+			session: null,
+			sessionFile: "/tmp/Cold-Stays.jsonl",
+			status: "parked",
+		});
+		lifecycle.setPersistedSubagentReviverFactory(async () => async () => revived.session, TTL);
+
+		await lifecycle.ensureLive("Cold-Stays");
+		vi.advanceTimersByTime(TTL);
+		await flushAsync();
+		expect(registry.get("Cold-Stays")?.status).toBe("parked");
+
+		vi.advanceTimersByTime(TTL * 100);
+		await flushAsync();
+		expect(registry.get("Cold-Stays")?.status).toBe("parked");
+	});
+
 	it("a persisted factory that declines leaves the parked ref transcript-only", async () => {
 		registry.register({
 			id: "7-Sub",
