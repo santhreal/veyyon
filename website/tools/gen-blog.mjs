@@ -202,7 +202,7 @@ function shell({ title, description, canonical, noindex, body, tallSunset = true
 <meta property="og:site_name" content="Veyyon" />
 <meta property="og:type" content="article" />
 <meta property="og:image" content="https://veyyon.dev/og.png" />
-<meta name="twitter:card" content="summary_large_image" />${robots}
+${robots}
 <title>${escapeHtml(title)} | Veyyon</title>
 <meta property="og:title" content="${escapeHtml(title)} | Veyyon" />
 <meta property="og:url" content="${canonical}" />
