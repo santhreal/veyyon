@@ -17,12 +17,14 @@ describe("composer contextual shortcuts", () => {
 			hasDraft: true,
 			hasQueue: false,
 			canBackgroundBash: false,
+			focused: false,
 		});
 		const busy = buildComposerShortcuts(kb, {
 			busy: true,
 			hasDraft: true,
 			hasQueue: false,
 			canBackgroundBash: false,
+			focused: false,
 		});
 		// Quiet composer: no idle chrome — the interrupt chip is the live action.
 		expect(idle.length).toBe(0);
@@ -48,6 +50,7 @@ describe("composer contextual shortcuts", () => {
 			hasDraft: false,
 			hasQueue: false,
 			canBackgroundBash: false,
+			focused: false,
 		});
 		expect(idle.length).toBe(0);
 	});
@@ -62,7 +65,13 @@ describe("composer contextual shortcuts", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
 		bar.setShortcuts(
-			buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: false, canBackgroundBash: false }),
+			buildComposerShortcuts(kb, {
+				busy: true,
+				hasDraft: false,
+				hasQueue: false,
+				canBackgroundBash: false,
+				focused: false,
+			}),
 		);
 		const following = bar.render(80);
 		// Nothing about scroll state can reach this component: there is no
@@ -83,7 +92,13 @@ describe("composer contextual shortcuts", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
 		bar.setShortcuts(
-			buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: false, canBackgroundBash: false }),
+			buildComposerShortcuts(kb, {
+				busy: true,
+				hasDraft: false,
+				hasQueue: false,
+				canBackgroundBash: false,
+				focused: false,
+			}),
 		);
 		const rows = bar.render(80);
 		expect(rows.length).toBe(1);
@@ -99,13 +114,25 @@ describe("composer contextual shortcuts", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
 		bar.setShortcuts(
-			buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false, canBackgroundBash: false }),
+			buildComposerShortcuts(kb, {
+				busy: false,
+				hasDraft: false,
+				hasQueue: false,
+				canBackgroundBash: false,
+				focused: false,
+			}),
 		);
 		const idleRows = bar.render(80);
 		expect(idleRows.length).toBe(1);
 		expect(stripVTControlCharacters(idleRows[0]!).trim()).toBe("");
 		bar.setShortcuts(
-			buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true, canBackgroundBash: false }),
+			buildComposerShortcuts(kb, {
+				busy: true,
+				hasDraft: false,
+				hasQueue: true,
+				canBackgroundBash: false,
+				focused: false,
+			}),
 		);
 		const busyRows = bar.render(80);
 		expect(busyRows.length).toBe(1);
@@ -121,18 +148,21 @@ describe("composer contextual shortcuts", () => {
 			hasDraft: false,
 			hasQueue: false,
 			canBackgroundBash: false,
+			focused: false,
 		});
 		const queued = buildComposerShortcuts(kb, {
 			busy: false,
 			hasDraft: false,
 			hasQueue: true,
 			canBackgroundBash: false,
+			focused: false,
 		});
 		const busyQueued = buildComposerShortcuts(kb, {
 			busy: true,
 			hasDraft: false,
 			hasQueue: true,
 			canBackgroundBash: false,
+			focused: false,
 		});
 		expect(noQueue.some(c => c.label.includes("dequeue"))).toBe(false);
 		expect(queued.some(c => c.label.includes("dequeue"))).toBe(true);
@@ -144,7 +174,13 @@ describe("composer contextual shortcuts", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
 		bar.setShortcuts(
-			buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true, canBackgroundBash: false }),
+			buildComposerShortcuts(kb, {
+				busy: true,
+				hasDraft: false,
+				hasQueue: true,
+				canBackgroundBash: false,
+				focused: false,
+			}),
 		);
 		const raw = bar.render(80).join("\n");
 		// "accent" is silver (the structural chip/key color) in this brand —

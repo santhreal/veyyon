@@ -65,6 +65,7 @@ describe("composer background chip", () => {
 			hasDraft: false,
 			hasQueue: false,
 			canBackgroundBash: true,
+			focused: false,
 		});
 		// The exact label, not a substring probe: the chip has to name the key the
 		// operator must press, and reading it out of the keybindings manager is
@@ -78,7 +79,7 @@ describe("composer background chip", () => {
 		// that moves the cursor instead.
 		const kb = KeybindingsManager.inMemory();
 		for (const state of NON_BASH_STATES) {
-			const chips = buildComposerShortcuts(kb, { ...state, canBackgroundBash: false });
+			const chips = buildComposerShortcuts(kb, { ...state, canBackgroundBash: false, focused: false });
 			expect(chips.some(c => c.label.includes("background"))).toBe(false);
 		}
 	});
@@ -94,12 +95,14 @@ describe("composer background chip", () => {
 			hasDraft: false,
 			hasQueue: false,
 			canBackgroundBash: false,
+			focused: false,
 		});
 		const withBash = buildComposerShortcuts(kb, {
 			busy: true,
 			hasDraft: false,
 			hasQueue: false,
 			canBackgroundBash: true,
+			focused: false,
 		});
 		expect(plain[0]!.label).toBe("escape interrupt");
 		expect(withBash[0]!.label).toBe("escape interrupt");
@@ -113,6 +116,7 @@ describe("composer background chip", () => {
 			hasDraft: false,
 			hasQueue: true,
 			canBackgroundBash: true,
+			focused: false,
 		});
 		expect(chips.map(c => c.label.split(" ").pop())).toEqual(["interrupt", "background", "dequeue"]);
 		expect(chips[1]!.label).toBe("ctrl+b background");
@@ -124,7 +128,13 @@ describe("composer background chip", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
 		bar.setShortcuts(
-			buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true, canBackgroundBash: true }),
+			buildComposerShortcuts(kb, {
+				busy: true,
+				hasDraft: false,
+				hasQueue: true,
+				canBackgroundBash: true,
+				focused: false,
+			}),
 		);
 		const rows = bar.render(80);
 		expect(rows.length).toBe(1);
