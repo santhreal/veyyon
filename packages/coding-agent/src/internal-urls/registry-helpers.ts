@@ -60,11 +60,41 @@ export function artifactsDirsFromRegistry(): string[] {
  * `<artifactsDir>/<AgentId>.jsonl`, and its own children nest one level deeper
  * under `<artifactsDir>/<AgentId>/<AgentId>.<ChildId>.jsonl`. Advisor
  * transcripts (`__advisor*.jsonl`) are observability-only and excluded;
- * EPERM-rewrite backups (`.bak`) are skipped. When the same id appears in
- * multiple dirs, the first hit wins (registry dirs are scanned first).
+ * EPERM-rewrite backups (`.bak`) are skipped.
+ *
+ * AN ID FOUND IN MORE THAN ONE DIR IS OMITTED rather than resolved to the first
+ * hit. Two conversations in one process can each run an agent of the same name,
+ * and `history://Worker` then meant "whichever dir the registry enumerated
+ * first": another conversation's transcript, returned as though it were the
+ * caller's. A transcript is what an operator reads to decide what an agent did,
+ * so handing over the wrong one silently is worse than reporting it unavailable.
+ * Omitting rather than throwing keeps this a pure lookup, and the caller reports
+ * the miss; {@link ambiguousSessionFileIds} names the ids that were dropped so a
+ * caller can say "ambiguous" instead of "not found".
+ *
+ * The proper fix is to key transcripts by conversation as well as agent id,
+ * which would make the collision impossible rather than merely detected. Not
+ * done here: it changes the on-disk layout and every existing reference.
  */
 export async function sessionFilesFromDisk(): Promise<Map<string, string>> {
+	const { files } = await scanSessionFilesFromDisk();
+	return files;
+}
+
+/**
+ * Agent ids whose transcript was found in more than one artifacts dir, and so was
+ * deliberately omitted from {@link sessionFilesFromDisk}. Lets a caller distinguish
+ * "no such agent" from "several agents share that name in this process", which are
+ * different problems with different remedies.
+ */
+export async function ambiguousSessionFileIds(): Promise<Set<string>> {
+	const { ambiguous } = await scanSessionFilesFromDisk();
+	return ambiguous;
+}
+
+async function scanSessionFilesFromDisk(): Promise<{ files: Map<string, string>; ambiguous: Set<string> }> {
 	const found = new Map<string, string>();
+	const ambiguous = new Set<string>();
 	const seenDirs = new Set<string>();
 	const scan = async (dir: string, depth: number): Promise<void> => {
 		if (depth > 8 || seenDirs.has(dir)) return;
@@ -86,9 +116,21 @@ export async function sessionFilesFromDisk(): Promise<Map<string, string>> {
 			if (!isSessionFileName(name)) continue;
 			if (name.startsWith("__advisor")) continue;
 			const id = sessionFileStem(name);
-			if (!found.has(id)) found.set(id, path.join(dir, name));
+			const full = path.join(dir, name);
+			const existing = found.get(id);
+			if (existing === undefined) {
+				found.set(id, full);
+				continue;
+			}
+			// The SAME file reached twice through two dir entries is not a collision:
+			// `artifactsDirsFromRegistry` deliberately returns overlapping roots (the
+			// adopted dir and the write-time dir), and the recursive walk can arrive at
+			// one transcript by both routes. Only two DISTINCT paths are ambiguous.
+			if (existing === full) continue;
+			ambiguous.add(id);
+			found.delete(id);
 		}
 	};
 	for (const dir of artifactsDirsFromRegistry()) await scan(dir, 0);
-	return found;
+	return { files: found, ambiguous };
 }
