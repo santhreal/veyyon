@@ -18,6 +18,21 @@ import {
 import { renderOutputBlock } from "./output-block";
 import type { State } from "./types";
 
+/**
+ * The ceiling the EXPANDED arm gets, mirroring `JSON_TREE_MAX_LINES_EXPANDED` (6 collapsed, 200
+ * expanded) in `tools/json-tree.ts`, which is the same 6-line collapsed default this module uses.
+ *
+ * WHY THIS EXISTS. All four expanded arms below read `expanded ? raw.length : Math.min(...)`, so the
+ * collapsed defaults (`outputMaxLines = 6`, `codeMaxLines = 12`, `contentMaxLines = 12`) were bypassed
+ * entirely and expanding meant NO ceiling at all. Every other renderer in this package pairs its
+ * collapsed limit with a named expanded one -- `JSON_TREE_MAX_LINES_COLLAPSED/EXPANDED`,
+ * `EXPANDED_TEXT_LIMIT` in `tools/grep.ts`, `INSPECT_OUTPUT_EXPANDED_LINES`, `TV_OUTPUT_EXPANDED`,
+ * `PREVIEW_LIMITS.OUTPUT_COLLAPSED/OUTPUT_EXPANDED` -- so expanded means a BIGGER ceiling, never no
+ * ceiling. This cell is reached by `tools/read.ts`, which 54 test files import, so an expanded render
+ * of a large file put its whole length into the transcript.
+ */
+const EXPANDED_MAX_LINES = 200;
+
 export interface CodeCellOptions {
 	code: string;
 	language?: string;
@@ -133,7 +148,7 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 
 	const normalizedCode = replaceTabs(code ?? "");
 	const rawCodeLines = sanitizeTerminalLines(normalizedCode);
-	const maxCodeLines = expanded ? rawCodeLines.length : Math.min(rawCodeLines.length, codeMaxLines);
+	const maxCodeLines = Math.min(rawCodeLines.length, expanded ? EXPANDED_MAX_LINES : codeMaxLines);
 	const hiddenCodeLines = rawCodeLines.length - maxCodeLines;
 	const tail = options.codeTail === true && !expanded && hiddenCodeLines > 0;
 	const startIndex = tail ? rawCodeLines.length - maxCodeLines : 0;
@@ -184,7 +199,7 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 	const outputLines: string[] = [];
 	if (output?.trim()) {
 		const rawLines = sanitizeTerminalLines(output);
-		const maxLines = expanded ? rawLines.length : Math.min(rawLines.length, outputMaxLines);
+		const maxLines = Math.min(rawLines.length, expanded ? EXPANDED_MAX_LINES : outputMaxLines);
 		const displayLines = rawLines
 			.slice(0, maxLines)
 			.map(line => (line.includes("\x1b[") ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line))));
@@ -239,7 +254,7 @@ export function renderMarkdownCell(options: MarkdownCellOptions, theme: Theme): 
 	// `renderOutputBlock` adds a `│ ` prefix + `│` suffix → 3 visible columns.
 	const innerWidth = Math.max(20, width - 3);
 	const allLines = content.trim() ? new Markdown(content, 0, 0, getMarkdownTheme()).render(innerWidth) : [];
-	const maxContentLines = expanded ? allLines.length : Math.min(allLines.length, contentMaxLines);
+	const maxContentLines = Math.min(allLines.length, expanded ? EXPANDED_MAX_LINES : contentMaxLines);
 	const contentLines = allLines.slice(0, maxContentLines);
 	const hiddenContentLines = allLines.length - maxContentLines;
 	if (hiddenContentLines > 0) {
@@ -251,7 +266,7 @@ export function renderMarkdownCell(options: MarkdownCellOptions, theme: Theme): 
 	const outputLines: string[] = [];
 	if (output?.trim()) {
 		const rawLines = sanitizeTerminalLines(output);
-		const maxLines = expanded ? rawLines.length : Math.min(rawLines.length, outputMaxLines);
+		const maxLines = Math.min(rawLines.length, expanded ? EXPANDED_MAX_LINES : outputMaxLines);
 		const displayLines = rawLines
 			.slice(0, maxLines)
 			.map(line => (line.includes("\x1b[") ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line))));

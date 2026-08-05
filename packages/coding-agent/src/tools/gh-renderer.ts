@@ -366,7 +366,12 @@ function renderFallbackComponent(
 	return framedBlock(theme, width => {
 		const lineWidth = Math.max(1, (width || FALLBACK_WIDTH) - 3);
 		const expanded = options.expanded;
-		const limit = expanded ? allLines.length : Math.min(allLines.length, PREVIEW_LIMITS.OUTPUT_EXPANDED);
+		// Line 257 above already pairs these correctly. This site had them swapped: the COLLAPSED arm
+		// was given OUTPUT_EXPANDED and the expanded arm no ceiling at all.
+		const limit = Math.min(
+			allLines.length,
+			expanded ? PREVIEW_LIMITS.OUTPUT_EXPANDED : PREVIEW_LIMITS.OUTPUT_COLLAPSED,
+		);
 		const visible = allLines.slice(0, limit);
 		const remaining = allLines.length - visible.length;
 
