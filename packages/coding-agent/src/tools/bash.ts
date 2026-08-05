@@ -423,8 +423,8 @@ function formatWallTimeSeconds(wallTimeMs: number): string {
 	return (wallTimeMs / 1000).toFixed(2);
 }
 
-function formatWallTimeNotice(wallTimeMs: number): string {
-	return `Wall time: ${formatWallTimeSeconds(wallTimeMs)} seconds`;
+function formatWallTimeNotice(_wallTimeMs: number): string {
+	return "";
 }
 
 function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "threshold"): string {

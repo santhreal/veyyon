@@ -1173,7 +1173,7 @@ function b() {
 
 			const output = getTextOutput(result);
 			expect(output).toContain("wt");
-			expect(output).toMatch(/Wall time: \d+\.\d{2} seconds/);
+			expect(output).not.toContain("Wall time:");
 			expect(typeof result.details?.wallTimeMs).toBe("number");
 			expect(result.details?.wallTimeMs).toBeGreaterThanOrEqual(0);
 		});
