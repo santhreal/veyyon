@@ -69,7 +69,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir(ctx, { dir, providerId: PROVIDER_ID, level: "project" }),
+					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
 				),
 			);
 			const names = results.flatMap(r => r.items).map(s => s.name);
@@ -81,7 +81,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir(ctx, { dir, providerId: PROVIDER_ID, level: "project" }),
+					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
 				),
 			);
 			const names = results.flatMap(r => r.items).map(s => s.name);
@@ -94,7 +94,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir(ctx, { dir, providerId: PROVIDER_ID, level: "project" }),
+					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
 				),
 			);
 			const names = results.flatMap(r => r.items).map(s => s.name);
@@ -109,7 +109,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir(ctx, { dir, providerId: PROVIDER_ID, level: "project" }),
+					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
 				),
 			);
 			const names = results.flatMap(r => r.items).map(s => s.name);
@@ -123,7 +123,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir(ctx, { dir, providerId: PROVIDER_ID, level: "project" }),
+					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
 				),
 			);
 			const names = results.flatMap(r => r.items).map(s => s.name);
@@ -149,7 +149,7 @@ describe("agents provider project-level discovery", () => {
 			expect(candidates).not.toContain(path.join(repoRoot, ".agents", "skills"));
 
 			const results = await Promise.all(
-				candidates.map(dir => scanSkillsFromDir(noRepoCtx, { dir, providerId: PROVIDER_ID, level: "project" })),
+				candidates.map(dir => scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" })),
 			);
 			const names = results.flatMap(r => r.items).map(s => s.name);
 			expect(names).toContain("local-skill");
@@ -168,7 +168,7 @@ describe("agents provider project-level discovery", () => {
 		test("returns empty when no ancestor has skills", async () => {
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "skills").map(dir =>
-					scanSkillsFromDir(ctx, { dir, providerId: PROVIDER_ID, level: "project" }),
+					scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "project" }),
 				),
 			);
 			expect(results.flatMap(r => r.items)).toHaveLength(0);
@@ -185,7 +185,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "rules").map(dir =>
-					loadFilesFromDir<Rule>(ctx, dir, PROVIDER_ID, "project", {
+					loadFilesFromDir<Rule>(dir, PROVIDER_ID, "project", {
 						extensions: ["md", "mdc"],
 						transform: (name, content, filePath, source) =>
 							buildRuleFromMarkdown(name, content, filePath, source, {
@@ -204,7 +204,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "rules").map(dir =>
-					loadFilesFromDir<Rule>(ctx, dir, PROVIDER_ID, "project", {
+					loadFilesFromDir<Rule>(dir, PROVIDER_ID, "project", {
 						extensions: ["md", "mdc"],
 						transform: (name, content, filePath, source) =>
 							buildRuleFromMarkdown(name, content, filePath, source, {
@@ -225,7 +225,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "rules").map(dir =>
-					loadFilesFromDir<Rule>(ctx, dir, PROVIDER_ID, "project", {
+					loadFilesFromDir<Rule>(dir, PROVIDER_ID, "project", {
 						extensions: ["md", "mdc"],
 						transform: (name, content, filePath, source) =>
 							buildRuleFromMarkdown(name, content, filePath, source, {
@@ -250,7 +250,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "prompts").map(dir =>
-					loadFilesFromDir(ctx, dir, PROVIDER_ID, "project", {
+					loadFilesFromDir(dir, PROVIDER_ID, "project", {
 						extensions: ["md"],
 						transform: (name, content, filePath, source) => ({
 							name: name.replace(/\.md$/, ""),
@@ -271,7 +271,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "prompts").map(dir =>
-					loadFilesFromDir(ctx, dir, PROVIDER_ID, "project", {
+					loadFilesFromDir(dir, PROVIDER_ID, "project", {
 						extensions: ["md"],
 						transform: (name, content, filePath, source) => ({
 							name: name.replace(/\.md$/, ""),
@@ -299,7 +299,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "commands").map(dir =>
-					loadFilesFromDir(ctx, dir, PROVIDER_ID, "project", {
+					loadFilesFromDir(dir, PROVIDER_ID, "project", {
 						extensions: ["md"],
 						transform: (name, content, filePath, source) => ({
 							name: name.replace(/\.md$/, ""),
@@ -321,7 +321,7 @@ describe("agents provider project-level discovery", () => {
 
 			const results = await Promise.all(
 				getProjectPathCandidates(ctx, "commands").map(dir =>
-					loadFilesFromDir(ctx, dir, PROVIDER_ID, "project", {
+					loadFilesFromDir(dir, PROVIDER_ID, "project", {
 						extensions: ["md"],
 						transform: (name, content, filePath, source) => ({
 							name: name.replace(/\.md$/, ""),

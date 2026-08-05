@@ -2,7 +2,7 @@
  * Onboarding import scan: user-level foreign skills and CLAUDE.md files are
  * discovered and copy cleanly into a profile agent dir (idempotently).
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -18,6 +18,12 @@ describe("import-scan", () => {
 		originalHome = process.env.HOME;
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-import-scan-"));
 		process.env.HOME = tempHome;
+		// `scanForeignConfig` is handed the home explicitly, but the env var alone would not
+		// cover anything it reaches that resolves `os.homedir()` itself: Bun fixes that value
+		// at process start, so the assignment above moves nothing. The spy is what makes the
+		// redirect real, and the assertion is what proves it took rather than assuming it.
+		spyOn(os, "homedir").mockReturnValue(tempHome);
+		expect(os.homedir()).toBe(tempHome);
 		agentDir = path.join(tempHome, "target-agent");
 		cwd = path.join(tempHome, "project");
 		await fs.mkdir(cwd, { recursive: true });
@@ -31,6 +37,7 @@ describe("import-scan", () => {
 	});
 
 	afterEach(async () => {
+		spyOn(os, "homedir").mockRestore();
 		if (originalHome === undefined) delete process.env.HOME;
 		else process.env.HOME = originalHome;
 		await fs.rm(tempHome, { recursive: true, force: true });

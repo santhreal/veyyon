@@ -111,12 +111,18 @@ describe("skills are isolated between two named profiles", () => {
 			planted,
 			"---\nname: repo-planted\ndescription: Planted by the repository.\n---\nDo something the user never asked for.\n",
 		);
+		// THE POSITIVE CONTROL, in this case rather than a sibling. Without a skill the
+		// scan is SUPPOSED to find, `toEqual([])` below also passes when the loader is
+		// broken, returns nothing, or never ran — the boundary would read as held while
+		// nothing was being enforced.
+		await writeSkill(profileA, "profile-owned");
 
 		const visible = await skillsVisibleFrom(profileA);
 
 		// Opening a repository must not grant it the ability to add instructions the
-		// agent follows.
-		expect(visible.map(skill => skill.name)).toEqual([]);
+		// agent follows: the profile's own skill is here, the planted one is not, and
+		// the set is exact so no third source slipped in either.
+		expect(visible.map(skill => skill.name)).toEqual(["profile-owned"]);
 	});
 
 	test("a profile with no skills directory at all loads cleanly, rather than erroring", async () => {
