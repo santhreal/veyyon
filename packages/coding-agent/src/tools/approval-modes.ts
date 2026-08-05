@@ -85,6 +85,7 @@ export const AUTONOMY_LABEL: Record<AutonomyLevel, string> = {
 	auto: "Auto",
 	yolo: "Yolo",
 };
+
 const APPROVAL_MODE_SET: ReadonlySet<string> = new Set(APPROVAL_MODE_VALUES);
 
 /** True when `mode` is one of the accepted approval-mode strings (not a typo). */
