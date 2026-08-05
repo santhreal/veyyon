@@ -344,10 +344,21 @@ async function pinKeyRoot(globalConfigRoot: string, expected?: KeyRootIdentity):
 
 	let handle: fs.FileHandle | undefined;
 	try {
-		handle = await fs.open(
-			globalConfigRoot,
-			fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | fsConstants.O_NOFOLLOW,
-		);
+		try {
+			handle = await fs.open(
+				globalConfigRoot,
+				fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | fsConstants.O_NOFOLLOW,
+			);
+		} catch (error) {
+			// Parity with the `lstat` branch above, which names the key directory and the reason. Left
+			// uncaught this reported `EACCES: permission denied, open '<root>'`, which says nothing
+			// about a key: an operator whose config root lost its read bit could not tell this apart
+			// from any other permission fault in the process.
+			throw new Error(
+				`The vault key directory at ${safeText(globalConfigRoot)} could not be opened safely ` +
+					`(${safeError(error)}).`,
+			);
+		}
 		const opened = await handle.stat();
 		const after = await fs.lstat(globalConfigRoot);
 		if (
