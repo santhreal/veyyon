@@ -159,6 +159,12 @@ export const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
 		reason:
 			"It imports `__tripwire` only for the two PURE containment predicates, `resolveForContainment` and `isInsideResolved`, and calls them on paths it built under its own tracked temp directories. It names no real path and the fs probe measured zero real-home access from it. The entry exists because the import is the honest trigger for this rule and an import of the tripwire's internals is worth one line of justification.",
 	},
+	{
+		file: "packages/utils/test/sandbox-gate-contracts.test.ts",
+		rule: "real-home-reference",
+		reason:
+			"It is the gate's own suite, and half its subject is the tripwire, which cannot be probed without naming the variable that tells the tripwire what to forbid. What it names is NOT the real config root: every occurrence sets `VEYYON_TEST_REAL_CONFIG_ROOT` to a freshly `mkdtemp`ed directory in the child it spawns, precisely so a door that turns out to be UNGUARDED writes there instead of into the operator's home — which is what makes the red proofs of the six write doors safe to run at all. Each probe removes its own root in a `finally`, and each asserts the root is empty afterwards, so an unguarded door is reported by the absence of the file rather than by damage. The real `~/.veyyon` is never resolved, opened, or written by this file.",
+	},
 	// The seven below are all `unresolved-spawn-target`: a spawn whose command argument is a
 	// variable, a parameter or a property, so no reader of the source alone can say what it
 	// runs. Each reason therefore has to answer the one question the analyzer could not, which
@@ -334,27 +340,43 @@ function spawnCallRegex(source: string): RegExp {
 }
 
 /**
- * Every `const NAME = "literal"` in the file, so a command spelled through a variable can
- * still be read. `const bin = "veyyon"; spawnSync(bin, ["auth", "list"])` scanned clean
- * before this existed, and unlike a redirected WRITE, which the real-data tripwire refuses
- * at runtime whatever the path was called, a spawn of the installed binary has no runtime
- * backstop at all: it reaches the operator's real profile, credentials and model spend on
- * the first call and nothing reports it.
+ * Every `const NAME = "literal"` and `const NAME = ["literal", ...]` in the file, so a
+ * command spelled through a variable can still be read.
+ * `const bin = "veyyon"; spawnSync(bin, ["auth", "list"])` scanned clean before this
+ * existed, and unlike a redirected WRITE, which the real-data tripwire refuses at runtime
+ * whatever the path was called, a spawn of the installed binary has no runtime backstop at
+ * all: it reaches the operator's real profile, credentials and model spend on the first
+ * call and nothing reports it.
+ *
+ * THE ARRAY FORM IS NOT A CONVENIENCE. `const emit = ["sh", "-c", "..."]` followed by
+ * three `spawn(emit)` calls is the single most natural way to write a test that runs one
+ * command several ways, and it used to produce three `unresolved-spawn-target` violations
+ * whose only honest resolution was an allowlist entry -- an excuse recorded against a file
+ * whose command is `sh`, sitting in plain sight one line above the call. Every allowlist
+ * entry is a place the gate has stopped looking, so paying one for a target the gate could
+ * simply read is the worst trade available: it buys nothing and permanently blinds the
+ * rule for that whole file, including the veyyon spawn somebody adds to it next year.
+ * Binding the array's HEAD is exactly right, because the head is the command and the tail
+ * is its arguments.
  *
  * A name bound more than once resolves to nothing rather than to its first value, and an
  * interpolated template is not a constant. Both then fall through to the unresolvable
  * case, which is a violation, so being unable to read a name never reads as safe.
  */
 const STRING_BINDING = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(["'`])((?:\\.|(?!\2)[^\\\n])*)\2/g;
+const ARRAY_HEAD_BINDING =
+	/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=\s*\[\s*(["'`])((?:\\.|(?!\2)[^\\\n])*)\2/g;
 const AMBIGUOUS = Symbol("bound more than once");
 
 function stringBindings(source: string): Map<string, string | typeof AMBIGUOUS> {
 	const bindings = new Map<string, string | typeof AMBIGUOUS>();
-	STRING_BINDING.lastIndex = 0;
-	for (let match = STRING_BINDING.exec(source); match; match = STRING_BINDING.exec(source)) {
-		const name = match[1] as string;
-		const value = match[3] as string;
-		bindings.set(name, bindings.has(name) || value.includes("${") ? AMBIGUOUS : value);
+	for (const pattern of [STRING_BINDING, ARRAY_HEAD_BINDING]) {
+		pattern.lastIndex = 0;
+		for (let match = pattern.exec(source); match; match = pattern.exec(source)) {
+			const name = match[1] as string;
+			const value = match[3] as string;
+			bindings.set(name, bindings.has(name) || value.includes("${") ? AMBIGUOUS : value);
+		}
 	}
 	return bindings;
 }
@@ -1295,6 +1317,30 @@ describe("the detectors", () => {
 	it("does NOT flag a command resolved through a variable to something harmless", () => {
 		const source = [`const tool = "git";`, `spawnSync(tool, ["status"]);`].join("\n");
 		expect(rulesFor(source)).toEqual([]);
+	});
+
+	/**
+	 * `const argv = ["sh", "-c", "..."]` reused across several spawns is the ordinary way to
+	 * write "run this one command three ways", and reading only STRING bindings made every
+	 * one of those calls an `unresolved-spawn-target`. That is worse than a false negative:
+	 * the only way to clear it is an allowlist entry, and an allowlist entry switches the
+	 * whole rule off for that file, so a readable `sh` bought permanent blindness to a
+	 * `veyyon` added to the same file later. The head of the array is the command.
+	 */
+	it("reads a command out of an argv array bound to a variable", () => {
+		const source = [`const emit = ["sh", "-c", "printf x"];`, `spawn(emit).bytes();`].join("\n");
+		expect(rulesFor(source)).toEqual([]);
+	});
+
+	it("still catches the installed binary when it is the head of a bound argv array", () => {
+		const source = [`const argv = ["veyyon", "auth", "list"];`, `Bun.spawnSync(argv);`].join("\n");
+		expect(rulesFor(source)).toEqual(["installed-binary-spawn"]);
+	});
+
+	/** The head is the command; an argument further along says nothing about what runs. */
+	it("does not let a later array element stand in for the command", () => {
+		const source = [`const argv = [runner, "veyyon"];`, `Bun.spawnSync(argv);`].join("\n");
+		expect(rulesFor(source)).toEqual(["unresolved-spawn-target"]);
 	});
 
 	it("does NOT flag the test runner's own executable", () => {

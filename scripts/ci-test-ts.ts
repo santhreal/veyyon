@@ -4,6 +4,23 @@ import * as nodeFs from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+// THE OTHER DOOR, closed on purpose rather than by luck. This script SPAWNS every `bun
+// test` chunk itself, so running it on the host runs the whole suite on the host. The gate
+// exits the process when isolation is not proven, once, here, instead of the per-chunk
+// preload refusing thousands of children one at a time.
+//
+// It refuses rather than wrapping each chunk the way `scripts/preflight.ts` does, and the
+// difference is real: chunks run with `cwd` set to a package directory, so wrapping them
+// individually would mean one sandbox per chunk, each with its own working directory, and a
+// rung whose start-up cost is paid hundreds of times. Running this whole script inside one
+// sandbox is cheaper AND a stronger boundary, because the children inherit it and cannot be
+// spawned outside it.
+//
+// Imported BY NAME even though `./temp-dir-janitor` below already reaches it through
+// `sandbox-home`. That transitive path is an accident of what this file happens to need
+// today, and a refusal that depends on an unrelated import is one cleanup away from
+// silently reopening the door.
+import "../packages/utils/test/helpers/sandbox-gate";
 import {
 	STALE_TEMP_DIR_AGE_MS,
 	sweepStaleTempDirs,

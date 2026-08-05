@@ -29,6 +29,23 @@ export const CONFIG_DIR_ENV_KEYS: readonly string[] = ["VEYYON_CONFIG_DIR"];
 export const PROFILE_ENV_KEYS: readonly string[] = ["VEYYON_PROFILE"];
 
 /**
+ * The marker the test sandbox guest sets, and the only thing that may authorise a config root
+ * inside the operator's home.
+ *
+ * It belongs with the keys above rather than in the test helpers because both sides of the rule need
+ * it and they live in different halves of the repository. `dirs.ts` reads it to decide whether a
+ * `VEYYON_CONFIG_DIR` that resolves under `os.homedir()` is a disposable guest home or the operator's
+ * real one, and `packages/utils/test/helpers/sandbox-gate.ts` reads it to refuse to run at all. A
+ * second copy of the name is a gate that opens on one spelling and not the other.
+ *
+ * Unlike every key above it, this one does NOT redirect anything, so it is deliberately absent from
+ * {@link DIR_OVERRIDE_ENV_KEYS} and {@link DIR_LOCATION_ENV_KEYS}: a test that strips directory
+ * overrides from a child environment must not strip the child's proof that it is sandboxed, and a
+ * `$HOME/.env` must never be able to grant it.
+ */
+export const SANDBOX_MARKER_ENV_KEY = "VEYYON_TEST_SANDBOX";
+
+/**
  * The XDG base directories veyyon honours on Linux, grouped because a user who relocates one of them
  * usually writes all four into the same `$HOME/.env`.
  *
