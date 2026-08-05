@@ -20,7 +20,7 @@ import type { AgentRef } from "../registry/agent-registry";
 import { AgentRegistry } from "../registry/agent-registry";
 import { formatSessionHistoryMarkdown } from "../session/session-history-format";
 import { loadSessionMessagesReadOnly } from "../session/session-loader";
-import { ambiguousSessionFileIds, sessionFilesFromDisk } from "./registry-helpers";
+import { ambiguousSessionFileIds, liveConversationScopes, sessionFilesFromDisk } from "./registry-helpers";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
 
 /** Humanize a last-activity timestamp as `Ns/Nm/Nh/Nd ago`. */
@@ -58,6 +58,26 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 	async resolve(url: InternalUrl): Promise<InternalResource> {
 		const agentId = url.rawHost || url.hostname;
 		const registry = AgentRegistry.global();
+		// The disk fallback already refuses an id that names a transcript in two
+		// conversations, but the REGISTRY path never reached it: `registry.get(id)`
+		// is a process-global lookup by a name the caller chose, so a live ref
+		// belonging to another conversation was served directly, and the bare index
+		// listed every conversation's agents in one table. Neither can be filtered
+		// here: `ProtocolHandler.resolve` is handed no agent id and no scope, so
+		// this handler genuinely does not know who is asking. Refuse while the
+		// process drives more than one conversation, and say why: a transcript is
+		// the fullest record an agent leaves, and handing over the wrong one
+		// silently is the failure this whole boundary exists to prevent. Single-
+		// conversation hosts, which is every interactive run, are unaffected.
+		const conversations = liveConversationScopes();
+		if (conversations.length > 1) {
+			throw new Error(
+				`history:// is unavailable while this process drives ${conversations.length} conversations at once.\n` +
+					`Agent ids are per-conversation names and this URL carries no conversation, so serving one would ` +
+					`be a guess between them.\n` +
+					`Read the transcript from the session that spawned the agent, or open its session file directly.`,
+			);
+		}
 		// Advisor transcripts are observability-only — surfaced in the Agent Control Center, never
 		// in the agent-facing roster. Hide them from the index, lookup, and completions.
 		const visible = registry.list().filter(ref => ref.kind !== "advisor");
@@ -193,7 +213,16 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 		return `${lines.join("\n")}\n`;
 	}
 
+	/**
+	 * Completions are silent-empty while the process drives several conversations,
+	 * for the reason `resolve` refuses: every id here is a name from SOME
+	 * conversation and the completer cannot say which is the caller's. Offering
+	 * them all would put another conversation's agent names in an operator's
+	 * autocomplete, which is the leak stated as plainly as it can be, and every
+	 * one of those completions resolves to a refusal anyway.
+	 */
 	async complete(): Promise<UrlCompletion[]> {
+		if (liveConversationScopes().length > 1) return [];
 		const completions: UrlCompletion[] = [];
 		const seen = new Set<string>();
 		for (const ref of AgentRegistry.global().list()) {

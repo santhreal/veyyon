@@ -379,6 +379,62 @@ export class AgentRegistry {
 		return this.list().filter(ref => AgentRegistry.sameScope(ref.scope, scope));
 	}
 
+	/** The conversation an agent belongs to, or undefined when it is unknown or unattributed. */
+	scopeOf(id: string | undefined): string | undefined {
+		return id === undefined ? undefined : this.#refs.get(id)?.scope;
+	}
+
+	/**
+	 * THE conversation-boundary decision, for every caller that has two agent ids
+	 * and needs to know whether one may reach the other. `irc send`, `irc list`,
+	 * `irc wait`'s liveness watch and the job tool's roster all route through this
+	 * or through the two list methods below, which are themselves defined in terms
+	 * of it.
+	 *
+	 * ONE owner on purpose. Those four surfaces each carried their own spelling of
+	 * the same rule, and a rule expressed four times is a rule that gets fixed
+	 * three times: the version that drifts is the one nobody remembers exists, and
+	 * it is the one that keeps the leak open. There is now nothing left to keep in
+	 * sync, and a change to the boundary is a change to this method.
+	 *
+	 * Advisors are excluded here rather than at each call site for the same
+	 * reason. They are read-only observability transcripts, never peers, and every
+	 * caller that forgot the check exposed one.
+	 */
+	canAddress(senderId: string, targetId: string): boolean {
+		if (senderId === targetId) return false;
+		const target = this.#refs.get(targetId);
+		if (!target || target.kind === "advisor") return false;
+		return AgentRegistry.sameScope(target.scope, this.scopeOf(senderId));
+	}
+
+	/**
+	 * Peers `id` may address RIGHT NOW: alive (running | idle) and in its
+	 * conversation.
+	 *
+	 * Flat namespace within a conversation: every other agent of the same scope
+	 * is visible, at any depth. Across conversations nothing is, which is what
+	 * stops `irc list` in a resumed session from offering peers that belong to
+	 * the transcript it replaced.
+	 */
+	listVisibleTo(id: string): AgentRef[] {
+		return this.list().filter(
+			ref => this.canAddress(id, ref.id) && (ref.status === "running" || ref.status === "idle"),
+		);
+	}
+
+	/**
+	 * Peers `id` may address at all, including PARKED ones.
+	 *
+	 * Parked is not dead: messaging a parked peer revives it, and that is a
+	 * supported flow, so the roster a model reads has to list them or the revival
+	 * is unreachable. `aborted` is excluded because it is the one terminal state
+	 * the bus refuses outright.
+	 */
+	listAddressableBy(id: string): AgentRef[] {
+		return this.list().filter(ref => this.canAddress(id, ref.id) && ref.status !== "aborted");
+	}
+
 	get(id: string): AgentRef | undefined {
 		return this.#refs.get(id);
 	}
@@ -387,11 +443,22 @@ export class AgentRegistry {
 		return [...this.#refs.values()];
 	}
 
-	/** Number of task subagents with a turn currently executing. */
-	runningSubagentCount(): number {
+	/**
+	 * Number of task subagents with a turn currently executing in `scope`.
+	 *
+	 * Scoped because the number is a badge an operator reads as "how much work is
+	 * mine right now". Counting the whole process makes a session that spawned
+	 * nothing report three running spawns, and there is no row anywhere in that
+	 * conversation's UI that accounts for them. An omitted scope counts
+	 * everything, for a caller with no conversation to name (a collab guest's
+	 * mirrored registry).
+	 */
+	runningSubagentCount(scope?: string): number {
 		let count = 0;
 		for (const ref of this.#refs.values()) {
-			if (ref.kind === "sub" && ref.status === "running") count++;
+			if (ref.kind !== "sub" || ref.status !== "running") continue;
+			if (!AgentRegistry.sameScope(ref.scope, scope)) continue;
+			count++;
 		}
 		return count;
 	}
@@ -429,27 +496,6 @@ export class AgentRegistry {
 			}
 		}
 		return found;
-	}
-
-	/**
-	 * Returns every alive agent (running | idle) in the CALLER's conversation,
-	 * except the caller. Advisor refs are observability-only transcripts, never
-	 * peers, so they are excluded.
-	 *
-	 * Flat namespace within a conversation: every other agent of the same scope
-	 * is visible, at any depth. Across conversations nothing is, which is what
-	 * stops `irc list` in a resumed session from offering peers that belong to
-	 * the transcript it replaced.
-	 */
-	listVisibleTo(id: string): AgentRef[] {
-		const scope = this.#refs.get(id)?.scope;
-		return this.list().filter(
-			ref =>
-				ref.id !== id &&
-				ref.kind !== "advisor" &&
-				(ref.status === "running" || ref.status === "idle") &&
-				AgentRegistry.sameScope(ref.scope, scope),
-		);
 	}
 
 	onChange(listener: RegistryListener): () => void {

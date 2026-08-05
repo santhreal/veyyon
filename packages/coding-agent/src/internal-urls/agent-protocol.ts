@@ -51,7 +51,14 @@ export class AgentProtocolHandler implements ProtocolHandler {
 			throw new Error("No session - agent outputs unavailable");
 		}
 
-		let foundPath: string | undefined;
+		// EVERY dir is searched, not just up to the first hit. Output ids are the
+		// task names a model chose (`Reviewer.md`), the artifacts dirs of every
+		// registered session are searched in registry order, and two conversations
+		// in one process routinely each produce a `Reviewer`. "First dir wins" then
+		// silently returned another conversation's result for this conversation's
+		// id, the same defect the transcript scan in `registry-helpers` already
+		// refuses, left open on the sibling scheme that reads the `.md` beside it.
+		const matches: string[] = [];
 		let anyDirExists = false;
 		const availableIds = new Set<string>();
 
@@ -66,18 +73,20 @@ export class AgentProtocolHandler implements ProtocolHandler {
 			const candidate = path.join(dir, `${outputId}.md`);
 			try {
 				await fs.stat(candidate);
-				foundPath = candidate;
-				break;
+				// Overlapping roots can reach one file twice; only DISTINCT paths are
+				// a collision.
+				if (!matches.includes(candidate)) matches.push(candidate);
+				continue;
 			} catch (err) {
 				if (!isEnoent(err)) throw err;
-				try {
-					const files = await fs.readdir(dir);
-					for (const f of files) {
-						if (f.endsWith(".md")) availableIds.add(f.replace(/\.md$/, ""));
-					}
-				} catch {
-					// Listing failures are non-fatal; continue searching.
+			}
+			try {
+				const files = await fs.readdir(dir);
+				for (const f of files) {
+					if (f.endsWith(".md")) availableIds.add(f.replace(/\.md$/, ""));
 				}
+			} catch {
+				// Listing failures are non-fatal; continue searching.
 			}
 		}
 
@@ -85,6 +94,17 @@ export class AgentProtocolHandler implements ProtocolHandler {
 			throw new Error("No artifacts directory found");
 		}
 
+		if (matches.length > 1) {
+			throw new Error(
+				`Ambiguous agent output: ${outputId}\n` +
+					`More than one conversation in this process produced an output with that id, so the id alone ` +
+					`cannot say which one you mean, and returning either would be a guess.\n` +
+					`Read it from the session that spawned the agent, or open the file directly:\n` +
+					matches.map(candidate => `  ${candidate}`).join("\n"),
+			);
+		}
+
+		const foundPath = matches[0];
 		if (!foundPath) {
 			const availableStr = availableIds.size > 0 ? [...availableIds].join(", ") : "none";
 			throw new Error(`Not found: ${outputId}\nAvailable: ${availableStr}`);

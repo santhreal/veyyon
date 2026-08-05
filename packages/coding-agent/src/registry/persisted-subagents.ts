@@ -28,6 +28,17 @@ import { type AgentRegistry, MAIN_AGENT_ID } from "./agent-registry";
  * read leaves the roster with whatever the process itself knows, and says so in
  * the log rather than taking down the screen that called it.
  *
+ * `scope` is the conversation these transcripts belong to, and every ref is
+ * registered with it EXPLICITLY rather than inheriting it through `parentId`.
+ * Inheritance cannot do the job here: the seeded parent chain terminates at
+ * `MAIN_AGENT_ID`, which is the driving agent's id only in the interactive TUI.
+ * An ACP root registers as `acp:<sessionId>` and an SDK host names its own, so
+ * in exactly the multi-conversation processes that need scoping there is no
+ * `Main` ref to inherit from and every seeded agent landed with an UNDEFINED
+ * scope. An undefined scope is deliberately visible to everyone, so one
+ * conversation opening its Control Center published its whole on-disk subagent
+ * tree into every other conversation's roster in the same process.
+ *
  * The COUNT is what a caller repaints on. A session with no subagents on disk,
  * or none this process did not already know about, changes nothing, and a
  * screen that refreshed and repainted anyway did a full roster rebuild on every
@@ -36,11 +47,12 @@ import { type AgentRegistry, MAIN_AGENT_ID } from "./agent-registry";
 export async function registerPersistedSubagents(
 	registry: AgentRegistry,
 	sessionFile: string | null | undefined,
+	scope?: string,
 ): Promise<number> {
 	if (!sessionFile || !isSessionFileName(sessionFile)) return 0;
 	const root = sessionFile.slice(0, -6);
 	try {
-		return await registerPersistedSubagentsFromDir(registry, root, undefined);
+		return await registerPersistedSubagentsFromDir(registry, root, undefined, scope);
 	} catch (error) {
 		logger.warn("Failed to register persisted subagents", { error });
 		return 0;
@@ -51,6 +63,7 @@ async function registerPersistedSubagentsFromDir(
 	registry: AgentRegistry,
 	dir: string,
 	parentId: string | undefined,
+	scope: string | undefined,
 ): Promise<number> {
 	let entries: fs.Dirent[];
 	try {
@@ -87,6 +100,7 @@ async function registerPersistedSubagentsFromDir(
 					session: null,
 					sessionFile,
 					status: "parked",
+					scope,
 				});
 				registered += 1;
 			}
@@ -102,10 +116,11 @@ async function registerPersistedSubagentsFromDir(
 				session: null,
 				sessionFile,
 				status: "parked",
+				scope,
 			});
 			registered += 1;
 		}
-		registered += await registerPersistedSubagentsFromDir(registry, path.join(dir, id), id);
+		registered += await registerPersistedSubagentsFromDir(registry, path.join(dir, id), id, scope);
 	}
 	return registered;
 }

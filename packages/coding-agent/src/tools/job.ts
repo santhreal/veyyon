@@ -342,7 +342,15 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		}
 		const now = Date.now();
 		const out: AgentActivitySnapshot[] = [];
-		for (const ref of registry.list()) {
+		// The caller's conversation only, resolved through the same registry owner
+		// that decides what `irc list` shows. The comment above is right that
+		// existence is already public via the `irc` roster, but that roster is
+		// scoped and this list was not, so this was the one surface that named
+		// agents `irc list` deliberately withholds. It then tells the model to
+		// "coordinate via irc", which for a foreign id is advice that cannot be
+		// followed: the send is refused by scope. Listing an unreachable stranger
+		// is worse than listing nothing.
+		for (const ref of registry.listInScope(registry.scopeOf(selfId))) {
 			if (ref.kind !== "sub" || ref.status !== "running") continue;
 			if (ref.id === selfId || covered.has(ref.id)) continue;
 			out.push({

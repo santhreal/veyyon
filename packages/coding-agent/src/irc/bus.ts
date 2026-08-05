@@ -19,7 +19,7 @@ import { type InstrumentationLevel, sessionTelemetryDetail } from "@veyyon/ai/in
 import { errorMessage, logger, Snowflake } from "@veyyon/utils";
 import { settingsOrNull } from "../config/settings-instance";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
-import { type AgentKind, AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
+import { type AgentKind, AgentRegistry } from "../registry/agent-registry";
 import type { CustomMessage } from "../session/messages";
 
 export interface IrcMessage {
@@ -141,6 +141,26 @@ export interface IrcLogEntry {
 	error?: string;
 	/** Content-free structured delivery facts, gated by session instrumentation. */
 	telemetry?: IrcDeliveryTelemetry;
+	/**
+	 * The conversation this line belongs to, stamped at record time from the
+	 * sender's (else the recipient's) {@link AgentRef.scope}.
+	 *
+	 * Recorded rather than re-derived, because an agent id is not a conversation
+	 * key. The registry map holds one ref per id at a time, but ids are
+	 * model-chosen task names and two conversations in one process routinely run
+	 * a `Reviewer` each, sequentially or after a release. Re-deriving the owner
+	 * of a historical line from today's registry therefore attributes it to
+	 * whichever conversation happens to hold the name now, and the two readers
+	 * of this log both did exactly that: the Comms pane filtered by current
+	 * membership (so a released agent's last words vanished, and a stranger's
+	 * survived under a recycled name) and `forgetAgents` deleted by bare id (so
+	 * a `/new` in one conversation erased another's traffic). At record time
+	 * both endpoints are registered, so the answer is known and cannot rot.
+	 *
+	 * Undefined when neither endpoint carried a scope. Treated as visible by
+	 * `AgentRegistry.sameScope`, the same permissive rule the roster uses.
+	 */
+	scope?: string;
 }
 
 interface IrcWaiter {
@@ -287,11 +307,28 @@ export class IrcBus {
 	 * which is exactly the "agents from another session" the scoping fixes
 	 * everywhere else.
 	 *
+	 * `scope` is the conversation being torn down, and it BOUNDS the purge. The
+	 * ids alone do not: they are model-chosen task names, so a `Reviewer` in the
+	 * conversation that is ending names the same string as a `Reviewer` that
+	 * another conversation in this process ran earlier, and an id-only filter
+	 * deleted that stranger's lines too. Deleting another conversation's record
+	 * is the same cross-conversation write the scoping exists to stop, pointed
+	 * outward instead of inward. Omitting `scope` keeps the old unbounded
+	 * behaviour, for a caller that genuinely has no conversation to name.
+	 *
+	 * Mailboxes and waiters are NOT scope-filtered, and must not be: the registry
+	 * holds one ref per id at a time, so `#mailboxes.get(id)` is unambiguously
+	 * the ref being released. That includes the releasing agent's OWN mailbox:
+	 * the call site passes its own id deliberately. Unread mail addressed to the
+	 * driving agent belongs to the conversation it was sent in, and draining it
+	 * into the transcript that replaced it is exactly the leak, so dropping it is
+	 * intended rather than collateral.
+	 *
 	 * A waiter is CANCELLED rather than dropped: it is a promise something is
 	 * blocked on, and a released agent's `wait` must unblock rather than hang for
 	 * the life of the process.
 	 */
-	forgetAgents(ids: Iterable<string>): void {
+	forgetAgents(ids: Iterable<string>, scope?: string): void {
 		const gone = new Set(ids);
 		if (gone.size === 0) return;
 		for (const id of gone) {
@@ -306,11 +343,21 @@ export class IrcBus {
 			for (const waiter of [...(this.#waiters.get(id) ?? [])]) waiter.cancel();
 			this.#waiters.delete(id);
 		}
-		const kept = this.#log.filter(entry => !gone.has(entry.message.from) && !gone.has(entry.message.to));
+		const kept = this.#log.filter(
+			entry =>
+				!AgentRegistry.sameScope(entry.scope, scope) ||
+				(!gone.has(entry.message.from) && !gone.has(entry.message.to)),
+		);
 		if (kept.length !== this.#log.length) this.#log.splice(0, this.#log.length, ...kept);
 	}
 
 	#record(entry: IrcLogEntry, attempt: IrcDeliveryAttempt): void {
+		// Stamped here and nowhere else: both endpoints are registered at the
+		// moment a message is recorded, so this is the only place the answer is
+		// known for certain. The sender first, since a send always originates from a
+		// registered agent, with the recipient as the fallback for a synthetic
+		// line whose sender has already gone.
+		entry.scope ??= this.#scopeOf(entry.message);
 		const facts: IrcDeliveryFacts = {
 			outcome: attempt.outcome,
 			payloadBytes: Buffer.byteLength(entry.message.body, "utf8"),
@@ -367,6 +414,25 @@ export class IrcBus {
 				agentId,
 				error: String(error),
 			});
+		}
+	}
+
+	/**
+	 * The conversation a message belongs to: the sender's scope, else the
+	 * recipient's.
+	 *
+	 * Never throws. One caller is `#record`, which runs on the failure path that
+	 * exists precisely because a registry read can throw (a collab guest's
+	 * mirrored registry). Letting it propagate would lose the log line for the
+	 * one delivery that most needs recording, which is the bug the wrapper around
+	 * `#send` was added to fix. An unattributed line is permissive and visible;
+	 * a missing one is neither.
+	 */
+	#scopeOf(message: IrcMessage): string | undefined {
+		try {
+			return this.#registry.get(message.from)?.scope ?? this.#registry.get(message.to)?.scope;
+		} catch {
+			return undefined;
 		}
 	}
 
@@ -430,7 +496,7 @@ export class IrcBus {
 		const waiter = this.#takeMatchingWaiter(message.to, message.from);
 		if (waiter) {
 			waiter.resolve(message);
-			if (!opts?.suppressRelay) this.#relayToMainUi(message);
+			if (!opts?.suppressRelay) this.#relayToMainUi(message, this.#scopeOf(message));
 			return {
 				to: message.to,
 				outcome: revived ? "revived" : "injected",
@@ -454,7 +520,7 @@ export class IrcBus {
 
 		try {
 			const delivery = await session.deliverIrcMessage(message, opts);
-			if (!opts?.suppressRelay) this.#relayToMainUi(message);
+			if (!opts?.suppressRelay) this.#relayToMainUi(message, this.#scopeOf(message));
 			return {
 				to: message.to,
 				outcome: revived ? "revived" : delivery,
@@ -644,16 +710,31 @@ export class IrcBus {
 	}
 
 	/**
-	 * Surface agent↔agent traffic as a display-only card on the main session
-	 * UI. Skipped when the main agent is either endpoint: as recipient its
-	 * own `deliverIrcMessage` (or `wait` tool result) already shows the
-	 * message, and as sender the irc send tool call already rendered the
-	 * outbound body — relaying it again would duplicate it in the transcript.
+	 * Surface agent↔agent traffic as a display-only card on the driving session's
+	 * UI. Skipped when that agent is either endpoint: as recipient its own
+	 * `deliverIrcMessage` (or `wait` tool result) already shows the message, and
+	 * as sender the irc send tool call already rendered the outbound body, so
+	 * relaying it again would duplicate it in the transcript.
+	 *
+	 * The driving session is resolved BY THE TRAFFIC'S OWN CONVERSATION, not by
+	 * the literal id `Main`. Two things were wrong with the constant. It leaked:
+	 * an ACP or SDK host runs several conversations at once, only one of which
+	 * can hold the id `Main`, so every other conversation's agent chatter was
+	 * pasted verbatim into that one operator's transcript. And it silently did
+	 * nothing in the common headless case: an ACP root registers as
+	 * `acp:<sessionId>`, so `Main` never resolved and the relay a multi-agent run
+	 * depends on was simply absent.
 	 */
-	#relayToMainUi(message: IrcMessage): void {
-		if (message.to === MAIN_AGENT_ID || message.from === MAIN_AGENT_ID) return;
-		const mainSession = this.#registry.get(MAIN_AGENT_ID)?.session;
-		if (!mainSession) return;
+	#relayToMainUi(message: IrcMessage, scope: string | undefined): void {
+		// Exact scope first, then an unattributed root. Two roots can match the
+		// permissive `sameScope` rule at once (a scoped conversation plus a
+		// hand-built or mirrored ref that names none), and "whichever came first"
+		// is the class of guess this whole change exists to remove.
+		const roots = this.#registry.listInScope(scope).filter(ref => ref.kind === "main" && ref.session !== null);
+		const root = roots.find(ref => ref.scope !== undefined && ref.scope === scope) ?? roots[0];
+		if (!root?.session) return;
+		if (message.to === root.id || message.from === root.id) return;
+		const mainSession = root.session;
 		const record: CustomMessage = {
 			role: "custom",
 			customType: "irc:relay",
