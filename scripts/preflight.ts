@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 // Refuses to let a binary be built while a load-bearing operator contract is broken.
 //
+// Run: bun scripts/preflight.ts
+//
 // WHY THIS EXISTS. The suite has ~26,000 tests and roughly 31 of them are red on a
 // normal day, so red stopped being a signal: a new break hides inside the noise and
 // every rebuild became a coin flip. Worse, the suites guarding the contracts that

@@ -28,7 +28,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { getDefault, type SettingPath, type SettingTab } from "@veyyon/coding-agent/config/settings-schema";
+import {
+	getDefault,
+	getUi,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+	type SettingTab,
+} from "@veyyon/coding-agent/config/settings-schema";
 import {
 	getSettingDef,
 	getSettingsForTab,
@@ -128,6 +134,31 @@ describe("the harness this lock depends on", () => {
 				expect(typeof getSettingDef(path)?.condition, `${path} has no resolved condition`).toBe("function");
 			}
 		}
+	});
+
+	/**
+	 * THE SAME CHECK, OVER THE SCHEMA RATHER THAN OVER THE FOUR FEATURES LISTED HERE.
+	 *
+	 * The case above is the right assertion applied to a hand-written list, so it can
+	 * only ever catch a typo in a dependency somebody remembered to add to `FEATURES`.
+	 * `providers.unexpectedStopModel` was not on that list: it declared
+	 * `condition: "unexpectedStopDetection"`, no such predicate existed, the lookup
+	 * answered `undefined`, and the row rendered unconditionally on the Providers tab
+	 * for a feature whose master defaults to off. An unresolved name fails OPEN, which
+	 * is the direction that shows an operator a control for something switched off.
+	 *
+	 * Walking the schema means the next declaration cannot be wrong quietly, whether or
+	 * not anyone remembers to extend the list above.
+	 */
+	it("resolves every condition any setting declares, not only the ones listed here", () => {
+		const unresolved: string[] = [];
+		for (const path of Object.keys(SETTINGS_SCHEMA) as SettingPath[]) {
+			const declared = getUi(path)?.condition;
+			if (!declared) continue;
+			if (typeof getSettingDef(path)?.condition !== "function") unresolved.push(`${path} -> "${declared}"`);
+		}
+
+		expect(unresolved, "each names a condition that resolves to nothing, so the row renders always").toEqual([]);
 	});
 });
 

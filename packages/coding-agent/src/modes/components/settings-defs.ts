@@ -194,6 +194,10 @@ const CONDITIONS: Record<string, () => boolean> = {
 	advisorEnabled: () => whenSettingsSay(() => Settings.instance.get("advisor.enabled") === true),
 	argotEnabled: () => whenSettingsSay(() => Settings.instance.get("argot.enabled") === true),
 	autoQaEnabled: () => whenSettingsSay(() => Settings.instance.get("dev.autoqa") === true),
+	// The commit nudge reads repository state on every edit, which is the polling
+	// `git.enabled` turns off. Offering its threshold while git integration is off
+	// would be a knob with nothing behind it.
+	gitEnabled: () => whenSettingsSay(() => Settings.instance.get("git.enabled") === true),
 	// Blocking on a rejection only makes sense while rejections are reported: a
 	// run that stopped for a reason nothing was going to tell you about is worse
 	// than one that quietly overpays.
@@ -224,6 +228,14 @@ const CONDITIONS: Record<string, () => boolean> = {
 	planModeEnabled: () => whenSettingsSay(() => Settings.instance.get("plan.enabled")),
 	speechEnabled: () => whenSettingsSay(() => Settings.instance.get("speech.enabled") === true),
 	sttEnabled: () => whenSettingsSay(() => Settings.instance.get("stt.enabled") === true),
+	// `providers.unexpectedStopModel` has declared `condition: "unexpectedStopDetection"`
+	// since it shipped and this predicate did not exist, so the lookup answered
+	// `undefined` and the row rendered unconditionally: a classifier for a feature that
+	// defaults to off, offered on the Providers tab with nothing to classify. An
+	// unresolved condition name fails OPEN, which is why the suite now checks that every
+	// name in the schema lands on a predicate here rather than only the four it lists.
+	unexpectedStopDetection: () =>
+		whenSettingsSay(() => Settings.instance.get("features.unexpectedStopDetection") === true),
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
