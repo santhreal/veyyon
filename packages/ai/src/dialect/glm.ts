@@ -78,7 +78,7 @@ interface TagMatch {
 	tag: string;
 }
 
-export class GLMInbandScanner implements InbandScanner {
+class GLMInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	#call: OpenCall | null = null;

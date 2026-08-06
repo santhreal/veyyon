@@ -14,7 +14,7 @@ import { THINK_CLOSE, THINK_OPEN, TOOL_CALL_CLOSE, TOOL_CALL_OPEN } from "./wire
 
 const HOLD_TAGS = [TOOL_CALL_OPEN, TOOL_CALL_CLOSE, THINK_OPEN, THINK_CLOSE] as const;
 
-export class HermesInbandScanner implements InbandScanner {
+class HermesInbandScanner implements InbandScanner {
 	#buffer = "";
 	#inside = false;
 	#id = "";

@@ -53,7 +53,7 @@ interface OpenCall {
 	streamedInline: number;
 }
 
-export class PiNativeInbandScanner implements InbandScanner {
+class PiNativeInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	#call: OpenCall | null = null;

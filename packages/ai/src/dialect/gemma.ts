@@ -42,7 +42,7 @@ interface ParsedCall {
  * block whose argument list is `key:value` pairs; string values are wrapped in
  * the `<|"|>` token rather than ASCII quotes, so splitting must skip those spans.
  */
-export class GemmaInbandScanner implements InbandScanner {
+class GemmaInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	#thinking = "";
