@@ -115,10 +115,13 @@ export class CompactionSummaryMessageComponent implements Component {
 
 	#detailMarkdown(): string {
 		const tokenStr = this.message.tokensBefore.toLocaleString();
+		// A server-side compaction names the provider model that did it; a
+		// configured local compaction model did not apply to that compaction.
+		const attribution = this.message.compactedBy ? ` · server-side by ${this.message.compactedBy}` : "";
 		const warningNote = this.message.warning
 			? `\n\n${withIcon(theme.icon.warning, `**Warning:** ${this.message.warning}`)}`
 			: "";
-		return `**Compacted from ${tokenStr} tokens**${warningNote}\n\n${this.message.summary}`;
+		return `**Compacted from ${tokenStr} tokens**${attribution}${warningNote}\n\n${this.message.summary}`;
 	}
 }
 

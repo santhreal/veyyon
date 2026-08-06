@@ -566,6 +566,14 @@ export interface SimpleStreamOptions extends Omit<StreamOptions, "apiKey"> {
 	thinkingBudgets?: ThinkingBudgets;
 	/** Cursor exec handlers for local tool execution */
 	cursorExecHandlers?: CursorExecHandlers;
+	/**
+	 * Operator-owned instruction units delivered through Cursor's `requestContext.rules`
+	 * channel (cursor-agent only): the operator's global and profile context files, one
+	 * unit per file. The provider adds the session system prompt itself; this channel is
+	 * for file-backed units only, and repository content must never appear in it (see
+	 * {@link CursorRuleInput}).
+	 */
+	cursorRules?: CursorRuleInput[];
 	/** Hook to handle tool results from Cursor exec */
 	cursorOnToolResult?: CursorToolResultHandler;
 	/** Optional tool choice override for compatible providers */
@@ -890,6 +898,28 @@ export interface CursorMcpCall {
 export interface CursorShellStreamCallbacks {
 	onStdout(data: string): void;
 	onStderr(data: string): void;
+}
+
+/**
+ * One instruction unit for Cursor's `requestContext.rules` channel, the only channel
+ * Cursor's server honors for client-supplied instructions (the system-prompt blobs at
+ * the `rootPromptMessagesJson` head are requested and then replaced server-side).
+ *
+ * The provider maps each unit to one `CursorRule` verbatim: it does not read the
+ * filesystem and does not classify provenance. The caller owns both, and the contract
+ * is that only OPERATOR-OWNED units arrive here (the compiled system prompt, the
+ * operator's global and profile context files). Repository content — `.cursor/rules/*.mdc`,
+ * a checked-in AGENTS.md — may not configure the agent and must never be passed in.
+ */
+export interface CursorRuleInput {
+	/**
+	 * Absolute path of the file the content came from. cursor-agent sends AGENTS.md
+	 * the same way (one rule per file, real path). Compiled (non-file) content uses a
+	 * stable synthetic path owned by the caller.
+	 */
+	fullPath: string;
+	/** The instruction body, in full. cursor-agent applies no client-side size cap. */
+	content: string;
 }
 
 export interface CursorExecHandlers {

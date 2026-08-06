@@ -635,6 +635,13 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 		// first-party OpenAI row. `isOfficialOpenAIEndpoint` is the pair of claims
 		// actually meant here, unset-means-official and a re-pointed host means not.
 		supportsObfuscationOptOut: isOfficialOpenAIEndpoint(spec.provider, baseUrl),
+		// `POST /responses/compact` is documented for the official OpenAI API
+		// (Compaction guide) and for Azure OpenAI's v1 API (Microsoft Learn,
+		// `{resource}.openai.azure.com/openai/v1/responses/compact`). The codex
+		// provider stays off: its websocket/session transport owns history state,
+		// so a client-side compacted window has no replay contract there. A
+		// compatible gateway opts in with a `supportsServerCompaction` override.
+		supportsServerCompaction: isOfficialOpenAIEndpoint(spec.provider, baseUrl) || isAzure,
 		stripDeepseekSpecialTokens:
 			Boolean(id) && isDeepseekModelIdOrName(id) && (spec.provider === "nvidia" || spec.provider === "deepseek"),
 		streamMarkupHealingPattern: id ? detectStreamMarkupHealingPattern(spec.provider, id, baseUrl) : undefined,
@@ -665,6 +672,7 @@ function pickResponsesOnly(compat: ResolvedOpenAIResponsesCompat): ResponsesOnly
 		strictResponsesPairing: compat.strictResponsesPairing,
 		supportsImageDetailOriginal: compat.supportsImageDetailOriginal,
 		supportsObfuscationOptOut: compat.supportsObfuscationOptOut,
+		supportsServerCompaction: compat.supportsServerCompaction,
 	} satisfies ResponsesOnlyCompat;
 }
 

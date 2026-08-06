@@ -26,19 +26,25 @@ import { createOpenAICodexCompactionRequestContext } from "@veyyon/ai/providers/
 import { Effort } from "@veyyon/catalog/effort";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
-import { prompt } from "@veyyon/utils";
+import { logger, prompt } from "@veyyon/utils";
 import { instrumentedCompleteSimple } from "../instrumented-complete";
 import { AGENT_PROMPTS } from "../prompts/registry";
 import type { AgentTelemetry } from "../telemetry";
 import { ThinkingLevel } from "../thinking";
 import { countTokens } from "../tokenizer";
 import type { AgentMessage } from "../types";
+import {
+	buildCacheAlignedCompactionContext,
+	canUseCacheAlignedCompaction,
+	estimateCacheAlignedRequestTokens,
+} from "./cache-aligned-context";
 import type { CompactionEntry, SessionEntry } from "./entries";
 import { CompactionCancelledError } from "./errors";
 import { LEGACY_REMOTE_PRESERVE_KEYS } from "./legacy-provider-native";
 import { hasLegacyArchive, legacyArchiveSourceText, stripLegacyArchive } from "./legacy-snapcompact-archive";
 import { type ConvertToLlm, createBranchSummaryMessage, createCustomMessage, defaultConvertToLlm } from "./messages";
 import { requestRemoteCompaction } from "./remote-summarizer";
+import { stripRemoteCompactionPreserveData } from "./remote-compaction-entry";
 // The trigger decision moved to the module whose header owns it, and is re-exported below so no caller
 // changed. What is left here is the ENGINE: the summarizer, the cut point, the provider round trip.
 import { type CompactionSettings, DEFAULT_RESERVE_TOKENS } from "./threshold";
@@ -514,7 +520,15 @@ function resolveCompactionEffort(model: Model, level: ThinkingLevel | undefined)
 	if (level === ThinkingLevel.Off) return undefined;
 	const requested: Effort =
 		level === undefined || level === ThinkingLevel.Inherit ? Effort.High : effortFromThinkingLevel(level);
-	return clampThinkingLevelForModel(model, requested);
+	const clamped = clampThinkingLevelForModel(model, requested);
+	if (clamped !== requested) {
+		logger.warn("Compaction effort is not accepted by the model; using the nearest supported level", {
+			model: `${model.provider}/${model.id}`,
+			requested,
+			using: clamped ?? "provider default",
+		});
+	}
+	return clamped;
 }
 
 /**
@@ -577,6 +591,22 @@ export interface SummaryOptions {
 	codexCompaction?: CodexCompactionContext;
 	/** Provider-visible tools for remote compaction transports that replay native tool history. */
 	tools?: Tool[];
+	/**
+	 * The live session's system prompt. Threaded from `agent-session.ts` so the
+	 * summarization request can replay the prefix the provider has already cached
+	 * for this session instead of paying fresh input for a re-serialized copy of
+	 * it. Absent (the default) keeps the historical request shape exactly: a
+	 * standalone `SUMMARIZATION_SYSTEM_PROMPT` request over truncated text. See
+	 * `./cache-aligned-context`.
+	 */
+	sessionSystemPrompt?: string[];
+	/**
+	 * The live provider-visible message array, the second half of the same
+	 * plumbing. It is the WHOLE array, not the span being discarded: our
+	 * message-side cache breakpoints sit on the trailing messages, so a request
+	 * that stops at the cut point diverges before any breakpoint and misses.
+	 */
+	sessionMessages?: Message[];
 	/** Optional fetch implementation threaded into remote compaction calls. */
 	fetch?: FetchImpl;
 	/**
@@ -670,17 +700,25 @@ function buildSummaryPrompt(
 	customInstructions: string | undefined,
 	previousSummary: string | undefined,
 	options: SummaryOptions | undefined,
+	cacheAligned: boolean,
 ): { promptText: string; maxTokens: number } {
 	let basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
 	if (options?.promptOverride) basePrompt = options.promptOverride;
 	if (customInstructions) basePrompt = `${basePrompt}\n\nAdditional focus: ${customInstructions}`;
 
-	const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(currentMessages);
-	const conversationText = serializeConversationForSummary(
-		transformSummarySourceMessages(llmMessages, options),
-		preferredDialect(model.id),
-	);
-	let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
+	// Cache-aligned mode replays the conversation as real messages and hands the
+	// system slot back to the session, so nothing is re-serialized here and the
+	// summarizer framing rides in the appended user turn instead.
+	const conversationText = cacheAligned
+		? undefined
+		: serializeConversationForSummary(
+				transformSummarySourceMessages((options?.convertToLlm ?? defaultConvertToLlm)(currentMessages), options),
+				preferredDialect(model.id),
+			);
+	let promptText =
+		conversationText === undefined
+			? `${SUMMARIZATION_SYSTEM_PROMPT}\n\n`
+			: `<conversation>\n${conversationText}\n</conversation>\n\n`;
 	if (previousSummary) promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
 	promptText += formatAdditionalContext(options?.extraContext);
 	promptText += basePrompt;
@@ -697,6 +735,9 @@ export async function generateSummary(
 	previousSummary?: string,
 	options?: SummaryOptions,
 ): Promise<string> {
+	const sessionSystemPrompt = options?.sessionSystemPrompt;
+	const sessionMessages = options?.sessionMessages;
+	const cacheAligned = canUseCacheAlignedCompaction({ model, sessionSystemPrompt, sessionMessages });
 	const { promptText, maxTokens } = buildSummaryPrompt(
 		currentMessages,
 		model,
@@ -704,6 +745,7 @@ export async function generateSummary(
 		customInstructions,
 		previousSummary,
 		options,
+		cacheAligned,
 	);
 
 	if (options?.remoteEndpoint) {
@@ -737,7 +779,15 @@ export async function generateSummary(
 			// changed while credentials refreshed therefore governs this send.
 			const attemptResponse = await instrumentedCompleteSimple(
 				model,
-				buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, promptText, options),
+				cacheAligned && sessionSystemPrompt && sessionMessages
+					? buildCacheAlignedCompactionContext({
+							sessionSystemPrompt,
+							sessionMessages,
+							tools: options?.tools,
+							instruction: promptText,
+							sanitize: text => sanitizeCompactionProviderText(text, options),
+						})
+					: buildCompactionProviderContext(SUMMARIZATION_SYSTEM_PROMPT, promptText, options),
 				{
 					maxTokens,
 					signal,
@@ -1048,6 +1098,11 @@ export function estimateCompactionRequestTokens(
 		legacyArchiveSourceText(preparation.previousPreserveData),
 	);
 	const requests: number[] = [];
+	const cacheAligned = canUseCacheAlignedCompaction({
+		model,
+		sessionSystemPrompt: options?.sessionSystemPrompt,
+		sessionMessages: options?.sessionMessages,
+	});
 	const hasHistoryRequest =
 		preparation.messagesToSummarize.length > 0 || (preparation.isSplitTurn && previousSummary !== undefined);
 	if (hasHistoryRequest) {
@@ -1058,8 +1113,19 @@ export function estimateCompactionRequestTokens(
 			customInstructions,
 			previousSummary,
 			options,
+			cacheAligned,
 		);
-		requests.push(countTokens([SUMMARIZATION_SYSTEM_PROMPT, built.promptText]) + built.maxTokens);
+		// A cache-aligned request is cheap, not small: the replayed window still
+		// occupies the context window it is billed against at the cache-read rate.
+		const inputTokens =
+			cacheAligned && options?.sessionSystemPrompt && options?.sessionMessages
+				? estimateCacheAlignedRequestTokens({
+						sessionSystemPrompt: options.sessionSystemPrompt,
+						sessionMessages: options.sessionMessages,
+						instruction: built.promptText,
+					})
+				: countTokens([SUMMARIZATION_SYSTEM_PROMPT, built.promptText]);
+		requests.push(inputTokens + built.maxTokens);
 	}
 	if (preparation.isSplitTurn && preparation.turnPrefixMessages.length > 0) {
 		const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(preparation.turnPrefixMessages);
@@ -1232,6 +1298,8 @@ export async function compact(
 		providerSessionState: options?.providerSessionState,
 		codexCompaction: options?.codexCompaction,
 		tools: options?.tools,
+		sessionSystemPrompt: options?.sessionSystemPrompt,
+		sessionMessages: options?.sessionMessages,
 		fetch: options?.fetch,
 		completeImpl: options?.completeImpl,
 		obfuscateProviderText: options?.obfuscateProviderText,
@@ -1266,6 +1334,11 @@ export async function compact(
 		}
 		if (dropped) preserveData = Object.keys(carried).length > 0 ? carried : undefined;
 	}
+	// A prior REMOTE window must not ride a new local entry forward either: this
+	// summary covers the span the window covered, and replaying the stale window
+	// beside the new summary would double that history on every rebuild. The
+	// remote path re-stamps a fresh window after this function returns.
+	preserveData = stripRemoteCompactionPreserveData(preserveData);
 
 	// Generate summaries (can be parallel if both needed) and merge into one
 	let summary: string;

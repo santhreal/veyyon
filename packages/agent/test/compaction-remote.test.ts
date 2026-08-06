@@ -150,13 +150,20 @@ describe("compactWithProvider", () => {
 		expect(JSON.stringify(input)).toContain("history reply");
 	});
 
-	test("dual-writes a real local summary plus the provider window verbatim", async () => {
-		vi.spyOn(ai, "completeSimple").mockResolvedValue(makeAssistantStop("## Goal\nShip the fix."));
+	test("stores the provider window verbatim and bills no second model to paraphrase it", async () => {
+		// WHY: this used to dual-write, running a full local summary of the same
+		// span beside the provider call, which made compacting on OpenAI cost
+		// MORE than compacting locally. The provider's window is the compacted
+		// context; a second summarization buys nothing it does not already carry.
+		// `completeSimple` is every local summarization oneshot, so a call here
+		// means the second bill is back.
+		const summarize = vi.spyOn(ai, "completeSimple").mockResolvedValue(makeAssistantStop("## Goal\nShip the fix."));
 		mockCompactFetch();
 
 		const result = await compactWithProvider(makePreparation(), getOpenAIModel(), "test-key");
 
-		expect(result.summary).toContain("Ship the fix.");
+		expect(summarize).not.toHaveBeenCalled();
+		expect(result.summary).toBe("");
 		const data = getRemoteCompactionPreserveData(result.preserveData);
 		expect(data).toBeDefined();
 		expect(data?.provider).toBe("openai");
@@ -165,6 +172,31 @@ describe("compactWithProvider", () => {
 		expect(data?.inputTokens).toBe(139);
 		expect(data?.outputTokens).toBe(438);
 		expect(remoteCompactionAttribution(result.preserveData)).toBe("openai/gpt-5.1");
+	});
+
+	test("carries the structural fields the preparation owns", async () => {
+		// WHY: compact() used to supply these on the way through. Nothing else
+		// does now, and an entry without them cannot say what it hid.
+		mockCompactFetch();
+
+		const result = await compactWithProvider(makePreparation(), getOpenAIModel(), "test-key");
+
+		const preparation = makePreparation();
+		expect(result.firstKeptEntryId).toBe(preparation.firstKeptEntryId);
+		expect(result.tokensBefore).toBe(preparation.tokensBefore);
+	});
+
+	test("forwards the operator's compaction instructions to the provider", async () => {
+		// WHY: they used to reach only the local summary. With that gone they
+		// would be silently dropped, which is the one thing a configured
+		// instruction may never do.
+		const calls = mockCompactFetch();
+
+		await compactWithProvider(makePreparation(), getOpenAIModel(), "test-key", "keep every file path", undefined, {
+			remoteInstructions: "base system prompt",
+		});
+
+		expect(calls[0].body.instructions).toBe("base system prompt\n\nkeep every file path");
 	});
 
 	test("the stored window rebuilds to a provider payload for replay", async () => {
