@@ -23,7 +23,7 @@ Behavior notes:
 
 - `@file` CLI arguments are rejected in RPC mode.
 - RPC mode disables automatic session title generation by default to avoid an extra model call.
-- RPC mode host-defaults a small set of settings so embedders inherit Veyyon's neutral defaults: `subagent.isolation.mode`/`merge`/`commits`, `subagent.delegation`, `subagent.batch`, `subagent.maxConcurrency`, `subagent.maxRecursionDepth`, `subagent.agents`, `memory.backend`, and `memories.enabled`, plus `async.enabled`, `async.maxJobs`, `bash.autoBackground.enabled`, and `bash.autoBackground.thresholdMs`. The default is only applied when the path is unset: any explicit configuration (caller overrides, `--config` overlays, or the profile `config.yml`) is preserved. `todo.*` settings are always caller-controlled in protocol modes.
+- RPC mode host-defaults a small set of settings so embedders inherit Veyyon's neutral defaults: `subagent.isolation.mode`/`merge`/`commits`, `subagent.delegation`, `subagent.batch`, `subagent.maxConcurrency`, `subagent.maxNestedSpawnDepth`, `subagent.agents`, `memory.backend`, and `memories.enabled`, plus `async.enabled`, `async.maxJobs`, `bash.autoBackground.enabled`, and `bash.autoBackground.thresholdMs`. The default is only applied when the path is unset: any explicit configuration (caller overrides, `--config` overlays, or the profile `config.yml`) is preserved. `todo.*` settings are always caller-controlled in protocol modes.
 - The process reads stdin as JSONL (`readJsonl(Bun.stdin.stream())`).
 - At startup it writes `{ "type": "ready" }` before processing commands.
 - When stdin closes, pending host-tool calls and host-URI requests are rejected and the process exits with code `0`.
