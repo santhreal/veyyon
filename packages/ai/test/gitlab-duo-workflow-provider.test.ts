@@ -2294,13 +2294,18 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			},
 		).result();
 
-		// Every setup fetch we exercised must carry a real AbortSignal. `undefined` would
+		// Every setup fetch must have happened AND carried a live AbortSignal.
+		// `undefined`, a missing endpoint, or a signal that already fired would all
 		// mean the timeout regression is back.
-		for (const { method, kind } of keyKinds) {
-			const key = `${method} ${kind}`;
-			const signal = capturedSignals.get(key);
-			expect(signal, `expected ${key} fetch to carry an AbortSignal`).toBeInstanceOf(AbortSignal);
-		}
+		expect(
+			[...capturedSignals]
+				.map(([key, signal]): [string, boolean] => [key, signal instanceof AbortSignal && !signal.aborted])
+				.sort(([a], [b]) => a.localeCompare(b)),
+		).toEqual(
+			keyKinds
+				.map(({ method, kind }): [string, boolean] => [`${method} ${kind}`, true])
+				.sort(([a], [b]) => a.localeCompare(b)),
+		);
 	});
 
 	it("preserves the 401 status for an Unauthorized direct_access body so the credential can rotate", async () => {

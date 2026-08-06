@@ -2,7 +2,7 @@
  * The module-global state the leak tracer watches, beyond the environment.
  *
  * Kept apart from `global-state-leak-tracer.ts` on purpose: that module is
- * imported by `scripts/find-test-leaks.ts` outside a test runner, and it must not
+ * imported by `scripts/test-sandbox/find-test-leaks.ts` outside a test runner, and it must not
  * drag `dirs.ts` (or anything else being probed) into that process.
  *
  * Only `@veyyon/utils` is probed here. The resolver is where the state that

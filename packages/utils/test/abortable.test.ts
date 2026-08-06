@@ -71,12 +71,17 @@ describe("untilAborted", () => {
 		await expect(untilAborted(null, () => Promise.reject(new Error("inner")))).rejects.toThrow("inner");
 	});
 
-	it("rejects with AbortError when the signal fires before the promise settles", async () => {
+	it("rejects with AbortError carrying the abort reason when the signal fires first", async () => {
 		const controller = new AbortController();
 		const never = new Promise<number>(() => {});
 		const pending = untilAborted(controller.signal, never);
-		controller.abort();
-		await expect(pending).rejects.toBeInstanceOf(AbortError);
+		controller.abort(new Error("watchdog timeout"));
+		const error = await pending.then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+		expect(error).toBeInstanceOf(AbortError);
+		expect((error as Error).message).toBe("Aborted: watchdog timeout");
 	});
 
 	it("rejects immediately for an already-aborted signal without calling the thunk", async () => {

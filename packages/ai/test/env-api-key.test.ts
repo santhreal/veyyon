@@ -163,6 +163,6 @@ describe("the env-key leaf stays a leaf", () => {
 		const source = fs.readFileSync(path.join(SRC, "auth-storage.ts"), "utf-8");
 
 		expect(source).toContain('import { getEnvApiKey, getEnvApiKeyName } from "./env-api-key";');
-		expect(source).not.toContain('from "./stream"');
+		expect(moduleSpecifiersIn(source)).not.toContain("./stream");
 	});
 });

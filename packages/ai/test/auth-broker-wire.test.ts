@@ -334,7 +334,15 @@ describe("auth-broker wire surface", () => {
 		try {
 			const client = new AuthBrokerClient({ url: `http://${dummy.hostname}:${dummy.port}`, token });
 			const iter = client.openSnapshotStream();
-			await expect(iter.next()).rejects.toBeInstanceOf(AuthBrokerStreamUnsupportedError);
+			const error = await iter.next().then(
+				() => undefined,
+				(err: unknown) => err,
+			);
+			// `RemoteAuthCredentialStore` keys its permanent long-poll fallback on this
+			// sentinel, so the class AND the 404 status it carries are the contract.
+			expect(error).toBeInstanceOf(AuthBrokerStreamUnsupportedError);
+			expect((error as AuthBrokerStreamUnsupportedError).status).toBe(404);
+			expect((error as Error).message).toBe("Auth broker does not support /v1/snapshot/stream");
 		} finally {
 			dummy.stop(true);
 		}

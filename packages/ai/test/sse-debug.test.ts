@@ -19,18 +19,18 @@ describe("notifyRawSseEvent", () => {
 	});
 
 	it("keeps observer failures diagnostic-only", () => {
-		expect(() =>
-			notifyRawSseEvent(
-				() => {
-					throw new Error("observer failed");
-				},
-				{ event: "message", data: "hello", raw: ["event: message", "data: hello"] },
-			),
-		).not.toThrow();
-	});
-
-	it("is a no-op when no observer is installed", () => {
-		expect(() => notifyRawSseEvent(undefined, { event: null, data: "{}", raw: ["data: {}"] })).not.toThrow();
+		const seen: RawSseEvent[] = [];
+		const raw = ["event: message", "data: hello"];
+		// The observer must actually be CALLED and its throw swallowed. A guard
+		// that skipped the observer entirely would also never throw.
+		notifyRawSseEvent(
+			event => {
+				seen.push(event);
+				throw new Error("observer failed");
+			},
+			{ event: "message", data: "hello", raw },
+		);
+		expect(seen).toEqual([{ event: "message", data: "hello", raw }]);
 	});
 });
 

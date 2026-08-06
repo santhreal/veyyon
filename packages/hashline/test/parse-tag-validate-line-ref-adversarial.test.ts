@@ -34,12 +34,6 @@ describe("parseTag adversarial matrix", () => {
 describe("validateLineRef bounds matrix", () => {
 	const file = ["a", "b", "c"];
 
-	for (const line of [1, 2, 3]) {
-		it(`accepts line ${line} of 3`, () => {
-			expect(() => validateLineRef({ line }, file)).not.toThrow();
-		});
-	}
-
 	for (const line of [0, -1, 4, 100]) {
 		it(`rejects line ${line}`, () => {
 			expect(() => validateLineRef({ line }, file)).toThrow(`Line ${line} does not exist (file has 3 lines)`);

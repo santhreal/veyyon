@@ -333,7 +333,7 @@ describe("the naming module has one owner", () => {
 			"packages/stats/src/parser.ts",
 		]) {
 			const text = await Bun.file(path.join(repoRoot, file)).text();
-			expect(text, file).toContain('from "@veyyon/utils/session-file"');
+			expect(moduleSpecifiersIn(text), file).toContain("@veyyon/utils/session-file");
 		}
 	});
 

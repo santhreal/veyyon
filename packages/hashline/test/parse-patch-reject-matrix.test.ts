@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parsePatch } from "@veyyon/hashline";
+import { applyEdits, parsePatch } from "@veyyon/hashline";
 
 /**
  * parsePatch rejection matrix for malformed patches.
@@ -38,8 +38,10 @@ describe("parsePatch reject matrix", () => {
 		expect(warnings).toEqual([]);
 	});
 
-	it("accepts DEL without body", () => {
-		const { edits } = parsePatch("DEL 1.=1");
-		expect(edits.length).toBeGreaterThan(0);
+	it("accepts DEL without body as a pure deletion", () => {
+		const { edits, warnings } = parsePatch("DEL 1.=1");
+		expect(edits).toEqual([{ kind: "delete", anchor: { line: 1 }, lineNum: 1, index: 0 }]);
+		expect(warnings).toEqual([]);
+		expect(applyEdits("a\nb\nc", edits).text).toBe("b\nc");
 	});
 });

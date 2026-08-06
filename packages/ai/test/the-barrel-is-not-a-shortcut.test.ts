@@ -38,7 +38,13 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createModuleReachCache, type ModuleReachResolution, moduleReachCount } from "@veyyon/utils/module-reach";
+import {
+	createModuleReachCache,
+	type ModuleReachResolution,
+	moduleReachCount,
+	moduleSpecifiersIn,
+	typeOnlyModuleSpecifiersIn,
+} from "@veyyon/utils/module-reach";
 import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-workspace";
 
 const PACKAGES = path.join(import.meta.dir, "..", "..");
@@ -204,7 +210,9 @@ describe("the modules that were repointed stay cut", () => {
 	it("still takes its types from the barrel, which is free", () => {
 		const proxy = SOURCES.find(([name]) => name === "agent/src/proxy.ts")?.[1] ?? "";
 
-		expect(proxy).toContain('from "@veyyon/ai"');
-		expect(proxy).toContain("AssistantMessageEvent");
+		// Both halves. The scan this replaced was `toContain('from "@veyyon/ai"')`, which a RUNTIME
+		// import satisfies just as well, so it could not tell "free" from the thing it forbids.
+		expect(typeOnlyModuleSpecifiersIn(proxy)).toContain("@veyyon/ai");
+		expect(moduleSpecifiersIn(proxy)).not.toContain("@veyyon/ai");
 	});
 });

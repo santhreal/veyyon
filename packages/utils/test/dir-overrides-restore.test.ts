@@ -12,7 +12,7 @@
  *   agent dir, so restoring a profile through it leaves both variables behind — and every
  *   child process a later suite spawns then inherits a profile the test never chose.
  *
- * `scripts/find-test-leaks.ts` found roughly thirty suites with one or other defect, two
+ * `scripts/test-sandbox/find-test-leaks.ts` found roughly thirty suites with one or other defect, two
  * of them exporting the developer's real agent dir (`~/.veyyon/profiles/work/agent`) to
  * every later file in the process.
  *

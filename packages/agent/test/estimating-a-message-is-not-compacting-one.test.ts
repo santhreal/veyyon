@@ -158,20 +158,12 @@ describe("the three callers take the estimate from the leaf", () => {
 describe("the engine keeps the name its callers already import", () => {
 	/**
 	 * COMPATIBILITY. `estimateTokens` was a public name on `compaction.ts` before it moved, and modules
-	 * outside this directory import it from there. The re-export is what makes the move invisible to them, so
-	 * it is asserted rather than assumed: removing it would be a silent break for every caller that did not
-	 * happen to be in this package's tests.
-	 */
-	it("compaction re-exports the estimate", () => {
-		const source = fs.readFileSync(path.join(SRC, "compaction", "compaction.ts"), "utf-8");
-
-		expect(source).toContain('export { estimateTokens } from "./token-estimate"');
-	});
-
-	/**
-	 * And the two agree, by CALLING both rather than by reading source. A re-export that pointed at a second
-	 * implementation would satisfy every assertion above and give two callers different numbers, which is the
-	 * failure this whole extraction was supposed to make impossible.
+	 * outside this directory import it from there. The re-export is what makes the move invisible to them.
+	 *
+	 * Asserted by CALLING both spellings rather than by reading `compaction.ts` for an
+	 * `export { estimateTokens } from "./token-estimate"` line. A re-export pointing at a second
+	 * implementation reads identically in source and gives two callers different numbers, which is the
+	 * failure this whole extraction was supposed to make impossible; function identity separates them.
 	 */
 	it("both spellings are the same function", async () => {
 		const [fromEngine, fromLeaf] = await Promise.all([

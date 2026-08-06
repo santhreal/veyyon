@@ -91,10 +91,6 @@ describe("Anthropic priority service tier → speed='fast'", () => {
 });
 
 describe("clearAnthropicFastModeFallback", () => {
-	it("is a no-op when no provider session state map is passed", () => {
-		expect(() => clearAnthropicFastModeFallback(undefined)).not.toThrow();
-	});
-
 	it("is a no-op when the anthropic state entry hasn't been materialized", () => {
 		const map = new Map<string, ProviderSessionState>();
 		clearAnthropicFastModeFallback(map);

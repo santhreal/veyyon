@@ -28,7 +28,7 @@ const originalAgentDir = getAgentDir();
 // `setAgentDir(originalAgentDir)` alone cannot undo either: it cannot restore "the
 // variable was unset", and it leaves the process on the default profile. This suite
 // was exporting the developer's real agent dir to every file that ran after it in
-// the same process, which `scripts/find-test-leaks.ts` caught.
+// the same process, which `scripts/test-sandbox/find-test-leaks.ts` caught.
 const originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
 const originalProfileEnv = process.env.VEYYON_PROFILE;
 const originalWebSocket = global.WebSocket;

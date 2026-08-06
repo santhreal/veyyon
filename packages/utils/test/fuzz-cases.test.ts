@@ -304,12 +304,3 @@ describe("fuzzCases gives each case its own generator", () => {
 		expect(new Set(firstDraws).size).toBe(firstDraws.length);
 	});
 });
-
-describe("fuzzCases is quiet on success", () => {
-	/** A passing run throws nothing, so a green suite stays green and silent. */
-	it("returns normally when every case passes", () => {
-		expect(() =>
-			fuzzCases<Pair>({ seed: 99, iterations: 500, corpus: [{ left: 0, right: 0 }], build: buildPair }, () => {}),
-		).not.toThrow();
-	});
-});

@@ -6,7 +6,7 @@
  * through every door the tripwire hooks, using the real `os.homedir()`, with no isolation
  * helper and no temp directory anywhere in it. Run it two ways and the gate is proved:
  *
- *   bash scripts/test-sandbox.sh bun packages/utils/test/hostile-leak-probe.fixture.ts
+ *   bash scripts/test-sandbox/run.sh bun packages/utils/test/hostile-leak-probe.fixture.ts
  *       -> runs, and `~/.veyyon/leaked*` does not exist on the HOST afterwards.
  *
  *   bun packages/utils/test/hostile-leak-probe.fixture.ts

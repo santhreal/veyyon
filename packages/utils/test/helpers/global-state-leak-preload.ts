@@ -2,7 +2,7 @@
  * Preload that arms the process-global leak tracer for one test file.
  *
  * Kept separate from `global-state-leak-tracer.ts` because that module is also
- * imported by `scripts/find-test-leaks.ts` to parse the leak lines back out, and
+ * imported by `scripts/test-sandbox/find-test-leaks.ts` to parse the leak lines back out, and
  * `bun:test` hooks throw when the importing process is not the test runner. This
  * file is only ever loaded through `bun test --preload`.
  *

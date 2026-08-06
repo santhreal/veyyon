@@ -16,7 +16,7 @@
  *
  * Bun exposes no current-test name to a hook (`expect.getState()` returns null),
  * so a leak is reported as `file` plus the test's ordinal within the file, and
- * `scripts/find-test-leaks.ts` runs one file per process to keep `file` exact.
+ * `scripts/test-sandbox/find-test-leaks.ts` runs one file per process to keep `file` exact.
  * That per-file run is also what makes the result order-independent: a file that
  * leaks against its own process baseline leaks wherever it is scheduled.
  *
@@ -77,7 +77,7 @@ const probes = new Map<string, LeakProbe>();
  * of only refreshing paths.
  *
  * A registry rather than direct imports here: this module is imported by
- * `scripts/find-test-leaks.ts` outside a test runner, so it must not pull in the
+ * `scripts/test-sandbox/find-test-leaks.ts` outside a test runner, so it must not pull in the
  * packages being probed. `global-state-leak-probes.ts` registers the real ones.
  *
  * A probe that throws is recorded as `undefined` rather than crashing the hook: a
@@ -95,7 +95,7 @@ export function __clearLeakProbesForTests(): void {
 /**
  * Test-only: the current registry, so a test that clears it can put the real probes back.
  *
- * The registry is itself process-global state, and `scripts/find-test-leaks.test.ts` — the
+ * The registry is itself process-global state, and `scripts/test-sandbox/find-test-leaks.test.ts` — the
  * suite that tests this tracer — cleared it and never restored it. The tracer's own
  * file-level check then read an EMPTY registry and reported every module-state probe as
  * `work -> (unset)`, so the leak detector's test suite was reported as a leaker by the
@@ -215,7 +215,7 @@ export function parseLeaks(output: string): LeakReport[] {
  * logic can be driven directly by a test.
  *
  * Deliberately not registering `beforeEach`/`afterEach` in this module:
- * `scripts/find-test-leaks.ts` imports it to parse leak lines, and `bun:test`
+ * `scripts/test-sandbox/find-test-leaks.ts` imports it to parse leak lines, and `bun:test`
  * hooks throw when the importing process is not the test runner.
  *
  * `enter`/`leave` bracket each test and record the moves; `finish` runs after the

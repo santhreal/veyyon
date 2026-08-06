@@ -1053,15 +1053,23 @@ describe("normalizeSchemaForCCA", () => {
 // ---------------------------------------------------------------------------
 
 describe("circular schema safety", () => {
-	it("does not overflow the stack when either sanitizer encounters a self-referential object", () => {
-		const circular: Record<string, unknown> = {
-			type: "object",
-			properties: {},
-		};
+	function selfReferential(): Record<string, unknown> {
+		const circular: Record<string, unknown> = { type: "object", properties: {} };
 		(circular.properties as Record<string, unknown>).self = circular;
+		return circular;
+	}
 
-		expect(() => normalizeSchemaForGoogle(circular)).not.toThrow();
-		expect(() => sanitizeSchemaForStrictMode(circular)).not.toThrow();
+	it("terminates on a self-referential object and says so in the output", () => {
+		// Google's wire schema cannot express recursion, so the back-edge is
+		// dropped rather than expanded.
+		expect(normalizeSchemaForGoogle(selfReferential())).toEqual({ type: "object", properties: { self: {} } });
+
+		// Strict-mode sanitization keeps the cycle by IDENTITY on the rewritten
+		// tree. That is what makes the walk finite, and it is the thing a naive
+		// deep-copy rewrite would turn back into unbounded recursion.
+		const strict = sanitizeSchemaForStrictMode(selfReferential()) as Record<string, unknown>;
+		expect(strict.type).toBe("object");
+		expect((strict.properties as Record<string, unknown>).self).toBe(strict);
 	});
 });
 

@@ -1,7 +1,7 @@
 /**
  * Moves a tracked variable between its own tests and restores it in `afterAll`.
  *
- * Used by `scripts/find-test-leaks.test.ts` to prove the tracer's verdict is per
+ * Used by `scripts/test-sandbox/find-test-leaks.test.ts` to prove the tracer's verdict is per
  * FILE, not per test: `logger-file-transport-rebind` legitimately moves the config
  * root three times because following the move is the behaviour under test, and a
  * per-test rule reported it five times while it polluted nothing.

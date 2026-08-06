@@ -21,6 +21,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { formatGenerationTag, parseGenerationTag } from "../src/auth-broker/generation-tag";
 
 describe("writing the tag", () => {
@@ -152,7 +153,7 @@ describe("the two ends of the exchange", () => {
 			const source = await Bun.file(new URL(`../src/auth-broker/${name}`, import.meta.url)).text();
 
 			expect(source).not.toContain("function parseGenerationTag(");
-			expect(source).toContain('from "./generation-tag"');
+			expect(moduleSpecifiersIn(source)).toContain("./generation-tag");
 			// And neither side spells the quoting inline any more. The searched text contains a
 			// template interpolation, so it is built with an escaped brace: a PLAIN string holding
 			// `${...}` is what `noTemplateCurlyInString` exists to catch, since a string that looks

@@ -1,7 +1,7 @@
 /**
  * The fixtures that leak global state on purpose cannot be collected by an ordinary test run.
  *
- * WHY THIS SUITE EXISTS. `scripts/find-test-leaks.ts` needs suites that really do leak, so
+ * WHY THIS SUITE EXISTS. `scripts/test-sandbox/find-test-leaks.ts` needs suites that really do leak, so
  * `packages/utils/test/fixtures/` holds three: one sets `VEYYON_CONFIG_DIR` and never restores it,
  * one activates a profile and leaves it active, one restores properly and exists to prove the tracer
  * does not cry wolf. They were named `*.fixture.test.ts`.

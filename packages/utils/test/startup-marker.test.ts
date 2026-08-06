@@ -24,6 +24,7 @@
 
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "../src/module-reach";
 
 const MODULE_PATH = path.join(import.meta.dir, "../src/startup-marker.ts");
 
@@ -134,7 +135,7 @@ describe("the module itself", () => {
 			const source = await Bun.file(path.join(import.meta.dir, "../src", name)).text();
 
 			expect(source).not.toContain("function startupMarker(");
-			expect(source).toContain('from "./startup-marker"');
+			expect(moduleSpecifiersIn(source)).toContain("./startup-marker");
 		}
 	});
 });

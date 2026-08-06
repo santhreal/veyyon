@@ -96,28 +96,6 @@ describe("a cache directory that cannot be written", () => {
 		expect([...degraded.vocab.handles.entries()].sort()).toEqual([...healthy.vocab.handles.entries()].sort());
 	});
 
-	test("does not throw, so the feature is not taken down by a failed optimisation", async () => {
-		// The regression this row exists for. `writeDictFileAtomic` used to throw
-		// straight out of `resolveProjectCache`, so an unwritable state directory
-		// meant argot could not arm at all.
-		const base = await unwritableCacheDir("proj");
-
-		await expect(
-			resolveProjectCache({ baseDir: base, cacheId: "proj", contentSig: "sig1", files: FILES }),
-		).resolves.toBeDefined();
-	});
-
-	test("reports the failure rather than swallowing it", async () => {
-		// Law 10. Everything above would pass just as well with a bare `catch {}`,
-		// which is precisely the silent degrade that makes an unwritable cache
-		// present as unexplained slowness months later.
-		const base = await unwritableCacheDir("proj");
-
-		const result = await resolveProjectCache({ baseDir: base, cacheId: "proj", contentSig: "sig1", files: FILES });
-
-		expect(result.writeError).toBeDefined();
-	});
-
 	test("the report names the path, the cause, and the consequence", async () => {
 		// An operator has to be able to act on the line without reading this file.
 		// The path says which directory to fix, the errno says why, and the

@@ -20,10 +20,12 @@
  * output being identical.
  */
 
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "bun:test";
 import { isEffort, THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import anthropicDialect from "../src/dialect/anthropic";
 import deepseekDialect from "../src/dialect/deepseek";
+import geminiDialect from "../src/dialect/gemini";
+import gemmaDialect from "../src/dialect/gemma";
 import glmDialect from "../src/dialect/glm";
 import hermesDialect from "../src/dialect/hermes";
 import kimiDialect from "../src/dialect/kimi";
@@ -39,9 +41,41 @@ import {
 	renderToolResponseResults,
 	renderXmlThinkingTags,
 } from "../src/dialect/rendering";
+import * as rendering from "../src/dialect/rendering";
 import xmlDialect from "../src/dialect/xml";
+import { parseRequest as parseChatRequest } from "../src/providers/openai-chat-server";
+import { parseRequest as parseResponsesRequest } from "../src/providers/openai-responses-server";
 import type { Tool, ToolCall } from "../src/types";
 import { isServiceTier, SERVICE_TIERS } from "../src/types";
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
+/**
+ * The two servers, addressed through the entry point a caller reaches: a request body in,
+ * a `ParsedRequest` out. The guards are asserted through this rather than against the
+ * source text, because a hand-written comparison chain and a call to the shared guard are
+ * the same bytes to a reader and differ only in which values survive the parse.
+ */
+const SERVER_PARSERS = [
+	["openai-responses-server", parseResponsesRequest],
+	["openai-chat-server", parseChatRequest],
+] as const;
+
+/** The minimum body each server accepts. The two wire shapes differ, so the model is all they share. */
+function baseRequest(server: string): Record<string, unknown> {
+	return server === "openai-chat-server"
+		? { model: "gpt-5", messages: [{ role: "user", content: "hi" }] }
+		: { model: "gpt-5", input: "hi" };
+}
+
+/** The effort field is nested under `reasoning` on the Responses wire and flat on Chat Completions. */
+function effortRequest(server: string, effort: string): Record<string, unknown> {
+	return server === "openai-chat-server"
+		? { ...baseRequest(server), reasoning_effort: effort }
+		: { ...baseRequest(server), reasoning: { effort } };
+}
 
 /** The dialects whose thinking is the bare `<think>` envelope, so all six must share one renderer. */
 const THINK_TAG_DIALECTS = [
@@ -203,14 +237,26 @@ describe("the reasoning-effort guard", () => {
 	 * left them silently rejecting it: a request naming the new effort was answered as if it
 	 * had named none.
 	 */
-	it("is the only spelling of the levels in the two servers", async () => {
-		for (const name of ["openai-responses-server.ts", "openai-chat-server.ts"]) {
-			const source = await Bun.file(new URL(`../src/providers/${name}`, import.meta.url)).text();
-
-			expect(source).not.toContain("function isReasoningEffort(");
-			expect(source).not.toContain('value === "xhigh"');
-			expect(source).toContain("isEffort(");
+	it("is what both servers actually run, so every ladder level survives a request", () => {
+		for (const [name, parseRequest] of SERVER_PARSERS) {
+			for (const effort of THINKING_EFFORTS) {
+				const parsed = parseRequest(effortRequest(name, effort));
+				expect(parsed.options.reasoning, `${name} dropped ${effort}`).toBe(effort);
+			}
 		}
+	});
+
+	/**
+	 * The negative control, and it is not the same on both wires. The Chat Completions
+	 * body is validated by an arktype schema that enumerates the ladder, so an unknown
+	 * level is refused outright; the Responses body admits any string and the guard is
+	 * what drops it. Both are stated, because a change that made either silently accept
+	 * an off-ladder level would satisfy every acceptance above.
+	 */
+	it("refuses a level that is not on the ladder, in each wire's own way", () => {
+		expect(parseResponsesRequest(effortRequest("openai-responses-server", "sideways")).options.reasoning)
+			.toBeUndefined();
+		expect(() => parseChatRequest(effortRequest("openai-chat-server", "sideways"))).toThrow(/reasoning_effort/);
 	});
 });
 
@@ -225,14 +271,24 @@ describe("the service-tier guard", () => {
 		expect([...SERVICE_TIERS]).toEqual(["auto", "default", "flex", "scale", "priority"]);
 	});
 
-	it("is the only spelling of the tiers in the two servers", async () => {
-		for (const name of ["openai-responses-server.ts", "openai-chat-server.ts"]) {
-			const source = await Bun.file(new URL(`../src/providers/${name}`, import.meta.url)).text();
-
-			expect(source).not.toContain("function isServiceTier(");
-			expect(source).not.toContain('value === "priority"');
-			expect(source).toContain("isServiceTier(");
+	it("is what both servers actually run, so every tier survives a request", () => {
+		for (const [name, parseRequest] of SERVER_PARSERS) {
+			for (const tier of SERVICE_TIERS) {
+				const parsed = parseRequest({ ...baseRequest(name), service_tier: tier });
+				expect(parsed.options.serviceTier, `${name} dropped ${tier}`).toBe(tier);
+			}
 		}
+	});
+
+	/** The same split for the tier: the Chat schema refuses it, the Responses guard drops it. */
+	it("refuses a tier that is not on the list, in each wire's own way", () => {
+		expect(
+			parseResponsesRequest({ ...baseRequest("openai-responses-server"), service_tier: "gold" }).options
+				.serviceTier,
+		).toBeUndefined();
+		expect(() => parseChatRequest({ ...baseRequest("openai-chat-server"), service_tier: "gold" })).toThrow(
+			/service_tier/,
+		);
 	});
 });
 
@@ -268,17 +324,27 @@ describe("the dialect modules", () => {
 		}
 	});
 
-	/** And the three per-model turn delimiters live only in `rendering.ts`. */
-	it("take their turn delimiters from the shared module", async () => {
-		for (const [name, symbol] of [
-			["kimi", "kimiTurn"],
-			["gemma", "gemmaTurn"],
-			["gemini", "geminiTurn"],
-		]) {
-			const source = await Bun.file(new URL(`../src/dialect/${name}.ts`, import.meta.url)).text();
+	/**
+	 * And the three per-model turn delimiters live only in `rendering.ts`, proved by making the
+	 * shared function answer differently and watching each dialect's transcript change with it.
+	 *
+	 * A private copy is byte-identical on the day it is written, so comparing output against
+	 * `kimiTurn(...)` would pass straight through one. Redirecting the shared function is what
+	 * separates "calls the owner" from "happens to agree with it": a dialect holding its own copy
+	 * keeps emitting the real envelope and fails here.
+	 */
+	it.each([
+		["kimi", kimiDialect, "kimiTurn"],
+		["gemma", gemmaDialect, "gemmaTurn"],
+		["gemini", geminiDialect, "geminiTurn"],
+	] as const)("%s takes its turn delimiter from the shared module", (_name, dialect, symbol) => {
+		const marker = `[${symbol}-was-here]`;
+		vi.spyOn(rendering, symbol).mockReturnValue(marker);
 
-			expect(source).not.toContain(`function ${symbol}(`);
-			expect(source).toContain(symbol);
-		}
+		const out = dialect.renderTranscript?.([
+			{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: 0 },
+		] as never);
+
+		expect(out, `${symbol} is not what ${_name} renders a turn with`).toContain(marker);
 	});
 });

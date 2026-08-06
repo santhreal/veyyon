@@ -33,6 +33,7 @@ import {
 	moduleReach,
 	moduleReachCount,
 	moduleSpecifiersIn,
+	typeOnlyModuleSpecifiersIn,
 } from "@veyyon/utils/module-reach";
 import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-workspace";
 
@@ -120,8 +121,11 @@ describe("the span vocabulary is a leaf", () => {
 	it("still takes its types from the package it describes", () => {
 		const source = fs.readFileSync(path.join(SRC, "telemetry.ts"), "utf-8");
 
-		expect(source).toContain('from "@veyyon/ai"');
-		expect(source).toContain("AssistantMessage");
+		// Both halves, because the scan this replaced only had the first one and got it backwards:
+		// `toContain('from "@veyyon/ai"')` is satisfied by a RUNTIME import, which is precisely the
+		// world "which is free" exists to forbid.
+		expect(typeOnlyModuleSpecifiersIn(source)).toContain("@veyyon/ai");
+		expect(moduleSpecifiersIn(source)).not.toContain("@veyyon/ai");
 	});
 });
 

@@ -117,6 +117,73 @@ export function moduleSpecifiersIn(source: string): string[] {
 	return found;
 }
 
+/**
+ * `import type ... from "x"` and `export type ... from "x"` -- the edges that are ERASED.
+ *
+ * The complement of {@link moduleSpecifiersIn}, and the reason it exists: several gates assert that a
+ * module "still takes its TYPES from X, which is free". Stated on raw source as
+ * `expect(source).toContain('from "X"')` that claim is satisfied by a RUNTIME import too, so it passed
+ * in exactly the world it was meant to forbid. Split in two it says what it means: the specifier is
+ * here as a type, and it is absent from {@link moduleSpecifiersIn}.
+ *
+ * Only the statement-leading `type` form is matched. The inline form (`import { type A, B }`) still
+ * instantiates the module for `B`, so it belongs to the runtime list and is deliberately not counted
+ * here.
+ */
+const TYPE_IMPORT_RE = /(?:^|\n)[ \t]*(?:import|export)\s+type[\s{*][\w$*{},\s]*?\sfrom\s*["']([^"']+)["']/g;
+
+/** Every module specifier `source` names for TYPES ONLY, in source order. See {@link TYPE_IMPORT_RE}. */
+export function typeOnlyModuleSpecifiersIn(source: string): string[] {
+	const code = withoutComments(source);
+	const found: string[] = [];
+	for (const match of code.matchAll(TYPE_IMPORT_RE)) if (match[1]) found.push(match[1]);
+	return found;
+}
+
+/**
+ * The clause of every `import`/`export ... from "<specifier>"` statement, for one exact specifier.
+ *
+ * Both the value and the type forms are matched, because the question this answers is "where does
+ * this name come from", and that is settled the same way either way.
+ */
+function importClausesFrom(code: string, specifier: string): string[] {
+	const quoted = specifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const re = new RegExp(`(?:^|\\n)[ \\t]*(?:import|export)\\s+([\\w$*{},\\s]*?)\\sfrom\\s*["']${quoted}["']`, "g");
+	return [...code.matchAll(re)].map(match => match[1] ?? "");
+}
+
+/**
+ * The bindings `source` takes from `specifier`, with aliases reported under the name they bind to.
+ *
+ * WHY A GATE WANTS THIS. The recurring claim is "module M takes constant `C` from its owner and does
+ * not keep a private copy". Both halves used to be scanned for separately: `toContain("C")`, which a
+ * comment or an unrelated substring satisfies, and `not.toMatch(/const C\b/)`, which a copy spelled
+ * `C_URL` or assigned through an object walks straight past.
+ *
+ * One import edge settles both, and settles the second one properly: TypeScript refuses a module that
+ * both imports a binding and declares it, so "M imports `C` from O" IS "M does not define `C`". That
+ * is a guarantee from the compiler rather than from the cleverness of a regex.
+ *
+ * `import * as ns` is deliberately NOT expanded into names: it binds the namespace, not the members,
+ * so no claim about an individual name can be read off it.
+ */
+export function namedImportsFrom(source: string, specifier: string): string[] {
+	const found: string[] = [];
+	for (const clause of importClausesFrom(withoutComments(source), specifier)) {
+		const braces = clause.match(/\{([\s\S]*)\}/);
+		if (!braces?.[1]) continue;
+		for (const entry of braces[1].split(",")) {
+			const name = entry.trim().replace(/^type\s+/, "");
+			if (!name) continue;
+			// `a as b` binds `b`, which is the name the module actually uses.
+			const parts = name.split(/\s+as\s+/);
+			const bound = (parts.length > 1 ? parts[1] : parts[0])?.trim();
+			if (bound) found.push(bound);
+		}
+	}
+	return found;
+}
+
 /** The file a base path resolves to, trying the extensions the runtime tries, in the same order. */
 function resolveFile(base: string): string | undefined {
 	for (const candidate of [

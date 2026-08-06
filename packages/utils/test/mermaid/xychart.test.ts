@@ -193,13 +193,23 @@ describe("xychart ASCII – horizontal", () => {
 // ============================================================================
 
 describe("xychart ASCII – titles and axes", () => {
-	it("renders chart title centered", () => {
-		const result = render(`xychart-beta
-      title "My Chart"
-      x-axis [A, B]
-      bar [10, 20]`);
-		const titleLine = result.split("\n").find(l => l.includes("My Chart"));
-		expect(titleLine).toBeDefined();
+	it("renders chart title centered over the plot area", () => {
+		const source = `      x-axis [A, B]
+      bar [10, 20]`;
+		const titled = render(`xychart-beta\n      title "My Chart"\n${source}`);
+		const untitled = render(`xychart-beta\n${source}`);
+		const lines = titled.split("\n");
+
+		// A title adds a heading line and a blank separator, and changes nothing else.
+		expect(lines.slice(2).join("\n")).toBe(untitled);
+		expect(lines[0]?.trim()).toBe("My Chart");
+
+		// "Centered" is the claim, so measure it: the title's midpoint must land on
+		// the plot's midpoint, which runs from the axis origin to the right edge.
+		const axis = lines.find(line => line.includes("┼")) ?? "";
+		const plotCenter = (axis.indexOf("┼") + axis.length) / 2;
+		const leading = (lines[0]?.length ?? 0) - (lines[0]?.trimStart().length ?? 0);
+		expect(Math.abs(leading + "My Chart".length / 2 - plotCenter)).toBeLessThanOrEqual(1);
 	});
 
 	it("renders x-axis title", () => {
@@ -223,9 +233,11 @@ describe("xychart ASCII – titles and axes", () => {
 		const result = render(`xychart-beta
       x-axis [A, B]
       bar [10, 20]`);
-		// First non-empty line should be chart content, not a title
-		const lines = result.split("\n").filter(l => l.trim().length > 0);
-		expect(lines.length).toBeGreaterThan(0);
+		const lines = result.split("\n");
+		// A title contributes a heading line plus a blank separator. With no title
+		// declared neither may appear: the plot occupies line 0 and nothing is blank.
+		expect(lines[0]).toMatch(/^\s*│$/);
+		expect(lines.filter(line => line.trim() === "")).toEqual([]);
 	});
 });
 

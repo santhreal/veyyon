@@ -31,10 +31,22 @@ describe("destructive-test guard refuses to run against real user data", () => {
 	});
 
 	describe("assertHermeticEnvironment", () => {
-		it("passes when the application's home resolves inside the OS temp directory", () => {
-			expect(() =>
-				assertHermeticEnvironment("fixture suite", path.join(os.tmpdir(), "veyyon-guard-fixture-home")),
-			).not.toThrow();
+		// The negative control for the whole describe: without it a guard that
+		// threw unconditionally would satisfy every refusal case below. Pin the
+		// accepted SHAPES too, so an over-strict guard (exact-match instead of
+		// containment) fails here rather than blocking legitimate suites.
+		it("passes for every home shape that resolves inside the OS temp directory", () => {
+			const inTemp = path.join(os.tmpdir(), "veyyon-guard-fixture-home");
+			const shapes = [inTemp, path.join(inTemp, "nested", "deeper"), `${inTemp}${path.sep}`];
+			const accepted = shapes.filter(home => {
+				try {
+					assertHermeticEnvironment("fixture suite", home);
+					return true;
+				} catch {
+					return false;
+				}
+			});
+			expect(accepted).toEqual(shapes);
 		});
 
 		it("refuses when the home points outside the temp directory (the real-data case)", () => {

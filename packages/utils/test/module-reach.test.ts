@@ -2,7 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { moduleReach, moduleReachCount, moduleSpecifiersIn, resolveModuleSpecifier } from "@veyyon/utils/module-reach";
+import {
+	moduleReach,
+	moduleReachCount,
+	moduleSpecifiersIn,
+	namedImportsFrom,
+	resolveModuleSpecifier,
+	typeOnlyModuleSpecifiersIn,
+} from "@veyyon/utils/module-reach";
 
 /**
  * Contracts: the static import walk three architecture gates are built on.
@@ -128,6 +135,93 @@ describe("moduleSpecifiersIn", () => {
 		const source = ['import { x } from "@scope/pkg";', 'import { y } from "@scope/pkg/leaf";'].join("\n");
 
 		expect(moduleSpecifiersIn(source)).toEqual(["@scope/pkg", "@scope/pkg/leaf"]);
+	});
+});
+
+describe("typeOnlyModuleSpecifiersIn", () => {
+	/** The erased forms, which is the whole set this reports. */
+	it("finds statement-leading type imports and type re-exports", () => {
+		const source = [
+			'import type { A } from "./named-type";',
+			'import type B from "./default-type";',
+			'import type * as C from "./namespace-type";',
+			'export type { D } from "./reexported-type";',
+		].join("\n");
+
+		expect(typeOnlyModuleSpecifiersIn(source)).toEqual([
+			"./named-type",
+			"./default-type",
+			"./namespace-type",
+			"./reexported-type",
+		]);
+	});
+
+	/** The complement half: a runtime import is not a type edge, so the two lists never overlap. */
+	it("reports nothing for imports that instantiate the module", () => {
+		const source = ['import "./side-effect";', 'import { a } from "./named";', 'import D from "./default";'].join(
+			"\n",
+		);
+
+		expect(typeOnlyModuleSpecifiersIn(source)).toEqual([]);
+	});
+
+	/**
+	 * The inline form still instantiates the module for its value binding, so it belongs to
+	 * `moduleSpecifiersIn` and must NOT be double-counted as free here. Counting it would let a gate
+	 * call a real runtime edge erased.
+	 */
+	it("does not claim a mixed inline-type import is free", () => {
+		const source = 'import { type A, b } from "./mixed";';
+
+		expect(typeOnlyModuleSpecifiersIn(source)).toEqual([]);
+		expect(moduleSpecifiersIn(source)).toEqual(["./mixed"]);
+	});
+
+	/** Prose about a type import is prose, for the same reason it is in the runtime walk. */
+	it("ignores a type import written inside a comment", () => {
+		const source = ['/** Take it with `import type { A } from "./doc-only";`. */', "export type B = 1;"].join("\n");
+
+		expect(typeOnlyModuleSpecifiersIn(source)).toEqual([]);
+	});
+});
+
+describe("namedImportsFrom", () => {
+	/** The forms a gate meets: single, multiline braces, aliased, and inline-type. */
+	it("reports the bindings taken from one specifier, aliases under the bound name", () => {
+		const source = [
+			'import { A } from "./owner";',
+			"import {",
+			"\tB,",
+			"\tC as renamedC,",
+			"\ttype D,",
+			'} from "./owner";',
+			'import { Elsewhere } from "./other";',
+		].join("\n");
+
+		expect(namedImportsFrom(source, "./owner")).toEqual(["A", "B", "renamedC", "D"]);
+	});
+
+	/** A different specifier is a different owner; near-misses must not be credited. */
+	it("does not credit a specifier that merely shares a prefix", () => {
+		const source = 'import { A } from "./owner-extra";\nimport { B } from "./owner";';
+
+		expect(namedImportsFrom(source, "./owner")).toEqual(["B"]);
+	});
+
+	/**
+	 * A namespace import binds the namespace, not its members, so no claim about an individual name
+	 * can be read off it. Reporting `X` here would let a gate believe a name is imported when the
+	 * module is free to declare its own.
+	 */
+	it("reports nothing for a namespace import", () => {
+		expect(namedImportsFrom('import * as owner from "./owner";', "./owner")).toEqual([]);
+	});
+
+	/** Prose is prose here too. */
+	it("ignores an import written inside a comment", () => {
+		const source = ['/** Use `import { A } from "./owner";`. */', "export const B = 1;"].join("\n");
+
+		expect(namedImportsFrom(source, "./owner")).toEqual([]);
 	});
 });
 

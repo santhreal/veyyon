@@ -150,10 +150,21 @@ describe("argot public export surface", () => {
 		expect(argot.modelIdSegment("bare-id")).toBe("bare-id");
 	});
 
-	it("exposes constructible error and session classes through the barrel", () => {
-		expect(new argot.ArgotParseError("x", "AGENTS.dict")).toBeInstanceOf(Error);
-		expect(new argot.ArgotConflictError("x")).toBeInstanceOf(Error);
-		expect(new argot.ArgotSession()).toBeInstanceOf(argot.ArgotSession);
+	it("exposes error and session classes that carry their contract through the barrel", () => {
+		// A consumer catching these across a package boundary discriminates on
+		// `name` and reads `source`; instanceof alone would pass on a bare Error.
+		const parseError = new argot.ArgotParseError("bad handle", "AGENTS.dict");
+		expect(parseError).toBeInstanceOf(Error);
+		expect(parseError.name).toBe("ArgotParseError");
+		expect(parseError.source).toBe("AGENTS.dict");
+		expect(parseError.message).toBe("AGENTS.dict: bad handle");
+
+		const conflict = new argot.ArgotConflictError("§db bound twice");
+		expect(conflict).toBeInstanceOf(Error);
+		expect(conflict.name).toBe("ArgotConflictError");
+		expect(conflict.message).toBe("§db bound twice");
+
+		expect(new argot.ArgotSession().preamble).toBe(argot.ARGOT_PREAMBLE);
 	});
 
 	it("exposes a working StreamDecoder through the barrel (the seam-3 primitive)", () => {
