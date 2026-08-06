@@ -76,9 +76,15 @@ describe("veyyon:// root docs coverage", () => {
 			shipped.add(`${name.replace(/_/g, "-")}.md`);
 		}
 
+		// `README.md` is the directory's own index, not a tool page, so it is named here
+		// rather than left to match a tool by accident. Asserted to exist so the exemption
+		// cannot outlive the file it exempts.
+		const indexPage = "README.md";
+		expect(fs.existsSync(path.join(docsToolsDir, indexPage))).toBe(true);
+
 		const orphaned = fs
 			.readdirSync(docsToolsDir)
-			.filter(entry => entry.endsWith(".md"))
+			.filter(entry => entry.endsWith(".md") && entry !== indexPage)
 			.filter(entry => !shipped.has(entry));
 
 		expect(orphaned, `docs/tools pages with no matching shipped tool: ${orphaned.join(", ")}.`).toEqual([]);
