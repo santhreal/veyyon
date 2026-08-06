@@ -113,7 +113,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `inlineToolDescriptors` | Inline Tool Descriptors | enum | `auto` | Render full tool descriptors in the system prompt and strip top-level/nested descriptions from provider tool schemas so descriptor text is sent once. Auto follows the active model, enabling this for Gemini and disabling it otherwise. Values: `auto`, `on`, `off`. |
-| `includeModelInPrompt` | Include Model in Prompt | boolean | `true` | Surface the active model identifier in the system prompt so the agent knows which model it is. |
+| `includeModelInPrompt` | Include Model in Prompt | boolean | `false` | Surface the active model identifier in the system prompt so the agent knows which model it is. Costs a full prompt-cache invalidation on every model switch. |
 | `includeWorkspaceTree` | Include Workspace Tree | boolean | `false` | Render the workspace directory tree in the system prompt. WARNING: This can bust prompt caching across sessions when files are modified. |
 | `personality` | Personality | string | `default` | Communication style rendered into the system prompt's personality block. Extend via ~/.veyyon/personalities/<name>.md or project .veyyon/personalities/<name>.md. |
 
@@ -265,18 +265,6 @@ veyyon config get compaction.threshold
 | `context.thoughtSignatureRetention` | Thought Signature Retention | number | `-1` | How many of the most recent assistant turns keep their Gemini thought signature when the conversation is sent back. Signatures let the model replay its own reasoning, and they are large, so the recent ones are the ones worth paying to resend. Keep All resends every signature ever produced, which on a long session is the single biggest thing in the context. Other providers ignore this. Shown under the tab's Advanced fold. |
 | `context.thoughtSignatureMaxLength` | Thought Signature Size Limit | number | `-1` | Longest Gemini thought signature still worth resending, in characters. Anything longer sends the skip sentinel instead, however recent it is. Signature sizes are lopsided: the largest tenth of them carry roughly two thirds of all signature bytes, so a limit sheds most of the weight while keeping the great majority of the reasoning chain. Use this instead of Thought Signature Retention when you want a gentler trade, or alongside it, in which case a signature is resent only if it is both recent enough and small enough. Other providers ignore this. Shown under the tab's Advanced fold. |
 
-### Rules (TTSR)
-
-| Key | Setting | Type | Default | What it does |
-|---|---|---|---|---|
-| `ttsr.enabled` | TTSR | boolean | `true` | Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules). |
-| `ttsr.contextMode` | TTSR Context Mode | enum | `discard` | What to do with partial output when TTSR triggers. Values: `discard`, `keep`. |
-| `ttsr.interruptMode` | TTSR Interrupt Mode | enum | `always` | When to interrupt mid-stream vs inject warning after completion. Values: `never`, `prose-only`, `tool-only`, `always`. |
-| `ttsr.repeatMode` | TTSR Repeat Mode | enum | `once` | How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter. Values: `once`, `after-gap`. |
-| `ttsr.repeatGap` | TTSR Repeat Gap | number | `10` | Messages before a rule can trigger again. A rule may override this in its frontmatter. |
-| `ttsr.builtinRules` | Built-in Rules | boolean | `true` | Load the default rules shipped with the agent (override individually with ttsr.disabledRules). |
-| `ttsr.disabledRules` | Rules | array | `[]` | Every rule this project loads, each on or off. Stores only the ones you turn off, so a rule added in a later release arrives on. |
-
 ### Prompt cache
 
 | Key | Setting | Type | Default | What it does |
@@ -289,6 +277,25 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `session.instrumentation` | Session instrumentation | enum | `off` | Record structured, redacted study data in the session file. Higher levels add lifecycle, task-state, tool, model-turn, context, and agent-communication detail for `veyyon session stats`. Off still stores the normal resumable conversation and tool history, but adds no study fields. Values: `off`, `basic`, `rich`, `ultra`. |
+
+## Rules
+
+### Rules
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `ttsr.builtinRules` | Built-in Rules | boolean | `true` | Load the default rules shipped with the agent. Turn individual rules off under All Rules. |
+| `ttsr.disabledRules` | All Rules | array | `[]` | Every rule this project loads, each on or off. Stores only the ones you turn off, so a rule added in a later release arrives on. |
+
+### Stream interrupts (TTSR)
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `ttsr.enabled` | TTSR | boolean | `true` | Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules). |
+| `ttsr.contextMode` | Context Mode | enum | `discard` | What to do with partial output when TTSR triggers. Values: `discard`, `keep`. |
+| `ttsr.interruptMode` | Interrupt Mode | enum | `always` | When to interrupt mid-stream vs inject warning after completion. Values: `never`, `prose-only`, `tool-only`, `always`. |
+| `ttsr.repeatMode` | Repeat Mode | enum | `once` | How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter. Values: `once`, `after-gap`. |
+| `ttsr.repeatGap` | Repeat Gap | number | `10` | Messages before a rule can trigger again. A rule may override this in its frontmatter. |
 
 ## Memory
 
@@ -370,7 +377,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `lsp.enabled` | LSP | boolean | `true` | Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename). |
+| `lsp.enabled` | LSP | boolean | `false` | Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename). |
 | `lsp.lazy` | Lazy LSP Startup | boolean | `true` | Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup. |
 | `lsp.formatOnWrite` | Format on Write | boolean | `false` | Automatically format code files using LSP after writing. |
 | `lsp.diagnosticsOnWrite` | Diagnostics on Write | boolean | `true` | Return LSP diagnostics after writing code files. |
@@ -411,8 +418,8 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.cpuLimitCores` | Session CPU Limit | number | `0` | Maximum CPU a session's spawned processes may use, in cores (0 = off). Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness's own compute (agent turns, in-process workers) is never capped. |
-| `session.cpuLimitKill` | Kill Over-Budget Commands | boolean | `false` | What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. |
+| `session.cpuLimitCores` | Session CPU Limit | number | `0` | Maximum CPU a session's spawned processes may use, in cores (0 = off). This is the per-profile default: every session that profile starts inherits it, and one session can depart from it with /cpu-limit <cores> or lift it entirely with /cpu-limit remove, neither of which writes this setting. Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness's own compute (agent turns, in-process workers) is never capped. |
+| `session.cpuLimitKill` | Kill Over-Budget Commands | boolean | `false` | What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. /cpu-limit kill on\|off changes it for one session without writing this setting. |
 
 ## Tools
 
@@ -436,7 +443,7 @@ veyyon config get compaction.threshold
 | `github.enabled` | GitHub CLI | boolean | `false` | Enable the github tool (op-based dispatch for repository, issue, pull request, diff, search, checkout, push, and Actions watch workflows). |
 | `web_search.enabled` | Web Search | boolean | `true` | Enable the web_search tool for live web results. |
 | `ask.enabled` | Ask | boolean | `true` | Enable the ask tool for interactive user questions. |
-| `browser.enabled` | Browser | boolean | `true` | Enable the browser tool for scripted Chromium automation (puppeteer). |
+| `browser.enabled` | Browser | boolean | `false` | Enable the browser tool for scripted Chromium automation (puppeteer). |
 
 ### Todos
 
@@ -534,7 +541,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `subagent.enabled` | Subagents | boolean | `true` | Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Agent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Agents table are kept while this is off and take effect again when you turn it back on. |
-| `subagent.delegation` | Agent Delegation | enum | `preferred` | How strongly this session routes work to the agent roles you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Agents table is the routing policy: each name is a distinct role, task is the general-purpose fallback, specialists own only work matching their descriptions, and disabled roles stay with the main agent. Turn Subagents off above to remove delegation entirely. Values: `allowed`, `preferred`, `required`. |
+| `subagent.delegation` | Agent Delegation | enum | `preferred` | How strongly this session routes work to the agent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Agents table is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: `allowed`, `preferred`, `required`. |
 | `subagent.batch` | Batch Task Calls | boolean | `true` | Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema. |
 
 ### Agents
@@ -548,7 +555,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `subagent.model` | Subagent Model | modelChain | _(unset)_ | Models for every enabled subagent that has no per-agent model of its own, tried in order: the rest are used when an earlier one errors. Unset means inherit: subagents follow the session's live main model. A per-agent model in the Agents table wins over this. |
-| `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Effort follows the session's model. To set effort explicitly, pick a model first: an explicit `:level` suffix on a model pattern (here or per agent), or a per-agent effort in the Agents table once that agent has a model. |
+| `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Thinking level for every enabled subagent that has no per-agent effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. |
 | `subagent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. |
 
 ### Limits
