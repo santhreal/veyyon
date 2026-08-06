@@ -25,11 +25,21 @@ describe("validateServerName adversarial matrix", () => {
 		}
 	});
 
-	it("rejects empty, whitespace, spaces, slashes, and control chars", () => {
-		for (const name of ["", " ", "has space", "a/b", "a\\b", "a\nb", "a\0b", "/abs"]) {
-			const err = validateServerName(name);
-			expect(err).toBeDefined();
-			expect(String(err).length).toBeGreaterThan(0);
+	/** The two refusals, derived from the source's wording rather than retyped per case. */
+	const EMPTY_MESSAGE =
+		"Server name cannot be empty. Fix: give the server a short id you will type in `/mcp` commands, for example `filesystem`.";
+	const charsetMessage = (name: string): string =>
+		`Server name "${name}" can only contain letters, numbers, dash, underscore, dot, and colon. Fix: replace the other characters, for example \`my-server\` rather than \`my server\`.`;
+
+	// WHY the exact message and not merely "some error": the return value IS the
+	// sentence `/mcp add` prints, and a name is refused for one of three distinct
+	// reasons (empty, charset, path token). A test that only asked whether
+	// something was returned would pass with every case collapsed onto one
+	// message, leaving the operator told to fix the wrong thing.
+	it("rejects empty, whitespace, spaces, slashes, and control chars, naming the rule each breaks", () => {
+		expect(validateServerName("")).toBe(EMPTY_MESSAGE);
+		for (const name of [" ", "has space", "a/b", "a\\b", "a\nb", "a\0b", "/abs"]) {
+			expect(validateServerName(name)).toBe(charsetMessage(name));
 		}
 	});
 
@@ -39,9 +49,11 @@ describe("validateServerName adversarial matrix", () => {
 		expect(String(validateServerName("."))).toMatch(/path segment|\.|\.\./i);
 	});
 
-	it("rejects path traversal variants", () => {
+	it("rejects path traversal variants on the charset rule, before the path-token rule", () => {
+		// Every traversal spelling carries a separator, so the charset rule refuses
+		// it first and the path-token rule below only ever sees pure-dot names.
 		for (const name of ["../x", "..\\x", "a/../b", "a/b/c", "./x"]) {
-			expect(validateServerName(name)).toBeDefined();
+			expect(validateServerName(name)).toBe(charsetMessage(name));
 		}
 	});
 

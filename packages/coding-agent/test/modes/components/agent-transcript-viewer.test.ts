@@ -586,6 +586,14 @@ describe("AgentTranscriptViewer", () => {
 		}
 	});
 
+	/**
+	 * KEPT AS A CRASH-REGRESSION, because that is the honest contract: the poll runs on a timer
+	 * nobody awaits, so a throw out of `#refresh` escapes as an unhandled error and takes the
+	 * session down rather than a frame. It is paired with the consequence a bare `not.toThrow`
+	 * misses: surviving the poll is worthless if the viewer BLANKS. `#loadLocalFull` documents that
+	 * it leaves `#localState` alone on a failed read so the next poll retries, so the rows the
+	 * operator was reading must still be on screen afterwards.
+	 */
 	it("does not let a poll throw when the file is unlinked between stat and the sentinel read", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "adv-view-"));
 		const file = path.join(dir, "__advisor.jsonl");
@@ -595,6 +603,13 @@ describe("AgentTranscriptViewer", () => {
 		// First #refresh runs in the constructor with real fs and populates state.
 		const viewer = makeViewer(file);
 		try {
+			const body = () =>
+				viewer
+					.render(80)
+					.map(l => Bun.stripANSI(l))
+					.join("\n");
+			expect(body()).toContain("Reviewing step");
+
 			// Stat reports growth (same identity), but every subsequent open of the
 			// session file fails as if it was unlinked in the window between the
 			// statSync and the sentinel read. The 250ms poll must not throw.
@@ -612,6 +627,9 @@ describe("AgentTranscriptViewer", () => {
 				throw new Error("unexpected open");
 			}) as typeof fs.openSync);
 			expect(() => vi.advanceTimersByTime(250)).not.toThrow();
+			// The transcript is still on screen: a failed poll degrades to "no new rows", never to a
+			// cleared view.
+			expect(body()).toContain("Reviewing step");
 		} finally {
 			vi.restoreAllMocks();
 			vi.useRealTimers();

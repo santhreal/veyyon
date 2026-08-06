@@ -1,9 +1,9 @@
 /**
  * Regression: fire-and-forget async IIFEs in StatusLineComponent
  * (`#isDefaultBranch`, `#lookupPr`) outlive `dispose()`. After tests call
- * `resetSettingsForTest()`, a late callback fires `#onBranchChange` →
- * `InteractiveMode.updateEditorTopBorder` → `settings.get(...)`, hitting the
- * global settings proxy and throwing "Settings not initialized".
+ * `resetSettingsForTest()`, a late callback fires `#onBranchChange` → a host
+ * re-render → `settings.get(...)`, hitting the global settings proxy and
+ * throwing "Settings not initialized".
  *
  * Contract: after `dispose()`, no async callback touches `settings` or
  * `#onBranchChange`, even when the awaited git/gh promise resolves later.
@@ -120,7 +120,7 @@ describe("StatusLineComponent dispose guards async callbacks", () => {
 		// Render with a `pr` segment → #lookupPr → #isDefaultBranch("main")
 		// → starts the delayed git.branch.default IIFE (no gh spawn: the
 		// sync default-branch check returns true and PR lookup bails).
-		component.getTopBorder(80);
+		component.renderQuietLine(80);
 		expect(resolveDefault).toBeDefined();
 
 		// Tear down the component before the awaited promise resolves.
@@ -145,7 +145,7 @@ describe("StatusLineComponent dispose guards async callbacks", () => {
 		const component = new StatusLineComponent(makeSession());
 		component.updateSettings(gitSegmentSettings);
 		component.watchBranch(onBranchChange);
-		component.getTopBorder(80);
+		component.renderQuietLine(80);
 
 		// Dispose before the resolved-promise microtask gets a chance to run.
 		component.dispose();

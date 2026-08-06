@@ -211,13 +211,23 @@ describe("options where they belong", () => {
 		expect(parseSecretCommand("audit --limit 50", "noninteractive")).toMatchObject({ subcommand: "log", limit: 50 });
 	});
 
-	/** No options at all is the common case and stays untouched. */
+	/**
+	 * No options at all is the common case and stays untouched. Asserted on the PARSED REQUEST, not
+	 * on the absence of a throw: the ownership guard could refuse nothing and still route `rm` to
+	 * `add`, or drop the name off the request, and every option-refusal test above would stay green.
+	 */
 	it("accepts every subcommand with no options", () => {
-		for (const verb of ["list", "log", "help"]) {
-			expect(() => parseSecretCommand(verb, "noninteractive")).not.toThrow();
-		}
-		expect(() => parseSecretCommand("rm github-token", "noninteractive")).not.toThrow();
-		expect(() => parseSecretCommand("add github-token", "noninteractive")).not.toThrow();
+		expect(parseSecretCommand("list", "noninteractive")).toMatchObject({ subcommand: "list" });
+		expect(parseSecretCommand("log", "noninteractive")).toMatchObject({ subcommand: "log" });
+		expect(parseSecretCommand("help", "noninteractive")).toMatchObject({ subcommand: "help" });
+		expect(parseSecretCommand("rm github-token", "noninteractive")).toMatchObject({
+			subcommand: "rm",
+			name: "github-token",
+		});
+		expect(parseSecretCommand("add github-token", "noninteractive")).toMatchObject({
+			subcommand: "add",
+			name: "github-token",
+		});
 	});
 
 	/**

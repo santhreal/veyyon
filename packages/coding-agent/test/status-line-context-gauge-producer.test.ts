@@ -13,8 +13,10 @@
  * the segments are pinned and the code that fills the fields is not. Re-introducing the original
  * bug (`contextWindow = contextLimit` in the component) would leave the whole gauge suite green.
  *
- * These tests drive the real `StatusLineComponent.getTopBorder` with compaction ENABLED and read
- * the rendered text, which is the only place the split is observable end to end. The neighbouring
+ * These tests drive the real `StatusLineComponent.renderQuietLine` with compaction ENABLED and
+ * read the rendered text, which is the only place the split is observable end to end. The gauge
+ * prints room LEFT as a percentage, so the fire point shows up as the denominator it divides by
+ * rather than as a printed number; `context_total` is what pins the window itself. The neighbouring
  * `status-line-context-cache.test.ts` covers the same component with compaction DISABLED, where
  * the limit and the window are the same number and the bug is invisible.
  */
@@ -98,7 +100,7 @@ function makeSession(options: SessionOptions): AgentSession {
 function render(
 	session: AgentSession,
 	segments: StatusLineSegmentId[],
-	options?: { bar?: boolean; guestUsage?: ContextUsage },
+	options?: { guestUsage?: ContextUsage },
 ): string {
 	const component = new StatusLineComponent(session);
 	component.setAutoCompactEnabled(true);
@@ -113,10 +115,8 @@ function render(
 		preset: "custom",
 		leftSegments: segments,
 		rightSegments: [],
-		separator: "powerline-thin",
-		...(options?.bar ? { segmentOptions: { context_pct: { bar: true } } } : {}),
 	});
-	return component.getTopBorder(120).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
+	return (component.renderQuietLine(120) ?? "").replaceAll(/\x1b\[[0-9;]*m/g, "");
 }
 
 describe("the gauge's numbers with auto-compaction on", () => {
@@ -134,8 +134,10 @@ describe("the gauge's numbers with auto-compaction on", () => {
 		// with auto-compaction on, the room the operator has is room until the trigger.
 		const plain = render(makeSession({ usedTokens: 85_000 }), ["context_pct"]);
 
-		expect(plain).toContain("85K/170K");
-		expect(plain).not.toContain("85K/200K");
+		// 85k of a 170k fire point is exactly half the room. Measured against the
+		// 200k window it would read 58% and overstate the room by eight points.
+		expect(plain).toContain("50% left");
+		expect(plain).not.toContain("58% left");
 	});
 
 	it("shows the window and the limit side by side, each in its own segment", () => {
@@ -144,7 +146,7 @@ describe("the gauge's numbers with auto-compaction on", () => {
 		// exactly why the original bug is unrepresentable now.
 		const plain = render(makeSession({ usedTokens: 85_000 }), ["context_pct", "context_total"]);
 
-		expect(plain).toContain("85K/170K");
+		expect(plain).toContain("50% left");
 		expect(plain).toContain("200K");
 	});
 
@@ -158,13 +160,13 @@ describe("the gauge's numbers with auto-compaction on", () => {
 			"context_total",
 		]);
 
-		expect(plain).toContain("85K/200K");
+		expect(plain).toContain("58% left");
 	});
 
 	it("falls back to the window as the limit when compaction is disabled outright", () => {
 		const plain = render(makeSession({ usedTokens: 85_000, compaction: { enabled: false } }), ["context_pct"]);
 
-		expect(plain).toContain("85K/200K");
+		expect(plain).toContain("58% left");
 	});
 
 	it("honours an absolute token threshold as the limit", () => {
@@ -176,7 +178,7 @@ describe("the gauge's numbers with auto-compaction on", () => {
 			"context_total",
 		]);
 
-		expect(plain).toContain("40K/120K");
+		expect(plain).toContain("67% left");
 		expect(plain).toContain("200K");
 	});
 
@@ -189,7 +191,7 @@ describe("the gauge's numbers with auto-compaction on", () => {
 			"context_total",
 		]);
 
-		expect(plain).toContain("100K/850K");
+		expect(plain).toContain("88% left");
 		expect(plain).toContain("1M");
 	});
 });
@@ -204,8 +206,10 @@ describe("a collab guest's gauge", () => {
 			guestUsage: { tokens: 90_000, contextWindow: 300_000, percent: 30 },
 		});
 
-		expect(plain).toContain("90K/300K");
-		expect(plain).not.toContain("255K");
+		// 90k of the host's 300k window is 70% left. A locally resolved 85% trigger
+		// on that window would be 255k, denominating to 65% left instead.
+		expect(plain).toContain("70% left");
+		expect(plain).not.toContain("65% left");
 	});
 
 	it("reports the host's own percentage rather than recomputing one", () => {
@@ -213,7 +217,6 @@ describe("a collab guest's gauge", () => {
 		// guest recomputing `tokens / window` would disagree with the host's screen the
 		// moment the host has auto-compaction on.
 		const plain = render(makeSession({ usedTokens: 0 }), ["context_pct"], {
-			bar: true,
 			guestUsage: { tokens: 90_000, contextWindow: 300_000, percent: 70 },
 		});
 
@@ -225,7 +228,7 @@ describe("the gauge reports room left, not room used", () => {
 	it("draws a nearly full bar at the start of a session and says the room is left", () => {
 		// A fuel gauge reads full when the tank is full. The bar used to fill as room
 		// ran out, so an empty session showed an empty bar.
-		const plain = render(makeSession({ usedTokens: 0 }), ["context_pct"], { bar: true });
+		const plain = render(makeSession({ usedTokens: 0 }), ["context_pct"]);
 
 		expect(plain).toContain("100% left");
 		expect(plain).toContain("▰");
@@ -236,7 +239,7 @@ describe("the gauge reports room left, not room used", () => {
 		// 85k of a 170k fire point is half the room, which is the number the operator
 		// decides on. Measuring against the 200k window would print `58% left` and
 		// overstate the room by 15 points.
-		const plain = render(makeSession({ usedTokens: 85_000 }), ["context_pct"], { bar: true });
+		const plain = render(makeSession({ usedTokens: 85_000 }), ["context_pct"]);
 
 		expect(plain).toContain("50% left");
 		expect(plain).toContain("▰");
@@ -246,7 +249,7 @@ describe("the gauge reports room left, not room used", () => {
 	it("says 0% left rather than a negative number once the fire point is passed", () => {
 		// Used tokens can exceed the trigger between the crossing and the compaction
 		// actually running, and `-10% left` is not a thing.
-		const plain = render(makeSession({ usedTokens: 187_000 }), ["context_pct"], { bar: true });
+		const plain = render(makeSession({ usedTokens: 187_000 }), ["context_pct"]);
 
 		expect(plain).toContain("0% left");
 		expect(plain).not.toContain("-");
@@ -256,7 +259,7 @@ describe("the gauge reports room left, not room used", () => {
 		// 85,001/170,000 is 49.9994% used. The gauge used to print a tenth of a
 		// percent that changed every turn on the surface users called confusing, and
 		// no decision is made at that resolution.
-		const plain = render(makeSession({ usedTokens: 85_001 }), ["context_pct"], { bar: true });
+		const plain = render(makeSession({ usedTokens: 85_001 }), ["context_pct"]);
 
 		expect(plain).toContain("50% left");
 		expect(plain).not.toMatch(/\d\.\d/);

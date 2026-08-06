@@ -166,8 +166,10 @@ describe("EvalTool cancellation", () => {
 	});
 
 	it("refuses to start a cell when the signal fired before the call", async () => {
-		// The entry guard, kept honest. An already-aborted signal must never reach a
-		// backend at all.
+		// WHY: the entry guard has to stop the cell REACHING the backend, not merely
+		// report an abort once it has run. An eval cell mutates kernel state that
+		// outlives the call, so a cell that executed and then reported a
+		// cancellation would leave the session changed with nothing saying so.
 		const tool = new EvalTool(makeSession());
 		const controller = new AbortController();
 		controller.abort();
@@ -175,10 +177,19 @@ describe("EvalTool cancellation", () => {
 		await expect(
 			tool.execute(
 				"call-cancel-preaborted",
-				{ language: "js", code: "print('must not run');", timeout: 0 },
+				{ language: "js", code: "globalThis.__preabortRan = true;", timeout: 0 },
 				controller.signal,
 			),
 		).rejects.toBeInstanceOf(ToolAbortError);
+
+		// The kernel is the witness. Had the guard let the cell through, the flag it
+		// sets would still be sitting there for the next cell to read.
+		const witness = await tool.execute("call-preabort-witness", {
+			language: "js",
+			code: "print(`ran=${globalThis.__preabortRan === true}`);",
+			timeout: 0,
+		});
+		expect(textOf(witness)).toContain("ran=false");
 	});
 });
 

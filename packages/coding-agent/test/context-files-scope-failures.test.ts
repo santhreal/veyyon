@@ -40,7 +40,9 @@ describe("context file scope failures", () => {
 		const { files, warnings } = await loadProjectContextFilesWithWarnings({ cwd: f.cwd, agentDir: f.agentDir });
 
 		expect(fs.existsSync(f.globalAgentsPath)).toBe(false);
-		expect(files).toEqual([{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 }]);
+		expect(files).toEqual([
+			{ path: f.rootAgentsPath, level: "project", content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
+		]);
 		expect(warnings).toEqual([]);
 	});
 
@@ -70,7 +72,9 @@ describe("context file scope failures", () => {
 		const { files, warnings } = await loadProjectContextFilesWithWarnings({ cwd: f.cwd, agentDir: f.agentDir });
 		fs.chmodSync(f.globalAgentsPath, 0o600);
 
-		expect(files).toEqual([{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 }]);
+		expect(files).toEqual([
+			{ path: f.rootAgentsPath, level: "project", content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
+		]);
 		expect(warnings.filter(warning => warning.includes(f.globalAgentsPath)).length).toBe(1);
 		expect(warnings.length).toBe(1);
 		expect(warnings[0]).toContain("could not be read");
@@ -91,8 +95,8 @@ describe("context file scope failures", () => {
 		const { files, warnings } = await loadProjectContextFilesWithWarnings({ cwd: f.cwd, agentDir: f.agentDir });
 
 		expect(files).toEqual([
-			{ path: f.nestedAgentsPath, content: `${PROJECT_NESTED_BODY}\n`, depth: 0 },
-			{ path: f.profileAgentsPath, content: `${PROFILE_BODY}\n`, depth: undefined },
+			{ path: f.nestedAgentsPath, level: "project", content: `${PROJECT_NESTED_BODY}\n`, depth: 0 },
+			{ path: f.profileAgentsPath, level: "user", content: `${PROFILE_BODY}\n`, depth: undefined },
 		]);
 		expect(warnings).toEqual([]);
 	});
@@ -115,8 +119,8 @@ describe("context file scope failures", () => {
 
 		expect(fs.statSync(f.nestedAgentsPath).isDirectory()).toBe(true);
 		expect(files).toEqual([
-			{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
-			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
+			{ path: f.rootAgentsPath, level: "project", content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
+			{ path: f.globalAgentsPath, level: "global", content: `${GLOBAL_BODY}\n`, depth: undefined },
 		]);
 	});
 
@@ -137,7 +141,9 @@ describe("context file scope failures", () => {
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: f.agentDir });
 
 		expect(fs.lstatSync(f.nestedAgentsPath).isSymbolicLink()).toBe(true);
-		expect(files).toEqual([{ path: f.nestedAgentsPath, content: `${PROJECT_NESTED_BODY}\n`, depth: 0 }]);
+		expect(files).toEqual([
+			{ path: f.nestedAgentsPath, level: "project", content: `${PROJECT_NESTED_BODY}\n`, depth: 0 },
+		]);
 	});
 
 	/**
@@ -161,7 +167,9 @@ describe("context file scope failures", () => {
 
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: f.agentDir });
 
-		expect(files).toEqual([{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined }]);
+		expect(files).toEqual([
+			{ path: f.globalAgentsPath, level: "global", content: `${GLOBAL_BODY}\n`, depth: undefined },
+		]);
 	});
 
 	/**
@@ -185,8 +193,8 @@ describe("context file scope failures", () => {
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: f.agentDir });
 
 		expect(files).toEqual([
-			{ path: f.nestedAgentsPath, content: quoting, depth: 0 },
-			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
+			{ path: f.nestedAgentsPath, level: "project", content: quoting, depth: 0 },
+			{ path: f.globalAgentsPath, level: "global", content: `${GLOBAL_BODY}\n`, depth: undefined },
 		]);
 	});
 
@@ -204,7 +212,9 @@ describe("context file scope failures", () => {
 
 		const files = await loadProjectContextFiles({ cwd: f.repoRoot, agentDir: f.agentDir });
 
-		expect(files).toEqual([{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 0 }]);
+		expect(files).toEqual([
+			{ path: f.rootAgentsPath, level: "project", content: `${PROJECT_ROOT_BODY}\n`, depth: 0 },
+		]);
 	});
 
 	/**
@@ -223,7 +233,9 @@ describe("context file scope failures", () => {
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: f.agentDir });
 
 		expect(fs.existsSync(claudePath)).toBe(true);
-		expect(files).toEqual([{ path: f.nestedAgentsPath, content: `${PROJECT_NESTED_BODY}\n`, depth: 0 }]);
+		expect(files).toEqual([
+			{ path: f.nestedAgentsPath, level: "project", content: `${PROJECT_NESTED_BODY}\n`, depth: 0 },
+		]);
 	});
 
 	/**
@@ -277,8 +289,8 @@ describe("context file scope failures", () => {
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: f.agentDir });
 
 		expect(files).toEqual([
-			{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
-			{ path: configAgentsPath, content: "Marker: CONFIG-DIR-BYTES-2f65.\n", depth: 0 },
+			{ path: f.rootAgentsPath, level: "project", content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
+			{ path: configAgentsPath, level: "project", content: "Marker: CONFIG-DIR-BYTES-2f65.\n", depth: 0 },
 		]);
 	});
 });

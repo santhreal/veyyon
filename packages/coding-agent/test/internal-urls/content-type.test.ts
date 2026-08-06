@@ -8,6 +8,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { getContentType } from "../../src/internal-urls/content-type";
 
 describe("getContentType", () => {
@@ -55,7 +56,7 @@ describe("getContentType has exactly one owner (ONE-PLACE lock)", () => {
 	it("every protocol that resolves file content types imports the shared owner", () => {
 		for (const name of ["skill-protocol.ts", "local-protocol.ts", "vault-protocol.ts"]) {
 			const text = readFileSync(path.join(protocolDir, name), "utf-8");
-			expect(text).toContain('from "./content-type"');
+			expect(moduleSpecifiersIn(text)).toContain("./content-type");
 		}
 	});
 });

@@ -157,7 +157,12 @@ describe("The requireContent gate on the double-left gesture", () => {
 		expect(h.shown()).toBeUndefined();
 	});
 
-	/** One subagent is enough, and it opens immediately rather than after a scan. */
+	/**
+	 * One subagent is enough, and it opens immediately rather than after a scan. Asserted on the
+	 * CARD'S ROWS, not merely on a mounted object: the gate's job is to open a roster the operator
+	 * can act on, and a card that opened showing an empty roster would satisfy `toBeDefined` while
+	 * hiding the very agent that unlocked the gesture.
+	 */
 	it("opens as soon as a subagent exists", () => {
 		const registry = new AgentRegistry();
 		registerMain(registry);
@@ -166,8 +171,10 @@ describe("The requireContent gate on the double-left gesture", () => {
 
 		h.controller.showAgentsDashboard(new SessionObserverRegistry(), { requireContent: true });
 
-		expect(h.shown()).toBeDefined();
-		h.shown()?.dispose();
+		const dashboard = h.shown();
+		if (!dashboard) throw new Error("the card was not mounted");
+		expect(dashboard.render(80).join("\n").replace(ANSI_PATTERN, "")).toContain("reviewer");
+		dashboard.dispose();
 	});
 
 	/**
@@ -195,9 +202,12 @@ describe("The requireContent gate on the double-left gesture", () => {
 	});
 
 	/**
-	 * The explicit key is not gated. Opening `/agents` and being shown nothing is
-	 * a command that appears broken; "Nothing running" is a real answer when you
-	 * asked the question on purpose.
+	 * The explicit key is not gated. Opening `/agents` and being shown nothing is a command that
+	 * appears broken; the roster you actually have is a real answer when you asked the question on
+	 * purpose. Asserted on the CARD'S ROWS: the gated path above returns the very same `undefined`
+	 * for "no card", so `toBeDefined` alone cannot tell an ungated open from a gated one that
+	 * happened to let this case through, and a card that mounted with an empty body would pass it
+	 * too. What the operator must see is the roster chrome and the driving session in it.
 	 */
 	it("opens the empty roster when asked explicitly, with no subagents at all", () => {
 		const registry = new AgentRegistry();
@@ -206,8 +216,13 @@ describe("The requireContent gate on the double-left gesture", () => {
 
 		h.controller.showAgentsDashboard(new SessionObserverRegistry());
 
-		expect(h.shown()).toBeDefined();
-		h.shown()?.dispose();
+		const dashboard = h.shown();
+		if (!dashboard) throw new Error("the card was not mounted");
+		const body = dashboard.render(80).join("\n").replace(ANSI_PATTERN, "");
+		expect(body).toContain("Agent Control Center");
+		expect(body).toContain("Live (1)");
+		expect(body).toContain("Main");
+		dashboard.dispose();
 	});
 });
 

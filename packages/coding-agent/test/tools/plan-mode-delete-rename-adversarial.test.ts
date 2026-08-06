@@ -51,13 +51,19 @@ describe("plan mode delete/rename adversarial", () => {
 	});
 
 	it("disabled plan mode allows delete/rename without throwing", () => {
-		const s = makeToolSession({
+		// WHY: the differential for the four denials above, pinned as a transition.
+		// The identical delete and rename must be refused with plan mode on and pass
+		// through untouched with it off; a bare "did not throw" would also hold for a
+		// guard that had stopped denying anything at all.
+		const off = makeToolSession({
 			cwd: "/tmp/plan-del",
 			hasUI: false,
 			getSessionFile: () => null,
 			getPlanModeState: () => ({ enabled: false }),
 		});
-		expect(() => enforcePlanModeWrite(s, "src/a.ts", { op: "delete" })).not.toThrow();
-		expect(() => enforcePlanModeWrite(s, "src/a.ts", { move: "src/b.ts" })).not.toThrow();
+		expect(() => enforcePlanModeWrite(off, "src/a.ts", { op: "delete" })).not.toThrow();
+		expect(() => enforcePlanModeWrite(off, "src/a.ts", { move: "src/b.ts" })).not.toThrow();
+		expect(() => enforcePlanModeWrite(planSession(), "src/a.ts", { op: "delete" })).toThrow(ToolError);
+		expect(() => enforcePlanModeWrite(planSession(), "src/a.ts", { move: "src/b.ts" })).toThrow(ToolError);
 	});
 });

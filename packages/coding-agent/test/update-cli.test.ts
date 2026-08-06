@@ -545,6 +545,10 @@ describe("runUpdateCommand fetch cancellation", () => {
 	// fails fast instead of freezing `veyyon update --check`. Merged from the former
 	// src/cli/update-cli.test.ts so this module has a single suite.
 	it("checks release metadata with a timeout signal", async () => {
+		// WHY: "a signal was passed" is not the contract. The signal has to be a live
+		// DEADLINE: not already spent when the request goes out, and one that
+		// actually fires, so a stalled registry connection surfaces a timeout instead
+		// of freezing `veyyon update --check` forever.
 		let requestSignal: AbortSignal | undefined;
 		spyOn(console, "log").mockImplementation(() => {});
 		const fetchStub = Object.assign(
@@ -559,6 +563,22 @@ describe("runUpdateCommand fetch cancellation", () => {
 		await updateCli.runUpdateCommand({ force: false, check: true });
 
 		expect(requestSignal).toBeInstanceOf(AbortSignal);
+		expect(requestSignal?.aborted).toBe(false);
+
+		// The deadline is real: against a connection that never answers, the same
+		// request path aborts on its own budget and names the timeout.
+		const hangingFetch = Object.assign(
+			(_input: string | URL | Request, init?: RequestInit | BunFetchRequestInit) => {
+				const signal = init?.signal as AbortSignal;
+				return new Promise<Response>((_resolve, reject) => {
+					signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+				});
+			},
+			{ preconnect: globalThis.fetch.preconnect },
+		);
+		spyOn(globalThis, "fetch").mockImplementation(hangingFetch as never);
+
+		await expect(updateCli.getLatestRelease(5)).rejects.toThrow(/Timed out fetching release info/);
 	});
 });
 

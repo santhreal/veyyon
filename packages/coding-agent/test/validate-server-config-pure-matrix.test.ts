@@ -16,8 +16,13 @@ describe("validateServerConfig pure matrix", () => {
 	});
 
 	it("empty object has errors", () => {
+		// WHY: `{}` defaults to stdio, so the one thing wrong with it is the missing
+		// command, and the message has to say that and name the server. "Some error"
+		// would also hold for a validator reporting the wrong problem, which sends
+		// the operator to fix a field that was never the issue.
 		const errs = validateServerConfig("s", {} as never);
-		expect(errs.length).toBeGreaterThan(0);
+		expect(errs).toHaveLength(1);
+		expect(errs[0]).toContain('Server "s" is a stdio server with no "command" to spawn');
 	});
 
 	it("bad server name still validates config shape", () => {

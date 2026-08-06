@@ -90,7 +90,7 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		f.resetCaches();
 		const viaSdk = await discoverContextFiles(f.cwd, namedAgentDir);
 
-		expect(files).toEqual([{ path: namedAgentsPath, content: NAMED_MARKER, depth: undefined }]);
+		expect(files).toEqual([{ path: namedAgentsPath, level: "user", content: NAMED_MARKER, depth: undefined }]);
 		expect(viaSdk).toEqual(files);
 	});
 
@@ -121,10 +121,10 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: namedAgentDir });
 
 		expect(files).toEqual([
-			{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
-			{ path: f.nestedAgentsPath, content: `${PROJECT_NESTED_BODY}\n`, depth: 0 },
-			{ path: namedAgentsPath, content: NAMED_MARKER, depth: undefined },
-			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
+			{ path: f.rootAgentsPath, level: "project", content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
+			{ path: f.nestedAgentsPath, level: "project", content: `${PROJECT_NESTED_BODY}\n`, depth: 0 },
+			{ path: namedAgentsPath, level: "user", content: NAMED_MARKER, depth: undefined },
+			{ path: f.globalAgentsPath, level: "global", content: `${GLOBAL_BODY}\n`, depth: undefined },
 		]);
 	});
 
@@ -145,7 +145,7 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 
 		const files = await loadProjectContextFiles({ cwd: f.cwd, agentDir: namedAgentDir });
 
-		expect(files).toEqual([{ path: namedAgentsPath, content: NAMED_MARKER, depth: undefined }]);
+		expect(files).toEqual([{ path: namedAgentsPath, level: "user", content: NAMED_MARKER, depth: undefined }]);
 	});
 
 	/**
@@ -330,7 +330,7 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		const files = await discoverContextFiles(f.cwd, namedAgentDir);
 		const { skills } = await discoverSkills(f.cwd, namedAgentDir);
 
-		expect(files).toEqual([{ path: namedAgentsPath, content: NAMED_MARKER, depth: undefined }]);
+		expect(files).toEqual([{ path: namedAgentsPath, level: "user", content: NAMED_MARKER, depth: undefined }]);
 		expect(skills.map(skill => skill.name)).toEqual(["named-authored", "named-managed", "named-plugin-skill"]);
 	});
 });

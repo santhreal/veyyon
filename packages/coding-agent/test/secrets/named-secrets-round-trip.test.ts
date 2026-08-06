@@ -256,10 +256,20 @@ describe("forgetting a secret", () => {
 		);
 	});
 
-	/** Forgetting something absent is a no-op rather than an error. */
+	/**
+	 * Forgetting something absent is a no-op: it leaves the secrets that ARE held untouched. Asserted
+	 * on a surviving secret rather than on the absence of a throw, because a `forget` that cleared
+	 * the table (or tombstoned every entry) would also not throw, and would silently stop every
+	 * remaining placeholder from spending its credential.
+	 */
 	it("ignores a name it does not hold", () => {
 		const obfuscator = new SecretObfuscator([]);
+		obfuscator.addNamedSecret("DEPLOY_TOKEN", GITHUB);
 
-		expect(() => obfuscator.forgetNamedSecret("NOT_THERE")).not.toThrow();
+		obfuscator.forgetNamedSecret("NOT_THERE");
+
+		expect(obfuscator.hasNamedSecret("DEPLOY_TOKEN")).toBe(true);
+		expect(obfuscator.hasNamedSecret("NOT_THERE")).toBe(false);
+		expect(obfuscator.deobfuscate("#DEPLOY_TOKEN#")).toBe(GITHUB);
 	});
 });

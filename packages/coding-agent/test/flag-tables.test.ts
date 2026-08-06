@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseArgs } from "../src/cli/args";
+import { type Args, parseArgs } from "../src/cli/args";
 import {
 	flagConsumesValue,
 	isUnknownLongValueCandidate,
@@ -95,11 +95,31 @@ describe("a rejection message only names values the parser accepts", () => {
 		"--tools": BUILTIN_TOOL_NAMES,
 	};
 
+	/**
+	 * Where each flag's value lands, and a value it must always advertise.
+	 *
+	 * WHY the landing site and not just the absence of a throw: a value that
+	 * parses without taking effect is the failure this suite exists to catch. The
+	 * message would name a level the parser silently drops, and the run would go
+	 * ahead on the default while the operator's evidence that the flag worked is
+	 * that they typed it. The canonical member is the non-vacuity guard: an
+	 * advertised set that had gone empty would satisfy the loop below and print
+	 * "Expected one of: ." to the operator.
+	 */
+	const LANDING_BY_FLAG: Record<string, { canonical: string; read: (result: Args, value: string) => unknown }> = {
+		"--mode": { canonical: "text", read: result => result.mode },
+		"--approval-mode": { canonical: "ask", read: result => result.approvalMode },
+		"--thinking": { canonical: "off", read: result => result.thinking },
+		"--tools": { canonical: "read", read: result => result.tools?.join(",") },
+	};
+
 	for (const [flag, accepted] of Object.entries(ACCEPTED_BY_FLAG)) {
-		it(`accepts every value ${flag} advertises`, () => {
-			expect(accepted.length).toBeGreaterThan(0);
+		const { canonical, read } = LANDING_BY_FLAG[flag]!;
+
+		it(`accepts every value ${flag} advertises, and keeps it`, () => {
+			expect(accepted).toContain(canonical);
 			for (const value of accepted) {
-				expect(() => parseArgs([flag, value])).not.toThrow();
+				expect(read(parseArgs([flag, value]), value), `${flag} ${value} must reach the parsed args`).toBe(value);
 			}
 		});
 	}

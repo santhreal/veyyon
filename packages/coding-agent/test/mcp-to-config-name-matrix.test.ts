@@ -23,6 +23,13 @@ describe("toConfigName matrix", () => {
 		["___", "___"],
 		["my.package-name_v2", "my.package-name_v2"],
 		["@org/name@1.0", "org-name-1.0"],
+		// The empty-result fallback, from every shape that reaches it: a key the
+		// settings file can hold is never the empty string.
+		["@@@", "mcp-server"],
+		["///", "mcp-server"],
+		["   ", "mcp-server"],
+		// Dots survive the charset filter, so this one does NOT reach the fallback.
+		["...", "..."],
 	];
 
 	for (const [input, want] of cases) {
@@ -30,11 +37,4 @@ describe("toConfigName matrix", () => {
 			expect(toConfigName(input)).toBe(want);
 		});
 	}
-
-	it("never returns empty string", () => {
-		for (const input of ["", "@@@", "///", "   ", "..."]) {
-			const out = toConfigName(input);
-			expect(out.length).toBeGreaterThan(0);
-		}
-	});
 });

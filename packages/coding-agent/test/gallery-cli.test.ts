@@ -127,13 +127,20 @@ describe("gallery harness", () => {
 		expect(success).not.toContain("full file");
 	});
 
-	it("falls back to a generic fixture for registry tools without curated sample data", () => {
-		// resolveFixture never returns undefined for a registry tool, even one
-		// missing from the curated fixtures, so the gallery cannot crash on a newly
-		// added renderer.
+	it("falls back to a generic fixture for registry tools without curated sample data", async () => {
+		// The claim is not that a fixture object exists, it is that a renderer
+		// added without sample data still has something to draw: args to show as
+		// the call, and a result the gallery can render as success. A fixture whose
+		// content was empty would satisfy "defined" and print a blank panel.
 		const fixture = resolveFixture("a-tool-that-has-no-fixture");
-		expect(fixture.args).toBeDefined();
-		expect(fixture.result.content.length).toBeGreaterThan(0);
+
+		expect(fixture.args).toEqual({ note: "sample a-tool-that-has-no-fixture call" });
+		expect(fixture.result.content).toEqual([{ type: "text", text: "a-tool-that-has-no-fixture completed" }]);
+
+		const rendered = Bun.stripANSI(
+			(await renderGalleryState("a-tool-that-has-no-fixture", fixture, "success", 100)).join("\n"),
+		);
+		expect(rendered).toContain("a-tool-that-has-no-fixture completed");
 	});
 
 	it("exits 2 with the error on stderr for an unknown --tool", async () => {

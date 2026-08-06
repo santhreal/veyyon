@@ -326,8 +326,12 @@ describe("several patch entries on one file, cancelled partway", () => {
 	});
 
 	it("rejects with an abort rather than an error result", async () => {
-		// Same regression as the per-file loop, in the loop that shares its shape.
-		// They are fixed together and pinned together so one cannot drift.
+		// KEPT as an identity assertion, because the identity IS the contract: the
+		// agent loop branches on it. A ToolAbortError stops the turn; anything else
+		// is an ordinary failure it answers by retrying the work the operator just
+		// cancelled. The message is pinned separately below, so the two cannot
+		// drift apart. Same regression as the per-file loop, in the loop that
+		// shares its shape.
 		const file = path.join(tmpDir, "entries.ts");
 		await fs.writeFile(file, THREE_LINES);
 

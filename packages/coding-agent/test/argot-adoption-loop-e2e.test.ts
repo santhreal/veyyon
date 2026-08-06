@@ -126,7 +126,7 @@ describe("argot agent-driven adoption loop (e2e)", () => {
 		// Snapshot before the profile switch. Restoring the two variables is not
 		// enough: `setProfile` records the active profile in MODULE state and writes
 		// `VEYYON_PROFILE` and `VEYYON_CODING_AGENT_DIR`, so this suite left every later
-		// file in the process on `argot-loop-test` — `scripts/find-test-leaks.ts`
+		// file in the process on `argot-loop-test` — `scripts/test-sandbox/find-test-leaks.ts`
 		// reported `state.activeProfile: work -> argot-loop-test`.
 		dirOverrides = captureDirOverrides();
 		__resetDirsFromEnvForTests();

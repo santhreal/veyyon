@@ -92,9 +92,16 @@ describe("enforcePlanModeWrite (working tree read-only, local:// sandbox writabl
 	const planMode: PlanModeState = { enabled: true, planFilePath: "local://some-plan.md" };
 
 	it("accepts writes to any local:// file", () => {
+		// WHY: acceptance only means something next to the boundary it sits on. The
+		// guard authorizes by DESTINATION, so the same test pins the nearest path
+		// that is NOT in the sandbox; without it, a guard that had stopped checking
+		// anything at all would pass.
 		const session = makeSession({ artifactsDir: ARTIFACTS_DIR, planMode });
 		expect(() => enforcePlanModeWrite(session, "local://auth-refactor-plan.md", { op: "create" })).not.toThrow();
 		expect(() => enforcePlanModeWrite(session, "local://scratch/notes.md", { op: "update" })).not.toThrow();
+		expect(() =>
+			enforcePlanModeWrite(session, path.join(ARTIFACTS_DIR, "local", "..", "escape.md"), { op: "update" }),
+		).toThrow(/working tree is read-only/);
 	});
 
 	it("rejects writes to the working tree", () => {
@@ -114,8 +121,15 @@ describe("enforcePlanModeWrite (working tree read-only, local:// sandbox writabl
 	});
 
 	it("is a no-op when plan mode is disabled", () => {
-		const session = makeSession({ artifactsDir: ARTIFACTS_DIR, cwd: REPO_ROOT });
-		expect(() => enforcePlanModeWrite(session, "src/foo.ts", { op: "update" })).not.toThrow();
+		// WHY: asserted as the on/off transition rather than as a bare "did not
+		// throw". The same call on the same path has to be refused with plan mode on
+		// and inert with it off, which a guard stuck in either position fails.
+		const off = makeSession({ artifactsDir: ARTIFACTS_DIR, cwd: REPO_ROOT });
+		const on = makeSession({ artifactsDir: ARTIFACTS_DIR, cwd: REPO_ROOT, planMode });
+		for (const options of [{ op: "update" }, { op: "delete" }, { move: "src/bar.ts" }] as const) {
+			expect(() => enforcePlanModeWrite(off, "src/foo.ts", options)).not.toThrow();
+			expect(() => enforcePlanModeWrite(on, "src/foo.ts", options)).toThrow(/Plan mode:/);
+		}
 	});
 });
 
@@ -123,19 +137,32 @@ describe("enforcePlanModeWrite accepts absolute local-sandbox paths", () => {
 	const planMode: PlanModeState = { enabled: true, planFilePath: "local://some-plan.md" };
 
 	it("allows the absolute path returned by `read local://...` (== sandbox-resolved path)", async () => {
+		// WHY: the model reads `local://my-plan.md`, gets an absolute path back, and
+		// writes to that. The guard has to recognise the round-tripped spelling as
+		// the same sandbox target, and it has to stop one directory above it, which
+		// is the assertion that keeps "recognised" from meaning "waved through".
+		//
 		// Use an existing temp directory so the realpath check inside the guard
 		// sees a real filesystem even when the OS exposes temp paths through aliases.
 		const artifactsDir = await fs.mkdtemp(path.join(os.tmpdir(), "plan-guard-test-"));
 		try {
 			const session = makeSession({ artifactsDir, planMode });
 			const absolute = resolvePlanPath(session, "local://my-plan.md");
+			const justOutside = path.resolve(path.dirname(absolute), "..", "escape.md");
 			expect(() => enforcePlanModeWrite(session, absolute, { op: "update" })).not.toThrow();
+			expect(() => enforcePlanModeWrite(session, justOutside, { op: "update" })).toThrow(
+				/working tree is read-only/,
+			);
 		} finally {
 			await removeWithRetries(artifactsDir);
 		}
 	});
 
 	it("allows bracketed hashline headers for local sandbox paths", async () => {
+		// WHY: authorization runs on the UNWRAPPED path. Every strict header shape
+		// wrapping a sandbox target is accepted, and the same shape wrapping a path
+		// one directory above the sandbox is still refused, so the unwrap is not a
+		// way to smuggle a working-tree write past the destination check.
 		const artifactsDir = await fs.mkdtemp(path.join(os.tmpdir(), "plan-guard-test-"));
 		try {
 			const session = makeSession({ artifactsDir, planMode });
@@ -146,6 +173,11 @@ describe("enforcePlanModeWrite accepts absolute local-sandbox paths", () => {
 			expect(() => enforcePlanModeWrite(session, `[${absolute}#ABCD]`, { op: "update" })).not.toThrow();
 			expect(() => enforcePlanModeWrite(session, `[${absolute}]`, { op: "update" })).not.toThrow();
 			expect(() => enforcePlanModeWrite(session, `[local://my-plan.md#ABCD]`, { op: "update" })).not.toThrow();
+
+			const justOutside = path.resolve(path.dirname(absolute), "..", "escape.md");
+			expect(() => enforcePlanModeWrite(session, `[${justOutside}#ABCD]`, { op: "update" })).toThrow(
+				/working tree is read-only/,
+			);
 		} finally {
 			await removeWithRetries(artifactsDir);
 		}

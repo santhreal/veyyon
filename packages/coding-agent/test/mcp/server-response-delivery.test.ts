@@ -18,6 +18,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { reportUndeliveredServerResponse } from "@veyyon/coding-agent/mcp/transports/server-response-delivery";
 import { logger } from "@veyyon/utils";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 describe("reportUndeliveredServerResponse", () => {
 	let warnings: Array<{ message: string; fields: Record<string, unknown> }>;
@@ -135,7 +136,7 @@ describe("both transports route a failed server-response POST through the owner"
 			const source = fs.readFileSync(transport.path, "utf8");
 
 			expect(source).toContain("reportUndeliveredServerResponse({");
-			expect(source).toContain('from "./server-response-delivery"');
+			expect(moduleSpecifiersIn(source)).toContain("./server-response-delivery");
 		});
 
 		it(`${transport.name} does not reintroduce its own copy of the report`, () => {

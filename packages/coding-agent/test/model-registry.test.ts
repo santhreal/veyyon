@@ -830,8 +830,20 @@ describe("ModelRegistry", () => {
 		});
 
 		test("custom provider with same name as built-in does not affect other built-in providers", () => {
-			expect(getModelsForProvider(anthropicCustom, "google").length).toBeGreaterThan(0);
-			expect(getModelsForProvider(anthropicCustom, "openai").length).toBeGreaterThan(0);
+			// WHY a comparison against a baseline and not a count: the claim is that
+			// overriding `anthropic` leaves the OTHER providers exactly as the bundled
+			// catalog had them. A list that merely has entries says nothing about
+			// whether an id vanished or a transport was rewritten to the proxy, which
+			// is the failure that would silently reroute unrelated traffic.
+			const baseline = readonlyRegistry({ providers: {} });
+			const providersInCatalog = [...new Set(baseline.getAll().map(model => model.provider))];
+
+			for (const provider of ["google", "openai"]) {
+				expect(providersInCatalog).toContain(provider);
+				const identity = (registry: ModelRegistry): string[] =>
+					getModelsForProvider(registry, provider).map(model => `${model.id}@${model.baseUrl}`);
+				expect(identity(anthropicCustom)).toEqual(identity(baseline));
+			}
 		});
 
 		test("provider-level baseUrl applies to both built-in and custom models", () => {

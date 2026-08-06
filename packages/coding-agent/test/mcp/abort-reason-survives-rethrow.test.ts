@@ -89,6 +89,10 @@ describe("throwIfAborted routes through the same decision", () => {
 		expect((thrown as ToolAbortError).cause).toBe(timeout);
 	});
 
+	// KEPT as an absence-of-throw contract: this guard sits in front of every MCP
+	// error-to-result conversion, so one that fires on a live signal turns an
+	// ordinary tool failure into a phantom cancellation. Every test above hands
+	// it an already-aborted signal and would pass with the check dropped.
 	it("does not throw when the signal is not aborted", () => {
 		expect(() => throwIfAborted(new AbortController().signal, "MCP call")).not.toThrow();
 		expect(() => throwIfAborted(undefined, "MCP call")).not.toThrow();

@@ -134,7 +134,8 @@ describe("Anthropic's web-search tool name", () => {
 		expect(search).toContain("name: ANTHROPIC_WEB_SEARCH_TOOL,");
 		expect(search).toContain("stripClaudeToolPrefix(block.name) === ANTHROPIC_WEB_SEARCH_TOOL");
 		expect(provider).toContain("name.toLowerCase() === ANTHROPIC_WEB_SEARCH_TOOL");
-		for (const text of [search, provider]) expect(text).toContain('from "@veyyon/catalog/wire/anthropic"');
+		for (const text of [search, provider])
+			expect(moduleSpecifiersIn(text)).toContain("@veyyon/catalog/wire/anthropic");
 	});
 });
 

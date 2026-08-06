@@ -61,7 +61,6 @@ function createFixture() {
 		effectiveHideThinkingBlock: false,
 		proseOnlyThinking: true,
 		statusLine: { invalidate: vi.fn() },
-		updateEditorTopBorder: vi.fn(),
 		noteDisplayableThinkingContent: vi.fn(() => false),
 		session: viewSession,
 		viewSession,

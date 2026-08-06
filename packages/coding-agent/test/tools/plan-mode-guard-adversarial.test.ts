@@ -63,7 +63,11 @@ describe("enforcePlanModeWrite", () => {
 	}
 
 	it("is a no-op when plan mode is disabled", () => {
+		// WHY: pinned as the on/off transition. "Did not throw" alone also holds for
+		// a guard that has stopped refusing anything, so the same call under an
+		// enabled session has to still be refused for this to mean plan mode is off.
 		expect(() => enforcePlanModeWrite(sess(false), "src/a.ts")).not.toThrow();
+		expect(() => enforcePlanModeWrite(sess(true), "src/a.ts")).toThrow(/working tree is read-only/i);
 	});
 
 	it("denies working-tree writes with the documented read-only message", () => {

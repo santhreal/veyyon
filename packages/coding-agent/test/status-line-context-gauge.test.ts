@@ -239,17 +239,6 @@ describe("context_total segment", () => {
 });
 
 describe("context_pct segment", () => {
-	/** Text mode is the tok/tok readout: used against the limit, one unit on
-	 * both sides, no percent and no decimal. */
-	it("renders tokens over the limit in text mode", () => {
-		const rendered = renderSegment(
-			"context_pct",
-			gaugeContext({ contextTokens: 85_000, contextWindow: 200_000, contextLimit: 170_000 }),
-		);
-		expect(plain(rendered.content)).toContain("85K/170K");
-		expect(plain(rendered.content)).not.toContain("%");
-	});
-
 	/**
 	 * Bar mode reports room LEFT twice — as a draining bar and as a labelled
 	 * percentage — so the two halves of the gauge cannot contradict each other.

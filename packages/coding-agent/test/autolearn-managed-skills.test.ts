@@ -24,7 +24,7 @@ describe("managed-skills primitives", () => {
 		// `setAgentDir(original)`: that pair cannot restore an ABSENT
 		// `VEYYON_CODING_AGENT_DIR`, and `setAgentDir` also clears the active profile,
 		// so the old restore left the real agent dir exported and the process on the
-		// default profile for every later file. `scripts/find-test-leaks.ts` caught it.
+		// default profile for every later file. `scripts/test-sandbox/find-test-leaks.ts` caught it.
 		dirOverrides = captureDirOverrides();
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-managed-skills-"));
 		spyOn(os, "homedir").mockReturnValue(tempHome);

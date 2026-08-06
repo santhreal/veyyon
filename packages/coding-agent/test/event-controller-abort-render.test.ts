@@ -62,7 +62,6 @@ function createFixture(opts: {
 		init: vi.fn(async () => {}),
 		ui: { requestRender },
 		statusLine: { invalidate: vi.fn() },
-		updateEditorTopBorder: vi.fn(),
 		streamingComponent,
 		streamingMessage: opts.streamingMessage,
 		pendingTools: new Map(),

@@ -80,9 +80,21 @@ describe("agent status display (ONE-PLACE)", () => {
 		expect(colors.size).toBe(ALL_STATUSES.length);
 	});
 
-	it("renders a non-empty visible glyph for every status", () => {
-		for (const status of ALL_STATUSES) {
-			expect(Bun.stripANSI(agentStatusGlyph(status)).length).toBeGreaterThan(0);
+	/**
+	 * WHY width and distinctness, not merely non-empty: the roster draws one
+	 * glyph per agent in a single cell, so the two ways it can be unreadable are
+	 * an absent mark (an empty or blank glyph leaves the row looking unstyled)
+	 * and a shared mark (two states drawn identically, which makes the glyph
+	 * column decorative). Color already separates them for a sighted operator;
+	 * the glyph has to as well, because color is what a narrow or monochrome
+	 * terminal drops first.
+	 */
+	it("renders a distinct one-cell glyph for every status", () => {
+		const glyphs = ALL_STATUSES.map(status => Bun.stripANSI(agentStatusGlyph(status)));
+		for (const [index, glyph] of glyphs.entries()) {
+			expect(Bun.stringWidth(glyph), `${ALL_STATUSES[index]} glyph ${JSON.stringify(glyph)}`).toBe(1);
+			expect(glyph.trim(), `${ALL_STATUSES[index]} glyph must not be blank`).not.toBe("");
 		}
+		expect(new Set(glyphs).size).toBe(ALL_STATUSES.length);
 	});
 });

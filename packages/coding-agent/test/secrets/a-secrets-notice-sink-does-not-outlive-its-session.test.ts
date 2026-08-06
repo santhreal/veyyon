@@ -61,9 +61,23 @@ describe("the secrets notice sink module", () => {
 	 * With no sink there is nothing to deliver to, and a condition raised then must not become an
 	 * exception inside whatever key or vault operation raised it. Losing a notice is acceptable;
 	 * failing a vault read because nobody was listening is not.
+	 *
+	 * "Does nothing" is asserted as well as "throws nothing": a condition raised while unattached
+	 * must be DROPPED, not queued. A buffered notice would be replayed into the next session to
+	 * attach a sink, which is a message about a vault that session never touched.
 	 */
 	it("does nothing and throws nothing when no sink is installed", () => {
 		expect(() => noteSecretsCondition("nobody is listening")).not.toThrow();
+
+		const seen: string[] = [];
+		const detach = attachSecretsNoticeSink(message => seen.push(message));
+		try {
+			expect(seen).toEqual([]);
+			noteSecretsCondition("someone is listening now");
+			expect(seen).toEqual(["someone is listening now"]);
+		} finally {
+			detach();
+		}
 	});
 
 	/**

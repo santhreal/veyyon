@@ -29,6 +29,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync, statSync } from "node:fs";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "..", "src");
 const PACKAGES = path.resolve(SRC, "..", "..");
@@ -191,7 +192,7 @@ describe("the CLI's static import graph", () => {
 		expect(staticSpecifiers(apiOwner)).toEqual(["@veyyon/utils"]);
 
 		const main = readFileSync(path.join(SRC, "main.ts"), "utf8");
-		expect(main).toContain('from "./modes/components/launch-tip"');
-		expect(main).not.toContain('from "./modes/components/welcome"');
+		expect(moduleSpecifiersIn(main)).toContain("./modes/components/launch-tip");
+		expect(moduleSpecifiersIn(main)).not.toContain("./modes/components/welcome");
 	});
 });

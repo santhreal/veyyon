@@ -97,6 +97,10 @@ describe("plain-file and directory reads ignore an already-aborted signal", () =
 	// scan honors the abort signal, so an already-aborted read still fails fast
 	// instead of being forced to run to completion like a plain file read.
 	it("still aborts a non-plain read (`:conflicts`) when the signal is aborted", async () => {
+		// KEPT as an error-TYPE assertion: the whole point of this boundary is that a
+		// cancelled conflict scan comes back as a cancellation the loop stops on,
+		// while the plain reads above resolve normally under the same signal. Folding
+		// it into an ordinary ToolError would make the loop retry the scan instead.
 		const filePath = path.join(testDir, "conflicted.txt");
 		fs.writeFileSync(filePath, "hello\nworld\n");
 

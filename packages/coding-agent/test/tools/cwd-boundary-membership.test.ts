@@ -110,22 +110,29 @@ describe("boundary membership", () => {
 describe("docs/approval-mode.md agrees with the code", () => {
 	const doc = fs.readFileSync(path.join(REPO_ROOT, "docs", "approval-mode.md"), "utf8");
 
-	/** A reader who trusts this list and finds it incomplete has been misled about
-	 * what is gated, which is worse than the doc not listing anything. */
+	/**
+	 * A reader who trusts this list and finds it incomplete has been misled about what is gated,
+	 * which is worse than the doc not listing anything.
+	 *
+	 * This one stays as a doc check ON PURPOSE, under the security-boundary carve-out: the subject is
+	 * whether the documented membership matches `BOUND_TOOLS`, and `BOUND_TOOLS` is itself pinned
+	 * against the code by the source scan above. So the chain is code -> pinned set -> doc, and a tool
+	 * that joins the boundary without being documented fails here. It is a completeness check over a
+	 * derived list, not a scan for a hand-picked phrase.
+	 */
 	it.each(BOUND_TOOLS)("names %s as bound by the working-directory boundary", name => {
 		expect(doc).toContain(`\`${name}\``);
 	});
 
-	/** The doc must state the yolo carve-out, or a reader configures `yolo` and
-	 * expects containment that is not there. */
-	it("states that yolo opts out of the boundary", () => {
-		expect(doc).toContain("working-directory boundary");
-		expect(doc).toMatch(/yolo[^.]*opts out/i);
-	});
-
-	/** And the headless behaviour, since that is the one operators hit without a
-	 * prompt to explain it. */
-	it("states that a headless run fails rather than proceeding", () => {
-		expect(doc).toMatch(/no interactive UI[\s\S]{0,200}fails/i);
-	});
+	// REMOVED, deliberately: two regexes over the doc's PROSE, `/yolo[^.]*opts out/i` and
+	// `/no interactive UI[\s\S]{0,200}fails/i`. Both were green against a document asserting the
+	// OPPOSITE of the truth -- "yolo never opts out of the working-directory boundary" matches the
+	// first, and "a call that needs approval is auto-approved and proceeds; nothing fails" matches the
+	// second -- while the first went red on a correct reword ("yolo bypasses the boundary entirely").
+	// A check that cannot fail on the claim it names, and can fail on a correct edit, is worse than no
+	// check. Both behaviours are proven for real in
+	// `packages/coding-agent/test/tools/non-interactive-approval-fails-closed.test.ts`: the carve-out
+	// by "yolo is the documented carve-out and still runs", and the headless refusal by "a tier that
+	// requires approval refuses when there is no UI" and "the working-directory boundary refuses when
+	// there is no UI".
 });

@@ -95,8 +95,8 @@ describe("StatusLineComponent effective settings cache", () => {
 		for (const statusLineSettings of cases) {
 			const component = makeComponent(statusLineSettings);
 			for (const width of [36, 120]) {
-				const first = component.getTopBorder(width);
-				const second = component.getTopBorder(width);
+				const first = component.renderQuietLine(width);
+				const second = component.renderQuietLine(width);
 				expect(second).toEqual(first);
 			}
 		}
@@ -126,10 +126,10 @@ describe("StatusLineComponent effective settings cache", () => {
 
 		const secondEffective = component.getEffectiveSettingsForTest();
 		expect(secondEffective).not.toBe(firstEffective);
-		expect(secondEffective.separator).toBe("slash");
+		expect(secondEffective.leftSegments).toEqual(["session_name"]);
 		expect(secondEffective.sessionAccent).toBe(false);
 		expect(secondEffective.segmentOptions.path?.maxLength).toBe(12);
-		expect(stripVTControlCharacters(component.getTopBorder(80).content)).toContain("Cache Session");
+		expect(stripVTControlCharacters(component.renderQuietLine(80) ?? "")).toContain("Cache Session");
 		expect(component.render(80)).toEqual(["lint running"]);
 	});
 
@@ -138,16 +138,13 @@ describe("StatusLineComponent effective settings cache", () => {
 			preset: "default",
 			segmentOptions: {
 				path: { maxLength: 7 },
-				git: { showUntracked: false },
+				git: { showBranch: false },
 			},
 		});
 
 		const effective = component.getEffectiveSettingsForTest();
 		expect(effective.segmentOptions.path).toEqual({ abbreviate: true, maxLength: 7, stripWorkPrefix: true });
-		expect(effective.segmentOptions.git?.showBranch).toBe(true);
-		expect(effective.segmentOptions.git?.showStaged).toBe(true);
-		expect(effective.segmentOptions.git?.showUnstaged).toBe(true);
-		expect(effective.segmentOptions.git?.showUntracked).toBe(false);
+		expect(effective.segmentOptions.git?.showBranch).toBe(false);
 	});
 
 	it("uses custom segment arrays only for the custom preset", () => {
@@ -159,7 +156,7 @@ describe("StatusLineComponent effective settings cache", () => {
 		const customComponent = makeComponent({ preset: "custom", leftSegments: [], rightSegments: [] });
 		expect(customComponent.getEffectiveSettingsForTest().leftSegments).toEqual([]);
 		expect(customComponent.getEffectiveSettingsForTest().rightSegments).toEqual([]);
-		expect(stripVTControlCharacters(customComponent.getTopBorder(120).content)).toContain(
+		expect(stripVTControlCharacters(customComponent.renderQuietLine(120) ?? "")).toContain(
 			withIcon(theme.icon.agents, "0"),
 		);
 	});
@@ -169,7 +166,7 @@ describe("StatusLineComponent effective settings cache", () => {
 
 		component.setSubagentCount(2);
 
-		const content = stripVTControlCharacters(component.getTopBorder(120).content);
+		const content = stripVTControlCharacters(component.renderQuietLine(120) ?? "");
 		expect(content).toContain(withIcon(theme.icon.agents, "2"));
 		expect(content).not.toContain("agents");
 	});
@@ -177,10 +174,10 @@ describe("StatusLineComponent effective settings cache", () => {
 	it("keeps plan and hook state dynamic without settings invalidation", () => {
 		const component = makeComponent({ preset: "custom", leftSegments: ["mode"], rightSegments: [] });
 		const effective = component.getEffectiveSettingsForTest();
-		expect(stripVTControlCharacters(component.getTopBorder(80).content)).toContain(withIcon(theme.icon.agents, "0"));
+		expect(stripVTControlCharacters(component.renderQuietLine(80) ?? "")).toContain(withIcon(theme.icon.agents, "0"));
 
 		component.setPlanModeStatus({ enabled: true, paused: false });
-		expect(stripVTControlCharacters(component.getTopBorder(80).content)).toContain("Plan");
+		expect(stripVTControlCharacters(component.renderQuietLine(80) ?? "")).toContain("Plan");
 		expect(component.getEffectiveSettingsForTest()).toBe(effective);
 
 		component.setHookStatus("hook", "hook running");
@@ -194,8 +191,8 @@ describe("StatusLineComponent effective settings cache", () => {
 		const before = { ...STATUS_LINE_PRESETS.default.segmentOptions?.path };
 		const component = makeComponent({ preset: "default", sessionAccent: false });
 
-		component.getTopBorder(12);
-		component.getTopBorder(200);
+		component.renderQuietLine(12);
+		component.renderQuietLine(200);
 
 		expect(STATUS_LINE_PRESETS.default.segmentOptions?.path).toEqual(before);
 		expect(component.getEffectiveSettingsForTest().segmentOptions.path).toEqual(before);
@@ -206,7 +203,7 @@ describe("StatusLineComponent effective settings cache", () => {
 		const effective = component.getEffectiveSettingsForTest();
 
 		for (let i = 0; i < 5; i++) {
-			component.getTopBorder(100);
+			component.renderQuietLine(100);
 			expect(component.getEffectiveSettingsForTest()).toBe(effective);
 		}
 
@@ -236,7 +233,7 @@ describe("StatusLineComponent effective settings cache", () => {
 			component.watchBranch(() => {
 				throw new Error("git watcher should not fire while git integration is disabled");
 			});
-			component.getTopBorder(100);
+			component.renderQuietLine(100);
 			await Promise.resolve();
 
 			expect(repoSpy).not.toHaveBeenCalled();
@@ -269,7 +266,7 @@ describe("StatusLineComponent effective settings cache", () => {
 			component.watchBranch(() => {
 				throw new Error("git watcher should not fire when no git-backed segment is visible");
 			});
-			component.getTopBorder(100);
+			component.renderQuietLine(100);
 			await Promise.resolve();
 
 			expect(repoSpy).not.toHaveBeenCalled();

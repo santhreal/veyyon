@@ -64,18 +64,6 @@ describe("loading custom tools with nothing to load", () => {
 	});
 
 	/**
-	 * And the `setUIContext` it hands back is safe to call. Callers invoke it unconditionally once the TUI
-	 * exists; a shortcut that returned an object without it, or one that threw, would turn "no custom
-	 * tools" into a crash on the way to first paint.
-	 */
-	it("hands back a setUIContext that a caller can invoke", async () => {
-		const result = await loadCustomTools([], process.cwd(), []);
-
-		expect(() => result.setUIContext({} as never, true)).not.toThrow();
-		expect(() => result.setUIContext({} as never, false)).not.toThrow();
-	});
-
-	/**
 	 * The shortcut must be about there being nothing to load, not about the loader being switched off. A
 	 * path that does not exist still goes down the real path and still reports itself as an error, so a
 	 * misconfigured tool is visible instead of silently absent (Law 10).

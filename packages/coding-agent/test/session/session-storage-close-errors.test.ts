@@ -66,14 +66,20 @@ describe("FileSessionStorageWriter close error reporting", () => {
 		// THE regression. The close is forced to fail by closing the descriptor out
 		// from under the writer, which is what an EIO or ENOSPC looks like from
 		// here: the fd is no longer closable and the last writes may not have
-		// landed.
+		// landed. The REPORTED error must be the one close raised, not a fresh
+		// generic stand-in: `session/messages.ts` and the operator both read the
+		// message, so a rewrapped "close failed" loses the errno that says what
+		// the filesystem actually did.
 		const { writer } = writerIn("broken.jsonl");
 		await writer.append("line\n");
 		failNextClose();
 
 		await writer.close();
 
-		expect(writer.getError()).toBeInstanceOf(Error);
+		const reported = writer.getError();
+		expect(reported).toBeInstanceOf(Error);
+		expect(reported?.message).toBe("EIO: i/o error, close");
+		expect((reported as NodeJS.ErrnoException | undefined)?.code).toBe("EIO");
 	});
 
 	it("passes a failing close to the onError callback, like a write error", async () => {

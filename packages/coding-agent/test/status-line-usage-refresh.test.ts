@@ -94,10 +94,12 @@ describe("StatusLineComponent usage refresh", () => {
 
 	it("passes a startup timeout signal to the background usage fetch", async () => {
 		let signal: AbortSignal | undefined;
+		// Never resolves, so the signal is still the live one the fetch is holding when the
+		// startup budget runs out.
 		const component = new StatusLineComponent(
-			makeSession(async nextSignal => {
+			makeSession(nextSignal => {
 				signal = nextSignal;
-				return [];
+				return Promise.withResolvers<unknown>().promise;
 			}),
 		);
 
@@ -105,7 +107,16 @@ describe("StatusLineComponent usage refresh", () => {
 		vi.advanceTimersByTime(0);
 		await flushMicrotasks();
 
+		// A TIMEOUT signal, not merely an AbortSignal: an unarmed controller would satisfy
+		// `toBeInstanceOf` and let a hung provider hold the render cadence forever, which is the
+		// whole reason the fetch is handed a signal at all.
 		expect(signal).toBeInstanceOf(AbortSignal);
+		expect(signal?.aborted).toBe(false);
+
+		vi.advanceTimersByTime(2_000);
+		await flushMicrotasks();
+
+		expect(signal?.aborted).toBe(true);
 	});
 
 	it("backs off after the startup timeout when usage fetching hangs", async () => {
@@ -151,12 +162,12 @@ describe("StatusLineComponent usage refresh", () => {
 		vi.advanceTimersByTime(2_000);
 		await flushMicrotasks();
 
-		expect(plain(component.getTopBorder(80).content)).not.toContain("5h");
+		expect(plain(component.renderQuietLine(80) ?? "")).not.toContain("5h");
 
 		late.resolve(usageReport(42));
 		await flushMicrotasks();
 
-		expect(plain(component.getTopBorder(80).content)).toContain("5h 42%");
+		expect(plain(component.renderQuietLine(80) ?? "")).toContain("5h 42%");
 	});
 
 	it("re-fetches usage immediately when the session rotates to another org under the same email", async () => {

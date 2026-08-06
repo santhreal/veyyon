@@ -22,10 +22,18 @@ import { createTheme } from "@veyyon/coding-agent/modes/theme/theme";
 const SRC = path.resolve(import.meta.dir, "../../../src");
 
 describe("status.connecting / status.active symbols", () => {
+	/**
+	 * Every preset must bind both keys to a real glyph, and to DIFFERENT glyphs: the pair exists to
+	 * show a connect state changing, so a preset that resolved both to the same character (or to the
+	 * empty string, which `theme.status` would happily return) renders a dot that never moves.
+	 */
 	it("exist in every preset", () => {
 		for (const [name, preset] of Object.entries(SYMBOL_PRESETS)) {
-			expect(preset["status.connecting"], `${name}.status.connecting`).toBeTruthy();
-			expect(preset["status.active"], `${name}.status.active`).toBeTruthy();
+			const connecting = preset["status.connecting"];
+			const active = preset["status.active"];
+			expect(connecting, `${name}.status.connecting`).toMatch(/^\S+$/u);
+			expect(active, `${name}.status.active`).toMatch(/^\S+$/u);
+			expect(connecting, `${name}: the two states must be distinguishable`).not.toBe(active);
 		}
 	});
 

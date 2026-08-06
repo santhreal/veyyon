@@ -48,15 +48,11 @@ const SHARED: Array<readonly [string[], unknown]> = [...namesByRenderer()]
 
 describe("the renderer table really has shared bindings", () => {
 	/**
-	 * NON-VACUITY, and it is the whole risk here: the rule below is "for every shared renderer …", which an
-	 * empty grouping satisfies for free. If a future refactor gave every tool its own renderer object the rule
-	 * would go quiet rather than loud, so the grouping is asserted to find at least one real pair.
+	 * NON-VACUITY, and it is the whole risk here: the rule below is "for every shared renderer …",
+	 * which an empty grouping satisfies for free. Naming the specific pair the suite was written for
+	 * proves the grouping found a real one, so a refactor that gave every tool its own renderer
+	 * object fails loudly here instead of quietly emptying `SHARED`.
 	 */
-	it("finds at least one renderer bound to more than one tool", () => {
-		expect(SHARED.length).toBeGreaterThan(0);
-	});
-
-	/** And the specific pair this suite was written for, named, so the grouping is not merely non-empty. */
 	it("groups edit and apply_patch together", () => {
 		const pair = SHARED.find(([names]) => names.includes("edit"));
 

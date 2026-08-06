@@ -195,7 +195,14 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		});
 
 		try {
-			expect(session.getToolByName("resolve")).toBeDefined();
+			// Registered AND hidden. Plan mode dispatches `resolve { action: "apply" }` through the
+			// standing handler, which looks the tool up by name in the registry, so registration is
+			// the half that unblocks plan submission. The other half is that it stays OUT of the
+			// active set: `resolve` is not a tool the model chooses, and advertising it in a
+			// read-only session would offer an action the operator never asked for.
+			expect(session.getToolByName("resolve")?.name).toBe("resolve");
+			expect(session.getActiveToolNames()).not.toContain("resolve");
+			expect(session.getActiveToolNames()).toContain("read");
 		} finally {
 			await session.dispose();
 		}

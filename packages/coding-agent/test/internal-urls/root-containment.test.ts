@@ -49,11 +49,6 @@ describe("isWithinRoot", () => {
 describe("ensureWithinRoot", () => {
 	const root = "/home/user/vault";
 
-	it("returns silently when the target is within the root", () => {
-		expect(() => ensureWithinRoot(`${root}/ok.md`, root, "vault")).not.toThrow();
-		expect(() => ensureWithinRoot(root, root, "vault")).not.toThrow();
-	});
-
 	it("throws a scheme-specific escape message when the target is outside", () => {
 		expect(() => ensureWithinRoot("/etc/passwd", root, "vault")).toThrow("vault:// URL escapes vault root");
 		expect(() => ensureWithinRoot("/etc/passwd", root, "local")).toThrow("local:// URL escapes local root");

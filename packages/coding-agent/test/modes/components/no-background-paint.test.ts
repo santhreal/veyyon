@@ -49,7 +49,11 @@ describe("inline transcript components emit no background SGR", () => {
 	 * padding rows). It must render fg-only. */
 	it("UserMessageComponent renders without painting userMessageBg", () => {
 		const lines = new UserMessageComponent("profile the render loop **now**\nsecond line").render(60);
-		expect(lines.length).toBeGreaterThan(0);
+		// The content is named, not merely counted: `expectNoBgPaint` iterates the rows, so a
+		// component that rendered nothing (or dropped the body and kept its chrome) would satisfy a
+		// row-count check and pass the paint assertion vacuously.
+		expect(lines.join("\n")).toContain("profile the render loop");
+		expect(lines.join("\n")).toContain("second line");
 		expectNoBgPaint(lines, "user-message");
 	});
 
@@ -63,7 +67,7 @@ describe("inline transcript components emit no background SGR", () => {
 			timestamp: 0,
 		};
 		const lines = new CustomMessageComponent(message).render(60);
-		expect(lines.length).toBeGreaterThan(0);
+		expect(lines.join("\n")).toContain("an extension note with");
 		expectNoBgPaint(lines, "custom-message");
 	});
 
@@ -77,7 +81,7 @@ describe("inline transcript components emit no background SGR", () => {
 			timestamp: 0,
 		};
 		const lines = new HookMessageComponent(message).render(60);
-		expect(lines.length).toBeGreaterThan(0);
+		expect(lines.join("\n")).toContain("hook output line");
 		expectNoBgPaint(lines, "hook-message");
 	});
 

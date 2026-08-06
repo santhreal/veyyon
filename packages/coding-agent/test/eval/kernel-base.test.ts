@@ -41,6 +41,10 @@ describe("createAbortError", () => {
 });
 
 describe("throwIfKernelAborted", () => {
+	// KEPT as an absence-of-throw contract, and it is the honest one: this guard
+	// runs before every cell and at each kernel-init step, so a guard that fires
+	// on a live signal cancels work nobody cancelled. Every other test here
+	// drives an ALREADY-aborted signal and would pass with the check inverted.
 	it("does nothing when the signal is undefined or not aborted", () => {
 		expect(() => throwIfKernelAborted(undefined, "fb")).not.toThrow();
 		expect(() => throwIfKernelAborted(new AbortController().signal, "fb")).not.toThrow();

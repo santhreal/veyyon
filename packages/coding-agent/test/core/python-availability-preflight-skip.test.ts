@@ -6,7 +6,7 @@
  * the process environment so their fake kernels would not be blocked by a real
  * interpreter probe. Every one of those writes was redundant, because the same
  * function already short-circuits under `bun test`, and every one of them leaked the
- * flag into whatever file ran next in the same process (`scripts/find-test-leaks.ts`
+ * flag into whatever file ran next in the same process (`scripts/test-sandbox/find-test-leaks.ts`
  * reported `left behind env.VEYYON_PYTHON_SKIP_CHECK: (unset) -> 1` for all six). The
  * writes are gone; this suite is what keeps them from coming back, by pinning the
  * behaviour they were compensating for.
@@ -34,7 +34,7 @@ const flagBefore = process.env.VEYYON_PYTHON_SKIP_CHECK;
 /**
  * This suite is the one place allowed to move these variables, and it puts all three
  * back after every test. A suite that pins "do not leak a global" would be absurd if
- * it leaked one itself, and `scripts/find-test-leaks.ts` runs over this file too.
+ * it leaked one itself, and `scripts/test-sandbox/find-test-leaks.ts` runs over this file too.
  */
 afterEach(() => {
 	restore("NODE_ENV", nodeEnvBefore);

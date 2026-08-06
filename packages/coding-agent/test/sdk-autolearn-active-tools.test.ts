@@ -61,11 +61,12 @@ describe("createAgentSession auto-learn tool activation", () => {
 	});
 
 	it("initializes the selected memory backend before an auto-learn session can run", async () => {
+		const sessionManager = SessionManager.inMemory();
 		const { session } = await createAgentSession({
 			cwd: registryDir,
 			agentDir: registryDir,
 			modelRegistry,
-			sessionManager: SessionManager.inMemory(),
+			sessionManager,
 			settings: Settings.isolated({
 				"autolearn.enabled": true,
 				"memory.backend": "hindsight",
@@ -78,7 +79,14 @@ describe("createAgentSession auto-learn tool activation", () => {
 		});
 		sessions.push(session);
 
-		expect(session.getHindsightSessionState()).toBeDefined();
+		// The memory tools (`learn`, `memory_recall`, `memory_retain`) all refuse with "Hindsight
+		// backend is not initialised for this session" when this returns undefined, so a merely
+		// DEFINED state is not the contract: it has to be a PRIMARY state keyed to this session.
+		// An alias delegates persistence to a parent that a top-level session does not have, and a
+		// stale sessionId sends every retain to another conversation's bank.
+		const state = session.getHindsightSessionState();
+		expect(state?.sessionId).toBe(session.sessionId);
+		expect(state?.aliasOf).toBeUndefined();
 	});
 
 	it("omits manage_skill from a restricted session when auto-learn is off", async () => {

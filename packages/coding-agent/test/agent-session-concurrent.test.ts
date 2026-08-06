@@ -127,6 +127,11 @@ describe("AgentSession concurrent prompt guard", () => {
 	}
 
 	it("should throw when prompt() called while streaming", async () => {
+		// KEPT as an identity assertion, because the type is the contract: callers
+		// (TUI, RPC, ACP) branch on AgentBusyError to say "still streaming, use
+		// steer or follow-up" rather than surfacing a failure. The two tests below
+		// prove the streaming paths that DO accept a message; this one pins the
+		// refusal, and its type.
 		await createSession();
 
 		// Start first prompt (don't await, it will block until abort)

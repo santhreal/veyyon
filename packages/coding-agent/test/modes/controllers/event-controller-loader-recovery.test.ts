@@ -51,7 +51,6 @@ function createContext(options: { terminalProgress?: boolean } = {}) {
 			get: (path: string) => path === "terminal.showProgress" && options.terminalProgress === true,
 		},
 		statusLine: { invalidate: vi.fn(), markActivityStart: vi.fn(), markActivityEnd: vi.fn() },
-		updateEditorTopBorder: vi.fn(),
 		pendingTools: new Map<string, unknown>(),
 		hideThinkingBlock: false,
 		setWorkingMessage: vi.fn(),

@@ -121,7 +121,7 @@ describe("StatusLineComponent PR lookup timeout guard", () => {
 		component.updateSettings(gitSegmentSettings);
 		try {
 			// Render triggers `#lookupPr` → git.github.run.
-			component.getTopBorder(80);
+			component.renderQuietLine(80);
 
 			const call = await ghCalled;
 			expect(call.args).toEqual(["pr", "view", "--json", "number,url"]);
@@ -151,7 +151,7 @@ describe("StatusLineComponent PR lookup timeout guard", () => {
 		component.updateSettings(gitSegmentSettings);
 		try {
 			// First render fires the (rejecting) lookup.
-			component.getTopBorder(80);
+			component.renderQuietLine(80);
 			// Drain the microtask queue so the catch/finally chain runs.
 			await Promise.resolve();
 			await Promise.resolve();
@@ -166,7 +166,7 @@ describe("StatusLineComponent PR lookup timeout guard", () => {
 				stdout: JSON.stringify({ number: 42, url: "https://github.com/x/y/pull/42" }),
 				stderr: "",
 			});
-			component.getTopBorder(80);
+			component.renderQuietLine(80);
 			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
