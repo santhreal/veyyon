@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import {
 	generateRoomKey,
 	generateWriteToken,
@@ -243,7 +244,43 @@ describe("one owner", () => {
 			expect(source).not.toContain("AES-GCM");
 			expect(source).not.toContain("getRandomValues");
 			expect(source).not.toContain("crypto.subtle");
-			expect(source).toContain('from "@veyyon/wire"');
+			expect(moduleSpecifiersIn(source)).toContain("@veyyon/wire");
 		}
+	});
+
+	/**
+	 * Session sharing writes the same `[12B IV][ciphertext]` envelope to a different destination, and
+	 * it was writing it a second time by hand, with its own `IV_LENGTH = 12`. That copy is the one
+	 * that mattered: the reader is `share-loader.js` in a browser, so a drift between the two would
+	 * surface as an already-published link that no longer opens, with the session already gone from
+	 * the machine that sealed it.
+	 *
+	 * The rule here is narrower than the one above, because share legitimately mints its own key: the
+	 * link fragment carries a per-share key that has nothing to do with a room. What it must not do
+	 * is seal, so `crypto.subtle.encrypt` and a private IV length are what this forbids.
+	 */
+	it("session sharing seals through wire rather than rebuilding the envelope", async () => {
+		const source = await Bun.file(new URL("../../coding-agent/src/export/share.ts", import.meta.url)).text();
+
+		expect(source).not.toContain("crypto.subtle.encrypt");
+		expect(source).not.toContain("IV_LENGTH");
+		expect(moduleSpecifiersIn(source)).toContain("@veyyon/wire");
+	});
+
+	/**
+	 * The browser half of the share envelope, which cannot import anything: `share-loader.js` ships
+	 * as a plain asset and hardcodes the IV length twice. It is the one copy that has to stay a copy,
+	 * so it is pinned against the constant instead, the same way the repo guards its other
+	 * cross-language boundaries. A bare literal here means the reader and the writer can disagree
+	 * silently, and only a published link would find out.
+	 */
+	it("pins the browser loader's hardcoded IV length to the constant it cannot import", async () => {
+		const source = await Bun.file(
+			new URL("../../coding-agent/src/export/html/share-loader.js", import.meta.url),
+		).text();
+
+		const lengths = [...source.matchAll(/sealed\.subarray\((?:0,\s*)?(\d+)\)/g)].map(m => Number(m[1]));
+
+		expect(lengths).toEqual([SEAL_IV_BYTES, SEAL_IV_BYTES]);
 	});
 });

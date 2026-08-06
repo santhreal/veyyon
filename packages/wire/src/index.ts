@@ -825,14 +825,7 @@ export async function importRoomKey(raw: Uint8Array): Promise<CryptoKey> {
  * only thing that has to agree.
  */
 export async function sealFrame<Frame>(key: CryptoKey, frame: Frame): Promise<Uint8Array> {
-	const iv = new Uint8Array(SEAL_IV_BYTES);
-	crypto.getRandomValues(iv);
-	const plaintext = SEAL_TEXT_ENCODER.encode(JSON.stringify(frame));
-	const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv }, key, plaintext));
-	const out = new Uint8Array(SEAL_IV_BYTES + ciphertext.byteLength);
-	out.set(iv, 0);
-	out.set(ciphertext, SEAL_IV_BYTES);
-	return out;
+	return sealBytes(key, SEAL_TEXT_ENCODER.encode(JSON.stringify(frame)));
 }
 
 /**
@@ -842,6 +835,30 @@ export async function sealFrame<Frame>(key: CryptoKey, frame: Frame): Promise<Ui
  * came from someone holding the room key, and the frame grammar is checked where it is handled.
  */
 export async function openFrame<Frame>(key: CryptoKey, data: Uint8Array): Promise<Frame> {
+	return JSON.parse(SEAL_TEXT_DECODER.decode(await openBytes(key, data))) as Frame;
+}
+
+/**
+ * The envelope itself: `[12B random IV][AES-256-GCM ciphertext with its tag]`.
+ *
+ * Separate from {@link sealFrame} because not every payload is JSON. A shared session is gzipped
+ * before it is sealed, and it was writing this same envelope a second time, with its own copy of
+ * the IV length. Two hand-written copies of one wire format is how the two halves drift into
+ * ciphertext that the other side reads as garbage, so the envelope has one writer and JSON is a
+ * layer on top of it rather than a peer of it.
+ */
+export async function sealBytes(key: CryptoKey, plaintext: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
+	const iv = new Uint8Array(SEAL_IV_BYTES);
+	crypto.getRandomValues(iv);
+	const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv }, key, plaintext));
+	const out = new Uint8Array(SEAL_IV_BYTES + ciphertext.byteLength);
+	out.set(iv, 0);
+	out.set(ciphertext, SEAL_IV_BYTES);
+	return out;
+}
+
+/** Inverse of {@link sealBytes}. Throws on authentication failure or malformed input. */
+export async function openBytes(key: CryptoKey, data: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
 	if (data.byteLength <= SEAL_IV_BYTES) {
 		throw new Error("Sealed frame too short");
 	}
@@ -849,8 +866,7 @@ export async function openFrame<Frame>(key: CryptoKey, data: Uint8Array): Promis
 	// neither of these spans its own: the ciphertext always sits behind the IV.
 	const iv = new Uint8Array(data.subarray(0, SEAL_IV_BYTES));
 	const ciphertext = new Uint8Array(data.subarray(SEAL_IV_BYTES));
-	const plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, key, ciphertext));
-	return JSON.parse(SEAL_TEXT_DECODER.decode(plaintext)) as Frame;
+	return new Uint8Array(await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, key, ciphertext));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

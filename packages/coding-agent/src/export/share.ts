@@ -22,7 +22,7 @@ import * as path from "node:path";
 import type { AgentMessage, AgentState } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
 import { $which, errorMessage, isRecord, logger, trimTrailingSlashes } from "@veyyon/utils";
-import { DEFAULT_SHARE_URL } from "@veyyon/wire";
+import { DEFAULT_SHARE_URL, sealBytes } from "@veyyon/wire";
 import { $ } from "bun";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import type { SessionEntry, SessionHeader } from "../session/session-entries";
@@ -37,7 +37,6 @@ export const SERVER_MAX_SEALED_BYTES = 1_000_000;
 /** Gist raw fetches cap at 10 MB; keep base64 (×4/3) comfortably under it. */
 const GIST_MAX_SEALED_BYTES = 5_000_000;
 
-const IV_LENGTH = 12;
 const SHARE_KEY_BYTES = 32;
 /** The viewer picks the gist file by this suffix. */
 const GIST_FILENAME = "session.veyyonshare.txt";
@@ -344,14 +343,7 @@ export async function sealToFit(key: CryptoKey, data: SessionData, maxBytes: num
 
 /** `[12B IV][AES-256-GCM(gzip(JSON))]` — decrypted and gunzipped by share-loader.js. */
 async function sealSessionData(key: CryptoKey, data: SessionData): Promise<Uint8Array<ArrayBuffer>> {
-	const compressed = Bun.gzipSync(new TextEncoder().encode(JSON.stringify(data)));
-	const iv = new Uint8Array(IV_LENGTH);
-	crypto.getRandomValues(iv);
-	const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, compressed));
-	const out = new Uint8Array(IV_LENGTH + ciphertext.byteLength);
-	out.set(iv, 0);
-	out.set(ciphertext, IV_LENGTH);
-	return out;
+	return sealBytes(key, Bun.gzipSync(new TextEncoder().encode(JSON.stringify(data))));
 }
 
 /** Replace inline image payloads (image blocks + data: URLs) with tiny placeholders, in place. */
