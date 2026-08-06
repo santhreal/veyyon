@@ -1,3 +1,4 @@
+LICENSE
 README.md
 pyproject.toml
 src/veyyon_rpc/__init__.py
@@ -11,6 +12,7 @@ src/veyyon_rpc.egg-info/SOURCES.txt
 src/veyyon_rpc.egg-info/dependency_links.txt
 src/veyyon_rpc.egg-info/top_level.txt
 tests/test_client.py
+tests/test_host_tools.py
 tests/test_host_uris.py
 tests/test_protocol.py
 tests/test_user_group.py
