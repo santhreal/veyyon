@@ -690,6 +690,15 @@ export interface CreateAgentSessionOptions {
 	 * `prompt` overrides. Explicit `deny` and plan mode still block. Default: false.
 	 */
 	bypassAllApprovals?: boolean;
+
+	/**
+	 * A subagent's live view of its parent's bypass. `bypassAllApprovals` above
+	 * is a snapshot taken at spawn, so without this a parent that turns `/yolo`
+	 * off leaves an already-running child bypassing approvals to the end of its
+	 * run. Consulted on every check, and it can only narrow: a child whose own
+	 * bypass is off is never granted one by its parent.
+	 */
+	parentApprovalBypassed?: () => boolean;
 }
 
 /**
@@ -958,8 +967,10 @@ export async function discoverSkills(
 
 /**
  * Discover the rules for a session: the profile's `<agentDir>/RULES.md` and
- * `<agentDir>/rules/`, the project's `.veyyon/rules/`, and every foreign-config
- * and plugin rule source.
+ * `<agentDir>/rules/`, the bundled defaults, and every foreign-config and plugin
+ * rule source. All of them are user-scope: a repository's own `.veyyon/rules/`
+ * was dropped as a source, because a cloned repo cannot be a standing
+ * instruction on every request.
  *
  * `agentDir` defaults to {@link getAgentDir} and is FORWARDED, exactly like
  * {@link discoverSkills} and {@link discoverContextFiles}. Rules were the one
@@ -2201,6 +2212,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
 					builtinRules: ttsrSettings.builtinRules,
 					disabledRules: ttsrSettings.disabledRules,
+					experimentalRules: ttsrSettings.experimentalRules,
 				});
 				if (existingSession.injectedTtsrRules.length > 0) {
 					ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
@@ -3497,6 +3509,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 						nextBuckets = bucketRules(nextRulesResult.items, ttsrManager, {
 							builtinRules: ttsrSettings.builtinRules,
 							disabledRules: ttsrSettings.disabledRules,
+							experimentalRules: ttsrSettings.experimentalRules,
 						});
 					} catch (error) {
 						ttsrManager.clearRules();
@@ -4268,6 +4281,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			settings,
 			autoApprove: options.autoApprove,
 			bypassAllApprovals: options.bypassAllApprovals,
+			parentApprovalBypassed: options.parentApprovalBypassed,
 			evalKernelOwnerId,
 			// Defined only for top-level sessions (creation is gated above).
 			// AgentSession uses this to decide whether it may dispose the global

@@ -350,6 +350,16 @@ export class SessionCpuLimit {
 		if (!changed) return;
 		const wasOff = this.#cores <= 0;
 		this.#cores = cores;
+		if (this.#setupFailed) {
+			// One failure used to disable the budget for the whole session: a
+			// momentarily unwritable cgroup parent or a busy systemd left
+			// #setupFailed set and #ensurePromise memoised, so nothing re-armed
+			// even after the operator fixed the host and re-set the value. A
+			// changed setting is exactly that request, and `changed` above keeps
+			// this from retrying on every spawn.
+			this.#setupFailed = false;
+			this.#ensurePromise = undefined;
+		}
 		if (cores <= 0) {
 			this.#denied = false;
 			this.#window = [];
@@ -490,12 +500,24 @@ export class SessionCpuLimit {
 			clearInterval(this.#timer);
 			this.#timer = undefined;
 		}
+		await this.#releaseGroup();
+	}
+
+	/**
+	 * Stop the transient unit, if any, and release the group handle.
+	 *
+	 * Shared with the disposed-mid-creation path in `#createGroup`, which has a
+	 * group `dispose()` never saw.
+	 */
+	async #releaseGroup(): Promise<void> {
 		if (this.#systemdUnit) {
 			await this.#options.env
 				.run(["systemctl", "--user", "stop", this.#systemdUnit])
 				.catch(error => logger.debug("CPU limit: unit stop failed", { error: errorMessage(error) }));
+			this.#systemdUnit = undefined;
 		}
 		this.#group?.dispose();
+		this.#group = undefined;
 	}
 
 	#windowSeconds(): number {
@@ -566,6 +588,15 @@ export class SessionCpuLimit {
 				});
 			} else {
 				this.#group = create({ name: this.budgetName, cores: this.#cores });
+			}
+			// dispose() can land while the probe, systemd-run or systemctl above is
+			// in flight, on `/exit` or `/new` during the first capped command, which
+			// is exactly when this runs. It found #group undefined and had nothing
+			// to release, so without this the group is created after the session is
+			// gone and a setInterval polls it for the life of the process.
+			if (this.#disposed) {
+				await this.#releaseGroup();
+				return undefined;
 			}
 			this.#startWatcher();
 			return this.#group;

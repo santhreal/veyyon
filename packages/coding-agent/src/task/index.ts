@@ -1682,6 +1682,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				// The `/yolo` bypass lives on the session, not in settings, so it has
 				// to be handed over explicitly or the child silently drops a rung.
 				bypassAllApprovals: this.session.isApprovalBypassed?.() ?? false,
+				// Read live, so `/yolo off` reaches a subagent that is already running.
+				parentApprovalBypassed: () => this.session.isApprovalBypassed?.() ?? false,
 				obfuscateProviderText: this.session.obfuscateProviderText,
 				mcpManager,
 				contextFiles,

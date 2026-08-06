@@ -81,6 +81,7 @@ import {
 	stripLegacyArchive,
 	upsertFileOperations,
 } from "@veyyon/agent-core/compaction";
+import { modelServesPrefixCacheHits } from "@veyyon/agent-core/compaction/cache-aligned-context";
 import {
 	DEFAULT_PRUNE_CONFIG,
 	pruneSupersededToolResults,
@@ -9498,6 +9499,36 @@ export class AgentSession {
 	}
 
 	/**
+	 * The live provider prefix a cache-aligned compaction request replays, or
+	 * `undefined` when replaying it would not hit the provider's cache.
+	 *
+	 * WHY IT REBUILDS THE PREFIX RATHER THAN READING `agent.state`. The hit is a
+	 * byte comparison the provider performs, so the replayed blocks have to be the
+	 * ones the live turn actually sent. `state.messages` are agent messages, before
+	 * the pre-LLM transform, the obfuscation seam and provider normalization, and
+	 * `state.tools` is the unnormalized catalog. `convertMessagesToLlm` +
+	 * `buildSideRequestContext` produce the bytes the loop produces, the same pair
+	 * the handoff and `/btw` side requests already use to share this cache.
+	 *
+	 * WHY THE MODEL MUST MATCH. Prompt caches are per model. A compaction candidate
+	 * that is not the live session model has no populated prefix to read, so
+	 * replaying the whole window there is pure fresh input, strictly worse than
+	 * the truncated request it would have replaced.
+	 */
+	async #cacheAlignedCompactionPrefix(
+		candidate: Model,
+		signal?: AbortSignal,
+	): Promise<Pick<SummaryOptions, "sessionSystemPrompt" | "sessionMessages" | "tools"> | undefined> {
+		const sessionModel = this.model;
+		if (!sessionModel || this.#getModelKey(sessionModel) !== this.#getModelKey(candidate)) return undefined;
+		if (!modelServesPrefixCacheHits(candidate)) return undefined;
+		const llmMessages = await this.convertMessagesToLlm(this.agent.state.messages.slice(), signal);
+		const context = await this.agent.buildSideRequestContext(llmMessages);
+		if (!context.systemPrompt?.length || context.messages.length === 0) return undefined;
+		return { sessionSystemPrompt: context.systemPrompt, sessionMessages: context.messages, tools: context.tools };
+	}
+
+	/**
 	 * Apply session-level stream hooks to a direct side request.
 	 *
 	 * The lease is admitted before any caller/extension hook can run and is
@@ -15251,7 +15282,14 @@ export class AgentSession {
 		const skipReasons = new Map<string, string>();
 
 		for (const candidate of candidates) {
-			summarizePayloadTokens = estimateCompactionRequestTokens(preparation, candidate, customInstructions, options);
+			const cachePrefix = await this.#cacheAlignedCompactionPrefix(candidate, signal);
+			const candidateOptions: SummaryOptions = cachePrefix ? { ...options, ...cachePrefix } : (options ?? {});
+			summarizePayloadTokens = estimateCompactionRequestTokens(
+				preparation,
+				candidate,
+				customInstructions,
+				candidateOptions,
+			);
 			const candidateWindow =
 				typeof configuredCompactionWindow === "number" && configuredCompactionWindow > 0
 					? configuredCompactionWindow
@@ -15283,7 +15321,7 @@ export class AgentSession {
 					this.#obfuscateTextForProvider(customInstructions),
 					signal,
 					{
-						...options,
+						...candidateOptions,
 						metadata: this.agent.metadataForProvider(candidate.provider),
 						convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
 						telemetry,
@@ -15293,7 +15331,7 @@ export class AgentSession {
 						// so unsupported-effort models (xai-oauth/grok-4.20-0309-reasoning) do not trip
 						// requireSupportedEffort.
 						thinkingLevel: configuredEffortByModel.get(this.#getModelKey(candidate)) ?? this.thinkingLevel,
-						tools: this.agent.state.tools,
+						tools: cachePrefix?.tools ?? this.agent.state.tools,
 						sessionId: this.sessionId,
 						// Providers route on `promptCacheKey ?? sessionId`, and the live
 						// loop sends the agent's pinned key when it has one (fork, tan,
@@ -15774,6 +15812,7 @@ export class AgentSession {
 					const hasMoreCandidates = candidateIndex < candidates.length - 1;
 					const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
 					if (!apiKey) continue;
+					const cachePrefix = await this.#cacheAlignedCompactionPrefix(candidate, autoCompactionSignal);
 
 					let attempt = 0;
 					while (true) {
@@ -15798,7 +15837,9 @@ export class AgentSession {
 									// inside compact() via resolveCompactionEffort.
 									thinkingLevel:
 										configuredEffortByModel.get(this.#getModelKey(candidate)) ?? this.thinkingLevel,
-									tools: this.agent.state.tools,
+									sessionSystemPrompt: cachePrefix?.sessionSystemPrompt,
+									sessionMessages: cachePrefix?.sessionMessages,
+									tools: cachePrefix?.tools ?? this.agent.state.tools,
 									sessionId: this.sessionId,
 									// Same routing rule as the manual-compaction call site above:
 									// mirror the pinned key the live turns cached under.

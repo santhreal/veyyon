@@ -433,6 +433,12 @@ export interface ExecutorOptions {
 	 */
 	bypassAllApprovals?: boolean;
 	/**
+	 * The parent's bypass, read live rather than copied. `bypassAllApprovals`
+	 * above is a snapshot: without this, `/yolo off` in the parent leaves an
+	 * already-running subagent bypassing approvals until it finishes.
+	 */
+	parentApprovalBypassed?: () => boolean;
+	/**
 	 * Parent session's live per-family service tiers, the source of truth for a
 	 * subagent whose `tier.subagent` is `"inherit"`. `null` = the parent
 	 * explicitly has no tier (e.g. `/fast off`); omitted = no live session, so
@@ -3032,6 +3038,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				modelRegistry,
 				settings: runtimeSettings,
 				bypassAllApprovals: options.bypassAllApprovals,
+				parentApprovalBypassed: options.parentApprovalBypassed,
 				model,
 				modelPattern: model || modelOverride === undefined ? undefined : modelPatterns,
 				modelPatternAuthFallback:
