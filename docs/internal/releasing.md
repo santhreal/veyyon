@@ -221,9 +221,18 @@ matching section.
 `release:prepare` refused, or `main`'s CI went red on the bump commit. No remote
 tag exists, so nothing was published and nothing needs undoing remotely.
 
-If `release:prepare` refused, it named the reason: a dirty tree, the wrong branch,
-a version that is not ahead of the latest tag, or an undocumented package. Fix it
-and run it again — it wrote nothing.
+If `release:prepare` refused before it wrote anything, it named the reason: a
+dirty tree, the wrong branch, a version that is not ahead of the latest tag, or
+an undocumented package. Fix it and run it again — the tree is untouched.
+
+If it failed part-way — an unreconcilable natives sentinel, a changelog the
+prepared-release assertion rejects, or `bun run check` going red — it had
+already rewritten every package version, both lockfiles and every changelog. It
+rolls those back before exiting and reports how many paths it restored, so the
+tree is clean and the retry is not blocked by its own leftovers. Only files it
+*created* are left behind, listed by name, because it does not delete files;
+remove them yourself before re-running. Either way the reported cause is the
+thing to fix, not the rollback.
 
 If it committed and `main`'s CI then went red, the bump commit is on `main` like
 any other commit. Fix the cause, push the fix, and tag the commit that goes green.
