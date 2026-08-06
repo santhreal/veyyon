@@ -105,6 +105,7 @@ These are enforced conventions, documented in [`AGENTS.md`](AGENTS.md):
 
 - **Gate**: `bun run check` (types + lint) and the test buckets — see
   [`docs/internal/testing.md`](docs/internal/testing.md).
-- **Release**: `bun run release` → tag → CI builds per-platform binaries and publishes —
-  see [`docs/internal/releasing.md`](docs/internal/releasing.md).
+- **Release**: dispatch the `release` workflow from GitHub Actions. It drives
+  `scripts/release.ts`, which refuses to release outside CI, then tags and builds the
+  per-platform binaries. See [`docs/internal/releasing.md`](docs/internal/releasing.md).
 - **Deploy** (website + install endpoints): [`docs/internal/deployment.md`](docs/internal/deployment.md).
