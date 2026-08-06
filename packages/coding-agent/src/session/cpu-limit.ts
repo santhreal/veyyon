@@ -492,6 +492,15 @@ export class SessionCpuLimit {
 		}
 	}
 
+	/**
+	 * Whether this limiter has been retired. A retired limiter holds no group,
+	 * no watcher and no unit, and nothing may resolve it again; the rekey path
+	 * retires the limiter it supersedes, and this is how that is checked.
+	 */
+	get disposed(): boolean {
+		return this.#disposed;
+	}
+
 	/** Stop the watcher and release the group. Surviving children are reparented, never killed. */
 	async dispose(): Promise<void> {
 		if (this.#disposed) return;
@@ -691,7 +700,32 @@ export function sessionCpuLimit(sessionId: string | null | undefined): SessionCp
 export function rekeySessionCpuLimit(previousId: string, nextId: string): SessionCpuLimit | undefined {
 	if (previousId === nextId) return limiters.get(nextId);
 	const limiter = limiters.get(previousId);
-	if (!limiter || limiters.has(nextId)) return limiters.get(nextId);
+	if (!limiter) return limiters.get(nextId);
+	const unregister = (id: string): void => {
+		limiters.delete(id);
+		const at = registrationOrder.indexOf(id);
+		if (at >= 0) registrationOrder.splice(at, 1);
+	};
+	const occupant = limiters.get(nextId);
+	if (occupant) {
+		// The id being moved onto already has its own limiter, so the source is
+		// now unreachable: nothing resolves it, and the session it belonged to
+		// is gone. Left in the map it kept a cgroup, a transient systemd unit
+		// and a once-a-second watcher alive for the life of the process, and,
+		// being first in registration order, it kept collecting every shared
+		// spawn (language servers, the browser, service workers) into a budget
+		// no live session could see or lift.
+		unregister(previousId);
+		void limiter
+			.dispose()
+			.catch(error =>
+				logger.debug("CPU limit: retiring a superseded limiter failed", { error: errorMessage(error) }),
+			);
+		return occupant;
+	}
+	// In place, not delete-then-append: registration order is what
+	// `primarySessionCpuLimit` reads, so moving the root session to the back on
+	// `/new` would hand every shared spawn to a different session's budget.
 	limiters.delete(previousId);
 	limiters.set(nextId, limiter);
 	const index = registrationOrder.indexOf(previousId);
@@ -725,7 +759,9 @@ export function sessionCpuAdoption(getSessionId: () => string | null): (pid: num
 export function adoptIntoPrimarySessionCpuBudget(pid: number): void {
 	const limiter = primarySessionCpuLimit();
 	if (!limiter) return;
-	void limiter.adoptPid(pid).catch(error => logger.debug("CPU limit: adoption failed", { error: errorMessage(error) }));
+	void limiter
+		.adoptPid(pid)
+		.catch(error => logger.debug("CPU limit: adoption failed", { error: errorMessage(error) }));
 }
 
 /** The closure form of {@link adoptIntoPrimarySessionCpuBudget}, for `onSpawnPid` hooks. */

@@ -113,12 +113,34 @@ describe("the registry follows a session that was renamed", () => {
 		expect(primarySessionCpuLimit()).toBe(root);
 	});
 
-	it("refuses to overwrite a limiter that already owns the target id", async () => {
+	/**
+	 * A collision used to leave the source limiter in the map under its old id,
+	 * where nothing could resolve it and nothing could lift it. It kept a
+	 * cgroup, a transient unit and a once-a-second watcher alive for the life of
+	 * the process, and, being earlier in registration order, it went on
+	 * collecting every shared spawn into a budget no live session could see.
+	 * Superseding a limiter has to retire it.
+	 */
+	it("retires the limiter it supersedes instead of orphaning it", async () => {
 		const from = await initSessionCpuLimit({ sessionId: "from", ...INERT });
 		const to = await initSessionCpuLimit({ sessionId: "to", ...INERT });
 
 		expect(rekeySessionCpuLimit("from", "to")).toBe(to);
-		expect(sessionCpuLimit("from")).toBe(from);
+
+		// The occupant keeps the id. The rekey moves a key, and the session that
+		// already owns the target is live.
+		expect(sessionCpuLimit("to")).toBe(to);
+		expect(to.disposed).toBe(false);
+		// The source is unreachable AND retired. Unregistering alone would still
+		// leave the watcher and the group running.
+		// `dispose()` sets the flag before its first await, so the rekey's
+		// fire-and-forget call has already retired it by the time it returns.
+		// Nothing here waits on a clock.
+		expect(sessionCpuLimit("from")).toBeUndefined();
+		expect(from.disposed).toBe(true);
+		// Registration order lost its first entry with it, so the surviving
+		// session is the one shared workers now charge to.
+		expect(primarySessionCpuLimit()).toBe(to);
 	});
 });
 

@@ -11,7 +11,6 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Error, Result};
-use parking_lot::Mutex;
 
 const PERIOD_USEC: u64 = 100_000;
 
@@ -20,7 +19,6 @@ pub struct LinuxBudget {
 	/// The delegated parent when this budget OWNS `dir`; None for a systemd
 	/// scope, which systemd removes.
 	parent_dir: Option<PathBuf>,
-	cores:      Mutex<f64>,
 }
 
 impl LinuxBudget {
@@ -45,7 +43,7 @@ impl LinuxBudget {
 			remove_cgroup_dir(&dir);
 			return Err(error);
 		}
-		Ok(Self { dir, parent_dir: Some(parent), cores: Mutex::new(cores) })
+		Ok(Self { dir, parent_dir: Some(parent) })
 	}
 
 	/// Point at a cgroup somebody else made (a systemd-run scope): adopt and
@@ -55,7 +53,7 @@ impl LinuxBudget {
 		if !path.join("cgroup.procs").exists() {
 			return Err(Error::msg(format!("{} is not a cgroup", path.display())));
 		}
-		Ok(Self { dir: path, parent_dir: None, cores: Mutex::new(0.0) })
+		Ok(Self { dir: path, parent_dir: None })
 	}
 
 	pub fn adopt(&self, pid: i32) {
@@ -102,13 +100,7 @@ impl LinuxBudget {
 		if self.parent_dir.is_none() {
 			return;
 		}
-		*self.cores.lock() = cores;
-		let value = if cores > 0.0 {
-			format!("{} {PERIOD_USEC}", (cores * PERIOD_USEC as f64).round() as u64)
-		} else {
-			format!("max {PERIOD_USEC}")
-		};
-		let _ = std::fs::write(self.dir.join("cpu.max"), value);
+		let _ = std::fs::write(self.dir.join("cpu.max"), quota_value(cores));
 	}
 
 	/// Hand surviving members to the parent and remove the cgroup. A cgroup
@@ -135,9 +127,23 @@ fn remove_cgroup_dir(dir: &Path) {
 	let _ = std::fs::remove_dir_all(dir);
 }
 
+/// The `cpu.max` line for `cores`: a quota over the fixed period, or `max`
+/// (no cap) at or below zero.
+///
+/// Creation and `set_cores` share it deliberately. They used to format the
+/// file two different ways, and only `set_cores` knew that zero means "no
+/// cap": creating a group at zero cores wrote a literal `0 100000`, which is
+/// a quota of no CPU at all rather than an absent one.
+fn quota_value(cores: f64) -> String {
+	if cores > 0.0 {
+		format!("{} {PERIOD_USEC}", (cores * PERIOD_USEC as f64).round() as u64)
+	} else {
+		format!("max {PERIOD_USEC}")
+	}
+}
+
 fn write_quota(dir: &Path, cores: f64) -> Result<()> {
-	let quota = format!("{} {PERIOD_USEC}", (cores * PERIOD_USEC as f64).round() as u64);
-	std::fs::write(dir.join("cpu.max"), quota)
+	std::fs::write(dir.join("cpu.max"), quota_value(cores))
 		.map_err(|e| Error::msg(format!("write cpu.max in {}: {e}", dir.display())))
 }
 
@@ -179,6 +185,34 @@ mod tests {
 		);
 		budget.teardown();
 		assert!(!dir.exists(), "teardown removes an owned cgroup");
+		std::fs::remove_dir_all(&parent).expect("clean parent");
+	}
+
+	/// WHY: zero cores means "no cap", and creation and `set_cores` formatted
+	/// `cpu.max` separately, so only `set_cores` knew that. Creation wrote a
+	/// literal `0 100000`: a quota of no CPU at all, which the kernel either
+	/// rejects (the group is then created uncapped and the operator is told it
+	/// is capped) or honours by freezing every process adopted into it.
+	#[test]
+	fn zero_cores_is_an_absent_cap_on_both_write_paths() {
+		let parent = fake_delegated_parent();
+		let budget = LinuxBudget::create(parent.to_str().expect("utf8"), "veyyon-cpu-zero-test", 0.0)
+			.expect("create budget");
+		let dir = parent.join("veyyon-cpu-zero-test");
+		assert_eq!(
+			std::fs::read_to_string(dir.join("cpu.max")).expect("cpu.max"),
+			"max 100000",
+			"creating at zero cores must lift the cap, never write a zero quota",
+		);
+		budget.set_cores(2.0);
+		assert_eq!(std::fs::read_to_string(dir.join("cpu.max")).expect("cpu.max"), "200000 100000");
+		budget.set_cores(0.0);
+		assert_eq!(
+			std::fs::read_to_string(dir.join("cpu.max")).expect("cpu.max"),
+			"max 100000",
+			"both write paths agree on the spelling of no cap",
+		);
+		budget.teardown();
 		std::fs::remove_dir_all(&parent).expect("clean parent");
 	}
 

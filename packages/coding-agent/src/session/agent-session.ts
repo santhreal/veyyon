@@ -435,7 +435,7 @@ import {
 	computeStoredMessagesTokens,
 	estimateContextSnapshotAttribution,
 } from "./context-usage";
-import { initSessionCpuLimit, rekeySessionCpuLimit } from "./cpu-limit";
+import { initSessionCpuLimit, rekeySessionCpuLimit, sessionCpuLimit } from "./cpu-limit";
 import { abortDetached } from "./detached-abort";
 import {
 	collectPendingToolCalls,
@@ -3327,6 +3327,19 @@ export class AgentSession {
 				this.#todoReminderAwaitingProgress = false;
 				this.#lastTodoReminderFingerprint = undefined;
 				this.#todoReminderEchoCompactionId = undefined;
+			}
+			// The limiter used to learn about a changed budget only when the bash
+			// or launch tool next ran, because those two are the only spawn paths
+			// that call `update()` themselves. Everything else (eval kernels, MCP
+			// servers, hook and custom-tool `exec`) adopts into the group without
+			// touching the quota, so lowering the limit did nothing to work
+			// already running and `/cpu-limit remove` did not lift a live cap
+			// until the operator happened to run a command.
+			if (path === "session.cpuLimitCores" || path === "session.cpuLimitKill") {
+				const limiter = sessionCpuLimit(this.sessionManager.getSessionId());
+				void limiter
+					?.update(this.settings.get("session.cpuLimitCores"), this.settings.get("session.cpuLimitKill"))
+					.catch(error => logger.warn("CPU limit update failed", { error: errorMessage(error) }));
 			}
 			if (PROMPT_AFFECTING_SETTING_PATHS[path] !== true) return;
 			this.#promptRefresh = this.#promptRefresh
