@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { Container, TUI } from "@veyyon/tui";
 import type { Component } from "@veyyon/tui";
+import { Container, TUI } from "@veyyon/tui";
 
 /**
  * WHY: an overlay captures whatever had focus when it opened and hands focus

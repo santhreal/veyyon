@@ -9,9 +9,9 @@ import { buildOpenAIResponsesCompat } from "@veyyon/catalog/compat/openai";
  */
 describe("supportsServerCompaction capability data", () => {
 	test("the official OpenAI endpoint supports it, including an unset baseUrl", () => {
-		expect(buildOpenAIResponsesCompat({ provider: "openai", name: "GPT-5", baseUrl: "" }).supportsServerCompaction).toBe(
-			true,
-		);
+		expect(
+			buildOpenAIResponsesCompat({ provider: "openai", name: "GPT-5", baseUrl: "" }).supportsServerCompaction,
+		).toBe(true);
 		expect(
 			buildOpenAIResponsesCompat({ provider: "openai", name: "GPT-5", baseUrl: "https://api.openai.com/v1" })
 				.supportsServerCompaction,
@@ -19,9 +19,9 @@ describe("supportsServerCompaction capability data", () => {
 	});
 
 	test("Azure OpenAI supports it, keyed on the provider id (baseUrl is per-resource)", () => {
-		expect(buildOpenAIResponsesCompat({ provider: "azure", name: "GPT-5", baseUrl: "" }).supportsServerCompaction).toBe(
-			true,
-		);
+		expect(
+			buildOpenAIResponsesCompat({ provider: "azure", name: "GPT-5", baseUrl: "" }).supportsServerCompaction,
+		).toBe(true);
 	});
 
 	test("an openai row repointed at a proxy does not inherit support", () => {
@@ -44,7 +44,8 @@ describe("supportsServerCompaction capability data", () => {
 				.supportsServerCompaction,
 		).toBe(false);
 		expect(
-			buildOpenAIResponsesCompat({ provider: "github-copilot", name: "GPT-5", baseUrl: "" }).supportsServerCompaction,
+			buildOpenAIResponsesCompat({ provider: "github-copilot", name: "GPT-5", baseUrl: "" })
+				.supportsServerCompaction,
 		).toBe(false);
 	});
 

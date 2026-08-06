@@ -216,5 +216,4 @@ describe("system prompt context files", () => {
 		expect(prompt).not.toContain("later and deeper files override earlier and broader files");
 		expect(prompt).not.toContain("Deeper rules override higher ones");
 	});
-
 });

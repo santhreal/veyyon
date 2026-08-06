@@ -2042,10 +2042,9 @@ function annotateIssuesWithAcceptedValues(json: unknown, messages: readonly stri
 	// so a wide rejection spent the whole budget on generic "is required" lines
 	// and cut the one line that names a legal value. The set-naming lines are
 	// the actionable ones; they lead, stably.
-	return [
-		...annotated.filter(line => line.namesTheSet),
-		...annotated.filter(line => !line.namesTheSet),
-	].map(line => line.message);
+	return [...annotated.filter(line => line.namesTheSet), ...annotated.filter(line => !line.namesTheSet)].map(
+		line => line.message,
+	);
 }
 
 /**

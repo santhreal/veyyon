@@ -49,6 +49,7 @@ describe("a cleanup deleting the temp directory it just made", () => {
 	});
 
 	it("passes the braced spelling of the same name", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion under test, not a JS template.
 		expect(isCritical('TMP=$(mktemp -d) && rm -rf "${TMP}"')).toBe(false);
 	});
 
@@ -103,6 +104,6 @@ describe("the exemption stays narrow", () => {
 	});
 
 	it("still refuses the home directory on a line that also made a temp directory", () => {
-		expect(isCritical('TMP=$(mktemp -d) && rm -rf ~/')).toBe(true);
+		expect(isCritical("TMP=$(mktemp -d) && rm -rf ~/")).toBe(true);
 	});
 });

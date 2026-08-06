@@ -182,9 +182,7 @@ describe("the guard confines active plan-mode writes to the local sandbox", () =
 		// above it. Acceptance on its own also holds for a guard that has stopped
 		// checking the destination, which is the hole this suite exists to close.
 		expect(() => guard("local://feature-plan.md")).not.toThrow();
-		expect(() => guard(path.join(artifacts, "local", "..", "..", "escape.md"))).toThrow(
-			/working tree is read-only/,
-		);
+		expect(() => guard(path.join(artifacts, "local", "..", "..", "escape.md"))).toThrow(/working tree is read-only/);
 	});
 
 	/**

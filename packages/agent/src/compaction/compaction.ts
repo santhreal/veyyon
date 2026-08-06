@@ -43,8 +43,8 @@ import { CompactionCancelledError } from "./errors";
 import { LEGACY_REMOTE_PRESERVE_KEYS } from "./legacy-provider-native";
 import { hasLegacyArchive, legacyArchiveSourceText, stripLegacyArchive } from "./legacy-snapcompact-archive";
 import { type ConvertToLlm, createBranchSummaryMessage, createCustomMessage, defaultConvertToLlm } from "./messages";
-import { requestRemoteCompaction } from "./remote-summarizer";
 import { stripRemoteCompactionPreserveData } from "./remote-compaction-entry";
+import { requestRemoteCompaction } from "./remote-summarizer";
 // The trigger decision moved to the module whose header owns it, and is re-exported below so no caller
 // changed. What is left here is the ENGINE: the summarizer, the cut point, the provider round trip.
 import { type CompactionSettings, DEFAULT_RESERVE_TOKENS } from "./threshold";

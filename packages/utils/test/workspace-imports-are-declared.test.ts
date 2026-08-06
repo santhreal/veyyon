@@ -91,7 +91,7 @@ function runtimeEdgesOf(pkg: WorkspacePackage, names: Record<string, true>): { t
 		const source = fs.readFileSync(file, "utf8");
 		// Nothing here can name a workspace package without naming its scope first, and skipping the
 		// parse for the files that do not keeps this a whole-workspace walk rather than a slow gate.
-		if (!source.includes("@veyyon/") && !source.includes("\"argot") && !source.includes("'argot")) continue;
+		if (!source.includes("@veyyon/") && !source.includes('"argot') && !source.includes("'argot")) continue;
 		for (const specifier of [...moduleSpecifiersIn(source), ...dynamicImportSpecifiersIn(source)]) {
 			const target = workspaceTargetOf(specifier, names);
 			if (!target || target === pkg.name) continue;
@@ -106,20 +106,16 @@ const workspaceNames: Record<string, true> = {};
 for (const pkg of workspacePackages) workspaceNames[pkg.name] = true;
 
 describe("workspace manifests describe the graph the code actually has", () => {
-	it(
-		"declares every workspace package it imports at runtime",
-		() => {
-			const undeclared: string[] = [];
-			for (const pkg of workspacePackages) {
-				for (const edge of runtimeEdgesOf(pkg, workspaceNames)) {
-					if (edge.target in pkg.declared) continue;
-					undeclared.push(`${pkg.name} imports ${edge.target} at ${edge.file} without declaring it`);
-				}
+	it("declares every workspace package it imports at runtime", () => {
+		const undeclared: string[] = [];
+		for (const pkg of workspacePackages) {
+			for (const edge of runtimeEdgesOf(pkg, workspaceNames)) {
+				if (edge.target in pkg.declared) continue;
+				undeclared.push(`${pkg.name} imports ${edge.target} at ${edge.file} without declaring it`);
 			}
-			expect([...new Set(undeclared)].sort()).toEqual([]);
-		},
-		30_000,
-	);
+		}
+		expect([...new Set(undeclared)].sort()).toEqual([]);
+	}, 30_000);
 
 	/**
 	 * `@veyyon/natives` is the bottom of the workspace: utils depends on it, and everything else

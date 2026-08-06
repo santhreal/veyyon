@@ -1329,9 +1329,7 @@ export const diff = Object.assign(
 			files: readonly string[],
 			options: { cached?: boolean; signal?: AbortSignal } = {},
 		): Promise<FileHunks[]> {
-			return parseDiffFileHunks(
-				await diff(cwd, { cached: options.cached ?? true, files, signal: options.signal }),
-			);
+			return parseDiffFileHunks(await diff(cwd, { cached: options.cached ?? true, files, signal: options.signal }));
 		},
 		/** Check whether a diff exists (uses `--quiet` for efficiency). */
 		async has(cwd: string, options: Pick<DiffOptions, "cached" | "files" | "signal"> = {}): Promise<boolean> {

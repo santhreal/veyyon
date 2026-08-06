@@ -10,8 +10,8 @@ import {
 	padding,
 	routeSgrMouseInput,
 	type SgrMouseEvent,
-	truncateToWidth,
 	type TUI,
+	truncateToWidth,
 } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";

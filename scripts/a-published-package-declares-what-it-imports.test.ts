@@ -21,8 +21,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Glob } from "bun";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { Glob } from "bun";
 
 const PACKAGES = path.resolve(import.meta.dir, "..", "packages");
 

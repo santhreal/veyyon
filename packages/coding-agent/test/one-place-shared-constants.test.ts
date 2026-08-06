@@ -98,7 +98,9 @@ describe("the per-project hindsight tag prefix", () => {
 	 * unification removed, and a third would restore the silent-drift hazard.
 	 */
 	it("is declared in exactly one module", async () => {
-		expect(await declarersOf("PROJECT_TAG_PREFIX")).toEqual([path.join("coding-agent", "src", "hindsight", "bank.ts")]);
+		expect(await declarersOf("PROJECT_TAG_PREFIX")).toEqual([
+			path.join("coding-agent", "src", "hindsight", "bank.ts"),
+		]);
 	});
 
 	/**
@@ -135,7 +137,9 @@ describe("the commit summary length limit", () => {
 	 * places today and free to drift tomorrow, so the declaration count is what is pinned.
 	 */
 	it("is declared in exactly one module", async () => {
-		expect(await declarersOf("SUMMARY_MAX_CHARS")).toEqual([path.join("coding-agent", "src", "commit", "analysis", "validation.ts")]);
+		expect(await declarersOf("SUMMARY_MAX_CHARS")).toEqual([
+			path.join("coding-agent", "src", "commit", "analysis", "validation.ts"),
+		]);
 	});
 
 	/** And the agentic path's export is the same value, reached by a different import. */

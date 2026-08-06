@@ -27,11 +27,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { clearCache } from "@veyyon/coding-agent/capability/fs";
 import type { DiscoveredSkill } from "@veyyon/coding-agent/capability/skill";
-import { scanSkillsFromDir } from "@veyyon/coding-agent/discovery/helpers";
 // @ts-expect-error the discovery barrel exports the record as `DiscoveredSkill`. A type named
 // `Skill` reachable from here is the second owner this fix removed: it would be the record,
 // while `@veyyon/coding-agent` serves the summary under that same name.
 import type { Skill as SkillFromDiscoveryBarrel } from "@veyyon/coding-agent/discovery";
+import { scanSkillsFromDir } from "@veyyon/coding-agent/discovery/helpers";
 import type { Skill as SessionSkill } from "@veyyon/coding-agent/extensibility/skills";
 import { removeSyncWithRetries } from "@veyyon/utils";
 

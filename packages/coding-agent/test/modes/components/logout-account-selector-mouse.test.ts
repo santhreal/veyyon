@@ -19,8 +19,22 @@ beforeAll(async () => {
 });
 
 const ACCOUNTS: readonly LogoutAccount[] = [
-	{ credentialId: 11, provider: "anthropic", label: "alpha@example.com", detail: "oauth", type: "oauth", active: true },
-	{ credentialId: 12, provider: "anthropic", label: "bravo@example.com", detail: "oauth", type: "oauth", active: false },
+	{
+		credentialId: 11,
+		provider: "anthropic",
+		label: "alpha@example.com",
+		detail: "oauth",
+		type: "oauth",
+		active: true,
+	},
+	{
+		credentialId: 12,
+		provider: "anthropic",
+		label: "bravo@example.com",
+		detail: "oauth",
+		type: "oauth",
+		active: false,
+	},
 	{
 		credentialId: 13,
 		provider: "anthropic",

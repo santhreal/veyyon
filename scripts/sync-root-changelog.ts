@@ -140,9 +140,12 @@ export function orphanedRootEntries(currentRoot: string, expectedRoot: string): 
  * `rootPath` exists so a test can drive the refusal against a real file and
  * assert the bytes survived, rather than trusting the return value alone.
  */
-export function writeRootChangelog(
-	options: { force?: boolean; rootPath?: string } = {},
-): { wrote: boolean; orphans: string[]; expected: string; current: string | null } {
+export function writeRootChangelog(options: { force?: boolean; rootPath?: string } = {}): {
+	wrote: boolean;
+	orphans: string[];
+	expected: string;
+	current: string | null;
+} {
 	const rootPath = options.rootPath ?? ROOT_PATH;
 	const expected = buildRootChangelog();
 	const current = existsSync(rootPath) ? readFileSync(rootPath, "utf8") : null;

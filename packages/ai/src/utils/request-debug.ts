@@ -489,7 +489,9 @@ function headersToRecord(headers: RequestDebugHeaders): Record<string, string | 
 		record[key] = Array.isArray(value) ? value.map(redactHeaderValue) : redactHeaderValue(value);
 	};
 	if (headers instanceof Headers) {
-		headers.forEach((value, key) => put(key, value));
+		headers.forEach((value, key) => {
+			put(key, value);
+		});
 	} else {
 		for (const key in headers) {
 			const value = headers[key];

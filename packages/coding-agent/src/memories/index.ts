@@ -5,7 +5,8 @@ import * as path from "node:path";
 import { type ApiKey, type Context, completeSimple, type Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
-import { emptyCost } from "@veyyon/catalog/models";import {
+import { emptyCost } from "@veyyon/catalog/models";
+import {
 	clampLow,
 	getAgentDbPath,
 	isEnoent,

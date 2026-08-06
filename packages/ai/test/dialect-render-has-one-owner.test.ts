@@ -32,6 +32,7 @@ import kimiDialect from "../src/dialect/kimi";
 import minimaxDialect from "../src/dialect/minimax";
 import piNativeDialect from "../src/dialect/pi-native";
 import qwen3Dialect from "../src/dialect/qwen3";
+import * as rendering from "../src/dialect/rendering";
 import {
 	renderFunctionResults,
 	renderInvoke,
@@ -41,7 +42,6 @@ import {
 	renderToolResponseResults,
 	renderXmlThinkingTags,
 } from "../src/dialect/rendering";
-import * as rendering from "../src/dialect/rendering";
 import xmlDialect from "../src/dialect/xml";
 import { parseRequest as parseChatRequest } from "../src/providers/openai-chat-server";
 import { parseRequest as parseResponsesRequest } from "../src/providers/openai-responses-server";
@@ -254,8 +254,9 @@ describe("the reasoning-effort guard", () => {
 	 * an off-ladder level would satisfy every acceptance above.
 	 */
 	it("refuses a level that is not on the ladder, in each wire's own way", () => {
-		expect(parseResponsesRequest(effortRequest("openai-responses-server", "sideways")).options.reasoning)
-			.toBeUndefined();
+		expect(
+			parseResponsesRequest(effortRequest("openai-responses-server", "sideways")).options.reasoning,
+		).toBeUndefined();
 		expect(() => parseChatRequest(effortRequest("openai-chat-server", "sideways"))).toThrow(/reasoning_effort/);
 	});
 });
@@ -283,8 +284,7 @@ describe("the service-tier guard", () => {
 	/** The same split for the tier: the Chat schema refuses it, the Responses guard drops it. */
 	it("refuses a tier that is not on the list, in each wire's own way", () => {
 		expect(
-			parseResponsesRequest({ ...baseRequest("openai-responses-server"), service_tier: "gold" }).options
-				.serviceTier,
+			parseResponsesRequest({ ...baseRequest("openai-responses-server"), service_tier: "gold" }).options.serviceTier,
 		).toBeUndefined();
 		expect(() => parseChatRequest({ ...baseRequest("openai-chat-server"), service_tier: "gold" })).toThrow(
 			/service_tier/,

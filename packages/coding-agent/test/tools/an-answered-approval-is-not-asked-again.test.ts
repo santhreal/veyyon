@@ -118,7 +118,6 @@ function gatedUi(failFirst = false): GatedUi {
 	};
 }
 
-
 function makeStore(): SessionToolApprovals {
 	const map = new Map<string, "allow" | "deny">();
 	return {

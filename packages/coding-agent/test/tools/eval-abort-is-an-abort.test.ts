@@ -186,6 +186,7 @@ describe("EvalTool cancellation", () => {
 		// sets would still be sitting there for the next cell to read.
 		const witness = await tool.execute("call-preabort-witness", {
 			language: "js",
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: JS source for the guest cell, not a template in this file.
 			code: "print(`ran=${globalThis.__preabortRan === true}`);",
 			timeout: 0,
 		});

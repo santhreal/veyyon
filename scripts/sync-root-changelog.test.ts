@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
+import { unreleasedEntries } from "./changelog-unreleased.ts";
 import {
 	buildRootChangelog,
 	changelogSources,
@@ -24,7 +25,6 @@ import {
 	REPO_ROOT,
 	ROOT_PATH,
 } from "./sync-root-changelog";
-import { unreleasedEntries } from "./changelog-unreleased.ts";
 
 describe("buildRootChangelog", () => {
 	it("renders through the shared renderRootChangelog core, not a private copy", () => {
@@ -392,7 +392,9 @@ describe("unreleasedEntries against the real generated root", () => {
 		const parsed = unreleasedEntries(rendered);
 
 		expect(parsed).toHaveLength(openings.length);
-		expect(parsed.map((entry, index) => entry.startsWith(openings[index] ?? "\u0000"))).toEqual(openings.map(() => true));
+		expect(parsed.map((entry, index) => entry.startsWith(openings[index] ?? "\u0000"))).toEqual(
+			openings.map(() => true),
+		);
 	});
 
 	/**

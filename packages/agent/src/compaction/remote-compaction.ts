@@ -45,16 +45,16 @@ import {
 } from "./remote-compaction-entry";
 import { REMOTE_COMPACTION_TIMEOUT_MS } from "./remote-summarizer";
 
-export * from "./remote-compaction-entry";
-
-// The capability surface the session layer gates on. Support is data on the
-// model row; resolution lives with the provider implementations in pi-ai.
-export { resolveServerCompactionTransport } from "@veyyon/ai/providers/openai-compaction";
 export type {
 	ServerCompactionRequest,
 	ServerCompactionResult,
 	ServerCompactionTransport,
 } from "@veyyon/ai/providers/openai-compaction";
+
+// The capability surface the session layer gates on. Support is data on the
+// model row; resolution lives with the provider implementations in pi-ai.
+export { resolveServerCompactionTransport } from "@veyyon/ai/providers/openai-compaction";
+export * from "./remote-compaction-entry";
 
 /**
  * Compact the prepared span on the session model's provider and return the

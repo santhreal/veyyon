@@ -148,4 +148,3 @@ export function extractPathFromRename(pathPart: string): string {
 
 	return pathPart.trim();
 }
-

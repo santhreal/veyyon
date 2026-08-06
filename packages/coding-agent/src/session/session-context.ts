@@ -3,6 +3,11 @@ import type { AgentMessage } from "@veyyon/agent-core";
 // not the compaction barrel. `legacy-provider-native.ts` imports nothing, so this
 // edge adds exactly one module to every graph this file is on.
 import { hasLegacyProviderNativeCompaction } from "@veyyon/agent-core/compaction/legacy-provider-native";
+// The owner, not the `compaction` subpath barrel. That barrel re-exports the compaction ENGINE, which
+// imports the `@veyyon/ai` barrel to summarize a conversation; this module is a self-contained reader for a
+// retired archive format and imports nothing at all. The edge cost 238 modules, and it was on the graph of
+// `internal-urls/index.ts` (the URL router) and `tools/read.ts` through `session/session-loader.ts`.
+import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction/legacy-snapcompact-archive";
 // The remote-compaction entry reader is a leaf beside the legacy one: it turns a
 // server-side compaction's stored window back into the provider payload the
 // Responses-family request builder replays, and names who compacted for display.
@@ -11,11 +16,6 @@ import {
 	remoteCompactionAttribution,
 	remoteCompactionProviderPayload,
 } from "@veyyon/agent-core/compaction/remote-compaction-entry";
-// The owner, not the `compaction` subpath barrel. That barrel re-exports the compaction ENGINE, which
-// imports the `@veyyon/ai` barrel to summarize a conversation; this module is a self-contained reader for a
-// retired archive format and imports nothing at all. The edge cost 238 modules, and it was on the graph of
-// `internal-urls/index.ts` (the URL router) and `tools/read.ts` through `session/session-loader.ts`.
-import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction/legacy-snapcompact-archive";
 import type { TextContent } from "@veyyon/ai";
 // From the module that DEFINES the coercion, not the barrel that re-exports it.
 // `@veyyon/ai/types` is 5 modules against the barrel's 346, and this file is on

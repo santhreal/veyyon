@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
-import * as barrel from "../src/index";
 import type { RelayControlMessage } from "../src/index";
+import * as barrel from "../src/index";
 import {
 	isRelayFatalCloseCode,
 	RELAY_FATAL_CLOSE_REASONS,
