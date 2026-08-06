@@ -47,7 +47,7 @@ afterEach(() => {
 
 /** The one warning this suite is about, picked out of anything else loading may log. */
 function lossReports(): Warning[] {
-	return warnings.filter(warning => warning.message.includes("plugin directory could not be read"));
+	return warnings.filter(warning => warning.message.includes("could not be read"));
 }
 
 /** A plugin rooted at the fixture directory, declaring one `extensions` entry. */
@@ -124,30 +124,35 @@ describe("a directory that exists and cannot be read", () => {
 		fs.writeFileSync(path.join(dir, "one.js"), "// fixture");
 		fs.chmodSync(dir, 0o000);
 
-		let readable = true;
 		try {
-			fs.readdirSync(dir);
-		} catch {
-			readable = false;
+			let readable = true;
+			try {
+				fs.readdirSync(dir);
+			} catch {
+				readable = false;
+			}
+
+			const resolved = resolveExtensions("ext");
+
+			if (readable) {
+				// Running as root: the mode bits were ignored, so the file is found and nothing is lost.
+				expect(resolved.map(e => path.relative(root, e.resolvedPath ?? ""))).toEqual([path.join("ext", "one.js")]);
+				expect(lossReports()).toEqual([]);
+			} else {
+				expect(resolved).toEqual([{ entry: "ext", resolvedPath: null }]);
+				expect(lossReports()).toHaveLength(1);
+				// The report names the directory and what was lost with it, because the caller cannot
+				// tell this apart from an empty folder and the operator has to know where to look.
+				expect(lossReports()[0]?.message).toContain(`The plugin directory ${dir} could not be read`);
+				expect(lossReports()[0]?.message).toContain("tools and hooks inside it are not registered");
+				expect(lossReports()[0]?.meta.dir).toBe(dir);
+				expect(String(lossReports()[0]?.meta.error)).not.toBe("");
+			}
+		} finally {
+			// Restoring in a finally, not after the assertions: a failing case used to leave the
+			// fixture unreadable and the afterEach removal died with EACCES on top of the real failure.
+			fs.chmodSync(dir, 0o755);
 		}
-
-		const resolved = resolveExtensions("ext");
-
-		if (readable) {
-			// Running as root: the mode bits were ignored, so the file is found and nothing is lost.
-			expect(resolved.map(e => path.relative(root, e.resolvedPath ?? ""))).toEqual([path.join("ext", "one.js")]);
-			expect(lossReports()).toEqual([]);
-		} else {
-			expect(resolved).toEqual([{ entry: "ext", resolvedPath: null }]);
-			expect(lossReports()).toHaveLength(1);
-			expect(lossReports()[0]?.message).toBe(
-				"A plugin directory could not be read; the entries inside it are not being loaded",
-			);
-			expect(lossReports()[0]?.meta.dir).toBe(dir);
-			expect(String(lossReports()[0]?.meta.error)).not.toBe("");
-		}
-
-		fs.chmodSync(dir, 0o755);
 	});
 
 	/**
