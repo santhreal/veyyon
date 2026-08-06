@@ -262,7 +262,7 @@ Argot is the codec that lets the model write short `§handle` tokens; veyyon exp
 - Commit in **logical chunks**, one concern per commit — never one giant `git add -A`. Stage only the paths you changed.
 - Subject line is imperative and scoped, e.g. `polish(onboarding): …`, `fix: …`, `ci: …`, `test(agent): …`.
 - Do not add AI/assistant attribution trailers (no `Co-Authored-By: <model>`, no `Generated with …`). Commit as the configured git user only.
-- The **release** commit is special. Its subject **must** be exactly `chore: bump version to vX.Y.Z`. CI keys the never-cancel release concurrency group off that subject (#2564). The release workflow writes it; never hand-craft it.
+- The **release** commit is special. Its subject **must** be exactly `chore: bump version to vX.Y.Z`. `checks.yml` keys its changelog exemption off that prefix, because the bump commit drains every `## [Unreleased]` section by design. `scripts/prerelease.ts` writes it; never hand-craft it.
 
 ## Testing Guidance
 
@@ -366,37 +366,38 @@ release is only real once it is a tagged commit **and** a published GitHub relea
 
 ### How a release happens
 
-Only a deliberate dispatch releases. Nothing on `main` cuts a tag on its own: not a
-push, not a green CI run, not a waiting `## [Unreleased]` bullet.
+Three moves, and the tag is the only one that publishes. Nothing on `main` cuts a
+tag on its own: not a push, not a green CI run, not a waiting `## [Unreleased]`
+bullet.
 
-1. Ensure every publishable change sits under its package's `## [Unreleased]`
-   section (`packages/*/CHANGELOG.md`).
-2. Push the change to `main` with explicit approval and let CI and Checks go green
-   for that exact SHA. This publishes nothing on its own.
-3. With explicit approval for the version, dispatch the Release workflow against
-   that exact SHA. The gate refuses unless CI and Checks are both green for it.
+1. **Prepare locally.** `bun run release:prepare <major|minor|patch|x.y.z>` bumps
+   every public `package.json`, the root catalog, the Rust workspace, the natives
+   sentinel and the lockfiles, rolls each package's `## [Unreleased]` into a dated
+   section, regenerates the root changelog, and commits
+   `chore: bump version to vX.Y.Z`. It never pushes and never tags. `--dry-run`
+   shows what it would do.
+2. **Push to main.** With explicit approval, push the bump commit like any other
+   commit and let `main`'s CI go green on it. This publishes nothing.
+3. **Tag the green commit.** With explicit approval for the version,
+   `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag push starts the one CI run
+   that builds, verifies and publishes.
 
-The workflow runs `scripts/release.ts` internally. It bumps public package versions,
-the root catalog, Rust workspace, native sentinel, lockfiles, and changelogs; runs
-checks; commits `chore: bump version to vX.Y.Z`; and atomically pushes `main` plus the
-tag. If main advanced, the push fails without rebasing: validate the newer SHA and
-dispatch again. The workflow then dispatches `checks.yml` at the immutable tag,
-verifies the bump SHA is green, dispatches and waits for `ci.yml`, and verifies the
-complete published asset manifest and `releases/latest` before reporting success.
+The tag must name a commit that reached `main`, and that is the whole safety
+argument: `main` tested it before the tag existed. `ci.yml` enforces it —
+`scripts/release.ts verify-tag` compares the tagged commit against `main` and
+refuses anything but `identical` or `behind`, refuses a non-`vX.Y.Z` ref, refuses a
+tree whose version authorities disagree with the tag, and refuses when the
+comparison cannot be established at all. Tagging an older `main` commit is fine and
+expected when `main` moved on during preparation.
 
-There is no repository release command and no release shell script: the release
-ceremony runs only in GitHub Actions, from the Actions tab or from `gh`.
+There is no release controller, no `release.yml`, no dispatch inputs, and no nonce
+correlation. Preparation is local and inspectable; publication is one tag push.
 
 ```sh
-gh workflow run release.yml \
-  -f version=minor \
-  -f expected_sha="$(git rev-parse origin/main)"
+bun run release:prepare minor
+git push origin main          # wait for CI to go green on this commit
+git tag v1.3.0 && git push origin v1.3.0
 ```
-
-`expected_sha` is the exact `origin/main` SHA you validated. The workflow refuses to
-cut anything unless CI and Checks are both green for that precise SHA, so a stale or
-guessed value fails the gate rather than releasing the wrong tree. Nothing about a
-build, version bump, tag, or publication depends on a maintainer workstation.
 
 ### The veyyon release line starts at `1.0.0`
 

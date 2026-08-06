@@ -1,29 +1,27 @@
 name: CI
-run-name: "${{ inputs.release_nonce != '' && format('{0} release gate {1}', github.workflow, inputs.release_nonce) || github.workflow }}"
 
+# A release is a tag push. `scripts/prerelease.ts` prepares the version bump on
+# the operator's machine, that commit reaches main through an ordinary push and
+# is tested by the main run below, and pushing `vX.Y.Z` at the green commit is
+# the release. Nothing dispatches this workflow to publish, so there is no
+# controller run to correlate and no nonce: the `release_metadata` job proves
+# the tagged commit is on main, which is what makes it a commit CI has tested.
 on:
    push:
       branches: [main]
+      tags: ["v*"]
    pull_request:
       branches: [main]
    workflow_dispatch:
-      inputs:
-         release_nonce:
-            description: "Release controller correlation token"
-            required: false
-            type: string
 
-# Release runs publish a `v*` tag pushed atomically with main HEAD; sharing
-# the cheap branch-wide `CI-refs/heads/main` group meant a later main push
-# silently cancelled the in-flight release and left the tag without a GitHub
-# Release (#2564). Detect release runs at workflow-scheduling
-# time via the release-script commit subject (`chore: bump version to vX.Y.Z`),
-# via `v*` tag-ref dispatches, and via manual dispatches whose tag-on-HEAD
-# status is only known after checkout; scope them to a per-sha group with no
-# cancellation. Every other event keeps branch-wide cancellation for PR/main churn.
+# A tag run publishes, and a later main push must never cancel it: sharing the
+# branch-wide `CI-refs/heads/main` group once cancelled an in-flight release and
+# left the tag without a GitHub Release (#2564). Tag runs get a per-sha group
+# with no cancellation; every other event keeps branch-wide cancellation for
+# PR/main churn.
 concurrency:
-   group: "${{ github.workflow }}-${{ (startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && format('release-{0}', github.sha) || github.ref }}"
-   cancel-in-progress: "${{ !(startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}"
+   group: "${{ github.workflow }}-${{ startsWith(github.ref, 'refs/tags/v') && format('release-{0}', github.sha) || github.ref }}"
+   cancel-in-progress: "${{ !(startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}"
 
 env:
    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -40,13 +38,11 @@ permissions:
    actions: read
 
 jobs:
-   # scripts/release.ts atomically pushes the version-bump commit and its `v*`
-   # tag. Because that push uses GITHUB_TOKEN, GitHub deliberately suppresses a
-   # recursive push workflow. release.yml first dispatches Checks at the tag and
-   # waits for the exact bump SHA to pass, then explicitly dispatches this
-   # workflow at the same immutable tag. `release_metadata` resolves the tag once
-   # so downstream jobs switch on `is-release` and address it by name. Ordinary
-   # contributor pushes and pull requests still run CI without publishing.
+   # An operator pushes `vX.Y.Z` at a main commit this workflow already tested,
+   # and that tag push starts the run below. `release_metadata` resolves the tag
+   # once and proves it points at a commit on main, so downstream jobs switch on
+   # `is-release` and address it by name. Ordinary contributor pushes and pull
+   # requests still run CI without publishing.
    release_metadata:
       name: Resolve release metadata
       runs-on: ubuntu-22.04
@@ -55,9 +51,9 @@ jobs:
          release-tag: ${{ steps.detect.outputs.release-tag }}
       steps:
          # Only a main-branch run needs tags fetched, so `git tag --points-at
-         # HEAD` can see the freshly-pushed `v*`. A tag-ref dispatch reads the
-         # tag straight from `github.ref_name`, and fetching `--tags` while
-         # checkout uses an explicit tag refspec makes git refuse — so scope
+         # HEAD` can see the freshly-pushed `v*`. A tag run reads the tag straight
+         # from `github.ref_name`, and fetching `--tags` while checkout uses an
+         # explicit tag refspec makes git refuse — so scope
          # fetch-tags to main refs.
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
            with:
@@ -73,29 +69,23 @@ jobs:
            id: detect
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              RELEASE_NONCE: ${{ inputs.release_nonce }}
-              DISPATCH_ACTOR: ${{ github.actor }}
            shell: bash
            run: |
               is_release=false
               release_tag=""
               case "${{ github.ref }}" in
                 refs/tags/*)
-                  if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-                    echo "::error::release publication requires a workflow_dispatch at the immutable tag"
-                    exit 1
-                  fi
                   release_tag="${{ github.ref_name }}"
                   if ! printf '%s\n' "$release_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
                     echo "::error::release tag '$release_tag' is not strict vX.Y.Z semver"
                     exit 1
                   fi
-                  bun scripts/release.ts verify-tag "$release_tag" "${{ github.sha }}" "$RELEASE_NONCE" "$DISPATCH_ACTOR"
-                  echo "Release controller and exact-tag Checks are verified for $release_tag."
+                  bun scripts/release.ts verify-tag "$release_tag" "${{ github.sha }}"
+                  echo "$release_tag is on main and its tree agrees with it."
                   is_release=true
                   ;;
                 refs/heads/main)
-                  echo "Main CI never publishes; release.yml dispatches publication at an immutable verified tag."
+                  echo "Main CI never publishes; pushing a v* tag at a green main commit does."
                   ;;
               esac
               {

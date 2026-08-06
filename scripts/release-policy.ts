@@ -1,24 +1,24 @@
 /**
- * The release gate: proof that a dispatched release may cut, and proof that a cut may publish.
+ * The release gate: proof that a tag may become a published release.
  *
- * A release happens because a person dispatched one, never because repository state looked ready.
- * What this file decides is narrower and harder than "should we release": whether the exact commit
- * the operator named is allowed to become a tag, and whether an existing tag is allowed to become a
- * published GitHub release.
- *
- * WHY THE EXACT-SHA PROOF IS THE WHOLE STORY. `v1.0.28` through `v1.0.35` were each tagged before
+ * WHY THE TESTED-TREE PROOF IS THE WHOLE STORY. `v1.0.28` through `v1.0.35` were each tagged before
  * `ci.yml` had tested their sha. Two red `packages/utils` tests killed every publish downstream, and
  * `releases/latest` stayed at `v1.0.27` while the tags marched on. A tag asserts that a tested tree
- * shipped under that name, so the gate refuses any commit whose CI and Checks runs are not both green
- * for that precise sha. A green run for a neighbouring commit is not evidence about this one.
+ * shipped under that name.
  *
- * Publication is a second, independent proof: the immutable tag ref, the release commit sha, the
- * controller run identity, and the bot actor must all agree before CI may publish bytes.
+ * The release commit is now prepared locally (`scripts/prerelease.ts`) and pushed to main like any
+ * other commit, so main's ordinary CI tests it before a tag exists. That turns the proof into one
+ * question with one answer: is the tagged commit on main? A commit reachable from main is a commit
+ * main's CI ran; anything else — a local branch, a rewritten commit, a fork — was never tested.
+ * See {@link releaseTagRefusal}.
  *
- * A cut carries a third proof, independent of both: the version being tagged is documented. See
+ * Publication carries a second, independent proof: the complete asset manifest actually exists on
+ * the release. See {@link verifyPublishedAssetManifest}.
+ *
+ * A cut carries a third, independent of both: the version being tagged is documented. See
  * {@link assertReleaseIsDocumented}.
  *
- * Both decisions are pure functions of facts gathered separately, so every branch is tested without a
+ * Each decision is a pure function of facts gathered separately, so every branch is tested without a
  * network: see `scripts/release-policy.test.ts`.
  */
 
@@ -29,58 +29,61 @@ import { hasVersionHeading, unreleasedEntries } from "./changelog-unreleased.ts"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Every independently scheduled public source gate must be green for the exact main commit. */
-export const REQUIRED_SOURCE_WORKFLOWS = ["CI", "Checks"] as const;
-export const RELEASE_BOT_LOGIN = "github-actions[bot]";
+/**
+ * How the tagged commit relates to `main`, as GitHub's compare API reports it
+ * with `main` as the base.
+ *
+ * `identical` means the tag is main's tip; `behind` means the tag is an
+ * ancestor of main, i.e. it landed and main moved on. Both mean the commit
+ * went through main's CI. `ahead` and `diverged` mean it never did.
+ */
+export type MainComparison = "ahead" | "behind" | "diverged" | "identical";
 
-export interface SourceWorkflowRun {
-	name: string;
-	headSha: string;
-	status: string;
-	conclusion: string | null;
-}
-
-/** Exact-tag gates that must independently prove a release commit before CI may publish it. */
-export const REQUIRED_RELEASE_TAG_WORKFLOWS = ["checks.yml"] as const;
-
-export interface ReleaseTagWorkflowRun {
-	headSha: string;
-	headBranch: string;
-	event: string;
-	conclusion: string | null;
-	displayTitle: string;
-	actor: string;
+export interface ReleaseTagFacts {
+	tag: string;
+	sha: string;
+	/** HEAD of the tagged checkout, which must be the commit being published. */
+	checkedOutSha: string | undefined;
+	/** `undefined` when the comparison could not be established at all. */
+	mainComparison: MainComparison | undefined;
 }
 
 /**
- * Require successful workflow-dispatch evidence for the immutable tag and SHA.
+ * Why this tag may not publish, or `undefined` when it may.
  *
- * File identities are used instead of mutable display names. A successful run
- * on main at the same SHA does not satisfy a tag-ref release.
+ * The old gate proved that the Release controller had dispatched this exact
+ * run: a nonce encoding the controller's run id and attempt, an actor equal to
+ * the release bot, and a correlated exact-tag Checks run. All of it existed to
+ * make a bump commit that CI had never seen safe to publish, because the
+ * controller created that commit inside CI and pushed it.
+ *
+ * The bump is now prepared and pushed by a person, so main's ordinary CI tests
+ * it before any tag exists, and the property worth proving is the simple one:
+ * this commit is on main. A commit reachable from main is a commit main's CI
+ * ran. A tag on anything else — a local branch, a rewritten commit, a fork —
+ * would publish bytes no gate ever tested, which is exactly what v1.0.28
+ * through v1.0.35 did.
+ *
+ * Blindness is refusal, never a pass: an unestablished comparison means the
+ * gate cannot see what it exists to check.
  */
-export function assertReleaseTagGateEvidence(
-	tag: string,
-	sha: string,
-	expectedTitle: string,
-	runsByWorkflow: Readonly<Record<string, readonly ReleaseTagWorkflowRun[]>>,
-): void {
-	if (!isReleaseTag(tag)) {
-		throw new Error(`release tag ${JSON.stringify(tag)} is not strict vX.Y.Z semver`);
+export function releaseTagRefusal(facts: ReleaseTagFacts): string | undefined {
+	if (!isReleaseTag(facts.tag)) return `release tag ${JSON.stringify(facts.tag)} is not strict vX.Y.Z semver`;
+	if (facts.checkedOutSha === undefined) return `could not read the checked-out HEAD for ${facts.tag}`;
+	if (facts.checkedOutSha !== facts.sha) {
+		return `checked-out release SHA ${facts.checkedOutSha} does not match ${facts.sha}`;
 	}
-	for (const workflow of REQUIRED_RELEASE_TAG_WORKFLOWS) {
-		const exactSuccess = runsByWorkflow[workflow]?.some(
-			run =>
-				run.headSha === sha &&
-				run.headBranch === tag &&
-				run.event === "workflow_dispatch" &&
-				run.conclusion === "success" &&
-				run.displayTitle === expectedTitle &&
-				run.actor === RELEASE_BOT_LOGIN,
-		);
-		if (!exactSuccess) {
-			throw new Error(`${workflow} has no controller-correlated successful run for ${tag} at ${sha}`);
-		}
+	if (facts.mainComparison === undefined) {
+		return `could not establish whether ${facts.sha} is on main; refusing to publish ${facts.tag}`;
 	}
+	if (facts.mainComparison !== "identical" && facts.mainComparison !== "behind") {
+		return [
+			`${facts.tag} points at ${facts.sha}, which is not on main (compare against main: ${facts.mainComparison}).`,
+			"Only a commit that landed on main has been tested by main's CI.",
+			"Push the release commit to main, wait for CI, then tag the commit that went green.",
+		].join(" ");
+	}
+	return undefined;
 }
 
 const RELEASE_ARTIFACTS = [
@@ -129,38 +132,6 @@ export function assertPublishedReleaseAssets(actualNames: readonly string[]): vo
 	throw new Error(`published release asset manifest is incomplete or incoherent (${details.join("; ")})`);
 }
 
-export interface ReleaseGateFacts {
-	/** The commit the operator asked to release. */
-	mainHeadSha: string;
-	/** Workflow runs observed for this exact main commit, newest run first. */
-	sourceWorkflowRuns: SourceWorkflowRun[];
-}
-
-/**
- * The one-line reason this tree may not be released, or `undefined` when every required source
- * workflow is green for the exact commit.
- *
- * Nothing relaxes this: a missing run, an unfinished run, a run for a neighbouring commit, and a red
- * run are all the same answer, because none of them proves the tree the operator named.
- */
-export function sourceGateFailure(facts: ReleaseGateFacts): string | undefined {
-	for (const name of REQUIRED_SOURCE_WORKFLOWS) {
-		const run = facts.sourceWorkflowRuns.find(
-			candidate => candidate.name === name && candidate.headSha === facts.mainHeadSha,
-		);
-		if (!run) {
-			return `${name} has no run for exact main SHA ${facts.mainHeadSha}; refusing to release an unproved tree.`;
-		}
-		if (run.status !== "completed") {
-			return `${name} is ${run.status} for exact main SHA ${facts.mainHeadSha}; there is no green result to release.`;
-		}
-		if (run.conclusion !== "success") {
-			return `${name} concluded ${run.conclusion ?? "without a conclusion"} for exact main SHA ${facts.mainHeadSha}; release is blocked.`;
-		}
-	}
-	return undefined;
-}
-
 /** Run `gh` and return stdout, or `undefined` when the call fails. */
 async function gh(args: string[]): Promise<string | undefined> {
 	const proc = Bun.spawn(["gh", ...args], { stdout: "pipe", stderr: "pipe" });
@@ -193,143 +164,26 @@ export async function checkedOutHeadSha(): Promise<string | undefined> {
 	return stdout.trim();
 }
 
-function parseReleaseTagWorkflowRuns(raw: string, workflow: string): ReleaseTagWorkflowRun[] {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		throw new Error(`${workflow} run evidence was not valid JSON`);
-	}
-	if (!Array.isArray(parsed)) throw new Error(`${workflow} run evidence was not an array`);
-	return parsed.map((entry, index) => {
-		if (
-			typeof entry !== "object" ||
-			entry === null ||
-			typeof (entry as Record<string, unknown>).headSha !== "string" ||
-			typeof (entry as Record<string, unknown>).headBranch !== "string" ||
-			typeof (entry as Record<string, unknown>).event !== "string" ||
-			typeof (entry as Record<string, unknown>).displayTitle !== "string" ||
-			typeof (entry as Record<string, unknown>).actor !== "string" ||
-			!["string", "object"].includes(typeof (entry as Record<string, unknown>).conclusion)
-		) {
-			throw new Error(`${workflow} run evidence row ${index} had an invalid shape`);
-		}
-		const row = entry as Record<string, unknown>;
-		if (row.conclusion !== null && typeof row.conclusion !== "string") {
-			throw new Error(`${workflow} run evidence row ${index} had an invalid conclusion`);
-		}
-		return {
-			headSha: row.headSha as string,
-			headBranch: row.headBranch as string,
-			event: row.event as string,
-			conclusion: row.conclusion as string | null,
-			displayTitle: row.displayTitle as string,
-			actor: row.actor as string,
-		};
+/**
+ * Refuse to publish a tag whose commit is not on main, or throw the reason.
+ *
+ * Asks GitHub rather than the local clone: a tag-ref checkout has no main to
+ * compare against without a second fetch, and the remote is the authority on
+ * what actually landed.
+ */
+export async function verifyReleaseTagIsOnMain(tag: string, sha: string): Promise<void> {
+	const status = (await gh(["api", `repos/{owner}/{repo}/compare/main...${sha}`, "--jq", ".status"]))?.trim();
+	const refusal = releaseTagRefusal({
+		tag,
+		sha,
+		checkedOutSha: await checkedOutHeadSha(),
+		mainComparison:
+			status === "identical" || status === "behind" || status === "ahead" || status === "diverged"
+				? status
+				: undefined,
 	});
-}
-
-export async function verifyReleaseTagGates(
-	tag: string,
-	sha: string,
-	ciNonce: string,
-	dispatchActor: string,
-): Promise<void> {
-	const checkedOutSha = await checkedOutHeadSha();
-	if (checkedOutSha === undefined || checkedOutSha !== sha) {
-		throw new Error(`checked-out release SHA ${checkedOutSha ?? "unknown"} does not match ${sha}`);
-	}
-	if (dispatchActor !== RELEASE_BOT_LOGIN) {
-		throw new Error(
-			`release publication dispatch actor ${JSON.stringify(dispatchActor)} is not ${RELEASE_BOT_LOGIN}`,
-		);
-	}
-	const nonceMatch = ciNonce.match(/^([1-9]\d*)-([1-9]\d*)-ci$/);
-	if (!nonceMatch) throw new Error("release publication requires a controller-issued CI nonce");
-	const runId = Number(nonceMatch[1]);
-	const runAttempt = Number(nonceMatch[2]);
-	if (!Number.isSafeInteger(runId) || !Number.isSafeInteger(runAttempt)) {
-		throw new Error("release publication nonce contains an invalid controller run identity");
-	}
-	const parentOutput = await gh([
-		"api",
-		`repos/{owner}/{repo}/actions/runs/${runId}`,
-		"--jq",
-		"{path:.path,event:.event,status:.status,conclusion:.conclusion,runAttempt:.run_attempt}",
-	]);
-	if (parentOutput === undefined) throw new Error(`could not establish Release controller run ${runId}`);
-	let parent: unknown;
-	try {
-		parent = JSON.parse(parentOutput);
-	} catch {
-		throw new Error(`Release controller run ${runId} returned invalid evidence`);
-	}
-	const parentRow = parent as Record<string, unknown>;
-	if (
-		typeof parent !== "object" ||
-		parent === null ||
-		parentRow.path !== ".github/workflows/release.yml" ||
-		!["workflow_run", "workflow_dispatch"].includes(String(parentRow.event)) ||
-		parentRow.status !== "in_progress" ||
-		parentRow.conclusion !== null ||
-		parentRow.runAttempt !== runAttempt
-	) {
-		throw new Error(`Release controller run ${runId} attempt ${runAttempt} is not the active parent`);
-	}
-
-	const checksTitle = `Checks release gate ${runId}-${runAttempt}-checks`;
-	const runsByWorkflow: Record<string, ReleaseTagWorkflowRun[]> = {};
-	for (const workflow of REQUIRED_RELEASE_TAG_WORKFLOWS) {
-		const output = await gh([
-			"api",
-			`repos/{owner}/{repo}/actions/workflows/${workflow}/runs?head_sha=${sha}&branch=${tag}&event=workflow_dispatch&per_page=100`,
-			"--jq",
-			"[.workflow_runs[] | {headSha:.head_sha,headBranch:.head_branch,event:.event,conclusion:.conclusion,displayTitle:.display_title,actor:.actor.login}]",
-		]);
-		if (output === undefined) throw new Error(`could not establish ${workflow} run evidence`);
-		runsByWorkflow[workflow] = parseReleaseTagWorkflowRuns(output, workflow);
-	}
-	assertReleaseTagGateEvidence(tag, sha, checksTitle, runsByWorkflow);
-	console.log(`verified Release controller ${runId} and exact-tag Checks for ${tag} at ${sha}`);
-}
-
-/** Gather the exact-commit CI and Checks evidence the dispatch gate is decided from. */
-export async function gatherReleaseGateFacts(): Promise<ReleaseGateFacts | undefined> {
-	const localHeadSha = await checkedOutHeadSha();
-	if (localHeadSha === undefined) return undefined;
-	const remoteMainSha = (await gh(["api", "repos/{owner}/{repo}/commits/main", "--jq", ".sha"]))?.trim();
-	if (remoteMainSha === undefined) return undefined;
-	if (remoteMainSha !== localHeadSha) {
-		console.error(
-			`checked-out main is ${localHeadSha}, but GitHub main is ${remoteMainSha}; exact-SHA gate is stale`,
-		);
-		return undefined;
-	}
-	const mainHeadSha = localHeadSha;
-
-	const sourceWorkflowRuns: SourceWorkflowRun[] = [];
-	for (const [name, workflow] of [
-		["CI", "ci.yml"],
-		["Checks", "checks.yml"],
-	] as const) {
-		const output = await gh([
-			"api",
-			`repos/{owner}/{repo}/actions/workflows/${workflow}/runs?head_sha=${mainHeadSha}&branch=main&event=push&per_page=1`,
-			"--jq",
-			'.workflow_runs[0] | if . == null then "" else [.head_sha, .status, (.conclusion // "")] | @tsv end',
-		]);
-		if (output === undefined) return undefined;
-		const line = output.trim();
-		if (!line) continue;
-		const [headSha, status, conclusion = ""] = line.split("\t");
-		if (!headSha || !status) {
-			console.error(`${workflow} source gate evidence had an invalid shape`);
-			return undefined;
-		}
-		sourceWorkflowRuns.push({ name, headSha, status, conclusion: conclusion || null });
-	}
-
-	return { mainHeadSha, sourceWorkflowRuns };
+	if (refusal) throw new Error(refusal);
+	console.log(`verified ${tag} points at ${sha}, which is on main and therefore CI-tested.`);
 }
 
 export async function verifyPublishedAssetManifest(tag: string): Promise<void> {

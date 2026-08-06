@@ -19,7 +19,7 @@
 import { describe, expect, it } from "bun:test";
 import { releaseBumpSubject } from "./release";
 
-/** The literal prefix `ci.yml`, `checks.yml`, `docs.yml`, `security.yml` and `release.yml` match on. */
+/** The literal prefix `checks.yml` exempts from the changelog gate. */
 const WORKFLOW_PREFIX = "chore: bump version to ";
 
 describe("release bump commit subject", () => {
@@ -64,10 +64,10 @@ describe("release bump commit subject", () => {
 	});
 
 	/**
-	 * `release.yml` refuses to release its own bump commit by matching this
+	 * `checks.yml` skips the changelog gate for the bump commit by matching this
 	 * prefix on the head commit subject. A subject that stopped matching would
-	 * make the release workflow cut a release from its own bump commit, and then
-	 * from that one, without a stop condition.
+	 * fail every release on the one commit that legitimately drains every
+	 * `## [Unreleased]` section and adds no new entry.
 	 */
 	it("is recognised by the loop guard that stops a release releasing itself", () => {
 		const headCommitSubject = releaseBumpSubject("1.0.39");
