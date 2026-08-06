@@ -1555,7 +1555,9 @@ describe("ACP agent", () => {
 		expect(names).not.toContain("loop");
 		expect(names).not.toContain("login");
 		expect(names).not.toContain("new");
-		expect(names).not.toContain("handoff");
+		// `handoff` is deliberately NOT here: it was promoted to textMode because the
+		// operation needs no terminal (builtin-declarations.ts), and leaving it out made
+		// `/compact handoff` refuse an ACP client by naming a command it could not reach.
 		expect(names).not.toContain("fork");
 		expect(names).not.toContain("btw");
 		expect(names).not.toContain("drop");
