@@ -23,7 +23,7 @@ import {
 	DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
 } from "../config/settings-domains/subagents";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
-import { type ResolvedSpawnPolicy, resolveSpawnPolicy } from "./spawn-policy";
+import { currentAgentName, type ResolvedSpawnPolicy, resolveSpawnPolicy } from "./spawn-policy";
 import type { AgentDefinition } from "./types";
 
 /**
@@ -210,7 +210,10 @@ export function delegationBlockedNotice(state: DelegationState): string | undefi
  */
 export function subagentSettingsFor(settings: Settings, name: string): SubagentAgentSettings {
 	const table = settings.get("subagent.agents") as Record<string, SubagentAgentSettings> | undefined;
-	const row = table?.[name];
+	// A row written under a retired name still governs the agent that replaced it.
+	// Without this an operator who had pinned a model on `subagent.agents.task`
+	// would keep the row in their config and silently stop getting the model.
+	const row = table?.[name] ?? table?.[currentAgentName(name)];
 	return row && typeof row === "object" ? row : {};
 }
 
@@ -248,13 +251,18 @@ export function resolveSessionMaxNestedSpawnDepth(settings: Settings, override?:
 /**
  * Whether an agent is spawnable with no row of its own.
  *
- * Only the general-purpose delegate ships enabled. Bundled specialists and
+ * Only the end-to-end delegate ships enabled. The other bundled agents and
  * user-authored agents are opt-in through onboarding or Settings → Subagents →
  * Agents. Creating an agent definition makes it available to enable; it does
  * not grant the model permission to start it on its own.
+ *
+ * Compared after following a retirement, so an agent still carrying the old
+ * name is enabled exactly when the one that replaced it is. Resolving the name
+ * in `getAgent` but not here would give the worst outcome available: the spawn
+ * finds the agent and is then refused as not enabled.
  */
 export function subagentEnabledByDefault(agent: AgentDefinition): boolean {
-	return agent.name === DEFAULT_ENABLED_BUNDLED_AGENT;
+	return currentAgentName(agent.name) === DEFAULT_ENABLED_BUNDLED_AGENT;
 }
 
 /**
@@ -330,10 +338,14 @@ export function resolveEnabledSubagents(options: ResolveEnabledSubagentsOptions)
 			if (agent) agents.push(agent);
 		}
 	}
-	const defaultAgent = agents.some(agent => agent.name === spawnPolicy.defaultAgent)
-		? spawnPolicy.defaultAgent
-		: undefined;
-	return { agents, defaultAgent, spawnPolicy };
+	// Matched through a retirement as well, so a roster still carrying the old
+	// name yields it as the default rather than reporting that no default agent
+	// exists. The name returned is the one the roster actually holds, because
+	// every later lookup and error message quotes it back.
+	const defaultAgent =
+		agents.find(agent => agent.name === spawnPolicy.defaultAgent) ??
+		agents.find(agent => currentAgentName(agent.name) === spawnPolicy.defaultAgent);
+	return { agents, defaultAgent: defaultAgent?.name, spawnPolicy };
 }
 
 /**

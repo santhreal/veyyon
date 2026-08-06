@@ -48,15 +48,15 @@ export interface SubagentAgentSettings {
 }
 
 /**
- * The one bundled agent enabled out of the box: the general-purpose delegate.
+ * The one bundled agent enabled out of the box: the end-to-end delegate.
  *
- * Bundled specialists (scout, reviewer, librarian, designer, sonic) stay off
- * until the operator turns them on. They are still LISTED while off, each with a
- * line saying what it is for, because an agent you cannot see is one you will
- * never enable. A user-authored agent under `.veyyon/agents/` is on by default —
- * writing the file is the opt-in.
+ * The other bundled agents (scout, reviewer, librarian, designer, sonic) stay
+ * off until the operator turns them on. They are still LISTED while off, each
+ * with a line saying what it is for, because an agent you cannot see is one you
+ * will never enable. A user-authored agent under `.veyyon/agents/` is on by
+ * default: writing the file is the opt-in.
  */
-export const DEFAULT_ENABLED_BUNDLED_AGENT = "task";
+export const DEFAULT_ENABLED_BUNDLED_AGENT = "deep";
 
 export const DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH = 0;
 

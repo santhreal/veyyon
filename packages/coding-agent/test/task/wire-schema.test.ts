@@ -58,11 +58,11 @@ describe("task wire schema", () => {
 		}
 	});
 
-	it("defaults a missing agent to 'task'", () => {
+	it("defaults a missing agent to 'deep'", () => {
 		const parsed = taskSchema({ task: "x" });
 		expect(parsed instanceof type.errors).toBe(false);
 		if (!(parsed instanceof type.errors)) {
-			expect(parsed.agent).toBe("task");
+			expect(parsed.agent).toBe("deep");
 		}
 	});
 
@@ -76,10 +76,10 @@ describe("task wire schema", () => {
 		}
 	});
 
-	it("defaults batch item agents to 'task' on the fast path and keeps names", () => {
+	it("defaults batch item agents to 'deep' on the fast path and keeps names", () => {
 		const batch = getTaskSchema({ isolationEnabled: false, batchEnabled: true });
 		const items = parsedItems(batch({ context: "ctx", tasks: [{ name: "DbMigrator", task: "x" }] }));
-		expect(items[0]?.agent).toBe("task");
+		expect(items[0]?.agent).toBe("deep");
 		expect(items[0]?.name).toBe("DbMigrator");
 	});
 

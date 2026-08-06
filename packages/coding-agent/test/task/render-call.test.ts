@@ -134,13 +134,13 @@ describe("task renderer: streaming call preview", () => {
 			context: "ctx",
 			tasks: [
 				{ name: "Scouty", agent: "scout", task: "map the code" },
-				{ name: "Worker", agent: "task", task: "do the work" },
+				{ name: "Worker", agent: "deep", task: "do the work" },
 			],
 		};
 		const out = render(args);
 
 		expect(out).toContain(`${theme.format.bracketLeft}scout${theme.format.bracketRight}`);
-		expect(out).not.toContain(`${theme.format.bracketLeft}task${theme.format.bracketRight}`);
+		expect(out).not.toContain(`${theme.format.bracketLeft}deep${theme.format.bracketRight}`);
 		// Agent types live on the item rows; the batch header no longer joins them.
 		expect(out.split("\n")[0]).not.toContain("scout");
 	});

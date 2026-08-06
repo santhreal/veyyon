@@ -42,15 +42,15 @@ const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
 	{ fileName: "reviewer.md", template: agentsPrompts["agents/reviewer"].text },
 	{ fileName: "librarian.md", template: agentsPrompts["agents/librarian"].text },
 	{
-		fileName: "task.md",
+		fileName: "deep.md",
 		frontmatter: {
-			name: "task",
+			name: "deep",
 			description:
 				"Vague outcome, multi-step, owned end to end: works out what to change, changes it, tests it, and reviews its own work before returning. Scale it can carry: building a whole package from nothing. The most expensive lane, so do not reach for it when the outcome is already clear.",
 			spawns: "*",
 			thinkingLevel: ThinkingLevel.Inherit,
 		},
-		template: agentsPrompts["agents/task"].text,
+		template: agentsPrompts["agents/deep"].text,
 	},
 	{
 		fileName: "sonic.md",

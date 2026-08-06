@@ -26,7 +26,7 @@ function makeProgress(recentOutput: string[]): AgentProgress {
 	return {
 		index: 0,
 		id: "NoisySubagent",
-		agent: "task",
+		agent: "deep",
 		agentSource: "bundled",
 		status: "running",
 		task: "produce noisy output",
@@ -67,7 +67,7 @@ function makeSingleResult(index: number, overrides?: Partial<SingleResult>): Sin
 	return {
 		index,
 		id: `Done${index + 1}`,
-		agent: "task",
+		agent: "deep",
 		agentSource: "bundled",
 		task: `finished child ${index + 1}`,
 		exitCode: 0,

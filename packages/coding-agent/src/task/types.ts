@@ -4,6 +4,7 @@ import { $envpos } from "@veyyon/utils/env";
 import { type BaseType, type } from "arktype";
 import type { AgentSessionEvent } from "../session/agent-session";
 import type { ConfiguredThinkingLevel } from "../thinking";
+import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
 import type { NestedRepoPatch } from "./worktree";
 
 /** Source of an agent definition */
@@ -68,14 +69,14 @@ export const LABEL_MAX = 80;
 
 export const taskItemSchema = type({
 	"name?": "string",
-	agent: "string = 'task'",
+	agent: "string = 'deep'",
 	task: "string",
 	"cwd?": "string",
 	"+": "delete",
 });
 const taskItemSchemaIsolated = type({
 	"name?": "string",
-	agent: "string = 'task'",
+	agent: "string = 'deep'",
 	task: "string",
 	"isolated?": "boolean",
 	"cwd?": "string",
@@ -98,7 +99,7 @@ export interface TaskItem {
 
 export const taskSchema = type({
 	"name?": "string",
-	agent: "string = 'task'",
+	agent: "string = 'deep'",
 	task: "string",
 	"isolated?": "boolean",
 	"cwd?": "string",
@@ -106,7 +107,7 @@ export const taskSchema = type({
 });
 const taskSchemaNoIsolation = type({
 	"name?": "string",
-	agent: "string = 'task'",
+	agent: "string = 'deep'",
 	task: "string",
 	"cwd?": "string",
 	"+": "delete",
@@ -209,9 +210,9 @@ export function getTaskSchema(options: {
 	enabledAgentNames?: readonly string[];
 }): TaskToolSchemaInstance {
 	const hasDefaultAgent = Object.hasOwn(options, "defaultAgent");
-	const defaultAgent = hasDefaultAgent ? options.defaultAgent : "task";
+	const defaultAgent = hasDefaultAgent ? options.defaultAgent : DEFAULT_SPAWN_AGENT;
 	const enabledAgentNames = options.enabledAgentNames;
-	if (enabledAgentNames === undefined && defaultAgent === "task") {
+	if (enabledAgentNames === undefined && defaultAgent === DEFAULT_SPAWN_AGENT) {
 		if (options.batchEnabled) return options.isolationEnabled ? taskSchemaBatch : taskSchemaBatchNoIsolation;
 		return options.isolationEnabled ? taskSchema : taskSchemaNoIsolation;
 	}

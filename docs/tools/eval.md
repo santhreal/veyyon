@@ -233,8 +233,8 @@ The JS and Python runtimes expose `agent()`, a single subagent invocation routed
 
 - Signatures:
   - JS: `await agent(prompt, agent?, model?, label?, schema?)` or `await agent(prompt, { agent?, model?, label?, schema?, handle? })`
-  - Python: `agent(prompt, *, agent="task", model=None, label=None, schema=None, handle=False)`
-- `agent` defaults to the bundled `task` agent and resolves through normal agent discovery, so project and user agents work.
+  - Python: `agent(prompt, *, agent="deep", model=None, label=None, schema=None, handle=False)`
+- `agent` defaults to the bundled `deep` agent and resolves through normal agent discovery, so project and user agents work.
 - `model` overrides the selected agent's model for this call. A per-agent profile model applies next, followed by the profile default, agent frontmatter, and the live parent model.
 - Effort resolves independently. An explicit suffix on `model` wins, followed by the per-agent effort, profile default effort, agent frontmatter, and the live parent effort. A bare call model therefore keeps the configured per-agent effort.
 - Shared background is passed via files: write a `local://` file and reference it in the prompt. `label` controls the `agent://<id>` output label prefix.

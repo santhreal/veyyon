@@ -483,7 +483,7 @@ if "__veyyon_prelude_loaded__" not in globals():
     def agent(
         prompt,
         *,
-        agent="task",
+        agent="deep",
         model=None,
         label=None,
         schema=None,

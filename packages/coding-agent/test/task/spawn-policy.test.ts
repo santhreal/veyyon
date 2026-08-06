@@ -18,7 +18,7 @@ import { makeToolSession } from "../helpers/tool-session";
  * The contract has three shapes, and a regression in any one silently changes
  * who can spawn what:
  *   - unrestricted (`true`/`null`/`undefined`/`"*"`, whitespace-tolerant):
- *     enabled, defaultAgent = "task", allowedAgents = null (sentinel for "no
+ *     enabled, defaultAgent = "deep", allowedAgents = null (sentinel for "no
  *     restriction", distinct from an empty list), allowedErrorText = "*", and NO
  *     allowedPromptText key.
  *   - disabled (`false`, `""`, or all-whitespace): NOT enabled, allowedAgents =
@@ -35,14 +35,14 @@ import { makeToolSession } from "../helpers/tool-session";
  */
 
 describe("resolveSpawnPolicy", () => {
-	it("exposes 'task' as the default spawn agent", () => {
-		expect(DEFAULT_SPAWN_AGENT).toBe("task");
+	it("exposes 'deep' as the default spawn agent", () => {
+		expect(DEFAULT_SPAWN_AGENT).toBe("deep");
 	});
 
 	describe("unrestricted policy", () => {
 		const unrestricted = {
 			enabled: true,
-			defaultAgent: "task",
+			defaultAgent: "deep",
 			allowedAgents: null,
 			allowedErrorText: "*",
 		};
@@ -75,7 +75,7 @@ describe("resolveSpawnPolicy", () => {
 	describe("disabled policy", () => {
 		const disabled = {
 			enabled: false,
-			defaultAgent: "task",
+			defaultAgent: "deep",
 			allowedAgents: [],
 			allowedErrorText: "none (spawns disabled for this agent)",
 		};
