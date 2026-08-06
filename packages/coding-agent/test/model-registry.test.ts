@@ -1299,9 +1299,16 @@ describe("ModelRegistry", () => {
 			const invalid = new ModelRegistry(authStorage, modelsJsonPath);
 			const error = invalid.getError();
 
-			expect(error?.message).toContain("Failed to load config file models, Schema error");
+			// The message names the config that failed, the offending field and its
+			// bad value, and where to go. It also names the file's full path now, so
+			// this matches the parts that carry the diagnosis rather than one span
+			// of prose that the path lands in the middle of.
+			expect(error?.message).toContain("Failed to load config file models");
+			expect(error?.message).toContain(modelsJsonPath);
+			expect(error?.message).toContain("Schema error");
 			expect(error?.message).toContain("providers.myprovider.compat.thinkingFormat");
 			expect(error?.message).toContain("deepseek");
+			expect(error?.message).toContain("Fix:");
 			expect(invalid.find("myprovider", "my-model")).toBeUndefined();
 		});
 
