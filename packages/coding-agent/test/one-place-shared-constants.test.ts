@@ -31,6 +31,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 
@@ -43,26 +44,45 @@ import {
 	tokensPerSecond,
 } from "../src/modes/components/status-line/token-rate";
 
-const SRC = path.join(import.meta.dir, "..", "src");
+const PACKAGES = path.join(import.meta.dir, "..", "..");
 
-/** Every `.ts` file under `src`, excluding generated output. */
-async function sourceFiles(dir: string = SRC): Promise<string[]> {
+/**
+ * Every `.ts` file under every `packages/*​/src`, excluding generated output.
+ *
+ * The sweep that found these duplicates covered `packages/*​/src`, but this walk
+ * used to start at `packages/coding-agent/src` and go no wider, so it could only
+ * ever see one package. A second declaration of a locked name in `packages/utils`
+ * or `packages/tui` is exactly the drift these locks exist to catch, and it was
+ * invisible to them.
+ */
+async function sourceFiles(): Promise<string[]> {
+	const found: string[] = [];
+	for (const pkg of await readdir(PACKAGES, { withFileTypes: true })) {
+		if (!pkg.isDirectory() || pkg.name === "node_modules") continue;
+		const src = path.join(PACKAGES, pkg.name, "src");
+		if (!existsSync(src)) continue;
+		found.push(...(await tsFilesUnder(src)));
+	}
+	return found;
+}
+
+async function tsFilesUnder(dir: string): Promise<string[]> {
 	const found: string[] = [];
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		if (entry.name === "node_modules" || entry.name === "dist") continue;
 		const full = path.join(dir, entry.name);
-		if (entry.isDirectory()) found.push(...(await sourceFiles(full)));
+		if (entry.isDirectory()) found.push(...(await tsFilesUnder(full)));
 		else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) found.push(full);
 	}
 	return found;
 }
 
-/** Files declaring `const <name> = ...`, relative to `src`. */
+/** Files declaring `const <name> = ...`, relative to `packages`. */
 async function declarersOf(name: string): Promise<string[]> {
 	const declaration = new RegExp(`^\\s*(?:export )?const ${name}\\s*=`, "m");
 	const out: string[] = [];
 	for (const file of await sourceFiles()) {
-		if (declaration.test(await readFile(file, "utf8"))) out.push(path.relative(SRC, file));
+		if (declaration.test(await readFile(file, "utf8"))) out.push(path.relative(PACKAGES, file));
 	}
 	return out.sort();
 }
@@ -78,7 +98,7 @@ describe("the per-project hindsight tag prefix", () => {
 	 * unification removed, and a third would restore the silent-drift hazard.
 	 */
 	it("is declared in exactly one module", async () => {
-		expect(await declarersOf("PROJECT_TAG_PREFIX")).toEqual([path.join("hindsight", "bank.ts")]);
+		expect(await declarersOf("PROJECT_TAG_PREFIX")).toEqual([path.join("coding-agent", "src", "hindsight", "bank.ts")]);
 	});
 
 	/**
@@ -115,7 +135,7 @@ describe("the commit summary length limit", () => {
 	 * places today and free to drift tomorrow, so the declaration count is what is pinned.
 	 */
 	it("is declared in exactly one module", async () => {
-		expect(await declarersOf("SUMMARY_MAX_CHARS")).toEqual([path.join("commit", "analysis", "validation.ts")]);
+		expect(await declarersOf("SUMMARY_MAX_CHARS")).toEqual([path.join("coding-agent", "src", "commit", "analysis", "validation.ts")]);
 	});
 
 	/** And the agentic path's export is the same value, reached by a different import. */
@@ -149,7 +169,7 @@ describe("the tokens-per-second floor", () => {
 	 */
 	it("is declared in exactly one module", async () => {
 		expect(await declarersOf("MIN_RATE_DURATION_MS")).toEqual([
-			path.join("modes", "components", "status-line", "token-rate.ts"),
+			path.join("coding-agent", "src", "modes", "components", "status-line", "token-rate.ts"),
 		]);
 		// And the old name is gone from both, not merely renamed in one of them.
 		expect(await declarersOf("MIN_DURATION_MS")).toEqual([]);
