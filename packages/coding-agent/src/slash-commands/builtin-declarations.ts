@@ -285,6 +285,22 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
+		name: "cpu-limit",
+		textMode: true,
+		aliases: ["cpu"],
+		description: "Set this session's CPU budget for spawned commands (the saved default lives in /settings)",
+		acpDescription: "Set the session CPU budget",
+		acpInputHint: "[status|<cores>|remove|reset|kill on|kill off]",
+		subcommands: [
+			{ name: "status", description: "Show the budget, where it came from, and what it is enforcing" },
+			{ name: "remove", description: "Lift the cap for this session, leaving the saved setting alone" },
+			{ name: "reset", description: "Drop the session override and use the saved default" },
+			{ name: "kill", description: "on|off: kill over-budget commands instead of refusing new ones" },
+		],
+		allowArgs: true,
+	},
+
+	{
 		name: "prewalk",
 		textMode: true,
 		description: "Switch to a fast/cheap model at the next action (works even without --prewalk)",

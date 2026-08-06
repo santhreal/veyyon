@@ -161,9 +161,12 @@ describe("the split kept one set of commands", () => {
 	 *     because it opens the account manager instead of the onboarding wizard, and `/account` is
 	 *     the inline per-provider report and the row actions that reach the same accounts without
 	 *     a view.
+	 *   - UP to 71: `/cpu-limit` was added. `session.cpuLimitCores` is a per-profile setting, so a
+	 *     session that needs a different budget than the profile chose had no way to say so, and no
+	 *     way to lift the cap for one piece of work without editing the profile.
 	 */
-	it("there are the 70 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(70);
+	it("there are the 71 builtins the declarations hold", () => {
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(71);
 	});
 
 	/**

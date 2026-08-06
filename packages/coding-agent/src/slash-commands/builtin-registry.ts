@@ -69,6 +69,7 @@ import {
 import { type AccountRoleSources, accountRoleAnnotations, renderAccountStatus } from "./helpers/account-status";
 import { CollabQrCodeComponent } from "./helpers/collab-qrcode";
 import { buildContextReportText } from "./helpers/context-report";
+import { applyCpuLimitCommand } from "./helpers/cpu-limit";
 import { formatDurationCoarse, formatProviderName } from "./helpers/format";
 import { handleMcpAcp } from "./helpers/mcp";
 import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usage } from "./helpers/parse";
@@ -960,6 +961,33 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 			const result = applyPermissionsCommand(command.args, settings, runtime.ctx.session);
 			refreshStatusLine(runtime.ctx);
+			runtime.ctx.showStatus(result.message);
+		},
+	},
+	"cpu-limit": {
+		getTuiAutocompleteDescription: () => {
+			const cores = settings.get("session.cpuLimitCores");
+			const scope = settings.getSource("session.cpuLimitCores") === "runtime" ? "session" : "profile";
+			return `Session CPU budget · ${cores > 0 ? `${cores} core(s), ${scope}` : "off"}`;
+		},
+		handle: async (command, runtime) => {
+			const result = await applyCpuLimitCommand(
+				command.args,
+				runtime.settings,
+				runtime.session.sessionManager.getSessionId(),
+			);
+			if (!result.ok) return usage(result.message, runtime);
+			await runtime.output(result.message);
+			await runtime.notifyConfigChanged?.();
+			return commandConsumed();
+		},
+		handleTui: async (command, runtime) => {
+			runtime.ctx.editor.setText("");
+			const result = await applyCpuLimitCommand(
+				command.args,
+				settings,
+				runtime.ctx.session.sessionManager.getSessionId(),
+			);
 			runtime.ctx.showStatus(result.message);
 		},
 	},
@@ -2543,6 +2571,7 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	fast: "modes",
 	permissions: "modes",
 	yolo: "modes",
+	"cpu-limit": "modes",
 	pause: "modes",
 	model: "model",
 	switch: "model",

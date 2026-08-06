@@ -223,10 +223,14 @@ describe("the declared flag and the handler table agree", () => {
 	 * is text-drivable for the same reason `/permissions` is: the inline block, the naming and the
 	 * re-probe are the only way a headless client can find out which account it is spending, and
 	 * spending the wrong one is not something it could otherwise detect.
+	 *
+	 * `/cpu-limit` moved both by one, and is text-drivable for the same reason `/permissions` is: a
+	 * headless client whose profile caps CPU has commands refused with an error naming a budget, and
+	 * no way to lift it for the run without editing the profile it shares with every other session.
 	 */
-	it("32 of the 70 builtins are text-drivable", () => {
-		expect(DECLARATIONS.length).toBe(70);
-		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(32);
+	it("33 of the 71 builtins are text-drivable", () => {
+		expect(DECLARATIONS.length).toBe(71);
+		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(33);
 	});
 
 	/**
@@ -354,12 +358,16 @@ describe("the ACP advertisement", () => {
 	});
 
 	/**
-	 * `/thinking` is the concrete case for the hint, and worth naming: its ACP hint lists the effort
-	 * levels a text client must send, which the TUI hint does not.
+	 * `/thinking` is the concrete case for the hint, and the exception to the rule above. Its
+	 * accepted values are the active model's catalog row, so a fixed list would advertise levels the
+	 * model rejects; this static table carries only the fallback, and the per-session builder in
+	 * `available-commands.ts` derives the real hint from `thinkingLevelArgHint(session.model)`. The
+	 * test used to pin the fixed ladder here, which stopped being the shipped behaviour when the
+	 * hint became per-model.
 	 */
-	it("advertises the effort levels for /thinking", () => {
+	it("advertises the fallback hint for /thinking, leaving the levels to the session", () => {
 		const advertised = ACP_BUILTIN_SLASH_COMMANDS.find(command => command.name === "thinking");
 
-		expect(advertised?.input?.hint).toBe("[minimal|low|medium|high|xhigh|auto|off]");
+		expect(advertised?.input?.hint).toBe("[level]");
 	});
 });
