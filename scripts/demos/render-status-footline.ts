@@ -88,22 +88,18 @@ for (const preset of presets) {
 	lines.push("");
 }
 
-// The TOP BORDER in both focus states, which is a different surface from the footline above
-// and the only place that says you are inside an agent. Rendered as a pair because the whole
-// bar is dimmed while proxied: the question a proof has to answer is not "is the hint there"
-// but "can you still read it once everything around it went faint", and that needs the
-// unfocused row beside it to compare against.
-lines.push(theme.fg("dim", "top border, main session:"));
-{
-	const statusLine = new StatusLineComponent(stubSession());
-	lines.push(statusLine.getTopBorder(width).content);
-}
-lines.push("");
-lines.push(theme.fg("dim", "top border, viewing an agent:"));
+// The FOOTLINE while the view is proxied onto an agent — the one place that says you are inside
+// one and that Esc leaves it. Rendered beside the unproxied row of the same preset, because the
+// question a proof has to answer is not "is the hint there" but "does it read as an announcement
+// rather than as one more segment".
+//
+// This used to render `getTopBorder`, a method with zero production callers: the composer is
+// borderless, so the badge was being proved on a surface nobody could see.
+lines.push(theme.fg("dim", "footline, viewing an agent:"));
 {
 	const statusLine = new StatusLineComponent(stubSession());
 	statusLine.setSession(stubSession(), "designer-3");
-	lines.push(statusLine.getTopBorder(width).content);
+	lines.push(statusLine.renderQuietLine(width) ?? theme.fg("error", "(no footline rendered)"));
 }
 lines.push("");
 

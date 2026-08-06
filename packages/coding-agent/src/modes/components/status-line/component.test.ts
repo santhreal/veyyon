@@ -77,11 +77,10 @@ describe("StatusLineComponent", () => {
 	it("renders Prewalk annotation when prewalk is armed", () => {
 		const statusLine = new StatusLineComponent(makeSessionWithLastMessage(null, true) as unknown as AgentSession);
 
-		// By default preset, 'mode' segment is included in left/right segments.
-		// Let's get the border and see if Prewalk is rendered.
-		const border = statusLine.getTopBorder(100);
+		// The default preset puts `mode` in the footline's capability group.
+		const line = statusLine.renderQuietLine(100);
+		expect(line).not.toBeNull();
 		// SGR codes might be included, so we check if the stripped content contains "Prewalk"
-		const stripped = stripAnsi(border.content);
-		expect(stripped).toContain("Prewalk");
+		expect(stripAnsi(line ?? "")).toContain("Prewalk");
 	});
 });

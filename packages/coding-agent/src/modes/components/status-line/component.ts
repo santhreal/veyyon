@@ -3,7 +3,6 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
 import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
-import { SGR_BG_RESET, SGR_INTENSITY_RESET, SGR_RESET } from "@veyyon/tui/ansi";
 import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -13,14 +12,12 @@ import type { OAuthAccountIdentity } from "../../../session/auth-storage";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
 import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../utils/active-repo-context";
 import * as git from "../../../utils/git";
-import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
 import { withIcon } from "../../theme/icon-label";
 import { theme } from "../../theme/theme";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { getPreset } from "./presets";
 import { focusExitBadge, renderSegment, type SegmentContext } from "./segments";
-import { getSeparator } from "./separators";
 import { calculateTokensPerSecond } from "./token-rate";
 import type {
 	CollabStatus,
@@ -45,15 +42,50 @@ const SESSION_CLOCK_GAP = "      ";
 type QuietPart = { id: string; content: string };
 
 /**
- * Right-group parts the width shed walks PAST rather than drops.
+ * Shed order for the right group, as a rank rather than a boolean. Higher survives longer;
+ * everything unlisted ranks 0 and sheds first, right to left, which is the ordinary case.
  *
- * Both carry live operating state rather than chrome: `subagents` is a running count, and
- * `location_right` is the owner-supplied zone holding the composer's draft token readout.
- * Everything else on the right is a badge the operator can re-read at any time, so it sheds
- * first. Membership here is a claim that losing the part mid-task costs more than losing a
- * badge, not that the part is important in the abstract.
+ * A rank rather than a flag because "protected" cannot be absolute. When every remaining part
+ * was protected the shed had nothing legal to drop, fell through to truncating the joined
+ * group, and a one-cell budget rendered a bare `…` — destroying all four at once, including
+ * the one the oldest contract here says must be the last thing standing. The ranking makes the
+ * degradation ordered instead: the weakest ranked part goes, then the next, and the persistent
+ * count is alone on the line before anything clips it.
+ *
+ * Why each of the four outranks a badge:
+ *
+ * `subagents` (4) is the persistent running count. It is the last thing standing by an older
+ * contract than any of the rest: `status-line-running-subagents.test.ts` narrows the footline
+ * to exactly the chip's width and requires the number to be what survives.
+ *
+ * `location_right` (3) is the owner-supplied zone holding the composer's draft token readout.
+ * It is pushed LAST and the shed walks from the end, so without a rank it is always the FIRST
+ * casualty however important it is. That is how the always-visible approval rung silently
+ * evicted the draft counter at 100 columns: nothing removed the counter, the rung widened the
+ * right group by one label and the counter fell off the end. Losing the count while the
+ * operator is actively typing is a worse trade than dropping a badge they can re-read.
+ *
+ * `mode` (2) carries the approval rung — the one place that says whether the next command will
+ * ask before it runs. The rule protecting it survived only in dead code: the deleted
+ * `#buildStatusLine` refused to shed it ahead of the model name or the profile chip on exactly
+ * that ground ("safety state outranks identity"), and that method had no production callers,
+ * so the footline, which is what renders, shed `mode` first of the three.
+ *
+ * `context_pct` (1) is how much room is left before compaction fires — the footline's one live
+ * value. `#gatherQuietSegments` appends it AFTER the right group on purpose, so it reads as the
+ * line's last word, and the shed walks from the end: the deliberate placement made it the first
+ * thing dropped at every width that did not fit, while `session_name`, a fixed string, was kept
+ * ahead of it. On the DEFAULT preset at 80 columns that meant no gauge at all, and on `full` at
+ * 160 it meant a cache-hit percentage on screen while the number that says when the session
+ * ends was gone. It ranks lowest of the four because it is the only one that still reads as a
+ * whole thought after the others are gone.
  */
-const PROTECTED_RIGHT_PARTS: Record<string, true> = { subagents: true, location_right: true };
+const RIGHT_PART_SHED_RANK: Record<string, number> = {
+	context_pct: 1,
+	mode: 2,
+	location_right: 3,
+	subagents: 4,
+};
 
 /** One segment's slot on the rendered quiet footline (0-based columns, end exclusive). */
 export interface QuietSegmentBounds {
@@ -1225,7 +1257,6 @@ export class StatusLineComponent implements Component {
 			...this.#settings,
 			leftSegments,
 			rightSegments,
-			separator: this.#settings.separator ?? presetDef.separator,
 			segmentOptions: mergedSegmentOptions,
 		};
 	}
@@ -1247,226 +1278,6 @@ export class StatusLineComponent implements Component {
 		const running = this.session.getAsyncJobSnapshot()?.running;
 		if (!running) return 0;
 		return running.reduce((count, job) => (job.type === "task" ? count : count + 1), 0);
-	}
-
-	#buildStatusLine(width: number): string {
-		const effectiveSettings = this.#resolveSettings();
-		const includePath =
-			hasPathSegment(effectiveSettings.leftSegments) || hasPathSegment(effectiveSettings.rightSegments);
-		const includeContext =
-			hasContextSegment(effectiveSettings.leftSegments) || hasContextSegment(effectiveSettings.rightSegments);
-		const gitEnabled = this.#gitEnabled();
-		const includeGit =
-			gitEnabled &&
-			(hasGitSegment(effectiveSettings.leftSegments) || hasGitSegment(effectiveSettings.rightSegments));
-		const includePr =
-			gitEnabled && (hasPrSegment(effectiveSettings.leftSegments) || hasPrSegment(effectiveSettings.rightSegments));
-		const ctx = this.#buildSegmentContext(
-			width,
-			effectiveSettings.segmentOptions,
-			includePath,
-			includeContext,
-			includeGit,
-			includePr,
-		);
-		const separatorDef = getSeparator(effectiveSettings.separator ?? "powerline-thin", theme);
-
-		// `transparent` reuses the empty-string sentinel (`\x1b[49m`) so the bar
-		// inherits the terminal's default background, matching custom themes that
-		// set `statusLineBg: ""`. Powerline end caps need a contrasting fill to
-		// bridge the bar into the surrounding terminal; without one they read as
-		// stray glyphs, so the cap renderer drops them when the fill is empty.
-		const TRANSPARENT_BG_ANSI = SGR_BG_RESET;
-		const themeBgAnsi = theme.getBgAnsi("statusLineBg");
-		const bgAnsi = effectiveSettings.transparent ? TRANSPARENT_BG_ANSI : themeBgAnsi;
-		const transparentBg = bgAnsi === TRANSPARENT_BG_ANSI;
-		const fgAnsi = theme.getFgAnsi("text");
-		const sepAnsi = theme.getFgAnsi("statusLineSep");
-		const subagentBadge = this.#subagentBadgeText();
-
-		// Collect visible segment contents
-		const leftParts: string[] = [];
-		const leftSegIds: StatusLineSegmentId[] = [];
-		for (const segId of effectiveSettings.leftSegments) {
-			if (segId === "subagents") continue;
-			const rendered = renderSegment(segId, ctx);
-			if (rendered.visible && rendered.content) {
-				leftParts.push(rendered.content);
-				leftSegIds.push(segId);
-			}
-		}
-
-		const rightParts: string[] = [];
-		for (const segId of effectiveSettings.rightSegments) {
-			if (segId === "subagents") continue;
-			const rendered = renderSegment(segId, ctx);
-			if (rendered.visible && rendered.content) {
-				rightParts.push(rendered.content);
-			}
-		}
-
-		const runningBackgroundJobs = this.#backgroundJobBadgeCount();
-		if (runningBackgroundJobs > 0) {
-			rightParts.unshift(theme.fg("statusLineSubagents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
-		}
-		rightParts.unshift(subagentBadge);
-		const topFillWidth = Math.max(0, width);
-		const left = [...leftParts];
-		const right = [...rightParts];
-
-		const leftSepWidth = visibleWidth(separatorDef.left);
-		const rightSepWidth = visibleWidth(separatorDef.right);
-		// Transparent mode drops powerline caps (they need a bg fill to bridge),
-		// so the width budget excludes them too.
-		const leftCapWidth = separatorDef.endCaps && !transparentBg ? visibleWidth(separatorDef.endCaps.right) : 0;
-		const rightCapWidth = separatorDef.endCaps && !transparentBg ? visibleWidth(separatorDef.endCaps.left) : 0;
-
-		const groupWidth = (parts: string[], capWidth: number, sepWidth: number): number => {
-			if (parts.length === 0) return 0;
-			const partsWidth = parts.reduce((sum, part) => sum + visibleWidth(part), 0);
-			const sepTotal = Math.max(0, parts.length - 1) * (sepWidth + 2);
-			return partsWidth + sepTotal + 2 + capWidth;
-		};
-
-		let leftWidth = groupWidth(left, leftCapWidth, leftSepWidth);
-		let rightWidth = groupWidth(right, rightCapWidth, rightSepWidth);
-		const totalWidth = () => leftWidth + rightWidth + (left.length > 0 && right.length > 0 ? 1 : 0);
-
-		if (topFillWidth > 0) {
-			while (totalWidth() > topFillWidth && right.length > 0) {
-				right.pop();
-				rightWidth = groupWidth(right, rightCapWidth, rightSepWidth);
-			}
-			// Shrink path before dropping left segments — path is the only elastic segment
-			const pathIdx = leftSegIds.indexOf("path");
-			if (pathIdx >= 0 && totalWidth() > topFillWidth) {
-				const overflow = totalWidth() - topFillWidth;
-				const currentPathVW = visibleWidth(left[pathIdx]);
-				const minPathVW = 8; // icon + ellipsis + a few chars
-				const shrinkable = currentPathVW - minPathVW;
-				if (shrinkable > 0) {
-					const shrinkBy = Math.min(shrinkable, overflow);
-					const currentMaxLen = ctx.options.path?.maxLength ?? 40;
-					let newMaxLen = Math.max(4, Math.min(currentMaxLen, currentPathVW) - shrinkBy);
-					const pathCtx = (maxLen: number): SegmentContext => ({
-						...ctx,
-						options: { ...ctx.options, path: { ...ctx.options.path, maxLength: maxLen } },
-					});
-					let reRendered = renderSegment("path", pathCtx(newMaxLen));
-					if (reRendered.visible && reRendered.content) {
-						// maxLength governs path text, not icon prefix; iterate to compensate
-						for (let i = 0; i < 8; i++) {
-							const saved = currentPathVW - visibleWidth(reRendered.content);
-							if (saved >= shrinkBy) break;
-							const nextMaxLen = Math.max(4, newMaxLen - (shrinkBy - saved));
-							if (nextMaxLen >= newMaxLen) break; // no progress or hit floor
-							newMaxLen = nextMaxLen;
-							const adjusted = renderSegment("path", pathCtx(newMaxLen));
-							if (!adjusted.visible || !adjusted.content) break;
-							reRendered = adjusted;
-						}
-						left[pathIdx] = reRendered.content;
-						leftWidth = groupWidth(left, leftCapWidth, leftSepWidth);
-					}
-				}
-			}
-			const leftOverflowDropIndex = (): number => {
-				// Drop right-to-left, but keep two segments to the last: the working
-				// directory, and the mode segment.
-				//
-				// `mode` was on the "less critical" list, which was true when it only
-				// named plan/goal/vibe. It now carries the approval rung, so it is the
-				// one place that says whether the next command will ask before it
-				// runs, and shedding it first meant a narrow terminal silently stopped
-				// reporting that while keeping the profile and the model name. Safety
-				// state outranks identity.
-				for (let i = leftSegIds.length - 1; i >= 0; i--) {
-					if (leftSegIds[i] !== "path" && leftSegIds[i] !== "mode") return i;
-				}
-				// Everything else is gone; give up `mode` before the path, since the
-				// path is what tells you which project you are about to act on.
-				for (let i = leftSegIds.length - 1; i >= 0; i--) {
-					if (leftSegIds[i] !== "path") return i;
-				}
-				return left.length - 1;
-			};
-
-			while (totalWidth() > topFillWidth && left.length > 0) {
-				const dropIdx = leftOverflowDropIndex();
-				left.splice(dropIdx, 1);
-				leftSegIds.splice(dropIdx, 1);
-				leftWidth = groupWidth(left, leftCapWidth, leftSepWidth);
-			}
-		}
-
-		const renderGroup = (parts: string[], direction: "left" | "right"): string => {
-			if (parts.length === 0) return "";
-			const sep = direction === "left" ? separatorDef.left : separatorDef.right;
-			const cap =
-				separatorDef.endCaps && !transparentBg
-					? direction === "left"
-						? separatorDef.endCaps.right
-						: separatorDef.endCaps.left
-					: "";
-			const capPrefix = separatorDef.endCaps?.useBgAsFg ? bgAnsi.replace("\x1b[48;", "\x1b[38;") : bgAnsi + sepAnsi;
-			const capText = cap ? `${capPrefix}${cap}\x1b[0m` : "";
-
-			let content = bgAnsi + fgAnsi;
-			content += ` ${parts.join(` ${sepAnsi}${sep}${fgAnsi} `)} `;
-			content += SGR_RESET;
-
-			if (capText) {
-				return direction === "right" ? capText + content : content + capText;
-			}
-			return content;
-		};
-
-		const leftGroup = renderGroup(left, "left");
-		const rightGroup = renderGroup(right, "right");
-		if (!leftGroup && !rightGroup) return "";
-
-		if (topFillWidth === 0 || left.length === 0 || right.length === 0) {
-			return leftGroup + (leftGroup && rightGroup ? " " : "") + rightGroup;
-		}
-
-		const gapWidth = Math.max(1, topFillWidth - leftWidth - rightWidth);
-		const sessionName =
-			effectiveSettings.sessionAccent !== false ? this.session.sessionManager?.getSessionName() : undefined;
-		const accentHex = sessionName
-			? getSessionAccentHex(sessionName, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance)
-			: undefined;
-		const gapColor = getSessionAccentAnsi(accentHex) ?? theme.getFgAnsi("border");
-		const gapFill = `${gapColor}${theme.boxSharp.horizontal.repeat(gapWidth)}\x1b[39m`;
-		return leftGroup + gapFill + rightGroup;
-	}
-
-	getTopBorder(width: number): { content: string; width: number } {
-		// The focus badge is prefixed here rather than contributed by a segment, because focus is a
-		// mode of the whole view and must not depend on which status-line preset you run. It used to
-		// be the `pi` segment's focused branch, and `pi` is only in `full` and `nerd`: on `default`,
-		// `minimal`, `compact` and `ascii` the proxied bar was the unproxied bar with a dim on it, so
-		// the one thing telling you that you were inside an agent, and that Esc now leaves it, was a
-		// shade of grey.
-		const badge = this.#focusedAgentId ? focusExitBadge(this.#focusedAgentId) : "";
-		// The bar is built into what the badge leaves, so prefixing it cannot push the right group
-		// off the end. `#buildStatusLine` fills to the width it is given.
-		let content = this.#buildStatusLine(Math.max(0, width - visibleWidth(badge)));
-		if (this.#focusedAgentId && content) {
-			// Dim the whole bar while focus-proxied. Group/cap terminators emit full
-			// `\x1b[0m` resets that would cancel faint mid-bar, so re-open it after each.
-			// The dim OPENER stays inline: `@veyyon/tui/ansi` owns the bytes whose duplication has a
-			// consequence, and nothing else has to agree with this one. The two resets are shared.
-			const dim = "\x1b[2m";
-			content = `${dim}${content.replaceAll(SGR_RESET, `${SGR_RESET}${dim}`)}${SGR_INTENSITY_RESET}`;
-		}
-		// Outside the dim, deliberately. The dim says "this state is not your main session", and
-		// applying it to the badge would fade the one line of text that explains the state and names
-		// the way out of it, which is the opposite of what the dim is for.
-		content = badge + content;
-		return {
-			content,
-			width: visibleWidth(content),
-		};
 	}
 
 	/**
@@ -1494,15 +1305,23 @@ export class StatusLineComponent implements Component {
 		const includeContext = hasContextSegment(leftCfg) || hasContextSegment(rightCfg);
 		const includeGit = gitEnabled && (hasGitSegment(leftCfg) || hasGitSegment(rightCfg));
 		const includePr = gitEnabled && (hasPrSegment(leftCfg) || hasPrSegment(rightCfg));
-		// The quiet zone reads at a glance: branch + dirty marker, not per-kind
-		// counts; a tighter path budget; a roomy model-effort gap; and the context
-		// gauge warming up the ember ramp instead of flat theme colors.
+		// The footline reads at a glance, so the model-effort gap is roomy. The
+		// per-kind git counts and the token-text context gauge that the other
+		// options here used to switch between are gone: nothing could reach
+		// them, because this is the only place a segment is ever rendered.
+		//
+		// `path.maxLength` was pinned to 30 here, which quietly overrode every
+		// preset's own budget (40 on `default`, 60 on `nerd`) AND any
+		// `statusLine.segmentOptions.path.maxLength` the operator set — picking
+		// `nerd` for its long paths changed nothing on screen. The preset wins
+		// now; 30 is only the fallback for a preset that names no budget.
 		const quietOptions = {
 			...effectiveSettings.segmentOptions,
-			git: { ...effectiveSettings.segmentOptions?.git, compact: true },
-			path: { ...effectiveSettings.segmentOptions?.path, maxLength: 30 },
+			path: {
+				...effectiveSettings.segmentOptions?.path,
+				maxLength: effectiveSettings.segmentOptions?.path?.maxLength ?? 30,
+			},
 			model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
-			context_pct: { ...effectiveSettings.segmentOptions?.context_pct, emberRamp: true, bar: true },
 		};
 		const ctx = this.#buildSegmentContext(width, quietOptions, includePath, includeContext, includeGit, includePr);
 		const LOCATION_IDS: Record<string, true> = { path: true, git: true, pr: true };
@@ -1646,6 +1465,7 @@ export class StatusLineComponent implements Component {
 		// degrades FIRST — its roomy gap shrinks to two cells, then the clock
 		// drops entirely — so it can never squeeze a segment off the line.
 		let clockStage = 0;
+		let locationShortened = false;
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
@@ -1657,26 +1477,42 @@ export class StatusLineComponent implements Component {
 				left = locationContents.join(sep);
 				continue;
 			}
-			let dropIndex = rightParts.length - 1;
-			// `location_right` is protected for the same reason `subagents` is: it carries live
-			// operating state, not chrome. It is pushed LAST, and the shed walks from the end, so
-			// without this it is always the FIRST casualty however important it is. That is how the
-			// always-visible approval rung silently evicted the composer's draft token counter at
-			// 100 columns: nothing removed the counter, the rung widened the right group by one
-			// label and the counter fell off the end. Losing the count while the operator is
-			// actively typing is a worse trade than dropping a capability badge they can re-read
-			// any time. When only protected parts remain the walk lands at -1 and the fall-through
-			// below shortens the location instead, so a long owner string cannot spin here.
-			while (dropIndex >= 0 && PROTECTED_RIGHT_PARTS[rightParts[dropIndex]?.id ?? ""]) dropIndex--;
-			if (dropIndex >= 0) {
+			// Shed the LOWEST-RANKED remaining part, walking from the end so equally
+			// ranked parts still go right-to-left. Everything unlisted ranks 0 and goes
+			// first; see RIGHT_PART_SHED_RANK for why the four ranked ids outrank it.
+			let dropIndex = -1;
+			let dropRank = Number.POSITIVE_INFINITY;
+			for (let i = rightParts.length - 1; i >= 0; i--) {
+				const rank = RIGHT_PART_SHED_RANK[rightParts[i]?.id ?? ""] ?? 0;
+				if (rank < dropRank) {
+					dropRank = rank;
+					dropIndex = i;
+				}
+			}
+			if (dropRank === 0 && dropIndex >= 0) {
 				rightParts.splice(dropIndex, 1);
 				right = rightParts.map(part => part.content).join(sep);
 				continue;
 			}
-			// The count is persistent operating state. Once every optional
-			// right-hand part is gone, shorten location instead of hiding it.
-			const leftBudget = Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0));
-			left = truncateToWidth(locationContents.join(sep), leftBudget);
+			// Only ranked parts are left. Shorten the location before touching any of
+			// them: a clipped path still says where you are, and these do not degrade.
+			if (!locationShortened) {
+				locationShortened = true;
+				const leftBudget = Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0));
+				left = truncateToWidth(locationContents.join(sep), leftBudget);
+				continue;
+			}
+			// The location is gone too and the ranked parts still do not fit, so the
+			// ranking has to resolve. Shedding the weakest is the whole point of having
+			// one: the alternative is what shipped before it existed, where the return
+			// below truncated the joined group and a budget of one cell rendered a bare
+			// `…` — every ranked part destroyed at once, including the persistent
+			// subagent count that outranks all of them.
+			if (rightParts.length > 1 && dropIndex >= 0) {
+				rightParts.splice(dropIndex, 1);
+				right = rightParts.map(part => part.content).join(sep);
+				continue;
+			}
 			break;
 		}
 		if (!left && !right) {
