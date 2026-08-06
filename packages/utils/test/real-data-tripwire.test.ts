@@ -1,9 +1,11 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
+import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { __tripwire, REAL_CONFIG_ROOT_ENV } from "./helpers/real-data-tripwire";
 
 /**
@@ -332,6 +334,53 @@ describe("the real-data tripwire refuses writes into the real veyyon directory",
 				error = err as NodeJS.ErrnoException;
 			}
 			expect(error?.code).toBe("ENOENT");
+		});
+	});
+
+	/**
+	 * The guard wraps `child_process`, and a wrapper changes the SHAPE of what it
+	 * wraps unless it is careful. These entry points do not use the callback
+	 * convention under `node:util.promisify`: each carries a `promisify.custom`
+	 * hook resolving to `{ stdout, stderr }`. A wrapper without that hook sends
+	 * `promisify` down the callback path, which resolves with the first callback
+	 * value alone, so production code written as
+	 *
+	 *     const { stdout } = await promisify(execFile)(...)
+	 *
+	 * destructures `stdout` off a bare string and receives `undefined` -- silently,
+	 * only under test, and only in code that never runs that way in production.
+	 * `scripts/release-ship.ts` hit exactly this: `JSON.parse(stdout)` threw
+	 * `Unexpected identifier "undefined"` against a stub that printed valid JSON.
+	 *
+	 * A safety mechanism that changes the behaviour of the code it protects is a
+	 * source of bugs, so both halves are pinned: the shape survives, and the guard
+	 * still fires on the promisified path.
+	 */
+	describe("the child_process guard preserves the shape of what it wraps", () => {
+		it("keeps promisify resolving to { stdout, stderr } rather than a bare string", async () => {
+			const { stdout, stderr } = await promisify(childProcess.execFile)(process.execPath, [
+				"-e",
+				"process.stdout.write('shaped')",
+			]);
+			expect(stdout).toBe("shaped");
+			expect(stderr).toBe("");
+		});
+
+		/**
+		 * Refused before the promise exists, matching the callback form below. A
+		 * refusal is a bad argument rather than a spawn that failed, so it belongs
+		 * on the same footing as the argument errors `promisify(execFile)` already
+		 * throws synchronously, and a caller cannot swallow it as a rejected
+		 * promise it forgot to await.
+		 */
+		it("still refuses a forbidden path through the promisified call, not only the callback one", () => {
+			const target = probe("spawned");
+			expect(() => promisify(childProcess.execFile)("true", [target])).toThrow(/real veyyon/i);
+		});
+
+		it("refuses the same path through the plain callback call", () => {
+			const target = probe("spawned");
+			expect(() => childProcess.execFile("true", [target], () => {})).toThrow(/real veyyon/i);
 		});
 	});
 
