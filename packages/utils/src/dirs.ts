@@ -1485,7 +1485,7 @@ export function getGlobalConfigRootDir(): string {
  *   every child process the next suite spawns.
  *
  * Suites that restored either way leaked the developer's real agent dir, or an
- * unexpected profile, into every file that ran after them; `scripts/find-test-leaks.ts`
+ * unexpected profile, into every file that ran after them; `scripts/test-sandbox/find-test-leaks.ts`
  * found roughly thirty of them.
  */
 export interface DirOverridesSnapshot {

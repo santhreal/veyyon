@@ -381,11 +381,13 @@ type ChildSpawnOptions<In extends InMask = InMask> = Omit<
 	signal?: AbortSignal;
 	detached?: boolean;
 	stderr?: "full" | null;
+	/** Called with the fresh child pid right after spawn (session CPU budget adoption). */
+	onSpawnPid?: (pid: number) => void;
 };
 
 /** Spawn a child process with piped stdout/stderr. */
 export function spawn<In extends InMask = InMask>(cmd: string[], opts?: ChildSpawnOptions<In>): ChildProcess<In> {
-	const { timeout = -1, signal, stderr, ...rest } = opts ?? {};
+	const { timeout = -1, signal, stderr, onSpawnPid, ...rest } = opts ?? {};
 	const child = Bun.spawn(cmd, {
 		stdin: "ignore",
 		stdout: "pipe",
@@ -393,6 +395,7 @@ export function spawn<In extends InMask = InMask>(cmd: string[], opts?: ChildSpa
 		windowsHide: true,
 		...rest,
 	});
+	onSpawnPid?.(child.pid);
 	const cp = new ChildProcess(child, stderr === "full");
 	if (signal) cp.attachSignal(signal);
 	if (timeout > 0) cp.attachTimeout(timeout);
