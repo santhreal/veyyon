@@ -292,11 +292,10 @@ release produces, how to verify it, and how to recover a failed step.
 
 ## Repository secrets and variables
 
-GitHub binary publication needs no repository secret. The Release workflow uses
-the built-in `GITHUB_TOKEN` to push the version bump and tag, dispatch and gate
-the immutable tag through `checks.yml`, dispatch and wait for `ci.yml`, then
-verify the published release. The Cloudflare credentials are required by the
-production deployment inside tagged CI.
+GitHub binary publication needs no repository secret. The version bump is
+prepared and pushed by an operator, and the tag's `ci.yml` run uses the built-in
+`GITHUB_TOKEN` to publish the release and verify it. The Cloudflare credentials
+are required by the production deployment inside that same tagged run.
 
 | Name | Kind | Gates |
 | --- | --- | --- |
