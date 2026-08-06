@@ -81,6 +81,22 @@ const SIDEBAR_MAX_WIDTH = 30;
  */
 const SIDEBAR_SUMMARY_ROWS = 3;
 
+/**
+ * The keystroke each clickable footer chip stands for.
+ *
+ * Clicking a chip replays that key through {@link AccountManagerComponent.handleInput}, so the
+ * mouse path has no logic of its own: `x` still arms before it logs out, `enter` still submits an
+ * open rename, and a chip can never do something the key beside it does not.
+ */
+const SHORTCUT_KEYS: Record<string, string> = {
+	confirm: "\r",
+	name: "n",
+	refresh: "r",
+	usage: "u",
+	logout: "x",
+	add: "a",
+};
+
 export interface AccountManagerCallbacks {
 	/** Route this provider's traffic to this credential for the session. */
 	onUseAccount: (row: AccountRow) => void;
@@ -119,11 +135,22 @@ export interface AccountManagerOptions {
 	terminalHeight?: number;
 }
 
-/** One rendered body line, and the account it belongs to when it is the selectable head line. */
+/**
+ * What a body line points at.
+ *
+ * `add` is the `+ add another …` entry. It is a real list position, not a hint: arrowing off the
+ * last account lands on it, `enter` there starts a login, and a click on it does the same.
+ */
+type BodyTarget = { kind: "account"; credentialId: number } | { kind: "add" };
+
+/** One rendered body line, and the entry it belongs to. */
 interface BodyLine {
 	text: string;
-	/** Set only on a row's first line — the one the cursor lands on and the band paints. */
-	credentialId?: number;
+	/**
+	 * Every line of an entry's block carries it, so a click anywhere in the block hits the entry.
+	 * The cursor and the selection band are painted on the block's FIRST line only.
+	 */
+	target?: BodyTarget;
 }
 
 export class AccountManagerComponent implements Component {
@@ -142,8 +169,11 @@ export class AccountManagerComponent implements Component {
 	 * seconds after the card opened and while the user is arrowing through rows. An index-keyed
 	 * selection silently moves to a different account when a refresh reorders or drops a row —
 	 * and the next `x` would then log out an account the user never selected.
+	 *
+	 * The add-account entry has no credential, so the selection is a tagged union rather than a
+	 * nullable id: a provider you hold no accounts for still has one selectable entry.
 	 */
-	#selectedCredentialId: number | null = null;
+	#bodySelection: BodyTarget = { kind: "add" };
 
 	#sidebarScroll = 0;
 	/** Set by an activation (keys, click, open) so the next paint reveals the active provider. */
@@ -178,7 +208,7 @@ export class AccountManagerComponent implements Component {
 		if (requested && this.#entries.some(entry => entry.providerId === requested)) {
 			this.#activeProviderId = requested;
 		}
-		this.#selectedCredentialId = this.#rows()[0]?.credentialId ?? null;
+		this.#selectFirstEntry();
 		if (options.reveal) this.#reveal.start(() => this.#requestRender?.());
 	}
 
@@ -193,8 +223,9 @@ export class AccountManagerComponent implements Component {
 		this.#inventory = next;
 		this.#rebuildEntries();
 		const rows = this.#rows();
-		if (!rows.some(row => row.credentialId === this.#selectedCredentialId)) {
-			this.#selectedCredentialId = rows[0]?.credentialId ?? null;
+		const selected = this.#selectedCredentialId();
+		if (selected !== null && !rows.some(row => row.credentialId === selected)) {
+			this.#selectFirstEntry();
 			this.#rename = null;
 			this.#pendingLogoutCredentialId = null;
 		}
@@ -232,8 +263,28 @@ export class AccountManagerComponent implements Component {
 		return accountsForProvider(this.#inventory, this.#activeProviderId);
 	}
 
+	/** The selected credential, or null when the add-account entry holds the cursor. */
+	#selectedCredentialId(): number | null {
+		return this.#bodySelection.kind === "account" ? this.#bodySelection.credentialId : null;
+	}
+
 	#selectedRow(): AccountRow | undefined {
-		return this.#rows().find(row => row.credentialId === this.#selectedCredentialId);
+		const id = this.#selectedCredentialId();
+		return id === null ? undefined : this.#rows().find(row => row.credentialId === id);
+	}
+
+	/** Put the cursor on the first account, or on the add entry when the provider holds none. */
+	#selectFirstEntry(): void {
+		const first = this.#rows()[0];
+		this.#bodySelection = first ? { kind: "account", credentialId: first.credentialId } : { kind: "add" };
+	}
+
+	#isSelected(target: BodyTarget | undefined): boolean {
+		if (!target) return false;
+		const selection = this.#bodySelection;
+		return target.kind === "add"
+			? selection.kind === "add"
+			: selection.kind === "account" && selection.credentialId === target.credentialId;
 	}
 
 	// ═══════════════════════════════════════════════════════════════════════
@@ -291,8 +342,7 @@ export class AccountManagerComponent implements Component {
 			return;
 		}
 		if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
-			const row = this.#selectedRow();
-			if (row) this.#callbacks.onUseAccount(row);
+			this.#activate();
 			return;
 		}
 
@@ -331,13 +381,34 @@ export class AccountManagerComponent implements Component {
 			return;
 		}
 		const rows = this.#rows();
-		if (rows.length === 0) return;
-		const current = Math.max(
-			0,
-			rows.findIndex(row => row.credentialId === this.#selectedCredentialId),
-		);
-		const next = (current + direction + rows.length) % rows.length;
-		this.#selectedCredentialId = rows[next]?.credentialId ?? null;
+		// The add entry is the position AFTER the last account, so arrowing off the bottom of the
+		// list lands on it instead of stopping. The list wraps, like `SelectList` and like the
+		// sidebar above: down from the add entry returns to the first account.
+		const count = rows.length + 1;
+		const current =
+			this.#bodySelection.kind === "add"
+				? rows.length
+				: Math.max(
+						0,
+						rows.findIndex(row => row.credentialId === this.#selectedCredentialId()),
+					);
+		const next = (current + direction + count) % count;
+		const row = rows[next];
+		this.#bodySelection = row ? { kind: "account", credentialId: row.credentialId } : { kind: "add" };
+	}
+
+	/**
+	 * What `enter` and a body click both mean: use the selected account, or start a login when
+	 * the cursor is on the add entry. One owner, so the mouse can never run a different action
+	 * from the key the footer names.
+	 */
+	#activate(): void {
+		if (this.#bodySelection.kind === "add") {
+			if (this.#activeProviderId) this.#callbacks.onAddAccount(this.#activeProviderId);
+			return;
+		}
+		const row = this.#selectedRow();
+		if (row) this.#callbacks.onUseAccount(row);
 	}
 
 	#selectProvider(providerId: string): void {
@@ -347,7 +418,7 @@ export class AccountManagerComponent implements Component {
 		this.#pendingLogoutCredentialId = null;
 		this.#bodyScroll = 0;
 		this.#sidebarFollowActive = true;
-		this.#selectedCredentialId = this.#rows()[0]?.credentialId ?? null;
+		this.#selectFirstEntry();
 	}
 
 	#openRename(): void {
@@ -400,6 +471,16 @@ export class AccountManagerComponent implements Component {
 			this.#requestRender?.();
 			return true;
 		}
+		if (chrome.kind === "shortcut") {
+			// A chip runs the KEY it names, never a private copy of the action, so the footer and
+			// the keyboard can never drift apart.
+			const key = SHORTCUT_KEYS[chrome.id];
+			if (key) {
+				this.handleInput(key);
+				this.#requestRender?.();
+			}
+			return true;
+		}
 
 		// `row()` insets content by the border column plus a space, and the card floats, so the
 		// split starts at `frameLeft + 2`.
@@ -444,11 +525,15 @@ export class AccountManagerComponent implements Component {
 			return true;
 		}
 		if (overBody) {
-			const line = this.#bodyLines[this.#bodyScroll + contentLine];
-			if (line?.credentialId !== undefined) {
+			const target = this.#bodyLines[this.#bodyScroll + contentLine]?.target;
+			if (target) {
 				this.#focus = "body";
-				this.#selectedCredentialId = line.credentialId;
+				this.#bodySelection = target;
 				this.#pendingLogoutCredentialId = null;
+				// The add entry has no second step to offer, so a click on it starts the login the way
+				// `enter` does. An account keeps select-then-act: `enter`, `x` and `n` all read the
+				// selection, and a click that re-routed the session would be one no user asked for.
+				if (target.kind === "add") this.#activate();
 				this.#requestRender?.();
 			}
 		}
@@ -601,7 +686,8 @@ export class AccountManagerComponent implements Component {
 		}
 
 		for (const row of rows) {
-			const selected = row.credentialId === this.#selectedCredentialId;
+			const target: BodyTarget = { kind: "account", credentialId: row.credentialId };
+			const selected = this.#isSelected(target);
 			const head = accountHeadLine(row, nowMs);
 			const cursor = selected && this.#focus === "body" ? theme.fg("accent", theme.nav.cursor) : " ";
 			const glyph = this.#glyph(accountGlyphKind(row, nowMs));
@@ -618,26 +704,26 @@ export class AccountManagerComponent implements Component {
 			const gap = tagFits ? width - visibleWidth(left) - visibleWidth(tag) : 0;
 			let text = tagFits ? `${left}${" ".repeat(gap)}${tag}` : truncateToWidth(left, width);
 			if (selected) text = selectionBand(text, width);
-			lines.push({ text, credentialId: row.credentialId });
+			lines.push({ text, target });
 
 			if (this.#rename?.credentialId === row.credentialId) {
 				const prompt = theme.fg("accent", "name:");
 				const field = this.#rename.input.render(Math.max(8, Math.min(32, width - 14)))[0] ?? "";
-				lines.push({ text: truncateToWidth(`       ${prompt} ${field}`, width) });
+				lines.push({ text: truncateToWidth(`       ${prompt} ${field}`, width), target });
 			}
 
 			// `muted`, not `dim`: this line carries the plan and the origin badge, which outrank the
 			// usage bars underneath it, and rendering it quieter than they are inverted the hierarchy.
 			const plan = accountPlanLine(row);
-			if (plan) lines.push({ text: theme.fg("muted", truncateToWidth(`       ${plan}`, width)) });
+			if (plan) lines.push({ text: theme.fg("muted", truncateToWidth(`       ${plan}`, width)), target });
 			for (const usage of accountUsageLines(row, nowMs)) {
-				lines.push({ text: truncateToWidth(`       ${usage}`, width) });
+				lines.push({ text: truncateToWidth(`       ${usage}`, width), target });
 			}
 			for (const notice of accountNoticeLines(row, nowMs)) {
 				// Wrapped for the same reason as the provider note: a failed row's upstream reason is
 				// the remedy, and its useful half is at the END of the string.
 				for (const wrapped of this.#wrapNote(notice, "       ", width)) {
-					lines.push({ text: theme.fg("error", wrapped) });
+					lines.push({ text: theme.fg("error", wrapped), target });
 				}
 			}
 			if (this.#pendingLogoutCredentialId === row.credentialId) {
@@ -646,6 +732,7 @@ export class AccountManagerComponent implements Component {
 						"warning",
 						truncateToWidth(`       press x again to log out of ${head.label} · esc cancels`, width),
 					),
+					target,
 				});
 			}
 			lines.push({ text: "" });
@@ -655,40 +742,70 @@ export class AccountManagerComponent implements Component {
 			lines.push({ text: theme.fg("muted", truncateToWidth("  No accounts stored for this provider yet.", width)) });
 			lines.push({ text: "" });
 		}
-		lines.push({
-			text: theme.fg(
-				"accent",
-				// No `(a)` hint: the footer chip two rows below already says `a add`, and naming the key
-				// twice on one card reads as two different affordances.
-				truncateToWidth(`  + add another ${sanitizeAccountText(entry.label)} account`, width),
-			),
-		});
+
+		// The last position in the list, and a selectable one. Down from the last account lands
+		// here, `enter` starts the login, and the cursor column lines up with the account glyphs
+		// above so the entry reads as part of the same list rather than a caption under it.
+		const addTarget: BodyTarget = { kind: "add" };
+		const addSelected = this.#isSelected(addTarget);
+		const addCursor = addSelected && this.#focus === "body" ? theme.fg("accent", theme.nav.cursor) : " ";
+		// No `(a)` hint: the footer chip two rows below already says `a add`, and naming the key
+		// twice on one card reads as two different affordances.
+		const addLabel = `+ add another ${sanitizeAccountText(entry.label)} account`;
+		let addText = truncateToWidth(
+			` ${addCursor} ${addSelected ? theme.bold(theme.fg("accent", addLabel)) : theme.fg("accent", addLabel)}`,
+			width,
+		);
+		if (addSelected) addText = selectionBand(addText, width);
+		lines.push({ text: addText, target: addTarget });
 		return lines;
 	}
 
 	#shortcuts(): ModalShortcut[] {
 		if (this.#rename) {
-			return [{ label: "enter save name" }, { label: "esc cancel", clickable: true, id: "close" }];
+			return [
+				{ label: "enter save name", clickable: true, id: "confirm" },
+				{ label: "esc cancel", clickable: true, id: "close" },
+			];
 		}
 		const entry = this.#activeEntry();
 		// Naming the provider is the point: `enter use` alone reads as a global account switch,
-		// and switching accounts is per provider.
-		const use = entry ? `enter use for ${entry.label}` : "enter use";
+		// and switching accounts is per provider. On the add entry `enter` does not use anything,
+		// so the chip says what it will actually do rather than naming an account it cannot pick.
+		const use =
+			this.#bodySelection.kind === "add"
+				? entry
+					? `enter add ${entry.label} account`
+					: "enter add account"
+				: entry
+					? `enter use for ${entry.label}`
+					: "enter use";
 		return [
 			{ label: "↑↓ move" },
 			{ label: "←→ pane" },
-			{ label: use },
-			{ label: "n name" },
-			{ label: "r refresh" },
-			{ label: "u usage" },
-			{ label: this.#pendingLogoutCredentialId === null ? "x logout" : "x confirm logout" },
-			{ label: "a add" },
+			{ label: use, clickable: true, id: "confirm" },
+			{ label: "n name", clickable: true, id: "name" },
+			{ label: "r refresh", clickable: true, id: "refresh" },
+			{ label: "u usage", clickable: true, id: "usage" },
+			{
+				label: this.#pendingLogoutCredentialId === null ? "x logout" : "x confirm logout",
+				clickable: true,
+				id: "logout",
+			},
+			{ label: "a add", clickable: true, id: "add" },
 			{ label: "esc close", clickable: true, id: "close" },
 		];
 	}
 
 	render(width: number): readonly string[] {
-		const height = Math.max(16, this.#terminalHeight ?? (process.stdout.rows || 40));
+		// EXACTLY the rows the screen has, never a floor of its own. The host mounts this card as a
+		// fullscreen overlay with `maxHeight: "100%"`, so a frame taller than the terminal is clipped
+		// by the overlay — and because the card is bottom-anchored, the clip comes off the TOP. The
+		// title row and the `[x]` disappear, and every row in `#shellGeometry` is then off by the
+		// clipped amount, so the close glyph, the footer chips and the whole split answer to clicks
+		// several rows away from where they are painted. `computeModalDims` already refuses a screen
+		// too small to draw on, which is the case a minimum height was standing in for.
+		const height = this.#terminalHeight ?? (process.stdout.rows || 40);
 		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
@@ -723,8 +840,9 @@ export class AccountManagerComponent implements Component {
 		if (this.#bodyLines.length > splitRows) {
 			this.#bodyLines = this.#buildBodyLines(Math.max(1, bodyWidth - 2), nowMs);
 		}
-		// Keep the selected row on screen: it is what `enter`, `x`, `n` and `u` act on.
-		const selectedLine = this.#bodyLines.findIndex(line => line.credentialId === this.#selectedCredentialId);
+		// Keep the selected entry on screen: it is what `enter`, `x`, `n` and `u` act on. Every line
+		// of an entry's block carries the target, so this finds the block's head line.
+		const selectedLine = this.#bodyLines.findIndex(line => this.#isSelected(line.target));
 		if (selectedLine >= 0) {
 			if (selectedLine < this.#bodyScroll) this.#bodyScroll = selectedLine;
 			else if (selectedLine >= this.#bodyScroll + splitRows) this.#bodyScroll = selectedLine - splitRows + 1;
