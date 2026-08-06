@@ -36,7 +36,11 @@ import type {
 import { normalizeSystemPrompts, resolveCacheRetention } from "../utils";
 import { createAbortSourceTracker } from "../utils/abort";
 import { isDemotedThinking, kStreamingLastParseLen } from "../utils/block-symbols";
-import { hasVisibleAssistantContent, withEmptyCompletionRetry } from "../utils/empty-completion-retry";
+import {
+	EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE,
+	hasVisibleAssistantContent,
+	withEmptyCompletionRetry,
+} from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import {
@@ -2269,9 +2273,6 @@ function convertTools(
 			(toolStrictMode === "all_strict" || (toolStrictMode === "mixed" && adaptedTools.some(tool => tool.strict))),
 	};
 }
-
-const EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE =
-	"Model returned no content: prompt filled the context window; raise Ollama num_ctx or shorten the prompt.";
 
 function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | string): {
 	stopReason: StopReason;
