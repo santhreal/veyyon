@@ -43,6 +43,7 @@ import { framedBlock, renderStatusLine } from "../tui";
 import { buildTreePrefix } from "../tui/utils";
 import { classifySubagentOutcome } from "./outcome";
 import { repairDoubleEncodedJsonString } from "./repair-args";
+import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
 import { subprocessToolRegistry, YIELD_TOOL_NAME } from "./subprocess-tool-registry";
 import type { AgentProgress, SingleResult, TaskItem, TaskParams, TaskToolDetails, YieldItem } from "./types";
 import { assembleYieldResult } from "./yield-assembly";
@@ -707,7 +708,7 @@ function formatAgentHeaderLabel(args: Partial<TaskParams> | undefined): string |
 /** Dim `⟨agent⟩` badge for a non-default agent type; empty for the generic worker. */
 function agentTypeBadge(agent: string | undefined, theme: Theme): string {
 	const trimmed = agent?.trim();
-	if (!trimmed || trimmed === "task") return "";
+	if (!trimmed || trimmed === DEFAULT_SPAWN_AGENT) return "";
 	return ` ${theme.fg("dim", `${theme.format.bracketLeft}${trimmed}${theme.format.bracketRight}`)}`;
 }
 

@@ -26,6 +26,7 @@ import { getConfigDirs } from "../config";
 import { listClaudePluginRoots, pluginsRootFor } from "../discovery/helpers";
 import { listVeyyonExtensionRoots } from "../discovery/veyyon-extension-roots";
 import { loadBundledAgents, parseAgent } from "./agents";
+import { currentAgentName } from "./spawn-policy";
 import type { AgentDefinition, AgentSource } from "./types";
 
 const TASK_AGENT_CONFIG_SOURCE = ".veyyon";
@@ -177,7 +178,14 @@ export async function discoverAgents(
 
 /**
  * Get an agent by name from discovered agents.
+ *
+ * A literal match wins, so a user who writes their own `task.md` gets their own
+ * agent. Only when nothing matches does a retired name fall through to the one
+ * that replaced it, which is what keeps an old `agent: "task"` working.
  */
 export function getAgent(agents: readonly AgentDefinition[], name: string): AgentDefinition | undefined {
-	return agents.find(a => a.name === name);
+	const exact = agents.find(a => a.name === name);
+	if (exact) return exact;
+	const current = currentAgentName(name);
+	return current === name ? undefined : agents.find(a => a.name === current);
 }

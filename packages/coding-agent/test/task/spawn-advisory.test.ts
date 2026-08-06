@@ -19,35 +19,35 @@ useIsolatedAgentDir();
 
 // Contract: the task tool appends an advisory (never a rejection) steering the
 // spawner toward more specific agent types when one call resolves ≥2 items to
-// a generic `task`/`sonic` worker and the spawner still holds spawn capacity
+// a generic `deep`/`sonic` worker and the spawner still holds spawn capacity
 // (DepthCapacity). It is gated on depth so a leaf at max recursion is never
 // nagged, and a lone generic spawn is never flagged.
 
 describe("buildSpecializationAdvisory", () => {
 	it("nudges when one call spawns two generic workers with depth capacity", () => {
-		const advice = buildSpecializationAdvisory(["task", "task"], true, ["task", "scout"]);
+		const advice = buildSpecializationAdvisory(["deep", "deep"], true, ["deep", "scout"]);
 		expect(advice).toBeDefined();
 		expect(advice).toContain("`scout`");
 	});
 
 	it("stays silent at max depth even for a generic fan-out", () => {
-		expect(buildSpecializationAdvisory(["task", "task"], false, ["task", "scout"])).toBeUndefined();
+		expect(buildSpecializationAdvisory(["deep", "deep"], false, ["deep", "scout"])).toBeUndefined();
 	});
 
 	it("stays silent for a single generic spawn", () => {
-		expect(buildSpecializationAdvisory(["task"], true, ["task", "scout"])).toBeUndefined();
+		expect(buildSpecializationAdvisory(["deep"], true, ["deep", "scout"])).toBeUndefined();
 	});
 
 	it("stays silent when the fan-out already uses specific agent types", () => {
-		expect(buildSpecializationAdvisory(["reviewer", "scout"], true, ["task", "scout", "reviewer"])).toBeUndefined();
+		expect(buildSpecializationAdvisory(["reviewer", "scout"], true, ["deep", "scout", "reviewer"])).toBeUndefined();
 	});
 
 	it("stays silent for a mixed call with only one generic worker", () => {
-		expect(buildSpecializationAdvisory(["task", "scout"], true, ["task", "scout"])).toBeUndefined();
+		expect(buildSpecializationAdvisory(["deep", "scout"], true, ["deep", "scout"])).toBeUndefined();
 	});
 
-	it("counts sonic as generic alongside task", () => {
-		const advice = buildSpecializationAdvisory(["sonic", "task"], true, ["task", "scout", "sonic"]);
+	it("counts sonic as generic alongside deep", () => {
+		const advice = buildSpecializationAdvisory(["sonic", "deep"], true, ["deep", "scout", "sonic"]);
 		expect(advice).toBeDefined();
 		expect(advice).toContain("2 generic");
 	});
@@ -59,7 +59,7 @@ describe("buildSpecializationAdvisory", () => {
 // the nudge never contaminates code-consumed evidence.
 describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 	const agent: AgentDefinition = {
-		name: "task",
+		name: "deep",
 		description: "General-purpose task agent",
 		systemPrompt: "You are a task agent.",
 		source: "bundled",
@@ -108,7 +108,7 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 			async (options): Promise<SingleResult> => ({
 				index: options.index ?? 0,
 				id: options.id ?? "X",
-				agent: "task",
+				agent: "deep",
 				agentSource: "bundled",
 				task: "t",
 				assignment: "do the thing",
@@ -123,7 +123,7 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 		);
 		const tool = await TaskTool.create(session(suppress));
 		// Both items omit `agent`, so each resolves to the generic spawn-policy
-		// default ("task") — the ≥2-generics condition the advisory gates on.
+		// default ("deep") — the ≥2-generics condition the advisory gates on.
 		const result = await tool.execute("tc", {
 			context: "shared fan-out background",
 			tasks: [

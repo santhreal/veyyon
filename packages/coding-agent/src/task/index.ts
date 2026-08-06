@@ -446,7 +446,7 @@ function mergeSyncPayloads(
 }
 
 /** Generic worker agent types; several in one call usually means a more specific type exists. */
-const GENERIC_SPAWN_AGENTS: ReadonlySet<string> = new Set(["task", "sonic"]); // not-a-tool-name: agent ids
+const GENERIC_SPAWN_AGENTS: ReadonlySet<string> = new Set(["deep", "sonic"]); // not-a-tool-name: agent ids
 
 /**
  * Advisory — never a rejection — nudging the spawner toward tailored

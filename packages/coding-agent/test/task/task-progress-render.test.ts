@@ -106,7 +106,7 @@ describe("task progress rendering", () => {
 
 	// Regression: the ⟨agent⟩ type badge must survive past the streaming call
 	// preview — it stays on live progress rows and on finished result rows, and
-	// the generic `task` worker stays bare.
+	// the generic `deep` worker stays bare.
 	it("keeps the agent type badge on progress and result rows", async () => {
 		const theme = (await getThemeByName("dark"))!;
 		const options: RenderResultOptions = { expanded: false, isPartial: true, spinnerFrame: 0 };
@@ -149,7 +149,7 @@ describe("task progress rendering", () => {
 				taskToolRenderer.renderResult(
 					{
 						content: [{ type: "text", text: "" }],
-						details: detailsFor(runningProgress({ id: "PlainWorker", agent: "task" })),
+						details: detailsFor(runningProgress({ id: "PlainWorker", agent: "deep" })),
 					},
 					options,
 					theme,
@@ -157,7 +157,7 @@ describe("task progress rendering", () => {
 				"PlainWorker",
 			),
 		);
-		expect(genericRow).not.toContain(`${theme.format.bracketLeft}task${theme.format.bracketRight}`);
+		expect(genericRow).not.toContain(`${theme.format.bracketLeft}deep${theme.format.bracketRight}`);
 	});
 
 	it("shows the spawn count without a joined agent-type list in the header", async () => {

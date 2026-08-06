@@ -45,9 +45,9 @@ import { makeToolSession } from "../helpers/tool-session";
 useIsolatedAgentDir();
 
 const taskAgent: AgentDefinition = {
-	name: "task",
-	description: "General-purpose task agent",
-	systemPrompt: "You are a task agent.",
+	name: "deep",
+	description: "End-to-end worker agent",
+	systemPrompt: "You are a worker agent.",
 	source: "bundled",
 };
 
@@ -74,7 +74,7 @@ function makeResult(id: string, overrides: Partial<SingleResult> = {}): SingleRe
 	return {
 		index: 0,
 		id,
-		agent: "task",
+		agent: "deep",
 		agentSource: "bundled",
 		task: "task prompt",
 		assignment: "Do the thing.",

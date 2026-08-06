@@ -1,5 +1,31 @@
 /** Default agent used when a session has unrestricted spawning. */
-export const DEFAULT_SPAWN_AGENT = "task";
+export const DEFAULT_SPAWN_AGENT = "deep";
+
+/**
+ * Retired agent names, mapped to the name that replaced them.
+ *
+ * `task` was renamed to `deep` because the token already meant three other
+ * things that cannot move: the tool, the tool's prose parameter, and the async
+ * job kind. The rendered prompt said "Enabled agent types: `task`. The `task`
+ * tool says what each one costs", which is one word carrying two meanings nine
+ * words apart.
+ *
+ * The old name keeps resolving rather than going quietly inert, because it is
+ * written down in places this repository does not own: a `subagent.agents.task`
+ * row in someone's settings, a hand-written `.veyyon/agents/task.md`, a saved
+ * transcript being resumed, an SDK caller passing `agent: "task"`. Dropping it
+ * would turn every one of those into either an "Unknown agent" error or, worse,
+ * a silently ignored configuration row.
+ *
+ * An alias never shadows a real agent: resolution tries the literal name first,
+ * so a user who writes their own `task.md` still gets their own agent.
+ */
+export const RETIRED_AGENT_NAMES: Readonly<Record<string, string>> = { task: "deep" };
+
+/** The current name for `name`, following a retirement if there is one. */
+export function currentAgentName(name: string): string {
+	return RETIRED_AGENT_NAMES[name] ?? name;
+}
 
 /** Spawn policy derived from a parent agent's `spawns` frontmatter. */
 export interface ResolvedSpawnPolicy {

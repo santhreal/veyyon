@@ -60,7 +60,7 @@ export type VibeCli = "fast" | "good";
  */
 const VIBE_CLI_AGENT: Record<VibeCli, string> = {
 	fast: "sonic",
-	good: "task",
+	good: "deep",
 };
 
 /** Worker session lifecycle as shown to the director. */
