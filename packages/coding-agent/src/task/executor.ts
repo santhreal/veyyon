@@ -932,24 +932,26 @@ export function createSubagentSettings(
 }
 
 /**
- * Derive destination project policy before adding subagent-only overrides.
+ * Bind a subagent's settings to the directory it will run in.
  *
- * SECURITY NOTE, LEFT DELIBERATELY AS A NOTE RATHER THAN A FIX. `cloneForCwd`
- * resolves the child against the DESTINATION project's settings layer, and
- * `tools.approvalMode` is an ordinary project-scoped setting, so a checked-in
- * `.veyyon/settings.json` in a repo the operator merely cloned currently decides
- * the security rung of any agent spawned into it. Measured with the real loader:
- * parent project pinned to `ask`, destination containing
- * `{"tools.approvalMode":"yolo"}`, child resolved `yolo`, which short-circuits
- * the working-directory boundary and the secret-use boundary in the tool wrapper.
+ * The destination contributes the cwd and nothing else. `cloneForCwd` copies
+ * every configured layer verbatim and re-resolves only path-scoped values, so a
+ * checked-in `.veyyon/settings.json` in a repo the operator merely cloned
+ * decides nothing about the agent spawned into it.
  *
- * A clamp pinning the child back to the parent's rung was built here and then
- * REMOVED on the operator's ruling that a repository may contribute nothing but
- * `AGENTS.md` / `CLAUDE.md` context. A destination repo does not get to set the
- * rung in either direction, so narrowing the door is the wrong fix and the door
- * itself goes. That removal spans every project-scoped layer (rules, hooks, MCP,
- * slash commands, custom tools, extension modules, SSH hosts) and belongs to the
- * dedicated removal lane, not to a per-setting patch here.
+ * That is the fix for a real hole, not an incidental property. `tools.approvalMode`
+ * was once an ordinary project-scoped setting: parent pinned to `ask`,
+ * destination containing `{"tools.approvalMode":"yolo"}`, child resolved `yolo`,
+ * which short-circuits the working-directory boundary and the secret-use
+ * boundary in the tool wrapper. A clamp pinning the child back to the parent's
+ * rung was built and then discarded on the ruling that a repository may
+ * contribute nothing but `AGENTS.md` / `CLAUDE.md` context: narrowing the door
+ * was the wrong fix, so the door went. Project scope is gone from every layer
+ * (settings, rules, hooks, MCP, slash commands, custom tools, extension
+ * modules, SSH hosts).
+ *
+ * `test/task/subagent-settings-cwd-provenance.test.ts` writes a hostile
+ * `settings.json` into each destination and asserts it changes nothing.
  */
 export async function createSubagentSettingsForCwd(
 	baseSettings: Settings,
