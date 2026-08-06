@@ -253,7 +253,61 @@ Interactive mode separately hard-handles many built-ins in `InputController` (fo
 - `steer(...)`/`followUp(...)` helper methods reject extension commands (`#throwIfExtensionCommand`) to avoid queuing command text for handlers that must run synchronously.
 - Compaction queue replay uses `isKnownSlashCommand(...)` to decide whether queued entries should be replayed via `session.prompt(...)` (for known slash commands) vs raw steer/follow-up methods.
 
-## 9) Error handling and failure surfaces
+## 9) Bare invocation of a command that has subcommands
+
+A command that declares `subcommands` must never silently behave as one of them. Typing
+`/account` and pressing enter used to print the status text, which is what `/account status`
+does. The other seven subcommands existed, and nothing on screen said so. You only found
+`manager`, `switch`, `logout`, or `add` by tabbing through completions, so the command taught
+you that it did one thing when it did eight.
+
+The rule: **bare `/cmd` opens a picker listing every subcommand, and you choose one.** The picker
+is navigable with the up and down arrows, accepts a click, and closes on escape. Choosing an
+entry runs exactly what typing that subcommand would have run, so the picker adds a way in and
+never becomes a second implementation.
+
+This holds for every command whose declaration carries `subcommands`, with one exception.
+
+### The toggle exception
+
+Some commands have a meaning of their own that is not any subcommand. `/yolo` flips the approval
+bypass, `/fast` flips the fast model, and `/browser` flips headless mode. Bare invocation there
+is a toggle, not a hidden default, so a picker would put a menu in front of a switch and cost a
+keystroke on the most common action.
+
+Declare that intent rather than leaving it to be inferred:
+
+```ts
+{
+  name: "yolo",
+  bareAction: "toggle", // bare /yolo toggles; it is not a hidden subcommand
+  subcommands: [ /* … */ ],
+}
+```
+
+`bareAction` defaults to `"picker"`. A command that has subcommands and does not declare
+`"toggle"` gets the picker, so the safe behavior is what you get by saying nothing.
+
+### Why this is enforced by a test rather than by review
+
+The defect is invisible from inside the handler. Each of these reads as ordinary code:
+
+```ts
+if (!verb || verb === "status") { /* … */ }        // /account, /permissions
+if (!verb || (verb === "show" && !rest)) { /* … */ } // /usage
+const verb = args.trim().split(/\s+/)[0] || "view";  // /memory
+```
+
+Nothing local is wrong. The problem only appears when you compare the handler against the
+declaration and notice that the bare path resolves to a name that is also in `subcommands`. That
+is a whole-file comparison a reviewer will not repeat on every change, so
+`test/slash-commands/bare-command-opens-a-picker.test.ts` does it: for every declaration with
+`subcommands`, the bare path must open the picker or the declaration must say `"toggle"`.
+
+A new command therefore cannot reintroduce this by accident. It either opts into the toggle
+exception on purpose or it gets the picker.
+
+## 10) Error handling and failure surfaces
 
 - Provider load failures are isolated; registry collects warnings and continues with other providers.
 - Invalid slash command items (missing name/path/content or invalid level) are dropped by capability validation.
