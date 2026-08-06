@@ -1373,6 +1373,19 @@ class SubagentAgentsSubmenu extends Container {
 		};
 		this.#selectList.onCancel = this.onCancel;
 		this.addChild(this.#selectList);
+
+		// The highlighted agent's own description, under the list rather than beside
+		// the name. This is the screen where you decide which lanes to offer, and it
+		// used to show only on/off and a model, so the one thing you needed to make
+		// that decision, what each lane is FOR, was the one thing missing. Inline it
+		// arrives cut, and wrapping it into the row costs three rows per agent, so
+		// six agents would no longer fit on screen at once.
+		const detail = new Text(this.#detailText(items[0]?.value), 0, 0);
+		this.#selectList.onSelectionChange = item => {
+			if (detail.setText(this.#detailText(item.value))) this.requestRender?.();
+		};
+		this.addChild(new Spacer(1));
+		this.addChild(detail);
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(theme.fg("dim", "  Enter to configure · /agents to write agent files · Esc to go back"), 0, 0),
@@ -1381,6 +1394,12 @@ class SubagentAgentsSubmenu extends Container {
 
 	#agent(name: string): AgentDefinition | undefined {
 		return this.#agents.find(candidate => candidate.name === name);
+	}
+
+	/** The highlighted agent's own description: what that lane is for. */
+	#detailText(name: string | undefined): string {
+		const description = name ? this.#agent(name)?.description?.trim() : undefined;
+		return description ? theme.fg("muted", `  ${description}`) : "";
 	}
 
 	#showAgentEditor(name: string): void {
