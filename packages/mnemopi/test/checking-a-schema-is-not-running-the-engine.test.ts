@@ -33,6 +33,7 @@ import {
 	moduleReach,
 	moduleReachCount,
 	moduleSpecifiersIn,
+	typeOnlyModuleSpecifiersIn,
 } from "@veyyon/utils/module-reach";
 import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-workspace";
 
@@ -204,7 +205,9 @@ describe("asking whether a model is configured is not calling one", () => {
 	it("still takes its types from the entry point, which is free", () => {
 		const source = fs.readFileSync(path.join(SRC, "core", "local-llm.ts"), "utf-8");
 
-		expect(source).toContain('from "@veyyon/ai"');
-		expect(source).toContain("FetchImpl");
+		// Both halves. The scan this replaced was `toContain('from "@veyyon/ai"')`, which a RUNTIME
+		// import satisfies just as well, so it could not tell "free" from the thing it forbids.
+		expect(typeOnlyModuleSpecifiersIn(source)).toContain("@veyyon/ai");
+		expect(moduleSpecifiersIn(source)).not.toContain("@veyyon/ai");
 	});
 });

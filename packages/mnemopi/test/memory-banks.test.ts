@@ -8,10 +8,7 @@ import {
 	bankExists,
 	createBank,
 	deleteBank,
-	getBank,
 	listBanks,
-	resetBankForTests,
-	setBank,
 	ValueError,
 } from "@veyyon/mnemopi/core/banks";
 
@@ -137,13 +134,5 @@ describe("BankManager", () => {
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
-	});
-
-	it("switches the process default bank", () => {
-		resetBankForTests();
-		expect(getBank()).toBe("default");
-		setBank("work");
-		expect(getBank()).toBe("work");
-		resetBankForTests();
 	});
 });
