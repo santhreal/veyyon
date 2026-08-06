@@ -809,18 +809,6 @@ export function encodeITerm2(
 	return `\x1b]1337;File=${params.join(";")}:${base64Data}\x07`;
 }
 
-export function calculateImageRows(
-	imageDimensions: ImageDimensions,
-	targetWidthCells: number,
-	cellDimensions: CellDimensions = { widthPx: 9, heightPx: 18 },
-): number {
-	const targetWidthPx = targetWidthCells * cellDimensions.widthPx;
-	const scale = targetWidthPx / imageDimensions.widthPx;
-	const scaledHeightPx = imageDimensions.heightPx * scale;
-	const rows = Math.ceil(scaledHeightPx / cellDimensions.heightPx);
-	return Math.max(1, rows);
-}
-
 // Hard ceiling on an image's fitted cell grid. The renderer reserves one real
 // terminal row per fit row (image.ts), so an unbounded `rows` is an OOM DoS: a
 // hostile image header can report billions of pixels or an extreme aspect ratio
