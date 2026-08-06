@@ -41,7 +41,7 @@ interface TokenMatch {
 	token: string;
 }
 
-export class HarmonyInbandScanner implements InbandScanner {
+class HarmonyInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	#mode: BodyMode = "skip";

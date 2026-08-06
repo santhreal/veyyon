@@ -17,7 +17,7 @@ import type {
 	InbandScannerOptions,
 } from "./types";
 
-export class XmlInbandScanner implements InbandScanner {
+class XmlInbandScanner implements InbandScanner {
 	readonly #inner: InbandScanner;
 
 	constructor(options: InbandScannerOptions = {}) {

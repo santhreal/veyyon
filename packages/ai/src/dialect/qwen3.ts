@@ -19,7 +19,7 @@ const COMPLETE_NAME = /^\s*\{\s*"name"\s*:\s*("(?:\\.|[^"\\])*")/;
 
 type State = "outside" | "thinking" | "tool";
 
-export class Qwen3InbandScanner implements InbandScanner {
+class Qwen3InbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	#id = "";

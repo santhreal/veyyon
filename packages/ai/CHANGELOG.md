@@ -41,6 +41,10 @@
 - Fixed a tool-validation rejection withholding the accepted-value set whenever every enum value happened to be a substring of the error boilerplate. The suppression check that stops a set being printed twice tested raw containment of each value anywhere in the message, so the enum `['a','b']` matched `must be one of the allowed enum values` ('a' inside "allowed", 'b' inside "be") and the hint silently never fired. It only suppresses now when the message quotes each literal, the shape a validator that genuinely lists the set uses; an unquoted list gets a redundant hint, because a duplicate is cosmetic while a missing set leaves the model with no legal value to retry with. Plain JSON-Schema tools were hit hardest, meaning every MCP server and custom tool, since their messages never list the enum at all.
 - Fixed the issue-block length cap dropping the accepted-value line first. Issues are emitted in schema-property order and the cap keeps the head of the text, so a tool with thirty required fields plus one enum spent the entire budget on generic "is required" lines and truncated away the only line naming a legal value. Closed-set lines are now ordered ahead of the rest before the cap applies, stable within each group, so the cut falls on what the model can least act on. The cap itself is unchanged.
 
+### Removed
+
+- The eight dialect-private in-band scanner classes (`GeminiInbandScanner`, `GemmaInbandScanner`, `GLMInbandScanner`, `HarmonyInbandScanner`, `HermesInbandScanner`, `PiNativeInbandScanner`, `Qwen3InbandScanner`, `XmlInbandScanner`) are no longer exported. Each was constructed only by its own dialect definition's `createScanner`, and nothing in the repo — source, tests, or docs — referenced any of them. The `dialect` barrel already excluded the per-dialect modules, so the supported entry point is unchanged: `createInbandScanner(dialect, options)` from `@veyyon/ai/dialect`. `AnthropicInbandScanner`, `DeepSeekInbandScanner` and `ThinkingInbandScanner` stay exported — they have real cross-module consumers.
+
 ## [16.5.2] - 2026-07-14
 
 ### Added

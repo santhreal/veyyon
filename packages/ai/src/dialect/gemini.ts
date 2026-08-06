@@ -46,7 +46,7 @@ interface ParsedCall {
  * buffer the whole block until its closing fence, then parse all calls at once
  * (no incremental argument deltas — Python literals are not worth streaming).
  */
-export class GeminiInbandScanner implements InbandScanner {
+class GeminiInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	#thinking = "";
