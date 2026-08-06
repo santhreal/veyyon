@@ -41,6 +41,7 @@ import { SettingsSelectorComponent } from "../../src/modes/components/settings-s
 import { initTheme } from "../../src/modes/theme/theme";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../helpers/stdout-geometry";
+import { enterTempHome, type TempHome } from "../helpers/temp-home";
 
 const RULES_DIR = join(import.meta.dirname, "../../src/discovery/builtin-rules");
 
@@ -213,6 +214,7 @@ describe("the rule list is a section index you drill into", () => {
 	let settingsState: SettingsTestState | undefined;
 	let geometry: StubbedStdoutGeometry | undefined;
 	let temp: TempDir | undefined;
+	let tempHome: TempHome | undefined;
 
 	const WIDTH = 160;
 	const ENTER = "\r";
@@ -234,10 +236,17 @@ describe("the rule list is a section index you drill into", () => {
 		// agent dir and an empty home leave exactly the bundled rules, which is
 		// what the counts below are derived from; without this the suite would
 		// pass or fail on whether the machine running it has personal rules.
+		//
+		// The home has to move through `enterTempHome`, not through
+		// `process.env.HOME`. Bun resolves `os.homedir()` once at process start,
+		// so assigning the variable moves nothing: this suite spent its life
+		// reading whichever rules the developer happened to have in their real
+		// `~/.veyyon`, while looking isolated. The helper installs the `homedir`
+		// spy, enters a config root under the temp home, and asserts the resolver
+		// actually landed there before any test body runs.
+		tempHome = enterTempHome();
 		temp = TempDir.createSync("rules-sections-");
-		mkdirSync(temp.join("home"), { recursive: true });
 		mkdirSync(temp.join("agent"), { recursive: true });
-		process.env.HOME = temp.join("home");
 		setAgentDir(temp.join("agent"));
 		await Settings.init({ inMemory: true });
 		geometry = stubStdoutGeometry({ columns: WIDTH, rows: 48 });
@@ -251,6 +260,11 @@ describe("the rule list is a section index you drill into", () => {
 		invalidateSettingDefsCache();
 		temp?.removeSync();
 		temp = undefined;
+		// After the temp dir, because the helper restores the `homedir` spy and
+		// leaves the isolated config root: unwinding it first would put the real
+		// home back while this suite still had state pointed at the temp one.
+		tempHome?.restore();
+		tempHome = undefined;
 		invalidateSettingDefsCache();
 	});
 

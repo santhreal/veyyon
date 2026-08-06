@@ -317,13 +317,18 @@ describe("the release changelog gate", () => {
 	/**
 	 * The refusal has to land before the cut touches anything. v1.0.44's cut bumped every manifest,
 	 * committed, tagged and pushed on its way to publishing an undocumented version; a gate that ran
-	 * after the bump would only have left a half-cut tree behind. Driven through the real `cmdRelease`
-	 * against a throwaway repo, so the evidence is the state on disk: the manifest still holds the old
-	 * version, there is no bump commit, and there is no new tag.
+	 * after the bump would only have left a half-cut tree behind.
+	 *
+	 * Driven by spawning the real `scripts/prerelease.ts` against a throwaway repo, so the evidence is
+	 * the state on disk: the manifest still holds the old version, there is no bump commit, and there
+	 * is no new tag. It used to import a `cmdRelease` export from `scripts/release.ts`, which stopped
+	 * existing when preparation moved out of CI and onto the operator's machine. That did not fail
+	 * loudly, it failed as a missing export inside a spawned driver, so the gate this test names has
+	 * been unguarded since. Spawning the entry point cannot rot the same way: there is no internal
+	 * name to go stale, and the thing under test is what an operator actually runs.
 	 */
 	it("refuses before writing the version bump, committing or tagging", async () => {
 		const repo = mkdtempSync(join(tmpdir(), "release-changelog-gate-repo-"));
-		const driverDir = mkdtempSync(join(tmpdir(), "release-changelog-gate-driver-"));
 		mkdirSync(join(repo, "packages", "coding-agent"), { recursive: true });
 		const manifestPath = join(repo, "packages", "coding-agent", "package.json");
 		const changelogPath = join(repo, "packages", "coding-agent", "CHANGELOG.md");
@@ -342,27 +347,11 @@ describe("the release changelog gate", () => {
 		git("commit", "-m", "init");
 		git("tag", "v1.0.46");
 
-		// A file inside the repo would make the working tree dirty and the cut would refuse for that
-		// reason instead of the one under test, so the driver lives outside it.
-		const driverPath = join(driverDir, "cut.ts");
-		const releaseUrl = pathToFileURL(join(REPO_ROOT, "scripts", "release.ts")).href;
-		writeFileSync(
-			driverPath,
-			[
-				`import { cmdRelease } from ${JSON.stringify(releaseUrl)};`,
-				"",
-				"try {",
-				'	await cmdRelease("patch");',
-				'	console.log("RELEASE_PROCEEDED");',
-				"} catch (error) {",
-				"	console.error(error instanceof Error ? error.message : String(error));",
-				"	process.exit(3);",
-				"}",
-				"",
-			].join("\n"),
-		);
-
-		const cut = Bun.spawn(["bun", "run", driverPath], { cwd: repo, stdout: "pipe", stderr: "pipe" });
+		const cut = Bun.spawn(["bun", join(REPO_ROOT, "scripts", "prerelease.ts"), "patch"], {
+			cwd: repo,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
 		const [stdout, stderr, exitCode] = await Promise.all([
 			new Response(cut.stdout).text(),
 			new Response(cut.stderr).text(),
@@ -370,8 +359,7 @@ describe("the release changelog gate", () => {
 		]);
 		const output = `${stdout}\n${stderr}`;
 
-		expect(output).not.toContain("RELEASE_PROCEEDED");
-		expect(exitCode, output).toBe(3);
+		expect(exitCode, output).toBe(1);
 		expect(output).toContain(
 			'@veyyon/coding-agent (packages/coding-agent/CHANGELOG.md) has no bullet under "## [Unreleased]" and no ' +
 				'"## [1.0.47]" section.',

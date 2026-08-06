@@ -282,6 +282,7 @@ export const repoScriptTests = [
 	"scripts/release-version-authorities.test.ts",
 	"scripts/release-request.test.ts",
 	"scripts/release-policy.test.ts",
+	"scripts/release-ship.test.ts",
 	"scripts/link-veyyon.test.ts",
 	"scripts/docs-book-pin.test.ts",
 	"scripts/handbook-summary-covers-every-page.test.ts",
