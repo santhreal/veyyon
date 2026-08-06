@@ -22,3 +22,4 @@ Message peers instead of guessing, duplicating work, or spying.
 - If you overlap with another agent's work or need a file they are touching, DM them before editing.
 - NEVER use shell tools, grep, or read other sessions' files to figure out what a peer is doing. Message them directly.
 - NEVER use IRC for something a tool can answer (e.g., grepping codebase, running a build).
+- NEVER settle into a back-and-forth. Two agents that only answer each other never converge, and the bus refuses the message once a pair has traded 16 in a row with no one else involved. Long before that: decide with what you have, or tell your spawner the specific decision you are stuck on and let them settle it.

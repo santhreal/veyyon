@@ -130,7 +130,13 @@ function recordingSession(events: string[]): AgentSession {
 
 /**
  * A lifecycle double whose completion promise lets confirmation tests observe
- * the fire-and-forget abort/release chain without relying on arbitrary sleeps.
+ * the fire-and-forget termination without relying on arbitrary sleeps.
+ *
+ * It records `terminate`, which is the whole lifecycle surface the dashboard
+ * touches. The abort-then-release ordering inside a termination belongs to the
+ * real manager and is pinned against it in
+ * test/tools/job-cancels-an-agent-with-no-job.test.ts; what these tests own is
+ * that confirmation, and only confirmation, reaches the lifecycle at all.
  */
 function recordingLifecycle(events: string[]): {
 	lifecycle: () => AgentLifecycleManager;
@@ -138,6 +144,10 @@ function recordingLifecycle(events: string[]): {
 } {
 	const released = Promise.withResolvers<void>();
 	const manager = {
+		terminate: async (id: string, reason: string) => {
+			events.push(`terminate:${id}:${reason}`);
+			released.resolve();
+		},
 		release: async (id: string) => {
 			events.push(`release:${id}`);
 			released.resolve();
@@ -218,10 +228,10 @@ describe("Agent dashboard termination confirmation", () => {
 	});
 
 	/**
-	 * Accepting preserves the established lifecycle invariant: stop the provider
-	 * turn first, with the user-interrupt reason, and only then release its agent.
+	 * Accepting is what reaches the lifecycle, and it names the operator as the
+	 * reason so the agent's transcript records why it stopped.
 	 */
-	test("confirms with Enter and aborts before releasing", async () => {
+	test("confirms with Enter and terminates the agent", async () => {
 		const events: string[] = [];
 		const overlays = new OverlayHarness();
 		registerWorker(events);
@@ -233,7 +243,7 @@ describe("Agent dashboard termination confirmation", () => {
 		overlays.handleInput("\r");
 		await lifecycle.firstRelease;
 
-		expect(events).toEqual(["abort:Interrupted by user", "release:Worker"]);
+		expect(events).toEqual(["terminate:Worker:Interrupted by user"]);
 	});
 
 	/**
@@ -257,7 +267,7 @@ describe("Agent dashboard termination confirmation", () => {
 		await lifecycle.firstRelease;
 
 		expect(overlays.visible).toBe(false);
-		expect(events).toEqual(["abort:Interrupted by user", "release:Worker"]);
+		expect(events).toEqual(["terminate:Worker:Interrupted by user"]);
 	});
 
 	/**

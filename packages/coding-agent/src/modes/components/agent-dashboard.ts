@@ -1535,11 +1535,7 @@ export class AgentDashboard extends Container {
 		}
 		void (async () => {
 			try {
-				const ref = this.#registry.get(agent.id);
-				if (ref?.status === "running" && ref.session) {
-					await ref.session.abort({ reason: USER_INTERRUPT_LABEL });
-				}
-				await this.#lifecycle().release(agent.id);
+				await this.#lifecycle().terminate(agent.id, USER_INTERRUPT_LABEL);
 			} catch (error) {
 				logger.warn("Agent Control Center: termination failed", { id: agent.id, error: String(error) });
 				this.#notice = actionFailedNotice("terminate", agent.callSign, error);

@@ -1,13 +1,15 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { formatCount, prompt } from "@veyyon/utils";
+import { errorMessage, formatCount, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { AsyncJob, AsyncJobManager } from "../async";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
 import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
+import { AgentLifecycleManager } from "../registry/agent-lifecycle";
+import type { AgentRegistry } from "../registry/agent-registry";
 import { Ellipsis, Hasher, type RenderCache, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import type { ToolSession } from "./index";
 import {
@@ -145,7 +147,12 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		for (const id of cancelIds) {
 			const existing = manager.getJob(id);
 			if (!existing || (ownerId && existing.ownerId !== ownerId)) {
-				cancelOutcomes.push({ id, status: "not_found", message: `Background job not found: ${id}` });
+				// Not a job of the caller's, so it may still be a running agent with
+				// no job entry: an irc-woken peer, or a spawn whose job row already
+				// settled while the agent kept running. Those are exactly the agents
+				// that used to be un-killable, and the pair that traps itself in an
+				// irc loop is always one of them.
+				cancelOutcomes.push(await this.#cancelAgent(id, ownerId));
 				continue;
 			}
 			if (existing.status !== "running") {
@@ -317,6 +324,65 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 	}
 
 	/**
+	 * Kill a running agent that has no job row, when `cancel` names one.
+	 *
+	 * A spawner could always SEE these agents (`job list` reports them under
+	 * "Running Agents") and could never stop them, and the tool said so: it told
+	 * the model to coordinate via `irc`. That is fine advice for an agent that is
+	 * working and unfine for two agents answering each other forever, which is
+	 * the case where the only thing left to do is kill one of them. Now the same
+	 * id the listing prints is an id `cancel` accepts.
+	 *
+	 * Bounded by descent, not by scope. The caller may kill an agent it spawned,
+	 * directly or transitively, and nothing else: a child must not be able to
+	 * kill its own parent (which would orphan the whole run) or a sibling it does
+	 * not own. Scope alone would allow both, because everything in one
+	 * conversation shares a scope.
+	 */
+	async #cancelAgent(id: string, ownerId: string | undefined): Promise<CancelOutcome> {
+		const registry = this.session.agentRegistry;
+		const ref = registry?.get(id);
+		if (!registry || !ref || ref.kind !== "sub") {
+			return { id, status: "not_found", message: `Background job not found: ${id}` };
+		}
+		if (ownerId && !this.#isDescendant(registry, id, ownerId)) {
+			return { id, status: "not_found", message: `Background job not found: ${id}` };
+		}
+		if (ref.status === "aborted") {
+			return { id, status: "already_completed", message: `Agent ${id} is already aborted.` };
+		}
+		try {
+			await AgentLifecycleManager.global().terminate(id, `Killed by ${ownerId ?? "the operator"}`);
+		} catch (error) {
+			// The agent is still there: terminate leaves it registered when the
+			// abort fails, so reporting a kill would be a lie the spawner acts on.
+			return {
+				id,
+				status: "not_found",
+				message: `Could not kill agent ${id} — it is still running: ${errorMessage(error)}`,
+			};
+		}
+		return {
+			id,
+			status: "cancelled",
+			message: `Killed agent ${id}. Its transcript remains readable at history://${id}.`,
+		};
+	}
+
+	/** Whether `id` sits anywhere under `ancestorId` in the spawn tree. */
+	#isDescendant(registry: AgentRegistry, id: string, ancestorId: string): boolean {
+		const seen = new Set<string>();
+		let current = registry.get(id)?.parentId;
+		// Guarded against a cycle: a corrupted parent chain must not hang the tool.
+		while (current && !seen.has(current)) {
+			if (current === ancestorId) return true;
+			seen.add(current);
+			current = registry.get(current)?.parentId;
+		}
+		return false;
+	}
+
+	/**
 	 * Running subagents from the registry that are not covered by one of the
 	 * caller's running jobs. Agents woken via `irc` (idle wake / park revival)
 	 * and spawns owned by another agent run with no AsyncJobManager entry, yet
@@ -371,7 +437,10 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 			const activity = agent.activity ? ` — ${agent.activity}` : "";
 			lines.push(`- \`${agent.id}\`${parent} — up ${formatDuration(agent.ageMs)}${activity}`);
 		}
-		lines.push("", "These agents have no job entry; coordinate via `irc`, transcripts at `history://<id>`.");
+		lines.push(
+			"",
+			"These agents have no job entry. Coordinate via `irc`, read transcripts at `history://<id>`, and kill one you spawned by passing its id to `cancel`.",
+		);
 		return lines;
 	}
 

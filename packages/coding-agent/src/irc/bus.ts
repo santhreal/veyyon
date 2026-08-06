@@ -179,6 +179,30 @@ const MAILBOX_CAP = 100;
  */
 const LOG_CAP = 500;
 
+/**
+ * Consecutive strictly-alternating messages allowed between one pair of agents
+ * before the bus stops carrying them.
+ *
+ * Two agents that answer each other and nothing else have no way out on their
+ * own: each inbound message wakes the other, and a wake is indistinguishable
+ * from progress, so the pair can trade turns until the process dies. Nothing
+ * else bounds it. A job budget does not, because an irc wake is not a job; the
+ * soft request budget does not, because it is per-run and a woken agent keeps
+ * re-entering; and neither agent can see the pattern, because each one only
+ * ever sees the single message in front of it.
+ *
+ * The bus can see it, because it is the only thing that watches both halves.
+ * The chain is counted from the traffic log and breaks the moment anything else
+ * happens: a third agent messaging either endpoint, or either endpoint
+ * messaging anyone else. So the cap only ever fires on a genuinely closed loop,
+ * not on two agents that are talking a lot while also doing work.
+ *
+ * Set well above real coordination. A handoff is a message and a reply; a
+ * negotiation is a handful. Sixteen unbroken alternations with no third party
+ * and no other correspondent is not a conversation that is going to finish.
+ */
+const PING_PONG_CAP = 16;
+
 export class IrcBus {
 	static #global: IrcBus | undefined;
 
@@ -351,6 +375,38 @@ export class IrcBus {
 		if (kept.length !== this.#log.length) this.#log.splice(0, this.#log.length, ...kept);
 	}
 
+	/**
+	 * How many messages the tail of the traffic log has spent confined to `a` and
+	 * `b`, counting back from the newest.
+	 *
+	 * Confinement, not alternation. Requiring the direction to flip on every step
+	 * describes the loop that was actually observed, but it is trivially evaded:
+	 * one repeated send breaks the parity and resets the count to nothing, so a
+	 * pair that alternates with an occasional double message never accumulates
+	 * and never trips the cap. Counting every consecutive line that stays inside
+	 * the pair has no such gap, and it also catches the one-directional runaway,
+	 * which is the same pathology with one of the two agents mute.
+	 *
+	 * The chain ends at the first line involving anyone else at all, in either
+	 * field. That is what keeps it off legitimate traffic: a pair that is also
+	 * reporting to a third agent, or to its spawner, resets on every such
+	 * message and can talk to each other indefinitely.
+	 *
+	 * Failed lines are counted like any other. A pair whose sends keep failing is
+	 * still a pair burning turns on each other, and counting only successful
+	 * delivery would leave a loop that runs through an error uncapped.
+	 */
+	#pingPongLength(a: string, b: string): number {
+		if (a === b) return 0;
+		let length = 0;
+		for (let index = this.#log.length - 1; index >= 0; index--) {
+			const { from, to } = this.#log[index]!.message;
+			if (!((from === a && to === b) || (from === b && to === a))) break;
+			length++;
+		}
+		return length;
+	}
+
 	#record(entry: IrcLogEntry, attempt: IrcDeliveryAttempt): void {
 		// Stamped here and nowhere else: both endpoints are registered at the
 		// moment a message is recorded, so this is the only place the answer is
@@ -467,6 +523,21 @@ export class IrcBus {
 				to: message.to,
 				outcome: "failed",
 				error: `Agent "${message.to}" is a read-only advisor transcript and cannot be messaged.`,
+				recipientClass: ref.kind,
+				route: "refused",
+				revived: false,
+			};
+		}
+		// Checked after the recipient is known to exist and be messageable, so a
+		// loop refusal never masks the more specific reason a send was doomed.
+		if (this.#pingPongLength(message.from, message.to) >= PING_PONG_CAP) {
+			return {
+				to: message.to,
+				outcome: "failed",
+				error:
+					`You and "${message.to}" have exchanged ${PING_PONG_CAP} messages in a row without either of you talking to anyone else, ` +
+					"so this one was not delivered. Stop messaging that agent. Decide the open question yourself with the information you already have, " +
+					"or report to whoever spawned you that the two of you cannot agree and name the specific decision you are stuck on.",
 				recipientClass: ref.kind,
 				route: "refused",
 				revived: false,

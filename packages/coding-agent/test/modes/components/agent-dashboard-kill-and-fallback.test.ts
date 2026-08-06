@@ -91,8 +91,15 @@ function abortableSession(aborts: string[]): AgentSession {
 }
 
 /**
- * A lifecycle manager double that records the ids it was asked to release, plus
- * a promise that settles on the first release.
+ * A lifecycle manager double that records what the dashboard asked it to do,
+ * plus a promise that settles on the first termination.
+ *
+ * `terminate` is the whole surface the dashboard uses: the abort-then-release
+ * ordering lives inside the real manager (and is pinned against it in
+ * test/tools/job-cancels-an-agent-with-no-job.test.ts), because the `x` key and
+ * `job cancel` are the same operation reached two ways and a second copy of
+ * that ordering is exactly what gets it wrong. What the dashboard owes is
+ * delegating for the SELECTED agent with the user-interrupt reason.
  *
  * The kill runs in a fire-and-forget async block, so the assertion has to wait
  * for the real completion rather than for an arbitrary number of microtasks: a
@@ -102,24 +109,32 @@ function abortableSession(aborts: string[]): AgentSession {
 function recordingLifecycle(released: string[]): {
 	lifecycle: () => AgentLifecycleManager;
 	firstRelease: Promise<void>;
+	reasons: string[];
 } {
 	const first = Promise.withResolvers<void>();
+	const reasons: string[] = [];
 	const manager = {
+		terminate: async (id: string, reason: string) => {
+			released.push(id);
+			reasons.push(reason);
+			first.resolve();
+		},
 		release: async (id: string) => {
 			released.push(id);
 			first.resolve();
 		},
 	} as unknown as AgentLifecycleManager;
-	return { lifecycle: () => manager, firstRelease: first.promise };
+	return { lifecycle: () => manager, firstRelease: first.promise, reasons };
 }
 
 describe("Confirmed agent termination", () => {
 	/**
-	 * Abort first, release second. Reversing the two leaves a provider request in
-	 * flight addressed to a session that no longer exists, and the response lands
-	 * on nothing.
+	 * The dashboard's own contract: the confirmed `x` terminates the SELECTED
+	 * agent, and it says the kill came from the operator, which is the reason
+	 * text that ends up in the agent's transcript. Abort-before-release is the
+	 * lifecycle's contract and is pinned against the real manager.
 	 */
-	test("aborts a running agent before releasing it", async () => {
+	test("terminates the selected running agent as a user interrupt", async () => {
 		const aborts: string[] = [];
 		const released: string[] = [];
 		AgentRegistry.global().register({
@@ -131,7 +146,7 @@ describe("Confirmed agent termination", () => {
 			sessionFile: null,
 			status: "running",
 		});
-		const { lifecycle, firstRelease } = recordingLifecycle(released);
+		const { lifecycle, firstRelease, reasons } = recordingLifecycle(released);
 		const confirmation = terminationConfirmationHarness();
 		const dashboard = new AgentDashboard({ terminalHeight: 40, lifecycle, ui: confirmation.ui });
 
@@ -139,8 +154,8 @@ describe("Confirmed agent termination", () => {
 		confirmation.confirm();
 		await firstRelease;
 
-		expect(aborts).toEqual(["Interrupted by user"]);
 		expect(released).toEqual(["Worker"]);
+		expect(reasons).toEqual(["Interrupted by user"]);
 		dashboard.dispose();
 	});
 
