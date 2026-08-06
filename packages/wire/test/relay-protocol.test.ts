@@ -1,12 +1,21 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import * as barrel from "../src/index";
+import type { RelayControlMessage } from "../src/index";
 import {
 	isRelayFatalCloseCode,
 	RELAY_FATAL_CLOSE_REASONS,
 	RELAY_MAX_PENDING_SENDS,
 	relayFatalCloseReason,
 } from "../src/relay";
+
+/**
+ * The type half of the barrel contract, checked by the compiler rather than by a name scan.
+ * `RelayControlMessage` has no runtime value to compare, so its re-export is asserted by importing
+ * it: `bunx tsgo` fails here if the barrel stops exporting it.
+ */
+export type BarrelStillExportsTheControlMessage = RelayControlMessage;
 
 /**
  * The collab relay's fatal close codes and the client-side send bound, and the one place they are decided.
@@ -140,7 +149,7 @@ describe("the relay protocol has one owner", () => {
 			const text = await Bun.file(path.join(PACKAGES_DIR, file)).text();
 			expect(text).toContain("RELAY_FATAL_CLOSE_REASONS");
 			expect(text).toContain("RELAY_MAX_PENDING_SENDS");
-			expect(text).toContain('from "@veyyon/wire/relay"');
+			expect(moduleSpecifiersIn(text)).toContain("@veyyon/wire/relay");
 			expect(text.length).toBeGreaterThan(1_000);
 		}
 	});
@@ -151,7 +160,7 @@ describe("the relay protocol has one owner", () => {
 	 */
 	it("has the dev relay closing with the owner's reasons", async () => {
 		const text = await Bun.file(path.join(PACKAGES_DIR, "collab-web/scripts/local-relay.ts")).text();
-		expect(text).toContain('from "@veyyon/wire/relay"');
+		expect(moduleSpecifiersIn(text)).toContain("@veyyon/wire/relay");
 		for (const code of [4001, 4004, 4009]) {
 			expect(text).toContain(`close(${code}, RELAY_FATAL_CLOSE_REASONS[${code}]`);
 		}
@@ -173,13 +182,13 @@ describe("the relay protocol has one owner", () => {
 	 * The package barrel still hands back everything the relay section used to declare inline, so anything
 	 * that imported the relay types from `@veyyon/wire` is untouched by the move.
 	 */
-	it("is re-exported from the package barrel", async () => {
-		const barrel = await Bun.file(path.resolve(import.meta.dir, "../src/index.ts")).text();
-		expect(barrel).toMatch(/from "\.\/relay";/);
-		for (const name of ["RELAY_FATAL_CLOSE_REASONS", "RELAY_MAX_PENDING_SENDS", "RelayControlMessage"]) {
-			expect(barrel).toContain(name);
-		}
-		const fromBarrel = (await import("../src/index")) as { RELAY_MAX_PENDING_SENDS: number };
-		expect(fromBarrel.RELAY_MAX_PENDING_SENDS).toBe(RELAY_MAX_PENDING_SENDS);
+	it("is re-exported from the package barrel", () => {
+		// Read off the barrel rather than scanned for `from "./relay";` and the three names: a re-export
+		// pointing at a second table reads identically in source, and the table is the value a client
+		// branches on. `RelayControlMessage` is a type, so the type-only import above is its check.
+		expect(barrel.RELAY_MAX_PENDING_SENDS).toBe(RELAY_MAX_PENDING_SENDS);
+		expect(barrel.RELAY_FATAL_CLOSE_REASONS).toBe(RELAY_FATAL_CLOSE_REASONS);
+		expect(barrel.relayFatalCloseReason).toBe(relayFatalCloseReason);
+		expect(barrel.isRelayFatalCloseCode).toBe(isRelayFatalCloseCode);
 	});
 });

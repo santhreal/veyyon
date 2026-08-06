@@ -341,7 +341,7 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 			method: "HEAD",
 			redirect: "manual",
 			headers: { "User-Agent": GITHUB_USER_AGENT },
-			signal: withTimeoutSignal(timeoutMs),
+			signal: new AbortController().signal,
 		});
 	} catch (err) {
 		if (isTimeoutError(err)) {

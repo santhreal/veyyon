@@ -29,9 +29,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `statusLine.preset` | Status Line Preset | enum | `default` | Pre-built status line configurations. Values: `default`, `minimal`, `compact`, `full`, `nerd`, `ascii`, `custom`. |
-| `statusLine.separator` | Status Line Separator | enum | `pipe` | Style of separators between segments. Values: `powerline`, `powerline-thin`, `slash`, `pipe`, `block`, `none`, `ascii`. |
-| `statusLine.sessionAccent` | Session Accent | boolean | `true` | Use the session name color for the editor border and status line gap. Shown under the tab's Advanced fold. |
-| `statusLine.transparent` | Transparent Status Line | boolean | `true` | Use the terminal's default background for the status line instead of the theme's `statusLineBg` (the default). When transparent, powerline end caps are dropped because they need a contrasting fill to bridge into the surrounding terminal. Turn off to paint the theme's bar. Shown under the tab's Advanced fold. |
+| `statusLine.sessionAccent` | Session Accent | boolean | `true` | Use the session name color for the editor border. Shown under the tab's Advanced fold. |
 | `statusLine.compactThinkingLevel` | Compact Thinking Level | boolean | `false` | Show the thinking level as a single icon on the model name instead of a separate ` · <level>` suffix. Shown under the tab's Advanced fold. |
 | `statusLine.showHookStatus` | Show Hook Status | boolean | `true` | Display hook status messages below the status line. Shown under the tab's Advanced fold. |
 
@@ -64,6 +62,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `display.collapseCompacted` | Collapse Compacted History | boolean | `true` | Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point. |
+| `compaction.remote` | Remote Compaction | boolean | `true` | Let providers that support server-side compaction (OpenAI Responses, Azure OpenAI) compact history on their side, preserving reasoning state across the cut. The session model does it, so the compaction model chain does not apply. Off always compacts locally. Has no effect on models without support. |
 | `compaction.strategy` | Compaction Type | enum | `summary` | Summary condenses history in place and continues the same session. Values: `summary`. |
 | `compaction.threshold` | Auto-Compaction Threshold | string | `auto` | When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model. |
 | `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small. |
@@ -412,8 +411,8 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.cpuLimitCores` | Session CPU Limit | number | `0` | Maximum CPU a session's spawned processes may use, in cores (0 = off). Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session cgroup with a matching cpu.max quota, so the kernel throttles the group as a whole. While the group runs saturated, new commands are refused with an error naming the budget. Linux with cgroups v2 only: on any other platform this setting reports that it is unsupported and changes nothing. The harness's own compute (agent turns, in-process workers) is never capped. |
-| `session.cpuLimitKill` | Kill Over-Budget Commands | boolean | `false` | What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running under the throttle. On: the over-budget process group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. The kernel quota throttles either way; this only chooses the policy on top. |
+| `session.cpuLimitCores` | Session CPU Limit | number | `0` | Maximum CPU a session's spawned processes may use, in cores (0 = off). Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness's own compute (agent turns, in-process workers) is never capped. |
+| `session.cpuLimitKill` | Kill Over-Budget Commands | boolean | `false` | What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. |
 
 ## Tools
 
@@ -526,7 +525,6 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `skills.enableSkillCommands` | Skill Commands | boolean | `true` | Register skills as /skill:name commands. |
 | `commands.enableClaudeUser` | Claude User Commands | boolean | `true` | Load commands from ~/.claude/commands/. |
-| `commands.enableClaudeProject` | Claude Project Commands | boolean | `true` | Load commands from .claude/commands/. |
 | `commands.enableOpencodeUser` | OpenCode User Commands | boolean | `true` | Load commands from ~/.config/opencode/commands/. |
 
 ## Subagents
@@ -550,7 +548,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `subagent.model` | Subagent Model | modelChain | _(unset)_ | Models for every enabled subagent that has no per-agent model of its own, tried in order: the rest are used when an earlier one errors. Unset means inherit: subagents follow the session's live main model. A per-agent model in the Agents table wins over this. |
-| `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Thinking level for every enabled subagent that has no per-agent effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. |
+| `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Effort follows the session's model. To set effort explicitly, pick a model first: an explicit `:level` suffix on a model pattern (here or per agent), or a per-agent effort in the Agents table once that agent has a model. |
 | `subagent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. |
 
 ### Limits
@@ -713,4 +711,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-339 settings.
+337 settings.

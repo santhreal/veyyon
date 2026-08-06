@@ -1,9 +1,11 @@
 import type { AvailableCommand } from "@agentclientprotocol/sdk";
+import type { Model } from "@veyyon/ai";
 import type { SkillsSettings } from "../config/settings";
 import type { LoadedCustomCommand } from "../extensibility/custom-commands";
 import type { ExtensionRunner } from "../extensibility/extensions";
 import { getSkillSlashCommandName, type Skill } from "../extensibility/skills";
 import { type FileSlashCommand, loadSlashCommands } from "../extensibility/slash-commands";
+import { thinkingLevelArgHint } from "../thinking";
 import {
 	ACP_BUILTIN_RESERVED_NAMES,
 	isAcpBuiltinShadowedName,
@@ -27,6 +29,8 @@ export interface AvailableCommandsSession {
 	readonly mcpPromptCommands?: ReadonlyArray<LoadedCustomCommand>;
 	readonly skills: ReadonlyArray<Skill>;
 	readonly skillsSettings?: SkillsSettings;
+	/** Active model, read only to derive the `/thinking` argument hint from the catalog row. */
+	readonly model?: Model;
 	setSlashCommands(slashCommands: FileSlashCommand[]): void;
 	sessionManager: { getCwd(): string };
 }
@@ -48,7 +52,13 @@ export async function buildAvailableSlashCommands(
 	// `textMode` and type-checked against the handler table. Reading it off `command.handle` instead
 	// cost this module 959 modules, the whole application behind 67 handler bodies.
 	for (const declaration of TEXT_MODE_BUILTIN_DECLARATIONS) {
-		const hint = declaration.acpInputHint ?? declaration.inlineHint;
+		// `/thinking`'s accepted values are per-model (the catalog row's
+		// declared levels), so its hint is derived from the session's active
+		// model rather than declared statically.
+		const hint =
+			declaration.name === "thinking"
+				? (thinkingLevelArgHint(session.model) ?? declaration.acpInputHint)
+				: (declaration.acpInputHint ?? declaration.inlineHint);
 		appendCommand({
 			name: declaration.name,
 			aliases: declaration.aliases ? [...declaration.aliases] : undefined,

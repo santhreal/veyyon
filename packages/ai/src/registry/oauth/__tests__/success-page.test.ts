@@ -5,8 +5,12 @@
  * (inline) and device-code (ephemeral server) paths, and device-code flows must
  * only emit it when the controller can open it.
  */
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test, vi } from "bun:test";
 import { emitOAuthSuccessPage, renderOAuthResultHtml, serveOAuthSuccessPage } from "../success-page";
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 describe("renderOAuthResultHtml", () => {
 	test("embeds the success state and leaves no template placeholder", () => {
@@ -44,10 +48,14 @@ describe("serveOAuthSuccessPage", () => {
 		}
 	});
 
-	test("stop is idempotent", () => {
+	test("stop closes the server and is safe to call twice", async () => {
 		const page = serveOAuthSuccessPage({ ok: true });
 		page.stop();
-		expect(() => page.stop()).not.toThrow();
+		page.stop();
+		// Idempotence only matters because the first stop really released the
+		// port; a stop that left the loopback server listening would leak one
+		// per device-code login.
+		await expect(fetch(page.url)).rejects.toBeDefined();
 	});
 });
 
@@ -61,10 +69,12 @@ describe("emitOAuthSuccessPage", () => {
 		expect(await res.text()).toContain("Signed in");
 	});
 
-	test("is a no-op (binds no server) when the controller cannot open a page", () => {
-		// No onSuccessPage → nothing served, nothing thrown. A non-interactive
-		// controller must not pop a browser page.
-		expect(() => emitOAuthSuccessPage({})).not.toThrow();
-		expect(() => emitOAuthSuccessPage({ onProgress: () => {} })).not.toThrow();
+	test("binds no server when the controller cannot open a page", () => {
+		// No onSuccessPage → a non-interactive controller must not pop a browser
+		// page, which means not binding a loopback port either.
+		const serve = vi.spyOn(Bun, "serve");
+		emitOAuthSuccessPage({});
+		emitOAuthSuccessPage({ onProgress: () => {} });
+		expect(serve).not.toHaveBeenCalled();
 	});
 });

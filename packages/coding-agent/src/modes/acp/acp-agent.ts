@@ -73,7 +73,11 @@ import { SessionManager } from "../../session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands, toAcpAvailableCommands } from "../../slash-commands/available-commands";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "../../stt/models";
-import { AUTO_THINKING, parseConfiguredThinkingLevel } from "../../thinking";
+import {
+	configuredThinkingLevelsForModel,
+	getConfiguredThinkingLevelMetadata,
+	parseConfiguredThinkingLevel,
+} from "../../thinking";
 import { normalizeLocalScheme } from "../../tools/path-utils";
 import { runResolveInvocation } from "../../tools/resolve";
 import { ToolError } from "../../tools/tool-errors";
@@ -1561,28 +1565,32 @@ export class AcpAgent implements Agent {
 			});
 		}
 
-		configOptions.push({
-			id: THINKING_CONFIG_ID,
-			name: "Thinking",
-			category: "thought_level",
-			type: "select",
-			currentValue: this.#toThinkingConfigValue(
-				session.model?.reasoning ? this.#getConfiguredThinkingLevel(session) : undefined,
-			),
-			options: this.#buildThinkingOptions(session),
-		});
+		const thinkingOptions = this.#buildThinkingOptions(session);
+		// A model with no controllable effort surface (non-reasoning, or effort
+		// baked into the model id) gets no Thinking option at all: an empty
+		// select would offer choices that all refuse.
+		if (thinkingOptions.length > 0) {
+			configOptions.push({
+				id: THINKING_CONFIG_ID,
+				name: "Thinking",
+				category: "thought_level",
+				type: "select",
+				currentValue: this.#toThinkingConfigValue(
+					session.model?.reasoning ? this.#getConfiguredThinkingLevel(session) : undefined,
+				),
+				options: thinkingOptions,
+			});
+		}
 		return configOptions;
 	}
 
 	#buildThinkingOptions(session: AgentSession): Array<{ value: string; name: string; description?: string }> {
-		return [
-			{ value: THINKING_OFF, name: "Off" },
-			{ value: AUTO_THINKING, name: "Auto", description: "Auto-detect per prompt (low–xhigh)" },
-			...session.getAvailableThinkingLevels().map(level => ({
-				value: level,
-				name: level,
-			})),
-		];
+		// The row's declared choices, in cycle order: off/auto only when the row
+		// accepts them, levels exactly as declared. Never the fixed ladder.
+		return configuredThinkingLevelsForModel(session.model).map(level => {
+			const metadata = getConfiguredThinkingLevelMetadata(level);
+			return { value: level, name: metadata.label, description: metadata.description };
+		});
 	}
 	#getConfiguredThinkingLevel(session: AgentSession): string | undefined {
 		const configuredThinkingLevel = (session as { configuredThinkingLevel?: () => string | undefined })
@@ -1608,6 +1616,13 @@ export class AcpAgent implements Agent {
 		const thinkingLevel = parseConfiguredThinkingLevel(value);
 		if (!thinkingLevel) {
 			throw new Error(`Unknown ACP thinking level: ${value}`);
+		}
+		const choices = configuredThinkingLevelsForModel(session.model);
+		if (!choices.includes(thinkingLevel)) {
+			const accepted = choices.length > 0 ? choices.join(", ") : "none (this model exposes no effort control)";
+			throw new Error(
+				`${session.model?.provider}/${session.model?.id} does not accept thinking level ${value}. Accepted: ${accepted}`,
+			);
 		}
 		session.setThinkingLevel(thinkingLevel);
 	}
@@ -2291,7 +2306,7 @@ export class AcpAgent implements Agent {
 					return true;
 				},
 				getThinkingLevel: () => record.session.thinkingLevel,
-				setThinkingLevel: level => record.session.setThinkingLevel(level),
+				setThinkingLevel: (level, persist) => record.session.setThinkingLevel(level, persist),
 				getSessionName: () => record.session.sessionManager.getSessionName(),
 				setSessionName: async name => {
 					await record.session.sessionManager.setSessionName(name, "user");
