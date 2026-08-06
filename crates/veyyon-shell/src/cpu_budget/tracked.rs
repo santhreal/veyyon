@@ -48,13 +48,45 @@ impl TrackedBudget {
 		None
 	}
 
+	/// Sum a per-pid CPU meter over the current members, in nanoseconds,
+	/// pruning exactly the pids the meter reported dead.
+	///
+	/// The prune names specific pids instead of overwriting the set with a
+	/// snapshot taken before the meter ran. That difference is the whole
+	/// point: an `adopt` that lands while the meter is running is a member
+	/// the snapshot never saw, and a wholesale assignment would erase it.
+	/// On a tracked host there is no kernel quota, so an erased member is
+	/// never metered, never reniced and never killed for the rest of the
+	/// session while the operator is told the group is capped.
+	///
+	/// The guard is released across the meter calls, so `adopt` never waits
+	/// on a syscall per member.
+	/// Only the macOS meter calls this in a shipped build; the test module
+	/// drives it directly on every platform to pin the concurrency contract.
+	#[cfg(any(target_os = "macos", test))]
+	fn sum_and_prune(&self, meter: impl Fn(i32) -> Option<u64>) -> u64 {
+		let mut total_ns: u64 = 0;
+		let mut dead = Vec::new();
+		for pid in self.members() {
+			match meter(pid) {
+				Some(ns) => total_ns = total_ns.saturating_add(ns),
+				None => dead.push(pid),
+			}
+		}
+		if !dead.is_empty() {
+			let mut members = self.members.lock();
+			for pid in dead {
+				members.remove(&pid);
+			}
+		}
+		total_ns
+	}
+
 	/// Sum `proc_pidinfo(PROC_PIDTASKINFO)` over live members, pruning the
 	/// dead ones so the set cannot grow stale across a long session.
 	#[cfg(target_os = "macos")]
 	fn macos_usage_usec(&self) -> u64 {
-		let mut total_ns: u64 = 0;
-		let mut live = HashSet::new();
-		for &pid in self.members.lock().iter() {
+		self.sum_and_prune(|pid| {
 			// SAFETY: proc_pidinfo writes into the provided buffer when the
 			// pid is live and returns the bytes written; a dead pid returns
 			// 0 and the buffer is never read.
@@ -69,14 +101,11 @@ impl TrackedBudget {
 				)
 			};
 			if written as usize == std::mem::size_of::<libc::proc_taskinfo>() {
-				total_ns = total_ns
-					.saturating_add(info.pti_total_user)
-					.saturating_add(info.pti_total_system);
-				live.insert(pid);
+				Some(info.pti_total_user.saturating_add(info.pti_total_system))
+			} else {
+				None
 			}
-		}
-		*self.members.lock() = live;
-		total_ns / 1_000
+		}) / 1_000
 	}
 
 	/// Lower (or, at level 0, restore) member scheduling priority. Unix
@@ -297,5 +326,56 @@ mod tests {
 		budget.renice(9);
 
 		assert_eq!(budget.members(), vec![dead_pid], "a failed renice must not drop the member");
+	}
+
+	/// A pid adopted while a sample is in flight is still a member when the
+	/// sample finishes, and only the pids the meter called dead are pruned.
+	///
+	/// Sampling reads the member set, meters each pid, then prunes. A prune
+	/// that overwrites the set with the pre-meter snapshot silently drops
+	/// every pid adopted in between, and the window is exactly as long as
+	/// the syscalls take. This backend has no kernel quota, so a dropped pid
+	/// is never metered, never reniced and never killed for the rest of the
+	/// session while the operator is told the group is capped. Spawning a
+	/// real process is the ordinary case here, so a mid-sample adopt is a
+	/// live input rather than a hypothetical.
+	///
+	/// The two threads rendezvous over channels, so the adopt provably lands
+	/// inside the sample on every run rather than winning a sleep race. The
+	/// handshake also proves `adopt` is not blocked by the sample: if the
+	/// meter ran under the member guard, this test would hang instead of
+	/// pass.
+	#[test]
+	fn a_pid_adopted_during_a_sample_survives_the_prune() {
+		let budget = std::sync::Arc::new(TrackedBudget::new());
+		let doomed = 101;
+		budget.adopt(doomed);
+		budget.adopt(202);
+
+		let (sampling_tx, sampling_rx) = std::sync::mpsc::channel::<()>();
+		let (adopted_tx, adopted_rx) = std::sync::mpsc::channel::<()>();
+		let adopter = {
+			let budget = std::sync::Arc::clone(&budget);
+			std::thread::spawn(move || {
+				sampling_rx.recv().expect("sample reached the meter");
+				budget.adopt(303);
+				adopted_tx.send(()).expect("sampler still waiting");
+			})
+		};
+
+		let total_ns = budget.sum_and_prune(|pid| {
+			if pid == doomed {
+				sampling_tx.send(()).expect("adopter still waiting");
+				adopted_rx.recv().expect("adopt landed mid-sample");
+				return None;
+			}
+			Some(7_000)
+		});
+		adopter.join().expect("adopter finished");
+
+		let mut members = budget.members();
+		members.sort_unstable();
+		assert_eq!(members, vec![202, 303], "the mid-sample adopt survives, the dead pid does not");
+		assert_eq!(total_ns, 7_000, "only the live member contributes, and exactly once");
 	}
 }
