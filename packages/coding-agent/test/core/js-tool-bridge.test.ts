@@ -56,6 +56,8 @@ describe("callSessionTool", () => {
 			expect.stringMatching(/^js-read-/),
 			{ path: "/tmp/demo.txt", [INTENT_FIELD]: "js prelude" },
 			undefined,
+			undefined,
+			undefined,
 		);
 		expect(statuses).toEqual([expect.objectContaining({ op: "read", path: "/tmp/demo.txt", chars: 5 })]);
 	});

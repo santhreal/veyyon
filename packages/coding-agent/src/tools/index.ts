@@ -1,4 +1,10 @@
-import type { AgentTelemetryConfig, AgentTool, ThinkingLevel } from "@veyyon/agent-core";
+import type {
+	AgentTelemetryConfig,
+	AgentTool,
+	AgentToolContext,
+	ThinkingLevel,
+	ToolCallContext,
+} from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { logger } from "@veyyon/utils";
@@ -258,6 +264,16 @@ export interface ToolSession {
 	 * the parent's rung to a child.
 	 */
 	isApprovalBypassed?: () => boolean;
+	/**
+	 * Resolve the live {@link AgentToolContext} for a tool call this session
+	 * makes outside the agent loop (the eval and browser bridges). The approval
+	 * wrapper reads its whole policy from that context: an absent one silently
+	 * downgrades an explicit `tools.approval.<tool>: deny`, plan mode, the cwd
+	 * and secret boundaries, and a standing session denial into a plain
+	 * unchecked call. Every caller that reaches a registered tool directly must
+	 * pass what this returns.
+	 */
+	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 	/** Look up a registered tool by name (used by the eval js backend's tool bridge). */
 	getToolByName?: (name: string) => AgentTool | undefined;
 	/** Return whether a built-in tool is active in this turn's tool set. */

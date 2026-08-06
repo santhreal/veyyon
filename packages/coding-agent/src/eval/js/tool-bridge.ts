@@ -130,7 +130,19 @@ export async function callSessionTool(name: string, args: unknown, options: Tool
 	const normalizedArgs = normalizeArgs(args);
 	const toolCallId = `js-${name}-${crypto.randomUUID()}`;
 	try {
-		const result = await tool.execute(toolCallId, normalizedArgs, options.signal);
+		// The registered tool is approval-wrapped, and the wrapper reads the whole
+		// policy off this context. Omitting it does not skip a prompt, it decides
+		// there is nothing to prompt about: no settings, so no `tools.approval`
+		// deny; no plan mode; no cwd or secret boundary; no standing session
+		// denial. An eval snippet is model-authored text, which is exactly the
+		// caller those controls exist for.
+		const result = await tool.execute(
+			toolCallId,
+			normalizedArgs,
+			options.signal,
+			undefined,
+			options.session.getToolContext?.(),
+		);
 		const textBlocks = result.content.filter(
 			(content): content is { type: "text"; text: string } =>
 				content.type === "text" && typeof content.text === "string",
