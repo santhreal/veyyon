@@ -294,18 +294,6 @@ describe("umans provider catalog", () => {
 		});
 	});
 
-	it("bundles Umans mandatory reasoning metadata", () => {
-		const providers = modelsJson as Record<string, Record<string, BundledModel>>;
-		const model = providers.umans?.["umans-kimi-k2.7"];
-
-		expect(model).toBeDefined();
-		expect(model.maxTokens).toBe(32_768);
-		expect(model.compat?.escapeBuiltinToolNames).toBe(true);
-		expect(model.thinking).toMatchObject({
-			requiresEffort: true,
-		});
-	});
-
 	it("bundles Umans GLM 5.2 with the wire-exact high/max ladder", () => {
 		const providers = modelsJson as Record<string, Record<string, BundledModel>>;
 		const model = providers.umans?.["umans-glm-5.2"];

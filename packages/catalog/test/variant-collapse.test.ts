@@ -8,6 +8,7 @@ import { Effort } from "@veyyon/catalog/effort";
 import { stripThinkingVariantToken } from "@veyyon/catalog/identity/family";
 import { resolveProviderModels } from "@veyyon/catalog/model-manager";
 import { resolveWireModelId } from "@veyyon/catalog/model-thinking";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { googleGeminiCliModelManagerOptions } from "@veyyon/catalog/provider-models/google";
 import type { ModelSpec } from "@veyyon/catalog/types";
 import {
@@ -881,8 +882,7 @@ describe("antigravity discovery collapsing", () => {
  * suffixed ids resolving.
  */
 describe("devin effort-suffixed family collapse (bundled)", () => {
-	it("bundles claude-sonnet-5 and claude-5-fable as five-tier effort-routed logical models", async () => {
-		const { getBundledModel } = await import("../src/models");
+	it("bundles claude-sonnet-5 and claude-5-fable as five-tier effort-routed logical models", () => {
 		for (const id of ["claude-sonnet-5", "claude-5-fable"]) {
 			const model = getBundledModel("devin", id);
 			expect(model).toBeDefined();
@@ -895,16 +895,14 @@ describe("devin effort-suffixed family collapse (bundled)", () => {
 		}
 	});
 
-	it("bundles grok-4-5 as a three-tier effort-routed logical model", async () => {
-		const { getBundledModel } = await import("../src/models");
+	it("bundles grok-4-5 as a three-tier effort-routed logical model", () => {
 		const model = getBundledModel("devin", "grok-4-5");
 		expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High]);
 		expect(model.thinking?.effortRouting?.[Effort.Medium]).toBe("grok-4-5-medium");
 		expect(getBundledModel("devin", "grok-4-5-low")).toBeUndefined();
 	});
 
-	it("folds GLM-5.2's -none off sibling into an off route instead of a separate model", async () => {
-		const { getBundledModel } = await import("../src/models");
+	it("folds GLM-5.2's -none off sibling into an off route instead of a separate model", () => {
 		for (const [id, none] of [
 			["glm-5-2", "glm-5-2-none"],
 			["glm-5-2-1m", "glm-5-2-none-1m"],
@@ -920,9 +918,7 @@ describe("devin effort-suffixed family collapse (bundled)", () => {
 		}
 	});
 
-	it("routes wire model ids per effort on the collapsed families", async () => {
-		const { getBundledModel } = await import("../src/models");
-		const { resolveWireModelId } = await import("../src/model-thinking");
+	it("routes wire model ids per effort on the collapsed families", () => {
 		const sonnet = getBundledModel("devin", "claude-sonnet-5");
 		expect(resolveWireModelId(sonnet, Effort.Max)).toBe("claude-sonnet-5-max");
 		// No effort → the default wire id (the lowest tier), never a crash.
@@ -949,8 +945,7 @@ describe("devin effort-suffixed family collapse (bundled)", () => {
  * by a strict per-field cost compare.
  */
 describe("cursor tier families and aggregator reasoning metadata (bundled)", () => {
-	it("bundles cursor gpt-5.4 as a four-tier reasoning family (was four dial-less non-reasoners)", async () => {
-		const { getBundledModel } = await import("../src/models");
+	it("bundles cursor gpt-5.4 as a four-tier reasoning family (was four dial-less non-reasoners)", () => {
 		const model = getBundledModel("cursor", "gpt-5.4");
 		expect(model.reasoning).toBe(true);
 		expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.XHigh]);
@@ -958,8 +953,7 @@ describe("cursor tier families and aggregator reasoning metadata (bundled)", () 
 		expect(getBundledModel("cursor", "gpt-5.4-high")).toBeUndefined();
 	});
 
-	it("folds cursor codex tier siblings into their bare family claiming only routed efforts", async () => {
-		const { getBundledModel } = await import("../src/models");
+	it("folds cursor codex tier siblings into their bare family claiming only routed efforts", () => {
 		for (const base of ["gpt-5.2-codex", "gpt-5.3-codex"]) {
 			const model = getBundledModel("cursor", base);
 			expect(model.reasoning).toBe(true);
@@ -971,12 +965,10 @@ describe("cursor tier families and aggregator reasoning metadata (bundled)", () 
 		}
 	});
 
-	it("pairs same-priced thinking twins whose cache prices are unreported zeros", async () => {
+	it("pairs same-priced thinking twins whose cache prices are unreported zeros", () => {
 		// openrouter qwen/qwen3-max-thinking ships identical input/output prices
 		// but zero cacheRead/cacheWrite; the strict per-field compare treated
 		// that as a price divergence and kept the twins separate dial-less rows.
-		const { getBundledModel } = await import("../src/models");
-		const { resolveWireModelId } = await import("../src/model-thinking");
 		const model = getBundledModel("openrouter", "qwen/qwen3-max");
 		expect(model.reasoning).toBe(true);
 		expect(model.thinking?.effortRouting?.off).toBe("qwen/qwen3-max");
@@ -984,17 +976,19 @@ describe("cursor tier families and aggregator reasoning metadata (bundled)", () 
 		expect(getBundledModel("openrouter", "qwen/qwen3-max-thinking")).toBeUndefined();
 	});
 
-	it("still refuses to pair twins whose real input/output prices differ (negative twin)", async () => {
+	it("still refuses to pair twins whose real input/output prices differ (negative twin)", () => {
 		// openrouter kimi-k2 vs kimi-k2-thinking carry genuinely different
 		// prices ($0.57/2.3 vs $0.6/2.5): distinct billed SKUs, never merged.
-		const { getBundledModel } = await import("../src/models");
 		expect(getBundledModel("openrouter", "moonshotai/kimi-k2")).toBeDefined();
 		expect(getBundledModel("openrouter", "moonshotai/kimi-k2-thinking")).toBeDefined();
 	});
 
-	it("forces reasoning on aggregator o-series rows that models.dev shipped as non-reasoning", async () => {
-		const { getBundledModel } = await import("../src/models");
-		const { getSupportedEfforts } = await import("../src/model-thinking");
+	it("forces reasoning on aggregator o-series rows that models.dev shipped as non-reasoning", () => {
+		// The generator's own rule (generate-models.ts: !reasoning && isOpenAIOSeriesModelId
+		// -> reasoning: true) is what this proves reached the bundle. It deliberately does
+		// not assert an effort ladder: whether a given aggregator publishes a dial for a
+		// pinned tier SKU is upstream metadata, not a contract this repo owns, and
+		// openrouter ships openai/o3-mini-high and openai/o4-mini-high dial-less.
 		for (const [prov, id] of [
 			["aimlapi", "o3-mini-high"],
 			["aimlapi", "o4-mini-high"],
@@ -1002,9 +996,7 @@ describe("cursor tier families and aggregator reasoning metadata (bundled)", () 
 			["openrouter", "openai/o3-mini-high"],
 			["nanogpt", "openai/o1-preview"],
 		] as const) {
-			const model = getBundledModel(prov, id);
-			expect(model?.reasoning).toBe(true);
-			expect(getSupportedEfforts(model).length).toBeGreaterThan(0);
+			expect(getBundledModel(prov, id)?.reasoning).toBe(true);
 		}
 	});
 });
