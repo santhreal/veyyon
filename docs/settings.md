@@ -345,7 +345,7 @@ enabledModels:
 | `cycleOrder` | array | `["smol","slow"]` | Roles cycled by the model switcher (`app.model.cycleForward`, often Ctrl+P). The entry `default` is dropped on load. |
 | `enabledModels` | array | `[]` | Allow-list of models; supports [path-scoped entries](#path-scoped-arrays). Empty means all available models. |
 | `disabledProviders` | array | `[]` | Disabled model/discovery providers; supports path-scoped entries. See [above](#provider-and-source-disabling). |
-| `includeModelInPrompt` | boolean | `true` | Include the active model name in the system prompt. |
+| `includeModelInPrompt` | boolean | `false` | Include the active model name in the system prompt. Off by default: the name sits in the cached prefix, so switching models re-prefills the whole block. |
 
 See [Models](./models.md) for the `models.yml` schema and custom-provider definitions. Handbook: [Models, roles, and profiles](./handbook/src/using/roles-and-profiles.md) (under `docs/handbook/src/using/`).
 
@@ -792,7 +792,7 @@ lsp:
 | `ruby.kernelMode` | enum | `session` | Same choice for Ruby cells: keep one kernel per session, or start and shut down a kernel for each cell. |
 | `julia.kernelMode` | enum | `session` | Same choice for Julia cells. A fresh Julia kernel recompiles, so `per-call` trades startup time for a clean slate. |
 | `python.interpreter` | string | `""` | Path to a Python interpreter; empty = auto-detect. |
-| `lsp.enabled` | boolean | `true` | Language-server integration. `--no-lsp` disables for the run. |
+| `lsp.enabled` | boolean | `false` | Language-server integration. Opt in; `--no-lsp` disables it for a run where config turned it on. |
 | `lsp.lazy` | boolean | `true` | Start servers on demand. |
 | `lsp.diagnosticsOnWrite` | boolean | `true` | Run diagnostics after a write. |
 | `lsp.diagnosticsOnEdit` | boolean | `false` | Run diagnostics after an edit. |
