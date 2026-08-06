@@ -727,6 +727,10 @@ export class ModelRegistry {
 	// Runtime extension model overlays — persist across refresh() cycles so that
 	// models registered by extensions survive the model selector's offline reload.
 	#runtimeModelOverlays: CustomModelOverlay[] = [];
+	// Context windows the provider itself reported, keyed `${provider}/${id}`.
+	// Outrank catalog/discovery values, which are a guess for gateway models the
+	// catalog predates. Survive refresh() for the same reason the overlays do.
+	#providerReportedWindows: Map<string, number> = new Map();
 	#runtimeProviderApiKeys: Map<string, string> = new Map();
 	#runtimeProviderOverrides: Map<string, ProviderOverride> = new Map();
 	#runtimeProvidersBySource: Map<string, Set<string>> = new Map();
@@ -997,7 +1001,7 @@ export class ModelRegistry {
 		// Custom/config providers bypass the model-manager merge point —
 		// collapse effort-tier variants here so X/X-thinking twins fold.
 		const withModelOverrides = this.#applyModelOverrides(collapseBuiltModelVariants(combined), this.#modelOverrides);
-		this.#models = this.#applyRuntimeProviderOverrides(withModelOverrides);
+		this.#models = this.#applyProviderReportedWindows(this.#applyRuntimeProviderOverrides(withModelOverrides));
 		this.#lastStaticLoadMtime = this.#modelsConfigFile.getMtimeMs();
 	}
 
@@ -1378,7 +1382,7 @@ export class ModelRegistry {
 		// Merge runtime extension models so they survive online discovery completion
 		const combined = this.#mergeCustomModels(withConfigModels, this.#runtimeModelOverlays);
 		const withModelOverrides = this.#applyModelOverrides(collapseBuiltModelVariants(combined), this.#modelOverrides);
-		this.#models = this.#applyRuntimeProviderOverrides(withModelOverrides);
+		this.#models = this.#applyProviderReportedWindows(this.#applyRuntimeProviderOverrides(withModelOverrides));
 	}
 
 	#configuredDiscoveryCacheProviderId(providerConfig: DiscoveryProviderConfig): string {
@@ -1878,6 +1882,39 @@ export class ModelRegistry {
 			}
 		}
 		return models;
+	}
+
+	/**
+	 * Correct a model's context window from a value the provider reported on the
+	 * wire, so every reader of `model.contextWindow` agrees.
+	 *
+	 * Discovery has to guess a window for a gateway model the catalog has never
+	 * seen (`AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW`). When the provider then
+	 * states the real one per turn, the guess is simply wrong, and it is wrong
+	 * in the denominator of the context gauge and the compaction threshold at
+	 * once: a conversation the gateway reports as one fifth used renders as
+	 * empty and asks to compact on every turn. The correction is stored keyed by
+	 * provider/model and reapplied after each reload so discovery cannot put the
+	 * guess back.
+	 *
+	 * Returns true when this changed the registry.
+	 */
+	recordProviderReportedContextWindow(provider: string, id: string, contextWindow: number): boolean {
+		if (!Number.isFinite(contextWindow) || contextWindow <= 0) return false;
+		const key = `${provider}/${id}`;
+		if (this.#providerReportedWindows.get(key) === contextWindow) return false;
+		this.#providerReportedWindows.set(key, contextWindow);
+		this.#models = this.#applyProviderReportedWindows(this.#models);
+		return true;
+	}
+
+	#applyProviderReportedWindows(models: Model<Api>[]): Model<Api>[] {
+		if (this.#providerReportedWindows.size === 0) return models;
+		return models.map(model => {
+			const reported = this.#providerReportedWindows.get(`${model.provider}/${model.id}`);
+			if (reported === undefined || model.contextWindow === reported) return model;
+			return { ...model, contextWindow: reported };
+		});
 	}
 
 	/**
