@@ -186,6 +186,20 @@ export const SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY = 1;
 export const SETTINGS_MIGRATION_VERSION = SETTINGS_MIGRATION_VERSION_UNSET_ABSENT_KEY;
 
 /**
+ * The config file is there, but this process could not read it.
+ *
+ * Distinct from absent and from empty, because the three want different
+ * answers. Startup treats an unreadable file as empty so a transient fault does
+ * not stop the CLI from running. A save must not: the writer deletes every key
+ * the in-memory view no longer has, so saving one setting against a view built
+ * from a failed read empties the whole file, and a read failure is not
+ * quarantined the way a parse failure is, so there is no copy to restore from.
+ */
+class UnreadableConfig {
+	constructor(readonly cause: unknown) {}
+}
+
+/**
  * The migrations that may run only ONCE, applied to the global config in place
  * and recorded with a stamp.
  *
@@ -1286,17 +1300,33 @@ export class Settings {
 
 	async #loadYaml(filePath: string): Promise<RawSettings> {
 		const loaded = await this.#loadYamlIfPresent(filePath);
+		if (loaded instanceof UnreadableConfig) return {};
 		return loaded ?? {};
 	}
 
-	async #loadYamlIfPresent(filePath: string): Promise<RawSettings | null> {
+	/**
+	 * Re-read for a save. Refuses on anything but a clean read or a genuinely
+	 * absent file, so the caller's retry path runs instead of a write built on a
+	 * view of the file that is known to be wrong.
+	 *
+	 * The original error is what propagates, not a summary of it: the operator's
+	 * only clue about why saving stopped working is the filesystem's own reason,
+	 * and the save-failure report puts that reason in front of them.
+	 */
+	async #loadYamlForSave(filePath: string): Promise<RawSettings> {
+		const loaded = await this.#loadYamlIfPresent(filePath);
+		if (loaded instanceof UnreadableConfig) throw loaded.cause;
+		return loaded ?? {};
+	}
+
+	async #loadYamlIfPresent(filePath: string): Promise<RawSettings | null | UnreadableConfig> {
 		let content: string;
 		try {
 			content = await Bun.file(filePath).text();
 		} catch (error) {
 			if (isEnoent(error)) return null;
 			logger.warn("Settings: failed to load", { path: filePath, error: String(error) });
-			return {};
+			return new UnreadableConfig(error);
 		}
 
 		try {
@@ -1350,6 +1380,13 @@ export class Settings {
 		for (const filename of MAIN_CONFIG_FILENAMES) {
 			const configPath = path.join(this.#agentDir, filename);
 			const loaded = await this.#loadYamlIfPresent(configPath);
+			if (loaded instanceof UnreadableConfig) {
+				// The file at this name exists, so it is the config even though this
+				// read failed. Falling through to the next candidate would start
+				// writing a different file and strand the operator's real one.
+				this.#configPath = configPath;
+				return {};
+			}
 			if (loaded) {
 				this.#configPath = configPath;
 				return loaded;
@@ -2468,8 +2505,9 @@ export class Settings {
 
 		try {
 			await withFileLock(configPath, async () => {
-				// Re-read to preserve external changes
-				const current = await this.#loadYaml(configPath);
+				// Re-read to preserve external changes. Strict: an unreadable file
+				// fails the save rather than being written over as if it were empty.
+				const current = await this.#loadYamlForSave(configPath);
 
 				// Apply only our modified paths
 				for (const modPath of modifiedPaths) {
