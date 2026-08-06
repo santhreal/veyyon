@@ -5,6 +5,7 @@
 
 import { readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
+import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 
 /** Shape of a single violation from `swiftlint lint --reporter json`. */
 interface SwiftLintViolation {
@@ -42,6 +43,7 @@ async function runSwiftLint(
 			stderr: "pipe",
 			windowsHide: true,
 		});
+		adoptIntoPrimarySessionCpuBudget(proc.pid);
 
 		const [stdout, stderr] = await Promise.all([readPipeText(proc.stdout), readPipeText(proc.stderr)]);
 		await proc.exited;

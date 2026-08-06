@@ -23,6 +23,7 @@ import { lazyNativeClass, lazyNativeFn } from "./loader-state.js";
 
 // --- generated native exports (do not edit) ---
 // classes
+export const CpuBudgetGroup = lazyNativeClass("CpuBudgetGroup");
 export const MacAppearanceObserver = lazyNativeClass("MacAppearanceObserver");
 export const MacOSPowerAssertion = lazyNativeClass("MacOSPowerAssertion");
 export const Process = lazyNativeClass("Process");

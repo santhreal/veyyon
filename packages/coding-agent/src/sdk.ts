@@ -63,7 +63,7 @@ import {
 import { loadPromptTemplates as loadPromptTemplatesInternal, type PromptTemplate } from "./config/prompt-templates";
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings, type SkillsSettings } from "./config/settings";
-import { CursorExecHandlers } from "./cursor";
+import { CursorExecHandlers, cursorContextFileRules, usesCursorRuleDelivery } from "./cursor";
 import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
 import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
 import "./discovery";
@@ -162,6 +162,7 @@ import {
 } from "./session/agent-session";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import type { AuthStorage } from "./session/auth-storage";
+import { sessionCpuAdoption } from "./session/cpu-limit";
 import { abortDetached } from "./session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "./session/exit-diagnostics";
 import {
@@ -213,6 +214,7 @@ import {
 } from "./tool-discovery/tool-index";
 import {
 	BUILTIN_TOOLS,
+	type ContextFileEntry,
 	computeEssentialBuiltinNames,
 	createTools,
 	type DeferredDiagnosticsEntry,
@@ -864,9 +866,10 @@ export async function loadSessionExtensions(
 	settings: Settings,
 	eventBus: EventBus,
 	agentDir?: string,
+	adoptSpawnedPid?: (pid: number) => void,
 ): Promise<LoadExtensionsResult> {
 	const paths = await discoverSessionExtensionPaths(options, cwd, settings, agentDir);
-	const result = await logger.time("loadExtensions", loadExtensions, paths, cwd, eventBus);
+	const result = await logger.time("loadExtensions", loadExtensions, paths, cwd, eventBus, adoptSpawnedPid);
 	reportExtensionLoadFailures(result);
 	return result;
 }
@@ -990,10 +993,7 @@ export async function discoverRules(cwd?: string, agentDir?: string): Promise<Ca
  * someone else's profile file, or none. Do not reintroduce that by widening the
  * signature without threading the value.
  */
-export async function discoverContextFiles(
-	cwd?: string,
-	agentDir?: string,
-): Promise<Array<{ path: string; content: string; depth?: number }>> {
+export async function discoverContextFiles(cwd?: string, agentDir?: string): Promise<ContextFileEntry[]> {
 	return await loadContextFilesInternal({
 		cwd: cwd ?? getProjectDir(),
 		agentDir: agentDir ?? getAgentDir(),
@@ -2775,11 +2775,23 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// execution back through the parent — wrong for isolated tasks and for
 		// pending-action queueing.
 		const builtInToolNames = builtinTools.map(t => t.name);
+		// Session CPU budget: every process a custom tool, custom command, or
+		// extension spawns through `exec` joins this session's budget group. The
+		// closure resolves the limiter lazily, so registration order (limiter
+		// created in the AgentSession constructor, tools loaded before it) is
+		// irrelevant.
+		const adoptSpawnedPid = sessionCpuAdoption(() => toolSession.getSessionId?.() ?? null);
 		const customToolPaths: ToolPathWithSource[] =
 			options.preloadedCustomToolPaths ??
 			(await logger.time("discoverCustomToolPaths", () => discoverCustomToolPaths([], cwd, agentDir)));
 		const customToolsLoadResult = await logger.time("loadCustomTools", () =>
-			loadCustomTools(customToolPaths, cwd, builtInToolNames, action => queueResolveHandler(toolSession, action)),
+			loadCustomTools(
+				customToolPaths,
+				cwd,
+				builtInToolNames,
+				action => queueResolveHandler(toolSession, action),
+				adoptSpawnedPid,
+			),
 		);
 		for (const { path, error } of customToolsLoadResult.errors) {
 			logger.error("Custom tool load failed", { path, error });
@@ -2827,13 +2839,27 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		} else if (options.preloadedExtensionPaths) {
 			extensionPaths = options.preloadedExtensionPaths;
-			extensionsResult = await logger.time("loadExtensions", loadExtensions, extensionPaths, cwd, eventBus);
+			extensionsResult = await logger.time(
+				"loadExtensions",
+				loadExtensions,
+				extensionPaths,
+				cwd,
+				eventBus,
+				adoptSpawnedPid,
+			);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		} else {
 			extensionPaths = await logger.time("discoverSessionExtensionPaths", () =>
 				discoverSessionExtensionPaths(options, cwd, settings, agentDir),
 			);
-			extensionsResult = await logger.time("loadExtensions", loadExtensions, extensionPaths, cwd, eventBus);
+			extensionsResult = await logger.time(
+				"loadExtensions",
+				loadExtensions,
+				extensionPaths,
+				cwd,
+				eventBus,
+				adoptSpawnedPid,
+			);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		}
 		// Forward the source-path list (NOT the loaded instances) so subagents
@@ -2850,6 +2876,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					eventBus,
 					extensionsResult.runtime,
 					`<inline-${i}>`,
+					adoptSpawnedPid,
 				);
 				extensionsResult.extensions.push(loaded);
 			}
@@ -3174,7 +3201,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// Discover custom commands (TypeScript slash commands)
 		const customCommandsResult: CustomCommandsLoadResult = options.disableExtensionDiscovery
 			? { commands: [], errors: [] }
-			: await logger.time("discoverCustomCommands", loadCustomCommandsInternal, { cwd, agentDir });
+			: await logger.time("discoverCustomCommands", loadCustomCommandsInternal, { cwd, agentDir, adoptSpawnedPid });
 		if (!options.disableExtensionDiscovery) {
 			for (const { path, error } of customCommandsResult.errors) {
 				logger.error("Failed to load custom command", { path, error });
@@ -3631,7 +3658,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				agentDir,
 				resolvedCustomPrompt: options.customSystemPrompt,
 				skills: promptSkills,
-				contextFiles: promptContextFiles,
+				// Cursor's server replaces client system-prompt blobs with its own canned prompt,
+				// so on cursor-agent models the operator's layers travel as requestContext rules
+				// (the `cursorRulesResolver` below) and NOTHING inlines here: a repository file may
+				// not configure the agent, and inlining the operator's files too would deliver
+				// them twice. `[]` is the deliberate "resolved to nothing"
+				// `BuildSystemPromptOptions.contextFiles` documents, not a discovery miss.
+				contextFiles: usesCursorRuleDelivery(agent?.state.model ?? model) ? [] : promptContextFiles,
 				tools: promptTools,
 				toolNames,
 				rules: promptRulebookRules,
@@ -3999,6 +4032,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				});
 			},
 			cursorExecHandlers,
+			// Reads the live `promptContextFiles` binding at turn time, so a `/reload` or
+			// `/move` reaches the next Cursor request. Composition policy (operator scopes
+			// only, repository files never) lives in `cursorContextFileRules`.
+			cursorRulesResolver: () => cursorContextFileRules(promptContextFiles),
 			transformToolCallArguments: (args, toolName) => {
 				// `display` is what an operator reads and what the session records;
 				// `execution` is what the tool runs with. They diverge on exactly one thing
@@ -4594,6 +4631,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// Skip when reusing a parent's manager — the parent owns the callbacks.
 		if (mcpManager && !options.mcpManager) {
 			const reactiveMcpManager = mcpManager;
+			// MCP stdio servers are session-spawned processes: they join the
+			// session's CPU budget group when one is configured.
+			reactiveMcpManager.setSpawnAdoption(sessionCpuAdoption(() => session.sessionManager.getSessionId() ?? null));
 			reactiveMcpManager.setOnToolsChanged(tools => {
 				void (async () => {
 					try {

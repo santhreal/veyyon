@@ -16,6 +16,7 @@ import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot, DaemonSpec, Daem
 import { renderTerminalOutput } from "../launch/terminal-output";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
+import { sessionCpuAdoption, sessionCpuLimit } from "../session/cpu-limit";
 import { framedBlock, outputBlockContentWidth, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 import { foldToolOutputBookkeeping } from "./output-fold";
@@ -413,7 +414,21 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		_onUpdate?: AgentToolUpdateCallback<LaunchToolDetails, typeof launchSchema>,
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<LaunchToolDetails>> {
-		const client = await daemonClientForProject(this.session.cwd);
+		// Session CPU budget: refuse while saturated. The broker (spawned lazily
+		// by the client) joins the budget group, which covers every daemon it
+		// launches by inheritance.
+		const getSessionId = () => this.session.getSessionId?.() ?? null;
+		const cpuLimit = sessionCpuLimit(getSessionId());
+		if (cpuLimit) {
+			await cpuLimit.update(
+				this.session.settings.get("session.cpuLimitCores"),
+				this.session.settings.get("session.cpuLimitKill"),
+			);
+			cpuLimit.assertMaySpawn("a background process");
+		}
+		const client = await daemonClientForProject(this.session.cwd, {
+			adoptSpawnedPid: sessionCpuAdoption(getSessionId),
+		});
 		const result = await client.request(operationFor(params, this.session), signal);
 		return {
 			// Folded for the same reason bash and eval are: a test suite streamed

@@ -21,6 +21,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { $which, errorMessage, logger, removeTempPath, Snowflake } from "@veyyon/utils";
 import type { FileSink, Subprocess } from "bun";
+import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { getToolPath } from "../utils/tools-manager";
 import { type PlayerCommand, playAudioFile } from "./player";
 import { encodeWav } from "./wav";
@@ -182,6 +183,7 @@ export class StreamingAudioPlayer {
 					stdout: "ignore",
 					stderr: "ignore",
 				});
+				adoptIntoPrimarySessionCpuBudget(proc.pid);
 				this.#proc = proc;
 				this.#sink = proc.stdin;
 				void proc.exited.then(code => {

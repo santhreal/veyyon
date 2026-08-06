@@ -8,6 +8,7 @@
  */
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import * as ptree from "@veyyon/utils/ptree";
+import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { buildRemoteCommand, ensureConnection, ensureHostInfo, type SSHConnectionTarget } from "./connection-manager";
 import { quotePosixPath, wrapInPosixShell } from "./utils";
@@ -81,7 +82,10 @@ export async function readRemoteFile(
 	// armed like a bare AbortSignal.timeout.
 	const opTimeout = scopedTimeoutSignal(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.signal);
 	try {
-		using child = ptree.spawn(["ssh", ...args], { signal: opTimeout.signal });
+		using child = ptree.spawn(["ssh", ...args], {
+			signal: opTimeout.signal,
+			onSpawnPid: primarySessionCpuAdoption(),
+		});
 		// Drain stdout before awaiting exit so a full pipe can't deadlock the child.
 		const raw = await child.bytes();
 		await child.exitedCleanly;
@@ -153,6 +157,7 @@ export async function writeRemoteFile(
 		using child = ptree.spawn(["ssh", ...args], {
 			stdin: content,
 			signal: opTimeout.signal,
+			onSpawnPid: primarySessionCpuAdoption(),
 		});
 		await child.exitedCleanly;
 	} finally {
@@ -178,7 +183,10 @@ export async function statRemotePath(
 	const args = await buildRemoteCommand(target, wrapInPosixShell(shell, command));
 	const opTimeout = scopedTimeoutSignal(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.signal);
 	try {
-		using child = ptree.spawn(["ssh", ...args], { signal: opTimeout.signal });
+		using child = ptree.spawn(["ssh", ...args], {
+			signal: opTimeout.signal,
+			onSpawnPid: primarySessionCpuAdoption(),
+		});
 		const out = new TextDecoder().decode(await child.bytes()).trim();
 		await child.exitedCleanly;
 		return out === "directory" || out === "file" || out === "other" ? out : "missing";
@@ -214,7 +222,10 @@ export async function listRemoteDir(
 	const opTimeout = scopedTimeoutSignal(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.signal);
 	let text: string;
 	try {
-		using child = ptree.spawn(["ssh", ...args], { signal: opTimeout.signal });
+		using child = ptree.spawn(["ssh", ...args], {
+			signal: opTimeout.signal,
+			onSpawnPid: primarySessionCpuAdoption(),
+		});
 		text = new TextDecoder().decode(await child.bytes());
 		await child.exitedCleanly;
 	} finally {

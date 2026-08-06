@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { errorMessage, isCancellation, logger, trimTrailingSlashes, withTimeout } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import type { Browser, CDPSession } from "puppeteer-core";
+import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 import { ToolAbortError, ToolError } from "../tool-errors";
 import { findFreeCdpPort, findReusableCdp, gracefulKillTreeOnce, killExistingByPath, waitForCdp } from "./attach";
 import type { CmuxKind } from "./cmux/rpc";
@@ -128,6 +129,10 @@ async function openBrowserHandle(kind: BrowserKind, opts: AcquireBrowserOptions)
 	}
 	if (kind.kind === "headless") {
 		const browser = await launchHeadlessBrowser({ headless: kind.headless, viewport: opts.viewport });
+		// Chromium is a real multi-process CPU load and puppeteer spawns it for us,
+		// so the pid comes back off the handle rather than from a spawn hook.
+		const chromiumPid = browser.process()?.pid;
+		if (chromiumPid !== undefined) adoptIntoPrimarySessionCpuBudget(chromiumPid);
 		return {
 			key: browserKey(kind),
 			kind,
@@ -182,6 +187,9 @@ async function openBrowserHandle(kind: BrowserKind, opts: AcquireBrowserOptions)
 		child.unref();
 		subprocess = child;
 		pid = child.pid;
+		// Only the branch that SPAWNS adopts. `reused` attaches to a process this
+		// session did not start, and capping someone else's process is not ours.
+		adoptIntoPrimarySessionCpuBudget(pid);
 		cdpUrl = `http://127.0.0.1:${port}`;
 		try {
 			await waitForCdp(cdpUrl, 30_000, opts.signal);

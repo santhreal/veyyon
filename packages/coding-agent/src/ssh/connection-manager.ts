@@ -7,6 +7,7 @@ import * as logger from "@veyyon/utils/logger";
 import * as postmortem from "@veyyon/utils/postmortem";
 import * as ptree from "@veyyon/utils/ptree";
 import { $which } from "@veyyon/utils/which";
+import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { buildSshTarget, sanitizeHostName } from "./utils";
 
 export interface SSHConnectionTarget {
@@ -148,6 +149,7 @@ async function runSshSync(
 		allowNonZero: true,
 		allowAbort: true,
 		stderr: "full",
+		onSpawnPid: primarySessionCpuAdoption(),
 	});
 	return { exitCode: result.exitCode, stderr: result.stderr.trim() };
 }
@@ -161,6 +163,7 @@ async function runSshCaptureSync(
 		allowNonZero: true,
 		allowAbort: true,
 		stderr: "full",
+		onSpawnPid: primarySessionCpuAdoption(),
 	});
 	return {
 		exitCode: result.exitCode,

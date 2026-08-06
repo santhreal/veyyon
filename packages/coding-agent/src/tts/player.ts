@@ -8,6 +8,7 @@
  */
 import * as fs from "node:fs/promises";
 import { $which, errorMessage, readPipeText } from "@veyyon/utils";
+import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { getToolPath } from "../utils/tools-manager";
 
 export interface PlayerCommand {
@@ -102,6 +103,7 @@ export async function playAudioFile(filePath: string, options: PlayAudioOptions 
 		if (signal?.aborted) throw playbackAbortError(signal);
 		try {
 			const proc = Bun.spawn([command.cmd, ...command.args], { stdout: "ignore", stderr: "pipe" });
+			adoptIntoPrimarySessionCpuBudget(proc.pid);
 			let killTimer: NodeJS.Timeout | undefined;
 			const abort = (): void => {
 				proc.kill("SIGTERM");

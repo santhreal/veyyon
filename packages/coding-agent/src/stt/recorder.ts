@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { $which, errorMessage, logger, readPipeText, Snowflake } from "@veyyon/utils";
 import { $, type Subprocess } from "bun";
+import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { ensureTool, getToolPath } from "../utils/tools-manager";
 import { decodePcmS16LE } from "./wav";
 
@@ -46,6 +47,7 @@ async function startSoxRecording(bin: string, outputPath: string): Promise<Recor
 		stdout: "pipe",
 		stderr: "ignore",
 	});
+	adoptIntoPrimarySessionCpuBudget(proc.pid);
 	await verifyProcessAlive(proc, "sox");
 	return {
 		async stop() {
@@ -99,6 +101,7 @@ async function startFFmpegRecording(bin: string, outputPath: string): Promise<Re
 		stdout: "pipe",
 		stderr: "ignore",
 	});
+	adoptIntoPrimarySessionCpuBudget(proc.pid);
 	await verifyProcessAlive(proc, "ffmpeg");
 
 	return {
@@ -121,6 +124,7 @@ async function startArecordRecording(bin: string, outputPath: string): Promise<R
 		stdout: "pipe",
 		stderr: "ignore",
 	});
+	adoptIntoPrimarySessionCpuBudget(proc.pid);
 	await verifyProcessAlive(proc, "arecord");
 	return {
 		async stop() {
@@ -260,6 +264,7 @@ async function startPowerShellRecording(outputPath: string): Promise<RecordingHa
 		stdout: "pipe",
 		stderr: "ignore",
 	});
+	adoptIntoPrimarySessionCpuBudget(proc.pid);
 
 	proc.exited.then(() => {
 		removeRecordingScript(scriptPath);
@@ -482,6 +487,7 @@ async function startStreamingRecordingWithRecorder(
 	const args = await streamingRecorderArgs(recorder);
 	logger.debug("Starting streaming audio recording", { tool: recorder.tool, bin: recorder.bin });
 	const proc = Bun.spawn(args, { stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+	adoptIntoPrimarySessionCpuBudget(proc.pid);
 
 	// Read s16le bytes off stdout, carrying any trailing odd byte across chunk
 	// boundaries so a sample is never split. Runs until the process closes stdout.

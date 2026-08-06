@@ -1,5 +1,6 @@
 import { logger, ptree } from "@veyyon/utils";
 import { Settings } from "../config/settings";
+import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { OutputSink } from "../session/streaming-output";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
 import { buildRemoteCommand, ensureConnection, ensureHostInfo, type SSHConnectionTarget } from "./connection-manager";
@@ -114,6 +115,7 @@ export async function executeSSH(
 		timeout: options?.timeout,
 		stdin: "pipe",
 		stderr: "full",
+		onSpawnPid: primarySessionCpuAdoption(),
 	});
 
 	const settings = await Settings.init();

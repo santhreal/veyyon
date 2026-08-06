@@ -1,4 +1,5 @@
 import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
+import { sessionCpuAdoption } from "../../session/cpu-limit";
 import { registerOwnedResourceDisposer } from "../../session/owned-resources";
 import type { ToolSession } from "../../tools";
 import {
@@ -201,6 +202,7 @@ async function startKernel(cwd: string, options: PythonExecutorOptions): Promise
 		signal: options.signal,
 		deadlineMs: options.deadlineMs,
 		interpreter: options.interpreter,
+		adoptPid: sessionCpuAdoption(() => options.sessionId ?? null),
 	});
 }
 

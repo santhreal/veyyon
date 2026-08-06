@@ -3,6 +3,13 @@ import type { AgentMessage } from "@veyyon/agent-core";
 // not the compaction barrel. `legacy-provider-native.ts` imports nothing, so this
 // edge adds exactly one module to every graph this file is on.
 import { hasLegacyProviderNativeCompaction } from "@veyyon/agent-core/compaction/legacy-provider-native";
+// The remote-compaction entry reader is a leaf beside the legacy one: it turns a
+// server-side compaction's stored window back into the provider payload the
+// Responses-family request builder replays, and names who compacted for display.
+import {
+	remoteCompactionAttribution,
+	remoteCompactionProviderPayload,
+} from "@veyyon/agent-core/compaction/remote-compaction-entry";
 // The owner, not the `compaction` subpath barrel. That barrel re-exports the compaction ENGINE, which
 // imports the `@veyyon/ai` barrel to summarize a conversation; this module is a self-contained reader for a
 // retired archive format and imports nothing at all. The edge cost 238 modules, and it was on the graph of
@@ -352,10 +359,11 @@ export function buildSessionContext(
 						entry.tokensBefore,
 						entry.timestamp,
 						entry.shortSummary,
-						undefined,
+						remoteCompactionProviderPayload(entry.preserveData),
 						undefined,
 						legacyArchiveBlocksForContext(entry.preserveData, options),
 						entry.warning,
+						remoteCompactionAttribution(entry.preserveData),
 					),
 				);
 			} else {
@@ -379,10 +387,11 @@ export function buildSessionContext(
 			compaction.tokensBefore,
 			compaction.timestamp,
 			compaction.shortSummary,
-			undefined,
+			remoteCompactionProviderPayload(compaction.preserveData),
 			undefined,
 			legacyArchiveBlocksForContext(compaction.preserveData, options),
 			compaction.warning,
+			remoteCompactionAttribution(compaction.preserveData),
 		);
 		// Agent context (non-transcript): summary first so the LLM sees the
 		// compacted context before recent messages.

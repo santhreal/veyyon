@@ -14,6 +14,7 @@ import {
 	parseNumstat,
 } from "../commit/git/diff";
 import type { FileDiff, FileHunks, NumstatEntry } from "../commit/types";
+import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -460,6 +461,7 @@ async function git(cwd: string, args: readonly string[], options: CommandOptions
 		stderr: "pipe",
 		windowsHide: true,
 	});
+	adoptIntoPrimarySessionCpuBudget(child.pid);
 
 	return await collectSubprocessResult("git", commandArgs, child, options);
 }
@@ -2363,6 +2365,7 @@ export const github = {
 				windowsHide: true,
 				signal,
 			});
+			adoptIntoPrimarySessionCpuBudget(child.pid);
 			const { stdout, stderr, exitCode } = await collectSubprocessResult("gh", args, child, {});
 			throwIfAborted(signal);
 			const trim = options?.trimOutput !== false;

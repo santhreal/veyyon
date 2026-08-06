@@ -7,6 +7,7 @@ import { stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils/path";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { workerHostEntry } from "@veyyon/utils/worker-host";
 import type { Subprocess } from "bun";
+import { primarySessionCpuLimit } from "../session/cpu-limit";
 import { safeSend } from "../utils/ipc";
 import { logWorkerMessage, type WorkerLogPayload } from "./worker-log";
 
@@ -211,6 +212,16 @@ export function createWorkerSubprocess<Outbound>(options: {
 			});
 		},
 	});
+	// Shared service workers (tiny title model, embeddings, speech, JS eval)
+	// belong to no single session, so they join the root session's CPU budget
+	// when one is configured. No deny check: these are harness services, not
+	// operator commands, and refusing them would break titles and embeddings.
+	const cpuLimit = primarySessionCpuLimit();
+	if (cpuLimit) {
+		void cpuLimit
+			.adoptPid(proc.pid)
+			.catch(error => logger.debug("CPU limit: worker adoption failed", { error: errorMessage(error) }));
+	}
 	// Don't keep the parent event loop alive on an idle worker; the dispose
 	// path calls `terminate()` explicitly. Bun's test runner starves IPC for
 	// unref'd subprocesses, so keep it referenced only under tests.

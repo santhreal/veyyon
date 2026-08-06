@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { $which, readPipeText } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
+import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import * as git from "./git";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -90,6 +91,7 @@ async function jj(cwd: string, args: readonly string[], options: CommandOptions 
 		stderr: "pipe",
 		windowsHide: true,
 	});
+	adoptIntoPrimarySessionCpuBudget(child.pid);
 
 	if (!child.stdout || !child.stderr) {
 		throw new Error("Failed to capture jj command output.");

@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { errorMessage, isEnoent, logger, postmortem, ptree, untilAborted } from "@veyyon/utils";
 import { MessageFramer } from "../jsonrpc/message-framing";
+import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { ToolAbortError, throwIfAborted } from "../tools/tool-errors";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { applyWorkspaceEdit } from "./edits";
@@ -664,6 +665,7 @@ export async function getOrCreateClient(
 			cwd,
 			stdin: "pipe",
 			env: env ? { ...Bun.env, ...env } : undefined,
+			onSpawnPid: primarySessionCpuAdoption(),
 		});
 
 		let resolveProjectLoaded!: () => void;

@@ -213,6 +213,9 @@ const CONDITIONS: Record<string, () => boolean> = {
 	// `git.enabled` turns off. Offering its threshold while git integration is off
 	// would be a knob with nothing behind it.
 	gitEnabled: () => whenSettingsSay(() => Settings.instance.get("git.enabled") === true),
+	// The kill policy only matters while a budget exists; at 0 cores the toggle
+	// would be a knob with nothing behind it.
+	cpuLimitEnabled: () => whenSettingsSay(() => Settings.instance.get("session.cpuLimitCores") > 0),
 	// Blocking on a rejection only makes sense while rejections are reported: a
 	// run that stopped for a reason nothing was going to tell you about is worse
 	// than one that quietly overpays.

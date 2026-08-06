@@ -55,6 +55,7 @@ import {
 	collectShakeRegions,
 	compact,
 	compactionContextTokens,
+	compactWithProvider,
 	computeFileLists,
 	createCompactionSummaryMessage,
 	createFileOps,
@@ -69,6 +70,7 @@ import {
 	redactLegacyArchiveText,
 	renderHandoffPrompt,
 	resolveBudgetReserveTokens,
+	resolveServerCompactionTransport,
 	resolveThresholdTokens,
 	resolveThresholdWithOrigin,
 	type SessionMessageEntry,
@@ -207,7 +209,12 @@ import {
 	resolveCompactionEngineAction,
 	toAgentCompactionSettings,
 } from "../config/compaction-strategy";
-import { type EffortSource, resolveEffort, withLegacyDefaultEffort } from "../config/effort-resolver";
+import {
+	type EffortSource,
+	resolveEffort,
+	withAnyModelEffort,
+	withLegacyDefaultEffort,
+} from "../config/effort-resolver";
 import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import type { ModelRegistry } from "../config/model-registry";
 import {
@@ -246,6 +253,7 @@ import {
 	onModelRolesChanged,
 	validateProviderMaxInFlightRequests,
 } from "../config/settings";
+import { usesCursorRuleDelivery } from "../cursor";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability } from "../discovery";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
@@ -426,6 +434,7 @@ import {
 	computeStoredMessagesTokens,
 	estimateContextSnapshotAttribution,
 } from "./context-usage";
+import { initSessionCpuLimit } from "./cpu-limit";
 import { abortDetached } from "./detached-abort";
 import {
 	collectPendingToolCalls,
@@ -2421,6 +2430,8 @@ export class AgentSession {
 	#providerSessionState = new Map<string, ProviderSessionState>();
 	/** Compaction-fallback notices already emitted this session, keyed by their text. */
 	#announcedCompactionFallbacks = new Set<string>();
+	/** Server-side compaction failure notices already emitted, keyed by error text. */
+	#announcedServerCompactionFailures = new Set<string>();
 	#hindsightSessionState: HindsightSessionState | undefined = undefined;
 	readonly rawSseDebugBuffer: RawSseDebugBuffer;
 
@@ -2940,6 +2951,20 @@ export class AgentSession {
 		this.#extensionRunner = config.extensionRunner;
 		this.#skills = config.skills ?? [];
 		this.#operatorNotices = config.operatorNotices ?? new OperatorNotices(stderrNoticeSink);
+		// Per-session CPU budget. Probed once per process, registered always
+		// (even at 0 cores) so a mid-session change to session.cpuLimitCores
+		// activates enforcement, and warned about here when a configured limit
+		// cannot be enforced on this host. Cleanup rides the "session"-scoped
+		// owned-resource disposers in dispose().
+		const cpuLimitSessionId = this.sessionManager.getSessionId();
+		if (cpuLimitSessionId) {
+			void initSessionCpuLimit({
+				sessionId: cpuLimitSessionId,
+				cores: this.settings.get("session.cpuLimitCores"),
+				kill: this.settings.get("session.cpuLimitKill"),
+				onNotice: text => this.#operatorNotices.warn("cpu", text),
+			}).catch(error => logger.warn("CPU limit init failed", { error: errorMessage(error) }));
+		}
 		this.#customCommands = config.customCommands ?? [];
 		this.#skillsSettings = config.skillsSettings;
 		this.#modelRegistry = config.modelRegistry;
@@ -11970,6 +11995,24 @@ export class AgentSession {
 		return resolved.level ?? model?.thinking?.defaultLevel;
 	}
 
+	/**
+	 * Write a durable default effort into `defaultEffort`'s any-model row, which
+	 * is the setting {@link resolveEffort} actually reads. The retired
+	 * `defaultThinkingLevel` enum this replaced is consulted only when
+	 * `defaultEffort` is absent, so persisting there was discarded on the next
+	 * read for every profile that had a `defaultEffort` object.
+	 */
+	#persistDefaultEffort(level: ConfiguredThinkingLevel): void {
+		this.settings.set(
+			"defaultEffort",
+			withAnyModelEffort(
+				this.settings.isConfigured("defaultEffort") ? this.settings.get("defaultEffort") : undefined,
+				this.settings.get("defaultThinkingLevel"),
+				level,
+			),
+		);
+	}
+
 	#applyThinkingLevelToAgent(level: ThinkingLevel | undefined): void {
 		this.agent.setThinkingLevel(toReasoningEffort(level));
 		this.agent.setDisableReasoning(shouldDisableReasoning(level));
@@ -12002,7 +12045,7 @@ export class AgentSession {
 			}
 			this.#applyThinkingLevelToAgent(provisional);
 			if (persist) {
-				this.settings.set("defaultThinkingLevel", AUTO_THINKING);
+				this.#persistDefaultEffort(AUTO_THINKING);
 			}
 			if (!wasAuto || this.#thinkingLevel !== provisional) {
 				this.#emit({ type: "thinking_level_changed", thinkingLevel: provisional, configured: AUTO_THINKING });
@@ -12014,6 +12057,27 @@ export class AgentSession {
 		this.#autoThinking = false;
 		this.#autoResolvedLevel = undefined;
 		const effectiveLevel = resolveThinkingLevelForModel(this.model, level);
+		// A level the active model does not accept resolves to the nearest
+		// supported one (or drops). Interactive entry points refuse such levels
+		// outright, so a clamp here means a persisted or inherited value met a
+		// model switch: name both levels instead of silently drifting (the
+		// "random arbitrary effort" report, 2026-08-05).
+		if (
+			level !== undefined &&
+			level !== ThinkingLevel.Inherit &&
+			level !== ThinkingLevel.Off &&
+			effectiveLevel !== level
+		) {
+			logger.warn(
+				"Requested thinking level is not accepted by the active model; using the nearest supported level",
+				{
+					model: this.model ? `${this.model.provider}/${this.model.id}` : "none",
+					requested: level,
+					using: effectiveLevel ?? "provider default",
+					accepted: this.model ? getSupportedEfforts(this.model).join(", ") : "",
+				},
+			);
+		}
 		// Leaving auto must persist even when the resolved effort is unchanged (e.g.
 		// auto resolved to medium, then the user pins medium): otherwise the latest
 		// session entry keeps `configured: "auto"` and resume re-enables auto.
@@ -12026,7 +12090,7 @@ export class AgentSession {
 			this.#clearInheritedProviderPromptCacheKey("thinking-level-change");
 			this.sessionManager.appendThinkingLevelChange(effectiveLevel, effectiveLevel);
 			if (persist && effectiveLevel !== undefined && effectiveLevel !== ThinkingLevel.Off) {
-				this.settings.set("defaultThinkingLevel", effectiveLevel);
+				this.#persistDefaultEffort(effectiveLevel);
 			}
 			this.#emit({ type: "thinking_level_changed", thinkingLevel: effectiveLevel });
 		}
@@ -12675,7 +12739,7 @@ export class AgentSession {
 				// block because every catch path throws — the post-try reads
 				// of the result-derived locals are reachable only on success.
 				try {
-					const result = await this.#compactWithFallbackModel(
+					const remoteResult = await this.#tryServerSideCompaction(
 						preparation,
 						options?.internalGuidance ?? customInstructions,
 						compactionAbortController.signal,
@@ -12683,12 +12747,25 @@ export class AgentSession {
 							promptOverride: this.#obfuscateTextForProvider(compactionPrep.hookPrompt),
 							extraContext: compactionPrep.hookContext,
 							remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
-							convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
-							obfuscateProviderText: text => this.obfuscateProviderText(text),
 							codexCompaction,
 						},
-						compactionCandidates,
 					);
+					const result =
+						remoteResult ??
+						(await this.#compactWithFallbackModel(
+							preparation,
+							options?.internalGuidance ?? customInstructions,
+							compactionAbortController.signal,
+							{
+								promptOverride: this.#obfuscateTextForProvider(compactionPrep.hookPrompt),
+								extraContext: compactionPrep.hookContext,
+								remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
+								convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+								obfuscateProviderText: text => this.obfuscateProviderText(text),
+								codexCompaction,
+							},
+							compactionCandidates,
+						));
 					summary = result.summary;
 					shortSummary = result.shortSummary;
 					firstKeptEntryId = result.firstKeptEntryId;
@@ -15037,6 +15114,69 @@ export class AgentSession {
 		this.emitNotice("warning", message, "compaction");
 	}
 
+	/**
+	 * Server-side (remote) compaction attempt, or undefined when the ordinary
+	 * local path should run. Applies when `compaction.remote` is on and the
+	 * SESSION model resolves a transport from its capability data, never from
+	 * provider identity alone, and never a configured compaction model: the
+	 * provider compacts server-side, so `compaction.model` does not apply to
+	 * it. The result dual-writes a real local summary plus the provider window
+	 * (see remote-compaction-entry.ts), so rebuild, fork, and resume stay
+	 * correct. A failed attempt warns once per distinct failure and returns
+	 * undefined so the caller falls through to the local candidate loop:
+	 * compaction is the recovery path for context overflow and must not fail
+	 * closed on a transport error.
+	 */
+	async #tryServerSideCompaction(
+		preparation: CompactionPreparation,
+		customInstructions: string | undefined,
+		signal: AbortSignal,
+		options: SummaryOptions,
+	): Promise<CompactionResult | undefined> {
+		if (this.settings.get("compaction.remote") !== true) return undefined;
+		const model = this.model;
+		if (!model || !resolveServerCompactionTransport(model)) return undefined;
+		const apiKey = await this.#modelRegistry.getApiKey(model, this.sessionId);
+		if (!apiKey) return undefined;
+		try {
+			return await compactWithProvider(
+				this.#obfuscatePreparationForProvider(preparation),
+				model,
+				this.#modelRegistry.resolver(model, this.sessionId),
+				this.#obfuscateTextForProvider(customInstructions),
+				signal,
+				{
+					...options,
+					metadata: this.agent.metadataForProvider(model.provider),
+					convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+					telemetry: resolveTelemetry(this.agent.telemetry, this.sessionId),
+					thinkingLevel: this.thinkingLevel,
+					tools: this.agent.state.tools,
+					sessionId: this.sessionId,
+					promptCacheKey: this.agent.promptCacheKey ?? this.sessionId,
+					providerSessionState: this.#providerSessionState,
+					obfuscateProviderText: text => this.obfuscateProviderText(text),
+				},
+			);
+		} catch (error) {
+			if (signal.aborted) throw error;
+			const message = errorMessage(error);
+			logger.warn("Server-side compaction failed, falling back to local compaction", {
+				error: message,
+				model: `${model.provider}/${model.id}`,
+			});
+			if (!this.#announcedServerCompactionFailures.has(message)) {
+				this.#announcedServerCompactionFailures.add(message);
+				this.emitNotice(
+					"warning",
+					`Server-side compaction failed (${message}); falling back to local compaction.`,
+					"compaction",
+				);
+			}
+			return undefined;
+		}
+	}
+
 	async #compactWithFallbackModel(
 		preparation: CompactionPreparation,
 		customInstructions: string | undefined,
@@ -15571,7 +15711,18 @@ export class AgentSession {
 						(reason === "threshold" ? "pre_turn" : reason === "idle" ? "standalone_turn" : "mid_turn"),
 				});
 
-				for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex++) {
+				// Server-side compaction first: when the session model supports it
+				// and the setting is on, the provider compacts and the candidate
+				// loop below is skipped entirely for this pass.
+				compactResult = await this.#tryServerSideCompaction(preparation, undefined, autoCompactionSignal, {
+					promptOverride: this.#obfuscateTextForProvider(compactionPrep.hookPrompt),
+					extraContext: compactionPrep.hookContext,
+					remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
+					initiatorOverride: "agent",
+					codexCompaction,
+				});
+
+				for (let candidateIndex = 0; !compactResult && candidateIndex < candidates.length; candidateIndex++) {
 					const candidate = candidates[candidateIndex];
 					const hasMoreCandidates = candidateIndex < candidates.length - 1;
 					const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);

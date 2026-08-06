@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import { errorMessage, isEnoent, logger, ptree } from "@veyyon/utils";
 import { NON_INTERACTIVE_ENV } from "../exec/non-interactive-env";
 import { MessageFramer } from "../jsonrpc/message-framing";
+import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { ToolAbortError } from "../tools/tool-errors";
 import type {
 	DapCapabilities,
@@ -104,6 +105,7 @@ export class DapClient {
 			stdin: "pipe",
 			env,
 			detached: true,
+			onSpawnPid: primarySessionCpuAdoption(),
 		});
 		const client = new DapClient(adapter, cwd, proc);
 		proc.exited.then(() => {
@@ -150,6 +152,7 @@ export class DapClient {
 			stdin: "pipe",
 			env,
 			detached: true,
+			onSpawnPid: primarySessionCpuAdoption(),
 		});
 
 		// If waitForCondition throws (timeout, or adapter exited early) or the
@@ -205,6 +208,7 @@ export class DapClient {
 			stdin: "pipe",
 			env,
 			detached: true,
+			onSpawnPid: primarySessionCpuAdoption(),
 		});
 
 		// Wait for the adapter to dial back. On timeout (or any other failure

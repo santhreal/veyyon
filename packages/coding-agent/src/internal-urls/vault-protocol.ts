@@ -13,6 +13,7 @@ import { $which } from "@veyyon/utils/which";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";
 import { getDefault } from "../config/settings-schema";
+import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { getContentType } from "./content-type";
 import { ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";
 import { parseInternalUrl } from "./parse";
@@ -258,6 +259,7 @@ export async function spawnObsidian(
 		stdout: "pipe",
 		stderr: "pipe",
 	});
+	adoptIntoPrimarySessionCpuBudget(proc.pid);
 	const stdout = readPipeText(proc.stdout);
 	const stderr = readPipeText(proc.stderr);
 	const aborted = Promise.withResolvers<never>();
