@@ -75,16 +75,25 @@ export function parseKnownModel(modelId: string): ParsedModel {
  * Wrap a parse function in a per-id memo cache. Caches the `null` result too, so
  * repeated misses (the common case — ids of other families) stay O(1) and never
  * re-run the regex/semver work.
+ *
+ * The id is lowercased before parsing, because a model id's case is the host's
+ * spelling of it and never a fact about the model. Baseten and every other host
+ * that serves models under their HuggingFace repo names ships uppercase ids
+ * (`zai-org/GLM-5.2`, `moonshotai/Kimi-K2.6`), and those parsed as `null` here,
+ * so every identity-derived policy silently did not apply to them: Baseten's
+ * GLM-5.2 rows kept an inferred `minimal…xhigh` ladder while the endpoint
+ * accepts only `high`/`max` and 400s on the rest.
  */
 function parser<T>(parse: (modelId: string) => T | null): (modelId: string) => T | null {
 	const cache = new Map<string, T | null>();
 	return modelId => {
-		const hit = cache.get(modelId);
-		if (hit !== undefined || cache.has(modelId)) {
+		const key = modelId.toLowerCase();
+		const hit = cache.get(key);
+		if (hit !== undefined || cache.has(key)) {
 			return hit ?? null;
 		}
-		const result = parse(modelId);
-		cache.set(modelId, result);
+		const result = parse(key);
+		cache.set(key, result);
 		return result;
 	};
 }
