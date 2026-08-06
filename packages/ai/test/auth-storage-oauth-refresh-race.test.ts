@@ -6,9 +6,11 @@ import {
 	type AuthCredentialStore,
 	AuthStorage,
 	type CredentialDisabledEvent,
+	type OAuthCredential,
 	SqliteAuthCredentialStore,
 } from "@veyyon/ai/auth-storage";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
+import type { OAuthCredentials } from "@veyyon/ai/registry/oauth/types";
 import { removeWithRetries } from "../../utils/src/temp";
 import { withEnv } from "./helpers";
 
@@ -47,94 +49,62 @@ describe("AuthStorage OAuth refresh race", () => {
 		}
 	});
 
-	test("does not disable a credential another process already rotated", async () => {
-		if (!authStorage || !store) throw new Error("test setup failed");
-
-		// Seed the shared DB with one expired OAuth credential; this simulates the
-		// state two cooperating veyyon processes both load from the persisted row.
-		await authStorage.set("anthropic", [
-			{
-				type: "oauth",
-				access: "stale-access",
-				refresh: "stale-refresh",
-				expires: Date.now() - 60_000,
+	/**
+	 * Refresh is owned by AuthStorage, not by `getOAuthApiKey`: that helper
+	 * refuses an expired credential outright rather than posting it upstream
+	 * (registry/oauth/index.ts). Spying on it therefore never reaches the
+	 * refresh-failure handling these tests exist for, because no refresh is
+	 * attempted at all. `refreshOAuthCredential` is the seam AuthStorage
+	 * actually calls, so the race tests drive that.
+	 */
+	function storageWithRefresher(refresh: (credential: OAuthCredential) => Promise<OAuthCredentials>): AuthStorage {
+		if (!store) throw new Error("test setup failed");
+		return new AuthStorage(store, {
+			onCredentialDisabled: event => {
+				events.push(event);
 			},
-		]);
-		const storedBefore = store.listAuthCredentials("anthropic");
-		expect(storedBefore).toHaveLength(1);
-		const credentialId = storedBefore[0]!.id;
-
-		// Simulate the peer's successful refresh: another process called the real
-		// `#replaceCredentialAt` path, which rotates the row in place via
-		// updateAuthCredential. The in-memory snapshot we hold is now stale.
-		store.updateAuthCredential(credentialId, {
-			type: "oauth",
-			access: "fresh-access-from-peer",
-			refresh: "fresh-refresh-from-peer",
-			expires: Date.now() + 60 * 60_000,
+			refreshOAuthCredential: async (_provider, _credentialId, credential) => refresh(credential),
 		});
+	}
 
-		// Mock mirrors Anthropic: only the stale refresh token is rejected, because
-		// real rotation invalidates the previous refresh token on use.
-		vi.spyOn(oauthUtils, "getOAuthApiKey").mockImplementation(async (provider, creds) => {
-			const credential = creds[provider];
-			if (credential?.refresh === "stale-refresh") {
-				throw new Error(
-					'HTTP 400 invalid_grant {"error":"invalid_grant","error_description":"Refresh token not found or invalid"}',
-				);
-			}
-			return { newCredentials: credential!, apiKey: credential!.access };
-		});
-
-		await withEnv(SUPPRESS_ANTHROPIC_ENV, async () => {
-			const apiKey = await authStorage!.getApiKey("anthropic", "session-race");
-
-			// We should have picked up the rotated credential instead of disabling
-			// the row that the peer just updated.
-			expect(apiKey).toBe("fresh-access-from-peer");
-			expect(events).toHaveLength(0);
-			expect(authStorage!.list()).toContain("anthropic");
-
-			// The row must still be active in storage; before the fix it would be
-			// soft-deleted with disabled_cause set to the invalid_grant error.
-			const stored = store!.listAuthCredentials("anthropic");
-			expect(stored).toHaveLength(1);
-			expect(stored[0]?.id).toBe(credentialId);
-			expect(stored[0]?.credential.type).toBe("oauth");
-			if (stored[0]?.credential.type === "oauth") {
-				expect(stored[0].credential.refresh).toBe("fresh-refresh-from-peer");
-			}
-		});
-	});
+	/**
+	 * There is deliberately no "does not disable a credential another process
+	 * already rotated" case here. Its premise is a stale in-memory snapshot, and
+	 * credential selection re-reads the store on every `getApiKey`, so the state
+	 * cannot be reached through the public API: the test passed with the
+	 * pre-refresh resync, the peer-rotation re-read AND the CAS condition all
+	 * removed at once, which makes it a test that cannot fail on the bug it
+	 * names. The mid-window rotation is covered below, where the store spy
+	 * fabricates the one interleaving that is genuinely unreachable otherwise.
+	 */
 
 	test("does not disable when peer rotates between pre-check and CAS disable", async () => {
-		if (!authStorage || !store) throw new Error("test setup failed");
-
-		await authStorage.set("anthropic", [
-			{
-				type: "oauth",
-				access: "stale-access",
-				refresh: "stale-refresh",
-				expires: Date.now() - 60_000,
-			},
-		]);
-		const storedBefore = store.listAuthCredentials("anthropic");
-		expect(storedBefore).toHaveLength(1);
-		const credentialId = storedBefore[0]!.id;
+		if (!store) throw new Error("test setup failed");
 
 		// Refresh genuinely fails — the pre-check that compares the persisted
 		// refresh token to our snapshot will therefore see the SAME stale token
 		// and fall through to the disable. We then race a peer rotation into the
 		// window between the pre-check and the CAS, which the CAS must detect.
-		vi.spyOn(oauthUtils, "getOAuthApiKey").mockImplementation(async (provider, creds) => {
-			const credential = creds[provider];
-			if (credential?.refresh === "stale-refresh") {
+		const racing = storageWithRefresher(async credential => {
+			if (credential.type === "oauth" && credential.refresh === "stale-refresh") {
 				throw new Error(
 					'HTTP 400 invalid_grant {"error":"invalid_grant","error_description":"Refresh token not found or invalid"}',
 				);
 			}
-			return { newCredentials: credential!, apiKey: credential!.access };
+			throw new Error("refresh should only be attempted with the stale token");
 		});
+
+		await racing.set("anthropic", [
+			{
+				type: "oauth",
+				access: "stale-access",
+				refresh: "stale-refresh",
+				expires: Date.now() - 60_000,
+			},
+		]);
+		const storedBefore = store.listAuthCredentials("anthropic");
+		expect(storedBefore).toHaveLength(1);
+		const credentialId = storedBefore[0]!.id;
 
 		const sharedStore = store;
 		const originalTryDisable = sharedStore.tryDisableAuthCredentialIfMatches.bind(sharedStore);
@@ -154,7 +124,7 @@ describe("AuthStorage OAuth refresh race", () => {
 			});
 
 		await withEnv(SUPPRESS_ANTHROPIC_ENV, async () => {
-			const apiKey = await authStorage!.getApiKey("anthropic", "session-cas-race");
+			const apiKey = await racing.getApiKey("anthropic", "session-cas-race");
 
 			// CAS lost → reload → pick up the peer-rotated credential.
 			expect(apiKey).toBe("fresh-access-from-peer");
@@ -174,11 +144,13 @@ describe("AuthStorage OAuth refresh race", () => {
 	});
 
 	test("still disables when the failure is real (no concurrent rotation)", async () => {
-		if (!authStorage) throw new Error("test setup failed");
+		const failing = storageWithRefresher(async () => {
+			throw new Error('invalid_grant {"error":"invalid_grant"}');
+		});
 
 		// Single-process scenario: refresh genuinely fails and no peer updated the
 		// row. The credential should still be soft-deleted.
-		await authStorage.set("anthropic", [
+		await failing.set("anthropic", [
 			{
 				type: "oauth",
 				access: "expired-access",
@@ -187,18 +159,15 @@ describe("AuthStorage OAuth refresh race", () => {
 			},
 		]);
 
-		vi.spyOn(oauthUtils, "getOAuthApiKey").mockImplementation(async () => {
-			throw new Error('invalid_grant {"error":"invalid_grant"}');
-		});
-
 		await withEnv(SUPPRESS_ANTHROPIC_ENV, async () => {
-			const apiKey = await authStorage!.getApiKey("anthropic", "session-real-failure");
+			const apiKey = await failing.getApiKey("anthropic", "session-real-failure");
 
 			expect(apiKey).toBeUndefined();
 			expect(events).toHaveLength(1);
 			expect(events[0]?.disabledCause).toContain("invalid_grant");
 		});
 	});
+
 	test("persists every credential refreshed during candidate preflight", async () => {
 		if (!authStorage || !store) throw new Error("test setup failed");
 
