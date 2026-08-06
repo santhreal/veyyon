@@ -121,8 +121,8 @@ const start = isCCLayout
 The loop walks forward from `start` and marks each message it can. A string content is promoted
 to a one-element text array carrying the marker. An array content goes through
 `applyCacheControlToLastTextBlock` (`anthropic.ts:3136`), which walks backwards for a `text`
-block and, failing that, for any block that is not `thinking` or `redacted_thinking` — those
-reject `cache_control` with a 400.
+block and, failing that, for any block that is not `thinking` or `redacted_thinking`, because
+those reject `cache_control` with a 400.
 
 Marking the tail is what makes intra-session caching work: the previous turn's tail is this
 turn's prefix, so the conversation stays cached as it grows.
@@ -313,7 +313,7 @@ Prefix caching is positional, so an edit invalidates everything **after** it, no
 | --- | --- |
 | Model switch | nothing at all. `includeModelInPrompt` ships off, so the model identifier is not in the prompt to change (`settings-domains/model.ts`). Turning it on puts `Model:` inside `project`, and then a switch re-prefills that whole block, measured at 14,198 tokens |
 | Terminal change | nothing behind block 0, because `<workstation>` is volatile-last inside `project` (see [system prompt architecture](system-prompt-architecture.md#ordering-rules)). It used to sit first, and cost 5,396 re-prefilled tokens |
-| A statement's condition flipping (a setting change) | the whole prompt. Block 0 precedes `project`, so the blast radius is the full 18,012 tokens no matter which statement flips, measured at $0.0675 of Sonnet cache write. 31 of the 58 active statements are gated and can trigger it (1,704 tokens, 45% of the template block); the other 27 are unconditional. Reordering the gated set behind `project` would cut that to the tail, and is deliberately not done, because it would split tool policy across two places in the reading order for 7 cents a toggle |
+| A statement's condition flipping (a setting change) | the whole prompt. Block 0 precedes `project`, so the blast radius is the full 18,012 tokens no matter which statement flips, measured at $0.0675 of Sonnet cache write. The registry declares 80 statements, 53 condition-gated and 27 unconditional; 58 are active in the shipped default (3,777 tokens), 31 of those gated (1,704 tokens). Count the gated **registry** rows, not the active ones: a condition that flips an inactive statement *on* invalidates exactly as much as one that flips an active statement off. Reordering the gated set behind `project` would cut the radius to the tail, and is deliberately not done, because it would split tool policy across two places in the reading order for 7 cents a toggle |
 | An argot dictionary loading | the `shorthand-handles` block and later blocks; block 0 survives, which is why the handle table is its own block |
 | A new secret becoming spendable | the `available-secrets` block and later blocks |
 | `set_cwd` / `/cd` | the `project` block and later blocks: the cwd line, context files, and workspace tree all change |
@@ -384,7 +384,9 @@ three values for a process, and `resolveCacheEnforcement`
 (`packages/ai/src/cache/policy.ts:48`) defaults to `warn` when neither is set.
 
 `display.cacheMissMarker` (default off) draws a divider above an assistant turn whose request
-missed the cache, which is the in-session version of the same signal.
+missed the cache. It is a weaker, display-side signal rather than a second verdict: it reads the
+reported usage of two adjacent turns and never consults the window or the enforcement level, and
+it covers a different provider set (see the first known limitation below).
 
 ## What to avoid
 
@@ -392,8 +394,8 @@ missed the cache, which is the in-session version of the same signal.
 `project` block and any file edit changes it, so it re-prefills that block every turn. Expect a
 cold turn after `/cd`, `/model`, a settings change, or a long pause; each of those is a real
 invalidation, not a bug. Do not set `VEYYON_CACHE_ENFORCEMENT=error` on a provider other than
-Anthropic and conclude your cache is healthy from the silence, because no other provider reports
-a verdict at all.
+Anthropic and conclude your cache is healthy from the silence: the enforcement path is wired only
+on Anthropic, so on every other provider the level you set resolves and then governs nothing.
 
 **As a contributor.**
 
@@ -417,10 +419,21 @@ Named rather than fixed. Some of these are places where Nous Research's Hermes a
 ([`agent/prompt_caching.py`](https://github.com/NousResearch/hermes-agent), Python) does more
 than we do, and the comparison is included because it makes the gap concrete.
 
-- **Verification is Anthropic-only.** `packages/ai/src/cache/policy.ts:41-46` says so directly:
-  `providers/anthropic.ts` is the single production importer, so on Bedrock, OpenAI Responses
-  and the chat-completions path the enforcement level resolves and then governs nothing. Two of
-  the four defects that motivated the subsystem happened on providers it does not observe.
+- **Verification is Anthropic-only, and the one path with a shipped marker bug has no signal at
+  all.** `packages/ai/src/cache/policy.ts:41-46` says so directly: `providers/anthropic.ts` is the
+  single production importer, so on Bedrock, OpenAI Responses and the chat-completions path the
+  enforcement level resolves and then governs nothing. Two of the four defects that motivated the
+  subsystem happened on providers it does not observe. The in-session divider is a separate and
+  weaker signal: `usesExplicitPromptCache`
+  (`coding-agent/src/modes/components/cache-invalidation-marker.ts:59-65`) is a display heuristic,
+  not a verdict, and it admits only `anthropic-messages`, `bedrock-converse-stream` and the
+  OpenAI Responses generations that accept explicit breakpoints. Claude through OpenRouter carries
+  api `openrouter` and so fails that test, which leaves all 26 such rows with neither a verdict nor
+  a divider, while still being sent Anthropic-shaped `cache_control` markers, because
+  `cacheControlFormat: "anthropic"` is set for `isOpenRouter && isAnthropicModel`. That is exactly
+  the configuration that already failed silently once: the `~anthropic/…` alias bug listed above
+  is on a row still present in the catalog today (`~anthropic/claude-fable-latest`). A path that
+  places explicit markers should be observable by whatever watches explicit markers.
 - **Marker positions are chosen positionally, not structurally.** The trailing loop marks the
   last one or two messages whatever they are. Hermes instead computes
   `_completed_transaction_endpoint_indexes`, selecting only the ends of completed tool runs and
@@ -445,12 +458,13 @@ than we do, and the comparison is included because it makes the gap concrete.
   removes excess markers after the fact. Hermes strips every marker first
   (`strip_anthropic_cache_control`) and then builds a fresh plan for the resolved destination,
   so a marker can never survive into a layout that was not designed for it.
-- **The per-provider decision is distributed across five modules.** `anthropic.ts`,
-  `amazon-bedrock.ts`, `openai-prompt-cache.ts`, `openai-completions.ts` and
-  `catalog/src/compat/openai.ts` each own part of "should this request be cached, and in which
-  wire layout". Hermes answers that in one function, `anthropic_prompt_cache_policy`, returning
-  `(should_cache, use_native_layout)`. Ours is harder to audit, and the OpenRouter alias bug
-  above is exactly the class of defect a single decision point would have made visible.
+- **The per-provider decision is distributed across six modules.** `anthropic.ts`,
+  `amazon-bedrock.ts`, `bedrock-prompt-cache.ts`, `openai-prompt-cache.ts`,
+  `openai-completions.ts` and `catalog/src/compat/openai.ts` each own part of "should this request
+  be cached, and in which wire layout". Hermes answers that in one function,
+  `anthropic_prompt_cache_policy`, returning `(should_cache, use_native_layout)`. Ours is harder to
+  audit, and the OpenRouter alias bug above is exactly the class of defect a single decision point
+  would have made visible.
 - **Anthropic-style markers on OpenAI-wire endpoints stop at Claude.**
   `cacheControlFormat: "anthropic"` is set only for `isOpenRouter && isAnthropicModel`. Hermes
   also sends them for the Kimi/Moonshot and Qwen families on OpenAI-wire endpoints, reporting
@@ -474,7 +488,7 @@ than we do, and the comparison is included because it makes the gap concrete.
 | Retention default, `$env` read | `packages/ai/src/utils.ts` |
 | Anthropic placement, budget, post-passes | `packages/ai/src/providers/anthropic.ts` |
 | Anthropic system-block construction | `buildAnthropicSystemBlocks`, `anthropic.ts:2851` |
-| Bedrock `cachePoint` placement | `packages/ai/src/providers/amazon-bedrock.ts` |
+| Bedrock `cachePoint` placement | `packages/ai/src/providers/amazon-bedrock.ts`, `bedrock-prompt-cache.ts` |
 | OpenAI Responses policy and serialization | `packages/ai/src/providers/openai-prompt-cache.ts` |
 | OpenAI chat-completions marker | `packages/ai/src/providers/openai-completions.ts` |
 | Which models get Anthropic-shaped markers | `packages/catalog/src/compat/openai.ts` |
@@ -483,6 +497,7 @@ than we do, and the comparison is included because it makes the gap concrete.
 | Verdicts, windows, floors | `packages/ai/src/cache/verdict.ts` |
 | Enforcement levels and the deferred throw | `packages/ai/src/cache/policy.ts` |
 | Per-key tracking state | `packages/ai/src/cache/tracker.ts` |
+| In-session cache-miss divider (display heuristic) | `packages/coding-agent/src/modes/components/cache-invalidation-marker.ts` |
 | Operator settings | `packages/coding-agent/src/config/settings-domains/context.ts` |
 
-*Verified against `27538ffb` on 2026-08-05.*
+*Verified against `7fce295f` on 2026-08-05.*
