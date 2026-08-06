@@ -110,11 +110,14 @@ describe("issue #2600 - session_shutdown handler timeout", () => {
 			// dispatch would consume roughly count × cap and keep `/exit` slow.
 			expect(elapsedMs).toBeLessThan(350);
 			for (const hangExtensionPath of hangExtensionPaths) {
-				expect(warnSpy).toHaveBeenCalledWith("Extension handler timed out", {
-					extensionPath: hangExtensionPath,
-					event: "session_shutdown",
-					timeoutMs: 100,
-				});
+				expect(warnSpy).toHaveBeenCalledWith(
+					`Extension ${hangExtensionPath}: Its "session_shutdown" handler did not finish within 100ms, so veyyon carried on without its result. Fix: make the handler return inside that budget, or start the slow work without awaiting it and report back through a later event.`,
+					{
+						extensionPath: hangExtensionPath,
+						event: "session_shutdown",
+						timeoutMs: 100,
+					},
+				);
 			}
 		} finally {
 			warnSpy.mockRestore();
@@ -145,11 +148,16 @@ describe("issue #2600 - session_shutdown handler timeout", () => {
 			// Loose upper bound to absorb CI scheduler jitter; the regression
 			// would expire at ~30_000ms.
 			expect(elapsedMs).toBeLessThan(1_000);
-			expect(warnSpy).toHaveBeenCalledWith("Extension handler timed out", {
-				extensionPath: hangExtensionPath,
-				event: "session_shutdown",
-				timeoutMs: 100,
-			});
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					`Extension ${hangExtensionPath}: Its "session_shutdown" handler did not finish within 100ms`,
+				),
+				{
+					extensionPath: hangExtensionPath,
+					event: "session_shutdown",
+					timeoutMs: 100,
+				},
+			);
 			warnSpy.mockRestore();
 		} finally {
 			cleanup();
@@ -172,11 +180,16 @@ describe("issue #2600 - session_shutdown handler timeout", () => {
 			const elapsedMs = performance.now() - startedAt;
 
 			expect(elapsedMs).toBeLessThan(500);
-			expect(warnSpy).toHaveBeenCalledWith("Extension handler timed out", {
-				extensionPath: hangExtensionPath,
-				event: "session_shutdown",
-				timeoutMs: 50,
-			});
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					`Extension ${hangExtensionPath}: Its "session_shutdown" handler did not finish within 50ms`,
+				),
+				{
+					extensionPath: hangExtensionPath,
+					event: "session_shutdown",
+					timeoutMs: 50,
+				},
+			);
 			warnSpy.mockRestore();
 		} finally {
 			cleanup();
