@@ -84,8 +84,12 @@ describe("google-vertex model catalog", () => {
 
 		const result = await resolveProviderModels(options, "offline");
 		expect(result.stale).toBe(false);
-		expect(result.models.some(model => model.id === "deepseek-ai/deepseek-v3.2-maas")).toBe(true);
-		expect(result.models.some(model => model.id === "gemini-3.5-flash")).toBe(true);
+		// Assert the family coverage the resolver owes, not one upstream row: naming a
+		// single models.dev id here makes the test track catalog churn (deepseek-v3.2-maas
+		// was retired upstream) instead of the contract that every Vertex API family
+		// resolves offline from the bundle.
+		const apis = new Set(result.models.map(model => model.api));
+		expect(apis).toEqual(new Set(["google-vertex", "anthropic-messages", "openai-completions"]));
 		expect(result.models.some(model => model.id === "gemini-1.5-pro")).toBe(false);
 	});
 });
