@@ -1064,7 +1064,7 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "rules",
 			group: "Stream interrupts (TTSR)",
-			label: "TTSR Context Mode",
+			label: "Context Mode",
 			description: "What to do with partial output when TTSR triggers",
 		},
 	},
@@ -1076,7 +1076,7 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "rules",
 			group: "Stream interrupts (TTSR)",
-			label: "TTSR Interrupt Mode",
+			label: "Interrupt Mode",
 			description: "When to interrupt mid-stream vs inject warning after completion",
 			options: [
 				{ value: "always", label: "always", description: "Interrupt on prose and tool streams" },
@@ -1094,7 +1094,7 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "rules",
 			group: "Stream interrupts (TTSR)",
-			label: "TTSR Repeat Mode",
+			label: "Repeat Mode",
 			description:
 				"How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter",
 		},
@@ -1106,7 +1106,7 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "rules",
 			group: "Stream interrupts (TTSR)",
-			label: "TTSR Repeat Gap",
+			label: "Repeat Gap",
 			description: "Messages before a rule can trigger again. A rule may override this in its frontmatter",
 			options: [
 				{ value: "5", label: "5 messages" },
@@ -1125,7 +1125,7 @@ export const CONTEXT_SETTINGS = {
 			tab: "rules",
 			group: "Rules",
 			label: "Built-in Rules",
-			description: "Load the default rules shipped with the agent (override individually with ttsr.disabledRules)",
+			description: "Load the default rules shipped with the agent. Turn individual rules off under All Rules",
 		},
 	},
 
@@ -1135,7 +1135,7 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "rules",
 			group: "Rules",
-			label: "Rules",
+			label: "All Rules",
 			description:
 				"Every rule this project loads, each on or off. Stores only the ones you turn off, so a rule added in a later release arrives on.",
 		},
