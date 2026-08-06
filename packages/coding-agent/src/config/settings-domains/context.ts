@@ -31,6 +31,27 @@ export const CONTEXT_SETTINGS = {
 		default: true,
 	},
 
+	// Server-side (remote) compaction. Effective only when the resolved session
+	// model carries the capability data (`compat.supportsServerCompaction`:
+	// official OpenAI and Azure OpenAI Responses hosts today); on every other
+	// model the toggle is inert and compaction stays local. When it applies, the
+	// provider compacts the history on its side and `compaction.model` does not
+	// apply to that compaction; the entry still stores a real local summary, so
+	// reload, fork, and resume onto another provider degrade to the correct
+	// local context.
+	"compaction.remote": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "model",
+			group: "Compaction",
+			label: "Remote Compaction",
+			description:
+				"Let providers that support server-side compaction (OpenAI Responses, Azure OpenAI) compact history on their side, preserving reasoning state across the cut. The session model does it, so the compaction model chain does not apply. Off always compacts locally. Has no effect on models without support.",
+			keywords: ["compaction", "remote", "server", "provider", "openai", "context"],
+		},
+	},
+
 	"compaction.midTurnEnabled": {
 		type: "boolean",
 		default: true,
@@ -1029,8 +1050,8 @@ export const CONTEXT_SETTINGS = {
 		type: "boolean",
 		default: true,
 		ui: {
-			tab: "context",
-			group: "Rules (TTSR)",
+			tab: "rules",
+			group: "Stream interrupts (TTSR)",
 			label: "TTSR",
 			description: "Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules)",
 		},
@@ -1041,8 +1062,8 @@ export const CONTEXT_SETTINGS = {
 		values: ["discard", "keep"] as const,
 		default: "discard",
 		ui: {
-			tab: "context",
-			group: "Rules (TTSR)",
+			tab: "rules",
+			group: "Stream interrupts (TTSR)",
 			label: "TTSR Context Mode",
 			description: "What to do with partial output when TTSR triggers",
 		},
@@ -1053,8 +1074,8 @@ export const CONTEXT_SETTINGS = {
 		values: ["never", "prose-only", "tool-only", "always"] as const,
 		default: "always",
 		ui: {
-			tab: "context",
-			group: "Rules (TTSR)",
+			tab: "rules",
+			group: "Stream interrupts (TTSR)",
 			label: "TTSR Interrupt Mode",
 			description: "When to interrupt mid-stream vs inject warning after completion",
 			options: [
@@ -1071,8 +1092,8 @@ export const CONTEXT_SETTINGS = {
 		values: ["once", "after-gap"] as const,
 		default: "once",
 		ui: {
-			tab: "context",
-			group: "Rules (TTSR)",
+			tab: "rules",
+			group: "Stream interrupts (TTSR)",
 			label: "TTSR Repeat Mode",
 			description:
 				"How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter",
@@ -1083,8 +1104,8 @@ export const CONTEXT_SETTINGS = {
 		type: "number",
 		default: 10,
 		ui: {
-			tab: "context",
-			group: "Rules (TTSR)",
+			tab: "rules",
+			group: "Stream interrupts (TTSR)",
 			label: "TTSR Repeat Gap",
 			description: "Messages before a rule can trigger again. A rule may override this in its frontmatter",
 			options: [
@@ -1101,8 +1122,8 @@ export const CONTEXT_SETTINGS = {
 		type: "boolean",
 		default: true,
 		ui: {
-			tab: "context",
-			group: "Rules (TTSR)",
+			tab: "rules",
+			group: "Rules",
 			label: "Built-in Rules",
 			description: "Load the default rules shipped with the agent (override individually with ttsr.disabledRules)",
 		},
@@ -1112,8 +1133,8 @@ export const CONTEXT_SETTINGS = {
 		type: "array",
 		default: [] as string[],
 		ui: {
-			tab: "context",
-			group: "Rules (TTSR)",
+			tab: "rules",
+			group: "Rules",
 			label: "Rules",
 			description:
 				"Every rule this project loads, each on or off. Stores only the ones you turn off, so a rule added in a later release arrives on.",

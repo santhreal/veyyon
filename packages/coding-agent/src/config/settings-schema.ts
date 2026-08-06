@@ -41,6 +41,7 @@ export type SettingTab =
 	| "model"
 	| "interaction"
 	| "context"
+	| "rules"
 	| "memory"
 	| "files"
 	| "shell"
@@ -64,6 +65,7 @@ export const SETTING_TABS: SettingTab[] = [
 	"model",
 	"interaction",
 	"context",
+	"rules",
 	"memory",
 	"files",
 	"shell",
@@ -82,6 +84,7 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
 	model: { label: "Model", icon: "tab.model" },
 	interaction: { label: "Interaction", icon: "tab.interaction" },
 	context: { label: "Context", icon: "tab.context" },
+	rules: { label: "Rules", icon: "tab.rules" },
 	memory: { label: "Memory", icon: "tab.memory" },
 	files: { label: "Files", icon: "tab.files" },
 	shell: { label: "Shell", icon: "tab.shell" },
@@ -125,10 +128,11 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Agent",
 		"Git",
 	],
-	context: ["General", "Rules (TTSR)", "Prompt cache", "Session instrumentation"],
+	context: ["General", "Prompt cache", "Session instrumentation"],
+	rules: ["Rules", "Stream interrupts (TTSR)"],
 	memory: ["General", "Mnemopi", "Hindsight"],
 	files: ["Editing", "Reading", "Read Summaries", "LSP"],
-	shell: ["Bash", "Eval & Runtimes"],
+	shell: ["Bash", "Eval & Runtimes", "CPU Limit"],
 	tools: [
 		"Available Tools",
 		"Todos",
