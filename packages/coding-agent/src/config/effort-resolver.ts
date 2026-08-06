@@ -118,8 +118,8 @@ export function withLegacyDefaultEffort(
 }
 
 /**
- * The rows to store when something asks to persist an effort as the profile
- * default, i.e. the `*` row set to `level` with every other row untouched.
+ * The rows to store when something asks to persist an effort, i.e. the row that
+ * governs `modelSelector` set to `level` with every other row untouched.
  *
  * This exists because a durable write has to land in the SAME setting the
  * resolver reads. Persisting used to write the retired `defaultThinkingLevel`
@@ -129,16 +129,29 @@ export function withLegacyDefaultEffort(
  * write whose value is silently discarded on the next read is worse than a
  * write that fails.
  *
+ * Writing the `*` row unconditionally is the same defect one precedence step
+ * later. A per-model row outranks `*`, so pinning an effort while a row exists
+ * for the model you are on stores a value {@link resolveEffort} never reaches:
+ * with `{"anthropic/claude-opus-4":"low"}` stored, persisting `high` on that
+ * model leaves it resolving `low`. Which row governs is asked of `resolveEffort`
+ * rather than restated here, so this cannot drift from the precedence table --
+ * and it answers correctly for a row holding an unparseable value, which does
+ * NOT govern and must not be the one written.
+ *
  * Folding the legacy value in first is deliberate: it migrates a profile that
  * still carries only the retired enum, instead of dropping that operator's
  * saved level the first time anything persists.
  */
-export function withAnyModelEffort(
+export function withPersistedEffort(
 	rows: DefaultEffortList | undefined,
 	legacyLevel: string | null | undefined,
 	level: ConfiguredThinkingLevel,
+	modelSelector?: string,
 ): DefaultEffortList {
-	return { ...withLegacyDefaultEffort(rows, legacyLevel), [ANY_MODEL_EFFORT_KEY]: level };
+	const migrated = withLegacyDefaultEffort(rows, legacyLevel);
+	const governedByOwnRow =
+		modelSelector !== undefined && resolveEffort({ modelSelector, defaultEffort: migrated }).source === "model-row";
+	return { ...migrated, [governedByOwnRow ? modelSelector : ANY_MODEL_EFFORT_KEY]: level };
 }
 
 /** Human summary of a row's value for a settings list, e.g. `high` or `auto`. */

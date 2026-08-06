@@ -550,6 +550,38 @@ describe("AgentSession role model thinking behavior", () => {
 		expect(session.configuredThinkingLevel()).toBe(Effort.Medium);
 	});
 
+	it("persists onto the row that governs the selected model, not one it shadows", async () => {
+		// The session is the only thing that knows which model the pin was made on.
+		// Persisting `*` while the selected model has its own row writes a value
+		// `resolveEffort` never reaches, so the pin would be as invisible as the
+		// retired-key write it replaced -- silently reverting on the next resume.
+		const model = getAnthropicModelOrThrow("claude-sonnet-4-5");
+		const selector = `${model.provider}/${model.id}`;
+		const agent = new Agent({
+			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [], thinkingLevel: Effort.Low },
+		});
+		const authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth-pin-row.db"));
+		authStorages.push(authStorage);
+		authStorage.setRuntimeApiKey("anthropic", "test-key");
+		const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), "models-pin-row.yml"));
+		sessionSettings = Settings.isolated();
+		sessionSettings.set("defaultEffort", { [selector]: Effort.Low, [ANY_MODEL_EFFORT_KEY]: Effort.Minimal });
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.create(tempDir.path(), tempDir.path()),
+			settings: sessionSettings,
+			modelRegistry,
+			thinkingLevel: Effort.Low,
+		});
+
+		session.setThinkingLevel(Effort.High, true);
+
+		expect(sessionSettings.get("defaultEffort")).toEqual({
+			[selector]: Effort.High,
+			[ANY_MODEL_EFFORT_KEY]: Effort.Minimal,
+		});
+	});
+
 	it("falls back to a concrete auto level when classification fails", async () => {
 		const model = getAnthropicModelOrThrow("claude-sonnet-4-5");
 		await createSession({
