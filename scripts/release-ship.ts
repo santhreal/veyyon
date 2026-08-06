@@ -131,16 +131,48 @@ async function git(...args: string[]): Promise<string> {
 	return stdout;
 }
 
-/** Every workflow run GitHub has recorded for one commit. */
-async function runsForSha(sha: string): Promise<RunSummary[]> {
-	const { stdout } = await execFileAsync(
-		"gh",
-		["run", "list", "--commit", sha, "--limit", "50", "--json", "workflowName,status,conclusion,url"],
-		{ maxBuffer: 32 * 1024 * 1024 },
+/**
+ * The runs for one commit, asked for one required workflow at a time.
+ *
+ * A single `gh run list --commit <sha>` is the obvious call and it is wrong.
+ * The list is every workflow run GitHub associates with that SHA, newest
+ * first, and that includes the SCHEDULED ones: `Upstream radar` alone runs
+ * hourly against main's tip. Measured against `d406c561`, a 50-run window came
+ * back as 50 `Upstream radar` runs with `CI` and `Checks` nowhere in it, and
+ * the verdict read "not started" for workflows that had in fact run and
+ * failed. A waiter that cannot see a red gate is worse than no waiter.
+ *
+ * Raising the limit only moves the cliff. Asking per workflow removes it: each
+ * query is scoped, so an unrelated schedule can never displace a required run
+ * no matter how often it fires.
+ */
+export async function runsForSha(sha: string, required: readonly string[] = REQUIRED_WORKFLOWS): Promise<RunSummary[]> {
+	const perWorkflow = await Promise.all(
+		required.map(async workflow => {
+			const { stdout } = await execFileAsync(
+				"gh",
+				[
+					"run",
+					"list",
+					"--commit",
+					sha,
+					"--workflow",
+					workflow,
+					"--limit",
+					"20",
+					"--json",
+					"workflowName,status,conclusion,url",
+				],
+				{ maxBuffer: 32 * 1024 * 1024 },
+			);
+			const parsed: unknown = JSON.parse(stdout);
+			if (!Array.isArray(parsed)) {
+				throw new Error(`Unexpected 'gh run list' output for ${sha} / ${workflow}: ${stdout.slice(0, 200)}`);
+			}
+			return parsed as RunSummary[];
+		}),
 	);
-	const parsed: unknown = JSON.parse(stdout);
-	if (!Array.isArray(parsed)) throw new Error(`Unexpected 'gh run list' output for ${sha}: ${stdout.slice(0, 200)}`);
-	return parsed as RunSummary[];
+	return perWorkflow.flat();
 }
 
 /**
