@@ -133,12 +133,13 @@ describe("/account verbs", () => {
 	}
 
 	/**
-	 * A bare `/account` renders the inline status block. This is the default because it is the
-	 * question the command answers; opening a modal for it would make the answer unavailable to any
-	 * client without a terminal.
+	 * `/account status` renders the inline status block. It used to be what a BARE `/account` did,
+	 * which is the hidden default `docs/internal/slash-command-internals.md` section 9 forbids: the
+	 * other seven subcommands existed and nothing on screen said so. The block itself is unchanged,
+	 * so this pins the verb that now owns it.
 	 */
-	test("a bare /account prints the status block for the routed provider", async () => {
-		const handled = await executeBuiltinSlashCommand("/account", current().runtime);
+	test("/account status prints the status block for the routed provider", async () => {
+		const handled = await executeBuiltinSlashCommand("/account status", current().runtime);
 
 		expect(handled).toBe(true);
 		const printed = current().status.join("\n");
@@ -331,7 +332,7 @@ describe("/account verbs", () => {
 			},
 		} as unknown as SlashCommandRuntime;
 
-		const result = await executeAcpBuiltinSlashCommand("/account", runtime);
+		const result = await executeAcpBuiltinSlashCommand("/account status", runtime);
 
 		expect(result).toEqual({ consumed: true });
 		expect(said.join("\n").startsWith("Accounts in use by this session")).toBe(true);

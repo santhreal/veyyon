@@ -19,8 +19,15 @@ export type ModelRefreshStrategy = "online" | "offline" | "online-if-uncached";
  * Hook for loading and mapping models.dev fallback data into canonical model objects.
  */
 export interface ModelsDevFallback<TApi extends Api = Api, TPayload = unknown> {
-	/** Fetches raw fallback payload (for example from models.dev). */
-	fetch(): Promise<TPayload>;
+	/**
+	 * Fetches raw fallback payload (for example from models.dev).
+	 *
+	 * Takes the same hooks as a dynamic discovery fetcher, for the same reason:
+	 * only the implementation can tell a network failure from a non-ok status
+	 * from an unreadable body, and those three send an operator to three
+	 * different places.
+	 */
+	fetch(hooks?: DiscoveryHooks): Promise<TPayload>;
 	/** Maps payload into provider models. */
 	map(payload: TPayload, providerId: Provider): readonly ModelSpec<TApi>[];
 }
@@ -240,13 +247,29 @@ async function fetchModelsDev<TApi extends Api, TModelsDevPayload>(
 		return null;
 	}
 
+	const onFailure = options.onDiscoveryFailure;
 	try {
-		const payload = await options.modelsDev.fetch();
-		return normalizeModelList<TApi>(options.modelsDev.map(payload, options.providerId));
-	} catch {
+		const payload = await options.modelsDev.fetch({ onFailure });
+		const rejected: string[] = [];
+		const models = normalizeModelList<TApi>(options.modelsDev.map(payload, options.providerId), rejection => {
+			rejected.push(`${rejection.id} (${rejection.field})`);
+		});
+		if (rejected.length > 0) {
+			// Same reason as the dynamic path: one drifted field usually disqualifies the whole payload, so this
+			// is reported once per fetch instead of once per model.
+			onFailure?.({
+				stage: "payload",
+				url: "",
+				detail: `${rejected.length} models.dev models rejected: ${rejected.slice(0, 5).join(", ")}${rejected.length > 5 ? ", ..." : ""}`,
+			});
+		}
+		return models;
+	} catch (error) {
 		// Null means this source produced no list, and the manager then falls through to the next source (cache,
-		// then static models) rather than reporting an empty catalog. The reason is not carried back yet; see the
-		// README on failures travelling back.
+		// then static models) rather than reporting an empty catalog. A fetch that THREW never reached its own
+		// hooks, so the reason is reported here, as `unhandled` -- that stage says the fault is a bug on this
+		// side rather than something the provider did.
+		onFailure?.({ stage: "unhandled", url: "", detail: errorMessage(error) });
 		return null;
 	}
 }

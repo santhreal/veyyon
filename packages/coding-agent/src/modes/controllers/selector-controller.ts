@@ -57,6 +57,7 @@ import {
 	type ResetUsageAccount,
 	toResetUsageAccounts,
 } from "../../slash-commands/helpers/reset-usage";
+import type { SubcommandDef } from "../../slash-commands/types";
 import { frozenGateNotice, isLivePromptGate } from "../../system-prompt-builder/gate-registry";
 import { type ConfiguredThinkingLevel, hasConfigurableThinkingEffort } from "../../thinking";
 import { isImageProviderPreference, setPreferredImageProvider } from "../../tools/image-gen";
@@ -86,6 +87,7 @@ import { ResetUsageSelectorComponent } from "../components/reset-usage-selector"
 import { SecretManager } from "../components/secret-manager";
 import { SessionSelectorComponent } from "../components/session-selector";
 import { SettingsSelectorComponent } from "../components/settings-selector";
+import { SubcommandPickerComponent } from "../components/subcommand-picker";
 import { ThinkingSelectorComponent } from "../components/thinking-selector";
 import { ToolExecutionComponent } from "../components/tool-execution";
 import { TranscriptBlock } from "../components/transcript-container";
@@ -406,6 +408,33 @@ export class SelectorController {
 					this.ctx.statusLine.invalidate();
 					this.ctx.updateEditorBorderColor();
 					done();
+				},
+				() => done(),
+				modalRevealEnabled(),
+			);
+			return { component, focus: component };
+		});
+	}
+
+	/**
+	 * The subcommand picker a bare `/cmd` opens.
+	 *
+	 * `done()` runs BEFORE `onSelect`, so the card is gone by the time the chosen subcommand runs.
+	 * A subcommand may open a screen of its own (`/account manager`) or prefill the editor, and
+	 * both would be drawn underneath a picker that was still up.
+	 */
+	showSubcommandPicker(
+		commandName: string,
+		subcommands: readonly SubcommandDef[],
+		onSelect: (subcommand: SubcommandDef) => void,
+	): void {
+		this.showModalSelector(done => {
+			const component = new SubcommandPickerComponent(
+				commandName,
+				subcommands,
+				subcommand => {
+					done();
+					onSelect(subcommand);
 				},
 				() => done(),
 				modalRevealEnabled(),

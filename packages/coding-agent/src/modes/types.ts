@@ -26,6 +26,7 @@ import type { HistoryStorage } from "../session/history-storage";
 import type { SessionContext } from "../session/session-context";
 import type { SessionManager } from "../session/session-manager";
 import type { ShakeMode } from "../session/shake-types";
+import type { SubcommandDef } from "../slash-commands/types";
 import type { LspStartupServerInfo } from "../tools";
 import type { EventBus } from "../utils/event-bus";
 import type { AssistantMessageComponent } from "./components/assistant-message";
@@ -391,6 +392,18 @@ export interface InteractiveModeContext {
 	showSecretManager(): void;
 	showModelSelector(options?: { temporaryOnly?: boolean }): void;
 	showThinkingSelector(): void;
+	/**
+	 * The card a bare `/cmd` opens when the command declares subcommands.
+	 *
+	 * `onSelect` receives the chosen entry; the dispatcher then runs it through the ordinary
+	 * command path. Cancelling closes and runs nothing, which is the whole point of the escape
+	 * key here: a bare command must be able to end in nothing happening.
+	 */
+	showSubcommandPicker(
+		commandName: string,
+		subcommands: readonly SubcommandDef[],
+		onSelect: (subcommand: SubcommandDef) => void,
+	): void;
 	showPluginSelector(mode?: "install" | "uninstall"): void;
 	showUserMessageSelector(): void;
 	showCopySelector(): void;

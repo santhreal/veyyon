@@ -268,25 +268,35 @@ never becomes a second implementation.
 
 This holds for every command whose declaration carries `subcommands`, with one exception.
 
-### The toggle exception
+### The distinct-bare-form exception
 
 Some commands have a meaning of their own that is not any subcommand. `/yolo` flips the approval
-bypass, `/fast` flips the fast model, and `/browser` flips headless mode. Bare invocation there
-is a toggle, not a hidden default, so a picker would put a menu in front of a switch and cost a
-keystroke on the most common action.
+bypass, `/fast` flips the fast model, `/browser` flips headless mode, `/setup` opens a wizard,
+`/todo` renders the list, and `/secret` opens a masked field. In each case a picker would put a
+menu in front of an action the user already asked for, and cost a keystroke on the common act.
 
 Declare that intent rather than leaving it to be inferred:
 
 ```ts
 {
   name: "yolo",
-  bareAction: "toggle", // bare /yolo toggles; it is not a hidden subcommand
+  bareAction: "distinct", // bare /yolo toggles; it is not a hidden subcommand
   subcommands: [ /* … */ ],
 }
 ```
 
+The value is `"distinct"` and not `"toggle"` because only three of the commands that claim it are
+switches. What they share is that bare does something distinct from every declared subcommand.
+Naming the exception after the rarer case would invite the next author to file a hidden default
+under a word that does not fit, and the register below is the only place that would catch it.
+
 `bareAction` defaults to `"picker"`. A command that has subcommands and does not declare
-`"toggle"` gets the picker, so the safe behavior is what you get by saying nothing.
+`"distinct"` gets the picker, so the safe behavior is what you get by saying nothing.
+
+A waiver granted because the subcommand list is a synonym of the bare form (`/plugins list`,
+`/setup providers`) stops being true the moment a second subcommand is added. No automated check
+can see that, so each such declaration carries a comment saying what bare does. Re-read it when
+you extend the list.
 
 ### Why this is enforced by a test rather than by review
 
@@ -302,10 +312,13 @@ Nothing local is wrong. The problem only appears when you compare the handler ag
 declaration and notice that the bare path resolves to a name that is also in `subcommands`. That
 is a whole-file comparison a reviewer will not repeat on every change, so
 `test/slash-commands/bare-command-opens-a-picker.test.ts` does it: for every declaration with
-`subcommands`, the bare path must open the picker or the declaration must say `"toggle"`.
+`subcommands`, the bare path must open the picker or the declaration must say `"distinct"`.
 
-A new command therefore cannot reintroduce this by accident. It either opts into the toggle
-exception on purpose or it gets the picker.
+A new command therefore cannot reintroduce this by accident. It either opts into the
+distinct-bare-form exception on purpose or it gets the picker. That exception is itself a
+register: every declaration claiming it must appear in the test's table with the written reason
+its bare form is not a hidden default, because the dispatcher cannot tell an honest switch from a
+hidden default dressed as one.
 
 ## 10) Error handling and failure surfaces
 

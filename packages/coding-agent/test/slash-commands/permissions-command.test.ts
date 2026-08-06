@@ -187,7 +187,7 @@ describe("invocations that must not change the rung", () => {
 		settings.set("tools.approvalMode", "ask-command");
 		const harness = createHarness();
 
-		const message = await run("/permissions", harness);
+		const message = await run("/permissions status", harness);
 
 		expect(message).toContain("Ask cmds (saved)");
 		expect(settings.get("tools.approvalMode")).toBe("ask-command");
@@ -235,7 +235,7 @@ describe("the yolo rung against the yolo bypass", () => {
 		const harness = createHarness();
 		harness.runtime.ctx.session.setApprovalBypass(true);
 
-		const message = await run("/permissions", harness);
+		const message = await run("/permissions status", harness);
 
 		expect(settings.getSource("tools.approvalMode")).toBe("default");
 		expect(message).toContain("Auto (default)");
@@ -254,7 +254,7 @@ describe("reporting the rung the session will actually enforce", () => {
 		const harness = createHarness({ cliAutoApprove: true });
 		await run("/permissions ask", harness);
 
-		const message = await run("/permissions", harness);
+		const message = await run("/permissions status", harness);
 
 		expect(settings.get("tools.approvalMode")).toBe("ask");
 		expect(message).toContain("Tool approval: Yolo (--yolo, overriding Ask all session)");
@@ -270,7 +270,7 @@ describe("reporting the rung the session will actually enforce", () => {
 		settings.set("tools.approvalMode", "yolo");
 		const harness = createHarness({ planModeActive: true });
 
-		const message = await run("/permissions", harness);
+		const message = await run("/permissions status", harness);
 
 		expect(message).toContain("Tool approval: Plan (plan mode, overriding Yolo saved)");
 		expect(message).not.toContain("Tool approval: Yolo");

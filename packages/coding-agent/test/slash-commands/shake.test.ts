@@ -34,9 +34,14 @@ function tuiRuntime() {
 }
 
 describe("/shake dispatch (ACP)", () => {
-	it("defaults to elide with no subcommand", async () => {
+	/**
+	 * `elide` is the mode `/shake elide` runs. A bare `/shake` used to run it silently, hiding
+	 * `images`; the text path now lists both. The mode itself is unchanged, so it is pinned here
+	 * on the verb, and the bare listing is pinned in bare-command-opens-a-picker.test.ts.
+	 */
+	it("runs the elide mode when it is named", async () => {
 		const h = acpRuntime();
-		await executeAcpBuiltinSlashCommand("/shake", h.runtime);
+		await executeAcpBuiltinSlashCommand("/shake elide", h.runtime);
 		expect(h.shake).toHaveBeenCalledWith("elide");
 	});
 
@@ -77,9 +82,9 @@ describe("/shake dispatch (TUI)", () => {
 		expect(h.handleShakeCommand).toHaveBeenCalledWith("images");
 	});
 
-	it("defaults to elide for a bare /shake", async () => {
+	it("routes an explicitly named elide to handleShakeCommand", async () => {
 		const h = tuiRuntime();
-		await executeBuiltinSlashCommand("/shake", h.runtime);
+		await executeBuiltinSlashCommand("/shake elide", h.runtime);
 		expect(h.handleShakeCommand).toHaveBeenCalledWith("elide");
 	});
 

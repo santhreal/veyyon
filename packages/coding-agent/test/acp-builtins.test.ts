@@ -271,7 +271,7 @@ describe("ACP builtin slash commands", () => {
 			},
 		];
 
-		const result = await executeAcpBuiltinSlashCommand("/usage", runtime);
+		const result = await executeAcpBuiltinSlashCommand("/usage show", runtime);
 
 		expect(result).toEqual({ consumed: true });
 		expect(output[0]).toContain("Openai Codex");
@@ -279,39 +279,25 @@ describe("ACP builtin slash commands", () => {
 		expect(output[0]).toContain("user@example.com: 0.24 unknown used (76.0% left)");
 		expect(output[0]).toContain("resets in");
 	});
-	it("/usage show renders the same report as plain /usage", async () => {
-		const now = 1_700_000_000_000;
-		const nowSpy = spyOn(Date, "now").mockReturnValue(now);
-		try {
-			const reports: UsageReport[] = [
-				{
-					provider: "openai-codex",
-					fetchedAt: now - 5_000,
-					limits: [
-						{
-							id: "codex-5h",
-							label: "5 hours",
-							scope: { provider: "openai-codex", tier: "prolite", accountId: "account-1" },
-							window: { id: "5h", label: "5 hours", resetsAt: now + 60 * 60 * 1000 },
-							amount: { used: 0.24, usedFraction: 0.24, unit: "unknown" },
-						},
-					],
-					metadata: { email: "user@example.com" },
-				},
-			];
-			const plain = createRuntime();
-			const show = createRuntime();
-			plain.runtime.session.fetchUsageReports = async () => reports;
-			show.runtime.session.fetchUsageReports = async () => reports;
+	/**
+	 * Bare `/usage` used to be `/usage show`, so `reset` existed and nothing said so. It now lists
+	 * the subcommands instead, and must not reach the provider: fetching a usage report is work the
+	 * operator did not ask for, and printing it is the hidden default this replaced.
+	 */
+	it("bare /usage lists its subcommands instead of rendering the report", async () => {
+		const plain = createRuntime();
+		let fetched = 0;
+		plain.runtime.session.fetchUsageReports = async () => {
+			fetched += 1;
+			return [];
+		};
 
-			const plainResult = await executeAcpBuiltinSlashCommand("/usage", plain.runtime);
-			const showResult = await executeAcpBuiltinSlashCommand("/usage show", show.runtime);
+		const result = await executeAcpBuiltinSlashCommand("/usage", plain.runtime);
 
-			expect(showResult).toEqual(plainResult);
-			expect(show.output).toEqual(plain.output);
-		} finally {
-			nowSpy.mockRestore();
-		}
+		expect(result).toEqual({ consumed: true });
+		expect(fetched).toBe(0);
+		expect(plain.output[0]).toContain("/usage show");
+		expect(plain.output[0]).toContain("/usage reset");
 	});
 
 	it("routes saved reset redemption through /usage reset", async () => {
@@ -1132,7 +1118,7 @@ describe("wave 5 — adapters and polish", () => {
 	});
 
 	// /usage bar character
-	it("/usage: includes bar character when usedFraction is 0.5", async () => {
+	it("/usage show: includes bar character when usedFraction is 0.5", async () => {
 		const { output, runtime } = createRuntime();
 		runtime.session.fetchUsageReports = async () => [
 			{
@@ -1150,7 +1136,7 @@ describe("wave 5 — adapters and polish", () => {
 				metadata: {},
 			},
 		];
-		const result = await executeAcpBuiltinSlashCommand("/usage", runtime);
+		const result = await executeAcpBuiltinSlashCommand("/usage show", runtime);
 		expect(result).toEqual({ consumed: true });
 		expect(output[0]).toContain("█");
 	});
