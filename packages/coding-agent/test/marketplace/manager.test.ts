@@ -140,7 +140,9 @@ describe("MarketplaceManager", () => {
 
 	it("addMarketplace with duplicate name → throws", async () => {
 		await ctx.manager.addMarketplace(FIXTURE_DIR);
-		await expect(ctx.manager.addMarketplace(FIXTURE_DIR)).rejects.toThrow(/already exists/);
+		await expect(ctx.manager.addMarketplace(FIXTURE_DIR)).rejects.toThrow(
+			/A marketplace named "test-marketplace" is already configured, so this one was not added\./,
+		);
 	});
 
 	it("removeMarketplace → gone from list and catalog cache removed", async () => {
@@ -160,7 +162,9 @@ describe("MarketplaceManager", () => {
 	});
 
 	it("updateMarketplace on nonexistent marketplace → throws", async () => {
-		await expect(ctx.manager.updateMarketplace("ghost")).rejects.toThrow(/not found/);
+		await expect(ctx.manager.updateMarketplace("ghost")).rejects.toThrow(
+			/No marketplace named "ghost" is configured, so nothing could be read from it\./,
+		);
 	});
 
 	it("updateMarketplace re-fetches and updates updatedAt", async () => {
@@ -191,7 +195,9 @@ describe("MarketplaceManager", () => {
 
 	it("listAvailablePlugins(unknown) → throws", async () => {
 		await ctx.manager.addMarketplace(FIXTURE_DIR);
-		await expect(ctx.manager.listAvailablePlugins("no-such")).rejects.toThrow(/not found/);
+		await expect(ctx.manager.listAvailablePlugins("no-such")).rejects.toThrow(
+			/No marketplace named "no-such" is configured, so nothing could be read from it\./,
+		);
 	});
 
 	// ── Install ────────────────────────────────────────────────────────────
@@ -240,7 +246,7 @@ describe("MarketplaceManager", () => {
 
 		await ctx.manager.addMarketplace(marketplaceDir);
 		await expect(ctx.manager.installPlugin("bad-package", "bad-package-marketplace")).rejects.toThrow(
-			/Invalid marketplace plugin package name/,
+			/"\.\.\/outside" is not a usable package name for a marketplace plugin, so it was not installed\./,
 		);
 
 		expect(await Bun.file(path.join(ctx.tmpDir, "outside")).text()).toBe("sentinel\n");
@@ -616,14 +622,14 @@ describe("MarketplaceManager", () => {
 
 	it("installPlugin with nonexistent marketplace → clear error", async () => {
 		await expect(ctx.manager.installPlugin("hello-plugin", "no-such-market")).rejects.toThrow(
-			/Marketplace "no-such-market" not found/,
+			/No marketplace named "no-such-market" is configured, so nothing could be read from it\./,
 		);
 	});
 
 	it("installPlugin with nonexistent plugin in catalog → clear error", async () => {
 		await ctx.manager.addMarketplace(FIXTURE_DIR);
 		await expect(ctx.manager.installPlugin("ghost-plugin", "test-marketplace")).rejects.toThrow(
-			/Plugin "ghost-plugin" not found in marketplace "test-marketplace"/,
+			/Marketplace "test-marketplace" has no plugin named "ghost-plugin", so nothing was installed\./,
 		);
 	});
 
