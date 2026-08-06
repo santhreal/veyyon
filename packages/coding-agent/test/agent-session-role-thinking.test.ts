@@ -4,6 +4,7 @@ import { Agent } from "@veyyon/agent-core";
 import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import * as autoThinkingClassifier from "@veyyon/coding-agent/auto-thinking/classifier";
+import { ANY_MODEL_EFFORT_KEY } from "@veyyon/coding-agent/config/effort-resolver";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
@@ -527,11 +528,17 @@ describe("AgentSession role model thinking behavior", () => {
 		expect(session.autoResolvedThinkingLevel()).toBe(Effort.Medium);
 
 		// User then pins the *same* effort: selector changes auto -> medium even though
-		// the effort is unchanged, so it must persist as a concrete pin (entry +
-		// defaultThinkingLevel), not silently stay `configured: "auto"`.
+		// the effort is unchanged, so it must persist as a concrete pin (entry + the
+		// saved default), not silently stay `configured: "auto"`.
+		//
+		// The pin has to land in `defaultEffort`'s any-model row, because that is the
+		// setting the resolver reads. Writing the retired `defaultThinkingLevel` enum
+		// instead looked identical here (this profile has no `defaultEffort` object,
+		// the one case where the legacy key is still consulted) and was discarded on
+		// the next read for every profile that had one.
 		session.setThinkingLevel(Effort.Medium, true);
 		expect(session.isAutoThinking).toBe(false);
-		expect(sessionSettings.get("defaultThinkingLevel")).toBe(Effort.Medium);
+		expect(sessionSettings.get("defaultEffort")).toEqual({ [ANY_MODEL_EFFORT_KEY]: Effort.Medium });
 		session.sessionManager.appendMessage(createAssistantMessage("done"));
 
 		const sessionFile = session.sessionFile;
