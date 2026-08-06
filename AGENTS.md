@@ -377,24 +377,37 @@ release is only real once it is a tagged commit **and** a published GitHub relea
 
 ### How a release happens
 
-Three moves, and the tag is the only one that publishes. Nothing on `main` cuts a
-tag on its own: not a push, not a green CI run, not a waiting `## [Unreleased]`
-bullet.
+One command, and the tag it cuts at the end is the only thing that publishes.
+Nothing on `main` cuts a tag on its own: not a push, not a green CI run, not a
+waiting `## [Unreleased]` bullet.
 
-1. **Prepare locally.** `bun run release:prepare <major|minor|patch|x.y.z>` bumps
-   every public `package.json`, the root catalog, the Rust workspace, the natives
-   sentinel and the lockfiles, rolls each package's `## [Unreleased]` into a dated
-   section, regenerates the root changelog, and commits
-   `chore: bump version to vX.Y.Z`. It never pushes and never tags. `--dry-run`
-   shows what it would do.
-2. **Push to main.** With explicit approval, push the bump commit like any other
-   commit and let `main`'s CI go green on it. This publishes nothing.
-3. **Tag the green commit.** With explicit approval for the version,
-   `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag push starts the one CI run
-   that builds, verifies and publishes.
+```sh
+bun run release minor
+```
+
+`bun run release <major|minor|patch|x.y.z>` bumps every public `package.json`, the
+root catalog, the Rust workspace, the natives sentinel and the lockfiles, rolls
+each package's `## [Unreleased]` into a dated section, regenerates the root
+changelog, and commits `chore: bump version to vX.Y.Z`. It then shows the commit
+and tag it is about to publish and asks once. On yes it pushes `main`, waits for
+that exact SHA's checks, and tags only once they are green. `--yes` answers the
+prompt up front; `--dry-run` writes nothing and never publishes.
+
+**It still needs explicit approval to run**, because it pushes. The prompt is
+where that approval is given, and an agent never answers it.
+
+Three underlying moves, which `release:prepare` stops after the first of, and
+which you can always finish by hand:
+
+1. **Prepare locally.** Everything above through the bump commit. Never pushes,
+   never tags.
+2. **Push to main.** The bump commit goes through main's ordinary CI like any
+   other commit. This publishes nothing.
+3. **Tag the green commit.** `git tag vX.Y.Z && git push origin vX.Y.Z` starts the
+   one CI run that builds, verifies and publishes.
 
 The tag must name a commit that reached `main`, and that is the whole safety
-argument: `main` tested it before the tag existed. `ci.yml` enforces it —
+argument: `main` tested it before the tag existed. `ci.yml` enforces it.
 `scripts/release.ts verify-tag` compares the tagged commit against `main` and
 refuses anything but `identical` or `behind`, refuses a non-`vX.Y.Z` ref, refuses a
 tree whose version authorities disagree with the tag, and refuses when the
@@ -403,12 +416,6 @@ expected when `main` moved on during preparation.
 
 There is no release controller, no `release.yml`, no dispatch inputs, and no nonce
 correlation. Preparation is local and inspectable; publication is one tag push.
-
-```sh
-bun run release:prepare minor
-git push origin main          # wait for CI to go green on this commit
-git tag v1.3.0 && git push origin v1.3.0
-```
 
 ### The veyyon release line starts at `1.0.0`
 

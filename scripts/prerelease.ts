@@ -1,26 +1,30 @@
 #!/usr/bin/env bun
 /**
- * Prepare a release on your machine, and stop before anything leaves it.
+ * Cut a release, from one command.
  *
- * A release is three moves: prepare, push, tag. This script is the first, and
- * it is deliberately the only one that writes to the tree. It resolves the
- * version, refuses if the changelog does not document it, rolls every version
- * authority and changelog, refreshes the lockfiles, runs `bun run check`, and
- * commits — locally. It never tags, never pushes, and never talks to GitHub.
- *
- * The reason the mutation happens here rather than in CI is the tag. A tag must
- * sit on a commit CI has already tested green, and a bump commit created inside
- * CI is by definition a commit CI has never seen. The old controller tried to
+ * A release is three moves: prepare, push, tag. Preparation happens here and
+ * only here, because it is the part that must not happen in CI. A tag must sit
+ * on a commit CI has already tested green, and a bump commit created inside CI
+ * is by definition a commit CI has never seen. The old controller tried to
  * close that hole after the fact by pushing the bump, then dispatching Checks
- * and CI at the new tag and waiting for both — three CI rounds per release, a
+ * and CI at the new tag and waiting for both: three CI rounds per release, a
  * dispatch-correlation nonce because `workflow_dispatch` returns no run id, and
  * a pinned alert issue for the partial states in between. Preparing locally
- * removes the hole instead of chasing it: the bump commit goes through main's
- * ordinary CI like any other commit, and the tag is only ever cut on a SHA that
- * is already green.
+ * removes the hole instead of chasing it.
  *
- * What you run after this script is printed at the end, and `docs/internal/releasing.md`
- * is the same three commands in prose.
+ * Two ways to run it, and they differ only in where they stop:
+ *
+ *     bun run release:prepare <major|minor|patch|x.y.z>   prepare, then stop
+ *     bun run release <major|minor|patch|x.y.z>           prepare, push, tag
+ *
+ * `release:prepare` writes the bump commit and prints the three commands that
+ * publish it. `release` runs those three itself: it pushes main, polls the
+ * checks for that exact SHA, and cuts the tag only once they are green. That
+ * automates the waiting, not the decision. It asks once before the first push,
+ * naming the commit and the tag, and `--yes` is the way to say so up front.
+ *
+ * `--dry-run` writes nothing and reports what a cut would decide right now.
+ * `docs/internal/releasing.md` is the same flow in prose.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -35,6 +39,7 @@ import {
 	versionNotNewerFailure,
 } from "./release";
 import { assertReleaseIsDocumented, RELEASE_NOTES_CHANGELOG } from "./release-policy";
+import { shipRelease } from "./release-ship";
 
 const execFileAsync = promisify(execFile);
 
@@ -146,31 +151,50 @@ export function rollbackReport(
 }
 
 /**
- * The three commands that turn a prepared tree into a published release, in
- * order. Kept as data with no headline of its own because a dry run and a real
- * cut need opposite ones: after a real cut the bump is HEAD, after a dry run
+ * What turns a prepared tree into a published release.
+ *
+ * Kept as data with no headline of its own because a dry run and a real cut
+ * need opposite ones: after a real cut the bump is HEAD, after a dry run
  * nothing was written and pointing the operator at HEAD would be a lie. The
- * releasing doc quotes these same three steps, so they live in one place.
+ * releasing doc quotes these same steps, so they live in one place.
+ *
+ * `--ship` is first because it is the whole point: the three manual commands
+ * below are correct, and they are also several minutes of watching a run list
+ * for the moment it is safe to tag. They stay documented because a cut that
+ * fails halfway leaves the bump on main and the operator finishing by hand, and
+ * because a release should never depend on a tool being willing to run.
  */
 export function nextSteps(version: string): string[] {
 	return [
-		"  1. Push the bump to main and let ordinary CI test it:",
-		"         git push origin main",
+		`  Publish it in one command (pushes, waits for green, tags):`,
+		`      bun run release ${version}`,
 		"",
-		"  2. Wait for that commit to go green:",
-		"         gh run watch --exit-status",
+		"  Or do the same three moves by hand:",
 		"",
-		"  3. Tag the green commit to publish it:",
-		`         git tag v${version} && git push origin v${version}`,
+		"    1. Push the bump to main and let ordinary CI test it:",
+		"           git push origin main",
+		"",
+		"    2. Wait for that commit to go green:",
+		"           gh run watch --exit-status",
+		"",
+		"    3. Tag the green commit to publish it:",
+		`           git tag v${version} && git push origin v${version}`,
 		"",
 		"  Step 3 is the release. Tagged CI builds the binaries, verifies their",
 		"  checksums, and publishes the GitHub release the installer reads.",
 	];
 }
 
+/** The flags that are modes rather than a version request. */
+const MODE_FLAGS: Record<string, true> = { "--dry-run": true, "--ship": true, "--yes": true };
+
 async function main(argv: readonly string[]): Promise<void> {
 	const dryRun = argv.includes("--dry-run");
-	const request = parseReleaseRequest(argv.filter(arg => arg !== "--dry-run"));
+	// A dry run reports what a cut would decide and writes nothing, so it can
+	// never also publish. Taking `--ship` seriously alongside it would make the
+	// safest flag the one that released.
+	const ship = argv.includes("--ship") && !dryRun;
+	const request = parseReleaseRequest(argv.filter(arg => !MODE_FLAGS[arg]));
 
 	// A real cut demands main and a clean tree: the bump commit must contain the
 	// bump and nothing else. `--dry-run` writes nothing, so it stays usable from
@@ -257,6 +281,10 @@ async function main(argv: readonly string[]): Promise<void> {
 	console.log(`\nPrepared v${version} locally. Nothing has been pushed.\n`);
 	console.log("  Review the cut:");
 	console.log("      git show --stat HEAD\n");
+	if (ship) {
+		await shipRelease(version, { yes: argv.includes("--yes") });
+		return;
+	}
 	for (const line of nextSteps(version)) console.log(line);
 }
 

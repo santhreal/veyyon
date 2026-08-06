@@ -1,8 +1,8 @@
 # Releasing
 
-This is the only page about cutting a release. It covers the three commands you
-run, what runs after them, what a release produces, how you check that it worked,
-and what to do when a step fails.
+This is the only page about cutting a release. It covers the command you run,
+what runs after it, what a release produces, how you check that it worked, and
+what to do when a step fails.
 
 A release is a tagged commit **and** a published GitHub release the install
 scripts can resolve. A version bump is not a release. A green CI run is not a
@@ -10,8 +10,25 @@ release. Both are steps toward one.
 
 ## Cut a release
 
-Three moves. Prepare the bump locally, push it to `main` like any other commit,
-and tag it once `main`'s CI is green.
+One command, from a clean `main`:
+
+```sh
+bun run release patch
+```
+
+It bumps every version authority, rolls the changelogs, commits, shows you the
+commit and the tag it is about to publish, and asks once. Say yes and it pushes
+`main`, waits for that exact commit's checks, and cuts the tag the moment they
+are green. Add `--yes` to skip the question.
+
+It takes `major`, `minor`, `patch`, or an explicit `x.y.z`.
+
+### Or stop before anything leaves your machine
+
+`release:prepare` is the same command without the publishing half. It writes the
+bump commit and prints what to run next, which is useful when you want to read
+the cut before it goes anywhere, or when you are cutting from a machine that is
+not going to sit and wait.
 
 ```sh
 bun run release:prepare patch      # 1. bump versions + roll changelogs, commit locally
@@ -21,9 +38,14 @@ gh run watch                       # wait for green
 git tag v1.2.3 && git push origin v1.2.3   # 3. the tag push publishes
 ```
 
-`release:prepare` takes `major`, `minor`, `patch`, or an explicit `x.y.z`, and
-prints the exact tag command for the version it produced. Pass `--dry-run` to see
-what it would do without touching the tree.
+`bun run release` runs exactly those three moves for you. The only judgement it
+automates is "are the checks green yet", and it is stricter about that than a
+human watching a run list: it waits for every workflow that fires on a main push
+to appear and finish, and it refuses to tag on a run that was cancelled or
+skipped its way to something other than success.
+
+Pass `--dry-run` to either form to see what it would decide without touching the
+tree. A dry run never publishes, even with `--ship`.
 
 That is the whole ceremony. Nothing on `main` cuts a release on its own: not a
 push, not a green CI run, not a waiting `## [Unreleased]` bullet. Only a `v*` tag
@@ -59,10 +81,10 @@ still a commit `main` tested.
 
 ## What runs
 
-### Locally: `bun run release:prepare`
+### Locally: preparation
 
-`scripts/prerelease.ts` prepares the tree and commits. It never pushes and never
-tags.
+`scripts/prerelease.ts` prepares the tree and commits. On its own
+(`release:prepare`) it stops there, never pushing and never tagging.
 
 1. **Preflight.** Require the `main` branch and a clean tree, so the bump commit
    contains the bump and nothing else. Require the new version to be greater than
@@ -84,6 +106,31 @@ tags.
 
 Run `bun run check` yourself before pushing if you want the answer sooner; `main`
 CI runs it either way.
+
+### Locally: publishing, with `bun run release`
+
+`scripts/release-ship.ts` is the half that leaves your machine, and it only runs
+when preparation succeeded in the same invocation. It prints the commit and the
+tag, asks once (`--yes` answers up front), then:
+
+1. **Push `main`.** The bump goes through main's ordinary CI like any other
+   commit.
+2. **Wait for that SHA.** Poll `gh run list --commit <sha>` until every workflow
+   that fires on a main push has appeared and finished. A workflow that has not
+   registered yet reads as pending, never as passing, because the run list takes
+   a moment to fill in and "everything I can see passed" would tag on a partial
+   view.
+3. **Judge.** Only `success` and `skipped` are passes. `cancelled` is not: a
+   cancelled gate proves nothing about the SHA, and reading "not a failure" as "a
+   pass" is how `v1.0.36` published with its Checks run killed by branch churn.
+   A run that ran and failed blocks the tag whether or not it was required.
+4. **Tag.** `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+Every way this can stop leaves the bump commit on `main` and prints the tag
+command to finish by hand, because a half-finished cut must never need archaeology
+to complete. That covers a red gate, a wait that exceeds ninety minutes, and
+answering no at the prompt (which stops before the push, with the bump still
+local).
 
 ### On the tag push: `ci.yml`
 
@@ -135,6 +182,7 @@ One owner per concern, so a change lands in one place.
 | --- | --- |
 | Release trigger | a `v*` tag push (`push: tags` in `.github/workflows/ci.yml`) |
 | Local preparation | `scripts/prerelease.ts` (`bun run release:prepare`) |
+| Push, wait, tag | `scripts/release-ship.ts` (`bun run release`) |
 | Tree preparation shared by both | `prepareReleaseTree` in `scripts/release.ts` |
 | Tag and asset policy | `scripts/release-policy.ts` |
 | Version authorities | `validateReleaseVersionAuthorities` in `scripts/release.ts` |
@@ -483,4 +531,4 @@ the checked-in state. All three copies are gitignored and the assets are declare
 in `types/assets/index.d.ts`, so the generated state still type checks and cannot
 be committed by accident.
 
-*Verified against `92ff7a6b` on 2026-08-04.*
+*Verified against `84fa1d37` on 2026-08-06.*
