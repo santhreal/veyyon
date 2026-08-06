@@ -19,6 +19,27 @@ From the repo root (or `--cwd=packages/coding-agent` for package-local runs):
 Native/integration tests need the addon built first (`ci:build:native`); the CI test
 jobs download a prebuilt addon artifact instead.
 
+### Where your tests actually run
+
+Not on your machine, by default. `bun run test` goes through
+`scripts/test-sandbox/run.sh`, which picks a kernel boundary and runs the suite inside
+it. On a workstation the first boundary it tries is a container on another machine, so a
+full run costs you an rsync and an ssh session instead of your CPU. On a GitHub runner
+that boundary is out of the order and the suite runs in a local container.
+
+You do not have to do anything for this. It matters when a run fails for a reason that
+is not your code:
+
+```sh
+bash scripts/test-sandbox/run.sh --probe          # which boundaries are available, and why not
+bash scripts/test-sandbox/run.sh --rung=docker bun test <paths>   # pin a local container
+bun run test:sandbox:remote:build                 # rebuild the guest image on the remote
+```
+
+A pinned boundary that is unavailable is an error, never a quiet fall back to a weaker
+one. If no boundary is available at all, the suite does not run. Read
+`scripts/test-sandbox/README.md` before changing any of it.
+
 ### Buckets (`scripts/ci-test-ts.ts`)
 
 | Mode | Contents |
@@ -133,8 +154,8 @@ When a file passes alone and fails in a full run, the failure is on the victim a
 the cause is in some earlier file. To find that file, run:
 
 ```sh
-bun scripts/find-test-leaks.ts packages/utils/test          # a whole tree
-bun scripts/find-test-leaks.ts packages/utils/test/profiles.test.ts
+bun scripts/test-sandbox/find-test-leaks.ts packages/utils/test          # a whole tree
+bun scripts/test-sandbox/find-test-leaks.ts packages/utils/test/profiles.test.ts
 ```
 
 Each file runs in its own process with the leak tracer preloaded, and the script
@@ -206,11 +227,11 @@ every resolved dir for the rest of the process.
 
 The tracer lives in `packages/utils/test/helpers/global-state-leak-tracer.ts` with
 its `--preload` shim beside it, and its own contract tests are in
-`scripts/find-test-leaks.test.ts`.
+`scripts/test-sandbox/find-test-leaks.test.ts`.
 
 ### A fixture that leaks on purpose must not be named `*.test.ts`
 
-`scripts/find-test-leaks.ts` needs suites that genuinely leak, so
+`scripts/test-sandbox/find-test-leaks.ts` needs suites that genuinely leak, so
 `packages/utils/test/fixtures/` holds three of them: one sets `VEYYON_CONFIG_DIR` and
 never restores it, one activates a profile and leaves it active, and one restores
 properly so the tracer can be shown not to cry wolf.

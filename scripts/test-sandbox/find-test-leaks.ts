@@ -2,9 +2,9 @@
 // Reports which test files leave process-global state changed behind them.
 //
 // Usage:
-//   bun scripts/find-test-leaks.ts packages/coding-agent/test        # a directory
-//   bun scripts/find-test-leaks.ts packages/utils/test/profiles.test.ts
-//   bun scripts/find-test-leaks.ts --json packages/tui/test
+//   bun scripts/test-sandbox/find-test-leaks.ts packages/coding-agent/test        # a directory
+//   bun scripts/test-sandbox/find-test-leaks.ts packages/utils/test/profiles.test.ts
+//   bun scripts/test-sandbox/find-test-leaks.ts --json packages/tui/test
 //
 // Why this exists: a full `bun test` run showed roughly twenty failures that
 // vanished when the same files ran alone, and the count moved between runs
@@ -25,9 +25,9 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { LEAK_FILE_ENV, type LeakReport, parseLeaks } from "../packages/utils/test/helpers/global-state-leak-tracer";
+import { LEAK_FILE_ENV, type LeakReport, parseLeaks } from "../../packages/utils/test/helpers/global-state-leak-tracer";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 const TRACER = "packages/utils/test/helpers/global-state-leak-preload.ts";
 /** The tripwire preload every test process gets from `bunfig.toml`. */
 const TRIPWIRE = "packages/utils/test/helpers/real-data-tripwire.ts";
@@ -161,7 +161,7 @@ if (import.meta.main) {
 	const asJson = args.includes("--json");
 	const targets = args.filter(arg => !arg.startsWith("--"));
 	if (targets.length === 0) {
-		console.error("usage: bun scripts/find-test-leaks.ts [--json] <file-or-directory>…");
+		console.error("usage: bun scripts/test-sandbox/find-test-leaks.ts [--json] <file-or-directory>…");
 		process.exit(2);
 	}
 
