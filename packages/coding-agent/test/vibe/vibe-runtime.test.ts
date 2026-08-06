@@ -377,13 +377,13 @@ describe("vibe session registry", () => {
 			hasUI: false,
 			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
 			getSessionFile: () => null,
-			getSessionSpawns: () => "task",
+			getSessionSpawns: () => "deep",
 			asyncJobManager: manager,
 		});
 
 		await expect(
 			VibeSessionRegistry.global().spawn(session, { cli: "fast", name: "UnallowedVibe", prompt: "Do not start." }),
-		).rejects.toThrow('Cannot start vibe worker "sonic". Enabled and allowed agents: task.');
+		).rejects.toThrow('Cannot start vibe worker "sonic". Enabled and allowed agents: deep.');
 		expect(executorSpy).not.toHaveBeenCalled();
 	});
 
