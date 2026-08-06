@@ -125,6 +125,45 @@ export function isValidSemver(value: string): boolean {
 	return SEMVER_PATTERN.test(value);
 }
 
+/** Exactly `X.Y.Z`, no prerelease, no build metadata, no leading zeros. */
+const RELEASE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+/**
+ * Whether `value` is a version this project is willing to RELEASE.
+ *
+ * Stricter than {@link isValidSemver}, which accepts `1.2.3-rc.1` and
+ * `1.2.3+build`. A release here cuts a git tag, publishes npm packages and
+ * creates a GitHub release, and none of those paths handle a prerelease or
+ * build suffix, so accepting one produces artifacts that do not match the tag.
+ *
+ * ```ts
+ * isReleaseVersion("1.2.3"); // true
+ * isReleaseVersion("1.2.3-rc.1"); // false: a prerelease is not a release
+ * isReleaseVersion("01.2.3"); // false: a leading zero is not the same version
+ * ```
+ *
+ * This replaces four hand-written regexes that had already drifted. Two of them
+ * sat on the same release path and disagreed: the CLI's front door accepted
+ * `01.2.3` and a later gate rejected it as "not strict semver", and a third
+ * announced itself as checking "strict vX.Y.Z semver" while accepting
+ * `v01.2.3`. When two checks share a name and not a definition, the one you read
+ * is not the one that runs.
+ */
+export function isReleaseVersion(value: string): boolean {
+	return RELEASE_VERSION_PATTERN.test(value);
+}
+
+/**
+ * Whether `tag` is a release tag: a `v` followed by a {@link isReleaseVersion}.
+ *
+ * The tag and the version are checked by the same rule on purpose, because a tag
+ * that means something different from the version it names is how a release ends
+ * up published under a name nothing else resolves.
+ */
+export function isReleaseTag(tag: string): boolean {
+	return tag.startsWith("v") && isReleaseVersion(tag.slice(1));
+}
+
 /**
  * Compare two versions, returning `undefined` when either one is not a version.
  *
