@@ -10,6 +10,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
+import * as sshConfigWriter from "@veyyon/coding-agent/ssh/config-writer";
 import { removeWithRetries } from "@veyyon/utils";
 
 interface FakeAcpBuiltinSession {
@@ -505,13 +506,14 @@ describe("ACP builtin slash commands", () => {
 			"/btw hi",
 			"/new",
 			"/drop",
-			"/handoff",
+			// `/handoff` is NOT here: it carries textMode, so an ACP client can dispatch it.
+			// test/acp-agent.test.ts asserts the positive half.
 			"/fork",
 		];
 		for (const cmd of removedCommands) {
 			const { runtime } = createRuntime();
 			const result = await executeAcpBuiltinSlashCommand(cmd, runtime);
-			expect(result).toBe(false);
+			expect(result, `${cmd} reached a handler an ACP client cannot drive`).toBe(false);
 		}
 	});
 });
@@ -1074,15 +1076,15 @@ describe("wave 5 — adapters and polish", () => {
 		expect(output[0]).toContain("not found");
 	});
 
-	// /ssh add — spy on addSSHHost
-	it("/ssh add foo --host x --user y --scope user: calls addSSHHost", async () => {
-		const sshModule = await import("@veyyon/coding-agent/ssh/config-writer");
-		const spy = spyOn(sshModule, "addSSHHost").mockResolvedValue(undefined);
+	// /ssh add — spy on addSSHHost. There is no --scope: an SSH host is written to the
+	// operator's own config, and the flag that used to pick a repository-local file is gone.
+	it("/ssh add foo --host x --user y: calls addSSHHost", async () => {
+		const spy = spyOn(sshConfigWriter, "addSSHHost").mockResolvedValue(undefined);
 		try {
 			const { output, runtime } = createRuntime();
-			const result = await executeAcpBuiltinSlashCommand("/ssh add foo --host x --user y --scope user", runtime);
+			const result = await executeAcpBuiltinSlashCommand("/ssh add foo --host x --user y", runtime);
 			expect(result).toEqual({ consumed: true });
-			expect(output[0]).toContain('Added SSH host "foo" (user).');
+			expect(output[0]).toContain('Added SSH host "foo".');
 			// Without this assertion, the command could succeed via a side-effect-free
 			// path that prints the success message without writing the host config.
 			expect(spy).toHaveBeenCalledTimes(1);
