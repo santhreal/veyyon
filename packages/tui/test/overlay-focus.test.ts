@@ -156,14 +156,18 @@ describe("TUI overlay focus", () => {
 	});
 
 	it("hands focus to the live editor-slot owner after a fullscreen overlay closes (issue #3349)", () => {
-		// Repro for issue #3349: opening /settings (a fullscreen overlay)
-		// while a tool approval prompt fires lands the prompt component in
-		// the editor slot. When the overlay closes, `overlayHandle.hide()`
-		// restores focus to the preFocus captured at open time — the
-		// (now-unmounted) editor. Pre-fix, the visible prompt received no
-		// keystrokes and the TUI looked frozen. The SelectorController fix
-		// follows `hide()` with `setFocus(editorContainer.children[0] ?? editor)`;
-		// this test pins that pattern at the TUI level.
+		// Repro for issue #3349: opening /settings (a fullscreen overlay) while
+		// a tool approval prompt fires lands the prompt component in the editor
+		// slot. `hide()` used to restore focus to the preFocus captured at open
+		// time, the editor, which by then had been swapped out of the slot and
+		// was reachable from nothing. The visible prompt received no keystrokes
+		// and the TUI looked frozen.
+		//
+		// This was compensated at the call site: every close handler followed
+		// hide() with a setFocus onto whatever owned the slot. That fixed the
+		// surfaces someone remembered to patch. hide() now declines to restore
+		// a captured component that has left the tree, so the compensation is
+		// no longer load-bearing and this asserts hide() on its own.
 		const terminal = new MinimalTerminal();
 		const tui = new TUI(terminal);
 
@@ -190,60 +194,16 @@ describe("TUI overlay focus", () => {
 			tui.setFocus(approvalPrompt);
 			expect(tui.getFocused()).toBe(settingsOverlay);
 
-			// User Esc's out of settings. Replicate the post-fix close path:
-			// hide(), then setFocus on whatever owns the slot right now.
+			// User Esc's out of settings. No follow-up setFocus: the captured
+			// editor is gone from the slot, so the restore must find the live
+			// occupant instead of handing the keyboard to a detached component.
 			handle.hide();
-			const slotOwner = editorContainer.children[0] ?? editor;
-			tui.setFocus(slotOwner);
 
-			// The visible approval prompt now receives input. Pre-fix the
-			// hide()-only restore left focus on the stale editor.
 			terminal.sendInput("\x1b[B");
 			terminal.sendInput("\r");
 			expect(tui.getFocused()).toBe(approvalPrompt);
 			expect(approvalPrompt.inputs).toEqual(["\x1b[B", "\r"]);
 			expect(editor.inputs).toEqual([]);
-		} finally {
-			tui.stop();
-		}
-	});
-
-	it("pre-fix snapshot: hide() alone restores focus to the stale editor, missing the live slot owner (issue #3349)", () => {
-		// Companion to the test above: pin the exact pre-fix behavior so a
-		// future refactor of `overlayHandle.hide()` cannot silently change the
-		// contract that the SelectorController fix compensates for. `hide()`
-		// restores focus to `preFocus` captured at open time — the editor —
-		// regardless of what currently occupies the editor slot. The
-		// SelectorController close handlers MUST call `focusActiveEditorArea()`
-		// after `hide()`; this test demonstrates why.
-		const terminal = new MinimalTerminal();
-		const tui = new TUI(terminal);
-
-		const editor = new FocusRecorder("editor");
-		const editorContainer = new Container();
-		editorContainer.addChild(editor);
-		tui.addChild(editorContainer);
-		tui.setFocus(editor);
-
-		try {
-			tui.start();
-
-			const settingsOverlay = new FocusRecorder("settings");
-			const handle = tui.showOverlay(settingsOverlay, { fullscreen: true });
-
-			const approvalPrompt = new FocusRecorder("approval");
-			editorContainer.clear();
-			editorContainer.addChild(approvalPrompt);
-			tui.setFocus(approvalPrompt);
-
-			// Close the overlay WITHOUT the SelectorController's follow-up
-			// `focusActiveEditorArea()`. hide() restores focus to preFocus.
-			handle.hide();
-
-			terminal.sendInput("\x1b[B");
-			expect(tui.getFocused()).toBe(editor);
-			expect(editor.inputs).toEqual(["\x1b[B"]);
-			expect(approvalPrompt.inputs).toEqual([]);
 		} finally {
 			tui.stop();
 		}

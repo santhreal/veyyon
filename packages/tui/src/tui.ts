@@ -1881,6 +1881,71 @@ export class TUI extends Container {
 	getFocused(): Component | null {
 		return this.#focusedComponent;
 	}
+	/**
+	 * Whether the renderer can still reach `component`, either as a descendant
+	 * of the root or as an overlay. A component that has been swapped out of
+	 * its container is unreachable, and focusing it aims the keyboard at
+	 * something nothing paints and nothing can dismiss.
+	 */
+	#isAttached(component: Component): boolean {
+		const seen = new Set<Component>();
+		const search = (children: readonly Component[]): boolean => {
+			for (const child of children) {
+				if (child === component) return true;
+				if (seen.has(child)) continue;
+				seen.add(child);
+				const nested = (child as Partial<Container>).children;
+				if (nested && search(nested)) return true;
+			}
+			return false;
+		};
+		if (search(this.children)) return true;
+		return search(this.overlayStack.map(entry => entry.component));
+	}
+
+	/**
+	 * Hand focus back after an overlay closes. An overlay captures the focused
+	 * component when it opens and restores it when it closes, and in between
+	 * that component can be swapped out of its container and disposed: a
+	 * dialog occupying the editor slot is replaced by the next dialog or by
+	 * the editor itself. Restoring focus to it aims the keyboard at a
+	 * component nothing renders, so the surface underneath looks live and
+	 * ignores every keystroke, with no error and nothing to dismiss. A
+	 * captured component that has left the tree is therefore dropped in favour
+	 * of one that is still in it.
+	 */
+	#restoreFocusAfterOverlay(preFocus: Component | null): void {
+		const topVisible = this.#getTopmostVisibleOverlay();
+		if (topVisible) {
+			this.setFocus(topVisible.component);
+			return;
+		}
+		if (preFocus && this.#isAttached(preFocus)) {
+			this.setFocus(preFocus);
+			return;
+		}
+		this.setFocus(this.#firstAttachedFocusable() ?? null);
+	}
+
+	/** Depth-first search for a focusable component still in the root tree. */
+	#firstAttachedFocusable(): Component | null {
+		const seen = new Set<Component>();
+		const search = (children: readonly Component[]): Component | null => {
+			for (const child of children) {
+				if (seen.has(child)) continue;
+				seen.add(child);
+				const nested = (child as Partial<Container>).children;
+				if (nested) {
+					const found = search(nested);
+					if (found) return found;
+					continue;
+				}
+				if (isFocusable(child)) return child;
+			}
+			return null;
+		};
+		return search(this.children);
+	}
 
 	/**
 	 * Show an overlay component with configurable positioning and sizing.
@@ -1906,8 +1971,7 @@ export class TUI extends Container {
 					this.overlayStack.splice(index, 1);
 					// Restore focus if this overlay or one of its owned targets had focus
 					if (isOverlayFocusTarget(component, this.#focusedComponent)) {
-						const topVisible = this.#getTopmostVisibleOverlay();
-						this.setFocus(topVisible?.component ?? entry.preFocus);
+						this.#restoreFocusAfterOverlay(entry.preFocus);
 					}
 					if (this.overlayStack.length === 0) {
 						this.terminal.hideCursor();
@@ -1921,10 +1985,10 @@ export class TUI extends Container {
 				entry.hidden = hidden;
 				// Update focus when hiding/showing
 				if (hidden) {
-					// If this overlay or one of its owned targets had focus, move focus to next visible or preFocus
+					// If this overlay or one of its owned targets had focus, move focus
+					// to the next visible overlay or back to what it captured.
 					if (isOverlayFocusTarget(component, this.#focusedComponent)) {
-						const topVisible = this.#getTopmostVisibleOverlay();
-						this.setFocus(topVisible?.component ?? entry.preFocus);
+						this.#restoreFocusAfterOverlay(entry.preFocus);
 					}
 				} else {
 					// Restore focus to this overlay when showing (if it's actually visible)
@@ -1936,20 +2000,6 @@ export class TUI extends Container {
 			},
 			isHidden: () => entry.hidden,
 		};
-	}
-
-	/** Hide the topmost overlay and restore previous focus. */
-	hideOverlay(): void {
-		const overlay = this.overlayStack.pop();
-		if (!overlay) return;
-		// Find topmost visible overlay, or fall back to preFocus
-		const topVisible = this.#getTopmostVisibleOverlay();
-		this.setFocus(topVisible?.component ?? overlay.preFocus);
-		if (this.overlayStack.length === 0) {
-			this.terminal.hideCursor();
-			this.#recordHardwareCursorHidden();
-		}
-		this.requestRender();
 	}
 
 	/** Check if there are any visible overlays */
@@ -3014,14 +3064,9 @@ export class TUI extends Container {
 		// (visibility can change due to terminal resize or visible() callback)
 		const focusedOverlay = this.overlayStack.find(o => o.component === this.#focusedComponent);
 		if (focusedOverlay && !this.#isOverlayVisible(focusedOverlay)) {
-			// Focused overlay is no longer visible, redirect to topmost visible overlay
-			const topVisible = this.#getTopmostVisibleOverlay();
-			if (topVisible) {
-				this.setFocus(topVisible.component);
-			} else {
-				// No visible overlays, restore to preFocus
-				this.setFocus(focusedOverlay.preFocus);
-			}
+			// Focused overlay went invisible under us (resize, or its visible()
+			// callback). Hand focus on the same way a close does.
+			this.#restoreFocusAfterOverlay(focusedOverlay.preFocus);
 		}
 
 		// Pass input to focused component (including Ctrl+C)
