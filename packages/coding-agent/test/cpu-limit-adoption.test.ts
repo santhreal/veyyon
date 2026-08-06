@@ -121,29 +121,19 @@ const ADOPT_TIMEOUT_MS = 6_000;
 /** Per-case deadline. Must exceed ADOPT_TIMEOUT_MS or a real failure reads as a bun timeout. */
 const CASE_TIMEOUT_MS = 20_000;
 
-/** Directory holding every stub executable; also prepended to PATH. */
+/**
+ * Directory holding every stub executable; also prepended to PATH.
+ *
+ * Five of the cases below run a stub as a single command word or resolve one by
+ * bare name, so this directory has to be exec-capable. The docker rung used to
+ * mount every writable path `noexec` and those cases probed for it and skipped
+ * themselves; all four rungs now mount their tmpfs `exec`, asserted by
+ * `scripts/test-sandbox/the-guest-tmpdir-can-execute.test.ts`, which is where a
+ * regression reports itself with the mount named instead of quietly dropping
+ * coverage here.
+ */
 let stubDir = "";
 let originalPath = "";
-
-/**
- * Whether a file written into {@link stubDir} can be EXECUTED.
- *
- * Measured, not assumed. Two of the four sandbox rungs mount every writable
- * path `noexec` (the docker rung's /tmp, /home and /sandbox are all
- * `rw,nosuid,nodev,noexec`), so a stub with the execute bit set still fails
- * `posix_spawn` with EACCES there. Sites that take an argv VECTOR do not care:
- * they can be handed `/bin/sh <script>`, and reading a script needs no execute
- * bit. Sites that take a single command word, or that resolve a bare name from
- * PATH, have nowhere to put a runnable file and are skipped WITH THIS REASON
- * NAMED. Run the suite under `--rung=microvm`, whose tmpfs is exec-capable, to
- * cover them.
- */
-let stubDirIsExecutable = false;
-
-/** The reason a command-word site is skipped, printed so a skip is never silent. */
-const NOEXEC_REASON =
-	"the only writable directory on this rung is mounted noexec, so a stub the site can " +
-	"name as a single command cannot be made runnable; use --rung=microvm";
 
 /** Stub pids started by the current case, killed in `afterEach` whatever happens. */
 const startedPids = new Set<number>();
@@ -156,17 +146,6 @@ const SETTLE_TIMEOUT_MS = 2_000;
 
 beforeAll(async () => {
 	stubDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-cpu-adopt-stubs-"));
-	const canary = path.join(stubDir, "exec-canary");
-	await fs.writeFile(canary, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-	// spawnSync THROWS on EACCES rather than returning a status, which is the
-	// exact outcome a noexec mount produces, so the probe must catch.
-	try {
-		stubDirIsExecutable = Bun.spawnSync([canary]).exitCode === 0;
-	} catch {
-		stubDirIsExecutable = false;
-	}
-	await fs.rm(canary, { force: true });
-	if (!stubDirIsExecutable) console.log(`SKIP (command-word and PATH sites): ${NOEXEC_REASON}`);
 	originalPath = process.env.PATH ?? "";
 	// Prepended, so `git`, `jj`, `paplay` and `sox` resolve to the stubs for
 	// the sites that name their binary by bare word instead of taking one.
@@ -257,8 +236,7 @@ interface Stub {
 	 */
 	argv: string[];
 	/**
-	 * The stub as a single command word. Runnable only where
-	 * {@link stubDirIsExecutable}.
+	 * The stub as a single command word, for a site that takes one.
 	 */
 	bin: string;
 	/** Bare name, resolvable through the stub PATH entry, for sites that do not. */
@@ -377,7 +355,9 @@ describe("the harness can tell adoption from ambient membership", () => {
 		async () => {
 			const budget = await startRootBudget();
 			const stub = await makeStub("stub-negative-control");
-			const proc = Bun.spawn(stub.argv, { stdout: "ignore", stderr: "ignore" });
+			// Spelled out rather than `stub.argv` (the same two words) so the
+			// real-home gate can read the command and see it is /bin/sh.
+			const proc = Bun.spawn(["/bin/sh", stub.bin], { stdout: "ignore", stderr: "ignore" });
 			const pid = await stubPid(stub);
 			expect(pid, "the stub's own $$ must be the pid Bun reports, or the comparison is meaningless").toBe(proc.pid);
 
@@ -542,10 +522,6 @@ describe("spawn sites that take the binary as an argument adopt their child", ()
 	it(
 		"BiomeClient.lint adopts the biome CLI run",
 		async () => {
-			if (!stubDirIsExecutable) {
-				console.log(`SKIP ${"BiomeClient.lint adopts the biome CLI run"}: ${NOEXEC_REASON}`);
-				return;
-			}
 			const budget = await startRootBudget();
 			const stub = await makeStub("stub-biome");
 			const client = BiomeClient.create(
@@ -567,10 +543,6 @@ describe("spawn sites that take the binary as an argument adopt their child", ()
 	it(
 		"SwiftLintClient.lint adopts the swiftlint CLI run",
 		async () => {
-			if (!stubDirIsExecutable) {
-				console.log(`SKIP ${"SwiftLintClient.lint adopts the swiftlint CLI run"}: ${NOEXEC_REASON}`);
-				return;
-			}
 			const budget = await startRootBudget();
 			const stub = await makeStub("stub-swiftlint");
 			const client = SwiftLintClient.create(
@@ -603,10 +575,6 @@ describe("spawn sites that resolve their own binary adopt their child", () => {
 	it(
 		"git runs are adopted",
 		async () => {
-			if (!stubDirIsExecutable) {
-				console.log(`SKIP git runs are adopted: ${NOEXEC_REASON}`);
-				return;
-			}
 			const budget = await startRootBudget();
 			const stub = await makeStub("git");
 			runSite(git.status(stubDir));
@@ -630,10 +598,6 @@ describe("spawn sites that resolve their own binary adopt their child", () => {
 	it(
 		"playAudioFile adopts the audio player",
 		async () => {
-			if (!stubDirIsExecutable) {
-				console.log(`SKIP playAudioFile adopts the audio player: ${NOEXEC_REASON}`);
-				return;
-			}
 			const budget = await startRootBudget();
 			const stub = await makeManagedToolStub("player-ffmpeg");
 			runSite(playAudioFile(path.join(stubDir, "tone.wav")));
@@ -653,10 +617,6 @@ describe("spawn sites that resolve their own binary adopt their child", () => {
 	it(
 		"startRecording adopts the recorder backend",
 		async () => {
-			if (!stubDirIsExecutable) {
-				console.log(`SKIP startRecording adopts the recorder backend: ${NOEXEC_REASON}`);
-				return;
-			}
 			const budget = await startRootBudget();
 			const stub = await makeManagedToolStub("recorder-ffmpeg");
 			runSite(startRecording(path.join(stubDir, "rec.wav")));
