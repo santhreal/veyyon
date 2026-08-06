@@ -1010,6 +1010,13 @@ export interface AgentSessionConfig {
 	 * `deny` and plan mode still block. Toggle at runtime with `/yolo`.
 	 */
 	bypassAllApprovals?: boolean;
+	/**
+	 * A subagent's live view of its parent's bypass. The child's own
+	 * `bypassAllApprovals` is a snapshot taken at spawn, so without this a parent
+	 * that revokes `/yolo` leaves an already-running child bypassing approvals to
+	 * the end of its run. Consulted on every check and can only narrow.
+	 */
+	parentApprovalBypassed?: () => boolean;
 	/** Models to cycle through with Ctrl+P (from --models flags). */
 	scopedModels?: Array<{
 		model: Model;
@@ -1995,6 +2002,12 @@ export class AgentSession {
 	 */
 	#approvalBypassActive = false;
 	/**
+	 * The parent session's live bypass state, for a subagent. Undefined in a root
+	 * session. Read on every {@link isApprovalBypassed} call so `/yolo off` in the
+	 * parent reaches a subagent that is already running.
+	 */
+	readonly #parentApprovalBypassed?: () => boolean;
+	/**
 	 * Per-tool decisions the operator made at an interactive approval prompt and
 	 * asked to keep ("Always allow" / "Always deny").
 	 *
@@ -2914,6 +2927,7 @@ export class AgentSession {
 		this.#lastRescopedCwd = path.resolve(config.sessionManager.getCwd());
 		this.#autoApprove = config.autoApprove === true;
 		this.#approvalBypassActive = config.bypassAllApprovals === true;
+		this.#parentApprovalBypassed = config.parentApprovalBypassed;
 		// Power assertions are taken per turn (see #beginInFlight); nothing acquired here.
 		this.#evalKernelOwnerId = config.evalKernelOwnerId ?? `agent-session:${Snowflake.next()}`;
 		this.#parentEvalSessionId = config.parentEvalSessionId;
@@ -3849,6 +3863,7 @@ export class AgentSession {
 	 *  session-level latch reset {@link #resetAdvisorSessionState} performs. */
 	#resetAllAdvisorRuntimes(): void {
 		for (const a of this.#advisors) a.runtime.reset();
+		this.#ttsrManager?.resetForCompaction();
 	}
 
 	#stopAdvisorRuntime(): void {
@@ -8729,7 +8744,7 @@ export class AgentSession {
 	#isExplicitAutoApproveMode(): boolean {
 		return (
 			this.#autoApprove ||
-			this.#approvalBypassActive ||
+			this.isApprovalBypassed() ||
 			(this.settings.isConfigured("tools.approvalMode") && this.settings.get("tools.approvalMode") === "yolo")
 		);
 	}
@@ -8756,9 +8771,19 @@ export class AgentSession {
 		});
 	}
 
-	/** Whether the `/yolo` full-bypass is currently active for this session. */
+	/**
+	 * Whether the `/yolo` full-bypass is currently active for this session.
+	 *
+	 * A subagent's own flag is a COPY of the parent's, taken when the child was
+	 * built, so revocation used to be partial: `/yolo`, spawn a long subagent,
+	 * `/yolo off`, and the parent went back to prompting while the child kept
+	 * running every bash and edit unasked until it finished. The parent probe is
+	 * consulted live and can only narrow: a child whose own flag is off is never
+	 * granted a bypass by a parent that has one.
+	 */
 	isApprovalBypassed(): boolean {
-		return this.#approvalBypassActive;
+		if (!this.#approvalBypassActive) return false;
+		return this.#parentApprovalBypassed?.() ?? true;
 	}
 
 	/**

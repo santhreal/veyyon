@@ -227,7 +227,9 @@ export function buildRuleFromMarkdown(
 		rawPathScope === "outside-cwd" || rawPathScope === "inside-cwd" ? rawPathScope : undefined;
 	const rawRepeatMode = frontmatter.repeatMode;
 	const repeatMode: Rule["repeatMode"] =
-		rawRepeatMode === "once" || rawRepeatMode === "after-gap" ? rawRepeatMode : undefined;
+		rawRepeatMode === "once" || rawRepeatMode === "after-gap" || rawRepeatMode === "per-compact"
+			? rawRepeatMode
+			: undefined;
 	const rawRepeatGap = frontmatter.repeatGap;
 	// A negative or fractional gap is not a smaller gap, it is a typo; ignoring it falls back to the
 	// global setting rather than inventing a policy the author did not write.
