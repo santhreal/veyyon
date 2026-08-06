@@ -35,6 +35,12 @@ const RUNTIME_SRC = [
  */
 const NATIVE_LOADER_SRC = ["packages/natives/native"] as const;
 
+/**
+ * A tree that matches nothing is a stale path, not a clean result. Two other scans in this file
+ * already guard themselves with a `scanned` floor; these did not, so renaming or moving any of the
+ * nine runtime trees would have turned three brand-leak gates green forever without anyone noticing.
+ * The helper refuses the empty scan itself, so every caller inherits the guarantee.
+ */
 async function scanTrees(
 	trees: readonly string[],
 	globPattern: string,
@@ -44,12 +50,17 @@ async function scanTrees(
 	const hits: string[] = [];
 	for (const tree of trees) {
 		const glob = new Glob(globPattern);
+		let scanned = 0;
 		for await (const rel of glob.scan({ cwd: `${ROOT}/${tree}` })) {
 			if (rel.endsWith(".test.ts") || rel.includes("__tests__/")) continue;
 			const full = `${tree}/${rel}`;
+			scanned++;
 			if (allow(full)) continue;
 			const src = await Bun.file(`${ROOT}/${full}`).text();
 			if (pattern.test(src)) hits.push(full);
+		}
+		if (scanned === 0) {
+			throw new Error(`brand-leak scan reached no ${globPattern} under ${tree}: the path is stale, so this gate proves nothing`);
 		}
 	}
 	return hits.sort();
