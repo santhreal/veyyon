@@ -163,7 +163,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	if (userConfigPath) {
 		const config = await loadJsonConfig(userConfigPath);
 		if (config) {
-			const result = extractMCPServers(config, userConfigPath, "user");
+			const result = extractMCPServers(config, userConfigPath);
 			items.push(...result.items);
 			if (result.warnings) warnings.push(...result.warnings);
 		}
@@ -172,11 +172,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	return { items, warnings };
 }
 
-function extractMCPServers(
-	config: Record<string, unknown>,
-	configPath: string,
-	level: "user" | "project",
-): LoadResult<MCPServer> {
+function extractMCPServers(config: Record<string, unknown>, configPath: string): LoadResult<MCPServer> {
 	const items: MCPServer[] = [];
 	const warnings: string[] = [];
 
@@ -219,7 +215,7 @@ function extractMCPServers(
 			enabled: serverConfig.enabled,
 			timeout: typeof serverConfig.timeout === "number" ? serverConfig.timeout : undefined,
 			transport,
-			_source: createSourceMeta(PROVIDER_ID, configPath, level),
+			_source: createSourceMeta(PROVIDER_ID, configPath, "user"),
 		});
 	}
 

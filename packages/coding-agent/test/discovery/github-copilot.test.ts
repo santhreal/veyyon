@@ -18,12 +18,14 @@ import { clearCache } from "@veyyon/coding-agent/capability/fs";
 import type { Instruction } from "@veyyon/coding-agent/capability/instruction";
 import type { Prompt } from "@veyyon/coding-agent/capability/prompt";
 import { type Rule, resetActiveRulesForTests, setActiveRules } from "@veyyon/coding-agent/capability/rule";
+import type { DiscoveredSkill } from "@veyyon/coding-agent/capability/skill";
 import { RuleProtocolHandler } from "@veyyon/coding-agent/internal-urls/rule-protocol";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import "@veyyon/coding-agent/capability/context-file";
 import "@veyyon/coding-agent/capability/instruction";
 import "@veyyon/coding-agent/capability/prompt";
 import "@veyyon/coding-agent/capability/rule";
+import "@veyyon/coding-agent/capability/skill";
 import "@veyyon/coding-agent/discovery/github";
 
 const ENV_KEYS = ["COPILOT_HOME", "COPILOT_CUSTOM_INSTRUCTIONS_DIRS"] as const;
@@ -135,16 +137,22 @@ describe("github discovery — Copilot user-global surface", () => {
 			path.join(cwd, ".github", "instructions", "always.instructions.md"),
 			"---\napplyTo: '**'\n---\nAlways body\n",
 		);
+		write(
+			path.join(cwd, ".github", "skills", "demo-skill", "SKILL.md"),
+			"---\nname: demo-skill\ndescription: Demo skill for Copilot\n---\n\nSkill body.\n",
+		);
 
 		const contextFiles = await loadCapability<ContextFile>("context-files", { cwd, providers: ["github"] });
 		const instructions = await loadCapability<Instruction>("instructions", { cwd, providers: ["github"] });
 		const rules = await loadCapability<Rule>("rules", { cwd, providers: ["github"] });
 		const prompts = await loadCapability<Prompt>("prompts", { cwd, providers: ["github"] });
+		const skills = await loadCapability<DiscoveredSkill>("skills", { cwd, providers: ["github"] });
 
 		expect(contextFiles.all).toHaveLength(0);
 		expect(instructions.all).toHaveLength(0);
 		expect(rules.all).toHaveLength(0);
 		expect(prompts.all).toHaveLength(0);
+		expect(skills.all).toHaveLength(0);
 	});
 
 	test("loads *.instructions.md from a custom dir as Copilot-scoped rules (#2731)", async () => {
