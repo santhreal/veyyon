@@ -216,7 +216,7 @@ remote_install_deps() {
 			--user '${REMOTE_IDS}' \
 			--cap-drop=ALL --security-opt=no-new-privileges \
 			--mount 'type=bind,src=${tree},dst=${REMOTE_GUEST_REPO}' \
-			--tmpfs /home:rw,mode=0755 --tmpfs /tmp:rw,mode=1777 --tmpfs /sandbox:rw,mode=1777 \
+			--tmpfs /home:rw,nosuid,nodev,exec,mode=0755 --tmpfs /tmp:rw,nosuid,nodev,exec,mode=1777 --tmpfs /sandbox:rw,nosuid,nodev,exec,mode=1777 \
 			-w '${REMOTE_GUEST_REPO}' \
 			-e HOME=/sandbox/home -e BUN_INSTALL_CACHE_DIR=/sandbox/home/.bun/install/cache \
 			--entrypoint /bin/sh '${GUEST_IMAGE}' \
@@ -293,9 +293,9 @@ run_remote() {
 		"--cpus ${VEYYON_SANDBOX_REMOTE_CPUS:-24}" \
 		"--memory ${VEYYON_SANDBOX_REMOTE_MEMORY:-32g}" \
 		"--mount $(printf '%q' "${repo_mount}")" \
-		"--tmpfs /home:rw,mode=0755" \
-		"--tmpfs /tmp:rw,mode=1777" \
-		"--tmpfs /sandbox:rw,mode=1777" \
+		"--tmpfs /home:rw,nosuid,nodev,exec,mode=0755" \
+		"--tmpfs /tmp:rw,nosuid,nodev,exec,mode=1777" \
+		"--tmpfs /sandbox:rw,nosuid,nodev,exec,mode=1777" \
 		"-w ${REMOTE_GUEST_REPO}")"
 	for name in "${env_args[@]}"; do
 		[ "$name" = "-e" ] && continue

@@ -102,15 +102,22 @@ function runDriver(args: string[], env: Record<string, string> = {}): Run {
  * PATH. The bwrap probe is written to RUN bubblewrap rather than to look for it,
  * because the sysctls on this workstation advertise a capability AppArmor then
  * refuses, and the shim is how that behaviour gets asserted: the reason the probe
- * reports has to name the shim, which it can only do by having executed it.
+ * reports has to quote what the shim SAID, which it can only do by having run it.
+ *
+ * It used to assert the shim's PATH instead, and that only ever passed when the
+ * exec failed: the driver quotes bubblewrap's stderr, so the path appears solely
+ * in an `EACCES ... /tmp/<dir>/bwrap` message. The docker rung mounted its tmpfs
+ * noexec, which produced exactly that, so the assertion was green on the rung
+ * where the shim never ran and red on the three where it did.
  */
-function noRungEnv(): { env: Record<string, string>; binDir: string } {
+const SHIM_SAID = "shimmed: no user namespace here";
+
+function noRungEnv(): { env: Record<string, string> } {
 	const binDir = mkdtempSync(path.join(os.tmpdir(), "rung-contract-bin-"));
 	const shim = path.join(binDir, "bwrap");
-	writeFileSync(shim, "#!/bin/sh\necho 'shimmed: no user namespace here' >&2\nexit 1\n");
+	writeFileSync(shim, `#!/bin/sh\necho '${SHIM_SAID}' >&2\nexit 1\n`);
 	chmodSync(shim, 0o755);
 	return {
-		binDir,
 		env: {
 			PATH: `${binDir}:${process.env.PATH ?? ""}`,
 			DOCKER_HOST: "unix:///nonexistent/rung-contract-no-docker.sock",
@@ -148,17 +155,18 @@ describe("the rung table", () => {
 	 * that actually failed. A bare "unavailable" sends the reader to read four shell
 	 * files to discover that a socket is missing.
 	 *
-	 * The bwrap case is the strong one: the reason must name the shim on PATH, which
-	 * the probe can only report by having executed it. A probe rewritten to trust
-	 * `command -v` would find the shim, call the rung available, and this goes red.
+	 * The bwrap case is the strong one: the reason must quote the shim's own output,
+	 * which the probe can only report by having executed it. A probe rewritten to
+	 * trust `command -v` would find the shim, call the rung available, and this goes
+	 * red.
 	 */
 	it("prints a reason naming what it actually tried", () => {
-		const { env, binDir } = noRungEnv();
+		const { env } = noRungEnv();
 		const probe = runDriver(["--probe"], env);
 
 		expect(reasonFor(probe.stdout, "docker")).toMatch(/docker (daemon not reachable|not on PATH)/);
 		expect(reasonFor(probe.stdout, "remote")).toMatch(/(is not readable|cannot reach|not on PATH)/);
-		expect(reasonFor(probe.stdout, "bwrap")).toContain(path.join(binDir, "bwrap"));
+		expect(reasonFor(probe.stdout, "bwrap")).toContain(SHIM_SAID);
 	});
 });
 
