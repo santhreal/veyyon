@@ -219,6 +219,13 @@ describe("createAgentSession cwd after /move", () => {
 	/**
 	 * TTSR matchers are executable project policy. Keeping the source matcher
 	 * after a cwd move leaks policy even if the visible prompt has been rebuilt.
+	 *
+	 * The cwd-scoped rule source is a project-INSTALLED extension package
+	 * (`.veyyon/plugins/node_modules/<pkg>/rules/`), not a checked-in
+	 * `<cwd>/.veyyon/rules/`. eea8680b6 / 0adabd386 removed the project layer from
+	 * `getConfigDirs`, so a repository's own `.veyyon/rules/` is never read: the
+	 * operator installing a plugin is the grant, the checkout is not. Rediscovery
+	 * on move is still the contract, because the installed set differs per project.
 	 */
 	it("replaces project TTSR rules when the session moves", async () => {
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `pi-sdk-rules-cwd-${Snowflake.next()}-`));
@@ -227,16 +234,30 @@ describe("createAgentSession cwd after /move", () => {
 		const cwdB = path.join(tempDir, "cwd-b");
 		const agentDir = path.join(tempDir, "agent");
 
-		const writeRule = (project: string, name: string, condition: string): void => {
-			const rulePath = path.join(project, ".veyyon", "rules", `${name}.md`);
-			fs.mkdirSync(path.dirname(rulePath), { recursive: true });
+		const installProjectRule = (project: string, packageName: string, name: string, condition: string): void => {
+			const pluginsDir = path.join(project, ".veyyon", "plugins");
+			const packageDir = path.join(pluginsDir, "node_modules", packageName);
+			fs.mkdirSync(path.join(packageDir, "src"), { recursive: true });
+			fs.mkdirSync(path.join(packageDir, "rules"), { recursive: true });
 			fs.writeFileSync(
-				rulePath,
+				path.join(packageDir, "package.json"),
+				JSON.stringify({ name: packageName, veyyon: { extensions: ["./src/main.ts"] } }),
+			);
+			fs.writeFileSync(path.join(packageDir, "src", "main.ts"), "export default function () {}\n");
+			fs.writeFileSync(
+				path.join(packageDir, "rules", `${name}.md`),
 				`---\ndescription: ${name}\ncondition: ${condition}\nscope: [text]\n---\n${name} body\n`,
 			);
+			fs.writeFileSync(
+				path.join(pluginsDir, "veyyon-plugins.lock.json"),
+				JSON.stringify({
+					plugins: { [packageName]: { version: "1.0.0", enabled: true, enabledFeatures: null } },
+					settings: {},
+				}),
+			);
 		};
-		writeRule(cwdA, "source-only", "SOURCE_TRIGGER");
-		writeRule(cwdB, "destination-only", "DESTINATION_TRIGGER");
+		installProjectRule(cwdA, "project-a-rules", "source-only", "SOURCE_TRIGGER");
+		installProjectRule(cwdB, "project-b-rules", "destination-only", "DESTINATION_TRIGGER");
 		fs.mkdirSync(agentDir, { recursive: true });
 
 		globals = beginSettingsTest();
