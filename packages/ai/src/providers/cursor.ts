@@ -20,6 +20,10 @@ import {
 	ConversationStateStructureSchema,
 	ConversationStepSchema,
 	ConversationTurnStructureSchema,
+	type CursorRule,
+	CursorRuleSchema,
+	CursorRuleTypeGlobalSchema,
+	CursorRuleTypeSchema,
 	DeleteErrorSchema,
 	DeleteRejectedSchema,
 	DeleteResultSchema,
@@ -118,6 +122,7 @@ import type {
 	CursorExecHandlerResult,
 	CursorExecHandlers,
 	CursorMcpCall,
+	CursorRuleInput,
 	CursorShellStreamCallbacks,
 	CursorToolResultHandler,
 	ImageContent,
@@ -200,6 +205,8 @@ export interface CursorOptions extends StreamOptions {
 	conversationId?: string;
 	execHandlers?: CursorExecHandlers;
 	onToolResult?: CursorToolResultHandler;
+	/** Operator-owned instruction files for the `requestContext.rules` channel (see {@link CursorRuleInput}). */
+	cursorRules?: CursorRuleInput[];
 	/** Wire model uid selected after thinking-effort routing (see mapOptionsForApi). */
 	wireModelId?: string;
 }
@@ -416,6 +423,9 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			);
 			conversationStateCache.set(conversationId, conversationState);
 			const requestContextTools = buildMcpToolDefinitions(context.tools);
+			// Composed once per request: the system prompt plus the caller's operator-owned
+			// files, delivered when the server asks for the request context (see buildCursorRules).
+			const requestContextRules = buildCursorRules(context.systemPrompt, options?.cursorRules);
 
 			const baseUrl = model.baseUrl || CURSOR_API_URL;
 			const requestPath = "/agent.v1.AgentService/Run";
@@ -559,6 +569,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 							options?.onToolResult,
 							usageState,
 							requestContextTools,
+							requestContextRules,
 							onConversationCheckpoint,
 							{ systemPromptBlobIds, onFatal: failTurn },
 						).catch(error => {
@@ -744,6 +755,7 @@ export async function handleServerMessage(
 	onToolResult: CursorToolResultHandler | undefined,
 	usageState: UsageState,
 	requestContextTools: McpToolDefinition[],
+	requestContextRules: CursorRule[],
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
 	blobLookup?: CursorBlobLookup,
 ): Promise<void> {
@@ -770,6 +782,7 @@ export async function handleServerMessage(
 				execHandlers,
 				onToolResult,
 				requestContextTools,
+				requestContextRules,
 				output,
 				stream,
 				state,
@@ -1168,6 +1181,7 @@ async function handleExecServerMessage(
 	execHandlers: CursorExecHandlers | undefined,
 	onToolResult: CursorToolResultHandler | undefined,
 	requestContextTools: McpToolDefinition[],
+	requestContextRules: CursorRule[],
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 	state: BlockState,
@@ -1176,15 +1190,23 @@ async function handleExecServerMessage(
 	log("exec", "dispatch", { execCase, execId: execMsg.execId, hasHandlers: !!execHandlers });
 	if (execCase === "requestContextArgs") {
 		const requestContext = create(RequestContextSchema, {
-			// Empty DELIBERATELY, not by omission. `CursorRule` is Cursor's own repo-rule mechanism:
-			// `full_path` + `content` + a `global | file_globbed | agent_fetched | manually_attached`
-			// type, i.e. `.cursor/rules/*.mdc` and the AGENTS.md a repository ships. Veyyon does not
-			// deliver instructions through it for two reasons. Its context files are already assembled
-			// into `context.systemPrompt` and travel as the system-prompt blobs above, so filling this
-			// too would send the same text twice and pay for it twice. And a repository may not
-			// configure the agent, which is exactly what populating this field from checked-in files
-			// would restore through a side door.
-			rules: [],
+			// Populated, DELIBERATELY. `requestContext.rules` is the only channel Cursor's
+			// server honors for client instructions: the system-prompt blobs at the
+			// `rootPromptMessagesJson` head are requested and then replaced by the server's
+			// own canned prompt (wire capture, 2026-08: the checkpoint head rebuilt as
+			// [Cursor's system prompt, an empty bookkeeping blob, the user turn], our two
+			// blobs nowhere in it), so a veyyon turn ran with zero veyyon context. The
+			// system prompt therefore goes here as one `global` rule, followed by the
+			// operator-owned context files the caller composed (veyyon's global and profile
+			// AGENTS.md, one rule per file with its real path, the shape cursor-agent itself
+			// uses for AGENTS.md). What must NEVER appear here is repository content
+			// (`.cursor/rules/*.mdc`, a checked-in AGENTS.md): a repository may not configure
+			// the agent. That exclusion cannot be re-implemented at this layer, because the
+			// provider never reads the filesystem: rule content arrives pre-composed from
+			// the caller, which owns provenance. Emptying this field again reverts every
+			// Cursor model to Cursor's canned CLI prompt with none of the operator's
+			// instructions; do not.
+			rules: requestContextRules,
 			repositoryInfo: [],
 			tools: requestContextTools,
 			gitRepos: [],
@@ -1202,7 +1224,19 @@ async function handleExecServerMessage(
 		});
 
 		sendExecClientMessage(h2Request, execMsg, "requestContextResult", requestContextResult);
-		log("execClient", "requestContextResult");
+		log("execClient", "requestContextResult", {
+			rules: requestContextRules.map(rule => ({
+				fullPath: rule.fullPath,
+				bytes: Buffer.byteLength(rule.content, "utf8"),
+			})),
+			// The content itself only at the verbose level: it is the operator's own
+			// instruction text, and the checkpoint echo already carries it, but a level-1
+			// log should stay a shape summary.
+			ruleText:
+				$env.DEBUG_CURSOR === "2"
+					? requestContextRules.map(rule => ({ fullPath: rule.fullPath, content: rule.content }))
+					: undefined,
+		});
 		return;
 	}
 
@@ -2677,6 +2711,58 @@ export function buildCursorSystemPromptJsons(systemPrompt: readonly string[] | u
 		return [JSON.stringify({ role: "system", content: "You are a helpful assistant." })];
 	}
 	return systemPrompts.map(content => JSON.stringify({ role: "system", content }));
+}
+
+/**
+ * `full_path` of the rule that carries the session system prompt. `CursorRule.full_path`
+ * is documented as the absolute path of the rule's file, but the system prompt is
+ * compiled, not file-backed, so it gets a stable scheme path instead: it cannot collide
+ * with a real workspace file and reads as provenance wherever the server renders it.
+ */
+const CURSOR_SYSTEM_PROMPT_RULE_PATH = "veyyon://system-prompt.mdc";
+
+function createCursorRule(fullPath: string, content: string): CursorRule {
+	return create(CursorRuleSchema, {
+		fullPath,
+		content,
+		// `global` (always-apply) with the default source is what cursor-agent itself sends
+		// for AGENTS.md and .cursorrules: operator-level instructions, one rule per source.
+		// Verified against the cursor-agent bundle, whose AGENTS.md walk builds exactly
+		// this shape with the file's real absolute path.
+		type: create(CursorRuleTypeSchema, { type: { case: "global", value: create(CursorRuleTypeGlobalSchema, {}) } }),
+		source: 0,
+	});
+}
+
+/**
+ * Compose the `requestContext.rules` payload: the session system prompt as one rule,
+ * followed by the caller-supplied file units in caller order (the coding-agent hands
+ * them over in ascending authority, so the operator's global file keeps the last,
+ * highest-recency slot, same as in the prompt).
+ *
+ * Rules are Cursor's only honored client-instruction channel: the system-prompt blobs
+ * at the `rootPromptMessagesJson` head are fetched and then replaced by the server's
+ * own prompt (wire capture, 2026-08), so without this the model runs with none of the
+ * caller's instructions. One rule per unit, not one joined blob, so the server's
+ * content-keyed rule cache stays warm for every file that did not change.
+ *
+ * Exported for tests.
+ */
+export function buildCursorRules(
+	systemPrompt: readonly string[] | undefined,
+	inputRules: readonly CursorRuleInput[] | undefined,
+): CursorRule[] {
+	const rules: CursorRule[] = [];
+	const systemPrompts = normalizeSystemPrompts(systemPrompt);
+	if (systemPrompts.length > 0) {
+		rules.push(createCursorRule(CURSOR_SYSTEM_PROMPT_RULE_PATH, systemPrompts.join("\n\n")));
+	}
+	for (const input of inputRules ?? []) {
+		// An empty file is no instruction. cursor-agent skips empty AGENTS.md the same way.
+		if (input.content.trim().length === 0) continue;
+		rules.push(createCursorRule(input.fullPath, input.content));
+	}
+	return rules;
 }
 
 function buildRootPromptMessagesJson(

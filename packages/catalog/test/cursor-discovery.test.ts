@@ -126,6 +126,22 @@ describe("cursor discovery input modalities (issue #4726)", () => {
 		expect(composerTier?.reasoning).toBe(composerBase?.reasoning ?? false);
 	});
 
+	it("does not inherit the base's thinking surface or wire id on a tier-suffixed id", async () => {
+		const byId = await discover();
+		// The bundled gpt-5.4 reference is the collapsed family row: it carries
+		// effortRouting and a requestModelId pointing at the -low sibling. A
+		// future tier id pins its own effort in its own id, so inheriting either
+		// would offer a control that silently routes to a sibling.
+		const tier = byId.get("gpt-5.4-max");
+		expect(tier).toBeDefined();
+		expect(tier?.reasoning).toBe(true);
+		expect(tier?.thinking).toBeUndefined();
+		expect(tier?.requestModelId).toBeUndefined();
+		// The exact-match path is untouched: the bundled collapsed row keeps
+		// its routed surface.
+		expect(byId.get("claude-4.5-opus-high")?.thinking?.effortRouting).toBeDefined();
+	});
+
 	it("preserves fallback defaults for reference-less models", async () => {
 		const byId = await discover();
 		const spec = byId.get("claude-opus-4-8-99999999");

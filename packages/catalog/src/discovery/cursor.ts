@@ -319,10 +319,30 @@ function normalizeCursorModel(
 	// with the base's reasoning flag, limits, and modalities instead of
 	// unknown-model defaults (a tier IS the base model at a fixed effort).
 	const tierBaseId = stripEffortTierSuffix(id);
-	const reference = references.get(id) ?? (tierBaseId !== undefined ? references.get(tierBaseId) : undefined);
+	const exactReference = references.get(id);
+	const reference = exactReference ?? (tierBaseId !== undefined ? references.get(tierBaseId) : undefined);
 	const reasoning = Boolean(details.thinkingDetails) || reference?.reasoning === true;
 
 	if (reference) {
+		// A tier-suffixed id (`gpt-5.5-low`) inherits its BASE model's reference
+		// for limits, modalities, and the reasoning flag: a tier IS the base
+		// model at a fixed effort. The thinking surface and wire id are NOT
+		// inherited: the effort is baked into this row's own id, so carrying the
+		// base's ladder (or its default route) would offer a control that does
+		// nothing and could send a sibling's wire id. Collapse re-derives the
+		// family surface from its hand table when the tier folds into one.
+		if (exactReference === undefined) {
+			const { thinking: _thinking, requestModelId: _requestModelId, reasoningOptions: _options, ...tierRest } =
+				reference;
+			return {
+				...tierRest,
+				id,
+				name,
+				baseUrl: baseUrlOverride ?? reference.baseUrl,
+				reasoning,
+				cursorMaxMode: details.maxMode,
+			};
+		}
 		return {
 			...reference,
 			id,

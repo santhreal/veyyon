@@ -201,7 +201,25 @@ export function configuredThinkingLevelsForModel(model: Model | undefined): read
 	if (!model) return CONFIGURED_THINKING_LEVELS;
 	const supported = getSupportedEfforts(model);
 	if (supported.length === 0) return [];
-	return [...(model.thinking?.requiresEffort ? [] : [ThinkingLevel.Off]), AUTO_THINKING, ...supported];
+	// On a routed row (effort lives in sibling model ids, not a wire field),
+	// `off` and `auto` only mean something when an off sibling exists: without
+	// an `off` route both silently send the default wire id with thinking
+	// state unchanged, which reads as "off" doing nothing at all.
+	const routing = model.thinking?.effortRouting;
+	const offRoutable = routing === undefined || routing.off !== undefined;
+	const offerOff = offRoutable && model.thinking?.requiresEffort !== true;
+	return [...(offerOff ? [ThinkingLevel.Off] : []), ...(offRoutable ? [AUTO_THINKING] : []), ...supported];
+}
+
+/**
+ * Bracketed argument hint for `/thinking` listing the choices the model
+ * actually accepts (`[off|auto|high|max]`), derived from the same row read as
+ * every other surface. Undefined when the model exposes no effort control.
+ */
+export function thinkingLevelArgHint(model: Model | undefined): string | undefined {
+	if (!model) return undefined;
+	const levels = configuredThinkingLevelsForModel(model);
+	return levels.length === 0 ? undefined : `[${levels.join("|")}]`;
 }
 
 /**
