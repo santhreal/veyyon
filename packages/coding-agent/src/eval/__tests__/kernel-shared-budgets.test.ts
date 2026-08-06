@@ -27,6 +27,7 @@
 import { describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
+import { namedImportsFrom } from "@veyyon/utils/module-reach";
 import {
 	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
 	KERNEL_INTERRUPT_ESCALATION_MS,
@@ -165,19 +166,25 @@ describe("no kernel retypes a shared budget", () => {
 		}
 	});
 
-	/** And each kernel takes both budgets and both helpers from the owner. */
+	/**
+	 * And each kernel takes both budgets and both helpers from the owner.
+	 *
+	 * Asserted against the PARSED import clause rather than against the file's text. `toContain(name)` is
+	 * satisfied by a doc comment that merely mentions `KERNEL_SHUTDOWN_GRACE_MS`, and by a kernel that
+	 * names the symbol while declaring its own copy beside it; the parsed clause is satisfied only by an
+	 * import that actually binds the owner's value.
+	 */
 	it("has every kernel importing the owner's budgets and conventions", async () => {
 		for (const kernel of KERNELS) {
 			const text = await Bun.file(path.join(EVAL_SRC, kernel)).text();
-			for (const name of [
-				"KERNEL_SHUTDOWN_GRACE_MS",
-				"KERNEL_INTERRUPT_ESCALATION_MS",
-				"kernelIpcTraceEnvVar",
-				"kernelRunnerCacheDir",
-			]) {
-				expect(text).toContain(name);
-			}
-			expect(text).toMatch(/from "\.\.\/kernel-base";/);
+			expect(namedImportsFrom(text, "../kernel-base"), `${kernel} imports from the owner`).toEqual(
+				expect.arrayContaining([
+					"KERNEL_SHUTDOWN_GRACE_MS",
+					"KERNEL_INTERRUPT_ESCALATION_MS",
+					"kernelIpcTraceEnvVar",
+					"kernelRunnerCacheDir",
+				]),
+			);
 		}
 	});
 
@@ -188,7 +195,6 @@ describe("no kernel retypes a shared budget", () => {
 	 */
 	it("has the Julia executor's session reset using the shared shutdown grace", async () => {
 		const text = await Bun.file(path.join(EVAL_SRC, "jl/executor.ts")).text();
-		expect(text).toContain("KERNEL_SHUTDOWN_GRACE_MS");
-		expect(text).toMatch(/from "\.\.\/kernel-base";/);
+		expect(namedImportsFrom(text, "../kernel-base")).toContain("KERNEL_SHUTDOWN_GRACE_MS");
 	});
 });
