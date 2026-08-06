@@ -103,6 +103,40 @@ export function getRemoteCompactionPreserveData(
 	return data as RemoteCompactionPreserveData;
 }
 
+/**
+ * The previously stored window a NEW server-side compaction may chain in
+ * front of its span, or undefined when the compaction must start fresh.
+ *
+ * WHY identity decides this, and not the mere presence of a window: a
+ * compacted window is not portable data. Its `compaction` item is an opaque
+ * `encrypted_content` blob that only the host which minted it can decrypt,
+ * and because the endpoint is documented as fully stateless that blob IS the
+ * conversation state — there is nothing else for a different host to read it
+ * with. So a window is bound to the exact provider and api that produced it.
+ * A session that switches hosts mid-run (openai -> azure, or the reverse)
+ * still has the old window sitting in `previousPreserveData`, and sending it
+ * to the new host buys a guaranteed provider rejection: a wasted compaction
+ * round trip, a user-visible warning, and a fall back to local compaction at
+ * the exact moment the context is overflowing. Dropping the window instead
+ * costs only the extra span the fresh compaction has to read, and the
+ * readable summary of that span is carried forward regardless.
+ *
+ * This is the write-side twin of the read-side check: replay drops a foreign
+ * window in `getOpenAIResponsesHistoryPayload`, and `remoteCompactionProviderPayload`
+ * keys on `data.provider` for the same reason. Both directions gate on the
+ * `provider`/`api` this module records precisely so a window is never read by
+ * a model that cannot read it.
+ */
+export function chainableRemoteCompactionWindow(
+	preserveData: Record<string, unknown> | undefined,
+	model: { provider: string; api: string },
+): Array<Record<string, unknown>> | undefined {
+	const data = getRemoteCompactionPreserveData(preserveData);
+	if (!data) return undefined;
+	if (data.provider !== model.provider || data.api !== model.api) return undefined;
+	return data.window;
+}
+
 /** Responses-family apis whose providers replay a stored window through the native-history seam. */
 const REMOTE_COMPACTION_REPLAY_APIS: Record<string, true> = {
 	"openai-responses": true,
