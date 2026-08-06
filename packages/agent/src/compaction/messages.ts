@@ -73,6 +73,13 @@ export interface CompactionSummaryMessage {
 	shortSummary?: string;
 	tokensBefore: number;
 	providerPayload?: ProviderPayload;
+	/**
+	 * Attribution when the provider compacted server-side, e.g.
+	 * `openai/gpt-5.6-sol`. Set from the entry's remote-compaction data at
+	 * rebuild; the divider shows it so the operator is never left believing a
+	 * configured local compaction model did a compaction the provider did.
+	 */
+	compactedBy?: string;
 	/** Legacy runtime-only archive blocks from the removed image-archive engine:
 	 *  old text region, imaged middle, then new text region. Never written by new
 	 *  sessions; retained so old persisted summaries still deserialize and count. */
@@ -131,6 +138,7 @@ export function createCompactionSummaryMessage(
 	images?: ImageContent[],
 	blocks?: (TextContent | ImageContent)[],
 	warning?: string,
+	compactedBy?: string,
 ): CompactionSummaryMessage {
 	const imageBlocks =
 		blocks?.filter((block): block is ImageContent => block.type === "image") ??
@@ -144,6 +152,7 @@ export function createCompactionSummaryMessage(
 		blocks: blocks && blocks.length > 0 ? blocks : undefined,
 		images: imageBlocks && imageBlocks.length > 0 ? imageBlocks : undefined,
 		warning,
+		compactedBy,
 		timestamp: new Date(timestamp).getTime(),
 	};
 }

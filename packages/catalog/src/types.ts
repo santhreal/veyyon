@@ -85,6 +85,31 @@ export interface ThinkingConfig {
 	requiresEffort?: boolean;
 }
 
+/**
+ * Discovery-declared reasoning surface, mapped from models.dev
+ * `reasoning_options` (see `mapModelsDevToModels`). When present on a spec it
+ * is authoritative over the identity-derived effort ladder: the endpoint told
+ * us which efforts it accepts, so the hand-maintained identity ladder is only
+ * the fallback for rows discovery says nothing about. The thinking MODE and
+ * wire value mapping still derive from identity/compat; models.dev carries
+ * levels, not transports.
+ */
+export interface ModelReasoningOptions {
+	/**
+	 * Effort levels the endpoint accepts (discovery `effort` values with the
+	 * off sentinel `none`/`null` removed). Present and non-empty means the
+	 * control offers exactly these levels.
+	 */
+	efforts?: readonly Effort[];
+	/**
+	 * Discovery explicitly reports no selectable efforts: an empty options
+	 * list (always-thinks SKUs like `kimi-k2-thinking`) or a binary on/off
+	 * toggle with no levels. The row keeps `reasoning: true` but exposes no
+	 * effort control at all.
+	 */
+	noEffortControl?: boolean;
+}
+
 // `Provider` is any provider-id string; `KnownProvider` (re-exported above) enumerates
 // the built-in model providers from the catalog descriptor table.
 export type Provider = string;
@@ -335,6 +360,13 @@ export interface OpenAICompat {
 	supportsImageDetailOriginal?: boolean;
 	/** Whether streamed reasoning deltas for the same field may repeat the full cumulative text snapshot. Default: false. */
 	reasoningDeltasMayBeCumulative?: boolean;
+	/**
+	 * Whether the host serves the Responses server-side compaction endpoint
+	 * (`POST /responses/compact`, OpenAI Compaction guide). Default:
+	 * auto-detected (official api.openai.com and Azure OpenAI v1 hosts). Set
+	 * true to opt a compatible gateway in, false to opt out.
+	 */
+	supportsServerCompaction?: boolean;
 	/** Strip leaked DeepSeek chat-template special tokens from visible content deltas. Default: auto-detected. */
 	stripDeepseekSpecialTokens?: boolean;
 	/** Heal leaked chat-template/tool-call/thinking markup from visible content deltas. Default: auto-detected. */
@@ -547,6 +579,7 @@ export type ResolvedOpenAICompat = ResolvedOpenAISharedCompat &
 			| "stripDeepseekSpecialTokens"
 			| "streamMarkupHealingPattern"
 			| "reasoningDeltasMayBeCumulative"
+			| "supportsServerCompaction"
 			| "emptyLengthFinishIsContextError"
 			| "usesOpenAIToolCallIdLimit"
 			| "promptCacheSessionHeader"
@@ -589,6 +622,13 @@ export interface ResolvedOpenAIResponsesCompat extends ResolvedOpenAISharedCompa
 	strictResponsesPairing: boolean;
 	supportsImageDetailOriginal: boolean;
 	supportsObfuscationOptOut: boolean;
+	/**
+	 * The host serves `POST /responses/compact` (OpenAI Compaction guide:
+	 * official api.openai.com, and Azure OpenAI's v1 API per Microsoft Learn).
+	 * Server-side compaction is resolved from this flag plus the api family,
+	 * so a second compatible host opts in with this data entry alone.
+	 */
+	supportsServerCompaction: boolean;
 	streamIdleTimeoutMs?: number;
 }
 
@@ -641,6 +681,26 @@ export interface DevinCompat {
 /** Fully-resolved devin-agent compat view. */
 export type ResolvedDevinCompat = Required<DevinCompat>;
 
+/**
+ * Compatibility settings for the cursor-agent API. Cursor's transport carries
+ * no reasoning/effort field: effort is selected by routing to a tier-suffixed
+ * sibling model id (the `thinking.effortRouting` baked by variant-collapse),
+ * exactly like Cascade. An uncollapsed Cursor row therefore has no
+ * controllable thinking surface, whatever its id looks like.
+ */
+export interface CursorCompat {
+	/**
+	 * Trust only explicit `thinking` metadata; never derive a thinking surface
+	 * from model identity. A reasoning model with no explicit routed thinking
+	 * resolves to `thinking: undefined` (`reasoning: true`, no controllable
+	 * effort) instead of a fabricated minimal/low/medium/high ladder.
+	 */
+	trustExplicitThinkingOnly?: boolean;
+}
+
+/** Fully-resolved cursor-agent compat view. */
+export type ResolvedCursorCompat = Required<CursorCompat>;
+
 /** Sparse, user-authored compat overrides for a given API (models.json / config vocabulary). */
 export type CompatConfigOf<TApi extends Api> = TApi extends
 	| "openai-completions"
@@ -653,7 +713,9 @@ export type CompatConfigOf<TApi extends Api> = TApi extends
 		? AnthropicCompat
 		: TApi extends "devin-agent"
 			? DevinCompat
-			: undefined;
+			: TApi extends "cursor-agent"
+				? CursorCompat
+				: undefined;
 
 /** Resolved compat for a given API: complete record, materialized once by `buildModel`. */
 export type CompatOf<TApi extends Api> = TApi extends "openrouter"
@@ -666,7 +728,9 @@ export type CompatOf<TApi extends Api> = TApi extends "openrouter"
 				? ResolvedAnthropicCompat
 				: TApi extends "devin-agent"
 					? ResolvedDevinCompat
-					: undefined;
+					: TApi extends "cursor-agent"
+						? ResolvedCursorCompat
+						: undefined;
 
 // Model interface for the unified model system
 export interface Model<TApi extends Api = Api> {
@@ -774,6 +838,12 @@ export interface Model<TApi extends Api = Api> {
 	priority?: number;
 	/** Canonical thinking capability metadata for this model. */
 	thinking?: ThinkingConfig;
+	/**
+	 * Discovery-declared reasoning surface (models.dev `reasoning_options`),
+	 * carried as data so generation-time re-baking and runtime `buildModel`
+	 * resolve the same ladder. See {@link ModelReasoningOptions}.
+	 */
+	reasoningOptions?: ModelReasoningOptions;
 	/**
 	 * Fully-resolved compatibility record, materialized once by `buildModel`.
 	 * Protocol handlers read fields; they never detect, resolve, or allocate.

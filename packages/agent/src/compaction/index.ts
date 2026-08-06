@@ -10,6 +10,7 @@ export * from "./legacy-provider-native";
 export * from "./legacy-snapcompact-archive";
 export * from "./messages";
 export * from "./pruning";
+export * from "./remote-compaction";
 export * from "./remote-summarizer";
 export * from "./shake";
 export * from "./threshold";

@@ -351,6 +351,11 @@ function buildParams(
 		strictResponsesPairing: true,
 		supportsImageDetailOriginal: model.compat.supportsImageDetailOriginal,
 		supportsDeveloperRole: model.compat.supportsDeveloperRole,
+		// replay stays off (Azure assistant payloads are not spliced today), but
+		// declaring the policy opens the compaction-window seam: a stored
+		// server-side compaction window on a summary message replays in place of
+		// its summary text, exactly as on the official OpenAI host.
+		nativeHistory: { replay: false, filterReasoning: model.compat.filterReasoningHistory },
 		systemRole,
 		includeThinkingSignatures: true,
 		developerStringContent: true,

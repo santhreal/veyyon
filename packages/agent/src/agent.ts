@@ -9,6 +9,7 @@ import type {
 	CacheEnforcement,
 	Context,
 	CursorExecHandlers,
+	CursorRuleInput,
 	CursorToolResultHandler,
 	Effort,
 	ImageContent,
@@ -309,6 +310,15 @@ export interface AgentOptions {
 	 */
 	cursorOnToolResult?: CursorToolResultHandler;
 
+	/**
+	 * Operator-owned instruction files for Cursor's `requestContext.rules` channel,
+	 * resolved once per turn so a mid-session context-file reload (`/reload`, `/move`)
+	 * reaches the next request. The provider adds the session system prompt itself;
+	 * these are the file-backed units (the operator's global and profile AGENTS.md),
+	 * and repository content must never appear in them (see `CursorRuleInput`).
+	 */
+	cursorRulesResolver?: () => CursorRuleInput[];
+
 	/** Current working directory used by local tool execution. */
 	cwd?: string;
 	/**
@@ -411,6 +421,7 @@ export class Agent {
 	#getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 	#cursorExecHandlers?: CursorExecHandlers;
 	#cursorOnToolResult?: CursorToolResultHandler;
+	#cursorRulesResolver?: () => CursorRuleInput[];
 	#cwd?: string;
 	#cwdResolver?: () => string | undefined;
 
@@ -496,6 +507,7 @@ export class Agent {
 		this.#getToolContext = opts.getToolContext;
 		this.#cursorExecHandlers = opts.cursorExecHandlers;
 		this.#cursorOnToolResult = opts.cursorOnToolResult;
+		this.#cursorRulesResolver = opts.cursorRulesResolver;
 		this.#cwd = opts.cwd;
 		this.#cwdResolver = opts.cwdResolver;
 		this.#kimiApiFormat = opts.kimiApiFormat;
@@ -1239,6 +1251,7 @@ export class Agent {
 			},
 			cursorExecHandlers: this.#cursorExecHandlers,
 			cursorOnToolResult,
+			cursorRules: this.#cursorRulesResolver?.(),
 			cwd: this.#cwd,
 			getCwd: this.#cwdResolver,
 			transformToolCallArguments: this.#transformToolCallArguments,
