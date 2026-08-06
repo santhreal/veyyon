@@ -189,11 +189,9 @@ describe("loadMode against the shipped default configuration", () => {
 		expect(discoverable).toEqual([
 			"ast_edit",
 			"ast_grep",
-			"browser",
 			"debug",
 			"grep",
 			"job",
-			"lsp",
 			"set_cwd",
 			"task",
 			"todo",

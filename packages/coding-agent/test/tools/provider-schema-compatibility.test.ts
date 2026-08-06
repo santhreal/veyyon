@@ -24,7 +24,11 @@ function createTestSession(): ToolSession {
 		hasUI: true,
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
-		settings: Settings.isolated(),
+		// `browser` and `lsp` ship off, so the default settings would drop them from
+		// `createTools` and silently shrink the surface this suite checks. Provider
+		// schema compatibility is a property of the tool, not of whether it is on by
+		// default, so the fixture turns both on to keep them covered.
+		settings: Settings.isolated({ "browser.enabled": true, "lsp.enabled": true }),
 	};
 }
 
