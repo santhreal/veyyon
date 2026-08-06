@@ -94,4 +94,16 @@ describe("an extension setting a durable thinking level", () => {
 		expect(session.thinkingLevel).toBe(Effort.High);
 		expect(settings.get("defaultEffort")).toEqual({});
 	});
+
+	it("saves it even when the session already sits at that level", () => {
+		// Pinning the level you can already see is the ordinary way to ask for a
+		// default, and it was the one request that did nothing: the write sat
+		// inside the `isChanging` branch next to event emission and cache
+		// invalidation, which are legitimately change-gated. Durability is not.
+		expect(session.thinkingLevel).toBe(Effort.Low);
+
+		runtimeSetThinkingLevel(Effort.Low, true);
+
+		expect(settings.get("defaultEffort")).toEqual({ [ANY_MODEL_EFFORT_KEY]: Effort.Low });
+	});
 });

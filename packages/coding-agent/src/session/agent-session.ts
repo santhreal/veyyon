@@ -12087,12 +12087,17 @@ export class AgentSession {
 		this.#thinkingLevel = effectiveLevel;
 		this.#applyThinkingLevelToAgent(effectiveLevel);
 
+		// Durability is not a change notification. Pinning the level the session
+		// already sits at is the ordinary way to ask for a default, so this write
+		// cannot share the branch guarding event emission, the transcript entry,
+		// and cache invalidation, all of which are legitimately change-gated.
+		// `off` stays non-persistable: it is a state to leave, not a default.
+		if (persist && effectiveLevel !== undefined && effectiveLevel !== ThinkingLevel.Off) {
+			this.#persistDefaultEffort(effectiveLevel);
+		}
 		if (isChanging) {
 			this.#clearInheritedProviderPromptCacheKey("thinking-level-change");
 			this.sessionManager.appendThinkingLevelChange(effectiveLevel, effectiveLevel);
-			if (persist && effectiveLevel !== undefined && effectiveLevel !== ThinkingLevel.Off) {
-				this.#persistDefaultEffort(effectiveLevel);
-			}
 			this.#emit({ type: "thinking_level_changed", thinkingLevel: effectiveLevel });
 		}
 	}
