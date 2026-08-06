@@ -14,8 +14,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { checkVerdict, REQUIRED_WORKFLOWS, type RunSummary } from "./release-ship";
+import { checkVerdict, REQUIRED_WORKFLOWS, type RunSummary, runsForSha } from "./release-ship";
 
 function run(workflowName: string, status: string, conclusion = ""): RunSummary {
 	return { workflowName, status, conclusion, url: `https://example.invalid/${workflowName}` };
@@ -158,5 +159,75 @@ describe("REQUIRED_WORKFLOWS", () => {
 			.map(entry => entry.name)
 			.sort();
 		expect(unconditional).toEqual([...REQUIRED_WORKFLOWS].sort());
+	});
+});
+
+/**
+ * WHY. The verdict is only as good as the run list it reads, and the obvious
+ * query returns a list that is not the one you want. `gh run list --commit
+ * <sha>` is every workflow GitHub associates with that SHA, newest first, and
+ * schedules land on main's tip too: `Upstream radar` runs hourly. Asked for
+ * `d406c561` with a 50-run window, GitHub returned 50 `Upstream radar` runs and
+ * neither `CI` nor `Checks`, so the waiter reported "not started" for two
+ * workflows that had already run and FAILED. Raising the limit moves the cliff.
+ * Scoping the query removes it.
+ */
+describe("runsForSha", () => {
+	function withFakeGh(body: string): { dir: string; calls: () => string[] } {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "release-ship-gh-"));
+		const log = path.join(dir, "calls.log");
+		fs.writeFileSync(path.join(dir, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\n${body}\n`, {
+			mode: 0o755,
+		});
+		return {
+			dir,
+			calls: () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n") : []),
+		};
+	}
+
+	it("asks per required workflow, so an unrelated schedule cannot displace a required run", async () => {
+		const fake = withFakeGh(
+			`case "$*" in
+  *"--workflow CI"*) echo '[{"workflowName":"CI","status":"completed","conclusion":"failure","url":"u/ci"}]' ;;
+  *"--workflow Checks"*) echo '[{"workflowName":"Checks","status":"completed","conclusion":"failure","url":"u/checks"}]' ;;
+  *) echo '[]' ;;
+esac`,
+		);
+		const previousPath = process.env.PATH;
+		process.env.PATH = `${fake.dir}${path.delimiter}${previousPath}`;
+		try {
+			const runs = await runsForSha("deadbeef");
+			// Both required runs are visible, which is the whole point: an
+			// unscoped query returned neither for this exact commit.
+			expect(checkVerdict(runs)).toEqual({
+				state: "failed",
+				failures: [
+					{ workflowName: "CI", status: "completed", conclusion: "failure", url: "u/ci" },
+					{ workflowName: "Checks", status: "completed", conclusion: "failure", url: "u/checks" },
+				],
+			});
+			// One scoped query per required workflow, never one broad one.
+			const calls = fake.calls();
+			expect(calls).toHaveLength(REQUIRED_WORKFLOWS.length);
+			for (const workflow of REQUIRED_WORKFLOWS) {
+				expect(calls.some(call => call.includes(`--workflow ${workflow}`))).toBe(true);
+			}
+			for (const call of calls) expect(call).toContain("--commit deadbeef");
+		} finally {
+			process.env.PATH = previousPath;
+			fs.rmSync(fake.dir, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses output that is not a run list rather than reading it as no runs", async () => {
+		const fake = withFakeGh("echo 'not json'");
+		const previousPath = process.env.PATH;
+		process.env.PATH = `${fake.dir}${path.delimiter}${previousPath}`;
+		try {
+			await expect(runsForSha("deadbeef")).rejects.toThrow();
+		} finally {
+			process.env.PATH = previousPath;
+			fs.rmSync(fake.dir, { recursive: true, force: true });
+		}
 	});
 });
