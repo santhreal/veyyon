@@ -44,6 +44,7 @@
 ### Removed
 
 - The eight dialect-private in-band scanner classes (`GeminiInbandScanner`, `GemmaInbandScanner`, `GLMInbandScanner`, `HarmonyInbandScanner`, `HermesInbandScanner`, `PiNativeInbandScanner`, `Qwen3InbandScanner`, `XmlInbandScanner`) are no longer exported. Each was constructed only by its own dialect definition's `createScanner`, and nothing in the repo — source, tests, or docs — referenced any of them. The `dialect` barrel already excluded the per-dialect modules, so the supported entry point is unchanged: `createInbandScanner(dialect, options)` from `@veyyon/ai/dialect`. `AnthropicInbandScanner`, `DeepSeekInbandScanner` and `ThinkingInbandScanner` stay exported — they have real cross-module consumers.
+- `AUTH_BROKER_API_PREFIX` is gone. Nothing read it, and what it documented was not what the broker does: it called `/v1` the "default bearer-protected route prefix", while the server answers `/v1/healthz` unauthenticated and then requires a bearer for every other path, whatever its prefix. Restoring prefix-scoped gating from that constant would have opened any route outside `/v1`, so a dead constant describing a security model the code does not implement is worth less than nothing.
 
 ## [16.5.2] - 2026-07-14
 

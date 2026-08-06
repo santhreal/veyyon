@@ -128,12 +128,6 @@ export interface SnapshotStreamRemovedEvent {
 /** Discriminated union of every event the snapshot stream emits. */
 export type SnapshotStreamEvent = SnapshotStreamSnapshotEvent | SnapshotStreamEntryEvent | SnapshotStreamRemovedEvent;
 
-/**
- * Default bearer-protected route prefix. The broker exposes `/v1/healthz`
- * unauthenticated for liveness probes; everything else requires a bearer.
- */
-export const AUTH_BROKER_API_PREFIX = "/v1";
-
 /** Default port when none is configured. Loopback-only, no external exposure. */
 export const DEFAULT_AUTH_BROKER_BIND = "127.0.0.1:8765";
 
