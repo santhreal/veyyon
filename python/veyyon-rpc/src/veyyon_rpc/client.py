@@ -447,6 +447,12 @@ class RpcClient:
 
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
         self.stop()
+    def __del__(self) -> None:
+        try:
+            self.stop()
+        except Exception:
+            pass
+
 
     @property
     def stderr(self) -> str:
@@ -475,15 +481,15 @@ class RpcClient:
         self._stopping = False
         self._closed_error = None
         self._ready_received = False
-        self._events.clear()
-        self._async_errors.clear()
-        self._scheduled_agent_runs = 0
-        self._completed_agent_runs = 0
-        self._last_schedule_async_error_index = 0
+        with self._event_condition:
+            self._events.clear()
+            self._async_errors.clear()
+            self._scheduled_agent_runs = 0
+            self._completed_agent_runs = 0
+            self._last_schedule_async_error_index = 0
         self._ui_requests = queue.Queue()
         with self._state_lock:
             self._stderr_chunks.clear()
-        with self._state_lock:
             self._protocol_errors.clear()
             self._listener_errors.clear()
 
@@ -1122,7 +1128,11 @@ class RpcClient:
         with self._event_condition:
             while True:
                 if self._closed_error is not None:
-                    raise RpcProcessExitError(str(self._closed_error))
+                    if isinstance(self._closed_error, RpcError):
+                        raise self._closed_error
+                    raise RpcProcessExitError(
+                        f"RPC process stopped: {self._closed_error}"
+                    ) from self._closed_error
 
                 if start_index < self._events.offset:
                     raise RpcError(
@@ -1300,17 +1310,20 @@ class RpcClient:
             except Exception as exc:
                 if pending_call.cancel_event.is_set():
                     return
-                self._send_notification(
-                    {
-                        "type": "host_tool_result",
-                        "id": request_id,
-                        "result": {
-                            "content": [{"type": "text", "text": str(exc)}],
-                            "details": {},
-                        },
-                        "isError": True,
-                    }
-                )
+                try:
+                    self._send_notification(
+                        {
+                            "type": "host_tool_result",
+                            "id": request_id,
+                            "result": {
+                                "content": [{"type": "text", "text": str(exc)}],
+                                "details": {},
+                            },
+                            "isError": True,
+                        }
+                    )
+                except RpcError:
+                    pass
             finally:
                 with self._state_lock:
                     self._pending_host_tool_calls.pop(request_id, None)
@@ -1415,7 +1428,10 @@ class RpcClient:
             except Exception as exc:
                 if pending.cancel_event.is_set():
                     return
-                self._send_host_uri_error(request_id, str(exc))
+                try:
+                    self._send_host_uri_error(request_id, str(exc))
+                except RpcError:
+                    pass
             finally:
                 with self._state_lock:
                     self._pending_host_uri_requests.pop(request_id, None)
@@ -1624,7 +1640,14 @@ class RpcClient:
                     continue
 
                 try:
-                    payload = cast(JsonObject, json.loads(stripped))
+                    payload = json.loads(stripped)
+                    if not isinstance(payload, dict):
+                        snippet = stripped
+                        if len(snippet) > 240:
+                            snippet = f"{snippet[:237]}..."
+                        raise RpcError(
+                            f"Failed to decode RPC output on line {line_number}: payload is not a JSON object. Frame: {snippet!r}"
+                        )
                 except json.JSONDecodeError as exc:
                     snippet = stripped
                     if len(snippet) > 240:
@@ -1659,7 +1682,16 @@ class RpcClient:
                 # object is genuinely required is the `_ui_requests` queue,
                 # whose entry outlives the listener call and is consumed on
                 # another thread; that branch parses its own fresh copy.
-                notification = parse_notification(payload)
+                try:
+                    notification = parse_notification(payload)
+                except (ValueError, TypeError) as exc:
+                    snippet = json.dumps(payload)
+                    if len(snippet) > 240:
+                        snippet = f"{snippet[:237]}..."
+                    raise RpcError(
+                        f"Failed to parse RPC notification on line {line_number}: {exc}. Frame: {snippet!r}"
+                    ) from exc
+
                 self._dispatch_listeners(
                     "notification",
                     notification.type,
@@ -1724,6 +1756,8 @@ class RpcClient:
                     listener_event,
                 )
         except Exception as exc:
+            if not self._stopping:
+                _terminate_process_group(process, self._pgid)
             self._mark_closed(exc)
         else:
             if not self._stopping:
@@ -1732,12 +1766,14 @@ class RpcClient:
                     try:
                         exit_code = process.wait(timeout=1.0)
                     except subprocess.TimeoutExpired:
+                        _terminate_process_group(process, self._pgid)
                         self._mark_closed(
                             RpcProcessExitError(
                                 "RPC process stdout closed before the process exited"
                             )
                         )
                         return
+                _terminate_process_group(process, self._pgid)
                 self._mark_closed(
                     RpcProcessExitError(
                         f"RPC process exited with code {exit_code}. Stderr: {self.stderr}"
