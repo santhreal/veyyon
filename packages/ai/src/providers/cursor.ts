@@ -2531,13 +2531,23 @@ export function processInteractionUpdate(
 	}
 }
 
-function handleConversationCheckpointUpdate(
+/** Exported for tests: folds one conversation checkpoint into the turn's usage. */
+export function handleConversationCheckpointUpdate(
 	checkpoint: ConversationStateStructure,
 	output: AssistantMessage,
 	usageState: UsageState,
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
 ): void {
 	onConversationCheckpoint?.(checkpoint);
+	// The window is metadata about the conversation, not a token count, so it is
+	// recorded whichever way the tokens themselves are being counted. Cursor
+	// adds models faster than the catalog is regenerated, and a model the
+	// catalog has never seen falls back to a default window that is only a
+	// guess; this is the real number, and it is on the wire every turn.
+	const maxTokens = checkpoint.tokenDetails?.maxTokens ?? 0;
+	if (maxTokens > 0) {
+		output.providerContextWindow = maxTokens;
+	}
 	if (usageState.sawTokenDelta) {
 		return;
 	}
@@ -2545,8 +2555,14 @@ function handleConversationCheckpointUpdate(
 	if (usedTokens <= 0) {
 		return;
 	}
-	if (output.usage.output !== usedTokens) {
-		output.usage.output = usedTokens;
+	// `ConversationTokenDetails.used_tokens` gauges the WHOLE conversation
+	// against `max_tokens`, so it is the prompt side of this turn, not the
+	// completion. Billing it as output charged the conversation at output rates
+	// and, worse, made every consumer that reads the prompt count see zero and
+	// fall back to the total, so the context gauge measured the conversation
+	// twice over.
+	if (output.usage.input !== usedTokens) {
+		output.usage.input = usedTokens;
 		output.usage.totalTokens = output.usage.input + output.usage.output;
 	}
 }

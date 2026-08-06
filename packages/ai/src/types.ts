@@ -784,6 +784,23 @@ export interface AssistantMessage {
 	 * providers that expose no such field.
 	 */
 	upstreamProvider?: string;
+	/**
+	 * Context window the PROVIDER reported for this conversation on the wire.
+	 *
+	 * Most APIs never say: the window is static model metadata and the catalog
+	 * carries it. A few agent gateways report it per turn alongside the tokens
+	 * used, and for those the catalog entry is a guess — a model the gateway
+	 * added after the catalog was generated falls back to a default window that
+	 * has nothing to do with the real one. Divide the gateway's own used-token
+	 * count by that default and the context gauge pins at empty on a
+	 * conversation the gateway considers barely started, which is what Cursor's
+	 * `ConversationTokenDetails` did (`max_tokens` was on the wire every turn
+	 * and thrown away while `used_tokens` was believed).
+	 *
+	 * Set it only from a value the provider actually sent. Undefined means the
+	 * provider said nothing, NOT that the catalog window is wrong.
+	 */
+	providerContextWindow?: number;
 	usage: Usage;
 	stopReason: StopReason;
 	stopDetails?: StopDetails | null;
