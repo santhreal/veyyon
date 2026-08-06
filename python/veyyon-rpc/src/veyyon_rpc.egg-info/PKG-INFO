@@ -3,14 +3,13 @@ Name: veyyon-rpc
 Version: 0.1.0
 Summary: Typed Python client for the veyyon coding-agent RPC protocol
 Author: veyyon-rpc
-License: MIT
+License-Expression: MIT
 Project-URL: Homepage, https://veyyon.dev/
 Project-URL: Repository, https://github.com/santhreal/veyyon
 Project-URL: Documentation, https://github.com/santhreal/veyyon/blob/main/docs/rpc.md
 Keywords: veyyon,rpc,agent,coding-agent,jsonl,stdio
 Classifier: Development Status :: 3 - Alpha
 Classifier: Intended Audience :: Developers
-Classifier: License :: OSI Approved :: MIT License
 Classifier: Programming Language :: Python :: 3
 Classifier: Programming Language :: Python :: 3.11
 Classifier: Programming Language :: Python :: 3.12
@@ -18,6 +17,8 @@ Classifier: Topic :: Software Development :: Libraries :: Python Modules
 Classifier: Topic :: Software Development :: Libraries
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: license-file
 
 # veyyon-rpc
 
