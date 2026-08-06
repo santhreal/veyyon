@@ -5479,6 +5479,9 @@ export class AgentSession {
 			this.#argotStreamDisplay?.flush();
 			this.#argotStreamDisplay = undefined;
 		}
+		if (event.type === "message_end" && event.message.role === "assistant") {
+			this.#applyProviderReportedContextWindow(event.message as AssistantMessage);
+		}
 		if (
 			(event.type === "message_end" || event.type === "message_start" || event.type === "turn_end") &&
 			event.message?.role === "assistant"
@@ -8224,6 +8227,37 @@ export class AgentSession {
 	/** Current model (may be undefined if not yet selected) */
 	get model(): Model | undefined {
 		return this.agent.state.model;
+	}
+
+	/**
+	 * Adopt a context window the provider reported on the wire.
+	 *
+	 * The catalog's window is static metadata, and for an agent gateway that
+	 * adds models continuously it is a guess: discovery has no window field to
+	 * read and substitutes a default. That guess is the denominator of both the
+	 * context gauge and the compaction threshold, so when it is far below the
+	 * real window the gauge pins at "0% left" and auto-compaction fires every
+	 * turn on a conversation the provider considers barely used.
+	 *
+	 * Both the live model object and the registry are corrected: the session
+	 * holds its model by reference, so fixing only the registry would leave this
+	 * turn's math wrong, and fixing only the reference would let the next
+	 * discovery reload restore the guess.
+	 */
+	#applyProviderReportedContextWindow(message: AssistantMessage): void {
+		const reported = message.providerContextWindow;
+		if (reported === undefined || !Number.isFinite(reported) || reported <= 0) return;
+		const model = this.agent.state.model;
+		if (!model) return;
+		const changed = this.modelRegistry.recordProviderReportedContextWindow(model.provider, model.id, reported);
+		if (model.contextWindow === reported) return;
+		logger.debug("Adopting provider-reported context window", {
+			model: `${model.provider}/${model.id}`,
+			was: model.contextWindow,
+			now: reported,
+			registryUpdated: changed,
+		});
+		this.agent.state.model = { ...model, contextWindow: reported };
 	}
 
 	/** Effective thinking level applied to the agent (the resolved level when `auto`). */
