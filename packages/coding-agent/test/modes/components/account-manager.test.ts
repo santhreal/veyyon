@@ -226,7 +226,9 @@ describe("AccountManagerComponent rendering", () => {
 		const lines = frame();
 
 		expect(lineWith(lines, "no accounts yet")).toBe("Cerebras · no accounts yet");
-		expect(lineWith(lines, "add another")).toBe("+ add another Cerebras account");
+		// The add entry is the only selectable position on a provider you hold nothing for, so the
+		// cursor opens on it and `enter` starts the login.
+		expect(lineWith(lines, "add another")).toBe("› + add another Cerebras account");
 
 		component.handleInput("a");
 		expect(recorded.added).toEqual(["cerebras"]);

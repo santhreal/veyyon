@@ -34,6 +34,11 @@ From that card you press `enter` to use the selected account, `n` to name it, `r
 health, `u` to open its usage, `x` twice to log it out, and `a` to add another account for the same
 provider. `/account manager` opens the same card.
 
+The last row of the list is `+ add another … account`. It is a position in the list like any other:
+arrow down past your last account to land on it, and press `enter` there to start a login. The
+mouse works on the card as well. Click an account to select it, click that last row to start the
+login, and click any key chip in the footer to run what it names.
+
 Switching is **per provider**. Choosing another Anthropic account changes Anthropic and nothing else,
 because several providers serve one session at the same time: your main model, your subagent roles,
 and web search can each be a different provider. Moving between providers is a model choice, so it

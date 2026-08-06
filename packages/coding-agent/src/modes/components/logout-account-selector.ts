@@ -43,6 +43,12 @@ export class LogoutAccountSelectorComponent implements Component {
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * The account window the last frame painted, so a click can name the row under the pointer.
+	 * The list scrolls, so the first painted row is rarely account 0.
+	 */
+	#windowStart = 0;
+	#windowCount = 0;
 
 	constructor(
 		providerName: string,
@@ -90,6 +96,8 @@ export class LogoutAccountSelectorComponent implements Component {
 				rows.push(`  ${account.label}${activeTag}${detail}`);
 			}
 		}
+		this.#windowStart = startIndex;
+		this.#windowCount = rows.length;
 
 		const body: string[] = [];
 		if (rows.length > 0) {
@@ -178,6 +186,29 @@ export class LogoutAccountSelectorComponent implements Component {
 		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
 			this.handleInput("\n");
 			return true;
+		}
+		const geometry = this.#shellGeometry;
+		if (!geometry) return true;
+		const bodyLine = event.row - geometry.bodyRowStart;
+		if (bodyLine < 0 || bodyLine >= this.#windowCount) return true;
+
+		// The wheel steps the SELECTION, not a separate scroll offset. The window is derived from
+		// the selected index on every paint, so an offset of its own would be undone by the very
+		// next frame and the pane would read as swallowing the wheel.
+		if (event.wheel !== null) {
+			this.handleInput(event.wheel === 1 ? "\x1b[B" : "\x1b[A");
+			this.#onRequestRender?.();
+			return true;
+		}
+		// A click SELECTS and stops there. Logging out is irreversible and there is no undo on this
+		// card, so the second step stays deliberate: `enter`, or the footer chip that says so.
+		if (event.leftClick) {
+			const index = this.#windowStart + bodyLine;
+			if (index < this.#accounts.length && index !== this.#selectedIndex) {
+				this.#selectedIndex = index;
+				this.#statusMessage = undefined;
+				this.#onRequestRender?.();
+			}
 		}
 		return true;
 	}
