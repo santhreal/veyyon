@@ -17,7 +17,7 @@ import {
 import { isMimoModelIdOrName } from "../src/identity/family";
 import { getLongestModelLikeIdSegment } from "../src/identity/id";
 import { buildModelReferenceIndex, resolveModelReference } from "../src/identity/reference";
-import { resolveModelThinking } from "../src/model-thinking";
+import { deriveThinking, resolveModelThinking } from "../src/model-thinking";
 import { resolveWaferServerlessThinkingFormat } from "../src/provider-models/openai-compat";
 import type { Api, Model, ModelSpec } from "../src/types";
 import { isVariantCollapsedSpec } from "../src/variant-collapse";
@@ -71,6 +71,39 @@ export function applyGeneratedModelPolicies(models: ModelSpec<Api>[]): void {
 	for (const model of models) {
 		applyGeneratedModelPolicy(model);
 		rebakeModelThinking(model);
+	}
+}
+
+/**
+ * Note rows where the discovery-declared effort ladder (models.dev
+ * `reasoning_options`, already baked into `model.thinking` by the policy
+ * pass) and the identity-derived ladder disagree wildly: disjoint sets, or a
+ * size gap of two or more tiers. Discovery wins either way; the note exists
+ * so a bad upstream row is visible in the generation output instead of being
+ * chosen silently. Minor drift (one tier, overlapping sets) is routine while
+ * upstream catches up and stays quiet.
+ */
+export function noteDiscoveryIdentityLadderDivergence(models: readonly ModelSpec<Api>[]): void {
+	for (const model of models) {
+		const discovered = model.thinking?.efforts;
+		if (model.reasoningOptions?.efforts === undefined || discovered === undefined) continue;
+		let identity: readonly string[];
+		try {
+			identity =
+				deriveThinking(
+					{ ...model, thinking: undefined, reasoningOptions: undefined },
+					buildCompat(model),
+				).efforts;
+		} catch {
+			continue;
+		}
+		const overlap = discovered.filter(effort => identity.includes(effort)).length;
+		const wild = overlap === 0 || Math.abs(discovered.length - identity.length) >= 2;
+		if (wild) {
+			console.log(
+				`note: ${model.provider}/${model.id}: discovery ladder [${discovered.join(", ")}] diverges wildly from identity ladder [${identity.join(", ")}]; discovery wins`,
+			);
+		}
 	}
 }
 

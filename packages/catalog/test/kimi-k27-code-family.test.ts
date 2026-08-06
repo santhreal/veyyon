@@ -16,6 +16,7 @@
 
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { matchesKimiK27CodeFamily } from "../src/compat/kimi";
 
 describe("ids the family publishes", () => {
@@ -121,7 +122,7 @@ describe("one owner", () => {
 
 			expect(source).not.toContain("function matchesKimiK27CodeFamily");
 			expect(source).not.toContain("KIMI_K27_CODE_MODEL_PATTERN");
-			expect(source).toContain('from "./kimi"');
+			expect(moduleSpecifiersIn(source)).toContain("./kimi");
 		}
 	});
 });
