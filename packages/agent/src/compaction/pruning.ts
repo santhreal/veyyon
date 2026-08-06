@@ -5,7 +5,7 @@
 import type { ToolResultMessage } from "@veyyon/ai";
 import type { AgentMessage, AgentToolCall } from "../types";
 import type { SessionEntry, SessionMessageEntry } from "./entries";
-import { getToolResultMessage } from "./entries";
+import { getToolResultMessage, resolveCompactionBoundaryIndex } from "./entries";
 import { estimateTokens } from "./token-estimate";
 import {
 	collectToolCallsById,
@@ -144,18 +144,6 @@ function computeMessageSuffixTokens(entries: readonly SessionEntry[]): number[] 
 	return suffix;
 }
 
-/**
- * Resolve the array index of the compaction boundary (`keepBoundaryId`). Entries
- * before this index are summarized away by the latest compaction and never sent,
- * so prune passes must not mutate them. Returns 0 when there is no boundary (no
- * compaction → whole branch is sent) or the id is absent from `entries`.
- */
-function resolveBoundaryIndex(entries: readonly SessionEntry[], keepBoundaryId: string | undefined): number {
-	if (keepBoundaryId === undefined) return 0;
-	const index = entries.findIndex(entry => entry.id === keepBoundaryId);
-	return index < 0 ? 0 : index;
-}
-
 interface SupersedeCandidate {
 	entry: SessionMessageEntry;
 	message: ToolResultMessage;
@@ -263,7 +251,7 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 	const idle =
 		lastMessageTimestamp !== undefined && now - lastMessageTimestamp >= (config.idleFlushMs ?? DEFAULT_IDLE_FLUSH_MS);
 
-	const boundaryIndex = resolveBoundaryIndex(entries, config.keepBoundaryId);
+	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 
 	let toPrune: SupersedeCandidate[];
 	if (idle) {
@@ -320,7 +308,7 @@ export function pruneToolOutputs(entries: SessionEntry[], config: PruneConfig = 
 				)
 			: undefined;
 
-	const boundaryIndex = resolveBoundaryIndex(entries, config.keepBoundaryId);
+	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 	const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
 	// All-message suffix per index, only when the cache guard is armed.
 	const messageSuffix = cacheWarmSuffixTokens === undefined ? undefined : computeMessageSuffixTokens(entries);

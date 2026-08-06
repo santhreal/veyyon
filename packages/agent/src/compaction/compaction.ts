@@ -39,6 +39,7 @@ import {
 	estimateCacheAlignedRequestTokens,
 } from "./cache-aligned-context";
 import type { CompactionEntry, SessionEntry } from "./entries";
+import { KEEP_NOTHING_ENTRY_ID } from "./entries";
 import { CompactionCancelledError } from "./errors";
 import { LEGACY_REMOTE_PRESERVE_KEYS } from "./legacy-provider-native";
 import { hasLegacyArchive, legacyArchiveSourceText, stripLegacyArchive } from "./legacy-snapcompact-archive";
@@ -334,21 +335,6 @@ export function findTurnStartIndex(entries: SessionEntry[], entryIndex: number, 
 	}
 	return -1;
 }
-
-/**
- * `firstKeptEntryId` for a compaction that keeps no pre-compaction entry at all.
- *
- * A range can be one unbreakable oversized turn: a tool result is never a valid
- * cut point, because cutting there would separate it from the call it answers,
- * so a single enormous result leaves the assistant message in front of it as the
- * newest usable boundary, and keeping from there keeps everything. Summarizing
- * the whole range and keeping nothing is then the only way to free anything.
- *
- * Readers resolve the id against the entries in the path and there is
- * deliberately no entry with this one, so every reader that walks until it finds
- * the first kept entry keeps nothing, which is what this means.
- */
-export const KEEP_NOTHING_ENTRY_ID = "compaction:keep-nothing";
 
 export interface CutPointResult {
 	/** Index of first entry to keep */

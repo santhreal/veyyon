@@ -21,7 +21,13 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { SessionEntry, SessionMessageEntry } from "@veyyon/agent-core/compaction";
-import { DEFAULT_COMPACTION_SETTINGS, findCutPoint, prepareCompaction } from "@veyyon/agent-core/compaction";
+import {
+	DEFAULT_COMPACTION_SETTINGS,
+	findCutPoint,
+	KEEP_NOTHING_ENTRY_ID,
+	prepareCompaction,
+	resolveCompactionBoundaryIndex,
+} from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ToolResultMessage, Usage } from "@veyyon/ai";
 
 let idCounter = 0;
@@ -121,6 +127,60 @@ describe("an over-budget range always frees something", () => {
 
 		expect(prepareCompaction(entries, settings)).toBeUndefined();
 		expect(findCutPoint(entries, 0, entries.length, settings.keepRecentTokens).firstKeptEntryIndex).toBe(0);
+	});
+});
+
+describe("a keep-nothing boundary puts the whole pre-compaction range behind it", () => {
+	// Prune and shake skip entries BEFORE the boundary: those were summarized away
+	// and are never sent, so rewriting them churns persisted history for no prompt
+	// saving. Both resolved the boundary with a plain `findIndex` and clamped -1
+	// to 0, and the keep-nothing id matches no entry on purpose, so it resolved to
+	// "nothing is behind the boundary" — the exact opposite, aiming every pass at
+	// the entries it must not touch.
+	function branch(): SessionEntry[] {
+		idCounter = 0;
+		return [
+			entry(user("old question")),
+			entry(assistant([{ type: "text", text: "old answer" }])),
+			{
+				type: "compaction",
+				id: "comp-1",
+				parentId: null,
+				timestamp: "2026-08-06T00:00:00.000Z",
+				summary: "everything so far",
+				firstKeptEntryId: KEEP_NOTHING_ENTRY_ID,
+				tokensBefore: 900_000,
+			} as unknown as SessionEntry,
+			entry(user("new question")),
+		];
+	}
+
+	test("everything before the compaction is behind the boundary", () => {
+		expect(resolveCompactionBoundaryIndex(branch(), KEEP_NOTHING_ENTRY_ID)).toBe(3);
+	});
+
+	test("entries added after the compaction are still live", () => {
+		// The boundary lands just past the compaction entry, not at the end: work
+		// done since the compaction is ordinary live context.
+		const entries = branch();
+
+		expect(resolveCompactionBoundaryIndex(entries, KEEP_NOTHING_ENTRY_ID)).toBeLessThan(entries.length);
+	});
+
+	test("an ordinary id still resolves to its own entry", () => {
+		const entries = branch();
+
+		expect(resolveCompactionBoundaryIndex(entries, entries[1].id)).toBe(1);
+	});
+
+	test("no boundary means the whole branch is live", () => {
+		expect(resolveCompactionBoundaryIndex(branch(), undefined)).toBe(0);
+	});
+
+	test("an id that is simply missing is still treated as no boundary", () => {
+		// A forked or migrated branch can name an entry that is not on this path.
+		// That is unknown, not "keep nothing", so the safe reading is the old one.
+		expect(resolveCompactionBoundaryIndex(branch(), "e-does-not-exist")).toBe(0);
 	});
 });
 

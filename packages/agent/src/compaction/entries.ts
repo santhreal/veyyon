@@ -212,3 +212,47 @@ export function getToolResultMessage(entry: SessionEntry): ToolResultMessage | u
 	if (message.role !== "toolResult") return undefined;
 	return message as ToolResultMessage;
 }
+
+/**
+ * `firstKeptEntryId` for a compaction that keeps no pre-compaction entry at all.
+ *
+ * A range can be one unbreakable oversized turn: a tool result is never a valid
+ * cut point, because cutting there would separate it from the call it answers,
+ * so a single enormous result leaves the assistant message in front of it as the
+ * newest usable boundary, and keeping from there keeps everything. Summarizing
+ * the whole range and keeping nothing is then the only way to free anything.
+ *
+ * Readers resolve the id against the entries in the path and there is
+ * deliberately no entry with this one, so every reader that walks until it finds
+ * the first kept entry keeps nothing, which is what this means.
+ */
+export const KEEP_NOTHING_ENTRY_ID = "compaction:keep-nothing";
+
+/**
+ * Array index of the compaction boundary named by a `firstKeptEntryId`. Entries
+ * BEFORE it were summarized away by the latest compaction and are never sent, so
+ * prune and shake passes skip them: rewriting them churns persisted history
+ * without shrinking a single prompt.
+ *
+ * Three cases, and the third is why this is shared rather than inlined at each
+ * call site. No boundary means no compaction, so the whole branch is live and
+ * the index is 0. An ordinary id resolves to its entry. {@link
+ * KEEP_NOTHING_ENTRY_ID} deliberately matches no entry, and a plain `findIndex`
+ * answers -1 for it, which every caller clamped to 0 — the exact opposite of
+ * what it means. It resolves to just past the compaction entry, because a
+ * compaction that kept nothing left everything before itself summarized away.
+ */
+export function resolveCompactionBoundaryIndex(
+	entries: readonly SessionEntry[],
+	keepBoundaryId: string | undefined,
+): number {
+	if (keepBoundaryId === undefined) return 0;
+	if (keepBoundaryId === KEEP_NOTHING_ENTRY_ID) {
+		for (let i = entries.length - 1; i >= 0; i--) {
+			if (entries[i].type === "compaction") return i + 1;
+		}
+		return 0;
+	}
+	const index = entries.findIndex(entry => entry.id === keepBoundaryId);
+	return index < 0 ? 0 : index;
+}
