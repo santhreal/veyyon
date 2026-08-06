@@ -82,6 +82,8 @@ export interface KernelStartOptions {
 	interpreter?: string;
 	signal?: AbortSignal;
 	deadlineMs?: number;
+	/** Session CPU budget hook: the kernel subprocess joins the session's budget group. */
+	adoptPid?: (pid: number) => void;
 }
 
 /** Per-language configuration handed to {@link BaseKernel} by each subclass. */

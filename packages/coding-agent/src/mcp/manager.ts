@@ -207,6 +207,13 @@ export class MCPManager {
 	}
 
 	#connections = new Map<string, MCPServerConnection>();
+	/** Session CPU budget hook, set by the owning session: spawned stdio server pids join the session's budget group. */
+	#adoptSpawnedPid: ((pid: number) => void) | undefined;
+
+	/** Wire the session CPU budget hook for stdio server spawns. */
+	setSpawnAdoption(adopt: ((pid: number) => void) | undefined): void {
+		this.#adoptSpawnedPid = adopt;
+	}
 	#tools: CustomTool<TSchema, MCPToolDetails>[] = [];
 	#pendingConnections = new Map<string, Promise<MCPServerConnection>>();
 	#pendingToolLoads = new Map<string, Promise<ToolLoadResult>>();
@@ -452,6 +459,7 @@ export class MCPManager {
 					onRequest: (method, params) => {
 						return this.#handleServerRequest(method, params);
 					},
+					onSpawnPid: this.#adoptSpawnedPid,
 				});
 			})().then(
 				connection => {
@@ -1026,6 +1034,7 @@ export class MCPManager {
 			onRequest: (method, params) => {
 				return this.#handleServerRequest(method, params);
 			},
+			onSpawnPid: this.#adoptSpawnedPid,
 		});
 
 		connection.config = config;

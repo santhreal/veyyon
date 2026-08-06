@@ -396,6 +396,8 @@ export class StdioTransport implements MCPTransport {
 	onError?: (error: Error) => void;
 	onNotification?: (method: string, params: unknown) => void;
 	onRequest?: (method: string, params: unknown) => Promise<unknown>;
+	/** Session CPU budget hook: the freshly spawned server pid is handed here so it joins the session's budget group. */
+	onSpawnPid?: (pid: number) => void;
 
 	constructor(private config: MCPStdioServerConfig) {}
 
@@ -440,6 +442,7 @@ export class StdioTransport implements MCPTransport {
 			windowsHide: spawnCommand.windowsHide,
 			detached: spawnCommand.detached,
 		});
+		this.onSpawnPid?.(this.#process.pid);
 
 		this.#connected = true;
 

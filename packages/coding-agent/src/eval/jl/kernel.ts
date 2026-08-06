@@ -209,6 +209,7 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 				}),
 			},
 		);
+		options.adoptPid?.(proc.pid);
 		kernel.setProcess(proc);
 
 		const startup = { signal: options.signal, deadlineMs: options.deadlineMs };

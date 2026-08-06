@@ -37,6 +37,12 @@ export interface DaemonBrokerClientOptions {
 	runtimeDir?: string;
 	/** Last-client shutdown grace override in milliseconds. */
 	idleGraceMs?: number;
+	/**
+	 * Session CPU budget hook for the broker spawn. The broker is shared per
+	 * project and spawns every managed daemon, so adopting the broker joins
+	 * the whole tree it will ever launch to the spawning session's budget.
+	 */
+	adoptSpawnedPid?: (pid: number) => void;
 }
 
 /** Persistent per-process connection to one project's daemon broker. */
@@ -120,6 +126,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 	readonly #endpoint: string;
 	readonly #token: string;
 	readonly #idleGraceMs: number | undefined;
+	readonly #adoptSpawnedPid: ((pid: number) => void) | undefined;
 	readonly #pending = new Map<string, PendingRequest>();
 	#socket: net.Socket | undefined;
 	#connectPromise: Promise<void> | undefined;
@@ -132,6 +139,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		this.#endpoint = daemonBrokerEndpoint(projectDir, runtimeDir);
 		this.#token = token;
 		this.#idleGraceMs = options.idleGraceMs;
+		this.#adoptSpawnedPid = options.adoptSpawnedPid;
 	}
 
 	async request(operation: DaemonOperation, signal?: AbortSignal): Promise<DaemonRpcResult> {
@@ -222,6 +230,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 			stderr: "ignore",
 			detached: true,
 		});
+		this.#adoptSpawnedPid?.(child.pid);
 		child.unref();
 	}
 
@@ -297,11 +306,14 @@ export async function createDaemonBrokerClient(
 }
 
 /** Get the process-shared daemon broker client for one canonical project directory. */
-export async function daemonClientForProject(projectDir: string): Promise<DaemonBrokerClient> {
+export async function daemonClientForProject(
+	projectDir: string,
+	options: DaemonBrokerClientOptions = {},
+): Promise<DaemonBrokerClient> {
 	const canonical = await canonicalProjectDir(projectDir);
 	let pending = sharedClients.get(canonical);
 	if (!pending) {
-		pending = createDaemonBrokerClient(canonical);
+		pending = createDaemonBrokerClient(canonical, options);
 		sharedClients.set(canonical, pending);
 		if (!cancelExitCleanup) {
 			cancelExitCleanup = postmortem.register("daemon-broker-clients", () => closeDaemonClients());
