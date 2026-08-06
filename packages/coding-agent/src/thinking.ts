@@ -251,6 +251,12 @@ function effortDescription(level: ConfiguredThinkingLevel, model: Model | undefi
  * Like OpenCode's variant selector, this shows only valid model-specific
  * choices plus Veyyon's `auto` and `off` controls. The base model remains the
  * first, suffix-free row when inheritance is enabled.
+ *
+ * With no model in scope the full vocabulary is offered rather than nothing.
+ * Two real rows have no model and never will: `defaultEffort`'s any-model `*`
+ * row and the blanket `subagent.thinkingLevel`. Both store a level that is
+ * clamped against whatever model later runs, so a picker that went empty here
+ * would turn every pick into a row deletion.
  */
 export function configuredThinkingLevelOptions(
 	options: ConfiguredThinkingLevelOptions = {},
