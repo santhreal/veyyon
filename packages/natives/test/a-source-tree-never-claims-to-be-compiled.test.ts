@@ -27,6 +27,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { metadataModuleFor, STUB_METADATA_MODULE } from "../scripts/embedded-metadata";
 
 const NATIVES_ROOT = path.join(import.meta.dir, "..");
 const REPO_ROOT = path.join(NATIVES_ROOT, "..", "..");
@@ -85,15 +86,44 @@ describe("what a rebuild leaves in the tree", () => {
 	});
 
 	/**
-	 * And the flag has to mean what the caller thinks it means: the metadata write is the one
-	 * step it changes, and the archive write is not conditional on it.
+	 * And the flag has to mean what the caller thinks it means. Asserted by CALLING the decision
+	 * rather than by matching the two source lines that used to implement it: the old case passed
+	 * on a script that computed the right string and then wrote the other one, and failed on a
+	 * rename that changed nothing. `metadataModuleFor` is the whole choice, so running it is the
+	 * contract.
 	 */
-	it("is a flag embed-native honours at the metadata write only", () => {
-		const source = fs.readFileSync(path.join(NATIVES_ROOT, "scripts", "embed-native.ts"), "utf8");
+	it("is a flag that chooses the stub, and its absence the populated module", async () => {
+		const input = {
+			platformTag: "linux-x64",
+			version: "9.9.9",
+			archiveFilename: "embedded-addons.linux-x64.tar.gz",
+			files: [{ variant: "modern" as const, filename: "veyyon_natives.linux-x64.node", size: 42 }],
+		};
 
-		expect(source).toContain('const stubMetadata = process.argv.includes("--stub-metadata");');
-		expect(source).toContain("await Bun.write(outputPath, stubMetadata ? stubContent : content);");
-		expect(source).not.toContain("if (stubMetadata) process.exit(0);");
+		expect(metadataModuleFor(["--stub-metadata"], input)).toBe(STUB_METADATA_MODULE);
+
+		const populated = metadataModuleFor([], input);
+		// The populated module is what the loader reads to decide it is compiled, so what matters is
+		// that it evaluates to the archive description and not to `null`.
+		const modulePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-embed-meta-")), "meta.js");
+		fs.writeFileSync(modulePath, populated.replace(/^import archivePath .*$/m, 'const archivePath = "x";'));
+		const { embeddedAddon } = (await import(modulePath)) as { embeddedAddon: unknown };
+
+		expect(embeddedAddon).toMatchObject({
+			platformTag: "linux-x64",
+			version: "9.9.9",
+			archive: { format: "tar.gz", filename: "embedded-addons.linux-x64.tar.gz" },
+			files: [{ variant: "modern", filename: "veyyon_natives.linux-x64.node", size: 42 }],
+		});
+	});
+
+	/**
+	 * The stub is what a checkout must hold, so the module the script would write and the file that
+	 * is committed have to be the same bytes. This is the join between the two halves: the case
+	 * above proves the flag selects the stub, and this proves the stub is the thing in the tree.
+	 */
+	it("writes the same stub the checkout carries", () => {
+		expect(fs.readFileSync(METADATA_MODULE, "utf8")).toBe(STUB_METADATA_MODULE);
 	});
 
 	/**

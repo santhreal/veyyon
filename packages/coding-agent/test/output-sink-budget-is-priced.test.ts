@@ -1,8 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { AgentTool, AgentToolContext } from "@veyyon/agent-core";
 import type { Settings } from "@veyyon/coding-agent/config/settings";
-import { inlineBudgetFor } from "@veyyon/coding-agent/tools/output-artifact";
+import type { BashExecutorOptions } from "@veyyon/coding-agent/exec/bash-executor";
+import type { SSHExecutorOptions } from "@veyyon/coding-agent/ssh/ssh-executor";
+import type { runInteractiveBashPty } from "@veyyon/coding-agent/tools/bash-interactive";
+import { type InlinePricingSource, inlineBudgetFor } from "@veyyon/coding-agent/tools/output-artifact";
+import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/output-meta";
+import { type } from "arktype";
 
 /**
  * Structural lock: every streaming executor prices its inline output budget.
@@ -100,66 +106,119 @@ describe("OutputSink inline budget", () => {
 	});
 
 	/**
-	 * An executor with no session cannot price anything, so it must take the
-	 * number as an option instead of inventing one. This pins that the three
-	 * session-less executors actually expose the field.
+	 * An executor with no session cannot price anything, so it must take the number as an option
+	 * instead of inventing one. Asserted as a TYPE rather than as the text `spillThreshold?: number;`,
+	 * which a doc comment quoting the field satisfies just as well and which a reformat breaks. The
+	 * compiler is what actually refuses a caller that tries to pass the budget to an executor that
+	 * does not accept one, so the compiler is what checks it: `bunx tsgo` fails on this block if any
+	 * of the three drops the field or retypes it.
 	 */
 	it("lets a session-less executor receive a budget from its caller", () => {
-		for (const relative of [
-			path.join("exec", "bash-executor.ts"),
-			path.join("ssh", "ssh-executor.ts"),
-			path.join("tools", "bash-interactive.ts"),
-		]) {
-			const source = fs.readFileSync(path.join(ROOT, relative), "utf8");
-			expect(source).toContain("spillThreshold?: number;");
-		}
+		const bash: BashExecutorOptions = { spillThreshold: 1_024 };
+		const ssh: SSHExecutorOptions = { spillThreshold: 2_048 };
+		const pty: InteractivePtyOptions = { command: "true", cwd: "/tmp", spillThreshold: 4_096 };
+
+		// And the runtime half, so this is not only a compile-time shape: the values survive as
+		// numbers, which is what an executor forwards into its sink.
+		expect([bash.spillThreshold, ssh.spillThreshold, pty.spillThreshold]).toEqual([1_024, 2_048, 4_096]);
 	});
 });
 
-describe("centralised artifact spill", () => {
-	const OUTPUT_META = path.join(ROOT, "tools", "output-meta.ts");
+/** The interactive PTY runner takes its options inline, so there is no named type to reference. */
+type InteractivePtyOptions = Parameters<typeof runInteractiveBashPty>[1];
 
+/**
+ * Run a non-streaming tool that returns `payload` through the real registry wrapper at `turnIndex`.
+ *
+ * Reports whether the spill fired rather than how many characters came back: a spilled result gains
+ * an `artifact://` recovery notice, so it can be LONGER than the payload it replaced, and length is
+ * not the signal. Whether the full text was handed to `saveArtifact` is.
+ */
+async function spilledAtTurn(payload: string, turnIndex: number): Promise<boolean> {
+	const tool = wrapToolWithMetaNotice({
+		name: "bulk",
+		label: "Bulk",
+		summary: "returns the payload it was built with",
+		description: "returns the payload it was built with",
+		parameters: type({}),
+		execute: async () => ({ content: [{ type: "text", text: payload }] }),
+	} as unknown as AgentTool);
+
+	// The spill is a no-op without a session manager to hold the artifact, so give it one that
+	// records rather than writes: what is under test is the threshold, not the persistence.
+	const saved: string[] = [];
+	const context = {
+		getTurnIndex: () => turnIndex,
+		sessionManager: {
+			saveArtifact: async (full: string) => {
+				saved.push(full);
+				return `artifact-${saved.length}`;
+			},
+		},
+	} as unknown as AgentToolContext;
+	await tool.execute("spill-1", {} as never, undefined, undefined, context);
+
+	return saved.length > 0;
+}
+
+describe("centralised artifact spill", () => {
 	/**
-	 * The other half of the same defect. `spillLargeResultToArtifact` governs every
-	 * tool that does NOT stream: MCP tools, extension and custom tools, RPC-host
-	 * tools, and any built-in without an `OutputSink`. It read a flat 50KB
-	 * threshold while the streaming tools were turn-priced, so the same bytes cost
-	 * one thing arriving from `eval` and another arriving from an MCP server.
+	 * The other half of the same defect. `spillLargeResultToArtifact` governs every tool that does
+	 * NOT stream: MCP tools, extension and custom tools, RPC-host tools, and any built-in without an
+	 * `OutputSink`. It read a flat 50KB threshold while the streaming tools were turn-priced, so the
+	 * same bytes cost one thing arriving from `eval` and another arriving from an MCP server.
+	 *
+	 * Driven through the real wrapper rather than read out of `output-meta.ts`. The retained tail is
+	 * a fixed size, so what the turn changes is WHETHER a result spills at all.
+	 *
+	 * The curve tightens EARLY, not late: a result arriving at turn 0 sits in context for the whole
+	 * session and gets the smaller budget, while a result arriving near the end is nearly free and
+	 * gets the flat one. So a payload sized between the two is cut at turn 0 and survives whole at
+	 * turn 80. A flat threshold keeps it whole at both, which is exactly the regression, and no
+	 * check that only looks for the call can see it.
 	 */
-	it("prices its threshold through the same owner as the streaming tools", () => {
-		const source = fs.readFileSync(OUTPUT_META, "utf8");
-		expect(source).toContain("inlineBudgetFor(");
-		// And through it ONLY. The spill used to pass the flat setting back in as a
-		// ceiling, which read as belt and braces and was really a second way to
-		// spell the same read: `inlineOutputPricing` reads
-		// `tools.artifactSpillThreshold` itself. Two readers of one setting is how
-		// the two owners this suite exists for came about in the first place, so the
-		// second argument staying absent is part of the contract.
-		expect(source).not.toContain(
-			"inlineBudgetFor({ getTurnIndex: context?.getTurnIndex, settings: context?.settings },",
+	it("prices its threshold by the turn, like the streaming tools", async () => {
+		const earlyBudget = inlineBudgetFor({ getTurnIndex: () => 0 });
+		const lateBudget = inlineBudgetFor({ getTurnIndex: () => 80 });
+		// The premise: the curve really does move with the turn. Without this the sizing below would
+		// be arbitrary and the case could pass for the wrong reason.
+		expect(earlyBudget).toBeLessThan(lateBudget);
+
+		const payload = "x".repeat(Math.floor((earlyBudget + lateBudget) / 2));
+		expect(await spilledAtTurn(payload, 0), "turn 0 must spill: the payload is over the early budget").toBe(true);
+		expect(await spilledAtTurn(payload, 80), "turn 80 must not: the same payload is under the flat one").toBe(
+			false,
 		);
 	});
+});
 
+describe("the pricing owner", () => {
 	/**
-	 * A host with no notion of turns must still work, and must get the flat
-	 * behaviour rather than an accidental floor. That is why the turn index is
-	 * optional all the way through, and this pins the optionality at the type.
+	 * A host with no notion of turns must still work, and must get the flat behaviour rather than an
+	 * accidental floor. Asserted by CALLING the owner with and without a turn index rather than by
+	 * reading `getTurnIndex?: () => number;` out of the context type: what matters is that the absent
+	 * case produces the flat budget instead of throwing or flooring to zero.
 	 */
 	it("leaves the turn index optional so a turn-less host is unpriced, not mis-priced", () => {
-		const context = fs.readFileSync(path.join(ROOT, "extensibility", "custom-tools", "types.ts"), "utf8");
-		expect(context).toContain("getTurnIndex?: () => number;");
+		const turnless = inlineBudgetFor({});
+		expect(turnless).toBeGreaterThan(0);
+		expect(Number.isFinite(turnless)).toBe(true);
+
+		// A host that DOES know its turn is priced by it, which is what makes the absence meaningful.
+		expect(inlineBudgetFor({ getTurnIndex: () => 40 })).toBeLessThan(turnless);
 	});
 
 	/**
-	 * The owner has to accept every caller that needs it, or a caller with the
-	 * right data but the wrong nominal type invents its own budget again. That is
-	 * precisely how the two owners came about, so the structural type is the fix
-	 * and it is asserted rather than assumed.
+	 * The owner has to accept every caller that needs it, or a caller with the right data but the
+	 * wrong nominal type invents its own budget again. Asserted by handing it a bare object literal
+	 * that is not a `ToolSession` and never was: if the parameter were narrowed to a nominal session
+	 * type this stops compiling, which is a stronger statement than finding the words
+	 * `inlineBudgetFor(session: InlinePricingSource` in the file.
 	 */
 	it("keeps the pricing owner structural, not tied to ToolSession", () => {
-		const source = fs.readFileSync(path.join(ROOT, "tools", "output-artifact.ts"), "utf8");
-		expect(source).toContain("export interface InlinePricingSource");
-		expect(source).toContain("inlineBudgetFor(session: InlinePricingSource");
+		const structural: InlinePricingSource = { getTurnIndex: () => 3 };
+		expect(inlineBudgetFor(structural)).toBeGreaterThan(0);
+		expect(inlineBudgetFor({ getTurnIndex: () => 3, settings: undefined })).toBe(inlineBudgetFor(structural));
 	});
 });
 
