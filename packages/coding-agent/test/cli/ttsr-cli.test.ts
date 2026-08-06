@@ -11,6 +11,7 @@ import {
 } from "@veyyon/coding-agent/cli/ttsr-cli";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
 import { getAgentDir, getProjectAgentDir, getProjectDir, removeSyncWithRetries, setProjectDir } from "@veyyon/utils";
+import { YAML } from "bun";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
 let testTmpDir: string;
@@ -386,7 +387,16 @@ describe("veyyon ttsr", () => {
 			expect(result.summary.gitignore).toBe(true);
 		});
 
-		it("honors ttsr.enabled=false for project scans", async () => {
+		/**
+		 * A scanned repository must not be able to switch off the operator's rule
+		 * matching. `ttsr.enabled` used to be project-scoped, so a checked-in
+		 * `.veyyon/settings.json` in any clone silenced `veyyon ttsr scan` for that
+		 * tree: the one command whose job is to report what your rules catch said
+		 * nothing, and said it as "no rules registered" rather than as "this repo
+		 * turned me off". Project scope is gone, so the fixture below is
+		 * deliberately hostile and the scan is expected to take none of it.
+		 */
+		it("ignores a scanned project's own ttsr.enabled=false and scans anyway", async () => {
 			captureStreams();
 
 			const projectDir = path.join(testTmpDir, `.tmp-ttsr-project-${Math.random().toString(36).slice(2)}`);
@@ -394,13 +404,52 @@ describe("veyyon ttsr", () => {
 			fs.mkdirSync(getProjectAgentDir(projectDir), { recursive: true });
 			setProjectDir(projectDir);
 
+			// Both spellings a repo could reach for: the legacy JSON and the current
+			// YAML. Neither is a settings source any more.
 			await Bun.write(
 				path.join(getProjectAgentDir(projectDir), "settings.json"),
 				JSON.stringify({ ttsr: { enabled: false } }),
 			);
-			await Bun.write(path.join(projectDir, "src/foo.ts"), "const x: any = 1;");
+			await Bun.write(
+				path.join(getProjectAgentDir(projectDir), "config.yml"),
+				YAML.stringify({ ttsr: { enabled: false } }),
+			);
+			await Bun.write(path.join(projectDir, "src/foo.ts"), "const x: unknown = 1;");
 
 			await run({ action: "scan", scan: { directory: "src" }, json: true });
+
+			const result = JSON.parse(stdout);
+			expect(result.error).toBeUndefined();
+			// The full report shape, which is what "the scan ran" means here: the
+			// operator's rules resolved and the project file was enumerated.
+			expect(result.summary.evaluatedRules).toBeGreaterThan(0);
+			expect(result.summary.totalFiles).toBe(1);
+		});
+
+		/**
+		 * The operator's own layer still switches it off. `Settings.init` reads
+		 * `config.yml` from the agent dir, so that file is the only seam that can
+		 * disable the scan, and it must keep working: the setting is a kill switch
+		 * for a machine, not decoration.
+		 */
+		it("honors ttsr.enabled=false from the operator's config.yml", async () => {
+			captureStreams();
+
+			const projectDir = path.join(testTmpDir, `.tmp-ttsr-project-${Math.random().toString(36).slice(2)}`);
+			fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+			setProjectDir(projectDir);
+
+			await Bun.write(path.join(projectDir, "src/foo.ts"), "const x: unknown = 1;");
+
+			const operatorConfig = path.join(getAgentDir(), "config.yml");
+			await Bun.write(operatorConfig, YAML.stringify({ ttsr: { enabled: false } }));
+			try {
+				await run({ action: "scan", scan: { directory: "src" }, json: true });
+			} finally {
+				// The agent dir is shared by every case in this file, so the kill
+				// switch has to be lifted again before the next one runs.
+				fs.rmSync(operatorConfig, { force: true });
+			}
 
 			const result = JSON.parse(stdout);
 			expect(result.error).toBe("No TTSR rules registered for this project.");

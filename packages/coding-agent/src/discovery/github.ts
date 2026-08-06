@@ -5,15 +5,17 @@
  * Priority: 30 (shared standard provider)
  *
  * Sources:
- * - Project: .github/ (repo-local Copilot config)
  * - User: ~/.copilot/ (user-global Copilot CLI config; relocatable via COPILOT_HOME)
  * - Extra: directories listed in COPILOT_CUSTOM_INSTRUCTIONS_DIRS
  *
+ * A repository's own `.github/` tree is not a source. A checkout contributes
+ * AGENTS.md/CLAUDE.md context and nothing else, so a cloned repo cannot hand
+ * the agent instructions or rules by committing a file.
+ *
  * Capabilities:
- * - context-files: copilot-instructions.md in .github/ and ~/.copilot/; AGENTS.md in each COPILOT_CUSTOM_INSTRUCTIONS_DIRS
- * - rules: *.instructions.md under .github/instructions/ and <dir>/.github/instructions/ for each custom dir (applyTo frontmatter)
- * - prompts: *.prompt.md in .github/prompts/ (VS Code Copilot prompt files)
- * - skills: <name>/SKILL.md in .github/skills/ (GitHub Agent Skills layout)
+ * - context-files: copilot-instructions.md in ~/.copilot/; AGENTS.md in each COPILOT_CUSTOM_INSTRUCTIONS_DIRS
+ * - instructions: *.instructions.md under <dir>/.github/instructions/ for each custom dir
+ * - rules: the same files, carrying their applyTo frontmatter as globs
  */
 import * as path from "node:path";
 import { parseFrontmatter } from "@veyyon/utils";
@@ -43,9 +45,9 @@ const PRIORITY = 30;
 /**
  * Load GitHub Copilot context files.
  *
- * Scopes: PROJECT (`<cwd>/.github/copilot-instructions.md`) and a home-level
- * layer emitted as `level: "user"` (`<copilotHome>/copilot-instructions.md`
- * plus an `AGENTS.md` from each `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` entry).
+ * Scope: a home-level layer emitted as `level: "user"`
+ * (`<copilotHome>/copilot-instructions.md` plus an `AGENTS.md` from each
+ * `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` entry).
  *
  * GLOBAL and PROFILE scope do not apply. Copilot has no profile concept, so
  * there is no per-profile file to read, and veyyon's global layer
@@ -222,8 +224,7 @@ function copilotCustomInstructionDirs(): string[] {
 registerProvider(contextFileCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
-	description:
-		"Load copilot-instructions.md from .github/ and ~/.copilot/; AGENTS.md from COPILOT_CUSTOM_INSTRUCTIONS_DIRS",
+	description: "Load copilot-instructions.md from ~/.copilot/; AGENTS.md from COPILOT_CUSTOM_INSTRUCTIONS_DIRS",
 	priority: PRIORITY,
 	load: loadContextFiles,
 });
@@ -231,7 +232,7 @@ registerProvider(contextFileCapability.id, {
 registerProvider(instructionCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
-	description: "Load *.instructions.md from .github/instructions/ and COPILOT_CUSTOM_INSTRUCTIONS_DIRS",
+	description: "Load *.instructions.md from .github/instructions/ under each COPILOT_CUSTOM_INSTRUCTIONS_DIRS entry",
 	priority: PRIORITY,
 	load: loadInstructions,
 });
@@ -239,7 +240,7 @@ registerProvider(instructionCapability.id, {
 registerProvider<Rule>(ruleCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
-	description: "Load *.instructions.md from .github/instructions/ as Copilot-scoped rules",
+	description: "Load *.instructions.md from COPILOT_CUSTOM_INSTRUCTIONS_DIRS as Copilot-scoped rules",
 	priority: PRIORITY,
 	load: loadRules,
 });

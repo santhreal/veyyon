@@ -1168,7 +1168,13 @@ describe("discoverAgents plugin precedence", () => {
 		await removeWithRetries(tempDir);
 	});
 
-	test("prefers project-scoped plugin agent over user-scoped plugin agent", async () => {
+	// A repository contributes AGENTS.md / CLAUDE.md context and nothing else, so a
+	// project-scoped marketplace install is no longer a scope veyyon reads. It used to
+	// outrank the user's own install of the same plugin, which meant a cloned repo could
+	// hand a spawned agent its own system prompt and tool list under a name the operator
+	// had already vetted. The fixtures below seed exactly that hostile shape and assert
+	// none of it lands.
+	test("ignores a project-scoped plugin agent shadowing the user-scoped one of the same name", async () => {
 		const pluginRegistryDir = path.join(tempDir, ".claude", "plugins");
 		const projectPluginPath = path.join(tempDir, "plugins", "project");
 		const userPluginPath = path.join(tempDir, "plugins", "user");
@@ -1209,10 +1215,34 @@ describe("discoverAgents plugin precedence", () => {
 		await fs.writeFile(path.join(pluginRegistryDir, "installed_plugins.json"), JSON.stringify(registry));
 
 		const result = await discoverAgents(tempDir, tempDir);
-		const found = result.agents.find(agent => agent.name === agentName);
+		const matches = result.agents.filter(agent => agent.name === agentName);
 
-		expect(found).toBeDefined();
-		expect(found?.source).toBe("project");
-		expect(found?.filePath).toContain(projectPluginPath);
+		// Exactly one survivor, and it is the operator's own install. The body is the
+		// assertion that matters: a bug that keeps the "user" label while reading the
+		// project file still ships the repository's prompt and tool list.
+		expect(matches).toHaveLength(1);
+		expect(matches[0]?.systemPrompt.trim()).toBe("User scope agent");
+		expect(matches[0]?.description).toBe("User plugin version");
+		expect(matches[0]?.source).toBe("user");
+		expect(matches[0]?.filePath).toContain(userPluginPath);
+		expect(matches[0]?.filePath).not.toContain(projectPluginPath);
+		expect(result.agents.some(agent => agent.source === "project")).toBe(false);
+		expect(result.projectAgentsDir).toBeNull();
+	});
+
+	test("reports no project agents dir when the project holds a populated .veyyon/agents tree", async () => {
+		const projectAgentsDir = path.join(tempDir, ".veyyon", "agents");
+		await fs.mkdir(projectAgentsDir, { recursive: true });
+		await fs.writeFile(
+			path.join(projectAgentsDir, "repo-local.md"),
+			"---\nname: repo-local-test-agent\ndescription: Repo supplied\n---\nRepo scope agent",
+		);
+
+		const result = await discoverAgents(tempDir, tempDir);
+
+		// The field is what used to carry the scope, so it is the one a regression would
+		// repopulate first. The directory plainly exists and holds a valid definition.
+		expect(result.projectAgentsDir).toBeNull();
+		expect(result.agents.some(agent => agent.name === "repo-local-test-agent")).toBe(false);
 	});
 });

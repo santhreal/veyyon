@@ -73,16 +73,15 @@ describe("github discovery — Copilot user-global surface", () => {
 		expect(found?._source.provider).toBe("github");
 	});
 
-	test("still loads project .github/copilot-instructions.md alongside user-global", async () => {
+	test("ignores a project .github/copilot-instructions.md and loads only the user-global one", async () => {
+		// A checkout must not be able to hand the agent instructions by committing a file.
 		write(path.join(cwd, ".github", "copilot-instructions.md"), "project guidance");
 		write(path.join(copilotHome, "copilot-instructions.md"), "user guidance");
 
 		const result = await loadCapability<ContextFile>("context-files", { cwd, providers: ["github"] });
 
-		const project = result.all.find(f => f.level === "project");
-		const user = result.all.find(f => f.level === "user");
-		expect(project?.content).toBe("project guidance");
-		expect(user?.content).toBe("user guidance");
+		expect(result.all.map(f => f.content)).toEqual(["user guidance"]);
+		expect(result.all.some(f => f.path.startsWith(cwd))).toBe(false);
 	});
 
 	test("loads AGENTS.md from COPILOT_CUSTOM_INSTRUCTIONS_DIRS (#1915)", async () => {
@@ -123,32 +122,42 @@ describe("github discovery — Copilot user-global surface", () => {
 		expect(result.all.find(i => i.name === "toplevel")).toBeUndefined();
 	});
 
-	test("discovers *.prompt.md from .github/prompts/ (#1916)", async () => {
+	test("a project .github/ tree contributes nothing to any capability", async () => {
+		// The provider reads ~/.copilot and COPILOT_CUSTOM_INSTRUCTIONS_DIRS only. A repository
+		// contributes AGENTS.md/CLAUDE.md context and nothing else, so committing Copilot config
+		// cannot give a clone control of the instructions, rules, or prompts the agent runs under.
+		write(path.join(cwd, ".github", "copilot-instructions.md"), "project guidance");
 		write(
 			path.join(cwd, ".github", "prompts", "review.prompt.md"),
 			"---\ndescription: Review helper\n---\nReview the diff.",
 		);
-		// Plain markdown that is not a prompt file must be ignored.
-		write(path.join(cwd, ".github", "prompts", "notes.md"), "not a prompt");
-
-		const result = await loadCapability<Prompt>("prompts", { cwd, providers: ["github"] });
-
-		const review = result.all.find(p => p.name === "review");
-		expect(review).toBeDefined();
-		expect(review?.content.trim()).toBe("Review the diff.");
-		expect(review?._source.level).toBe("project");
-		expect(result.all.find(p => p.name === "notes")).toBeUndefined();
-	});
-
-	test("loads project .github/instructions/*.instructions.md as Copilot-scoped rules (#2731)", async () => {
 		write(
 			path.join(cwd, ".github", "instructions", "always.instructions.md"),
+			"---\napplyTo: '**'\n---\nAlways body\n",
+		);
+
+		const contextFiles = await loadCapability<ContextFile>("context-files", { cwd, providers: ["github"] });
+		const instructions = await loadCapability<Instruction>("instructions", { cwd, providers: ["github"] });
+		const rules = await loadCapability<Rule>("rules", { cwd, providers: ["github"] });
+		const prompts = await loadCapability<Prompt>("prompts", { cwd, providers: ["github"] });
+
+		expect(contextFiles.all).toHaveLength(0);
+		expect(instructions.all).toHaveLength(0);
+		expect(rules.all).toHaveLength(0);
+		expect(prompts.all).toHaveLength(0);
+	});
+
+	test("loads *.instructions.md from a custom dir as Copilot-scoped rules (#2731)", async () => {
+		const extra = path.join(tempDir, "extra");
+		write(
+			path.join(extra, ".github", "instructions", "always.instructions.md"),
 			"---\napplyTo: '**'\ndescription: Always guidance\n---\nAlways body\n",
 		);
 		write(
-			path.join(cwd, ".github", "instructions", "cs.instructions.md"),
+			path.join(extra, ".github", "instructions", "cs.instructions.md"),
 			"---\napplyTo: '**/*.cs'\ndescription: C# guidance\n---\nC# body\n",
 		);
+		process.env.COPILOT_CUSTOM_INSTRUCTIONS_DIRS = extra;
 
 		const result = await loadCapability<Rule>("rules", { cwd, providers: ["github"] });
 
@@ -156,6 +165,7 @@ describe("github discovery — Copilot user-global surface", () => {
 		expect(always?.alwaysApply).toBe(true);
 		expect(always?.globs).toBeUndefined();
 		expect(always?.content.trim()).toBe("Always body");
+		expect(always?._source.level).toBe("user");
 
 		const scoped = result.items.find(rule => rule.name === "cs");
 		expect(scoped?.alwaysApply).toBe(false);
@@ -167,11 +177,16 @@ describe("github discovery — Copilot user-global surface", () => {
 	});
 
 	test("splits comma-separated applyTo globs and treats **/* as always-apply (#2731)", async () => {
+		const extra = path.join(tempDir, "extra");
 		write(
-			path.join(cwd, ".github", "instructions", "ts.instructions.md"),
+			path.join(extra, ".github", "instructions", "ts.instructions.md"),
 			"---\napplyTo: '**/*.ts,**/*.tsx'\n---\nTS body\n",
 		);
-		write(path.join(cwd, ".github", "instructions", "all.instructions.md"), "---\napplyTo: '**/*'\n---\nAll body\n");
+		write(
+			path.join(extra, ".github", "instructions", "all.instructions.md"),
+			"---\napplyTo: '**/*'\n---\nAll body\n",
+		);
+		process.env.COPILOT_CUSTOM_INSTRUCTIONS_DIRS = extra;
 
 		const result = await loadCapability<Rule>("rules", { cwd, providers: ["github"] });
 
@@ -185,11 +200,15 @@ describe("github discovery — Copilot user-global surface", () => {
 	});
 
 	test("disabled github provider suppresses copilot instructions and instruction-file rules (#2731)", async () => {
-		write(path.join(cwd, ".github", "copilot-instructions.md"), "project guidance");
+		// Seed the roots the provider does read, so disabling it has something to suppress.
+		const extra = path.join(tempDir, "extra");
+		write(path.join(copilotHome, "copilot-instructions.md"), "user guidance");
+		write(path.join(extra, "AGENTS.md"), "extra agents");
 		write(
-			path.join(cwd, ".github", "instructions", "always.instructions.md"),
+			path.join(extra, ".github", "instructions", "always.instructions.md"),
 			"---\napplyTo: '**'\n---\nAlways body\n",
 		);
+		process.env.COPILOT_CUSTOM_INSTRUCTIONS_DIRS = extra;
 		setDisabledProviders(["github"]);
 
 		const contextFiles = await loadCapability<ContextFile>("context-files", { cwd, providers: ["github"] });

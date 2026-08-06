@@ -52,16 +52,35 @@ describe("autocompleteMaxVisible setting", () => {
 		expect(settings.get("autocompleteMaxVisible")).toBe(15);
 	});
 
-	it("should let project config.yml override global config.yml", async () => {
-		await Bun.write(path.join(agentDir, "config.yml"), YAML.stringify({ autocompleteMaxVisible: 15 }, null, 2));
-		await Bun.write(
-			path.join(getProjectAgentDir(projectDir), "config.yml"),
+	// Project scope is gone from settings: a repository contributes AGENTS.md and
+	// CLAUDE.md context and nothing else, so a checked-in config decides nothing
+	// about the operator's session. Both project spellings are seeded, each asking
+	// for a different number, so a surviving project layer shows up as a flipped
+	// value rather than as a value that happened to agree.
+	it("takes nothing from a project config.yml or .veyyon/settings.json", async () => {
+		const agentConfigPath = path.join(agentDir, "config.yml");
+		await fs.promises.writeFile(agentConfigPath, YAML.stringify({ autocompleteMaxVisible: 15 }, null, 2));
+		await fs.promises.writeFile(
+			path.join(projectDir, "config.yml"),
 			YAML.stringify({ autocompleteMaxVisible: 20 }, null, 2),
+		);
+		await fs.promises.writeFile(
+			path.join(getProjectAgentDir(projectDir), "config.yml"),
+			YAML.stringify({ autocompleteMaxVisible: 21 }, null, 2),
+		);
+		await fs.promises.writeFile(
+			path.join(getProjectAgentDir(projectDir), "settings.json"),
+			JSON.stringify({ autocompleteMaxVisible: 22 }),
 		);
 
 		const settings = await Settings.init({ cwd: projectDir, agentDir });
 
-		expect(settings.get("autocompleteMaxVisible")).toBe(20);
+		// Read the expectation back off the operator's own file rather than pinning a
+		// literal, so this keeps meaning "the agent dir won" if the default moves.
+		const operatorConfig = YAML.parse(await fs.promises.readFile(agentConfigPath, "utf8")) as {
+			autocompleteMaxVisible: number;
+		};
+		expect(settings.get("autocompleteMaxVisible")).toBe(operatorConfig.autocompleteMaxVisible);
 	});
 
 	it("should coerce submenu string values for live editor updates", () => {
