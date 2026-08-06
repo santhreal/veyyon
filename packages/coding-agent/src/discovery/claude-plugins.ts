@@ -11,7 +11,7 @@ import { registerProvider } from "../capability";
 import { readFile } from "../capability/fs";
 import { type Hook, hookCapability } from "../capability/hook";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type Skill, skillCapability } from "../capability/skill";
+import { type DiscoveredSkill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
@@ -188,8 +188,8 @@ async function resolvePluginDir(
 // Skills
 // =============================================================================
 
-async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
-	const items: Skill[] = [];
+async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
+	const items: DiscoveredSkill[] = [];
 	const warnings: string[] = [];
 	const { roots, warnings: rootWarnings } = await listClaudePluginRoots(
 		ctx.home,
@@ -523,7 +523,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 // Provider Registration
 // =============================================================================
 
-registerProvider<Skill>(skillCapability.id, {
+registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load skills from Claude Code marketplace plugins (~/.claude/plugins/cache/)",

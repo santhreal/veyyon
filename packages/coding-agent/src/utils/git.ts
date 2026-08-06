@@ -4,15 +4,11 @@ import * as path from "node:path";
 import { isAbortError } from "@veyyon/utils/abortable";
 import { hasFsCode, isEisdir, isEnoent, isEnotdir } from "@veyyon/utils/fs-error";
 import { Snowflake } from "@veyyon/utils/snowflake";
-// Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
+// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { $which } from "@veyyon/utils/which";
 import type { Subprocess } from "bun";
-import {
-	parseDiffHunks as parseCommitDiffHunks,
-	parseFileDiffs,
-	parseFileHunks,
-	parseNumstat,
-} from "../commit/git/diff";
+import { parseDiffFileHunks, parseFileDiffs, parseFileHunks, parseNumstat } from "../commit/git/diff";
 import type { FileDiff, FileHunks, NumstatEntry } from "../commit/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
@@ -1249,7 +1245,16 @@ function validateHunkSelectionsFromMap(
 			errors.push({ path: selection.path, message: `Cannot select hunks for binary file ${selection.path}` });
 			continue;
 		}
-		const selected = selectHunks(parseFileHunks(fileDiff), selection.hunks);
+		// `parseFileHunks` refuses a hunk header it cannot read rather than placing the hunk
+		// at line zero. This layer's contract is a list of operator-facing errors, so the
+		// refusal becomes one of those instead of escaping as an exception.
+		let selected: FileHunks["hunks"];
+		try {
+			selected = selectHunks(parseFileHunks(fileDiff), selection.hunks);
+		} catch (err) {
+			errors.push({ path: selection.path, message: errorMessage(err) });
+			continue;
+		}
 		if (selected.length === 0) {
 			errors.push({ path: selection.path, message: `No hunks selected for ${selection.path}` });
 		}
@@ -1324,7 +1329,7 @@ export const diff = Object.assign(
 			files: readonly string[],
 			options: { cached?: boolean; signal?: AbortSignal } = {},
 		): Promise<FileHunks[]> {
-			return parseCommitDiffHunks(
+			return parseDiffFileHunks(
 				await diff(cwd, { cached: options.cached ?? true, files, signal: options.signal }),
 			);
 		},
@@ -1360,7 +1365,7 @@ export const diff = Object.assign(
 		},
 		/** Parse raw diff text into per-file hunks. */
 		parseHunks(text: string): FileHunks[] {
-			return parseCommitDiffHunks(text);
+			return parseDiffFileHunks(text);
 		},
 	},
 );

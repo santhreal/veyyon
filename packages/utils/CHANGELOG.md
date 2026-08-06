@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Added
+- `github-check-run`: `classifyGithubCheckRun` reduces a GitHub check-run status and conclusion to one of `success`, `failure`, `running`, `pending` or `unknown`, and `githubIssueRefNumber` reads `#N` out of a bare number or an issue/pull URL. The terminal renderer of the `github` tool and the React one each held their own conclusion tables, and the two had already drifted, so the same queued job read as pending in one view and as an unknown state in the other. `tab-spacing` also says which of its constants crosses the FFI: the display default does, and the min/max bounds stay on the JS side as the `.editorconfig` clamp.
 - `dynamicImportSpecifiersIn` and `dynamicImportBindings` in `module-reach`, the deferred-edge twins of `moduleSpecifiersIn` and `namedImportsFrom`. A gate asserting "this module was cut off the static graph but still reaches the capability" can now read the dynamic edge structurally instead of searching the source for `await import("x")`.
 
 - `module-reach`: `typeOnlyModuleSpecifiersIn` reports the specifiers a file imports for TYPES only, alongside the existing `moduleSpecifiersIn` for the ones it imports at runtime. Tests policing a leaf-package boundary were spelling that question as `expect(source).toContain('from "@veyyon/ai"')`, which a runtime import also satisfies, so the check passed in exactly the world it existed to forbid. With both readings available the boundary is asserted as what it is: present in the type-only set, absent from the runtime one.

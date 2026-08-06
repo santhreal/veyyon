@@ -18,7 +18,7 @@ import { type Instruction, instructionCapability } from "../capability/instructi
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Prompt, promptCapability } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
-import { type Skill, skillCapability } from "../capability/skill";
+import { type DiscoveredSkill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
@@ -247,7 +247,7 @@ registerProvider<MCPServer>(mcpCapability.id, {
 });
 
 // Skills
-async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
+async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	// Skills come only from the agent dir this load is FOR
 	// (~/.veyyon/profiles/<name>/agent/skills). Project-local `.veyyon/skills`
 	// directories are deliberately NOT scanned: skills belong to your profile, so
@@ -269,7 +269,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 // the capability-level priority dedup. Discovery is unconditional (an empty
 // managed dir is a no-op); only writing/nudging is gated by `autolearn.enabled`.
 const MANAGED_SKILLS_PRIORITY = 5;
-async function loadManagedSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
+async function loadManagedSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	return scanSkillsFromDir({
 		dir: getManagedSkillsDir(ctx.agentDir ?? getAgentDir()),
 		providerId: MANAGED_SKILLS_PROVIDER_ID,
@@ -278,7 +278,7 @@ async function loadManagedSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	});
 }
 
-registerProvider<Skill>(skillCapability.id, {
+registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,
 	displayName: APP_DISPLAY_NAME,
 	description: DESCRIPTION,
@@ -286,7 +286,7 @@ registerProvider<Skill>(skillCapability.id, {
 	load: loadSkills,
 });
 
-registerProvider<Skill>(skillCapability.id, {
+registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: MANAGED_SKILLS_PROVIDER_ID,
 	displayName: "Managed Skills (auto-learn)",
 	description: "Auto-generated managed skills from the active profile's agent/managed-skills directory",

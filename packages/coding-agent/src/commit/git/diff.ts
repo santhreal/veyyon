@@ -1,4 +1,5 @@
 import type { DiffHunk, FileDiff, FileHunks, NumstatEntry } from "../../commit/types";
+import { parseUnifiedHunkHeader } from "../../utils/unified-hunk-header";
 
 export function parseNumstat(output: string): NumstatEntry[] {
 	const entries: NumstatEntry[] = [];
@@ -50,7 +51,13 @@ export function parseFileDiffs(diff: string): FileDiff[] {
 	return sections;
 }
 
-export function parseDiffHunks(diff: string): FileHunks[] {
+/**
+ * Hunks per file for a whole `git diff`. Named for what it returns: `edit/diff.ts` owns a
+ * `parseDiffHunks` that answers the apply-patch parser's hunks (with line CONTENT in
+ * `oldLines`), and one name serving two incompatible shapes is what made `utils/git.ts`
+ * import this one under an alias.
+ */
+export function parseDiffFileHunks(diff: string): FileHunks[] {
 	const files = parseFileDiffs(diff);
 	return files.map(file => parseFileHunks(file));
 }
@@ -72,7 +79,13 @@ export function parseFileHunks(fileDiff: FileDiff): FileHunks {
 				current.content = buffer.join("\n");
 				hunks.push(current);
 			}
-			const headerData = parseHunkHeader(line);
+			const headerData = parseUnifiedHunkHeader(line.trimEnd());
+			if (!headerData) {
+				// Never invent line numbers here. This used to answer `{0, 0, 0, 0}`, which
+				// sent every hunk of the file to line zero and made a line-range selection
+				// silently select nothing at all (`selectHunks` in `utils/git.ts`).
+				throw new Error(`Unrecognized unified diff hunk header for ${fileDiff.filename}: ${line.trim()}`);
+			}
 			current = {
 				index,
 				header: line,
@@ -136,24 +149,3 @@ export function extractPathFromRename(pathPart: string): string {
 	return pathPart.trim();
 }
 
-function parseHunkHeader(line: string): {
-	oldStart: number;
-	oldLines: number;
-	newStart: number;
-	newLines: number;
-} {
-	const match = line.match(/@@\s-([0-9]+)(?:,([0-9]+))?\s\+([0-9]+)(?:,([0-9]+))?\s@@/);
-	if (!match) {
-		return { oldStart: 0, oldLines: 0, newStart: 0, newLines: 0 };
-	}
-	const oldStart = Number.parseInt(match[1] ?? "0", 10);
-	const oldLines = Number.parseInt(match[2] ?? "1", 10);
-	const newStart = Number.parseInt(match[3] ?? "0", 10);
-	const newLines = Number.parseInt(match[4] ?? "1", 10);
-	return {
-		oldStart: Number.isNaN(oldStart) ? 0 : oldStart,
-		oldLines: Number.isNaN(oldLines) ? 0 : oldLines,
-		newStart: Number.isNaN(newStart) ? 0 : newStart,
-		newLines: Number.isNaN(newLines) ? 0 : newLines,
-	};
-}

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { parseDiffHunks, parseFileDiffs, parseFileHunks, parseNumstat } from "@veyyon/coding-agent/commit/git/diff";
+import {
+	parseDiffFileHunks,
+	parseFileDiffs,
+	parseFileHunks,
+	parseNumstat,
+} from "@veyyon/coding-agent/commit/git/diff";
 
 /**
  * The commit pipeline parses `git diff` and `git diff --numstat` output into
@@ -85,9 +90,9 @@ describe("parseFileDiffs", () => {
 	});
 });
 
-describe("parseFileHunks / parseDiffHunks", () => {
+describe("parseFileHunks / parseDiffFileHunks", () => {
 	it("extracts the hunk range from the @@ header", () => {
-		const [file] = parseDiffHunks(SAMPLE_DIFF);
+		const [file] = parseDiffFileHunks(SAMPLE_DIFF);
 		expect(file.filename).toBe("src/a.ts");
 		expect(file.hunks).toHaveLength(1);
 		expect(file.hunks[0]).toMatchObject({
@@ -100,7 +105,7 @@ describe("parseFileHunks / parseDiffHunks", () => {
 	});
 
 	it("returns no hunks for a binary file", () => {
-		const bin = parseDiffHunks(SAMPLE_DIFF)[1];
+		const bin = parseDiffFileHunks(SAMPLE_DIFF)[1];
 		expect(bin.isBinary).toBe(true);
 		expect(bin.hunks).toEqual([]);
 	});
@@ -126,5 +131,36 @@ describe("parseFileHunks / parseDiffHunks", () => {
 		});
 		expect(file.hunks.map(h => h.index)).toEqual([0, 1]);
 		expect(file.hunks[1]).toMatchObject({ oldStart: 10, oldLines: 2, newStart: 10, newLines: 3 });
+	});
+
+	/**
+	 * WHY: the staging pipeline used to carry its own hunk-header regex that required exactly
+	 * one whitespace character on each side of the ranges, and answered `{0, 0, 0, 0}` for
+	 * anything else. A combined merge header put every hunk of the file at line zero, and
+	 * `selectHunks` then dropped all of them from a line-range selection with no error at
+	 * all. Both parsers read `utils/unified-hunk-header.ts` now, and an unreadable header is
+	 * refused instead of being given invented line numbers.
+	 */
+	it("refuses a combined merge header instead of placing the hunk at line zero", () => {
+		expect(() =>
+			parseFileHunks({
+				filename: "merged.ts",
+				content: "@@@ -1,2 -1,2 +1,2 @@@\n  a\n++b",
+				additions: 1,
+				deletions: 0,
+				isBinary: false,
+			}),
+		).toThrow("Unrecognized unified diff hunk header for merged.ts: @@@ -1,2 -1,2 +1,2 @@@");
+	});
+
+	it("accepts the padded separators the apply-patch grammar has always accepted", () => {
+		const file = parseFileHunks({
+			filename: "z.ts",
+			content: "@@ -3,2   +9,4 @@ function z()\n c\n+d",
+			additions: 1,
+			deletions: 0,
+			isBinary: false,
+		});
+		expect(file.hunks[0]).toMatchObject({ oldStart: 3, oldLines: 2, newStart: 9, newLines: 4 });
 	});
 });

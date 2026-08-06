@@ -8,7 +8,7 @@ import {
 import { skillCapability } from "../capability/skill";
 import type { SourceMeta } from "../capability/types";
 import type { SkillsSettings } from "../config/settings";
-import { type Skill as CapabilitySkill, loadCapability } from "../discovery";
+import { type DiscoveredSkill, loadCapability } from "../discovery";
 import { PROVIDER_ID as NATIVE_SKILL_PROVIDER } from "../discovery/builtin";
 import { compareSkillOrder, scanSkillsFromDir } from "../discovery/helpers";
 import { PROVIDER_ID as VEYYON_PLUGINS_SKILL_PROVIDER } from "../discovery/veyyon-plugins";
@@ -159,7 +159,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	// profileSkillProviderIds). The allowlist means foreign-tool directories
 	// (`~/.claude`, `~/.codex`, `~/.agent[s]`, GitHub, OpenCode, Claude plugins)
 	// are never scanned, so there is nothing to filter out per source afterwards.
-	const result = await loadCapability<CapabilitySkill>(skillCapability.id, {
+	const result = await loadCapability<DiscoveredSkill>(skillCapability.id, {
 		cwd,
 		agentDir,
 		disabledExtensions,
@@ -167,7 +167,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	});
 
 	const loadWarnings = [...(result.warnings ?? [])];
-	const candidates: CapabilitySkill[] = result.all;
+	const candidates: DiscoveredSkill[] = result.all;
 
 	const skillMap = new Map<string, Skill>();
 	const realPathSet = new Set<string>();

@@ -18,7 +18,7 @@ import {
 import type { ExtensionModule } from "../capability/extension-module";
 import { invalidate as invalidateFsCache, readDirEntries, readFile } from "../capability/fs";
 import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "../capability/rule";
-import type { Skill, SkillFrontmatter } from "../capability/skill";
+import type { DiscoveredSkill, SkillFrontmatter } from "../capability/skill";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 import { type ManifestHolder, manifestFromPackageJson } from "../extensibility/manifest-key";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
@@ -442,8 +442,8 @@ export function compareSkillOrder(aName: string, aPath: string, bName: string, b
  * and never read, which made the signature imply the scan was context-relative when it is
  * not.
  */
-export async function scanSkillsFromDir(options: ScanSkillsFromDirOptions): Promise<LoadResult<Skill>> {
-	const items: Skill[] = [];
+export async function scanSkillsFromDir(options: ScanSkillsFromDirOptions): Promise<LoadResult<DiscoveredSkill>> {
+	const items: DiscoveredSkill[] = [];
 	const warnings: string[] = [];
 	const { dir, level, providerId, requireDescription = false } = options;
 

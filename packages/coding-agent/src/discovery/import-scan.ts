@@ -12,7 +12,7 @@ import "./index";
 import { FOREIGN_PROVIDER_IDS, loadCapability } from "../capability";
 import type { ContextFile } from "../capability/context-file";
 import { contextFileCapability } from "../capability/context-file";
-import type { Skill } from "../capability/skill";
+import type { DiscoveredSkill } from "../capability/skill";
 import { skillCapability } from "../capability/skill";
 
 export interface ImportCandidate {
@@ -47,7 +47,7 @@ export async function scanForeignConfig(cwd?: string, home?: string): Promise<Im
 		providers: Array.from(FOREIGN_PROVIDER_IDS),
 	};
 	const [skills, contextFiles] = await Promise.all([
-		loadCapability<Skill>(skillCapability.id, options),
+		loadCapability<DiscoveredSkill>(skillCapability.id, options),
 		loadCapability<ContextFile>(contextFileCapability.id, options),
 	]);
 	const candidates: ImportCandidate[] = [];

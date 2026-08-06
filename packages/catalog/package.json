@@ -40,6 +40,8 @@
   },
   "devDependencies": {
     "@veyyon/ai": "catalog:",
+    "@veyyon/coding-agent": "catalog:",
+    "@veyyon/mnemopi": "catalog:",
     "@types/bun": "catalog:"
   },
   "engines": {

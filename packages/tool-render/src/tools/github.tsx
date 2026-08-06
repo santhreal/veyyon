@@ -1,26 +1,19 @@
 /** `github` — gh CLI dispatch: repo views, PRs, searches, Actions run watch. */
+import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/github-check-run";
 import type { ReactNode } from "react";
 import { Badge, InvalidArg, Kv, KvGrid, Note, Output, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, num, shortenPath, str, truncate } from "../util";
 
-const SUCCESS_CONCLUSIONS: Record<string, true> = { success: true, neutral: true, skipped: true };
-const FAILURE_CONCLUSIONS: Record<string, true> = {
-	failure: true,
-	timed_out: true,
-	cancelled: true,
-	action_required: true,
-	startup_failure: true,
-};
-const RUNNING_STATUSES: Record<string, true> = { in_progress: true };
+// The classification vocabulary is shared with the terminal renderer of this same tool output;
+// see `@veyyon/utils/github-check-run`. Only the icons and classes below are this view's.
 
 /** `123`, a PR/issue URL, or a branch name → `#123` or a truncated literal. */
 function issueId(value: string): string | null {
 	const trimmed = value.trim();
 	if (!trimmed) return null;
-	if (/^\d+$/.test(trimmed)) return `#${trimmed}`;
-	const match = trimmed.match(/\/(?:issues|pull)\/(\d+)/);
-	if (match) return `#${match[1]}`;
+	const id = githubIssueRefNumber(trimmed);
+	if (id) return id;
 	return truncate(trimmed, 40);
 }
 
@@ -121,12 +114,29 @@ function ArgsGrid({ args }: { args: Record<string, unknown> }): ReactNode {
 }
 
 function jobVisual(job: Record<string, unknown>): { icon: string; cls: string } {
-	const conclusion = str(job.conclusion);
-	const status = str(job.status);
-	if (conclusion && SUCCESS_CONCLUSIONS[conclusion]) return { icon: "✓", cls: "tv-ok-text" };
-	if (conclusion && FAILURE_CONCLUSIONS[conclusion]) return { icon: "✕", cls: "tv-err-text" };
-	if (status && RUNNING_STATUSES[status]) return { icon: "●", cls: "tv-warn-text" };
-	return { icon: "○", cls: "tv-faint" };
+	switch (classifyGithubCheckRun(str(job.status), str(job.conclusion))) {
+		case "success":
+			return { icon: "✓", cls: "tv-ok-text" };
+		case "failure":
+			return { icon: "✕", cls: "tv-err-text" };
+		case "running":
+			return { icon: "●", cls: "tv-warn-text" };
+		default:
+			return { icon: "○", cls: "tv-faint" };
+	}
+}
+
+function runTone(status: string | null, conclusion: string | null): "ok" | "err" | "warn" | undefined {
+	switch (classifyGithubCheckRun(status, conclusion)) {
+		case "success":
+			return "ok";
+		case "failure":
+			return "err";
+		case "running":
+			return "warn";
+		default:
+			return undefined;
+	}
 }
 
 function RunBlock({ run }: { run: Record<string, unknown> }): ReactNode {
@@ -140,14 +150,7 @@ function RunBlock({ run }: { run: Record<string, unknown> }): ReactNode {
 	if (id !== null) meta.push(`#${id}`);
 	const conclusion = str(run.conclusion);
 	const status = str(run.status);
-	const tone =
-		conclusion && SUCCESS_CONCLUSIONS[conclusion]
-			? ("ok" as const)
-			: conclusion && FAILURE_CONCLUSIONS[conclusion]
-				? ("err" as const)
-				: status && RUNNING_STATUSES[status]
-					? ("warn" as const)
-					: undefined;
+	const tone = runTone(status, conclusion);
 	const jobs = Array.isArray(run.jobs) ? run.jobs : [];
 	return (
 		<div className="tv-list">

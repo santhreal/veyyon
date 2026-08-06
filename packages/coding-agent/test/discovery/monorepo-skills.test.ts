@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { clearCache } from "@veyyon/coding-agent/capability/fs";
-import type { Skill } from "@veyyon/coding-agent/capability/skill";
+import type { DiscoveredSkill } from "@veyyon/coding-agent/capability/skill";
 import type { LoadContext, LoadResult } from "@veyyon/coding-agent/capability/types";
 import { scanSkillsFromDir } from "@veyyon/coding-agent/discovery/helpers";
 import { removeSyncWithRetries } from "@veyyon/utils";
@@ -53,7 +53,7 @@ describe("monorepo skill discovery", () => {
 		writeSkill(path.join(subProject, ".veyyon", "skills"), "local-skill", "From sub-project");
 
 		// Simulate the walk-up pattern used by the builtin provider
-		const results: LoadResult<Skill>[] = [];
+		const results: LoadResult<DiscoveredSkill>[] = [];
 		let current = subProject;
 		while (true) {
 			const result = await scanSkillsFromDir({
@@ -82,7 +82,7 @@ describe("monorepo skill discovery", () => {
 		writeSkill(path.join(repoRoot, ".veyyon", "skills"), "shared-skill", "Root version");
 		writeSkill(path.join(subProject, ".veyyon", "skills"), "shared-skill", "Local version");
 
-		const results: LoadResult<Skill>[] = [];
+		const results: LoadResult<DiscoveredSkill>[] = [];
 		let current = subProject;
 		while (true) {
 			const result = await scanSkillsFromDir({
@@ -107,7 +107,7 @@ describe("monorepo skill discovery", () => {
 
 	test("works when no ancestor has skills", async () => {
 		// No skills anywhere
-		const results: LoadResult<Skill>[] = [];
+		const results: LoadResult<DiscoveredSkill>[] = [];
 		let current = subProject;
 		while (true) {
 			const result = await scanSkillsFromDir({
@@ -132,7 +132,7 @@ describe("monorepo skill discovery", () => {
 		writeSkill(path.join(packagesDir, ".veyyon", "skills"), "packages-skill", "Packages");
 		writeSkill(path.join(subProject, ".veyyon", "skills"), "app-skill", "App");
 
-		const results: LoadResult<Skill>[] = [];
+		const results: LoadResult<DiscoveredSkill>[] = [];
 		let current = subProject;
 		while (true) {
 			const result = await scanSkillsFromDir({
@@ -163,7 +163,7 @@ describe("monorepo skill discovery", () => {
 		writeSkill(path.join(repoRoot, ".veyyon", "skills"), "root-skill", "At repo root");
 
 		// Simulate the walk-up with repo root boundary (matching builtin provider pattern)
-		const results: LoadResult<Skill>[] = [];
+		const results: LoadResult<DiscoveredSkill>[] = [];
 		let current = subProject;
 		while (true) {
 			const result = await scanSkillsFromDir({

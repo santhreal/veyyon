@@ -21,7 +21,7 @@ import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
 import { removeWithRetries } from "@veyyon/utils";
 import "@veyyon/coding-agent/discovery/claude-plugins";
 import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/capability/mcp";
-import type { Skill } from "@veyyon/coding-agent/capability/skill";
+import type { DiscoveredSkill } from "@veyyon/coding-agent/capability/skill";
 import type { SlashCommand } from "@veyyon/coding-agent/capability/slash-command";
 
 // claude-plugins is a foreign provider gated behind the (default-off)
@@ -378,7 +378,7 @@ describe("listClaudePluginRoots", () => {
 			"---\nname: manifest-skill\ndescription: Manifest skill\n---\nBody\n",
 		);
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir });
 		expect(result.warnings).toEqual([]);
 		expect(result.all.length).toBeGreaterThan(0);
 		const found = result.all.find(skill => skill.name === "manifest-skill");
@@ -414,7 +414,7 @@ describe("listClaudePluginRoots", () => {
 		);
 
 		const commands = await loadSlashCommands({ cwd: tempDir });
-		const skills = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const skills = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir });
 
 		expect(commands.find(command => command.name === "understand")).toBeUndefined();
 		expect(skills.all.find(skill => skill.name === "understand")?.frontmatter?.description).toBe(
@@ -681,7 +681,7 @@ describe("listClaudePluginRoots", () => {
 			"---\nname: outside-skill\ndescription: Outside skill\n---\nBody\n",
 		);
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir });
 		expect(result.warnings[0]).toContain("Ignoring skills path outside plugin root");
 		const found = result.all.find(skill => skill.name === "outside-skill");
 
@@ -719,7 +719,7 @@ describe("listClaudePluginRoots", () => {
 			"---\nname: fallback-skill\ndescription: Default-dir skill\n---\nBody\n",
 		);
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir });
 		// Fail-soft: the malformed manifest must not abort the plugin, so its
 		// default `skills/` directory is still scanned.
 		const fallback = result.all.find(skill => skill.name === "fallback-skill");
@@ -762,7 +762,7 @@ describe("listClaudePluginRoots", () => {
 			"---\nname: market-fallback-skill\ndescription: Kept default skill\n---\nBody\n",
 		);
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir });
 		const invalid = result.warnings.find(w => w.includes("Invalid JSON") && w.includes("marketplace.json"));
 		expect(invalid).toBeDefined();
 		expect(result.all.find(skill => skill.name === "market-fallback-skill")).toBeDefined();
@@ -967,7 +967,7 @@ describe("listClaudePluginRoots", () => {
 			"---\nname: beta\ndescription: Beta skill\n---\nBody\n",
 		);
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir });
 		expect(result.warnings).toEqual([]);
 		expect(result.all.find(s => s.name === "alpha")).toBeDefined();
 		expect(result.all.find(s => s.name === "beta")).toBeDefined();
@@ -1012,7 +1012,7 @@ describe("listClaudePluginRoots", () => {
 			"---\nname: extra-skill\ndescription: Extra skill\n---\nBody\n",
 		);
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir });
 		expect(result.warnings).toEqual([]);
 		expect(result.all.find(s => s.name === "default-skill")).toBeDefined();
 		expect(result.all.find(s => s.name === "extra-skill")).toBeDefined();
@@ -1067,7 +1067,7 @@ describe("listClaudePluginRoots", () => {
 			"---\nname: published-skill\ndescription: Published skill\n---\nBody\n",
 		);
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir });
 		expect(result.warnings).toEqual([]);
 		expect(result.all.find(s => s.name === "published-skill")).toBeDefined();
 		expect(result.all.find(s => s.name === "unpublished-root-skill")).toBeUndefined();
@@ -1107,7 +1107,7 @@ describe("listClaudePluginRoots", () => {
 			"---\nname: solo-skill\ndescription: Solo skill\n---\nBody\n",
 		);
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir });
 		expect(result.warnings).toEqual([]);
 		expect(result.all.find(s => s.name === "solo-skill")).toBeDefined();
 	});

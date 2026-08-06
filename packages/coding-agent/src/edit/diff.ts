@@ -9,6 +9,7 @@ import { errorMessage } from "@veyyon/utils";
 import * as Diff from "diff";
 import { resolveToCwd } from "../tools/path-utils";
 import { type BlockContextSource, findBlockContextLines } from "../utils/block-context";
+import { parseUnifiedHunkHeader } from "../utils/unified-hunk-header";
 import { EOF_MARKER, FILE_OP_MARKERS, PATCH_WRAPPER_MARKERS } from "./apply-patch/markers";
 import { DEFAULT_FUZZY_THRESHOLD, EditMatchError, findMatch } from "./match";
 import { adjustIndentation, normalizeToLF, stripBom } from "./normalize";
@@ -413,7 +414,6 @@ export function generateUnifiedDiffString(
 
 const CHANGE_CONTEXT_MARKER = "@@ ";
 const EMPTY_CHANGE_CONTEXT_MARKER = "@@";
-const UNIFIED_HUNK_HEADER_REGEX = /^@@\s*-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s*@@(?:\s*(.*))?$/;
 const LINE_HINT_REGEX = /^lines?\s+(\d+)(?:\s*-\s*(\d+))?(?:\s*@@)?$/i;
 const TOP_OF_FILE_REGEX = /^(top|start|beginning)\s+of\s+file$/i;
 // `diff --git ` is git's own marker, not part of the apply-patch envelope, so it is
@@ -518,33 +518,6 @@ export function normalizeCreateContent(content: string): string {
 	return content;
 }
 
-interface UnifiedHunkHeader {
-	oldStartLine: number;
-	oldLineCount: number;
-	newStartLine: number;
-	newLineCount: number;
-	changeContext?: string;
-}
-
-function parseUnifiedHunkHeader(line: string): UnifiedHunkHeader | undefined {
-	const match = line.match(UNIFIED_HUNK_HEADER_REGEX);
-	if (!match) return undefined;
-
-	const oldStartLine = Number(match[1]);
-	const oldLineCount = match[2] ? Number(match[2]) : 1;
-	const newStartLine = Number(match[3]);
-	const newLineCount = match[4] ? Number(match[4]) : 1;
-	const changeContext = match[5]?.trim();
-
-	return {
-		oldStartLine,
-		oldLineCount,
-		newStartLine,
-		newLineCount,
-		changeContext: changeContext && changeContext.length > 0 ? changeContext : undefined,
-	};
-}
-
 function isUnifiedDiffMetadataLine(line: string): boolean {
 	return matchesTrimmedPrefix(
 		line,
@@ -576,14 +549,14 @@ function parseOneHunk(lines: string[], lineNumber: number, allowMissingContext: 
 	if (isHeaderLine && (headerTrimmed === EMPTY_CHANGE_CONTEXT_MARKER || isEmptyContextMarker)) {
 		startIndex = 1;
 	} else if (unifiedHeader) {
-		if (unifiedHeader.oldStartLine < 1 || unifiedHeader.newStartLine < 1) {
+		if (unifiedHeader.oldStart < 1 || unifiedHeader.newStart < 1) {
 			throw new ParseError("Line numbers in @@ header must be >= 1", lineNumber);
 		}
 		if (unifiedHeader.changeContext) {
 			changeContexts.push(unifiedHeader.changeContext);
 		}
-		oldStartLine = unifiedHeader.oldStartLine;
-		newStartLine = unifiedHeader.newStartLine;
+		oldStartLine = unifiedHeader.oldStart;
+		newStartLine = unifiedHeader.newStart;
 		startIndex = 1;
 	} else if (isHeaderLine && headerTrimmed.startsWith(CHANGE_CONTEXT_MARKER)) {
 		const contextValue = headerTrimmed.slice(CHANGE_CONTEXT_MARKER.length);

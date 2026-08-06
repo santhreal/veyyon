@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
-import { type Skill, skillCapability } from "@veyyon/coding-agent/capability/skill";
+import { type DiscoveredSkill, skillCapability } from "@veyyon/coding-agent/capability/skill";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
 import { removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
@@ -42,13 +42,16 @@ describe("skills are isolated between two named profiles", () => {
 	}
 
 	/** Activate a profile's agent dir and load the skills discovery sees from it. */
-	async function skillsVisibleFrom(agentDir: string): Promise<Skill[]> {
+	async function skillsVisibleFrom(agentDir: string): Promise<DiscoveredSkill[]> {
 		setAgentDir(agentDir);
 		// The discovery layer caches filesystem reads; without clearing, the second
 		// profile would be answered from the first profile's scan and this suite would
 		// pass for the wrong reason.
 		clearFsCache();
-		const result = await loadCapability<Skill>(skillCapability.id, { cwd: projectDir, providers: ["native"] });
+		const result = await loadCapability<DiscoveredSkill>(skillCapability.id, {
+			cwd: projectDir,
+			providers: ["native"],
+		});
 		return result.items;
 	}
 

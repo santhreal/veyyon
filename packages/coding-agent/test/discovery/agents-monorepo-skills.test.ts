@@ -25,7 +25,7 @@ import { loadCapability, reset as resetCapabilityCaches } from "@veyyon/coding-a
 import type { ContextFile } from "@veyyon/coding-agent/capability/context-file";
 import type { Prompt } from "@veyyon/coding-agent/capability/prompt";
 import type { Rule } from "@veyyon/coding-agent/capability/rule";
-import type { Skill } from "@veyyon/coding-agent/capability/skill";
+import type { DiscoveredSkill } from "@veyyon/coding-agent/capability/skill";
 import type { SlashCommand } from "@veyyon/coding-agent/capability/slash-command";
 import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
 import "@veyyon/coding-agent/discovery";
@@ -97,7 +97,7 @@ describe("a monorepo's .agents directories are invisible to the agents provider"
 		test("finds no skill in the repo root's .agents/skills from a sub-project cwd", async () => {
 			writeSkill(path.join(repoRoot, ".agents", "skills"), "root-skill", "From repo root");
 
-			const result = await loadFromAgents<Skill>("skills");
+			const result = await loadFromAgents<DiscoveredSkill>("skills");
 
 			expect(result.items.map(skill => skill.name)).not.toContain("root-skill");
 			expect(projectPaths(result.all)).toEqual([]);
@@ -106,7 +106,7 @@ describe("a monorepo's .agents directories are invisible to the agents provider"
 		test("finds no skill in the sub-project's own .agents/skills either", async () => {
 			writeSkill(path.join(subProject, ".agents", "skills"), "local-skill", "From sub-project");
 
-			const result = await loadFromAgents<Skill>("skills");
+			const result = await loadFromAgents<DiscoveredSkill>("skills");
 
 			expect(result.items.map(skill => skill.name)).not.toContain("local-skill");
 			expect(projectPaths(result.all)).toEqual([]);
@@ -116,7 +116,7 @@ describe("a monorepo's .agents directories are invisible to the agents provider"
 			writeSkill(path.join(repoRoot, ".agents", "skills"), "root-skill", "From repo root");
 			writeSkill(path.join(userHome, ".agents", "skills"), "user-skill", "From the operator's home");
 
-			const result = await loadFromAgents<Skill>("skills");
+			const result = await loadFromAgents<DiscoveredSkill>("skills");
 
 			const userSkill = result.items.find(skill => skill.name === "user-skill");
 			expect(userSkill).toBeDefined();

@@ -22,7 +22,7 @@ import { type ContextFile, contextFileCapability } from "../capability/context-f
 import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
 import { readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type Skill, skillCapability } from "../capability/skill";
+import { type DiscoveredSkill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -230,7 +230,7 @@ function extractMCPServers(
 // Skills (skills/)
 // =============================================================================
 
-async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
+async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const userSkillsDir = getUserPath(ctx, "opencode", "skills");
 	if (!userSkillsDir) return { items: [], warnings: [] };
 

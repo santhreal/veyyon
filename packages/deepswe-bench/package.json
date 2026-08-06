@@ -7,6 +7,9 @@
 	"author": "santhreal",
 	"dependencies": {
 		"@veyyon/ai": "workspace:*",
+		"@veyyon/coding-agent": "workspace:*",
+		"@veyyon/natives": "workspace:*",
+		"@veyyon/utils": "workspace:*",
 		"argot": "workspace:*"
 	},
 	"scripts": {
