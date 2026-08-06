@@ -21,11 +21,9 @@ import { AUTONOMY_LABEL } from "../../../tools/approval-modes";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
-import { emberBandEscape } from "../sun";
 import {
 	type ContextUsageLevel,
 	formatContextRemainingPercent,
-	formatContextUsage,
 	getContextUsageLevel,
 	getContextUsageThemeColor,
 } from "./context-thresholds";
@@ -486,44 +484,14 @@ const gitSegment: StatusLineSegment = {
 			content = withIcon(theme.icon.branch, branch);
 		}
 
-		// Compact: branch plus one bare dirty marker — the counts belong on the
-		// full status line, not the quiet composer zone.
-		if (opts.compact) {
-			if (isDirty) content = `${content} ${theme.fg("statusLineDirty", "*")}`;
-			if (!content) return { content: "", visible: false };
-			const colorName = isDirty ? "statusLineGitDirty" : "statusLineGitClean";
-			return { content: theme.fg(colorName, content), visible: true };
-		}
-
-		// Add status indicators
-		if (gitStatus) {
-			const indicators: string[] = [];
-			// A repository large enough to overrun git's output cap yields counts
-			// that are lower bounds, not totals. Rendering them bare would show a
-			// confident wrong number that never settles, so each one is suffixed to
-			// read as "at least this many".
-			const atLeast = gitStatus.truncated ? "+" : "";
-			if (opts.showUnstaged !== false && gitStatus.unstaged > 0) {
-				indicators.push(theme.fg("statusLineDirty", `*${gitStatus.unstaged}${atLeast}`));
-			}
-			if (opts.showStaged !== false && gitStatus.staged > 0) {
-				indicators.push(theme.fg("statusLineStaged", `+${gitStatus.staged}${atLeast}`));
-			}
-			if (opts.showUntracked !== false && gitStatus.untracked > 0) {
-				indicators.push(theme.fg("statusLineUntracked", `?${gitStatus.untracked}${atLeast}`));
-			}
-			if (indicators.length > 0) {
-				const indicatorText = indicators.join(" ");
-				if (!content && showBranch === false) {
-					content = withIcon(theme.icon.git, indicatorText);
-				} else {
-					content += content ? ` ${indicatorText}` : indicatorText;
-				}
-			}
-		}
-
+		// Branch plus one bare dirty marker. There used to be a second mode here
+		// that broke the dirt out into per-kind counts (`*2 +1 ?3`), gated on
+		// `compact` plus three `show*` flags the presets all set. Nothing could
+		// reach it: the composer footline is the only renderer of any segment and
+		// it asks for the compact form unconditionally, so the counts, the flags
+		// and the presets' settings for them were configuration over dead code.
+		if (isDirty) content = `${content} ${theme.fg("statusLineDirty", "*")}`;
 		if (!content) return { content: "", visible: false };
-
 		const colorName = isDirty ? "statusLineGitDirty" : "statusLineGitClean";
 		return { content: theme.fg(colorName, content), visible: true };
 	},
@@ -680,34 +648,23 @@ const contextPctSegment: StatusLineSegment = {
 	render(ctx) {
 		const pct = ctx.contextPercent;
 		const level = getContextUsageLevel(pct);
-
-		if (ctx.options.context_pct?.bar) {
-			// Quiet zones: the bar carries the heat and the number says what it
-			// is. Both report room LEFT, so they cannot disagree. Auto-compaction
-			// shows as a session-accent ∞ — the endless-session mark.
-			const remainingRatio = pct === null || pct === undefined ? 1 : Math.max(0, 100 - pct) / 100;
-			const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.session.isStreaming);
-			const pctText = formatContextRemainingPercent(pct);
-			const autoIcon =
-				ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.fg("sessionAccent", theme.icon.auto)}` : "";
-			return {
-				content: `${bar} ${theme.fg(getContextUsageThemeColor(level), pctText)}${autoIcon}`,
-				visible: true,
-			};
-		}
-
-		const autoIcon = ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.icon.auto}` : "";
-		// tok/tok, one unit on both sides of the slash: `47k/170k`.
-		const text = `${formatContextUsage(ctx.contextTokens, ctx.contextLimit)}${autoIcon}`;
-
-		// The quiet zone's gauge warms up the ember ramp as it fills — the sun
-		// heating — while the error state keeps its unmistakable semantic red.
-		const content =
-			ctx.options.context_pct?.emberRamp && level !== "error"
-				? withIcon(theme.icon.context, `${emberBandEscape((pct ?? 0) / 100, TERMINAL.trueColor)}${text}\x1b[39m`)
-				: withIcon(theme.icon.context, theme.fg(getContextUsageThemeColor(level), text));
-
-		return { content, visible: true };
+		// The bar carries the heat and the number says what it is. Both report
+		// room LEFT, so they cannot disagree. Auto-compaction shows as a
+		// session-accent ∞ — the endless-session mark.
+		//
+		// This used to be one of two forms, the other a `47k/170k` token readout
+		// behind a `bar` option with its own `emberRamp` colouring. The composer
+		// footline is the only renderer and it always asked for the bar, so the
+		// readout, both options and the ramp were unreachable.
+		const remainingRatio = pct === null || pct === undefined ? 1 : Math.max(0, 100 - pct) / 100;
+		const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.session.isStreaming);
+		const pctText = formatContextRemainingPercent(pct);
+		const autoIcon =
+			ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.fg("sessionAccent", theme.icon.auto)}` : "";
+		return {
+			content: `${bar} ${theme.fg(getContextUsageThemeColor(level), pctText)}${autoIcon}`,
+			visible: true,
+		};
 	},
 };
 

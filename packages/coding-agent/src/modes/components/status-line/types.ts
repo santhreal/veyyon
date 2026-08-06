@@ -21,36 +21,28 @@ export interface StatusLineSegmentOptions {
 		roomy?: boolean;
 	};
 	path?: { abbreviate?: boolean; maxLength?: number; stripWorkPrefix?: boolean };
-	git?: {
-		showBranch?: boolean;
-		showStaged?: boolean;
-		showUnstaged?: boolean;
-		showUntracked?: boolean;
-		/** Quiet zones: branch + a bare dirty `*`, never the per-kind counts. */
-		compact?: boolean;
-	};
+	git?: { showBranch?: boolean };
 	time?: { format?: "12h" | "24h"; showSeconds?: boolean };
-	context_pct?: {
-		/** Quiet zones: the gauge warms up the ember ramp as it fills (silver when
-		 *  cool, sun-fire when hot); the error state keeps its semantic red. */
-		emberRamp?: boolean;
-		/** Quiet zones: render the growing 8-cell context bar with a breathing
-		 *  tip and gold major-fill anchors instead of the `pct/window` text.
-		 *  The percent number stays; the window denominator is dropped. */
-		bar?: boolean;
-	};
 }
 
 export interface StatusLineSettings {
 	preset?: StatusLinePreset;
 	leftSegments?: StatusLineSegmentId[];
 	rightSegments?: StatusLineSegmentId[];
+	/**
+	 * DEAD as of the top-border removal: nothing renders a separator any more.
+	 * The composer footline joins segments with its own fixed `  ·  `. The field
+	 * survives only because `modes/controllers/selector-controller.ts` still
+	 * passes it (that file is off limits); delete both together.
+	 */
 	separator?: StatusLineSeparatorStyle;
 	segmentOptions?: StatusLineSegmentOptions;
 	showHookStatus?: boolean;
 	sessionAccent?: boolean;
-	/** Drop the theme's `statusLineBg` fill and powerline caps so the bar
-	 *  inherits the terminal's default background. */
+	/**
+	 * DEAD as of the top-border removal: there is no filled bar to make
+	 * transparent. Same blocker as `separator` above.
+	 */
 	transparent?: boolean;
 	/** Replace the model-segment icon with the thinking-level glyph and drop the
 	 *  " · <level>" suffix, so the thinking level reads as a single compact icon. */
@@ -58,7 +50,7 @@ export interface StatusLineSettings {
 }
 
 export type EffectiveStatusLineSettings = Required<
-	Pick<StatusLineSettings, "leftSegments" | "rightSegments" | "separator" | "segmentOptions">
+	Pick<StatusLineSettings, "leftSegments" | "rightSegments" | "segmentOptions">
 > &
 	StatusLineSettings;
 
@@ -170,26 +162,11 @@ export interface StatusLineSegment {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Separator Definition
-// ═══════════════════════════════════════════════════════════════════════════
-
-export interface SeparatorDef {
-	left: string; // Character for left→right segments
-	right: string; // Character for right→left segments (reversed)
-	endCaps?: {
-		left: string; // Cap for right segments (points left)
-		right: string; // Cap for left segments (points right)
-		useBgAsFg: boolean;
-	};
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Preset Definition
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface PresetDef {
 	leftSegments: StatusLineSegmentId[];
 	rightSegments: StatusLineSegmentId[];
-	separator: StatusLineSeparatorStyle;
 	segmentOptions?: StatusLineSegmentOptions;
 }
