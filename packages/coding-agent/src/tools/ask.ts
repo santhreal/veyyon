@@ -30,6 +30,7 @@ import {
 	visibleWidth,
 } from "@veyyon/tui";
 import { clamp, clampLow, collapseWhitespace, formatCount, isCancellation, prompt, untilAborted } from "@veyyon/utils";
+import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
@@ -131,7 +132,6 @@ function toSelectOption(option: AskOption, label = option.label): ExtensionUISel
 // Constants
 // =============================================================================
 
-const RECOMMENDED_SUFFIX = " (Recommended)";
 // Window after the timeout deadline within which an `undefined` selection is
 // attributed to a UI-enforced timeout (for surfaces that close the dialog at
 // the deadline but never invoke `onTimeout`). Cancels beyond it are user Esc.
@@ -141,18 +141,14 @@ function getDoneOptionLabel(): string {
 	return `${theme.status.success} Done selecting`;
 }
 
-/** Add "(Recommended)" suffix to the option at the given index if not already present */
+/** Mark the option at `recommendedIndex`, leaving every other label untouched. */
 function addRecommendedSuffix(options: AskOption[], recommendedIndex?: number): ExtensionUISelectItem[] {
 	if (recommendedIndex === undefined || recommendedIndex < 0 || recommendedIndex >= options.length) {
 		return options.map(option => toSelectOption(option));
 	}
-	return options.map((option, i) => {
-		const label =
-			i === recommendedIndex && !option.label.endsWith(RECOMMENDED_SUFFIX)
-				? option.label + RECOMMENDED_SUFFIX
-				: option.label;
-		return toSelectOption(option, label);
-	});
+	return options.map((option, i) =>
+		toSelectOption(option, i === recommendedIndex ? withRecommendedSuffix(option.label) : option.label),
+	);
 }
 
 function getAutoSelectionOnTimeout(options: AskOption[], recommended?: number): string[] {
@@ -161,11 +157,6 @@ function getAutoSelectionOnTimeout(options: AskOption[], recommended?: number): 
 		return [options[recommended]!.label];
 	}
 	return [options[0]!.label];
-}
-
-/** Strip "(Recommended)" suffix from a label */
-function stripRecommendedSuffix(label: string): string {
-	return label.endsWith(RECOMMENDED_SUFFIX) ? label.slice(0, -RECOMMENDED_SUFFIX.length) : label;
 }
 
 interface CustomInputContext {

@@ -28,6 +28,7 @@ import {
 	RESERVED_ASK_OPTION_LABELS,
 } from "@veyyon/coding-agent/tools/ask-option-labels";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { RECOMMENDED_SUFFIX, stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
 const OWNER_REL = "tools/ask-option-labels.ts";
@@ -210,5 +211,109 @@ describe("the ask option labels have one owner", () => {
 		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
 		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
 		expect(moduleSpecifiersIn(owner)).toEqual([]);
+	});
+});
+
+
+/**
+ * The fourth label, and the only one that leaves this package.
+ *
+ * ` (Recommended)` is not a reserved label: the runtime does not add a row for it, it EDITS the label of a row
+ * the caller supplied, and then compares the edited text back. That makes the writer/reader split worse than
+ * the three above rather than milder. `tools/ask.ts` appended it and stripped it; `modes/components/ask-dialog.ts`
+ * appended it a SECOND time from a bare template literal (`${label} (Recommended)`) and stripped it with a
+ * private copy of the string; `@veyyon/tool-render` stripped it with a third copy when rendering an answer for
+ * HTML export and collab. Four spellings, two of them writers.
+ *
+ * The failure is silent and lands in the model's context. Change the wording in one writer and the readers stop
+ * matching, so the marker survives into the answer and the model is told the user chose
+ * "Deploy to production (Recommended)" rather than "Deploy to production". Nothing throws.
+ *
+ * The owner is `@veyyon/wire` rather than `tools/ask-option-labels.ts` because tool-render has to read it and
+ * cannot import from coding-agent. wire is dependency-free and both packages already depend on it.
+ */
+describe("the recommended-option marker", () => {
+	/** Pinned as bytes: the leading space is part of the marker, and a label is compared exactly. */
+	it("is a space-prefixed parenthesised word", () => {
+		expect(RECOMMENDED_SUFFIX).toBe(" (Recommended)");
+	});
+
+	/** The round trip the whole design rests on: what the writer adds, the reader takes back off. */
+	it("strips back to the label the caller supplied", () => {
+		for (const label of ["Deploy to production", "JWT", "Other (type your own)", "Next →", "a (Recommended) b"]) {
+			expect(stripRecommendedSuffix(withRecommendedSuffix(label))).toBe(label);
+		}
+	});
+
+	/** Marking twice marks once, which is what stops a re-render from producing "X (Recommended) (Recommended)". */
+	it("is idempotent when applied again", () => {
+		const once = withRecommendedSuffix("Deploy");
+		expect(withRecommendedSuffix(once)).toBe(once);
+		expect(once).toBe("Deploy (Recommended)");
+	});
+
+	/** A label that never carried the marker is returned untouched, including the near misses. */
+	it("leaves an unmarked label alone", () => {
+		for (const label of ["Deploy", "(Recommended)", "Deploy (recommended)", "Deploy (Recommended) ", ""]) {
+			expect(stripRecommendedSuffix(label), label).toBe(label);
+		}
+	});
+
+	/** Only a TRAILING marker is removed, so a label that mentions the word mid-string keeps it. */
+	it("removes only a trailing marker", () => {
+		expect(stripRecommendedSuffix("A (Recommended) then B")).toBe("A (Recommended) then B");
+	});
+});
+
+describe("the recommended-option marker has one owner", () => {
+	const MARKER_DECL = /^\s*(?:export )?const \w+ = " \(Recommended\)";/m;
+	/** Appending the marker by hand instead of calling the helper, which is what ask-dialog.ts did. */
+	const HAND_APPEND = /`\$\{[^}]+\} \(Recommended\)`/;
+
+	/** The former declarers, one of them in another package. */
+	const MARKER_READERS: readonly string[] = ["tools/ask.ts", "modes/components/ask-dialog.ts"];
+
+	it("declares the marker nowhere in coding-agent", async () => {
+		const offenders = (await sources())
+			.filter(({ text }) => MARKER_DECL.test(text))
+			.map(({ file }) => file);
+		expect(offenders).toEqual([]);
+	});
+
+	/** Nor builds it inline, which no constant-name ratchet would have caught. */
+	it("appends the marker through the helper, never a template literal", async () => {
+		const offenders = (await sources())
+			.filter(({ text }) => HAND_APPEND.test(text))
+			.map(({ file }) => file);
+		expect(offenders).toEqual([]);
+	});
+
+	/** The positive half: both readers take it from wire. */
+	it("has both coding-agent readers importing from @veyyon/wire", async () => {
+		for (const reader of MARKER_READERS) {
+			const text = await Bun.file(path.join(SRC, reader)).text();
+			expect(moduleSpecifiersIn(text), reader).toContain("@veyyon/wire");
+			expect(text, reader).toContain("RecommendedSuffix");
+		}
+	});
+
+	/**
+	 * The cross-package half. tool-render is a separate package that renders the answer for HTML export and
+	 * collab, so its copy could drift without anything in coding-agent noticing.
+	 */
+	it("has tool-render reading the marker from wire rather than its own copy", async () => {
+		const rel = "../../../tool-render/src/tools/ask.tsx";
+		const text = await Bun.file(path.resolve(import.meta.dir, rel)).text();
+		expect(MARKER_DECL.test(text)).toBe(false);
+		expect(moduleSpecifiersIn(text)).toContain("@veyyon/wire");
+	});
+
+	/**
+	 * The prompt states the marker verbatim so the model knows not to write it into a label itself. Same
+	 * coupling as the free-text label above, asserted from the constant's side.
+	 */
+	it("has the ask prompt teaching the same marker", async () => {
+		const prompt = await Bun.file(path.join(SRC, "prompts/tools/ask.md")).text();
+		expect(prompt).toContain(RECOMMENDED_SUFFIX);
 	});
 });
