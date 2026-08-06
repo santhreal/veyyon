@@ -4,6 +4,7 @@ import {
 	ANY_MODEL_EFFORT_KEY,
 	formatEffortRow,
 	resolveEffort,
+	withAnyModelEffort,
 	withLegacyDefaultEffort,
 } from "@veyyon/coding-agent/config/effort-resolver";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
@@ -170,6 +171,49 @@ describe("migrating the retired global default", () => {
 		// the migrated row back into settings as a side effect of reading.
 		const rows = { [OPUS]: ThinkingLevel.High };
 		withLegacyDefaultEffort(rows, ThinkingLevel.Low);
+		expect(rows).toEqual({ [OPUS]: ThinkingLevel.High });
+	});
+});
+
+describe("persisting a durable default effort", () => {
+	it("writes the any-model row into the setting the resolver reads", () => {
+		// The whole point of this helper. Persisting used to write the retired
+		// `defaultThinkingLevel` enum, which `withLegacyDefaultEffort` consults
+		// only when `defaultEffort` is absent, so the write was discarded on the
+		// next read for any profile that had ever opened the settings screen.
+		const rows = withAnyModelEffort({ [OPUS]: ThinkingLevel.XHigh }, undefined, ThinkingLevel.Medium);
+		expect(rows).toEqual({ [OPUS]: ThinkingLevel.XHigh, [ANY_MODEL_EFFORT_KEY]: ThinkingLevel.Medium });
+		expect(resolveEffort({ defaultEffort: rows })).toEqual({ level: ThinkingLevel.Medium, source: "any-row" });
+	});
+
+	it("replaces an existing any-model row rather than keeping the older one", () => {
+		expect(withAnyModelEffort({ [ANY_MODEL_EFFORT_KEY]: ThinkingLevel.Low }, undefined, ThinkingLevel.High)).toEqual({
+			[ANY_MODEL_EFFORT_KEY]: ThinkingLevel.High,
+		});
+	});
+
+	it("carries a legacy-only profile forward instead of dropping its per-model rows", () => {
+		// A profile still on the retired enum has no `defaultEffort` object, so the
+		// first persist is also the migration. Ignoring the legacy value here would
+		// silently discard the level that operator had saved.
+		expect(withAnyModelEffort(undefined, ThinkingLevel.XHigh, AUTO_THINKING)).toEqual({
+			[ANY_MODEL_EFFORT_KEY]: AUTO_THINKING,
+		});
+	});
+
+	it("does not resurrect the legacy enum into a list the operator cleared", () => {
+		// `{}` is a deliberate cleared default. The persist adds the one row asked
+		// for and nothing else.
+		expect(withAnyModelEffort({}, ThinkingLevel.High, ThinkingLevel.Low)).toEqual({
+			[ANY_MODEL_EFFORT_KEY]: ThinkingLevel.Low,
+		});
+	});
+
+	it("does not mutate the rows it was handed", () => {
+		// Settings owns the object; mutating it would edit stored state before the
+		// write, defeating any comparison the caller makes.
+		const rows = { [OPUS]: ThinkingLevel.High };
+		withAnyModelEffort(rows, undefined, ThinkingLevel.Low);
 		expect(rows).toEqual({ [OPUS]: ThinkingLevel.High });
 	});
 });
