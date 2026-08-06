@@ -7,6 +7,7 @@ import { ExponentialYield } from "@veyyon/agent-core/utils/yield";
 import { type MinimizerOptions, Shell, type ShellRunResult } from "@veyyon/natives";
 import { isExecutable, type ShellConfig } from "@veyyon/utils/procmgr";
 import { Settings, type ShellMinimizerSettings } from "../config/settings";
+import { sessionCpuLimit } from "../session/cpu-limit";
 import { OutputSink } from "../session/streaming-output";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
 import { TOOL_TIMEOUTS } from "../tools/tool-timeouts";
@@ -28,6 +29,14 @@ export interface BashExecutorOptions {
 	signal?: AbortSignal;
 	/** Session key suffix to isolate shell sessions per agent */
 	sessionKey?: string;
+	/**
+	 * The veyyon session id whose CPU budget this command joins. `sessionKey` is
+	 * a shell-isolation key and is NOT always a session id (autoresearch uses
+	 * `autoresearch:<cwd>`), so a caller whose two identities differ passes this.
+	 */
+	cpuSessionId?: string;
+	/** Session CPU budget name; the command's processes join that budget group. */
+	cpuBudgetId?: string;
 	/** Additional environment variables to inject */
 	env?: Record<string, string>;
 	/** Run through the configured user shell instead of brush parsing directly. */
@@ -285,6 +294,13 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		snapshotPath: snapshotPath ?? undefined,
 		minimizer,
 	};
+	// The session CPU budget: refuse while the watcher reports sustained
+	// saturation, and hand the native shell the budget name so every external
+	// command it spawns joins the group (see veyyon-shell's spawn observer).
+	const cpuLimit = sessionCpuLimit(options?.cpuSessionId ?? options?.sessionKey);
+	cpuLimit?.assertMaySpawn("a bash command");
+	const cpuBudgetId =
+		options?.cpuBudgetId ?? (cpuLimit && (await cpuLimit.ensureGroup()) ? cpuLimit.budgetName : undefined);
 	const sessionKey = buildSessionKey(shell, prefix, snapshotPath, shellEnv, options?.sessionKey, minimizer);
 	const persistentSessionBroken = brokenShellSessions.has(sessionKey);
 	if (persistentSessionBroken) {
@@ -363,6 +379,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 				env: commandEnv,
 				timeoutMs: nativeTimeoutMs,
 				signal: runAbortController.signal,
+				...(cpuBudgetId ? { cpuBudgetId } : {}),
 			},
 			(err, chunk) => {
 				if (!err) {

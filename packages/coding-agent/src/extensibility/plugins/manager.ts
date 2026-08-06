@@ -15,6 +15,7 @@ import {
 	pathState,
 	readPipeText,
 } from "@veyyon/utils";
+import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { withExitGuard } from "../utils";
 import { refreshBunGitCache } from "./bun-git-cache";
@@ -524,6 +525,7 @@ export class PluginManager {
 				stderr: "pipe",
 				windowsHide: true,
 			});
+			adoptIntoPrimarySessionCpuBudget(installProc.pid);
 			// Drain stdout+stderr concurrently with proc.exited. Awaiting exited
 			// before reading either pipe risks a >64 KiB OS-pipe-buffer deadlock
 			// once bun install prints enough progress; even where Bun currently
@@ -586,6 +588,7 @@ export class PluginManager {
 					stderr: "pipe",
 					windowsHide: true,
 				});
+				adoptIntoPrimarySessionCpuBudget(updateProc.pid);
 				// Same drain-concurrent-with-exit pattern as the bun install above.
 				const [updateExit, , updateStderr] = await Promise.all([
 					updateProc.exited,
@@ -709,6 +712,7 @@ export class PluginManager {
 			stderr: "pipe",
 			windowsHide: true,
 		});
+		adoptIntoPrimarySessionCpuBudget(proc.pid);
 
 		// Drain both pipes concurrently with proc.exited to avoid a pipe-buffer
 		// deadlock if bun uninstall floods stdout/stderr.
@@ -1236,6 +1240,7 @@ export class PluginManager {
 				stderr: "pipe",
 				windowsHide: true,
 			});
+			adoptIntoPrimarySessionCpuBudget(proc.pid);
 			// Drain pipes concurrently with proc.exited; otherwise a chatty
 			// bun install can block on a full OS pipe buffer.
 			const [exit, , stderr] = await Promise.all([

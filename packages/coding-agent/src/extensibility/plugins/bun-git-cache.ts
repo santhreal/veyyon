@@ -2,6 +2,7 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent, readPipeText, trimTrailingSlashes } from "@veyyon/utils";
+import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 import type { GitSource } from "./git-url";
 
 interface CommandResult {
@@ -18,6 +19,7 @@ async function runCommand(command: string[], cwd: string): Promise<CommandResult
 		stderr: "pipe",
 		windowsHide: true,
 	});
+	adoptIntoPrimarySessionCpuBudget(proc.pid);
 	const [exitCode, stdout, stderr] = await Promise.all([
 		proc.exited,
 		readPipeText(proc.stdout),

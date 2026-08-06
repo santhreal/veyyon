@@ -23,6 +23,7 @@ import type { BunFile } from "bun";
 import { theme } from "../modes/theme/theme-binding";
 import type { Theme } from "../modes/theme/theme-class";
 import { toolsPrompts } from "../prompts/tools/rows";
+import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import type { ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/approval";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
@@ -632,6 +633,7 @@ async function resolveGoWorkspaceDiagnosticsCommand(cwd: string, signal?: AbortS
 			stderr: "pipe",
 			windowsHide: true,
 		});
+		adoptIntoPrimarySessionCpuBudget(proc.pid);
 		const abortHandler = () => {
 			proc.kill();
 		};
@@ -729,6 +731,7 @@ async function runWorkspaceDiagnostics(
 			stderr: "pipe",
 			windowsHide: true,
 		});
+		adoptIntoPrimarySessionCpuBudget(proc.pid);
 		const abortHandler = () => {
 			proc.kill();
 		};

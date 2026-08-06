@@ -438,6 +438,44 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	"session.cpuLimitCores": {
+		type: "number",
+		default: 0,
+		ui: {
+			tab: "shell",
+			group: "CPU Limit",
+			label: "Session CPU Limit",
+			description:
+				"Maximum CPU a session's spawned processes may use, in cores (0 = off). Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness's own compute (agent turns, in-process workers) is never capped.",
+			keywords: ["cpu", "limit", "quota", "cgroup", "throttle", "cores", "budget"],
+			// A numeric setting with no option list is dropped by the UI adapter
+			// (pathToSettingDef treats optionless numbers as schema-only), so the
+			// ladder is what makes the row exist. See subagent.idleTtlMs.
+			options: [
+				{ value: "0", label: "Off", description: "Default" },
+				{ value: "1", label: "1 core" },
+				{ value: "2", label: "2 cores" },
+				{ value: "4", label: "4 cores" },
+				{ value: "8", label: "8 cores" },
+				{ value: "16", label: "16 cores" },
+			],
+		},
+	},
+
+	"session.cpuLimitKill": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "shell",
+			group: "CPU Limit",
+			label: "Kill Over-Budget Commands",
+			description:
+				"What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash.",
+			keywords: ["cpu", "limit", "kill", "sigterm", "budget"],
+			condition: "cpuLimitEnabled",
+		},
+	},
+
 	"share.serverUrl": {
 		type: "string",
 		default: DEFAULT_SHARE_URL,

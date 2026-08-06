@@ -1,5 +1,6 @@
 pub mod cancel;
 mod coreutils;
+pub mod cpu_budget;
 mod fd;
 pub mod minimizer;
 pub mod process;

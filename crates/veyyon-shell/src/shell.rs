@@ -32,6 +32,7 @@ use tokio_util::sync::CancellationToken;
 use crate::windows::configure_windows_path;
 use crate::{
 	cancel::{AbortReason, AbortToken, CancelToken},
+	cpu_budget::{self, BudgetGroup},
 	minimizer, process,
 };
 
@@ -92,18 +93,24 @@ pub struct ShellOptions {
 }
 
 struct ShellRunConfig {
-	command:   String,
-	cwd:       Option<String>,
-	env:       Option<HashMap<String, String>>,
-	minimizer: Option<minimizer::MinimizerConfig>,
+	command:       String,
+	cwd:           Option<String>,
+	env:           Option<HashMap<String, String>>,
+	minimizer:     Option<minimizer::MinimizerConfig>,
+	/// Session CPU budget name (see session/cpu-limit.ts). Every external
+	/// child of this run joins the matching budget group, when one is live.
+	cpu_budget_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ShellRunOptions {
-	pub command:    String,
-	pub cwd:        Option<String>,
-	pub env:        Option<HashMap<String, String>>,
-	pub timeout_ms: Option<u32>,
+	pub command:       String,
+	pub cwd:           Option<String>,
+	pub env:           Option<HashMap<String, String>>,
+	pub timeout_ms:    Option<u32>,
+	/// Session CPU budget name; every external child of this run joins the
+	/// matching budget group, when one is live.
+	pub cpu_budget_id: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -140,6 +147,9 @@ pub struct ShellExecuteOptions {
 	pub timeout_ms:    Option<u32>,
 	pub snapshot_path: Option<String>,
 	pub minimizer:     Option<minimizer::MinimizerOptions>,
+	/// Session CPU budget name; every external child of this run joins the
+	/// matching budget group, when one is live.
+	pub cpu_budget_id: Option<String>,
 }
 
 pub type ShellExecuteResult = ShellRunResult;
@@ -181,10 +191,11 @@ impl Shell {
 		mut cancel_token: CancelToken,
 	) -> Result<ShellRunResult> {
 		let run_config = ShellRunConfig {
-			command:   options.command,
-			cwd:       options.cwd,
-			env:       options.env,
-			minimizer: self.config.minimizer.clone(),
+			command:       options.command,
+			cwd:           options.cwd,
+			env:           options.env,
+			minimizer:     self.config.minimizer.clone(),
+			cpu_budget_id: options.cpu_budget_id,
 		};
 		run_shell_session(
 			self.session.clone(),
@@ -245,8 +256,13 @@ pub async fn execute_shell(
 		snapshot_path: options.snapshot_path,
 		minimizer:     minimizer.clone(),
 	};
-	let run_config =
-		ShellRunConfig { command: options.command, cwd: options.cwd, env: options.env, minimizer };
+	let run_config = ShellRunConfig {
+		command: options.command,
+		cwd: options.cwd,
+		env: options.env,
+		minimizer,
+		cpu_budget_id: options.cpu_budget_id,
+	};
 	run_shell_oneshot(config, run_config, on_chunk, cancel_token).await
 }
 
@@ -278,10 +294,11 @@ pub async fn execute_shell_streams(
 		minimizer:     None,
 	};
 	let run_config = ShellRunConfig {
-		command:   options.command,
-		cwd:       options.cwd,
-		env:       options.env,
-		minimizer: None,
+		command:       options.command,
+		cwd:           options.cwd,
+		env:           options.env,
+		minimizer:     None,
+		cpu_budget_id: options.cpu_budget_id,
 	};
 	run_shell_oneshot_streams(config, run_config, streams, cancel_token).await
 }
@@ -296,6 +313,7 @@ async fn run_shell_session(
 ) -> Result<ShellRunResult> {
 	let tokio_cancel = CancellationToken::new();
 	let spawn_registry = Arc::new(process::SpawnRegistry::new());
+	let spawn_budget = spawn_budget_for(&run_config);
 	let process_cancel_bridge = tokio::spawn({
 		let tokio_cancel = tokio_cancel.clone();
 		let spawn_registry = spawn_registry.clone();
@@ -311,6 +329,7 @@ async fn run_shell_session(
 		let tokio_cancel = tokio_cancel.clone();
 		let at = ct.emplace_abort_token();
 		let spawn_registry = spawn_registry.clone();
+		let spawn_budget = spawn_budget.clone();
 		async move {
 			let mut session_guard = session.lock().await;
 
@@ -321,12 +340,21 @@ async fn run_shell_session(
 						&config,
 						Some(spawn_registry.clone()),
 						Some(tokio_cancel.clone()),
+						spawn_budget.clone(),
 					)
 					.await?,
 				),
 			};
 			abort_state.set(at).await;
-			run_shell_command(session, &run_config, on_chunk, tokio_cancel, spawn_registry).await
+			run_shell_command(
+				session,
+				&run_config,
+				on_chunk,
+				tokio_cancel,
+				spawn_registry,
+				spawn_budget,
+			)
+			.await
 		}
 	});
 
@@ -386,6 +414,7 @@ async fn run_shell_oneshot(
 ) -> Result<ShellExecuteResult> {
 	let tokio_cancel = CancellationToken::new();
 	let spawn_registry = Arc::new(process::SpawnRegistry::new());
+	let spawn_budget = spawn_budget_for(&run_config);
 	let process_cancel_bridge = tokio::spawn({
 		let tokio_cancel = tokio_cancel.clone();
 		let spawn_registry = spawn_registry.clone();
@@ -398,14 +427,24 @@ async fn run_shell_oneshot(
 	let mut task = tokio::spawn({
 		let tokio_cancel = tokio_cancel.clone();
 		let spawn_registry = spawn_registry.clone();
+		let spawn_budget = spawn_budget.clone();
 		async move {
 			let mut session = create_session_for_run(
 				&config,
 				Some(spawn_registry.clone()),
 				Some(tokio_cancel.clone()),
+				spawn_budget.clone(),
 			)
 			.await?;
-			run_shell_command(&mut session, &run_config, on_chunk, tokio_cancel, spawn_registry).await
+			run_shell_command(
+				&mut session,
+				&run_config,
+				on_chunk,
+				tokio_cancel,
+				spawn_registry,
+				spawn_budget,
+			)
+			.await
 		}
 	});
 
@@ -453,6 +492,7 @@ async fn run_shell_oneshot_streams(
 ) -> Result<ShellExecuteResult> {
 	let tokio_cancel = CancellationToken::new();
 	let spawn_registry = Arc::new(process::SpawnRegistry::new());
+	let spawn_budget = spawn_budget_for(&run_config);
 	let process_cancel_bridge = tokio::spawn({
 		let tokio_cancel = tokio_cancel.clone();
 		let spawn_registry = spawn_registry.clone();
@@ -465,15 +505,24 @@ async fn run_shell_oneshot_streams(
 	let mut task = tokio::spawn({
 		let tokio_cancel = tokio_cancel.clone();
 		let spawn_registry = spawn_registry.clone();
+		let spawn_budget = spawn_budget.clone();
 		async move {
 			let mut session = create_session_for_run(
 				&config,
 				Some(spawn_registry.clone()),
 				Some(tokio_cancel.clone()),
+				spawn_budget.clone(),
 			)
 			.await?;
-			run_shell_command_streams(&mut session, &run_config, streams, tokio_cancel, spawn_registry)
-				.await
+			run_shell_command_streams(
+				&mut session,
+				&run_config,
+				streams,
+				tokio_cancel,
+				spawn_registry,
+				spawn_budget,
+			)
+			.await
 		}
 	});
 
@@ -592,13 +641,14 @@ fn merge_path_values(_existing: &str, incoming: &str) -> String {
 
 #[cfg(test)]
 async fn create_session(config: &ShellConfig) -> Result<ShellSessionCore> {
-	create_session_for_run(config, None, None).await
+	create_session_for_run(config, None, None, None).await
 }
 
 async fn create_session_for_run(
 	config: &ShellConfig,
 	spawn_registry: Option<Arc<process::SpawnRegistry>>,
 	cancel_token: Option<CancellationToken>,
+	spawn_budget: Option<Arc<BudgetGroup>>,
 ) -> Result<ShellSessionCore> {
 	let mut shell = BrushShell::builder()
 		.do_not_inherit_env(true)
@@ -761,7 +811,8 @@ async fn create_session_for_run(
 	configure_windows_path(&mut shell)?;
 
 	if let Some(snapshot_path) = config.snapshot_path.as_ref() {
-		source_snapshot(&mut shell, snapshot_path, spawn_registry, cancel_token).await?;
+		source_snapshot(&mut shell, snapshot_path, spawn_registry, cancel_token, spawn_budget)
+			.await?;
 	}
 
 	Ok(ShellSessionCore { shell })
@@ -772,6 +823,7 @@ async fn source_snapshot(
 	snapshot_path: &str,
 	spawn_registry: Option<Arc<process::SpawnRegistry>>,
 	cancel_token: Option<CancellationToken>,
+	spawn_budget: Option<Arc<BudgetGroup>>,
 ) -> Result<()> {
 	let mut params = shell.default_exec_params();
 	let source_info = SourceInfo::from("veyyon-natives:snapshot");
@@ -782,7 +834,7 @@ async fn source_snapshot(
 		params.set_cancel_token(cancel_token);
 	}
 	if let Some(spawn_registry) = spawn_registry {
-		params.set_spawn_observer(spawn_registry);
+		params.set_spawn_observer(spawn_observer(spawn_registry, spawn_budget));
 	}
 
 	let escaped = snapshot_path.replace('\'', "'\\''");
@@ -836,6 +888,7 @@ async fn run_shell_command(
 	on_chunk: Option<Sender<String>>,
 	cancel_token: CancellationToken,
 	spawn_registry: Arc<process::SpawnRegistry>,
+	spawn_budget: Option<Arc<BudgetGroup>>,
 ) -> Result<(ExecutionResult, Option<MinimizerResult>, Option<String>)> {
 	if let Some(cwd) = options.cwd.as_deref() {
 		set_shell_working_dir_if_changed(&mut session.shell, cwd)?;
@@ -851,8 +904,15 @@ async fn run_shell_command(
 
 	let result = match minimizer_mode {
 		minimizer::engine::MinimizerMode::SegmentedChain => {
-			run_shell_command_segmented_chain(session, options, on_chunk, cancel_token, spawn_registry)
-				.await
+			run_shell_command_segmented_chain(
+				session,
+				options,
+				on_chunk,
+				cancel_token,
+				spawn_registry,
+				spawn_budget,
+			)
+			.await
 		},
 		minimizer::engine::MinimizerMode::WholeCommand | minimizer::engine::MinimizerMode::None => {
 			run_shell_command_single(
@@ -861,6 +921,7 @@ async fn run_shell_command(
 				on_chunk,
 				cancel_token,
 				spawn_registry,
+				spawn_budget,
 				minimizer_mode,
 			)
 			.await
@@ -887,6 +948,7 @@ async fn run_shell_command_single(
 	on_chunk: Option<Sender<String>>,
 	cancel_token: CancellationToken,
 	spawn_registry: Arc<process::SpawnRegistry>,
+	spawn_budget: Option<Arc<BudgetGroup>>,
 	minimizer_mode: minimizer::engine::MinimizerMode,
 ) -> Result<(ExecutionResult, Option<MinimizerResult>)> {
 	debug_assert!(!matches!(minimizer_mode, minimizer::engine::MinimizerMode::SegmentedChain));
@@ -910,6 +972,7 @@ async fn run_shell_command_single(
 		on_chunk,
 		cancel_token,
 		spawn_registry,
+		spawn_budget,
 		capture_mode,
 	)
 	.await?;
@@ -970,6 +1033,7 @@ async fn run_shell_command_segmented_chain(
 	on_chunk: Option<Sender<String>>,
 	cancel_token: CancellationToken,
 	spawn_registry: Arc<process::SpawnRegistry>,
+	spawn_budget: Option<Arc<BudgetGroup>>,
 ) -> Result<(ExecutionResult, Option<MinimizerResult>)> {
 	let Some(config) = options.minimizer.as_ref() else {
 		return run_shell_command_single(
@@ -978,6 +1042,7 @@ async fn run_shell_command_segmented_chain(
 			on_chunk,
 			cancel_token,
 			spawn_registry,
+			spawn_budget,
 			minimizer::engine::MinimizerMode::None,
 		)
 		.await;
@@ -991,6 +1056,7 @@ async fn run_shell_command_segmented_chain(
 			on_chunk,
 			cancel_token,
 			spawn_registry,
+			spawn_budget,
 			minimizer::engine::MinimizerMode::None,
 		)
 		.await;
@@ -1005,6 +1071,7 @@ async fn run_shell_command_segmented_chain(
 			on_chunk,
 			cancel_token,
 			spawn_registry,
+			spawn_budget,
 			minimizer::engine::MinimizerMode::None,
 		)
 		.await;
@@ -1035,6 +1102,7 @@ async fn run_shell_command_segmented_chain(
 			on_chunk.clone(),
 			cancel_token.clone(),
 			spawn_registry.clone(),
+			spawn_budget.clone(),
 			capture_mode,
 		)
 		.await?;
@@ -1112,6 +1180,7 @@ async fn run_shell_command_once(
 	on_chunk: Option<Sender<String>>,
 	cancel_token: CancellationToken,
 	spawn_registry: Arc<process::SpawnRegistry>,
+	spawn_budget: Option<Arc<BudgetGroup>>,
 	capture_mode: CommandCaptureMode,
 ) -> Result<CommandRunOutput> {
 	let (reader_file, writer_file) = pipe_to_files("output")?;
@@ -1128,7 +1197,7 @@ async fn run_shell_command_once(
 	params.set_fd(OpenFiles::STDERR_FD, stderr_file);
 	params.process_group_policy = ProcessGroupPolicy::NewProcessGroup;
 	params.set_cancel_token(cancel_token.clone());
-	params.set_spawn_observer(spawn_registry.clone());
+	params.set_spawn_observer(spawn_observer(spawn_registry.clone(), spawn_budget));
 	let reader_cancel = CancellationToken::new();
 	let (activity_tx, activity_rx) = flume::bounded::<()>(1);
 	let reader_callback = on_chunk;
@@ -1236,6 +1305,7 @@ async fn run_shell_command_streams(
 	streams: StreamSinks,
 	cancel_token: CancellationToken,
 	spawn_registry: Arc<process::SpawnRegistry>,
+	spawn_budget: Option<Arc<BudgetGroup>>,
 ) -> Result<(ExecutionResult, Option<String>)> {
 	if let Some(cwd) = options.cwd.as_deref() {
 		set_shell_working_dir_if_changed(&mut session.shell, cwd)?;
@@ -1255,7 +1325,7 @@ async fn run_shell_command_streams(
 	params.set_fd(OpenFiles::STDERR_FD, stderr_file);
 	params.process_group_policy = ProcessGroupPolicy::NewProcessGroup;
 	params.set_cancel_token(cancel_token.clone());
-	params.set_spawn_observer(spawn_registry.clone());
+	params.set_spawn_observer(spawn_observer(spawn_registry.clone(), spawn_budget));
 	let reader_cancel = CancellationToken::new();
 	let (activity_tx, activity_rx) = flume::bounded::<()>(1);
 
@@ -1432,6 +1502,48 @@ impl SpawnObserver for process::SpawnRegistry {
 		let process = process::Process::from_pid(pid);
 		self.record(pgid, process);
 	}
+}
+
+/// Fan-out [`SpawnObserver`] for one run: every external child is recorded in
+/// the per-run registry (teardown scoping) AND adopted into the session CPU
+/// budget group when the session carries one. brush takes a single observer
+/// per `ExecutionParameters`, so the two concerns compose here rather than
+/// competing for the slot. The budget sits first so a child starts paying
+/// into it even when the registry pin below were to fail.
+struct RunSpawnObserver {
+	registry: Arc<process::SpawnRegistry>,
+	budget:   Option<Arc<BudgetGroup>>,
+}
+
+impl SpawnObserver for RunSpawnObserver {
+	fn on_spawn(&self, pid: i32, pgid: Option<i32>) {
+		if let Some(budget) = &self.budget {
+			budget.adopt(pid);
+		}
+		SpawnObserver::on_spawn(&*self.registry, pid, pgid);
+	}
+}
+
+/// Build the observer a run hands to brush. With no CPU budget this is the
+/// bare registry, keeping the uncapped path allocation-identical to before.
+fn spawn_observer(
+	registry: Arc<process::SpawnRegistry>,
+	budget: Option<Arc<BudgetGroup>>,
+) -> Arc<dyn SpawnObserver> {
+	match budget {
+		None => registry,
+		Some(_) => Arc::new(RunSpawnObserver { registry, budget }),
+	}
+}
+
+/// The per-run budget group, resolved from the session's budget name. With
+/// no CPU budget this is the bare registry, keeping the uncapped path
+/// allocation-identical to before.
+fn spawn_budget_for(run_config: &ShellRunConfig) -> Option<Arc<BudgetGroup>> {
+	run_config
+		.cpu_budget_id
+		.as_deref()
+		.and_then(cpu_budget::budget_group)
 }
 
 // Escalating TERM -> KILL waves over the processes this run spawned, scoped via

@@ -5,6 +5,7 @@
 import path from "node:path";
 import { logger, readPipeText } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
+import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
 
 // =============================================================================
 // Biome JSON Output Types
@@ -101,6 +102,7 @@ async function runBiome(
 			stderr: "pipe",
 			windowsHide: true,
 		});
+		adoptIntoPrimarySessionCpuBudget(proc.pid);
 
 		const [stdout, stderr] = await Promise.all([readPipeText(proc.stdout), readPipeText(proc.stderr)]);
 		const exitCode = await proc.exited;

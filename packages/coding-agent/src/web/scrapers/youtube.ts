@@ -5,6 +5,7 @@ import { collapseWhitespace, errorMessage, ptree, Snowflake, truncate } from "@v
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import type { AgentStorage } from "../../session/agent-storage";
+import { primarySessionCpuAdoption } from "../../session/cpu-limit";
 import { throwIfAborted } from "../../tools/tool-errors";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { ensureTool } from "../../utils/tools-manager";
@@ -181,6 +182,7 @@ export const handleYouTube: SpecialHandler = async (
 			allowNonZero: true,
 			allowAbort: true,
 			stderr: "full" as const,
+			onSpawnPid: primarySessionCpuAdoption(),
 		};
 
 		// Fetch video metadata

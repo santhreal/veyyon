@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added the `CpuBudgetGroup` native class and the `cpuBudgetId` option on `Shell.run`, `executeShell`, `PtySession.start`, and `PtySession.startArgv`, backing the coding-agent's per-session CPU limits. A budget group wraps a cgroup v2 directory on Linux, a Windows Job Object with `JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP`, or a bookkeeping-only group elsewhere; the brush spawn observer and the PTY spawner adopt every spawned child into the named group, and usage, membership, quota rewrite, renice, and teardown are exposed for the session-layer watcher.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

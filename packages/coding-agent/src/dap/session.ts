@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as timers from "node:timers/promises";
 import { errorMessage, logger, ptree, untilAborted } from "@veyyon/utils";
 import { NON_INTERACTIVE_ENV } from "../exec/non-interactive-env";
+import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { DapClient } from "./client";
 import type {
 	DapAttachArguments,
@@ -1126,6 +1127,7 @@ export class DapSessionManager {
 					...env,
 				},
 				detached: true,
+				onSpawnPid: primarySessionCpuAdoption(),
 			});
 			return { processId: proc.pid } satisfies DapRunInTerminalResponse;
 		});

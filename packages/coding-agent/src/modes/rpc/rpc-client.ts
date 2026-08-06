@@ -12,6 +12,7 @@ import { errorMessage, isRecord, ptree, readJsonl } from "@veyyon/utils";
 import type { FileSink } from "bun";
 import type { BashResult } from "../../exec/bash-executor";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";
+import { primarySessionCpuAdoption } from "../../session/cpu-limit";
 import type {
 	RpcAvailableCommandsUpdateFrame,
 	RpcAvailableSlashCommand,
@@ -261,6 +262,7 @@ export class RpcClient {
 			cwd: this.options.cwd,
 			env: { ...Bun.env, ...this.options.env },
 			stdin: "pipe",
+			onSpawnPid: primarySessionCpuAdoption(),
 		});
 		this.#process = child;
 

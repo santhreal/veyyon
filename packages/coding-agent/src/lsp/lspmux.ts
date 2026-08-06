@@ -2,6 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { $flag, $which, errorMessage, logger } from "@veyyon/utils";
 import { TOML } from "bun";
+import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 
 /**
  * lspmux integration for LSP server multiplexing.
@@ -114,6 +115,7 @@ async function checkServerRunning(binaryPath: string): Promise<boolean> {
 			stderr: "pipe",
 			windowsHide: true,
 		});
+		adoptIntoPrimarySessionCpuBudget(proc.pid);
 
 		const exited = await Promise.race([
 			proc.exited,

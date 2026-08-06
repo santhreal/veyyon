@@ -88,15 +88,19 @@ impl From<ShellOptions> for CoreShellOptions {
 #[napi(object)]
 pub struct ShellRunOptions<'env> {
 	/// Command string to execute in the shell.
-	pub command:    String,
+	pub command:       String,
 	/// Working directory for the command.
-	pub cwd:        Option<String>,
+	pub cwd:           Option<String>,
 	/// Environment variables to apply for this command only.
-	pub env:        Option<HashMap<String, String>>,
+	pub env:           Option<HashMap<String, String>>,
 	/// Timeout in milliseconds before cancelling the command.
-	pub timeout_ms: Option<u32>,
+	pub timeout_ms:    Option<u32>,
 	/// Abort signal for cancelling the operation.
-	pub signal:     Option<Unknown<'env>>,
+	pub signal:        Option<Unknown<'env>>,
+	/// Session CPU cgroup directory (cgroups v2, Linux): every external child
+	/// this run spawns is adopted into it, so the kernel quota in its
+	/// `cpu.max` bounds the whole command tree. Unset means uncapped.
+	pub cpu_budget_id: Option<String>,
 }
 
 /// Options for executing a shell command via brush-core.
@@ -118,6 +122,9 @@ pub struct ShellExecuteOptions<'env> {
 	pub minimizer:     Option<MinimizerOptions>,
 	/// Abort signal for cancelling the operation.
 	pub signal:        Option<Unknown<'env>>,
+	/// Session CPU cgroup directory (cgroups v2, Linux): every external child
+	/// this run spawns is adopted into it. Unset means uncapped.
+	pub cpu_budget_id: Option<String>,
 }
 
 /// Telemetry for a single minimization.
@@ -227,10 +234,11 @@ impl Shell {
 		let cancel_token = task::CancelToken::new(options.timeout_ms, options.signal);
 		let inner = Arc::clone(&self.inner);
 		let run_options = CoreShellRunOptions {
-			command:    options.command,
-			cwd:        options.cwd,
-			env:        options.env,
-			timeout_ms: options.timeout_ms,
+			command:       options.command,
+			cwd:           options.cwd,
+			env:           options.env,
+			timeout_ms:    options.timeout_ms,
+			cpu_budget_id: options.cpu_budget_id,
 		};
 		task::future(env, "shell.run", async move {
 			let (chunk_tx, drain_handle) = bridge_chunks(on_chunk);
@@ -286,6 +294,7 @@ pub fn execute_shell<'env>(
 		timeout_ms:    options.timeout_ms,
 		snapshot_path: options.snapshot_path,
 		minimizer:     options.minimizer.map(Into::into),
+		cpu_budget_id: options.cpu_budget_id,
 	};
 	task::future(env, "shell.execute", async move {
 		let (chunk_tx, drain_handle) = bridge_chunks(on_chunk);
@@ -503,6 +512,7 @@ mod tests {
 						cwd:        None,
 						env:        None,
 						timeout_ms: None,
+						cpu_budget_id: None,
 					},
 					Some(tx),
 					CancelToken::default(),
@@ -550,6 +560,7 @@ mod tests {
 						cwd:        None,
 						env:        None,
 						timeout_ms: None,
+						cpu_budget_id: None,
 					},
 					None,
 					cancel,

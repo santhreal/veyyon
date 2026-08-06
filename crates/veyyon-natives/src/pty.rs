@@ -26,43 +26,49 @@ use crate::{napi_error::to_napi_with, ps, task};
 #[napi(object)]
 pub struct PtyStartOptions<'env> {
 	/// Command string to execute.
-	pub command:    String,
+	pub command:       String,
 	/// Working directory for command execution.
-	pub cwd:        Option<String>,
+	pub cwd:           Option<String>,
 	/// Environment variables for this command.
-	pub env:        Option<HashMap<String, String>>,
+	pub env:           Option<HashMap<String, String>>,
 	/// Timeout in milliseconds before cancelling.
-	pub timeout_ms: Option<u32>,
+	pub timeout_ms:    Option<u32>,
 	/// Abort signal for cancelling the operation.
-	pub signal:     Option<Unknown<'env>>,
+	pub signal:        Option<Unknown<'env>>,
 	/// PTY column count.
-	pub cols:       Option<u16>,
+	pub cols:          Option<u16>,
 	/// PTY row count.
-	pub rows:       Option<u16>,
+	pub rows:          Option<u16>,
 	/// Shell binary to use (e.g. "sh", "bash", or an absolute path).
 	/// Defaults to "sh" if not provided.
-	pub shell:      Option<String>,
+	pub shell:         Option<String>,
+	/// Session CPU budget name: the spawned command joins the matching budget
+	/// group right after spawn. Unset means uncapped.
+	pub cpu_budget_id: Option<String>,
 }
 
 /// Options for running an executable and argument vector in a PTY session.
 #[napi(object)]
 pub struct PtyArgvStartOptions<'env> {
 	/// Executable name or path.
-	pub application: String,
+	pub application:   String,
 	/// Arguments passed directly to the executable.
-	pub args:        Vec<String>,
+	pub args:          Vec<String>,
 	/// Working directory for command execution.
-	pub cwd:         Option<String>,
+	pub cwd:           Option<String>,
 	/// Environment variables for this command.
-	pub env:         Option<HashMap<String, String>>,
+	pub env:           Option<HashMap<String, String>>,
 	/// Timeout in milliseconds before cancelling.
-	pub timeout_ms:  Option<u32>,
+	pub timeout_ms:    Option<u32>,
 	/// Abort signal for cancelling the operation.
-	pub signal:      Option<Unknown<'env>>,
+	pub signal:        Option<Unknown<'env>>,
 	/// PTY column count.
-	pub cols:        Option<u16>,
+	pub cols:          Option<u16>,
 	/// PTY row count.
-	pub rows:        Option<u16>,
+	pub rows:          Option<u16>,
+	/// Session CPU budget name: the spawned command joins the matching budget
+	/// group right after spawn. Unset means uncapped.
+	pub cpu_budget_id: Option<String>,
 }
 
 /// Result of a PTY command run.
@@ -84,11 +90,13 @@ enum PtyCommand {
 
 #[derive(Clone)]
 struct PtyRunConfig {
-	command: PtyCommand,
-	cwd:     Option<String>,
-	env:     Option<HashMap<String, String>>,
-	cols:    u16,
-	rows:    u16,
+	command:       PtyCommand,
+	cwd:           Option<String>,
+	env:           Option<HashMap<String, String>>,
+	cols:          u16,
+	rows:          u16,
+	/// Session CPU budget name to adopt the spawned child into.
+	cpu_budget_id: Option<String>,
 }
 
 enum ReaderEvent {
@@ -142,11 +150,12 @@ impl PtySession {
 		on_chunk: Option<ThreadsafeFunction<String>>,
 	) -> Result<PromiseRaw<'env, PtyRunResult>> {
 		let run_config = PtyRunConfig {
-			command: PtyCommand::Shell { command: options.command, shell: options.shell },
-			cwd:     options.cwd,
-			env:     options.env,
-			cols:    options.cols.unwrap_or(120).clamp(20, 400),
-			rows:    options.rows.unwrap_or(40).clamp(5, 200),
+			command:       PtyCommand::Shell { command: options.command, shell: options.shell },
+			cwd:           options.cwd,
+			env:           options.env,
+			cols:          options.cols.unwrap_or(120).clamp(20, 400),
+			rows:          options.rows.unwrap_or(40).clamp(5, 200),
+			cpu_budget_id: options.cpu_budget_id,
 		};
 		self.start_config(env, run_config, options.timeout_ms, options.signal, on_chunk)
 	}
@@ -162,11 +171,15 @@ impl PtySession {
 		on_chunk: Option<ThreadsafeFunction<String>>,
 	) -> Result<PromiseRaw<'env, PtyRunResult>> {
 		let run_config = PtyRunConfig {
-			command: PtyCommand::Argv { application: options.application, args: options.args },
-			cwd:     options.cwd,
-			env:     options.env,
-			cols:    options.cols.unwrap_or(120).clamp(20, 400),
-			rows:    options.rows.unwrap_or(40).clamp(5, 200),
+			command:       PtyCommand::Argv {
+				application: options.application,
+				args:        options.args,
+			},
+			cwd:           options.cwd,
+			env:           options.env,
+			cols:          options.cols.unwrap_or(120).clamp(20, 400),
+			rows:          options.rows.unwrap_or(40).clamp(5, 200),
+			cpu_budget_id: options.cpu_budget_id,
 		};
 		self.start_config(env, run_config, options.timeout_ms, options.signal, on_chunk)
 	}
@@ -343,6 +356,15 @@ fn run_pty_sync(
 		.spawn_command(cmd)
 		.map_err(|err| to_napi_with("Failed to spawn PTY command", err))?;
 	drop(pair.slave);
+	// Adopt the child into the session CPU budget group before it can
+	// accumulate unsampled runtime. Best-effort inside the backend: the write
+	// races with an early exit and with session dispose, and neither may fail
+	// the run.
+	if let Some(budget_id) = config.cpu_budget_id.as_ref()
+		&& let Some(pid) = child.process_id()
+	{
+		veyyon_shell::cpu_budget::adopt_into_budget(budget_id, pid as i32);
+	}
 	ct.heartbeat()
 		.map_err(|err| to_napi_with("PTY setup cancelled before reader", err))?;
 

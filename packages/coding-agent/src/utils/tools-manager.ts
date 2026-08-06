@@ -10,6 +10,7 @@ import { bareVersion } from "@veyyon/utils/semver";
 import { TempDir } from "@veyyon/utils/temp";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { $which } from "@veyyon/utils/which";
+import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { throwIfAborted } from "../tools/tool-errors";
 import { scopedTimeoutSignal } from "./fetch-timeout";
 import { extractArchive } from "./zip";
@@ -352,6 +353,7 @@ async function installPythonPackage(pkg: string, signal?: AbortSignal): Promise<
 				allowNonZero: true,
 				allowAbort: true,
 				stderr: "full",
+				onSpawnPid: primarySessionCpuAdoption(),
 			});
 			if (result.exitCode === 0) return true;
 		}
@@ -364,6 +366,7 @@ async function installPythonPackage(pkg: string, signal?: AbortSignal): Promise<
 				allowNonZero: true,
 				allowAbort: true,
 				stderr: "full",
+				onSpawnPid: primarySessionCpuAdoption(),
 			});
 			return result.exitCode === 0;
 		}

@@ -31,6 +31,7 @@ import type { Theme } from "../modes/theme/theme-class";
 import { expandHintSuffix } from "../modes/utils/key-hint";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "../session/client-bridge";
+import { sessionCpuLimit } from "../session/cpu-limit";
 import {
 	artifactFooter,
 	DEFAULT_MAX_BYTES,
@@ -1088,6 +1089,17 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			: clampTimeout("bash", requestedTimeoutSec, this.session.settings.get("tools.maxTimeout"));
 		const timeoutMs = timeoutSec === undefined ? undefined : timeoutSec * 1000;
 		const pendingNotices: string[] = [];
+		// The session CPU budget: pick up live settings, then refuse while the
+		// watcher reports sustained saturation. Every spawn path below (PTY,
+		// executor, bridge) is gated by this one check.
+		const cpuLimit = sessionCpuLimit(this.session.getSessionId?.() ?? null);
+		if (cpuLimit) {
+			await cpuLimit.update(
+				this.session.settings.get("session.cpuLimitCores"),
+				this.session.settings.get("session.cpuLimitKill"),
+			);
+			cpuLimit.assertMaySpawn("a bash command");
+		}
 		if (timeoutSec !== undefined) {
 			const timeoutClampNotice = formatTimeoutClampNotice("bash", requestedTimeoutSec, timeoutSec);
 			if (timeoutClampNotice) pendingNotices.push(timeoutClampNotice);
@@ -1376,6 +1388,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			pendingNotices.push("pty requested but unavailable in this environment; ran without a terminal");
 		}
 		const wallTimeStart = performance.now();
+		const cpuBudgetId = cpuLimit && (await cpuLimit.ensureGroup()) ? cpuLimit.budgetName : undefined;
 		const result: BashResult | BashInteractiveResult = interactiveUi
 			? await runInteractiveBashPty(interactiveUi, {
 					command,
@@ -1386,6 +1399,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					artifactPath,
 					artifactId,
 					spillThreshold: inlineBudgetFor(this.session),
+					...(cpuBudgetId ? { cpuBudgetId } : {}),
 				})
 			: await executeBash(command, {
 					cwd: commandCwd,
@@ -1400,6 +1414,12 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					onMinimizedSave: originalText => saveBashOriginalArtifact(this.session, originalText),
 				});
 		const wallTimeMs = performance.now() - wallTimeStart;
+		// A SIGTERM'd command might be the CPU budget's kill, not a crash: when
+		// the watcher fired one, say so on the result.
+		if (("signal" in result ? result.signal : undefined) === 15) {
+			const killReport = cpuLimit?.consumeKillReport();
+			if (killReport) pendingNotices.push(killReport);
+		}
 		if (result.cancelled) {
 			// PTY output carries no cancel/timeout notice of its own; annotate so
 			// the model can tell an abort from a plain failure. Cap first so a

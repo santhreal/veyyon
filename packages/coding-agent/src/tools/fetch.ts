@@ -25,6 +25,7 @@ import type { Theme } from "../modes/theme/theme-class";
 import { type ProviderTextTransformResolver, resolveProviderTextTransform } from "../provider-boundary";
 import type { ToolSession } from "../sdk";
 import type { AgentStorage } from "../session/agent-storage";
+import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { DEFAULT_MAX_BYTES, truncateHead } from "../session/streaming-output";
 // Each from its owner, not the `../tui` barrel: the barrel is 768 modules because it re-exports the
 // hyperlink module, and `read.ts` imports this file.
@@ -842,6 +843,7 @@ export async function renderHtmlToText(
 			allowAbort: true,
 			stderr: "full" as const,
 			signal: overallSignal,
+			onSpawnPid: primarySessionCpuAdoption(),
 		};
 		const remoteBudgetMs = Math.min(timeout * 1000, REMOTE_READER_MAX_MS);
 		const fetchImpl = fetchOverride ?? fetch;
