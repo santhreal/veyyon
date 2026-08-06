@@ -15,7 +15,7 @@
  *   https://docs.baseten.co/inference/model-apis/reasoning   (depth table)
  */
 import { describe, expect, test } from "bun:test";
-import { Effort } from "@veyyon/catalog/effort";
+import { Effort, THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { basetenRouteReasoning } from "@veyyon/catalog/provider-models/baseten-reasoning";
 
 describe("Baseten per-route reasoning", () => {
@@ -75,8 +75,9 @@ describe("Baseten per-route reasoning", () => {
 
 	test("never puts the thinking-off state on a depth ladder", () => {
 		// Baseten spells disable as `reasoning_effort: "none"`, which is the off
-		// state rather than a depth. Veyyon owns that as `Effort.Off`, and a
-		// ladder carrying it would render an "off" entry twice.
+		// state rather than a depth. `Effort` carries no off member precisely so a
+		// ladder cannot hold one, and a route that smuggled the wire spelling in
+		// would render an "off" entry twice in the picker.
 		for (const id of [
 			"openai/gpt-oss-120b",
 			"deepseek-ai/DeepSeek-V4-Pro",
@@ -86,7 +87,10 @@ describe("Baseten per-route reasoning", () => {
 			"thinkingmachines/inkling",
 			"thinkingmachines/inkling-small",
 		]) {
-			expect(basetenRouteReasoning(id)?.efforts).not.toContain(Effort.Off);
+			const efforts = basetenRouteReasoning(id)?.efforts ?? [];
+			expect(efforts).not.toContain("none");
+			expect(efforts).not.toContain("off");
+			expect(efforts.every(effort => THINKING_EFFORTS.includes(effort))).toBe(true);
 		}
 	});
 });

@@ -34,12 +34,15 @@ describe("local cross-builds derive from the release target table", () => {
 		// The id names the local output file (`dist/vey-<id>`), so an alias keeps
 		// what you typed; only the triple comes from the table.
 		const win32 = RELEASE_TARGETS.find(target => target.id === "win32-x64");
-		expect(win32).toBeDefined();
+		// Narrowing, not just an assertion: the expectation below reads four
+		// fields off this row, and an optional chain would type them all as
+		// possibly-undefined and no longer match a CrossBuild.
+		if (!win32) throw new Error("RELEASE_TARGETS has no win32-x64 row");
 		expect(resolveCrossBuild("windows-x64")).toEqual({
 			id: "windows-x64",
-			platform: win32?.platform,
-			arch: win32?.arch,
-			target: win32?.target,
+			platform: win32.platform,
+			arch: win32.arch,
+			target: win32.target,
 		});
 	});
 

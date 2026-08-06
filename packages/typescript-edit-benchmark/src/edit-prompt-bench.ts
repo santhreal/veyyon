@@ -83,9 +83,9 @@ async function runTask(task: EditTask, model: string, shared: SharedInfra): Prom
 		const verification = await verifyExpectedFileSubset(task.expectedDir, cwd, task.files);
 		return {
 			id: task.id,
-			passed: verification.passed,
-			inputTokens: stats.totalUsage?.input ?? 0,
-			outputTokens: stats.totalUsage?.output ?? 0,
+			passed: verification.success,
+			inputTokens: stats.tokens.input,
+			outputTokens: stats.tokens.output,
 			durationMs: performance.now() - startedAt,
 		};
 	} catch (error) {

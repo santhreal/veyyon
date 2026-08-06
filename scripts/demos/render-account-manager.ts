@@ -28,8 +28,9 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { CredentialHealthResult, UsageReport } from "../../packages/ai/src/auth-storage";
+import type { CredentialHealthResult } from "../../packages/ai/src/auth-storage";
 import { AuthStorage, SqliteAuthCredentialStore } from "../../packages/ai/src/auth-storage";
+import type { UsageReport } from "../../packages/ai/src/usage";
 import { AccountManagerComponent } from "../../packages/coding-agent/src/modes/components/account-manager";
 import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import {

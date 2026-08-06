@@ -72,7 +72,8 @@ describe("the argot-load-nudge rule", () => {
 	 * not a style; the alternative to this test is discovering the next one by accident.
 	 */
 	it("is not the last unregistered rule file, because every rule file is registered", () => {
-		const files = fs.readdirSync(RULES_DIR, { recursive: true })
+		const files = fs
+			.readdirSync(RULES_DIR, { recursive: true, encoding: "utf8" })
 			.filter(name => name.endsWith(".md"))
 			.map(name => path.basename(name, ".md"))
 			.sort();
