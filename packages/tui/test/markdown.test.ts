@@ -437,10 +437,7 @@ describe("Markdown component", () => {
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
 
 			for (const line of plainLines) {
-				expect(
-					line.length <= width,
-					`Line exceeds width ${width}: "${line}" (length: ${line.length})`,
-				).toBeTruthy();
+				expect(line.length, `Line exceeds width ${width}: "${line}"`).toBeLessThanOrEqual(width);
 			}
 
 			// Borders should stay intact (exactly 2 vertical borders for a 1-col table)
@@ -475,10 +472,7 @@ describe("Markdown component", () => {
 
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
 			for (const line of plainLines) {
-				expect(
-					line.length <= width,
-					`Line exceeds width ${width}: "${line}" (length: ${line.length})`,
-				).toBeTruthy();
+				expect(line.length, `Line exceeds width ${width}: "${line}"`).toBeLessThanOrEqual(width);
 			}
 
 			const tableLines = plainLines.filter(line => line.startsWith("|"));
@@ -639,9 +633,9 @@ describe("Markdown component", () => {
 			expect(joinedOutput).toContain("\x1b[90m");
 			expect(joinedOutput).toContain("\x1b[3m");
 
-			// Verify that inline code is styled (theme uses yellow)
-			const hasCodeColor = joinedOutput.includes("\x1b[33m");
-			expect(hasCodeColor, "Should style inline code").toBeTruthy();
+			// Inline code is styled yellow by this theme. Asserted as the sequence
+			// itself so a failure names the colour that is missing.
+			expect(joinedOutput).toContain("\x1b[33m");
 		});
 
 		it("should preserve gray italic styling after bold text", () => {
@@ -1272,10 +1266,9 @@ bar`,
 
 			// Should show both link text and mailto URL
 			expect(joinedPlain).toContain("Email me");
-			expect(
-				joinedPlain.includes("(mailto:test@example.com)"),
-				"Should show mailto URL in parentheses",
-			).toBeTruthy();
+			// Asserted on the string so a failure prints what was rendered instead
+			// of `Expected: truthy`.
+			expect(joinedPlain).toContain("(mailto:test@example.com)");
 		});
 	});
 
