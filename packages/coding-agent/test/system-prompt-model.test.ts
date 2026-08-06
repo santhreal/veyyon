@@ -114,9 +114,28 @@ describe("system prompt model identifier", () => {
 			toolNames: [],
 			workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
 			model: "anthropic/claude-opus-4",
+			includeModelInPrompt: true,
 		});
 
 		expect(systemPrompt.join("\n\n")).toContain("Model: anthropic/claude-opus-4");
+	});
+
+	// The gate, not the presence of `model`, decides. A caller that omits it gets the
+	// shipped default (off), which is what keeps the model name out of the cached block.
+	it("leaves the model out of the workstation block when the gate is omitted", async () => {
+		const { systemPrompt } = await buildSystemPrompt({
+			cwd: tempDir,
+			contextFiles: [],
+			skills: [],
+			rules: [],
+			toolNames: [],
+			workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
+			model: "anthropic/claude-opus-4",
+		});
+
+		const text = systemPrompt.join("\n\n");
+		expect(text).toContain("<workstation>");
+		expect(text).not.toContain("anthropic/claude-opus-4");
 	});
 
 	it("renders the prompt date from the startup local timezone rather than UTC", async () => {
@@ -218,7 +237,10 @@ describe("AgentSession model-change prompt refresh", () => {
 		authStorage.setRuntimeApiKey(modelB.provider, "key-b");
 
 		let rebuildCount = 0;
-		session = newSession(modelA, Settings.isolated({ "compaction.enabled": false }), async () => {
+		// Explicit rather than inherited: the shipped default is off, and this test is
+		// specifically about the enabled path its own name names.
+		const enabled = Settings.isolated({ "compaction.enabled": false, includeModelInPrompt: true });
+		session = newSession(modelA, enabled, async () => {
 			rebuildCount++;
 			const active = session?.model;
 			return { systemPrompt: [`model:${active ? `${active.provider}/${active.id}` : ""}`] };

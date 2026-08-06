@@ -182,12 +182,21 @@ export const MODEL_SETTINGS = {
 
 	includeModelInPrompt: {
 		type: "boolean",
-		default: true,
+		// Off, because this is the only turn-volatile field in the system prompt and it
+		// sits in the PROJECT block, measured here at 14,198 tokens. Anthropic caches a
+		// prefix ending at each breakpoint, so switching model rewrote that block and
+		// re-prefilled all of it to report a different name. Everything else in
+		// `<workstation>` is machine-stable and everything in `<agent-configuration>` is
+		// profile-stable, so with this off the whole system prompt is stable for the
+		// session. Model-conditional prompt policy is unaffected: `agent-session.ts`
+		// substitutes a coarse `task-policy:` token when this is off.
+		default: false,
 		ui: {
 			tab: "model",
 			group: "Prompt",
 			label: "Include Model in Prompt",
-			description: "Surface the active model identifier in the system prompt so the agent knows which model it is",
+			description:
+				"Surface the active model identifier in the system prompt so the agent knows which model it is. Costs a full prompt-cache invalidation on every model switch",
 		},
 	},
 
