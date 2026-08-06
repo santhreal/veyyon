@@ -58,7 +58,7 @@ $ bun run check                    # types, lint, and the workspace checks
 
 Not every change needs all four artifacts. Decide by what the change touches, and do the ones that apply:
 
-- Pure internal refactor, no observable effect: changelog may use a justified `[skip changelog]` marker; no screenshot, no demo.
+- Pure internal refactor, no observable effect: still a changelog bullet, one sentence saying what moved and that nothing observable changed; no screenshot, no demo.
 - New or changed setting: changelog, docs, and a settings differential.
 - New or changed user-facing flow: changelog, docs, and a demo.
 - Veyyon-unique capability (Argot, hashline landing, compaction, …): changelog, docs, and a [prove-feature](../prove-feature/SKILL.md) demo, not a generic ask/edit toy.

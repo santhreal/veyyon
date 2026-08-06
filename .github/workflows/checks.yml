@@ -59,8 +59,8 @@ jobs:
     #   - `chore: bump version to ...`: the release workflow's own bump commit,
     #     which drains the Unreleased section by design and legitimately adds
     #     no new entry.
-    # The `[skip changelog]` / `[skip changelog: <pkg>]` commit markers remain
-    # the escape hatch for a genuine no-user-impact source change.
+    # There is no per-commit escape hatch. Shipped source gets a changelog line,
+    # including a line that says the change has no user-facing effect.
     if: >-
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' &&

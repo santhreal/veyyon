@@ -4,11 +4,12 @@
  * `## [Unreleased]` changelog section — the mechanical guarantee behind
  * "adding a feature always reaches the changelog" once outside contributors,
  * not just maintainers, are opening PRs. Every branch that decides pass/fail is
- * asserted on real values here: which files count as shipped source, whether the
- * Unreleased section actually gained an entry, and how the `[skip changelog]`
- * escape hatch is parsed and scoped. If any of these regressed, the gate would
- * either wave through un-logged features or block honest PRs, and one of these
- * cases goes red.
+ * asserted on real values here: which files count as shipped source and whether
+ * the Unreleased section actually gained an entry. There is no skip marker to
+ * test, and the case that used to prove one waived the whole range is now the
+ * case that proves un-logged source is flagged no matter what a commit message
+ * says. If any of these regressed, the gate would either wave through un-logged
+ * features or block honest PRs, and one of these cases goes red.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -20,8 +21,6 @@ import {
 	type ChangelogPackage,
 	discoverPackages,
 	evaluateChangelogRequirement,
-	parseSkipMarkers,
-	resolveSkipDirs,
 	shippedSourceChanges,
 	unreleasedGainedEntry,
 } from "./require-changelog";
@@ -105,49 +104,6 @@ describe("unreleasedGainedEntry", () => {
 	});
 });
 
-describe("parseSkipMarkers", () => {
-	it("detects a bare global skip", () => {
-		const result = parseSkipMarkers("chore: internal refactor\n\n[skip changelog]");
-		expect(result.skipAll).toBe(true);
-		expect([...result.skipTokens]).toEqual([]);
-	});
-
-	it("detects a scoped skip with a colon", () => {
-		const result = parseSkipMarkers("refactor internals [skip changelog: coding-agent]");
-		expect(result.skipAll).toBe(false);
-		expect([...result.skipTokens]).toEqual(["coding-agent"]);
-	});
-
-	it("accepts the hyphenated spelling and parenthesized scope", () => {
-		const result = parseSkipMarkers("[skip-changelog(packages/ai)]");
-		expect([...result.skipTokens]).toEqual(["packages/ai"]);
-	});
-
-	it("collects multiple scoped skips and no global when all are scoped", () => {
-		const result = parseSkipMarkers("a [skip changelog: ai]\nb [skip changelog: coding-agent]");
-		expect(result.skipAll).toBe(false);
-		expect([...result.skipTokens].sort()).toEqual(["ai", "coding-agent"]);
-	});
-
-	it("finds no markers in an ordinary message", () => {
-		const result = parseSkipMarkers("feat: add a real feature with a changelog entry");
-		expect(result.skipAll).toBe(false);
-		expect([...result.skipTokens]).toEqual([]);
-	});
-});
-
-describe("resolveSkipDirs", () => {
-	it("resolves a token by bare basename, full dir, and package name", () => {
-		expect([...resolveSkipDirs(["coding-agent"], PACKAGES)]).toEqual(["packages/coding-agent"]);
-		expect([...resolveSkipDirs(["packages/ai"], PACKAGES)]).toEqual(["packages/ai"]);
-		expect([...resolveSkipDirs(["@veyyon/ai"], PACKAGES)]).toEqual(["packages/ai"]);
-	});
-
-	it("ignores a token that matches no package", () => {
-		expect([...resolveSkipDirs(["nonexistent"], PACKAGES)]).toEqual([]);
-	});
-});
-
 describe("evaluateChangelogRequirement", () => {
 	const baseEmpty = new Map<string, string[]>([
 		["packages/coding-agent", []],
@@ -169,8 +125,6 @@ describe("evaluateChangelogRequirement", () => {
 			packages: PACKAGES,
 			baseUnreleased: baseEmpty,
 			headUnreleased: headWith("packages/coding-agent", []),
-			skipAll: false,
-			skipDirs: new Set(),
 		});
 		expect(violations).toHaveLength(1);
 		expect(violations[0]).toMatchObject({
@@ -187,8 +141,6 @@ describe("evaluateChangelogRequirement", () => {
 			packages: PACKAGES,
 			baseUnreleased: baseEmpty,
 			headUnreleased: headWith("packages/coding-agent", ["- Fixed the streaming display seam."]),
-			skipAll: false,
-			skipDirs: new Set(),
 		});
 		expect(violations).toEqual([]);
 	});
@@ -207,8 +159,6 @@ describe("evaluateChangelogRequirement", () => {
 			packages: PACKAGES,
 			baseUnreleased: base,
 			headUnreleased: headWith("packages/coding-agent", carried),
-			skipAll: false,
-			skipDirs: new Set(),
 		});
 		expect(violations).toHaveLength(1);
 		expect(violations[0]?.dir).toBe("packages/coding-agent");
@@ -220,45 +170,19 @@ describe("evaluateChangelogRequirement", () => {
 			packages: PACKAGES,
 			baseUnreleased: baseEmpty,
 			headUnreleased: headWith("packages/coding-agent", []),
-			skipAll: false,
-			skipDirs: new Set(),
 		});
 		expect(violations).toEqual([]);
 	});
 
-	it("waives the whole PR under a global skip even with un-logged source", () => {
+	it("flags un-logged source no matter what the commit messages say", () => {
+		// The gate used to read commit messages for a `[skip changelog]` marker, and a
+		// bare one waived every package in the range. It reads no messages at all now,
+		// so there is nothing a commit can say to make this pass but a changelog entry.
 		const violations = evaluateChangelogRequirement({
 			changedFiles: ["packages/coding-agent/src/task/executor.ts", "packages/ai/src/provider.ts"],
 			packages: PACKAGES,
 			baseUnreleased: baseEmpty,
 			headUnreleased: headWith("packages/coding-agent", []),
-			skipAll: true,
-			skipDirs: new Set(),
-		});
-		expect(violations).toEqual([]);
-	});
-
-	it("waives only the scoped package and still flags the other", () => {
-		const violations = evaluateChangelogRequirement({
-			changedFiles: ["packages/coding-agent/src/task/executor.ts", "packages/ai/src/provider.ts"],
-			packages: PACKAGES,
-			baseUnreleased: baseEmpty,
-			headUnreleased: baseEmpty,
-			skipAll: false,
-			skipDirs: new Set(["packages/coding-agent"]),
-		});
-		expect(violations).toHaveLength(1);
-		expect(violations[0]?.dir).toBe("packages/ai");
-	});
-
-	it("flags every offending package when several change source without entries", () => {
-		const violations = evaluateChangelogRequirement({
-			changedFiles: ["packages/coding-agent/src/a.ts", "packages/ai/src/b.ts"],
-			packages: PACKAGES,
-			baseUnreleased: baseEmpty,
-			headUnreleased: baseEmpty,
-			skipAll: false,
-			skipDirs: new Set(),
 		});
 		expect(violations.map(v => v.dir).sort()).toEqual(["packages/ai", "packages/coding-agent"]);
 	});
@@ -269,8 +193,6 @@ describe("evaluateChangelogRequirement", () => {
 			packages: PACKAGES,
 			baseUnreleased: baseEmpty,
 			headUnreleased: baseEmpty,
-			skipAll: false,
-			skipDirs: new Set(),
 		});
 		expect(violations).toEqual([]);
 	});
@@ -377,7 +299,9 @@ describe("require-changelog.ts end to end against a real repo", () => {
 		}
 	});
 
-	it("exits zero when a [skip changelog] marker waives an un-logged source change", async () => {
+	it("exits nonzero for un-logged source even when a commit message asks to skip", async () => {
+		// The exact message that used to buy a pass. It buys nothing now, and this is
+		// the e2e half of the removal: the parser is gone, so the marker is just text.
 		const { root, git } = await makeRepo();
 		try {
 			const base = (await git("rev-parse", "HEAD").text()).trim();
@@ -386,7 +310,8 @@ describe("require-changelog.ts end to end against a real repo", () => {
 			await git("commit", "-m", "internal refactor\n\n[skip changelog]");
 
 			const result = await run(root, base);
-			expect(result.exitCode).toBe(0);
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr.toString()).toContain("packages/foo/CHANGELOG.md");
 		} finally {
 			await fs.rm(root, { recursive: true, force: true });
 		}
