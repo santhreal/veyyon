@@ -16,13 +16,20 @@
  * of sections and one section's rules — and a proof of either one alone says
  * nothing about the other, so both are reachable from one script.
  *
+ * `--agent-dir <path>` reads that directory's real `config.yml` instead of the
+ * default in-memory settings, which is the only way to capture an off-vs-on
+ * differential for a rule setting: `ttsr.experimentalRules` is a persisted value,
+ * and an in-memory capture can only ever show its default.
+ *
  * Usage:
  *
  *     bun scripts/demos/render-settings-rules-tab.ts --tab rules --width 92 --height 26
  *     bun scripts/demos/render-settings-rules-tab.ts --tab rules --open Rules --height 34
  *     bun scripts/demos/render-settings-rules-tab.ts --tab rules --open Rules --section Workflow
+ *     bun scripts/demos/render-settings-rules-tab.ts --tab rules --open Rules --agent-dir /tmp/seeded
  */
 import { stripVTControlCharacters } from "node:util";
+import { Settings } from "../../packages/coding-agent/src/config/settings";
 import { SETTING_TABS } from "../../packages/coding-agent/src/config/settings-schema";
 import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/settings-selector";
 import { flag, initRender, renderWidth } from "./render-args";
@@ -37,7 +44,15 @@ if (!SETTING_TABS.includes(tab as (typeof SETTING_TABS)[number])) {
 }
 
 Object.defineProperty(process.stdout, "rows", { configurable: true, value: height });
-await initRender(themeName, { settings: true });
+// Settings before the theme either way: `Settings.init` applies the CONFIGURED
+// theme, so initialising the theme first has it silently replaced.
+const agentDir = flag("agent-dir", "");
+if (agentDir.length > 0) {
+	await Settings.init({ agentDir });
+	await initRender(themeName);
+} else {
+	await initRender(themeName, { settings: true });
+}
 
 const selector = new SettingsSelectorComponent(
 	{
