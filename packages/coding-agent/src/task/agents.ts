@@ -45,7 +45,8 @@ const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
 		fileName: "task.md",
 		frontmatter: {
 			name: "task",
-			description: "General-purpose subagent with full capabilities for delegated multi-step tasks",
+			description:
+				"Vague outcome, multi-step, owned end to end: works out what to change, changes it, tests it, and reviews its own work before returning. Scale it can carry: building a whole package from nothing. The most expensive lane, so do not reach for it when the outcome is already clear.",
 			spawns: "*",
 			thinkingLevel: ThinkingLevel.Inherit,
 		},
@@ -55,10 +56,11 @@ const EMBEDDED_AGENT_DEFS: EmbeddedAgentDef[] = [
 		fileName: "sonic.md",
 		frontmatter: {
 			name: "sonic",
-			description: "Low-reasoning agent for strictly mechanical updates or data collection only",
+			description:
+				"Clear outcome, contained change: you know what needs to happen, even if some details still need working out. It may look things up and ask back when something is ambiguous. The cheapest lane. Not for sprawling work that has to be discovered, built and verified in stages.",
 			thinkingLevel: Effort.Medium,
 		},
-		template: agentsPrompts["agents/task"].text,
+		template: agentsPrompts["agents/sonic"].text,
 	},
 ];
 

@@ -67,17 +67,17 @@ describe("effective-agent delegation guidance", () => {
 	 * it silently promoted that work to the widest and most expensive agent. Unmatched work now
 	 * stays inline, and a roster without `task` must never name `task` as somewhere to send it.
 	 *
-	 * The naming clause ("The `task` tool describes what each type is for") is the one legitimate
+	 * The naming clause ("The `task` tool says what each one costs...") is the one legitimate
 	 * mention, so it is cut before the assertion: what must be free of `task` is the routing
 	 * guidance that tells the model where unmatched work goes.
 	 */
 	it("keeps unmatched work inline instead of promoting it to task", async () => {
 		const rendered = await renderDelegationPrompt(["designer"]);
-		const bullet = rendered.split("\n").find((line) => line.startsWith("- **Match the type")) ?? "";
-		const routing = bullet.split("The `task` tool describes what each type is for.").at(-1) ?? "";
+		const bullet = rendered.split("\n").find(line => line.startsWith("- **Take the cheapest lane")) ?? "";
+		const routing = bullet.split("tool says what each one costs and how much unknown work it is for.").at(-1) ?? "";
 
 		expect(bullet).toContain("Enabled agent types: `designer`");
-		expect(routing).toContain("when none covers it, do the work inline");
+		expect(routing).toContain("you do that work yourself rather than handing it to a wider one");
 		expect(routing).not.toContain("`task`");
 	});
 });

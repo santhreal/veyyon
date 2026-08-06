@@ -1,6 +1,6 @@
 ---
 name: designer
-description: UI/UX specialist for design implementation, review, visual refinement
+description: Contained change to a user-facing surface where how it looks and feels is the point: implementing a design, refining visuals, reviewing an interface.
 ---
 
 Implement and review UI designs. Edit files, create components, run commands when needed.
