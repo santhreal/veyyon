@@ -145,6 +145,8 @@ describe("the registry follows a session that was renamed", () => {
 });
 
 describe("a live session keeps its budget across a new conversation", () => {
+	let sessionSettings: Settings | undefined;
+
 	async function createSession(): Promise<AgentSession> {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!model) throw new Error("bundled model missing");
@@ -154,10 +156,11 @@ describe("a live session keeps its budget across a new conversation", () => {
 		});
 		const sessionManager = SessionManager.create(tempDir, tempDir);
 		authStorage = await AuthStorage.create(path.join(tempDir, "testauth.db"));
+		sessionSettings = Settings.isolated({ "session.cpuLimitCores": 0 });
 		const built = new AgentSession({
 			agent,
 			sessionManager,
-			settings: Settings.isolated({ "session.cpuLimitCores": 0 }),
+			settings: sessionSettings,
 			modelRegistry: new ModelRegistry(authStorage, path.join(tempDir, "models.yml")),
 		});
 		built.subscribe(() => {});
@@ -180,5 +183,28 @@ describe("a live session keeps its budget across a new conversation", () => {
 		// would let one operator budget be exceeded by starting a conversation.
 		expect(sessionCpuLimit(after)).toBeDefined();
 		expect(sessionCpuLimit(before)).toBeUndefined();
+	});
+
+	/**
+	 * The limiter reads its budget once, at construction. Every later change has
+	 * to be pushed into it, and nothing in the spawn path re-reads the setting:
+	 * a session that raised its limit mid-task went on refusing commands against
+	 * the old number, and the settings screen showed the new one, so the two
+	 * disagreed with no way to tell which was in force.
+	 */
+	it("pushes a mid-session budget change into the live limiter", async () => {
+		session = await createSession();
+		const limiter = sessionCpuLimit(session.sessionManager.getSessionId());
+		expect(await limiter?.statusLine()).toContain("off");
+
+		sessionSettings?.override("session.cpuLimitCores", 2);
+		// The listener hands the update to the limiter without awaiting it, so
+		// drain the microtask queue rather than a clock.
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// Whether the host can enforce it is not the contract here; that the
+		// limiter now knows the number is.
+		expect(await limiter?.statusLine()).toContain("2 core(s)");
 	});
 });
