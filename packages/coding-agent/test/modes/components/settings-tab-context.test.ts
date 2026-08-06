@@ -76,15 +76,15 @@ describe("SettingsSelectorComponent tab context", () => {
 	it("restores the last visible Appearance and Model setting after round trips", () => {
 		const component = createSelector();
 
-		driveDownTo(component, "statusLine.separator");
-		expectSelectedRowVisible(component, "appearance", "statusLine.separator");
+		driveDownTo(component, "tui.hyperlinks");
+		expectSelectedRowVisible(component, "appearance", "tui.hyperlinks");
 
 		component.openTab("model");
 		driveDownTo(component, "includeModelInPrompt");
 		expectSelectedRowVisible(component, "model", "includeModelInPrompt");
 
 		component.openTab("appearance");
-		expectSelectedRowVisible(component, "appearance", "statusLine.separator");
+		expectSelectedRowVisible(component, "appearance", "tui.hyperlinks");
 
 		component.openTab("model");
 		expectSelectedRowVisible(component, "model", "includeModelInPrompt");
@@ -144,7 +144,7 @@ describe("SettingsSelectorComponent tab context", () => {
 	 */
 	it("preserves tab cursors across a search jump and Escape exit", () => {
 		const component = createSelector();
-		driveDownTo(component, "statusLine.separator");
+		driveDownTo(component, "tui.hyperlinks");
 
 		for (const character of "include model in prompt") component.handleInput(character);
 		expectSelectedRowVisible(component, "model", "includeModelInPrompt");
@@ -153,7 +153,7 @@ describe("SettingsSelectorComponent tab context", () => {
 		expectSelectedRowVisible(component, "model", "includeModelInPrompt");
 
 		component.openTab("appearance");
-		expectSelectedRowVisible(component, "appearance", "statusLine.separator");
+		expectSelectedRowVisible(component, "appearance", "tui.hyperlinks");
 		component.openTab("model");
 		expectSelectedRowVisible(component, "model", "includeModelInPrompt");
 	});

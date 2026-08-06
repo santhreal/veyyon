@@ -319,15 +319,16 @@ describe("an ACP-reachable remedy names something an ACP client can run", () => 
 	});
 
 	it("/thinking names the config key beside the settings screen", async () => {
-		const h = acpRuntime({
-			configuredThinkingLevel: () => undefined,
-			getAvailableThinkingLevels: () => ["low", "high"],
-		});
+		// The ladder comes from the session's own model through formatThinkingLevelChoices,
+		// not from a runtime callback, so there is nothing to stub here: what the command
+		// offers is what the model accepts.
+		const h = acpRuntime({ configuredThinkingLevel: () => undefined });
 
 		await executeAcpBuiltinSlashCommand("/thinking", h.runtime);
 
 		expect(h.said).toEqual([
-			"Effort: auto (this session). Choose one of: low, high, auto. Usage: /thinking <level>. " +
+			"Effort: auto (this session). Choose one of: off, auto, minimal, low, medium, high, xhigh, max. " +
+				"Usage: /thinking <level>. " +
 				'To change the saved default, use /settings → Model → Default Effort, or run: veyyon config set defaultEffort \'{"*":"high"}\'.',
 		]);
 	});

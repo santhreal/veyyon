@@ -67,20 +67,21 @@ function subagentsPanel(cwd: string = process.cwd(), width = 100): string {
 }
 
 /**
- * A profile dir plus a project dir whose `.veyyon/config.yml` owns the budget, which
- * is what makes the row read-only and routes it through the provenance branch.
+ * A profile dir plus an explicit `--config` overlay that owns the budget, which is
+ * what makes the row read-only and routes it through the provenance branch. A
+ * repository's own `.veyyon/config.yml` used to be the fixture here and no longer
+ * owns anything: project scope is gone, so the overlay an operator names on the
+ * command line is the layer that can still outrank the profile.
  */
-function projectOwnedBudget(ms: number): { agentDir: string; cwd: string } {
+function overlayOwnedBudget(ms: number): { agentDir: string; cwd: string; configFiles: string[] } {
 	const root = makeTempDir();
 	const agentDir = path.join(root, "profile");
 	const cwd = path.join(root, "project");
+	const overlay = path.join(root, "overlay.yml");
 	fs.mkdirSync(agentDir, { recursive: true });
-	fs.mkdirSync(path.join(cwd, ".veyyon"), { recursive: true });
-	fs.writeFileSync(
-		path.join(cwd, ".veyyon", "config.yml"),
-		YAML.stringify({ subagent: { autoClose: { parkedMs: ms } } }),
-	);
-	return { agentDir, cwd };
+	fs.mkdirSync(cwd, { recursive: true });
+	fs.writeFileSync(overlay, YAML.stringify({ subagent: { autoClose: { parkedMs: ms } } }));
+	return { agentDir, cwd, configFiles: [overlay] };
 }
 
 describe("settings rows show option labels, not stored values", () => {
@@ -157,12 +158,12 @@ describe("settings rows show option labels, not stored values", () => {
 	 * WHY THIS EXISTS. That branch composed its string from the STORED value and then
 	 * carried the labeller along with it, which could never match afterwards because the
 	 * value was now wrapped in a source prefix. The result was that the ordinary row read
-	 * "5 minutes" while the project-owned row beside it read "Project · 300000": the same
+	 * "5 minutes" while the overlay-owned row beside it read "--config file · 300000": the same
 	 * setting, two spellings, and the raw one appearing exactly when an operator is
 	 * trying to work out which layer set it.
 	 */
 	it("labels a value owned by a lower layer", async () => {
-		const fixture = projectOwnedBudget(3_600_000);
+		const fixture = overlayOwnedBudget(3_600_000);
 		// Reset first: `beforeEach` already initialized an in-memory Settings, and a second
 		// `init` is a no-op, so without the reset the fixture never takes effect and the
 		// row renders the schema default while both assertions look plausible.
@@ -177,7 +178,7 @@ describe("settings rows show option labels, not stored values", () => {
 		geometryStub = stubStdoutGeometry({ columns: 140, rows: 40 });
 		const panel = subagentsPanel(fixture.cwd, 140);
 
-		expect(panel).toContain("project config · 1 hour");
+		expect(panel).toContain("--config file · 1 hour");
 		expect(panel).not.toContain("3600000");
 	});
 });
@@ -227,11 +228,11 @@ describe("the Auto Close group follows its own switch", () => {
  * It is asserted through the rendered panel rather than through the def list because
  * the def list is what was already lying: the schema entry existed the whole time.
  */
-describe("the idle TTL is on the settings screen", () => {
-	it("renders the Idle TTL row as a duration beside the close budgets", () => {
+describe("stage one of the park/close lifecycle is on the settings screen", () => {
+	it("renders the Park After row as a duration beside the close budgets", () => {
 		const panel = subagentsPanel();
 
-		expect(panel).toContain("Idle TTL");
+		expect(panel).toContain("Park After");
 		// Its default is the same 5 minutes as the quiet close budget, so the row is
 		// only proved present by the label appearing twice, once per row.
 		expect(panel.match(/5 minutes/g)?.length).toBe(2);
