@@ -50,14 +50,13 @@ jobs:
          is-release: ${{ steps.detect.outputs.is-release }}
          release-tag: ${{ steps.detect.outputs.release-tag }}
       steps:
-         # Only a main-branch run needs tags fetched, so `git tag --points-at
-         # HEAD` can see the freshly-pushed `v*`. A tag run reads the tag straight
-         # from `github.ref_name`, and fetching `--tags` while checkout uses an
-         # explicit tag refspec makes git refuse — so scope
-         # fetch-tags to main refs.
+         # No tags needed here. The tag case reads its name from
+         # `github.ref_name`, and the main case only reports that main never
+         # publishes. This step once ran `git tag --points-at HEAD` and carried
+         # a `fetch-tags` input for it; the command is gone, and under checkout
+         # v6 the input is no longer the no-op it was under v4, so leaving it
+         # would fetch every tag on every main run for nothing.
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-           with:
-              fetch-tags: ${{ github.ref == 'refs/heads/main' }}
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
            if: startsWith(github.ref, 'refs/tags/')
            with:
