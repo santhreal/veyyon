@@ -50,6 +50,38 @@ export function parseReleaseRequest(args: readonly string[]): string {
 	throw new Error(`Invalid release version ${JSON.stringify(version)}. Use major, minor, patch, or x.y.z.`);
 }
 
+/**
+ * What to tell an operator whose requested version is not newer than the latest tag.
+ *
+ * Two very different situations reach this point and they need opposite advice.
+ * Asking for a version OLDER than the tag is a mistake, and "pick a higher one"
+ * is right. Asking for the version that is already tagged is usually not a
+ * mistake: it is the documented recovery from a publish that died after the tag
+ * was pushed. `prepareReleaseTree` is idempotent for exactly that reason, and the
+ * commit step tags the existing HEAD when the bump commit already landed.
+ *
+ * That recovery was unreachable. The only message here was "must be greater than
+ * latest tag", which reads as "pick a higher version", and cutting a fresh
+ * version is the one thing an operator recovering a failed publish must not do:
+ * it burns a version number and leaves the dead tag behind. The recovery is named
+ * here rather than left to be rediscovered from a comment further down the file.
+ */
+export function versionNotNewerFailure(version: string, latestTag: string): string[] {
+	if (`v${version}` !== latestTag) {
+		return [`Error: Version ${version} must be greater than latest tag ${latestTag}`];
+	}
+	return [
+		`Error: ${latestTag} is already tagged.`,
+		"",
+		"  If that release published, cut the next version instead.",
+		"  If it failed after tagging, delete the dead tag and re-cut this same version:",
+		`    git push origin :refs/tags/${latestTag}`,
+		`    git tag -d ${latestTag}`,
+		"  Re-cutting is safe: the tree preparation is idempotent, and a bump commit that",
+		"  already landed is tagged in place rather than committed twice.",
+	];
+}
+
 function removeEmptyVersionEntries(content: string): string {
 	// Remove version entries that have no content (just whitespace until next ## [ or EOF)
 	return content.replace(/## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}\s*\n(?=## \[|\s*$)/g, "");
@@ -851,7 +883,7 @@ export async function cmdRelease(versionOrBump: string): Promise<PreparedRelease
 	}
 
 	if (!isNewerVersion(version, latestTag)) {
-		console.error(`Error: Version ${version} must be greater than latest tag ${latestTag}`);
+		for (const line of versionNotNewerFailure(version, latestTag)) console.error(line);
 		process.exit(1);
 	}
 	console.log(`  Version ${version} > ${latestTag}\n`);
