@@ -22,28 +22,51 @@ import { dlopen, FFIType } from "bun:ffi";
  * selectors from 0 (`TCIFLUSH 0`, `TCOFLUSH 1`, `TCIOFLUSH 2`) while the BSDs
  * and macOS number them from 1 (`TCIFLUSH 1`, `TCOFLUSH 2`, `TCIOFLUSH 3`).
  * Passing Linux's 0 on macOS would flush nothing.
+ *
+ * Only linux and darwin ever reach the call, because those plus Windows are
+ * the platforms Bun ships. The non-linux branch is therefore macOS in practice;
+ * it is written as a platform test rather than a darwin constant so that a
+ * future BSD target gets the right selector at the same time it gets a loader.
  */
 const TCIFLUSH = process.platform === "linux" ? 0 : 1;
 
 const SIGNATURE = { tcflush: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } } as const;
 
-const tcflush = (() => {
+type TcFlush = (fd: number, queue: number) => number;
+
+let resolved: { fn: TcFlush | undefined } | undefined;
+
+/**
+ * Resolve `tcflush` from libc, once, on first use.
+ *
+ * Lazy rather than at module scope because the flush is gated on an interactive
+ * tty and this module is imported by every startup, including the non-tty and
+ * test ones that will never call it: opening libc for them is work done for a
+ * branch that cannot be taken.
+ */
+function loadTcFlush(): TcFlush | undefined {
+	if (resolved) return resolved.fn;
+	resolved = { fn: undefined };
 	try {
 		if (process.platform === "linux") {
 			try {
-				return dlopen("libc.so.6", SIGNATURE).symbols.tcflush;
+				resolved.fn = dlopen("libc.so.6", SIGNATURE).symbols.tcflush;
 			} catch {
-				return dlopen("libc.so", SIGNATURE).symbols.tcflush;
+				// musl and other libcs do not ship the glibc soname.
+				resolved.fn = dlopen("libc.so", SIGNATURE).symbols.tcflush;
 			}
+		} else if (process.platform === "darwin") {
+			resolved.fn = dlopen("/usr/lib/libSystem.B.dylib", SIGNATURE).symbols.tcflush;
 		}
-		if (process.platform === "darwin") return dlopen("/usr/lib/libSystem.B.dylib", SIGNATURE).symbols.tcflush;
-		return undefined;
 	} catch {
-		// No usable libc (musl under an unusual name, a hardened loader, bun:ffi
-		// disabled). Startup must not fail over an input hygiene measure.
-		return undefined;
+		// No usable libc: musl under a name neither lookup guesses, or a
+		// hardened loader refusing the open. Startup must not fail over an input
+		// hygiene measure, and the caller has a fallback. (A `bun:ffi` that did
+		// not exist would throw at the import above instead, which is why this
+		// does not claim to cover that.)
 	}
-})();
+	return resolved.fn;
+}
 
 /**
  * Drop every byte already queued for stdin.
@@ -52,6 +75,14 @@ const tcflush = (() => {
  * offers no flush and the caller must fall back to discarding what it reads.
  */
 export function flushPendingTtyInput(): boolean {
-	if (!process.stdin.isTTY || !tcflush) return false;
-	return tcflush(0, TCIFLUSH) === 0;
+	// Not a correctness barrier: `tcflush` on a pipe fails with ENOTTY and
+	// discards nothing, so a piped stdin is safe either way. It skips loading
+	// libc for the many runs that are not interactive at all, and it makes the
+	// `false` those runs return mean "not applicable" rather than "the platform
+	// could not do it", which is the distinction the caller logs.
+	if (!process.stdin.isTTY) return false;
+	const flush = loadTcFlush();
+	// fd 0 rather than `process.stdin.fd`: the guard above already established
+	// that stdin is the tty being flushed.
+	return flush ? flush(0, TCIFLUSH) === 0 : false;
 }
