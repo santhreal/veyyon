@@ -2,7 +2,7 @@ import { Effort } from "@veyyon/catalog/effort";
 import { supportsAllTurnsReasoningContext, supportsCodexReasoningSummary } from "@veyyon/catalog/identity";
 import { requireSupportedEffort } from "@veyyon/catalog/model-thinking";
 import type { Model } from "../../types";
-import { mapOpenAIReasoningEffort } from "../openai-shared";
+import { mapOpenAIReasoningEffort, ORPHAN_TOOL_CALL_PLACEHOLDER } from "../openai-shared";
 
 /** Reasoning replay scope for the Codex Responses API (`reasoning.context`). */
 export type CodexReasoningContext = "auto" | "current_turn" | "all_turns";
@@ -160,9 +160,6 @@ function filterInput(input: InputItem[] | undefined): InputItem[] | undefined {
 }
 
 const CODEX_ORPHAN_OUTPUT_LIMIT = 16_000;
-/** Placeholder output for a tool call whose result never landed in the input. */
-const CODEX_INTERRUPTED_TOOL_OUTPUT =
-	"[No tool output recorded: the tool call was interrupted before it produced a result.]";
 
 function orphanFunctionOutputToMessage(item: InputItem, callId: string): InputItem {
 	const itemRecord = item as unknown as Record<string, unknown>;
@@ -233,7 +230,7 @@ function repairToolCallPairs(input: InputItem[]): InputItem[] {
 			repaired.push({
 				type: item.type === "custom_tool_call" ? "custom_tool_call_output" : "function_call_output",
 				call_id: callId,
-				output: CODEX_INTERRUPTED_TOOL_OUTPUT,
+				output: ORPHAN_TOOL_CALL_PLACEHOLDER,
 			} as InputItem);
 		}
 	}
