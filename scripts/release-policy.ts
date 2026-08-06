@@ -24,7 +24,7 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseUnreleasedBullets } from "./require-changelog.ts";
+import { unreleasedEntries } from "./changelog-unreleased.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -399,7 +399,7 @@ export function undocumentedReleaseFailures(version: string, changelogs: readonl
 	const notes = changelogs.find(changelog => changelog.path === RELEASE_NOTES_CHANGELOG);
 	if (!notes) return [MISSING_NOTES_FAILURE];
 	if (hasVersionSection(notes.content, version)) return [];
-	if (parseUnreleasedBullets(notes.content).length > 0) return [];
+	if (unreleasedEntries(notes.content).length > 0) return [];
 	return [`${label(notes)} has no bullet under "## [Unreleased]" and no "## [${version}]" section.`];
 }
 
@@ -427,7 +427,7 @@ export function preparedReleaseChangelogFailures(version: string, changelogs: re
 		failures.push(`${label(notes)} has no "## [${version}]" section after the changelog roll.`);
 	}
 	for (const changelog of changelogs) {
-		const stranded = parseUnreleasedBullets(changelog.content);
+		const stranded = unreleasedEntries(changelog.content);
 		if (stranded.length === 0) continue;
 		failures.push(
 			`${label(changelog)} still has ${stranded.length} bullet(s) under "## [Unreleased]" after the ` +

@@ -228,7 +228,7 @@ describe("the release changelog gate", () => {
 	});
 
 	/** A category heading with no bullet under it is not content, and the gate counts the same
-	 * bullets `parseUnreleasedBullets` counts. A stray `### Fixed` must not buy a release. */
+	 * entries `unreleasedEntries` counts. A stray `### Fixed` must not buy a release. */
 	it("refuses an [Unreleased] that holds only a category heading", () => {
 		const headingOnly = ["# Changelog", "", "## [Unreleased]", "", "### Fixed", "", "## [1.0.46] - 2026-08-01"].join(
 			"\n",

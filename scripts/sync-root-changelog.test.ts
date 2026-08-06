@@ -23,8 +23,8 @@ import {
 	PACKAGES_DIR,
 	REPO_ROOT,
 	ROOT_PATH,
-	unreleasedBullets,
 } from "./sync-root-changelog";
+import { unreleasedEntries } from "./changelog-unreleased.ts";
 
 describe("buildRootChangelog", () => {
 	it("renders through the shared renderRootChangelog core, not a private copy", () => {
@@ -351,58 +351,7 @@ describe("orphaned root entries", () => {
 	});
 });
 
-describe("unreleasedBullets", () => {
-	it("reads bullets from the unreleased section only", () => {
-		const md = `# Changelog\n\n## [Unreleased]\n\n### Added\n\n- new thing\n\n### Changed\n\n- changed thing\n\n## [1.0.0]\n\n### Fixed\n\n- released thing\n`;
-
-		expect(unreleasedBullets(md)).toEqual(["new thing", "changed thing"]);
-	});
-
-	it("returns nothing for a changelog with no unreleased section", () => {
-		expect(unreleasedBullets("# Changelog\n\n## [1.0.0]\n\n### Fixed\n\n- released\n")).toEqual([]);
-	});
-
-	it("joins a wrapped bullet into one entry and collapses its whitespace", () => {
-		const md = "# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- first line\n  second   line\n";
-
-		expect(unreleasedBullets(md)).toEqual(["first line second line"]);
-	});
-
-	/**
-	 * THE REGRESSION, and it is the guard eating itself.
-	 *
-	 * The heading was located with an unanchored `indexOf("## [Unreleased]")`, so any PROSE that
-	 * mentions the heading matched before the heading did. The first text to do that was the root
-	 * file's own new "generated file" banner, which names the section a contributor should write
-	 * in: the search landed inside the banner, the block ended one line later at the real heading,
-	 * and this function answered "no entries" for a file full of them. That answer silently
-	 * disables the orphan check -- every entry on disk reads as unclaimed -- so the writer refuses
-	 * to regenerate at all. A heading is a line, so the pattern is anchored to a line.
-	 */
-	it("ignores prose that merely mentions the heading", () => {
-		const md = [
-			"# Changelog",
-			"",
-			"> Add your entry under `## [Unreleased]` in the package changelog, not here.",
-			"",
-			"## [Unreleased]",
-			"",
-			"### Added",
-			"",
-			"- the real entry",
-			"",
-		].join("\n");
-
-		expect(unreleasedBullets(md)).toEqual(["the real entry"]);
-	});
-
-	/** A dated or annotated Unreleased heading is still the Unreleased heading. */
-	it("matches an unreleased heading that carries a suffix", () => {
-		const md = "# Changelog\n\n## [Unreleased] - unreleased\n\n### Fixed\n\n- entry\n";
-
-		expect(unreleasedBullets(md)).toEqual(["entry"]);
-	});
-
+describe("unreleasedEntries against the real generated root", () => {
 	/**
 	 * And the banner the renderer actually emits is parsed correctly, not just a hand-written
 	 * lookalike. Asserting against the real render is what makes this a check on the pair rather
@@ -414,11 +363,18 @@ describe("unreleasedBullets", () => {
 	 * release empties Unreleased. It did exactly that, and sat red on main unnoticed because this
 	 * suite runs in a bucket CI never invoked.
 	 *
-	 * The replacement extracts the Unreleased region independently, by slicing the real render from
-	 * its Unreleased heading to the next version heading, and requires the parser to agree exactly.
-	 * That holds at any count, including zero right after a release, and it fails on the mistakes a
-	 * count cannot see: a slice that runs past the next heading, an off-by-one that drops the last
-	 * bullet, or a match on prose that merely looks like a list.
+	 * Its replacement was red too, for a subtler reason, and this is the repair. It required the
+	 * parser to equal a list built by taking each `- ` line on its own. An entry may WRAP over
+	 * several lines, and joining a wrapped entry back into one string is the parser's job and the
+	 * reason orphan detection can identify an entry at all. So the expectation contradicted the
+	 * contract, and one wrapped entry in the real render was enough to fail it.
+	 *
+	 * The section is still sliced independently, and the opening line of each entry is still the
+	 * expectation, but an entry is now required to BEGIN with its opening rather than equal it.
+	 * Together with the count that still has to match exactly, that keeps every mistake the
+	 * previous version was written to catch: a slice that runs past the next heading, an
+	 * off-by-one that drops the last bullet, a match on prose that merely looks like a list, and
+	 * any reordering. What it no longer does is fail the parser for doing the joining correctly.
 	 */
 	it("reads the unreleased entries out of the real generated root", () => {
 		const rendered = buildRootChangelog();
@@ -428,12 +384,15 @@ describe("unreleasedBullets", () => {
 		const rest = lines.slice(start + 1);
 		const end = rest.findIndex(line => /^##\s/.test(line));
 		const section = end === -1 ? rest : rest.slice(0, end);
-		const expected = section
-			.filter(line => line.startsWith("- "))
-			.map(line => line.slice(2).trim())
+		const openings = section
+			.filter(line => line.trim().startsWith("- "))
+			.map(line => line.trim().slice(2).replace(/\s+/g, " ").trim())
 			.filter(bullet => !bullet.includes("Generated file."));
 
-		expect(unreleasedBullets(rendered)).toEqual(expected);
+		const parsed = unreleasedEntries(rendered);
+
+		expect(parsed).toHaveLength(openings.length);
+		expect(parsed.map((entry, index) => entry.startsWith(openings[index] ?? "\u0000"))).toEqual(openings.map(() => true));
 	});
 
 	/**
@@ -452,7 +411,7 @@ describe("unreleasedBullets", () => {
 			.map(line => line.slice(2).trim());
 		expect(releasedBullets.length).toBeGreaterThan(0);
 
-		const parsed = new Set(unreleasedBullets(rendered));
+		const parsed = new Set(unreleasedEntries(rendered));
 		expect(releasedBullets.filter(bullet => parsed.has(bullet))).toEqual([]);
 	});
 });

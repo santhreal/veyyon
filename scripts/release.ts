@@ -26,7 +26,7 @@ import {
 	verifyPublishedAssetManifest,
 	verifyReleaseTagGates,
 } from "./release-policy";
-import { parseUnreleasedBullets } from "./require-changelog.ts";
+import { unreleasedEntries } from "./changelog-unreleased.ts";
 import { buildRootChangelog, ROOT_PATH } from "./sync-root-changelog";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
@@ -71,7 +71,7 @@ function removeEmptyVersionEntries(content: string): string {
  * than only observed after a real release runs.
  */
 export function applyReleaseToChangelog(content: string, version: string, date: string): string {
-	if (parseUnreleasedBullets(content).length > 0) {
+	if (unreleasedEntries(content).length > 0) {
 		content = content.replace("## [Unreleased]", `## [Unreleased]\n\n## [${version}] - ${date}`);
 	}
 	return removeEmptyVersionEntries(content);
