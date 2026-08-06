@@ -3223,7 +3223,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 						getCommands: () => getSessionSlashCommands(session),
 						setModel: model => runExtensionSetModel(session, model),
 						getThinkingLevel: () => session.thinkingLevel,
-						setThinkingLevel: level => session.setThinkingLevel(level),
+						setThinkingLevel: (level, persist) => session.setThinkingLevel(level, persist),
 						getSessionName: () => session.sessionManager.getSessionName(),
 						setSessionName: async name => {
 							await session.sessionManager.setSessionName(name, "user");

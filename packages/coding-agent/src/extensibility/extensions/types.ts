@@ -1232,8 +1232,15 @@ export interface ExtensionAPI {
 	/** Get current thinking level. */
 	getThinkingLevel(): ThinkingLevel | undefined;
 
-	/** Set thinking level for the current session. */
-	setThinkingLevel(level: ThinkingLevel): void;
+	/**
+	 * Set thinking level for the current session.
+	 *
+	 * `persist` also saves it as the profile default, in the `defaultEffort` row
+	 * that governs the current model, so it survives the session. The parameter
+	 * was implemented and forwarded before it was declared here, which meant a
+	 * typed extension could not ask for it at all.
+	 */
+	setThinkingLevel(level: ThinkingLevel, persist?: boolean): void;
 
 	/** Get the current session name. */
 	getSessionName(): string | undefined;
