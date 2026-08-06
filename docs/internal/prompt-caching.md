@@ -419,21 +419,33 @@ Named rather than fixed. Some of these are places where Nous Research's Hermes a
 ([`agent/prompt_caching.py`](https://github.com/NousResearch/hermes-agent), Python) does more
 than we do, and the comparison is included because it makes the gap concrete.
 
-- **Verification is Anthropic-only, and the one path with a shipped marker bug has no signal at
-  all.** `packages/ai/src/cache/policy.ts:41-46` says so directly: `providers/anthropic.ts` is the
-  single production importer, so on Bedrock, OpenAI Responses and the chat-completions path the
+- **Claude through OpenRouter writes no cacheable-prefix marker on the default route, and nothing
+  reports it.** This is the alias defect above, live again for a different reason. `stream.ts:937`
+  sends api `openrouter` to `streamOpenAIResponses` unless `VEYYON_OPENROUTER_RESPONSES=0`, so the
+  chat-completions path is the fallback, not the default. Two markers exist and neither fires
+  there. `cache_control` is stamped only by `maybeAddAnthropicCacheControl`
+  (`openai-completions.ts:1692`), which the Responses route never calls, so the
+  `cacheControlFormat: "anthropic"` that `compat/openai.ts:494` computes for
+  `isOpenRouter && isAnthropicModel` is carried and never read. The Responses breakpoint is gated
+  on `official` (`openai-prompt-cache.ts:57`), which tests `model.api === "openai-responses"` and
+  is false for `openrouter`, so `formatOpenAIInputText` emits no `prompt_cache_breakpoint`
+  (`:95-97`). What does go out is `prompt_cache_key` (`openai-responses.ts:846`), which an
+  Anthropic upstream does not act on by itself. The alias fix landed on the path that is no longer
+  the default, and the rows it was written for (`~anthropic/claude-*-latest`, which sort to the top
+  of the picker) are the likeliest Claude-on-OpenRouter selection.
+- **Verification is Anthropic-only, and that OpenRouter path has no signal either.**
+  `packages/ai/src/cache/policy.ts:41-46` says so directly: `providers/anthropic.ts` is the single
+  production importer, so on Bedrock, OpenAI Responses and the chat-completions path the
   enforcement level resolves and then governs nothing. Two of the four defects that motivated the
   subsystem happened on providers it does not observe. The in-session divider is a separate and
   weaker signal: `usesExplicitPromptCache`
   (`coding-agent/src/modes/components/cache-invalidation-marker.ts:59-65`) is a display heuristic,
-  not a verdict, and it admits only `anthropic-messages`, `bedrock-converse-stream` and the
-  OpenAI Responses generations that accept explicit breakpoints. Claude through OpenRouter carries
-  api `openrouter` and so fails that test, which leaves all 26 such rows with neither a verdict nor
-  a divider, while still being sent Anthropic-shaped `cache_control` markers, because
-  `cacheControlFormat: "anthropic"` is set for `isOpenRouter && isAnthropicModel`. That is exactly
-  the configuration that already failed silently once: the `~anthropic/…` alias bug listed above
-  is on a row still present in the catalog today (`~anthropic/claude-fable-latest`). A path that
-  places explicit markers should be observable by whatever watches explicit markers.
+  not a verdict, and it admits only `anthropic-messages`, `bedrock-converse-stream` and the OpenAI
+  Responses generations that accept explicit breakpoints. Api `openrouter` fails that test, so all
+  26 such rows get neither a verdict nor a divider. Leaving the divider as it is was deliberate:
+  with no marker written, "read nothing and wrote nothing" is the expected result rather than a
+  rejection, so admitting the api here would report a miss every turn and teach an operator to
+  ignore the signal. Fix the marker first, then widen the predicate.
 - **Marker positions are chosen positionally, not structurally.** The trailing loop marks the
   last one or two messages whatever they are. Hermes instead computes
   `_completed_transaction_endpoint_indexes`, selecting only the ends of completed tool runs and
