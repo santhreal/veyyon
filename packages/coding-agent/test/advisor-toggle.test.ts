@@ -133,7 +133,11 @@ describe("AgentSession advisor toggle", () => {
 		).toEqual(["fireworks"]);
 	});
 
-	it("refreshes the live advisor after project model-role reloads", async () => {
+	it("keeps the operator's advisor when a project asks for another one", async () => {
+		// Moving between checkouts must not hand the advisor role to whichever repository
+		// you happen to be standing in. Both projects ask for a model, loudly, and neither
+		// gets it: `modelRoles` resolves from the operator's own layers, and a working tree
+		// is not one of them.
 		const projectA = path.join(tempDir.path(), "project-a");
 		const projectB = path.join(tempDir.path(), "project-b");
 		const agentDir = path.join(tempDir.path(), "agent");
@@ -142,7 +146,7 @@ describe("AgentSession advisor toggle", () => {
 		fs.mkdirSync(agentDir, { recursive: true });
 		await Bun.write(
 			path.join(getProjectAgentDir(projectA), "settings.json"),
-			JSON.stringify({ modelRoles: { advisor: `${model.provider}/${model.id}` } }),
+			JSON.stringify({ modelRoles: { advisor: `${replacementModel.provider}/${replacementModel.id}` } }),
 		);
 		await Bun.write(
 			path.join(getProjectAgentDir(projectB), "settings.json"),
@@ -154,6 +158,7 @@ describe("AgentSession advisor toggle", () => {
 			agentDir,
 			overrides: { "compaction.enabled": false },
 		});
+		settings.setModelRole("advisor", `${model.provider}/${model.id}`);
 		const customSession = new AgentSession({
 			agent: new Agent({
 				initialState: {
@@ -176,8 +181,10 @@ describe("AgentSession advisor toggle", () => {
 
 			await settings.reloadForCwd(projectB);
 
-			expect(customSession.getAdvisorAgent()?.state.model.provider).toBe(replacementModel.provider);
-			expect(customSession.getAdvisorAgent()?.state.model.id).toBe(replacementModel.id);
+			// The re-scope really happened; it just took nothing from the destination.
+			expect(settings.getCwd()).toBe(path.normalize(projectB));
+			expect(customSession.getAdvisorAgent()?.state.model.provider).toBe(model.provider);
+			expect(customSession.getAdvisorAgent()?.state.model.id).toBe(model.id);
 		} finally {
 			await customSession.dispose();
 			AgentStorage.resetInstance();
