@@ -34,12 +34,12 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
+    "@veyyon/utils": "catalog:",
     "diff": "catalog:",
     "lru-cache": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@veyyon/utils": "catalog:",
     "fast-check": "catalog:"
   },
   "engines": {

@@ -7,6 +7,7 @@
 ## [16.5.0] - 2026-07-13
 
 ### Fixed
+- `@veyyon/utils` is declared as a dependency rather than a dev dependency. `prompts/registry` is a published subpath and imports `definePromptRegistry` from it, so an installer outside this workspace got a module that could not resolve its own import. It now takes that one function from `@veyyon/utils/prompt-registry`, the leaf that owns it, rather than from the barrel.
 
 - Fixed a critical issue where ambiguous swaps could silently delete range boundaries.
 - Prevented incorrect auto-repairing of structural closing lines when payload placement is ambiguous.
