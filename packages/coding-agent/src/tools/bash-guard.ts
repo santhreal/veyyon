@@ -159,6 +159,70 @@ const RECURSIVE_DELETE_COMMANDS = new Set(["rm", "rmdir", "shred", "srm"]);
 /** Commands that rewrite a tree in place and are as destructive as a delete. */
 const RECURSIVE_REWRITE_COMMANDS = new Set(["chmod", "chown", "chgrp"]);
 
+/**
+ * A command line that creates a temporary directory and then deletes exactly
+ * that directory destroys nothing it did not create, so it is not critical.
+ *
+ * This is the `TMP=$(mktemp -d) && … && rm -rf "$TMP"` shape, which is the
+ * single most common cleanup an agent writes. The guard used to refuse it, and
+ * it was right to on the evidence it had: `$(mktemp -d)` is a command
+ * substitution, which is one opaque word, so by the time it reached
+ * `rm -rf "$TMP"` the variable was unresolvable and an unresolvable word in a
+ * recursive delete fails closed. The refusal was sound and the answer was
+ * still wrong, because the command text says where that value came from.
+ *
+ * WHAT CROSSES A SEGMENT BOUNDARY IS PROVENANCE, NOT A VALUE. Carrying the
+ * value would reopen `cd / && rm -rf $PWD`, where an earlier segment rewrites
+ * the very variable about to be judged. A name in this set carries no value,
+ * so it cannot resolve any other expansion; it unlocks one shape and widens
+ * nothing else.
+ *
+ * Three conditions, all required, and each one is a hole if dropped:
+ *
+ *   1. the value is a bare `mktemp` substitution, so the path is one this
+ *      command line created rather than one it was handed;
+ *   2. the name is not reassigned between the creation and the delete;
+ *   3. the delete target is the WHOLE word `$VAR`, with no suffix and no glob.
+ *
+ * The third is the one that matters. `rm -rf "$TMP"/*` stays critical forever:
+ * if `mktemp` failed then `TMP` is empty and that command is `rm -rf /*`, which
+ * is the July 2026 incident in this module's header. The bare form has no such
+ * reading, because an empty `TMP` makes it `rm -rf ""`, which deletes nothing.
+ */
+function isMktempCreation(value: string): boolean {
+	const body = /^\$\(([^]*)\)$/.exec(value)?.[1] ?? /^`([^]*)`$/.exec(value)?.[1];
+	if (body === undefined) return false;
+	// The substitution must be ONE `mktemp` call, so its output is the path
+	// mktemp made. A chained or redirected body can print anything at all.
+	if (/[;&|\n<>`]|\$\(/.test(body)) return false;
+	const parts = body.trim().split(/\s+/);
+	const name = parts[0];
+	if (name === undefined || basename(name) !== "mktemp") return false;
+	for (const arg of parts.slice(1)) {
+		// `-u` asks for a name WITHOUT creating it, so the path is one this
+		// command did not make and something else may hold by the time rm runs.
+		if (arg === "--dry-run" || arg === "-u") return false;
+		if (arg.startsWith("-") && !arg.startsWith("--") && arg.includes("u")) return false;
+	}
+	// Where mktemp is told to put the directory does not matter: `-p /etc` still
+	// creates one fresh entry and the delete still removes only that entry.
+	return true;
+}
+
+/** True when this word is the whole, unquoted name of a self-created temp path. */
+function namesSelfCreatedTemp(
+	raw: { text: string; literal: boolean },
+	created: ReadonlySet<string>,
+): boolean {
+	// `'$TMP'` is a request to delete a directory actually named `$TMP`, which
+	// is not the one we created, so it is judged normally.
+	if (raw.literal) return false;
+	const name =
+		/^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(raw.text)?.[1] ??
+		/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(raw.text)?.[1];
+	return name !== undefined && created.has(name);
+}
+
 /** What a word turned out to be once the parts we can expand were expanded. */
 export interface ExpandedWord {
 	/** The word with quotes removed and known expansions substituted. */
@@ -724,7 +788,16 @@ export function findCriticalBashRisk(
 	 */
 	cwd = "",
 ): CriticalBashRisk | undefined {
+	// Names this command line assigned from a `mktemp` substitution, carried
+	// across segments as provenance with no value attached. See isMktempCreation.
+	const selfCreatedTemp = new Set<string>();
+	const staged: { name: string; created: boolean }[] = [];
 	for (const segment of splitCommandSegments(command)) {
+		for (const entry of staged) {
+			if (entry.created) selfCreatedTemp.add(entry.name);
+			else selfCreatedTemp.delete(entry.name);
+		}
+		staged.length = 0;
 		// Inline `VAR=value` assignments bind for this segment, and the shell
 		// honours them. They were skipped as prefix words and never applied, so
 		// `PWD=/ rm -rf $PWD` expanded `$PWD` from the ambient environment, judged
@@ -743,8 +816,19 @@ export function findCriticalBashRisk(
 				if (isPrefixCommand(word.text)) continue;
 				break;
 			}
+			const name = assignment[1] as string;
+			const value = assignment[2] ?? "";
 			if (segmentEnv === env) segmentEnv = { ...env };
-			segmentEnv[assignment[1] as string] = assignment[2] ?? "";
+			segmentEnv[name] = value;
+			// STAGED, NOT APPLIED. The shell expands a word before a prefix
+			// assignment on the same command takes effect, so
+			// `TMP=$(mktemp -d) rm -rf "$TMP"` deletes whatever the AMBIENT `TMP`
+			// named. Only a LATER segment may read this. A shell-maintained name
+			// is never given provenance: `cd` rewrites `PWD` with no assignment
+			// for this scan to see, so an exemption there could not be withdrawn.
+			if (!SHELL_MAINTAINED_VARIABLES.has(name)) {
+				staged.push({ name, created: isMktempCreation(value) });
+			}
 		}
 		const words = rawWords.map(word => expandWord(word, home, segmentEnv));
 		if (words.length === 0) continue;
@@ -759,11 +843,16 @@ export function findCriticalBashRisk(
 		if (argv.length === 0 || !isRecursiveDelete(argv)) continue;
 
 		const commandName = basename(argv[0]!.text);
-		for (const candidate of argv.slice(1)) {
+		for (let index = 1; index < argv.length; index += 1) {
+			const candidate = argv[index]!;
 			if (isFlag(candidate)) continue;
 			if (commandName === "find" && candidate.text.startsWith("-")) continue;
 			const reason = judgeDeleteTarget(candidate, home, extraProtectedPaths, cwd);
 			if (reason === undefined) continue;
+			// A path this command line created with `mktemp` is not one it can
+			// destroy more of than it made. Judged on the RAW word, because the
+			// ambient value of the name is stale the moment the assignment ran.
+			if (namesSelfCreatedTemp(rawWords[start + index]!, selfCreatedTemp)) continue;
 			return {
 				command: commandName,
 				argument: candidate.text,
