@@ -141,6 +141,53 @@ export function typeOnlyModuleSpecifiersIn(source: string): string[] {
 }
 
 /**
+ * `import("x")` -- the DEFERRED edges, which `moduleSpecifiersIn` deliberately does not count.
+ *
+ * A module cut off a static import to stay cheap has two claims to defend, and they pull apart: the
+ * static edge is gone, and the capability behind it is still reachable. The first is
+ * {@link moduleSpecifiersIn}. The second used to be stated as
+ * `expect(source).toContain('await import("X")')`, which is a search for characters: it goes red when
+ * the call is reformatted across two lines or the quotes change, and it goes green on a doc comment
+ * describing the import that was removed.
+ */
+// Anchored on the opening `import(` and the literal only. Requiring the closing paren made the
+// reader brittle in exactly the way it exists to fix: a formatter breaking the call across lines
+// leaves a trailing comma, and import attributes (`import("x", { with: ... })`) put a whole object
+// between the specifier and the `)`. A string literal in the first argument position is already
+// unambiguous.
+const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*["']([^"']+)["']/g;
+
+/** Every module specifier `source` imports DYNAMICALLY, in source order. See {@link DYNAMIC_IMPORT_RE}. */
+export function dynamicImportSpecifiersIn(source: string): string[] {
+	const code = withoutComments(source);
+	const found: string[] = [];
+	for (const match of code.matchAll(DYNAMIC_IMPORT_RE)) if (match[1]) found.push(match[1]);
+	return found;
+}
+
+/**
+ * The bindings `source` destructures off `await import("<specifier>")`, aliases under the bound name.
+ *
+ * The dynamic twin of {@link namedImportsFrom}, and it exists for the same reason: "the module still
+ * asks the broker for credentials" is a claim about a binding, and counting call-site occurrences in
+ * the text instead answers a different question that a harmless refactor changes.
+ */
+export function dynamicImportBindings(source: string, specifier: string): string[] {
+	const quoted = specifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const re = new RegExp(`\\{([^}]*)\\}\\s*=\\s*await\\s+import\\s*\\(\\s*["']${quoted}["']`, "g");
+	const found: string[] = [];
+	for (const match of withoutComments(source).matchAll(re)) {
+		for (const entry of (match[1] ?? "").split(",")) {
+			// `a: b` binds `b` in a destructuring, the way `a as b` does in an import clause.
+			const parts = entry.trim().split(":");
+			const bound = (parts.length > 1 ? parts[1] : parts[0])?.trim();
+			if (bound) found.push(bound);
+		}
+	}
+	return found;
+}
+
+/**
  * The clause of every `import`/`export ... from "<specifier>"` statement, for one exact specifier.
  *
  * Both the value and the type forms are matched, because the question this answers is "where does

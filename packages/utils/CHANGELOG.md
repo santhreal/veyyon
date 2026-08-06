@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Added
+- `dynamicImportSpecifiersIn` and `dynamicImportBindings` in `module-reach`, the deferred-edge twins of `moduleSpecifiersIn` and `namedImportsFrom`. A gate asserting "this module was cut off the static graph but still reaches the capability" can now read the dynamic edge structurally instead of searching the source for `await import("x")`.
 
 - `module-reach`: `typeOnlyModuleSpecifiersIn` reports the specifiers a file imports for TYPES only, alongside the existing `moduleSpecifiersIn` for the ones it imports at runtime. Tests policing a leaf-package boundary were spelling that question as `expect(source).toContain('from "@veyyon/ai"')`, which a runtime import also satisfies, so the check passed in exactly the world it existed to forbid. With both readings available the boundary is asserted as what it is: present in the type-only set, absent from the runtime one.
 - `ptree`: `spawn` accepts `onSpawnPid`, called with the fresh child pid immediately after the process exists. The per-session CPU budget needs the pid before the child has done any work in order to move it into the session's cgroup, and every other hook in this module fires too late for that. Around twenty spawn sites across the LSP, DAP, MCP, SSH, fetch and RPC paths already pass it.
