@@ -375,6 +375,20 @@ export const repoScriptTests = [
 	// Landed on disk without being wired, so the gate that keeps a suite from
 	// touching the operator's real home was itself running nowhere.
 	"scripts/tests-never-touch-real-home.test.ts",
+	// Reads manifests against shipped imports, so it catches a break that only an
+	// installer outside this workspace would ever see.
+	"scripts/a-published-package-declares-what-it-imports.test.ts",
+	// Seven suites that were on disk, tracked, and in no runner. They are all
+	// release and changelog gates, which is the worst place for a suite to be
+	// silently unrun: the thing they guard is only exercised on the day a release
+	// is cut, so nobody would have noticed until it mattered.
+	"scripts/changelog-unreleased.test.ts",
+	"scripts/changelog-version-headings-have-one-owner.test.ts",
+	"scripts/write-root-changelog-refuses-to-delete-entries.test.ts",
+	"scripts/prerelease-prepares-without-pushing.test.ts",
+	"scripts/release-native-artifacts-match-ci.test.ts",
+	"scripts/release-recut-recovery-message.test.ts",
+	"scripts/session-stats/audit.test.ts",
 ];
 
 /**

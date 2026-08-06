@@ -33,8 +33,15 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 /** The trees `repoScriptTests` draws from. Anything else is another bucket's job. */
 const ROOTS = ["scripts", "website/tools"] as const;
 
-/** Directories that hold vendored or generated trees, never our own suites. */
-const SKIP_DIRS = new Set(["node_modules", "dist", "install-tests", "session-stats", "repo-cache"]);
+/**
+ * Directories that hold vendored or generated trees, never our own suites.
+ *
+ * `session-stats` was in here and is not one of those: it is a local analysis tool with a
+ * hand-written suite, and skipping the directory is precisely how `audit.test.ts` came to be
+ * tracked, green, and run by nothing. A skip entry has to name a tree with no suites of ours in
+ * it, or it manufactures the gap this file exists to close.
+ */
+const SKIP_DIRS = new Set(["node_modules", "dist", "install-tests", "repo-cache"]);
 
 function findTestFiles(dir: string, acc: string[] = []): string[] {
 	for (const entry of readdirSync(path.join(REPO_ROOT, dir))) {
