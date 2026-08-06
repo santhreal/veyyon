@@ -1,4 +1,5 @@
 /** `ask` — interactive questions posed to the user mid-run. */
+import { stripRecommendedSuffix } from "@veyyon/wire";
 import type { ReactNode } from "react";
 import { Badge, InvalidArg, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -23,13 +24,6 @@ interface AskAnswer {
 	selectedOptions: string[];
 	customInput?: string;
 	timedOut?: boolean;
-}
-
-/** The TUI appends this to the recommended option's label before selection. */
-const RECOMMENDED_SUFFIX = " (Recommended)";
-
-function stripRecommended(label: string): string {
-	return label.endsWith(RECOMMENDED_SUFFIX) ? label.slice(0, -RECOMMENDED_SUFFIX.length) : label;
 }
 
 /** Bare strings become labels; entries without a string label are dropped. */
@@ -99,7 +93,7 @@ function answerOf(rec: Record<string, unknown>): AskAnswer {
 	if (Array.isArray(rec.selectedOptions)) {
 		for (const entry of rec.selectedOptions) {
 			const label = str(entry);
-			if (label !== null) selectedOptions.push(stripRecommended(label));
+			if (label !== null) selectedOptions.push(stripRecommendedSuffix(label));
 		}
 	}
 	return {
@@ -172,7 +166,7 @@ function QuestionBlock({ q, answer }: { q: AskQuestion; answer: AskAnswer | unde
 				{q.multi && <Badge>multi</Badge>}
 			</Row>
 			{q.options.map((opt, i) => {
-				const isSelected = selected.has(stripRecommended(opt.label));
+				const isSelected = selected.has(stripRecommendedSuffix(opt.label));
 				const marker = q.multi ? (isSelected ? "■" : "□") : isSelected ? "●" : "○";
 				return (
 					<Row key={i} k={<span className={isSelected ? "tv-ok-text" : undefined}>{marker}</span>}>

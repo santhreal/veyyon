@@ -948,3 +948,30 @@ export {
 	type RelayControlToHost,
 	relayFatalCloseReason,
 } from "./relay";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Ask-dialog option labels
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Marker the ask dialog appends to the recommended option's label.
+ *
+ * The producer is the TUI, which bakes the marker into the label text it shows
+ * and returns. Every consumer that reports the answer has to take it back off:
+ * the dialog itself, the ask tool, and the HTML/collab renderer in
+ * `@veyyon/tool-render`. Those four sites each carried their own copy of the
+ * literal, so changing the wording in the writer left the readers matching a
+ * string nobody produced any more, and the marker survived into the answer the
+ * model was told the user picked. This is the one definition.
+ */
+export const RECOMMENDED_SUFFIX = " (Recommended)";
+
+/** Append {@link RECOMMENDED_SUFFIX} unless `label` already carries it. */
+export function withRecommendedSuffix(label: string): string {
+	return label.endsWith(RECOMMENDED_SUFFIX) ? label : label + RECOMMENDED_SUFFIX;
+}
+
+/** Remove a trailing {@link RECOMMENDED_SUFFIX}, leaving any other label untouched. */
+export function stripRecommendedSuffix(label: string): string {
+	return label.endsWith(RECOMMENDED_SUFFIX) ? label.slice(0, -RECOMMENDED_SUFFIX.length) : label;
+}

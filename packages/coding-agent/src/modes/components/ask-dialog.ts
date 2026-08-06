@@ -19,6 +19,7 @@ import {
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { clampLow, collapseWhitespace, formatCount, formatMoreLines } from "@veyyon/utils";
+import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResultItem,
@@ -151,11 +152,6 @@ interface PreviewSegment {
 	kind: "markdown" | "code";
 	text: string;
 	language: string | undefined;
-}
-
-function stripRecommendedSuffix(label: string): string {
-	const suffix = " (Recommended)";
-	return label.endsWith(suffix) ? label.slice(0, -suffix.length) : label;
 }
 
 function questionTabLabel(question: ExtensionAskDialogQuestion, index: number): string {
@@ -577,7 +573,7 @@ export class AskDialogComponent implements Component {
 	}
 
 	#optionLabel(question: ExtensionAskDialogQuestion, label: string, index: number): string {
-		return question.recommended === index ? `${label} (Recommended)` : label;
+		return question.recommended === index ? withRecommendedSuffix(label) : label;
 	}
 
 	#activeQuestionState(): { question: ExtensionAskDialogQuestion; state: QuestionState } | undefined {

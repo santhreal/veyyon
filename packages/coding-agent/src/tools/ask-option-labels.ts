@@ -24,6 +24,13 @@
  * into the tool that owns the whole ask flow.
  */
 
+/**
+ * The fourth label of this family, ` (Recommended)`, is NOT here. It is the only one a package outside
+ * coding-agent has to read: `@veyyon/tool-render` strips it when rendering an answer for HTML export and
+ * collab, and tool-render cannot import from coding-agent. It lives in `@veyyon/wire` as
+ * `RECOMMENDED_SUFFIX` with `withRecommendedSuffix` / `stripRecommendedSuffix`. Import it from there.
+ */
+
 /** Opens the free-text prompt so the user can answer in their own words. */
 export const ASK_OTHER_OPTION_LABEL = "Other (type your own)";
 
