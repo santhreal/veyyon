@@ -17,7 +17,11 @@
  * behavior on each axis rather than the average one.
  */
 
-import { RELEASE_VERSION_BODY } from "@veyyon/utils/semver";
+// By relative path, not "@veyyon/utils/semver". `checks.yml::changelog` and
+// `ci.yml::release_notes_dryrun` run the scripts that reach this file without a
+// `bun install`, so `node_modules/@veyyon/utils` does not exist there and the
+// package specifier fails to resolve. `semver.ts` imports nothing of its own.
+import { RELEASE_VERSION_BODY } from "../packages/utils/src/semver";
 
 /** The heading, anchored to a line. */
 const UNRELEASED_HEADING_LINE = /^## \[Unreleased\][^\n]*$/m;
