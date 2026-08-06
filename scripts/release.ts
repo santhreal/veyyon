@@ -10,7 +10,7 @@ import * as path from "node:path";
  * atomic version cut, exact-tag Checks, tagged CI, and final publication
  * verification.
  */
-import { isNewerVersion } from "@veyyon/utils/semver";
+import { isNewerVersion, isReleaseTag, isReleaseVersion } from "@veyyon/utils/semver";
 import { $, Glob, JSONC } from "bun";
 import { runChangelogFixer } from "./fix-changelogs";
 import {
@@ -44,7 +44,7 @@ export function parseReleaseRequest(args: readonly string[]): string {
 		throw new Error("Release accepts one version: major, minor, patch, or an explicit x.y.z.");
 	}
 	const version = args[0] ?? "patch";
-	if (version === "major" || version === "minor" || version === "patch" || /^\d+\.\d+\.\d+$/.test(version)) {
+	if (version === "major" || version === "minor" || version === "patch" || isReleaseVersion(version)) {
 		return version;
 	}
 	throw new Error(`Invalid release version ${JSON.stringify(version)}. Use major, minor, patch, or x.y.z.`);
@@ -276,9 +276,8 @@ export async function validateReleaseVersionAuthorities(
 	expectedTag: string,
 ): Promise<void> {
 	const errors: string[] = [];
-	const strictVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-	if (!strictVersion.test(version)) errors.push(`release version "${version}" is not strict semver`);
-	if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(expectedTag)) {
+	if (!isReleaseVersion(version)) errors.push(`release version "${version}" is not strict semver`);
+	if (!isReleaseTag(expectedTag)) {
 		errors.push(`expected tag "${expectedTag}" is not a strict v-prefixed semver tag`);
 	}
 	if (expectedTag !== `v${version}`)

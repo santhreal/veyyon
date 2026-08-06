@@ -24,6 +24,7 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isReleaseTag } from "@veyyon/utils/semver";
 import { unreleasedEntries } from "./changelog-unreleased.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -63,7 +64,7 @@ export function assertReleaseTagGateEvidence(
 	expectedTitle: string,
 	runsByWorkflow: Readonly<Record<string, readonly ReleaseTagWorkflowRun[]>>,
 ): void {
-	if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
+	if (!isReleaseTag(tag)) {
 		throw new Error(`release tag ${JSON.stringify(tag)} is not strict vX.Y.Z semver`);
 	}
 	for (const workflow of REQUIRED_RELEASE_TAG_WORKFLOWS) {
