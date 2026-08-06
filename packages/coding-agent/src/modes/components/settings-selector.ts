@@ -51,15 +51,10 @@ import {
 	validateProviderMaxInFlightRequests,
 } from "../../config/settings";
 import { SUBAGENT_RECURSION_DEPTH_OPTIONS, type SubagentAgentSettings } from "../../config/settings-domains/subagents";
-import type {
-	SettingTab,
-	StatusLinePreset,
-	StatusLineSegmentId,
-	StatusLineSeparatorStyle,
-	SubmenuOption,
-} from "../../config/settings-schema";
+import type { SettingTab, StatusLinePreset, StatusLineSegmentId, SubmenuOption } from "../../config/settings-schema";
 import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
 import { loadCapability } from "../../discovery";
+import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../discovery/builtin-rules";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
@@ -864,6 +859,41 @@ class ModelRolesSubmenu extends Container {
 }
 
 /**
+ * Rows either rule screen shows before it scrolls, and the line above which
+ * `SelectList` starts accepting a typed filter query.
+ */
+const RULE_LIST_MAX_ROWS = 12;
+
+/**
+ * Section order on the rule screen, and what each heading says.
+ *
+ * A rule the project itself supplies comes first: it is the one the reader
+ * wrote, and it outranks a bundled rule of the same name anyway. Then the
+ * bundled sections in the order the bundle declares them, so the file tree and
+ * the screen cannot disagree about order. Experimental is last on purpose —
+ * anything above it ships on, and a reader scanning downward should meet the
+ * opt-in rules only after everything that is actually running.
+ */
+const BUNDLED_SECTION_ORDER: readonly BuiltinRuleSection[] = Object.keys(BUILTIN_RULE_SECTIONS) as BuiltinRuleSection[];
+
+function ruleSectionRank(rule: Rule): number {
+	if (rule._source?.provider !== BUILTIN_DEFAULTS_PROVIDER_ID) return -1;
+	const index = BUNDLED_SECTION_ORDER.indexOf(rule.section as BuiltinRuleSection);
+	// A bundled rule whose section is not one we know sorts after every known
+	// one rather than silently joining the project group at the top.
+	return index < 0 ? BUNDLED_SECTION_ORDER.length : index;
+}
+
+/** The heading a rule renders under. */
+function ruleSectionLabel(rule: Rule): string {
+	if (rule._source?.provider !== BUILTIN_DEFAULTS_PROVIDER_ID) {
+		return rule._source?.provider ? `From ${rule._source.provider}` : "From this project";
+	}
+	const meta = BUILTIN_RULE_SECTIONS[rule.section as BuiltinRuleSection];
+	return meta ? `Built-in · ${meta.label}` : "Built-in";
+}
+
+/**
  * The rule list: every rule this project loads, each on or off.
  *
  * Backed by `ttsr.disabledRules`, which stores exceptions only. The list itself is
@@ -874,7 +904,11 @@ class ModelRolesSubmenu extends Container {
  * what the old comma-separated text box demanded before it would let you disable
  * anything.
  *
- * Enter toggles in place. There is nothing to drill into: a rule is on or it is not.
+ * Two levels. The index is one row per section; entering a section lists the rules
+ * under it, where Enter toggles in place. Thirty-one rules in one flat list made the
+ * first screen a wall the reader had to scroll before learning what kinds of rule
+ * even exist, and the section a rule sits in is the fact that decides whether it
+ * ships on — so the section is worth being a screen rather than a heading.
  */
 class RulesSubmenu extends Container {
 	#selectList: SelectList | undefined;
@@ -883,6 +917,10 @@ class RulesSubmenu extends Container {
 	#loaded = false;
 	/** Kept by NAME, not index: toggling re-sorts nothing but re-creates the list. */
 	#focused: string | undefined;
+	/** The section being browsed, or undefined at the index. Two levels, one field. */
+	#openSection: string | undefined;
+	/** Which section row to land back on when you leave one. */
+	#focusedSection: string | undefined;
 
 	constructor(
 		private readonly cwd: string,
@@ -903,7 +941,9 @@ class RulesSubmenu extends Container {
 			// toggle governs whichever copy actually loads.
 			const byName = new Map<string, Rule>();
 			for (const rule of result.items) if (!byName.has(rule.name)) byName.set(rule.name, rule);
-			this.#rules = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+			this.#rules = [...byName.values()].sort(
+				(a, b) => ruleSectionRank(a) - ruleSectionRank(b) || a.name.localeCompare(b.name),
+			);
 		} catch (error) {
 			// Loud: a partial list reads as "these are all the rules there are", and the
 			// reader would turn one off believing the rest do not exist.
@@ -916,16 +956,42 @@ class RulesSubmenu extends Container {
 
 	/** Names currently turned off, trimmed the same way `bucketRules` trims them. */
 	#disabled(): Set<string> {
-		const stored = settings.get("ttsr.disabledRules");
+		return this.#nameSet("ttsr.disabledRules");
+	}
+
+	/** Experimental rules the operator turned on; empty on a stock install. */
+	#enabledExperiments(): Set<string> {
+		return this.#nameSet("ttsr.experimentalRules");
+	}
+
+	#nameSet(path: "ttsr.disabledRules" | "ttsr.experimentalRules"): Set<string> {
+		const stored = settings.get(path);
 		const names = Array.isArray(stored) ? stored : [];
 		return new Set(names.map(name => String(name).trim()).filter(name => name.length > 0));
 	}
 
+	/**
+	 * Flip one rule, writing to whichever list expresses "off" for it.
+	 *
+	 * An experimental rule ships off, so its on-state lives in an opt-in list and
+	 * `disabledRules` — which stores exceptions to on — cannot represent it. One
+	 * row, one Enter, two backing lists: the operator is told which rules are
+	 * experimental by the section they are under, not by having to know which
+	 * setting their answer lands in.
+	 */
 	#toggle(name: string): void {
-		const disabled = this.#disabled();
-		if (disabled.has(name)) disabled.delete(name);
-		else disabled.add(name);
-		settings.set("ttsr.disabledRules", [...disabled].sort());
+		const rule = this.#rules.find(candidate => candidate.name === name);
+		if (rule?.experimental === true) {
+			const enabled = this.#enabledExperiments();
+			if (enabled.has(name)) enabled.delete(name);
+			else enabled.add(name);
+			settings.set("ttsr.experimentalRules", [...enabled].sort());
+		} else {
+			const disabled = this.#disabled();
+			if (disabled.has(name)) disabled.delete(name);
+			else disabled.add(name);
+			settings.set("ttsr.disabledRules", [...disabled].sort());
+		}
 		this.onChange();
 		this.#focused = name;
 		this.#show();
@@ -945,68 +1011,181 @@ class RulesSubmenu extends Container {
 		return "inert";
 	}
 
-	#show(): void {
+	/** Whether a rule is currently reaching the model, by the same three levers the funnel reads. */
+	#isOff(rule: Rule, disabled: ReadonlySet<string>, experiments: ReadonlySet<string>, builtinOff: boolean): boolean {
+		if (disabled.has(rule.name)) return true;
+		if (builtinOff && rule._source?.provider === BUILTIN_DEFAULTS_PROVIDER_ID) return true;
+		// Experimental inverts the question: it is off unless opted in, so its row
+		// must read the opt-in list or every one of them would claim "on".
+		return rule.experimental === true && !experiments.has(rule.name);
+	}
+
+	/** The sections, in render order, each with the rules under it. */
+	#sections(): { label: string; rules: Rule[] }[] {
+		const sections: { label: string; rules: Rule[] }[] = [];
+		for (const rule of this.#rules) {
+			const label = ruleSectionLabel(rule);
+			const existing = sections.find(section => section.label === label);
+			if (existing) existing.rules.push(rule);
+			else sections.push({ label, rules: [rule] });
+		}
+		return sections;
+	}
+
+	/**
+	 * What a section row says about itself without being opened.
+	 *
+	 * A two-level list buys a short first screen and costs the at-a-glance answer,
+	 * so the count pays it back: an operator scanning the index still learns that
+	 * something below is off, and which section to open to find it. Without it the
+	 * only way to know would be to enter every one.
+	 */
+	#sectionSummary(rules: readonly Rule[], off: number): string {
+		const total = `${rules.length} rule${rules.length === 1 ? "" : "s"}`;
+		if (off === 0) return `${total} · ${theme.fg("success", "all on")}`;
+		if (off === rules.length) return `${total} · ${theme.fg("dim", "all off")}`;
+		return `${total} · ${theme.fg("dim", `${off} off`)}`;
+	}
+
+	#header(subtitle: string): void {
 		this.clear();
 		this.addChild(new Text(theme.bold(theme.fg("accent", "Rules")), 0, 0));
 		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(theme.fg("muted", "Every rule this project loads. Enter turns one off, or back on."), 0, 0),
-		);
+		this.addChild(new Text(theme.fg("muted", subtitle), 0, 0));
 		this.addChild(new Spacer(1));
 		this.#selectList = undefined;
+	}
 
+	/** Both warnings apply to every section, so they belong on the screen you always pass through. */
+	#warnings(builtinOff: boolean): void {
+		if (settings.get("ttsr.enabled") !== true) {
+			this.addChild(new Text(theme.fg("warning", "  Rule matching is off (Stream interrupts → TTSR)."), 0, 0));
+			this.addChild(new Spacer(1));
+		}
+		if (builtinOff) {
+			this.addChild(new Text(theme.fg("warning", "  Built-in rules are off, so every bundled rule is."), 0, 0));
+			this.addChild(new Spacer(1));
+		}
+	}
+
+	/**
+	 * Build the list plus the footer that describes it.
+	 *
+	 * The filter hint is conditional because the filter is: `SelectList` accepts a
+	 * typed query only while the list overflows its visible rows, and splitting
+	 * thirty-one rules across five sections took every one of these lists below
+	 * that line. A footer reading "type to filter" over five rows that ignore
+	 * every key you press is worse than no hint, so the hint appears exactly when
+	 * the list will answer it.
+	 */
+	#finishList(items: SelectItem[], focused: string | undefined, action: string, back: string): void {
+		const visible = clamp(items.length, 1, RULE_LIST_MAX_ROWS);
+		// The name column shrinks to the longest name present rather than holding the
+		// default 32. A section summary is 17 characters and the fixed column left
+		// twelve for it at 96 columns, so the count that justifies collapsing thirty
+		// rules into five rows rendered as `4 rules · a…`. The cap is unchanged, so a
+		// long project rule name still gets the room it always had.
+		this.#selectList = new SelectList(items, visible, getSelectListTheme(), {
+			minPrimaryColumnWidth: 1,
+			maxPrimaryColumnWidth: 32,
+		});
+		const focusedIndex = focused ? items.findIndex(item => item.value === focused) : -1;
+		if (focusedIndex >= 0) this.#selectList.setSelectedIndex(focusedIndex);
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		const filterHint = items.length > visible ? " · type to filter" : "";
+		this.addChild(new Text(theme.fg("dim", `  ${action}${filterHint} · ${back}`), 0, 0));
+	}
+
+	#show(): void {
 		if (this.#loadError) {
+			this.#header("Every rule this project loads.");
 			this.addChild(new Text(theme.fg("error", `  Could not read the rule sources: ${this.#loadError}`), 0, 0));
 			this.addChild(new Spacer(1));
 			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
 			return;
 		}
 		if (!this.#loaded) {
+			this.#header("Every rule this project loads.");
 			this.addChild(new Text(theme.fg("dim", "  Reading rules…"), 0, 0));
 			return;
 		}
+		if (this.#openSection === undefined) this.#showSections();
+		else this.#showSection(this.#openSection);
+	}
 
-		// Two settings above this one can make every row here inert, and neither is
-		// visible while you are looking at this list. Saying so beats a screen of rows
-		// marked "on" that do nothing.
-		if (settings.get("ttsr.enabled") !== true) {
-			this.addChild(new Text(theme.fg("warning", "  Rule matching is off (Rules (TTSR) → Enabled)."), 0, 0));
-			this.addChild(new Spacer(1));
-		}
+	/** The index: one row per section, so the first screen is five rows rather than thirty-one. */
+	#showSections(): void {
 		const builtinOff = settings.get("ttsr.builtinRules") !== true;
-		if (builtinOff) {
-			this.addChild(new Text(theme.fg("warning", "  Built-in rules are off, so every bundled row below is."), 0, 0));
-			this.addChild(new Spacer(1));
-		}
+		this.#header("Rules by section. Enter opens one.");
+		this.#warnings(builtinOff);
 
 		const disabled = this.#disabled();
-		const items: SelectItem[] = this.#rules.map(rule => {
-			const builtin = rule._source?.provider === BUILTIN_DEFAULTS_PROVIDER_ID;
-			const off = disabled.has(rule.name) || (builtin && builtinOff);
-			const state = off ? theme.fg("dim", "off") : theme.fg("success", "on");
-			const origin = builtin ? "built-in" : (rule._source?.provider ?? "project");
-			const detail = rule.description ? ` · ${collapseWhitespace(rule.description)}` : "";
-			return {
-				value: rule.name,
-				label: rule.name,
-				description: `${state} · ${this.#kind(rule)} · ${origin}${detail}`,
-			};
-		});
-		if (items.length === 0) {
+		const experiments = this.#enabledExperiments();
+		const sections = this.#sections();
+		if (sections.length === 0) {
 			this.addChild(new Text(theme.fg("dim", "  No rules found."), 0, 0));
 			this.addChild(new Spacer(1));
 			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
 			return;
 		}
 
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
-		const focusedIndex = this.#focused ? items.findIndex(item => item.value === this.#focused) : -1;
-		if (focusedIndex >= 0) this.#selectList.setSelectedIndex(focusedIndex);
-		this.#selectList.onSelect = item => this.#toggle(item.value);
-		this.#selectList.onCancel = this.onCancel;
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to toggle · type to filter · Esc to go back"), 0, 0));
+		const items: SelectItem[] = sections.map(section => {
+			const off = section.rules.filter(rule => this.#isOff(rule, disabled, experiments, builtinOff)).length;
+			return {
+				value: section.label,
+				label: section.label,
+				description: this.#sectionSummary(section.rules, off),
+			};
+		});
+		this.#finishList(items, this.#focusedSection, "Enter to open", "Esc to go back");
+		if (this.#selectList) {
+			this.#selectList.onSelect = item => {
+				this.#openSection = item.value;
+				this.#focusedSection = item.value;
+				this.#focused = undefined;
+				this.#show();
+				this.requestRender?.();
+			};
+			this.#selectList.onCancel = this.onCancel;
+		}
+	}
+
+	/** One section's rules. Esc returns to the index rather than leaving the list entirely. */
+	#showSection(label: string): void {
+		const builtinOff = settings.get("ttsr.builtinRules") !== true;
+		const section = this.#sections().find(candidate => candidate.label === label);
+		if (!section) {
+			// The section went away under us; the index is the only honest screen left.
+			this.#openSection = undefined;
+			this.#showSections();
+			return;
+		}
+		this.#header(`${label} — Enter turns a rule off, or back on.`);
+		this.#warnings(builtinOff);
+
+		const disabled = this.#disabled();
+		const experiments = this.#enabledExperiments();
+		const items: SelectItem[] = section.rules.map(rule => {
+			const state = this.#isOff(rule, disabled, experiments, builtinOff)
+				? theme.fg("dim", "off")
+				: theme.fg("success", "on");
+			const detail = rule.description ? ` · ${collapseWhitespace(rule.description)}` : "";
+			return {
+				value: rule.name,
+				label: rule.name,
+				description: `${state} · ${this.#kind(rule)}${detail}`,
+			};
+		});
+		this.#finishList(items, this.#focused, "Enter to toggle", "Esc for sections");
+		if (this.#selectList) {
+			this.#selectList.onSelect = item => this.#toggle(item.value);
+			this.#selectList.onCancel = () => {
+				this.#openSection = undefined;
+				this.#show();
+				this.requestRender?.();
+			};
+		}
 	}
 
 	handleInput(data: string): void {
@@ -1992,9 +2171,7 @@ export interface StatusLinePreviewSettings {
 	preset?: StatusLinePreset;
 	leftSegments?: StatusLineSegmentId[];
 	rightSegments?: StatusLineSegmentId[];
-	separator?: StatusLineSeparatorStyle;
 	sessionAccent?: boolean;
-	transparent?: boolean;
 	compactThinkingLevel?: boolean;
 }
 
@@ -2966,7 +3143,6 @@ export class SettingsSelectorComponent implements Component {
 					preset: value as StatusLinePreset,
 					leftSegments: presetDef.leftSegments,
 					rightSegments: presetDef.rightSegments,
-					separator: presetDef.separator,
 				});
 			};
 			onPreviewCancel = () => {
@@ -2976,16 +3152,7 @@ export class SettingsSelectorComponent implements Component {
 					preset: currentPreset,
 					leftSegments: presetDef.leftSegments,
 					rightSegments: presetDef.rightSegments,
-					separator: presetDef.separator,
 				});
-			};
-		} else if (def.path === "statusLine.separator") {
-			onPreview = value => {
-				this.callbacks.onStatusLinePreview?.({ separator: value as StatusLineSeparatorStyle });
-			};
-			onPreviewCancel = () => {
-				const separator = settings.get("statusLine.separator");
-				this.callbacks.onStatusLinePreview?.({ separator });
 			};
 		}
 
@@ -3228,15 +3395,25 @@ export class SettingsSelectorComponent implements Component {
 	 * Row summary: how many rules are turned off, since that is the whole of what this
 	 * setting stores. It deliberately does NOT say how many rules exist — discovery is
 	 * async, and a synchronous "29 rules" printed on the settings row would be a guess.
+	 *
+	 * Opted-in experiments are counted separately rather than folded into "off",
+	 * because they are the one thing here the operator turned ON deliberately, and
+	 * a summary reading "all on" while an experiment sits enabled underneath it
+	 * would hide the only non-default state on the screen.
 	 */
 	#formatRulesValue(): string {
 		const stored = settings.get("ttsr.disabledRules");
 		const off = Array.isArray(stored) ? stored.filter(name => String(name).trim().length > 0).length : 0;
+		const enabledRaw = settings.get("ttsr.experimentalRules");
+		const experiments = Array.isArray(enabledRaw)
+			? enabledRaw.filter(name => String(name).trim().length > 0).length
+			: 0;
+		const experimentSuffix = experiments === 0 ? "" : `, ${experiments} experimental on`;
 		if (settings.get("ttsr.builtinRules") !== true) {
-			return off === 0 ? "built-ins off" : `built-ins off, ${off} more off`;
+			return (off === 0 ? "built-ins off" : `built-ins off, ${off} more off`) + experimentSuffix;
 		}
-		if (off === 0) return "all on";
-		return `${off} off`;
+		if (off === 0) return experiments === 0 ? "all on" : `all on${experimentSuffix}`;
+		return `${off} off${experimentSuffix}`;
 	}
 
 	#createRulesInput(done: (value?: string) => void): Container {
@@ -3569,9 +3746,7 @@ export class SettingsSelectorComponent implements Component {
 			preset: settings.get("statusLine.preset"),
 			leftSegments: settings.get("statusLine.leftSegments"),
 			rightSegments: settings.get("statusLine.rightSegments"),
-			separator: settings.get("statusLine.separator"),
 			sessionAccent: settings.get("statusLine.sessionAccent"),
-			transparent: settings.get("statusLine.transparent"),
 		};
 		this.callbacks.onStatusLinePreview?.(statusLineSettings);
 	}

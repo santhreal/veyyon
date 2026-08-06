@@ -4,9 +4,10 @@
  * Project-specific rules from Cursor (.mdc), Windsurf (.md), and Cline formats.
  * Translated to a canonical shape regardless of source format.
  */
-import { defineCapability } from ".";
+
 // The owner, not the `@veyyon/utils` barrel: 1 module against 81.
 import { parseFrontmatter } from "@veyyon/utils/frontmatter";
+import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
 const CONDITION_GLOB_SCOPE_TOOLS = ["edit", "write"] as const;
@@ -87,6 +88,22 @@ export interface Rule {
 	repeatMode?: "once" | "after-gap" | "per-compact";
 	/** Messages before this rule may fire again, overriding the global `ttsr.repeatGap`. */
 	repeatGap?: number;
+	/**
+	 * Which group this rule belongs to on screen.
+	 *
+	 * A bundled rule gets the directory it ships in; anything discovered has no
+	 * directory of ours to read, so it is grouped by where it came from instead.
+	 * Absent means ungrouped, which is a display fact and never a gating one.
+	 */
+	section?: string;
+	/**
+	 * Ships off until the operator names it in `ttsr.experimentalRules`.
+	 *
+	 * Set from the section rather than from frontmatter: a rule file cannot be
+	 * allowed to declare itself stable while sitting in the experimental
+	 * directory, and the directory is the thing a reviewer sees.
+	 */
+	experimental?: boolean;
 	/** Source metadata */
 	_source: SourceMeta;
 }
@@ -277,8 +294,7 @@ export function buildRuleFromMarkdown(
 		data.interruptMode === "always"
 			? data.interruptMode
 			: undefined;
-	const pathScope =
-		data.pathScope === "outside-cwd" || data.pathScope === "inside-cwd" ? data.pathScope : undefined;
+	const pathScope = data.pathScope === "outside-cwd" || data.pathScope === "inside-cwd" ? data.pathScope : undefined;
 	const repeatMode =
 		data.repeatMode === "once" || data.repeatMode === "after-gap" || data.repeatMode === "per-compact"
 			? data.repeatMode

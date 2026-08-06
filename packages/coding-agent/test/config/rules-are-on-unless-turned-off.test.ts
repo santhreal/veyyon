@@ -12,10 +12,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule } from "../../src/capability/rule";
+import type { Rule } from "../../src/capability/rule";
 import { bucketRules } from "../../src/capability/rule-buckets";
-import { BUILTIN_RULE_SOURCES } from "../../src/discovery/builtin-rules";
-import { buildRuleFromMarkdown, createSourceMeta } from "../../src/discovery/helpers";
+import { buildBuiltinRules } from "../../src/discovery/builtin-defaults";
+import { BUILTIN_RULE_SOURCES, isExperimentalSection } from "../../src/discovery/builtin-rules";
 import { TtsrManager } from "../../src/export/ttsr";
 import { getSettingDef, invalidateSettingDefsCache } from "../../src/modes/components/settings-defs";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
@@ -33,18 +33,21 @@ afterEach(() => {
 	invalidateSettingDefsCache();
 });
 
-/** Every bundled rule, built exactly as the `builtin-defaults` provider builds them. */
+/**
+ * Every bundled rule, from the provider itself.
+ *
+ * Not a local rebuild: a copy of the construction is a copy that can disagree
+ * with it, and this one did the moment rules grew sections — it set neither the
+ * section nor the experimental flag, so it would have gone on reporting that
+ * every bundled rule ships live after one had stopped.
+ */
 function bundledRules(): Rule[] {
-	return BUILTIN_RULE_SOURCES.map(({ name, content }) => {
-		const virtualPath = `${BUILTIN_DEFAULTS_PROVIDER_ID}:${name}.md`;
-		return buildRuleFromMarkdown(
-			name,
-			content,
-			virtualPath,
-			createSourceMeta(BUILTIN_DEFAULTS_PROVIDER_ID, virtualPath, "user"),
-			{ ruleName: name },
-		);
-	});
+	return buildBuiltinRules();
+}
+
+/** The bundled rules that ship enabled: everything outside an experimental section. */
+function shippedOnSources(): readonly { name: string }[] {
+	return BUILTIN_RULE_SOURCES.filter(source => !isExperimentalSection(source.section));
 }
 
 /** Rule names that survived the disable levers, whichever bucket they landed in. */
@@ -66,16 +69,20 @@ function survivingRuleNames(disabledRules: string[], builtinRules = true): strin
 
 describe("the default state of the rule list", () => {
 	/**
-	 * The promise the settings row makes. Every bundled rule — the TypeScript
-	 * conventions, the Go and Rust ones, the nudges — is live on a stock install, and
-	 * the stored exception list is empty.
+	 * The promise the settings row makes. Every bundled rule outside an experimental
+	 * section — the TypeScript conventions, the Go and Rust ones, the nudges — is live
+	 * on a stock install, and the stored exception list is empty.
+	 *
+	 * Experimental is the deliberate exception and is counted out rather than ignored:
+	 * asserting the exact total is what would catch a rule quietly filed under
+	 * `experimental/` to dodge review, which would ship it off with nobody noticing.
 	 */
-	test("every bundled rule is on when nothing has been turned off", () => {
+	test("every bundled rule that ships on is on when nothing has been turned off", () => {
 		const surviving = survivingRuleNames([]);
-		for (const { name } of BUILTIN_RULE_SOURCES) {
+		for (const { name } of shippedOnSources()) {
 			expect(surviving).toContain(name);
 		}
-		expect(surviving.length).toBe(BUILTIN_RULE_SOURCES.length);
+		expect(surviving.length).toBe(shippedOnSources().length);
 	});
 
 	/**
@@ -97,7 +104,7 @@ describe("turning one rule off", () => {
 		const surviving = survivingRuleNames(["ts-no-any"]);
 		expect(surviving).not.toContain("ts-no-any");
 		expect(surviving).toContain("ts-no-tiny-functions");
-		expect(surviving.length).toBe(BUILTIN_RULE_SOURCES.length - 1);
+		expect(surviving.length).toBe(shippedOnSources().length - 1);
 	});
 
 	/** Turning it back on is removing the name again: the state is the array, nothing else. */

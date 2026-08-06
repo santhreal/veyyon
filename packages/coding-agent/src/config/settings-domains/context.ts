@@ -1141,6 +1141,16 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
+	// Named by the rule list, never by a row of its own: the operator turns an
+	// experimental rule on where every other rule is turned on and off, and a
+	// second control holding the same names would be a way for the two to
+	// disagree. Its inverse `ttsr.disabledRules` is the visible row because it is
+	// also the label under which the whole list is reached.
+	"ttsr.experimentalRules": {
+		type: "array",
+		default: [] as string[],
+	},
+
 	// Google only. Gemini attaches an opaque `thoughtSignature` to every function
 	// call, and until this setting existed every historical one was re-uploaded on
 	// every request for the rest of the session. Measured over nine live sessions
