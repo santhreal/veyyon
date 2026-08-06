@@ -72,6 +72,7 @@ function buildModelsConfigSchemas() {
 		"alwaysSendMaxTokens?": "boolean",
 		"strictResponsesPairing?": "boolean",
 		"supportsImageDetailOriginal?": "boolean",
+		"supportsServerCompaction?": "boolean",
 		// anthropic-messages compat flags (same `compat` slot, per-api interpretation)
 		"requiresToolResultId?": "boolean",
 		"replayUnsignedThinking?": "boolean",
