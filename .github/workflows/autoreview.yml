@@ -60,7 +60,11 @@ jobs:
         # An immutable release tag, not a branch tip. The previous pin was the
         # commit main happened to be at, so the trailing comment named a moving
         # branch and no one could tell which behaviour was pinned. v0.40.0 is
-        # the first release containing that commit.
+        # the first release containing that commit, and it is 12 commits AHEAD
+        # of it, not equal to it: the repin moved behaviour. The one that
+        # mattered here is `feat(config): update default model`, which changes
+        # which model reviews every PR, so the model is named below rather than
+        # left to whatever the action's default happens to be at the next bump.
         uses: qodo-ai/pr-agent@6ad7cf75d95cb3bbb54cf2ad92050eb03804964a # v0.40.0
         env:
           OPENAI_KEY: ${{ secrets.QODO_API_KEY }}
@@ -68,3 +72,6 @@ jobs:
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
           github_action_config.auto_improve: "true"
+          # Pinned, because the action's default moves between releases and a
+          # review model is not something a dependency bump should choose.
+          config.model: "gpt-5.6"
