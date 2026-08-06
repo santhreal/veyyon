@@ -24,6 +24,18 @@ import { AssistantMessageEventStream } from "./event-stream";
 export const MAX_EMPTY_COMPLETION_RETRIES = 2;
 export const EMPTY_COMPLETION_BASE_DELAY_MS = 500;
 
+/**
+ * Surfaced when a turn hit the length cap having delivered nothing per
+ * {@link hasVisibleAssistantContent}: the prompt itself consumed the window, so
+ * there is no partial answer to keep and the operator has to make room. Ollama
+ * is the only backend that reaches this (`emptyLengthFinishIsContextError` in
+ * the catalog's OpenAI compat is `provider === "ollama"`), but it reaches it
+ * down both the native `ollama-chat` stream and the OpenAI-compatible one, so
+ * the wording lives here rather than in either provider.
+ */
+export const EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE =
+	"Model returned no content: prompt filled the context window; raise Ollama num_ctx or shorten the prompt.";
+
 const NON_WHITESPACE_RE = /\S/;
 
 /**

@@ -19,7 +19,11 @@ import type {
 } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import { clearStreamingPartialJson, kStreamingPartialJson } from "../utils/block-symbols";
-import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
+import {
+	EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE,
+	hasVisibleAssistantContent,
+	withEmptyCompletionRetry,
+} from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import {
 	type CapturedHttpErrorResponse,
@@ -407,17 +411,6 @@ function mapDoneReason(doneReason: string | undefined, output: AssistantMessage)
 		return "toolUse";
 	}
 	return "stop";
-}
-
-const EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE =
-	"Model returned no content: prompt filled the context window; raise Ollama num_ctx or shorten the prompt.";
-
-function hasVisibleAssistantContent(output: AssistantMessage): boolean {
-	return output.content.some(block => {
-		if (block.type === "text") return block.text.trim().length > 0;
-		if (block.type === "thinking") return block.thinking.trim().length > 0;
-		return block.type === "toolCall";
-	});
 }
 
 const OLLAMA_RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
