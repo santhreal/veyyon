@@ -124,7 +124,7 @@ if (!globalThis.__veyyon_js_prelude_loaded__) {
 		return node;
 	};
 
-	// Pool ceiling mirrors the task tool's `task.maxConcurrency` setting so an
+	// Pool ceiling mirrors the task tool's `subagent.maxConcurrency` setting so an
 	// eval fan-out runs as wide as a `task` batch would. 0 (and any non-finite
 	// reply) means unbounded — run every item at once.
 	const __concurrencyLimit = async () => {

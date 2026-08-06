@@ -89,7 +89,7 @@ export async function mapWithConcurrencyLimit<T, R>(
  * Simple counting semaphore for limiting concurrency across independently-scheduled async work.
  *
  * `max <= 0` (or any non-finite input) means unbounded — every `acquire()` resolves
- * immediately — matching `task.maxConcurrency = 0`'s "Unlimited" semantics in the
+ * immediately — matching `subagent.maxConcurrency = 0`'s "Unlimited" semantics in the
  * settings UI.
  */
 export function normalizeConcurrencyLimit(max: number): number {
