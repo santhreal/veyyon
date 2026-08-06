@@ -117,6 +117,30 @@ export function withLegacyDefaultEffort(
 	return parsed === undefined ? {} : { [ANY_MODEL_EFFORT_KEY]: parsed };
 }
 
+/**
+ * The rows to store when something asks to persist an effort as the profile
+ * default, i.e. the `*` row set to `level` with every other row untouched.
+ *
+ * This exists because a durable write has to land in the SAME setting the
+ * resolver reads. Persisting used to write the retired `defaultThinkingLevel`
+ * enum, and {@link withLegacyDefaultEffort} consults that key only when
+ * `defaultEffort` is absent, so for anyone who had opened the settings screen
+ * once the write reached `settings.json` and then changed nothing, forever. A
+ * write whose value is silently discarded on the next read is worse than a
+ * write that fails.
+ *
+ * Folding the legacy value in first is deliberate: it migrates a profile that
+ * still carries only the retired enum, instead of dropping that operator's
+ * saved level the first time anything persists.
+ */
+export function withAnyModelEffort(
+	rows: DefaultEffortList | undefined,
+	legacyLevel: string | null | undefined,
+	level: ConfiguredThinkingLevel,
+): DefaultEffortList {
+	return { ...withLegacyDefaultEffort(rows, legacyLevel), [ANY_MODEL_EFFORT_KEY]: level };
+}
+
 /** Human summary of a row's value for a settings list, e.g. `high` or `auto`. */
 export function formatEffortRow(selector: string, raw: string): string {
 	const level = rowLevel(raw) ?? raw;
