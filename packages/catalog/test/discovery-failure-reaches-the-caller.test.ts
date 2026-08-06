@@ -23,7 +23,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DiscoveryFailure, DiscoveryHooks } from "../src/discovery/failure";
 import { createModelManager } from "../src/model-manager";
-import type { Api, ModelSpec } from "../src/types";
+import { anthropicModelManagerOptions } from "../src/provider-models/openai-compat";
+import type { Api, FetchImpl, ModelSpec } from "../src/types";
 
 /**
  * A model list the manager will accept.
@@ -305,5 +306,53 @@ describe("the models.dev fallback", () => {
 
 		expect(modelIds).toEqual(["test-model"]);
 		expect(failures).toEqual([]);
+	});
+});
+
+/**
+ * The block above drives a fake fallback, which proves the manager's half of the channel. This one
+ * drives the real reader `anthropicModelManagerOptions` installs, because a hook nobody calls is the
+ * exact defect being fixed: `fetchModelsDevPayload` threw a bare `Error` on a non-ok status and let a
+ * body failure escape from `response.json()`, so both arrived as `unhandled` -- the stage that means
+ * "this reader has a bug" -- and neither named models.dev.
+ */
+describe("the real models.dev reader", () => {
+	async function readWith(fetchImpl: FetchImpl): Promise<DiscoveryFailure[]> {
+		const failures: DiscoveryFailure[] = [];
+		await anthropicModelManagerOptions({ fetch: fetchImpl }).modelsDev?.fetch({
+			onFailure: failure => failures.push(failure),
+		});
+		return failures;
+	}
+
+	it("classifies an unreachable models.dev as a request failure", async () => {
+		const failures = await readWith(async () => {
+			throw new Error("ECONNREFUSED");
+		});
+
+		expect(failures).toHaveLength(1);
+		expect(failures[0]?.stage).toBe("request");
+		expect(failures[0]?.url).toContain("models.dev");
+		expect(failures[0]?.detail).toContain("ECONNREFUSED");
+	});
+
+	it("classifies a non-ok answer as a status failure carrying the code", async () => {
+		const failures = await readWith(async () => new Response("nope", { status: 503, statusText: "Unavailable" }));
+
+		expect(failures).toHaveLength(1);
+		expect(failures[0]?.stage).toBe("status");
+		expect(failures[0]?.detail).toContain("503");
+	});
+
+	/** A captive portal or a proxy error page: 200 with HTML. Not the reader's bug, and not a status. */
+	it("classifies an unparseable body as a body failure", async () => {
+		const failures = await readWith(async () => new Response("<html>proxy</html>", { status: 200 }));
+
+		expect(failures).toHaveLength(1);
+		expect(failures[0]?.stage).toBe("body");
+	});
+
+	it("stays silent when models.dev answers with JSON", async () => {
+		expect(await readWith(async () => Response.json({ anthropic: { models: {} } }))).toEqual([]);
 	});
 });
