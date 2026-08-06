@@ -75,6 +75,17 @@ export const APPROVAL_DIALOG_OPTIONS: ExtensionUIDialogOptions = {
 };
 
 /**
+ * The interactive approval prompt currently on screen, per session and tool.
+ *
+ * Keyed rather than held on the wrapper because there is one wrapper per tool
+ * per session and the calls that collide are several calls to the SAME tool in
+ * one batch. The entry lives only for the length of one prompt: it is deleted
+ * in the `finally` that also releases the waiters, so an abort, a refusal or a
+ * dialog error cannot strand it and no session accumulates entries.
+ */
+const IN_FLIGHT_APPROVALS = new Map<string, Promise<void>>();
+
+/**
  * Adapts a RegisteredTool into an AgentTool.
  */
 export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknown> {
@@ -338,32 +349,72 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 					since: Date.now(),
 				});
 			}
-			try {
-				choice = await uiContext.select(
-					formatApprovalCard(this.tool, params, approvalReason, requester),
-					APPROVAL_SELECT_OPTIONS,
-					APPROVAL_DIALOG_OPTIONS,
-				);
-			} catch (err) {
-				await resolveApproval(false, err instanceof Error ? err.message : "approval aborted");
-				throw err;
-			} finally {
-				if (requester) registry.setPendingApproval(requester, undefined);
+			// A tool the model called several times in one batch raises one approval
+			// prompt per call, and only the first can reach the surface: the dialog
+			// host presents one at a time and queues the rest. The standing grant was
+			// read once, above, BEFORE this call queued, so an answer of "Approve for
+			// session" given at the first card could never dismiss the cards already
+			// waiting behind it. Those cards are also built without a signal, so
+			// neither an abort nor the end of the turn drops them: they surface
+			// whenever the surface frees up, which is how an operator who answered
+			// once gets asked again for the same tool after the work is finished.
+			//
+			// Waiting on the in-flight prompt instead of queueing a second card is
+			// what closes that window. The answer is re-read after the wait, so a
+			// session grant dismisses this call with no card at all, and "Approve
+			// once" still asks again, because that answer was only ever about one
+			// call. The bound on a grant is re-applied here rather than inherited:
+			// a critical or boundary call is about ITS arguments and is never
+			// dismissed by a tool-wide allow.
+			const inFlightKey = sessionId ? `${sessionId}\u0000${this.tool.name}` : undefined;
+			let dismissedByGrant = false;
+			while (inFlightKey && !dismissedByGrant) {
+				const pending = IN_FLIGHT_APPROVALS.get(inFlightKey);
+				if (!pending) break;
+				await pending;
+				const settledStanding = sessionApprovals?.get(this.tool.name);
+				if (settledStanding === "deny") {
+					await resolveApproval(false, "denied for this session");
+					throw new Error(`Tool call denied for this session: ${this.tool.name}`);
+				}
+				if (settledStanding === "allow" && grantMayApply) dismissedByGrant = true;
 			}
-			const approved = choice === APPROVAL_CHOICE.approveOnce || choice === APPROVAL_CHOICE.approveSession;
-			// Record a grant only from an ordinary prompt. A critical or boundary
-			// prompt is about THESE arguments, so "for session" answered there says
-			// nothing about the tool in general, and storing it would put a
-			// tool-wide allow on the books off the back of the scariest card the
-			// operator ever sees. The call itself still proceeds; nothing is
-			// remembered.
-			if (grantMayApply) {
-				if (choice === APPROVAL_CHOICE.approveSession) sessionApprovals?.set(this.tool.name, "allow");
-				else if (choice === APPROVAL_CHOICE.denySession) sessionApprovals?.set(this.tool.name, "deny");
-			}
-			await resolveApproval(approved, approved ? undefined : "denied by user");
-			if (!approved) {
-				throw new Error(`Tool call denied by user: ${this.tool.name}`);
+
+			if (!dismissedByGrant) {
+				const { promise: promptSettled, resolve: releaseWaiters } = Promise.withResolvers<void>();
+				if (inFlightKey) IN_FLIGHT_APPROVALS.set(inFlightKey, promptSettled);
+				try {
+					choice = await uiContext.select(
+						formatApprovalCard(this.tool, params, approvalReason, requester),
+						APPROVAL_SELECT_OPTIONS,
+						APPROVAL_DIALOG_OPTIONS,
+					);
+				} catch (err) {
+					await resolveApproval(false, err instanceof Error ? err.message : "approval aborted");
+					throw err;
+				} finally {
+					if (requester) registry.setPendingApproval(requester, undefined);
+					// Cleanup lives in the finally, not after the try: a dialog surface
+					// that dies mid-prompt must still release the calls queued behind
+					// it, or the batch waits on a promise nobody will ever settle and
+					// the agent stops with no card on screen to answer.
+					// The answer is recorded and the waiters released in the same
+					// synchronous block, so no waiter can wake between the two and read
+					// a grant that is about to exist.
+					if (grantMayApply) {
+						if (choice === APPROVAL_CHOICE.approveSession) sessionApprovals?.set(this.tool.name, "allow");
+						else if (choice === APPROVAL_CHOICE.denySession) sessionApprovals?.set(this.tool.name, "deny");
+					}
+					if (inFlightKey) IN_FLIGHT_APPROVALS.delete(inFlightKey);
+					releaseWaiters();
+				}
+				const approved = choice === APPROVAL_CHOICE.approveOnce || choice === APPROVAL_CHOICE.approveSession;
+				await resolveApproval(approved, approved ? undefined : "denied by user");
+				if (!approved) {
+					throw new Error(`Tool call denied by user: ${this.tool.name}`);
+				}
+			} else {
+				await resolveApproval(true);
 			}
 		}
 
