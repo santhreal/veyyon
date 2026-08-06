@@ -124,8 +124,11 @@ describe("custom tool loader", () => {
 			path: nullArrayTool,
 			source: TEST_SOURCE,
 		});
-		expect(result.errors[0]?.error.toLowerCase()).toContain("invalid");
-		expect(result.errors[0]?.error).toContain("index 0");
+		// A single-tool factory has one position, so the message states the problem without
+		// a fabricated index, then names every field the export has to carry.
+		expect(result.errors[0]?.error).toContain("The tool this custom tool's default export returned is not usable");
+		expect(result.errors[0]?.error).not.toContain("#1");
+		expect(result.errors[0]?.error).toContain("Fix: return an object with a non-empty string `name`");
 	});
 
 	it("reports a tool entry missing a name instead of throwing", async () => {
@@ -149,9 +152,8 @@ describe("custom tool loader", () => {
 			path: missingNameTool,
 			source: TEST_SOURCE,
 		});
-		expect(result.errors[0]?.error.toLowerCase()).toContain("invalid");
-		expect(result.errors[0]?.error).toContain("index 0");
-		expect(result.errors[0]?.error).toContain("string name");
+		expect(result.errors[0]?.error).toContain("The tool this custom tool's default export returned is not usable");
+		expect(result.errors[0]?.error).toContain("non-empty string `name`");
 	});
 
 	it("keeps valid tools from a mixed array and reports the null entry", async () => {
@@ -169,7 +171,7 @@ describe("custom tool loader", () => {
 			path: mixedArrayTool,
 			source: TEST_SOURCE,
 		});
-		expect(result.errors[0]?.error.toLowerCase()).toContain("invalid");
-		expect(result.errors[0]?.error).toContain("index 1");
+		// One of several positions failed, so the message says which one, 1-based.
+		expect(result.errors[0]?.error).toContain("Tool #2 in the array this custom tool's default export returned");
 	});
 });

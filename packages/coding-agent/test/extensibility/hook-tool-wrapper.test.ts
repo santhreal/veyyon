@@ -68,7 +68,14 @@ describe("HookToolWrapper tool_call blocking", () => {
 				emitToolCall: async () => ({ block: true }),
 			}),
 		);
-		await expect(w.execute("id", {})).rejects.toThrow("Tool execution was blocked by a hook");
+		// A reasonless block is otherwise indistinguishable from a transient failure, so the
+		// message names the tool and tells the model not to retry it.
+		const error = await w.execute("id", {}).then(
+			() => undefined,
+			(caught: Error) => caught,
+		);
+		expect(error?.message).toContain("A hook blocked this faketool call and gave no reason");
+		expect(error?.message).toContain("Do not retry it");
 	});
 
 	it("fails safe: a hook that throws blocks execution", async () => {
