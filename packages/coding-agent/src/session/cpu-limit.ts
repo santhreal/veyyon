@@ -643,6 +643,30 @@ export function sessionCpuLimit(sessionId: string | null | undefined): SessionCp
 }
 
 /**
+ * Follow a session whose id changed. `/new`, `/resume`, a fork and a branch all
+ * mint a fresh id on the same live process, and spawn sites resolve the limiter
+ * by the session's CURRENT id, so a limiter registered under the old one stops
+ * being found: the group keeps enforcing under a name nothing looks up, and the
+ * conversation the operator is now in is unlimited.
+ *
+ * The limiter, its group, and every pid already adopted into it are kept as
+ * they are; only the key moves. A fresh group would be the wrong reading of the
+ * setting: a background command launched before `/new` is still running in this
+ * process, and two groups of N cores would let the operator's one budget be
+ * exceeded by the act of starting a new conversation.
+ */
+export function rekeySessionCpuLimit(previousId: string, nextId: string): SessionCpuLimit | undefined {
+	if (previousId === nextId) return limiters.get(nextId);
+	const limiter = limiters.get(previousId);
+	if (!limiter || limiters.has(nextId)) return limiters.get(nextId);
+	limiters.delete(previousId);
+	limiters.set(nextId, limiter);
+	const index = registrationOrder.indexOf(previousId);
+	if (index >= 0) registrationOrder[index] = nextId;
+	return limiter;
+}
+
+/**
  * An adoption closure for spawn sites that know their session only by a
  * live id lookup. Resolves the limiter at each call, so a limiter registered
  * after the closure is created (session construction order) still applies.
