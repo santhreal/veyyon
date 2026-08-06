@@ -109,6 +109,15 @@ bun run.ts \
 - `--binary <path>`: Use an already-built `vey` binary instead of rebuilding from the working tree, and stage those exact bytes. Point it at an earlier run's `assets/vey`. This exists to make POOLING possible: `--merge` refuses runs whose binary sha differs, the runner rebuilds whenever anything under `packages/coding-agent/src` is newer than the binary, and in a shared tree that is every day (three runs on 2026-07-25 staged three different binaries). Pin every run of a comparison after the first to the first run's staged copy and the days pool. It announces itself loudly, because the run then measures that binary's code and not the working tree's: you give up testing today's code to buy a reward comparison with enough decisive tasks to mean anything.
 - `--out <dir>`: Directory where results and verbatim traces are stored.
 
+#### Cross-system lane flags
+These select the fixed veyyon/Factory/Hermes comparison instead of an arm sweep. They are mutually exclusive with `--arms`.
+- `--systems veyyon,factory,hermes`: run the cross-system lane. All three names are required, exactly once each. It pins the model and the shared 10-task list and disables `--limit`.
+- `--replay-root <absolute-dir>`: real-session replay corpus for `--systems`, holding one validated `<task>.json` manifest per shared task.
+- `--factory-binary <file>`: exact Factory CLI executable to stage.
+- `--factory-auth <file>`: Factory credential file. The runner stages it without printing credentials.
+- `--factory-settings <file>`: optional Factory settings asset, staged the same way.
+- `--hermes-auth <file>`: nonempty Hermes-compatible `.env` credential file. Hermes itself is pinned and installed by its Pier adapter; an unavailable exact model, auth, or native-compaction path fails the trial loudly rather than degrading.
+
 ### Pinned sampling regime (held constant across arms, stamped for the long term)
 Every arm runs at a pinned sampling temperature so `--repeats` measures a stable regime and two runs stay comparable over time. The bench writes `temperature: 0` (greedy) into each staged arm config unless the arm sets its own, instead of inheriting veyyon's `-1` "provider default", which can change silently between runs and make them non-comparable with nothing recording the drift. Temperature 0 is greedy decoding, so top-p / top-k do not matter and temperature alone fixes the regime. The choice is deliberate: at temperature 0 the only run-to-run variation is genuine provider nondeterminism, so a small `K` estimates each arm's pass rate with the tightest interval and a real arm effect is detectable with fewer samples. The effective temperature per arm is recorded in `results.json` under `sampling`, on both the main run and a `--reaggregate`, so a longitudinal diff catches any regime change. An arm may set its own non-negative `temperature` for a deliberate temperature-as-independent-variable experiment; that override is respected and stamped, and the runner logs it.
 
