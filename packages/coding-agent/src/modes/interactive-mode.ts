@@ -217,6 +217,7 @@ import {
 	onThemeChange,
 	theme,
 } from "./theme/theme";
+import { flushPendingTtyInput } from "./tty-input-flush";
 import type {
 	CompactionQueuedMessage,
 	InteractiveModeContext,
@@ -584,6 +585,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	#relaunchSpec: { argv: string[]; env?: Record<string, string | undefined> } | undefined;
 	/** Unsubscribe for the swallow-everything input gate shutdown() installs. */
 	#shutdownInputGateRelease: (() => void) | undefined;
+	/** Unsubscribe for the swallow-everything input gate `init()` installs
+	 *  across the tty handover. Released once startup completes. */
+	#startupInputGateRelease: (() => void) | undefined;
 	/** True once `shutdown()` has begun teardown. Surfaced to the input
 	 *  controller so a Ctrl+C arriving while teardown is in flight can hard-
 	 *  abort the remaining work instead of stacking another no-op call. */
@@ -1192,12 +1196,48 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Load initial todos
 		this.#syncTodoSurfaceToView();
 
+		// The tty handover. This process may be a relaunch (`/profile <name>`
+		// respawns the CLI), and between the parent restoring the terminal and
+		// the line below resuming stdin nothing is reading fd 0, so the kernel
+		// queues everything that arrives in that window. `ui.start()` resumes
+		// stdin, and the kernel then delivers that backlog as this session's
+		// first input event: it reaches the composer, and a queued carriage
+		// return submits a turn the operator never typed.
+		//
+		// Drop the queue outright first. `tcflush` is the real fix because it is
+		// source-agnostic: keystrokes, a terminal's replies to the dying
+		// parent's probes, or anything a multiplexer injected all go the same
+		// way, and no timing window is involved.
+		const flushed = flushPendingTtyInput();
+		// Windows consoles have no termios and an unusual libc may not resolve,
+		// so `tcflush` can be unavailable. The documented degrade is to discard
+		// whatever gets READ before startup finishes: swallow every input event
+		// until the release below runs. Ctrl+C stays live for the same reason
+		// the shutdown gate lets it through (issue #2600) — an operator must be
+		// able to abort a session that is still coming up.
+		this.#startupInputGateRelease ??= this.ui.addInputListener(data =>
+			matchesKey(data, "ctrl+c") ? undefined : { consume: true },
+		);
 		// Start the UI. The first paint always clears the viewport (ED 2), so the
 		// welcome frame never appends over the previous run's frame. Erasing the
 		// terminal's saved scrollback (ED 3) is a separate, unrecoverable act that
 		// also takes whatever the operator had on screen before launch, so it
 		// happens only when they asked for it.
 		this.ui.start({ clearScrollback: this.settings.get("startup.clearScrollback") });
+		// Release on the first check phase after `ui.start()`. The kernel's
+		// queued backlog is delivered in the poll phase of that same event-loop
+		// iteration, so it is always inside the gate; a keystroke the operator
+		// actually meant cannot be, because it requires them to have seen a
+		// frame that has not reached the terminal yet. That is the boundary,
+		// and it is a loop turn rather than a duration: no sleep to tune, and
+		// nothing typed at a live prompt is ever refused.
+		setImmediate(() => {
+			this.#startupInputGateRelease?.();
+			this.#startupInputGateRelease = undefined;
+		});
+		if (!flushed) {
+			logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
+		}
 		// The first paint used an estimated fill (no composed frame existed yet);
 		// now the exact composed height is known, so re-anchor precisely. It only
 		// re-renders if the estimate was off, so there is usually no visible reflow.
@@ -3897,11 +3937,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		// From this moment the session is leaving, so its editor must not take
 		// another keystroke. Teardown below can hold the terminal for seconds
 		// (the consolidate budget plus the input drain), and every key delivered
-		// in that window used to land in the dying session's editor or, once
-		// the terminal was released, sit in the tty buffer and ambush the
-		// relaunched child. Swallow it all instead. The one exception is Ctrl+C:
-		// the hard-abort ladder for a stuck teardown (issue #2600) lives below
-		// the input listeners, so the gate passes it through.
+		// in that window would otherwise land in the dying session's editor.
+		// Swallow it all instead. The one exception is Ctrl+C: the hard-abort
+		// ladder for a stuck teardown (issue #2600) lives below the input
+		// listeners, so the gate passes it through.
+		//
+		// This gate covers only what this process still reads. It never covered
+		// the relaunch leak it used to claim: once the terminal is released
+		// nothing here is reading fd 0, so the kernel queues arriving bytes and
+		// hands them to the relaunched child. That window belongs to the child,
+		// and `init()` closes it there with `flushPendingTtyInput()`.
 		this.#shutdownInputGateRelease ??= this.ui.addInputListener(data =>
 			matchesKey(data, "ctrl+c") ? undefined : { consume: true },
 		);
