@@ -1,3 +1,4 @@
+import { createHash, type Hash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -51,6 +52,7 @@ async function writeResponseBody(
 	dest: string,
 	body: NonNullable<Response["body"]>,
 	signal?: AbortSignal,
+	hash?: Hash,
 ): Promise<void> {
 	const reader = body.getReader();
 	const sink = Bun.file(dest).writer();
@@ -61,6 +63,7 @@ async function writeResponseBody(
 			const { done, value } = await readBodyChunk(reader, signal);
 			if (done) break;
 			if (value) {
+				hash?.update(value);
 				await sink.write(value);
 			}
 		}
@@ -201,8 +204,21 @@ export function getToolPath(tool: ToolName): string | null {
 	return $which(config.binaryName);
 }
 
-// Fetch latest release version from GitHub
-async function getLatestVersion(repo: string, signal?: AbortSignal): Promise<string> {
+/**
+ * The `sha256:<64 hex>` digest GitHub publishes alongside every release asset, keyed by asset
+ * name. Nothing else is accepted: an absent, differently-prefixed or wrong-length digest is
+ * dropped here so {@link downloadTool} refuses rather than downloading an unverifiable binary.
+ */
+const ASSET_DIGEST_RE = /^sha256:([0-9a-f]{64})$/;
+
+interface LatestRelease {
+	version: string;
+	/** Asset name to lowercase hex sha256. An asset with no usable digest is absent. */
+	digests: Record<string, string>;
+}
+
+// Fetch the latest release version and its published asset digests from GitHub
+async function getLatestRelease(repo: string, signal?: AbortSignal): Promise<LatestRelease> {
 	// Scoped so the deadline timer is cleared on settle instead of staying
 	// armed like a bare AbortSignal.timeout; the fence spans the body read.
 	const requestTimeout = scopedTimeoutSignal(TOOL_METADATA_TIMEOUT_MS, signal);
@@ -230,17 +246,39 @@ async function getLatestVersion(repo: string, signal?: AbortSignal): Promise<str
 			throw new Error(`GitHub API error: ${response.status}`);
 		}
 
-		const data = (await response.json()) as { tag_name: string };
-		return bareVersion(data.tag_name);
+		const data = (await response.json()) as {
+			tag_name: string;
+			assets?: { name?: unknown; digest?: unknown }[];
+		};
+		const digests: Record<string, string> = {};
+		for (const asset of data.assets ?? []) {
+			if (typeof asset?.name !== "string" || typeof asset.digest !== "string") continue;
+			const match = ASSET_DIGEST_RE.exec(asset.digest);
+			if (match) digests[asset.name] = match[1]!;
+		}
+		return { version: bareVersion(data.tag_name), digests };
 	} finally {
 		requestTimeout.cancel();
 	}
 }
 
-/** Download a tool asset without handing the streaming Response to Bun.write. */
-export async function downloadFile(url: string, dest: string, signal?: AbortSignal): Promise<void> {
+/**
+ * Download a tool asset without handing the streaming Response to Bun.write.
+ *
+ * `expectedSha256` is the digest the release publishes for this exact asset. It is hashed as the
+ * body streams, so a tampered or truncated payload is refused before anything makes it
+ * executable, and the partial file is removed. Callers that fetch a binary veyyon will run MUST
+ * pass it; the parameter is optional only for callers downloading data they never execute.
+ */
+export async function downloadFile(
+	url: string,
+	dest: string,
+	signal?: AbortSignal,
+	expectedSha256?: string,
+): Promise<void> {
 	const downloadTimeout = scopedTimeoutSignal(TOOL_DOWNLOAD_TIMEOUT_MS, signal);
 	const downloadSignal = downloadTimeout.signal;
+	const hash = expectedSha256 ? createHash("sha256") : undefined;
 	let response: Response;
 	try {
 		response = await fetch(url, {
@@ -251,7 +289,7 @@ export async function downloadFile(url: string, dest: string, signal?: AbortSign
 		} else if (!response.body) {
 			throw new Error("No response body");
 		}
-		await writeResponseBody(dest, response.body, downloadSignal);
+		await writeResponseBody(dest, response.body, downloadSignal, hash);
 	} catch (err) {
 		if (isAbortLikeError(err)) {
 			throw new Error(`Download timed out: ${url}`);
@@ -260,23 +298,45 @@ export async function downloadFile(url: string, dest: string, signal?: AbortSign
 	} finally {
 		downloadTimeout.cancel();
 	}
+
+	if (!hash || !expectedSha256) return;
+	const actual = hash.digest("hex");
+	if (actual === expectedSha256) return;
+	await fs.promises.rm(dest, { force: true }).catch(() => {});
+	throw new Error(`Checksum mismatch for ${url}: expected sha256 ${expectedSha256}, got ${actual}`);
 }
 
-// Download and install a tool
-async function downloadTool(tool: ToolName, signal?: AbortSignal): Promise<string> {
+/**
+ * Download and install a tool binary from its upstream GitHub release.
+ *
+ * Exported so the refusal below is reachable without a network: it is the gate that decides
+ * whether a binary veyyon is about to chmod 0755 and execute has a published checksum at all.
+ */
+export async function downloadTool(tool: ToolName, signal?: AbortSignal): Promise<string> {
 	const config = TOOLS[tool];
 	if (!config) throw new Error(`Unknown tool: ${tool}`);
 
 	const plat = os.platform();
 	const architecture = os.arch();
 
-	// Get latest version
-	const version = await getLatestVersion(config.repo, signal);
+	// Get latest version and the digests published with it
+	const { version, digests } = await getLatestRelease(config.repo, signal);
 
 	// Get asset name for this platform
 	const assetName = config.getAssetName(version, plat, architecture);
 	if (!assetName) {
 		throw new Error(`Unsupported platform: ${plat}/${architecture}`);
+	}
+
+	// Fail closed. This binary is chmod'd 0755 and executed as the user, so an asset the release
+	// publishes no sha256 for is not "unverified but probably fine", it is a download nobody can
+	// check. Refusing names the asset so an upstream that stopped publishing digests is legible
+	// rather than looking like a network fault.
+	const expectedSha256 = digests[assetName];
+	if (!expectedSha256) {
+		throw new Error(
+			`Refusing to install ${config.name}: ${config.repo} release ${version} publishes no sha256 digest for ${assetName}`,
+		);
 	}
 
 	// Create tools directory
@@ -288,7 +348,7 @@ async function downloadTool(tool: ToolName, signal?: AbortSignal): Promise<strin
 
 	// Handle direct binary downloads (no archive extraction needed)
 	if (config.isDirectBinary) {
-		await downloadFile(downloadUrl, binaryPath, signal);
+		await downloadFile(downloadUrl, binaryPath, signal, expectedSha256);
 		if (plat !== "win32") {
 			await fs.promises.chmod(binaryPath, 0o755);
 		}
@@ -297,7 +357,7 @@ async function downloadTool(tool: ToolName, signal?: AbortSignal): Promise<strin
 
 	// Download archive
 	const archivePath = path.join(TOOLS_DIR, assetName);
-	await downloadFile(downloadUrl, archivePath, signal);
+	await downloadFile(downloadUrl, archivePath, signal, expectedSha256);
 
 	// Extract
 	const tmp = await TempDir.create("@veyyon-tools-extract-");

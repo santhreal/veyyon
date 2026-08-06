@@ -397,7 +397,13 @@ export abstract class OAuthCallbackFlow {
 							.then((input): CallbackResult | null => {
 								const parsed = parseCallbackInput(input);
 								if (!parsed.code) return null;
-								if (expectedState && parsed.state && parsed.state !== expectedState) return null;
+								// Same rule as the served handler at #handleCallback: every provider
+								// flow here puts `state` in the authorization URL, so the redirect
+								// echoes it back and a paste that carries none is not bound to this
+								// login attempt. Skipping the check when it is absent let an
+								// attacker-supplied code through and linked the operator's account
+								// to the attacker's.
+								if (expectedState && parsed.state !== expectedState) return null;
 								return { code: parsed.code, state: parsed.state ?? "" };
 							})
 							.catch((): CallbackResult | null => null),

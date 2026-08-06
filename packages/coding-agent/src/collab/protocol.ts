@@ -660,31 +660,60 @@ function normalizeRelayOrigin(relayUrl: string): { origin: string } | { error: s
 }
 
 /**
- * Render the shareable link. Compact forms: the default relay collapses to
- * `<roomId>.<key>`, other wss relays drop the scheme (`host[:port]/r/…`);
- * only localhost ws:// links keep their full URL so parsing cannot
- * mis-infer wss.
+ * Render the payload half of a link: `<roomId>.<key>` for the default relay,
+ * `host[:port]/r/<roomId>.<key>` for another wss relay, and a full URL for a
+ * localhost ws:// relay so parsing cannot mis-infer wss.
  *
- * The room secret is dot-joined (`<roomId>.<key>`) rather than `#`-joined:
- * RFC 3986 forbids a raw `#` inside a fragment, so strict URL stacks (macOS
- * Foundation behind terminal click-to-open) percent-encode a second `#` to
- * `%23` and break the link. Parsers still accept the legacy `#` form and the
- * mangled `%23` form.
+ * The room secret is dot-joined rather than `#`-joined because this text gets
+ * nested inside the fragment of the browser deep link: RFC 3986 forbids a raw
+ * `#` inside a fragment, so strict URL stacks (macOS Foundation behind
+ * terminal click-to-open) percent-encode a second `#` to `%23` and break the
+ * link. Parsers accept the `#` form and the mangled `%23` form too.
  *
  * Full links append the write token to the key
  * (`base64url(key ∥ writeToken)`); read-only (view) links carry the bare
  * 32-byte key, which is also the pre-token link format.
  */
-export function formatCollabLink(relayUrl: string, roomId: string, key: Uint8Array, writeToken?: Uint8Array): string {
+function formatCollabLinkPayload(
+	relayUrl: string,
+	roomId: string,
+	key: Uint8Array,
+	writeToken: Uint8Array | undefined,
+	joiner: string,
+): string {
 	const normalized = normalizeRelayOrigin(relayUrl);
 	if ("error" in normalized) throw new Error(normalized.error);
 	const secret = writeToken ? Buffer.concat([key, writeToken]) : Buffer.from(key);
 	const keyText = secret.toString("base64url");
+	// The default relay collapses to a hostless `<roomId>.<key>`. There is no
+	// authority for a terminal to linkify, so the secret cannot become a
+	// request line, and the dot is required: this exact text is what gets
+	// nested in the web deep link's fragment.
 	if (normalized.origin === DEFAULT_RELAY_URL) return `${roomId}.${keyText}`;
 	const compact = normalized.origin.startsWith("wss://")
 		? normalized.origin.slice("wss://".length)
 		: normalized.origin;
-	return `${compact}/r/${roomId}.${keyText}`;
+	return `${compact}/r/${roomId}${joiner}${keyText}`;
+}
+
+/**
+ * Render the shareable link a human sees and pastes.
+ *
+ * When the link names a relay host, the secret rides in the fragment
+ * (`host/r/<roomId>#<key>`) and never in the path. Terminals linkify
+ * `host/r/…` and open it as `https://…`; with the secret dot-joined into the
+ * path, one click on your own link puts the AES-256-GCM room key and the
+ * write token in the relay's HTTP request line, and from there into its
+ * access log and any TLS-terminating proxy in front of it. A fragment is
+ * never sent to the server, so a click discloses only `/r/<roomId>`, which
+ * the WebSocket handshake reveals anyway. That is what
+ * `collab/crypto.ts` means by "the relay sees opaque bytes".
+ *
+ * Only one `#` appears here, so the nested-fragment escaping problem that
+ * forces the dot-joined payload form does not apply.
+ */
+export function formatCollabLink(relayUrl: string, roomId: string, key: Uint8Array, writeToken?: Uint8Array): string {
+	return formatCollabLinkPayload(relayUrl, roomId, key, writeToken, "#");
 }
 
 function normalizeCollabWebBaseUrl(relayUrl: string, webUrl?: string): string {
@@ -720,6 +749,9 @@ function normalizeCollabWebBaseUrl(relayUrl: string, webUrl?: string): string {
  * Render the browser deep link. The browser UI may be hosted separately from
  * the relay; the fragment always carries the relay-specific collab link, so
  * room secrets stay out of HTTP path and query bytes.
+ *
+ * It nests the dot-joined payload, not the `#`-joined display link: a second
+ * raw `#` inside a fragment is what strict URL stacks mangle to `%23`.
  */
 export function formatCollabWebLink(
 	relayUrl: string,
@@ -728,7 +760,8 @@ export function formatCollabWebLink(
 	writeToken?: Uint8Array,
 	webUrl?: string,
 ): string {
-	return `${normalizeCollabWebBaseUrl(relayUrl, webUrl)}/#${formatCollabLink(relayUrl, roomId, key, writeToken)}`;
+	const payload = formatCollabLinkPayload(relayUrl, roomId, key, writeToken, ".");
+	return `${normalizeCollabWebBaseUrl(relayUrl, webUrl)}/#${payload}`;
 }
 
 export function parseCollabLink(link: string): ParsedCollabLink | { error: string } {

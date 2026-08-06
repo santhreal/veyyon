@@ -163,7 +163,7 @@ class FileRequestDebugSession implements RequestDebugSession {
 	}
 
 	async openResponseLog(statusLine: string, headers?: RequestDebugHeaders): Promise<RequestDebugResponseLog> {
-		const handle = await fs.open(this.responsePath, this.#overwriteResponseLog ? "w" : "wx");
+		const handle = await fs.open(this.responsePath, this.#overwriteResponseLog ? "w" : "wx", DEBUG_FILE_MODE);
 		const log = new FileRequestDebugResponseLog(handle, this.responsePath);
 		// Through the log's own write, not the raw handle: a failure here is the same
 		// kind of failure as one mid-body and has to be absorbed the same way. Writes
@@ -339,12 +339,20 @@ function copyResponseMetadata(target: Response, source: Response): void {
 	}
 }
 
+/**
+ * Owner-only, because the dump is the request as it went on the wire. Header values that are
+ * credentials are replaced before they reach the file, but a body still can be one: an OAuth
+ * token exchange posts a refresh token, and a provider error can echo the request back. The
+ * default umask leaves a new file world-readable, so the mode is pinned rather than inherited.
+ */
+const DEBUG_FILE_MODE = 0o600;
+
 async function reserveRequestDebugFile(): Promise<ReservedRequestDebugFile> {
 	for (;;) {
 		const id = nextSessionId++;
 		const requestPath = `rr-session-${id}.json`;
 		try {
-			const handle = await fs.open(requestPath, "wx");
+			const handle = await fs.open(requestPath, "wx", DEBUG_FILE_MODE);
 			return { id, requestPath, responsePath: `rr-session-${id}.res.log`, handle, overwrite: false };
 		} catch (error) {
 			if (isFileExistsError(error)) continue;
@@ -437,21 +445,56 @@ function formatResponseHeaderBlock(statusLine: string, headers?: RequestDebugHea
 	return `${lines.join("\r\n")}\r\n\r\n`;
 }
 
+/**
+ * Header names whose value is a credential rather than protocol metadata.
+ *
+ * A `VEYYON_REQ_DEBUG` dump is a plain file on disk that the operator may attach to a bug
+ * report, so the bearer value never goes in it. The name and the value's length still do,
+ * which is what a debugging session actually needs: whether the header was sent at all, and
+ * whether the key looks truncated.
+ *
+ * Matching is by exact lowercased name plus a few substrings, so a provider-specific spelling
+ * (`x-goog-api-key`, `openai-api-key`, `x-veyyon-auth-token`) is covered without an entry.
+ */
+const REDACTED_HEADER_NAMES: Record<string, true> = {
+	authorization: true,
+	"proxy-authorization": true,
+	cookie: true,
+	"set-cookie": true,
+	"www-authenticate": true,
+	"proxy-authenticate": true,
+};
+const REDACTED_HEADER_SUBSTRINGS: readonly string[] = ["api-key", "apikey", "auth-token", "access-token", "secret"];
+
+export function isCredentialHeaderName(name: string): boolean {
+	const lower = name.toLowerCase();
+	if (REDACTED_HEADER_NAMES[lower]) return true;
+	return REDACTED_HEADER_SUBSTRINGS.some(fragment => lower.includes(fragment));
+}
+
+function redactHeaderValue(value: string): string {
+	return `<redacted ${value.length} chars>`;
+}
+
 function headersToRecord(headers: RequestDebugHeaders): Record<string, string | string[]> | undefined {
 	if (!headers) return undefined;
 	const record: Record<string, string | string[]> = {};
 	let hasHeaders = false;
-	if (headers instanceof Headers) {
-		headers.forEach((value, key) => {
-			hasHeaders = true;
+	const put = (key: string, value: string | string[]): void => {
+		hasHeaders = true;
+		if (!isCredentialHeaderName(key)) {
 			record[key] = value;
-		});
+			return;
+		}
+		record[key] = Array.isArray(value) ? value.map(redactHeaderValue) : redactHeaderValue(value);
+	};
+	if (headers instanceof Headers) {
+		headers.forEach((value, key) => put(key, value));
 	} else {
 		for (const key in headers) {
 			const value = headers[key];
 			if (value === undefined || value === null) continue;
-			hasHeaders = true;
-			record[key] = Array.isArray(value) ? value.map(String) : String(value);
+			put(key, Array.isArray(value) ? value.map(String) : String(value));
 		}
 	}
 	return hasHeaders ? record : undefined;

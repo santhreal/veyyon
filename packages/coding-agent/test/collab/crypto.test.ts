@@ -64,6 +64,38 @@ describe("collab link format", () => {
 		expect(parsed.wsUrl).toBe(`ws://localhost:7475/r/${roomId}`);
 	});
 
+	/**
+	 * WHY: a host-bearing link is text a terminal linkifies and the operator
+	 * clicks. With the room secret dot-joined into the path, that click sends
+	 * `GET /r/<roomId>.<key ‖ writeToken>` to the relay, so the AES-256-GCM key
+	 * and the write token land in its access log and in any TLS-terminating
+	 * proxy in front of it. The relay is supposed to see opaque bytes only, so
+	 * the secret must ride in a fragment, which no client ever sends.
+	 */
+	it("keeps the room secret out of the request line of every host-bearing link", () => {
+		const writeToken = generateWriteToken();
+		for (const relay of ["wss://relay.example.com:8443", "ws://localhost:7475"]) {
+			for (const token of [undefined, writeToken]) {
+				const link = formatCollabLink(relay, roomId, key, token);
+				const url = new URL(link.includes("://") ? link : `wss://${link}`);
+				expect(url.pathname).toBe(`/r/${roomId}`);
+				expect(url.search).toBe("");
+				const keyText = Buffer.from(token ? Buffer.concat([key, token]) : key).toString("base64url");
+				expect(url.hash).toBe(`#${keyText}`);
+
+				// Losing the fragment is exactly what the relay sees; it must not
+				// be enough to decrypt, and the surviving prefix must carry no
+				// part of the secret.
+				expect(link.slice(0, link.indexOf("#"))).not.toContain(keyText.slice(0, 8));
+
+				const parsed = parseCollabLink(link);
+				if ("error" in parsed) throw new Error(parsed.error);
+				expect(parsed.key).toEqual(key);
+				expect(parsed.writeToken).toEqual(token);
+			}
+		}
+	});
+
 	it("rewrites https relay URLs to wss", () => {
 		const parsed = parseCollabLink(`https://relay.example.com/r/${roomId}#${Buffer.from(key).toString("base64url")}`);
 		if ("error" in parsed) throw new Error(parsed.error);

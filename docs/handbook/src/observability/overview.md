@@ -37,9 +37,19 @@ already there.
 
 Two things are worth knowing before you turn it on. The files land in your
 working directory rather than a cache directory, because you usually want to
-read them next to the project you were working in. And request bodies contain
-whatever you sent the model, including file contents and your API key in the
-headers, so treat them as sensitive and delete them when you are done.
+read them next to the project you were working in; they are created readable by
+you alone, and the repo `.gitignore` already covers `rr-session-*` so a stray
+`git add` cannot pick one up. And a dump is the request as it went on the wire,
+including file contents and whatever a provider echoed back, so treat it as
+sensitive and delete it when you are done.
+
+Credential headers do not go in. `Authorization`, `Cookie`, any header whose
+name carries `api-key`, `auth-token`, `access-token` or `secret`, and their
+response-side counterparts are written as `<redacted N chars>`: you can still
+see that the header was sent and how long the value was, which is what a
+debugging session needs, without the key itself sitting in a file you might
+attach to a bug report. Bodies are recorded verbatim, so an OAuth token
+exchange still puts a refresh token in the file.
 
 Recording never interferes with the session it records. If a log cannot be
 written, because the disk is full or the directory is read-only, veyyon logs an

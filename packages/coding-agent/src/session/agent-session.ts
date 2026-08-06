@@ -19093,7 +19093,11 @@ export class AgentSession {
 		// Callers who want a themed export can pass `palette: "theme"` with
 		// `themeName` directly to `exportSessionToHtml`.
 		const { exportSessionToHtml } = await import("../export/html");
-		return exportSessionToHtml(this.sessionManager, this.state, { outputPath, palette: "web" });
+		return exportSessionToHtml(this.sessionManager, this.state, {
+			outputPath,
+			palette: "web",
+			obfuscator: this.settings.get("share.redactSecrets") ? this.providerRedactor : undefined,
+		});
 	}
 
 	// =========================================================================
