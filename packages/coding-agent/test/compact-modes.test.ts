@@ -125,9 +125,10 @@ describe("a retired compact mode name", () => {
 	});
 
 	it("fires however the name is cased or padded", () => {
-		for (const args of ["SOFT", "Soft", "  soft  ", "ReMoTe"]) {
-			expect(parsed(args).notice, args).toBeDefined();
+		for (const args of ["SOFT", "Soft", "  soft  "]) {
+			expect(parsed(args).notice, args).toContain("`soft` is no longer a compaction mode");
 		}
+		expect(parsed("ReMoTe").notice).toContain("`remote` is no longer a compaction mode");
 	});
 
 	/**

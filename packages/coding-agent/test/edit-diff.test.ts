@@ -87,7 +87,11 @@ describe("findMatch", () => {
 			const content = "  a\n    b\n   c\n    d";
 			const target = "  a\n    b\n    c\n    d";
 			const result = findMatch(content, target, { allowFuzzy: true });
-			expect(result.match).toBeDefined();
+			// The file's own bytes are what a replacement must be spliced over, so
+			// the match reports the file text, not the target's tidier indentation.
+			expect(result.match?.actualText).toBe(content);
+			expect(result.match?.startIndex).toBe(0);
+			expect(result.match!.confidence).toBeGreaterThanOrEqual(DEFAULT_FUZZY_THRESHOLD);
 		});
 	});
 
@@ -104,7 +108,9 @@ describe("findMatch", () => {
 			const content = "line1  \nline2\t";
 			const target = "line1\nline2";
 			const result = findMatch(content, target, { allowFuzzy: true });
-			expect(result.match).toBeDefined();
+			expect(result.match?.actualText).toBe(content);
+			expect(result.match?.startIndex).toBe(0);
+			expect(result.match!.confidence).toBeGreaterThanOrEqual(DEFAULT_FUZZY_THRESHOLD);
 		});
 	});
 

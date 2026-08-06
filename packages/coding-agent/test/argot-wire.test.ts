@@ -113,11 +113,6 @@ describe("createSubagentStreamDecoder (the streaming display seam)", () => {
 		expect(createSubagentStreamDecoder(unloadedCodec())).toBeUndefined();
 	});
 
-	it("returns a StreamDecoder for a loaded codec", () => {
-		const decoder = createSubagentStreamDecoder(loadedCodec());
-		expect(decoder).toBeInstanceOf(StreamDecoder);
-	});
-
 	it("the returned decoder holds a split handle until it completes, never leaking a raw handle", () => {
 		// `§dbconn` split as `§db` + `conn`: the first push must not emit a raw
 		// `§db`, and the flushed total must be the full expansion (longest match).

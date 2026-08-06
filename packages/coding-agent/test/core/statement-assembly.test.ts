@@ -62,7 +62,14 @@ describe("the statement registry supplies every static prompt section", () => {
 	 * registry deletion.
 	 */
 	it("contains registered statement sections", () => {
-		expect(STATEMENT_SECTIONS.length).toBeGreaterThan(0);
+		expect([...STATEMENT_SECTIONS]).toEqual([
+			"conventions",
+			"role",
+			"runtime",
+			"tool-policy",
+			"execution-workflow",
+			"delivery-contract",
+		]);
 	});
 });
 

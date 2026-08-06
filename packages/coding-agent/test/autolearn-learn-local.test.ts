@@ -294,8 +294,12 @@ describe("learn tool (local backend)", () => {
 		await removeWithRetries(tmp);
 	});
 
-	function localSession(): ToolSession {
-		const settings = Settings.isolated({ "autolearn.enabled": true, "memory.backend": "local" });
+	function localSession(overrides: Record<string, unknown> = {}): ToolSession {
+		const settings = Settings.isolated({
+			"autolearn.enabled": true,
+			"memory.backend": "local",
+			...overrides,
+		});
 		spyOn(settings, "getAgentDir").mockReturnValue(agentDir);
 		spyOn(settings, "getCwd").mockReturnValue(projCwd);
 		return {
@@ -308,8 +312,11 @@ describe("learn tool (local backend)", () => {
 		};
 	}
 
-	it("createIf returns a tool for the local backend", () => {
+	it("createIf gates the local backend on autolearn being enabled", () => {
 		expect(LearnTool.createIf(localSession())).toBeInstanceOf(LearnTool);
+
+		expect(LearnTool.createIf(localSession({ "autolearn.enabled": false }))).toBeNull();
+		expect(LearnTool.createIf(localSession({ "memory.backend": "none" }))).toBeNull();
 	});
 
 	it("tiers the local save as a write approval even without a skill payload", () => {

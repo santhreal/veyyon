@@ -409,7 +409,9 @@ describe("hashline streaming preview (tag-based path recovery)", () => {
 		const orphan = formatHashlineHeader("absent.ts", snapshots.record(nestedFile, text));
 		const input = `${orphan}\nSWAP 1.=1:\n+const a = 99;`;
 		const previews = await strategy.computeDiffPreview({ input } as never, ctx(tmpDir, false) as never);
-		expect(previews).not.toBeNull();
-		expect(previews?.[0]?.error).toBeTruthy();
+		expect(previews).toHaveLength(1);
+		expect(previews?.[0]?.error).toContain("absent.ts");
+		// Silently recovering onto some other retained file is the defect.
+		expect(previews?.[0]?.diff).toBeUndefined();
 	});
 });
