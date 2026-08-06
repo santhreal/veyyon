@@ -66,6 +66,9 @@ describe("ExtensionRunner", () => {
 	});
 
 	afterEach(() => {
+		// A test that fails before its trailing mockRestore() used to leave the logger
+		// spy installed, so one red case cascaded into every later one that spied again.
+		vi.restoreAllMocks();
 		testSetExtensionHandlerTimeoutMs(EXTENSION_HANDLER_TIMEOUT_MS);
 		tempDir.removeSync();
 	});
@@ -195,10 +198,12 @@ describe("ExtensionRunner", () => {
 			);
 			const shortcuts = runner.getShortcuts();
 
-			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("conflicts with built-in"), expect.any(Object));
+			// The structured payload is the contract; the prose around it is operator guidance.
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ctrl+c"), {
+				key: "ctrl+c",
+				extensionPath: path.join(extensionsDir, "conflict.ts"),
+			});
 			expect(shortcuts.has("ctrl+c")).toBe(false);
-
-			warnSpy.mockRestore();
 		});
 
 		it("rejects ctrl+q so it cannot shadow the app.message.followUp default (#1903)", async () => {
@@ -228,10 +233,11 @@ describe("ExtensionRunner", () => {
 			// app.message.followUp. Without this guard, InputController registers
 			// the extension shortcut first and the follow-up handler silently
 			// overwrites it in the editor's custom-key map.
-			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("conflicts with built-in"), expect.any(Object));
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ctrl+q"), {
+				key: "ctrl+q",
+				extensionPath: path.join(extensionsDir, "conflict-q.ts"),
+			});
 			expect(shortcuts.has("ctrl+q")).toBe(false);
-
-			warnSpy.mockRestore();
 		});
 
 		it("rejects Alt+M so it cannot shadow the app.model.select default", async () => {
@@ -257,10 +263,11 @@ describe("ExtensionRunner", () => {
 			);
 			const shortcuts = runner.getShortcuts();
 
-			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("conflicts with built-in"), expect.any(Object));
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("alt+m"), {
+				key: "alt+m",
+				extensionPath: path.join(extensionsDir, "conflict-model.ts"),
+			});
 			expect(shortcuts.has("alt+m")).toBe(false);
-
-			warnSpy.mockRestore();
 		});
 
 		it("warns when two extensions register same shortcut", async () => {
@@ -296,11 +303,13 @@ describe("ExtensionRunner", () => {
 			);
 			const shortcuts = runner.getShortcuts();
 
-			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("shortcut conflict"), expect.any(Object));
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ctrl+shift+x"), {
+				key: "ctrl+shift+x",
+				extensionPath: path.join(extensionsDir, "ext2.ts"),
+				existingExtensionPath: path.join(extensionsDir, "ext1.ts"),
+			});
 			// Last one wins
 			expect(shortcuts.has("ctrl+shift+x")).toBe(true);
-
-			warnSpy.mockRestore();
 		});
 	});
 
@@ -1080,20 +1089,17 @@ describe("ExtensionRunner", () => {
 			expect(elapsedMs).toBeGreaterThanOrEqual(8);
 			expect(elapsedMs).toBeLessThan(150);
 			expect(fs.readFileSync(markerPath, "utf8")).toBe("fast\n");
-			expect(warnSpy).toHaveBeenCalledWith("Extension handler timed out", {
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(hangExtensionPath), {
 				extensionPath: hangExtensionPath,
 				event: "session_start",
 				timeoutMs: 10,
 			});
-			expect(errors).toEqual([
-				{
-					extensionPath: hangExtensionPath,
-					event: "session_start",
-					error: "handler timed out after 10ms",
-				},
-			]);
-
-			warnSpy.mockRestore();
+			expect(errors).toHaveLength(1);
+			expect(errors[0]?.extensionPath).toBe(hangExtensionPath);
+			expect(errors[0]?.event).toBe("session_start");
+			// It says which handler, which budget, and that the session carried on regardless.
+			expect(errors[0]?.error).toContain('"session_start"');
+			expect(errors[0]?.error).toContain("10ms");
 		});
 
 		it("times out tool_call handlers with fail-closed policy so a hung extension cannot indefinitely block tool execution (#3948)", async () => {
@@ -1143,27 +1149,23 @@ describe("ExtensionRunner", () => {
 				// Ordinary tool that is meant to run: the gate-handler timeout must be
 				// the only thing that stops it, so the rung is named rather than left open.
 				wrapped.execute("tool-call-id", {}, undefined, undefined, runsUnaskedContext),
-			).rejects.toThrow(`Extension ${hangExtensionPath} timed out after 10ms`);
+			).rejects.toThrow(hangExtensionPath);
 			const elapsedMs = performance.now() - startedAt;
 
 			expect(elapsedMs).toBeGreaterThanOrEqual(8);
 			expect(elapsedMs).toBeLessThan(500);
 			// Fail-closed: the underlying tool MUST NOT run when a gate handler timed out.
 			expect(executeCalls).toEqual([]);
-			expect(warnSpy).toHaveBeenCalledWith("Extension handler timed out", {
+			expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(hangExtensionPath), {
 				extensionPath: hangExtensionPath,
 				event: "tool_call",
 				timeoutMs: 10,
 			});
-			expect(errors).toEqual([
-				{
-					extensionPath: hangExtensionPath,
-					event: "tool_call",
-					error: "handler timed out after 10ms",
-				},
-			]);
-
-			warnSpy.mockRestore();
+			expect(errors).toHaveLength(1);
+			expect(errors[0]?.extensionPath).toBe(hangExtensionPath);
+			expect(errors[0]?.event).toBe("tool_call");
+			expect(errors[0]?.error).toContain('"tool_call"');
+			expect(errors[0]?.error).toContain("10ms");
 		});
 	});
 
@@ -1310,7 +1312,9 @@ describe("ExtensionRunner", () => {
 			const loadError = result.errors.find(error => error.path.includes("session-name-load.ts"));
 
 			expect(loadError).toBeDefined();
-			expect(loadError?.error).toContain("Extension runtime not initialized");
+			// The runtime does not exist during the factory body, and the message has to say
+			// what to do instead, because the author cannot see the call stack that produced it.
+			expect(loadError?.error).toContain("api.on(");
 		});
 	});
 

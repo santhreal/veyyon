@@ -31,9 +31,12 @@ const terminal = TERMINAL as unknown as MutableTerminalInfo;
 // to the Subagents tab, beside the models and per-agent rows whose resolution it
 // displays. A subagent question answered on the Appearance tab is a second place to
 // look, which is the whole reason that area exists.
+// `statusLine.transparent` was one of them and is not any more: nothing paints a
+// status-line background since the editor's top border was deleted, so the key
+// kept its default but lost its row. A setting with no UI is on no tab, advanced
+// or otherwise, which is why it leaves this list rather than moving between them.
 const DEMOTED_APPEARANCE_PATHS = [
 	"statusLine.sessionAccent",
-	"statusLine.transparent",
 	"statusLine.compactThinkingLevel",
 	"statusLine.showHookStatus",
 	"images.autoResize",
@@ -47,7 +50,7 @@ const DEMOTED_APPEARANCE_PATHS = [
 ] as const;
 
 // Keys added to the Advanced fold AFTER the spec: new toggles that default
-// into Advanced (advanced: true) so the simplified 13-row appearance view
+// into Advanced (advanced: true) so the simplified 12-row appearance view
 // stays stable as the product grows. `tui.scrollIsolation` pins the prompt
 // while the wheel scrolls the transcript, off by default because holding the
 // mouse costs the terminal's own drag-to-select.
@@ -63,7 +66,7 @@ const EXTRA_ADVANCED_APPEARANCE_PATHS = ["tui.scrollIsolation", "display.toolOut
 const ALL_ADVANCED_APPEARANCE_PATHS = [...DEMOTED_APPEARANCE_PATHS, ...EXTRA_ADVANCED_APPEARANCE_PATHS] as const;
 const ADVANCED_COUNT = ALL_ADVANCED_APPEARANCE_PATHS.length;
 
-// The 13 keys that stay visible in appearance's default (collapsed) view.
+// The 12 keys that stay visible in appearance's default (collapsed) view.
 // `display.transitions` joined the visible set with the TOUCH-5 overlay
 // unfold: it is the reduced-motion switch for structural chrome animation, a
 // first-class taste choice like Shimmer, not an experimental toggle.
@@ -73,7 +76,9 @@ const KEPT_APPEARANCE_PATHS = [
 	"symbolPreset",
 	"colorBlindMode",
 	"statusLine.preset",
-	"statusLine.separator",
+	// `statusLine.separator` used to sit here. The seven separator styles belonged
+	// to the deleted powerline bar, so the row changed nothing on screen and was
+	// removed; the key survives only for the readers named in appearance.ts.
 	"terminal.showImages",
 	"tui.hyperlinks",
 	"tui.paintGround",
@@ -97,7 +102,7 @@ describe("appearance advanced fold — schema", () => {
 		resetSettingsForTest();
 	});
 
-	it("keeps exactly the 13 curated non-advanced rows in appearance, with 3 groups and no Images group", () => {
+	it("keeps exactly the 12 curated non-advanced rows in appearance, with 3 groups and no Images group", () => {
 		const appearanceDefs = getSettingsForTab("appearance");
 		const visible = appearanceDefs.filter(def => !def.advanced);
 		const advanced = appearanceDefs.filter(def => def.advanced);
@@ -182,21 +187,21 @@ describe("appearance advanced fold — panel rendering", () => {
 		expect(rendered).toContain(`Advanced (${ADVANCED_COUNT})`);
 
 		// Demoted rows stay hidden while the fold is collapsed and every value is default.
-		expect(rendered).not.toContain("Transparent Status Line");
+		expect(rendered).not.toContain("Session Accent");
 		expect(rendered).not.toContain("Tight Layout");
-		expect(rendered).not.toContain("Show Resolved Model Badge");
+		expect(rendered).not.toContain("Render Mermaid Diagrams");
 	});
 
 	it("expands the Advanced fold on Enter to reveal the demoted rows, keeping the count stable", () => {
 		const comp = createSelector();
-		// The 13 kept rows precede the Advanced toggle in tab order; that many Down
+		// The 12 kept rows precede the Advanced toggle in tab order; that many Down
 		// presses lands selection on the toggle row itself.
 		for (let i = 0; i < KEPT_APPEARANCE_PATHS.length; i++) comp.handleInput("\x1b[B");
 		comp.handleInput("\n");
 
 		const rendered = comp.render(FLAT_WIDTH).join("\n");
 		expect(rendered).toContain(`Advanced (${ADVANCED_COUNT})`);
-		expect(rendered).toContain("Transparent Status Line");
+		expect(rendered).toContain("Color-Blind Mode");
 		expect(rendered).toContain("Render Mermaid Diagrams");
 		expect(rendered).toContain("Session Accent");
 		// Demoted rows below the floating viewport are reachable by scroll; the
@@ -227,20 +232,19 @@ describe("appearance advanced fold — panel rendering", () => {
 	});
 
 	it("surfaces a non-default advanced value even while the fold stays collapsed, without inflating the heading count", () => {
-		// `false` is the non-default since the transparent-by-default flip
-		// (2026-07-24): opting back into the painted status bar is the change
-		// worth surfacing.
-		settings.set("statusLine.transparent", false);
+		// Session Accent defaults to on, so turning it off is the change worth
+		// surfacing out of a collapsed fold.
+		settings.set("statusLine.sessionAccent", false);
 		const comp = createSelector();
 		const rendered = comp.render(FLAT_WIDTH).join("\n");
 
 		// Changed value is surfaced...
-		expect(rendered).toContain("Transparent Status Line");
+		expect(rendered).toContain("Session Accent");
 		// ...but the heading count still reflects every advanced def, and
 		// other (still-default) advanced rows stay hidden.
 		expect(rendered).toContain(`Advanced (${ADVANCED_COUNT})`);
 		expect(rendered).not.toContain("Tight Layout");
-		expect(rendered).not.toContain("Show Resolved Model Badge");
+		expect(rendered).not.toContain("Render Mermaid Diagrams");
 	});
 });
 
@@ -270,10 +274,10 @@ describe("appearance advanced fold — search", () => {
 
 	it("finds a demoted (collapsed) appearance key by global search under the Appearance heading", () => {
 		const comp = createSelector();
-		for (const ch of "transparent") comp.handleInput(ch);
+		for (const ch of "accent") comp.handleInput(ch);
 
 		const rendered = comp.render(120).join("\n");
-		expect(rendered).toContain("Transparent Status Line");
+		expect(rendered).toContain("Session Accent");
 		expect(rendered).toContain("Appearance");
 	});
 

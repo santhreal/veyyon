@@ -110,10 +110,25 @@ describe("subagent.agents settings surface", () => {
 			}
 			await Bun.sleep(10);
 		}
+		// Reach the rows by name rather than by a press count. The roster is alphabetical,
+		// so renaming any agent reorders it, and a fixed number of Down presses silently
+		// configured whichever agent happened to sort first instead of the one with the
+		// persisted override.
+		const selectRow = (needle: string): void => {
+			for (let step = 0; step < 32; step++) {
+				const line = component
+					.render(120)
+					.map(stripVTControlCharacters)
+					.find(candidate => candidate.includes(needle));
+				if (line?.includes("›")) return;
+				component.handleInput("\u001b[B");
+			}
+			throw new Error(`never landed on the ${needle} row`);
+		};
+
+		selectRow("designer");
 		component.handleInput("\n");
-		component.handleInput("\u001b[B");
-		component.handleInput("\u001b[B");
-		component.handleInput("\u001b[B");
+		selectRow("Nested spawn depth");
 		component.handleInput("\n");
 
 		const frame = component.render(120).map(stripVTControlCharacters);
