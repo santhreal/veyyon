@@ -5,7 +5,7 @@ Execution blocks your turn: the call only returns once the work is completely fi
 
 # Task Design
 - **No overhead:** Each `task` MUST instruct its agent to skip formatters, linters, and project-wide test suites. You will run those once at the end.
-- **One-pass agents:** Prefer agents that investigate **and** edit in a single pass. Use a read-only agent only for investigation and reporting.
+- **One-pass agents:** Prefer agents that investigate **and** edit in a single pass. A read-only lane returns findings and nothing else, so pair it with the edit you will make yourself.
 
 # Inputs
 {{#if batchEnabled}}
@@ -52,7 +52,7 @@ The `task` field MUST follow this format:
 {{#if spawningDisabled}}
 Agent spawning is currently disabled.
 {{else}}
-Each agent below is a distinct type with its own use case. Spawn the one whose description covers the task; when none covers it, do the work yourself rather than substituting a broader agent.
+These are cost lanes, not job titles. Route on how much is unknown and how large the change is, never on subject matter: take the cheapest lane that can carry the work, and move up a lane only when the outcome is vague enough that the agent has to discover it, build it, and verify it on its own. A lane that is not listed is disabled, and you do that work yourself. NEVER substitute a wider lane for a disabled one.
 {{#list agents join="\n"}}
 ### {{name}}{{#if readOnly}} (READ-ONLY: no edit/write/command tools){{/if}}{{#if blocking}} (BLOCKING: runs inline; its result returns in this call){{/if}}
 {{description}}

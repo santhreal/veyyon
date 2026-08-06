@@ -423,7 +423,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 		const required = await renderBlock0({ ...roles, eagerTasks: true, eagerTasksAlways: true });
 
 		expect(preferred).toContain("when an enabled agent role matches");
-		expect(preferred).toContain("Match the type or do it yourself.");
+		expect(preferred).toContain("Take the cheapest lane, or do it yourself.");
 		expect(preferred).toContain("`reviewer`");
 		expect(required).toContain("MUST delegate substantial work when an enabled agent role matches");
 		expect(required).toContain("No enabled role's description matches the work");
@@ -439,9 +439,9 @@ describe("system prompt settings parity: delegation (the regression this harness
 	it("renders the concrete role policy across all twelve settings combinations", async () => {
 		const roleSets: Array<{ names: string[]; routing: string | null }> = [
 			{ names: [], routing: null },
-			{ names: ["task"], routing: "Match the type or do it yourself." },
-			{ names: ["designer", "reviewer"], routing: "Match the type or do it yourself." },
-			{ names: ["task", "designer", "reviewer"], routing: "Match the type or do it yourself." },
+			{ names: ["task"], routing: "Take the cheapest lane, or do it yourself." },
+			{ names: ["designer", "reviewer"], routing: "Take the cheapest lane, or do it yourself." },
+			{ names: ["task", "designer", "reviewer"], routing: "Take the cheapest lane, or do it yourself." },
 		];
 		const strengths = STRENGTHS;
 
@@ -564,7 +564,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 		});
 
 		expect(rendered).toContain("Enabled agent types: `task, designer, reviewer`");
-		expect(rendered).toContain("Spawn one only when its description covers the slice");
+		expect(rendered).toContain("Pick by how much is unknown and how large the change is");
 		expect(rendered).not.toContain("`scout`");
 		expect(rendered).not.toContain("`sonic`");
 		expect(rendered).not.toContain("Executing agents");
@@ -595,7 +595,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 		expect(nothingSpawnable).not.toContain("separate context");
 		expect(nothingSpawnable).not.toContain("# Delegation");
 
-		expect(taskOnly).toContain("Match the type or do it yourself.");
+		expect(taskOnly).toContain("Take the cheapest lane, or do it yourself.");
 		expect(taskOnly).toContain("## Delegation gates:");
 		expect(taskOnly).toContain("separate context");
 	});

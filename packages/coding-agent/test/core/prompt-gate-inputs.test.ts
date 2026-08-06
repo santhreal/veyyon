@@ -415,7 +415,7 @@ describe("delegation is resolved against the agents that can actually be spawned
 		const rendered = await renderUnder({}, roles);
 
 		expect(rendered).toContain("Enabled agent types: `designer, reviewer`");
-		expect(rendered).toContain("Spawn one only when its description covers the slice");
+		expect(rendered).toContain("Pick by how much is unknown and how large the change is");
 		expect(rendered).not.toContain("Executing agents");
 		expect(rendered).not.toContain("Investigative agents");
 	});
@@ -438,11 +438,15 @@ describe("delegation is resolved against the agents that can actually be spawned
 			]);
 
 			const rendered = await renderUnder({}, roles);
+			// Scoped to the bullet, not the whole prompt: the render carries the project's own
+			// AGENTS.md, so a repo whose contributor docs discuss "specialist" agents would fail a
+			// whole-prompt scan for a reason that has nothing to do with the delegation statement.
+			const bullet = rendered.split("\n").find(line => line.startsWith("- **Take the cheapest lane")) ?? "";
 
-			expect(rendered).toContain(`Enabled agent types: \`${enabledAgentNames.join(", ")}\``);
-			expect(rendered).toContain("when none covers it, do the work inline");
-			expect(rendered).not.toContain("specialist");
-			expect(rendered).not.toContain("general-purpose");
+			expect(bullet).toContain(`Enabled agent types: \`${enabledAgentNames.join(", ")}\``);
+			expect(bullet).toContain("you do that work yourself rather than handing it to a wider one");
+			expect(bullet).not.toContain("specialist");
+			expect(bullet).not.toContain("general-purpose");
 		}
 	});
 

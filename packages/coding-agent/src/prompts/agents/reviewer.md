@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: "Code review specialist for quality/security analysis"
+description: "Read-only review of code that already exists: correctness, security, and what the change will break. Returns findings; it does not fix them."
 tools: read, grep, glob, bash, lsp, web_search, ast_grep
 spawns: scout
 output:

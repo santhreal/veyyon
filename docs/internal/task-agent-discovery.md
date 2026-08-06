@@ -120,18 +120,22 @@ In spawn execution (`TaskTool.#executeSync` → `#runSpawn`):
 
 `TaskTool.create()` builds the tool description from discovery results at initialization time. `#executeSync` rediscovers agents, so the runtime set can differ from what was listed in the earlier tool description if agent files changed mid-session. The async entry path still uses the initialization-time list to decide whether an agent is marked `blocking` before scheduling.
 
-### What the model is actually told, and why enablement is inert
+### What the model is actually told
 
-The roster the model reads is built in `renderDescription` (`src/task/index.ts`) and rendered by the `Available Agents` block in `src/prompts/tools/task.md`. Per enabled agent it emits four things and nothing else: `name`, `description`, a `READ-ONLY` marker when every entry in `tools` is a read-only tool (`isReadOnlyAgent`), and a `BLOCKING` marker. No cost, no context size, no model, no thinking level. Selection is therefore driven entirely by one description line each.
+The roster the model reads is built in `renderDescription` (`src/task/index.ts`) and rendered by the `Available Agents` block in `src/prompts/tools/task.md`. Per enabled agent it emits four things and nothing else: `name`, `description`, a `READ-ONLY` marker when every entry in `tools` is a read-only tool (`isReadOnlyAgent`), and a `BLOCKING` marker. No cost field, no context size, no model, no thinking level. Selection is therefore driven entirely by one description line each, and that is the whole reason those lines are written the way they are.
 
-The routing instruction above that list reads "Spawn the one whose description covers the task; when none covers it, do the work yourself rather than substituting a broader agent." `task` is always enabled and its description is "General-purpose subagent with full capabilities for delegated multi-step tasks", which covers every task by construction. The rule resolves to `task` every time, so turning an agent off does not remove the work it was doing: the work reroutes to `task`, at whatever the session model is, with a larger system prompt. The operator loses a cheaper path and gets no signal that it is gone.
+The agents are a cost ladder, not a taxonomy. Each description states how much is unknown and how large a change the lane carries, because those are the only two axes the model can route on with the information it has. The routing instruction above the list says to take the cheapest lane that can carry the work, to move up only when the outcome is vague enough that the agent must discover, build and verify it alone, and never to substitute a wider lane for a disabled one. The same axis is repeated once in the system prompt (`system-prompt-builder/statements/tool-policy/delegation-gates.md`) so the two surfaces cannot drift into saying different things.
 
-Two facts make this concrete rather than theoretical:
+This replaced a rule that read "spawn the one whose description covers the task". `task` is always enabled, and its description was "General-purpose subagent with full capabilities for delegated multi-step tasks", which covers every task by construction, so the rule resolved to `task` every time. Turning an agent off did not remove the work it was doing: the work rerouted to `task`, at whatever the session model is, with a larger prompt, and the operator got no signal that the cheaper path was gone.
 
-- `task` and `sonic` render the same body, `src/prompts/agents/task.md`, byte for byte. `sonic` differs only by `thinkingLevel: Effort.Medium` and a 100-request budget (`AGENT_REQUEST_BUDGETS` in `src/task/executor.ts`). Neither pins a model, so both resolve through `resolveSubagentModel` to the session model unless the operator fills in an agent row. A worker spawned as `sonic` is told it has "FULL access to all tools" and nothing about staying mechanical.
+Two related facts still hold and still bound how much the descriptions can do:
+
+- `task` is always in the roster. It cannot be disabled, so the descriptions are what keep work off it, not the enablement set.
 - The only pressure toward a narrower agent is advisory and rarely fires: `composeSpawnAdvisory` (`src/task/index.ts`) nudges only when one call resolves two or more items to `task` or `sonic` and the spawner still holds spawn capacity. A single spawn gets nothing.
 
-The agents are a cost ladder, not a taxonomy. Nothing in the roster expresses cost, and the description text is written as job titles, which is why it reads as a taxonomy and routes as one agent. Any change here is measured against one question: does enabling or disabling this agent move where work lands, or only what the prompt says?
+`sonic` owns `src/prompts/agents/sonic.md`. It used to render `agents/task.md` byte for byte, differing only by `thinkingLevel: Effort.Medium` and a 100-request budget (`AGENT_REQUEST_BUDGETS` in `src/task/executor.ts`), so a worker spawned as `sonic` was told it had "FULL access to all tools" and nothing about staying contained. Neither agent pins a model, so both still resolve through `resolveSubagentModel` to the session model unless the operator fills in an agent row.
+
+Any change here is measured against one question: does enabling or disabling this agent move where work lands, or only what the prompt says?
 
 ## Structured-output guardrails and schema precedence
 
@@ -142,7 +146,7 @@ Runtime output schema precedence in `TaskTool.#runSpawn`:
 
 (`effectiveOutputSchema = effectiveAgent.output ?? this.session.outputSchema`, the task call itself never carries a schema; ad-hoc structured workflows go through the eval bridge's `agent(prompt, schema)`.)
 
-The model-facing prompt (`src/prompts/tools/task.md`) no longer carries the old structured-output mismatch warning; it tags read-only agents and warns against offloading reasoning to `explore`/`sonic` instead.
+The model-facing prompt (`src/prompts/tools/task.md`) no longer carries the old structured-output mismatch warning. What it does carry per agent is the `READ-ONLY` and `BLOCKING` markers and the description line; there is no separate warning about offloading reasoning, and the `explore` agent it once named no longer exists.
 
 ## Command discovery interaction
 

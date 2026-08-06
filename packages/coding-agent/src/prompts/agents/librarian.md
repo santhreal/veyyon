@@ -1,6 +1,6 @@
 ---
 name: librarian
-description: Researches external libraries and APIs by reading source code. Returns definitive, source-verified answers.
+description: Read-only answers about code you did not write: an external library, an API, a dependency's real behavior. Reads the actual source rather than recalling it, and returns a definitive answer.
 tools: read, grep, glob, bash, lsp, web_search, ast_grep
 thinking-level: minimal
 read-summarize: false

@@ -26,6 +26,7 @@ import agentsInit from "./init.md" with { type: "text" };
 import agentsLibrarian from "./librarian.md" with { type: "text" };
 import agentsReviewer from "./reviewer.md" with { type: "text" };
 import agentsScout from "./scout.md" with { type: "text" };
+import agentsSonic from "./sonic.md" with { type: "text" };
 import agentsTask from "./task.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/agents/`, keyed by its id (the path under `src/prompts/`). */
@@ -36,5 +37,6 @@ export const agentsPrompts = {
 	"agents/librarian": { text: agentsLibrarian, purpose: "the bundled librarian agent definition" },
 	"agents/reviewer": { text: agentsReviewer, purpose: "the bundled reviewer agent definition" },
 	"agents/scout": { text: agentsScout, purpose: "the bundled scout agent definition" },
-	"agents/task": { text: agentsTask, purpose: "the bundled general worker agent definition" },
+	"agents/sonic": { text: agentsSonic, purpose: "the bundled contained-change worker agent definition" },
+	"agents/task": { text: agentsTask, purpose: "the bundled end-to-end worker agent definition" },
 } satisfies Record<string, PromptEntry>;
