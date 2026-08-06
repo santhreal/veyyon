@@ -300,6 +300,16 @@ describe("C: a rule's own repeat policy", () => {
 
 		expect(matchNames(manager)).toEqual([]);
 	});
+
+	it("resets per-compact rules when resetForCompaction is called", () => {
+		const manager = managerWith(pathRule({ repeatMode: "per-compact" }));
+		expect(matchNames(manager)).toEqual(["path-rule"]);
+		manager.markInjectedByNames(["path-rule"]);
+		expect(matchNames(manager)).toEqual([]);
+
+		manager.resetForCompaction();
+		expect(matchNames(manager)).toEqual(["path-rule"]);
+	});
 });
 
 describe("C: parsing a repeat policy out of rule frontmatter", () => {
@@ -317,6 +327,10 @@ describe("C: parsing a repeat policy out of rule frontmatter", () => {
 
 		expect(rule.repeatMode).toBe("after-gap");
 		expect(rule.repeatGap).toBe(8);
+	});
+	it("parses per-compact repeatMode off frontmatter", () => {
+		const rule = parse('condition: "x"\nrepeatMode: per-compact');
+		expect(rule.repeatMode).toBe("per-compact");
 	});
 
 	it("leaves both undefined when the rule says nothing, so the global setting governs", () => {

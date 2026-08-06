@@ -118,12 +118,11 @@ describe("when the rule can fire", () => {
 	/**
 	 * `once` (the global default) would let the reminder fire one time per session and
 	 * then go quiet for a session that keeps drifting, which is the case it exists for.
-	 * `after-gap` with a real gap is what makes it recurring without being noise.
+	 * `per-compact` makes it recur once per context compaction rather than once per gap.
 	 */
-	test("repeats after a gap rather than firing once per session", () => {
+	test("repeats per compaction rather than firing once per session", () => {
 		const rule = bundledRule();
-		expect(rule.repeatMode).toBe("after-gap");
-		expect(rule.repeatGap ?? 0).toBeGreaterThanOrEqual(10);
+		expect(rule.repeatMode).toBe("per-compact");
 	});
 });
 

@@ -60,6 +60,8 @@ const DEFAULT_SETTINGS: Required<TtsrSettings> = {
 	repeatGap: 10,
 	builtinRules: true,
 	disabledRules: [],
+	// Empty by default: an experimental rule ships off until named here.
+	experimentalRules: [],
 };
 
 /**
@@ -746,6 +748,17 @@ export class TtsrManager {
 	resetBuffer(): void {
 		this.#buffers.clear();
 		this.#lastAstSnapshots.clear();
+	}
+
+	/** Reset injection records for rules configured to repeat per compaction. */
+	resetForCompaction(): void {
+		for (const [ruleName] of this.#injectionRecords) {
+			const rule = this.#rules.get(ruleName)?.rule;
+			const repeatMode = rule?.repeatMode ?? this.#settings.repeatMode;
+			if (repeatMode === "per-compact") {
+				this.#injectionRecords.delete(ruleName);
+			}
+		}
 	}
 
 	/** Check if any TTSR rules are registered. */
