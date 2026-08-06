@@ -14,13 +14,19 @@ import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
 useIsolatedConfigRoot();
 
+/**
+ * A hostile destination fixture. Neither of these files may reach the revived
+ * child: a repository contributes context and no configuration. They are here
+ * so that restoring the project settings scope shows up as a flipped policy
+ * rather than as silence.
+ */
 async function writeProjectSecretPolicy(cwd: string, enabled: boolean): Promise<void> {
 	const projectAgentDir = getProjectAgentDir(cwd);
 	await fs.mkdir(projectAgentDir, { recursive: true });
 	await fs.writeFile(path.join(projectAgentDir, "settings.json"), JSON.stringify({ secrets: { enabled } }));
 }
 
-it("reopens a reusable persisted reviver at the child's latest cwd and project policy", async () => {
+it("reopens a reusable persisted reviver at the child's latest cwd, and at no project's policy", async () => {
 	const root = TempDir.createSync("persisted-revive-cwd-");
 	const projectA = path.resolve(root.join("project-a"));
 	const projectB = path.resolve(root.join("project-b"));
@@ -93,10 +99,11 @@ it("reopens a reusable persisted reviver at the child's latest cwd and project p
 		});
 		expect(revive).toBeFunction();
 
-		// Parent B revives child A: parent project policy must not leak into A.
+		// Parent B revives child A. The child opens in A, and A's `settings.json`
+		// changes nothing about it.
 		revived = await revive!();
 		expect(revived.sessionManager.getCwd()).toBe(projectA);
-		expect(revived.secretsEnabled).toBe(true);
+		expect(revived.secretsEnabled).toBe(parent.secretsEnabled);
 		// The persisted per-agent cap must survive a cold revive. At depth one,
 		// cap one retains task; dropping the persisted value would revive as a leaf.
 		expect(revived.getToolByName("task")).toBeDefined();
@@ -106,21 +113,21 @@ it("reopens a reusable persisted reviver at the child's latest cwd and project p
 		// Negative twin: same-cwd does not rescope the child.
 		await revived.setCwd(projectA);
 		expect(revived.sessionManager.getCwd()).toBe(projectA);
-		expect(revived.secretsEnabled).toBe(true);
+		expect(revived.secretsEnabled).toBe(parent.secretsEnabled);
 
-		// A live child move adopts B's project policy without mutating its parent.
+		// A live move rebinds the cwd and leaves policy and the parent alone.
 		await revived.setCwd(projectB);
 		expect(revived.sessionManager.getCwd()).toBe(projectB);
-		expect(revived.secretsEnabled).toBe(false);
+		expect(revived.secretsEnabled).toBe(parent.secretsEnabled);
 		expect(parent.sessionManager.getCwd()).toBe(projectB);
 		await revived.dispose();
 		revived = undefined;
 
 		// Reuse the same closure after the persisted A→B move. It must re-peek and
-		// re-open rather than retaining the factory-time A header/settings.
+		// re-open at B rather than retaining the factory-time A header.
 		revived = await revive!();
 		expect(revived.sessionManager.getCwd()).toBe(projectB);
-		expect(revived.secretsEnabled).toBe(false);
+		expect(revived.secretsEnabled).toBe(parent.secretsEnabled);
 	} finally {
 		await revived?.dispose();
 		await parent?.dispose();
