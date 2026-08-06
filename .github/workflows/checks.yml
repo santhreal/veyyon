@@ -100,7 +100,7 @@ jobs:
     # profile changed makes every file that runs after it order-dependent, and the
     # failures land in innocent suites: a lingering `VEYYON_NO_TITLE` made three
     # title-generator suites fail while each passed alone, and two suites exported the
-    # developer's real agent dir to the whole process. `scripts/find-test-leaks.ts`
+    # developer's real agent dir to the whole process. `scripts/test-sandbox/find-test-leaks.ts`
     # runs each file in its own process with a tracer preloaded and diffs the globals.
     #
     # Scoped to the test files this push/PR CHANGED, not the whole repo: a full sweep is
@@ -127,7 +127,7 @@ jobs:
       - name: Tracer self-tests
         # The tracer's own contract tests, so a broken tracer fails loudly here instead
         # of silently reporting every changed suite as clean.
-        run: bun test scripts/find-test-leaks.test.ts
+        run: bun test scripts/test-sandbox/find-test-leaks.test.ts
       - name: Leak-check changed test files
         env:
           LEAK_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
@@ -147,7 +147,7 @@ jobs:
           mapfile -t changed <<<"$changed_list"
           printf 'Leak-checking %d changed test file(s):\n' "${#changed[@]}"
           printf '  %s\n' "${changed[@]}"
-          bun scripts/find-test-leaks.ts "${changed[@]}"
+          bun scripts/test-sandbox/find-test-leaks.ts "${changed[@]}"
 
   test:
     name: TypeScript tests
@@ -171,9 +171,9 @@ jobs:
         # userland the sandbox runs. There is no /dev/kvm here, so the script builds
         # the userland only and says so; the microVM rung reports itself unavailable
         # rather than being silently swapped out.
-        run: bash scripts/test-sandbox.sh --build
+        run: bash scripts/test-sandbox/run.sh --build
       - name: Show which isolation rung this runner will use
-        run: bash scripts/test-sandbox.sh --probe
+        run: bash scripts/test-sandbox/run.sh --probe
       - name: Workspace test suite
         run: bun run ci:test:ts:workspace
 
@@ -206,7 +206,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Build the test sandbox image
         # Same reason as the `test` job: `bun run test:scripts` routes through
-        # scripts/test-sandbox.sh, which refuses to run anything on the bare runner.
-        run: bash scripts/test-sandbox.sh --build
+        # scripts/test-sandbox/run.sh, which refuses to run anything on the bare runner.
+        run: bash scripts/test-sandbox/run.sh --build
       - name: Repo script test suites
         run: bun run test:scripts
