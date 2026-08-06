@@ -339,7 +339,39 @@ Remote summarizer endpoint:
   - OpenAI-compatible endpoints whose path ends in `/chat/completions` receive `{ model, messages, stream: false }`, where `messages` contains one system prompt and one user prompt. The summary is read from `choices[0].message.content`, which lets self-hosted servers such as llama.cpp and vLLM act as summarizers without a separate shim.
 - When it is unset, the active model generates the summary locally. That is the default for every provider.
 
-Provider-native remote compaction was removed. OpenAI and OpenAI Codex models used to send history to `/responses/compact` and store the reply in `preserveData.openaiRemoteCompaction`. What came back was an opaque `encrypted_content` blob that only that provider could replay, so the compaction entry's summary field held a fixed placeholder string instead of a summary. Switching models stranded the history, and each call re-sent the whole context uncached. Sessions compacted by the old path still load: veyyon treats such an entry as having no usable summary, re-expands the original messages behind it, and summarizes them locally.
+Server-side compaction (`compaction.remote`, on by default):
+
+OpenAI and Azure OpenAI serve `POST /responses/compact`, which compacts a session's
+context inside the provider and returns the compacted window. Veyyon uses it when the
+model's `compat.supportsServerCompaction` flag is set, which is resolved per host at
+model build time: the official OpenAI API and Azure's v1 API today, and any gateway
+that opts in with an override. The Codex provider stays out, because its transport
+owns history state server-side and a client-minted window has no replay contract there.
+A re-pointed `openai` model also stays out, since another vendor's host does not serve
+that path. Turning `compaction.remote` off is the only thing that disables it; leaving
+it unset leaves it on.
+
+**A server-side compaction stores no summary text, and that is deliberate.** The window
+it returns is an `encrypted_content` blob minted under the provider's key. There is
+nothing in it to read, and nothing to decrypt: it is the compacted context itself, meant
+to be handed straight back to the same provider. The path used to run a full local
+summarization of the same span alongside the remote call and store both, which cost the
+remote call plus the exact summary the remote call was supposed to replace, and only one
+of the two was ever read. Writing readable text here is not a missing feature that could
+be added later. The only way to produce it is to pay a second model to describe a span,
+which is the local strategy with an extra network round trip in front of it, and any text
+derived from the blob rather than the span would be invented. An empty summary is the
+honest record of what happened.
+
+Because the entry cannot explain itself, the rebuild refuses to trust it outside the
+provider that minted it. `buildSessionContext` treats a compaction as usable only when the
+stored window replays on the active provider, or when there is real summary text. When
+neither holds, which is a fork or resume onto a different provider, it re-expands every
+message the compaction hid. Nothing was lost to recover: compaction only advances
+`firstKeptEntryId`, so the discarded span is still in the session file.
+
+Sessions compacted by the earlier, removed path (`preserveData.openaiRemoteCompaction`,
+whose summary field held a fixed placeholder) load through the same rule and re-expand.
 
 ### Handoff generation
 
