@@ -298,6 +298,47 @@ describe("resolveRetryPolicy", () => {
 			expect(policy.maxRetries).toBe(3);
 		});
 
+		/**
+		 * A more specific key that states no usable policy must not shadow the
+		 * broader key that does. An inert `{}` (a cleared entry) or a garbage
+		 * value is not a policy for this model, so treating it as the winning
+		 * match discards the operator's `provider/*` layer entirely and drops
+		 * the resolution to a built-in default they never asked for.
+		 */
+		it.each([
+			["an empty object", {}],
+			["a negative number", { maxRetries: -1 }],
+			["a string", { maxRetries: "3" }],
+			["NaN", { maxRetries: Number.NaN }],
+		])("keeps the wildcard when the exact-model entry holds %s", (_label, specific) => {
+			const configured = {
+				"cursor/*": { maxRetries: 9 },
+				"cursor/grok-code-fast-1": specific,
+			} as unknown as Record<string, RetryPolicyOverride>;
+
+			const policy = resolveRetryPolicy(GLOBAL, configured, cursorModel);
+
+			expect(policy.maxRetries).toBe(9);
+			expect(policy.matchedKey).toBe("cursor/*");
+		});
+
+		/**
+		 * The explanation must name the key that actually set the value. An inert
+		 * exact-model entry used to leave the source reading "cursor provider
+		 * default", which sends the operator looking at a built-in for a number
+		 * their own config produced.
+		 */
+		it("explains the key that actually applied, not the inert one", () => {
+			const configured = {
+				"cursor/*": { maxRetries: 9 },
+				"cursor/grok-code-fast-1": {},
+			} as unknown as Record<string, RetryPolicyOverride>;
+
+			expect(describeRetryPolicySource(resolveRetryPolicy(GLOBAL, configured, cursorModel))).toBe(
+				'retry.perProvider["cursor/*"]',
+			);
+		});
+
 		it("treats a missing config object as no configuration", () => {
 			expect(resolveRetryPolicy(GLOBAL, undefined, cursorModel).maxRetries).toBe(3);
 		});
