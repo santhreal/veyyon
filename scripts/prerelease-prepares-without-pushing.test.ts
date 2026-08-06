@@ -13,9 +13,17 @@
  * from the too-old case: re-cutting the tagged version is the documented
  * recovery from a publish that died after tagging, and telling that operator to
  * "pick a higher version" burns a version number and strands the dead tag.
+ *
+ * `preparationLeftovers` and `rollbackReport` are the recovery half. Preparation
+ * rewrites versions, lockfiles and every changelog before the checks that can
+ * reject the result, so a failure part-way used to leave the tree rewritten —
+ * and the clean-tree refusal that guards a cut then blocked the retry. Which
+ * paths a rollback may discard, and which it must only name, is the whole
+ * safety argument: a release script that deletes a file on a failure path is
+ * one bug away from deleting the wrong one.
  */
 import { describe, expect, test } from "bun:test";
-import { nextSteps, resolveReleaseVersion, statusPaths } from "./prerelease";
+import { nextSteps, preparationLeftovers, resolveReleaseVersion, rollbackReport, statusPaths } from "./prerelease";
 
 describe("statusPaths", () => {
 	test("stages both sides of a rename so the delete is not left behind", () => {
@@ -27,11 +35,63 @@ describe("statusPaths", () => {
 	});
 
 	test("keeps a path containing a space intact", () => {
-		expect(statusPaths(" M docs/some file.md\0?? new dir/note.md\0")).toEqual(["docs/some file.md", "new dir/note.md"]);
+		expect(statusPaths(" M docs/some file.md\0?? new dir/note.md\0")).toEqual([
+			"docs/some file.md",
+			"new dir/note.md",
+		]);
 	});
 
 	test("reports nothing for an unchanged tree", () => {
 		expect(statusPaths("")).toEqual([]);
+	});
+});
+
+describe("preparationLeftovers", () => {
+	test("a modified tracked file is restorable, a new file is not", () => {
+		expect(preparationLeftovers(" M Cargo.toml\0?? scratch.txt\0")).toEqual({
+			tracked: ["Cargo.toml"],
+			untracked: ["scratch.txt"],
+		});
+	});
+
+	test("both sides of a rename are restorable so the delete is undone too", () => {
+		// Restoring only the new side leaves the origin deleted, which keeps the
+		// tree dirty and the retry blocked — the exact failure being fixed.
+		expect(preparationLeftovers("R  packages/new.ts\0packages/old.ts\0").tracked).toEqual([
+			"packages/new.ts",
+			"packages/old.ts",
+		]);
+	});
+
+	test("a staged addition is tracked, not a new file", () => {
+		// `A ` has committed-index bytes to go back to; only `??` has none.
+		expect(preparationLeftovers("A  packages/added.ts\0")).toEqual({ tracked: ["packages/added.ts"], untracked: [] });
+	});
+
+	test("reports nothing for an unchanged tree", () => {
+		expect(preparationLeftovers("")).toEqual({ tracked: [], untracked: [] });
+	});
+});
+
+describe("rollbackReport", () => {
+	test("leads with the cause, then says the tree is safe to re-run from", () => {
+		const lines = rollbackReport("check failed", { tracked: ["Cargo.toml", "bun.lock"], untracked: [] });
+		expect(lines[0]).toBe("check failed");
+		expect(lines.join("\n")).toContain("2 modified path(s) restored to HEAD");
+		expect(lines.join("\n")).toContain("re-run");
+	});
+
+	test("names every file it refused to delete", () => {
+		const report = rollbackReport("boom", { tracked: [], untracked: ["a.txt", "b.txt"] }).join("\n");
+		expect(report).toContain("  a.txt");
+		expect(report).toContain("  b.txt");
+		expect(report).toContain("2 new file(s)");
+	});
+
+	test("does not claim a rollback that did not happen", () => {
+		const report = rollbackReport("refused before writing", { tracked: [], untracked: [] }).join("\n");
+		expect(report).toContain("wrote nothing that needed rolling back");
+		expect(report).not.toContain("restored to HEAD");
 	});
 });
 
