@@ -170,9 +170,9 @@ describe("Markdown component", () => {
 			expect(numberedLines.length, `Expected 3 numbered items, got: ${numberedLines.join(", ")}`).toBe(3);
 
 			// Check the actual numbers
-			expect(numberedLines[0].startsWith("1."), `First item should be "1.", got: ${numberedLines[0]}`).toBeTruthy();
-			expect(numberedLines[1].startsWith("2."), `Second item should be "2.", got: ${numberedLines[1]}`).toBeTruthy();
-			expect(numberedLines[2].startsWith("3."), `Third item should be "3.", got: ${numberedLines[2]}`).toBeTruthy();
+			expect(numberedLines[0]).toStartWith("1.");
+			expect(numberedLines[1]).toStartWith("2.");
+			expect(numberedLines[2]).toStartWith("3.");
 		});
 	});
 
@@ -246,7 +246,7 @@ describe("Markdown component", () => {
 			const plainLines = lines.map(line => stripVTControlCharacters(line));
 			const dividerLines = plainLines.filter(line => line.includes("+"));
 
-			expect(dividerLines.length >= 2, "Expected header + row divider").toBeTruthy();
+			expect(dividerLines.length).toBeGreaterThanOrEqual(2);
 		});
 
 		it("should keep column width at least the longest word", () => {
@@ -264,17 +264,16 @@ describe("Markdown component", () => {
 			const lines = markdown.render(32);
 			const plainLines = lines.map(line => stripVTControlCharacters(line));
 			const dataLine = plainLines.find(line => line.includes(longestWord));
-			expect(dataLine, "Expected data row containing longest word").toBeTruthy();
+			expect(dataLine).toBeString();
 
 			const segments = dataLine!.split("|").slice(1, -1);
 			const [firstSegment] = segments;
-			expect(firstSegment, "Expected first column segment").toBeTruthy();
+			expect(firstSegment).toBeString();
 			const firstColumnWidth = firstSegment.length - 2;
 
-			expect(
-				firstColumnWidth >= longestWord.length,
-				`Expected first column width >= ${longestWord.length}, got ${firstColumnWidth}`,
-			).toBeTruthy();
+			// A column never shrinks below its longest unbreakable word, so the word survives unhyphenated.
+			expect(firstColumnWidth).toBeGreaterThanOrEqual(longestWord.length);
+			expect(firstSegment).toContain(longestWord);
 		});
 
 		/**
@@ -386,15 +385,15 @@ describe("Markdown component", () => {
 
 			// All lines should fit within width
 			for (const line of plainLines) {
-				expect(line.length <= 50, `Line exceeds width 50: "${line}" (length: ${line.length})`).toBeTruthy();
+				expect(line.length).toBeLessThanOrEqual(50);
 			}
 
 			// Content should still be present (possibly wrapped across lines)
 			const allText = plainLines.join(" ");
-			expect(allText.includes("Command"), "Should contain 'Command'").toBeTruthy();
-			expect(allText.includes("Description"), "Should contain 'Description'").toBeTruthy();
-			expect(allText.includes("npm install"), "Should contain 'npm install'").toBeTruthy();
-			expect(allText.includes("Install"), "Should contain 'Install'").toBeTruthy();
+			expect(allText).toContain("Command");
+			expect(allText).toContain("Description");
+			expect(allText).toContain("npm install");
+			expect(allText).toContain("Install");
 		});
 
 		it("should wrap long cell content to multiple lines", () => {
@@ -413,13 +412,13 @@ describe("Markdown component", () => {
 
 			// Should have multiple data rows due to wrapping
 			const dataRows = plainLines.filter(line => line.startsWith("|") && !line.includes("-"));
-			expect(dataRows.length > 2, `Expected wrapped rows, got ${dataRows.length} rows`).toBeTruthy();
+			expect(dataRows.length).toBeGreaterThan(2);
 
 			// All content should be preserved (may be split across lines)
 			const allText = plainLines.join(" ");
-			expect(allText.includes("very long"), "Should preserve 'very long'").toBeTruthy();
-			expect(allText.includes("cell content"), "Should preserve 'cell content'").toBeTruthy();
-			expect(allText.includes("should wrap"), "Should preserve 'should wrap'").toBeTruthy();
+			expect(allText).toContain("very long");
+			expect(allText).toContain("cell content");
+			expect(allText).toContain("should wrap");
 		});
 
 		it("should wrap long unbroken tokens inside table cells (not only at line start)", () => {
@@ -446,7 +445,7 @@ describe("Markdown component", () => {
 
 			// Borders should stay intact (exactly 2 vertical borders for a 1-col table)
 			const tableLines = plainLines.filter(line => line.startsWith("|"));
-			expect(tableLines.length > 0, "Expected table rows to render").toBeTruthy();
+			expect(tableLines.length).toBeGreaterThan(0);
 			for (const line of tableLines) {
 				const borderCount = line.split("|").length - 1;
 				expect(borderCount, `Expected 2 borders, got ${borderCount}: "${line}"`).toBe(2);
@@ -455,8 +454,8 @@ describe("Markdown component", () => {
 			// Strip box drawing characters + whitespace so we can assert the URL is preserved
 			// even if it was split across multiple wrapped lines.
 			const extracted = plainLines.join("").replace(/[|+\-\s]/g, "");
-			expect(extracted.includes("prefix"), "Should preserve 'prefix'").toBeTruthy();
-			expect(extracted.includes(url), "Should preserve URL").toBeTruthy();
+			expect(extracted).toContain("prefix");
+			expect(extracted).toContain(url);
 		});
 
 		it("should wrap styled inline code inside table cells without breaking borders", () => {
@@ -472,7 +471,7 @@ describe("Markdown component", () => {
 			const width = 20;
 			const lines = markdown.render(width);
 			const joinedOutput = lines.join("\n");
-			expect(joinedOutput.includes("\x1b[33m"), "Inline code should be styled (yellow)").toBeTruthy();
+			expect(joinedOutput).toContain("\x1b[33m");
 
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
 			for (const line of plainLines) {
@@ -504,11 +503,11 @@ describe("Markdown component", () => {
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
 
 			// Should not crash and should produce output
-			expect(lines.length > 0, "Should produce output").toBeTruthy();
+			expect(lines.length).toBeGreaterThan(0);
 
 			// Lines should not exceed width
 			for (const line of plainLines) {
-				expect(line.length <= 15, `Line exceeds width 15: "${line}" (length: ${line.length})`).toBeTruthy();
+				expect(line.length).toBeLessThanOrEqual(15);
 			}
 		});
 
@@ -529,7 +528,7 @@ describe("Markdown component", () => {
 			// Should have proper table structure
 			const headerLine = plainLines.find(line => line.includes("A") && line.includes("B"));
 			expect(headerLine, "Should have header row").toBeTruthy();
-			expect(headerLine?.includes("|"), "Header should have borders").toBeTruthy();
+			expect(headerLine).toContain("|");
 
 			const separatorLine = plainLines.find(line => line.includes("+") && line.includes("-"));
 			expect(separatorLine, "Should have separator row").toBeTruthy();
@@ -554,12 +553,12 @@ describe("Markdown component", () => {
 
 			// All lines should respect width
 			for (const line of plainLines) {
-				expect(line.length <= 40, `Line exceeds width 40: "${line}" (length: ${line.length})`).toBeTruthy();
+				expect(line.length).toBeLessThanOrEqual(40);
 			}
 
 			// Table rows should have left padding
 			const tableRow = plainLines.find(line => line.includes("|"));
-			expect(tableRow?.startsWith("  "), "Table should have left padding").toBeTruthy();
+			expect(tableRow).toStartWith("  ");
 		});
 
 		it("should not add a trailing blank line when table is the last rendered block", () => {
@@ -634,11 +633,11 @@ describe("Markdown component", () => {
 			const joinedOutput = lines.join("\n");
 
 			// Should contain the inline code block
-			expect(joinedOutput.includes("inline code")).toBeTruthy();
+			expect(joinedOutput).toContain("inline code");
 
 			// The output should have ANSI codes for gray (90) and italic (3)
-			expect(joinedOutput.includes("\x1b[90m"), "Should have gray color code").toBeTruthy();
-			expect(joinedOutput.includes("\x1b[3m"), "Should have italic code").toBeTruthy();
+			expect(joinedOutput).toContain("\x1b[90m");
+			expect(joinedOutput).toContain("\x1b[3m");
 
 			// Verify that inline code is styled (theme uses yellow)
 			const hasCodeColor = joinedOutput.includes("\x1b[33m");
@@ -661,14 +660,14 @@ describe("Markdown component", () => {
 			const joinedOutput = lines.join("\n");
 
 			// Should contain bold text
-			expect(joinedOutput.includes("bold text")).toBeTruthy();
+			expect(joinedOutput).toContain("bold text");
 
 			// The output should have ANSI codes for gray (90) and italic (3)
-			expect(joinedOutput.includes("\x1b[90m"), "Should have gray color code").toBeTruthy();
-			expect(joinedOutput.includes("\x1b[3m"), "Should have italic code").toBeTruthy();
+			expect(joinedOutput).toContain("\x1b[90m");
+			expect(joinedOutput).toContain("\x1b[3m");
 
 			// Should have bold codes (1 or 22 for bold on/off)
-			expect(joinedOutput.includes("\x1b[1m"), "Should have bold code").toBeTruthy();
+			expect(joinedOutput).toContain("\x1b[1m");
 		});
 
 		it("should not leak styles into following lines when rendered in TUI", async () => {
@@ -704,7 +703,7 @@ describe("Markdown component", () => {
 			await firstRender.promise;
 			await terminal.flush();
 
-			expect(component.markdownLineCount > 0).toBeTruthy();
+			expect(component.markdownLineCount).toBeGreaterThan(0);
 			const inputRow = component.markdownLineCount;
 			expect(getCellItalic(terminal, inputRow, 0)).toBe(false);
 			tui.stop();
@@ -730,7 +729,7 @@ again, hello world`,
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
 
 			const closingBackticksIndex = plainLines.indexOf("```");
-			expect(closingBackticksIndex !== -1, "Should have closing backticks").toBeTruthy();
+			expect(closingBackticksIndex).not.toBe(-1);
 
 			const afterBackticks = plainLines.slice(closingBackticksIndex + 1);
 			const emptyLineCount = afterBackticks.findIndex(line => line !== "");
@@ -834,7 +833,7 @@ again, hello world`,
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
 
 			const dividerIndex = plainLines.findIndex(line => /^-+$/.test(line.trim()));
-			expect(dividerIndex !== -1, "Should have divider").toBeTruthy();
+			expect(dividerIndex).not.toBe(-1);
 
 			const afterDivider = plainLines.slice(dividerIndex + 1);
 			const emptyLineCount = afterDivider.findIndex(line => line !== "");
@@ -908,7 +907,7 @@ again, hello world`,
 			const markdown = new Markdown("Title\n===", 0, 0, defaultMarkdownTheme);
 			const lines = markdown.render(80);
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
-			expect(plainLines.some(line => line.includes("Title"))).toBeTruthy();
+			expect(plainLines.join("\n")).toContain("Title");
 			expect(plainLines.includes("=".repeat(80))).toBeFalsy();
 		});
 
@@ -916,7 +915,7 @@ again, hello world`,
 			const markdown = new Markdown("Title\n---", 0, 0, defaultMarkdownTheme);
 			const lines = markdown.render(80);
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
-			expect(plainLines.some(line => line.includes("Title"))).toBeTruthy();
+			expect(plainLines.join("\n")).toContain("Title");
 			expect(plainLines.includes("─".repeat(80))).toBeFalsy();
 		});
 	});
@@ -936,7 +935,7 @@ This is a paragraph`,
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
 
 			const headingIndex = plainLines.findIndex(line => line.includes("Hello"));
-			expect(headingIndex !== -1, "Should have heading").toBeTruthy();
+			expect(headingIndex).not.toBe(-1);
 
 			const afterHeading = plainLines.slice(headingIndex + 1);
 			const emptyLineCount = afterHeading.findIndex(line => line !== "");
@@ -973,7 +972,7 @@ again, hello world`,
 			const plainLines = lines.map(line => stripVTControlCharacters(line).trimEnd());
 
 			const quoteIndex = plainLines.findIndex(line => line.includes("This is a quote"));
-			expect(quoteIndex !== -1, "Should have blockquote").toBeTruthy();
+			expect(quoteIndex).not.toBe(-1);
 
 			const afterQuote = plainLines.slice(quoteIndex + 1);
 			const emptyLineCount = afterQuote.findIndex(line => line !== "");
@@ -1021,8 +1020,8 @@ bar`,
 			expect(barLine).toBeTruthy();
 
 			// Check that both have italic (\x1b[3m) - blockquotes use theme styling, not default message color
-			expect(fooLine?.includes("\x1b[3m")).toBeTruthy();
-			expect(barLine?.includes("\x1b[3m")).toBeTruthy();
+			expect(fooLine).toContain("\x1b[3m");
+			expect(barLine).toContain("\x1b[3m");
 
 			// Blockquotes should NOT have the default message color (magenta)
 			expect(fooLine?.includes("\x1b[35m")).toBeFalsy();
@@ -1051,8 +1050,8 @@ bar`,
 			// Both lines should have italic (from theme.quote styling)
 			const fooLine = lines.find(line => line.includes("Foo"));
 			const barLine = lines.find(line => line.includes("bar"));
-			expect(fooLine?.includes("\x1b[3m")).toBeTruthy();
-			expect(barLine?.includes("\x1b[3m")).toBeTruthy();
+			expect(fooLine).toContain("\x1b[3m");
+			expect(barLine).toContain("\x1b[3m");
 
 			// Blockquotes should NOT have the default message color (cyan)
 			expect(fooLine?.includes("\x1b[36m")).toBeFalsy();
@@ -1071,18 +1070,18 @@ bar`,
 			const contentLines = plainLines.filter(line => line.length > 0);
 
 			// Should have multiple lines due to wrapping
-			expect(contentLines.length > 1).toBeTruthy();
+			expect(contentLines.length).toBeGreaterThan(1);
 
 			// Every content line should start with the quote border
 			for (const line of contentLines) {
-				expect(line.startsWith("│ ")).toBeTruthy();
+				expect(line).toStartWith("│ ");
 			}
 
 			// All content should be preserved
 			const allText = contentLines.join(" ");
-			expect(allText.includes("very long")).toBeTruthy();
-			expect(allText.includes("blockquote")).toBeTruthy();
-			expect(allText.includes("multiple")).toBeTruthy();
+			expect(allText).toContain("very long");
+			expect(allText).toContain("blockquote");
+			expect(allText).toContain("multiple");
 		});
 
 		it("should properly indent wrapped blockquote lines with styling", () => {
@@ -1105,12 +1104,12 @@ bar`,
 
 			// All lines should have the quote border
 			for (const line of contentLines) {
-				expect(line.startsWith("│ ")).toBeTruthy();
+				expect(line).toStartWith("│ ");
 			}
 
 			// Check that italic is applied (from theme.quote)
 			const allOutput = lines.join("\n");
-			expect(allOutput.includes("\x1b[3m")).toBeTruthy();
+			expect(allOutput).toContain("\x1b[3m");
 
 			// Blockquotes should NOT have the default message color (yellow)
 			expect(allOutput.includes("\x1b[33m")).toBeFalsy();
@@ -1131,13 +1130,13 @@ bar`,
 			const allOutput = lines.join("\n");
 
 			// Should have bold styling (\x1b[1m)
-			expect(allOutput.includes("\x1b[1m")).toBeTruthy();
+			expect(allOutput).toContain("\x1b[1m");
 
 			// Should have code styling (yellow = \x1b[33m from defaultMarkdownTheme)
-			expect(allOutput.includes("\x1b[33m")).toBeTruthy();
+			expect(allOutput).toContain("\x1b[33m");
 
 			// Should have italic from quote styling (\x1b[3m)
-			expect(allOutput.includes("\x1b[3m")).toBeTruthy();
+			expect(allOutput).toContain("\x1b[3m");
 		});
 		it("keeps a nested list's indentation inside the quote border", () => {
 			// Filtering to the quoted lines and then asking whether each expected
@@ -1158,12 +1157,12 @@ bar`,
 			const quotedLines = plainLines.filter(line => line.startsWith("│ "));
 			const quotedOutput = quotedLines.join("\n");
 
-			expect(quotedOutput.includes("A")).toBeTruthy();
-			expect(quotedOutput.includes("B")).toBeTruthy();
-			expect(quotedOutput.includes("1")).toBeTruthy();
-			expect(quotedOutput.includes("2")).toBeTruthy();
-			expect(quotedOutput.includes("+---+")).toBeTruthy();
-			expect(quotedOutput.includes("| A")).toBeTruthy();
+			expect(quotedOutput).toContain("A");
+			expect(quotedOutput).toContain("B");
+			expect(quotedOutput).toContain("1");
+			expect(quotedOutput).toContain("2");
+			expect(quotedOutput).toContain("+---+");
+			expect(quotedOutput).toContain("| A");
 		});
 
 		it("should render fenced code blocks inside blockquotes without applying default text color", () => {
@@ -1177,11 +1176,11 @@ bar`,
 			const output = lines.join("\n");
 			const plainOutput = quotedLines.join("\n");
 
-			expect(plainOutput.includes("```js")).toBeTruthy();
-			expect(plainOutput.includes("console.log(1)")).toBeTruthy();
-			expect(plainOutput.includes("```")).toBeTruthy();
+			expect(plainOutput).toContain("```js");
+			expect(plainOutput).toContain("console.log(1)");
+			expect(plainOutput).toContain("```");
 			expect(output.includes("\x1b[35m")).toBeFalsy();
-			expect(output.includes("\x1b[3m")).toBeTruthy();
+			expect(output).toContain("\x1b[3m");
 		});
 	});
 
@@ -1208,8 +1207,8 @@ bar`,
 			const joinedPlain = plainLines.join(" ");
 
 			// Should contain the email once, not duplicated with mailto:
-			expect(joinedPlain.includes("user@example.com"), "Should contain email").toBeTruthy();
-			expect(!joinedPlain.includes("mailto:"), "Should not show mailto: prefix for autolinked emails").toBeTruthy();
+			expect(joinedPlain).toContain("user@example.com");
+			expect(joinedPlain).not.toContain("mailto:");
 		});
 
 		it("should not duplicate URL for bare URLs", () => {
@@ -1228,8 +1227,8 @@ bar`,
 			const markdown = new Markdown("Visit https://example.com for more", 0, 0, defaultMarkdownTheme);
 
 			const output = markdown.render(80).join("\n");
-			expect(output.includes("\x1b]8;;https://example.com\x07")).toBeTruthy();
-			expect(output.includes("\x1b]8;;\x07")).toBeTruthy();
+			expect(output).toContain("\x1b]8;;https://example.com\x07");
+			expect(output).toContain("\x1b]8;;\x07");
 		});
 
 		it("should keep wrapped URLs inside a single OSC 8 hyperlink span", () => {
@@ -1260,8 +1259,8 @@ bar`,
 			const joinedPlain = plainLines.join(" ");
 
 			// Should show both link text and URL
-			expect(joinedPlain.includes("click here"), "Should contain link text").toBeTruthy();
-			expect(joinedPlain.includes("(https://example.com)"), "Should show URL in parentheses").toBeTruthy();
+			expect(joinedPlain).toContain("click here");
+			expect(joinedPlain).toContain("(https://example.com)");
 		});
 
 		it("should show URL for explicit mailto links with different text", () => {
@@ -1272,7 +1271,7 @@ bar`,
 			const joinedPlain = plainLines.join(" ");
 
 			// Should show both link text and mailto URL
-			expect(joinedPlain.includes("Email me"), "Should contain link text").toBeTruthy();
+			expect(joinedPlain).toContain("Email me");
 			expect(
 				joinedPlain.includes("(mailto:test@example.com)"),
 				"Should show mailto URL in parentheses",
@@ -1295,11 +1294,8 @@ bar`,
 			const plainLines = lines.map(line => stripVTControlCharacters(line));
 			const joinedPlain = plainLines.join(" ");
 
-			// The content inside the tags should be visible
-			expect(
-				joinedPlain.includes("hidden content") || joinedPlain.includes("<thinking>"),
-				"Should render HTML-like tags or their content as text, not hide them",
-			).toBeTruthy();
+			// An unknown tag is prose, not markup: both the tag and the text it wraps survive.
+			expect(joinedPlain).toContain("<thinking>hidden content</thinking>");
 		});
 
 		it("should render HTML tags in code blocks correctly", () => {
@@ -1309,11 +1305,8 @@ bar`,
 			const plainLines = lines.map(line => stripVTControlCharacters(line));
 			const joinedPlain = plainLines.join("\n");
 
-			// HTML in code blocks should be visible
-			expect(
-				joinedPlain.includes("<div>") && joinedPlain.includes("</div>"),
-				"Should render HTML in code blocks",
-			).toBeTruthy();
+			// A fenced html block is code, so the tags render literally rather than being interpreted.
+			expect(joinedPlain).toContain("<div>Some HTML</div>");
 		});
 
 		it("should hide standalone empty HTML comments between visible text", () => {
@@ -1380,15 +1373,15 @@ describe("Inline color swatches", () => {
 	it("paints a colored swatch before a bare hex color in prose", () => {
 		const out = new Markdown("Accent is #C5FFD6 today.", 0, 0, defaultMarkdownTheme).render(80).join("\n");
 		// Swatch (color SGR + chip glyph + fg reset + space) sits immediately before the code.
-		expect(out.includes(`${swatchFor("C5FFD6")}\x1b[39m `)).toBeTruthy();
-		expect(out.includes("#C5FFD6")).toBeTruthy();
+		expect(out).toContain(`${swatchFor("C5FFD6")}\x1b[39m `);
+		expect(out).toContain("#C5FFD6");
 	});
 
 	it("paints a swatch before a backticked hex color", () => {
 		const out = new Markdown("Use `#C5FFD6` for the bg.", 0, 0, defaultMarkdownTheme).render(80).join("\n");
-		expect(out.includes(swatchFor("C5FFD6"))).toBeTruthy();
+		expect(out).toContain(swatchFor("C5FFD6"));
 		// The code text survives as inline code (theme styles it yellow).
-		expect(out.includes("#C5FFD6")).toBeTruthy();
+		expect(out).toContain("#C5FFD6");
 	});
 
 	it("does not swatch short numeric references that resemble issue numbers", () => {
@@ -1398,7 +1391,7 @@ describe("Inline color swatches", () => {
 
 	it("swatches a 3-digit shorthand that contains a hex letter", () => {
 		const out = new Markdown("White is #fff.", 0, 0, defaultMarkdownTheme).render(80).join("\n");
-		expect(out.includes(swatchFor("fff"))).toBeTruthy();
+		expect(out).toContain(swatchFor("fff"));
 	});
 
 	it("does not swatch 4-digit hashline #TAG snapshot tags", () => {
@@ -1413,7 +1406,7 @@ describe("Inline color swatches", () => {
 	it("uses the theme's colorSwatch symbol when provided", () => {
 		const themed = { ...defaultMarkdownTheme, symbols: { ...defaultMarkdownTheme.symbols, colorSwatch: "▢" } };
 		const out = new Markdown("Accent #C5FFD6.", 0, 0, themed).render(80).join("\n");
-		expect(out.includes(swatchFor("C5FFD6", "▢"))).toBeTruthy();
+		expect(out).toContain(swatchFor("C5FFD6", "▢"));
 		expect(out.includes(swatchFor("C5FFD6", "■"))).toBe(false);
 	});
 
@@ -1424,9 +1417,9 @@ describe("Inline color swatches", () => {
 		})
 			.render(80)
 			.join("\n");
-		expect(out.includes(swatchFor("C5FFD6"))).toBeTruthy();
+		expect(out).toContain(swatchFor("C5FFD6"));
 		// Gray (\x1b[90m) is re-opened for the code text — the swatch's fg reset must not bleed.
-		expect(out.includes("\x1b[90m#C5FFD6")).toBeTruthy();
+		expect(out).toContain("\x1b[90m#C5FFD6");
 	});
 });
 
