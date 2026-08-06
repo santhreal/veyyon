@@ -18,7 +18,9 @@
  * "only a registry imports a prompt" holds with no exceptions at all rather than one
  * carved out for this file.
  */
-import { definePromptRegistry, type PromptEntry } from "@veyyon/utils";
+// The owner leaf, not the `@veyyon/utils` barrel: this is the package's ONLY runtime edge into
+// utils, so what it costs is what every consumer of this subpath pays.
+import { definePromptRegistry, type PromptEntry } from "@veyyon/utils/prompt-registry";
 import promptDescription from "../prompt.md" with { type: "text" };
 
 export type { PromptEntry };

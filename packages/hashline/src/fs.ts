@@ -179,10 +179,11 @@ function withTargetInMessage(error: unknown, target: string, tempPath: string): 
  *
  * This is deliberately a small self-contained copy of the temp+rename pattern
  * rather than a dependency on `@veyyon/utils` (which owns the fuller
- * `atomicWriteFile`): hashline is a lean, standalone patch library with only
- * `diff` and `lru-cache` as dependencies, and pulling in the utils package would
- * drag its logging/templating/native transitive deps into every hashline
- * consumer.
+ * `atomicWriteFile`): the patch core is a lean, standalone library, and pulling
+ * the utils barrel in here would drag its logging/templating/native transitive
+ * deps onto the path every consumer walks. (The package does depend on
+ * `@veyyon/utils` for the optional `prompts/registry` subpath, which takes one
+ * function from one leaf. Nothing on this path imports it.)
  *
  * The two are kept in step by BEHAVIOR, not by import, and that promise is only
  * worth anything because a test checks it: `packages/coding-agent/test/
