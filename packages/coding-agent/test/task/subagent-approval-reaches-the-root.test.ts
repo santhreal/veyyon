@@ -473,9 +473,17 @@ describe("subagent.maxRuntimeMs excludes time spent waiting on the operator", ()
 		modelRegistry: { refresh: async () => {} } as unknown as ModelRegistry,
 		enableLsp: false,
 	};
-	/** Comfortably longer than the budget, so a run that survives can only have excluded it. */
-	const WAIT_MS = 260;
-	const BUDGET_MS = 80;
+	/**
+	 * Comfortably longer than the budget, so a run that survives can only have excluded it.
+	 *
+	 * The budget is also the slack every non-wait step gets: the timer re-arms for one more
+	 * budget after the wait closes, so the child has `BUDGET_MS` to emit its yield and
+	 * finalize. At 80ms that was thinner than the scheduler under a loaded parallel bucket
+	 * and this suite aborted there while passing alone. The ratio is what the assertions
+	 * rest on, so both numbers moved together.
+	 */
+	const WAIT_MS = 1_200;
+	const BUDGET_MS = 400;
 
 	beforeEach(() => {
 		AgentRegistry.resetGlobalForTests();
