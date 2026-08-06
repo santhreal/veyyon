@@ -2102,11 +2102,6 @@ export function getAutoresearchDbPath(encodedProject: string): string {
 	return path.join(getAutoresearchDir(), `${encodedProject}.db`);
 }
 
-/** Get the per-run artifact directory (profile `autoresearch/<encoded-project>/runs/<runId>`). */
-export function getAutoresearchRunDir(encodedProject: string, runId: number): string {
-	return path.join(getAutoresearchProjectDir(encodedProject), "runs", String(runId).padStart(4, "0"));
-}
-
 // =============================================================================
 // Agent subdirectories (~/.veyyon/profiles/<name>/agent/*)
 // =============================================================================
@@ -2220,19 +2215,9 @@ export function getToolsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "tools");
 }
 
-/** Get the slash commands directory (agent `commands/`). */
-export function getCommandsDir(agentDir?: string): string {
-	return dirs.agentSubdir(agentDir, "commands");
-}
-
 /** Get the prompts directory (agent `prompts/`). */
 export function getPromptsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "prompts");
-}
-
-/** Get the user-level Python modules directory (agent `modules/`). */
-export function getAgentModulesDir(agentDir?: string): string {
-	return dirs.agentSubdir(agentDir, "modules");
 }
 
 /** Get the memories directory (agent `memories/`). */
@@ -2245,11 +2230,6 @@ export function getTerminalSessionsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "terminal-sessions", "state");
 }
 
-/** Get the crash log path (agent `veyyon-crash.log`). */
-export function getCrashLogPath(agentDir?: string): string {
-	return dirs.agentSubdir(agentDir, "veyyon-crash.log", "state");
-}
-
 /** Get the debug log path (agent `veyyon-debug.log`). */
 export function getDebugLogPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, `${APP_NAME}-debug.log`, "state");
@@ -2258,11 +2238,6 @@ export function getDebugLogPath(agentDir?: string): string {
 // =============================================================================
 // Project subdirectories (.veyyon/*)
 // =============================================================================
-
-/** Get the project-level Python modules directory (.veyyon/modules). */
-export function getProjectModulesDir(cwd: string = getProjectDir()): string {
-	return path.join(getProjectAgentDir(cwd), "modules");
-}
 
 /** Get the project-level prompts directory (.veyyon/prompts). */
 export function getProjectPromptsDir(cwd: string = getProjectDir()): string {
