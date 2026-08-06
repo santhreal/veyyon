@@ -16,8 +16,8 @@ import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@v
 import { collapseWhitespace, errorMessage, escapeRegExp, logger, truncate } from "@veyyon/utils";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import chalk from "chalk";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../capability/rule";
-import { bucketRules } from "../capability/rule-buckets";
+import { type Rule, ruleCapability } from "../capability/rule";
+import { type BucketRulesOptions, bucketRules, resolveRuleLevers, ruleIsEnabled } from "../capability/rule-buckets";
 import { Settings } from "../config/settings";
 import type { TtsrSettings } from "../config/settings-schema";
 import { initializeWithSettings, loadCapability } from "../discovery";
@@ -246,19 +246,17 @@ async function createTtsrManager(settings?: TtsrSettings): Promise<TtsrManager> 
 	return new TtsrManager(settings);
 }
 
-function filterTtsrRulesForScan(
-	rules: readonly Rule[],
-	options: { builtinRules?: boolean; disabledRules?: readonly string[] } = {},
-): Rule[] {
-	const includeBuiltin = options.builtinRules !== false;
-	const disabled = new Set<string>();
-	for (const raw of options.disabledRules ?? []) {
-		const name = raw.trim();
-		if (name.length > 0) disabled.add(name);
-	}
+/**
+ * The rules `ttsr scan` reports on: the enabled ones that carry a condition.
+ *
+ * Enablement is `ruleIsEnabled`'s to decide, not this file's. The scan exists
+ * to tell the operator what will fire in a real session, so a filter of its own
+ * that drifts from the session's funnel is worse than no scan at all.
+ */
+function filterTtsrRulesForScan(rules: readonly Rule[], options: BucketRulesOptions = {}): Rule[] {
+	const levers = resolveRuleLevers(options);
 	return rules.filter(rule => {
-		if (disabled.has(rule.name)) return false;
-		if (!includeBuiltin && rule._source?.provider === BUILTIN_DEFAULTS_PROVIDER_ID) return false;
+		if (!ruleIsEnabled(rule, levers)) return false;
 		return (rule.condition && rule.condition.length > 0) || (rule.astCondition && rule.astCondition.length > 0);
 	});
 }
@@ -272,6 +270,7 @@ async function loadProjectTtsrRules(cwd: string): Promise<{ rules: Rule[]; manag
 	bucketRules(result.items, manager, {
 		builtinRules: ttsrSettings.builtinRules,
 		disabledRules: ttsrSettings.disabledRules,
+		experimentalRules: ttsrSettings.experimentalRules,
 	});
 	return { rules: manager.getRules(), manager };
 }
@@ -287,6 +286,7 @@ async function loadProjectScanRules(cwd: string): Promise<Rule[]> {
 	return filterTtsrRulesForScan(result.items, {
 		builtinRules: ttsrSettings.builtinRules,
 		disabledRules: ttsrSettings.disabledRules,
+		experimentalRules: ttsrSettings.experimentalRules,
 	});
 }
 

@@ -23,6 +23,62 @@ export interface BucketRulesOptions {
 	disabledRules?: readonly string[];
 	/** When false, drop every rule from the bundled `builtin-defaults` provider. */
 	builtinRules?: boolean;
+	/**
+	 * Experimental rule names the operator has explicitly turned on.
+	 *
+	 * The inverse of `disabledRules`, and deliberately a second list rather than
+	 * a shared one: `disabledRules` stores exceptions to on, so a rule that ships
+	 * off cannot be expressed in it at all. Keeping them apart also means turning
+	 * an experimental rule on, and later un-shipping it, leaves a stale name in a
+	 * list that grants nothing rather than one that silently suppresses a rule
+	 * that came back.
+	 */
+	experimentalRules?: readonly string[];
+}
+
+/**
+ * Whether a rule reaches the session at all, given the operator's levers.
+ *
+ * The one owner of that question. `bucketRules` routes an enabled rule into a
+ * bucket and `ttsr scan` reports on it, and both used to re-derive enablement
+ * from the same three fields with their own copy of the trimming and the
+ * builtin check. Two copies of a predicate agree until one of them learns
+ * something, which is exactly what adding the experimental gate would have
+ * done: the scan would have listed a rule as armed that the session drops.
+ */
+export function ruleIsEnabled(rule: Rule, levers: EnabledRuleLevers): boolean {
+	if (levers.disabled.has(rule.name)) return false;
+	if (!levers.includeBuiltin && rule._source?.provider === BUILTIN_DEFAULTS_PROVIDER_ID) return false;
+	// Off wins. A name in both lists is a contradiction, and the safe reading of
+	// a contradiction about injecting text into a live session is "do not".
+	if (rule.experimental === true && !levers.enabledExperiments.has(rule.name)) return false;
+	return true;
+}
+
+/** The levers above, resolved once so a filter loop does not re-trim per rule. */
+export interface EnabledRuleLevers {
+	includeBuiltin: boolean;
+	disabled: ReadonlySet<string>;
+	enabledExperiments: ReadonlySet<string>;
+}
+
+/** Names, trimmed the way every caller has always trimmed them. */
+function nameSet(names: readonly string[] | undefined): Set<string> {
+	const set = new Set<string>();
+	for (const raw of names ?? []) {
+		const name = raw.trim();
+		if (name.length > 0) set.add(name);
+	}
+	return set;
+}
+
+/** Resolve the operator's three levers into the form `ruleIsEnabled` reads. */
+export function resolveRuleLevers(options: BucketRulesOptions): EnabledRuleLevers {
+	return {
+		includeBuiltin: options.builtinRules !== false,
+		disabled: nameSet(options.disabledRules),
+		enabledExperiments: nameSet(options.experimentalRules),
+	};
 }
 
 /**
@@ -35,19 +91,12 @@ export function bucketRules(
 	ttsrManager: TtsrManager,
 	options: BucketRulesOptions = {},
 ): RuleBuckets {
-	const includeBuiltin = options.builtinRules !== false;
-	const disabled = new Set<string>();
-	for (const raw of options.disabledRules ?? []) {
-		const name = raw.trim();
-		if (name.length > 0) disabled.add(name);
-	}
-
+	const levers = resolveRuleLevers(options);
 	const rulebookRules: Rule[] = [];
 	const alwaysApplyRules: Rule[] = [];
 
 	for (const rule of rules) {
-		if (disabled.has(rule.name)) continue;
-		if (!includeBuiltin && rule._source?.provider === BUILTIN_DEFAULTS_PROVIDER_ID) continue;
+		if (!ruleIsEnabled(rule, levers)) continue;
 
 		const hasTtsrCondition =
 			(rule.condition && rule.condition.length > 0) || (rule.astCondition && rule.astCondition.length > 0);

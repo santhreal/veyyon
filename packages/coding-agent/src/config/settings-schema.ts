@@ -778,6 +778,8 @@ export interface TtsrSettings {
 	builtinRules?: boolean;
 	/** Bucketing-only (read by bucketRules, not the TtsrManager). */
 	disabledRules?: string[];
+	/** Bucketing-only: experimental rule names the operator opted into. */
+	experimentalRules?: string[];
 }
 
 export interface ExaSettings {
