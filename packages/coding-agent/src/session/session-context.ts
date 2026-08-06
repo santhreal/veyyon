@@ -7,6 +7,7 @@ import { hasLegacyProviderNativeCompaction } from "@veyyon/agent-core/compaction
 // server-side compaction's stored window back into the provider payload the
 // Responses-family request builder replays, and names who compacted for display.
 import {
+	getRemoteCompactionPreserveData,
 	remoteCompactionAttribution,
 	remoteCompactionProviderPayload,
 } from "@veyyon/agent-core/compaction/remote-compaction-entry";
@@ -371,14 +372,35 @@ export function buildSessionContext(
 			}
 		}
 	} else if (compaction) {
-		// Provider-native remote compaction was removed, so no compaction entry
-		// replays an opaque provider payload. Sessions compacted by the old path
-		// still hold one in `preserveData.openaiRemoteCompaction`; it is
-		// deliberately ignored rather than replayed. Only that provider could read
-		// it, rebuilding context would re-send it on every turn, and the entry's
-		// summary is a placeholder. Ignoring it means the kept turns below are
-		// emitted as real messages instead, and the next compaction re-expands and
+		// A remote compaction entry carries the provider's window and NO readable
+		// summary: the window is the compacted context, and billing a second model
+		// to paraphrase the same span is the cost that path used to pay (see
+		// remote-compaction.ts). Legacy provider-native entries are the same shape
+		// for a worse reason: their summary is a placeholder.
+		//
+		// So an entry is only usable as a compaction when it can actually stand in
+		// for the span it hid: either a provider that can replay its window, or
+		// real summary text. When it is neither, treating it as a compaction would
+		// drop the span from context entirely while its messages sit on disk
+		// untouched. Re-expanding them costs context on a provider switch and
+		// nothing on the normal path, and the next compaction on the new provider
 		// summarizes them locally (see hasReusableSummary in compaction.ts).
+		//
+		// "Can replay" is provider identity, not merely the presence of a window.
+		// The window's `compaction` item is an opaque blob only its minting host
+		// can decrypt, so a session that switched to another provider holds a
+		// payload the encoder will drop. Counting that as usable would emit an
+		// empty summary and silently hide the span, which is the exact loss this
+		// gate exists to prevent. `models.default` is resolved by the walk above,
+		// so the active provider is known here.
+		const remotePayload = remoteCompactionProviderPayload(compaction.preserveData);
+		const remoteData = getRemoteCompactionPreserveData(compaction.preserveData);
+		const activeProvider = models.default?.split("/")[0];
+		const replayable =
+			remotePayload !== undefined &&
+			remoteData !== undefined &&
+			(activeProvider === undefined || activeProvider === remoteData.provider);
+		const usableCompaction = replayable || compaction.summary.trim().length > 0;
 
 		// Re-attach any legacy archived history as text so the model can keep
 		// reading it after every context rebuild (old sessions only).
@@ -387,7 +409,7 @@ export function buildSessionContext(
 			compaction.tokensBefore,
 			compaction.timestamp,
 			compaction.shortSummary,
-			remoteCompactionProviderPayload(compaction.preserveData),
+			remotePayload,
 			undefined,
 			legacyArchiveBlocksForContext(compaction.preserveData, options),
 			compaction.warning,
@@ -395,7 +417,7 @@ export function buildSessionContext(
 		);
 		// Agent context (non-transcript): summary first so the LLM sees the
 		// compacted context before recent messages.
-		if (!options?.transcript) {
+		if (!options?.transcript && usableCompaction) {
 			pushMessage(compactionSummaryMsg);
 		}
 
@@ -403,7 +425,7 @@ export function buildSessionContext(
 		const compactionIdx = path.findIndex(e => e.type === "compaction" && e.id === compaction.id);
 
 		// Emit kept messages (before compaction, starting from firstKeptEntryId)
-		let foundFirstKept = false;
+		let foundFirstKept = !usableCompaction;
 		for (let i = 0; i < compactionIdx; i++) {
 			const entry = path[i];
 			if (entry.id === compaction.firstKeptEntryId) {

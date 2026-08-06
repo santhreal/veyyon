@@ -8,23 +8,35 @@
  * such a compaction: the provider compacts server-side, so a configured local
  * compaction model does not apply to it.
  *
- * One provider call is not the whole job, though. The provider's window is
- * opaque and provider-bound, so this function ALWAYS pairs it with the
- * ordinary local summary of the same span, generated on the session model by
- * `compact()` itself. The entry therefore dual-writes: real readable summary
- * text (what local rebuild, fork, cross-provider resume, the display
- * transcript, and the next compaction's `previousSummary` all read) plus the
- * provider window under `preserveData` (what a Responses-family provider
- * replays natively on the next turn). The full contract lives in
- * `remote-compaction-entry.ts`; the failure mode this avoids is the removed
- * provider-native path's placeholder summary, which discarded real turns on
- * every rebuild.
+ * ONE CALL, NOT TWO. This used to pair the provider call with a full local
+ * summary of the same span and dual-write both, which made compacting on
+ * OpenAI strictly more expensive than compacting locally: the provider
+ * compacted, and then the session model was billed to summarize the identical
+ * span so a readable copy existed. For an OpenAI model that is exactly
+ * backwards. The provider's window IS the compacted context, it preserves the
+ * encrypted reasoning a local summary throws away, and paying a second model
+ * to paraphrase what OpenAI just compacted buys nothing the window does not
+ * already carry.
+ *
+ * So the entry now stores the window and no summary text. The span is not
+ * lost: compaction only moves `firstKeptEntryId`, and every discarded entry
+ * is still on disk. A rebuild that CAN replay the window (the same provider
+ * and api that minted it) replays it and never wanted summary text. A rebuild
+ * that CANNOT (a fork or a resume onto a different provider) re-expands the
+ * real messages instead, which is strictly better than the paraphrase it used
+ * to get, and the next compaction on that provider summarizes them locally.
+ * `buildSessionContext` owns that fallback; see the `usableCompaction` gate
+ * in `session-context.ts`.
+ *
+ * What this does cost: no `shortSummary`, so the session listing falls back to
+ * its header title, and no file-operation list folded into summary text. The
+ * window carries the real tool calls, so the model still sees the file work.
  */
 
 import type { ApiKey, Model } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { resolveServerCompactionTransport } from "@veyyon/ai/providers/openai-compaction";
-import { compact, type CompactionPreparation, type CompactionResult, type SummaryOptions } from "./compaction";
+import type { CompactionPreparation, CompactionResult, SummaryOptions } from "./compaction";
 import { defaultConvertToLlm } from "./messages";
 import {
 	chainableRemoteCompactionWindow,
@@ -45,14 +57,14 @@ export type {
 } from "@veyyon/ai/providers/openai-compaction";
 
 /**
- * Compact the prepared span on the session model's provider AND locally,
- * returning the dual-written result.
+ * Compact the prepared span on the session model's provider and return the
+ * result, whose readable summary is deliberately empty (see the module note).
  *
  * Throws when the model resolves no transport (callers gate on
- * `resolveServerCompactionTransport` first) and propagates any transport or
- * summarization failure unchanged: the session layer catches, warns once, and
- * falls back to the ordinary local compaction path, so a failed remote pass
- * never leaves the session uncompacted.
+ * `resolveServerCompactionTransport` first) and propagates any transport
+ * failure unchanged: the session layer catches, warns once, and falls back to
+ * the ordinary local compaction path, so a failed remote pass never leaves the
+ * session uncompacted.
  */
 export async function compactWithProvider(
 	preparation: CompactionPreparation,
@@ -82,28 +94,27 @@ export async function compactWithProvider(
 	// turnPrefixMessages; concatenated they are the chronological window.
 	const llmMessages = convertToLlm([...preparation.messagesToSummarize, ...preparation.turnPrefixMessages]);
 
-	const [remote, local] = await Promise.all([
-		withAuth(
-			apiKey,
-			key =>
-				transport.compact({
-					model,
-					messages: llmMessages,
-					previousWindow,
-					instructions: options?.remoteInstructions,
-					apiKey: key,
-					signal,
-					fetch: options?.fetch,
-					timeoutMs: REMOTE_COMPACTION_TIMEOUT_MS,
-					sanitizeErrorText: text => options?.obfuscateProviderText?.(text) ?? text,
-				}),
-			{ signal, missingKeyMessage: "Server-side compaction credentials unavailable" },
-		),
-		// The readable half, on the session model. compact() owns the summary
-		// prompts, the split-turn merge, file-op upserts, and the carry-forward
-		// strip of any previous remote window.
-		compact(preparation, model, apiKey, customInstructions, signal, options),
-	]);
+	// The operator's compaction instructions used to reach only the local
+	// summary. That summary is gone, so they must ride the provider call or
+	// they would be silently dropped, which is the one thing a configured
+	// instruction may never do.
+	const instructions = [options?.remoteInstructions, customInstructions].filter(Boolean).join("\n\n");
+	const remote = await withAuth(
+		apiKey,
+		key =>
+			transport.compact({
+				model,
+				messages: llmMessages,
+				previousWindow,
+				instructions: instructions.length > 0 ? instructions : undefined,
+				apiKey: key,
+				signal,
+				fetch: options?.fetch,
+				timeoutMs: REMOTE_COMPACTION_TIMEOUT_MS,
+				sanitizeErrorText: text => options?.obfuscateProviderText?.(text) ?? text,
+			}),
+		{ signal, missingKeyMessage: "Server-side compaction credentials unavailable" },
+	);
 
 	const data: RemoteCompactionPreserveData = {
 		version: 1,
@@ -115,8 +126,12 @@ export async function compactWithProvider(
 		outputTokens: remote.usage?.outputTokens,
 		compactedAt: new Date().toISOString(),
 	};
+	// Structural fields come from the preparation, not from an LLM: compact()
+	// was never the owner of these, it only carried them through.
 	return {
-		...local,
-		preserveData: { ...local.preserveData, [REMOTE_COMPACTION_PRESERVE_KEY]: data },
+		summary: "",
+		firstKeptEntryId: preparation.firstKeptEntryId,
+		tokensBefore: preparation.tokensBefore,
+		preserveData: { [REMOTE_COMPACTION_PRESERVE_KEY]: data },
 	};
 }
