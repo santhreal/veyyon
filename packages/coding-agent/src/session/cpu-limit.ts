@@ -34,7 +34,9 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { CpuBudgetGroup as NativeCpuBudgetGroup } from "@veyyon/natives";
-import { errorMessage, logger } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 81.
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { registerOwnedResourceDisposer } from "./owned-resources";
 
 /** cgroup v2 cpu.max period the quota is expressed against (microseconds). */

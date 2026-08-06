@@ -5,7 +5,8 @@
  * Translated to a canonical shape regardless of source format.
  */
 import { defineCapability } from ".";
-import { parseFrontmatter } from "@veyyon/utils";
+// The owner, not the `@veyyon/utils` barrel: 1 module against 81.
+import { parseFrontmatter } from "@veyyon/utils/frontmatter";
 import type { SourceMeta } from "./types";
 
 const CONDITION_GLOB_SCOPE_TOOLS = ["edit", "write"] as const;
