@@ -514,7 +514,7 @@ from the registry, so the model sees the new text on its next request. These are
 | `subagent.delegation` | whether the section asks for delegation, and whether it uses MUST/ONLY wording |
 | `subagent.batch` | which call shape the delegation guidance teaches |
 | `subagent.maxConcurrency` | the concurrency limit quoted in that guidance |
-| `subagent.maxRecursionDepth` | the IRC coordination clause, present only when this session can spawn |
+| `subagent.maxNestedSpawnDepth` | the IRC coordination clause, present only when this session can spawn |
 | `subagent.agents` | which specialists delegation prose names |
 | `includeModelInPrompt` | whether the active model is surfaced in the workstation block |
 | `tools.format` | whether tools are described inline or left to the provider's tool list |

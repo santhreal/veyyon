@@ -91,7 +91,7 @@ Artifacts and side channels:
 10. Artifacts dir comes from the parent session file when available, otherwise a temp dir. When the session is executing an approved plan, the plan reference is handed to the subagent.
 11. Non-isolated spawns call `runSubprocess(...)` directly with parent cwd; isolated spawns run inside the isolation workspace, then commit to a branch (`mergeMode === "branch"`) or capture a patch, and always clean up the workspace.
 12. `runSubprocess(...)` creates a child agent session with an isolated settings snapshot (forcing `async.enabled = false` and `bash.autoBackground.enabled = false`: subagents are internally synchronous), child `agentId` equal to the allocated id, child internal URL router/`AgentOutputManager`, output schema, the shared `context` (batch calls) in the system prompt's `CONTEXT` section, and the IRC peer roster in the system prompt.
-13. Child tool availability: explicit `agent.tools` if provided; auto-add `task` when the agent has `spawns` and depth allows; strip `task` at `subagent.maxRecursionDepth`; ensure `irc` is present in explicit tool lists; expand `exec` to `eval` + `bash`; strip parent-owned `todo`.
+13. Child tool availability: explicit `agent.tools` if provided; auto-add `task` when the agent has `spawns` and depth allows; strip `task` past `subagent.maxNestedSpawnDepth`; ensure `irc` is present in explicit tool lists; expand `exec` to `eval` + `bash`; strip parent-owned `todo`.
 14. The child must finish through the hidden `yield` tool; up to 3 reminder prompts, the last forcing `toolChoice = yield` when supported. `finalizeSubprocessOutput(...)` reconciles raw text, `yield` payloads, structured schemas, `report_finding` data, and abort states.
 15. End-of-run lifecycle (keep-alive, in `runSubprocess`'s finalizer):
     - hard abort (caller signal / wall-clock / budget) → registry status `aborted`, session disposed: terminal;
@@ -141,7 +141,7 @@ Artifacts and side channels:
 - Missing-`yield` reminder retries: `MAX_YIELD_RETRIES = 3`; MCP proxy timeout: `MCP_CALL_TIMEOUT_MS = 60_000`: both in `packages/coding-agent/src/task/executor.ts`.
 - Name/label caps: the wire `name` has no schema length cap (prompt text suggests `≤32` chars: guidance only); one-line display text (roster line, registry `displayName`) is normalized by `oneLineLabel(...)` and capped at `LABEL_MAX = 80` chars in `packages/coding-agent/src/task/types.ts`.
 - Soft request budget (`subagent.softRequestBudget`) and wall clock (`subagent.maxRuntimeMs`) apply to every spawn.
-- Recursion depth gate: `subagent.maxRecursionDepth`; `packages/coding-agent/src/tools/index.ts` hides the `task` tool at or beyond the limit, and `runSubprocess(...)` also strips child `task` access at max depth.
+- Nested spawn depth gate: `subagent.maxNestedSpawnDepth`, or `subagent.agents.<name>.maxNestedSpawnDepth` for one agent. A session may spawn while its own depth is at or below the limit, so the default `0` still permits direct children and forbids grandchildren; `-1` removes the cap. `packages/coding-agent/src/tools/index.ts` hides the `task` tool once depth is past the limit, and `runSubprocess(...)` also strips child `task` access at max depth.
 - Final inline summary preview uses `fullOutputThreshold = 5000` chars in `packages/coding-agent/src/task/index.ts`; `agent://<id>` points to the full artifact.
 
 ## Errors
