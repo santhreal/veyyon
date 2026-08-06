@@ -105,6 +105,28 @@ describe("ToolChoiceQueue", () => {
 			expect(rejected).toEqual([{ choice: forced, reason: "removed" }]);
 			expect(q.hasInFlight).toBe(false);
 		});
+
+		// A directive whose onRejected requeues is re-queued by the reject() that
+		// removeByLabel performs on the in-flight yield. It must still be caught by the
+		// removal filter: otherwise the exact tool choice the caller just cancelled is
+		// forced onto the next turn anyway.
+		it("removes a directive that requeues itself while being removed", () => {
+			const q = new ToolChoiceQueue();
+			q.pushOnce(forced, { label: "user-force", onRejected: () => "requeue" });
+			q.nextToolChoice();
+			q.removeByLabel("user-force");
+			expect(q.inspect()).toEqual([]);
+			expect(q.nextToolChoice()).toBeUndefined();
+		});
+
+		it("removes a queued directive that was requeued by an earlier abort", () => {
+			const q = new ToolChoiceQueue();
+			q.pushOnce(forced, { label: "user-force", onRejected: () => "requeue" });
+			q.nextToolChoice();
+			q.reject("aborted");
+			q.removeByLabel("user-force");
+			expect(q.inspect()).toEqual([]);
+		});
 	});
 
 	describe("clear", () => {
@@ -136,6 +158,19 @@ describe("ToolChoiceQueue", () => {
 			q.resolve();
 			expect(q.consumeLastServedLabel()).toBe("user-force");
 			expect(q.consumeLastServedLabel()).toBeUndefined();
+		});
+
+		// #checkTodoCompletion suppresses the incomplete-todo nag with
+		// `consumeLastServedLabel() === "user-force"`. A requeued yield is still the
+		// user's force, so it must report the same label after an aborted turn.
+		it("reports the original label after the yield was requeued", () => {
+			const q = new ToolChoiceQueue();
+			q.pushSequence([forced, "none"], { label: "user-force", onRejected: () => "requeue" });
+			q.nextToolChoice();
+			q.reject("aborted");
+			q.nextToolChoice();
+			q.resolve();
+			expect(q.consumeLastServedLabel()).toBe("user-force");
 		});
 	});
 
