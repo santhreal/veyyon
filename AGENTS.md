@@ -78,6 +78,19 @@ Beyond the three artifacts, **assert every setting the feature adds actually wor
 
 If a feature cannot meet this bar, it is experimental and must say so in its settings group, stay off by default, hide its dependent knobs while off, and carry a backlog row for the missing proof. Do not ship it as done.
 
+## Agents are a cost ladder, not a taxonomy
+
+There is no such thing as a specialist agent. `scout`, `reviewer`, `librarian`, `designer`, `sonic` and `task` are not job titles and the model does not route by domain. The only axis that separates them is how much reasoning, context and tool surface a piece of work needs, and therefore what it costs. Describing them as specialists, investigators, or executors is wrong, it is how the roster got built, and it is why the roster does not work.
+
+**Enabling or disabling an agent MUST change what the model does, not just what it reads.** Today it does not. The roster in `packages/coding-agent/src/prompts/tools/task.md` renders one line per enabled agent and tells the model to "spawn the one whose description covers the task". `task` is always in that roster and its description is "General-purpose subagent with full capabilities for delegated multi-step tasks", which covers everything, so the rule resolves to `task` every time and the other rows are decoration. Turn `scout` off and the audit still happens: it silently reroutes to `task` at full model cost with a larger prompt. The operator paid for a cheaper path, lost it, and got no signal. That is the defect to fix, and every change to the roster is measured against it.
+
+Two consequences that are binding on any change here:
+
+- **A row that changes no behavior is not a feature.** Before you add, rename, or re-describe an agent, state which spawns move to it and which move off it. If disabling it changes nothing except the token count of the prompt, it is a decoration and does not ship.
+- **Two agents that share a prompt body are one agent.** `sonic` and `task` both render `packages/coding-agent/src/prompts/agents/task.md`, byte for byte, and `sonic` pins no model. So `sonic` is not cheaper and not narrower: it is `task` at medium effort with a 100-request budget. Never claim the system prompt distinguishes two agents without diffing the bodies the workers actually receive and the model each one resolves to through `resolveSubagentModel`.
+
+The scope an agent is sized for is about certainty, not about size. A change that spans many files and several repositories is still light work when the edits are known and named. A single-file change is heavy work when what to do has to be discovered first. Route on that, never on file count.
+
 ## Code Quality
 
 - No `any` unless absolutely necessary.
