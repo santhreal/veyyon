@@ -52,12 +52,12 @@ jobs:
       - name: Tracer self-tests
         # Fail loudly on a broken tracer rather than sweeping 3,200 files and calling them
         # all clean.
-        run: bun test scripts/find-test-leaks.test.ts
+        run: bun test scripts/test-sandbox/find-test-leaks.test.ts
       - name: Sweep every test tree
         # The script takes directories and walks them, skipping node_modules and fixtures.
         # It exits non-zero when any file leaks or fails to run, and prints the offending
         # key with its before -> after values plus the test index that first changed it.
-        run: bun scripts/find-test-leaks.ts packages scripts
+        run: bun scripts/test-sandbox/find-test-leaks.ts packages scripts
 
   memory:
     name: What one more test file costs
