@@ -33,10 +33,10 @@ import {
 	registerLeakProbe,
 	snapshotGlobals,
 	UNTRACKED_ENV_NAMES,
-} from "../packages/utils/test/helpers/global-state-leak-tracer";
+} from "../../packages/utils/test/helpers/global-state-leak-tracer";
 import { testFilesUnder, traceFile } from "./find-test-leaks";
 
-const REPO_ROOT = path.resolve(import.meta.dir, "..");
+const REPO_ROOT = path.resolve(import.meta.dir, "..", "..");
 const LEAKY_FIXTURE = "packages/utils/test/fixtures/leaky-suite.fixture.ts";
 
 describe("snapshotGlobals", () => {
@@ -439,7 +439,7 @@ describe("driving the real runner", () => {
 describe("the gate's exit code", () => {
 	function runGate(target: string): { exitCode: number; out: string } {
 		const gate = Bun.spawnSync({
-			cmd: ["bun", path.join(REPO_ROOT, "scripts/find-test-leaks.ts"), target],
+			cmd: ["bun", path.join(REPO_ROOT, "scripts/test-sandbox/find-test-leaks.ts"), target],
 			cwd: REPO_ROOT,
 			stdout: "pipe",
 			stderr: "pipe",

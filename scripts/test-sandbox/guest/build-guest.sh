@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
-# Build the microVM guest: a kernel and an initramfs, into scripts/test-vm/.build/.
+# Build the guest the sandbox rungs share, into scripts/test-sandbox/guest/.build/.
 #
-#   bash scripts/test-sandbox.sh --build      # the supported way to run this
+#   bash scripts/test-sandbox/run.sh --build   # the supported way to run this
+#
+# Two products, one script. The docker and remote rungs need only the userland
+# image; the microvm rung additionally needs a kernel and an initramfs. Set
+# VEYYON_SANDBOX_USERLAND_ONLY=1 to build the image and stop there, which is what
+# the remote rung does over ssh: a microVM kernel on the far side of an ssh
+# connection is 390MB of artifact nothing there will ever boot.
 #
 # WHAT IT PRODUCES
 # ----------------
@@ -45,9 +51,9 @@
 # -circuits the whole thing. The microVM itself has no NIC and never needs network.
 set -euo pipefail
 
-VM_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
-REPO_ROOT="$(cd -- "${VM_DIR}/../.." && /bin/pwd -P)"
-BUILD_DIR="${VM_DIR}/.build"
+GUEST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
+REPO_ROOT="$(cd -- "${GUEST_DIR}/../../.." && /bin/pwd -P)"
+BUILD_DIR="${GUEST_DIR}/.build"
 
 BUN_VERSION="$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"bun@\([^"]*\)".*/\1/p' "${REPO_ROOT}/package.json" | head -n1)"
 : "${BUN_VERSION:=1.3.14}"
@@ -62,12 +68,14 @@ HOST_HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
 : "${HOST_HOME:=${HOME}}"
 docker version --format '{{.Server.Version}}' >/dev/null 2>&1 || die "the docker daemon is not reachable by uid $(id -u)"
 
-STAMP="bun=${BUN_VERSION} dockerfile=$(sha256sum "${VM_DIR}/Dockerfile" | cut -d' ' -f1) init=$(sha256sum "${VM_DIR}/guest-init.sh" | cut -d' ' -f1)"
+STAMP="bun=${BUN_VERSION} dockerfile=$(sha256sum "${GUEST_DIR}/Dockerfile" | cut -d' ' -f1) init=$(sha256sum "${GUEST_DIR}/guest-init.sh" | cut -d' ' -f1)"
 # Up to date means: the stamp matches, the userland image the docker rung runs still
-# exists, and IF this host can boot the microVM, its artifacts exist and have passed
-# a boot check. A host with no KVM never had those artifacts and must not be told it
-# is stale forever because of it.
+# exists, and IF this host can boot the microVM AND was asked for it, its artifacts
+# exist and have passed a boot check. A host with no KVM never had those artifacts
+# and must not be told it is stale forever because of it, and neither must a
+# userland-only build on a host that happens to have KVM, which is the remote case.
 microvm_artifacts_ok() {
+	[ "${VEYYON_SANDBOX_USERLAND_ONLY:-0}" = "1" ] && return 0
 	{ [ -r /dev/kvm ] && [ -w /dev/kvm ] && command -v qemu-system-x86_64 >/dev/null 2>&1; } || return 0
 	[ -f "${BUILD_DIR}/vmlinuz" ] && [ -f "${BUILD_DIR}/rootfs.img" ] && [ -f "${BUILD_DIR}/boot-verified" ]
 }
@@ -91,7 +99,10 @@ mkdir -p "${BUILD_DIR}"
 # itself unavailable, out loud, through the same probe as everywhere else. This is
 # a narrower build, announced, not a weaker boundary applied silently.
 CAN_BOOT_MICROVM=1
-if ! { [ -r /dev/kvm ] && [ -w /dev/kvm ]; }; then
+if [ "${VEYYON_SANDBOX_USERLAND_ONLY:-0}" = "1" ]; then
+	CAN_BOOT_MICROVM=0
+	log "VEYYON_SANDBOX_USERLAND_ONLY=1: building the guest userland only, for the docker and remote rungs"
+elif ! { [ -r /dev/kvm ] && [ -w /dev/kvm ]; }; then
 	CAN_BOOT_MICROVM=0
 	log "no usable /dev/kvm on this host: building the guest userland for the docker rung only, and skipping the kernel, the initramfs and the boot check"
 elif ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
@@ -101,7 +112,7 @@ fi
 
 if [ "$CAN_BOOT_MICROVM" = 0 ]; then
 	log "building guest userland (${GUEST_IMAGE})"
-	docker build --build-arg "BUN_VERSION=${BUN_VERSION}" -t "${GUEST_IMAGE}" "${VM_DIR}" >&2
+	docker build --build-arg "BUN_VERSION=${BUN_VERSION}" -t "${GUEST_IMAGE}" "${GUEST_DIR}" >&2
 	rm -f "${BUILD_DIR}/boot-verified" "${BUILD_DIR}/vmlinuz" "${BUILD_DIR}/rootfs.img"
 	printf '%s' "$STAMP" > "${BUILD_DIR}/stamp"
 	log "done. The docker rung is ready; the microvm rung will report itself unavailable."
@@ -116,7 +127,7 @@ log "building kernel image (${KERNEL_IMAGE})"
 printf '%s\n' \
 	'FROM alpine:3.21' \
 	'RUN apk add --no-cache linux-virt' \
-	| docker build -t "${KERNEL_IMAGE}" -f - "${VM_DIR}" >&2
+	| docker build -t "${KERNEL_IMAGE}" -f - "${GUEST_DIR}" >&2
 
 log "extracting kernel and modules"
 kc="$(docker create "${KERNEL_IMAGE}" /bin/true)"
@@ -130,7 +141,7 @@ trap - EXIT
 
 # --- 2. guest userland ------------------------------------------------------
 log "building guest userland (${GUEST_IMAGE})"
-docker build --build-arg "BUN_VERSION=${BUN_VERSION}" -t "${GUEST_IMAGE}" "${VM_DIR}" >&2
+docker build --build-arg "BUN_VERSION=${BUN_VERSION}" -t "${GUEST_IMAGE}" "${GUEST_DIR}" >&2
 
 # --- 3. initramfs -----------------------------------------------------------
 # Built by a root process inside the guest image itself, over its own filesystem,
@@ -228,7 +239,7 @@ log "initramfs $(stat -c%s "${BUILD_DIR}/rootfs.img") bytes"
 # available, which is what keeps a broken build from eating every caller's
 # invocation before descending the ladder anyway.
 log "boot check"
-probe="$(VEYYON_SANDBOX_TIMEOUT=120 bash "${VM_DIR}/run-microvm.sh" \
+probe="$(VEYYON_SANDBOX_TIMEOUT=120 bash "${GUEST_DIR}/run-microvm.sh" \
 	sh -c 'test -f package.json && test ! -e "$VEYYON_TEST_HOST_HOME" && echo BOOT_CHECK_OK' 2>&1 || true)"
 if ! printf '%s' "$probe" | grep -q BOOT_CHECK_OK; then
 	printf '%s\n' "$probe" | tail -n 15 >&2
@@ -238,4 +249,4 @@ printf '%s' "$STAMP" > "${BUILD_DIR}/stamp"
 : > "${BUILD_DIR}/boot-verified"
 
 log "boot check passed: the guest mounts the repo and cannot see ${HOST_HOME:-the host home}"
-log "done. Artifacts in ${BUILD_DIR} (gitignored). Remove with: bash scripts/test-sandbox.sh --clean"
+log "done. Artifacts in ${BUILD_DIR} (gitignored). Remove with: bash scripts/test-sandbox/run.sh --clean"

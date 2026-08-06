@@ -359,7 +359,11 @@ export const repoScriptTests = [
 	// The leak tracer's own contract tests. Also run by the `test-leaks` job in
 	// checks.yml and by the nightly leak sweep, but listed here too because those jobs
 	// gate the TRACER, and this list is what proves no script suite runs nowhere.
-	"scripts/find-test-leaks.test.ts",
+	"scripts/test-sandbox/find-test-leaks.test.ts",
+	// The sandbox driver's own refusal contract: a pinned unavailable rung, no rung
+	// at all, and the marker plus host-home proof read from inside whichever guest
+	// is running this bucket.
+	"scripts/test-sandbox/rung-contract.test.ts",
 	"scripts/find-order-polluter.test.ts",
 	// This one was in no runner. It looked covered only because the coverage lock
 	// regexed the raw workflow YAML, so a path named in a COMMENT in ci.yml counted

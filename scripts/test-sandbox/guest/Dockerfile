@@ -43,16 +43,21 @@
 #   procps, xz-utils,      ps, decompression, and `ip link set lo up`, all of which
 #   iproute2               the suites or the guest init expect to exist.
 #
-# NOT INSTALLED, deliberately: gh (the GitHub CLI). It is not in Debian's archive,
-# and the 36 test files that mention it drive a mocked transport rather than the
-# real binary. `bash scripts/test-sandbox.sh --probe` lists what each rung provides
-# and what it is missing, so this stays visible rather than becoming folklore.
+#   gh                     The GitHub CLI. It is NOT in Debian's archive, so it is
+#                          installed from the official release tarball below. It
+#                          earns that trouble: gh is present on the host at
+#                          /usr/bin/gh, and at least one suite spawns it for real
+#                          rather than through a mock (observed as
+#                          "EACCES posix_spawn 'gh'" in `bun run test:scripts`).
+#                          Leaving it out would reproduce exactly the trap the
+#                          missing git created: green on the host, red in the
+#                          sandbox, and the reader blames their own change.
 #
 # WHERE IT LANDS
 # --------------
 # The image is tagged veyyon-test-guest:<bun version>. Build artifacts derived from
-# it go to scripts/test-vm/.build/, which is gitignored. Nothing is written under
-# the operator's home. `bash scripts/test-sandbox.sh --clean` removes the artifacts;
+# it go to scripts/test-sandbox/guest/.build/, which is gitignored. Nothing is written
+# under the operator's home. `bash scripts/test-sandbox/run.sh --clean` removes the
 # `docker image rm veyyon-test-guest:<version>` removes the image.
 
 ARG BUN_VERSION=1.3.14
@@ -62,7 +67,7 @@ RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         git ca-certificates util-linux kmod procps xz-utils cpio iproute2 \
-        ripgrep openssh-client python3; \
+        ripgrep openssh-client python3 curl; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
     git --version; \
@@ -70,6 +75,18 @@ RUN set -eux; \
     rg --version; \
     python3 --version; \
     test -x /usr/bin/setpriv
+
+# gh is pinned to the version the host carries (gh 2.45.0), so a suite that shells
+# out to it sees the same CLI surface inside and out. curl needs to exist for this;
+# it comes with the bun base image.
+ARG GH_VERSION=2.45.0
+RUN set -eux; \
+    curl -fsSL -o /tmp/gh.tgz \
+        "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"; \
+    tar -xzf /tmp/gh.tgz -C /tmp; \
+    install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh; \
+    rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_amd64"; \
+    gh --version
 
 # The kernel opens /dev/console to give PID 1 its stdio, and it does that BEFORE
 # /init can mount devtmpfs. So this node has to exist in the initramfs itself.

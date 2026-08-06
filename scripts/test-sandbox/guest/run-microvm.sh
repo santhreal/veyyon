@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Run one command inside the QEMU microVM. Invoked by scripts/test-sandbox.sh; not
+# Run one command inside the QEMU microVM. Invoked by the microvm rung of
+# scripts/test-sandbox/run.sh; not
 # meant to be called directly, because it assumes the probes there already passed.
 #
 # THE BOUNDARY
@@ -35,13 +36,13 @@
 # reports green when it did not run the suite is worse than no sandbox.
 set -euo pipefail
 
-VM_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
-REPO_ROOT="${VEYYON_SANDBOX_REPO_ROOT:-$(cd -- "${VM_DIR}/../.." && /bin/pwd -P)}"
+GUEST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
+REPO_ROOT="${VEYYON_SANDBOX_REPO_ROOT:-$(cd -- "${GUEST_DIR}/../../.." && /bin/pwd -P)}"
 # Where the repo appears inside the guest. Normally the host path verbatim; the
 # caller overrides it when the checkout lives under the home being hidden, because
 # recreating that path in the guest would put the home back in reach.
 GUEST_REPO="${VEYYON_SANDBOX_GUEST_REPO:-${REPO_ROOT}}"
-BUILD_DIR="${VM_DIR}/.build"
+BUILD_DIR="${GUEST_DIR}/.build"
 VIRTIOFSD="${VIRTIOFSD:-/usr/libexec/virtiofsd}"
 
 SENTINEL_PREFIX='__VEYYON_SANDBOX_EXIT__'
@@ -52,7 +53,7 @@ GUEST_CPUS="${VEYYON_SANDBOX_CPUS:-$(nproc)}"
 log() { printf '[microvm] %s\n' "$*" >&2; }
 
 # 126 means "the sandbox could not be established and NO guest command ran".
-# scripts/test-sandbox.sh treats that, and only that, as licence to announce this
+# scripts/test-sandbox/run.sh treats that, and only that, as licence to announce this
 # rung as broken and descend the ladder. Every other status is the suite's own and
 # is passed straight through, so a failing suite can never be retried somewhere
 # weaker and turned green.

@@ -41,7 +41,7 @@ halt_vm() {
 # A failure anywhere in setup must not leave a VM that hangs forever holding the
 # developer's terminal, and must not be mistaken for a passing suite. 126 is the
 # agreed "the sandbox could not be established and NO guest command ran" status;
-# scripts/test-sandbox.sh reads it as licence to announce this rung as broken and
+# scripts/test-sandbox/run.sh reads it as licence to announce this rung as broken and
 # try the next one down the ladder. Any other status is the suite's own.
 fail() {
 	printf '\n[guest-init] FATAL: %s\n' "$*" >&2
@@ -127,7 +127,10 @@ export XDG_CACHE_HOME="$HOME/.cache"
 export XDG_DATA_HOME="$HOME/.local/share"
 export XDG_STATE_HOME="$HOME/.local/state"
 export BUN_INSTALL_CACHE_DIR="$HOME/.bun/install/cache"
-export PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+# The image PATH, verbatim. Hardcoding a conventional list here silently dropped
+# /usr/local/bun-node-fallback-bin, which is where the bun image keeps its `node`
+# shim, so the microVM was missing a binary the docker rung had.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bun-node-fallback-bin
 export VEYYON_TEST_SANDBOX=qemu-microvm
 export VEYYON_TEST_HOST_HOME="$HOST_HOME"
 export CI="${CI:-}"

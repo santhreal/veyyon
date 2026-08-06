@@ -35,7 +35,15 @@ const SCRIPTS_DIR = path.join(REPO_ROOT, "scripts");
 const SCRIPT_EXTENSIONS = new Set([".ts", ".sh", ".py", ".jl", ".ps1", ".mjs"]);
 
 /** Subdirectories of `scripts/` that hold scripts rather than fixtures or output. */
-const SCANNED_SUBDIRS = ["", "demos", "install-tests", "session-stats"] as const;
+const SCANNED_SUBDIRS = [
+	"",
+	"demos",
+	"install-tests",
+	"session-stats",
+	"test-sandbox",
+	"test-sandbox/rungs",
+	"test-sandbox/guest",
+] as const;
 
 /** Every script path relative to the repo root. */
 async function scriptFiles(): Promise<string[]> {
