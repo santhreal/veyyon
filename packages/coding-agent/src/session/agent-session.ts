@@ -434,7 +434,7 @@ import {
 	computeStoredMessagesTokens,
 	estimateContextSnapshotAttribution,
 } from "./context-usage";
-import { initSessionCpuLimit } from "./cpu-limit";
+import { initSessionCpuLimit, rekeySessionCpuLimit } from "./cpu-limit";
 import { abortDetached } from "./detached-abort";
 import {
 	collectPendingToolCalls,
@@ -2956,7 +2956,7 @@ export class AgentSession {
 		// activates enforcement, and warned about here when a configured limit
 		// cannot be enforced on this host. Cleanup rides the "session"-scoped
 		// owned-resource disposers in dispose().
-		const cpuLimitSessionId = this.sessionManager.getSessionId();
+		let cpuLimitSessionId = this.sessionManager.getSessionId();
 		if (cpuLimitSessionId) {
 			void initSessionCpuLimit({
 				sessionId: cpuLimitSessionId,
@@ -2965,6 +2965,22 @@ export class AgentSession {
 				onNotice: text => this.#operatorNotices.warn("cpu", text),
 			}).catch(error => logger.warn("CPU limit init failed", { error: errorMessage(error) }));
 		}
+		// `/new`, `/resume`, a fork and a branch mint a fresh id on this same live
+		// process. Spawn sites resolve the limiter by the current id, so without
+		// this the budget stays registered under the conversation the operator
+		// just left and the one they are in now spawns unlimited.
+		this.sessionManager.onSessionIdChanged(nextSessionId => {
+			if (!nextSessionId) return;
+			const previous = cpuLimitSessionId;
+			cpuLimitSessionId = nextSessionId;
+			if (previous && rekeySessionCpuLimit(previous, nextSessionId)) return;
+			void initSessionCpuLimit({
+				sessionId: nextSessionId,
+				cores: this.settings.get("session.cpuLimitCores"),
+				kill: this.settings.get("session.cpuLimitKill"),
+				onNotice: text => this.#operatorNotices.warn("cpu", text),
+			}).catch(error => logger.warn("CPU limit re-init failed", { error: errorMessage(error) }));
+		});
 		this.#customCommands = config.customCommands ?? [];
 		this.#skillsSettings = config.skillsSettings;
 		this.#modelRegistry = config.modelRegistry;

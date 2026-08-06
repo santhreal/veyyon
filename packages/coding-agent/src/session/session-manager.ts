@@ -432,6 +432,14 @@ export class SessionManager {
 	#operatorNotices: OperatorNotices | undefined;
 
 	#sessionId = "";
+	/**
+	 * Notified whenever the session id changes, which is every `/new`, `/resume`,
+	 * fork, and branch. Per-session machinery registered against an id at
+	 * construction (the CPU budget group) is orphaned by that change otherwise:
+	 * it keeps enforcing under a name nothing resolves any more, and the
+	 * conversation the operator is now in has no limiter at all.
+	 */
+	readonly #sessionIdListeners = new Set<(sessionId: string) => void>();
 	#sessionName: string | undefined;
 	#titleSource: SessionTitleSource | undefined;
 	#sessionFile: string | undefined;
@@ -850,7 +858,7 @@ export class SessionManager {
 	#resetToNewSession(options?: NewSessionOptions, forcedSessionFile?: string): string | undefined {
 		this.#diskTail = Promise.resolve();
 		this.#clearDiskError();
-		this.#sessionId = mintSessionId();
+		this.#setSessionId(mintSessionId());
 		this.#sessionName = undefined;
 		this.#titleSource = undefined;
 		this.#titleUpdatedAt = "";
@@ -902,7 +910,7 @@ export class SessionManager {
 	#applyEntries(header: SessionHeader, entries: SessionEntry[]): void {
 		this.#header = header;
 		this.#entries = entries;
-		this.#sessionId = header.id;
+		this.#setSessionId(header.id);
 		this.#sessionName = header.title;
 		this.#titleSource = header.titleSource;
 		this.#titleUpdatedAt = header.timestamp;
@@ -1228,7 +1236,7 @@ export class SessionManager {
 		this.#index.rebuild(this.#entries);
 
 		const timestamp = nowIso();
-		this.#sessionId = mintSessionId();
+		this.#setSessionId(mintSessionId());
 		this.#sessionFile = path.join(
 			this.#sessionDir,
 			sessionFileName(`${fileSafeTimestamp(timestamp)}_${this.#sessionId}`),
@@ -1657,6 +1665,24 @@ export class SessionManager {
 
 	getSessionId(): string {
 		return this.#sessionId;
+	}
+
+	/**
+	 * The one place `#sessionId` is written. Every mint site goes through it so
+	 * a listener cannot be bypassed by a new one.
+	 */
+	#setSessionId(next: string): void {
+		if (this.#sessionId === next) return;
+		this.#sessionId = next;
+		for (const listener of this.#sessionIdListeners) listener(next);
+	}
+
+	/** Observe session-id changes. Returns the unsubscribe. */
+	onSessionIdChanged(listener: (sessionId: string) => void): () => void {
+		this.#sessionIdListeners.add(listener);
+		return () => {
+			this.#sessionIdListeners.delete(listener);
+		};
 	}
 
 	getSessionFile(): string | undefined {
@@ -2252,7 +2278,7 @@ export class SessionManager {
 
 		this.#header = header;
 		this.#entries = [...entriesToKeep, ...labels];
-		this.#sessionId = newSessionId;
+		this.#setSessionId(newSessionId);
 		this.#sessionName = header.title;
 		this.#titleSource = header.titleSource;
 		this.#titleUpdatedAt = timestamp;
