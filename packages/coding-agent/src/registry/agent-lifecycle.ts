@@ -401,6 +401,36 @@ export class AgentLifecycleManager {
 	}
 
 	/**
+	 * Kill an agent: abort the turn it is in the middle of, then release it.
+	 *
+	 * The order matters. Releasing a running session disposes it with a provider
+	 * request still in flight and nothing left to receive the answer, so the
+	 * abort has to land first. A parked or idle agent has no turn to abort and
+	 * goes straight to release.
+	 *
+	 * Shared rather than reimplemented per caller: the dashboard's `x` key and
+	 * the `job` tool's `cancel` are the same operation reached two ways, and the
+	 * abort-then-release ordering is exactly the kind of detail a second copy
+	 * gets wrong. The transcript survives at `history://<id>`; what is destroyed
+	 * is the live agent, not the record of what it did.
+	 *
+	 * A throwing abort propagates and the release does NOT run. That looks like
+	 * the wrong call for a method whose purpose is to guarantee a kill, and it is
+	 * deliberate: a session that cannot abort is a session whose provider request
+	 * cannot be stopped, and disposing it anyway is the exact "response lands on
+	 * nothing" the ordering exists to prevent. The caller surfaces the failure to
+	 * whoever asked, which is the only thing that turns it into something a human
+	 * can act on.
+	 */
+	async terminate(id: string, reason: string): Promise<void> {
+		const ref = this.#registry.get(id);
+		if (ref?.status === "running" && ref.session) {
+			await ref.session.abort({ reason });
+		}
+		await this.release(id);
+	}
+
+	/**
 	 * Close a parked agent for good: drop the ref so it stops appearing in rosters
 	 * and can no longer be revived by messaging it.
 	 *
