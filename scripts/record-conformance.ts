@@ -33,7 +33,7 @@ import {
 	weibullDecayFactor12,
 	wordSetSorted,
 } from "../packages/mnemopi/src/core/conformance-boundary";
-import { encodeConformanceValue } from "../packages/utils/src/conformance";
+import { CONFORMANCE_SCHEMA_VERSION, encodeConformanceValue } from "../packages/utils/src/conformance";
 
 interface RecordedCase {
 	name: string;
@@ -752,7 +752,7 @@ export function renderModuleVectors(moduleName: string): Map<string, string> {
 			}
 		});
 		const file = {
-			schemaVersion: 1,
+			schemaVersion: CONFORMANCE_SCHEMA_VERSION,
 			module: corpus.module,
 			function: corpus.fn,
 			vectors,
