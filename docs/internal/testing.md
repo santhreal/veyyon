@@ -14,6 +14,7 @@ From the repo root (or `--cwd=packages/coding-agent` for package-local runs):
 | `bun run test` | The local TS test runner (`scripts/ci-test-ts.ts local`). |
 | `bun run test:ts` | Full local TypeScript suite (`local-ts`). |
 | `bun run ci:test:ts:workspace` | The exact workspace bucket CI runs. |
+| `bun run test:scripts` | The repo-level script gates (`scripts/ci-test-ts.ts scripts`), the bucket CI runs as its own job. |
 | `bun run ci:build:native` | Build the `veyyon_natives` addon, required before tests that touch native paths. |
 
 Native/integration tests need the addon built first (`ci:build:native`); the CI test
@@ -21,20 +22,32 @@ jobs download a prebuilt addon artifact instead.
 
 ### Where your tests actually run
 
-Not on your machine, by default. `bun run test` goes through
+Not on your machine, and not on the bare host at all. `bun run test` goes through
 `scripts/test-sandbox/run.sh`, which picks a kernel boundary and runs the suite inside
 it. On a workstation the first boundary it tries is a container on another machine, so a
 full run costs you an rsync and an ssh session instead of your CPU. On a GitHub runner
 that boundary is out of the order and the suite runs in a local container.
 
-You do not have to do anything for this. It matters when a run fails for a reason that
-is not your code:
+This is not advice you can decline. A bare `bun test` REFUSES. The preload chain reaches
+`packages/utils/test/helpers/sandbox-gate.ts`, which proves the operator's home is
+unreachable through this process's filesystem view before any test module loads, and
+exits 1 with `REFUSED: this test process cannot prove the operator's home is out of
+reach` when it cannot. There is no flag and no environment variable that skips it: the
+checks read the filesystem, and no variable can make a directory unreadable. So a run of
+one file goes through the sandbox the same way a full run does:
 
 ```sh
 bash scripts/test-sandbox/run.sh --probe          # which boundaries are available, and why not
-bash scripts/test-sandbox/run.sh --rung=docker bun test <paths>   # pin a local container
+VEYYON_SANDBOX_REPO_ROOT=$(pwd -P) bash scripts/test-sandbox/run.sh --rung=docker bun test ./packages/utils/test/profiles.test.ts
 bun run test:sandbox:remote:build                 # rebuild the guest image on the remote
 ```
+
+Two details in that middle line are load-bearing. `VEYYON_SANDBOX_REPO_ROOT` names the
+checkout explicitly, because a shell whose working directory sits outside its own root
+makes `getcwd()` return `.` and nothing in-process recovers the real path from there. And
+bun needs the `./` prefix on a path: without it the argument is a name FILTER matched
+against the files discovery already found, not a path, so a target discovery did not
+collect matches nothing and the run reports clean.
 
 A pinned boundary that is unavailable is an error, never a quiet fall back to a weaker
 one. If no boundary is available at all, the suite does not run. Read
@@ -44,13 +57,15 @@ one. If no boundary is available at all, the suite does not run. Read
 
 | Mode | Contents |
 | --- | --- |
-| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent, argot, stats, tool-render, swarm-extension, deepswe-bench) + script gates |
+| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent, argot, stats, tool-render, swarm-extension, deepswe-bench, mnemopi). Packages only: the script gates are their own bucket. |
 | `native` | natives, tui, typescript-edit-benchmark, metaharness, collab-web |
 | `coding-agent-singleton` | Settings / global-state suites (one process; do not chunk) |
 | `coding-agent-ui` | TUI/interactive suites (chunk size 5; ghostty GC ceiling) |
 | `coding-agent-runtime` | Session, RPC, SDK, MCP, extensions |
 | `coding-agent-native` | Tools, bash, browser, sqlite, spawn |
 | `coding-agent-heavy` | All coding-agent buckets |
+| `scripts` | The repo-level script suites (`repoScriptTests`); what `bun run test:scripts` and the `Repo script gates` CI job drive |
+| `all` | `workspace` + `native` + `coding-agent-heavy` + `scripts` |
 | `local` / `local-ts` | Full local TS (+ Rust for `local`) |
 
 New tests join these buckets by path and content markers in `ci-test-ts.ts`. Do not invent a second runner.
@@ -158,6 +173,11 @@ bun scripts/test-sandbox/find-test-leaks.ts packages/utils/test          # a who
 bun scripts/test-sandbox/find-test-leaks.ts packages/utils/test/profiles.test.ts
 ```
 
+Both this script and `find-order-polluter.ts` below spawn `bun test` children, which the
+isolation gate refuses on the host, so run them the same way you run the suite:
+`VEYYON_SANDBOX_REPO_ROOT=$(pwd -P) bash scripts/test-sandbox/run.sh --rung=docker bun <script> <args>`.
+That applies to the junit-order capture further down as well.
+
 Each file runs in its own process with the leak tracer preloaded, and the script
 prints what the file left changed:
 
@@ -242,10 +262,10 @@ fixture inside the glob runs in ordinary directory runs and poisons every file a
 That is what made this repository's full-suite pollution look nondeterministic for weeks:
 the victims were whichever suites happened to run after the fixture.
 
-Drive a fixture by passing its path to `bun test`:
+Drive a fixture by passing its path to `bun test` inside the sandbox:
 
 ```sh
-bun test ./packages/utils/test/fixtures/leaky-suite.fixture.ts
+VEYYON_SANDBOX_REPO_ROOT=$(pwd -P) bash scripts/test-sandbox/run.sh --rung=docker bun test ./packages/utils/test/fixtures/leaky-suite.fixture.ts
 ```
 
 An explicit path runs the file whatever its name is. A path WITHOUT the leading `./` (or
@@ -349,21 +369,25 @@ for (const [label, resolved] of [
 }
 ```
 
-Do not trust a bare `bun test path/to/suite.test.ts` to expose a missing redirect
-any more. It used to: the runner sandboxed `HOME` and a bare run did not, so the
-real home was what a suite fell back onto. Since `sandbox-home.ts` joined the
-tripwire preload, a bare run mints its own per-process home under `os.tmpdir()`
-too, and a suite with no isolation at all now looks isolated in both. Assert the
-resolved roots the way the block above does, and let the static gate
-(`scripts/tests-never-touch-real-home.test.ts`) read the suite: those are what
-still answer the question.
+No run of any shape exposes a missing redirect for you, so do not wait for one to. A
+bare `bun test` does not even start (the isolation gate refuses it), and inside the
+sandbox `sandbox-home.ts` mints a per-process home under `os.tmpdir()` before any test
+module loads, so a suite with no isolation of its own still resolves into a temp tree and
+looks isolated. Assert the resolved roots the way the block above does, and let the
+static gate (`scripts/tests-never-touch-real-home.test.ts`) read the suite: those are
+what answer the question.
 
-## Real user data is off limits (three layers)
+## Real user data is off limits (four layers)
 
 Your tests must never write to the real `~/.veyyon`. That directory holds working
 OAuth credentials, settings, and session transcripts, and damaging it costs a real
-person real logins. Three layers enforce this, and none of them require you to
-remember anything.
+person real logins. Four layers enforce this, and none of them require you to
+remember anything. The outermost is the kernel boundary above: a test process that
+cannot prove the operator's home is unreachable exits before it loads a test module
+(`packages/utils/test/helpers/sandbox-gate.ts`, contract tests in
+`packages/utils/test/sandbox-gate-contracts.test.ts`). The three below it are what runs
+once that boundary is established, and they are why a suite inside it still cannot reach
+real data through a path the sandbox did not anticipate.
 
 ### Why the obvious approach does not work
 
@@ -546,8 +570,8 @@ temporary directory, and passes the real config root down in
 `VEYYON_TEST_REAL_CONFIG_ROOT`. That covers a full run.
 
 `packages/utils/test/helpers/sandbox-home.ts`, imported by the tripwire preload, does the
-same thing in-process for every other way a suite is started, above all the bare
-`bun test path/to/file` that is how most suites are actually run while working. It patches
+same thing in-process for every test process the runner did not spawn, above all a
+`bun test <paths>` run inside the sandbox, which is how a subset is driven. It patches
 `os.homedir()` and `os.userInfo().homedir` on the object `require("node:os")` returns and
 sets `HOME` to a fresh per-process directory, before any test module is imported. Under
 the runner it adopts the runner's sandbox rather than minting a second one, so the shared
@@ -592,8 +616,9 @@ explicit `--preload` on every command the runner spawns. Only the pointer repeat
 the tripwire itself has one home.
 
 If you add a package that has tests, add its `bunfig.toml` pointer at the same
-time. A package without one runs its whole suite unguarded as soon as anyone runs
-`bun test` from inside it, which is how most suites are run while working.
+time. A package without one runs its whole suite both ungated and unguarded as soon as
+anyone runs `bun test` from inside it: the pointer is what delivers the isolation gate
+and the tripwire to a run started in that directory.
 `packages/utils/test/tripwire-preload-coverage.test.ts` fails when a package with
 test files has no pointer, when a pointer names a file that does not exist, and
 when a second copy of the tripwire appears anywhere under `packages/`.
@@ -606,7 +631,7 @@ projects with their own suites, which a sweep will otherwise collect and fail on
 dependencies this repository does not install.
 
 It covers what prevention cannot: a hardcoded absolute path, a suite that restores
-the real `HOME` in `afterEach`, and a bare `bun test path/to/file`. It wraps
+the real `HOME` in `afterEach`, and a `bun test <paths>` the runner did not spawn. It wraps
 mutating `node:fs` calls and also `bun:sqlite`, because the original damage went
 through SQLite's native file handling and never touched a single `fs` function.
 Reads are allowed, since reading real data is at worst untidy.
@@ -719,7 +744,8 @@ show up in a default run, but it is not what the `--parallel=1` kill is made of.
 the open row.
 
 **The gate.** `scripts/check-test-memory.ts` takes both measurements over a fixed sample of 60 files
-and fails when either ceiling is exceeded. Run it yourself with `bun run scripts/check-test-memory.ts`,
+and fails when either ceiling is exceeded. It spawns `bun test`, so run it inside the sandbox
+(`bash scripts/test-sandbox/run.sh --rung=docker bun scripts/check-test-memory.ts`),
 or with `--report` to print both numbers and assert nothing. It runs nightly in `.github/workflows/leak-sweep.yml` rather than per commit, because it runs the
 sample twice and each run takes minutes. `scripts/check-test-memory.test.ts` pins the arithmetic:
 the slope is least squares over one process's series, not `(last - first) / n`, so a single file that
@@ -1118,29 +1144,43 @@ looks fine there has shipped black slabs onto a grey terminal.
 
 The evidence is a RENDERED IMAGE of the real component, on both a grey
 (`#1e2127`-class) and a black ground, looked at by a human or by whoever is doing
-the work. The components render off-screen without a terminal, so producing one
-takes two steps and no display:
+the work. There is one tool for this, `scripts/demos/render-proof.ts`: it reads a
+render's ANSI on stdin and writes `<out>-grey.png` and `<out>-black.png`. The
+components render off-screen without a terminal, so producing the pair takes two
+steps and no display:
 
-1. Build the component the way its suite does (`stubStdoutGeometry`, `initTheme`,
-   a registry seeded with the state you want) and write `component.render(120).join("\n")`
-   to a file. Keep the ANSI: the styling is half of what you are checking.
-2. Rasterize that file with any ANSI-to-image tool, once per ground, and look at
-   both.
+1. Write a small renderer under `scripts/demos/` that builds the REAL component the
+   way its suite does (`stubStdoutGeometry`, `initTheme`, a registry seeded with the
+   state you want) and prints `component.render(120).join("\n")` to stdout. See
+   `render-transcript-rail.ts` and `render-status-footline.ts`. Keep the ANSI: the
+   styling is half of what you are checking.
+2. Pipe it through the proof tool, and look at both images:
 
-Two things to get right in step 2, because both produce convincing lies:
+```sh
+env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-<surface>.ts --width 100 |
+  bun scripts/demos/render-proof.ts --out /tmp/proof/<surface>-after --width 100 --scale 3
+```
 
-- **Reset the SGR state at every line boundary.** The compositor writes each
-  terminal line as `SGR_RESET + erase + line` (`tui.ts`), so colour does NOT
-  carry from one row to the next on screen. A rasterizer that carries it paints
-  the whole frame in the first colour any row sets, and you will report a style
-  leak the product does not have.
-- **Use a stock monospace font, not your terminal font.** A patched Nerd Font
-  draws every glyph and hides exactly the bug this is best at finding. DejaVu
-  Sans Mono is the right default: it is the widest-shipped plain monospace face
-  and it is the one the `unicode` symbol preset is held to.
+Take the pair BEFORE your change and again after, and compare all four images: an
+explicit dark fill is invisible on black and reads as a slab on grey, so one ground
+answers half the question.
 
-This is how the `⟳` in the running-agent status was found. It is U+27F3, DejaVu
-Sans Mono does not have it, and every busy row in the Agent Control Center drew a
+Two things to get right, because both produce convincing lies:
+
+- **Force the colour on.** A renderer piped into the tool has no TTY on stdout, and
+  `NO_COLOR` is exported in some shells here, so the theme emits plain text and the
+  proof comes out monochrome. It still looks like a proof, which is the dangerous
+  part: a colourless image cannot show a fill, a contrast, or a highlight bug. That is
+  what the `env -u NO_COLOR FORCE_COLOR=3` prefix above is for. If the image has no
+  colour anywhere, the capture is wrong, not the component.
+- **Read the unmapped-glyph report.** The tool rasterizes from its own glyph table in
+  `scripts/demos/lib/glyphs.ts` rather than your terminal font, exactly so a patched
+  Nerd Font cannot draw every glyph and hide the bug this is best at finding, and it
+  names every character it has no glyph for. Add a character there when it matters to
+  what you are proving, instead of reading the placeholder box as a rendering fault.
+
+This is how the `⟳` in the running-agent status was found. It is U+27F3, no plain
+monospace face carries it, and every busy row in the Agent Control Center drew a
 tofu box on a machine without a Nerd Font. Three hundred passing assertions on
 that component said nothing, because the string was correct the whole time.
 
@@ -1178,4 +1218,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against `16e2f2c587de8565330caf3181f4a9cca2d2af73` on 2026-07-28.*
+*Verified against `7e4c6374` on 2026-08-06.*

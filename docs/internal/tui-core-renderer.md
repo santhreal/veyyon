@@ -444,7 +444,7 @@ bottom.
 - **Resume conditions**: wheel-down to the live tail, `scrollToLiveTail()`
   (the host calls it on submit), a left click anywhere in the pinned footer,
   any resize or full paint, and visible overlays (overlays own the window while
-  shown). A rebuild that erases scrollback (`tui.scrollbackRebuild`, off by
+  shown). A rebuild that erases scrollback (`tui.scrollbackRebuild`, on by
   default) resets the tape with it: the tape mirrors the terminal and must
   never show rows the terminal no longer holds.
 - **Input**: the engine captures SGR mouse reports with 1000h+1006h (button
@@ -537,9 +537,9 @@ Regression coverage lives in two suites, and the split matters:
 `test/scroll-isolation.test.ts` drives a transcript that returns its whole
 history every frame, and `test/scroll-isolation-history.test.ts` drives one that
 drops committed rows the way the real container does. Only the second one can
-see this class of bug. Both state `setScrollbackRebuild(false)` explicitly,
-because the rebuild is on by default and these suites assert the append-below history
-in the same process sets it at module scope. A third suite,
+see this class of bug. Both state `setScrollbackRebuild(false)` explicitly, because
+the rebuild is on by default and these suites assert the append-below history it
+would otherwise erase. A third suite,
 `packages/coding-agent/test/modes/components/transcript-scrollback-pinned-composer.test.ts`,
 mounts the real container and the real shortcut bar together, so the host side of
 the contract is proven too.
@@ -550,4 +550,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `7e4c6374` on 2026-08-06.*

@@ -5,7 +5,7 @@ This document describes how MCP servers are discovered, connected, exposed as to
 ## Lifecycle at a glance
 
 1. **SDK startup** kicks off MCP discovery (unless MCP is disabled): headless/SDK sessions await `discoverAndLoadMCPTools()`; interactive sessions (`hasUI: true`) create the manager up front and defer `discoverAndConnect()` until the session is live.
-2. **Discovery** (`loadAllMCPConfigs`) resolves MCP server configs from capability sources, filters disabled/project/Exa entries and browser MCP servers when the built-in browser tool is enabled, and preserves source metadata.
+2. **Discovery** (`loadAllMCPConfigs`) resolves MCP server configs from capability sources, drops denylisted and disabled entries, filters Exa entries and browser MCP servers when the built-in browser tool is enabled, and preserves source metadata.
 3. **Manager connect phase** (`MCPManager.connectServers`) starts per-server connect + `tools/list` in parallel.
 4. **Fast startup gate** waits up to 250ms, then may return:
    - fully loaded `MCPTool`s,
@@ -40,8 +40,8 @@ If `enableMCP` is false, MCP discovery is skipped entirely.
 
 Filtering behavior:
 
-- There is no project-level filter. No MCP provider emits `_source.level === "project"`, because a repository must not name a server the agent connects to; the `enableProjectConfig` option and its `mcp.enableProjectConfig` settings row governed that filter and were removed with it.
-- `enabled: false` servers are skipped before connect attempts.
+- There is no project-level filter. The `enableProjectConfig` option and its `mcp.enableProjectConfig` settings row are gone, together with the project config files they gated: no provider reads a repository's `.mcp.json`, `mcp.json`, or `.veyyon/mcp.json`, because a repository must not name a server the agent connects to. The native provider reads `<agentDir>/mcp.json` and `<agentDir>/.mcp.json` only, and each foreign provider (claude, codex, cursor, gemini, opencode, windsurf) reads its own home config only. A server whose `_source.level` is `project` is still reachable one way, and only because the operator asked for it: `getEnabledPlugins` enumerates `<projectAnchor>/.veyyon/plugins` for a plugin installed with `--scope project`, and the `veyyon-plugins` provider loads that package's own `.mcp.json` at the root's level.
+- Servers named in the user config's `disabledServers` list are dropped, and `enabled: false` servers are skipped before connect attempts unless the same file's `enabledServers` list force-enables them.
 - Exa servers are filtered out by default and API keys are extracted for native Exa tool integration; browser automation MCP servers are filtered when `filterBrowser` is true.
 
 Result includes both `configs` and `sources` (metadata used later for provider labeling).
@@ -224,4 +224,4 @@ In current wiring, explicit teardown is used in MCP command flows (for reload/re
 - [`src/modes/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/controllers/mcp-command-controller.ts): interactive reload/reconnect flows.
 - [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): subagent MCP proxying via parent manager connections.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `7e4c6374` on 2026-08-06.*

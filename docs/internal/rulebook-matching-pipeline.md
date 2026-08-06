@@ -42,9 +42,11 @@ interface Rule {
   astCondition?: string[];
   scope?: string[];
   interruptMode?: "never" | "prose-only" | "tool-only" | "always";
-  repeatMode?: "once" | "after-gap";
+  repeatMode?: "once" | "after-gap" | "per-compact";
   repeatGap?: number;
   pathScope?: "outside-cwd" | "inside-cwd";
+  section?: string;
+  experimental?: boolean;
   _source: SourceMeta;
 }
 ```
@@ -130,7 +132,7 @@ Loads rules recursively from:
 
 - user: `<configured-dir>/.github/instructions/**/*.instructions.md` for each directory in `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`
 
-A repository's own `.github/instructions/` is not read.
+Only those configured directories are read. The repository the agent is running in contributes no instructions of its own.
 
 Normalization uses `buildRuleFromMarkdown`, strips `.instructions.md` from the rule name, and maps GitHub's comma-separated or array-valued `applyTo` metadata to `globs`. `applyTo` values `*`, `**`, and `**/*` become `alwaysApply: true`; other values become described rulebook rules. A missing `applyTo` emits a warning and loads the rule without glob scoping.
 
@@ -193,9 +195,12 @@ After rule discovery in `createAgentSession` (`sdk.ts`), `bucketRules(...)` appl
 
 1. Drop rules listed in `ttsr.disabledRules`.
 2. Drop rules from the `builtin-defaults` provider when `ttsr.builtinRules === false`.
-3. Register rules with a non-empty `condition` or `astCondition` into `TtsrManager`; if registration succeeds, the rule is TTSR-only.
-4. Put remaining `alwaysApply === true` rules into `alwaysApplyRules`.
-5. Put remaining rules with `description` into `rulebookRules`.
+3. Drop rules carrying `experimental: true` unless the name appears in `ttsr.experimentalRules`. Off wins: a name in both lists is dropped.
+4. Register rules with a non-empty `condition` or `astCondition` into `TtsrManager`; if registration succeeds, the rule is TTSR-only.
+5. Put remaining `alwaysApply === true` rules into `alwaysApplyRules`.
+6. Put remaining rules with `description` into `rulebookRules`.
+
+The first three steps are the operator's levers, and `ruleIsEnabled` (`capability/rule-buckets.ts`) is their one owner, so `ttsr scan` reports the same enablement the session applies. `experimental` and `section` come from the directory a bundled rule ships in, never from frontmatter.
 
 ### Bucket behavior
 
@@ -243,12 +248,13 @@ A rule that uses `pathScope` should stay scoped to navigation tools (`read`, `gr
 
 ### Rule bodies and their render context
 
-A rule body is a template. `AgentSession.#renderRuleBody` is the one place it is resolved, for both TTSR delivery paths, and it provides exactly four variables:
+A rule body is a template. `AgentSession.#renderRuleBody` is the one place it is resolved, for both TTSR delivery paths, and it provides exactly five variables:
 
 - `argot` -- whether the argot feature is enabled, for advice that names an argot tool.
 - `argotUnloaded` -- whether argot is enabled AND the project's dictionary is not loaded yet. This is the gate a nudge to CALL `argot_load` must use: the feature being on does not mean the dictionary is missing, and advising a model to load one it already loaded is advice it cannot act on. The template language has no `unless`, so the inverted condition is passed in pre-inverted.
 - `cwd` -- the session's live working directory.
 - `matchedPath` -- the path that decided a `pathScope` match, absent for every other rule, so a body that uses it must guard the reference.
+- `commitDrift` -- the uncommitted count and file list, present only when `git.enabled` is on and there is something to report. It is left undefined rather than zeroed, because `{{#if commitDrift}}` is the gate a body uses and `{ count: 0 }` would be truthy.
 
 A body that renders to the empty string is never delivered; see `docs/internal/ttsr-injection-lifecycle.md`.
 
@@ -286,4 +292,4 @@ Implications:
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `7e4c6374` on 2026-08-06.*

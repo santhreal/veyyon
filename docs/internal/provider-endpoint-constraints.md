@@ -278,8 +278,8 @@ session/provider path.
 
 Responses and Codex both support freeform custom grammar tools for `apply_patch`.
 Custom grammar tools do not force request-level `parallel_tool_calls`; Codex
-`responsesLite` separately disables request-level parallel tool calls whenever
-tools are present. Responses additionally:
+`responsesLite` separately forces `parallel_tool_calls: false` on every request
+it shapes, tools or not. Responses additionally:
 
 - sanitizes schemas differently
 - quarantines invalid enum/const schema contradictions
@@ -414,4 +414,4 @@ Before adding a branch or compat field, answer these in order:
    tier multipliers, and provider-specific counters such as Copilot
    `premiumRequests`?
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `7e4c6374` on 2026-08-06.*

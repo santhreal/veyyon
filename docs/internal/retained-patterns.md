@@ -20,10 +20,12 @@ These are genuinely good patterns. Refactors must preserve behavior.
    Compaction summarizes in place. Explicit `/handoff` transfers continuity to a
    new session. Engineering detail:
    [`docs/internal/handoff-generation-pipeline.md`](./handoff-generation-pipeline.md).
-2. **Subagent spawn model**: `packages/coding-agent/src/task/executor.ts` (spawn, per-model
-   concurrency semaphore, soft output-budget steering notice, background output capture) plus
-   `packages/coding-agent/src/task/agents.ts` (bundled subagent definitions) and the `task` tool
-   registered in `packages/coding-agent/src/tools/index.ts`.
+2. **Subagent spawn model**: `packages/coding-agent/src/task/executor.ts` (spawn, soft
+   request-budget steering notice, background output capture) plus the session-wide spawn
+   concurrency semaphore in `packages/coding-agent/src/task/index.ts` (`subagent.maxConcurrency`,
+   resized in place before every acquire), `packages/coding-agent/src/task/agents.ts` (bundled
+   subagent definitions) and the `task` tool registered in
+   `packages/coding-agent/src/tools/index.ts`.
 3. **Addressed inter-agent messaging**: the `irc` tool (`packages/coding-agent/src/tools/irc.ts`,
    bus in `packages/coding-agent/src/irc/bus.ts`): `send`/`wait`/`inbox`/`list` ops, delivery receipts,
    reply-to threading. This is the shipped equivalent of the old point-to-point
@@ -33,8 +35,8 @@ These are genuinely good patterns. Refactors must preserve behavior.
    steering-hint prompt text lives in
    `packages/coding-agent/src/prompts/steering/{parent-irc,user-interjection}.md`. A richer IRC-style,
    full multi-agent **dashboard** (channels, not just the message bus) remains **Spec, not shipped**
-   (BACKLOG `U4-10`, beyond the `/cockpit` MVP), the messaging primitive itself is built; the
-   dashboard UI around it is not.
+   (BACKLOG `U4-10`), beyond the single `/agents` Agent Control Center card that `/cockpit` and
+   `/hub` are aliases of. The messaging primitive itself is built; the dashboard UI around it is not.
 4. **Subagent + todo-list interaction model**: the `todo` tool
    (`packages/coding-agent/src/tools/todo.ts`) plus plan-mode guardrails
    (`packages/coding-agent/src/tools/plan-mode-guard.ts`). Agents maintain a checklist across
@@ -58,7 +60,7 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
 3. **Overlapping compaction settings UX.** Condensed to threshold, the fixed
    `summary` strategy, and an ordered model chain. See
    `packages/coding-agent/src/config/compaction-strategy.ts` and the `compaction.*`
-   group in `packages/coding-agent/src/config/settings-schema.ts`.
+   group in `packages/coding-agent/src/config/settings-domains/context.ts`.
 4. **Hosted Cloud/Ultra task-list backend types.** Out of scope for this product; do not conflate with
    the `todo` tool above.
 
@@ -79,4 +81,4 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
 handoff prompt, preserve behavior. If it touches model-routing *settings knobs*, follow the shipped
 model-slots design above, do not resurrect a role→model matrix because an old fork had one.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `7e4c6374` on 2026-08-06.*

@@ -171,20 +171,30 @@ a green publish that never happened.
 ### Required deploy on release
 
 The site redeploys whenever a release publishes. `ci.yml`'s `release_site` job
-runs after `release_github`: it regenerates the changelog against the
-just-published release, builds the site with the brand check gating, and deploys
-both the `veyyon` and `veyyon-get` Pages projects. This keeps the changelog and
-served install scripts current without a manual deployment.
+runs after `release_github`, while the candidate is still a hidden draft: it
+regenerates the changelog, builds the site with the brand check gating, deploys
+both the `veyyon` and `veyyon-get` Pages projects, then runs
+`scripts/verify-deployed-installers.ts` so a stale `get.veyyon.dev` blocks the
+release instead of shipping behind it. Deploying before publication means a
+failed deployment leaves `releases/latest` on the prior version rather than
+exposing a release whose install channels are stale.
 
-The job requires two GitHub **repository secrets**:
+`release_github_publish` publishes the draft only after `release_site` and the
+three per-platform verify jobs succeed. `release_site_finalize` then rebuilds
+and redeploys both projects, so the changelog replaces the pending card with the
+published release.
+
+Both site jobs require the same two GitHub **repository secrets**:
 
 - **`CLOUDFLARE_API_TOKEN`**: a Cloudflare Pages:Edit token (the same value as
   `CF_PAGES_API_TOKEN` in `/credentials/.env`).
 - **`CLOUDFLARE_ACCOUNT_ID`**: the account that owns both Pages projects.
 
 If either secret is absent, or the repository variable `SITE_AUTODEPLOY` is
-`off`, the job fails loudly. The GitHub release already exists at that point,
-but the release train remains red until production deployment is repaired.
+`off`, the job fails loudly. A `release_site` failure keeps the release a draft;
+a `release_site_finalize` failure leaves the release published with a stale
+changelog on the site. Either way the release train stays red until production
+deployment is repaired.
 
 ### Manual deploy (override / out-of-band site edits)
 
@@ -292,16 +302,17 @@ release produces, how to verify it, and how to recover a failed step.
 
 ## Repository secrets and variables
 
-GitHub binary publication needs no repository secret. The version bump is
-prepared and pushed by an operator, and the tag's `ci.yml` run uses the built-in
+GitHub binary publication needs no repository secret. `bun run release <bump>`
+prepares the version bump, pushes it to `main` and tags the green commit from
+the operator's machine, and the tag's `ci.yml` run uses the built-in
 `GITHUB_TOKEN` to publish the release and verify it. The Cloudflare credentials
 are required by the production deployment inside that same tagged run.
 
 | Name | Kind | Gates |
 | --- | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | secret | Required by `site.yml` and `release_site` to deploy both `veyyon.dev` and `get.veyyon.dev` (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
-| `CLOUDFLARE_ACCOUNT_ID` | secret | Required by `release_site` to select the Cloudflare account |
-| `SITE_AUTODEPLOY` | repo var | Must not be `off` for a release; `off` deliberately fails `release_site` |
+| `CLOUDFLARE_API_TOKEN` | secret | Required by `site.yml`, `release_site` and `release_site_finalize` to deploy both `veyyon.dev` and `get.veyyon.dev` (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
+| `CLOUDFLARE_ACCOUNT_ID` | secret | Required by `release_site` and `release_site_finalize` to select the Cloudflare account |
+| `SITE_AUTODEPLOY` | repo var | Must not be `off` for a release; `off` deliberately fails both release site jobs |
 
 ## Rollback and hotfix
 
@@ -330,4 +341,4 @@ merge lands:
 4. `bun run site:deploy`.
 5. If `install.sh` or `install.ps1` changed, also run `bun run site:deploy:get`.
 
-*Verified against `92ff7a6b` on 2026-08-04.*
+*Verified against `7e4c6374` on 2026-08-06.*
