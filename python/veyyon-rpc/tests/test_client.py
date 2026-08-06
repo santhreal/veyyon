@@ -10,7 +10,7 @@ import threading
 import time
 import unittest
 
-from veyyon_rpc import RpcClient, RpcCommandError, RpcConcurrencyError, RpcError, host_tool
+from veyyon_rpc import RpcClient, RpcCommandError, RpcConcurrencyError, RpcError, RpcProcessExitError, host_tool
 
 
 FAKE_SERVER = textwrap.dedent(
@@ -568,6 +568,38 @@ INVALID_JSON_SERVER = textwrap.dedent(
     """
 )
 
+NON_OBJECT_JSON_SERVER = textwrap.dedent(
+    """
+    import sys
+
+    sys.stdout.write('{"type":"ready"}\\n')
+    sys.stdout.flush()
+    sys.stdout.write('12345\\n')
+    sys.stdout.flush()
+    """
+)
+
+MALFORMED_NOTIFICATION_SERVER = textwrap.dedent(
+    """
+    import sys
+
+    sys.stdout.write('{"type":"ready"}\\n')
+    sys.stdout.flush()
+    sys.stdout.write('{"type":"turn_end"}\\n')
+    sys.stdout.flush()
+    """
+)
+
+PREMATURE_EOF_SERVER = textwrap.dedent(
+    """
+    import sys
+
+    sys.stdout.write('{"type":"ready"}\\n')
+    sys.stdout.flush()
+    sys.stdout.close()
+    """
+)
+
 BROKEN_STARTUP_SERVER = textwrap.dedent(
     """
     import sys
@@ -1066,6 +1098,53 @@ class RpcClientTests(unittest.TestCase):
             client.start()
 
         self.assertIn("Frame: 'not-json'", str(ctx.exception))
+    def test_invalid_json_after_ready_is_reported(self) -> None:
+        client = self.make_client(server=INVALID_JSON_SERVER)
+        client.start()
+        try:
+            with self.assertRaises(RpcError) as ctx:
+                client.prompt_and_wait("say hello", timeout=2.0)
+            self.assertIn("Failed to decode RPC output", str(ctx.exception))
+        finally:
+            client.stop()
+
+    def test_non_object_json_frame_is_reported(self) -> None:
+        client = self.make_client(server=NON_OBJECT_JSON_SERVER)
+        client.start()
+        try:
+            with self.assertRaises(RpcError) as ctx:
+                client.prompt_and_wait("say hello", timeout=2.0)
+            self.assertIn("payload is not a JSON object", str(ctx.exception))
+            self.assertIn("Frame: '12345'", str(ctx.exception))
+        finally:
+            client.stop()
+
+    def test_malformed_notification_schema_is_reported(self) -> None:
+        client = self.make_client(server=MALFORMED_NOTIFICATION_SERVER)
+        client.start()
+        try:
+            with self.assertRaises(RpcError) as ctx:
+                client.prompt_and_wait("say hello", timeout=2.0)
+            self.assertIn("Failed to parse RPC notification", str(ctx.exception))
+        finally:
+            client.stop()
+
+    def test_premature_eof_terminates_cleanly(self) -> None:
+        client = self.make_client(server=PREMATURE_EOF_SERVER)
+        client.start()
+        try:
+            with self.assertRaises(RpcProcessExitError) as ctx:
+                client.prompt_and_wait("say hello", timeout=2.0)
+            self.assertIn("RPC process", str(ctx.exception))
+        finally:
+            client.stop()
+
+    def test_client_del_on_stopped_client(self) -> None:
+        client = self.make_client()
+        del client
+        import gc
+        gc.collect()
+
 
     def test_event_history_limit_reports_overflow(self) -> None:
         with self.make_client(max_event_history=2) as client:
