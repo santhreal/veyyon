@@ -115,7 +115,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Agent Delegation",
 			description:
-				"How strongly this session routes work to the agent roles you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Agents table is the routing policy: each name is a distinct role, task is the general-purpose fallback, specialists own only work matching their descriptions, and disabled roles stay with the main agent. Turn Subagents off above to remove delegation entirely.",
+				"How strongly this session routes work to the agent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Agents table is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely.",
 			keywords: ["subagent", "spawn", "fan out", "parallel", "eager"],
 			options: [
 				{ value: "allowed", label: "Allowed", description: "Offered, never asked for — the model decides" },

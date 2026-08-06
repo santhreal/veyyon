@@ -408,48 +408,36 @@ describe("delegation is resolved against the agents that can actually be spawned
 
 		const rendered = await renderUnder({}, roles);
 
-		expect(rendered).toContain("Enabled roles (`designer, reviewer`)");
-		expect(rendered).toContain("Spawn one only when its description matches the assignment");
+		expect(rendered).toContain("Enabled agent types: `designer, reviewer`");
+		expect(rendered).toContain("Spawn one only when its description covers the slice");
 		expect(rendered).not.toContain("Executing agents");
 		expect(rendered).not.toContain("Investigative agents");
 	});
 
-	it("uses the concrete task role as the general fallback", async () => {
-		const roles = new Map<string, unknown>([
-			[
-				"task",
-				{
-					name: "task",
-					enabledAgentNames: ["task", "designer"],
-					description: "delegate work",
-				},
-			],
-		]);
+	/**
+	 * One bullet serves every roster: it names exactly the enabled types and never promotes
+	 * unmatched work to a wider agent. Two branches used to render here, one naming `task` as the
+	 * catch-all destination and one calling everything else a specialist, so the same roster
+	 * change silently rerouted work instead of keeping it inline.
+	 */
+	it("names exactly the enabled agent types without a specialist or fallback tier", async () => {
+		const rosters = [
+			["task", "designer"],
+			["designer", "reviewer"],
+		];
 
-		const rendered = await renderUnder({}, roles);
+		for (const enabledAgentNames of rosters) {
+			const roles = new Map<string, unknown>([
+				["task", { name: "task", enabledAgentNames, description: "delegate work" }],
+			]);
 
-		expect(rendered).toContain("Enabled roles (`task, designer`)");
-		expect(rendered).toContain("use `task` as the general-purpose fallback");
-		expect(rendered).not.toContain("Specialists only");
-	});
+			const rendered = await renderUnder({}, roles);
 
-	it("keeps unmatched work inline when only specialist roles are enabled", async () => {
-		const roles = new Map<string, unknown>([
-			[
-				"task",
-				{
-					name: "task",
-					enabledAgentNames: ["reviewer"],
-					description: "delegate work",
-				},
-			],
-		]);
-
-		const rendered = await renderUnder({}, roles);
-
-		expect(rendered).toContain("Specialists only");
-		expect(rendered).toContain("keep unmatched work inline");
-		expect(rendered).not.toContain("general-purpose fallback");
+			expect(rendered).toContain(`Enabled agent types: \`${enabledAgentNames.join(", ")}\``);
+			expect(rendered).toContain("when none covers it, do the work inline");
+			expect(rendered).not.toContain("specialist");
+			expect(rendered).not.toContain("general-purpose");
+		}
 	});
 
 	/**

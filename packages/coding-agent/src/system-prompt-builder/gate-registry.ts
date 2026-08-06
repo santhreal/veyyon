@@ -142,9 +142,8 @@ export const PROMPT_GATES = [
 	},
 	{
 		setting: "subagent.agents",
-		variables: ["subagentNames", "hasSpawnableSubagent", "hasGeneralSubagent"],
-		renders:
-			"whether delegation prose is emitted, which concrete agent roles it names, and whether the general-purpose task role is available as a fallback",
+		variables: ["subagentNames", "hasSpawnableSubagent"],
+		renders: "whether delegation prose is emitted and which enabled agent types it names",
 		liveness: { kind: "live" },
 	},
 	{

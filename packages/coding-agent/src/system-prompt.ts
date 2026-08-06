@@ -62,6 +62,7 @@ import {
 } from "./system-prompt-builder/statement-registry";
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";
+import type { ContextFileEntry } from "./tools";
 import { shortenPath } from "./tools/render-utils";
 import { isNonProjectRoot, NON_PROJECT_REASON_TEXT, type NonProjectReason } from "./tools/reroot-hint";
 import { type ActiveRepoContext, resolveActiveRepoContext } from "./utils/active-repo-context";
@@ -351,7 +352,7 @@ function dedupeContainedContextFiles<T extends { content: string }>(
  */
 export async function loadProjectContextFilesWithWarnings(
 	options: LoadContextFilesOptions = {},
-): Promise<{ files: Array<{ path: string; content: string; depth?: number }>; warnings: string[] }> {
+): Promise<{ files: ContextFileEntry[]; warnings: string[] }> {
 	const resolvedCwd = options.cwd ?? getProjectDir();
 	const resolvedAgentDir = path.resolve(options.agentDir ?? getAgentDir());
 
@@ -411,10 +412,12 @@ export async function loadProjectContextFilesWithWarnings(
 	});
 
 	// Dedupe AFTER the sort: the survivor is chosen by scope authority first, and only files of
-	// the same scope fall back to this position.
+	// the same scope fall back to this position. `level` rides along past this point on purpose:
+	// the prompt renderer ignores it, but operator-scoped delivery channels (Cursor rules) key
+	// off it, and dropping it here used to make provenance unrecoverable downstream.
 	return {
 		files: dedupeContainedContextFiles(files, file => CONTEXT_SCOPE_AUTHORITY[file.level]).map(
-			({ path, content, depth }) => ({ path, content, depth }),
+			({ path, content, depth, level }) => ({ path, content, depth, level }),
 		),
 		warnings,
 	};
@@ -429,9 +432,7 @@ export async function loadProjectContextFilesWithWarnings(
  * cannot be read used to disappear into an empty list, and an empty list renders
  * as nothing at all, so the operator saw a prompt with no rules and no reason.
  */
-export async function loadProjectContextFiles(
-	options: LoadContextFilesOptions = {},
-): Promise<Array<{ path: string; content: string; depth?: number }>> {
+export async function loadProjectContextFiles(options: LoadContextFilesOptions = {}): Promise<ContextFileEntry[]> {
 	const { files, warnings } = await loadProjectContextFilesWithWarnings(options);
 	for (const warning of warnings) {
 		logger.warn(`Context file loading: ${warning}`, { cwd: options.cwd ?? getProjectDir() });
@@ -1048,9 +1049,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		// (``)" while telling the model to delegate for parallelism. `resolveDelegation` has always
 		// computed this state and named it `blockedBy: "no-enabled-agents"`; nothing consumed it.
 		hasSpawnableSubagent: subagentNames.length > 0,
-		// `task` is the bundled general-purpose role. When it is absent, every
-		// enabled name is a specialist and unmatched work must remain inline.
-		hasGeneralSubagent: subagentNames.includes("task"),
 		secretsEnabled,
 		hasMemoryRoot: memoryRootEnabled,
 		hasObsidian: hasObsidian(),
