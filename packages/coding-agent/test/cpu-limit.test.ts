@@ -267,17 +267,26 @@ describe("SessionCpuLimit group lifecycle", () => {
 		await limiter.dispose();
 	});
 
-	it("creates a systemd scope with CPUQuota when the probe selected systemd-run", async () => {
+	/**
+	 * WHY: `systemd-run --scope` runs its command in the foreground, so the `sleep infinity`
+	 * placeholder that holds the unit open never returns. The 10s execFile deadline killed it,
+	 * setup was marked failed for the rest of the session, and the budget silently enforced
+	 * nothing on every host that reached this backend. Verified against real systemd:
+	 * `--scope ... -- sleep infinity` exits 124 under a 5s timeout, while the same command
+	 * without `--scope` returns 0 immediately and applies `cpu.max = 50000 100000`.
+	 * The unit must therefore be a transient service, and the argv must never regrow `--scope`.
+	 */
+	it("creates a systemd transient service with CPUQuota, never a blocking scope", async () => {
 		const root = await makeCgroupRoot();
-		const scopeRel = "/user.slice/user-1000.slice/user@1000.service/app.slice/veyyon-cpu-sess-test.scope";
+		const unitRel = "/user.slice/user-1000.slice/user@1000.service/app.slice/veyyon-cpu-sess-test.service";
 		const host = makeFakeHost(root, cmd => {
 			if (cmd[0] === "systemd-run") return { code: 0, stdout: "", stderr: "" };
-			if (cmd[0] === "systemctl" && cmd.includes("show")) return { code: 0, stdout: `${scopeRel}\n`, stderr: "" };
+			if (cmd[0] === "systemctl" && cmd.includes("show")) return { code: 0, stdout: `${unitRel}\n`, stderr: "" };
 			return { code: 0, stdout: "", stderr: "" };
 		});
-		// The native group verifies the scope is a cgroup before managing it.
-		await fs.mkdir(path.join(root, scopeRel), { recursive: true });
-		await fs.writeFile(path.join(root, scopeRel, "cgroup.procs"), "");
+		// The native group verifies the unit cgroup exists before managing it.
+		await fs.mkdir(path.join(root, unitRel), { recursive: true });
+		await fs.writeFile(path.join(root, unitRel, "cgroup.procs"), "");
 		const probe = await probeCpuLimitSupport(host.env);
 		expect(probe.backend?.kind).toBe("systemd-run");
 		const limiter = new SessionCpuLimit({
@@ -292,11 +301,15 @@ describe("SessionCpuLimit group lifecycle", () => {
 		await limiter.ensureGroup();
 		const systemdRun = host.ran.find(cmd => cmd[0] === "systemd-run");
 		expect(systemdRun).toContain("CPUQuota=200%");
-		expect(systemdRun).toContain("--scope");
+		expect(systemdRun).not.toContain("--scope");
+
+		// Every unit the limiter names afterwards is the same transient service.
+		const shown = host.ran.find(cmd => cmd[0] === "systemctl" && cmd.includes("show"));
+		expect(shown).toContain("veyyon-cpu-sess-test.service");
 
 		await limiter.dispose();
 		const stop = host.ran.find(cmd => cmd[0] === "systemctl" && cmd.includes("stop"));
-		expect(stop).toContain("veyyon-cpu-sess-test.scope");
+		expect(stop).toContain("veyyon-cpu-sess-test.service");
 	});
 });
 

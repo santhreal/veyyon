@@ -20,7 +20,7 @@
  *
  * BACKENDS, PROBED ONCE PER PROCESS. Linux: a cgroup v2 directory written
  * directly when a delegated parent is writable, else a `systemd-run --user`
- * scope when a user manager answers. Windows: a Job Object with a hard CPU
+ * transient service when a user manager answers. Windows: a Job Object with a hard CPU
  * rate cap. macOS: no per-group quota exists, so the budget is POLICY-ONLY
  * (the watcher refuses new commands, renices the group, and optionally
  * kills) and `throttles` is false so the settings row and startup warning
@@ -244,7 +244,7 @@ export async function probeCpuLimitSupport(env: CpuLimitEnvironment): Promise<Cp
 			supported: true,
 			throttles: true,
 			backend: { kind: "systemd-run" },
-			detail: "systemd user scopes via systemd-run --user",
+			detail: "systemd user services via systemd-run --user",
 		};
 	}
 	return unsupported(
@@ -491,7 +491,7 @@ export class SessionCpuLimit {
 		if (this.#systemdUnit) {
 			await this.#options.env
 				.run(["systemctl", "--user", "stop", this.#systemdUnit])
-				.catch(error => logger.debug("CPU limit: scope stop failed", { error: errorMessage(error) }));
+				.catch(error => logger.debug("CPU limit: unit stop failed", { error: errorMessage(error) }));
 		}
 		this.#group?.dispose();
 	}
@@ -516,11 +516,15 @@ export class SessionCpuLimit {
 		try {
 			if (probe.backend.kind === "systemd-run") {
 				const unitBase = this.budgetName;
-				const unit = `${unitBase}.scope`;
+				const unit = `${unitBase}.service`;
+				// A transient SERVICE, never `--scope`. `systemd-run --scope` runs the command in the
+				// foreground, so with a `sleep infinity` placeholder it never returns: the 10s execFile
+				// deadline killed it, setup was marked failed for the whole session, and the budget
+				// silently did nothing on every host that reached this backend. A service forks, so
+				// systemd-run returns as soon as the unit is registered and the quota is in place.
 				const launched = await this.#options.env.run([
 					"systemd-run",
 					"--user",
-					"--scope",
 					"--quiet",
 					"--collect",
 					`--unit=${unitBase}`,
@@ -544,7 +548,7 @@ export class SessionCpuLimit {
 				]);
 				const relative = shown.stdout.trim();
 				if (shown.code !== 0 || !relative.startsWith("/")) {
-					throw new Error(`could not resolve the scope cgroup: ${shown.stderr.trim() || "empty ControlGroup"}`);
+					throw new Error(`could not resolve the unit cgroup: ${shown.stderr.trim() || "empty ControlGroup"}`);
 				}
 				this.#systemdUnit = unit;
 				this.#group = create({
