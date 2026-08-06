@@ -111,6 +111,7 @@ import {
 	type ComparisonExecution,
 	type ComparisonSystem,
 	comparisonTrialsFromArmResults,
+	DEFAULT_MODEL,
 	type NativeCompactionEvidence,
 	renderSystemComparison,
 	type SystemComparison,
@@ -946,7 +947,7 @@ async function main(): Promise<void> {
 	// Requested == resolved matters independently: the 3.6→3.5 alias was removed,
 	// so the encode gate, which matches the RESOLVED id against an arm's
 	// allowlist, fires for the encode arms rather than silently degrading.
-	const model = args.model ?? (comparisonMode ? COMPARISON_MODEL : "google-antigravity/gemini-3.5-flash");
+	const model = args.model ?? (comparisonMode ? COMPARISON_MODEL : DEFAULT_MODEL);
 	if (comparisonMode && model !== COMPARISON_MODEL) {
 		console.error(`error: cross-system comparisons require exact model ${COMPARISON_MODEL}, got ${model}`);
 		process.exit(1);

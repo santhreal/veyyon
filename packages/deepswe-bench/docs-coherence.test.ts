@@ -29,6 +29,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import YAML from "yaml";
 import { armNamesIn } from "./arm-fingerprint";
+import { DEFAULT_MODEL } from "./system-comparison";
 
 const BENCH_DIR = import.meta.dir;
 const REPO_ROOT = path.join(BENCH_DIR, "..", "..");
@@ -255,15 +256,17 @@ describe("every shipped prompt-section arm is actually loadable", () => {
 });
 
 describe("the documented model agrees with the code and the arms", () => {
-	/** The default in `run.ts` is the single source of truth for what the docs may
-	 * claim, so it is read out of the source rather than restated here. */
-	const defaultModel = /args\.model \?\? "([^"]+)"/.exec(RUN_TS)?.[1] ?? "";
+	/** Imported from the module that owns it, not pattern-matched out of run.ts:
+	 * the old regex pinned the exact expression shape and broke the moment the
+	 * default moved behind a ternary, silently reading "" and taking every
+	 * assertion below with it. */
+	const defaultModel = DEFAULT_MODEL;
 	/** The bare logical id, which is what an arm allowlist matches on. */
 	const defaultLogicalId = defaultModel.slice(defaultModel.lastIndexOf("/") + 1);
 
-	it("run.ts declares a default model at all", () => {
-		expect(defaultModel).not.toBe("");
+	it("the default model is a provider-qualified id", () => {
 		expect(defaultLogicalId).not.toBe("");
+		expect(defaultLogicalId).not.toBe(defaultModel);
 	});
 
 	/**

@@ -3,6 +3,12 @@ import type { ArmResult } from "./aggregate";
 export const COMPARISON_SYSTEMS = ["veyyon", "factory", "hermes"] as const;
 export type ComparisonSystem = (typeof COMPARISON_SYSTEMS)[number];
 
+/**
+ * Model an arm sweep runs when `--model` is omitted. It lives here, beside the
+ * cross-system pin, so one module owns every model the bench can choose and the
+ * docs test can import the value instead of pattern-matching run.ts source.
+ */
+export const DEFAULT_MODEL = "google-antigravity/gemini-3.5-flash";
 export const COMPARISON_MODEL = "google-antigravity/gemini-3.6-flash";
 export const COMPARISON_TASK_LIST = "tasks/pilot-10.txt";
 export const COMPARISON_TASK_LIST_SHA256 = "439b07dfbf30a988286e614b6b200def41b56f2447b249583560a78152cbfa06";
