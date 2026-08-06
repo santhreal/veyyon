@@ -214,7 +214,11 @@ mod tests {
 	/// back from the implementation.
 	#[test]
 	fn a_core_budget_becomes_a_fraction_of_total_machine_capacity() {
-		assert_eq!(cpu_rate_per_10k(4.0, 16.0), 2_500, "4 of 16 processors is a quarter of the machine");
+		assert_eq!(
+			cpu_rate_per_10k(4.0, 16.0),
+			2_500,
+			"4 of 16 processors is a quarter of the machine"
+		);
 		assert_eq!(cpu_rate_per_10k(1.0, 8.0), 1_250);
 		assert_eq!(cpu_rate_per_10k(0.5, 8.0), 625);
 		assert_eq!(cpu_rate_per_10k(6.0, 32.0), 1_875);

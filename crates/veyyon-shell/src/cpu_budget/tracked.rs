@@ -44,6 +44,10 @@ impl TrackedBudget {
 	/// have no per-process meter here.
 	#[cfg(not(target_os = "macos"))]
 	#[must_use]
+	#[allow(
+		clippy::unused_self,
+		reason = "signature parity with the macOS variant, which reads members"
+	)]
 	pub const fn usage_usec(&self) -> Option<u64> {
 		None
 	}
@@ -145,7 +149,8 @@ mod tests {
 		let tail = &stat[stat.rfind(')').expect("comm field is parenthesised") + 1..];
 		// After `comm` the next field is `state`, so `nice` (field 19 overall)
 		// is index 16 of what remains.
-		tail.split_whitespace()
+		tail
+			.split_whitespace()
 			.nth(16)
 			.expect("nice field present")
 			.parse()
@@ -299,8 +304,8 @@ mod tests {
 			assert_eq!(nice_of(pid_b), baseline);
 		} else {
 			println!(
-				"SKIP (restore half): this host forbids an unprivileged process raising a nice \
-				 value; CAP_SYS_NICE or RLIMIT_NICE headroom is missing"
+				"SKIP (restore half): this host forbids an unprivileged process raising a nice value; \
+				 CAP_SYS_NICE or RLIMIT_NICE headroom is missing"
 			);
 			assert_eq!(nice_of(pid_a), lowest, "the lowered value must at least be unchanged");
 		}
@@ -317,7 +322,9 @@ mod tests {
 	#[cfg(target_os = "linux")]
 	#[test]
 	fn renice_survives_a_member_that_has_already_exited() {
-		let mut dead = std::process::Command::new("true").spawn().expect("spawn true");
+		let mut dead = std::process::Command::new("true")
+			.spawn()
+			.expect("spawn true");
 		let dead_pid = dead.id() as i32;
 		dead.wait().expect("reap");
 
