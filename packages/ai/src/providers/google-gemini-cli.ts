@@ -44,6 +44,7 @@ import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/id
 // the stream provider trusts the access token threaded through `options.apiKey`.
 import { normalizeSchemaForCCA } from "../utils/schema";
 import { StreamMarkupHealing, type StreamMarkupHealingEvent } from "../utils/stream-markup-healing";
+import { interleavedThinkingBeta } from "./anthropic";
 import type { Content, FunctionCallingConfigMode, ThinkingConfig, ThinkingLevel } from "./google-shared";
 import {
 	convertMessages,
@@ -343,7 +344,6 @@ export {
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const RATE_LIMIT_BUDGET_MS = 5 * 60 * 1000;
-const CLAUDE_THINKING_BETA_HEADER = "interleaved-thinking-2025-05-14";
 const GOOGLE_GEMINI_REFRESH_SKEW_MS = 60_000;
 const ANTIGRAVITY_REFRESH_SKEW_MS = 60_000;
 
@@ -619,7 +619,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 				"Content-Type": "application/json",
 				Accept: "text/event-stream",
 				...headers,
-				...(needsClaudeThinkingBetaHeader(model) ? { "anthropic-beta": CLAUDE_THINKING_BETA_HEADER } : {}),
+				...(needsClaudeThinkingBetaHeader(model) ? { "anthropic-beta": interleavedThinkingBeta } : {}),
 				...(options?.headers ?? {}),
 			};
 			const requestBodyJson = JSON.stringify(requestBody);

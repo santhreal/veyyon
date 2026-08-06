@@ -163,7 +163,10 @@ const claudeCodeAgentBetaDefaults = [
 ] as const;
 const claudeCodeAgentPostEffortBetas = ["extended-cache-ttl-2025-04-11"] as const;
 const fineGrainedToolStreamingBeta = "fine-grained-tool-streaming-2025-05-14";
-const interleavedThinkingBeta = "interleaved-thinking-2025-05-14";
+// Anthropic's beta vocabulary lives here. Antigravity serves Claude models over
+// Google's transport and has to send this same header, so it imports the id
+// rather than restating it: a beta bump has to reach every transport at once.
+export const interleavedThinkingBeta = "interleaved-thinking-2025-05-14";
 // Asks the API to redact thinking blocks from responses. Only sent when the
 // caller explicitly hides thinking (`thinkingDisplay: "omitted"`); sending it
 // by default suppresses the thinking traces callers expect to stream.
