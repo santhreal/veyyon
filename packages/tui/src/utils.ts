@@ -766,37 +766,6 @@ export function normalizeTerminalOutput(str: string): string {
 	return str.replace(THAI_LAO_AM_GLOBAL_REGEX, char => (char === "\u0e33" ? "\u0e4d\u0e32" : "\u0ecd\u0eb2"));
 }
 
-const makeBoolArray = (chars: string): Uint8Array => {
-	const table = new Uint8Array(128);
-	for (let i = 0; i < chars.length; i++) {
-		const code = chars.charCodeAt(i);
-		if (code < table.length) {
-			table[code] = 1;
-		}
-	}
-	return table;
-};
-
-const ASCII_WHITESPACE = makeBoolArray("\x09\x0a\x0b\x0c\x0d\x20");
-
-/**
- * Check if a character is whitespace.
- */
-export function isWhitespaceChar(char: string): boolean {
-	const code = char.codePointAt(0) ?? 0;
-	return code < 128 && ASCII_WHITESPACE[code] === 1;
-}
-
-const ASCII_PUNCTUATION = makeBoolArray("(){}[]<>.,;:'\"!?+-=*/\\|&%^$#@~`");
-
-/**
- * Check if a character is punctuation.
- */
-export function isPunctuationChar(char: string): boolean {
-	const code = char.codePointAt(0) ?? 0;
-	return code < 128 && ASCII_PUNCTUATION[code] === 1;
-}
-
 export type WordNavKind = "whitespace" | "delimiter" | "cjk" | "word" | "other";
 
 const WORD_NAV_RE_WHITESPACE = /^\p{White_Space}$/u;
