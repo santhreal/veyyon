@@ -46,9 +46,11 @@ async function agentDirWithConfig(): Promise<string> {
 function failOneReadOf(target: string): void {
 	const real = Bun.file.bind(Bun);
 	let armed = true;
-	vi.spyOn(Bun, "file").mockImplementation((...args: Parameters<typeof Bun.file>) => {
-		const handle = real(...args);
-		if (args[0] !== target || !armed) return handle;
+	// `Bun.file` is overloaded (path, bytes, file descriptor), and one arrow cannot
+	// express three call signatures, so the implementation is asserted back to it.
+	const spied = (source: string | URL, options?: BlobPropertyBag) => {
+		const handle = real(source, options);
+		if (source !== target || !armed) return handle;
 		armed = false;
 		return new Proxy(handle, {
 			get(file, prop, receiver) {
@@ -56,7 +58,8 @@ function failOneReadOf(target: string): void {
 				return () => Promise.reject(Object.assign(new Error("EIO: i/o error"), { code: "EIO" }));
 			},
 		});
-	});
+	};
+	vi.spyOn(Bun, "file").mockImplementation(spied as unknown as typeof Bun.file);
 }
 
 describe("a config save whose re-read failed", () => {
