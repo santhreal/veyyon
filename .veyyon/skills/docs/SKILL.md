@@ -51,7 +51,7 @@ Shipped-source changes must carry a `## [Unreleased]` changelog bullet as they l
 $ bun scripts/require-changelog.ts        # or: bun run changelog:check
 ```
 
-It fails when a publishable package changed shipped source (not tests/docs/metadata) but its `## [Unreleased]` gained no bullet, and it names the exact `CHANGELOG.md` to edit. A change with genuinely no user-facing effect opts out with a `[skip changelog]` marker in a commit message (or `[skip changelog: <package>]` for one package), so the decision lives in git history, never silently. Add the bullet; do not reach for the skip marker to dodge a real user-facing change.
+It fails when a publishable package changed shipped source (not tests/docs/metadata) but its `## [Unreleased]` gained no bullet, and it names the exact `CHANGELOG.md` to edit. There is no skip marker and no opt-out: a change with genuinely no user-facing effect gets a bullet saying that, in one sentence. Write the bullet.
 
 The changelog GitHub shows on the repo page is the repo-root `CHANGELOG.md`. It is generated from `packages/coding-agent/CHANGELOG.md`, never hand-edited: it keeps veyyon's own entries, rebrands them into Veyyon's voice, and credits pre-fork oh-my-pi history in one note, the same render the website uses. Regenerate it after any source-changelog edit, and a second gate checks it:
 
@@ -76,7 +76,7 @@ Then run the gates the same way code is gated: `bun run changelog:check`, `bun r
 ## Before you commit the docs
 
 - Every observable thing you changed in code is described with its NEW behavior, in every place that documents it.
-- A `## [Unreleased]` bullet exists (or a justified `[skip changelog]` marker), and `bun run changelog:root:check` passes.
+- A `## [Unreleased]` bullet exists, and `bun run changelog:root:check` passes.
 - The page reads example-first, second person, terms defined before use, no em dashes, no hype.
 - The book rebuilds clean and the new wording is in the generated HTML.
 - You grepped for the OLD wording repo-wide and left none behind.

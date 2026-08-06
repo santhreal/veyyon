@@ -14,11 +14,16 @@
 // shipped source but adds nothing to that package's `## [Unreleased]` section,
 // the check fails and names the exact file to edit.
 //
-// The escape hatch is explicit and auditable, never silent (Law 10): a change
-// with genuinely no user-facing effect opts out with a `[skip changelog]`
-// marker in a commit message (global) or `[skip changelog: <package>]` (scoped
-// to one package directory). The decision then lives in git history where a
-// reviewer can see it, instead of being quietly forgotten.
+// There is no escape hatch, and there was one until it ate the gate. A bare
+// `[skip changelog]` in any commit message waived the WHOLE range, so one
+// throwaway marker in a housekeeping commit switched the check off for every
+// package and every other commit pushed with it. The scoped spelling was no
+// better in practice: it is easier to type than a sentence, so it became the
+// default answer to "this is only a refactor" and thousands of commits reached
+// releases with a changelog that does not describe them. If a change touches
+// shipped source, it gets a line saying what changed. A change that genuinely
+// has no user-facing effect can say so in one sentence, which is cheaper than
+// arguing about it and leaves the reader something to read.
 //
 // The core (`evaluateChangelogRequirement`) is a pure function over already-read
 // inputs so it is exhaustively unit-tested without a real repo. `main()` is the
@@ -46,10 +51,6 @@ export interface EvaluateInput {
 	baseUnreleased: Map<string, string[]>;
 	/** Head-side `## [Unreleased]` bullets per package dir. */
 	headUnreleased: Map<string, string[]>;
-	/** True when a `[skip changelog]` marker waived the whole change. */
-	skipAll: boolean;
-	/** Package directories waived by a scoped `[skip changelog: <dir>]` marker. */
-	skipDirs: Set<string>;
 }
 
 export interface ChangelogViolation {
@@ -132,15 +133,13 @@ export function unreleasedGainedEntry(baseBullets: string[], headBullets: string
 }
 
 /**
- * Pure gate logic. A package violates the rule when it changed shipped source,
- * was not waived by a skip marker, and its `## [Unreleased]` section gained no
- * new bullet. Returns one violation per offending package (empty = pass).
+ * Pure gate logic. A package violates the rule when it changed shipped source
+ * and its `## [Unreleased]` section gained no new bullet. Returns one violation
+ * per offending package (empty = pass).
  */
 export function evaluateChangelogRequirement(input: EvaluateInput): ChangelogViolation[] {
-	if (input.skipAll) return [];
 	const violations: ChangelogViolation[] = [];
 	for (const pkg of input.packages) {
-		if (input.skipDirs.has(pkg.dir)) continue;
 		const sourceFiles = shippedSourceChanges(pkg.dir, input.changedFiles);
 		if (sourceFiles.length === 0) continue;
 		const base = input.baseUnreleased.get(pkg.dir) ?? [];
@@ -154,52 +153,6 @@ export function evaluateChangelogRequirement(input: EvaluateInput): ChangelogVio
 		});
 	}
 	return violations;
-}
-
-/**
- * Parse `[skip changelog]` / `[skip changelog: <dir-or-name>]` markers out of
- * the concatenated commit messages. A bare marker waives the whole change (every
- * package, whether the change lands via a direct push or a PR); a scoped one
- * waives a single package, matched later against both its directory and its bare
- * basename so `[skip changelog: coding-agent]` and
- * `[skip changelog: packages/coding-agent]` both work.
- */
-export function parseSkipMarkers(commitMessages: string): { skipAll: boolean; skipTokens: Set<string> } {
-	const skipTokens = new Set<string>();
-	let skipAll = false;
-	// `[skip changelog]` or `[skip-changelog]`, optionally `: token` (or `(token)`).
-	const re = /\[skip[ -]changelog(?:\s*[:(]\s*([^\])]+?)\s*[)\]]?)?\]/gi;
-	for (const match of commitMessages.matchAll(re)) {
-		const scope = match[1]?.trim();
-		if (scope) {
-			skipTokens.add(scope);
-		} else {
-			skipAll = true;
-		}
-	}
-	return { skipAll, skipTokens };
-}
-
-/**
- * Resolve scope tokens (from markers or the CHANGELOG_SKIP env var) to concrete
- * package directories. A token matches a package by exact directory, by bare
- * basename (`coding-agent`), or by package name (`@veyyon/coding-agent`).
- */
-export function resolveSkipDirs(tokens: Iterable<string>, packages: ChangelogPackage[]): Set<string> {
-	const byDir = new Map<string, string>();
-	const byBase = new Map<string, string>();
-	const byName = new Map<string, string>();
-	for (const pkg of packages) {
-		byDir.set(pkg.dir, pkg.dir);
-		byBase.set(path.basename(pkg.dir), pkg.dir);
-		byName.set(pkg.name, pkg.dir);
-	}
-	const dirs = new Set<string>();
-	for (const token of tokens) {
-		const dir = byDir.get(token) ?? byBase.get(token) ?? byName.get(token);
-		if (dir) dirs.add(dir);
-	}
-	return dirs;
 }
 
 // ---- git / filesystem shell -------------------------------------------------
@@ -289,15 +242,6 @@ async function main(): Promise<void> {
 		fail(error instanceof Error ? error.message : String(error));
 	}
 
-	const commitMessages = await gitOutput(["log", `${base}..HEAD`, "--format=%B"]);
-	const markers = parseSkipMarkers(commitMessages);
-	const envScopes = (Bun.env.CHANGELOG_SKIP ?? "")
-		.split(",")
-		.map(token => token.trim())
-		.filter(Boolean);
-	const skipAll = markers.skipAll || Bun.env.CHANGELOG_SKIP_ALL === "1";
-	const skipDirs = resolveSkipDirs([...markers.skipTokens, ...envScopes], packages);
-
 	const baseUnreleased = new Map<string, string[]>();
 	const headUnreleased = new Map<string, string[]>();
 	for (const pkg of packages) {
@@ -311,13 +255,10 @@ async function main(): Promise<void> {
 		packages,
 		baseUnreleased,
 		headUnreleased,
-		skipAll,
-		skipDirs,
 	});
 
 	if (violations.length === 0) {
-		const scoped = skipDirs.size > 0 ? ` (${skipDirs.size} package(s) waived by [skip changelog])` : "";
-		console.log(`changelog gate: ok${skipAll ? " (whole PR waived by [skip changelog])" : scoped}`);
+		console.log("changelog gate: ok");
 		return;
 	}
 
@@ -332,9 +273,9 @@ async function main(): Promise<void> {
 		}
 		lines.push("");
 	}
-	lines.push("Fix by adding a bullet under `## [Unreleased]` in each file above,");
-	lines.push("or, for a change with no user-facing effect, put `[skip changelog]`");
-	lines.push("in a commit message (or `[skip changelog: <package>]` to waive one).");
+	lines.push("Fix by adding a bullet under `## [Unreleased]` in each file above.");
+	lines.push("There is no skip marker. A change with no user-facing effect still gets");
+	lines.push("one line saying so, which is what makes the rest of the file trustworthy.");
 	fail(lines.join("\n"));
 }
 
