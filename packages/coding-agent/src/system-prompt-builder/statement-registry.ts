@@ -121,6 +121,9 @@ import statementExecutionScopePlanFirst from "./statements/execution-workflow/sc
 	type: "text",
 };
 import statementExecutionVerify from "./statements/execution-workflow/verify.md" with { type: "text" };
+import statementExecutionVerifyBrowser from "./statements/execution-workflow/verify-browser.md" with {
+	type: "text",
+};
 import statementRoleMermaid from "./statements/role/mermaid-diagrams.md" with { type: "text" };
 import statementRolePrinciples from "./statements/role/principles.md" with { type: "text" };
 import statementRuntimeAlwaysApplyRules from "./statements/runtime/always-apply-rules.md" with { type: "text" };
@@ -873,6 +876,14 @@ export const PROMPT_STATEMENTS = [
 		condition: { kind: "always" },
 		text: statementExecutionVerify,
 		purpose: "the Verify heading, the proof-per-ask-type table, the smoke-test rule and the test-quality bar",
+	},
+	{
+		id: "execution-workflow/verify-browser",
+		section: "execution-workflow",
+		condition: contains("tools", "browser"),
+		text: statementExecutionVerifyBrowser,
+		purpose:
+			"names the browser tool as the way to drive a web UI, so the generic verify bullet above can stay tool-agnostic for the sessions that ship without it",
 	},
 	{
 		id: "execution-workflow/cleanup",

@@ -437,7 +437,10 @@ export const TOOLS_SETTINGS = {
 
 	"browser.enabled": {
 		type: "boolean",
-		default: true,
+		// Off: it spawns Chromium, and most sessions never touch a page. A tool that ships
+		// on is paid for on every request in the tool array, which Anthropic caches ahead
+		// of the system prompt, so an unused one is rent on every turn of every session.
+		default: false,
 		ui: {
 			tab: "tools",
 			group: "Available Tools",

@@ -198,7 +198,10 @@ export const EDITING_SETTINGS = {
 	// LSP
 	"lsp.enabled": {
 		type: "boolean",
-		default: true,
+		// Off: it starts a language server per project, and its two policy statements plus
+		// the tool description are among the larger things the prompt carries. Both drop
+		// out with the tool, so a session that does no symbol work does not pay for it.
+		default: false,
 		ui: {
 			tab: "files",
 			group: "LSP",
