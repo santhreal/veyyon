@@ -347,4 +347,55 @@ describe("provider prompt-cache key across session transitions", () => {
 
 		expect(compactSpy.mock.calls[0]?.[5]?.promptCacheKey).toBe(sessionManager.getSessionId());
 	});
+
+	/**
+	 * A switch that fails mid-way rolls the whole runtime back to the source
+	 * session, and the rollback list is explicit that every field the try block
+	 * rewrote must be restored. It restored `#inheritedProviderPromptCacheKey`,
+	 * the private mirror, but not `agent.promptCacheKey` — the field that
+	 * actually reaches the wire. The try block sets both (clear the inherited
+	 * key, then adopt the TARGET header's identity), so a failed switch left the
+	 * source session routing every later turn onto the target conversation's
+	 * provider cache shard: two unrelated transcripts contending over one prefix
+	 * tree, with no UI signal that anything moved.
+	 */
+	it("keeps the source session's cache key when a switch fails and rolls back", async () => {
+		const { session, mock, sessionManager } = await createSession({
+			persist: true,
+			providerPromptCacheKey: "parent-cache-shard",
+		});
+		sessionManager.appendMessage({ role: "user", content: "source", timestamp: 1 });
+		await sessionManager.flush();
+
+		// A target session file whose header carries its own cache identity, which
+		// is what the switch adopts before failing.
+		const target = SessionManager.create(tempDir, tempDir);
+		target.appendMessage({ role: "user", content: "target", timestamp: 2 });
+		const leafId = target.getEntries().at(-1)?.id;
+		if (leafId === undefined) throw new Error("expected a persisted target entry");
+		target.createBranchedSession(leafId);
+		await target.flush();
+		const targetFile = target.getSessionFile();
+		const targetCacheKey = target.getHeader()?.providerPromptCacheKey;
+		await target.close();
+		if (!targetFile) throw new Error("expected a persisted target session file");
+		expect(targetCacheKey).toBeString();
+		expect(targetCacheKey).not.toBe("parent-cache-shard");
+
+		// Fail the switch after the target's cache identity has been adopted.
+		const failure = new Error("switch failed after adopting the target identity");
+		const spy = vi.spyOn(sessionManager, "getLastModelChangeRole").mockImplementation(() => {
+			throw failure;
+		});
+		await expect(session.switchSession(targetFile)).rejects.toThrow(failure);
+		spy.mockRestore();
+
+		// The rollback put the source session back; its cache identity must come
+		// with it, on the wire and not merely in the mirror field.
+		expect(session.sessionFile).toBe(sessionManager.getSessionFile());
+		mock.calls.length = 0;
+		await session.prompt("turn after the failed switch");
+		await session.waitForIdle();
+		expect(getOpenAIPromptCacheKey(mock.calls[0]?.options)).toBe("parent-cache-shard");
+	});
 });
