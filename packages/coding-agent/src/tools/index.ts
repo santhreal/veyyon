@@ -4,6 +4,7 @@ import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import { logger } from "@veyyon/utils";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL, type ArgotSession } from "argot";
 import type { AsyncJobManager } from "../async/job-manager";
+import type { ContextFile } from "../capability/context-file";
 import type { Rule } from "../capability/rule";
 import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
@@ -74,6 +75,14 @@ export type ContextFileEntry = {
 	path: string;
 	content: string;
 	depth?: number;
+	/**
+	 * Which scope the file came from, preserved from context-file discovery
+	 * (`ContextFile.level` in `capability/context-file.ts` owns the meaning).
+	 * Absent when a caller synthesized the entry by hand: provenance unknown,
+	 * which delivery channels restricted to operator-owned scopes (Cursor rules)
+	 * treat as not the operator's own and leave out.
+	 */
+	level?: ContextFile["level"];
 };
 
 /** Image attachment handle exposed to tools for user-facing labels such as `Image #1`. */
@@ -243,6 +252,12 @@ export interface ToolSession {
 	getMnemopiSessionState?: () => MnemopiSessionState | undefined;
 	/** Agent identity used for IRC routing. Returns the registry id (e.g. "Main", "AuthLoader"). */
 	getAgentId?: () => string | null;
+	/**
+	 * Whether the `/yolo` full bypass is on for this session. Session scoped and
+	 * never written to settings, so a spawning tool has to read it here to pass
+	 * the parent's rung to a child.
+	 */
+	isApprovalBypassed?: () => boolean;
 	/** Look up a registered tool by name (used by the eval js backend's tool bridge). */
 	getToolByName?: (name: string) => AgentTool | undefined;
 	/** Return whether a built-in tool is active in this turn's tool set. */

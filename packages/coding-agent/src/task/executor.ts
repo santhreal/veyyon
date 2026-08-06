@@ -424,6 +424,15 @@ export interface ExecutorOptions {
 	modelRegistry?: ModelRegistry;
 	settings?: Settings;
 	/**
+	 * Parent session's live `/yolo` full-bypass state. The bypass is session
+	 * scoped and never written to settings, so the settings fork that carries
+	 * every other inherited rung cannot see it: without this the child resolved
+	 * `tools.approvalMode` from settings alone, got the `auto` default, and
+	 * prompted while the parent was running unasked. A spawn carries the
+	 * parent's rung, and the bypass is part of that rung.
+	 */
+	bypassAllApprovals?: boolean;
+	/**
 	 * Parent session's live per-family service tiers, the source of truth for a
 	 * subagent whose `tier.subagent` is `"inherit"`. `null` = the parent
 	 * explicitly has no tier (e.g. `/fast off`); omitted = no live session, so
@@ -3022,6 +3031,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				authStorage,
 				modelRegistry,
 				settings: runtimeSettings,
+				bypassAllApprovals: options.bypassAllApprovals,
 				model,
 				modelPattern: model || modelOverride === undefined ? undefined : modelPatterns,
 				modelPatternAuthFallback:
