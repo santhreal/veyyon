@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
+import type { ThinkingConfig } from "@veyyon/catalog/types";
 import {
 	AUTO_THINKING,
 	CLI_THINKING_LEVELS,
@@ -201,7 +202,7 @@ describe("thinking level metadata", () => {
  *  - id-baked / no-surface row and non-reasoning row: no choices at all.
  */
 describe("configuredThinkingLevelsForModel", () => {
-	function modelWith(thinking: ConstructorParameters<typeof buildModel>[0]["thinking"], reasoning = true) {
+	function modelWith(thinking: ThinkingConfig | undefined, reasoning = true) {
 		return buildModel({
 			id: "fixture-model",
 			name: "fixture-model",
