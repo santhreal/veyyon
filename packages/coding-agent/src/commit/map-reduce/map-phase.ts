@@ -60,7 +60,7 @@ export async function runMapPhase({
 	const retryBackoffMs = config?.retryBackoffMs ?? RETRY_BACKOFF_MS;
 	// Bounded worker pool is owned by task/parallel.ts. It normalizes
 	// `maxConcurrency <= 0`/non-finite to "run all at once" (veyyon's shared
-	// `task.maxConcurrency = 0` = Unlimited convention) and fails fast, cancelling
+	// `subagent.maxConcurrency = 0` = Unlimited convention) and fails fast, cancelling
 	// in-flight siblings, if any file errors after its retries are exhausted.
 	const { results } = await mapWithConcurrencyLimit(filtered, maxConcurrency, async file => {
 		if (file.isBinary) {
