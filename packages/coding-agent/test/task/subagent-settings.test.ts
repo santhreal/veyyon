@@ -27,6 +27,7 @@
  */
 import { describe, expect, it, spyOn } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
 import {
@@ -48,8 +49,10 @@ import {
 	subagentSettingsFor,
 } from "@veyyon/coding-agent/task/subagent-settings";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { getBundledModel } from "@veyyon/catalog/models";
 import {
+	AUTO_THINKING,
+	CLI_THINKING_LEVELS,
+	CONFIGURED_THINKING_LEVELS,
 	configuredThinkingLevelOptions,
 	configuredThinkingLevelsForModel,
 	INHERIT_EFFORT_OPTION_VALUE,
@@ -632,15 +635,17 @@ describe("subagent effort choices", () => {
 	});
 
 	/**
-	 * Effort is only ever set in relation to a model (the accepted scale
-	 * differs per catalog row), so the model-less picker collapses to the
-	 * inherit row alone, and the row says why rather than presenting a
-	 * one-item list that reads as a bug.
+	 * The blanket setting has no model and never will: it applies to whatever
+	 * model each subagent ends up on, and the level is clamped against that row
+	 * at use. So the model-less picker offers inherit plus the whole vocabulary.
+	 * An empty ladder here is the regression `any-model-effort-is-settable`
+	 * guards on the sibling `defaultEffort` `*` row: with only the inherit
+	 * sentinel left, every pick lands on it and deletes the value instead of
+	 * setting one.
 	 */
-	it("collapses to inherit alone, with the reason named, when no model is in scope", () => {
+	it("offers inherit plus the whole vocabulary when no model is in scope", () => {
 		const options = configuredThinkingLevelOptions();
-		expect(options.map(option => option.value)).toEqual([INHERIT_EFFORT_OPTION_VALUE]);
-		expect(options[0]?.description).toContain("Choose a model");
+		expect(options.map(option => option.value)).toEqual([INHERIT_EFFORT_OPTION_VALUE, ...CONFIGURED_THINKING_LEVELS]);
 	});
 
 	/** With a model in scope the picker offers exactly the row's declared choices. */
