@@ -23,7 +23,9 @@
  * subsystem whose resources can be created by a DIFFERENT module than the one holding the
  * disposer: that assumption is what makes this safe, and breaking it makes a leak invisible.
  */
-import { logger, withTimeout } from "@veyyon/utils";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 81.
+import { withTimeout } from "@veyyon/utils/async";
+import * as logger from "@veyyon/utils/logger";
 
 /**
  * Which owner id a disposer is keyed by.
