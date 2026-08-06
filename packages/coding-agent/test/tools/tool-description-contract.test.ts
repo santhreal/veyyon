@@ -55,8 +55,8 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		"Prefer an absolute path",
 	],
 	task: [
-		// The specialist-selection rule survives once, next to the agent list.
-		"Pick the most specific enabled agent",
+		// The type-matching rule survives once, next to the agent list.
+		"Each agent below is a distinct type with its own use case",
 		// The rules the collapse must not have taken with it.
 		"One-liners or missing acceptance criteria are PROHIBITED",
 		"skip formatters, linters, and project-wide test suites",

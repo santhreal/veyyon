@@ -184,7 +184,6 @@ const GATING_PROPS = [
 	"taskIrcEnabled",
 	"subagentNames",
 	"hasSpawnableSubagent",
-	"hasGeneralSubagent",
 	"hasRead",
 	"hasEdit",
 	"hasWrite",
@@ -424,7 +423,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 		const required = await renderBlock0({ ...roles, eagerTasks: true, eagerTasksAlways: true });
 
 		expect(preferred).toContain("when an enabled agent role matches");
-		expect(preferred).toContain("Specialists only");
+		expect(preferred).toContain("Match the type or do it yourself.");
 		expect(preferred).toContain("`reviewer`");
 		expect(required).toContain("MUST delegate substantial work when an enabled agent role matches");
 		expect(required).toContain("No enabled role's description matches the work");
@@ -440,9 +439,9 @@ describe("system prompt settings parity: delegation (the regression this harness
 	it("renders the concrete role policy across all twelve settings combinations", async () => {
 		const roleSets: Array<{ names: string[]; routing: string | null }> = [
 			{ names: [], routing: null },
-			{ names: ["task"], routing: "Route by exact role" },
-			{ names: ["designer", "reviewer"], routing: "Specialists only" },
-			{ names: ["task", "designer", "reviewer"], routing: "Route by exact role" },
+			{ names: ["task"], routing: "Match the type or do it yourself." },
+			{ names: ["designer", "reviewer"], routing: "Match the type or do it yourself." },
+			{ names: ["task", "designer", "reviewer"], routing: "Match the type or do it yourself." },
 		];
 		const strengths = STRENGTHS;
 
@@ -454,7 +453,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 					continue;
 				}
 				expect(rendered).toContain(roles.routing);
-				expect(rendered).toContain(`Enabled roles (\`${roles.names.join(", ")}\`)`);
+				expect(rendered).toContain(`Enabled agent types: \`${roles.names.join(", ")}\``);
 				expect(rendered).not.toContain("Executing agents");
 				expect(rendered).not.toContain("Investigative agents");
 				for (const other of STRENGTHS) {
@@ -564,8 +563,8 @@ describe("system prompt settings parity: delegation (the regression this harness
 			subagentNames: ["task", "designer", "reviewer"],
 		});
 
-		expect(rendered).toContain("Enabled roles (`task, designer, reviewer`)");
-		expect(rendered).toContain("Choose the closest specialist for each slice");
+		expect(rendered).toContain("Enabled agent types: `task, designer, reviewer`");
+		expect(rendered).toContain("Spawn one only when its description covers the slice");
 		expect(rendered).not.toContain("`scout`");
 		expect(rendered).not.toContain("`sonic`");
 		expect(rendered).not.toContain("Executing agents");
@@ -596,24 +595,9 @@ describe("system prompt settings parity: delegation (the regression this harness
 		expect(nothingSpawnable).not.toContain("separate context");
 		expect(nothingSpawnable).not.toContain("# Delegation");
 
-		expect(taskOnly).toContain("Route by exact role");
+		expect(taskOnly).toContain("Match the type or do it yourself.");
 		expect(taskOnly).toContain("## Delegation gates:");
 		expect(taskOnly).toContain("separate context");
-	});
-
-	it(`${asserted("hasGeneralSubagent")} toggles task fallback against specialist-only routing`, async () => {
-		const withTask = await renderBlock0({
-			subagentNames: ["task", "designer", "reviewer"],
-		});
-		const specialistsOnly = await renderBlock0({
-			subagentNames: ["designer", "reviewer"],
-		});
-
-		expect(withTask).toContain("Route by exact role");
-		expect(withTask).toContain("use `task` as the general-purpose fallback");
-		expect(specialistsOnly).toContain("Specialists only");
-		expect(specialistsOnly).toContain("keep unmatched work inline");
-		expect(specialistsOnly).not.toContain("general-purpose fallback");
 	});
 
 	/**
@@ -742,7 +726,6 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	taskIrcEnabled: "taskIrcEnabled",
 	subagentNames: "subagentNames",
 	hasSpawnableSubagent: "hasSpawnableSubagent",
-	hasGeneralSubagent: "hasGeneralSubagent",
 	useCodexTaskPrompt: "useCodexTaskPrompt",
 	"tools:read": "hasRead",
 	"tools:edit": "hasEdit",

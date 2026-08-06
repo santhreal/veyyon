@@ -52,7 +52,7 @@ The `task` field MUST follow this format:
 {{#if spawningDisabled}}
 Agent spawning is currently disabled.
 {{else}}
-Pick the most specific enabled agent for each task.{{#if hasDefaultAgent}} Use the default only when no specialist below fits.{{/if}}
+Each agent below is a distinct type with its own use case. Spawn the one whose description covers the task; when none covers it, do the work yourself rather than substituting a broader agent.
 {{#list agents join="\n"}}
 ### {{name}}{{#if readOnly}} (READ-ONLY: no edit/write/command tools){{/if}}{{#if blocking}} (BLOCKING: runs inline; its result returns in this call){{/if}}
 {{description}}
