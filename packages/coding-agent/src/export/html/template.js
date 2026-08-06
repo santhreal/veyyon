@@ -1358,52 +1358,26 @@
       // INITIALIZATION
       // ============================================================
 
-      // Escape HTML tags in text (but not code blocks)
-      function escapeHtmlTags(text) {
-        return text.replace(/<(?=[a-zA-Z\/])/g, '&lt;');
-      }
-
-      // Configure marked with syntax highlighting and HTML escaping for text
-      marked.use({
-        breaks: true,
-        gfm: true,
-        renderer: {
-          // Code blocks: syntax highlight, no HTML escaping
-          code(token) {
-            const code = token.text;
-            const lang = token.lang;
-            let highlighted;
-            if (lang && hljs.getLanguage(lang)) {
-              try {
-                highlighted = hljs.highlight(code, { language: lang }).value;
-              } catch {
-                highlighted = escapeHtml(code);
-              }
-            } else {
-              // Auto-detect language if not specified
-              try {
-                highlighted = hljs.highlightAuto(code).value;
-              } catch {
-                highlighted = escapeHtml(code);
-              }
+      // Markdown rendering, including every escape that keeps a hostile transcript inert, is
+      // owned by markdown-renderer.js and inlined just above this script. It lives there rather
+      // than here so a test can drive the real renderer without a browser.
+      const safeMarkedParse = installMarkdownRenderer(marked, {
+        escapeHtml,
+        highlight(code, lang) {
+          if (lang && hljs.getLanguage(lang)) {
+            try {
+              return hljs.highlight(code, { language: lang }).value;
+            } catch {
+              return escapeHtml(code);
             }
-            return `<pre><code class="hljs">${highlighted}</code></pre>`;
-          },
-          // Text content: escape HTML tags
-          text(token) {
-            return escapeHtmlTags(escapeHtml(token.text));
-          },
-          // Inline code: escape HTML
-          codespan(token) {
-            return `<code>${escapeHtml(token.text)}</code>`;
+          }
+          try {
+            return hljs.highlightAuto(code).value;
+          } catch {
+            return escapeHtml(code);
           }
         }
       });
-
-      // Simple marked parse (escaping handled in renderers)
-      function safeMarkedParse(text) {
-        return marked.parse(text);
-      }
 
       // Search input
       const searchInput = document.getElementById('tree-search');

@@ -10,6 +10,7 @@ import { SessionManager } from "../../session/session-manager";
 import templateCss from "./template.css" with { type: "text" };
 import templateHtml from "./template.html" with { type: "text" };
 import templateJs from "./template.js" with { type: "text" };
+import markdownRendererJs from "./markdown-renderer.js" with { type: "text" };
 // Pre-built React tool renderers, built by `gen:tool-views`. The file is
 // gitignored, and Bun resolves this text import when this module's importer
 // merely PARSES — a missing file kills boot, not just HTML export
@@ -37,6 +38,7 @@ export function getTemplate(): string {
 	cachedTemplate = (templateHtml as unknown as string)
 		.replace("<template-css/>", () => `<style>${minifiedCss}</style>`)
 		.replace("<template-tool-views/>", () => `<script>${toolViewsJs}</script>`)
+		.replace("<template-markdown/>", () => `<script>${markdownRendererJs}</script>`)
 		.replace("<template-js/>", () => `<script>${templateJs}</script>`);
 	return cachedTemplate;
 }
