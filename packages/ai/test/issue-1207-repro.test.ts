@@ -66,10 +66,10 @@ describe("issue #1207 — DeepSeek V4 keeps reasoning with tools", () => {
 		expect(compat.supportsToolChoice).toBe(false);
 		expect(compat.maxTokensField).toBe("max_tokens");
 		expect(compat.extraBody).toEqual({ thinking: { type: "enabled" } });
-		// DeepSeek's reasoning_effort is the honest wire-exact high/max pair;
-		// no synthetic lower tiers, no alias map.
-		expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
-		expect(model.thinking?.effortMap).toBeUndefined();
+		// No ladder assertion here: DeepSeek's own reasoning_options own the bundled
+		// surface (Flash declares low/high/max, Pro high/max) and outrank the
+		// identity-derived pair by design. The identity ladder is asserted below on a
+		// synthetic model, where no discovery surface can mask it.
 	});
 
 	it("drops user reasoning map entries outside the honest DeepSeek ladder", () => {
