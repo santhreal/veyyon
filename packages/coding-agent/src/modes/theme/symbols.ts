@@ -193,6 +193,7 @@ export type SymbolKey =
 	| "tab.model"
 	| "tab.interaction"
 	| "tab.context"
+	| "tab.rules"
 	| "tab.files"
 	| "tab.shell"
 	| "tab.tools"
@@ -473,6 +474,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"tab.model": "",
 	"tab.interaction": "",
 	"tab.context": "",
+	"tab.rules": "",
 	"tab.files": "",
 	"tab.shell": "",
 	"tab.tools": "",
@@ -796,6 +798,8 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"tab.model": "󰚩",
 	"tab.interaction": "󰌌",
 	"tab.context": "󰘸",
+	// mdi-gavel: rules are the things that stop the run, not another document.
+	"tab.rules": "\u{F0A7C}",
 	"tab.files": "󰈔",
 	"tab.shell": "󰆍",
 	"tab.tools": "󰠭",
@@ -1014,6 +1018,7 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"tab.model": "[M]",
 	"tab.interaction": "[I]",
 	"tab.context": "[X]",
+	"tab.rules": "[R]",
 	"tab.files": "[F]",
 	"tab.shell": "[S]",
 	"tab.tools": "[T]",
