@@ -5,10 +5,17 @@
  * reporting: `readdirIfPresent` routes it through `reportFault`, and its own comment says the
  * point is that "the user's subagents disappear from `/agents` with no sign of why". The
  * per-FILE failure five lines below is the identical loss one agent at a time — the user wrote
- * `.veyyon/agents/reviewer.md`, it is absent from `/agents` and unusable from `task`, and the
- * run continues as if nothing were configured — and it was handled with `logger.warn`. The
- * default transport set is `{ file: true }` with no console transport, so that report reached a
- * file nobody opens; `utils/fault-sink.ts` exists because of exactly this asymmetry.
+ * a definition, it is absent from `/agents` and unusable from `task`, and the run continues as
+ * if nothing were configured — and it was handled with `logger.warn`. The default transport set
+ * is `{ file: true }` with no console transport, so that report reached a file nobody opens;
+ * `utils/fault-sink.ts` exists because of exactly this asymmetry.
+ *
+ * WHERE THE FIXTURES LIVE. The profile's `agents/` dir, reached by passing `agentDir` to
+ * `discoverAgents`. They used to live in `<cwd>/.veyyon/agents`, which stopped being a source
+ * when project definitions were removed so a repository could not shadow a bundled role. That
+ * left both cases writing into a directory nothing reads, so they raised no faults and had been
+ * failing since. The operator-facing contract is unchanged: it is the same loader and the same
+ * `reportFault` channel, exercised through a scope that is actually scanned.
  *
  * WHAT THIS LOCKS. Both file-level failures now go through `reportFault`, the same channel the
  * directory-level failure already used, and `test/sdk-fault-sink-follows-the-session.test.ts`
@@ -26,7 +33,7 @@ import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
 import { attachFaultSink, type DetachFaultSink, type Fault, removeWithRetries } from "@veyyon/utils";
 
-const HEALTHY_AGENT_MD = ["---", "name: reviewer", "description: Reviews a diff.", "---", "You review."].join("\n");
+const HEALTHY_AGENT_MD = ["---", "name: diff-reader", "description: Reviews a diff.", "---", "You review."].join("\n");
 
 // Real frontmatter that the agent contract cannot use: `description` is required and
 // absent, so `parseAgentFields` returns null and `parseAgent` throws. This is what a
@@ -36,6 +43,7 @@ const UNUSABLE_AGENT_MD = ["---", "name: auditor", "---", "You audit."].join("\n
 describe("a broken agent definition is reported rather than dropped", () => {
 	let tempHome = "";
 	let projectDir = "";
+	let profileDir = "";
 	let agentsDir = "";
 	let faults: Fault[] = [];
 	let detach: DetachFaultSink | undefined;
@@ -43,7 +51,9 @@ describe("a broken agent definition is reported rather than dropped", () => {
 	beforeEach(async () => {
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-broken-agent-def-"));
 		projectDir = path.join(tempHome, "project");
-		agentsDir = path.join(projectDir, ".veyyon", "agents");
+		profileDir = path.join(tempHome, "profile");
+		agentsDir = path.join(profileDir, "agents");
+		await fs.mkdir(projectDir, { recursive: true });
 		await fs.mkdir(agentsDir, { recursive: true });
 		faults = [];
 		detach = attachFaultSink(fault => faults.push(fault));
@@ -66,14 +76,14 @@ describe("a broken agent definition is reported rather than dropped", () => {
 	 * the run being silent about it was.
 	 */
 	test("reports a definition whose frontmatter cannot be used", async () => {
-		await fs.writeFile(path.join(agentsDir, "reviewer.md"), HEALTHY_AGENT_MD);
+		await fs.writeFile(path.join(agentsDir, "diff-reader.md"), HEALTHY_AGENT_MD);
 		await fs.writeFile(path.join(agentsDir, "auditor.md"), UNUSABLE_AGENT_MD);
 
-		const { agents } = await discoverAgents(projectDir, tempHome);
+		const { agents } = await discoverAgents(projectDir, tempHome, profileDir);
 		const names = agents.map(agent => agent.name);
 
 		// Soft failure preserved: the healthy sibling still loads.
-		expect(names).toContain("reviewer");
+		expect(names).toContain("diff-reader");
 		expect(names).not.toContain("auditor");
 
 		const reported = agentFaults();
@@ -93,7 +103,7 @@ describe("a broken agent definition is reported rather than dropped", () => {
 	test("reports a definition that cannot be read from disk", async () => {
 		await fs.symlink(path.join(tempHome, "no-such-agent-source.md"), path.join(agentsDir, "ghost.md"));
 
-		const { agents } = await discoverAgents(projectDir, tempHome);
+		const { agents } = await discoverAgents(projectDir, tempHome, profileDir);
 
 		expect(agents.map(agent => agent.name)).not.toContain("ghost");
 
