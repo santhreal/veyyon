@@ -75,6 +75,8 @@
       "devDependencies": {
         "@types/bun": "catalog:",
         "@veyyon/ai": "catalog:",
+        "@veyyon/coding-agent": "catalog:",
+        "@veyyon/mnemopi": "catalog:",
       },
     },
     "packages/coding-agent": {
@@ -161,6 +163,9 @@
       "version": "0.1.0",
       "dependencies": {
         "@veyyon/ai": "workspace:*",
+        "@veyyon/coding-agent": "workspace:*",
+        "@veyyon/natives": "workspace:*",
+        "@veyyon/utils": "workspace:*",
         "argot": "workspace:*",
       },
     },
@@ -168,12 +173,12 @@
       "name": "@veyyon/hashline",
       "version": "1.0.46",
       "dependencies": {
+        "@veyyon/utils": "catalog:",
         "diff": "catalog:",
         "lru-cache": "catalog:",
       },
       "devDependencies": {
         "@types/bun": "catalog:",
-        "@veyyon/utils": "catalog:",
         "fast-check": "catalog:",
       },
     },
@@ -362,6 +367,7 @@
       "version": "1.0.46",
       "devDependencies": {
         "@types/bun": "catalog:",
+        "@veyyon/utils": "catalog:",
       },
     },
     "python/veybot/web": {

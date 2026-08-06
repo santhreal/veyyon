@@ -15,7 +15,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { loadCapability } from "@veyyon/coding-agent/capability";
 import { clearCache } from "@veyyon/coding-agent/capability/fs";
-import type { Skill } from "@veyyon/coding-agent/capability/skill";
+import type { DiscoveredSkill } from "@veyyon/coding-agent/capability/skill";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import "@veyyon/coding-agent/capability/skill";
 import "@veyyon/coding-agent/discovery/github";
@@ -44,7 +44,7 @@ describe("github discovery — skills", () => {
 	test("discovers .github/skills/<name>/SKILL.md via the github provider", async () => {
 		writeSkill(path.join(tempDir, ".github", "skills"), "demo-skill", "Demo skill for Copilot");
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir, providers: ["github"] });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir, providers: ["github"] });
 
 		const found = result.all.find(skill => skill.name === "demo-skill");
 		expect(found).toBeDefined();
@@ -57,13 +57,13 @@ describe("github discovery — skills", () => {
 	test("skips skills missing a description (matches GitHub agent-skills standard)", async () => {
 		writeSkill(path.join(tempDir, ".github", "skills"), "no-desc", null);
 
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir, providers: ["github"] });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir, providers: ["github"] });
 
 		expect(result.all.find(skill => skill.name === "no-desc")).toBeUndefined();
 	});
 
 	test("returns no skills when .github/skills/ is absent", async () => {
-		const result = await loadCapability<Skill>("skills", { cwd: tempDir, providers: ["github"] });
+		const result = await loadCapability<DiscoveredSkill>("skills", { cwd: tempDir, providers: ["github"] });
 
 		expect(result.all).toEqual([]);
 		expect(result.warnings).toEqual([]);

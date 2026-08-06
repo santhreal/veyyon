@@ -66,7 +66,7 @@ export type { Instruction } from "../capability/instruction";
 export type { MCPServer } from "../capability/mcp";
 export type { Prompt } from "../capability/prompt";
 export type { Rule, RuleFrontmatter } from "../capability/rule";
-export type { Skill, SkillFrontmatter } from "../capability/skill";
+export type { DiscoveredSkill, SkillFrontmatter } from "../capability/skill";
 export type { SlashCommand } from "../capability/slash-command";
 export type { SSHHost } from "../capability/ssh";
 export type { DiscoveredCustomTool } from "../capability/tool";

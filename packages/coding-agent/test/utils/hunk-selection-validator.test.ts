@@ -71,6 +71,31 @@ describe("validateHunkSelections", () => {
 	it("skips (does not error on) a selector whose path is absent from the diff", () => {
 		expect(validateHunkSelections(DIFF, [{ path: "nope.ts", hunks: { type: "indices", indices: [0] } }])).toEqual([]);
 	});
+
+	/**
+	 * WHY: an unreadable hunk header used to be parsed as `{0, 0, 0, 0}`, so a line selector
+	 * against a combined merge diff resolved to nothing and the operator was told "No hunks
+	 * selected", the same message a genuinely out-of-range line range produces. The two cases
+	 * are not the same, and the second one is a diff this pipeline cannot read at all.
+	 */
+	it("names the unreadable hunk header instead of reporting an ordinary empty selection", () => {
+		const combined = [
+			"diff --git a/src/m.ts b/src/m.ts",
+			"--- a/src/m.ts",
+			"+++ b/src/m.ts",
+			"@@@ -1,2 -1,2 +1,2 @@@",
+			"  export function m() {}",
+			"++	return 3;",
+		].join("\n");
+		expect(
+			validateHunkSelections(combined, [{ path: "src/m.ts", hunks: { type: "lines", start: 1, end: 3 } }]),
+		).toEqual([
+			{
+				path: "src/m.ts",
+				message: "Unrecognized unified diff hunk header for src/m.ts: @@@ -1,2 -1,2 +1,2 @@@",
+			},
+		]);
+	});
 });
 
 describe("createHunkSelectionValidator reuse", () => {

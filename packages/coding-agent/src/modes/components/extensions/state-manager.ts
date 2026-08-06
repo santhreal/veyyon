@@ -11,7 +11,7 @@ import type { Hook } from "../../../capability/hook";
 import type { MCPServer } from "../../../capability/mcp";
 import type { Prompt } from "../../../capability/prompt";
 import type { Rule } from "../../../capability/rule";
-import type { Skill } from "../../../capability/skill";
+import type { DiscoveredSkill } from "../../../capability/skill";
 import type { SlashCommand } from "../../../capability/slash-command";
 import type { DiscoveredCustomTool } from "../../../capability/tool";
 import type { SourceMeta } from "../../../capability/types";
@@ -103,7 +103,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 
 	// Load skills
 	try {
-		const skills = await loadCapability<Skill>("skills", loadOpts);
+		const skills = await loadCapability<DiscoveredSkill>("skills", loadOpts);
 		addItems(skills.all, "skill", {
 			getDescription: s => s.frontmatter?.description,
 			getTrigger: s => s.frontmatter?.globs?.join(", "),

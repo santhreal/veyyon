@@ -19,7 +19,7 @@ import type { MCPServer } from "../capability/mcp";
 import { mcpCapability } from "../capability/mcp";
 import type { Prompt } from "../capability/prompt";
 import { promptCapability } from "../capability/prompt";
-import type { Skill } from "../capability/skill";
+import type { DiscoveredSkill } from "../capability/skill";
 import { skillCapability } from "../capability/skill";
 import type { SlashCommand } from "../capability/slash-command";
 import { slashCommandCapability } from "../capability/slash-command";
@@ -197,7 +197,7 @@ function extractMCPServersFromToml(toml: Record<string, unknown>): Record<string
 // Skills (skills/)
 // =============================================================================
 
-async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
+async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const userSkillsDir = path.join(ctx.home, SOURCE_PATHS.codex.userBase, "skills");
 	return await scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" });
 }
@@ -327,7 +327,7 @@ registerProvider<MCPServer>(mcpCapability.id, {
 	load: loadMCPServers,
 });
 
-registerProvider<Skill>(skillCapability.id, {
+registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load skills from ~/.codex/skills and .codex/skills/",

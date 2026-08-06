@@ -18,7 +18,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
-import { type Skill, skillCapability } from "@veyyon/coding-agent/capability/skill";
+import { type DiscoveredSkill, skillCapability } from "@veyyon/coding-agent/capability/skill";
 import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/capability/slash-command";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
 import { removeWithRetries, setAgentDir } from "@veyyon/utils";
@@ -87,7 +87,7 @@ describe("native user-level config discovery follows the active profile", () => 
 
 	test("skills resolve from the profile, not the default agent dir", async () => {
 		clearFsCache();
-		const result = await loadCapability<Skill>(skillCapability.id, {
+		const result = await loadCapability<DiscoveredSkill>(skillCapability.id, {
 			cwd: projectDir,
 			providers: ["native"],
 		});

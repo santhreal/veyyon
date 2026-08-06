@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { readPipeText } from "@veyyon/utils";
+import { text as readStreamText } from "node:stream/consumers";
 import { GrepOutputMode, grep } from "../native/index.js";
 
 const ITERATIONS = Number(Bun.env.GREP_BENCH_ITERATIONS ?? "50");
@@ -91,7 +91,7 @@ for (const c of cases) {
 			stdout: "pipe",
 			stderr: "ignore",
 		});
-		const stdout = await readPipeText(proc.stdout);
+		const stdout = await readStreamText(proc.stdout as ReadableStream<Uint8Array>);
 		await proc.exited;
 		return stdout;
 	};

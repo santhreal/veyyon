@@ -12,7 +12,7 @@ import { type ExtensionModule, extensionModuleCapability } from "../capability/e
 import { readFile } from "../capability/fs";
 import { type Hook, hookCapability } from "../capability/hook";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type Skill, skillCapability } from "../capability/skill";
+import { type DiscoveredSkill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
@@ -166,14 +166,14 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 // Skills
 // =============================================================================
 
-async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
+async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const userSkillsDir = path.join(getUserClaude(ctx), "skills");
 
 	const [userResult] = await Promise.allSettled([
 		scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" }),
 	]);
 
-	const items: Skill[] = [];
+	const items: DiscoveredSkill[] = [];
 	const warnings: string[] = [];
 
 	if (userResult.status === "fulfilled") {
@@ -388,7 +388,7 @@ registerProvider<ContextFile>(contextFileCapability.id, {
 	load: loadContextFiles,
 });
 
-registerProvider<Skill>(skillCapability.id, {
+registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load skills from .claude/skills/*/SKILL.md",

@@ -25,7 +25,7 @@ import { type Hook, hookCapability } from "../capability/hook";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import { type Prompt, promptCapability } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
-import { type Skill, skillCapability } from "../capability/skill";
+import { type DiscoveredSkill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
@@ -44,7 +44,7 @@ const PRIORITY = 90;
 // Skills
 // =============================================================================
 
-async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
+async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const results = await Promise.all(
 		roots.map(root =>
@@ -332,7 +332,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 // Provider Registration
 // =============================================================================
 
-registerProvider<Skill>(skillCapability.id, {
+registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: DESCRIPTION,

@@ -1,4 +1,7 @@
 import { type Component, padding, Text, visibleWidth } from "@veyyon/tui";
+// The owning leaf, not the `@veyyon/utils` barrel: this is the only vocabulary the renderer
+// needs, and the React renderer of the same tool output reads the same one.
+import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/github-check-run";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { framedBlock, renderStatusLine } from "../tui";
@@ -31,10 +34,6 @@ type GithubToolRenderArgs = {
 	query?: string;
 };
 
-const SUCCESS_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
-const FAILURE_CONCLUSIONS = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure"]);
-const RUNNING_STATUSES = new Set(["in_progress"]);
-const PENDING_STATUSES = new Set(["queued", "requested", "waiting", "pending"]);
 const FALLBACK_WIDTH = 80;
 
 const OP_TITLES: Record<string, string> = {
@@ -58,9 +57,8 @@ function extractIssueId(value: string | undefined): string | undefined {
 	if (!value) return undefined;
 	const trimmed = value.trim();
 	if (!trimmed) return undefined;
-	if (/^\d+$/.test(trimmed)) return `#${trimmed}`;
-	const match = trimmed.match(/\/(?:issues|pull)\/(\d+)/);
-	if (match) return `#${match[1]}`;
+	const id = githubIssueRefNumber(trimmed);
+	if (id) return id;
 	return truncateVisualWidth(trimmed, TRUNCATE_LENGTHS.SHORT);
 }
 
@@ -161,43 +159,16 @@ function getJobStateVisual(
 	job: GhRunWatchJobDetails,
 	theme: Theme,
 ): { iconRaw: string; iconColor: ToolUIColor; textColor: ThemeColor } {
-	if (job.conclusion && SUCCESS_CONCLUSIONS.has(job.conclusion)) {
-		return {
-			iconRaw: theme.status.success,
-			iconColor: "accent",
-			textColor: "success",
-		};
+	switch (classifyGithubCheckRun(job.status, job.conclusion)) {
+		case "success":
+			return { iconRaw: theme.status.success, iconColor: "accent", textColor: "success" };
+		case "failure":
+			return { iconRaw: theme.status.error, iconColor: "error", textColor: "error" };
+		case "running":
+			return { iconRaw: theme.status.enabled, iconColor: "warning", textColor: "warning" };
+		default:
+			return { iconRaw: theme.status.shadowed, iconColor: "muted", textColor: "muted" };
 	}
-
-	if (job.conclusion && FAILURE_CONCLUSIONS.has(job.conclusion)) {
-		return {
-			iconRaw: theme.status.error,
-			iconColor: "error",
-			textColor: "error",
-		};
-	}
-
-	if (job.status && RUNNING_STATUSES.has(job.status)) {
-		return {
-			iconRaw: theme.status.enabled,
-			iconColor: "warning",
-			textColor: "warning",
-		};
-	}
-
-	if (job.status && PENDING_STATUSES.has(job.status)) {
-		return {
-			iconRaw: theme.status.shadowed,
-			iconColor: "muted",
-			textColor: "muted",
-		};
-	}
-
-	return {
-		iconRaw: theme.status.shadowed,
-		iconColor: "muted",
-		textColor: "muted",
-	};
 }
 
 function renderJobLine(job: GhRunWatchJobDetails, width: number, theme: Theme): string {

@@ -15,7 +15,7 @@ import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { type Prompt, promptCapability } from "../capability/prompt";
 import { type Rule, ruleCapability } from "../capability/rule";
-import { type Skill, skillCapability } from "../capability/skill";
+import { type DiscoveredSkill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import type { LoadContext, LoadResult } from "../capability/types";
 import {
@@ -37,7 +37,7 @@ function getUserPathCandidates(ctx: LoadContext, ...segments: string[]): string[
 }
 
 // Skills
-async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
+async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const results = await Promise.all(
 		getUserPathCandidates(ctx, "skills").map(dir =>
 			scanSkillsFromDir({ dir, providerId: PROVIDER_ID, level: "user" }),
@@ -50,7 +50,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	};
 }
 
-registerProvider<Skill>(skillCapability.id, {
+registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
 	description: "Load skills from ~/.agent/skills and ~/.agents/skills",
