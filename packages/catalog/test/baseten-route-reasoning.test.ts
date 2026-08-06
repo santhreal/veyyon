@@ -72,4 +72,21 @@ describe("Baseten per-route reasoning", () => {
 			basetenRouteReasoning("deepseek-ai/DeepSeek-V4-Pro"),
 		);
 	});
+
+	test("never puts the thinking-off state on a depth ladder", () => {
+		// Baseten spells disable as `reasoning_effort: "none"`, which is the off
+		// state rather than a depth. Veyyon owns that as `Effort.Off`, and a
+		// ladder carrying it would render an "off" entry twice.
+		for (const id of [
+			"openai/gpt-oss-120b",
+			"deepseek-ai/DeepSeek-V4-Pro",
+			"moonshotai/Kimi-K3",
+			"zai-org/GLM-5.2",
+			"zai-org/GLM-5.2-Fast",
+			"thinkingmachines/inkling",
+			"thinkingmachines/inkling-small",
+		]) {
+			expect(basetenRouteReasoning(id)?.efforts).not.toContain(Effort.Off);
+		}
+	});
 });
