@@ -123,14 +123,14 @@ describe("config/settings stays out of the theme engine", () => {
 
 	/**
 	 * The other half of the component. `../discovery` registers fourteen capability
-	 * providers, and settings needs it in exactly one already-async method, so it is
-	 * a dynamic import. A static one would pull the whole registry back in.
+	 * providers, and a static import from settings would pull the whole registry into
+	 * every module that reads a setting. Settings reaches none of it today, which is
+	 * the strongest form of the same property.
 	 */
 	it("does not statically import the discovery registry", () => {
 		const imports = staticImports(SETTINGS);
 
-		expect(imports).not.toContain("../discovery");
-		expect(fs.readFileSync(SETTINGS, "utf-8")).toContain('await import("../discovery")');
+		expect(imports.filter(specifier => specifier.startsWith("../discovery"))).toEqual([]);
 	});
 
 	/**
