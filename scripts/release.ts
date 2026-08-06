@@ -141,7 +141,7 @@ async function updateChangelogsForRelease(version: string): Promise<void> {
  * Read every `packages/<name>/CHANGELOG.md` with the name of the package that owns it, so the
  * gate can name the offender rather than a path the operator has to map back to a package.
  */
-async function loadPackageChangelogs(): Promise<PackageChangelog[]> {
+export async function loadPackageChangelogs(): Promise<PackageChangelog[]> {
 	const changelogs: PackageChangelog[] = [];
 	for await (const changelog of changelogGlob.scan(".")) {
 		const posixPath = changelog.replaceAll(path.sep, "/");
@@ -471,7 +471,7 @@ export async function validateReleaseVersionAuthorities(
 	}
 }
 
-async function prepareReleaseTree(version: string, latestTag: string): Promise<void> {
+export async function prepareReleaseTree(version: string, latestTag: string): Promise<void> {
 	console.log(`Updating package versions to ${version}…`);
 	const pkgJsonPaths = await Array.fromAsync(packageJsonGlob.scan("."));
 	const publicPkgPaths: string[] = [];
