@@ -61,13 +61,21 @@ run_docker() {
 	local -a tty_args=()
 	[ -t 0 ] && [ -t 1 ] && tty_args=(-it)
 
+	# `exec` is set explicitly on the three tmpfs mounts below. Docker's default
+	# tmpfs options are `nosuid,nodev,noexec`, and noexec breaks a suite that
+	# writes a stub binary into TMPDIR and puts it on PATH, which is the ordinary
+	# way to test a shell script. The bwrap rung and the microVM guest mount plain
+	# tmpfs and allow exec, so the difference showed up as six tests failing on
+	# this rung alone, with messages that read like the script under test was
+	# broken. `nosuid,nodev` are restated because naming any option drops the
+	# defaults.
 	docker run --rm "${tty_args[@]}" \
 		--network none \
 		--user "$(id -u):$(id -g)" \
 		"${mount_args[@]}" \
-		--tmpfs "/home:rw,mode=0755" \
-		--tmpfs "/tmp:rw,mode=1777" \
-		--tmpfs "/sandbox:rw,mode=1777" \
+		--tmpfs "/home:rw,nosuid,nodev,exec,mode=0755" \
+		--tmpfs "/tmp:rw,nosuid,nodev,exec,mode=1777" \
+		--tmpfs "/sandbox:rw,nosuid,nodev,exec,mode=1777" \
 		-w "${GUEST_REPO}" \
 		"${env_args[@]}" \
 		--entrypoint /bin/sh \

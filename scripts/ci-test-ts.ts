@@ -389,6 +389,9 @@ export const repoScriptTests = [
 	"scripts/release-native-artifacts-match-ci.test.ts",
 	"scripts/release-recut-recovery-message.test.ts",
 	"scripts/session-stats/audit.test.ts",
+	// Runs in whatever rung the harness picked, and asserts that rung can execute
+	// a file a suite just wrote. Docker's tmpfs defaults could not.
+	"scripts/test-sandbox/the-guest-tmpdir-can-execute.test.ts",
 ];
 
 /**
