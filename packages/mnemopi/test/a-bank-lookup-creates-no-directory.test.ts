@@ -26,15 +26,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	BankManager,
-	bankDbPath,
-	bankExists,
-	getBank,
-	listBanks,
-	resetBankForTests,
-	setBank,
-} from "@veyyon/mnemopi/core/banks";
+import { BankManager, bankDbPath, bankExists, listBanks } from "@veyyon/mnemopi/core/banks";
 
 /** A path under the system temp directory that is guaranteed NOT to exist. */
 function unmadeRoot(): string {
@@ -46,7 +38,6 @@ function unmadeRoot(): string {
 const created: string[] = [];
 
 afterEach(() => {
-	resetBankForTests();
 	while (created.length > 0) rmSync(created.pop() as string, { recursive: true, force: true });
 });
 
@@ -81,9 +72,7 @@ describe("a bank lookup creates no directory", () => {
 
 		expect(bankExists("work", root)).toBe(false);
 		expect(listBanks(root)).toEqual(["default"]);
-		setBank("work");
-		expect(getBank()).toBe("work");
-		expect(bankDbPath(undefined, root)).toBe(join(root, "banks", "work", "mnemopi.db"));
+		expect(bankDbPath("work", root)).toBe(join(root, "banks", "work", "mnemopi.db"));
 
 		expect(existsSync(root)).toBe(false);
 	});

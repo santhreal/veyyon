@@ -124,8 +124,6 @@ export class BankManager {
 	}
 }
 
-let defaultBank = "default";
-
 export function createBank(name: string, dataDir?: string): string {
 	const manager = new BankManager(dataDir);
 	return manager.createBank(name);
@@ -142,17 +140,9 @@ export function bankExists(name: string, dataDir?: string): boolean {
 	const manager = new BankManager(dataDir);
 	return manager.bankExists(name);
 }
-export function bankDbPath(name = defaultBank, dataDir?: string): string {
+// `name` is required: the process default bank is owned by `core/memory.ts`, which is the
+// copy that actually routes the singleton. A second default here would be a silent fork.
+export function bankDbPath(name: string, dataDir?: string): string {
 	const manager = new BankManager(dataDir);
 	return manager.getBankDbPath(name);
-}
-
-export function setBank(bank: string): void {
-	defaultBank = bank;
-}
-export function getBank(): string {
-	return defaultBank;
-}
-export function resetBankForTests(): void {
-	defaultBank = "default";
 }
