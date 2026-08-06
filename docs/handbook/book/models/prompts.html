@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9aa37f0d.js";
+            window.path_to_searchindex_js = "../searchindex-cde59638.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -253,6 +253,12 @@ assembled, so what you see is what a session would send. Change a setting, run i
 again, and the difference is visible.</p>
 <p>Nothing is written while you look. The command opens no database, migrates nothing, and leaves no
 marker files, so inspecting the prompt cannot change what the next session does.</p>
+<h2 id="going-deeper"><a class="header" href="#going-deeper">Going deeper</a></h2>
+<p>The system prompt is not one string. It is an ordered list of parts, and the boundary between the
+first part and the rest is a provider-caching contract rather than a stylistic choice. To change
+what a part says, read <a href="../../../system-prompt-customization.html">System prompt customization</a>. To
+understand why the parts are split where they are, and where a new part would belong, read
+<a href="../../../internal/system-prompt-architecture.html"><code>docs/internal/system-prompt-architecture.md</code></a>.</p>
 
                     </main>
 

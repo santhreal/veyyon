@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9aa37f0d.js";
+            window.path_to_searchindex_js = "../searchindex-cde59638.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -231,6 +231,14 @@ protocol types.</li>
 <p>See <a href="../using/models.html">Models and providers</a> and
 <a href="../models/providers.html">Provider stack and bring-your-own-key</a> for how to add
 your own keys and choose models.</p>
+<h2 id="prompt-caching"><a class="header" href="#prompt-caching">Prompt caching</a></h2>
+<p>Each provider adapter also decides where the request’s cache markers go, and the shapes differ:
+Anthropic places up to four <code>cache_control</code> breakpoints, Bedrock interleaves <code>cachePoint</code> blocks,
+the OpenAI Responses path sends an explicit <code>prompt_cache_breakpoint</code>, and everything else caches
+implicitly or not at all. Two settings under <strong>Settings → Context → Prompt cache</strong> report and
+optionally block on a cache the provider demonstrably did not use. The full per-provider account,
+including the breakpoint budget and what invalidates what, is
+<a href="../../../internal/prompt-caching.html"><code>docs/internal/prompt-caching.md</code></a>.</p>
 
                     </main>
 

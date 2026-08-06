@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9aa37f0d.js";
+            window.path_to_searchindex_js = "searchindex-cde59638.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -3245,7 +3245,7 @@ detached|BISECT      bisecting
 <p><code>/cockpit</code> and <code>/hub</code> are aliases of <code>/agents</code>, as is the <code>app.agents.hub</code> keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant “which agents are running” had two answers that could disagree with each other. They all open the one card now.</p>
 <h3 id="the-live-roster"><a class="header" href="#the-live-roster">The Live roster</a></h3>
 <p>Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (<code>reviewer</code>, <code>scout</code>), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked <code>parked</code>, because their transcripts are still on disk even though this process never started them.</p>
-<p>Press Enter on a row and the main view becomes that agent’s session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. Opening a parked agent revives it on the way in.</p>
+<p>Press Enter on a row and the main view becomes that agent’s session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. While you are focused on an agent, the composer footline carries a persistent <code>&lt;agent-id&gt; · esc to go back</code> badge at the left, and the inline <code>Subagents</code> block above the composer lists that session’s own spawns, so inside a leaf agent with no spawns of its own the block disappears. Opening a parked agent revives it on the way in.</p>
 <p>To terminate a subagent, select its row and press <code>x</code>, or hover the row and click the <code>[x]</code> at its right edge. Both gestures open the same confirmation card. Choose <strong>Dismiss</strong> to return without changing the agent, or choose <strong>Yes, terminate</strong> to abort any turn in flight and release the session. The transcript stays on disk. Your main session and read-only advisor transcripts do not show the termination action.</p>
 <p>Clicking elsewhere on a row does the same thing as Enter, and clicking a name in the view strip switches to that view. Opening an agent is reversible with Esc, so a row click opens rather than only moving the cursor. The scroll wheel moves whatever the arrow keys move: the roster cursor on Live, the stream on Comms. Page up and page down move by a screenful, on either view.</p>
 <p>The roster is a table, so you can scan a column instead of reading every row: the status, the age, the model and the activity each start at the same place on every line. A name long enough to crowd the row out is truncated rather than paid for by every other row, and the model badge is dropped when the card is too narrow to show enough of it to recognise.</p>
@@ -6685,6 +6685,14 @@ protocol types.</li>
 <p>See <a href="#models-and-providers">Models and providers</a> and
 <a href="#the-provider-stack-and-bring-your-own-key">Provider stack and bring-your-own-key</a> for how to add
 your own keys and choose models.</p>
+<h2 id="prompt-caching"><a class="header" href="#prompt-caching">Prompt caching</a></h2>
+<p>Each provider adapter also decides where the request’s cache markers go, and the shapes differ:
+Anthropic places up to four <code>cache_control</code> breakpoints, Bedrock interleaves <code>cachePoint</code> blocks,
+the OpenAI Responses path sends an explicit <code>prompt_cache_breakpoint</code>, and everything else caches
+implicitly or not at all. Two settings under <strong>Settings → Context → Prompt cache</strong> report and
+optionally block on a cache the provider demonstrably did not use. The full per-provider account,
+including the breakpoint budget and what invalidates what, is
+<a href="../../internal/prompt-caching.html"><code>docs/internal/prompt-caching.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="testing-and-verification"><a class="header" href="#testing-and-verification">Testing and verification</a></h1>
 <p>Product behavior is covered by tests that assert concrete outcomes, not only non-empty results.</p>
@@ -6963,6 +6971,12 @@ assembled, so what you see is what a session would send. Change a setting, run i
 again, and the difference is visible.</p>
 <p>Nothing is written while you look. The command opens no database, migrates nothing, and leaves no
 marker files, so inspecting the prompt cannot change what the next session does.</p>
+<h2 id="going-deeper"><a class="header" href="#going-deeper">Going deeper</a></h2>
+<p>The system prompt is not one string. It is an ordered list of parts, and the boundary between the
+first part and the rest is a provider-caching contract rather than a stylistic choice. To change
+what a part says, read <a href="../../system-prompt-customization.html">System prompt customization</a>. To
+understand why the parts are split where they are, and where a new part would belong, read
+<a href="../../internal/system-prompt-architecture.html"><code>docs/internal/system-prompt-architecture.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bounded-reads-and-search"><a class="header" href="#bounded-reads-and-search">Bounded reads and search</a></h1>
 <p>Four tools give the agent controlled access to your files: <code>read</code>, <code>glob</code>, <code>grep</code>, and
@@ -7267,9 +7281,18 @@ overwritten, so a second run in the same directory continues past the numbers
 already there.</p>
 <p>Two things are worth knowing before you turn it on. The files land in your
 working directory rather than a cache directory, because you usually want to
-read them next to the project you were working in. And request bodies contain
-whatever you sent the model, including file contents and your API key in the
-headers, so treat them as sensitive and delete them when you are done.</p>
+read them next to the project you were working in; they are created readable by
+you alone, and the repo <code>.gitignore</code> already covers <code>rr-session-*</code> so a stray
+<code>git add</code> cannot pick one up. And a dump is the request as it went on the wire,
+including file contents and whatever a provider echoed back, so treat it as
+sensitive and delete it when you are done.</p>
+<p>Credential headers do not go in. <code>Authorization</code>, <code>Cookie</code>, any header whose
+name carries <code>api-key</code>, <code>auth-token</code>, <code>access-token</code> or <code>secret</code>, and their
+response-side counterparts are written as <code>&lt;redacted N chars&gt;</code>: you can still
+see that the header was sent and how long the value was, which is what a
+debugging session needs, without the key itself sitting in a file you might
+attach to a bug report. Bodies are recorded verbatim, so an OAuth token
+exchange still puts a refresh token in the file.</p>
 <p>Recording never interferes with the session it records. If a log cannot be
 written, because the disk is full or the directory is read-only, veyyon logs an
 error naming the file and the cause, stops recording that response, and lets the
