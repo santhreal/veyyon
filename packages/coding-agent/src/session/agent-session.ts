@@ -212,8 +212,8 @@ import {
 import {
 	type EffortSource,
 	resolveEffort,
-	withAnyModelEffort,
 	withLegacyDefaultEffort,
+	withPersistedEffort,
 } from "../config/effort-resolver";
 import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import type { ModelRegistry } from "../config/model-registry";
@@ -11996,19 +11996,20 @@ export class AgentSession {
 	}
 
 	/**
-	 * Write a durable default effort into `defaultEffort`'s any-model row, which
-	 * is the setting {@link resolveEffort} actually reads. The retired
-	 * `defaultThinkingLevel` enum this replaced is consulted only when
-	 * `defaultEffort` is absent, so persisting there was discarded on the next
-	 * read for every profile that had a `defaultEffort` object.
+	 * Write a durable default effort into the `defaultEffort` row that governs
+	 * the selected model, which is the setting {@link resolveEffort} actually
+	 * reads. The retired `defaultThinkingLevel` enum this replaced is consulted
+	 * only when `defaultEffort` is absent, so persisting there was discarded on
+	 * the next read for every profile that had a `defaultEffort` object.
 	 */
 	#persistDefaultEffort(level: ConfiguredThinkingLevel): void {
 		this.settings.set(
 			"defaultEffort",
-			withAnyModelEffort(
+			withPersistedEffort(
 				this.settings.isConfigured("defaultEffort") ? this.settings.get("defaultEffort") : undefined,
 				this.settings.get("defaultThinkingLevel"),
 				level,
+				this.model ? `${this.model.provider}/${this.model.id}` : undefined,
 			),
 		);
 	}

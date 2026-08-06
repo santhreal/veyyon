@@ -4,8 +4,8 @@ import {
 	ANY_MODEL_EFFORT_KEY,
 	formatEffortRow,
 	resolveEffort,
-	withAnyModelEffort,
 	withLegacyDefaultEffort,
+	withPersistedEffort,
 } from "@veyyon/coding-agent/config/effort-resolver";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 
@@ -181,22 +181,24 @@ describe("persisting a durable default effort", () => {
 		// `defaultThinkingLevel` enum, which `withLegacyDefaultEffort` consults
 		// only when `defaultEffort` is absent, so the write was discarded on the
 		// next read for any profile that had ever opened the settings screen.
-		const rows = withAnyModelEffort({ [OPUS]: ThinkingLevel.XHigh }, undefined, ThinkingLevel.Medium);
+		const rows = withPersistedEffort({ [OPUS]: ThinkingLevel.XHigh }, undefined, ThinkingLevel.Medium);
 		expect(rows).toEqual({ [OPUS]: ThinkingLevel.XHigh, [ANY_MODEL_EFFORT_KEY]: ThinkingLevel.Medium });
 		expect(resolveEffort({ defaultEffort: rows })).toEqual({ level: ThinkingLevel.Medium, source: "any-row" });
 	});
 
 	it("replaces an existing any-model row rather than keeping the older one", () => {
-		expect(withAnyModelEffort({ [ANY_MODEL_EFFORT_KEY]: ThinkingLevel.Low }, undefined, ThinkingLevel.High)).toEqual({
-			[ANY_MODEL_EFFORT_KEY]: ThinkingLevel.High,
-		});
+		expect(withPersistedEffort({ [ANY_MODEL_EFFORT_KEY]: ThinkingLevel.Low }, undefined, ThinkingLevel.High)).toEqual(
+			{
+				[ANY_MODEL_EFFORT_KEY]: ThinkingLevel.High,
+			},
+		);
 	});
 
 	it("carries a legacy-only profile forward instead of dropping its per-model rows", () => {
 		// A profile still on the retired enum has no `defaultEffort` object, so the
 		// first persist is also the migration. Ignoring the legacy value here would
 		// silently discard the level that operator had saved.
-		expect(withAnyModelEffort(undefined, ThinkingLevel.XHigh, AUTO_THINKING)).toEqual({
+		expect(withPersistedEffort(undefined, ThinkingLevel.XHigh, AUTO_THINKING)).toEqual({
 			[ANY_MODEL_EFFORT_KEY]: AUTO_THINKING,
 		});
 	});
@@ -204,7 +206,7 @@ describe("persisting a durable default effort", () => {
 	it("does not resurrect the legacy enum into a list the operator cleared", () => {
 		// `{}` is a deliberate cleared default. The persist adds the one row asked
 		// for and nothing else.
-		expect(withAnyModelEffort({}, ThinkingLevel.High, ThinkingLevel.Low)).toEqual({
+		expect(withPersistedEffort({}, ThinkingLevel.High, ThinkingLevel.Low)).toEqual({
 			[ANY_MODEL_EFFORT_KEY]: ThinkingLevel.Low,
 		});
 	});
@@ -213,8 +215,57 @@ describe("persisting a durable default effort", () => {
 		// Settings owns the object; mutating it would edit stored state before the
 		// write, defeating any comparison the caller makes.
 		const rows = { [OPUS]: ThinkingLevel.High };
-		withAnyModelEffort(rows, undefined, ThinkingLevel.Low);
+		withPersistedEffort(rows, undefined, ThinkingLevel.Low);
 		expect(rows).toEqual({ [OPUS]: ThinkingLevel.High });
+	});
+
+	it("updates the model's own row when that row is what governs it", () => {
+		// The same defect as the retired key, one precedence step later: a
+		// per-model row outranks `*`, so writing `*` while sitting on a model that
+		// has its own row stores a value the resolver never reaches. The pin has to
+		// be observable for the model it was made on.
+		const rows = withPersistedEffort({ [OPUS]: ThinkingLevel.Low }, undefined, ThinkingLevel.High, OPUS);
+		expect(rows).toEqual({ [OPUS]: ThinkingLevel.High });
+		expect(resolveEffort({ modelSelector: OPUS, defaultEffort: rows })).toEqual({
+			level: ThinkingLevel.High,
+			source: "model-row",
+		});
+	});
+
+	it("leaves other models alone when it updates one model's row", () => {
+		// Persisting on one model must not redefine what every other model does,
+		// which is what writing `*` as well would mean.
+		const rows = withPersistedEffort(
+			{ [OPUS]: ThinkingLevel.Low, [ANY_MODEL_EFFORT_KEY]: ThinkingLevel.Minimal },
+			undefined,
+			ThinkingLevel.High,
+			OPUS,
+		);
+		expect(rows[ANY_MODEL_EFFORT_KEY]).toBe(ThinkingLevel.Minimal);
+	});
+
+	it("writes the any-model row for a model that has none of its own", () => {
+		// Nothing more specific governs, so `*` is both the row that answers for
+		// this model and the profile-wide default the operator asked to set.
+		expect(withPersistedEffort({ [OPUS]: ThinkingLevel.Low }, undefined, ThinkingLevel.High, "openai/gpt-5")).toEqual(
+			{
+				[OPUS]: ThinkingLevel.Low,
+				[ANY_MODEL_EFFORT_KEY]: ThinkingLevel.High,
+			},
+		);
+	});
+
+	it("writes the any-model row when the model's own row is unreadable", () => {
+		// A row holding a typo does not govern -- `resolveEffort` skips it and falls
+		// through to `*` -- so `*` is the row that has to change. Writing the junk
+		// row instead would leave the pin as invisible as before, which is why the
+		// question is asked of the resolver rather than of `rows[selector]`.
+		const rows = withPersistedEffort({ [OPUS]: "hgih" }, undefined, ThinkingLevel.High, OPUS);
+		expect(rows).toEqual({ [OPUS]: "hgih", [ANY_MODEL_EFFORT_KEY]: ThinkingLevel.High });
+		expect(resolveEffort({ modelSelector: OPUS, defaultEffort: rows })).toEqual({
+			level: ThinkingLevel.High,
+			source: "any-row",
+		});
 	});
 });
 
