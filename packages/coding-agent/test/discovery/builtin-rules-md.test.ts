@@ -1,9 +1,18 @@
 /**
  * Regression tests for top-level `RULES.md` sticky rules.
  *
- * `RULES.md` (singular, top-level) MUST be loaded as a sticky always-apply rule
- * from both `~/.veyyon/agent/RULES.md` (user) and the nearest `.veyyon/RULES.md`
- * (project, walked up from cwd to repoRoot).
+ * `RULES.md` (singular, top-level) is loaded as a sticky always-apply rule from
+ * the loading profile's agent dir (`<agentDir>/RULES.md`) and from NOWHERE ELSE.
+ *
+ * A repository's `.veyyon/RULES.md` was honored at level "project" until
+ * eea8680b6 / 0adabd386 ("never load configuration from the working tree"): a
+ * checked-out tree is content the operator may not have written, and a sticky
+ * rule is the strongest grant in the system — re-injected next to every single
+ * turn. `getConfigDirs` is user-scope only now and `loadStickyRulesFile` takes a
+ * literal `"user"` level, so the `RULES@project` rule no longer exists. The
+ * negative cases below pin that door shut at the loader that owns it; the
+ * whole-repo sweep lives in
+ * `test/security/the-working-tree-does-not-configure-the-agent.test.ts`.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import * as fs from "node:fs";
@@ -75,31 +84,31 @@ test("user ~/.veyyon/agent/RULES.md becomes an alwaysApply rule", async () => {
 	expect(userRule?.content).toContain("beads task tracker");
 });
 
-test("project .veyyon/RULES.md becomes an alwaysApply rule", async () => {
+test("a repository's .veyyon contributes no rule at all", async () => {
 	writeFile(path.join(project, ".veyyon", "RULES.md"), "# Project rule\nAlways say hi.\n");
+	writeFile(path.join(project, ".veyyon", "rules", "checked-in.md"), "# Checked in\nAlso say bye.\n");
 
 	const rules = await loadNativeRules({ cwd: project, home, repoRoot: project });
 
-	const projectRule = rules.find(r => r._source.level === "project" && r.name === "RULES@project");
-	expect(projectRule).toBeDefined();
-	expect(projectRule?.alwaysApply).toBe(true);
-	expect(projectRule?.content).toContain("Always say hi.");
+	expect(rules.filter(r => r._source.level === "project")).toEqual([]);
+	const allContent = rules.map(r => r.content).join("\n");
+	expect(allContent).not.toContain("Always say hi.");
+	expect(allContent).not.toContain("Also say bye.");
 });
 
-test("project RULES.md is found walking up from a sub-package cwd", async () => {
+test("walking up from a sub-package cwd does not reach a repo .veyyon/RULES.md", async () => {
 	const subPkg = path.join(project, "packages", "app");
 	fs.mkdirSync(subPkg, { recursive: true });
 	writeFile(path.join(project, ".veyyon", "RULES.md"), "# Repo-wide sticky rule\n");
+	writeFile(path.join(subPkg, ".veyyon", "RULES.md"), "# Sub-package sticky rule\n");
 
 	const rules = await loadNativeRules({ cwd: subPkg, home, repoRoot: project });
 
-	const projectRule = rules.find(r => r._source.level === "project" && r.name === "RULES@project");
-	expect(projectRule).toBeDefined();
-	expect(projectRule?.alwaysApply).toBe(true);
-	expect(projectRule?.path).toBe(path.join(project, ".veyyon", "RULES.md"));
+	expect(rules.map(r => r.path)).not.toContain(path.join(project, ".veyyon", "RULES.md"));
+	expect(rules.map(r => r.path)).not.toContain(path.join(subPkg, ".veyyon", "RULES.md"));
 });
 
-test("user and project sticky RULES.md both survive public capability dedup", async () => {
+test("the user sticky RULES.md survives public capability dedup and is the only one", async () => {
 	const userRulesPath = path.join(home, ".veyyon", "agent", "RULES.md");
 	const projectRulesPath = path.join(project, ".veyyon", "RULES.md");
 	const userRuleText = "User sticky rule: keep the personal safety checklist active.\n";
@@ -110,29 +119,16 @@ test("user and project sticky RULES.md both survive public capability dedup", as
 	const rules = await loadRulesCapability(project);
 
 	const stickyRules = rules.filter(rule => rule.path === userRulesPath || rule.path === projectRulesPath);
-	expect(stickyRules).toHaveLength(2);
+	expect(stickyRules.map(rule => rule.path)).toEqual([userRulesPath]);
 
-	const userRule = stickyRules.find(rule => rule._source.level === "user");
-	const projectRule = stickyRules.find(rule => rule._source.level === "project");
-
-	if (!userRule) throw new Error("user sticky rule missing");
+	const userRule = stickyRules[0];
 	expect(userRule.name).toBe("RULES");
-	expect(userRule.path).toBe(userRulesPath);
+	expect(userRule._source.level).toBe("user");
 	expect(userRule._source.path).toBe(userRulesPath);
 	expect(userRule.alwaysApply).toBe(true);
 	expect(userRule.content).toContain(userRuleText.trim());
+	expect(userRule.content).not.toContain(projectRuleText.trim());
 	expect("_shadowed" in userRule).toBe(false);
-
-	if (!projectRule) throw new Error("project sticky rule missing");
-	expect(projectRule.name).toBe("RULES@project");
-	expect(projectRule.path).toBe(projectRulesPath);
-	expect(projectRule._source.path).toBe(projectRulesPath);
-	expect(projectRule.alwaysApply).toBe(true);
-	expect(projectRule.content).toContain(projectRuleText.trim());
-	expect("_shadowed" in projectRule).toBe(false);
-
-	expect(userRule.name).not.toBe(projectRule.name);
-	expect(userRule.content).not.toBe(projectRule.content);
 });
 
 test("alwaysApply is forced even when frontmatter says false", async () => {
