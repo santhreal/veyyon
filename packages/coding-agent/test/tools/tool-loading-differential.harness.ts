@@ -206,8 +206,10 @@ export const TOOL_LOAD_CASES: readonly ToolLoadCase[] = [
 		name: "delegation-off-discovery-all",
 		settings: { "tools.discoveryMode": "all", "subagent.delegation": "off" },
 	},
-	// 16 and 17 straddle the boundary exactly: the fixture registry holds 24 non-`search_tool_bm25`
-	// tools, so 24+16 = 40 is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and 24+17 = 41 is.
-	{ name: "auto-at-threshold", extensions: [bulkToolExtension(16, "bulk")] },
-	{ name: "auto-over-threshold", extensions: [bulkToolExtension(17, "bulk")] },
+	// 17 and 18 straddle the boundary exactly: the fixture registry holds 23 non-`search_tool_bm25`
+	// tools, so 23+17 = 40 is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and 23+18 = 41 is. The count was
+	// 24 while `browser` shipped on by default; the straddle is arithmetic on the active tool count,
+	// so a tool leaving the default set moves it and both counts step up to keep the boundary here.
+	{ name: "auto-at-threshold", extensions: [bulkToolExtension(17, "bulk")] },
+	{ name: "auto-over-threshold", extensions: [bulkToolExtension(18, "bulk")] },
 ];

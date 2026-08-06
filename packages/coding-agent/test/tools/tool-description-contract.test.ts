@@ -96,7 +96,10 @@ describe("tool descriptions keep their model-visible rules", () => {
 			getSessionSpawns: () => "*",
 			// In-memory settings: this suite never touches a repo, so the isolated
 			// constructor (which also skips on-disk discovery) is the right fixture.
-			settings: Settings.isolated(),
+			// `browser` ships off by default and `RETAINED` names its rules, so the
+			// fixture enables the opt-in tools rather than letting the default drop
+			// them from `createTools` and leave their contract unverified.
+			settings: Settings.isolated({ "browser.enabled": true, "lsp.enabled": true }),
 		} as unknown as ToolSession;
 		byName = new Map((await createTools(session)).map(tool => [tool.name, tool]));
 	});

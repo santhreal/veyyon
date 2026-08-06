@@ -68,8 +68,14 @@ describe("createTools", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("creates all builtin tools by default", async () => {
-		const session = createTestSession();
+	// `browser` and `lsp` ship off by default, so the session enables them explicitly:
+	// the contract this case defends is that every builtin tool can be built, not that
+	// every one of them is on out of the box (`tool-discovery/initial-tools.test.ts`
+	// owns the shipped-default set).
+	it("creates all builtin tools", async () => {
+		const session = createTestSession({
+			settings: Settings.isolated({ "browser.enabled": true, "lsp.enabled": true }),
+		});
 		const tools = await createTools(session);
 		const names = tools.map(t => t.name);
 
@@ -82,6 +88,7 @@ describe("createTools", () => {
 		expect(names).toContain("grep");
 		expect(names).toContain("glob");
 		expect(names).toContain("lsp");
+		expect(names).toContain("browser");
 		expect(names).toContain("task");
 		expect(names).toContain("todo");
 		expect(names).toContain("web_search");
