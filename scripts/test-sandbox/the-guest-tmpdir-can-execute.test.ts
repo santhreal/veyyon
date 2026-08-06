@@ -40,9 +40,7 @@ describe("the sandbox TMPDIR", () => {
 
 		// The message is the whole value of this test: an EACCES here is a mount
 		// option, not a bug in whatever suite reported it first.
-		expect(
-			run.error ? `${run.error.message} (is TMPDIR mounted noexec?)` : run.stdout.trim(),
-		).toBe(SENTINEL);
+		expect(run.error ? `${run.error.message} (is TMPDIR mounted noexec?)` : run.stdout.trim()).toBe(SENTINEL);
 		expect(run.status).toBe(0);
 	});
 });

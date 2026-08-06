@@ -25,7 +25,7 @@ import {
 	expandToolArguments,
 } from "@veyyon/coding-agent/argot-wire";
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
-import { ArgotSession, EMPTY_GATE, StreamDecoder, type Vocabulary } from "argot";
+import { ArgotSession, EMPTY_GATE, type Vocabulary } from "argot";
 
 /** A real, loaded codec: `§db` -> `src/db.ts`, `§dbconn` -> a longer path. */
 function loadedCodec(): ArgotSession {

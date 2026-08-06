@@ -2375,7 +2375,7 @@ export class TUI extends Container {
 		// native surface commits them, so styles and hyperlinks cannot bleed between
 		// lines once they are in the terminal's own history.
 		let buffer = "";
-		for (const row of rows) buffer += row + LINE_TERMINATOR + "\r\n";
+		for (const row of rows) buffer += `${row}${LINE_TERMINATOR}\r\n`;
 		this.terminal.write(buffer);
 		return rows.length;
 	}

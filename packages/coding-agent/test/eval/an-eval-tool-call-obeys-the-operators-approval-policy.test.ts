@@ -34,8 +34,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { callSessionTool } from "@veyyon/coding-agent/eval/js/tool-bridge";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
-import type { SessionToolApprovals } from "@veyyon/coding-agent/tools/approval-modes";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import type { SessionToolApprovals } from "@veyyon/coding-agent/tools/approval-modes";
 import { type } from "arktype";
 
 /** Text the tool returns when it actually runs, so "did it run" is observable. */

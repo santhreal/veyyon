@@ -34,12 +34,8 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { ProviderHttpError } from "../error";
 import type { Api, FetchImpl, Message, Model } from "../types";
-import {
-	buildResponsesInput,
-	parseAzureDeploymentNameMap,
-	resolveOpenAIRequestSetup,
-} from "./openai-shared";
 import type { ResponseInput } from "./openai-responses-wire";
+import { buildResponsesInput, parseAzureDeploymentNameMap, resolveOpenAIRequestSetup } from "./openai-shared";
 
 /**
  * What a provider that compacts server-side must implement. The compaction
@@ -276,7 +272,11 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			// at full size on every turn while claiming the history was reduced.
 			if (
 				!output.some(
-					item => item && typeof item === "object" && item.type === "compaction" && typeof item.encrypted_content === "string",
+					item =>
+						item &&
+						typeof item === "object" &&
+						item.type === "compaction" &&
+						typeof item.encrypted_content === "string",
 				)
 			) {
 				throw new Error(

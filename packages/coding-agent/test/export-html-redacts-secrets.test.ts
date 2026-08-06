@@ -72,9 +72,7 @@ describe("HTML export secret redaction", () => {
 		expect(snapshot).toContain(placeholder);
 		// Both copies: the primary entry and the Helper sub-session the export embeds.
 		expect(snapshot.split(placeholder).length - 1).toBe(2);
-		expect(JSON.parse(snapshot).subSessions.Helper.entries[0].message.content).toBe(
-			`child saw ${placeholder} once`,
-		);
+		expect(JSON.parse(snapshot).subSessions.Helper.entries[0].message.content).toBe(`child saw ${placeholder} once`);
 	});
 
 	it("leaves non-secret transcript text untouched", async () => {

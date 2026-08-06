@@ -64,7 +64,14 @@ function assistantToolCall(id: string, timestamp = 3): AssistantMessage {
 }
 
 function toolResult(toolCallId: string, text: string, timestamp = 4): ToolResultMessage {
-	return { role: "toolResult", toolCallId, toolName: "read", content: [{ type: "text", text }], isError: false, timestamp };
+	return {
+		role: "toolResult",
+		toolCallId,
+		toolName: "read",
+		content: [{ type: "text", text }],
+		isError: false,
+		timestamp,
+	};
 }
 
 function liveConversation(): Message[] {
@@ -79,7 +86,11 @@ function liveConversation(): Message[] {
 function preparation(): CompactionPreparation {
 	return {
 		firstKeptEntryId: "kept-entry",
-		messagesToSummarize: [user("first question"), assistantToolCall("call-1"), toolResult("call-1", HUGE_TOOL_OUTPUT)],
+		messagesToSummarize: [
+			user("first question"),
+			assistantToolCall("call-1"),
+			toolResult("call-1", HUGE_TOOL_OUTPUT),
+		],
 		turnPrefixMessages: [],
 		recentMessages: [assistantText("here is the answer")],
 		isSplitTurn: false,
@@ -157,9 +168,7 @@ describe("compact() sends the cache-aligned request when it can hit", () => {
 		const secret = "SESSION_SECRET_9c02";
 		const sessionMessages = [user(`live turn quoting ${secret}`), assistantText("ack")];
 
-		const context = await captureCacheAlignedRequest(sessionMessages, text =>
-			text.replaceAll(secret, "#REDACTED#"),
-		);
+		const context = await captureCacheAlignedRequest(sessionMessages, text => text.replaceAll(secret, "#REDACTED#"));
 
 		expect(context.messages[0]).toBe(sessionMessages[0]);
 		expect(JSON.stringify(context.messages.slice(0, 2))).toContain(secret);

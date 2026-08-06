@@ -8,7 +8,11 @@ import {
 	type BuiltinSlashCommandDeclaration,
 } from "@veyyon/coding-agent/slash-commands/builtin-declarations";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
-import type { SlashCommandRuntime, SubcommandDef, TuiSlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
+import type {
+	SlashCommandRuntime,
+	SubcommandDef,
+	TuiSlashCommandRuntime,
+} from "@veyyon/coding-agent/slash-commands/types";
 
 /**
  * `docs/internal/slash-command-internals.md` section 9: a command that declares `subcommands` must

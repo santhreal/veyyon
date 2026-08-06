@@ -15,11 +15,7 @@ import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/
  * The ephemeral contract holds throughout: accepted sets call
  * setThinkingLevel(level, false), never the persisted default.
  */
-function fakeModel(overrides: {
-	id: string;
-	reasoning: boolean;
-	thinking?: Model["thinking"];
-}): Model {
+function fakeModel(overrides: { id: string; reasoning: boolean; thinking?: Model["thinking"] }): Model {
 	return {
 		id: overrides.id,
 		name: overrides.id,

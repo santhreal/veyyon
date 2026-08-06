@@ -9,10 +9,10 @@
 
 import { describe, expect, it } from "bun:test";
 import { getOpenRouterHeaders } from "@veyyon/ai";
+import { Glob } from "bun";
 // Relative: `loader-state.js` is a hand-authored shim with no export-map entry,
 // and giving it one to satisfy a test would widen the package's public surface.
 import { buildHelpMessage } from "../../natives/native/loader-state.js";
-import { Glob } from "bun";
 
 const ROOT = `${import.meta.dir}/../../..`;
 
@@ -63,7 +63,9 @@ async function scanTrees(
 			if (pattern.test(src)) hits.push(full);
 		}
 		if (scanned === 0) {
-			throw new Error(`brand-leak scan reached no ${globPattern} under ${tree}: the path is stale, so this gate proves nothing`);
+			throw new Error(
+				`brand-leak scan reached no ${globPattern} under ${tree}: the path is stale, so this gate proves nothing`,
+			);
 		}
 	}
 	return hits.sort();

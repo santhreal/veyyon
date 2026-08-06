@@ -47,7 +47,9 @@ describe("isReleaseVersion", () => {
 	});
 
 	it("rejects partial versions, ranges and anything that is not a version", () => {
-		expect(["1.2", "1", "", "latest", "v1.2.3", "1.2.3.4", " 1.2.3", "1.2.3 ", "x.y.z"].filter(isReleaseVersion)).toEqual([]);
+		expect(
+			["1.2", "1", "", "latest", "v1.2.3", "1.2.3.4", " 1.2.3", "1.2.3 ", "x.y.z"].filter(isReleaseVersion),
+		).toEqual([]);
 	});
 });
 

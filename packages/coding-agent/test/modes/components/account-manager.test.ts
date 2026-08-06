@@ -13,7 +13,7 @@ import {
 	AccountManagerComponent,
 	type AccountManagerOptions,
 } from "@veyyon/coding-agent/modes/components/account-manager";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AccountInventory, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
 
 beforeAll(async () => {

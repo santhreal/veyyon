@@ -75,7 +75,20 @@ describe("the gate and the cleanup agree on what a version section is", () => {
 	 * each other on exactly the input that reaches the release.
 	 */
 	it("removes an empty version section that carries no date", () => {
-		const before = ["# Changelog", "", "## [Unreleased]", "", "## [1.0.0]", "", "## [0.9.0] - 2026-01-01", "", "### Fixed", "", "- real", ""].join("\n");
+		const before = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"## [1.0.0]",
+			"",
+			"## [0.9.0] - 2026-01-01",
+			"",
+			"### Fixed",
+			"",
+			"- real",
+			"",
+		].join("\n");
 
 		const after = applyReleaseToChangelog(before, "1.1.0", "2026-02-02");
 
@@ -84,7 +97,20 @@ describe("the gate and the cleanup agree on what a version section is", () => {
 	});
 
 	it("still removes an empty dated section, and keeps one that has content", () => {
-		const before = ["# Changelog", "", "## [Unreleased]", "", "## [1.0.0] - 2026-01-01", "", "## [0.9.0] - 2025-12-01", "", "### Fixed", "", "- real", ""].join("\n");
+		const before = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"## [1.0.0] - 2026-01-01",
+			"",
+			"## [0.9.0] - 2025-12-01",
+			"",
+			"### Fixed",
+			"",
+			"- real",
+			"",
+		].join("\n");
 
 		const after = applyReleaseToChangelog(before, "1.1.0", "2026-02-02");
 

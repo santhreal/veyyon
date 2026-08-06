@@ -33,16 +33,13 @@ import { describe, expect, it } from "bun:test";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { CATALOG_PROVIDERS, type ProviderCatalogEntry } from "@veyyon/catalog/provider-models";
 import { commands } from "@veyyon/coding-agent/cli-commands";
-import {
-	credentialRemedySentence,
-	missingCredentialsMessage,
-} from "@veyyon/coding-agent/config/missing-credentials";
+import { credentialRemedySentence, missingCredentialsMessage } from "@veyyon/coding-agent/config/missing-credentials";
 import {
 	describeModelResolutionFailure,
 	type ModelResolutionFailureKind,
 } from "@veyyon/coding-agent/config/model-resolution-failure";
-import { ModelsConfigFile } from "@veyyon/coding-agent/config/models-config";
 import { fallbackForUnavailableDefault } from "@veyyon/coding-agent/config/model-resolver";
+import { ModelsConfigFile } from "@veyyon/coding-agent/config/models-config";
 
 /** Every top-level subcommand name and alias the CLI actually routes. */
 const REGISTERED_COMMANDS: ReadonlySet<string> = new Set(
@@ -171,7 +168,10 @@ describe("describeModelResolutionFailure remedies", () => {
 	 * legitimately names no command: nothing about the request can be concluded
 	 * when the registry itself failed to load, and it says so.
 	 */
-	const CASES: ReadonlyArray<{ kind: ModelResolutionFailureKind; context: Parameters<typeof describeModelResolutionFailure>[0] }> = [
+	const CASES: ReadonlyArray<{
+		kind: ModelResolutionFailureKind;
+		context: Parameters<typeof describeModelResolutionFailure>[0];
+	}> = [
 		{
 			kind: "registry-error",
 			context: { requested: ["opus"], allModelIds: CATALOG, availableModelIds: [], registryError: "bad yaml" },

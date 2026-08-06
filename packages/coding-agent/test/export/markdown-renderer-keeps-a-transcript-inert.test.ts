@@ -14,20 +14,16 @@
  * fail if either the overrides or the vendored `marked` stop holding the line.
  */
 
+import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { describe, expect, it } from "bun:test";
 
 const HTML_DIR = path.join(import.meta.dirname, "../../src/export/html");
 const markdownRendererSource = fs.readFileSync(path.join(HTML_DIR, "markdown-renderer.js"), "utf8");
 const vendoredMarked = fs.readFileSync(path.join(HTML_DIR, "vendor/marked.min.js"), "utf8");
 
 function escapeHtml(value: string): string {
-	return String(value)
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;");
+	return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 /** Load the vendored parser and the shipped renderer exactly as the template inlines them. */

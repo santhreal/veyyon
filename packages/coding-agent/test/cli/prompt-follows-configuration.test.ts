@@ -27,10 +27,10 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as YAML from "yaml";
 import { getAgentDir } from "@veyyon/utils";
-import { runPromptCommand, type PromptCommandFlags, type PromptCommandResult } from "../../src/cli/prompt-cli";
+import * as YAML from "yaml";
 import { withIsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
+import { type PromptCommandFlags, type PromptCommandResult, runPromptCommand } from "../../src/cli/prompt-cli";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 /** The project config directory the discovery layer reads `settings.json` from. */
@@ -90,10 +90,13 @@ describe("veyyon prompt reads the real configuration", () => {
 	 * wording proves the setting was READ, not merely that some prompt rendered.
 	 */
 	it("renders the required-delegation wording when the operator asks for it", async () => {
-		const result = await runWithConfig({ subagent: { delegation: "required" } }, {
-			cwd: workspace(),
-			section: "tool-policy",
-		});
+		const result = await runWithConfig(
+			{ subagent: { delegation: "required" } },
+			{
+				cwd: workspace(),
+				section: "tool-policy",
+			},
+		);
 
 		expect(result.exitCode).toBe(0);
 		expect(result.output).toContain("Delegation is the default here, not the exception.");
@@ -124,10 +127,13 @@ describe("veyyon prompt reads the real configuration", () => {
 	 * so the suite remains deterministic while still proving both project-level branches.
 	 */
 	it("renders the preferred-delegation wording when the operator asks for it", async () => {
-		const result = await runWithConfig({ subagent: { delegation: "preferred" } }, {
-			cwd: workspace(),
-			section: "tool-policy",
-		});
+		const result = await runWithConfig(
+			{ subagent: { delegation: "preferred" } },
+			{
+				cwd: workspace(),
+				section: "tool-policy",
+			},
+		);
 
 		expect(result.output).toContain("Delegation is preferred");
 		expect(result.output).not.toContain("Delegation is the default here, not the exception.");
@@ -177,14 +183,20 @@ describe("veyyon prompt reads the real configuration", () => {
 	 * defaults there would make every diff between two configurations empty.
 	 */
 	it("follows the configuration through --json as well", async () => {
-		const configured = await runWithConfig({ subagent: { delegation: "required" } }, {
-			cwd: workspace(),
-			json: true,
-		});
-		const plain = await runWithConfig({ subagent: { delegation: "preferred" } }, {
-			cwd: workspace(),
-			json: true,
-		});
+		const configured = await runWithConfig(
+			{ subagent: { delegation: "required" } },
+			{
+				cwd: workspace(),
+				json: true,
+			},
+		);
+		const plain = await runWithConfig(
+			{ subagent: { delegation: "preferred" } },
+			{
+				cwd: workspace(),
+				json: true,
+			},
+		);
 
 		const policyOf = (raw: string): { bytes: number; text: string } => {
 			const sections = (JSON.parse(raw) as { sections: { id: string; bytes: number; text: string }[] }).sections;
@@ -247,14 +259,20 @@ describe("veyyon prompt --statements prices each rule against the real configura
 	it("charges for the delegation rules a configured session actually receives", async () => {
 		// `required` selects a different, longer delegation paragraph than the default `preferred`, so
 		// the two runs must charge DIFFERENT rows, not merely produce different totals.
-		const configured = await runWithConfig({ subagent: { delegation: "required" } }, {
-			cwd: workspace(),
-			statements: true,
-		});
-		const plain = await runWithConfig({ subagent: { delegation: "preferred" } }, {
-			cwd: workspace(),
-			statements: true,
-		});
+		const configured = await runWithConfig(
+			{ subagent: { delegation: "required" } },
+			{
+				cwd: workspace(),
+				statements: true,
+			},
+		);
+		const plain = await runWithConfig(
+			{ subagent: { delegation: "preferred" } },
+			{
+				cwd: workspace(),
+				statements: true,
+			},
+		);
 
 		expect(configured.output).toContain("tool-policy/delegation-required");
 		expect(configured.output).toContain(

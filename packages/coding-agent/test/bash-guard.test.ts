@@ -860,8 +860,11 @@ describe("expansion the shell will perform, judged the way the shell will perfor
 
 	/** An operator form is unmodelled, and unmodelled must mean unknown. */
 	it("treats a parameter expansion carrying an operator as unknown", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion under test, not a JS template.
 		expect(verdict({ command: "rm -rf ${NOPE_UNSET:-/}" })).toBe("critical");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion under test, not a JS template.
 		expect(verdict({ command: "rm -rf ${NOPE_UNSET-/}" })).toBe("critical");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion under test, not a JS template.
 		expect(verdict({ command: "rm -rf ${HOME%%/*}" })).toBe("critical");
 	});
 
@@ -873,6 +876,7 @@ describe("expansion the shell will perform, judged the way the shell will perfor
 	 */
 	it("runs an ordinary delete through a set variable without asking", () => {
 		expect(verdict({ command: "rm -rf $V/scratch", env: { V: "/tmp" } })).toBe("allowed");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion under test, not a JS template.
 		expect(verdict({ command: "rm -rf ${V}/debug", env: { V: "/build/target" } })).toBe("allowed");
 		expect(verdict({ command: "rm -rf node_modules" })).toBe("allowed");
 	});

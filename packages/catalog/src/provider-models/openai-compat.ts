@@ -139,11 +139,9 @@ export function mapModelsDevReasoningOptions(
 			}
 			return { efforts: canonicalizeEfforts(efforts) };
 		}
-		const levelless =
-			values !== undefined &&
-			values.every(
-				value => value === null || (typeof value === "string" && Object.hasOwn(REASONING_NON_LEVEL_VALUES, value)),
-			);
+		const levelless = values?.every(
+			value => value === null || (typeof value === "string" && Object.hasOwn(REASONING_NON_LEVEL_VALUES, value)),
+		);
 		if (levelless) {
 			return { noEffortControl: true };
 		}

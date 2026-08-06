@@ -214,7 +214,6 @@ describe("the ask option labels have one owner", () => {
 	});
 });
 
-
 /**
  * The fourth label, and the only one that leaves this package.
  *
@@ -274,17 +273,13 @@ describe("the recommended-option marker has one owner", () => {
 	const MARKER_READERS: readonly string[] = ["tools/ask.ts", "modes/components/ask-dialog.ts"];
 
 	it("declares the marker nowhere in coding-agent", async () => {
-		const offenders = (await sources())
-			.filter(({ text }) => MARKER_DECL.test(text))
-			.map(({ file }) => file);
+		const offenders = (await sources()).filter(({ text }) => MARKER_DECL.test(text)).map(({ file }) => file);
 		expect(offenders).toEqual([]);
 	});
 
 	/** Nor builds it inline, which no constant-name ratchet would have caught. */
 	it("appends the marker through the helper, never a template literal", async () => {
-		const offenders = (await sources())
-			.filter(({ text }) => HAND_APPEND.test(text))
-			.map(({ file }) => file);
+		const offenders = (await sources()).filter(({ text }) => HAND_APPEND.test(text)).map(({ file }) => file);
 		expect(offenders).toEqual([]);
 	});
 

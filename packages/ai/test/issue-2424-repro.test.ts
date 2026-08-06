@@ -66,8 +66,7 @@ describe("gitlab-duo OAuth env overrides (issue #2424)", () => {
 			onAuth: info => {
 				capturedAuthUrl = info.url;
 			},
-			onManualCodeInput: async () =>
-				`auth-code-xyz#${new URL(capturedAuthUrl).searchParams.get("state") ?? ""}`,
+			onManualCodeInput: async () => `auth-code-xyz#${new URL(capturedAuthUrl).searchParams.get("state") ?? ""}`,
 			onPrompt: async () => "",
 			signal: AbortSignal.timeout(5_000),
 			fetch: fetchMock,

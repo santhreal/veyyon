@@ -5,14 +5,14 @@ import { APP_NAME, isEnoent, logger } from "@veyyon/utils";
 import { isSessionFileName, SESSION_BACKUP_EXTENSION, sessionFileStem } from "@veyyon/utils/session-file";
 import { getResolvedThemeColors, getThemeExportColors } from "../../modes/theme/theme";
 import type { SecretObfuscator } from "../../secrets/obfuscator";
-import { redactSessionDataForShare } from "../redact-snapshot";
 import type { SessionEntry, SessionHeader } from "../../session/session-entries";
 import { loadEntriesFromFile } from "../../session/session-loader";
 import { SessionManager } from "../../session/session-manager";
+import { redactSessionDataForShare } from "../redact-snapshot";
+import markdownRendererJs from "./markdown-renderer.js" with { type: "text" };
 import templateCss from "./template.css" with { type: "text" };
 import templateHtml from "./template.html" with { type: "text" };
 import templateJs from "./template.js" with { type: "text" };
-import markdownRendererJs from "./markdown-renderer.js" with { type: "text" };
 // Pre-built React tool renderers, built by `gen:tool-views`. The file is
 // gitignored, and Bun resolves this text import when this module's importer
 // merely PARSES — a missing file kills boot, not just HTML export

@@ -332,8 +332,12 @@ function normalizeCursorModel(
 		// nothing and could send a sibling's wire id. Collapse re-derives the
 		// family surface from its hand table when the tier folds into one.
 		if (exactReference === undefined) {
-			const { thinking: _thinking, requestModelId: _requestModelId, reasoningOptions: _options, ...tierRest } =
-				reference;
+			const {
+				thinking: _thinking,
+				requestModelId: _requestModelId,
+				reasoningOptions: _options,
+				...tierRest
+			} = reference;
 			return {
 				...tierRest,
 				id,

@@ -190,7 +190,7 @@ const RECURSIVE_REWRITE_COMMANDS = new Set(["chmod", "chown", "chgrp"]);
  * reading, because an empty `TMP` makes it `rm -rf ""`, which deletes nothing.
  */
 function isMktempCreation(value: string): boolean {
-	const body = /^\$\(([^]*)\)$/.exec(value)?.[1] ?? /^`([^]*)`$/.exec(value)?.[1];
+	const body = /^\$\(([\s\S]*)\)$/.exec(value)?.[1] ?? /^`([\s\S]*)`$/.exec(value)?.[1];
 	if (body === undefined) return false;
 	// The substitution must be ONE `mktemp` call, so its output is the path
 	// mktemp made. A chained or redirected body can print anything at all.
@@ -210,16 +210,12 @@ function isMktempCreation(value: string): boolean {
 }
 
 /** True when this word is the whole, unquoted name of a self-created temp path. */
-function namesSelfCreatedTemp(
-	raw: { text: string; literal: boolean },
-	created: ReadonlySet<string>,
-): boolean {
+function namesSelfCreatedTemp(raw: { text: string; literal: boolean }, created: ReadonlySet<string>): boolean {
 	// `'$TMP'` is a request to delete a directory actually named `$TMP`, which
 	// is not the one we created, so it is judged normally.
 	if (raw.literal) return false;
 	const name =
-		/^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(raw.text)?.[1] ??
-		/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(raw.text)?.[1];
+		/^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(raw.text)?.[1] ?? /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(raw.text)?.[1];
 	return name !== undefined && created.has(name);
 }
 

@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	parseDiffFileHunks,
-	parseFileDiffs,
-	parseFileHunks,
-	parseNumstat,
-} from "@veyyon/coding-agent/commit/git/diff";
+import { parseDiffFileHunks, parseFileDiffs, parseFileHunks, parseNumstat } from "@veyyon/coding-agent/commit/git/diff";
 
 /**
  * The commit pipeline parses `git diff` and `git diff --numstat` output into

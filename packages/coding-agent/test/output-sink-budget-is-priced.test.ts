@@ -186,9 +186,7 @@ describe("centralised artifact spill", () => {
 
 		const payload = "x".repeat(Math.floor((earlyBudget + lateBudget) / 2));
 		expect(await spilledAtTurn(payload, 0), "turn 0 must spill: the payload is over the early budget").toBe(true);
-		expect(await spilledAtTurn(payload, 80), "turn 80 must not: the same payload is under the flat one").toBe(
-			false,
-		);
+		expect(await spilledAtTurn(payload, 80), "turn 80 must not: the same payload is under the flat one").toBe(false);
 	});
 });
 

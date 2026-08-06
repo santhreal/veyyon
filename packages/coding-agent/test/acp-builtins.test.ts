@@ -2,7 +2,7 @@ import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTarget, UsageReport } from "@veyyon/ai";
+import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTarget } from "@veyyon/ai";
 // One owner for how `/fast` names the state it changes, so this suite cannot drift
 // from the command the way it did when the wording became "priority tier".
 import { PRIORITY_TIER_COMMAND_LABEL } from "@veyyon/coding-agent/config/service-tier";

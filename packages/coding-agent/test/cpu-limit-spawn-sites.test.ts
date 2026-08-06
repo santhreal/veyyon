@@ -122,7 +122,8 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	"modes/rpc/rpc-client.ts": { wired: true, reason: "the child harness spawned for RPC mode is adopted" },
 	"tools/browser/registry.ts": {
 		wired: true,
-		reason: "managed Chromium is adopted, headless via browser.process() and app.path via the spawn; a REUSED endpoint is not, because this session did not start it",
+		reason:
+			"managed Chromium is adopted, headless via browser.process() and app.path via the spawn; a REUSED endpoint is not, because this session did not start it",
 	},
 	"stt/recorder.ts": { wired: true, reason: "every recorder backend (sox, ffmpeg, arecord, powershell) is adopted" },
 	"tts/player.ts": { wired: true, reason: "the audio player process is adopted" },
@@ -137,7 +138,8 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	"utils/tools-manager.ts": { wired: true, reason: "the uv/pip on-demand tool installs are adopted" },
 	"utils/git.ts": {
 		wired: true,
-		reason: "the git and gh runners are adopted; the four spawnSync HEAD reads are not, because a synchronous child has already exited when the call returns",
+		reason:
+			"the git and gh runners are adopted; the four spawnSync HEAD reads are not, because a synchronous child has already exited when the call returns",
 	},
 	"utils/jj.ts": { wired: true, reason: "the jj runner is adopted" },
 	"internal-urls/vault-protocol.ts": { wired: true, reason: "the vault CLI bridge process is adopted" },

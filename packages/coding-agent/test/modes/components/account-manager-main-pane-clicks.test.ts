@@ -77,7 +77,8 @@ function harness(rows: AccountRow[]) {
 	const clickOn = (needle: string): void => {
 		const lines = frame();
 		const rows = lines.filter(line => line.includes(needle));
-		if (rows.length !== 1) throw new Error(`expected one line containing ${JSON.stringify(needle)}, got ${rows.length}`);
+		if (rows.length !== 1)
+			throw new Error(`expected one line containing ${JSON.stringify(needle)}, got ${rows.length}`);
 		const row = lines.indexOf(rows[0] ?? "");
 		const col = (rows[0] ?? "").indexOf(needle);
 		component.handleInput(`\x1b[<0;${col + 1};${row + 1}M`);
@@ -99,7 +100,11 @@ function harness(rows: AccountRow[]) {
 
 const TWO = (): AccountRow[] => [
 	account(1, "first"),
-	account(2, "second", { email: "second@example.com", planTier: "Max 20x", usage: [{ label: "5h", usedFraction: 0.4 }] }),
+	account(2, "second", {
+		email: "second@example.com",
+		planTier: "Max 20x",
+		usage: [{ label: "5h", usedFraction: 0.4 }],
+	}),
 ];
 
 describe("clicking inside the account manager's main pane", () => {

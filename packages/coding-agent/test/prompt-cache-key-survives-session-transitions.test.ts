@@ -28,7 +28,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
-import type { SimpleStreamOptions } from "@veyyon/ai";
 import { createMockModel, type MockModel, registerMockApi } from "@veyyon/ai/providers/mock";
 import { getOpenAIPromptCacheKey } from "@veyyon/ai/providers/openai-shared";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -79,7 +78,11 @@ describe("provider prompt-cache key across session transitions", () => {
 		const session = new AgentSession({
 			agent,
 			sessionManager,
-			settings: Settings.isolated({ "compaction.enabled": false, "async.enabled": false, "compaction.keepRecentTokens": 1 }),
+			settings: Settings.isolated({
+				"compaction.enabled": false,
+				"async.enabled": false,
+				"compaction.keepRecentTokens": 1,
+			}),
 			modelRegistry: new ModelRegistry(authStorage, path.join(tempDir, `models-${Snowflake.next()}.yml`)),
 			...(options?.providerPromptCacheKey === undefined ? {} : { providerPromptCacheKeySource: "fork" as const }),
 		});
@@ -104,7 +107,11 @@ describe("provider prompt-cache key across session transitions", () => {
 
 		expect(mock.calls.length).toBe(3);
 		const keys = mock.calls.map(call => getOpenAIPromptCacheKey(call.options));
-		expect(keys).toEqual([sessionManager.getSessionId(), sessionManager.getSessionId(), sessionManager.getSessionId()]);
+		expect(keys).toEqual([
+			sessionManager.getSessionId(),
+			sessionManager.getSessionId(),
+			sessionManager.getSessionId(),
+		]);
 	});
 
 	/**
@@ -253,7 +260,10 @@ describe("provider prompt-cache key across session transitions", () => {
 		await session.prompt("second turn");
 		await session.waitForIdle();
 
-		expect(mock.calls.map(call => getOpenAIPromptCacheKey(call.options))).toEqual(["parent-cache-shard", "parent-cache-shard"]);
+		expect(mock.calls.map(call => getOpenAIPromptCacheKey(call.options))).toEqual([
+			"parent-cache-shard",
+			"parent-cache-shard",
+		]);
 	});
 
 	/**

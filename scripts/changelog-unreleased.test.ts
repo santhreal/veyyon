@@ -34,7 +34,9 @@ describe("unreleasedEntries", () => {
 	});
 
 	it("returns nothing for an Unreleased section holding only sub-headings", () => {
-		const content = ["# Changelog", "", "## [Unreleased]", "", "### Added", "", "## [1.0.0] - 2026-01-01", ""].join("\n");
+		const content = ["# Changelog", "", "## [Unreleased]", "", "### Added", "", "## [1.0.0] - 2026-01-01", ""].join(
+			"\n",
+		);
 
 		expect(unreleasedEntries(content)).toEqual([]);
 	});
@@ -79,7 +81,17 @@ describe("unreleasedEntries", () => {
 	 * If this goes red, indented entries are being silently dropped again.
 	 */
 	it("sees an entry indented under its sub-heading, which an untrimmed match misses", () => {
-		const md = ["# Changelog", "", "## [Unreleased]", "", "### Added", "", "  - adds a nested thing", "", "## [1.0.0]"].join("\n");
+		const md = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"### Added",
+			"",
+			"  - adds a nested thing",
+			"",
+			"## [1.0.0]",
+		].join("\n");
 
 		expect(unreleasedEntries(md)).toEqual(["adds a nested thing"]);
 	});

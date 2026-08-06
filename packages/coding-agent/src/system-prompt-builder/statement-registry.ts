@@ -121,9 +121,7 @@ import statementExecutionScopePlanFirst from "./statements/execution-workflow/sc
 	type: "text",
 };
 import statementExecutionVerify from "./statements/execution-workflow/verify.md" with { type: "text" };
-import statementExecutionVerifyBrowser from "./statements/execution-workflow/verify-browser.md" with {
-	type: "text",
-};
+import statementExecutionVerifyBrowser from "./statements/execution-workflow/verify-browser.md" with { type: "text" };
 import statementRoleMermaid from "./statements/role/mermaid-diagrams.md" with { type: "text" };
 import statementRolePrinciples from "./statements/role/principles.md" with { type: "text" };
 import statementRuntimeAlwaysApplyRules from "./statements/runtime/always-apply-rules.md" with { type: "text" };

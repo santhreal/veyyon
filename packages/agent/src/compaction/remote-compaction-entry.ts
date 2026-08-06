@@ -94,7 +94,11 @@ export function getRemoteCompactionPreserveData(
 	// replaying it would re-send the full span while claiming it was reduced.
 	if (
 		!data.window.some(
-			item => item && typeof item === "object" && item.type === "compaction" && typeof item.encrypted_content === "string",
+			item =>
+				item &&
+				typeof item === "object" &&
+				item.type === "compaction" &&
+				typeof item.encrypted_content === "string",
 		)
 	) {
 		return undefined;

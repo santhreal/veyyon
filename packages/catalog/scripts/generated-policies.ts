@@ -89,11 +89,10 @@ export function noteDiscoveryIdentityLadderDivergence(models: readonly ModelSpec
 		if (model.reasoningOptions?.efforts === undefined || discovered === undefined) continue;
 		let identity: readonly string[];
 		try {
-			identity =
-				deriveThinking(
-					{ ...model, thinking: undefined, reasoningOptions: undefined },
-					buildCompat(model),
-				).efforts;
+			identity = deriveThinking(
+				{ ...model, thinking: undefined, reasoningOptions: undefined },
+				buildCompat(model),
+			).efforts;
 		} catch {
 			continue;
 		}

@@ -78,7 +78,9 @@ describe("the account manager sizes its frame to the screen it is given", () => 
 	 * branch, so the operator has to still see the title and the account.
 	 */
 	test("still paints a usable card on a short terminal", () => {
-		const lines = card(14).map(line => Bun.stripANSI(line)).join("\n");
+		const lines = card(14)
+			.map(line => Bun.stripANSI(line))
+			.join("\n");
 
 		expect(lines).toContain("Accounts");
 		expect(lines).toContain("work");

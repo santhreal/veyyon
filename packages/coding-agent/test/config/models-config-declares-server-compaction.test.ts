@@ -77,7 +77,8 @@ describe("the models-config compat table declares supportsServerCompaction", () 
 	it("rejects a non-boolean and names the key, instead of silently reading it as off", () => {
 		const result = ModelOverrideSchema({ compat: { supportsServerCompaction: "yes" } });
 
-		if (!(result instanceof type.errors)) throw new Error(`Expected a validation error, got ${JSON.stringify(result)}`);
+		if (!(result instanceof type.errors))
+			throw new Error(`Expected a validation error, got ${JSON.stringify(result)}`);
 		expect(result.summary).toContain("compat.supportsServerCompaction");
 		expect(result.summary).toContain("must be boolean");
 	});
