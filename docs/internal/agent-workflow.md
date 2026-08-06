@@ -78,7 +78,7 @@ everything that leaves the machine is gated on explicit per-action approval.
 | Autonomous (no approval needed) | Human-gated (explicit approval, every time) |
 | --- | --- |
 | Reading, editing, staging exact paths | `git commit` / `git push` to any remote |
-| Local typecheck, tests, `bun run check` | Dispatching the Release workflow |
+| Local typecheck, tests, `bun run check` | Pushing a `v*` tag (the release trigger) |
 | Background builds, benches, local installs | Website deploys (`bun run site:deploy` for `veyyon` and `bun run site:deploy:get` for `veyyon-get`) |
 | Ledger + changelog `[Unreleased]` upkeep | npm publish, Homebrew, or direct GitHub release mutation |
 | Docs under `docs/` and handbook sources | Opening/commenting on GitHub issues & PRs, any `gh` call against a public repo |
