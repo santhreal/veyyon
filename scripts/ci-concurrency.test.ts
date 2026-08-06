@@ -231,9 +231,7 @@ class GhaEval {
 const workflowYaml = await Bun.file(WORKFLOW_PATH).text();
 // The block sits at indent 0 immediately under the top-level `concurrency:`
 // key and uses single-line values, so a flat-line extract is unambiguous.
-// Values are double-quoted in YAML (the GitHub expression contains `: ` from
-// the `'chore: bump version to '` literal which would otherwise trip plain
-// scalar parsing), so we unwrap the wrapping `"…"` here.
+// Values are double-quoted in YAML, so we unwrap the wrapping `"…"` here.
 const concurrencySection = workflowYaml.slice(workflowYaml.indexOf("\nconcurrency:") + 1);
 const groupRaw = /^\s*group:\s*(\S.*?)\s*$/m.exec(concurrencySection)?.[1];
 const cancelRaw = /^\s*cancel-in-progress:\s*(\S.*?)\s*$/m.exec(concurrencySection)?.[1];
@@ -257,48 +255,40 @@ const baseCtx = (overrides: Partial<GhaCtx> = {}): { github: GhaCtx } => ({
 });
 
 describe("ci.yml concurrency", () => {
-	it("auto release push: per-sha group, no cancellation (#2564 root cause)", () => {
-		const ctx = baseCtx({ event: { head_commit: { message: `${RELEASE_SUBJECT}\n\nbody` } } });
+	// A tag push is the publishing run, so it gets a per-sha group with no
+	// cancellation. This is the #2564 root cause stated in the terms of the
+	// tag-push model: the run that carries the release must not be cancellable by
+	// anything that happens on main afterwards.
+	it("release tag push: per-sha group, no cancellation (#2564 root cause)", () => {
+		const ctx = baseCtx({ ref: "refs/tags/v15.12.6", sha: "deadbeefcafebabe" });
 		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-release-deadbeefcafebabe");
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
 	});
 
-	it("retry release push (release subject preserved): same per-sha behavior", () => {
-		const ctx = baseCtx({
-			sha: "feedfacedeadbeef",
-			event: { head_commit: { message: `${RELEASE_SUBJECT}\n\nretry: fix sccache 100 exit` } },
-		});
-		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-release-feedfacedeadbeef");
-		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
+	// Retagging after a red release run schedules a second run at the same sha,
+	// and the group is keyed on the sha, so the retry lands in the same slot
+	// rather than racing the original.
+	it("a tag re-push at the same sha stays in that sha's group", () => {
+		const first = baseCtx({ ref: "refs/tags/v15.12.6", sha: "deadbeefcafebabe" });
+		const again = baseCtx({ ref: "refs/tags/v15.12.7", sha: "deadbeefcafebabe" });
+		expect(GhaEval.template(groupTemplate, again)).toBe(GhaEval.template(groupTemplate, first));
 	});
 
-	it("workflow_dispatch from a `v*` tag ref: per-sha group, no cancellation", () => {
-		const ctx = baseCtx({
-			ref: "refs/tags/v15.12.6",
-			event_name: "workflow_dispatch",
-			sha: "abc123",
-			event: {},
-		});
-		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-release-abc123");
-		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
-	});
-
-	it("workflow_dispatch from tagged main HEAD is isolated before release_metadata can inspect tags", () => {
-		const ctx = baseCtx({
-			event_name: "workflow_dispatch",
-			sha: "taggedmain123",
-			event: {},
-		});
-		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-release-taggedmain123");
+	// THE CONTRACT THE TAG-PUSH MODEL ADDS. The version-bump commit is now an
+	// ordinary main push that must be tested like any other, and it must NOT be
+	// mistaken for the release run: the old expression sniffed the commit subject
+	// and gave the bump its own per-sha group, which is precisely the behaviour
+	// that made a subject string load-bearing. Here the subject is inert.
+	it("the version-bump commit is an ordinary main push, not a release run", () => {
+		const ctx = baseCtx({ event: { head_commit: { message: `${RELEASE_SUBJECT}\n\nbody` } } });
+		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-refs/heads/main");
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
 	});
 
 	it("regular main push: branch-wide group, queued not cancelled (release-train starvation guard)", () => {
 		// 2026-07-24: six consecutive main CI runs were cancelled by successor
-		// pushes (bot traffic every ~2 minutes), so no run ever completed and
-		// release.yml never saw a green CI to cut from. With cancellation off,
-		// the branch-wide group serializes: the running run always completes
-		// and GitHub keeps only the NEWEST pending run for the group, so the
+		// pushes (bot traffic every ~2 minutes), so no run ever completed and no
+		// commit on main was ever green enough to tag. With cancellation off, the
 		// queue never grows beyond one and the tip still gets tested.
 		const ctx = baseCtx({ event: { head_commit: { message: "fix(ux): theme tweak" } } });
 		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-refs/heads/main");
@@ -320,36 +310,29 @@ describe("ci.yml concurrency", () => {
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("true");
 	});
 
-	it("two release commits with distinct shas land in disjoint groups", () => {
-		const a = baseCtx({ sha: "aaaa1111", event: { head_commit: { message: RELEASE_SUBJECT } } });
-		const b = baseCtx({ sha: "bbbb2222", event: { head_commit: { message: RELEASE_SUBJECT } } });
+	it("two release tags at distinct shas land in disjoint groups", () => {
+		const a = baseCtx({ ref: "refs/tags/v15.12.6", sha: "aaaa1111" });
+		const b = baseCtx({ ref: "refs/tags/v15.12.7", sha: "bbbb2222" });
 		expect(GhaEval.template(groupTemplate, a)).not.toBe(GhaEval.template(groupTemplate, b));
 	});
 
-	it("benign commit subject that merely contains the release prefix is not a release", () => {
-		// startsWith is anchored, so `revert: chore: bump version to 15.12.6` (a
-		// follow-up commit) stays in the branch-wide group — it has no tag to
-		// publish. On main that group queues rather than cancels (starvation
-		// guard above), so cancel resolves false via the ref clause, not the
-		// release clause.
-		const ctx = baseCtx({
-			event: { head_commit: { message: `revert: ${RELEASE_SUBJECT}` } },
-		});
-		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-refs/heads/main");
+	// A manual re-run of main CI must not be cancellable either: it is usually
+	// someone recovering a flake on the exact commit they intend to tag.
+	it("workflow_dispatch is never cancelled", () => {
+		const ctx = baseCtx({ event_name: "workflow_dispatch" });
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
 	});
 });
 
 // The same scheduling-time cancellation bug bit the SIBLING workflows on
 // 2026-07-24: checks.yml / docs.yml still used branch-wide
-// `cancel-in-progress: true`, so the release sha's sibling runs could be
-// cancelled by the next main push. The fix copies ci.yml's release-detection
-// expression into each sibling (GitHub cannot share concurrency expressions
-// across workflow files). This suite locks two contracts: (1) each sibling
-// resolves release shas to a per-sha no-cancel group and normal pushes to a
-// cancellable branch group, and (2) the copies stay BYTE-IDENTICAL to ci.yml's
-// expression, so a future edit to one file cannot silently drift the others
-// (the lockstep rule the comments demand).
+// `cancel-in-progress: true`, so a release sha's sibling runs could be cancelled
+// by the next main push. The fix copies ci.yml's expression into each sibling
+// (GitHub cannot share concurrency expressions across workflow files). This
+// suite locks two contracts: (1) each sibling resolves a release tag to a
+// per-sha no-cancel group and normal pushes to a cancellable branch group, and
+// (2) the copies stay BYTE-IDENTICAL to ci.yml's expression, so a future edit to
+// one file cannot silently drift the others.
 const SIBLINGS = ["checks", "docs"] as const;
 
 function extractConcurrency(yaml: string, file: string): { group: string; cancel: string } {
@@ -367,9 +350,9 @@ describe("sibling workflow concurrency stays in release lockstep with ci.yml", (
 	for (const name of SIBLINGS) {
 		const file = path.resolve(import.meta.dir, "..", ".github", "workflows", `${name}.yml`);
 
-		it(`${name}.yml: release-bump push resolves to a per-sha group with cancellation off`, async () => {
+		it(`${name}.yml: a release tag resolves to a per-sha group with cancellation off`, async () => {
 			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
-			const ctx = baseCtx({ event: { head_commit: { message: `${RELEASE_SUBJECT}\n\nbody` } } });
+			const ctx = baseCtx({ ref: "refs/tags/v15.12.6", sha: "deadbeefcafebabe" });
 			expect(GhaEval.template(group, ctx)).toBe(`${name}-release-deadbeefcafebabe`);
 			expect(GhaEval.template(cancel, ctx)).toBe("false");
 		});

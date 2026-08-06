@@ -1,44 +1,33 @@
 #!/usr/bin/env bun
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 /**
- * The one release controller.
+ * Release-tree preparation and the two checks CI runs at a tag.
  *
- * Releases are requested only by dispatching the GitHub Actions Release
- * workflow: there is no automatic cut, and no workstation entry point. Actions
- * calls the workflow subcommands in this file for source-gate selection, the
- * atomic version cut, exact-tag Checks, tagged CI, and final publication
- * verification.
+ * The version cut itself happens on the operator's machine: `scripts/prerelease.ts`
+ * calls {@link prepareReleaseTree} to roll every version authority, changelog,
+ * lockfile and the natives sentinel, then commits. That commit reaches main
+ * through an ordinary push, so main's CI tests it before any tag exists, and
+ * tagging the green commit is the whole release.
+ *
+ * What remains here for Actions is verification: `verify-tag` proves the tag
+ * sits on a commit that landed on main and that the tree's versions agree with
+ * it, and `verify-assets` proves the publication produced the complete manifest.
  */
-import { isNewerVersion, isReleaseTag, isReleaseVersion, RELEASE_VERSION_BODY } from "@veyyon/utils/semver";
+import { isReleaseTag, isReleaseVersion, RELEASE_VERSION_BODY } from "@veyyon/utils/semver";
 import { $, Glob, JSONC } from "bun";
+import { unreleasedEntries } from "./changelog-unreleased.ts";
 import { runChangelogFixer } from "./fix-changelogs";
 import {
 	assertPreparedReleaseChangelogs,
-	assertReleaseIsDocumented,
-	checkedOutHeadSha,
-	gatherReleaseGateFacts,
 	type PackageChangelog,
-	RELEASE_BOT_LOGIN,
-	RELEASE_NOTES_CHANGELOG,
-	type ReleaseGateFacts,
-	sourceGateFailure,
 	verifyPublishedAssetManifest,
-	verifyReleaseTagGates,
+	verifyReleaseTagIsOnMain,
 } from "./release-policy";
-import { unreleasedEntries } from "./changelog-unreleased.ts";
 import { orphanRefusalLines, writeRootChangelog } from "./sync-root-changelog";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const packageJsonGlob = new Glob("packages/*/package.json");
 const cargoTomlGlob = new Glob("crates/*/Cargo.toml");
-const REPO_ROOT = path.join(import.meta.dir, "..");
-const RELEASE_REPOSITORY = "santhreal/veyyon";
-
-function git(args: readonly string[]) {
-	return $`git -c core.fsmonitor=false -c core.untrackedCache=false -c fetch.pruneTags=false ${args}`;
-}
-
 export function parseReleaseRequest(args: readonly string[]): string {
 	if (args.length > 1) {
 		throw new Error("Release accepts one version: major, minor, patch, or an explicit x.y.z.");
@@ -193,10 +182,10 @@ export function rewriteCargoWorkspaceVersion(content: string, version: string): 
  * The release bump commit's subject, which is a contract and not a message.
  *
  * Five workflows key their never-cancel release concurrency group off this
- * subject (`ci.yml`, `checks.yml`, `docs.yml`, `security.yml`), and
- * `release.yml` uses it to refuse to release its own bump commit and loop. They
- * all match the PREFIX `chore: bump version to `, so the version that follows
- * must never be allowed to drift into a form the prefix stops covering.
+ * subject: `checks.yml` exempts the bump commit from the changelog gate, because
+ * the bump drains every `## [Unreleased]` section by design. It matches the
+ * PREFIX `chore: bump version to `, so the version that follows must never be
+ * allowed to drift into a form the prefix stops covering.
  *
  * The `v` is the part that was wrong. AGENTS.md mandates
  * `chore: bump version to vX.Y.Z` and every release through v1.0.38 committed
@@ -587,531 +576,26 @@ export async function prepareReleaseTree(version: string, latestTag: string): Pr
 	console.log();
 }
 
-export interface ReleasePushOperations {
-	currentSha(): Promise<string>;
-	forceLocalTag(tag: string): Promise<void>;
-	atomicPush(tag: string, sha: string): Promise<void>;
-}
-
 /**
- * Push the exact tree whose CI and Checks runs the release gate approved.
+ * The two questions CI asks at a tag: may this tag publish, and did the
+ * publication actually produce every asset the installer resolves?
  *
- * One attempt only. If main advanced while preparation ran, the atomic push
- * fails without moving either main or the tag. The newer main SHA gets its own
- * CI and Checks runs, and their workflow completion starts a fresh release cut.
- * Rebasing here would publish a tree the exact-SHA gate never approved.
+ * Cutting a release is no longer a subcommand here. The version bump is
+ * prepared and committed on the operator's machine by `scripts/prerelease.ts`,
+ * pushed to main like any other commit, and tagged once main's CI is green — so
+ * there is no controller to gate, dispatch, correlate, or recover.
  */
-export async function pushPreparedRelease(tag: string, operations: ReleasePushOperations): Promise<void> {
-	const sha = await operations.currentSha();
-	await operations.forceLocalTag(tag);
-	await operations.atomicPush(tag, sha);
-}
-
-export interface WorkflowRunEvidence {
-	path: string;
-	event: string;
-	headBranch: string;
-	headSha: string;
-	displayTitle: string;
-	actor: string;
-}
-
-export interface WorkflowDispatchRequest {
-	workflow: string;
-	label: string;
-	tag: string;
-	sha: string;
-	inputs?: Readonly<Record<string, string>>;
-	expectedTitle?: string;
-}
-
-export interface ReleaseWorkflowOperations {
-	listRunIds(workflow: string, sha: string): Promise<readonly number[]>;
-	dispatch(workflow: string, ref: string, inputs: Readonly<Record<string, string>>): Promise<void>;
-	runEvidence(id: number): Promise<WorkflowRunEvidence>;
-	watch(id: number): Promise<void>;
-	sleep(milliseconds: number): Promise<void>;
-	verifyPublished(tag: string): Promise<string>;
-}
-
-export interface ReleasePublicationResult {
-	checksRunId: number;
-	ciRunId: number;
-	url: string;
-}
-
-async function runGh(args: readonly string[]): Promise<string> {
-	const child = Bun.spawn(["gh", ...args], {
-		cwd: REPO_ROOT,
-		env: Bun.env,
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(child.stdout).text(),
-		new Response(child.stderr).text(),
-		child.exited,
-	]);
-	if (exitCode !== 0) {
-		throw new Error(`gh ${args.join(" ")} failed with exit ${exitCode}: ${stderr.trim()}`);
-	}
-	return stdout.trim();
-}
-
-function workflowRunsUrl(workflow: string, sha: string): string {
-	const repository = Bun.env.GITHUB_REPOSITORY ?? RELEASE_REPOSITORY;
-	return `repos/${repository}/actions/workflows/${workflow}/runs?head_sha=${sha}&event=workflow_dispatch&per_page=100`;
-}
-
-const releaseWorkflowOperations: ReleaseWorkflowOperations = {
-	listRunIds: async (workflow, sha) => {
-		const output = await runGh(["api", workflowRunsUrl(workflow, sha), "--paginate", "--jq", ".workflow_runs[].id"]);
-		if (!output) return [];
-		return output.split("\n").map(value => {
-			const id = Number(value);
-			if (!Number.isSafeInteger(id) || id <= 0) throw new Error(`${workflow} returned invalid run id ${value}`);
-			return id;
-		});
-	},
-	dispatch: async (workflow, ref, inputs) => {
-		const args = ["workflow", "run", workflow, "--ref", ref];
-		for (const [key, value] of Object.entries(inputs)) args.push("-f", `${key}=${value}`);
-		await runGh(args);
-	},
-	runEvidence: async id => {
-		const repository = Bun.env.GITHUB_REPOSITORY ?? RELEASE_REPOSITORY;
-		const output = await runGh([
-			"api",
-			`repos/${repository}/actions/runs/${id}`,
-			"--jq",
-			"{path:.path,event:.event,headBranch:.head_branch,headSha:.head_sha,displayTitle:.display_title,actor:.actor.login}",
-		]);
-		const parsed: unknown = JSON.parse(output);
-		if (
-			typeof parsed !== "object" ||
-			parsed === null ||
-			typeof (parsed as Record<string, unknown>).path !== "string" ||
-			typeof (parsed as Record<string, unknown>).event !== "string" ||
-			typeof (parsed as Record<string, unknown>).headBranch !== "string" ||
-			typeof (parsed as Record<string, unknown>).headSha !== "string" ||
-			typeof (parsed as Record<string, unknown>).displayTitle !== "string" ||
-			typeof (parsed as Record<string, unknown>).actor !== "string"
-		) {
-			throw new Error(`GitHub run ${id} returned invalid correlation evidence`);
-		}
-		return parsed as unknown as WorkflowRunEvidence;
-	},
-	watch: async id => {
-		await runGh(["run", "watch", String(id), "--exit-status"]);
-	},
-	sleep: async milliseconds => {
-		await Bun.sleep(milliseconds);
-	},
-	verifyPublished: async tag => {
-		await verifyPublishedAssetManifest(tag);
-		const output = await runGh(["release", "view", tag, "--json", "isDraft,tagName,url"]);
-		const parsed: unknown = JSON.parse(output);
-		if (
-			typeof parsed !== "object" ||
-			parsed === null ||
-			(parsed as Record<string, unknown>).isDraft !== false ||
-			(parsed as Record<string, unknown>).tagName !== tag ||
-			typeof (parsed as Record<string, unknown>).url !== "string"
-		) {
-			throw new Error(`${tag} did not finish as a published GitHub release`);
-		}
-		const latest = await runGh(["release", "view", "--json", "tagName", "--jq", ".tagName"]);
-		if (latest !== tag)
-			throw new Error(`${tag} published, but releases/latest still resolves to ${latest || "nothing"}`);
-		return (parsed as Record<string, unknown>).url as string;
-	},
-};
-
-/**
- * What to tell an operator when a dispatched gate never produced a run we could
- * correlate.
- *
- * The window this gives up after is ~145 seconds, and it opens AFTER the atomic
- * push of `main` plus the tag. So by the time this message is written the tag
- * exists on the remote and cannot be un-cut by failing the job. The old text was
- * one line naming the workflow and the SHA, which reads exactly like "the release
- * never happened" and leaves the operator unable to tell "never started" from
- * "started and lost track of". Both of those end with a tag on the remote and a
- * release that has not published, and the recovery for them is the same one
- * `versionNotNewerFailure` already prints, so it is printed from there rather
- * than written a second time here and allowed to drift.
- *
- * Extending the deadline is not the fix. A longer wait makes this rarer without
- * making it honest, and the operator still needs to know the tag is live.
- */
-export function uncorrelatedDispatchFailure(request: WorkflowDispatchRequest): string[] {
-	// Release tags are always `v<x.y.z>`, but normalise anyway: the recovery
-	// block below only exists on `versionNotNewerFailure`'s already-tagged
-	// branch, and that branch is chosen by `v${version} === tag`.
-	const tag = request.tag.startsWith("v") ? request.tag : `v${request.tag}`;
-	return [
-		`${request.label} did not start a correlated run for ${request.tag} (${request.sha})`,
-		"",
-		`  ${tag} IS ALREADY PUSHED. main and the tag went to the remote before this wait began,`,
-		"  so this failure does not mean the release was not cut. It means the gate run could not be",
-		`  found, either because ${request.workflow} never started it or because it started and this`,
-		"  controller lost it. Check the Actions tab for the tag ref before doing anything else.",
-		"",
-		...versionNotNewerFailure(tag.slice(1), tag).slice(2),
-	];
-}
-
-export async function dispatchWorkflowAndWait(
-	request: WorkflowDispatchRequest,
-	operations: ReleaseWorkflowOperations,
-): Promise<number> {
-	const baseline = new Set(await operations.listRunIds(request.workflow, request.sha));
-	await operations.dispatch(request.workflow, request.tag, request.inputs ?? {});
-	for (let attempt = 1; attempt <= 30; attempt++) {
-		const ids = await operations.listRunIds(request.workflow, request.sha);
-		for (const id of ids) {
-			if (baseline.has(id)) continue;
-			const evidence = await operations.runEvidence(id);
-			if (
-				evidence.path === `.github/workflows/${request.workflow}` &&
-				evidence.event === "workflow_dispatch" &&
-				evidence.headBranch === request.tag &&
-				evidence.headSha === request.sha &&
-				evidence.actor === RELEASE_BOT_LOGIN &&
-				(request.expectedTitle === undefined || evidence.displayTitle === request.expectedTitle)
-			) {
-				await operations.watch(id);
-				return id;
-			}
-		}
-		await operations.sleep(Math.min(attempt, 5) * 1000);
-	}
-	throw new Error(uncorrelatedDispatchFailure(request).join("\n"));
-}
-
-export async function publishPreparedRelease(
-	tag: string,
-	sha: string,
-	operations: ReleaseWorkflowOperations = releaseWorkflowOperations,
-): Promise<ReleasePublicationResult> {
-	const runId = Bun.env.GITHUB_RUN_ID;
-	const runAttempt = Bun.env.GITHUB_RUN_ATTEMPT;
-	if (!runId || !runAttempt) throw new Error("release publication requires GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT");
-	const checksNonce = `${runId}-${runAttempt}-checks`;
-	const checksRunId = await dispatchWorkflowAndWait(
-		{
-			workflow: "checks.yml",
-			label: "Checks",
-			tag,
-			sha,
-			inputs: { release_nonce: checksNonce },
-			expectedTitle: `Checks release gate ${checksNonce}`,
-		},
-		operations,
-	);
-	const ciNonce = `${runId}-${runAttempt}-ci`;
-	const ciRunId = await dispatchWorkflowAndWait(
-		{
-			workflow: "ci.yml",
-			label: "CI",
-			tag,
-			sha,
-			inputs: { release_nonce: ciNonce },
-			expectedTitle: `CI release gate ${ciNonce}`,
-		},
-		operations,
-	);
-	const url = await operations.verifyPublished(tag);
-	return { checksRunId, ciRunId, url };
-}
-
-export interface WorkflowGateInput {
-	eventName: string;
-	dispatchVersion?: string;
-	expectedSha?: string;
-}
-
-export interface WorkflowGateResult {
-	version: string;
-	sourceSha: string;
-	reason: string;
-}
-
-export interface WorkflowGateOperations {
-	currentSha(): Promise<string | undefined>;
-	gatherFacts(): Promise<ReleaseGateFacts | undefined>;
-}
-
-const workflowGateOperations: WorkflowGateOperations = {
-	currentSha: checkedOutHeadSha,
-	gatherFacts: gatherReleaseGateFacts,
-};
-
-/**
- * Approve the dispatched release, or throw the reason it cannot happen.
- *
- * There is no quiet refusal here. A release exists because a person asked for this version at this
- * SHA, so every rejection fails the gate job and files the pinned release-train issue rather than
- * returning a decision nobody reads. `workflow_dispatch` is the only event allowed to reach this:
- * inferring a version from repository state is exactly the behaviour that was removed.
- */
-export async function decideWorkflowRelease(
-	input: WorkflowGateInput,
-	operations: WorkflowGateOperations = workflowGateOperations,
-): Promise<WorkflowGateResult> {
-	if (input.eventName !== "workflow_dispatch") {
-		throw new Error(
-			`releases are cut only by workflow_dispatch; refusing to release from ${input.eventName || "an unnamed event"}`,
-		);
-	}
-	if (!input.expectedSha) throw new Error("manual release requires the exact validated main SHA");
-	const sourceSha = await operations.currentSha();
-	if (!sourceSha) throw new Error("could not resolve the checked-out main SHA");
-	if (input.expectedSha !== sourceSha) {
-		throw new Error(`main is at ${sourceSha}, but the operator validated ${input.expectedSha}`);
-	}
-	const facts = await operations.gatherFacts();
-	if (!facts) throw new Error("could not establish exact-SHA CI and Checks state");
-	const failure = sourceGateFailure(facts);
-	if (failure) throw new Error(`release source gate failed: ${failure}`);
-	return {
-		version: parseReleaseRequest([input.dispatchVersion ?? "patch"]),
-		sourceSha,
-		reason: "manual release request passed exact-SHA CI and Checks",
-	};
-}
-
-async function writeWorkflowGateOutputs(result: WorkflowGateResult): Promise<void> {
-	const outputPath = Bun.env.GITHUB_OUTPUT;
-	if (!outputPath) throw new Error("workflow gate requires GITHUB_OUTPUT");
-	await fs.appendFile(outputPath, `version=${result.version}\nsource-sha=${result.sourceSha}\n`);
-	console.log(result.reason);
-}
-export interface PreparedRelease {
-	tag: string;
-	sha: string;
-	version: string;
-}
-
-export async function cmdRelease(versionOrBump: string): Promise<PreparedRelease> {
-	console.log("\n=== Release Script ===\n");
-
-	// 1. Pre-flight checks
-	console.log("Pre-flight checks...");
-
-	const branch = await git(["branch", "--show-current"]).text();
-	if (branch.trim() !== "main") {
-		console.error(`Error: Must be on main branch (currently on '${branch.trim()}')`);
-		process.exit(1);
-	}
-	console.log("  On main branch");
-
-	const status = await git(["status", "--porcelain"]).text();
-	if (status.trim()) {
-		console.error("Error: Uncommitted changes detected. Commit or stash first.");
-		console.error(status);
-		process.exit(1);
-	}
-	console.log("  Working directory clean");
-
-	// No `v*` tag yet is the expected state for veyyon's first release — it forked
-	// oh-my-pi's source (and its inherited changelog history) but carried over none
-	// of its git tags, and cuts its own release line starting at 1.0.0. Treat the
-	// empty result as a 0.0.0 baseline so `release major` yields 1.0.0 and an
-	// explicit `1.0.0` passes the monotonicity check below, instead of `git
-	// describe` exiting 128 and aborting the whole release.
-	const describe = await git(["describe", "--tags", "--abbrev=0", "--match", "v*"]).nothrow().text();
-	const latestTag = describe.trim() || "0.0.0";
-	let version = versionOrBump;
-	if (version === "major" || version === "minor" || version === "patch") {
-		version = bumpVersion(latestTag, version);
-		console.log(`Bumping ${versionOrBump} version from ${latestTag} -> ${version}`);
-	}
-
-	if (!isNewerVersion(version, latestTag)) {
-		for (const line of versionNotNewerFailure(version, latestTag)) console.error(line);
-		process.exit(1);
-	}
-	console.log(`  Version ${version} > ${latestTag}\n`);
-
-	// Nothing has been written yet, and nothing will be if this version is undocumented. Empty
-	// `[Unreleased]` sections used to roll into no version section at all, so v1.0.44, v1.0.45 and
-	// v1.0.46 were each cut, tagged and published with no changelog entry; the website build only
-	// noticed once those releases were already public.
-	console.log("Checking the changelog documents this version...");
-	assertReleaseIsDocumented(version, await loadPackageChangelogs());
-	console.log(`  ${RELEASE_NOTES_CHANGELOG} documents ${version}\n`);
-
-	// Prepare the exact tree that will be tagged. The preparation is idempotent
-	// so an explicit recovery cut can rebuild every version, changelog, lockfile,
-	// and check from the approved tree without preserving partial state.
-	await prepareReleaseTree(version, latestTag);
-
-	// 7. Commit. A re-cut of a version whose bump commit already landed (dead
-	// tag deleted after a failed publish) can produce a zero diff here — every
-	// version/sentinel/changelog write above was an idempotent no-op. `git
-	// commit` on an empty tree fails and would wedge the train on a state that
-	// is already correct, so tag the existing HEAD instead.
-	console.log("Committing...");
-	await git(["add", "."]);
-	const staged = (await git(["status", "--porcelain"]).text()).trim();
-	const hasReleaseCommit = staged.length > 0;
-	if (!hasReleaseCommit) {
-		console.log(`  nothing to commit (a prior cut of v${version} already landed the bump); tagging HEAD`);
-	} else {
-		await git(["commit", "-m", releaseBumpSubject(version)]);
-	}
-	console.log();
-
-	// 8. Tag, then push branch + tag atomically — pushing the tag by object id.
-	//
-	// This repo is in the global `[maintenance] repo = …` list, so a scheduled
-	// `git maintenance run` fetches origin with `fetch.pruneTags=true` (set
-	// globally) and deletes any local tag not yet on the remote — i.e. the
-	// brand-new release tag. The `-c fetch.pruneTags=false` on our git wrapper
-	// only governs our own git calls, not the concurrent maintenance process, so
-	// a local tag ref may vanish before or while the push resolves it.
-	//
-	// A bare push refspec (`refs/tags/v…` with no `:dst`) re-resolves the tag on
-	// disk during refspec matching (git's remote.c:match_explicit); if the prune
-	// lands in that window git dies with
-	// "refs/tags/v… cannot be resolved to branch", and if it lands before the
-	// push it dies with "src refspec … does not match any". We sidestep both by
-	// pushing the HEAD commit object id straight into the remote tag ref
-	// (`<sha>:refs/tags/v…`): the push has no dependency on a local tag, and the
-	// commit is reachable from main so maintenance cannot prune it. The local
-	// tag we still create is only for `git describe`; losing it is harmless. The
-	// default Git LFS pre-push hook uploads the branch's LFS objects as part of
-	// this same atomic push — no separate `git lfs push` is needed.
-	console.log("Tagging and pushing to remote...");
-	const tagRef = `v${version}`;
-	// Main can advance during preparation. Do not rebase or retry here: the gate
-	// approved this exact SHA, not whatever arrived later. A rejected atomic push
-	// leaves both remote refs untouched; the newer main workflow starts a fresh
-	// cut after its own CI and Checks runs are green.
-	await validateReleaseVersionAuthorities(".", version, tagRef);
-	const releaseSha = (await git(["rev-parse", "HEAD"]).text()).trim();
-	await pushPreparedRelease(tagRef, {
-		currentSha: async () => releaseSha,
-		forceLocalTag: async tag => {
-			await git(["tag", "-f", tag]);
-		},
-		atomicPush: async (tag, sha) => {
-			await git(["push", "--atomic", "origin", "refs/heads/main:refs/heads/main", `${sha}:refs/tags/${tag}`]);
-		},
-	});
-	console.log();
-
-	console.log(`Pushed ${tagRef}. Waiting for exact-tag Checks and the complete tagged CI release.`);
-	return { tag: tagRef, sha: releaseSha, version };
-}
-
-async function runWorkflowGateCommand(): Promise<void> {
-	const result = await decideWorkflowRelease({
-		eventName: Bun.env.GITHUB_EVENT_NAME ?? "",
-		dispatchVersion: Bun.env.RELEASE_DISPATCH_VERSION,
-		expectedSha: Bun.env.RELEASE_EXPECTED_SHA,
-	});
-	await writeWorkflowGateOutputs(result);
-}
-
-export interface GatedReleaseSourceOperations {
-	currentSha(): Promise<string>;
-	switchMain(sha: string): Promise<void>;
-	configureGitIdentity(): Promise<void>;
-}
-
-const gatedReleaseSourceOperations: GatedReleaseSourceOperations = {
-	currentSha: async () => (await git(["rev-parse", "HEAD"]).text()).trim(),
-	switchMain: async sha => {
-		await git(["switch", "-C", "main", sha]);
-	},
-	configureGitIdentity: async () => {
-		await git(["config", "user.name", "github-actions[bot]"]);
-		await git(["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"]);
-	},
-};
-
-export async function materializeGatedReleaseSource(
-	expectedSha: string,
-	operations: GatedReleaseSourceOperations = gatedReleaseSourceOperations,
-): Promise<void> {
-	const checkedOutSha = await operations.currentSha();
-	if (checkedOutSha !== expectedSha) {
-		throw new Error(`release checkout is ${checkedOutSha}, expected gated SHA ${expectedSha}`);
-	}
-	await operations.switchMain(expectedSha);
-	await operations.configureGitIdentity();
-}
-
-export interface ReleaseTrainOperations {
-	materialize(sourceSha: string): Promise<void>;
-	cut(version: string): Promise<PreparedRelease>;
-	publish(tag: string, sha: string): Promise<ReleasePublicationResult>;
-}
-
-export interface CompletedRelease {
-	tag: string;
-	sha: string;
-	version: string;
-	checksRunId: number;
-	ciRunId: number;
-	url: string;
-}
-
-const releaseTrainOperations: ReleaseTrainOperations = {
-	materialize: materializeGatedReleaseSource,
-	cut: cmdRelease,
-	publish: publishPreparedRelease,
-};
-
-export async function runReleaseTrain(
-	version: string,
-	sourceSha: string,
-	operations: ReleaseTrainOperations = releaseTrainOperations,
-): Promise<CompletedRelease> {
-	await operations.materialize(sourceSha);
-	const prepared = await operations.cut(version);
-	const publication = await operations.publish(prepared.tag, prepared.sha);
-	return { ...prepared, ...publication };
-}
-
-async function runWorkflowReleaseCommand(version: string): Promise<void> {
-	if (Bun.env.VEYYON_RELEASE_IN_CI !== "1") throw new Error("workflow-release may run only inside Release CI");
-	const expectedSha = Bun.env.RELEASE_SOURCE_SHA;
-	if (!expectedSha) throw new Error("workflow-release requires RELEASE_SOURCE_SHA");
-	const completed = await runReleaseTrain(version, expectedSha);
-	const summaryPath = Bun.env.GITHUB_STEP_SUMMARY;
-	if (summaryPath) {
-		await fs.appendFile(
-			summaryPath,
-			`### Release \`${completed.tag}\` published\n\n` +
-				`Checks run: ${completed.checksRunId}\n\n` +
-				`CI run: ${completed.ciRunId}\n\n` +
-				`${completed.url}\n`,
-		);
-	}
-	console.log(`Published ${completed.tag}: ${completed.url}`);
-}
-
 async function runReleaseController(args: readonly string[]): Promise<void> {
 	const [command, ...rest] = args;
 	switch (command) {
-		case "workflow-gate":
-			if (rest.length > 0) throw new Error("Usage: release.ts workflow-gate");
-			await runWorkflowGateCommand();
-			return;
-		case "workflow-release": {
-			const version = parseReleaseRequest(rest);
-			await runWorkflowReleaseCommand(version);
-			return;
-		}
 		case "verify-tag": {
-			const [tag, sha, ciNonce, dispatchActor, ...extra] = rest;
-			if (!tag || !sha || !ciNonce || !dispatchActor || extra.length > 0) {
-				throw new Error("Usage: release.ts verify-tag <tag> <sha> <ci-nonce> <dispatch-actor>");
-			}
-			await verifyReleaseTagGates(tag, sha, ciNonce, dispatchActor);
+			const [tag, sha, ...extra] = rest;
+			if (!tag || !sha || extra.length > 0) throw new Error("Usage: release.ts verify-tag <tag> <sha>");
+			await verifyReleaseTagIsOnMain(tag, sha);
+			// The tree carries its own claim about which version it is. A tag on a
+			// commit whose manifests say something else would ship binaries that
+			// report the wrong version, so the tag and the tree must agree.
+			await validateReleaseVersionAuthorities(".", tag.replace(/^v/, ""), tag);
 			return;
 		}
 		case "verify-assets": {
@@ -1121,9 +605,7 @@ async function runReleaseController(args: readonly string[]): Promise<void> {
 			return;
 		}
 		default:
-			throw new Error(
-				"Usage: release.ts workflow-gate | workflow-release <version> | verify-tag <tag> <sha> <ci-nonce> <dispatch-actor> | verify-assets <tag>",
-			);
+			throw new Error("Usage: release.ts verify-tag <tag> <sha> | verify-assets <tag>");
 	}
 }
 

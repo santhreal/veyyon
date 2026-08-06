@@ -252,7 +252,6 @@ describe("gh calls in checkout-less jobs name their repository", () => {
 			"ci.yml::release_github_verify_linux",
 			"ci.yml::release_github_verify_windows",
 			"ci.yml::release_train_alert",
-			"release.yml::release_failed_alert",
 		]);
 	});
 

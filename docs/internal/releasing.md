@@ -1,8 +1,8 @@
 # Releasing
 
-This is the only page about cutting a release. It covers the one command you run,
-what runs after it, what a release produces, how you check that it worked, and
-what to do when a step fails.
+This is the only page about cutting a release. It covers the three commands you
+run, what runs after them, what a release produces, how you check that it worked,
+and what to do when a step fails.
 
 A release is a tagged commit **and** a published GitHub release the install
 scripts can resolve. A version bump is not a release. A green CI run is not a
@@ -10,82 +10,97 @@ release. Both are steps toward one.
 
 ## Cut a release
 
-You need three things: every change written under its package's `## [Unreleased]`
-section, a `main` SHA whose CI and Checks runs are both green, and the version you
-want.
+Three moves. Prepare the bump locally, push it to `main` like any other commit,
+and tag it once `main`'s CI is green.
 
 ```sh
-gh workflow run release.yml \
-  -f version=patch \
-  -f expected_sha="$(git rev-parse origin/main)"
+bun run release:prepare patch      # 1. bump versions + roll changelogs, commit locally
+git push origin main               # 2. let main's CI test the exact commit
+gh run watch                       # wait for green
+
+git tag v1.2.3 && git push origin v1.2.3   # 3. the tag push publishes
 ```
 
-`version` takes `major`, `minor`, `patch`, or an explicit `x.y.z`. `expected_sha`
-is the exact `origin/main` SHA you validated.
+`release:prepare` takes `major`, `minor`, `patch`, or an explicit `x.y.z`, and
+prints the exact tag command for the version it produced. Pass `--dry-run` to see
+what it would do without touching the tree.
 
-That is the whole ceremony. There is one entry point and it is a workflow
-dispatch. No repository command cuts a release, no shell script cuts a release,
-and nothing on `main` cuts one on its own: not a push, not a green CI run, not a
-waiting `## [Unreleased]` bullet. If the changelog says a version shipped and no
-release exists for it, nobody dispatched one.
+That is the whole ceremony. Nothing on `main` cuts a release on its own: not a
+push, not a green CI run, not a waiting `## [Unreleased]` bullet. Only a `v*` tag
+push publishes. If the changelog says a version shipped and no release exists for
+it, nobody pushed its tag.
 
-Dispatching needs the `santhsecurity` account active in `gh`. Everything after
-the dispatch runs on GitHub-hosted runners with the repository-scoped
-`GITHUB_TOKEN`, so no workstation credential performs a release and no release
+Pushing the tag needs the `santhsecurity` account active in `git`/`gh`. Everything
+after the tag push runs on GitHub-hosted runners with the repository-scoped
+`GITHUB_TOKEN`, so no workstation credential performs a publication and no release
 waits on a self-hosted runner.
 
-### Why the SHA is required
+### Why the commit goes to main first
 
-`expected_sha` is the whole safety story. The gate proves CI and Checks are both
-green for that precise SHA before anything changes a version, creates a commit,
-tags, or publishes. A stale or guessed SHA fails the gate instead of releasing a
-tree nobody checked.
+The tag must name a commit `main`'s CI has already tested, and the only way to be
+sure of that is to let `main` test it. Step 2 is not a formality: it is the entire
+safety argument, and it is the same one that protects every other commit.
 
-This gate is not ceremony. `v1.0.28` through `v1.0.35` were each tagged before
-`ci.yml` had tested their SHA. Two red `packages/utils` tests killed every
+This matters because the alternative failed. `v1.0.28` through `v1.0.35` were each
+tagged by a controller that created the bump commit *inside* CI, so the tag landed
+on a SHA no CI run had ever seen. Two red `packages/utils` tests killed every
 publish downstream, and `releases/latest` sat at `v1.0.27` while the tags marched
-on. Anything that weakens the exact-SHA proof reopens that failure.
+on. Preparing locally and pushing to `main` first makes that failure impossible by
+construction rather than by gate.
 
-The gate exports the SHA it proved. The cutter checks out that immutable commit
-and materializes it as its local `main`, so a later `main` update cannot enter the
-release after the evidence was collected.
+`ci.yml` still checks the one fact that could go wrong: `release.ts verify-tag`
+refuses unless the tagged commit is on `main` (`identical` or `behind`), and
+refuses when the comparison cannot be established at all. Tagging a local branch,
+a rewritten commit, or a fork is rejected before anything is built.
+
+You may tag an older `main` commit. `behind` is accepted precisely because `main`
+often advances between preparation and the tag push, and that older commit is
+still a commit `main` tested.
 
 ## What runs
 
-`scripts/release.ts` is the one release controller. `release.yml` calls it for
-source gating, the cut, and publication. In order:
+### Locally: `bun run release:prepare`
 
-1. **Gate.** Require CI and Checks to have both succeeded for the dispatched
-   SHA. Refuse anything else.
-2. **Preflight.** Assert a clean `main` and that the new version is greater than
-   the latest tag. A repository with no `v*` tags reads as a `0.0.0` baseline.
+`scripts/prerelease.ts` prepares the tree and commits. It never pushes and never
+tags.
+
+1. **Preflight.** Require the `main` branch and a clean tree, so the bump commit
+   contains the bump and nothing else. Require the new version to be greater than
+   the latest tag; a repository with no `v*` tags reads as a `0.0.0` baseline.
+2. **Documented.** Assert every publishable package whose shipped source changed
+   has a bullet under its `## [Unreleased]` section.
 3. **Bump.** Write the new version to every public `package.json`, the root
    `@veyyon/*` catalog entries, the Rust workspace version, and the
    `veyyon-natives` version sentinel. Regenerate the lockfiles. Then require every
-   one of those authorities to agree on one version tuple before the tree may be
-   pushed.
+   one of those authorities to agree on one version tuple.
 4. **Changelogs.** Roll each package's `## [Unreleased]` into a dated
    `## [version]` section and open a fresh empty `## [Unreleased]` above it.
    Regenerate the repo-root `CHANGELOG.md` from every package changelog.
-5. **Check.** Run `bun run check`, which type checks TypeScript and Rust.
-6. **Commit.** Commit `chore: bump version to vX.Y.Z`. The subject is a contract,
-   not a message: five workflows key their never-cancel release concurrency group
-   off the `chore: bump version to ` prefix.
-7. **Push.** Tag, then push `main` and the tag atomically, by commit SHA. If
-   `main` advanced, the push fails without rebasing. Validate the newer SHA and
-   dispatch again.
-8. **Gate the tag.** Dispatch `checks.yml` at the immutable tag with a unique
-   correlation token, then verify the run carries that token, targets the bump
-   SHA, and passes.
-9. **Publish.** Dispatch `ci.yml` at the same tag, correlate and wait for that
-   exact run, then verify the final asset manifest, the published state, and
-   `releases/latest`.
+5. **Commit.** Stage exactly the paths the preparation touched and commit
+   `chore: bump version to vX.Y.Z`. The subject is a contract, not a message:
+   `checks.yml` keys its changelog exemption off the `chore: bump version to `
+   prefix, because the bump commit drains `## [Unreleased]` by design.
+6. **Print.** Print the push and tag commands for the version it produced.
 
-Only step 9 publishes anything, and only through the ordered transaction below.
+Run `bun run check` yourself before pushing if you want the answer sooner; `main`
+CI runs it either way.
+
+### On the tag push: `ci.yml`
+
+The tag push starts one `ci.yml` run at the tagged commit.
+
+1. **Verify the tag.** `release.ts verify-tag` proves the tag is strict `vX.Y.Z`,
+   that the checkout is the commit being published, that the commit is on `main`,
+   and that the tree's version authorities all agree with the tag.
+2. **Build and test.** The full matrix, then every platform binary.
+3. **Publish.** The ordered transaction below.
+
+There is no controller run, no dispatch, no correlation token, and no second or
+third CI round. One tag push, one run.
 
 ### The publication transaction
 
-The dispatched `ci.yml` run checks out the immutable tag, builds every platform
+The tag's `ci.yml` run checks out the immutable tag, builds every platform
 binary, and then runs six steps in order. Each one has to pass before the next
 starts.
 
@@ -118,9 +133,10 @@ One owner per concern, so a change lands in one place.
 
 | Concern | Owner |
 | --- | --- |
-| Release entry point | `.github/workflows/release.yml` (dispatch only) |
-| Release controller | `scripts/release.ts` |
-| Gate and asset policy | `scripts/release-policy.ts` |
+| Release trigger | a `v*` tag push (`push: tags` in `.github/workflows/ci.yml`) |
+| Local preparation | `scripts/prerelease.ts` (`bun run release:prepare`) |
+| Tree preparation shared by both | `prepareReleaseTree` in `scripts/release.ts` |
+| Tag and asset policy | `scripts/release-policy.ts` |
 | Version authorities | `validateReleaseVersionAuthorities` in `scripts/release.ts` |
 | Changelog normalization | `scripts/fix-changelogs.ts` |
 | Root changelog | `renderRootChangelog` in `website/tools/gen-changelog.mjs`, written by `scripts/sync-root-changelog.ts` |
@@ -202,13 +218,17 @@ matching section.
 
 ### It failed before the tag was pushed
 
-The Release workflow failed during gating, preparation, checks, the commit, or
-the atomic push. No remote tag exists.
+`release:prepare` refused, or `main`'s CI went red on the bump commit. No remote
+tag exists, so nothing was published and nothing needs undoing remotely.
 
-The failing step in the Release run is authoritative. Fix the cause on `main` and
-push. Nothing re-cuts on its own: the newer SHA gets its own CI and Checks runs,
-and then you dispatch again with both inputs. Do not hand-push a local bump or a
-local tag.
+If `release:prepare` refused, it named the reason: a dirty tree, the wrong branch,
+a version that is not ahead of the latest tag, or an undocumented package. Fix it
+and run it again — it wrote nothing.
+
+If it committed and `main`'s CI then went red, the bump commit is on `main` like
+any other commit. Fix the cause, push the fix, and tag the commit that goes green.
+The tag does not have to be `main`'s tip. Never tag a red commit to "get the
+release out": that is exactly the failure this model exists to prevent.
 
 ### The tag pushed but nothing published
 
@@ -218,15 +238,12 @@ release has no binaries.
 Open the tagged CI run from the Actions tab.
 
 - **A tagged run exists.** Fix the cause and **re-run failed jobs only**. Do not
-  re-run all jobs. That re-runs `release_metadata`, whose `verify-tag` gate
-  demands a controller-issued nonce correlated to a Release run that is still in
-  progress, and it refuses a second time.
-- **No tagged run exists.** Re-run the Release workflow's `Run release train`
-  job. Only the controller can dispatch a publishing CI run: `release_metadata`
-  refuses any tag dispatch whose actor is not `github-actions[bot]` and whose
-  nonce does not correlate to the live Release run, so dispatching `ci.yml` at the
-  tag by hand fails the gate and publishes nothing. Do not cut a second tag for
-  the same version.
+  re-run all jobs. `release_metadata` re-verifies the tag against `main` and the
+  run proceeds, because the tag is immutable and the facts it checks have not
+  changed.
+- **No tagged run exists.** The tag push did not start one. Delete the remote tag
+  and push it again at the same commit, which schedules a fresh run in the same
+  per-SHA group. Do not cut a second tag for the same version.
 
 ### The release published but the binaries are wrong
 
@@ -308,10 +325,10 @@ Then run `veyyon plugin doctor` to confirm health.
 
 #### Then ship the fix
 
-Ship it as an ordinary release. Land the fix on `main`, wait for that commit's own
-CI and Checks runs to go green, and dispatch with that SHA. The gate refuses any
-commit those two runs have not both passed. Nothing cuts the fix for you and there
-are no release branches.
+Ship it as an ordinary release. Land the fix on `main`, run `release:prepare`,
+push, wait for that commit's CI to go green, and tag it. `verify-tag` refuses any
+commit that is not on `main`. Nothing cuts the fix for you and there are no
+release branches.
 
 A green release train is already proof that `latest` moved, because the
 publication transaction polls the public redirect until it names the new tag. Only
@@ -381,19 +398,30 @@ wrong by eight versions. `git describe` skips them, a bisect over a reported
 version cannot resolve them, and "what changed between X and Y" resolves the
 wrong range if either end falls in the gap.
 
-### The trigger used to be automatic
+### The trigger has changed twice
 
-Read older runs with this in mind. Completed CI and Checks runs on `main` used to
-trigger the release workflow, and it cut a `patch` release whenever any
-publishable package had an `## [Unreleased]` bullet waiting. Because the cut
-consumes that section, a cut whose CI then failed left a tag with no release and
-nothing left to ask for, so the gate carried a second signal that re-cut from an
-unpublished tag, bounded so that two stranded tags stopped it and asked for a
-person.
+Read older runs with this in mind.
 
-The trigger and both signals are gone, along with the script that computed the
-"anything to release" answer. Recovering a failed cut is now the same act as any
-other release: fix what failed, then dispatch the version you want.
+**First it was automatic.** Completed CI and Checks runs on `main` triggered a
+release workflow that cut a `patch` whenever any publishable package had an
+`## [Unreleased]` bullet waiting. Because the cut consumes that section, a cut
+whose CI then failed left a tag with no release and nothing left to ask for, so
+the gate carried a second signal that re-cut from an unpublished tag, bounded so
+that two stranded tags stopped it and asked for a person.
+
+**Then it was a dispatched controller.** `release.yml` took a `version` and an
+`expected_sha`, gated on both source workflows being green for that SHA, then
+created the bump commit *inside* CI, pushed `main` and the tag atomically, and
+dispatched `checks.yml` and `ci.yml` at the tag — correlating each by a nonce,
+because `workflow_dispatch` returns no run id. Three CI rounds per release. All of
+that existed to compensate for one thing: the bump commit was born in CI, so the
+tag necessarily landed on a SHA no CI run had tested.
+
+**Now the bump is prepared locally and pushed to `main` first**, so the tag lands
+on a commit `main` already tested and the compensation is unnecessary. The
+controller workflow, the nonce correlation, the source gate, and the release-train
+recovery signals are all gone. Recovering a failed release is the same act as any
+other: fix what failed, and tag the commit that goes green.
 
 ## Runners and concurrency
 
@@ -401,9 +429,9 @@ Every `ci.yml` job runs on GitHub-hosted runners, so a release can never sit
 queued waiting for a runner that is not registered. That is exactly how the first
 `v1.0.0` tag run stalled before the self-hosted routing was removed.
 
-Release-shaped runs get a per-SHA, never-cancel concurrency group. A run is
-release-shaped when it is a `chore: bump version to ` push, a `v*` tag ref, or
-any manual dispatch. Ordinary `main` pushes never cancel each other either: they
+A `v*` tag run gets a per-SHA, never-cancel concurrency group, because it is the
+run that publishes. Manual dispatches are never cancelled either, and ordinary
+`main` pushes do not cancel each other: they
 share the branch-wide group with cancellation off, so the running run always
 completes and GitHub keeps only the newest pending run. Before that, bot pushes
 landing every few minutes cancelled every CI run in flight and the release train

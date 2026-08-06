@@ -94,24 +94,24 @@ Production has three coordinated surfaces (see [`deployment.md`](./deployment.md
 **CLI binaries**, keep `main` release-ready: `bun run check` green and each
 publishable change documented under its package's `[Unreleased]` section. A push
 publishes nothing on its own, and nothing cuts a release on its own: no green run
-and no waiting `[Unreleased]` bullet produces a tag. A person dispatches the
-Release workflow against a SHA they validated, and the gate refuses to cut unless
-CI and Checks are both already green for that exact commit.
+and no waiting `[Unreleased]` bullet produces a tag. A person pushes the tag, and
+`ci.yml` refuses to publish unless that tag names a commit that reached `main`.
 
-There is no repository release command and no release shell script; the ceremony
-runs only in GitHub Actions, from the Actions tab or through `gh`. With approval
-for the version, dispatch it. `version` takes `major`, `minor`, `patch`, or an
-explicit `x.y.z`:
+Preparation is local and inspectable. `bun run release:prepare <version>` bumps
+every version authority, finalizes the changelogs, and commits
+`chore: bump version to vX.Y.Z` without pushing or tagging; `version` takes
+`major`, `minor`, `patch`, or an explicit `x.y.z`. With approval, push that commit
+and let `main`'s CI test it. With approval for the version, tag the green commit:
 
 ```sh
-gh workflow run release.yml \
-  -f version=minor \
-  -f expected_sha="$(git rev-parse origin/main)"
+bun run release:prepare minor
+git push origin main          # wait for CI to go green on this commit
+git tag v1.3.0 && git push origin v1.3.0
 ```
 
-The workflow bumps every version, finalizes changelogs, commits the bump, and
-atomically pushes `main` plus the tag. It then gates that bump commit through
-Checks at the immutable tag and dispatches the tagged publish pipeline.
+The tag push starts the one CI run that verifies the tag against `main`, builds
+every platform binary, and publishes. See
+[releasing.md](./releasing.md) for the full flow.
 
 **Website and install scripts**, `bun run site:build` locally at will because the
 brand check is part of the gate. A matching push to `main`, and every release,
