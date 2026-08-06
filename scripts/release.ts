@@ -27,7 +27,7 @@ import {
 	verifyReleaseTagGates,
 } from "./release-policy";
 import { unreleasedEntries } from "./changelog-unreleased.ts";
-import { buildRootChangelog, ROOT_PATH } from "./sync-root-changelog";
+import { orphanRefusalLines, writeRootChangelog } from "./sync-root-changelog";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const packageJsonGlob = new Glob("packages/*/package.json");
@@ -526,7 +526,17 @@ async function prepareReleaseTree(version: string, latestTag: string): Promise<v
 	}
 	await updateChangelogsForRelease(version);
 	assertPreparedReleaseChangelogs(version, await loadPackageChangelogs());
-	await Bun.write(ROOT_PATH, buildRootChangelog());
+	const rootChangelog = writeRootChangelog();
+	if (!rootChangelog.wrote) {
+		throw new Error(
+			[
+				`Refusing to cut ${version}: writing the root CHANGELOG.md would delete unreleased entries.`,
+				...orphanRefusalLines(rootChangelog.orphans),
+				"There is no --force here. A release that deletes an entry has already published the tag,",
+				"the npm packages and the GitHub release under a changelog that never mentioned it.",
+			].join("\n"),
+		);
+	}
 	console.log("  Updated CHANGELOG.md (repo root)\n");
 
 	console.log("Running checks...");
