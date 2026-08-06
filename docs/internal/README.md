@@ -94,6 +94,13 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | [non-compaction-retry-policy.md](non-compaction-retry-policy.md) | The non-compaction auto-retry policy. |
 | [local-tiny-models.md](local-tiny-models.md) | Embedded local tiny-model experiments. |
 
+## Prompts and caching
+
+| Doc | Covers |
+| --- | --- |
+| [system-prompt-architecture.md](system-prompt-architecture.md) | The block/tier model, the section registry, ordering rules, and where a new section goes. |
+| [prompt-caching.md](prompt-caching.md) | Per-provider cache markers, the breakpoint budget, what invalidates what, and the verdict subsystem. |
+
 ## Sessions and memory
 
 | Doc | Covers |
@@ -143,4 +150,4 @@ Per-model tool-call wire-format notes live in [toolconv/](toolconv/) (Anthropic,
 
 Step-by-step runbooks for when something breaks live in [runbooks/](runbooks/).
 
-*Verified against `92ff7a6b` on 2026-08-04.*
+*Verified against `27538ffb` on 2026-08-05.*

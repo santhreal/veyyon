@@ -104,6 +104,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `tts/`, `stt/` | Text-to-speech / speech-to-text | — |
 | `tiny/`, `auto-thinking/` | Embedded tiny-model experiments, auto thinking level | [local-tiny-models.md](../../docs/internal/local-tiny-models.md) |
 | `async/`, `lib/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |
+| `system-prompt-builder/` | Section and statement registries, banner grammar, gate resolution, prompt inspection | [system-prompt-architecture.md](../../docs/internal/system-prompt-architecture.md), [system-prompt-customization.md](../../docs/system-prompt-customization.md) |
 
 ## Subsystem reference
 
@@ -126,7 +127,9 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - [toolconv/](../../docs/internal/toolconv/) — per-family tool-call conversion (anthropic, harmony, qwen3, deepseek, glm-4.5, kimi-k2, gemini, gemma, pi-native); see also [ERRATA-GPT5-HARMONY.md](../../docs/internal/ERRATA-GPT5-HARMONY.md)
 - [keybindings.md](../../docs/keybindings.md)
 - [secrets.md](../../docs/secrets.md), [auth-broker-gateway.md](../../docs/internal/auth-broker-gateway.md), [install-id.md](../../docs/internal/install-id.md)
-- [system-prompt-customization.md](../../docs/system-prompt-customization.md)
+- [system-prompt-customization.md](../../docs/system-prompt-customization.md) — the operator-facing surface
+- [system-prompt-architecture.md](../../docs/internal/system-prompt-architecture.md) — blocks, tiers, ordering rules, adding a section
+- [prompt-caching.md](../../docs/internal/prompt-caching.md) — per-provider cache markers and the breakpoint budget
 
 ### Tools framework and built-in tools
 - Authoring + registry: [custom-tools.md](../../docs/custom-tools.md)

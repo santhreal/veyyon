@@ -4,6 +4,8 @@ How the coding-agent assembles the system prompt sent to the model, and what you
 
 The system prompt is ASSEMBLED. It is composed from the section registry and from statements gated on your settings; there is no file on disk holding its text for you to edit. `PROMPT_SECTIONS/` is how you change what a section says, per statement and validated. `--system-prompt` remains for a caller that supplies its own prompt for one invocation (the SDK, an eval harness).
 
+This page is the operator-facing surface: the inputs, the override mechanisms, and the gates. For the implementation side of the same subsystem, the block/tier model, the ordering rules, and how to decide where a new section belongs, see [System prompt architecture](internal/system-prompt-architecture.md), and for how the cached prefix is marked on the wire see [Prompt caching](internal/prompt-caching.md).
+
 Veyyon no longer reads a `SYSTEM.md` or `APPEND_SYSTEM.md` file from disk.
 
 `SYSTEM.md` replaced the whole assembled prompt with hand-written text. `APPEND_SYSTEM.md` added text to the end of it, which is what `AGENTS.md` already does, at more scopes and with a directory walk-up that `APPEND_SYSTEM.md` never had. Both were discovered out of any repository you entered, and a new profile copied them along under a checkbox labelled `AGENTS.md`.
@@ -308,7 +310,7 @@ This is the difference between a prompt that is small and one that is broken. An
 
 Every other exit is 0, so `veyyon prompt --sections` works as a check in a script. `--json` carries the same information in a `missing` array, present even when empty.
 
-The `block` column is the boundary between messages sent to the provider. Block 0 is the static prefix that providers cache; later blocks hold text that changes often. Moving content from a later block into block 0 would break that cache, which is why the breakdown reports the boundary rather than hiding it.
+The `block` column is the index of the part in the ordered array `buildSystemPrompt` returns. Block 0 is the static prefix that providers cache; later blocks hold text that changes often. Each provider serializes those parts its own way (Anthropic sends them as separate `system` text blocks, most OpenAI-wire paths as separate system or developer messages, Gemini as separate `systemInstruction` parts), so a block is a separate *part*, not necessarily a separate message. Moving content from a later block into block 0 would break the cache, which is why the breakdown reports the boundary rather than hiding it. See [System prompt architecture](internal/system-prompt-architecture.md) for the per-provider mapping.
 
 `--no-tools` is useful for finding tool-gated text: run it, diff against the normal output, and every line that disappeared was behind a tool being available.
 
