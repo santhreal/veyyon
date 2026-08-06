@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `sealBytes` and `openBytes` expose the sealed envelope itself, `[12B random IV][AES-256-GCM ciphertext with its tag]`, for payloads that are not JSON. `sealFrame` and `openFrame` are now the JSON layer on top of them rather than a second writer of the same bytes. Session sharing gzips before it seals, so it could not use `sealFrame` and had hand-written the envelope a second time with its own copy of the IV length; that copy is read by a browser from an already-published link, so a drift between the two halves would have surfaced as a link that no longer opens, after the session was gone from the machine that sealed it.
+
 ## [16.3.0] - 2026-07-02
 
 ### Breaking Changes
