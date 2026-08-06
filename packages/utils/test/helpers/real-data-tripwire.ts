@@ -76,6 +76,7 @@
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 // For its side effect as much as its export: `os.homedir()` and `HOME` name an empty
 // per-process sandbox from here on, so nothing loaded afterwards can build a path into
 // real data. The export is the home as it was BEFORE that move, which is the one thing
@@ -545,6 +546,24 @@ function installSpawnTripwire(): void {
 		}
 	};
 
+	/**
+	 * `node:util.promisify` does not use the callback convention on these. Each
+	 * `child_process` entry point carries a `util.promisify.custom` hook that
+	 * resolves to `{ stdout, stderr }`, and a wrapper that does not carry it
+	 * forward sends `promisify` down the callback path instead, where it resolves
+	 * with the first callback value alone. Production code written as
+	 *
+	 *     const { stdout } = await promisify(execFile)(...)
+	 *
+	 * then destructures `stdout` off a bare string and gets `undefined`, silently,
+	 * only under test. `scripts/release-ship.ts` is written exactly that way, and
+	 * its `JSON.parse(stdout)` failed with `Unexpected identifier "undefined"`
+	 * against a stub that had printed valid JSON.
+	 *
+	 * So the hook is re-created rather than copied. Copying the original's hook
+	 * would restore the behaviour and lose the guard, because `promisify` would
+	 * then call the UNWRAPPED original and no argument would ever be inspected.
+	 */
 	const guardSpawns = (target: Record<string, unknown>, label: string, names: readonly string[]): void => {
 		for (const name of names) {
 			const original = target[name];
@@ -554,6 +573,17 @@ function installSpawnTripwire(): void {
 				inspect(`${label}.${name}`, args);
 				return fn.apply(this, args);
 			};
+			const custom = (fn as unknown as Record<symbol, unknown>)[promisify.custom];
+			if (typeof custom === "function") {
+				const customFn = custom as (...args: unknown[]) => unknown;
+				(guarded as unknown as Record<symbol, unknown>)[promisify.custom] = function guardedPromisified(
+					this: unknown,
+					...args: unknown[]
+				) {
+					inspect(`${label}.${name}`, args);
+					return customFn.apply(this, args);
+				};
+			}
 			(guarded as unknown as Record<string, unknown>)[GUARDED_MARKER] = true;
 			target[name] = guarded;
 		}
