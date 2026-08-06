@@ -83,6 +83,8 @@ Important generation properties:
 - `toolChoice: "none"` prevents intentional tool dispatch (with the one-shot `"auto"` retry above for providers that reject it).
 - The returned assistant content is filtered to text blocks and joined with `\n`; stray tool-call blocks are ignored if a provider does not honor `toolChoice: "none"`.
 - `stopReason === "error"` throws a generation error.
+- An empty document (after trimming) throws rather than returning, so a model that emits no text cannot start a new session with nothing in it.
+- `AgentSession` then appends the deterministic `<files>` block to the returned text (`extractFileOpsFromMessages` + `computeFileLists` + `upsertFileOperations`), the same read/modified file list the summary strategy emits. It is machine-generated from the live messages and costs no extra request.
 
 No agent-loop events are used for capture. The handoff path no longer waits for `agent_end` and no longer scans the latest assistant message.
 
@@ -105,12 +107,13 @@ If text was generated and not aborted:
 2. Flush current session writer (`sessionManager.flush()`).
 3. Cancel session-owned async jobs.
 4. Start a brand-new session with `parentSession` pointing at the previous session file when one exists.
-5. Reset in-memory agent state (`agent.reset()`): but the steering and follow-up queues are captured immediately before the reset (`peekSteeringQueue()`/`peekFollowUpQueue()`) and restored immediately after (`replaceQueues`), so steers/follow-ups issued during handoff generation survive into the new session instead of being dropped.
-6. Rebind `agent.sessionId` to the new session id.
-7. Rekey/reset Hindsight and Mnemopi memory session tracking for the new session.
-8. Clear the queued next-turn context array (`#pendingNextTurnMessages`) and the scheduled hidden next-turn generation (`#scheduledHiddenNextTurnGeneration`).
-9. Reset todo reminder counters and mid-run nudge state.
-10. After injection and context rebuild, emit `session_switch` (`reason: "handoff"`, with `previousSessionFile`) to extensions.
+5. Rescope the subagent registry (`#rescopeAgentRegistry()`), so subagents that wrote into the old transcript are not listed under the new conversation, and clear checkpoint runtime state.
+6. Reset in-memory agent state (`agent.reset()`): but the steering and follow-up queues are captured immediately before the reset (`peekSteeringQueue()`/`peekFollowUpQueue()`) and restored immediately after (`replaceQueues`), so steers/follow-ups issued during handoff generation survive into the new session instead of being dropped.
+7. Rebind `agent.sessionId` to the new session id.
+8. Rekey/reset Hindsight and Mnemopi memory session tracking for the new session.
+9. Clear the queued next-turn context array (`#pendingNextTurnMessages`) and the scheduled hidden next-turn generation (`#scheduledHiddenNextTurnGeneration`).
+10. Reset todo reminder counters and mid-run nudge state.
+11. After injection and context rebuild, emit `session_switch` (`reason: "handoff"`, with `previousSessionFile`) to extensions.
 
 ### 5) Handoff-context injection
 
@@ -142,6 +145,7 @@ Semantics:
 - `display`: `true` (visible in TUI rebuild)
 - attribution: `"agent"`
 - Entry type: `custom_message` (participates in LLM context)
+- Todo phases captured before the switch are re-persisted into the new session as a `USER_TODO_EDIT_CUSTOM_TYPE` snapshot entry, the same one `/todo` writes, so a reload of the new transcript still finds them.
 
 ### 6) Rebuild active agent context
 
@@ -183,6 +187,7 @@ Auto-triggered handoffs can additionally write a timestamped `handoff-*.md` arti
   - invalidates status line and editor top border
   - reloads todos
   - appends success chat line: `New session started with handoff context`
+  - shows `Handoff document saved to: <path>` when the result carried a `savedPath`
 - On exception:
   - if message is `"Handoff cancelled"` or error name is `AbortError`: `showError("Handoff cancelled")`
   - otherwise: `showError("Handoff failed: <message>")`
@@ -255,4 +260,4 @@ High-level state flow:
 - Manual handoff has no streaming visibility; a cancellable loader is shown until the UI updates after generation completes.
 - Auto-triggered handoffs can write a timestamped `handoff-*.md` artifact when `compaction.handoffSaveToDisk` is enabled; write failure is logged and does not fail the handoff.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `7e4c6374` on 2026-08-06.*

@@ -125,7 +125,7 @@ Keep N-API signatures simple and owned. Avoid borrowed references like `&str` in
 
 ### 4) Enum runtime exports and ESM named exports
 
-napi-rs declarations alone are not enough for JS callers that import named symbols or use enum objects at runtime. `packages/natives/scripts/gen-enums.ts` reads `native/index.d.ts`, writes explicit `export const ... = nativeBindings...` entries for public classes/functions, and emits enum objects in `native/index.js`. If you add or change a native export, verify both `native/index.d.ts` and the generated export block in `native/index.js`.
+napi-rs declarations alone are not enough for JS callers that import named symbols or use enum objects at runtime. `packages/natives/scripts/gen-enums.ts` reads `native/index.d.ts`, writes one `export const <name> = lazyNativeClass(...)` / `lazyNativeFn(...)` accessor per public class/function, and emits enum objects as inline literals in `native/index.js`. The accessors are lazy on purpose: importing `native/index.js` must never call `loadNative()`, so registry/schema/doc-truth imports stay native-free. If you add or change a native export, verify both `native/index.d.ts` and the generated export block in `native/index.js`.
 
 ### 5) Benchmarking mistakes
 
@@ -178,4 +178,4 @@ case, and say in the script why.
 - If native is slower, do not switch callsites. Keep or remove the export based on whether it has a near-term owner.
 - If native is faster and behavior-compatible, switch callsites and keep a benchmark to catch regressions.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `7e4c6374` on 2026-08-06.*

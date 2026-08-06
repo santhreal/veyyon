@@ -78,7 +78,7 @@ everything that leaves the machine is gated on explicit per-action approval.
 | Autonomous (no approval needed) | Human-gated (explicit approval, every time) |
 | --- | --- |
 | Reading, editing, staging exact paths | `git commit` / `git push` to any remote |
-| Local typecheck, tests, `bun run check` | Pushing a `v*` tag (the release trigger) |
+| Local typecheck, tests, `bun run check` | `bun run release <bump>`, which pushes `main` and the `v*` tag that publishes |
 | Background builds, benches, local installs | Website deploys (`bun run site:deploy` for `veyyon` and `bun run site:deploy:get` for `veyyon-get`) |
 | Ledger + changelog `[Unreleased]` upkeep | npm publish, Homebrew, or direct GitHub release mutation |
 | Docs under `docs/` and handbook sources | Opening/commenting on GitHub issues & PRs, any `gh` call against a public repo |
@@ -94,19 +94,21 @@ Production has three coordinated surfaces (see [`deployment.md`](./deployment.md
 **CLI binaries**, keep `main` release-ready: `bun run check` green and each
 publishable change documented under its package's `[Unreleased]` section. A push
 publishes nothing on its own, and nothing cuts a release on its own: no green run
-and no waiting `[Unreleased]` bullet produces a tag. A person pushes the tag, and
+and no waiting `[Unreleased]` bullet produces a tag. Only the tag publishes, and
 `ci.yml` refuses to publish unless that tag names a commit that reached `main`.
 
-Preparation is local and inspectable. `bun run release:prepare <version>` bumps
-every version authority, finalizes the changelogs, and commits
-`chore: bump version to vX.Y.Z` without pushing or tagging; `version` takes
-`major`, `minor`, `patch`, or an explicit `x.y.z`. With approval, push that commit
-and let `main`'s CI test it. With approval for the version, tag the green commit:
+The whole surface is two commands, both driven by `scripts/release-cut.ts`.
+`bun run release:dry <major|minor|patch|x.y.z>` says what a cut would do and
+publishes nothing, which is why it is the non-interactive mode. `bun run release
+<bump>` rolls every version authority and changelog, commits
+`chore: bump version to vX.Y.Z`, shows you the commit and the tag, asks once, then
+pushes `main`, waits for that commit's checks, and tags it (`scripts/release-ship.ts`).
+There is no `--yes`: the prompt is the approval, and everything before the tag is
+local and undone by answering no.
 
 ```sh
-bun run release:prepare minor
-git push origin main          # wait for CI to go green on this commit
-git tag v1.3.0 && git push origin v1.3.0
+bun run release:dry minor     # inspect what a cut would do
+bun run release minor         # bump, prompt, push, wait for checks, tag
 ```
 
 The tag push starts the one CI run that verifies the tag against `main`, builds
@@ -131,7 +133,7 @@ a ledger row like any other bug.
 
 ## When something breaks
 
-- Release failures: open the Release or tagged CI run in Actions; the recovery
+- Release failures: open the tagged `ci.yml` run in Actions; the recovery
   procedures live in [`docs/internal/runbooks/`](./runbooks/README.md).
 - A bad deploy or release is rolled forward (fix + new cut), not force-pushed
   away, tags and published assets are immutable once installers can see them.
@@ -139,4 +141,4 @@ a ledger row like any other bug.
   account-level Cloudflare/GitHub state) is a human-blocker: record it in the
   ledger with what was tried, and continue on other rows rather than stopping.
 
-*Verified against `77074dee` on 2026-08-02.*
+*Verified against `7e4c6374` on 2026-08-06.*

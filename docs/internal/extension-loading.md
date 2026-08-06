@@ -26,7 +26,7 @@ Extension loading builds a list of module entry files, imports each module with 
 
 ### 1) Auto-discovered native extension modules
 
-`discoverAndLoadExtensions()` first asks discovery providers for `extension-module` capability items, then keeps only provider `native` items.
+`discoverAndLoadExtensions()` first asks discovery for `extension-module` capability items, scoped to the `native` provider. The capability also has claude/codex/gemini/opencode providers, and their items were discarded here anyway, so the provider filter is passed into the load and those four directory walks never run.
 
 Native `extension-module` discovery comes from one place:
 
@@ -254,4 +254,4 @@ Legacy manifest key still accepted:
 }
 ```
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `7e4c6374` on 2026-08-06.*

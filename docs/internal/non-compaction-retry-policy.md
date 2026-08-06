@@ -63,7 +63,7 @@ Session state used by retry:
 
 Flow (`#handleRetryableError`):
 
-1. Read `retry` settings group.
+1. Read the `retry` settings group, then resolve it against the active model through `#resolveRetryPolicy(...)` (`resolveRetryPolicy` in `session/retry-policy.ts`), so a `retry.perProvider` entry can override `maxRetries` / `baseDelayMs` / `maxDelayMs` for that model's provider.
 2. If `retry.enabled === false`, stop immediately: **except** the Fireworks Fast→base degrade (`fireworksFastFallback: true`), which is an intrinsic model-selection safety net and runs even with retries disabled.
 3. Increment `#retryAttempt`.
 4. Create `#retryPromise` once (first attempt in a chain).
@@ -139,11 +139,11 @@ If abort hits while sleeping, catch path emits:
 On `auto_retry_start`, EventController (`#handleAutoRetryStart`):
 
 - stops the working loader and clears the status container
-- renders a `retryLoader` with text: `Retrying (attempt/maxAttempts) in Ns…` plus the maintenance esc-hint (e.g. `(esc to cancel)`)
+- renders a `retryLoader` whose text is `formatRetryLine(...)` (`modes/retry-display.ts`): `Retrying (attempt/maxAttempts) in Ns`, then a plain-language reason derived from `errorId`/`errorMessage` (`timed out`, `usage limit`, `stream stalled`, …), then `policySource` when a non-global policy set the budget, joined by ` · ` and followed by `…` plus the maintenance esc-hint (e.g. `(esc to cancel)`)
 
 `Esc` cancellation dispatches on live session state rather than a swapped handler: the input controller checks `viewSession.isRetrying` and calls `viewSession.abortRetry()` (alongside its compaction/handoff abort checks).
 
-On `auto_retry_end` (`#handleAutoRetryEnd`), it stops and clears the `retryLoader` and status container.
+On `auto_retry_end` (`#handleAutoRetryEnd`), it stops and clears the `retryLoader` and status container. On success it also leaves a durable one-line summary from `formatRetrySummary(...)` (`Recovered after N retries (Xs waiting) · reason`), so a turn that recovered through retries does not read as a merely slow one.
 
 ## Streaming and prompt completion behavior
 
@@ -168,6 +168,7 @@ Defined in settings schema under retry group:
 - `retry.maxDelayMs`
 - `retry.modelFallback` (default `true`; gates retry model-fallback switching)
 - `retry.fallbackChains`
+- `retry.perProvider` (per-provider `maxRetries` / `baseDelayMs` / `maxDelayMs` overrides)
 - `retry.fallbackRevertPolicy` (`"cooldown-expiry"` by default; `"never"` disables automatic restoration)
 
 Programmatic toggles in session:
@@ -194,7 +195,7 @@ Both commands return success responses; retry progress/failure details come from
 
 Session-level retry events:
 
-- `auto_retry_start { attempt, maxAttempts, delayMs, errorMessage, errorId? }`
+- `auto_retry_start { attempt, maxAttempts, delayMs, errorMessage, errorId?, policySource? }`
 - `auto_retry_end { success, attempt, finalError?, recoveredErrors? }`
 - `retry_fallback_applied { from, to, role }`
 - `retry_fallback_succeeded { model, role }`
@@ -234,4 +235,4 @@ A new retry chain can still start later on a future retryable error after counte
 - `RpcSessionState` currently exposes `autoCompactionEnabled` but not an `autoRetryEnabled` field; RPC callers must track their own toggle state or query settings through other APIs.
 - Model fallback changes append temporary `model_change` entries and may later restore the primary model when its cooldown expires, depending on `retry.fallbackRevertPolicy`.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `7e4c6374` on 2026-08-06.*
