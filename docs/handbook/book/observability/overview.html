@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9aa37f0d.js";
+            window.path_to_searchindex_js = "../searchindex-cde59638.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -224,9 +224,18 @@ overwritten, so a second run in the same directory continues past the numbers
 already there.</p>
 <p>Two things are worth knowing before you turn it on. The files land in your
 working directory rather than a cache directory, because you usually want to
-read them next to the project you were working in. And request bodies contain
-whatever you sent the model, including file contents and your API key in the
-headers, so treat them as sensitive and delete them when you are done.</p>
+read them next to the project you were working in; they are created readable by
+you alone, and the repo <code>.gitignore</code> already covers <code>rr-session-*</code> so a stray
+<code>git add</code> cannot pick one up. And a dump is the request as it went on the wire,
+including file contents and whatever a provider echoed back, so treat it as
+sensitive and delete it when you are done.</p>
+<p>Credential headers do not go in. <code>Authorization</code>, <code>Cookie</code>, any header whose
+name carries <code>api-key</code>, <code>auth-token</code>, <code>access-token</code> or <code>secret</code>, and their
+response-side counterparts are written as <code>&lt;redacted N chars&gt;</code>: you can still
+see that the header was sent and how long the value was, which is what a
+debugging session needs, without the key itself sitting in a file you might
+attach to a bug report. Bodies are recorded verbatim, so an OAuth token
+exchange still puts a refresh token in the file.</p>
 <p>Recording never interferes with the session it records. If a log cannot be
 written, because the disk is full or the directory is read-only, veyyon logs an
 error naming the file and the cause, stops recording that response, and lets the
