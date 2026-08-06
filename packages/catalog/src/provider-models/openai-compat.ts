@@ -6,7 +6,7 @@ import {
 	type OpenAICompatibleModelMapperContext,
 	type OpenAICompatibleModelRecord,
 } from "../discovery/openai-compatible";
-import { Effort } from "../effort";
+import { canonicalizeEfforts, Effort, isEffort } from "../effort";
 import { FIREWORKS_FAST_SUFFIX, toFireworksPublicModelId } from "../fireworks-model-id";
 import {
 	isGlmVisionModelId,
@@ -16,15 +16,26 @@ import {
 } from "../identity/family";
 import type { ModelManagerOptions } from "../model-manager";
 import { getBundledModels } from "../models";
-import type { Api, FetchImpl, Model, ModelSpec, OpenAICompat, Provider, ThinkingConfig } from "../types";
+import type {
+	Api,
+	FetchImpl,
+	Model,
+	ModelReasoningOptions,
+	ModelSpec,
+	OpenAICompat,
+	Provider,
+	ThinkingConfig,
+} from "../types";
 import { discoveryFetch, isAnthropicOAuthToken, isRecord, toBoolean, toNumber, toPositiveNumber } from "../utils";
 import { coreWeaveProjectHeaders } from "../wire/coreweave";
 import {
 	COPILOT_API_HEADERS,
 	getGitHubCopilotBaseUrl,
 	isPersonalGitHubCopilotBaseUrl,
+	PERSONAL_GITHUB_COPILOT_BASE_URL,
 	parseGitHubCopilotApiKey,
 } from "../wire/github-copilot";
+import { basetenRouteReasoning } from "./baseten-reasoning";
 import { createBundledReferenceMap, createReferenceResolver, toModelSpec } from "./bundled-references";
 
 const MODELS_DEV_URL = "https://models.dev/api.json";
@@ -56,6 +67,7 @@ export interface ModelsDevModel {
 	name?: string;
 	tool_call?: boolean;
 	reasoning?: boolean;
+	reasoning_options?: ModelsDevReasoningOption[];
 	limit?: {
 		context?: number;
 		output?: number;
@@ -71,6 +83,74 @@ export interface ModelsDevModel {
 	};
 	status?: string;
 	provider?: { npm?: string };
+}
+
+/**
+ * models.dev `reasoning_options` entry: the endpoint-declared reasoning
+ * surface. `effort` carries the accepted levels (`null`/`"none"` is the off
+ * sentinel, not a level); `toggle` is binary on/off; `budget_tokens` is a
+ * token range Veyyon maps from its own ladder, so it carries no level data.
+ */
+export interface ModelsDevReasoningOption {
+	type?: string;
+	values?: unknown[];
+	min?: number;
+	max?: number;
+}
+
+/**
+ * models.dev `effort` values that name the ABSENCE of a level rather than a
+ * level: `none`/`null` is thinking-off, and `default`/`auto` is "whatever the
+ * endpoint picks". A declaration made only of these states that the row reasons
+ * with no addressable effort, which is the `toggle` surface spelled through the
+ * effort field.
+ */
+const REASONING_NON_LEVEL_VALUES: Record<string, true> = { none: true, default: true, auto: true };
+
+/**
+ * Map models.dev `reasoning_options` to the spec-level reasoning surface.
+ * The declared effort ladder is authoritative over the identity-derived one;
+ * an empty list or a toggle-only surface means the model reasons but exposes
+ * no effort control. Budget-only declarations carry no levels, and an effort
+ * option naming only values Veyyon does not know (a future tier) falls back
+ * to identity rather than hiding a working control: both return `undefined`.
+ *
+ * An effort declaration carrying no level at all is the toggle case, not the
+ * future-tier case, and maps like the empty option list: `cerebras/zai-glm-4.7`
+ * declares `["none"]` and `groq/qwen/qwen3.6-27b` declares `["none","default"]`,
+ * and both were falling through to identity, which offered four and five levels
+ * the endpoint says it does not accept.
+ */
+export function mapModelsDevReasoningOptions(
+	options: readonly ModelsDevReasoningOption[] | undefined,
+	modelId?: string,
+): ModelReasoningOptions | undefined {
+	if (!options) return undefined;
+	const effortOption = options.find(option => option.type === "effort");
+	if (effortOption) {
+		const values = Array.isArray(effortOption.values) ? effortOption.values : undefined;
+		const efforts = (values ?? []).filter((value): value is Effort => isEffort(value));
+		if (efforts.length > 0) {
+			// A single accepted effort that the model id itself ends in
+			// (`openai/o4-mini-high`) is a pinned SKU, not a choice: the id IS
+			// the setting, so the row exposes no control at all.
+			if (efforts.length === 1 && modelId !== undefined && modelId.toLowerCase().endsWith(`-${efforts[0]}`)) {
+				return { noEffortControl: true };
+			}
+			return { efforts: canonicalizeEfforts(efforts) };
+		}
+		const levelless =
+			values !== undefined &&
+			values.every(
+				value => value === null || (typeof value === "string" && Object.hasOwn(REASONING_NON_LEVEL_VALUES, value)),
+			);
+		if (levelless) {
+			return { noEffortControl: true };
+		}
+		return undefined;
+	}
+	if (options.some(option => option.type === "budget_tokens")) return undefined;
+	return { noEffortControl: true };
 }
 
 function toModelName(value: unknown, fallback: string): string {
@@ -89,15 +169,44 @@ function toInputCapabilities(value: unknown): ("text" | "image")[] {
 	return supportsImage ? ["text", "image"] : ["text"];
 }
 
-async function fetchModelsDevPayload(fetchImpl: FetchImpl = discoveryFetch()): Promise<unknown> {
-	const response = await fetchImpl(MODELS_DEV_URL, {
-		method: "GET",
-		headers: { Accept: "application/json" },
-	});
-	if (!response.ok) {
-		throw new Error(`models.dev fetch failed: ${response.status}`);
+/**
+ * Reads the models.dev catalog, reporting which stage failed.
+ *
+ * A null payload maps to no models, which is exactly what the throw this
+ * replaced produced downstream -- the difference is that the operator now
+ * learns whether models.dev was unreachable, answered with a status, or
+ * served something that is not JSON. Those three send them to three different
+ * places, and the previous silent `catch {}` in the model manager sent them
+ * nowhere.
+ */
+async function fetchModelsDevPayload(
+	fetchImpl: FetchImpl = discoveryFetch(),
+	hooks?: DiscoveryHooks,
+): Promise<unknown> {
+	let response: Response;
+	try {
+		response = await fetchImpl(MODELS_DEV_URL, {
+			method: "GET",
+			headers: { Accept: "application/json" },
+		});
+	} catch (error) {
+		hooks?.onFailure?.({ stage: "request", url: MODELS_DEV_URL, detail: errorMessage(error) });
+		return null;
 	}
-	return response.json();
+	if (!response.ok) {
+		hooks?.onFailure?.({
+			stage: "status",
+			url: MODELS_DEV_URL,
+			detail: `HTTP ${response.status} ${response.statusText}`.trim(),
+		});
+		return null;
+	}
+	try {
+		return await response.json();
+	} catch (error) {
+		hooks?.onFailure?.({ stage: "body", url: MODELS_DEV_URL, detail: errorMessage(error) });
+		return null;
+	}
 }
 
 function mapAnthropicModelsDev(payload: unknown, baseUrl: string): ModelSpec<"anthropic-messages">[] {
@@ -122,6 +231,8 @@ function mapAnthropicModelsDev(payload: unknown, baseUrl: string): ModelSpec<"an
 		if (model.tool_call !== true) {
 			continue;
 		}
+		const reasoningOptions =
+			model.reasoning === true ? mapModelsDevReasoningOptions(model.reasoning_options, modelId) : undefined;
 		models.push({
 			id: modelId,
 			name: toModelName(model.name, modelId),
@@ -129,6 +240,7 @@ function mapAnthropicModelsDev(payload: unknown, baseUrl: string): ModelSpec<"an
 			provider: "anthropic",
 			baseUrl,
 			reasoning: model.reasoning === true,
+			...(reasoningOptions !== undefined ? { reasoningOptions } : {}),
 			input: toInputCapabilities(model.modalities?.input),
 			cost: {
 				input: toNumber(model.cost?.input) ?? 0,
@@ -2928,13 +3040,15 @@ export function basetenModelManagerOptions(
 						const features = Array.isArray(raw.supported_features) ? raw.supported_features : [];
 						const modalities = Array.isArray(raw.input_modalities) ? raw.input_modalities : [];
 
-						const isBasetenNativeReasoning =
-							defaults.id === "openai/gpt-oss-120b" ||
-							defaults.id === "deepseek-ai/DeepSeek-V4-Pro" ||
-							defaults.id === "zai-org/GLM-5.2";
-						const reasoning =
-							isBasetenNativeReasoning &&
-							(features.includes("reasoning") || features.includes("reasoning_effort"));
+						// Baseten's route table is the only authority on which of
+						// its models reason: the endpoint's own
+						// `supported_features` lists `reasoning` on routes whose
+						// docs say the parameter is ignored, and on opt-in routes
+						// Veyyon cannot switch on, so a route absent or marked
+						// `reasons: false` there does not reason for us no matter
+						// what the listing claims.
+						const route = basetenRouteReasoning(defaults.id);
+						const reasoning = route?.reasons === true;
 						const supportsTools = features.includes("tools") ? undefined : false;
 						const vision = modalities.includes("image") || (reference?.input.includes("image") ?? false);
 
@@ -2957,15 +3071,10 @@ export function basetenModelManagerOptions(
 
 						const baseModel = mapWithBundledReference(entry, defaults, reference);
 
-						// Baseten's reasoning router accepts only the high/max
-						// effort tiers for its GLM-5.2 and gpt-oss routes.
-						const isEffortReasoning = defaults.id === "openai/gpt-oss-120b" || defaults.id === "zai-org/GLM-5.2";
-						const thinking = isEffortReasoning
-							? {
-									mode: "effort" as const,
-									efforts: [Effort.High, Effort.Max],
-								}
-							: undefined;
+						// A route that reasons without an addressable depth must
+						// clear any ladder the bundled reference carried, or the
+						// picker offers efforts the endpoint ignores.
+						const thinking = route?.efforts && { mode: "effort" as const, efforts: route.efforts };
 
 						return {
 							...baseModel,
@@ -2974,7 +3083,7 @@ export function basetenModelManagerOptions(
 							cost,
 							contextWindow,
 							maxTokens,
-							...(thinking ? { thinking } : {}),
+							thinking,
 							...(supportsTools === false ? { supportsTools } : {}),
 						};
 					},
@@ -4200,7 +4309,7 @@ export function anthropicModelManagerOptions(
 	return {
 		providerId: "anthropic",
 		modelsDev: {
-			fetch: () => fetchModelsDevPayload(config?.fetch),
+			fetch: hooks => fetchModelsDevPayload(config?.fetch, hooks),
 			map: payload => mapAnthropicModelsDev(payload, baseUrl),
 		},
 		...(apiKey && {
@@ -4326,6 +4435,9 @@ export function mapModelsDevToModels(
 			const resolved = desc.resolveApi?.(modelId, m) ?? { api: desc.api, baseUrl: desc.baseUrl };
 			if (!resolved) continue;
 
+			const reasoningOptions =
+				m.reasoning === true ? mapModelsDevReasoningOptions(m.reasoning_options, modelId) : undefined;
+
 			const mapped: ModelSpec<Api> = {
 				id: modelId,
 				name: toModelName(m.name, modelId),
@@ -4333,6 +4445,7 @@ export function mapModelsDevToModels(
 				provider: desc.providerId as ModelSpec<Api>["provider"],
 				baseUrl: resolved.baseUrl,
 				reasoning: m.reasoning === true,
+				...(reasoningOptions !== undefined ? { reasoningOptions } : {}),
 				input: toInputCapabilities(m.modalities?.input),
 				cost: {
 					input: toNumber(m.cost?.input) ?? 0,
@@ -4481,21 +4594,19 @@ const OPENCODE_GO_API_RESOLUTION = createOpenCodeApiResolution("https://opencode
 	"qwen3.6-plus": "openai-completions",
 });
 
-const COPILOT_BASE_URL = "https://api.githubcopilot.com";
-
 const COPILOT_DEFAULT_RESOLUTION = {
 	api: "openai-completions",
-	baseUrl: COPILOT_BASE_URL,
+	baseUrl: PERSONAL_GITHUB_COPILOT_BASE_URL,
 } as const satisfies { api: Api; baseUrl: string };
 
 const COPILOT_API_RESOLUTION_RULES: readonly ApiResolutionRule[] = [
 	{
 		matches: modelId => COPILOT_ANTHROPIC_MODEL_PATTERN.test(modelId),
-		resolved: { api: "anthropic-messages", baseUrl: COPILOT_BASE_URL },
+		resolved: { api: "anthropic-messages", baseUrl: PERSONAL_GITHUB_COPILOT_BASE_URL },
 	},
 	{
 		matches: isCopilotResponsesModelId,
-		resolved: { api: "openai-responses", baseUrl: COPILOT_BASE_URL },
+		resolved: { api: "openai-responses", baseUrl: PERSONAL_GITHUB_COPILOT_BASE_URL },
 	},
 ];
 
@@ -4783,7 +4894,7 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_SPECIALIZED: readonly ModelsDevProviderDes
 			),
 	}),
 	// --- GitHub Copilot ---
-	openAiCompletionsDescriptor("github-copilot", "github-copilot", COPILOT_BASE_URL, {
+	openAiCompletionsDescriptor("github-copilot", "github-copilot", PERSONAL_GITHUB_COPILOT_BASE_URL, {
 		defaultContextWindow: 128000,
 		defaultMaxTokens: 8192,
 		headers: { ...COPILOT_API_HEADERS },
@@ -4816,6 +4927,13 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_SPECIALIZED: readonly ModelsDevProviderDes
 	openAiCompletionsDescriptor("moonshotai", "moonshot", "https://api.moonshot.ai/v1"),
 	// --- NanoGPT ---
 	openAiCompletionsDescriptor("nano-gpt", "nanogpt", "https://nano-gpt.com/api/v1"),
+	// --- OpenRouter ---
+	// Endpoint discovery is authoritative when it succeeds, so these rows reach
+	// the bundle only as its fallback; either way they carry the models.dev
+	// reasoning_options the generator overlays onto the discovered rows
+	// (overlayModelsDevReasoningOptions), which is the only effort-ladder
+	// source for this provider: OpenRouter's /models has no effort vocabulary.
+	simpleModelsDevDescriptor("openrouter", "openrouter", "openrouter", "https://openrouter.ai/api/v1"),
 	// --- Synthetic ---
 	openAiCompletionsDescriptor("synthetic", "synthetic", "https://api.synthetic.new/openai/v1"),
 	// --- Venice AI ---
