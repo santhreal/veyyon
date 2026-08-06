@@ -23,11 +23,18 @@ describe("validateServerName charset property", () => {
 	});
 
 	it("forbidden characters always produce an error", () => {
+		// WHY: reported as the list of characters that slipped through, so a failure
+		// names them instead of stopping at the first. The message is asserted too:
+		// a server id is something the operator types into `/mcp`, so a rejection
+		// that does not say which characters are legal cannot be acted on.
 		const forbidden = " /\\@#$%^&*()[]{}|<>?,;'\"";
+		const accepted: string[] = [];
 		for (const ch of forbidden) {
 			const err = validateServerName(`a${ch}b`);
-			expect(err).toBeDefined();
+			if (err === undefined) accepted.push(ch);
+			else expect(err).toContain("letters, numbers");
 		}
+		expect(accepted).toEqual([]);
 	});
 
 	it("length 100 is accepted and 101 is rejected", () => {

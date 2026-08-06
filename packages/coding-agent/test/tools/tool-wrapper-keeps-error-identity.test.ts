@@ -124,8 +124,9 @@ describe("wrapToolWithMetaNotice error identity", () => {
 	});
 
 	it("does not swallow the throw", async () => {
-		// NON-VACUITY. Every assertion above inspects a rejection, so all of them
-		// would be satisfied by a wrapper that resolved and returned undefined.
+		// KEPT, and deliberately shallow. NON-VACUITY: every assertion above inspects
+		// a rejection, so all of them would be satisfied by a wrapper that resolved
+		// and returned undefined. "Something was thrown" is the whole contract here.
 		const tool = throwingTool(new ToolError("boom"));
 		const caught = await thrownBy(tool);
 

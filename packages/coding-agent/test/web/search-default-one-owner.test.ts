@@ -19,6 +19,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "@veyyon/coding-agent/web/search/utils";
+import { namedImportsFrom } from "@veyyon/utils/module-reach";
 
 const PROVIDER_DIR = path.join(import.meta.dir, "../../src/web/search/providers");
 
@@ -119,11 +120,13 @@ describe("the provider sources", () => {
 		// Fifteen files used a private copy; every one of them is a user now.
 		expect(users.length).toBe(15);
 		for (const { name, text } of users) {
-			const importLine = text
-				.split("\n")
-				.find(line => line.includes("SEARCH_DEFAULT_NUM_RESULTS") && line.includes("import"));
-			expect(importLine, `${name} must import the shared default`).toBeDefined();
-			expect(importLine, `${name} must import it from the owner module`).toContain('from "../utils"');
+			// The named import, not a hand-split line: it settles the source of the name, survives a
+			// formatter breaking the import across lines (which the single-line scan this replaced
+			// could not see), and TypeScript refuses a module that both imports the binding and
+			// declares it, so this is also the proof that no private copy came back.
+			expect(namedImportsFrom(text, "../utils"), `${name} must take the shared default from the owner`).toContain(
+				"SEARCH_DEFAULT_NUM_RESULTS",
+			);
 		}
 	});
 });

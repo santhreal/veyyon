@@ -47,19 +47,20 @@ function abortedWithNoReason(): AbortSignal {
 }
 
 describe("a signal that has not aborted throws nothing", () => {
-	/** The overwhelmingly common call: the check is on a hot path and must be cheap and silent. */
-	it("returns quietly for a live signal", () => {
-		expect(() => throwIfAborted(new AbortController().signal)).not.toThrow();
-	});
-
-	/** Most tools accept an optional signal, so undefined must be a no-op rather than a throw. */
-	it("returns quietly when there is no signal at all", () => {
-		expect(() => throwIfAborted(undefined)).not.toThrow();
-	});
-
-	/** Naming the operation does not by itself make anything throw. */
-	it("returns quietly for a live signal even when an operation name is given", () => {
-		expect(() => throwIfAborted(new AbortController().signal, "reading file")).not.toThrow();
+	/**
+	 * KEPT AS AN ABSENCE-OF-THROW CHECK ON PURPOSE. `throwIfAborted` returns void, so the whole
+	 * observable contract of its guard clause (`if (!signal?.aborted) return`) is that it does not
+	 * throw. It is the overwhelmingly common call on a hot path reached from over a hundred sites,
+	 * and an inverted or mistyped guard would turn every live signal into an abort. The three
+	 * shapes a caller really passes are covered in one parameterized case rather than three tests
+	 * restating one branch.
+	 */
+	it.each([
+		["a live signal", new AbortController().signal, undefined],
+		["no signal at all", undefined, undefined],
+		["a live signal with an operation name", new AbortController().signal, "reading file"],
+	] as const)("returns quietly for %s", (_label, signal, what) => {
+		expect(() => throwIfAborted(signal, what)).not.toThrow();
 	});
 });
 
@@ -161,26 +162,35 @@ describe("the thrown type stays normalized", () => {
 	 * error path instead.
 	 */
 	it("throws ToolAbortError for a plain Error reason", () => {
+		const reason = new Error("boom");
 		let caught: unknown;
 		try {
-			throwIfAborted(abortedWith(new Error("boom")));
+			throwIfAborted(abortedWith(reason));
 		} catch (error) {
 			caught = error;
 		}
 
 		expect(caught).toBeInstanceOf(ToolAbortError);
+		// The precise defect: `signal.throwIfAborted()` rethrows the reason object
+		// itself. An `Error` reason would then still be an Error and still carry
+		// "boom", so identity is what tells a normalized throw from a rethrow.
+		expect(caught).not.toBe(reason);
+		expect((caught as Error).message).toBe("boom");
 	});
 
 	/** The same for a DOMException, which is the platform's own abort shape. */
 	it("throws ToolAbortError for a DOMException reason", () => {
+		const reason = new DOMException("aborted", "AbortError");
 		let caught: unknown;
 		try {
-			throwIfAborted(abortedWith(new DOMException("aborted", "AbortError")));
+			throwIfAborted(abortedWith(reason));
 		} catch (error) {
 			caught = error;
 		}
 
 		expect(caught).toBeInstanceOf(ToolAbortError);
+		expect(caught).not.toBe(reason);
+		expect((caught as Error).message).toBe("aborted");
 	});
 
 	/**

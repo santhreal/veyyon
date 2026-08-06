@@ -28,10 +28,6 @@ import { subprocessToolRegistry, YIELD_TOOL_NAME } from "@veyyon/coding-agent/ta
 import "@veyyon/coding-agent/task/executor";
 
 describe("importing the task executor", () => {
-	it("registers the yield handler, because the executor's completion path reads it", () => {
-		expect(subprocessToolRegistry.getHandler(YIELD_TOOL_NAME)).toBeDefined();
-	});
-
 	/**
 	 * The handler has to do both jobs, not merely exist. `extractData` is what sets `yieldCalled` (via
 	 * `recordExtractedToolData`), and `shouldTerminate` is what ends the run; a handler with only one

@@ -155,7 +155,6 @@ function makeRenderCtx(transcript: SessionContext): { ctx: InteractiveModeContex
 		pendingTools: new Map(),
 		statusLine: { invalidate: vi.fn() },
 		updateEditorBorderColor: vi.fn(),
-		updateEditorTopBorder: vi.fn(),
 		ui: { requestRender: vi.fn(), imageBudget: undefined },
 		resetTranscript: () => chatContainer.clear(),
 		settings: { get: () => false },

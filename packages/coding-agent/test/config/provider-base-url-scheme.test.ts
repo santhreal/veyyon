@@ -59,9 +59,11 @@ describe("validateProviderConfiguration rejects a scheme-less baseUrl", () => {
 			expect(message).toContain("https://localhost:11434");
 		});
 
+		// KEPT as an absence-of-throw contract, and it is the honest one: this is
+		// the config-load path, so an over-broad scheme rule refuses every provider
+		// in the file and the session has no models at all. Every rejection test
+		// above would still pass in that state.
 		it("accepts a provider baseUrl that has a scheme", () => {
-			// The premise: without this every rejection test could pass by rejecting
-			// every provider.
 			expect(() =>
 				validateProviderConfiguration(
 					"localllama",
@@ -122,6 +124,8 @@ describe("validateProviderConfiguration rejects a scheme-less baseUrl", () => {
 			expect(message).toContain("http://192.168.1.9:9000");
 		});
 
+		// Same guard on the model override: the loop must refuse only the malformed
+		// model, not every model that names its own host.
 		it("accepts a model baseUrl override that has a scheme", () => {
 			expect(() =>
 				validateProviderConfiguration(

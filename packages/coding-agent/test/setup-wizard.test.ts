@@ -926,9 +926,12 @@ describe("theme scene rhythm", () => {
 		const controller = await themeSetupScene.mount(host);
 		try {
 			const lines = controller.render(76).map(line => stripVTControlCharacters(line));
-			// The wizard header already ends in one blank line; a scene that leads
-			// with its own blanks breaks the shared one-blank rhythm.
-			expect(lines[0]?.trim().length).toBeGreaterThan(0);
+			// The wizard header already ends in one blank line; a scene that leads with its own
+			// blanks breaks the shared one-blank rhythm. Pinned to the preview's actual first rows
+			// rather than "row 0 is non-empty", because a scene that opened on a heading, a hint, or
+			// a mode chrome row would also be non-empty and would still not be the preview.
+			expect(lines[0]).toBe("Preview");
+			expect(lines[1]).toContain("accent");
 		} finally {
 			controller.dispose?.();
 		}

@@ -63,7 +63,6 @@ describe("EventController async update finalization", () => {
 			init: vi.fn(async () => {}),
 			ui: { requestRender: vi.fn(), requestComponentRender: vi.fn() },
 			statusLine: { invalidate: vi.fn() },
-			updateEditorTopBorder: vi.fn(),
 			toolOutputExpanded: false,
 			pendingTools,
 			chatContainer,

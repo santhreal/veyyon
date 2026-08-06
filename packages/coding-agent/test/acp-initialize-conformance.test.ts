@@ -134,7 +134,7 @@ beforeEach(() => {
 	// which is what this suite used to do. `setAgentDir` also CLEARS the active
 	// profile, so the hand-rolled version left the whole process on the default
 	// profile: every file after this one resolved `profiles/default/...` while the
-	// developer was on `work`. `scripts/find-test-leaks.ts` caught it.
+	// developer was on `work`. `scripts/test-sandbox/find-test-leaks.ts` caught it.
 	settingsState = beginSettingsTest();
 });
 

@@ -55,7 +55,7 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
 		// `setAgentDir` writes `VEYYON_CODING_AGENT_DIR` and this block's env snapshot
 		// did not include it, so the temp agent dir stayed exported to every file that
-		// ran after this one. `scripts/find-test-leaks.ts` caught it; the pair below is
+		// ran after this one. `scripts/test-sandbox/find-test-leaks.ts` caught it; the pair below is
 		// the only restore that can put an ABSENT variable back.
 		dirOverrides = captureDirOverrides();
 		setAgentDir(agentDir);
@@ -260,7 +260,7 @@ describe("auth-broker import (broker-routed)", () => {
 		process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), configRoot);
 		// `setAgentDir` writes `VEYYON_CODING_AGENT_DIR` and this block's env snapshot
 		// did not include it, so the temp agent dir stayed exported to every file that
-		// ran after this one. `scripts/find-test-leaks.ts` caught it; the pair below is
+		// ran after this one. `scripts/test-sandbox/find-test-leaks.ts` caught it; the pair below is
 		// the only restore that can put an ABSENT variable back.
 		dirOverrides = captureDirOverrides();
 		setAgentDir(agentDir);

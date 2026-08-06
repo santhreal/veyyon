@@ -1,13 +1,13 @@
 /**
  * Composer-zone mounting contract (ARCH-2 bottom-chrome slice). The mount
- * ORDER is the design: loader and hook status above the hairline, one
- * CardPadRow of tonal air on each side of the input (bare spacers collapse
- * the card to a cramped tinted strip — the user's 2026-07-22 screenshot),
- * footline and shortcuts under the card, one margin row off the terminal
- * floor. `mountComposerZone` is the ONE owner of that order; these tests pin
- * every row by identity/class so a re-ordered or dropped row fails loudly,
- * and a source lock keeps interactive-mode from re-inlining the paste of
- * addChild calls this extraction replaced.
+ * ORDER is the design: loader and hook status above the hairline, one blank
+ * pad row on each side of the input, footline and shortcuts under the card,
+ * one margin row off the terminal floor. The pads paint nothing — every
+ * tinted composer ground read as a grey slab on a mismatched terminal (user
+ * order, 2026-07-22), so the air around the input is the terminal's own
+ * background. `mountComposerZone` is the ONE owner of that order; these tests
+ * pin every row by identity and by what it renders, so a re-ordered, dropped,
+ * or re-painted row fails loudly.
  */
 import { describe, expect, it } from "bun:test";
 import {
@@ -61,14 +61,21 @@ describe("mountComposerZone", () => {
 		expect(children[9]).toBe(parts.hookWidgetsBelow);
 	});
 
-	it("sandwiches the editor between two CardPadRows (tonal air, not bare spacers)", () => {
+	/**
+	 * The two pad rows are the vertical air around the input, and they PAINT NOTHING. An earlier
+	 * revision tinted them, and every painted composer ground read as a grey slab on a terminal
+	 * whose own background differed (user order, 2026-07-22); `CardPadRow`'s doc names reintroducing
+	 * paint here as the regression. So the assertion is on what the slots RENDER — exactly one row
+	 * each, blank, with no SGR at all — rather than on which class occupies them: the class identity
+	 * held while the rows painted a slab, and would hold again.
+	 */
+	it("sandwiches the editor between two unpainted single-row pads", () => {
 		const { children } = mount();
-		expect(children[4]).toBeInstanceOf(CardPadRow);
-		expect(children[6]).toBeInstanceOf(CardPadRow);
-		// The pads must NOT be Spacers: a bare blank row drops the card ground
-		// and collapses the card to a single tinted strip.
-		expect(children[4]).not.toBeInstanceOf(Spacer);
-		expect(children[6]).not.toBeInstanceOf(Spacer);
+		for (const index of [4, 6]) {
+			const pad = children[index] as Component;
+			expect(pad, `slot ${index}`).toBeInstanceOf(CardPadRow);
+			expect(pad.render(80), `slot ${index} must be exactly one row of air`).toEqual([""]);
+		}
 	});
 
 	it("ends with exactly one bottom-margin row of the pinned height", () => {

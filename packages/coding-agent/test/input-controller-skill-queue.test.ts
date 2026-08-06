@@ -778,7 +778,6 @@ function createEventControllerFixture() {
 		init: vi.fn(async () => {}),
 		ui: { requestRender, scrollToLiveTail: vi.fn() },
 		statusLine: { invalidate: vi.fn() },
-		updateEditorTopBorder: vi.fn(),
 		addMessageToChat,
 		updatePendingMessagesDisplay,
 		pendingTools: new Map(),

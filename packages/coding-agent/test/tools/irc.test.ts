@@ -406,7 +406,12 @@ describe("IRC", () => {
 		});
 
 		it("createIf enables irc for a depth-one leaf subagent", () => {
-			const session: ToolSession = {
+			// WHY: a subagent that cannot spawn children is not a subagent without
+			// peers. Its parent and its siblings are peers, so irc for a depth>0
+			// session must not be gated on that session's own spawn budget, and must
+			// not be gated on delegation either: a leaf still has to answer the agent
+			// that spawned it after the operator turns delegation off.
+			const makeLeaf = (): ToolSession => ({
 				cwd: "/tmp",
 				hasUI: false,
 				getSessionFile: () => null,
@@ -415,10 +420,18 @@ describe("IRC", () => {
 				agentRegistry: registry,
 				getAgentId: () => "0-Leaf",
 				taskDepth: 1,
-			};
+			});
+
 			// Cap zero makes this child a leaf, but its parent and siblings remain peers.
-			session.settings.set("subagent.maxNestedSpawnDepth", 0);
-			expect(IrcTool.createIf(session)).toBeInstanceOf(IrcTool);
+			const capped = makeLeaf();
+			capped.settings.set("subagent.maxNestedSpawnDepth", 0);
+			const cappedTool = IrcTool.createIf(capped);
+			expect(cappedTool).toBeInstanceOf(IrcTool);
+			expect(cappedTool?.interruptible).toBe(true);
+
+			const noDelegation = makeLeaf();
+			noDelegation.settings.set("subagent.enabled", false);
+			expect(IrcTool.createIf(noDelegation)).toBeInstanceOf(IrcTool);
 		});
 
 		it("createIf returns null without registry/agentId", () => {

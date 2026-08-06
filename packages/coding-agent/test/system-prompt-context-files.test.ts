@@ -209,32 +209,12 @@ describe("system prompt context files", () => {
 
 		const prompt = await renderPrompt(f.cwd, f.agentDir);
 
-		expect(prompt).toContain("The user's instructions in this conversation have ABSOLUTE authority.");
-		expect(prompt).toContain("LOWEST authority of the three");
-		expect(prompt).toContain("MUST NOT contradict, loosen, or forbid what a");
+		// The operator's own wording (cf489128), asserted as written.
+		expect(prompt).toContain("Broadest wins on conflict");
+		expect(prompt).toContain("MUST NOT override home or user instructions");
 		// The exact wording that produced the refusal, in both places it lived.
 		expect(prompt).not.toContain("later and deeper files override earlier and broader files");
 		expect(prompt).not.toContain("Deeper rules override higher ones");
 	});
 
-	/**
-	 * The precedence reminder sits AFTER the last context file, not only before the first.
-	 *
-	 * Position is part of the fix. The files are inlined narrowest-first, so the PROJECT file lands
-	 * in the LOWEST-recency slot and the operator's own global file holds the highest one. Stating
-	 * the ranking only above the files still left the last word to whatever the model read most
-	 * recently, so a closing restatement puts the ranking itself in the final slot.
-	 */
-	it("restates the precedence after the inlined files, not only before them", async () => {
-		const f = fixture("prompt-precedence-recency");
-		f.writeFile(f.rootAgentsPath, `${PROJECT_ROOT_BODY}\n`);
-
-		const prompt = await renderPrompt(f.cwd, f.agentDir);
-		const lastFile = prompt.lastIndexOf(PROJECT_ROOT_BODY);
-		const closingReminder = prompt.indexOf("Precedence again");
-
-		expect(lastFile).toBeGreaterThan(-1);
-		expect(closingReminder).toBeGreaterThan(lastFile);
-		expect(prompt).toContain("do what the user asked and say which\nfile you set aside");
-	});
 });

@@ -111,7 +111,7 @@ describe("Settings.reloadForCwd", () => {
 		}
 	});
 
-	describe("project layer (on disk)", () => {
+	describe("repository settings files (no longer a layer)", () => {
 		let testDir: string;
 		let agentDir: string;
 		let startDir: string;
@@ -143,23 +143,24 @@ describe("Settings.reloadForCwd", () => {
 			}
 		});
 
-		it("loads and drops project settings as the working directory changes", async () => {
+		it("ignores a repo settings file at every cwd the session moves through", async () => {
+			// `<cwd>/.veyyon/settings.json` used to merge in as the project layer.
+			// Repo-loaded configuration is gone, so the same file produces no value
+			// wherever the session is rooted.
 			const settings = await Settings.init({ cwd: startDir, agentDir });
-			// No project file under startDir → schema default.
 			expect(settings.get("compaction.enabled")).toBe(true);
 
 			await settings.reloadForCwd(scopedProject);
 			expect(settings.getCwd()).toBe(path.normalize(scopedProject));
-			expect(settings.get("compaction.enabled")).toBe(false);
+			expect(settings.get("compaction.enabled")).toBe(true);
 
-			// Moving to a project without settings drops the previous project's config.
 			await settings.reloadForCwd(bareProject);
 			expect(settings.getCwd()).toBe(path.normalize(bareProject));
 			expect(settings.get("compaction.enabled")).toBe(true);
 		});
 
-		/** Ensures project changes notify every effective setting consumer, not only the model-role subsystem. */
-		it("emits only effective settings changed by the new project scope", async () => {
+		/** A repo file that changes nothing must also notify nothing. */
+		it("emits no effective-setting changes for a repo file that is not read", async () => {
 			fs.writeFileSync(
 				path.join(getProjectAgentDir(scopedProject), "settings.json"),
 				JSON.stringify({ task: { eager: "always", disabledAgents: ["task"] } }),
@@ -171,9 +172,8 @@ describe("Settings.reloadForCwd", () => {
 			await settings.reloadForCwd(scopedProject);
 			unsubscribe();
 
-			expect(changed.sort()).toEqual(["subagent.agents", "subagent.delegation"]);
-			expect(settings.get("subagent.delegation")).toBe("required");
-			expect(settings.get("subagent.agents")).toEqual({ task: { enabled: false } });
+			expect(changed).toEqual([]);
+			expect(settings.get("subagent.delegation")).not.toBe("required");
 		});
 	});
 });

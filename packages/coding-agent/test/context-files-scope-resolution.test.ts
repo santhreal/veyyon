@@ -43,7 +43,9 @@ describe("context file scope resolution", () => {
 
 		const files = await loadProjectContextFiles({ cwd: f.cwd });
 
-		expect(files).toEqual([{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined }]);
+		expect(files).toEqual([
+			{ path: f.globalAgentsPath, level: "global", content: `${GLOBAL_BODY}\n`, depth: undefined },
+		]);
 	});
 
 	/**
@@ -60,7 +62,9 @@ describe("context file scope resolution", () => {
 
 		const files = await loadProjectContextFiles({ cwd: f.cwd });
 
-		expect(files).toEqual([{ path: f.profileAgentsPath, content: `${PROFILE_BODY}\n`, depth: undefined }]);
+		expect(files).toEqual([
+			{ path: f.profileAgentsPath, level: "user", content: `${PROFILE_BODY}\n`, depth: undefined },
+		]);
 		expect(f.profileAgentsPath).toBe(path.join(f.agentDir, "AGENTS.md"));
 	});
 
@@ -87,7 +91,7 @@ describe("context file scope resolution", () => {
 		const viaSdk = await discoverContextFiles(f.cwd, otherAgentDir);
 
 		expect(viaLoader).toEqual([
-			{ path: otherAgentsPath, content: "Marker: OTHER-PROFILE-BYTES-4d19.\n", depth: undefined },
+			{ path: otherAgentsPath, level: "user", content: "Marker: OTHER-PROFILE-BYTES-4d19.\n", depth: undefined },
 		]);
 		expect(viaSdk).toEqual(viaLoader);
 	});
@@ -111,8 +115,8 @@ describe("context file scope resolution", () => {
 		const files = await loadProjectContextFiles({ cwd: f.cwd });
 
 		expect(files).toEqual([
-			{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
-			{ path: f.nestedAgentsPath, content: `${PROJECT_NESTED_BODY}\n`, depth: 0 },
+			{ path: f.rootAgentsPath, level: "project", content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
+			{ path: f.nestedAgentsPath, level: "project", content: `${PROJECT_NESTED_BODY}\n`, depth: 0 },
 		]);
 	});
 
@@ -178,8 +182,8 @@ describe("context file scope resolution", () => {
 
 		expect(PROFILE_AGENTS_GUIDANCE.length).toBe(597);
 		expect(files).toEqual([
-			{ path: f.rootAgentsPath, content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
-			{ path: f.globalAgentsPath, content: `${GLOBAL_BODY}\n`, depth: undefined },
+			{ path: f.rootAgentsPath, level: "project", content: `${PROJECT_ROOT_BODY}\n`, depth: 1 },
+			{ path: f.globalAgentsPath, level: "global", content: `${GLOBAL_BODY}\n`, depth: undefined },
 		]);
 	});
 
@@ -197,6 +201,8 @@ describe("context file scope resolution", () => {
 
 		const files = await loadProjectContextFiles({ cwd: f.cwd });
 
-		expect(files).toEqual([{ path: f.profileAgentsPath, content: `${PROFILE_BODY}\n`, depth: undefined }]);
+		expect(files).toEqual([
+			{ path: f.profileAgentsPath, level: "user", content: `${PROFILE_BODY}\n`, depth: undefined },
+		]);
 	});
 });

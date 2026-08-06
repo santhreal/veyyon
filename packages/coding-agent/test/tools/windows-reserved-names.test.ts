@@ -80,12 +80,6 @@ describe("reserved device names", () => {
 			expect(() => check(`C:\\work\\${name}`)).not.toThrow();
 		},
 	);
-
-	/** A drive letter is a path component but never a filename, so it must not be
-	 * measured against these rules. */
-	it("ignores the drive-letter component", () => {
-		expect(() => check("C:\\work\\notes.txt")).not.toThrow();
-	});
 });
 
 describe("trailing dots and spaces", () => {
@@ -132,8 +126,13 @@ describe("trailing dots and spaces", () => {
 	/** `.` and `..` are path navigation, not filenames ending in a dot. Treating
 	 * them as violations would break every relative path on Windows. */
 	it("accepts the . and .. path segments", () => {
+		// WHY: paired with the run of dots that is NOT navigation. The exemption is
+		// for those two components exactly, so a checker that skipped any component
+		// made of dots would let `...` through, and `...` is a name Win32 strips to
+		// nothing.
 		expect(() => check("C:\\work\\.\\a.txt")).not.toThrow();
 		expect(() => check("C:\\work\\..\\a.txt")).not.toThrow();
+		expect(() => check("C:\\work\\...\\a.txt")).toThrow(/silently strips/);
 	});
 });
 

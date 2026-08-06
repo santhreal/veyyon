@@ -128,6 +128,9 @@ describe("browser run cancellation", () => {
 	});
 
 	it("rejects awaited facade method calls that settle after abort", async () => {
+		// The error TYPE is the contract: a stale continuation must not hand its value
+		// to the awaiting caller, and the rejection must stay a ToolAbortError so the
+		// agent loop stops instead of retrying it as an ordinary tool failure.
 		const controller = new AbortController();
 		const deferred = Promise.withResolvers<string>();
 		const facade = bindBrowserRunFacade(

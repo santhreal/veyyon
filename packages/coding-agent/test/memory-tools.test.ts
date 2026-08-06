@@ -211,6 +211,11 @@ describe("Hindsight tool factories", () => {
 	});
 
 	it("retain/recall/reflect factories return tool instances when memory.backend === hindsight", () => {
+		// KEPT as identity assertions, because the gate IS the contract: `createIf`
+		// answers "is this tool in the session at all", and null means the model
+		// never sees it. The paired null test above only proves it can refuse; this
+		// proves the configured backend actually gets the tool, and that each
+		// factory returns ITS OWN tool rather than a sibling.
 		const settings = Settings.isolated({ "memory.backend": "hindsight" });
 		const session = makeSession(settings);
 		expect(MemoryRetainTool.createIf(session)).toBeInstanceOf(MemoryRetainTool);
@@ -248,6 +253,8 @@ describe("Mnemopi tool factories", () => {
 	});
 
 	it("retain/recall/reflect/edit factories return tool instances when memory.backend === mnemopi", () => {
+		// Same gate on the mnemopi backend, which additionally admits memory_edit —
+		// the tool the hindsight backend must NOT get (asserted above).
 		const settings = Settings.isolated({ "memory.backend": "mnemopi" });
 		const session = makeSession(settings);
 		expect(MemoryRetainTool.createIf(session)).toBeInstanceOf(MemoryRetainTool);

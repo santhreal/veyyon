@@ -234,9 +234,15 @@ describe("the threshold a misrooted session uses", () => {
 
 	/** The same for the filesystem root, which is the most misrooted a session can be. */
 	it("sees work happening below the filesystem root", () => {
+		// WHY: the hint is only useful if it names WHERE to move to. "A hint fired"
+		// would also hold for one pointing at `/`, which is the advice the detector
+		// exists to avoid giving.
 		const detector = new RerootDetector();
 
-		expect(detector.observe(["/srv/app/src/a.ts"], "/")).toBeDefined();
+		const hint = detector.observe(["/srv/app/src/a.ts"], "/");
+
+		expect(hint?.directory).toBe("/srv/app/src");
+		expect(hint?.fileCount).toBe(MISROOTED_FILE_THRESHOLD);
 	});
 
 	/**

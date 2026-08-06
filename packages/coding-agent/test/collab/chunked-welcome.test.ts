@@ -124,7 +124,6 @@ function makeFailingGuestContext(failure: Error): InteractiveModeContext {
 		renderInitialMessages: () => {},
 		reloadTodos: () => Promise.resolve(),
 		showStatus: () => {},
-		updateEditorTopBorder: () => {},
 		updateEditorBorderColor: () => {},
 		collabGuest: undefined,
 		// Required members of the context. Omitting them used to be tolerated by

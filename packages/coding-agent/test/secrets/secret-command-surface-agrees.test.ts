@@ -101,10 +101,21 @@ async function run(
  * the help that surface is handed.
  */
 describe("the /secret declaration", () => {
-	/** It exists, so the rest of this suite is checking something. */
+	/**
+	 * THE NON-VACUITY ANCHOR for this whole describe: every test below iterates
+	 * `declaration?.subcommands ?? []`, which an absent declaration satisfies for free. The inventory
+	 * is pinned as an exact set rather than a count, because the surface-agreement rows further down
+	 * are written against these five verbs: a verb added here without a divergence decision, or one
+	 * silently dropped, has to fail at the inventory instead of quietly shrinking the guard.
+	 */
 	it("is registered", () => {
-		expect(declaration).toBeDefined();
-		expect(declaration?.subcommands?.length).toBeGreaterThan(0);
+		expect(declaration?.subcommands?.map(subcommand => subcommand.name)).toEqual([
+			"add",
+			"list",
+			"rm",
+			"extend",
+			"log",
+		]);
 	});
 
 	/**

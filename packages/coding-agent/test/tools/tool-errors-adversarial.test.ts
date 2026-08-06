@@ -37,6 +37,10 @@ describe("ToolAbortError", () => {
 
 describe("throwIfAborted", () => {
 	it("is a no-op when signal is undefined or not aborted", () => {
+		// KEPT as an inertness control: absence of a throw IS the contract here, and
+		// it is what makes the two aborted cases below mean something. A guard that
+		// threw unconditionally would satisfy both of them while stopping every
+		// uncancelled tool call in the process.
 		expect(() => throwIfAborted(undefined)).not.toThrow();
 		expect(() => throwIfAborted(new AbortController().signal)).not.toThrow();
 	});

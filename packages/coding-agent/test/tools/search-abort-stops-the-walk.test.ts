@@ -54,6 +54,8 @@ let tmpDir = "";
  * bearing here; it only has to contain something findable. */
 const DIRS = 8;
 const FILES_PER_DIR = 25;
+/** Matching lines written into each fixture file. */
+const LINES_PER_FILE = 8;
 
 beforeAll(async () => {
 	settingsState = beginSettingsTest();
@@ -64,7 +66,7 @@ beforeAll(async () => {
 		await fs.mkdir(dir, { recursive: true });
 		await Promise.all(
 			Array.from({ length: FILES_PER_DIR }, (_, f) =>
-				fs.writeFile(path.join(dir, `mod-${f}.ts`), `export const id = "${d}-${f}";\n`.repeat(8)),
+				fs.writeFile(path.join(dir, `mod-${f}.ts`), `export const id = "${d}-${f}";\n`.repeat(LINES_PER_FILE)),
 			),
 		);
 	}
@@ -178,8 +180,11 @@ describe("the natives refuse work under a signal that has already fired", () => 
 	 * refuses everything, so the same call under a live signal has to succeed.
 	 */
 	it("ast_grep still returns matches under a signal that has not fired", async () => {
-		// The same guard for the entry point added above: an assertion that a call
-		// rejects is satisfied by a native that rejects everything.
+		// WHY: the guard on the guard, pinned to the COMPLETE result set rather than
+		// to "some matches". A live signal must not curtail the walk, and a native
+		// that stopped early would still satisfy a non-empty check while quietly
+		// returning a partial answer, which is the exact failure shape this suite
+		// exists to catch.
 		const result = await nativeAstGrep({
 			patterns: ["export const id = $A"],
 			path: tmpDir,
@@ -187,7 +192,8 @@ describe("the natives refuse work under a signal that has already fired", () => 
 			signal: new AbortController().signal,
 		});
 
-		expect(result.matches.length).toBeGreaterThan(0);
+		expect(result.totalMatches).toBe(DIRS * FILES_PER_DIR * LINES_PER_FILE);
+		expect(result.filesWithMatches).toBe(DIRS * FILES_PER_DIR);
 	});
 
 	it("grep still returns matches under a signal that has not fired", async () => {
@@ -199,7 +205,7 @@ describe("the natives refuse work under a signal that has already fired", () => 
 				multiline: false,
 				hidden: true,
 				gitignore: false,
-				maxCount: 1000,
+				maxCount: DIRS * FILES_PER_DIR * LINES_PER_FILE,
 				contextBefore: 0,
 				contextAfter: 0,
 				maxColumns: 200,
@@ -209,7 +215,9 @@ describe("the natives refuse work under a signal that has already fired", () => 
 			undefined,
 		);
 
-		expect(result.matches.length).toBeGreaterThan(0);
+		// Every file in the fixture is reached, not merely the first few.
+		expect(result.matches.length).toBe(DIRS * FILES_PER_DIR * LINES_PER_FILE);
+		expect(new Set(result.matches.map(match => match.path)).size).toBe(DIRS * FILES_PER_DIR);
 	});
 });
 

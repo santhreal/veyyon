@@ -97,7 +97,7 @@ describe("ensureProfileAgentsFile (startup back-fill for pre-existing profiles)"
 		// `restoreDirOverrides`: the hand-rolled version put the two variables back
 		// but left the ACTIVE PROFILE cleared (`setAgentDir` clears it), so every file
 		// after this one resolved `profiles/default/...`. That is what
-		// `scripts/find-test-leaks.ts` reported as `state.activeProfile: work ->
+		// `scripts/test-sandbox/find-test-leaks.ts` reported as `state.activeProfile: work ->
 		// (default)`.
 		const snapshot = captureDirOverrides();
 		delete process.env.VEYYON_PROFILE;

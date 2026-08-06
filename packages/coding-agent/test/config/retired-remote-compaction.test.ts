@@ -122,6 +122,9 @@ describe("a modelOverrides remoteCompaction", () => {
 		).toThrow(/modelOverrides\.gpt-5\.5:/);
 	});
 
+	// KEPT as an absence-of-throw contract: the modelOverrides loop reads one key
+	// out of an opaque object, so a refusal keyed on the object being present
+	// rather than on the key would reject every override anyone has ever written.
 	it("accepts an override that carries anything else", () => {
 		expect(() =>
 			validateProviderConfiguration(
@@ -134,8 +137,11 @@ describe("a modelOverrides remoteCompaction", () => {
 });
 
 describe("a config without the retired key", () => {
-	/** The guard on the guard: a refusal that fired on everything would pass every
-	 * test above while breaking every real config. */
+	/**
+	 * KEPT, both of them, as absence-of-throw contracts. This is the config-load
+	 * path: a refusal that fired on everything would satisfy every test above
+	 * while refusing every real config, so the session would not start at all.
+	 */
 	it("still validates", () => {
 		expect(() => validateProviderConfiguration("acme", providerWith({}), "models-config")).not.toThrow();
 	});

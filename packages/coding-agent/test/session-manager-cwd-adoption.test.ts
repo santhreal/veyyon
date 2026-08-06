@@ -25,7 +25,7 @@ function makeTempDir(prefix: string): string {
 // named profile the suite handed an UNSET profile to every file scheduled after it, so
 // they resolved under `profiles/default/` instead of the real one. `captureDirOverrides`
 // snapshots all four inputs and `restoreDirOverrides` is the single owner of putting
-// them back; the hand-rolled two-liner is what `scripts/find-test-leaks.ts` flagged.
+// them back; the hand-rolled two-liner is what `scripts/test-sandbox/find-test-leaks.ts` flagged.
 let dirOverrides: DirOverridesSnapshot | undefined;
 let agentRoot: string | undefined;
 

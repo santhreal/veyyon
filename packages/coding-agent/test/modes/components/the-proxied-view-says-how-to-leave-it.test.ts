@@ -16,9 +16,13 @@
  * bars with identical text; nothing in the suite failed, because nothing asserted it.
  *
  * Focus is a mode of the whole view rather than something you configure on your status line, so
- * `getTopBorder` prefixes the badge itself and no preset can drop it. These tests assert that
+ * `renderQuietLine` prefixes the badge itself and no preset can drop it. These tests assert that
  * across EVERY preset, not just the one that was broken, because "it works on default now" is how
  * the same bug comes back on `minimal`.
+ *
+ * They used to drive `getTopBorder`, which had ZERO production callers: the composer is
+ * borderless, so the badge they were proving was proved on a surface nobody could see. The
+ * footline below the input is the one persistent status surface and the only honest harness.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -92,12 +96,12 @@ function makeSession() {
 	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
 }
 
-/** The top border for `preset`, focused on {@link AGENT} when `focused`. */
-function topBorder(preset: StatusLinePreset, focused: boolean): string {
+/** The composer footline for `preset`, focused on {@link AGENT} when `focused`. */
+function footline(preset: StatusLinePreset, focused: boolean): string {
 	const component = new StatusLineComponent(makeSession());
 	component.updateSettings({ preset });
 	if (focused) component.setSession(makeSession(), AGENT);
-	return component.getTopBorder(WIDTH).content;
+	return component.renderQuietLine(WIDTH) ?? "";
 }
 
 /** Rendered text with every SGR sequence removed, which is what a reader actually sees. */
@@ -115,7 +119,7 @@ describe("the status bar while the view is proxied onto an agent", () => {
 	 * shipped, and the exit hint without the name would not say which session you are in.
 	 */
 	it("names the agent and how to leave, on the default preset", () => {
-		const focused = plain(topBorder("default", true));
+		const focused = plain(footline("default", true));
 
 		expect(focused).toContain(AGENT);
 		expect(focused).toContain("esc to go back");
@@ -128,7 +132,7 @@ describe("the status bar while the view is proxied onto an agent", () => {
 	 * to it.
 	 */
 	it("says neither of those things when you are on your own session", () => {
-		const main = plain(topBorder("default", false));
+		const main = plain(footline("default", false));
 
 		expect(main).not.toContain(AGENT);
 		expect(main).not.toContain("esc to go back");
@@ -145,7 +149,7 @@ describe("the status bar while the view is proxied onto an agent", () => {
 		expect(PRESETS.length).toBeGreaterThanOrEqual(6);
 
 		for (const preset of PRESETS) {
-			const focused = plain(topBorder(preset, true));
+			const focused = plain(footline(preset, true));
 
 			expect(`${preset}: ${focused.includes(AGENT)}`).toBe(`${preset}: true`);
 			expect(`${preset}: ${focused.includes("esc to go back")}`).toBe(`${preset}: true`);
@@ -153,36 +157,15 @@ describe("the status bar while the view is proxied onto an agent", () => {
 	});
 
 	/**
-	 * The badge is NOT dimmed, while the bar behind it is.
+	 * Prefixing the badge must not push the line past the width it was given.
 	 *
-	 * The dim says "this is not your main session", and it is applied to the whole bar. Letting it
-	 * cover the badge too would fade the one piece of text that explains the state and names the way
-	 * out of it, which is precisely backwards. Asserted on the BYTES because that is where the
-	 * distinction lives: the badge has to sit ahead of the `\x1b[2m` opener, and a future edit that
-	 * moves the prefix inside the dim wrapper still renders the same characters.
-	 */
-	it("keeps the badge out of the dim that covers the rest of the bar", () => {
-		const focused = topBorder("default", true);
-		const dimOpener = focused.indexOf("\x1b[2m");
-		const hint = focused.indexOf("esc");
-
-		expect(dimOpener).toBeGreaterThan(-1);
-		expect(hint).toBeGreaterThan(-1);
-		expect(hint).toBeLessThan(dimOpener);
-	});
-
-	/**
-	 * Prefixing the badge must not push the bar past the width it was given.
-	 *
-	 * `#buildStatusLine` fills whatever width it receives, so a prefix added without shrinking that
-	 * width would produce a line wider than the terminal, and an over-long top border wraps and
-	 * pushes the composer down a row on every render. Checked against the UNFOCUSED width rather
-	 * than against `WIDTH` alone, so the bar is proved to have given ground to the badge instead of
-	 * merely fitting by luck.
+	 * The footline is built into what the badge leaves, so a prefix added without shrinking that
+	 * width would produce a line wider than the terminal, and an over-long footline wraps and
+	 * pushes the composer up a row on every render.
 	 */
 	it("fits the width it was given, badge included", () => {
 		for (const preset of PRESETS) {
-			const focusedWidth = visibleWidth(topBorder(preset, true));
+			const focusedWidth = visibleWidth(footline(preset, true));
 
 			expect(`${preset}: ${focusedWidth <= WIDTH}`).toBe(`${preset}: true`);
 		}
@@ -195,7 +178,7 @@ describe("the status bar while the view is proxied onto an agent", () => {
 	 */
 	it("names the agent exactly once, including on the presets that carry the veyyon mark", () => {
 		for (const preset of ["full", "nerd"] as const) {
-			const focused = plain(topBorder(preset, true));
+			const focused = plain(footline(preset, true));
 			const occurrences = focused.split(AGENT).length - 1;
 
 			expect(`${preset}: ${occurrences}`).toBe(`${preset}: 1`);

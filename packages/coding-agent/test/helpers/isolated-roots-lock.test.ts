@@ -58,7 +58,7 @@ describe("useIsolatedConfigRoot", () => {
 	// `beginSettingsTest`: this describe body runs BEFORE the helper's `beforeAll`, so
 	// that snapshot captures the FAKE value and faithfully puts it back — this file
 	// was itself leaking `/tmp/leaked-agent-dir-from-an-earlier-suite` into every
-	// suite after it, which `scripts/find-test-leaks.ts` caught.
+	// suite after it, which `scripts/test-sandbox/find-test-leaks.ts` caught.
 	const agentDirBefore = process.env.VEYYON_CODING_AGENT_DIR;
 	const leakedAgentDir = path.join(os.tmpdir(), "leaked-agent-dir-from-an-earlier-suite");
 	process.env.VEYYON_CODING_AGENT_DIR = leakedAgentDir;
@@ -328,7 +328,7 @@ describe("useIsolatedWorktreesDir", () => {
  * `tools/non-interactive-approval-fails-closed.test.ts` stacked
  * `useIsolatedAgentDir()` and `useIsolatedGlobalSettings()` and left
  * `VEYYON_CODING_AGENT_DIR` pointing at its own removed temp dir for every later file
- * in the process, which `scripts/find-test-leaks.ts` reported as
+ * in the process, which `scripts/test-sandbox/find-test-leaks.ts` reported as
  * `left behind env.VEYYON_CODING_AGENT_DIR: (unset) -> /tmp/veyyon-isolated-agent-dir-…`.
  * Ordering cannot fix it, so the combination fails loudly and the legitimate case is
  * an option on one helper.

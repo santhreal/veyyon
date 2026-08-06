@@ -75,7 +75,6 @@ function createFixture() {
 		effectiveHideThinkingBlock: false,
 		proseOnlyThinking: true,
 		statusLine: { invalidate: vi.fn() },
-		updateEditorTopBorder: vi.fn(),
 		noteDisplayableThinkingContent: vi.fn((message: AssistantMessage) => {
 			const hasThinking = message.content.some(
 				content => content.type === "thinking" && content.thinking.trim() !== "",

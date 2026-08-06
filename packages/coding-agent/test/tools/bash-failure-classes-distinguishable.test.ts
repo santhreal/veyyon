@@ -22,10 +22,11 @@
  * signal contract in depth; what this file pins is that the three FAILURE
  * CLASSES stay distinguishable from one another.
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as bashExecutor from "@veyyon/coding-agent/exec/bash-executor";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
 import { removeWithRetries } from "@veyyon/utils";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
@@ -42,6 +43,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+	vi.restoreAllMocks();
 	await removeWithRetries(tmpDir);
 });
 
@@ -124,9 +126,17 @@ describe("a non-zero exit reports that exact code", () => {
 	 * unknown would collapse into the same result and this test is what says so.
 	 */
 	it("throws rather than returning when the exit status is missing", async () => {
-		const source = await fs.readFile(path.join(import.meta.dir, "..", "..", "src", "tools", "bash.ts"), "utf8");
-		expect(source).toContain("Command failed: missing exit status");
-		expect(source).toMatch(/result\.exitCode === undefined[\s\S]{0,300}throw new ToolError/);
+		vi.spyOn(bashExecutor, "executeBash").mockResolvedValue({
+			output: "partial output before the status was lost\n",
+			exitCode: undefined,
+			cancelled: false,
+		} as unknown as bashExecutor.BashResult);
+
+		const promise = bashTool().execute("missing-status", { command: "printf 'x\\n'", timeout: 20 });
+		await expect(promise).rejects.toThrow("Command failed: missing exit status");
+		// The program's own output survives the throw, so the model can still read
+		// how far it got. A bare rethrow would discard it.
+		await expect(promise).rejects.toThrow("partial output before the status was lost");
 	});
 
 	/** The prose must agree with the number. Two sources disagreeing is worse than

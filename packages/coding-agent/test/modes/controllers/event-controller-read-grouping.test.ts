@@ -73,7 +73,6 @@ function createFixture() {
 		isInitialized: true,
 		init: vi.fn(async () => {}),
 		statusLine: { invalidate: vi.fn() },
-		updateEditorTopBorder: vi.fn(),
 		ui: { requestRender: vi.fn(), imageBudget: undefined },
 		chatContainer,
 		pendingTools: new Map(),

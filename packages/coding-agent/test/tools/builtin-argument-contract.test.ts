@@ -203,26 +203,42 @@ describe("every builtin tool's argument contract", () => {
 		});
 
 		it("a value of a type with no repair rule is still rejected", () => {
-			// The repair has a floor. A required NUMBER given a non-numeric string
-			// cannot be reconciled, and must surface as a validation error rather than
-			// as NaN reaching the tool.
-			const withNumericRequired = tools.filter(tool => {
+			// WHY: the repair has a floor. A NUMBER field given a non-numeric string
+			// cannot be reconciled, and must surface as a validation error naming the
+			// tool rather than as NaN reaching the tool and being used as an offset, a
+			// line number, or a timeout.
+			//
+			// The call is otherwise well formed (every required string filled), so the
+			// only thing that can reject it is the number field itself. An earlier
+			// version of this test scanned for a REQUIRED numeric field, found none,
+			// and asserted nothing at all.
+			const cases = tools.flatMap(tool => {
 				const schema = schemaOf(tool);
-				return schema.required?.some(field => {
-					const type = schema.properties?.[field]?.type;
-					return type === "number" || type === "integer";
+				const required = schema.required ?? [];
+				const allStrings = required.every(field => {
+					const property = schema.properties?.[field] as { type?: string; enum?: unknown[] } | undefined;
+					return property?.type === "string" && property.enum === undefined;
 				});
+				if (!allStrings) return [];
+				const numeric = Object.entries(schema.properties ?? {}).find(
+					([, property]) => property?.type === "number" || property?.type === "integer",
+				);
+				if (!numeric) return [];
+				const args: Record<string, unknown> = {};
+				for (const field of required) args[field] = "x";
+				args[numeric[0]] = "not-a-number";
+				return [{ name: tool.name, field: numeric[0], error: validationError(tool, args) }];
 			});
 
-			for (const tool of withNumericRequired) {
-				const schema = schemaOf(tool);
-				const field = schema.required?.find(name => {
-					const type = schema.properties?.[name]?.type;
-					return type === "number" || type === "integer";
-				});
-				if (field === undefined) continue;
-				expect(validationError(tool, { [field]: "not-a-number" })).toBeDefined();
-			}
+			// Named rather than counted, the way the registry guard above is: these two
+			// are always built, so their absence means the sweep found nothing.
+			const covered = cases.map(c => c.name);
+			expect(covered).toContain("bash");
+			expect(covered).toContain("glob");
+
+			const accepted = cases.filter(c => c.error === undefined).map(c => `${c.name}.${c.field}`);
+			expect(accepted).toEqual([]);
+			for (const c of cases) expect(c.error?.message).toContain(c.name);
 		});
 	});
 

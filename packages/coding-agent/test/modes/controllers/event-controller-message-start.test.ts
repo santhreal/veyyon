@@ -45,7 +45,6 @@ function createContext(options: {
 	const ctx = {
 		isInitialized: true,
 		statusLine: { invalidate: vi.fn() },
-		updateEditorTopBorder: vi.fn(),
 		ui: { requestRender: vi.fn() },
 		editor,
 		addMessageToChat,
@@ -200,7 +199,6 @@ function createIrcContext(options: { liveBlockAbove?: boolean } = {}) {
 	const ctx = {
 		isInitialized: true,
 		statusLine: { invalidate: vi.fn() },
-		updateEditorTopBorder: vi.fn(),
 		ui: { requestRender },
 		chatContainer,
 		session: {},

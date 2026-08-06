@@ -35,6 +35,7 @@ import {
 	resolveHeaders,
 } from "@veyyon/coding-agent/config/resolve-config-value";
 import { logger } from "@veyyon/utils";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 /** A shell command that exits non-zero after writing a diagnostic to stderr. */
 const FAILS_LOUDLY = `!${process.execPath} -e "process.stderr.write('op: not signed in'); process.exit(3)"`;
@@ -291,7 +292,7 @@ describe("both config-value resolvers route a failed command through the shared 
 			const source = fs.readFileSync(resolver.path, "utf8");
 
 			expect(source).toContain("configCommandPolicy.recordFailure(");
-			expect(source).toContain('from "./config-value-resolution"');
+			expect(moduleSpecifiersIn(source)).toContain("./config-value-resolution");
 		});
 
 		it(`${resolver.name} does not call the reporter directly, so the report has one caller`, () => {

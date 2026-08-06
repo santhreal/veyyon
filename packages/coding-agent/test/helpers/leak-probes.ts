@@ -6,7 +6,7 @@
  * a diagnostic that imports the thing it is supposed to be observing can initialise
  * that state itself, and dragging a heavy package into every traced process is how
  * that happens. So the dependency points the other way. The tracer exposes
- * `registerLeakProbe` and knows nothing about this package; `scripts/find-test-leaks.ts`
+ * `registerLeakProbe` and knows nothing about this package; `scripts/test-sandbox/find-test-leaks.ts`
  * preloads `packages/<pkg>/test/helpers/leak-probes.ts` when it traces a file under
  * `packages/<pkg>`, so any package can contribute a probe without the tracer growing
  * a case for it.

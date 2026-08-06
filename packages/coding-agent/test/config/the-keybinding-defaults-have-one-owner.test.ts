@@ -26,6 +26,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getDefaultPasteImageKeys, KEYBINDINGS } from "@veyyon/coding-agent/config/keybinding-defs";
 import { KEYBINDINGS as VIA_LOADER } from "@veyyon/coding-agent/config/keybindings";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
 const EDITOR = path.join(SRC, "modes", "components", "custom-editor.ts");
@@ -82,7 +83,7 @@ describe("the keybinding defaults have one owner", () => {
 	 * defaults at all.
 	 */
 	it("reads the shared table in the editor", () => {
-		expect(EDITOR_SOURCE).toContain('from "../../config/keybinding-defs"');
+		expect(moduleSpecifiersIn(EDITOR_SOURCE)).toContain("../../config/keybinding-defs");
 		expect(EDITOR_SOURCE).toContain("CONFIGURABLE_EDITOR_ACTIONS");
 	});
 });

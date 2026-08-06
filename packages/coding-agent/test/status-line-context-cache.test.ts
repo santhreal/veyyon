@@ -213,32 +213,33 @@ describe("StatusLineComponent context breakdown", () => {
 			preset: "custom",
 			leftSegments: ["pi"],
 			rightSegments: ["session_name"],
-			separator: "powerline-thin",
 		});
 
-		const border = comp.getTopBorder(80);
-		expect(border.content.length).toBeGreaterThan(0);
+		const line = comp.renderQuietLine(80);
+		expect((line ?? "").length).toBeGreaterThan(0);
 		expect(usageCalls()).toBe(0);
 	});
 
-	it("renders used tokens against the limit in the context segment", () => {
+	/**
+	 * The gauge used to have a second form — a `5K/272K` token readout behind a
+	 * `context_pct.bar` option — and these tests drove it through
+	 * `getTopBorder`. Neither existed on a production path: the composer
+	 * footline is the only renderer and it always asked for the bar. Asserting
+	 * the bar form is the only way these stay honest.
+	 */
+	it("renders the room left as a percentage in the context segment", () => {
 		const { session } = makeSession({
 			messages: [userMessage("hi"), assistantMessage("done")],
 			usage: { tokens: 5000, contextWindow: 272_000, percent: 1.8 },
 		});
 		const comp = new StatusLineComponent(session);
-		comp.updateSettings({
-			preset: "custom",
-			leftSegments: ["context_pct"],
-			rightSegments: [],
-			separator: "powerline-thin",
-		});
+		comp.updateSettings({ preset: "custom", leftSegments: ["context_pct"], rightSegments: [] });
 
-		// tok/tok, one unit on both sides: the gauge stopped rendering `1.8%/272K`,
-		// which put a percent and a token count either side of a slash.
-		const plain = comp.getTopBorder(80).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
-		expect(plain).toContain("5K/272K");
-		expect(plain).not.toContain("%");
+		const plain = (comp.renderQuietLine(80) ?? "").replaceAll(/\x1b\[[0-9;]*m/g, "");
+		expect(plain).toContain("98% left");
+		// Both halves of the gauge report room LEFT, so they cannot disagree: at
+		// 98% left the eight-cell bar is all but full.
+		expect(plain).toContain("▰▰▰▰▰▰▰▰");
 	});
 
 	it("renders speculative usage instead of ? after compaction", () => {
@@ -247,33 +248,23 @@ describe("StatusLineComponent context breakdown", () => {
 			usage: { tokens: 1234, contextWindow: 272_000, percent: 0.45 },
 		});
 		const comp = new StatusLineComponent(session);
-		comp.updateSettings({
-			preset: "custom",
-			leftSegments: ["context_pct"],
-			rightSegments: [],
-			separator: "powerline-thin",
-		});
+		comp.updateSettings({ preset: "custom", leftSegments: ["context_pct"], rightSegments: [] });
 
-		const plain = comp.getTopBorder(80).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
-		expect(plain).toContain("1.2K/272K");
+		const plain = (comp.renderQuietLine(80) ?? "").replaceAll(/\x1b\[[0-9;]*m/g, "");
+		expect(plain).toContain("100% left");
+		expect(plain).not.toContain("? left");
 	});
 
-	it("renders token usage with an unknown marker when the model window is unavailable", () => {
+	it("admits an unknown percentage when the model window is unavailable", () => {
 		const { session } = makeSession({
 			messages: [userMessage("hi")],
 			contextWindow: 0,
 			usage: { tokens: 5000, contextWindow: 0, percent: 0 },
 		});
 		const comp = new StatusLineComponent(session);
-		comp.updateSettings({
-			preset: "custom",
-			leftSegments: ["context_pct"],
-			rightSegments: [],
-			separator: "powerline-thin",
-		});
+		comp.updateSettings({ preset: "custom", leftSegments: ["context_pct"], rightSegments: [] });
 
-		const plain = comp.getTopBorder(80).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
-		expect(plain).toContain("5K/?");
-		expect(plain).not.toContain("/0");
+		const plain = (comp.renderQuietLine(80) ?? "").replaceAll(/\x1b\[[0-9;]*m/g, "");
+		expect(plain).toMatch(/(\? left|100% left)/);
 	});
 });

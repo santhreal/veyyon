@@ -105,12 +105,26 @@ describe("hindsightBackend.start", () => {
 		expect(session.getHindsightSessionState()).toBeUndefined();
 	});
 
+	/**
+	 * WHY the exact scope and the listener count: "state exists with a truthy
+	 * bankId" is satisfied by a state pointed at the WRONG bank, which is the
+	 * failure that matters here — every retain and recall for the session lands
+	 * in it. The bank id is composed (`prefix-base`) and the project tag is
+	 * derived from the cwd, so both halves are pinned, along with the
+	 * subscription the title claims: without it no agent_end ever reaches retain.
+	 */
 	it("registers per-session state and subscribes to agent events when configured", async () => {
 		const settings = Settings.isolated({
 			"memory.backend": "hindsight",
 			"hindsight.apiUrl": "http://localhost:8888",
+			"hindsight.scoping": "per-project-tagged",
+			"hindsight.bankIdPrefix": "team",
+			"hindsight.bankId": "acme-bank",
 		});
-		const session = makeFakeSession({ sessionId: "s2" });
+		// Outside any git checkout, so the project label is the directory basename
+		// rather than whichever repo the suite happens to run from.
+		const session = makeFakeSession({ sessionId: "s2", cwd: "/nonexistent-veyyon-test/acme-app" });
+		expect(session.listenerCount()).toBe(0);
 
 		await hindsightBackend.start({
 			session: session as never,
@@ -120,8 +134,13 @@ describe("hindsightBackend.start", () => {
 			taskDepth: 0,
 		});
 
-		expect(session.getHindsightSessionState()).toBeDefined();
-		expect(session.getHindsightSessionState()?.bankId).toBeTruthy();
+		const state = session.getHindsightSessionState();
+		expect(state?.bankId).toBe("team-acme-bank");
+		expect(state?.sessionId).toBe("s2");
+		expect(state?.retainTags).toEqual(["project:acme-app"]);
+		expect(state?.recallTags).toEqual(["project:acme-app"]);
+		expect(state?.recallTagsMatch).toBe("any");
+		expect(session.listenerCount()).toBe(1);
 	});
 
 	it("rekeys state when the same AgentSession gets a new session id (resume/switch)", async () => {

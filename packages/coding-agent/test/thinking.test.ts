@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
+import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import {
 	AUTO_THINKING,
 	CLI_THINKING_LEVELS,
 	clampAutoThinkingEffort,
 	concreteThinkingLevel,
+	configuredThinkingLevelsForModel,
 	getConfiguredThinkingLevelMetadata,
 	getThinkingLevelMetadata,
 	parseCliThinkingLevel,
@@ -13,6 +15,7 @@ import {
 	parseEffort,
 	parseThinkingLevel,
 	shouldDisableReasoning,
+	thinkingLevelArgHint,
 	toReasoningEffort,
 } from "@veyyon/coding-agent/thinking";
 
@@ -180,5 +183,142 @@ describe("thinking level metadata", () => {
 			label: "auto",
 			description: "Auto-detect per prompt (low–xhigh)",
 		});
+	});
+});
+
+/**
+ * configuredThinkingLevelsForModel is the ONE owner of the choices every
+ * effort surface offers (/thinking, the selectors, the cycle key, the ACP
+ * hint). The scale is per-row, never the fixed ladder: a row offers exactly
+ * its declared efforts, and off/auto only when the row can actually route
+ * them. Pinned here per mechanism:
+ *  - param row: off + auto + the declared ladder;
+ *  - budget-mode row: same shape, the mode does not widen the set;
+ *  - routing row without an off sibling: no off, no auto (both would silently
+ *    send the default wire id), levels only;
+ *  - routing row with an off sibling: off and auto return;
+ *  - requiresEffort row: off drops, auto stays;
+ *  - id-baked / no-surface row and non-reasoning row: no choices at all.
+ */
+describe("configuredThinkingLevelsForModel", () => {
+	function modelWith(thinking: ConstructorParameters<typeof buildModel>[0]["thinking"], reasoning = true) {
+		return buildModel({
+			id: "fixture-model",
+			name: "fixture-model",
+			api: "openai-completions",
+			provider: "fixture",
+			baseUrl: "https://fixture.invalid/v1",
+			reasoning,
+			thinking,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 200000,
+			maxTokens: 32000,
+		});
+	}
+
+	it("offers off, auto, and the declared ladder on a param row", () => {
+		const model = modelWith({ mode: "effort", efforts: [Effort.High, Effort.Max] });
+		expect(configuredThinkingLevelsForModel(model)).toEqual([
+			ThinkingLevel.Off,
+			AUTO_THINKING,
+			Effort.High,
+			Effort.Max,
+		]);
+	});
+
+	it("offers the same shape on a budget-mode row", () => {
+		const model = modelWith({ mode: "budget", efforts: [Effort.Low, Effort.High] });
+		expect(configuredThinkingLevelsForModel(model)).toEqual([
+			ThinkingLevel.Off,
+			AUTO_THINKING,
+			Effort.Low,
+			Effort.High,
+		]);
+	});
+
+	it("refuses off and auto on a routed row with no off sibling", () => {
+		const model = modelWith({
+			mode: "effort",
+			efforts: [Effort.Low, Effort.High, Effort.XHigh],
+			effortRouting: { low: "m-low", high: "m-high", xhigh: "m-xhigh" },
+		});
+		expect(configuredThinkingLevelsForModel(model)).toEqual([Effort.Low, Effort.High, Effort.XHigh]);
+	});
+
+	it("restores off and auto when the routed row has an off sibling", () => {
+		const model = modelWith({
+			mode: "effort",
+			efforts: [Effort.Low, Effort.High],
+			effortRouting: { off: "m-none", low: "m-low", high: "m-high" },
+		});
+		expect(configuredThinkingLevelsForModel(model)).toEqual([
+			ThinkingLevel.Off,
+			AUTO_THINKING,
+			Effort.Low,
+			Effort.High,
+		]);
+	});
+
+	it("drops off but keeps auto on a requiresEffort row", () => {
+		const model = modelWith({ mode: "effort", efforts: [Effort.Low, Effort.High], requiresEffort: true });
+		expect(configuredThinkingLevelsForModel(model)).toEqual([AUTO_THINKING, Effort.Low, Effort.High]);
+	});
+
+	it("offers nothing on a reasoning row with no control surface", () => {
+		// cursor-agent fabricates no ladder (its transport has no effort field),
+		// so a cursor row with no explicit routed surface has no choices; a
+		// non-reasoning row never does.
+		const cursorRow = buildModel({
+			id: "gpt-5.1-codex-max-high",
+			name: "gpt-5.1-codex-max-high",
+			api: "cursor-agent",
+			provider: "cursor",
+			baseUrl: "https://api2.cursor.sh",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 200000,
+			maxTokens: 32000,
+		});
+		expect(configuredThinkingLevelsForModel(cursorRow)).toEqual([]);
+		expect(configuredThinkingLevelsForModel(modelWith(undefined, false))).toEqual([]);
+	});
+});
+
+describe("thinkingLevelArgHint", () => {
+	it("lists exactly the row's accepted choices", () => {
+		const model = buildModel({
+			id: "glm-5.2",
+			name: "glm-5.2",
+			api: "openai-completions",
+			provider: "fixture",
+			baseUrl: "https://fixture.invalid/v1",
+			reasoning: true,
+			reasoningOptions: { efforts: [Effort.High, Effort.Max] },
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 200000,
+			maxTokens: 32000,
+		});
+		expect(thinkingLevelArgHint(model)).toBe("[off|auto|high|max]");
+	});
+
+	it("is undefined when the model exposes no effort control", () => {
+		const model = buildModel({
+			id: "kimi-k2-thinking",
+			name: "kimi-k2-thinking",
+			api: "openai-completions",
+			provider: "fixture",
+			baseUrl: "https://fixture.invalid/v1",
+			reasoning: true,
+			reasoningOptions: { noEffortControl: true },
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 200000,
+			maxTokens: 32000,
+		});
+		expect(thinkingLevelArgHint(model)).toBeUndefined();
+		expect(thinkingLevelArgHint(undefined)).toBeUndefined();
 	});
 });

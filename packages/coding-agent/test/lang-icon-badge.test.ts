@@ -23,6 +23,10 @@ async function unicodeTheme() {
 }
 
 describe("lang icon badges (unicode preset)", () => {
+	// WHY width and not merely non-empty: the badge occupies one cell in the file
+	// row, so both failure modes are visible. An empty glyph (the original bug)
+	// measures 0 and the badge disappears; a two-cell glyph measures 2 and
+	// swallows the space after it, which is the same wrong column either way.
 	it("never renders an empty badge for a known language", async () => {
 		const theme = await unicodeTheme();
 		const langs = [
@@ -48,7 +52,9 @@ describe("lang icon badges (unicode preset)", () => {
 		];
 		for (const lang of langs) {
 			const icon = theme.getLangIcon(lang);
-			expect(icon.length).toBeGreaterThan(0);
+			expect(Bun.stringWidth(icon), `lang.${lang} must render exactly one cell, got ${JSON.stringify(icon)}`).toBe(
+				1,
+			);
 		}
 	});
 

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { validateServerName } from "@veyyon/coding-agent/mcp/config-writer";
 import { parseSSE, redactUrlForLog } from "@veyyon/coding-agent/mcp/json-rpc";
 import { createMCPToolName, parseMCPToolName } from "@veyyon/coding-agent/mcp/tool-bridge";
 import { toJsonRpcError } from "@veyyon/coding-agent/mcp/types";
@@ -52,19 +51,6 @@ describe("MCP tool name round-trip", () => {
 		expect(parsed).not.toBeNull();
 		expect(parsed!.serverName).toBe("my");
 		expect(parsed!.toolName.startsWith("server_")).toBe(true);
-	});
-});
-
-describe("MCP validateServerName", () => {
-	it("accepts simple alnum and hyphen names", () => {
-		expect(validateServerName("github")).toBeUndefined();
-		expect(validateServerName("my-server")).toBeUndefined();
-	});
-
-	it("rejects empty and path-like names", () => {
-		expect(validateServerName("")).toBeDefined();
-		expect(validateServerName("../evil")).toBeDefined();
-		expect(validateServerName("has space")).toBeDefined();
 	});
 });
 

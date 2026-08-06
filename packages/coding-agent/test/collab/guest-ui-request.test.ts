@@ -244,7 +244,6 @@ async function makeHarness(opts?: { readOnly?: boolean }): Promise<GuestUiHarnes
 				}
 			}
 		},
-		updateEditorTopBorder: () => {},
 		updateEditorBorderColor: () => {},
 		eventController: { handleEvent: () => Promise.resolve() },
 		syncRunningSubagentBadge: () => {},

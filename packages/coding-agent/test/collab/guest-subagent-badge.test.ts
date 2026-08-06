@@ -97,7 +97,6 @@ function makeGuestContext(counts: number[]): InteractiveModeContext {
 		reloadTodos: () => Promise.resolve(),
 		showStatus: () => {},
 		showError: () => {},
-		updateEditorTopBorder: () => {},
 		updateEditorBorderColor: () => {},
 		eventController: { handleEvent: () => Promise.resolve() },
 		syncRunningSubagentBadge: () => {

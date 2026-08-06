@@ -76,12 +76,6 @@ describe("accent tokens — themes that predate them get the documented defaults
 	} as ThemeJson;
 	const legacy = createTheme(legacyJson, { mode: "truecolor" });
 
-	it("does not throw on lookup of any of the five tokens", () => {
-		for (const token of ["sessionAccent", "modeAccent", "shareAccent", "infoAccent", "matchHighlight"] as const) {
-			expect(() => legacy.getFgAnsi(token)).not.toThrow();
-		}
-	});
-
 	/** The default is inheritance, byte-for-byte: session/mode → accent,
 	 * share → link, info → muted, match → warning. */
 	it("resolves each missing token to its documented fallback token's bytes", () => {
@@ -112,7 +106,10 @@ describe("accent tokens — themes that predate them get the documented defaults
 		for (const [name, json] of Object.entries(defaultThemes)) {
 			const t = createTheme(json as ThemeJson, { mode: "truecolor" });
 			for (const token of ["sessionAccent", "modeAccent", "shareAccent", "infoAccent", "matchHighlight"] as const) {
-				expect(t.getFgAnsi(token), `${name}.${token}`).toBeTruthy();
+				// A real 24-bit foreground open sequence. `toBeTruthy` passed on an undefined-derived
+				// "undefined" string or a bare hex that never became an SGR; the theme's own default
+				// resolution is the thing under test, so assert the shape it must produce.
+				expect(t.getFgAnsi(token), `${name}.${token}`).toMatch(/^\x1b\[38;2;\d+;\d+;\d+m$/);
 			}
 		}
 	});
@@ -167,7 +164,11 @@ describe("composerBg — the quiet card ground (DS-6 layer 0)", () => {
 	it("all builtin themes resolve composerBg", () => {
 		for (const [name, json] of Object.entries(defaultThemes)) {
 			const t = createTheme(json as ThemeJson, { mode: "truecolor" });
-			expect(t.getBgAnsi("composerBg"), name).toBeTruthy();
+			// Either the unpainted sentinel or a real 24-bit background open sequence. A truthy
+			// check passed on any non-empty string, including a raw var name or a bare "#1e1f29"
+			// that never reached an SGR, which is exactly the half-formed value that reaches the
+			// terminal as literal text.
+			expect(t.getBgAnsi("composerBg"), name).toMatch(/^\x1b\[(?:49|48;2;\d+;\d+;\d+)m$/);
 		}
 	});
 });

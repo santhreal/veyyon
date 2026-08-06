@@ -110,7 +110,7 @@ describe("in-process callers of runRootCommand", () => {
 	// makes `generateSessionTitle` fail closed and return null, which silently breaks
 	// the title-generator, tiny-title and role-thinking suites downstream. That is the
 	// real cause of the unexplained title failures seen in a full sweep, and it is
-	// what `scripts/find-test-leaks.ts` reported for this file. `acp-lazy-startup`
+	// what `scripts/test-sandbox/find-test-leaks.ts` reported for this file. `acp-lazy-startup`
 	// carries the same guard for the same reason.
 	const ENV_KEYS = ["VEYYON_NO_TITLE", "VEYYON_NO_PTY"] as const;
 	const savedEnv = new Map(ENV_KEYS.map(key => [key, process.env[key]]));

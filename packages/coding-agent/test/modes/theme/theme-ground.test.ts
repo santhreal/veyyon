@@ -38,12 +38,13 @@ describe("Theme.getGroundHex from a real builtin theme", () => {
 	});
 
 	it("resolves a var-referenced page background to a paintable hex", async () => {
-		// amethyst writes export.pageBg as the var "caveDark"; the ground must be the
-		// resolved #RRGGBB, not the literal var name, or OSC 11 painting would throw.
+		// amethyst writes export.pageBg as the var "caveDark" (#140f18); the ground must be the
+		// RESOLVED value, not the literal var name, or OSC 11 painting would throw. Pinned to the
+		// exact hex rather than "parses as a color", because passing the var name through would
+		// still be a defined string and only the value tells the two apart.
 		const amethyst = await getThemeByName("amethyst");
-		const ground = amethyst?.getGroundHex();
-		expect(ground).toBeDefined();
-		expect(parseHexColor(ground!)).not.toBeNull();
+		expect(amethyst?.getGroundHex()).toBe("#140f18");
+		expect(parseHexColor("#140f18")).not.toBeNull();
 	});
 
 	it("gives every builtin theme a paintable ground (none is left half-formed)", async () => {

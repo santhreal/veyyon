@@ -52,7 +52,6 @@ function buildCtx(compact: InteractiveModeContext["session"]["compact"]) {
 		session: { compact },
 		rebuildChatFromMessages,
 		statusLine: { invalidate: vi.fn() },
-		updateEditorTopBorder: vi.fn(),
 		showError,
 		flushCompactionQueue: vi.fn(async () => undefined),
 		// executeCompaction consults display.collapseCompacted on the ok path to

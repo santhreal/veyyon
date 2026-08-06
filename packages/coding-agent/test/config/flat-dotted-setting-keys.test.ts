@@ -177,19 +177,18 @@ describe("flat dotted setting keys", () => {
 	});
 
 	/**
-	 * A project-level file and a `--config` overlay are never rewritten, so they can
-	 * only be fixed at read time. They go through the same funnel, and this pins
-	 * that the funnel is shared rather than reimplemented per source.
+	 * A `--config` overlay is never rewritten, so it can only be fixed at read
+	 * time. It goes through the same funnel as the main file, and this pins that
+	 * the funnel is shared rather than reimplemented per source. (The other
+	 * never-rewritten source this named, the repo config file, is gone: repo
+	 * settings are no longer read at all.)
 	 */
-	test("a project config's flat key is readable too", async () => {
+	test("a --config overlay's flat key is readable too", async () => {
 		const projectDir = makeFlatDottedProjectDir();
 		try {
-			fs.mkdirSync(path.join(projectDir, ".veyyon"), { recursive: true });
-			fs.writeFileSync(
-				path.join(projectDir, ".veyyon", "config.yml"),
-				YAML.stringify({ "subagent.maxConcurrency": 2 }),
-			);
-			const settings = await Settings.loadIsolated({ agentDir, cwd: projectDir });
+			const overlay = path.join(projectDir, "overlay.yml");
+			fs.writeFileSync(overlay, YAML.stringify({ "subagent.maxConcurrency": 2 }));
+			const settings = await Settings.loadIsolated({ agentDir, cwd: projectDir, configFiles: [overlay] });
 			expect(settings.get("subagent.maxConcurrency")).toBe(2);
 		} finally {
 			await removeWithRetries(guardDestructivePath(projectDir, "flat-dotted-setting-keys-project"));

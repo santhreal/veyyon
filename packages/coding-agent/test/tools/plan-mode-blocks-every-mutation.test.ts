@@ -178,7 +178,13 @@ describe("the guard confines active plan-mode writes to the local sandbox", () =
 	/** The plan file itself must be writable, or plan mode cannot do its job.
 	 * This is the differential for every refusal above. */
 	it("allows a write to the local:// sandbox", () => {
+		// WHY: paired with the nearest path that is NOT the sandbox, one directory
+		// above it. Acceptance on its own also holds for a guard that has stopped
+		// checking the destination, which is the hole this suite exists to close.
 		expect(() => guard("local://feature-plan.md")).not.toThrow();
+		expect(() => guard(path.join(artifacts, "local", "..", "..", "escape.md"))).toThrow(
+			/working tree is read-only/,
+		);
 	});
 
 	/**
@@ -211,7 +217,12 @@ describe("the guard confines active plan-mode writes to the local sandbox", () =
 	 * work. This proves the refusals above are plan mode and not the guard
 	 * rejecting everything. */
 	it("does nothing when plan mode is off", () => {
-		expect(() => enforcePlanModeWrite(normalSession as never, "src/main.ts")).not.toThrow();
-		expect(() => enforcePlanModeWrite(normalSession as never, "src/a.ts", { op: "delete" })).not.toThrow();
+		// WHY: the same three calls, refused with plan mode on and inert with it off.
+		// Asserting only the inert half would pass against a guard that never
+		// refuses anything.
+		for (const options of [{ op: "update" }, { op: "delete" }, { move: "src/b.ts" }] as const) {
+			expect(() => enforcePlanModeWrite(normalSession as never, "src/main.ts", options)).not.toThrow();
+			expect(() => enforcePlanModeWrite(planSession as never, "src/main.ts", options)).toThrow(/Plan mode:/);
+		}
 	});
 });

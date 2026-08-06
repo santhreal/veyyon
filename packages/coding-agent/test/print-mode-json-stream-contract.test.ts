@@ -131,8 +131,12 @@ describe("every line of --mode json output parses on its own", () => {
 
 		await runPrintMode(session, { initialMessage: "hi", mode: "json" });
 
-		expect(lines().length).toBeGreaterThan(0);
-		for (const line of lines()) expect(() => JSON.parse(line) as unknown).not.toThrow();
+		// Parsed for real, then pinned by content. `not.toThrow(JSON.parse)` over an EMPTY line list
+		// is vacuously true, and over a run that emitted only the header it is true while every event
+		// went missing, so the header and both replayed events are named.
+		const parsed = lines().map(line => JSON.parse(line) as Record<string, unknown>);
+		expect(parsed[0]?.id).toBe("session-1");
+		expect(parsed.slice(1).map(event => event.type)).toEqual(["message_start", "message_end"]);
 	});
 
 	/**
@@ -326,8 +330,13 @@ describe("printableEvent keeps the schema stable", () => {
 			{ messages: [makeAssistantMessage("a")], type: "agent_end" },
 		] as unknown as AgentSessionEvent[];
 
+		// Serializing is the easy half. The half that matters is that the shape SURVIVES the round
+		// trip a consumer performs: `type` is what it dispatches on, so a transform that returned a
+		// stringifiable value with the discriminator dropped would satisfy a bare `not.toThrow` and
+		// still leave the consumer unable to route the line.
 		for (const shape of shapes) {
-			expect(() => JSON.stringify(printableEvent(shape))).not.toThrow();
+			const roundTripped = JSON.parse(JSON.stringify(printableEvent(shape))) as Record<string, unknown>;
+			expect(roundTripped.type).toBe((shape as unknown as Record<string, unknown>).type);
 		}
 	});
 });

@@ -364,6 +364,12 @@ describe("reconnect abort propagation", () => {
 	const noDeferredCtx = {} as Parameters<DeferredMCPTool["execute"]>[3];
 
 	it("throws ToolAbortError when MCPTool reconnect is aborted", async () => {
+		// KEPT as an identity assertion: the type is what the agent loop branches
+		// on. Cancel a call whose server is unreachable and whose reconnect never
+		// settles, and it must surface as an abort that stops the turn, not as a
+		// tool result the model answers by calling the same dead server again.
+		// Dropping the abort guard in front of the error-to-result conversion turns
+		// this rejection into a resolved result, which is exactly the regression.
 		const failTransport = mockTransport(async () => {
 			throw new Error("ECONNRESET");
 		});
@@ -379,6 +385,8 @@ describe("reconnect abort propagation", () => {
 	});
 
 	it("throws ToolAbortError when DeferredMCPTool reconnect is aborted", async () => {
+		// Same identity contract on the deferred path, which reaches the reconnect
+		// from a different failure (no connection yet) and shares the guard.
 		const getConnection = async () => {
 			throw new Error("MCP server not connected");
 		};

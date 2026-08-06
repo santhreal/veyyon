@@ -266,6 +266,20 @@ describe("tools.approvalMode setting", () => {
 		// any non-yolo approval mode setting would be a no-op without feedback. The
 		// fix is to construct the runner unconditionally; this test makes that contract explicit so
 		// a future change to make the runner optional again cannot silently re-open the hole.
+		//
+		// This session was built with `disableExtensionDiscovery: true` and no extensions, which is
+		// exactly the configuration that used to leave the runner absent. Asserting the runner
+		// EXISTS is only half of it: the point is that a gated rung still gates, so the assertion
+		// below drives a real exec-tier call through the wrapper and requires the refusal. A runner
+		// that existed but wrapped nothing would let the command run and print its output.
 		expect(session.extensionRunner).toBeDefined();
+
+		const settings = approvalSettings({ "tools.approvalMode": "plan" });
+		await expect(
+			bashTool().execute("gate-installed", { command: "echo gate-bypassed" }, undefined, undefined, {
+				settings,
+				sessionManager,
+			} as Partial<AgentToolContext> as AgentToolContext),
+		).rejects.toThrow(/Plan autonomy: non-mutating tools only/);
 	});
 });
