@@ -220,6 +220,8 @@ export interface LoadCustomCommandsOptions {
 	cwd?: string;
 	/** Agent config directory. Default: from getAgentDir() */
 	agentDir?: string;
+	/** Session CPU budget hook: processes a command's `exec` spawns join the session's budget group. */
+	adoptSpawnedPid?: (pid: number) => void;
 }
 
 /**
@@ -267,7 +269,12 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 	const bundledApi: BundledCommandAPI = {
 		cwd,
 		exec: (command: string, args: string[], execOptions) =>
-			execCommand(command, args, execOptions?.cwd ?? cwd, execOptions),
+			execCommand(
+				command,
+				args,
+				execOptions?.cwd ?? cwd,
+				options.adoptSpawnedPid ? { ...execOptions, adoptPid: options.adoptSpawnedPid } : execOptions,
+			),
 		typebox,
 		arktype,
 		zod: zodModule,

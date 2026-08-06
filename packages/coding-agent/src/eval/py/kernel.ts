@@ -217,6 +217,7 @@ export class PythonKernel extends BaseKernel {
 			}),
 		});
 
+		options.adoptPid?.(proc.pid);
 		kernel.setProcess(proc);
 
 		const startup = { signal: options.signal, deadlineMs: options.deadlineMs };

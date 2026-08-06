@@ -147,6 +147,7 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 		private readonly runtime: IExtensionRuntime,
 		private readonly cwd: string,
 		public readonly events: EventBus,
+		private readonly adoptSpawnedPid?: (pid: number) => void,
 	) {}
 
 	on<F extends HandlerFn>(event: string, handler: F): void {
@@ -229,7 +230,12 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 	}
 
 	exec(command: string, args: string[], options?: ExecOptions) {
-		return execCommand(command, args, options?.cwd ?? this.cwd, options);
+		return execCommand(
+			command,
+			args,
+			options?.cwd ?? this.cwd,
+			this.adoptSpawnedPid ? { ...options, adoptPid: this.adoptSpawnedPid } : options,
+		);
 	}
 
 	getActiveTools(): string[] {
@@ -295,6 +301,7 @@ async function loadExtension(
 	cwd: string,
 	eventBus: EventBus,
 	runtime: IExtensionRuntime,
+	adoptSpawnedPid?: (pid: number) => void,
 ): Promise<{ extension: LoadedExtension | null; error: string | null }> {
 	const resolvedPath = resolvePath(extensionPath, cwd);
 	try {
@@ -309,7 +316,14 @@ async function loadExtension(
 		}
 
 		const extension = createExtension(extensionPath, resolvedPath);
-		const api = new ConcreteExtensionAPI(await loadCodingAgentApi(), extension, runtime, cwd, eventBus);
+		const api = new ConcreteExtensionAPI(
+			await loadCodingAgentApi(),
+			extension,
+			runtime,
+			cwd,
+			eventBus,
+			adoptSpawnedPid,
+		);
 		await withExitGuard(async () => {
 			await factory(api);
 		});
@@ -329,9 +343,10 @@ export async function loadExtensionFromFactory(
 	eventBus: EventBus,
 	runtime: IExtensionRuntime,
 	name = "<inline>",
+	adoptSpawnedPid?: (pid: number) => void,
 ): Promise<LoadedExtension> {
 	const extension = createExtension(name, name);
-	const api = new ConcreteExtensionAPI(await loadCodingAgentApi(), extension, runtime, cwd, eventBus);
+	const api = new ConcreteExtensionAPI(await loadCodingAgentApi(), extension, runtime, cwd, eventBus, adoptSpawnedPid);
 	await factory(api);
 	return extension;
 }
@@ -339,14 +354,19 @@ export async function loadExtensionFromFactory(
 /**
  * Load extensions from paths.
  */
-export async function loadExtensions(paths: string[], cwd: string, eventBus?: EventBus): Promise<LoadExtensionsResult> {
+export async function loadExtensions(
+	paths: string[],
+	cwd: string,
+	eventBus?: EventBus,
+	adoptSpawnedPid?: (pid: number) => void,
+): Promise<LoadExtensionsResult> {
 	const extensions: LoadedExtension[] = [];
 	const errors: Array<{ path: string; error: string }> = [];
 	const resolvedEventBus = eventBus ?? new EventBus();
 	const runtime = new ExtensionRuntime();
 
 	for (const extPath of paths) {
-		const { extension, error } = await loadExtension(extPath, cwd, resolvedEventBus, runtime);
+		const { extension, error } = await loadExtension(extPath, cwd, resolvedEventBus, runtime, adoptSpawnedPid);
 
 		if (error) {
 			errors.push({ path: extPath, error });

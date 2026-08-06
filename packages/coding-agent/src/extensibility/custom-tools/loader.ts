@@ -157,11 +157,17 @@ export class CustomToolLoader {
 			apply(reason: string): Promise<AgentToolResult<unknown>>;
 			reject?(reason: string): Promise<AgentToolResult<unknown> | undefined>;
 		}) => void,
+		adoptSpawnedPid?: (pid: number) => void,
 	) {
 		this.#sharedApi = {
 			cwd,
 			exec: (command: string, args: string[], options?: ExecOptions) =>
-				execCommand(command, args, options?.cwd ?? cwd, options),
+				execCommand(
+					command,
+					args,
+					options?.cwd ?? cwd,
+					adoptSpawnedPid ? { ...options, adoptPid: adoptSpawnedPid } : options,
+				),
 			ui: createNoOpUIContext(),
 			hasUI: false,
 			logger,
@@ -235,6 +241,7 @@ export async function loadCustomTools(
 		apply(reason: string): Promise<AgentToolResult<unknown>>;
 		reject?(reason: string): Promise<AgentToolResult<unknown> | undefined>;
 	}) => void,
+	adoptSpawnedPid?: (pid: number) => void,
 ) {
 	// No paths means no author code will ever see the API object, and building one costs the whole
 	// package barrel (see `../coding-agent-api`). Every launch calls this from `createAgentSession`,
@@ -245,7 +252,13 @@ export async function loadCustomTools(
 		return { tools: [] as LoadedCustomTool[], errors: [] as ToolLoadError[], setUIContext: () => {} };
 	}
 
-	const loader = new CustomToolLoader(await loadCodingAgentApi(), cwd, builtInToolNames, pushPendingAction);
+	const loader = new CustomToolLoader(
+		await loadCodingAgentApi(),
+		cwd,
+		builtInToolNames,
+		pushPendingAction,
+		adoptSpawnedPid,
+	);
 	await loader.load(pathsWithSources);
 	return {
 		tools: loader.tools,

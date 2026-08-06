@@ -191,6 +191,7 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 				hostHasInheritableConsole: hostHasInheritableConsole(),
 			}),
 		});
+		options.adoptPid?.(proc.pid);
 		kernel.setProcess(proc);
 
 		const startup = { signal: options.signal, deadlineMs: options.deadlineMs };

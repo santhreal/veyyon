@@ -304,6 +304,8 @@ export async function runInteractiveBashPty(
 		artifactId?: string;
 		/** Inline byte budget, priced by the caller's session. See `BashExecutorOptions.spillThreshold`. */
 		spillThreshold?: number;
+		/** Session CPU budget name; the PTY command joins that budget group. */
+		cpuBudgetId?: string;
 	},
 ): Promise<BashInteractiveResult> {
 	const settings = await Settings.init();
@@ -386,6 +388,7 @@ export async function runInteractiveBashPty(
 						cols,
 						rows,
 						shell: resolvedShell,
+						...(options.cpuBudgetId ? { cpuBudgetId: options.cpuBudgetId } : {}),
 					},
 					(err, chunk) => {
 						if (finished || err || !chunk) return;

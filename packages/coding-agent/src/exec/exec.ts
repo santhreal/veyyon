@@ -13,6 +13,8 @@ export interface ExecOptions {
 	timeout?: number;
 	/** Working directory */
 	cwd?: string;
+	/** Session CPU budget hook: the spawned process joins the session's budget group. */
+	adoptPid?: (pid: number) => void;
 }
 
 /**
@@ -39,6 +41,7 @@ export async function execCommand(
 		cwd,
 		signal: options?.signal,
 		timeout: options?.timeout,
+		onSpawnPid: options?.adoptPid,
 		allowNonZero: true,
 		allowAbort: true,
 		stderr: "full",

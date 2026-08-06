@@ -12,7 +12,7 @@ import { describeMCPTimeout, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "./
 import { MAX_TOOL_LIST_PAGES, validateToolListPage } from "./tool-list-validation";
 import { createHttpTransport } from "./transports/http";
 import { createSseTransport } from "./transports/sse";
-import { createStdioTransport } from "./transports/stdio";
+import { createStdioTransport, StdioTransport } from "./transports/stdio";
 import type {
 	MCPGetPromptParams,
 	MCPGetPromptResult,
@@ -146,6 +146,8 @@ export async function connectToServer(
 		signal?: AbortSignal;
 		onNotification?: (method: string, params: unknown) => void;
 		onRequest?: (method: string, params: unknown) => Promise<unknown>;
+		/** Session CPU budget hook: a spawned stdio server's pid is handed here so it joins the session's budget group. */
+		onSpawnPid?: (pid: number) => void;
 	},
 ): Promise<MCPServerConnection> {
 	const timeoutMs = resolveMCPTimeoutMs(config.timeout);
@@ -155,6 +157,9 @@ export async function connectToServer(
 		transport = await createTransport(config);
 		if (options?.onNotification) {
 			transport.onNotification = options.onNotification;
+		}
+		if (options?.onSpawnPid && transport instanceof StdioTransport) {
+			transport.onSpawnPid = options.onSpawnPid;
 		}
 
 		// Always handle standard MCP server-to-client requests (ping, roots/list).
