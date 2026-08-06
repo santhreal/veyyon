@@ -32,6 +32,7 @@
 ### Removed
 
 - `dirs`: dropped five directory helpers that no code in the repository called — `getCommandsDir`, `getAgentModulesDir`, `getProjectModulesDir`, `getCrashLogPath` and `getAutoresearchRunDir`. Each described a layout the product does not actually maintain: nothing has ever written `veyyon-crash.log`, and autoresearch stores a run under the per-project database rather than a `runs/<id>` directory. A path helper with no writer is worse than no helper, because the next caller takes it as evidence the directory is real.
+- `mime`: dropped `readImageMetadataSync`. Nothing called it, and the async `readImageMetadata` beside it serves every real consumer (the read tool, file mentions, the CLI file processor). A synchronous file read sitting next to the async one it duplicates is an invitation to block an event loop for no reason; `peekFileSync` is untouched, since `binary.ts` still needs it.
 
 ## [16.5.2] - 2026-07-14
 
