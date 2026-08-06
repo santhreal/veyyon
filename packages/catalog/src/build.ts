@@ -10,6 +10,7 @@
  * compat per request.
  */
 import { buildAnthropicCompat } from "./compat/anthropic";
+import { buildCursorCompat } from "./compat/cursor";
 import { buildDevinCompat } from "./compat/devin";
 import { buildOpenAICompat, buildOpenAIResponsesCompat, buildOpenRouterCompat } from "./compat/openai";
 import { resolveModelThinking } from "./model-thinking";
@@ -41,6 +42,8 @@ export function buildCompat(spec: ModelSpec<Api>): CompatOf<Api> {
 			return buildAnthropicCompat(spec as ModelSpec<"anthropic-messages">);
 		case "devin-agent":
 			return buildDevinCompat(spec as ModelSpec<"devin-agent">);
+		case "cursor-agent":
+			return buildCursorCompat(spec as ModelSpec<"cursor-agent">);
 		default:
 			return undefined;
 	}

@@ -31,11 +31,13 @@ import {
 	isOpenAIGptOssModelId,
 	supportsAdaptiveThinkingDisplay,
 } from "./identity/family";
+import { basetenRouteReasoning } from "./provider-models/baseten-reasoning";
 import type {
 	Api,
 	CompatOf,
 	Model,
 	ModelSpec,
+	ResolvedCursorCompat,
 	ResolvedDevinCompat,
 	ResolvedOpenAICompat,
 	ResolvedOpenAIResponsesCompat,
@@ -137,14 +139,34 @@ export function resolveModelThinking<TApi extends Api>(
 ): ThinkingConfig | undefined {
 	if (!spec.reasoning) return undefined;
 	if (omitsWireReasoningEffort(spec.api, compat)) return undefined;
+	// A routed row's surface is owned by its collapse table: the per-effort
+	// wire ids ARE the control, and neither discovery nor identity may
+	// re-derive them.
+	if (spec.thinking?.effortRouting !== undefined) {
+		return fillThinkingWireDefaults(spec, compat, spec.thinking);
+	}
+	// Discovery-declared reasoning surfaces (models.dev `reasoning_options`)
+	// win over every derived or previously baked ladder: the endpoint stated
+	// which efforts it accepts. `noEffortControl` (empty options, or a binary
+	// toggle with no levels) means the model reasons but exposes no control,
+	// the same encoding as `reasoning: true, thinking: undefined`.
+	if (spec.reasoningOptions !== undefined) {
+		if (spec.reasoningOptions.noEffortControl === true) return undefined;
+		const discovered = spec.reasoningOptions.efforts;
+		if (discovered !== undefined && discovered.length > 0) {
+			return thinkingConfigFromEfforts(spec, compat, canonicalizeEfforts(discovered));
+		}
+	}
 	if (spec.thinking && Array.isArray(spec.thinking.efforts) && spec.thinking.efforts.length > 0) {
 		return fillThinkingWireDefaults(spec, compat, spec.thinking);
 	}
-	// Cascade selects effort only by routing to a sibling model id, so a Devin
-	// model with no explicit routed thinking has no controllable surface —
-	// never fabricate an effort ladder from identity.
-	if ((compat as ResolvedDevinCompat | undefined)?.trustExplicitThinkingOnly === true) return undefined;
-	// Empty/malformed explicit metadata is treated as absent — infer instead.
+	// Cascade/Cursor select effort only by routing to a sibling model id, so a
+	// model on those transports with no explicit routed thinking has no
+	// controllable surface: never fabricate an effort ladder from identity.
+	if ((compat as ResolvedDevinCompat | ResolvedCursorCompat | undefined)?.trustExplicitThinkingOnly === true) {
+		return undefined;
+	}
+	// Empty/malformed explicit metadata is treated as absent: infer instead.
 	return deriveThinking(spec, compat);
 }
 
@@ -209,6 +231,21 @@ export function deriveThinking<TApi extends Api>(spec: ModelSpec<TApi>, compat: 
 	if (efforts.length === 0) {
 		throw new Error(`Model ${spec.provider}/${spec.id} resolved to an empty thinking range`);
 	}
+	return thinkingConfigFromEfforts(spec, compat, efforts);
+}
+
+/**
+ * Assemble the thinking config around a known ladder: the control mode and
+ * every wire fact (effort map, adaptive display, mandatory reasoning) derive
+ * from identity + compat, so a discovery-declared ladder and an
+ * identity-derived ladder bake into the same shape.
+ */
+function thinkingConfigFromEfforts<TApi extends Api>(
+	spec: ModelSpec<TApi>,
+	compat: CompatOf<TApi>,
+	efforts: readonly Effort[],
+): ThinkingConfig {
+	const parsed = parseKnownModel(spec.id);
 	const config: ThinkingConfig = {
 		mode: inferThinkingControlMode(spec, parsed),
 		efforts,
@@ -306,6 +343,8 @@ function getModelDefinedEfforts<TApi extends Api>(
 	spec: ModelSpec<TApi>,
 	compat: CompatOf<TApi>,
 ): readonly Effort[] | undefined {
+	const basetenRoute = spec.provider === "baseten" ? basetenRouteReasoning(spec.id) : undefined;
+	if (basetenRoute?.efforts !== undefined) return basetenRoute.efforts;
 	if (isGlm52ReasoningEffortModelId(spec.id)) {
 		// GLM-5.2's reasoning_effort dialect is host-specific (verified against
 		// live endpoints):
@@ -362,10 +401,6 @@ function getModelDefinedEfforts<TApi extends Api>(
 		// DeepSeek route tops out at high.
 		return isOpenRouterThinkingFormat(compat) ? HIGH_ONLY_REASONING_EFFORTS : HIGH_MAX_REASONING_EFFORTS;
 	}
-	if (spec.provider === "baseten" && isOpenAIGptOssModelId(spec.id)) {
-		// Baseten's gpt-oss router mirrors its GLM route: high/max only.
-		return HIGH_MAX_REASONING_EFFORTS;
-	}
 	return isOpenAICompatReasoningApi(spec.api) &&
 		(isMinimaxM2FamilyModelId(spec.id) ||
 			isOpenAIGptOssModelId(spec.id) ||
@@ -376,10 +411,10 @@ function getModelDefinedEfforts<TApi extends Api>(
 
 /**
  * Wire-exact effort ladders for Anthropic adaptive models (4.6+). Model-defined
- * so stale cached surfaces normalize on every build: Messages-API models with
- * the real xhigh tier (4.7+) expose the full five-tier `low..max` scale;
- * Opus/Sonnet 4.6 and every Bedrock adaptive model stay on the four-tier
- * `low/medium/high/max` scale.
+ * so stale cached surfaces normalize on every build: models with the real xhigh
+ * tier (4.7+) expose the full five-tier `low..max` scale on both the Messages
+ * API and Bedrock Converse, which serve the tier identically; Opus/Sonnet 4.6
+ * stay on the four-tier `low/medium/high/max` scale on either host.
  */
 function getAnthropicAdaptiveEfforts<TApi extends Api>(spec: ModelSpec<TApi>): readonly Effort[] | undefined {
 	const parsed = parseAnthropicModel(bareModelId(spec.id));
@@ -672,12 +707,21 @@ function isOpenRouterAnthropicAdaptiveReasoningModel<TApi extends Api>(
 }
 
 /**
- * Opus 4.7+, Sonnet 5+, and Fable/Mythos 5+ on the Messages API expose the full five-tier
- * adaptive scale (low/medium/high/xhigh/max). Bedrock Converse stays on the
- * four-tier scale regardless of model version.
+ * Opus 4.7+, Sonnet 5+, and Fable/Mythos 5+ expose the full five-tier adaptive
+ * scale (low/medium/high/xhigh/max); earlier adaptive generations stay on four.
+ *
+ * Host does not narrow the ladder. Both `anthropic-messages` and
+ * `bedrock-converse-stream` resolve these models to `anthropic-adaptive`
+ * (`inferThinkingControlMode`), and both transports send the tier as
+ * `output_config.effort` built by `mapEffortToAnthropicAdaptiveEffort`, which
+ * passes `xhigh` through as the literal wire value — Bedrock's adaptive branch
+ * in `buildAdditionalModelRequestFields` never reaches the four-tier
+ * `budget_tokens` schedule where `xhigh` and `max` collapse onto 32_768.
+ * `xhigh` therefore arrives at the model identically on either host, so the
+ * ladder is a fact about the model and identity may state it for both.
  */
 function anthropicModelHasRealXHighEffort<TApi extends Api>(spec: ModelSpec<TApi>, parsedModel: ParsedModel): boolean {
-	if (spec.api !== "anthropic-messages") return false;
+	if (spec.api !== "anthropic-messages" && spec.api !== "bedrock-converse-stream") return false;
 	if (parsedModel.family !== "anthropic") return false;
 	return isAnthropicAdaptiveGenAtLeast(parsedModel, "4.7");
 }

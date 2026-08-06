@@ -18,7 +18,22 @@ import {
 	GITLAB_SAAS_URL,
 	OPENROUTER_API_ENDPOINT,
 } from "@veyyon/catalog/provider-endpoints";
-import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { moduleSpecifiersIn, namedImportsFrom, withoutComments } from "@veyyon/utils/module-reach";
+
+/**
+ * The endpoint names a module takes from the owner, by either spelling of the specifier.
+ *
+ * Sources inside `@veyyon/catalog` reach it relatively; everything else reaches it by package
+ * subpath, and a consumer is free to move between the two without changing what it depends on.
+ */
+function importedEndpoints(source: string): string[] {
+	return [
+		...namedImportsFrom(source, "@veyyon/catalog/provider-endpoints"),
+		...namedImportsFrom(source, "../provider-endpoints"),
+		...namedImportsFrom(source, "../../provider-endpoints"),
+		...namedImportsFrom(source, "./provider-endpoints"),
+	];
+}
 
 /**
  * Google's Cloud Code Assist and Antigravity base URLs, and the one place they are written.
@@ -125,12 +140,23 @@ describe("catalog/discovery/antigravity re-exports rather than redeclaring", () 
 		expect(ANTIGRAVITY_SANDBOX_VIA_DISCOVERY).toBe(ANTIGRAVITY_SANDBOX_ENDPOINT);
 	});
 
-	/** And the module really does re-export rather than assign, so there is nothing left to drift. */
-	it("spells the re-export as an export-from", async () => {
+	/**
+	 * And the module really does re-export rather than assign, so there is nothing left to drift.
+	 *
+	 * Keyed on the DECLARATION form rather than on a formatted `export { ... } from "...";` line.
+	 * Both endpoints are strings, so a second identical literal is `===` the owner's and the
+	 * identity case above cannot see it; this is the half that can. Anchoring on the whole
+	 * re-export line instead would report the formatter's line wrapping rather than the code.
+	 */
+	it("declares neither endpoint, so both can only come from the owner", async () => {
 		const source = await Bun.file(path.resolve(import.meta.dir, "../src/discovery/antigravity.ts")).text();
-		expect(source).toContain(
-			'export { ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT } from "../provider-endpoints";',
-		);
+		const code = withoutComments(source);
+
+		for (const name of ["ANTIGRAVITY_PRIMARY_ENDPOINT", "ANTIGRAVITY_SANDBOX_ENDPOINT"]) {
+			expect(new RegExp(`(?:const|let|var)\\s+${name}\\b`).test(code), `${name} is declared here`).toBe(false);
+		}
+		expect(code).toMatch(/export\s*\{[^}]*ANTIGRAVITY_PRIMARY_ENDPOINT[^}]*\}\s*from\s*"\.\.\/provider-endpoints"/);
+		expect(code).toMatch(/export\s*\{[^}]*ANTIGRAVITY_SANDBOX_ENDPOINT[^}]*\}\s*from\s*"\.\.\/provider-endpoints"/);
 	});
 });
 
@@ -233,10 +259,11 @@ describe("Devin's three hosts", () => {
 		];
 		for (const [file, expected] of expectations) {
 			const text = await Bun.file(path.join(packagesDir, file)).text();
-			expect(text, file).toContain(expected);
-			expect(text, file).not.toMatch(/^\s*(?:export )?const DEVIN_API_URL\b/m);
-			expect(text, file).not.toMatch(/^\s*const DEVIN_DEFAULT_BASE_URL\b/m);
-			expect(text, file).toContain("provider-endpoints");
+			// One assertion for both halves. TypeScript refuses a module that both imports a binding
+			// and declares it, so "imports DEVIN_CASCADE_ENDPOINT from the owner" IS "keeps no private
+			// copy under any name" -- including the two retired spellings this used to chase by regex,
+			// and the third one nobody thought to add.
+			expect(importedEndpoints(text), file).toContain(expected);
 		}
 	});
 });
@@ -321,8 +348,7 @@ describe("Gemini, Anthropic and Cursor", () => {
 		const packagesDir = path.resolve(import.meta.dir, "../..");
 		for (const [file, symbol] of expected) {
 			const text = await Bun.file(path.join(packagesDir, file)).text();
-			expect(text, file).toContain(symbol);
-			expect(text, file).toMatch(/from "(?:@veyyon\/catalog\/provider-endpoints|\.\.\/provider-endpoints)";/);
+			expect(importedEndpoints(text), file).toContain(symbol);
 		}
 	});
 });
@@ -348,8 +374,7 @@ describe("OpenRouter's API base", () => {
 			"coding-agent/src/web/search/providers/perplexity-auth.ts",
 		]) {
 			const text = await Bun.file(path.join(packagesDir, file)).text();
-			expect(text, file).toContain("OPENROUTER_API_ENDPOINT");
-			expect(text, file).toContain('from "@veyyon/catalog/provider-endpoints"');
+			expect(importedEndpoints(text), file).toContain("OPENROUTER_API_ENDPOINT");
 		}
 	});
 

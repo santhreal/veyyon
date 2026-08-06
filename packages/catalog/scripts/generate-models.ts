@@ -53,6 +53,7 @@ import {
 	applyGeneratedModelPolicies,
 	CLOUDFLARE_FALLBACK_MODEL,
 	linkOpenAIPromotionTargets,
+	noteDiscoveryIdentityLadderDivergence,
 } from "./generated-policies";
 
 const packageRoot = path.join(import.meta.dir, "..");
@@ -211,6 +212,34 @@ function applyGlobalModelsDevFallback(
 			contextWindow: model.contextWindow ?? reference.contextWindow,
 			maxTokens: model.maxTokens ?? reference.maxTokens,
 		};
+	});
+}
+
+/**
+ * Overlay the models.dev reasoning surface (`reasoning_options`, already
+ * normalized onto the models.dev rows by `mapModelsDevToModels`) onto rows
+ * that came from AUTHORITATIVE endpoint discovery. Those rows replace their
+ * models.dev twins in the merge above, which would otherwise drop the
+ * declared effort ladder (OpenRouter's `/models` carries no effort
+ * vocabulary; models.dev's `z-ai/glm-5.2` says high/xhigh while identity
+ * alone would offer the full ladder). Same provider AND id only: a bare-id
+ * match across providers says nothing about this host's accepted levels.
+ */
+function overlayModelsDevReasoningOptions(
+	models: readonly ModelSpec[],
+	modelsDevModels: readonly ModelSpec[],
+): ModelSpec[] {
+	const byKey = new Map<string, ModelSpec["reasoningOptions"]>();
+	for (const model of modelsDevModels) {
+		if (model.reasoningOptions !== undefined) {
+			byKey.set(`${model.provider}/${model.id}`, model.reasoningOptions);
+		}
+	}
+	if (byKey.size === 0) return [...models];
+	return models.map(model => {
+		if (model.reasoningOptions !== undefined || model.reasoning !== true) return model;
+		const reasoningOptions = byKey.get(`${model.provider}/${model.id}`);
+		return reasoningOptions === undefined ? model : { ...model, reasoningOptions };
 	});
 }
 
@@ -580,7 +609,9 @@ async function generateModels() {
 	// base rows (stale previous-snapshot aliases are dropped inside), before the
 	// policy re-bake so the aliases get the same baked thinking metadata.
 	allModels = projectOpenAIProReasoningAliases(allModels);
+	allModels = overlayModelsDevReasoningOptions(allModels, modelsDevModels);
 	applyGeneratedModelPolicies(allModels);
+	noteDiscoveryIdentityLadderDivergence(allModels);
 	linkOpenAIPromotionTargets(allModels);
 	// Collapse effort-tier variants AFTER the policy re-bake: live-discovery
 	// entries are already collapsed (rebake skips them); this pass folds

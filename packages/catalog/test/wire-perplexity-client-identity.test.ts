@@ -162,7 +162,7 @@ describe("the Perplexity client identity has one owner", () => {
 	 */
 	it("has the login flow sending the shared header pair on every request", async () => {
 		const login = await Bun.file(LOGIN).text();
-		expect(login).toContain('from "@veyyon/catalog/wire/perplexity"');
+		expect(moduleSpecifiersIn(login)).toContain("@veyyon/catalog/wire/perplexity");
 		// One spread per request in the OTP flow: csrf, signin-email, signin-otp.
 		expect(login.match(/PERPLEXITY_NATIVE_APP_HEADERS/g)?.length).toBe(4);
 		expect(login.match(/\$\{PERPLEXITY_WEB_ORIGIN\}\/api\/auth\//g)?.length).toBe(3);
@@ -174,7 +174,7 @@ describe("the Perplexity client identity has one owner", () => {
 	 */
 	it("has the search path reading the version for both the header and the body", async () => {
 		const search = await Bun.file(SEARCH).text();
-		expect(search).toContain('from "@veyyon/catalog/wire/perplexity"');
+		expect(moduleSpecifiersIn(search)).toContain("@veyyon/catalog/wire/perplexity");
 		expect(search).toContain("headers[PERPLEXITY_HEADERS.API_VERSION] = PERPLEXITY_NATIVE_APP_API_VERSION;");
 		expect(search).toContain("version: PERPLEXITY_NATIVE_APP_API_VERSION,");
 		expect(search).toContain("PERPLEXITY_NATIVE_APP_USER_AGENT");
@@ -216,7 +216,7 @@ describe("the browser fingerprint states its version once", () => {
 	it("has the anonymous search path reading the shared browser User-Agent", async () => {
 		const search = await Bun.file(SEARCH).text();
 		expect(search).toContain("CHROME_DESKTOP_USER_AGENT");
-		expect(search).toContain('from "./browser-headers"');
+		expect(moduleSpecifiersIn(search)).toContain("./browser-headers");
 		expect(search).not.toContain("ANONYMOUS_USER_AGENT");
 	});
 

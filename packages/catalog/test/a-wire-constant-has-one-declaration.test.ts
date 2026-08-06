@@ -35,6 +35,7 @@ import { describe, expect, it } from "bun:test";
 import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { FETCH_AVAILABLE_MODELS_PATH } from "../src/discovery/antigravity";
 import {
 	DEVIN_EXTENSION_NAME,
@@ -132,7 +133,7 @@ describe("Devin's client identity", () => {
 
 		expect(provider).toContain("DEVIN_IDE_NAME,");
 		expect(provider).toContain("DEVIN_IDE_VERSION,");
-		expect(provider).toContain('from "@veyyon/catalog/discovery/devin"');
+		expect(moduleSpecifiersIn(provider)).toContain("@veyyon/catalog/discovery/devin");
 	});
 });
 
@@ -177,7 +178,7 @@ describe("the Codex base URL", () => {
 		);
 
 		expect(provider).toContain("CODEX_BASE_URL,");
-		expect(provider).toContain('from "@veyyon/catalog/wire/codex"');
+		expect(moduleSpecifiersIn(provider)).toContain("@veyyon/catalog/wire/codex");
 	});
 
 	/**

@@ -18,10 +18,14 @@
  * present a fresh consent screen for permissions the user already gave.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import * as path from "node:path";
 import { GoogleOAuthFlow } from "@veyyon/ai/oauth/google-oauth-shared";
-import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { loginAntigravity } from "@veyyon/ai/registry/oauth/google-antigravity";
+import { loginGeminiCli } from "@veyyon/ai/registry/oauth/google-gemini-cli";
+import * as googleOAuthShared from "@veyyon/ai/registry/oauth/google-oauth-shared";
+import type { OAuthController } from "@veyyon/ai/registry/oauth/types";
+import { moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
 import {
 	GOOGLE_BASE_OAUTH_SCOPES,
 	GOOGLE_OAUTH_AUTH_ENDPOINT,
@@ -107,28 +111,43 @@ describe("the scopes veyyon requests", () => {
 
 describe("both sign-in flows read one declaration", () => {
 	/**
-	 * Gemini CLI requests exactly the shared trio, so it takes the list rather than restating it. Read from the
-	 * shipped module so this proves the wiring and not just the constant.
+	 * The scopes each flow actually REQUESTS, captured at the seam both flows hand them to.
+	 *
+	 * This replaces three scans for assignment text (`const SCOPES = GOOGLE_BASE_OAUTH_SCOPES;` and
+	 * friends). Those could not see whether the list survived to the request, and they went red on a
+	 * rename of a module-private local that no caller can observe. Spying the shared runner reads the
+	 * grant itself, in order, which is what the comment below says is load-bearing.
 	 */
+	async function scopesRequestedBy(login: (ctrl: OAuthController) => Promise<unknown>): Promise<readonly string[]> {
+		let captured: readonly string[] = [];
+		const spy = spyOn(googleOAuthShared, "runGoogleOAuthLogin").mockImplementation((async (_ctrl, config) => {
+			captured = config.scopes;
+			return {} as never;
+		}) as typeof googleOAuthShared.runGoogleOAuthLogin);
+		try {
+			await login({} as OAuthController);
+		} finally {
+			spy.mockRestore();
+		}
+		return captured;
+	}
+
+	/** Gemini CLI requests exactly the shared trio, so it takes the list rather than restating it. */
 	it("has the Gemini CLI flow requesting the shared trio", async () => {
-		const flow = await Bun.file(path.join(AI_SRC, "registry/oauth/google-gemini-cli.ts")).text();
-		expect(flow).toContain("const SCOPES = GOOGLE_BASE_OAUTH_SCOPES;");
-		expect(flow).toContain("const AUTH_URL = GOOGLE_OAUTH_AUTH_ENDPOINT;");
-		expect(flow).toContain("const TOKEN_URL = GOOGLE_OAUTH_TOKEN_ENDPOINT;");
+		expect(await scopesRequestedBy(loginGeminiCli)).toEqual([...GOOGLE_BASE_OAUTH_SCOPES]);
 	});
 
 	/**
 	 * Antigravity needs two more, `cclog` and `experimentsandconfigs`, which stay with it because no other flow
-	 * asks for them. Appended after the shared trio rather than interleaved, since the order is part of the grant.
+	 * asks for them. Appended after the shared trio rather than interleaved, since the order is part of the grant,
+	 * and an ordered comparison is the only thing that can say so.
 	 */
-	it("has Antigravity appending only its own two scopes", async () => {
-		const flow = await Bun.file(path.join(AI_SRC, "registry/oauth/google-antigravity.ts")).text();
-		expect(flow).toContain("...GOOGLE_BASE_OAUTH_SCOPES,");
-		expect(flow).toContain('"https://www.googleapis.com/auth/cclog"');
-		expect(flow).toContain('"https://www.googleapis.com/auth/experimentsandconfigs"');
-		// The shared three are no longer written out here.
-		expect(flow).not.toContain('"https://www.googleapis.com/auth/cloud-platform"');
-		expect(flow).not.toContain('"https://www.googleapis.com/auth/userinfo.email"');
+	it("has Antigravity appending only its own two scopes, after the shared trio", async () => {
+		expect(await scopesRequestedBy(loginAntigravity)).toEqual([
+			...GOOGLE_BASE_OAUTH_SCOPES,
+			"https://www.googleapis.com/auth/cclog",
+			"https://www.googleapis.com/auth/experimentsandconfigs",
+		]);
 	});
 
 	/**
@@ -173,13 +192,19 @@ describe("both sign-in flows read one declaration", () => {
 		]);
 	});
 
-	/** The service-account path reads the same token endpoint and the same cloud-platform scope. */
+	/**
+	 * The service-account path reads the same token endpoint and the same cloud-platform scope.
+	 *
+	 * The named import settles both halves at once: TypeScript refuses a module that imports a binding
+	 * and also declares it, so this replaces the two `not.toContain("const OAUTH_TOKEN_URL")` scans,
+	 * which only ever checked the two names the copies happened to use last time.
+	 */
 	it("has the service-account path reading the owner", async () => {
 		const auth = await Bun.file(path.join(AI_SRC, "providers/google-auth.ts")).text();
-		expect(auth).toContain("GOOGLE_OAUTH_TOKEN_ENDPOINT");
-		expect(auth).toContain("GOOGLE_SCOPE_CLOUD_PLATFORM");
-		expect(auth).not.toContain("const OAUTH_TOKEN_URL");
-		expect(auth).not.toContain("const CLOUD_PLATFORM_SCOPE");
+
+		expect(namedImportsFrom(auth, "@veyyon/catalog/wire/google-oauth")).toEqual(
+			expect.arrayContaining(["GOOGLE_OAUTH_TOKEN_ENDPOINT", "GOOGLE_SCOPE_CLOUD_PLATFORM"]),
+		);
 	});
 });
 

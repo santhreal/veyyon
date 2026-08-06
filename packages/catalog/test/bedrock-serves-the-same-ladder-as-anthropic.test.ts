@@ -1,26 +1,39 @@
 /**
  * WHY: the same Claude model is one model no matter which host serves it, so
  * its effort ladder on Bedrock has to match the ladder on Anthropic direct.
- * Nothing in the resolver enforces that today; the two rows arrive by
- * different routes and happen to agree.
  *
- * The narrow route is the one at risk. `getAnthropicAdaptiveEfforts` asks
- * `anthropicModelHasRealXHighEffort`, which requires `api ===
- * "anthropic-messages"`, so a Bedrock row can never earn its fifth tier from
- * identity: `bedrock-converse-stream` gets four. Bedrock ships five only
- * because the models.dev declaration outranks that answer in
- * `resolveModelThinking`. Two plausible edits silently drop `xhigh` from every
- * Bedrock Claude 4.7+ row while Anthropic direct keeps it — moving the curated
- * lookup above the declaration (measured: 26 rows lose a tier), or a regen
- * that drops `reasoning_options`. Both are invisible in review and show up as
- * a capability the user simply cannot select on Bedrock.
+ * That is a claim about the wire, and the wire agrees. Both hosts resolve an
+ * adaptive-generation Claude to `anthropic-adaptive`
+ * (`inferThinkingControlMode`), and both send the tier as
+ * `output_config.effort` from `mapEffortToAnthropicAdaptiveEffort`, which
+ * passes `xhigh` through as the literal wire value: Anthropic in
+ * `buildAnthropicRequest`, Bedrock in `buildAdditionalModelRequestFields`. The
+ * Bedrock adaptive branch returns before the `budget_tokens` schedule where
+ * `xhigh` and `max` would collapse onto the same 32_768. So `xhigh` really does
+ * reach the model on Bedrock, and identity is entitled to say so.
+ *
+ * It did not say so until now. `getAnthropicAdaptiveEfforts` asks
+ * `anthropicModelHasRealXHighEffort`, which required `api ===
+ * "anthropic-messages"`, so a Bedrock row could never earn its fifth tier from
+ * identity and shipped five only because the models.dev declaration outranks
+ * the curated answer in `resolveModelThinking`. Two plausible edits silently
+ * dropped `xhigh` from every Bedrock Claude 4.7+ row while Anthropic direct
+ * kept it — moving the curated lookup above the declaration (measured: 26 rows
+ * lose a tier), or a regen that drops `reasoning_options`. Both are invisible
+ * in review and show up as a capability the user simply cannot select.
+ *
+ * The third test is the one that holds the predicate open: it strips the
+ * declaration off every paired row and rebuilds, which is exactly what a regen
+ * without `reasoning_options` produces, and demands the two hosts still agree.
  *
  * Pinning agreement rather than the literal tiers keeps this true as Anthropic
  * adds ladders: a new model lands in both catalogs, and the test only cares
  * that Bedrock is not the narrower of the two.
  */
 import { describe, expect, test } from "bun:test";
+import { buildModel } from "../src/build";
 import { getBundledModels } from "../src/models";
+import type { Api, Model, ModelSpec } from "../src/types";
 
 /** `eu.anthropic.claude-opus-5` and `anthropic.claude-opus-5` are one model. */
 const BEDROCK_ROW = /^(?:[a-z]{2}\.|global\.)?anthropic\.(.+)$/;
@@ -45,6 +58,30 @@ function ladders(): { bedrock: string; model: string; onBedrock: string; onAnthr
 	return paired;
 }
 
+/** The row a regen without `reasoning_options` would produce: identity only. */
+function withoutDeclaration(model: Model<Api>): Model<Api> {
+	return buildModel({ ...(model as unknown as ModelSpec<Api>), thinking: undefined, reasoningOptions: undefined });
+}
+
+function laddersFromIdentityAlone(): { bedrock: string; onBedrock: string; onAnthropic: string }[] {
+	const direct = new Map<string, string>();
+	for (const model of getBundledModels("anthropic")) {
+		direct.set(model.id, withoutDeclaration(model).thinking?.efforts?.join(",") ?? "(none)");
+	}
+	const paired: { bedrock: string; onBedrock: string; onAnthropic: string }[] = [];
+	for (const model of getBundledModels("amazon-bedrock")) {
+		const bare = BEDROCK_ROW.exec(model.id)?.[1];
+		const onAnthropic = bare === undefined ? undefined : direct.get(bare);
+		if (bare === undefined || onAnthropic === undefined) continue;
+		paired.push({
+			bedrock: model.id,
+			onBedrock: withoutDeclaration(model).thinking?.efforts?.join(",") ?? "(none)",
+			onAnthropic,
+		});
+	}
+	return paired;
+}
+
 describe("a Claude model on Bedrock", () => {
 	test("offers the same effort ladder as the same model on Anthropic direct", () => {
 		const disagreeing = ladders()
@@ -61,5 +98,29 @@ describe("a Claude model on Bedrock", () => {
 		expect(paired.length).toBeGreaterThanOrEqual(20);
 		expect(fiveTier.length).toBeGreaterThanOrEqual(10);
 		expect(new Set(fiveTier.map(row => row.model)).size).toBeGreaterThanOrEqual(3);
+	});
+
+	test("earns the fifth tier from identity, not from the declaration", () => {
+		// A regen that drops `reasoning_options` leaves identity as the only
+		// source of the ladder. With `anthropicModelHasRealXHighEffort`
+		// restricted to `anthropic-messages`, every 4.7+ Bedrock row falls to
+		// four tiers here while Anthropic direct keeps five, and the user loses
+		// `xhigh` on Bedrock with nothing saying so.
+		//
+		// Scoped to the `xhigh` tier rather than the whole ladder because the
+		// identity route has one unrelated asymmetry: budget-mode Claude 4.6
+		// derives a leading `minimal` on Bedrock that Anthropic direct does not
+		// have. That gap is real but is not this predicate's, and folding it in
+		// would make this test fail for a reason it does not describe.
+		const paired = laddersFromIdentityAlone();
+		const lostOnBedrock = paired
+			.filter(row => row.onAnthropic.split(",").includes("xhigh") && !row.onBedrock.split(",").includes("xhigh"))
+			.map(row => `${row.bedrock}: bedrock=[${row.onBedrock}] anthropic=[${row.onAnthropic}]`);
+		expect(lostOnBedrock).toEqual([]);
+
+		// Non-vacuity: the identity route must actually be producing the fifth
+		// tier, not agreeing by stripping both sides down to four.
+		const fiveTier = paired.filter(row => row.onBedrock.split(",").includes("xhigh"));
+		expect(fiveTier.length).toBeGreaterThanOrEqual(10);
 	});
 });
