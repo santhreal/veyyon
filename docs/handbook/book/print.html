@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ee92964e.js";
+            window.path_to_searchindex_js = "searchindex-9aa37f0d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-1bc24e0a.js"></script>
+        <script src="toc-79e2ba62.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -990,6 +990,10 @@ email, the plan, how the credential was supplied, and how much of its quota is s
 <p>From that card you press <code>enter</code> to use the selected account, <code>n</code> to name it, <code>r</code> to re-check its
 health, <code>u</code> to open its usage, <code>x</code> twice to log it out, and <code>a</code> to add another account for the same
 provider. <code>/account manager</code> opens the same card.</p>
+<p>The last row of the list is <code>+ add another … account</code>. It is a position in the list like any other:
+arrow down past your last account to land on it, and press <code>enter</code> there to start a login. The
+mouse works on the card as well. Click an account to select it, click that last row to start the
+login, and click any key chip in the footer to run what it names.</p>
 <p>Switching is <strong>per provider</strong>. Choosing another Anthropic account changes Anthropic and nothing else,
 because several providers serve one session at the same time: your main model, your subagent roles,
 and web search can each be a different provider. Moving between providers is a model choice, so it
@@ -2020,6 +2024,93 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#configuration-4">Configuration</a></li>
 <li><a href="#tool-call-repair">Repair</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="cpu-limits"><a class="header" href="#cpu-limits">CPU limits</a></h1>
+<p>A CPU limit caps how much processor time the processes a session spawns may use. You set it in
+cores: <code>session.cpuLimitCores: 2</code> lets the session’s commands consume at most two cores, no matter
+how many the machine has. The limit is per session, not per machine: two sessions capped at 2
+cores each may use 4 between them. There is no cross-session cap, by design.</p>
+<p>Two settings drive it:</p>
+<pre><code class="language-yaml">session:
+  cpuLimitCores: 2      # 0 (the default) is off
+  cpuLimitKill: false   # what to do past the budget; see below
+</code></pre>
+<h2 id="what-is-capped"><a class="header" href="#what-is-capped">What is capped</a></h2>
+<p>Every process a session spawns to do its work joins the budget. That covers bash commands (plain
+and PTY), MCP stdio servers, the <code>exec</code> calls that custom tools, custom commands, and extensions
+make, background processes from the <code>launch</code> tool, the eval kernels (Python, Ruby, Julia),
+language servers, debug adapters, the managed browser, <code>git</code> and <code>jj</code>, <code>ssh</code>, and the installs
+that plugins run. A capped process passes the budget to its own children, so a build that spawns
+a compiler fleet is still one budget.</p>
+<p>Some processes belong to no single session and join the root session’s budget instead. Those are
+the shared harness workers, such as the tiny title model and embeddings, and the speech capture
+and playback helpers.</p>
+<p>Five kinds of process stay outside the budget. Each is outside for a reason rather than by
+oversight:</p>
+<ul>
+<li><strong>Anything that starts before a session exists.</strong> Host capability probes, the shell environment
+snapshot, model provider probes, and the ssh bootstrap for a remote auth broker all run when
+there is no budget to join.</li>
+<li><strong>The harness itself.</strong> Agent turns, the TUI, and the relaunch that replaces the veyyon process.</li>
+<li><strong>Programs that are yours rather than the agent’s.</strong> The editor veyyon opens a file in, the
+clipboard helper, <code>veyyon shell</code>, and the self-updater. Capping the updater could leave a
+half-written install, and killing your editor on a budget breach would discard unsaved text.</li>
+<li><strong>Threads rather than processes.</strong> The browser tab supervisor and the JavaScript eval context
+run as Bun Workers inside the harness process, and a cgroup holds processes, not threads of one.</li>
+<li><strong>Processes the session did not start.</strong> Attaching to a browser that is already running adopts
+nothing, because the session does not own that process.</li>
+</ul>
+<p>If you cap a session at 1 core, veyyon stays responsive while the build under it crawls.</p>
+<h2 id="how-it-is-enforced"><a class="header" href="#how-it-is-enforced">How it is enforced</a></h2>
+<p>Where the operating system offers a per-group CPU quota, the kernel does the capping:</p>
+<ul>
+<li><strong>Linux</strong> uses a cgroup v2 directory per session with <code>cpu.max</code> set to the core count. If the
+harness’s own cgroup is not writable, veyyon asks the systemd user manager for a scope with
+<code>CPUQuota</code> instead.</li>
+<li><strong>Windows</strong> uses a Job Object with a hard CPU rate cap.</li>
+</ul>
+<p>A once-per-second watcher reads the group’s usage on top of the kernel cap. When usage stays
+pinned at the budget for about three seconds, new commands are refused with an error that names
+the budget, the measured usage, and the fix (raise <code>session.cpuLimitCores</code> or wait), until usage
+drops. The kernel cap is the enforcement of last resort: if the watcher lags, commands throttle,
+they never run free.</p>
+<p>With <code>session.cpuLimitKill: true</code>, a sustained breach also sends SIGTERM to the group’s
+processes. The kill is reported as a budget action: the notice and the killed command’s result
+both say the command was stopped by the CPU budget, not that it crashed.</p>
+<p><strong>macOS has no per-group CPU quota.</strong> There the budget is policy only: new commands are refused
+while the group is saturated, running members are reniced, and <code>session.cpuLimitKill</code> still
+kills. Nothing throttles. The settings row and the startup warning say this, and the same
+warning appears on any platform where no backend works. A configured limit never fails silently.</p>
+<p>Changing <code>session.cpuLimitCores</code> mid-session takes effect on the next command: the live quota is
+rewritten, and setting it back to 0 lifts it.</p>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<p>Cap a session to 2 cores and run a parallel build:</p>
+<pre><code class="language-yaml"># ~/.veyyon/profiles/&lt;profile&gt;/agent/config.yml
+session:
+  cpuLimitCores: 2
+</code></pre>
+<pre><code>$ veyyon
+&gt; run make -j16 and watch the load
+</code></pre>
+<p><code>make</code> spawns sixteen compilers, but the whole tree shares two cores: the build takes roughly
+eight times longer than uncapped wall time would suggest, and the rest of the machine stays
+idle. While the build runs flat out, another command is refused:</p>
+<pre><code>Refused to start a bash command: this session's CPU budget of 2 core(s) is saturated
+(spawned commands used ~2.00 cores for the last 3s). New commands run again once usage
+drops below the budget. Fix: wait for the running command to finish, or raise
+session.cpuLimitCores.
+</code></pre>
+<p>With <code>session.cpuLimitKill: true</code>, the same breach ends the build instead:</p>
+<pre><code>Session CPU budget exceeded: limit 2 core(s), spawned commands used ~2.00 cores for 3s.
+Sent SIGTERM to 9 process(es) because session.cpuLimitKill is on. A command that just
+stopped was killed by the CPU budget, not a crash.
+</code></pre>
+<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
+<ul>
+<li><a href="#approvals">Approvals</a></li>
+<li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
+<li><a href="../../settings-reference.html">Settings reference</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="secrets"><a class="header" href="#secrets">Secrets</a></h1>
@@ -3298,7 +3389,7 @@ follows the print-mode run (<code>veyyon --help</code>).</p>
 <h2 id="approvals-2"><a class="header" href="#approvals-2">Approvals</a></h2>
 <p>Tool approvals use <code>tools.approvalMode</code> and per-tool policy. See <a href="#approvals">Approvals</a> and
 <a href="#safety-1">Safety</a>.</p>
-<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
+<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
@@ -3346,7 +3437,7 @@ EOF
 </table>
 </div>
 <p>Headless runs have no TTY for approval prompts: choose a mode that does not block (<code>--yolo</code> only on disposable runners) or expect the turn to stop when a prompt would be required. See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
+<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#safety-1">Safety</a></li>
@@ -3645,7 +3736,7 @@ enabled. See <a href="#compaction-and-project-memory">Compaction and memory</a>.
 <p>Statuses: <code>active</code>, <code>paused</code>, <code>budget-limited</code>, <code>complete</code>, <code>dropped</code>.</p>
 <h3 id="goal-tool"><a class="header" href="#goal-tool">Goal tool</a></h3>
 <p>When goal mode is active, the agent can call the <code>goal</code> tool with ops: <code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>. The tool never accepts a budget argument. The interactive Settings UI owns <code>goal.modelBudgetsEnabled</code>, which controls whether persisted budgets are exposed and enforced. Continuation prompts inject on idle turns per <code>goal.continuationModes</code>.</p>
-<h3 id="example"><a class="header" href="#example">Example</a></h3>
+<h3 id="example-1"><a class="header" href="#example-1">Example</a></h3>
 <pre><code class="language-console">$ veyyon
 </code></pre>
 <pre><code class="language-text">/goal set Add a --max-time flag to the print-mode runner and document it
@@ -4165,7 +4256,7 @@ export default function hook(pi: HookAPI): void {
 <li>Audit tool usage outside the TUI</li>
 <li>Register your own slash commands</li>
 </ul>
-<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
+<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
 <ul>
 <li>Repository <code>docs/hooks.md</code></li>
 </ul>
@@ -4205,7 +4296,7 @@ common connection errors, see <a href="#mcp-server-setup">MCP server setup</a>.<
 Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to tool servers.</li>
 <li><strong>SDK</strong>: embedding the agent in your own host process.</li>
 </ul>
-<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
+<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
 <ul>
 <li><a href="#mcp-server-setup">MCP server setup</a>: the configuration and troubleshooting guide</li>
 <li><a href="#mcp-3">MCP internals</a>: how the client is built</li>
@@ -4805,7 +4896,7 @@ appends a position. Delete removes only the highlighted position.</p>
 <p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>ask-command</code> | <code>auto</code> | <code>yolo</code> (schema default <code>auto</code>).
 Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>.
 See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
+<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
 <ul>
 <li><a href="#models-and-providers">Models and providers</a></li>
 <li><a href="../../settings.html">Settings: models</a> (repo <code>docs/settings.md</code>)</li>
@@ -5408,7 +5499,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 }
 </code></pre>
 <p>Hooks: TypeScript modules under project/profile hook paths (<code>pi.on(...)</code>). See <a href="#hooks">Hooks</a>, <a href="#task-guides">Task guides</a>. MCP: <a href="#mcp">MCP</a>.</p>
-<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
+<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
 <ul>
 <li><a href="#getting-started">Getting started</a></li>
 <li><a href="#task-guides">Task guides</a></li>
@@ -5448,7 +5539,7 @@ $ veyyon plugin features &lt;plugin&gt; --disable f1    # turn features off
 $ veyyon plugin features &lt;plugin&gt; --set f1,f2     # replace the enabled set
 </code></pre>
 <p>See <a href="#plugins">Plugins</a> for installation and management.</p>
-<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
+<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
 <p>Tool approvals are not feature flags, they use <code>tools.approvalMode</code> and per-tool policy.
 See <a href="#approvals">Approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -5463,7 +5554,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <p>External tools via Model Context Protocol: client config in the profile’s <code>mcp.json</code> (there is no project scope). See <a href="#mcp">MCP</a>.</p>
 <h2 id="hooks-1"><a class="header" href="#hooks-1">Hooks</a></h2>
 <p>TypeScript modules with <code>pi.on(...)</code>, not JSON command tables. See <a href="#hooks">Hooks</a>.</p>
-<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
+<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
 <ul>
 <li><a href="#configuration-4">Configuration</a>: approval mode and settings paths</li>
 <li><a href="#mechanisms">Mechanisms</a></li>
@@ -5702,6 +5793,20 @@ there that is safe to echo back.</p>
 </code></pre>
 <p>The separator decides. A command name is one segment of letters, digits, underscores and hyphens
 starting with a letter, so anything holding a slash is a path.</p>
+<h2 id="a-bare-command-that-has-subcommands"><a class="header" href="#a-bare-command-that-has-subcommands">A bare command that has subcommands</a></h2>
+<p>Some commands take a subcommand: <code>/account status</code>, <code>/account manager</code>, <code>/usage reset</code>. Typing the
+command on its own opens a picker listing every subcommand it has, with what each one does. Move
+with the up and down arrows, click a row, press enter to run it, or press escape to close and run
+nothing. Choosing a row runs exactly what typing that subcommand runs.</p>
+<p>A subcommand that takes an argument, such as <code>/account name &lt;text&gt;</code>, does not run straight away.
+The picker writes <code>/account name </code> into the composer and leaves the cursor after it, so you type
+the argument and press enter.</p>
+<p>Outside a terminal, in ACP and <code>--print</code> mode, there is no picker to open. A bare command prints
+the same list instead.</p>
+<p>A few commands mean something on their own rather than standing for a subcommand, and those still
+act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/browser</code> flip a switch, <code>/goal</code> enters goal mode,
+<code>/todo</code> shows the list, <code>/secret</code> opens the masked value field, <code>/setup</code> opens the wizard,
+<code>/plugins</code> lists plugins, and <code>/compact</code> compacts.</p>
 <h2 id="session-and-navigation"><a class="header" href="#session-and-navigation">Session and navigation</a></h2>
 <div class="table-wrapper">
 <table>
@@ -5735,7 +5840,7 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/switch</code></td><td>Try a model for this session only, without saving it as default (same as alt+p)</td></tr>
 <tr><td><code>/fast on|off|status</code></td><td>Fast mode</td></tr>
 <tr><td><code>/thinking [level]</code> (<code>/effort</code>)</td><td>Set reasoning effort; no argument opens the picker</td></tr>
-<tr><td><code>/permissions [rung]</code> (<code>/approval</code>)</td><td>Set how much the agent does unasked, for this session only: <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, or <code>plan</code>. No argument reports the rung in force and where it came from; <code>reset</code> drops the session override and returns to the saved default from Settings</td></tr>
+<tr><td><code>/permissions [rung]</code> (<code>/approval</code>)</td><td>Set how much the agent does unasked, for this session only: <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, or <code>plan</code>. <code>/permissions status</code> reports the rung in force and where it came from; <code>reset</code> drops the session override and returns to the saved default from Settings. A bare <code>/permissions</code> opens the picker</td></tr>
 <tr><td><code>/yolo on|off|status</code></td><td>Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation)</td></tr>
 <tr><td><code>/plan</code></td><td>Toggle plan mode</td></tr>
 <tr><td><code>/plan-review</code></td><td>Re-open plan review</td></tr>
@@ -5746,7 +5851,7 @@ starting with a letter, so anything holding a slash is a path.</p>
 <tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential, a bare <code>/secret</code> opens a hidden field, and <code>/secret manager</code> opens the manager. A client with no terminal keeps the verbs <code>add</code>, <code>list</code>, <code>rm</code>, <code>extend</code>, <code>log</code>, <code>discard</code>. See <a href="#secrets">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> opens first-run provider sign-in</td></tr>
 <tr><td><code>/providers</code>, <code>/account manager</code></td><td>Open the account manager: every stored account per provider, with its email, plan, health, and usage. See <a href="#signing-in">Authentication</a></td></tr>
-<tr><td><code>/account [status]</code></td><td>Show which account each provider is serving this session with</td></tr>
+<tr><td><code>/account status</code></td><td>Show which account each provider is serving this session with. A bare <code>/account</code> opens the picker</td></tr>
 <tr><td><code>/account name &lt;text&gt;</code></td><td>Name the account this session is using, so rows read <code>work</code> instead of an email</td></tr>
 <tr><td><code>/account switch &lt;provider&gt;</code></td><td>Open the manager focused on one provider, to move that provider to another of your accounts</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
@@ -5763,7 +5868,7 @@ starting with a letter, so anything holding a slash is a path.</p>
 </thead>
 <tbody>
 <tr><td><code>/compact [summary] [focus]</code></td><td>Summarize older context in place; optional focus string</td></tr>
-<tr><td><code>/shake [elide|images]</code></td><td>Shake tool-result bulk</td></tr>
+<tr><td><code>/shake elide|images</code></td><td>Shake tool-result bulk. A bare <code>/shake</code> opens the picker</td></tr>
 <tr><td><code>/handoff [focus]</code></td><td>Explicitly transfer context into a new session</td></tr>
 <tr><td><code>/context</code></td><td>Context usage report</td></tr>
 <tr><td><code>/tools</code></td><td>Tools visible to the model</td></tr>
@@ -6590,7 +6695,7 @@ your own keys and choose models.</p>
 <li><strong>Tool-output bounds</strong>: truncation limits behave as configured and remain visible to the model.</li>
 <li><strong>Architecture gates</strong>: layering, import cycles, and module-reach checks in <code>packages/coding-agent/test/architecture/</code>.</li>
 </ul>
-<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
+<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a></li>
 <li><a href="#the-hashline-edit-engine">The hashline edit engine</a></li>
@@ -6617,7 +6722,7 @@ your own keys and choose models.</p>
 </table>
 </div>
 <p>Implementation: <code>packages/coding-agent/src/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
-<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
+<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a>: ordered rules</li>
 <li><a href="#per-model-repair-posture">Per-model posture</a>: harness profiles</li>
@@ -6636,7 +6741,7 @@ your own keys and choose models.</p>
 </ol>
 <p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
 <p>Per-model enable/disable and tool allowlist hints: <a href="#per-model-repair-posture">Per-model posture</a>.</p>
-<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
+<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
 <ul>
 <li><a href="#tool-call-repair">Why repair exists</a></li>
 <li><a href="#repair-on-edits">Repair on edits</a></li>
@@ -6678,7 +6783,7 @@ your own keys and choose models.</p>
 </ul>
 <h2 id="opentelemetry"><a class="header" href="#opentelemetry">OpenTelemetry</a></h2>
 <p>When <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> or <code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code> is set, the process registers an OTLP/protobuf trace exporter and exports agent-loop spans (<code>invoke_agent</code>, <code>chat</code>, <code>execute_tool</code>, …). Standard <code>OTEL_*</code> env vars apply (<code>OTEL_SERVICE_NAME</code>, headers, <code>OTEL_SDK_DISABLED</code>, <code>OTEL_TRACES_EXPORTER=none</code>). Transport is <code>http/protobuf</code> only. See <code>packages/coding-agent/src/telemetry-export.ts</code>.</p>
-<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
+<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
 <ul>
 <li><a href="#observability">Observability</a></li>
 <li><a href="#the-repair-cascade">Repair cascade</a></li>
@@ -7184,7 +7289,7 @@ veyyon plugin doctor
 <p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code>, plus the working-directory and secret-use boundaries (every rung except <code>yolo</code>) and hard-coded critical bash patterns (every rung, <code>yolo</code> included). There is no OS command sandbox. Schema default is <strong><code>auto</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>
 <p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="#context-size-and-retries">Context size and retries</a>, <a href="#bounded-reads-and-search">Bounded reads and search</a>.</p>
-<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
+<h2 id="related-20"><a class="header" href="#related-20">Related</a></h2>
 <ul>
 <li><a href="#approvals-and-errors">Approvals and errors</a></li>
 <li><a href="#observability">Observability</a></li>

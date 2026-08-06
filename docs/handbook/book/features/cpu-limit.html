@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Core concepts - The Veyyon Harness Handbook</title>
+        <title>CPU limits - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
@@ -161,7 +161,7 @@
                         <a href="https://github.com/santhreal/veyyon" title="Git repository" aria-label="Git repository">
                             <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
                         </a>
-                        <a href="https://github.com/santhreal/veyyon/edit/main/docs/handbook/src/concepts/index.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/santhreal/veyyon/edit/main/docs/handbook/src/features/cpu-limit.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
                         </a>
 
@@ -195,56 +195,102 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="core-concepts"><a class="header" href="#core-concepts">Core concepts</a></h1>
-<p>This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see <a href="../using/getting-started.html">Using Veyyon</a>, and for feature guides see <a href="../features/index.html">Features</a>.</p>
-<h2 id="what-this-chapter-covers"><a class="header" href="#what-this-chapter-covers">What this chapter covers</a></h2>
-<p>The CLI is <code>veyyon</code>. It calls a configured model endpoint with your credentials and runs a tool loop: read, edit, verify, stop. The pages below define the units and contracts of that loop, so that later chapters can assume you know them.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Page</th><th>What it defines</th></tr>
-</thead>
-<tbody>
-<tr><td><a href="./sessions-turns-threads.html">Sessions, turns, and threads</a></td><td>The runtime units. A session is the persisted run, a turn is one request plus the agent loop, and a thread is the active path through the session tree.</td></tr>
-<tr><td><a href="./permission-model.html">Permission model</a></td><td>The approval-mode boundary. <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>) decides which tool tiers run automatically and when Veyyon asks you first. There is no operating-system command sandbox.</td></tr>
-<tr><td><a href="./model-contract.html">Model contract</a></td><td>The bring-your-own-key boundary: endpoint, model, and key. It covers what the harness owns versus what the provider owns, Freeform versus Function tools, and how system prompts and tool schemas are presented.</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="foundations-that-pair-with-these-pages"><a class="header" href="#foundations-that-pair-with-these-pages">Foundations that pair with these pages</a></h2>
-<p>The foundations pages give the design spine without repeating the operator workflow. Read them before or after this chapter, whichever suits you.</p>
-<ul>
-<li><a href="../foundations/architecture.html">Architecture at a glance</a> maps the subsystems to their responsibilities.</li>
-<li>For provider and model configuration, see <a href="../models/providers.html">Providers</a> and <a href="../../../providers.html"><code>docs/providers.md</code></a>.</li>
-</ul>
-<h2 id="how-the-pieces-fit"><a class="header" href="#how-the-pieces-fit">How the pieces fit</a></h2>
-<pre><code class="language-text">  you ──► veyyon (TUI or a one-shot prompt)
-            │
-            ├─ session / thread / turn   (concepts/sessions-turns-threads)
-            ├─ approval mode             (concepts/permission-model)
-            └─ model call                (concepts/model-contract)
-                  │
-                  ├─ system prompt + tool schemas (harness)
-                  ├─ endpoint + key               (your provider)
-                  └─ model id                     (discovered or pinned)
+                        <h1 id="cpu-limits"><a class="header" href="#cpu-limits">CPU limits</a></h1>
+<p>A CPU limit caps how much processor time the processes a session spawns may use. You set it in
+cores: <code>session.cpuLimitCores: 2</code> lets the session’s commands consume at most two cores, no matter
+how many the machine has. The limit is per session, not per machine: two sessions capped at 2
+cores each may use 4 between them. There is no cross-session cap, by design.</p>
+<p>Two settings drive it:</p>
+<pre><code class="language-yaml">session:
+  cpuLimitCores: 2      # 0 (the default) is off
+  cpuLimitKill: false   # what to do past the budget; see below
 </code></pre>
-<p>Changing providers changes the endpoint, the credentials, and the model id. Tool repair, edit verification, approvals, and context compaction stay the same, because they are harness behavior. See <a href="../using/configuring-providers.html">Configuring providers</a> and <a href="../using/models.html">Models and providers</a>.</p>
-<h2 id="related-reading"><a class="header" href="#related-reading">Related reading</a></h2>
+<h2 id="what-is-capped"><a class="header" href="#what-is-capped">What is capped</a></h2>
+<p>Every process a session spawns to do its work joins the budget. That covers bash commands (plain
+and PTY), MCP stdio servers, the <code>exec</code> calls that custom tools, custom commands, and extensions
+make, background processes from the <code>launch</code> tool, the eval kernels (Python, Ruby, Julia),
+language servers, debug adapters, the managed browser, <code>git</code> and <code>jj</code>, <code>ssh</code>, and the installs
+that plugins run. A capped process passes the budget to its own children, so a build that spawns
+a compiler fleet is still one budget.</p>
+<p>Some processes belong to no single session and join the root session’s budget instead. Those are
+the shared harness workers, such as the tiny title model and embeddings, and the speech capture
+and playback helpers.</p>
+<p>Five kinds of process stay outside the budget. Each is outside for a reason rather than by
+oversight:</p>
 <ul>
-<li><a href="./permission-model.html">Permission model</a> and <a href="../features/sandbox.html">Approvals</a> cover the approval modes.</li>
-<li>Approvals usually need no tuning: the default <code>auto</code> runs every tier while the per-tool policies, the working-directory boundary, credential use, and a tool’s own critical commands all still ask. Pick a rung explicitly only when you want a different trade-off, and note that a headless run has nobody to answer a prompt, so a rung that asks turns a tool call into a failure rather than a pause.</li>
-<li><a href="../features/exec.html">Non-interactive mode</a> covers scripted <code>veyyon</code> launch patterns.</li>
+<li><strong>Anything that starts before a session exists.</strong> Host capability probes, the shell environment
+snapshot, model provider probes, and the ssh bootstrap for a remote auth broker all run when
+there is no budget to join.</li>
+<li><strong>The harness itself.</strong> Agent turns, the TUI, and the relaunch that replaces the veyyon process.</li>
+<li><strong>Programs that are yours rather than the agent’s.</strong> The editor veyyon opens a file in, the
+clipboard helper, <code>veyyon shell</code>, and the self-updater. Capping the updater could leave a
+half-written install, and killing your editor on a budget breach would discard unsaved text.</li>
+<li><strong>Threads rather than processes.</strong> The browser tab supervisor and the JavaScript eval context
+run as Bun Workers inside the harness process, and a cgroup holds processes, not threads of one.</li>
+<li><strong>Processes the session did not start.</strong> Attaching to a browser that is already running adopts
+nothing, because the session does not own that process.</li>
+</ul>
+<p>If you cap a session at 1 core, veyyon stays responsive while the build under it crawls.</p>
+<h2 id="how-it-is-enforced"><a class="header" href="#how-it-is-enforced">How it is enforced</a></h2>
+<p>Where the operating system offers a per-group CPU quota, the kernel does the capping:</p>
+<ul>
+<li><strong>Linux</strong> uses a cgroup v2 directory per session with <code>cpu.max</code> set to the core count. If the
+harness’s own cgroup is not writable, veyyon asks the systemd user manager for a scope with
+<code>CPUQuota</code> instead.</li>
+<li><strong>Windows</strong> uses a Job Object with a hard CPU rate cap.</li>
+</ul>
+<p>A once-per-second watcher reads the group’s usage on top of the kernel cap. When usage stays
+pinned at the budget for about three seconds, new commands are refused with an error that names
+the budget, the measured usage, and the fix (raise <code>session.cpuLimitCores</code> or wait), until usage
+drops. The kernel cap is the enforcement of last resort: if the watcher lags, commands throttle,
+they never run free.</p>
+<p>With <code>session.cpuLimitKill: true</code>, a sustained breach also sends SIGTERM to the group’s
+processes. The kill is reported as a budget action: the notice and the killed command’s result
+both say the command was stopped by the CPU budget, not that it crashed.</p>
+<p><strong>macOS has no per-group CPU quota.</strong> There the budget is policy only: new commands are refused
+while the group is saturated, running members are reniced, and <code>session.cpuLimitKill</code> still
+kills. Nothing throttles. The settings row and the startup warning say this, and the same
+warning appears on any platform where no backend works. A configured limit never fails silently.</p>
+<p>Changing <code>session.cpuLimitCores</code> mid-session takes effect on the next command: the live quota is
+rewritten, and setting it back to 0 lifts it.</p>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<p>Cap a session to 2 cores and run a parallel build:</p>
+<pre><code class="language-yaml"># ~/.veyyon/profiles/&lt;profile&gt;/agent/config.yml
+session:
+  cpuLimitCores: 2
+</code></pre>
+<pre><code>$ veyyon
+&gt; run make -j16 and watch the load
+</code></pre>
+<p><code>make</code> spawns sixteen compilers, but the whole tree shares two cores: the build takes roughly
+eight times longer than uncapped wall time would suggest, and the rest of the machine stays
+idle. While the build runs flat out, another command is refused:</p>
+<pre><code>Refused to start a bash command: this session's CPU budget of 2 core(s) is saturated
+(spawned commands used ~2.00 cores for the last 3s). New commands run again once usage
+drops below the budget. Fix: wait for the running command to finish, or raise
+session.cpuLimitCores.
+</code></pre>
+<p>With <code>session.cpuLimitKill: true</code>, the same breach ends the build instead:</p>
+<pre><code>Session CPU budget exceeded: limit 2 core(s), spawned commands used ~2.00 cores for 3s.
+Sent SIGTERM to 9 process(es) because session.cpuLimitKill is on. A command that just
+stopped was killed by the CPU budget, not a crash.
+</code></pre>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="./sandbox.html">Approvals</a></li>
+<li><a href="./exec.html">Non-interactive mode</a></li>
+<li><a href="../../../settings-reference.html">Settings reference</a></li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../using/configuring-providers.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../using/safety.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../concepts/sessions-turns-threads.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../features/secrets.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -254,11 +300,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../using/configuring-providers.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../using/safety.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../concepts/sessions-turns-threads.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../features/secrets.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
