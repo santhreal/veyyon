@@ -82,30 +82,21 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
+	/**
+	 * NO UI ROW: nothing renders a separator any more.
+	 *
+	 * The separator styles belonged to the filled powerline bar the editor's top
+	 * border used to carry. That bar had zero production callers and was deleted;
+	 * the composer footline that replaced it joins segments with its own fixed
+	 * `  ·  `. A row that offers seven separator styles and changes nothing on
+	 * screen is worse than no row, so the control is gone. The KEY stays only
+	 * because `modes/controllers/selector-controller.ts` still reads it; when
+	 * that file loses its two `statusLine.separator` reads, delete this entry.
+	 */
 	"statusLine.separator": {
 		type: "enum",
 		values: ["powerline", "powerline-thin", "slash", "pipe", "block", "none", "ascii"] as const,
-		// `pipe` (a clean `│`), not powerline chevrons: the powerline styles need a
-		// patched Nerd Font and otherwise degrade to stray `>`/`▶` glyphs on the
-		// composer border. This is the authoritative default — it overrides the
-		// preset's `separator` (component.ts prefers the setting), so the two must
-		// agree (presets.ts `default` is also `pipe`).
 		default: "pipe",
-		ui: {
-			tab: "appearance",
-			group: "Status Line",
-			label: "Status Line Separator",
-			description: "Style of separators between segments",
-			options: [
-				{ value: "powerline", label: "Powerline", description: "Solid arrows (Nerd Font)" },
-				{ value: "powerline-thin", label: "Thin chevron", description: "Thin arrows (Nerd Font)" },
-				{ value: "slash", label: "Slash", description: "Forward slashes" },
-				{ value: "pipe", label: "Pipe", description: "Vertical pipes" },
-				{ value: "block", label: "Block", description: "Solid blocks" },
-				{ value: "none", label: "None", description: "Space only" },
-				{ value: "ascii", label: "ASCII", description: "Greater-than signs" },
-			],
-		},
 	},
 
 	"statusLine.sessionAccent": {
@@ -115,28 +106,24 @@ export const APPEARANCE_SETTINGS = {
 			tab: "appearance",
 			group: "Status Line",
 			label: "Session Accent",
-			description: "Use the session name color for the editor border and status line gap",
+			description: "Use the session name color for the editor border",
 			advanced: true,
 		},
 	},
 
+	/**
+	 * NO UI ROW: there is no painted bar left to make transparent.
+	 *
+	 * Same story as `statusLine.separator` above — the theme's `statusLineBg`
+	 * fill and the powerline end caps this toggled lived only on the deleted top
+	 * border. The key stays for `selector-controller.ts`; delete it with that
+	 * file's two reads.
+	 */
 	"statusLine.transparent": {
 		type: "boolean",
-		// Transparent by default: the inline TUI paints no backgrounds, so the
-		// status line inherits the terminal ground like every other surface (the
-		// 2026-07-23/24 slab class: any painted fill renders as a colored slab on
-		// a terminal whose ground differs from the theme's). Set to false to opt
-		// back into the theme's painted `statusLineBg` bar.
 		default: true,
-		ui: {
-			tab: "appearance",
-			group: "Status Line",
-			label: "Transparent Status Line",
-			description:
-				"Use the terminal's default background for the status line instead of the theme's `statusLineBg` (the default). When transparent, powerline end caps are dropped because they need a contrasting fill to bridge into the surrounding terminal. Turn off to paint the theme's bar.",
-			advanced: true,
-		},
 	},
+
 	"statusLine.compactThinkingLevel": {
 		type: "boolean",
 		default: false,

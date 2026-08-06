@@ -136,6 +136,7 @@ export function createRunExperimentTool(
 					cwd: ctx.cwd,
 					logPath: benchmarkLogPath,
 					timeoutMs,
+					cpuSessionId: ctx.sessionManager.getSessionId(),
 					signal,
 					onProgress: details => {
 						onUpdate?.({
@@ -287,6 +288,8 @@ async function executeProcess(opts: {
 	cwd: string;
 	logPath: string;
 	timeoutMs: number;
+	/** The owning veyyon session, so experiment compute joins that session's CPU budget. */
+	cpuSessionId: string;
 	signal?: AbortSignal;
 	onProgress?(details: ProgressSnapshot): void;
 }): Promise<ProcessExecutionResult> {
@@ -324,6 +327,7 @@ async function executeProcess(opts: {
 		const result = await executeBash(opts.command, {
 			cwd: opts.cwd,
 			sessionKey: `autoresearch:${opts.cwd}`,
+			cpuSessionId: opts.cpuSessionId,
 			timeout: opts.timeoutMs > 0 ? opts.timeoutMs : 2_147_000_000,
 			signal: opts.signal,
 			chunkThrottleMs: 0,

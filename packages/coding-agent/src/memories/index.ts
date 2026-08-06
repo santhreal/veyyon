@@ -5,8 +5,7 @@ import * as path from "node:path";
 import { type ApiKey, type Context, completeSimple, type Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
-import { emptyCost } from "@veyyon/catalog/models";
-import {
+import { emptyCost } from "@veyyon/catalog/models";import {
 	clampLow,
 	getAgentDbPath,
 	isEnoent,
@@ -17,6 +16,24 @@ import {
 	readdirIfPresent,
 } from "@veyyon/utils";
 import { isSessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
+
+/**
+ * Clamp an internal fixed memory-pass effort to the model's ladder, saying so
+ * when the level moves. Memory passes request Low/Medium by convention; rows
+ * with a narrower accepted set (e.g. GLM-5.2 high/max) shift the level, and a
+ * silent shift is how effort drift goes unnoticed.
+ */
+function clampMemoryEffort(model: Model, requested: Effort): Effort | undefined {
+	const clamped = clampThinkingLevelForModel(model, requested);
+	if (clamped !== requested) {
+		logger.warn("Memory pass effort is not accepted by the model; using the nearest supported level", {
+			model: `${model.provider}/${model.id}`,
+			requested,
+			using: clamped ?? "provider default",
+		});
+	}
+	return clamped;
+}
 
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
@@ -793,7 +810,7 @@ async function runStage1Job(options: {
 			apiKey: refreshProviderContextForApiKey(apiKey, refreshProviderContext),
 			metadata: options.metadata,
 			maxTokens: clampLow(Math.floor(modelMaxTokens * 0.2), 1024, 4096),
-			reasoning: clampThinkingLevelForModel(model, Effort.Low),
+			reasoning: clampMemoryEffort(model, Effort.Low),
 		});
 
 		if (response.stopReason === "error") {
@@ -983,7 +1000,7 @@ async function runConsolidationModel(options: {
 		apiKey: refreshProviderContextForApiKey(apiKey, refreshProviderContext),
 		metadata: options.metadata,
 		maxTokens: 8192,
-		reasoning: clampThinkingLevelForModel(model, Effort.Medium),
+		reasoning: clampMemoryEffort(model, Effort.Medium),
 	});
 	if (response.stopReason === "error") {
 		throw new Error(sanitize(response.errorMessage || "phase2 model error"));

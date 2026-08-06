@@ -30,7 +30,7 @@ The standalone runner has no timeout. It runs iteration after iteration until th
 
 ### Inside veyyon (TUI)
 
-Register the extension in your config (`~/.veyyon/agent/config.yml`, or project `.veyyon/config.yml`):
+Register the extension in the active profile's config (`~/.veyyon/profiles/default/agent/config.yml`), or pass it for one run with `--extension`:
 
 ```yaml
 extensions:
