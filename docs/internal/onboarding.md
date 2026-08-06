@@ -40,6 +40,24 @@ step above; it does not require a binary build. Do **not** dogfood a `cargo` or
 `bun build` artifact when validating the install flow; that is the shipped
 installer's job (see [deployment.md](deployment.md)).
 
+## Code intelligence
+
+This repository pins `typescript` at 7.x, the Go rewrite. It ships `dist/` and
+no `lib/tsserver.js`, which is the file `typescript-language-server` and
+`vtsls` probe for, so both of them fail at `initialize` with "Could not find a
+valid TypeScript installation" on every request. The binaries are fine and the
+install is fine; the two are simply incompatible.
+
+`.veyyon/lsp.json` disables both and points TypeScript at `tsgo --lsp -stdio`,
+the language server that ships inside the same package as the compiler you are
+already typechecking with. Nothing to install: `bun install` puts `tsgo` in
+`node_modules/.bin`, and go-to-definition resolves across packages because
+every workspace package sets `main` to its TypeScript source.
+
+If you point an editor at this repo yourself, configure it the same way. An
+editor still asking for `tsserver.js` is not misconfigured against your machine,
+it is asking for a file this version of TypeScript does not ship.
+
 ## The gate
 
 Run before every push:
