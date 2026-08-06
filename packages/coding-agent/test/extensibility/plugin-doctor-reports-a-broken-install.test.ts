@@ -230,8 +230,11 @@ describe("a manifest doctor cannot read", () => {
 	 * A manifest that is present and valid still reports "Found".
 	 *
 	 * The positive case for the branch above, so the error path cannot be satisfied by reporting every
-	 * manifest as broken. A readable manifest with a dependency that is not installed is also the one
-	 * case where "run npm install" IS justified, so both halves are asserted together.
+	 * manifest as broken. A readable manifest whose dependency is not installed is also the one case
+	 * where doctor is entitled to demand a reinstall, so both halves are asserted together. The remedy
+	 * it names is its own `--fix`, not a bare `npm install`: the manifest it would reinstall from is
+	 * the one doctor just read, and an operator running npm by hand in the wrong directory is how the
+	 * broken install happened.
 	 */
 	it("reports a readable manifest as found, and then does demand the missing install", async () => {
 		await fs.writeFile(
@@ -243,6 +246,7 @@ describe("a manifest doctor cannot read", () => {
 
 		expect(check(checks, "package_manifest")).toMatchObject({ status: "ok", message: "Found" });
 		expect(check(checks, "node_modules")).toMatchObject({ status: "error" });
-		expect(check(checks, "node_modules")?.message).toContain("npm install");
+		expect(check(checks, "node_modules")?.message).toContain("Missing, so no installed plugin can load");
+		expect(check(checks, "node_modules")?.message).toContain("veyyon plugin doctor --fix");
 	});
 });

@@ -73,9 +73,10 @@ describe("A marketplace catalog that cannot be refreshed is reported", () => {
 
 		await manager.refreshStaleMarketplaces();
 
-		const reported = warnings.filter(w => w.message.includes("Marketplace catalog refresh failed"));
+		const reported = warnings.filter(w => w.message.includes("could not be refreshed"));
 		expect(reported).toHaveLength(1);
-		expect(reported[0]?.message).toContain("stays stale");
+		expect(reported[0]?.message).toContain("plugin lookups keep using the stale copy");
+		expect(reported[0]?.message).toContain("veyyon plugin marketplace update acme");
 		expect(reported[0]?.fields.marketplace).toBe("acme");
 		expect(String(reported[0]?.fields.error)).toContain("network is unreachable");
 	});
@@ -100,7 +101,7 @@ describe("A marketplace catalog that cannot be refreshed is reported", () => {
 
 		await manager.refreshStaleMarketplaces();
 
-		expect(warnings.filter(w => w.message.includes("Marketplace catalog refresh failed"))).toEqual([]);
+		expect(warnings.filter(w => w.message.includes("could not be refreshed"))).toEqual([]);
 	});
 });
 
@@ -120,9 +121,10 @@ describe("A plugin that could not be upgraded is reported", () => {
 
 		const results = await manager.upgradeAllPlugins();
 
-		const reported = warnings.filter(w => w.message.includes("Plugin upgrade failed"));
+		const reported = warnings.filter(w => w.message.includes("could not be upgraded"));
 		expect(reported).toHaveLength(1);
-		expect(reported[0]?.message).toContain("installed version is unchanged");
+		expect(reported[0]?.message).toContain("version 1.0.0 stays installed");
+		expect(reported[0]?.message).toContain("veyyon plugin upgrade acme/broken");
 		expect(reported[0]?.fields.pluginId).toBe("acme/broken");
 		expect(reported[0]?.fields.scope).toBe("user");
 		expect(String(reported[0]?.fields.error)).toContain("checksum mismatch");
