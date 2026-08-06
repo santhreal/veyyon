@@ -1,19 +1,24 @@
 /**
- * Contract: the four layers a spawn forwards to a child are discovered from the WORKING
- * DIRECTORY, which is the premise the cwd guard in `task/inherited-collections.ts` and
- * `task/context-inheritance.ts` rests on.
+ * Contract: which of the layers a spawn forwards are discovered from the WORKING DIRECTORY,
+ * and which no longer have a project scope at all.
  *
- * WHY THIS SUITE EXISTS. Those guards drop the parent's resolved layer when the child runs
- * somewhere else, so the child re-discovers. That is only correct while the layer really is
- * project-rooted. A guard on an agent-dir-rooted layer would be pure loss: it would throw away
- * a list the child could not re-derive from its own cwd. So each of the four is proved
- * cwd-sensitive here with two real trees and distinct on-disk bytes, and the profile-rooted half
- * of each is proved to SURVIVE the cwd change, which is what makes re-discovery safe rather than
- * starving.
+ * WHY THIS SUITE EXISTS. The cwd guards in `task/inherited-collections.ts` and
+ * `task/context-inheritance.ts` drop the parent's resolved layer when the child runs somewhere
+ * else, so the child re-discovers. That is only load-bearing while the layer really is
+ * project-rooted, and the answer has changed under it. Context files and prompt templates still
+ * resolve per tree, so for those the guard is the difference between a child reading its own
+ * tree and reading its parent's. Rules and skills lost every project scope when `<cwd>/.veyyon`
+ * stopped being a capability source, so for those the guard is a no-op: the child re-derives
+ * exactly the list it was handed.
  *
- * IF THIS REGRESSES: either a guard is protecting a layer that has no project scope (the guard
- * should go), or a layer lost its project scope while a guard kept forcing rediscovery of
- * nothing (the guard should go). Both are silent: the child still looks configured.
+ * Each case is a differential across two real trees with distinct bytes on disk, because both
+ * failure directions are silent. A cwd-sensitive layer that stops re-resolving gives the child
+ * its parent's tree while the prompt claims otherwise. A layer that regains a project scope
+ * gives a cloned repository a way to configure the agent reading it, and nothing errors: a rule
+ * or a skill simply appears.
+ *
+ * IF THE LAST TWO REGRESS, it is the second kind, and it is a security regression rather than a
+ * tidiness one. Do not "fix" them by re-adding the project scope.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -116,8 +121,13 @@ describe("the layers a spawn forwards are cwd-discovered", () => {
 		t.resetCaches();
 		const fromB = await discoverContextFiles(t.treeB, t.agentDir);
 
-		expect(fromA.map(file => file.path)).toEqual([t.globalAgentsPath, t.treeAAgentsPath, t.profileAgentsPath]);
-		expect(fromB.map(file => file.path)).toEqual([t.globalAgentsPath, t.treeBAgentsPath, t.profileAgentsPath]);
+		// Narrowest first, broadest last. The order is load-bearing rather than
+		// cosmetic: the scopes are concatenated in this sequence and the LATER
+		// entry wins a conflict, which is what makes "broadest wins, a project
+		// file never overrides a home instruction" true. Reverse it and a cloned
+		// repository's AGENTS.md silently outranks the operator's own.
+		expect(fromA.map(file => file.path)).toEqual([t.treeAAgentsPath, t.profileAgentsPath, t.globalAgentsPath]);
+		expect(fromB.map(file => file.path)).toEqual([t.treeBAgentsPath, t.profileAgentsPath, t.globalAgentsPath]);
 		expect(fromA.map(file => file.content)).toContain(PROJECT_A_AGENTS);
 		expect(fromA.map(file => file.content)).not.toContain(PROJECT_B_AGENTS);
 		expect(fromB.map(file => file.content)).toContain(PROJECT_B_AGENTS);
@@ -141,10 +151,21 @@ describe("the layers a spawn forwards are cwd-discovered", () => {
 	});
 
 	/**
-	 * LOCKS OUT: a cwd guard on rules being removed as unnecessary. `sdk.ts` loads rules as
-	 * `loadCapability("rules", { cwd })`, so this is the exact call a child re-runs.
+	 * LOCKS IN: rules have NO project scope, so a checked-out tree cannot add one.
+	 *
+	 * This case used to assert the opposite, and it is the more valuable half of the
+	 * pair now. `<cwd>/.veyyon` was a capability source for six kinds of thing, rules
+	 * among them, which meant one file in a repository you cloned configured the
+	 * agent that was about to read it. `getConfigDirs` returns the profile dir and
+	 * nothing else today, and `.cursor/rules`, `.clinerules` and `.agent[s]/rules`
+	 * went with it.
+	 *
+	 * Written as a differential across two real trees because that is what a
+	 * regression would look like: not an error, just one tree's rule quietly
+	 * appearing. Both trees have a rule file on disk and neither is loaded, while the
+	 * profile rule is loaded from both.
 	 */
-	it("resolves a different project rule for each tree, and keeps the profile one", async () => {
+	it("loads no rule out of either project tree, and the same profile rule from both", async () => {
 		const t = twoTrees("layers-rules");
 
 		const namesFor = async (cwd: string): Promise<string[]> => {
@@ -156,25 +177,29 @@ describe("the layers a spawn forwards are cwd-discovered", () => {
 		const fromA = await namesFor(t.treeA);
 		const fromB = await namesFor(t.treeB);
 
-		expect(fromA).toContain("alpha-rule");
-		expect(fromA).not.toContain("beta-rule");
-		expect(fromB).toContain("beta-rule");
-		expect(fromB).not.toContain("alpha-rule");
+		expect(fromA).not.toContain("alpha-rule");
+		expect(fromB).not.toContain("beta-rule");
 		expect(fromA).toContain("profile-rule");
 		expect(fromB).toContain("profile-rule");
+		// Identical from both trees, which is the property that makes the cwd guard
+		// in `inherited-collections.ts` a no-op for rules rather than a correctness
+		// requirement: a child that re-discovers gets exactly what it was handed.
+		expect(fromA).toEqual(fromB);
 	});
 
 	/**
-	 * LOCKS OUT: the claim that a session's skills are purely agent-dir-rooted, which would make
-	 * the cwd guard on skills a pure loss.
+	 * LOCKS IN: a project cannot reach a session's skills by any route.
 	 *
-	 * The session skill allowlist is `native` + `veyyon-managed` + `veyyon-plugins`, and project
-	 * `.veyyon/skills` is deliberately NOT scanned. The ONE project scope that reaches a session's
-	 * skills is `<cwd>/.veyyon/settings.json#extensions`, whose `skills/` directory is scanned by
-	 * the `veyyon-plugins` provider. That is what makes the guard correct, and it is narrow enough
-	 * that a refactor could remove it without any other test noticing.
+	 * Project `.veyyon/skills` was never scanned. The route that DID exist was
+	 * `<cwd>/.veyyon/settings.json#extensions`, which named arbitrary package roots
+	 * whose `skills/`, `commands/`, `rules/`, `prompts/`, `hooks/`, `tools/` and MCP
+	 * were then all loaded. It was the worst instance of the repo-configures-the-agent
+	 * defect and it is gone, along with the project settings layer that fed it.
+	 *
+	 * Both trees declare an extension in their project settings and ship a skill
+	 * inside it. Neither is loaded. That is the assertion: the fixture is the attack.
 	 */
-	it("resolves a different project extension skill for each tree, and keeps the profile one", async () => {
+	it("loads no skill through either tree's project extension settings", async () => {
 		const t = twoTrees("layers-skills");
 
 		const namesFor = async (cwd: string): Promise<string[]> => {
@@ -186,7 +211,7 @@ describe("the layers a spawn forwards are cwd-discovered", () => {
 		const fromA = await namesFor(t.treeA);
 		const fromB = await namesFor(t.treeB);
 
-		expect(fromA).toEqual(["alpha-skill", "profile-skill"]);
-		expect(fromB).toEqual(["beta-skill", "profile-skill"]);
+		expect(fromA).toEqual(["profile-skill"]);
+		expect(fromB).toEqual(["profile-skill"]);
 	});
 });
