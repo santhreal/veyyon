@@ -720,11 +720,14 @@ describe("listClaudePluginRoots", () => {
 		);
 
 		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		// Fail-soft: the malformed manifest must not abort the plugin, so its
+		// default `skills/` directory is still scanned.
+		const fallback = result.all.find(skill => skill.name === "fallback-skill");
+		expect(fallback?.path).toBe(path.join(skillDir, "SKILL.md"));
 		// Loud: the parse failure is reported with the offending path.
-		const invalid = result.warnings.find(w => w.includes("Invalid JSON") && w.includes("plugin.json"));
-		expect(invalid).toBeDefined();
-		// Fail-soft: the plugin still contributes its default-dir skill.
-		expect(result.all.find(skill => skill.name === "fallback-skill")).toBeDefined();
+		expect(result.warnings.join("\n")).toContain(
+			`Invalid JSON in ${path.join(pluginPath, ".claude-plugin", "plugin.json")}`,
+		);
 	});
 
 	test("surfaces a warning for a malformed marketplace.json and keeps the default skills dir (Law 10)", async () => {

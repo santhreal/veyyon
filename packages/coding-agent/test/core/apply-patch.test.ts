@@ -970,7 +970,14 @@ describe("applyCodexPatch partial-failure contract (PartialApplyPatchError)", ()
 			"*** End Patch",
 		].join("\n");
 
-		await expect(applyCodexPatch(patch, { cwd: tempDir })).rejects.toBeInstanceOf(ApplyPatchError);
+		const error = await applyCodexPatch(patch, { cwd: tempDir }).catch(e => e);
+
+		expect(error).toBeInstanceOf(ApplyPatchError);
+		expect(error).toBeInstanceOf(PartialApplyPatchError);
+		// The first hunk really did land, which is what makes the failure partial
+		// rather than a clean refusal an ApplyPatchError handler could retry.
+		expect((error as PartialApplyPatchError).affected.modified).toEqual(["first.txt"]);
+		expect(await Bun.file(path.join(tempDir, "first.txt")).text()).toBe("A\n");
 	});
 });
 

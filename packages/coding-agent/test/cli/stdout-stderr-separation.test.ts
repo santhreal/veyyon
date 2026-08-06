@@ -145,7 +145,8 @@ describe("machine output still goes to stdout", () => {
 	it("writes the version to stdout", async () => {
 		const result = await runCli(["--version"]);
 
-		expect(result.stdout.trim().length).toBeGreaterThan(0);
+		expect(result.stdout.trim()).toMatch(/^veyyon\/\d+\.\d+\.\d+/);
+		expect(result.stderr).toBe("");
 	}, 60_000);
 });
 

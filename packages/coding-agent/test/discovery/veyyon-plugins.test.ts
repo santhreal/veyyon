@@ -226,8 +226,9 @@ test("installed plugins under `<plugins>/node_modules/` are surfaced (e.g. via `
 	// one with `veyyon.extensions`, which is sufficient.
 
 	const skills = await loadFromPlugin<{ name: string; path: string }>(skillCapability.id, ctx());
-	const found = skills.find(s => s.name === "my-skill" && s.path.includes("my-installed-ext"));
-	expect(found).toBeDefined();
+	expect(skills.filter(s => s.name === "my-skill").map(s => s.path)).toEqual([
+		path.join(installed, "skills", "my-skill", "SKILL.md"),
+	]);
 });
 
 test("project-scoped installed plugins surface project-level sub-discovery", async () => {
@@ -293,6 +294,10 @@ test("linked plugins (only in lockfile, not in package.json#dependencies) are su
 
 	const skills = await loadFromPlugin<{ name: string; path: string }>(skillCapability.id, ctx());
 	const tools = await loadFromPlugin<{ name: string; path: string }>(toolCapability.id, ctx());
-	expect(skills.find(s => s.name === "my-skill" && s.path.includes("my-linked-ext"))).toBeDefined();
-	expect(tools.find(t => t.name === "wcount" && t.path.includes("my-linked-ext"))).toBeDefined();
+	expect(skills.filter(s => s.name === "my-skill").map(s => s.path)).toEqual([
+		path.join(linkTarget, "skills", "my-skill", "SKILL.md"),
+	]);
+	expect(tools.filter(t => t.name === "wcount").map(t => t.path)).toEqual([
+		path.join(linkTarget, "tools", "wcount.sh"),
+	]);
 });

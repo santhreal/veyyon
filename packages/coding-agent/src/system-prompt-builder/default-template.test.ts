@@ -114,9 +114,16 @@ describe("section body override validation", () => {
 	 * only the multi-word ids exercised by common examples.
 	 */
 	it("accepts every declared public section id", () => {
-		for (const id of ["conventions", "role", "runtime", "tool-policy", "execution-workflow", "delivery-contract"]) {
-			expect(() => resolveSectionOverrides({ [id]: "body" })).not.toThrow();
-		}
+		const ids = ["conventions", "role", "runtime", "tool-policy", "execution-workflow", "delivery-contract"];
+		const resolved = Object.fromEntries(ids.map(id => [id, resolveSectionOverrides({ [id]: "body" })]));
+		expect(resolved).toEqual({
+			conventions: { conventions: "body" },
+			role: { role: "ROLE\n==============\n\nbody" },
+			runtime: { runtime: "RUNTIME\n==============\n\nbody" },
+			"tool-policy": { toolPolicy: "TOOL POLICY\n==============\n\nbody" },
+			"execution-workflow": { executionWorkflow: "EXECUTION WORKFLOW\n==============\n\nbody" },
+			"delivery-contract": { deliveryContract: "DELIVERY CONTRACT\n==============\n\nbody" },
+		});
 	});
 
 	/**

@@ -128,7 +128,8 @@ describe("An unreadable plugin commands path is reported, not read as an empty p
 
 		const result = await loadCapability<SlashCommand>("slash-commands", { cwd: tempDir });
 
-		expect(result.all.find(command => command.name === "healthy-commands:deploy")).toBeDefined();
+		const healthy = result.all.find(command => command.name === "healthy-commands:deploy");
+		expect(healthy?.content).toBe("Deploy it\n");
 	});
 
 	/**

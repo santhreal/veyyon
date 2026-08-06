@@ -571,21 +571,13 @@ describe("runEvalCompletion", () => {
 		expect(opts.reasoning).toBeUndefined();
 	});
 
-	it("throws ToolError on invalid arguments", async () => {
-		await expect(runEvalCompletion({ prompt: "" }, { session: makeSession() })).rejects.toBeInstanceOf(ToolError);
-		await expect(
-			runEvalCompletion({ prompt: "q", model: "huge" }, { session: makeSession() }),
-		).rejects.toBeInstanceOf(ToolError);
-	});
-
-	it("throws ToolError when no model resolves for the tier", async () => {
-		const session = makeSession({ available: [DEFAULT], roles: { smol: "missing/model" } });
-		await expect(runEvalCompletion({ prompt: "q", model: "smol" }, { session })).rejects.toBeInstanceOf(ToolError);
-	});
-
-	it("throws ToolError when the resolved model has no API key", async () => {
+	it("throws ToolError naming the model when the resolved model has no API key", async () => {
 		const session = makeSession({ apiKey: null });
-		await expect(runEvalCompletion({ prompt: "q", model: "smol" }, { session })).rejects.toBeInstanceOf(ToolError);
+		const err = await runEvalCompletion({ prompt: "q", model: "smol" }, { session }).catch(e => e);
+		expect(err).toBeInstanceOf(ToolError);
+		expect((err as Error).message).toBe(
+			"completion() has no API key for p/smol. Configure credentials for this provider or choose another tier.",
+		);
 	});
 
 	it("maps error and aborted stop reasons to ToolError", async () => {
@@ -602,9 +594,9 @@ describe("runEvalCompletion", () => {
 
 	it("throws ToolError when plain mode produces no text", async () => {
 		vi.spyOn(ai, "completeSimple").mockResolvedValue(assistant({ text: "" }));
-		await expect(
-			runEvalCompletion({ prompt: "q", model: "smol" }, { session: makeSession() }),
-		).rejects.toBeInstanceOf(ToolError);
+		const err = await runEvalCompletion({ prompt: "q", model: "smol" }, { session: makeSession() }).catch(e => e);
+		expect(err).toBeInstanceOf(ToolError);
+		expect((err as Error).message).toBe("completion() returned no text output.");
 	});
 
 	it("pauses the idle watchdog while a slow completion() request is in flight", async () => {

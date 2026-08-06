@@ -145,7 +145,10 @@ describe("recordSeenLinesFromBody", () => {
 	});
 
 	it("is a silent no-op for an unknown tag", () => {
-		const { session } = seedSnapshot();
-		expect(() => recordSeenLinesFromBody(session, "/snap-seen/only.ts", "deadbeef", "5:x")).not.toThrow();
+		const { session, key, tag } = seedSnapshot();
+		recordSeenLinesFromBody(session, "/snap-seen/only.ts", "deadbeef", "5:x");
+		// The line must not land on the real snapshot under a tag nobody recorded.
+		expect(getFileSnapshotStore(session).byHash(key, tag)?.seenLines).toBeUndefined();
+		expect(getFileSnapshotStore(session).byHash(key, "deadbeef")).toBeNull();
 	});
 });

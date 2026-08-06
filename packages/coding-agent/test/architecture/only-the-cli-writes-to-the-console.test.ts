@@ -120,11 +120,11 @@ describe("only the CLI writes to the console", () => {
 	 * than assumed.
 	 */
 	it("the allowlisted directories are the ones that write", () => {
-		for (const owner of CONSOLE_OWNERS) {
-			const hits = consoleCalls(relative => relative.startsWith(`${owner}${path.sep}`));
+		const owningDirectories = CONSOLE_OWNERS.filter(
+			owner => consoleCalls(relative => relative.startsWith(`${owner}${path.sep}`)).length > 0,
+		);
 
-			expect(hits.length).toBeGreaterThan(0);
-		}
+		expect(owningDirectories).toEqual(CONSOLE_OWNERS);
 	});
 });
 
