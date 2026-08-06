@@ -251,19 +251,29 @@ export function computeNonMessageTokens(session: AgentSession): number {
  * array on every call — an O(n) history walk repeated several times per turn
  * even when nothing in the history had changed since the last call.
  *
- * `settledLength`/`settledSum` cover `[0, settledLength)` for the current
- * `messagesRef`. The array's last slot is deliberately excluded from the
+ * Each slot's `settledLength`/`settledSum` cover `[0, settledLength)` for the
+ * current `messagesRef`. The array's last slot is deliberately excluded from the
  * settled range and re-read every call: `agent-loop.ts` replaces
  * `messages[messages.length - 1]` in place while streaming (partial → final
  * assistant message), which keeps the same array reference and length but
  * swaps the message identity — folding that slot into the settled sum would
  * silently return a stale estimate. Any reference change or length shrink
  * (rewind, `Agent#pop`, compaction replacing the array) resets the cache.
+ *
+ * The running sum is kept per option variant, for the reason `estimateTokens`
+ * keeps its own two slots: `excludeEncryptedReasoning` changes what a message
+ * with encrypted reasoning measures, so one shared sum would answer a caller
+ * with the total the other caller asked for.
  */
-interface StoredMessagesTokenCache {
-	messagesRef: AgentMessage[];
+interface SettledPrefix {
 	settledLength: number;
 	settledSum: number;
+}
+
+interface StoredMessagesTokenCache {
+	messagesRef: AgentMessage[];
+	default: SettledPrefix;
+	noReasoning: SettledPrefix;
 }
 
 const storedMessagesTokenCache = new WeakMap<AgentSession, StoredMessagesTokenCache>();
@@ -282,18 +292,28 @@ export function computeStoredMessagesTokens(
 	const settledLength = Math.max(0, messages.length - 1);
 
 	let cache = storedMessagesTokenCache.get(session);
-	if (!cache || cache.messagesRef !== messages || cache.settledLength > settledLength) {
-		cache = { messagesRef: messages, settledLength: 0, settledSum: 0 };
+	if (
+		!cache ||
+		cache.messagesRef !== messages ||
+		cache.default.settledLength > settledLength ||
+		cache.noReasoning.settledLength > settledLength
+	) {
+		cache = {
+			messagesRef: messages,
+			default: { settledLength: 0, settledSum: 0 },
+			noReasoning: { settledLength: 0, settledSum: 0 },
+		};
 	}
-	for (let i = cache.settledLength; i < settledLength; i++) {
-		cache.settledSum += estimateTokens(messages[i]!, options);
+	const slot = options?.excludeEncryptedReasoning ? cache.noReasoning : cache.default;
+	for (let i = slot.settledLength; i < settledLength; i++) {
+		slot.settledSum += estimateTokens(messages[i]!, options);
 	}
-	cache.settledLength = settledLength;
+	slot.settledLength = settledLength;
 	storedMessagesTokenCache.set(session, cache);
 
 	const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
 	const lastTokens = lastMessage ? estimateTokens(lastMessage, options) : 0;
-	return cache.settledSum + lastTokens;
+	return slot.settledSum + lastTokens;
 }
 
 /**

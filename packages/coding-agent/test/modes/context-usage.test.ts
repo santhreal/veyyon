@@ -168,6 +168,38 @@ describe("computeStoredMessagesTokens incremental cache", () => {
 
 		estimateSpy.mockRestore();
 	});
+
+	/**
+	 * `excludeEncryptedReasoning` changes what a message with an opaque provider
+	 * reasoning payload measures, which is why `estimateTokens` keeps two cache
+	 * slots rather than one. The running settled sum has to do the same: sharing
+	 * one slot hands the second caller the total the first one asked for, and the
+	 * error is the whole size of every signature in the settled history.
+	 */
+	it("keeps the two option variants from answering for each other", () => {
+		const reasoning = () =>
+			({
+				role: "assistant",
+				content: [{ type: "thinking", thinking: "short", thinkingSignature: "x".repeat(4000) }],
+				timestamp: 1,
+			}) as unknown as AgentMessage;
+
+		const includedAlone = computeStoredMessagesTokens({ messages: [reasoning(), userMessage("tail")] } as never);
+		const excludedAlone = computeStoredMessagesTokens({ messages: [reasoning(), userMessage("tail")] } as never, {
+			excludeEncryptedReasoning: true,
+		});
+		// The signature dominates: the two variants must not already agree, or the
+		// assertions below would hold for the wrong reason.
+		expect(includedAlone).toBeGreaterThan(excludedAlone);
+
+		const excludedFirst = { messages: [reasoning(), userMessage("tail")] } as never;
+		expect(computeStoredMessagesTokens(excludedFirst, { excludeEncryptedReasoning: true })).toBe(excludedAlone);
+		expect(computeStoredMessagesTokens(excludedFirst)).toBe(includedAlone);
+
+		const includedFirst = { messages: [reasoning(), userMessage("tail")] } as never;
+		expect(computeStoredMessagesTokens(includedFirst)).toBe(includedAlone);
+		expect(computeStoredMessagesTokens(includedFirst, { excludeEncryptedReasoning: true })).toBe(excludedAlone);
+	});
 });
 
 /**
