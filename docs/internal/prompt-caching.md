@@ -311,7 +311,8 @@ Prefix caching is positional, so an edit invalidates everything **after** it, no
 
 | Change | Invalidates |
 | --- | --- |
-| Model switch or terminal change | nothing behind block 0, because `<workstation>` is volatile-last inside `project` (see [system prompt architecture](system-prompt-architecture.md#ordering-rules)). It used to sit first, and cost 5,396 re-prefilled tokens |
+| Model switch | nothing at all. `includeModelInPrompt` ships off, so the model identifier is not in the prompt to change (`settings-domains/model.ts`). Turning it on puts `Model:` inside `project`, and then a switch re-prefills that whole block, measured at 14,198 tokens |
+| Terminal change | nothing behind block 0, because `<workstation>` is volatile-last inside `project` (see [system prompt architecture](system-prompt-architecture.md#ordering-rules)). It used to sit first, and cost 5,396 re-prefilled tokens |
 | A statement's condition flipping (a setting change) | block 0 and everything after it |
 | An argot dictionary loading | the `shorthand-handles` block and later blocks; block 0 survives, which is why the handle table is its own block |
 | A new secret becoming spendable | the `available-secrets` block and later blocks |
@@ -423,9 +424,23 @@ than we do, and the comparison is included because it makes the gap concrete.
 - **Marker positions are chosen positionally, not structurally.** The trailing loop marks the
   last one or two messages whatever they are. Hermes instead computes
   `_completed_transaction_endpoint_indexes`, selecting only the ends of completed tool runs and
-  ordinary turns, and skips messages a provider will not honour a marker on. A marker Veyyon
-  places on a message whose tool results have not arrived yet is a marker on a prefix that will
-  not recur, so the slot is wasted. Hermes' approach is stronger here.
+  ordinary turns, and skips messages a provider will not honour a marker on. The cost of the
+  positional rule is narrower than it first looks. History is append-only, so a marker placed on
+  message N is still read by the next request, whose prefix through N is unchanged; the slot is
+  wasted only when that prefix never recurs, which means an aborted or retried turn, or a
+  compaction that rewrites history. Measure this before changing it rather than assuming the
+  structural rule is worth a slot.
+- **Compaction builds a request that shares no cache with the session it compacts.**
+  `buildCompactionProviderContext` (`packages/agent/src/compaction/compaction.ts:642`) sends a
+  different system prompt (`SUMMARIZATION_SYSTEM_PROMPT`), no tools, and one synthesized user
+  message holding the whole conversation re-serialized by `serializeConversationForSummary`.
+  None of that matches the live prefix, so the request that fires at the largest point in a
+  session pays a full prefill. It is affordable only because it is lossy: `TOOL_RESULT_MAX_CHARS`
+  (`compaction/utils.ts:245`) cuts every tool result to 2,000 characters, which on a real 138 MB
+  session transcript (9,788 tool results, 33.8M characters) keeps 31.5% of tool-result bytes.
+  Replaying the live prefix and appending the instruction as one user message turns that into a
+  cache read and removes the truncation, but only where the provider caches prefixes and the
+  trailing message can legally take an appended user turn.
 - **Inbound markers are clamped, not stripped and replanned.** `enforceCacheControlLimit`
   removes excess markers after the fact. Hermes strips every marker first
   (`strip_anthropic_cache_control`) and then builds a fresh plan for the resolved destination,
