@@ -21,7 +21,7 @@ import {
 	AGENT_VIEW_DATA_CHANGE_COALESCE_MS,
 	AGENT_VIEW_LEFT_TAP_WINDOW_MS,
 } from "@veyyon/coding-agent/modes/components/agent-view-timings";
-import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
 
 const SRC_DIR = path.resolve(import.meta.dir, "../src");
 const COMPONENTS_DIR = path.join(SRC_DIR, "modes/components");
@@ -33,13 +33,13 @@ const CONSUMERS = [
 		file: path.join(COMPONENTS_DIR, "agent-dashboard.ts"),
 		proves: "class AgentDashboard",
 		names: ["AGENT_VIEW_AGE_TICK_MS", "AGENT_VIEW_DATA_CHANGE_COALESCE_MS"],
-		importer: /from "\.\/agent-view-timings";/,
+		specifier: "./agent-view-timings",
 	},
 	{
 		file: path.join(SRC_DIR, "modes/controllers/input-controller.ts"),
 		proves: "class InputController",
 		names: ["AGENT_VIEW_LEFT_TAP_WINDOW_MS"],
-		importer: /from "\.\.\/\.\.\/modes\/components\/agent-view-timings";/,
+		specifier: "../../modes/components/agent-view-timings",
 	},
 ] as const;
 
@@ -122,12 +122,17 @@ describe("timing ownership", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	/** The positive half: every consumer takes the names it uses from the owner rather than restating them. */
+	/**
+	 * The positive half, read as an import EDGE rather than as characters. `toContain(name)` was satisfied by
+	 * the name appearing in a comment, and it said nothing about where the value came from. A binding taken
+	 * from the owner settles both halves at once: TypeScript refuses a module that imports a name and also
+	 * declares it, so the edge is the compiler's guarantee that no private copy exists.
+	 */
 	it("has every consumer importing its timings from the owner", async () => {
 		for (const consumer of CONSUMERS) {
 			const text = await Bun.file(consumer.file).text();
-			expect(text).toMatch(consumer.importer);
-			for (const name of consumer.names) expect(text).toContain(name);
+			const bound = namedImportsFrom(text, consumer.specifier).sort();
+			expect(bound).toEqual([...consumer.names].sort());
 		}
 	});
 
@@ -135,16 +140,20 @@ describe("timing ownership", () => {
 	 * Utilization: every exported timing has at least one non-test consumer. When the two views were deleted,
 	 * the gesture window briefly had none while the input controller kept its own 500ms literal, which is a
 	 * shared constant that no longer shares anything and a duplicate hiding behind a different name.
+	 *
+	 * Counted over bindings, so a name surviving only in a comment no longer answers for a consumer.
 	 */
 	it("has a real consumer for every exported timing", async () => {
-		const texts = await Promise.all(CONSUMERS.map(consumer => Bun.file(consumer.file).text()));
-		for (const name of [
+		const bound = new Set<string>();
+		for (const consumer of CONSUMERS) {
+			const text = await Bun.file(consumer.file).text();
+			for (const name of namedImportsFrom(text, consumer.specifier)) bound.add(name);
+		}
+		expect([...bound].sort()).toEqual([
 			"AGENT_VIEW_AGE_TICK_MS",
 			"AGENT_VIEW_DATA_CHANGE_COALESCE_MS",
 			"AGENT_VIEW_LEFT_TAP_WINDOW_MS",
-		]) {
-			expect(texts.some(text => text.includes(name))).toBeTrue();
-		}
+		]);
 	});
 
 	/**
@@ -170,6 +179,6 @@ describe("timing ownership", () => {
 		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
 		expect(moduleSpecifiersIn(owner)).toEqual([]);
 		const statusDisplay = await Bun.file(path.join(COMPONENTS_DIR, "agent-status-display.ts")).text();
-		expect(statusDisplay).not.toContain("AGENT_VIEW_AGE_TICK_MS");
+		expect(namedImportsFrom(statusDisplay, "./agent-view-timings")).toEqual([]);
 	});
 });

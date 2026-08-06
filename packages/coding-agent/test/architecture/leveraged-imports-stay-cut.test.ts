@@ -6,7 +6,13 @@ import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
 import { getMemoryRoot } from "@veyyon/coding-agent/memories";
 import * as themeEngine from "@veyyon/coding-agent/modes/theme/theme";
 import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
-import { moduleReachCount, moduleSpecifiersIn, withoutComments } from "@veyyon/utils/module-reach";
+import {
+	dynamicImportBindings,
+	dynamicImportSpecifiersIn,
+	moduleReachCount,
+	moduleSpecifiersIn,
+	withoutComments,
+} from "@veyyon/utils/module-reach";
 import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/module-reach-gate";
 
 /**
@@ -1117,7 +1123,10 @@ describe("declaring the web-search tool does not load the credential store", () 
 	 * a search that stopped resolving credentials would pass every count assertion in this block.
 	 */
 	it("loads the broker config dynamically, and still asks it for credentials", () => {
-		expect(source).toContain('await import("../../session/auth-broker-config")');
+		// The parsed dynamic edge, not the characters: the scan this replaced went green on a doc
+		// comment describing the import and red on a reformat of the call it was watching.
+		expect(dynamicImportSpecifiersIn(source)).toContain("../../session/auth-broker-config");
+		expect(dynamicImportBindings(source, "../../session/auth-broker-config")).toEqual(["discover"]);
 
 		const callSites = withoutComments(source).match(/await discoverAuthStorage\(\)/g) ?? [];
 		expect(callSites.length).toBe(3);

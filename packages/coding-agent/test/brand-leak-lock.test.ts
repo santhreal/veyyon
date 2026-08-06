@@ -9,6 +9,9 @@
 
 import { describe, expect, it } from "bun:test";
 import { getOpenRouterHeaders } from "@veyyon/ai";
+// Relative: `loader-state.js` is a hand-authored shim with no export-map entry,
+// and giving it one to satisfy a test would widen the package's public surface.
+import { buildHelpMessage } from "../../natives/native/loader-state.js";
 import { Glob } from "bun";
 
 const ROOT = `${import.meta.dir}/../../..`;
@@ -81,10 +84,12 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 		}
 	});
 
-	it("pins the hindsight outward User-Agent to veyyon-coding-agent", async () => {
-		const src = await Bun.file(`${ROOT}/packages/coding-agent/src/hindsight/client.ts`).text();
-		expect(src).toMatch(/const USER_AGENT = "veyyon-coding-agent"/);
-	});
+	// The hindsight outward User-Agent used to be locked here by scanning
+	// `client.ts` for `const USER_AGENT = "..."`, which reads the declaration
+	// rather than the request. `src/hindsight/client.test.ts` already drives a
+	// real call through a captured `fetch` and asserts the header the server
+	// would see, so the claim has one owner and does not need a second, weaker
+	// copy in this file. Do not re-add a source scan for it.
 
 	it("carries no dead-brand product strings on runtime source paths", async () => {
 		// "Oh My Pi" / "Oh-My-Pi" as a product string, the old coding-agent UA,
@@ -128,15 +133,22 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 		expect(hits).toEqual([]);
 	});
 
-	it("the natives loader points its download help at santhreal/veyyon, not a fork", async () => {
-		// Locks the actual fix: the loader's release-download base is derived from
-		// the package's own repository.url (santhreal/veyyon), so a stale upstream
-		// URL can never re-appear in the "download manually" help a user sees when
-		// the native addon fails to load.
-		const src = await Bun.file(`${ROOT}/packages/natives/native/loader-state.js`).text();
-		expect(src).toContain("releasesDownloadBase");
-		expect(src).toContain('"santhreal/veyyon"');
-		expect(src).not.toMatch(/can1357|oh-my-pi\/releases/);
+	it("the natives loader points its download help at santhreal/veyyon, not a fork", () => {
+		// Locks the actual fix at the surface the user meets: the "download
+		// manually" help printed when the native addon fails to load. The scan
+		// this replaced looked for the helper's NAME and the slug as characters,
+		// which a doc comment satisfies and which says nothing about the URL the
+		// help actually prints.
+		const help = buildHelpMessage({
+			isCompiledBinary: true,
+			addonFilenames: ["veyyon_natives.linux-x64.node"],
+			versionedDir: "/tmp/natives/1.0.0",
+		});
+
+		expect(help).toContain(
+			'curl -fsSL "https://github.com/santhreal/veyyon/releases/latest/download/veyyon_natives.linux-x64.node"',
+		);
+		expect(help).not.toMatch(/can1357|oh-my-pi/);
 	});
 
 	it("every @veyyon/* package manifest is authored by santhreal, never an upstream/placeholder name", async () => {
