@@ -182,9 +182,13 @@ export class ToolChoiceQueue {
 			// Re-queue only the lost yield, not the rest of the sequence. Carry forward
 			// callbacks so the replayed yield still executes and finalizes correctly,
 			// and can requeue itself again if the next turn also aborts or skips it.
+			// The label is carried verbatim: consumers key off it by exact match
+			// (`consumeLastServedLabel() === "user-force"` suppresses the todo nag) and
+			// `removeByLabel` filters by it, so a decorated copy would silently escape
+			// both an identity check and a targeted removal.
 			this.#queue.unshift({
 				generator: onceGen(inFlight.yielded),
-				label: `${inFlight.directive.label}-requeued`,
+				label: inFlight.directive.label,
 				callbacks: {
 					onResolved: inFlight.directive.callbacks.onResolved,
 					onInvoked: inFlight.directive.callbacks.onInvoked,
