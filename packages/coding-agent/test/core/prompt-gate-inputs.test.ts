@@ -58,7 +58,9 @@ const FLIPS: Readonly<Record<string, unknown>> = {
 	"subagent.batch": false,
 	"subagent.maxConcurrency": 1,
 	"subagent.agents": {},
-	includeModelInPrompt: false,
+	// Defaults to FALSE (the model name is the prompt's only turn-volatile field, and it
+	// sits in the cached PROJECT block), so the flip is ON and the model joins the prompt.
+	includeModelInPrompt: true,
 	"tools.format": "hermes",
 	inlineToolDescriptors: true,
 	// Defaults to TRUE, so the flip is off and the statement leaves the prompt.
@@ -241,8 +243,12 @@ describe("every live gate reaches the rendered prompt", () => {
 				gateSections(promptGateFor(setting) ?? ({ sections: [] } as never)),
 				`${setting} has no claim`,
 			).toContain("workstation");
-			expect(baseline, `${setting} baseline does not name the model`).toContain(MODEL.id);
-			expect(flipped, `${setting} left the model in the prompt`).not.toContain(MODEL.id);
+			// Direction is read off the flip rather than assumed, so changing the shipped
+			// default cannot silently turn this into an assertion about nothing.
+			const gateOn = FLIPS[setting] === true ? flipped : baseline;
+			const gateOff = FLIPS[setting] === true ? baseline : flipped;
+			expect(gateOn, `${setting} did not name the model with the gate on`).toContain(MODEL.id);
+			expect(gateOff, `${setting} left the model in the prompt with the gate off`).not.toContain(MODEL.id);
 			return;
 		}
 

@@ -151,7 +151,8 @@ export const OMITTED_GATE_DEFAULTS = {
 	eagerTasksAlways: false,
 	/** No spawnable agent, so delegation prose names none: it cannot route work to an unknown agent. */
 	subagentNames: [] as readonly string[],
-	includeModelInPrompt: true,
+	/** Off, matching the setting: the model name is the one turn-volatile field in the prompt. */
+	includeModelInPrompt: false,
 	includeWorkspaceTree: false,
 	inlineToolDescriptors: false,
 	/** True: with no model to ask, assume the provider takes tool calls natively and teach no dialect. */
