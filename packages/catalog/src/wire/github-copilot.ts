@@ -28,6 +28,21 @@ export const COPILOT_API_HEADERS = {
 	"X-GitHub-Api-Version": COPILOT_API_VERSION,
 } as const;
 
+/**
+ * GitHub REST API version sent on `api.github.com` requests made on Copilot's
+ * behalf (`/user`, premium-request billing). This is the other vocabulary
+ * {@link COPILOT_API_VERSION} warns about: REST validates the header against
+ * dated REST versions and rejects a capi version outright. The two live side
+ * by side so bumping one cannot read as bumping both.
+ */
+export const GITHUB_REST_API_VERSION = "2022-11-28" as const;
+
+/** Headers for `api.github.com` REST requests. Callers add `Authorization`. */
+export const GITHUB_REST_HEADERS = {
+	Accept: "application/vnd.github+json",
+	"X-GitHub-Api-Version": GITHUB_REST_API_VERSION,
+} as const;
+
 type GitHubCopilotApiKeyPayload = {
 	token?: unknown;
 	enterpriseUrl?: unknown;

@@ -5,7 +5,7 @@
  */
 
 import { toBoolean, toNumber } from "@veyyon/catalog/utils";
-import { OPENCODE_HEADERS } from "@veyyon/catalog/wire/github-copilot";
+import { GITHUB_REST_HEADERS, OPENCODE_HEADERS } from "@veyyon/catalog/wire/github-copilot";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import * as AIError from "../error";
 import type {
@@ -150,9 +150,8 @@ async function resolveGitHubUsername(
 	try {
 		const data = await fetchGitHubCopilotJson(ctx.fetch, `${baseUrl}/user`, {
 			headers: {
-				Accept: "application/vnd.github+json",
+				...GITHUB_REST_HEADERS,
 				Authorization: `Bearer ${token}`,
-				"X-GitHub-Api-Version": "2022-11-28",
 			},
 			signal,
 		});
@@ -197,9 +196,8 @@ async function fetchBillingUsage(
 		`${baseUrl}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage`,
 		{
 			headers: {
-				Accept: "application/vnd.github+json",
+				...GITHUB_REST_HEADERS,
 				Authorization: `Bearer ${token}`,
-				"X-GitHub-Api-Version": "2022-11-28",
 			},
 			signal,
 		},
