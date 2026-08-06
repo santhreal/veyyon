@@ -1252,8 +1252,13 @@ export function repairOrphanResponsesToolOutputs(input: ResponseInput): Response
 	});
 }
 
-/** Placeholder output for a tool call whose result is absent from the input. */
-const ORPHAN_TOOL_CALL_PLACEHOLDER =
+/**
+ * Placeholder output for a tool call whose result is absent from the input.
+ * The model reads this text, so it has one owner: the Codex transformer runs
+ * the same repair against the same Responses grammar and must not drift into
+ * describing the same situation differently.
+ */
+export const ORPHAN_TOOL_CALL_PLACEHOLDER =
 	"[No tool output recorded: the tool call was interrupted before it produced a result.]";
 
 /**
