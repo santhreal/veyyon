@@ -158,3 +158,13 @@ bun/
 # file is written and the file is created 0600, but it is still not something to commit.
 rr-session-*.json
 rr-session-*.res.log
+
+# Agent session state written into the repo. A veyyon session started from a working
+# directory persists its transcript beside the code it was working on, under an
+# agent directory whose name is generated per session, so the paths are unpredictable
+# and never the same twice. One of these was committed by accident and then dirtied
+# every worktree that checked it out, because the agent that owned it kept appending.
+# The transcript is the conversation verbatim: prompts, file contents, tool output.
+*/sessions/*.jsonl
+scratch-docs-lane/
+
