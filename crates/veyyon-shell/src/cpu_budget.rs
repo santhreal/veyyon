@@ -117,7 +117,10 @@ impl BudgetGroup {
 	}
 
 	#[cfg(not(target_os = "windows"))]
-	#[allow(clippy::unnecessary_wraps, reason = "the Windows variant allocates a Job Object and can fail")]
+	#[allow(
+		clippy::unnecessary_wraps,
+		reason = "the Windows variant allocates a Job Object and can fail"
+	)]
 	fn create_native(_name: &str, _cores: f64) -> Result<Self> {
 		Ok(Self::tracked())
 	}
