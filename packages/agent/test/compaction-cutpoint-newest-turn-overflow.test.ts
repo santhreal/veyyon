@@ -1,23 +1,30 @@
 /**
- * A session whose NEWEST turn alone blows the keep-recent budget still compacts.
+ * A session whose NEWEST turn alone blows the keep-recent budget still compacts,
+ * and actually frees something.
  *
  * `findCutPoint` walks backwards from the newest entry adding up estimated
  * tokens, and when the tally crosses the budget it looks for the closest valid
- * cut point AT OR AFTER the entry that crossed it. If none exists — which is
- * exactly what happens when the budget is blown inside the newest turn, and one
- * enormous final tool result is enough — the search found nothing and `cutIndex`
- * kept its default of `cutPoints[0]`, the very FIRST valid cut point. That means
- * "keep the entire session". `prepareCompaction` then has nothing to summarize
- * and returns `undefined`, so compaction does nothing at all, silently, at
- * precisely the moment the session is most over budget: the user watches the
- * context meter sit at the ceiling while compaction reports no work to do.
+ * cut point AT OR AFTER the entry that crossed it. None exists when the budget is
+ * blown inside the newest turn, and one enormous final tool result is enough: a
+ * result is never a valid cut point, because cutting there would separate it from
+ * the call it answers.
  *
- * The existing dead-end guard did not cover it. That guard fires only when the
- * crossing entry is the OLDEST one (`crossedIndex === startIndex`); here the
- * crossing entry is the newest.
+ * Two wrong answers have been given to that, and the second is why these tests
+ * are worth their length:
  *
- * The fix falls back to the NEWEST valid cut point, which keeps the least while
- * still landing on a boundary that never separates a tool call from its result.
+ *  1. `cutIndex` kept its default of `cutPoints[0]`, the FIRST valid cut point,
+ *     which means "keep the entire session". `prepareCompaction` had nothing to
+ *     summarize and returned `undefined`, so compaction did nothing at all,
+ *     silently, at precisely the moment the session was most over budget.
+ *  2. Falling back to the NEWEST valid cut point, which is the assistant message
+ *     CARRYING the call. That keeps the oversized result in the tail, so the
+ *     session is STILL over budget once compaction finishes and the next turn
+ *     asks again. Compaction reported success and freed nothing: the user watches
+ *     a warning arrive every turn against a gauge that never moves, which is
+ *     harder to diagnose than the silent version because it looks like it worked.
+ *
+ * The answer is to keep nothing. The summary stands in for the whole range, which
+ * is the only cut available here that frees anything at all.
  *
  * The fixture is deliberately minimal — a small session plus one huge final
  * result — so a failure here points at the cut-point search and nothing else.
@@ -103,34 +110,54 @@ describe("when the newest turn alone exceeds the budget", () => {
 		expect(prepared!.messagesToSummarize.length).toBeGreaterThan(0);
 	});
 
-	it("cuts to the newest valid boundary, keeping the least", () => {
+	it("keeps nothing, because no boundary leaves a tail within budget", () => {
 		// 21 entries: 6 small turns of 3, then user, assistant-with-call, result.
 		// A tool result is never a valid cut point (cutting there orphans it), so
-		// the newest boundary is the assistant message carrying the call.
+		// there is no boundary at or after the entry that blew the budget.
+		//
+		// Falling back to the newest boundary, the assistant message CARRYING the
+		// call, was the first attempt at this and it does not work: that keeps the
+		// oversized result in the tail, so the session is still over budget when
+		// compaction finishes and the next turn asks again. The user sees a warning
+		// every turn against a gauge that never moves. `entries.length` means keep
+		// nothing: the summary stands in for the whole range, which is the only cut
+		// here that frees anything.
 		const entries = sessionEndingInAHugeResult(6, 200_000);
 		const cut = findCutPoint(entries, 0, entries.length, 1_000);
 
-		expect(cut.firstKeptEntryIndex).toBe(entries.length - 2);
+		expect(cut.firstKeptEntryIndex).toBe(entries.length);
 	});
 
-	it("keeps the huge result paired with its call", () => {
-		// The pairing that decides whether the next request is accepted: the result
-		// kept in the tail must have the call that produced it kept alongside it.
-		// Keeping the result alone would earn a 400 on the very next turn.
+	it("summarizes the huge result rather than keeping it", () => {
+		// The oversized result is the reason the session is over budget, so it has
+		// to be on the summarized side. Nothing is kept in full.
 		const prepared = prepareCompaction(sessionEndingInAHugeResult(6, 200_000), settings(1_000));
-		const roles = prepared!.recentMessages.map(m => m.role);
 
-		expect(roles).toEqual(["assistant", "toolResult"]);
+		expect(prepared!.recentMessages).toEqual([]);
+		expect(prepared!.messagesToSummarize.map(m => m.role).slice(-2)).toEqual(["assistant", "toolResult"]);
 	});
 
-	it("splits the final turn, sending its user message to the prefix summary", () => {
-		// The cut lands inside the newest turn, so the user message that opened it is
-		// older than the tail. It is not dropped: it goes to `turnPrefixMessages`,
-		// which is summarized separately so the kept tail still has its question.
+	it("never keeps a tool result without the call it answers", () => {
+		// The pairing that decides whether the next request is accepted. Keeping a
+		// result whose call was summarized away earns a 400 on the very next turn,
+		// and that must hold whatever the cut turns out to be.
+		const prepared = prepareCompaction(sessionEndingInAHugeResult(6, 200_000), settings(1_000));
+		const kept = prepared!.recentMessages;
+
+		const firstResult = kept.findIndex(m => m.role === "toolResult");
+		if (firstResult !== -1) {
+			expect(kept.slice(0, firstResult).some(m => m.role === "assistant")).toBe(true);
+		}
+	});
+
+	it("does not split a turn when it keeps nothing", () => {
+		// A split turn exists to summarize the opening of a turn whose tail is kept.
+		// With no tail kept there is no prefix to carve out, and claiming one would
+		// summarize the same user message twice.
 		const prepared = prepareCompaction(sessionEndingInAHugeResult(6, 200_000), settings(1_000));
 
-		expect(prepared!.isSplitTurn).toBe(true);
-		expect(prepared!.turnPrefixMessages.map(m => m.role)).toEqual(["user"]);
+		expect(prepared!.isSplitTurn).toBe(false);
+		expect(prepared!.turnPrefixMessages).toEqual([]);
 	});
 
 	it("holds for a range of overflow sizes", () => {

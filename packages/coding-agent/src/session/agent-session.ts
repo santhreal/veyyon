@@ -4015,7 +4015,9 @@ export class AgentSession {
 			this.sessionId,
 			advisor.slug,
 		);
-		const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings));
+		const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings), {
+			nonMessageTokens: computeNonMessageTokens(this),
+		});
 		if (!preparation) {
 			// Cannot prepare compaction, fallback to re-prime
 			return true;
@@ -12798,7 +12800,9 @@ export class AgentSession {
 			const availableModels = this.#modelRegistry.getAvailable();
 			const compactionCandidates = this.#getCompactionModelCandidates(availableModels);
 			const pathEntries = this.sessionManager.getBranch();
-			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(effectiveSettings));
+			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(effectiveSettings), {
+				nonMessageTokens: computeNonMessageTokens(this),
+			});
 			if (!preparation) {
 				// Check why we can't compact
 				const lastEntry = pathEntries[pathEntries.length - 1];
@@ -15750,7 +15754,9 @@ export class AgentSession {
 
 			const pathEntries = this.sessionManager.getBranch();
 
-			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings));
+			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings), {
+				nonMessageTokens: computeNonMessageTokens(this),
+			});
 			if (!preparation) {
 				await this.#emitSessionEvent({
 					type: "auto_compaction_end",

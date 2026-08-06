@@ -335,6 +335,21 @@ export function findTurnStartIndex(entries: SessionEntry[], entryIndex: number, 
 	return -1;
 }
 
+/**
+ * `firstKeptEntryId` for a compaction that keeps no pre-compaction entry at all.
+ *
+ * A range can be one unbreakable oversized turn: a tool result is never a valid
+ * cut point, because cutting there would separate it from the call it answers,
+ * so a single enormous result leaves the assistant message in front of it as the
+ * newest usable boundary, and keeping from there keeps everything. Summarizing
+ * the whole range and keeping nothing is then the only way to free anything.
+ *
+ * Readers resolve the id against the entries in the path and there is
+ * deliberately no entry with this one, so every reader that walks until it finds
+ * the first kept entry keeps nothing, which is what this means.
+ */
+export const KEEP_NOTHING_ENTRY_ID = "compaction:keep-nothing";
+
 export interface CutPointResult {
 	/** Index of first entry to keep */
 	firstKeptEntryIndex: number;
@@ -368,13 +383,14 @@ export function findCutPoint(
 ): CutPointResult {
 	const cutPoints = findValidCutPoints(entries, startIndex, endIndex);
 
-	if (cutPoints.length === 0) {
-		return { firstKeptEntryIndex: startIndex, turnStartIndex: -1, isSplitTurn: false };
-	}
+	// No valid cut point anywhere in the range means nothing can be kept on a
+	// boundary. Fall through with `startIndex` rather than returning: the
+	// dead-end guard below turns that into "keep nothing" when the range is over
+	// budget, and leaves it alone when the session is genuinely small.
 
 	// Walk backwards from newest, accumulating estimated message sizes
 	let accumulatedTokens = 0;
-	let cutIndex = cutPoints[0]; // Default: keep from first message (not header)
+	let cutIndex = cutPoints.length > 0 ? cutPoints[0] : startIndex; // Default: keep from first message (not header)
 	let crossedIndex = -1; // Entry whose tokens first pushed the tally over budget
 
 	for (let i = endIndex - 1; i >= startIndex; i--) {
@@ -391,7 +407,8 @@ export function findCutPoint(
 		// Check if we've exceeded the budget
 		if (accumulatedTokens >= keepRecentTokens) {
 			crossedIndex = i;
-			// Find the closest valid cut point at or after this entry
+			// Keep from the crossing entry: the budget says how much recent history
+			// to keep, and the entry that reached it belongs on the kept side.
 			let found = false;
 			for (let c = 0; c < cutPoints.length; c++) {
 				if (cutPoints[c] >= i) {
@@ -400,21 +417,23 @@ export function findCutPoint(
 					break;
 				}
 			}
-			// No valid cut point at or after the crossing entry. That happens when the
-			// budget is blown inside the newest turn — one enormous final tool result
-			// is enough — and the default `cutPoints[0]` means "keep from the very
-			// first message", so the whole session would be kept and `prepareCompaction`
-			// would return undefined. Compaction would then do NOTHING at precisely the
-			// moment the session is most over budget, and silently. Fall back to the
-			// newest valid cut point instead: it keeps the least while still landing on
-			// a boundary that never separates a tool call from its result.
-			if (!found) cutIndex = cutPoints[cutPoints.length - 1];
+			// No valid cut point at or after the crossing entry. The budget was blown
+			// inside the newest turn, which one enormous tool result is enough to do:
+			// a result is never a valid cut point, because cutting there would
+			// separate it from the call it answers, so nothing behind it is usable.
+			//
+			// The old fallback kept from the newest valid point, which is the
+			// assistant message CARRYING that call, so the oversized result stayed in
+			// the tail and compaction freed nothing however often it ran. That is the
+			// dead-end loop: a warning every turn against a full gauge. Keep nothing
+			// instead and let the summary stand in for the whole range.
+			if (!found) cutIndex = endIndex;
 			break;
 		}
 	}
 
 	// Scan backwards from cutIndex to include any non-message entries (bash, settings, etc.)
-	while (cutIndex > startIndex) {
+	while (cutIndex > startIndex && cutIndex < endIndex) {
 		const prevEntry = entries[cutIndex - 1];
 		// Stop at session header or compaction boundaries
 		if (prevEntry.type === "compaction") {
@@ -428,18 +447,31 @@ export function findCutPoint(
 		cutIndex--;
 	}
 
-	// Dead-end guard: if the budget was crossed only at the oldest entry and the
-	// cut (plus the backward sweep) would keep the entire range, compaction has
-	// nothing to summarize and dead-ends. Cut strictly after the crossing entry
-	// instead: the over-budget entry gets summarized and the kept tail stays
-	// within budget. Only applies when a later cut point exists.
-	if (cutIndex === startIndex && crossedIndex === startIndex) {
+	// Dead-end guard: a cut at `startIndex` keeps the ENTIRE range, so there is
+	// nothing to summarize and `prepareCompaction` refuses — at exactly the
+	// moment the session is most over budget, and silently, which surfaces to the
+	// user as "Nothing to compact (session too small)" against a full gauge.
+	//
+	// Cut at the next valid point instead. When there is no next point the whole
+	// range is one unbreakable turn, and the only way to free anything is to
+	// summarize all of it and keep nothing: `endIndex` says exactly that.
+	// `crossedIndex === -1` means the range fits the budget, which is a genuinely
+	// small session and must still be refused.
+	if (cutIndex === startIndex && crossedIndex !== -1) {
+		let nextCutPoint = -1;
 		for (let c = 0; c < cutPoints.length; c++) {
-			if (cutPoints[c] > crossedIndex) {
-				cutIndex = cutPoints[c];
+			if (cutPoints[c] > startIndex) {
+				nextCutPoint = cutPoints[c];
 				break;
 			}
 		}
+		cutIndex = nextCutPoint === -1 ? endIndex : nextCutPoint;
+	}
+
+	// Keeping nothing has no cut entry and splits no turn: everything in the
+	// range becomes history for the summary.
+	if (cutIndex >= endIndex) {
+		return { firstKeptEntryIndex: endIndex, turnStartIndex: -1, isSplitTurn: false };
 	}
 
 	// Determine if this is a split turn
@@ -1057,6 +1089,17 @@ function hasReusableSummary(preserveData: Record<string, unknown> | undefined): 
 export interface CompactionPreparationOptions {
 	/** Runtime-owned state messages reconstructed separately after compaction. */
 	excludedCustomMessageTypes?: ReadonlySet<string>;
+	/**
+	 * Tokens in the provider's prompt count that belong to no session entry: the
+	 * system prompt, the tool schemas, and anything else the harness prepends.
+	 *
+	 * Compaction scales its recent-token budget by how far the local estimate
+	 * undershoots the provider's count for the same messages, and without this
+	 * figure that comparison silently includes the harness, so growing the tool
+	 * set shrinks how much conversation a compaction keeps. Omit it only when it
+	 * is genuinely unknown; the scaling is then skipped rather than guessed.
+	 */
+	nonMessageTokens?: number;
 }
 
 /**
@@ -1167,8 +1210,18 @@ export function prepareCompaction(
 	let keepRecentTokens = settings.keepRecentTokens;
 	if (lastUsage) {
 		const estimatedTokens = estimateEntriesTokens(pathEntries, boundaryStart, boundaryEnd);
-		const promptTokens = calculatePromptTokens(lastUsage);
-		const ratio = estimatedTokens > 0 ? promptTokens / estimatedTokens : 0;
+		// Scale the recent budget by how far the local estimate undershoots what
+		// the provider actually charged for the SAME messages. The system prompt
+		// and the tool schemas are in the provider's prompt count and in no entry,
+		// so leaving them in makes an unrelated harness the multiplier: with the
+		// same conversation, a 20k prefix cut the retained tail from everything to
+		// two thirds, and a 60k prefix to under half. That is not estimate error
+		// and compaction must not treat it as such. Callers that know the figure
+		// pass it; when nobody does, the ratio is only trustworthy if it is not
+		// dominated by content we cannot see, so an unknown prefix means no scaling.
+		const nonMessageTokens = options?.nonMessageTokens;
+		const promptTokens = calculatePromptTokens(lastUsage) - (nonMessageTokens ?? 0);
+		const ratio = nonMessageTokens !== undefined && estimatedTokens > 0 ? promptTokens / estimatedTokens : 0;
 		if (Number.isFinite(ratio) && ratio > 1) {
 			keepRecentTokens = Math.max(1, Math.floor(keepRecentTokens / ratio));
 		}
@@ -1176,12 +1229,17 @@ export function prepareCompaction(
 
 	const cutPoint = findCutPoint(pathEntries, boundaryStart, boundaryEnd, keepRecentTokens);
 
-	// Get ID of first kept entry
-	const firstKeptEntry = pathEntries[cutPoint.firstKeptEntryIndex];
-	if (!firstKeptEntry?.id) {
+	// Get ID of first kept entry. A cut at `boundaryEnd` keeps nothing: the
+	// summary replaces the whole range, which is the only way to free anything
+	// when the range is one unbreakable oversized turn. The rebuild emits a
+	// pre-compaction entry only once it has seen `firstKeptEntryId`, so an id
+	// that matches no entry already means "keep nothing" everywhere it is read.
+	const keepsNothing = cutPoint.firstKeptEntryIndex >= boundaryEnd;
+	const firstKeptEntry = keepsNothing ? undefined : pathEntries[cutPoint.firstKeptEntryIndex];
+	if (!keepsNothing && !firstKeptEntry?.id) {
 		return undefined; // Session needs migration
 	}
-	const firstKeptEntryId = firstKeptEntry.id;
+	const firstKeptEntryId = keepsNothing ? KEEP_NOTHING_ENTRY_ID : (firstKeptEntry as SessionEntry).id;
 
 	const historyEnd = cutPoint.isSplitTurn ? cutPoint.turnStartIndex : cutPoint.firstKeptEntryIndex;
 
