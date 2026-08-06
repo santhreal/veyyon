@@ -9,10 +9,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
-permissions:
-  contents: read
-  issues: write
-  pull-requests: write
+# Nothing at workflow level. Every job starts with no token scope at all and
+# names what it needs, so a job added later cannot silently inherit write on
+# pull requests. Only `review` touches the API.
+permissions: {}
 
 concurrency:
   group: "autoreview-${{ github.event.pull_request.number }}"
@@ -22,6 +22,8 @@ jobs:
   preflight:
     name: Check autoreview credentials
     runs-on: ubuntu-latest
+    # Reads a secret into a step output and writes nothing to the API.
+    permissions: {}
     # Draft PRs get no review until marked ready; syncs on a draft are skipped.
     if: github.event.pull_request.draft == false
     outputs:
@@ -45,9 +47,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: preflight
     if: needs.preflight.outputs.has_key == 'true'
+    # pr-agent reads the diff and the repo's own config, then writes the review
+    # comment, the description and the suggestions back onto the pull request.
+    # `issues: write` is deliberately absent: every write here targets a pull
+    # request, and the issue-comments endpoint accepts pull-requests write for a
+    # PR number, so the issues scope was never reached.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: PR Agent review
-        uses: qodo-ai/pr-agent@1885eb4056887b8c8a530f0a35b842bba05cb425 # main 2026-07-24
+        # An immutable release tag, not a branch tip. The previous pin was the
+        # commit main happened to be at, so the trailing comment named a moving
+        # branch and no one could tell which behaviour was pinned. v0.40.0 is
+        # the first release containing that commit.
+        uses: qodo-ai/pr-agent@6ad7cf75d95cb3bbb54cf2ad92050eb03804964a # v0.40.0
         env:
           OPENAI_KEY: ${{ secrets.QODO_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
