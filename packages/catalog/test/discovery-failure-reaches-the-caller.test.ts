@@ -21,7 +21,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { DiscoveryFailure } from "../src/discovery/failure";
+import type { DiscoveryFailure, DiscoveryHooks } from "../src/discovery/failure";
 import { createModelManager } from "../src/model-manager";
 import type { Api, ModelSpec } from "../src/types";
 
@@ -211,5 +211,99 @@ describe("a caller that supplies no channel", () => {
 		});
 
 		expect((await manager.refresh("online")).models).toEqual([]);
+	});
+});
+
+/**
+ * Refresh once with only a models.dev fallback wired, collecting whatever reasons arrive.
+ *
+ * No dynamic fetcher, so the fallback is the only network source and nothing else can account for a
+ * reason that shows up.
+ */
+async function refreshModelsDevCollecting(
+	fetch: (hooks?: DiscoveryHooks) => Promise<unknown>,
+	map: (payload: unknown) => readonly ModelSpec<Api>[] = () => oneModel(),
+): Promise<{ failures: DiscoveryFailure[]; modelIds: string[] }> {
+	const failures: DiscoveryFailure[] = [];
+	const manager = createModelManager<Api>({
+		providerId: "openai",
+		staticModels: [],
+		cacheDbPath: path.join(mkdtempSync(path.join(tmpdir(), "veyyon-catalog-modelsdev-")), "models.db"),
+		modelsDev: { fetch, map },
+		onDiscoveryFailure: failure => failures.push(failure),
+	});
+	const result = await manager.refresh("online");
+	return { failures, modelIds: result.models.map(model => model.id) };
+}
+
+describe("the models.dev fallback", () => {
+	/**
+	 * The regression this block exists for. The fallback's `fetch` took no hooks and the manager wrapped
+	 * the whole call in a bare `catch {}`, so models.dev being unreachable, refusing the request, or
+	 * serving HTML were all the same silence -- the same defect the dynamic path above was fixed for, left
+	 * behind on the source that enriches every Anthropic catalog.
+	 */
+	it("passes the reason through to the caller", async () => {
+		const { failures } = await refreshModelsDevCollecting(
+			async hooks => {
+				hooks?.onFailure?.({ stage: "status", url: "https://models.dev/api.json", detail: "HTTP 503" });
+				return null;
+			},
+			() => [],
+		);
+
+		expect(failures).toEqual([{ stage: "status", url: "https://models.dev/api.json", detail: "HTTP 503" }]);
+	});
+
+	/**
+	 * A fetch that THROWS never reached its own hooks, so the reason is the manager's to report, and it is
+	 * `unhandled` for the same reason as the dynamic path: throwing instead of reporting is this side's bug.
+	 */
+	it("reports a throwing fetch as unhandled", async () => {
+		const { failures } = await refreshModelsDevCollecting(async () => {
+			throw new Error("models.dev blew up");
+		});
+
+		expect(failures).toHaveLength(1);
+		expect(failures[0]?.stage).toBe("unhandled");
+		expect(failures[0]?.detail).toContain("models.dev blew up");
+	});
+
+	/** A mapper that throws is the same class of bug, and used to be swallowed by the same catch. */
+	it("reports a throwing mapper as unhandled", async () => {
+		const { failures } = await refreshModelsDevCollecting(
+			async () => ({}),
+			() => {
+				throw new Error("mapper blew up");
+			},
+		);
+
+		expect(failures[0]?.stage).toBe("unhandled");
+		expect(failures[0]?.detail).toContain("mapper blew up");
+	});
+
+	/**
+	 * Drifted payload fields are the quiet way this source disappears: every spec fails the manager's
+	 * rejection gate, the catalog silently loses its enrichment, and nothing said so. Reported once per
+	 * fetch, naming the count, because one drifted field disqualifies the whole payload.
+	 */
+	it("reports specs the manager rejected", async () => {
+		const { failures, modelIds } = await refreshModelsDevCollecting(
+			async () => ({}),
+			() => [{ ...oneModel()[0], contextWindow: undefined } as unknown as ModelSpec<Api>],
+		);
+
+		expect(modelIds).toEqual([]);
+		expect(failures).toHaveLength(1);
+		expect(failures[0]?.stage).toBe("payload");
+		expect(failures[0]?.detail).toContain("test-model");
+	});
+
+	/** The success case stays silent, or the channel is worse than no channel. */
+	it("reports nothing when the payload maps cleanly", async () => {
+		const { failures, modelIds } = await refreshModelsDevCollecting(async () => ({}));
+
+		expect(modelIds).toEqual(["test-model"]);
+		expect(failures).toEqual([]);
 	});
 });

@@ -52,6 +52,29 @@ export interface BuiltinSlashCommandDeclaration {
 	readonly inlineHint?: string;
 	readonly acpDescription?: string;
 	readonly acpInputHint?: string;
+	/**
+	 * What a BARE `/cmd` does when the command also declares `subcommands`.
+	 *
+	 * `"picker"` (the default) opens a modal list of the subcommands. `"distinct"` runs the command's
+	 * own bare behavior, and is a claim you have to earn: bare invocation must do something that is
+	 * NOT one of the declared subcommands (a switch, a wizard, a view), or the declared list must
+	 * hold nothing the bare form already does.
+	 *
+	 * The default is the safe one, so a new command that says nothing gets the picker rather than a
+	 * hidden default nobody noticed. `test/slash-commands/bare-command-opens-a-picker.test.ts`
+	 * enforces the pair: bare opens the picker, or the declaration says `"distinct"`.
+	 *
+	 * The value is `"distinct"` rather than `"toggle"` because only three of the commands claiming
+	 * it are switches. `/todo` renders a list, `/setup` opens a wizard, `/secret` opens a field. All
+	 * of them share the one property that matters, which is that bare does something DISTINCT from
+	 * every subcommand, and naming it after the rarer case invites the next author to file a hidden
+	 * default under a word that does not fit and have nobody notice.
+	 *
+	 * A `"distinct"` granted because the subcommand list is a synonym of the bare form stops being
+	 * true the moment someone adds a second subcommand. Each one carries a comment saying what bare
+	 * does; re-read it when you extend the list.
+	 */
+	readonly bareAction?: "picker" | "distinct";
 	readonly subcommands?: ReadonlyArray<{
 		readonly name: string;
 		readonly description: string;
@@ -88,6 +111,9 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		name: "setup",
 		description: "Open provider setup",
 		allowArgs: true,
+		// Bare /setup opens provider setup, which is what `providers` does. It is the only
+		// subcommand, so the list hides nothing. Adding a second one makes this a picker.
+		bareAction: "distinct",
 		subcommands: [{ name: "providers", description: "Configure sign-in and web search providers" }],
 	},
 
@@ -142,6 +168,9 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	{
 		name: "goal",
 		description: "Toggle goal mode (persistent autonomous objective for this session)",
+		// Bare /goal enters goal mode (asks for an objective) or opens the goal menu when one is
+		// running. Neither is any of the subcommands below.
+		bareAction: "distinct",
 		subcommands: [
 			{ name: "set", description: "Set or replace the goal", usage: "<objective>" },
 			{ name: "show", description: "Show current goal details" },
@@ -195,7 +224,9 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		aliases: ["effort"],
 		description: "Set the effort for this session (saved defaults live in /settings)",
 		acpDescription: "Set thinking effort",
-		acpInputHint: "[minimal|low|medium|high|xhigh|auto|off]",
+		// Static fallback only: the advertised hint is derived per session from
+		// the active model's accepted levels (available-commands.ts).
+		acpInputHint: "[level]",
 		allowArgs: true,
 	},
 
@@ -205,6 +236,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Toggle priority service tier (OpenAI service_tier=priority, Anthropic speed=fast)",
 		acpDescription: "Toggle fast mode",
 		acpInputHint: "[on|off|status]",
+		// Bare /fast flips the tier. A menu in front of a switch costs a keystroke on the common act.
+		bareAction: "distinct",
 		subcommands: [
 			{ name: "on", description: `Enable the ${PRIORITY_TIER_LABEL} tier` },
 			{ name: "off", description: `Disable the ${PRIORITY_TIER_LABEL} tier` },
@@ -220,8 +253,11 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description:
 			"Set how much the agent may do unasked, for this session only (the saved default lives in /settings)",
 		acpDescription: "Set the tool approval mode for this session",
-		acpInputHint: "[ask|ask-command|auto|yolo|plan|reset]",
+		acpInputHint: "[status|ask|ask-command|auto|yolo|plan|reset]",
 		subcommands: [
+			// The handler always accepted `status`, and the bare form was it. Now that bare opens the
+			// picker, the verb has to be declared or the enforced-rung report becomes unreachable.
+			{ name: "status", description: "Show the approval rung this session enforces, and where it came from" },
 			{ name: "ask", description: "Ask about everything, reads included" },
 			{ name: "ask-command", description: "Reads and edits run; anything that executes asks" },
 			{ name: "auto", description: "Every tier runs, with the guards still on (the default)" },
@@ -238,6 +274,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Remove ALL permission prompts for this session (explicit deny and plan mode still block)",
 		acpDescription: "Toggle full permission bypass",
 		acpInputHint: "[on|off|status]",
+		// Bare /yolo flips the bypass, behind a danger confirmation in the TUI.
+		bareAction: "distinct",
 		subcommands: [
 			{ name: "on", description: "Turn full bypass on (needs confirmation in the TUI)" },
 			{ name: "off", description: "Turn full bypass off" },
@@ -282,6 +320,10 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		allowArgs: true,
 		inlineHint: "<value> | manager | --from-env VAR",
 		acpInputHint: "add <name> --from-env <VAR>",
+		// Bare /secret opens the masked value field. The terminal grammar is deliberately verbless
+		// (`/secret <value>` stores a value), so `add` is the identity operation rather than a
+		// hidden default, and a picker would put back the verb that grammar removed.
+		bareAction: "distinct",
 		subcommands: [
 			{
 				name: "add",
@@ -312,6 +354,9 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Share this session live via a relay",
 		inlineHint: "[start|view|stop|status] [relayUrl]",
 		subcommands: [
+			// `start` is declared because bare /collab does it. Leaving it out did not make the
+			// bare form innocent, it made the declaration untrue.
+			{ name: "start", description: "Start sharing this session", usage: "[relayUrl]" },
 			{ name: "view", description: "Share a read-only link (guests can watch, not prompt)" },
 			{ name: "status", description: "Show link + participants" },
 			{ name: "stop", description: "Stop sharing" },
@@ -336,6 +381,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		textMode: true,
 		description: "Toggle browser headless vs visible mode",
 		acpInputHint: "[headless|visible]",
+		// Bare /browser flips headless vs visible.
+		bareAction: "distinct",
 		subcommands: [
 			{ name: "headless", description: "Switch to headless mode" },
 			{ name: "visible", description: "Switch to visible mode" },
@@ -355,6 +402,9 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "View or modify the agent's todo list",
 		acpDescription: "Manage todos",
 		acpInputHint: "<subcommand>",
+		// Bare /todo renders the current list. Every subcommand below mutates or exports it, so
+		// none of them is what bare does.
+		bareAction: "distinct",
 		subcommands: [
 			{ name: "edit", description: "Open todos in $EDITOR (Markdown round-trip)" },
 			{ name: "copy", description: "Copy todos as Markdown to clipboard" },
@@ -553,6 +603,9 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		textMode: true,
 		description: "Summarize session context in place",
 		acpDescription: "Summarize the conversation in place",
+		// Bare /compact compacts. COMPACT_MODES holds exactly one mode, and it is the bare
+		// behavior, so the list hides nothing. A second mode makes this a picker.
+		bareAction: "distinct",
 		subcommands: COMPACT_MODES.map(mode => ({
 			name: mode.name,
 			description: mode.description,
@@ -701,6 +754,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "View installed npm/link plugins",
 		acpDescription: "Manage plugins",
 		acpInputHint: "[list]",
+		// Bare /plugins lists plugins, which is what `list` does. It is the only subcommand.
+		bareAction: "distinct",
 		subcommands: [{ name: "list", description: "List installed npm/link plugins" }],
 		allowArgs: true,
 	},

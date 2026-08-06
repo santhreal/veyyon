@@ -118,6 +118,7 @@ import type { SessionManager } from "../session/session-manager";
 import type { ShakeMode } from "../session/shake-types";
 import { BUILTIN_SLASH_COMMAND_RESERVED_NAMES, buildTuiBuiltinSlashCommands } from "../slash-commands/builtin-registry";
 import { formatDurationCoarse } from "../slash-commands/helpers/format";
+import type { SubcommandDef } from "../slash-commands/types";
 import { STTController, type SttState } from "../stt";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../system-prompt";
 import { formatTaskId } from "../task/render";
@@ -4677,6 +4678,14 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	showThinkingSelector(): void {
 		this.#selectorController.showThinkingSelector();
+	}
+
+	showSubcommandPicker(
+		commandName: string,
+		subcommands: readonly SubcommandDef[],
+		onSelect: (subcommand: SubcommandDef) => void,
+	): void {
+		this.#selectorController.showSubcommandPicker(commandName, subcommands, onSelect);
 	}
 
 	showPluginSelector(mode?: "install" | "uninstall"): void {

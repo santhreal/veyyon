@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
+import { stripEffortTierSuffix } from "@veyyon/catalog/variant-collapse";
 import { type AutocompleteItem, DEFAULT_MASK_CHAR, Spacer } from "@veyyon/tui";
 import {
 	APP_NAME,
@@ -53,12 +54,13 @@ import type { AgentSession, FreshSessionResult, HandoffResult } from "../session
 import { parseCompactArgs } from "../session/compact-modes";
 import { resolveResumableSession } from "../session/session-listing";
 import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
-import { AUTO_THINKING, parseConfiguredThinkingLevel } from "../thinking";
+import { configuredThinkingLevelsForModel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeApprovalMode } from "../tools/approval";
 import { AUTONOMY_LABEL, isKnownApprovalMode } from "../tools/approval-modes";
 import { expandTilde, resolveToCwd } from "../tools/path-utils";
 import { urlHyperlinkAlways } from "../tui";
 import { copyToClipboard } from "../utils/clipboard";
+import { bareInvocationShowsSubcommands } from "./bare-subcommand";
 import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
 	type BuiltinSlashCommandDeclaration,
@@ -185,9 +187,32 @@ function applyPermissionsCommand(
 	};
 }
 
-/** Comma-joined thinking-effort choices for the active model, plus `auto`. */
+/**
+ * Comma-joined thinking-effort choices for the active model, derived from the
+ * catalog row: the row's declared levels plus `off`/`auto` only when the row
+ * accepts them. Never the fixed ladder.
+ */
 function formatThinkingLevelChoices(session: AgentSession): string {
-	return [...session.getAvailableThinkingLevels(), AUTO_THINKING].join(", ");
+	return configuredThinkingLevelsForModel(session.model).join(", ");
+}
+
+/**
+ * Why `/thinking` has nothing to set on this model, naming the cause. A row
+ * whose effort is baked into its id (`gpt-5.4-high`) names the baked tier and
+ * points at the base id, where the control lives.
+ */
+function noThinkingControlMessage(session: AgentSession): string {
+	const model = session.model;
+	if (!model) return "No model selected.";
+	if (!model.reasoning) {
+		return `${model.provider}/${model.id} does not reason; there is no effort to set.`;
+	}
+	const tierBase = stripEffortTierSuffix(model.id);
+	if (tierBase !== undefined) {
+		const tier = model.id.slice(tierBase.length + 1);
+		return `${model.provider}/${model.id} has effort "${tier}" baked into the model id; /thinking has nothing to set. Select ${tierBase} to choose an effort.`;
+	}
+	return `${model.provider}/${model.id} manages reasoning itself; there is no effort to set.`;
 }
 
 const AUTOCOMPLETE_DETAIL_LIMIT = 48;
@@ -789,8 +814,13 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			return level ? `Set thinking effort · now ${level}` : "Set thinking effort";
 		},
 		handle: async (command, runtime) => {
-			const available = formatThinkingLevelChoices(runtime.session);
 			const arg = command.args.trim();
+			const choices = configuredThinkingLevelsForModel(runtime.session.model);
+			if (choices.length === 0) {
+				await runtime.output(noThinkingControlMessage(runtime.session));
+				return commandConsumed();
+			}
+			const available = formatThinkingLevelChoices(runtime.session);
 			if (!arg) {
 				const current = runtime.session.configuredThinkingLevel();
 				await runtime.output(
@@ -801,6 +831,12 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			const level = parseConfiguredThinkingLevel(arg);
 			if (level === undefined) {
 				return usage(`Unknown thinking level: ${arg}. Choose one of: ${available}.`, runtime);
+			}
+			if (!choices.includes(level)) {
+				return usage(
+					`${runtime.session.model?.provider}/${runtime.session.model?.id} does not accept ${level}. Choose one of: ${available}.`,
+					runtime,
+				);
 			}
 			// Session only. A command typed mid-run changes this run; the saved
 			// default is a settings edit, so trying an effort never rewrites it (the
@@ -818,10 +854,20 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				runtime.ctx.showThinkingSelector();
 				return;
 			}
+			const choices = configuredThinkingLevelsForModel(runtime.ctx.session.model);
+			if (choices.length === 0) {
+				runtime.ctx.showStatus(noThinkingControlMessage(runtime.ctx.session));
+				return;
+			}
+			const available = formatThinkingLevelChoices(runtime.ctx.session);
 			const level = parseConfiguredThinkingLevel(arg);
 			if (level === undefined) {
+				runtime.ctx.showStatus(`Unknown thinking level: ${arg}. Choose one of: ${available}.`);
+				return;
+			}
+			if (!choices.includes(level)) {
 				runtime.ctx.showStatus(
-					`Unknown thinking level: ${arg}. Choose one of: ${formatThinkingLevelChoices(runtime.ctx.session)}.`,
+					`${runtime.ctx.session.model?.provider}/${runtime.ctx.session.model?.id} does not accept ${level}. Choose one of: ${available}.`,
 				);
 				return;
 			}
@@ -2222,6 +2268,7 @@ function toSlashCommandSpec(declaration: BuiltinSlashCommandDeclaration): SlashC
 	if (declaration.inlineHint !== undefined) spec.inlineHint = declaration.inlineHint;
 	if (declaration.acpDescription !== undefined) spec.acpDescription = declaration.acpDescription;
 	if (declaration.acpInputHint !== undefined) spec.acpInputHint = declaration.acpInputHint;
+	if (declaration.bareAction !== undefined) spec.bareAction = declaration.bareAction;
 	if (declaration.subcommands) spec.subcommands = declaration.subcommands.map(sub => ({ ...sub }));
 	return spec;
 }
@@ -2634,6 +2681,29 @@ export async function executeBuiltinSlashCommand(
 	if (runtime.ctx.collabGuest && !COLLAB_GUEST_ALLOWED_COMMANDS[command.name]) {
 		runtime.ctx.showStatus(`/${command.name} is host-only during a collab session`);
 		runtime.ctx.editor.setText("");
+		return true;
+	}
+	// A bare `/cmd` with subcommands opens the picker instead of running the handler, unless the
+	// declaration claimed the toggle exception. This sits in the DISPATCHER rather than in each
+	// handler because the defect it prevents is invisible from inside one: `if (!verb || verb ===
+	// "status")` reads as ordinary code, and only the declaration says `status` is a subcommand.
+	if (command.subcommands && bareInvocationShowsSubcommands(command, parsed.args)) {
+		const subcommands = command.subcommands;
+		runtime.ctx.editor.setText("");
+		runtime.ctx.showSubcommandPicker(command.name, subcommands, subcommand => {
+			// A subcommand that declares a `usage` wants an argument, and running it with an empty
+			// one is not what was picked. Prefill the editor instead and leave the cursor after the
+			// space: the operator finishes the line and presses enter, which is the same keystroke
+			// they would have made had they known the subcommand existed.
+			if (subcommand.usage && subcommand.usage.trim().length > 0) {
+				runtime.ctx.editor.setText(`/${command.name} ${subcommand.name} `);
+				runtime.ctx.ui.requestRender();
+				return;
+			}
+			// Dispatched as TEXT through this same function, so the picker runs exactly what typing
+			// the subcommand runs. Resolving to a handler here would be a second implementation.
+			void executeBuiltinSlashCommand(`/${command.name} ${subcommand.name}`, runtime);
+		});
 		return true;
 	}
 	if (command.handleTui) {

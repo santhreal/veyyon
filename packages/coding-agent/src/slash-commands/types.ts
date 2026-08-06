@@ -22,6 +22,12 @@ export interface BuiltinSlashCommand {
 	allowArgs?: boolean;
 	/** Subcommands for dropdown completion (e.g. /mcp add, /mcp list). */
 	subcommands?: SubcommandDef[];
+	/**
+	 * What a bare `/cmd` does when `subcommands` is set: open the picker (the default) or run the
+	 * command's own bare behavior. Declared on `BuiltinSlashCommandDeclaration`, which documents
+	 * how the choice is earned; copied here so the dispatchers can read it off the spec.
+	 */
+	bareAction?: "picker" | "distinct";
 	/** Static inline hint when command takes a simple argument (no subcommands). */
 	inlineHint?: string;
 	/** TUI-only dynamic status text for command-name autocomplete. Static `description` remains canonical for ACP/help. */
@@ -176,6 +182,7 @@ export type TuiSlashCommandHostContext = CollabHostContext &
 		| "showSessionSelector"
 		| "showSettingsSelector"
 		| "showStatus"
+		| "showSubcommandPicker"
 		| "showThinkingSelector"
 		| "showTreeSelector"
 		| "showUserMessageSelector"

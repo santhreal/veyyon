@@ -25,6 +25,25 @@ A message that merely begins with a filesystem path is prose, not a command, and
 The separator decides. A command name is one segment of letters, digits, underscores and hyphens
 starting with a letter, so anything holding a slash is a path.
 
+## A bare command that has subcommands
+
+Some commands take a subcommand: `/account status`, `/account manager`, `/usage reset`. Typing the
+command on its own opens a picker listing every subcommand it has, with what each one does. Move
+with the up and down arrows, click a row, press enter to run it, or press escape to close and run
+nothing. Choosing a row runs exactly what typing that subcommand runs.
+
+A subcommand that takes an argument, such as `/account name <text>`, does not run straight away.
+The picker writes `/account name ` into the composer and leaves the cursor after it, so you type
+the argument and press enter.
+
+Outside a terminal, in ACP and `--print` mode, there is no picker to open. A bare command prints
+the same list instead.
+
+A few commands mean something on their own rather than standing for a subcommand, and those still
+act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal` enters goal mode,
+`/todo` shows the list, `/secret` opens the masked value field, `/setup` opens the wizard,
+`/plugins` lists plugins, and `/compact` compacts.
+
 ## Session and navigation
 
 | Command | Purpose |
@@ -50,7 +69,7 @@ starting with a letter, so anything holding a slash is a path.
 | `/switch` | Try a model for this session only, without saving it as default (same as alt+p) |
 | `/fast on\|off\|status` | Fast mode |
 | `/thinking [level]` (`/effort`) | Set reasoning effort; no argument opens the picker |
-| `/permissions [rung]` (`/approval`) | Set how much the agent does unasked, for this session only: `ask`, `ask-command`, `auto`, `yolo`, or `plan`. No argument reports the rung in force and where it came from; `reset` drops the session override and returns to the saved default from Settings |
+| `/permissions [rung]` (`/approval`) | Set how much the agent does unasked, for this session only: `ask`, `ask-command`, `auto`, `yolo`, or `plan`. `/permissions status` reports the rung in force and where it came from; `reset` drops the session override and returns to the saved default from Settings. A bare `/permissions` opens the picker |
 | `/yolo on\|off\|status` | Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation) |
 | `/plan` | Toggle plan mode |
 | `/plan-review` | Re-open plan review |
@@ -61,7 +80,7 @@ starting with a letter, so anything holding a slash is a path.
 | `/secret` | Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential, a bare `/secret` opens a hidden field, and `/secret manager` opens the manager. A client with no terminal keeps the verbs `add`, `list`, `rm`, `extend`, `log`, `discard`. See [Secrets](../features/secrets.md) |
 | `/settings`, `/setup` | Settings UI; `/setup` opens first-run provider sign-in |
 | `/providers`, `/account manager` | Open the account manager: every stored account per provider, with its email, plan, health, and usage. See [Authentication](../using/authentication.md) |
-| `/account [status]` | Show which account each provider is serving this session with |
+| `/account status` | Show which account each provider is serving this session with. A bare `/account` opens the picker |
 | `/account name <text>` | Name the account this session is using, so rows read `work` instead of an email |
 | `/account switch <provider>` | Open the manager focused on one provider, to move that provider to another of your accounts |
 | `/statusline` | Settings UI, jumped to Status Line (preset/segments/separator) |
@@ -73,7 +92,7 @@ starting with a letter, so anything holding a slash is a path.
 | Command | Purpose |
 | --- | --- |
 | `/compact [summary] [focus]` | Summarize older context in place; optional focus string |
-| `/shake [elide\|images]` | Shake tool-result bulk |
+| `/shake elide\|images` | Shake tool-result bulk. A bare `/shake` opens the picker |
 | `/handoff [focus]` | Explicitly transfer context into a new session |
 | `/context` | Context usage report |
 | `/tools` | Tools visible to the model |

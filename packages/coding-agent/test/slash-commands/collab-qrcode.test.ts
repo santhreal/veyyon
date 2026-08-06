@@ -89,7 +89,7 @@ describe("/collab slash command QR code rendering", () => {
 		const startSpy = mockStartedHostLinks();
 		const harness = createRuntimeHarness();
 
-		const handled = await executeBuiltinSlashCommand("/collab", harness.runtime);
+		const handled = await executeBuiltinSlashCommand("/collab start", harness.runtime);
 
 		expect(handled).toBe(true);
 		expect(harness.setText).toHaveBeenCalledWith("");
@@ -127,7 +127,7 @@ describe("/collab slash command QR code rendering", () => {
 	it("prints the active full-control browser QR when hosting", async () => {
 		const harness = createRuntimeHarness({ collabHost: fakeHost() });
 
-		const handled = await executeBuiltinSlashCommand("/collab", harness.runtime);
+		const handled = await executeBuiltinSlashCommand("/collab start", harness.runtime);
 
 		expect(handled).toBe(true);
 		const statusText = harness.showStatus.mock.calls[0]?.[0] as string;

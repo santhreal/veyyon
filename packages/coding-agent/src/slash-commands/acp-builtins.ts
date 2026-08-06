@@ -1,3 +1,4 @@
+import { bareInvocationShowsSubcommands, formatSubcommandList } from "./bare-subcommand";
 import { parseSlashCommand } from "./helpers/parse";
 import type { AcpBuiltinSlashCommandResult, SlashCommandRuntime } from "./types";
 
@@ -48,6 +49,13 @@ export async function executeAcpBuiltinSlashCommand(
 	const command = lookupBuiltinSlashCommand(parsed.name);
 	if (!command?.handle) return false;
 	if (parsed.args.length > 0 && !command.allowArgs) return false;
+	// The same rule the TUI answers with a picker: a bare `/cmd` must never silently behave as one
+	// of its subcommands. There is no picker to open here, so the list IS the answer, and a client
+	// with no terminal learns what the command can do rather than being handed one of eight.
+	if (command.subcommands && bareInvocationShowsSubcommands(command, parsed.args)) {
+		await runtime.output(formatSubcommandList(command.name, command.subcommands));
+		return { consumed: true };
+	}
 	const result = await command.handle(parsed, runtime);
 	if (result === undefined) return { consumed: true };
 	return result;

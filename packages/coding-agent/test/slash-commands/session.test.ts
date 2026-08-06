@@ -33,13 +33,18 @@ function createRuntimeHarness(options?: {
 }
 
 describe("/session slash command", () => {
-	it("awaits session info before resolving the default command", async () => {
+	/**
+	 * `/session info` awaits the info render before the command resolves. Bare `/session` used to do
+	 * this and hid `delete` behind it; it now opens the picker, so the awaiting is pinned on the
+	 * verb that does the work.
+	 */
+	it("awaits session info before resolving /session info", async () => {
 		const deferred = Promise.withResolvers<void>();
 		const handleSessionCommand = vi.fn(() => deferred.promise);
 		const harness = createRuntimeHarness({ handleSessionCommand });
 
 		let settled = false;
-		const execution = executeBuiltinSlashCommand("/session", harness.runtime).then(result => {
+		const execution = executeBuiltinSlashCommand("/session info", harness.runtime).then(result => {
 			settled = true;
 			return result;
 		});
