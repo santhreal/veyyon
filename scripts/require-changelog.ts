@@ -27,7 +27,7 @@
 import * as path from "node:path";
 import { $, Glob } from "bun";
 
-const UNRELEASED_HEADING = "## [Unreleased]";
+import { UNRELEASED_HEADING, unreleasedEntries } from "./changelog-unreleased.ts";
 
 /** A publishable package that participates in the changelog/release system. */
 export interface ChangelogPackage {
@@ -154,30 +154,6 @@ export function evaluateChangelogRequirement(input: EvaluateInput): ChangelogVio
 		});
 	}
 	return violations;
-}
-
-/**
- * Extract the bullet lines under `## [Unreleased]`, stopping at the next
- * top-level `## ` heading. Sub-section headings (`### Added`) and blanks are
- * skipped; a bullet is any line whose first non-space character is `-`. Returns
- * `[]` when the file has no Unreleased section (or is empty/missing).
- */
-export function parseUnreleasedBullets(content: string): string[] {
-	const lines = content.split("\n");
-	const bullets: string[] = [];
-	let inUnreleased = false;
-	for (const line of lines) {
-		if (line.startsWith("## ")) {
-			inUnreleased = line.trim() === UNRELEASED_HEADING;
-			continue;
-		}
-		if (!inUnreleased) continue;
-		const trimmed = line.trim();
-		if (trimmed.startsWith("- ") || trimmed === "-") {
-			bullets.push(trimmed);
-		}
-	}
-	return bullets;
 }
 
 /**
@@ -325,9 +301,9 @@ async function main(): Promise<void> {
 	const baseUnreleased = new Map<string, string[]>();
 	const headUnreleased = new Map<string, string[]>();
 	for (const pkg of packages) {
-		baseUnreleased.set(pkg.dir, parseUnreleasedBullets(await readBaseChangelog(base, pkg.dir)));
+		baseUnreleased.set(pkg.dir, unreleasedEntries(await readBaseChangelog(base, pkg.dir)));
 		const headContent = await Bun.file(path.join(repoRoot, pkg.dir, "CHANGELOG.md")).text();
-		headUnreleased.set(pkg.dir, parseUnreleasedBullets(headContent));
+		headUnreleased.set(pkg.dir, unreleasedEntries(headContent));
 	}
 
 	const violations = evaluateChangelogRequirement({

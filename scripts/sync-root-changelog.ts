@@ -39,6 +39,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
+import { unreleasedEntries } from "./changelog-unreleased.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..");
@@ -70,43 +71,6 @@ export function changelogSources(): { name: string; md: string }[] {
 /** The exact bytes the root `CHANGELOG.md` should contain for the current sources. */
 export function buildRootChangelog(): string {
 	return renderRootChangelog(changelogSources());
-}
-
-/**
- * The `## [Unreleased]` bullets of a changelog, one string per bullet.
- *
- * A bullet may wrap over several lines, so a continuation line belongs to the
- * bullet above it. Comparing whole bullets rather than lines is what makes an
- * orphan detectable: a re-wrapped paragraph is the same entry, and half a
- * paragraph is not an entry at all.
- */
-export function unreleasedBullets(md: string): string[] {
-	// Anchored to the start of a LINE, not found anywhere in the text. An unanchored
-	// `indexOf` matched the words inside prose that merely mentions the heading, and the
-	// first thing to do that was the root file's own generated banner: the search landed in
-	// the banner, the block ended at the real heading one line later, and the function
-	// answered "no entries" for a file full of them -- which made every entry look orphaned
-	// and the writer refuse. A heading is a line, so the pattern is a line.
-	const heading = /^## \[Unreleased\][^\n]*$/m.exec(md);
-	if (!heading) return [];
-	const rest = md.slice(heading.index + heading[0].length);
-	const nextRelease = rest.search(/\n## /);
-	const block = nextRelease === -1 ? rest : rest.slice(0, nextRelease);
-	const bullets: string[] = [];
-	let current: string[] = [];
-	for (const line of block.split("\n")) {
-		if (line.startsWith("- ")) {
-			if (current.length > 0) bullets.push(current.join(" "));
-			current = [line.slice(2).trim()];
-		} else if (current.length > 0 && line.trim().length > 0 && !line.startsWith("#")) {
-			current.push(line.trim());
-		} else if (line.startsWith("#")) {
-			if (current.length > 0) bullets.push(current.join(" "));
-			current = [];
-		}
-	}
-	if (current.length > 0) bullets.push(current.join(" "));
-	return bullets.map(bullet => bullet.replace(/\s+/g, " ").trim()).filter(bullet => bullet.length > 0);
 }
 
 /**
@@ -150,10 +114,10 @@ function entryIdentity(bullet: string): string | null {
  * and missing a hand-written paragraph loses it.
  */
 export function orphanedRootEntries(currentRoot: string, expectedRoot: string): string[] {
-	const rendered = unreleasedBullets(expectedRoot);
+	const rendered = unreleasedEntries(expectedRoot);
 	const exact = new Set(rendered);
 	const openings = new Set(rendered.map(entryIdentity).filter((id): id is string => id !== null));
-	return unreleasedBullets(currentRoot).filter(bullet => {
+	return unreleasedEntries(currentRoot).filter(bullet => {
 		if (exact.has(bullet)) return false;
 		const identity = entryIdentity(bullet);
 		return identity === null || !openings.has(identity);
