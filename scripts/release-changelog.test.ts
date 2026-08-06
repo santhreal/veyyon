@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { applyReleaseToChangelog } from "./release.ts";
 import {
 	assertPreparedReleaseChangelogs,
@@ -319,7 +319,7 @@ describe("the release changelog gate", () => {
 	 * committed, tagged and pushed on its way to publishing an undocumented version; a gate that ran
 	 * after the bump would only have left a half-cut tree behind.
 	 *
-	 * Driven by spawning the real `scripts/prerelease.ts` against a throwaway repo, so the evidence is
+	 * Driven by spawning the real `scripts/release-cut.ts` against a throwaway repo, so the evidence is
 	 * the state on disk: the manifest still holds the old version, there is no bump commit, and there
 	 * is no new tag. It used to import a `cmdRelease` export from `scripts/release.ts`, which stopped
 	 * existing when preparation moved out of CI and onto the operator's machine. That did not fail
@@ -347,7 +347,7 @@ describe("the release changelog gate", () => {
 		git("commit", "-m", "init");
 		git("tag", "v1.0.46");
 
-		const cut = Bun.spawn(["bun", join(REPO_ROOT, "scripts", "prerelease.ts"), "patch"], {
+		const cut = Bun.spawn(["bun", join(REPO_ROOT, "scripts", "release-cut.ts"), "patch"], {
 			cwd: repo,
 			stdout: "pipe",
 			stderr: "pipe",

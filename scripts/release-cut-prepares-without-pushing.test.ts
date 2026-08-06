@@ -23,7 +23,8 @@
  * one bug away from deleting the wrong one.
  */
 import { describe, expect, test } from "bun:test";
-import { nextSteps, preparationLeftovers, resolveReleaseVersion, rollbackReport, statusPaths } from "./prerelease";
+import { preparationLeftovers, resolveReleaseVersion, rollbackReport, statusPaths } from "./release-cut";
+import { nextSteps } from "./release-ship";
 
 describe("statusPaths", () => {
 	test("stages both sides of a rename so the delete is not left behind", () => {
@@ -136,9 +137,12 @@ describe("nextSteps", () => {
 		expect(tagIndex).toBeGreaterThan(pushIndex);
 		expect(steps[tagIndex]).toContain("git push origin v1.4.0");
 	});
-	test("names the tag push as the step that publishes, not the main push", () => {
-		const steps = nextSteps("1.4.0").join("\n");
-		expect(steps).toContain("Step 3 is the release");
-		expect(steps).toContain("publishes the GitHub release");
+	test("names the tag step as the release, not the main push", () => {
+		const steps = nextSteps("1.4.0");
+		const tagStep = steps.find(line => line.includes("Tag the green commit"));
+		expect(tagStep).toContain("This is the release");
+		const pushStep = steps.find(line => line.includes("Push the bump"));
+		expect(pushStep).not.toContain("release");
+		expect(steps.join("\n")).toContain("publishes");
 	});
 });

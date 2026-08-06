@@ -10,47 +10,48 @@ release. Both are steps toward one.
 
 ## Cut a release
 
-One command, from a clean `main`:
+Two commands. There are no flags to remember.
 
 ```sh
-bun run release patch
+bun run release:dry patch      # say what a cut would do. Writes nothing.
+bun run release patch          # do it.
 ```
 
-It bumps every version authority, rolls the changelogs, commits, shows you the
-commit and the tag it is about to publish, and asks once. Say yes and it pushes
-`main`, waits for that exact commit's checks, and cuts the tag the moment they
-are green. Add `--yes` to skip the question.
+Both take `major`, `minor`, `patch`, or an explicit `x.y.z`.
 
-It takes `major`, `minor`, `patch`, or an explicit `x.y.z`.
+`bun run release` bumps every version authority, rolls the changelogs, commits,
+shows you the commit and the tag it is about to publish, and asks once. Say yes
+and it pushes `main`, waits for that exact commit's checks, and cuts the tag the
+moment they are green.
 
-### Or stop before anything leaves your machine
+`bun run release:dry` resolves the same version and runs the same refusals
+without touching the tree, so it is safe from a branch, a dirty tree, or a
+machine you are not going to release from.
 
-`release:prepare` is the same command without the publishing half. It writes the
-bump commit and prints what to run next, which is useful when you want to read
-the cut before it goes anywhere, or when you are cutting from a machine that is
-not going to sit and wait.
+There is no way to answer the prompt in advance. A release that publishes with
+nobody at the keyboard is the CI release controller this design removed, and the
+dry run already answers every question you can ask without one.
+
+### If it stops partway
+
+Every exit that does not publish leaves the bump commit on `main` locally and
+prints the same two moves:
 
 ```sh
-bun run release:prepare patch      # 1. bump versions + roll changelogs, commit locally
-git push origin main               # 2. let main's CI test the exact commit
-gh run watch                       # wait for green
-
-git tag v1.2.3 && git push origin v1.2.3   # 3. the tag push publishes
+git push origin main && gh run watch --exit-status   # let main's CI test the exact commit
+git tag v1.2.3 && git push origin v1.2.3             # the tag push publishes
 ```
 
-`bun run release` runs exactly those three moves for you. The only judgement it
+That is all `bun run release` does after the prompt. The only judgement it
 automates is "are the checks green yet", and it is stricter about that than a
 human watching a run list: it waits for every workflow that fires on a main push
 to appear and finish, and it refuses to tag on a run that was cancelled or
 skipped its way to something other than success.
 
-Pass `--dry-run` to either form to see what it would decide without touching the
-tree. A dry run never publishes, even with `--ship`.
-
-That is the whole ceremony. Nothing on `main` cuts a release on its own: not a
-push, not a green CI run, not a waiting `## [Unreleased]` bullet. Only a `v*` tag
-push publishes. If the changelog says a version shipped and no release exists for
-it, nobody pushed its tag.
+Nothing on `main` cuts a release on its own: not a push, not a green CI run, not
+a waiting `## [Unreleased]` bullet. Only a `v*` tag push publishes. If the
+changelog says a version shipped and no release exists for it, nobody pushed its
+tag.
 
 Pushing the tag needs the `santhsecurity` account active in `git`/`gh`. Everything
 after the tag push runs on GitHub-hosted runners with the repository-scoped
@@ -83,8 +84,8 @@ still a commit `main` tested.
 
 ### Locally: preparation
 
-`scripts/prerelease.ts` prepares the tree and commits. On its own
-(`release:prepare`) it stops there, never pushing and never tagging.
+`scripts/release-cut.ts` prepares the tree and commits. With `--dry-run`
+(`bun run release:dry`) it decides the same things and writes none of them.
 
 1. **Preflight.** Require the `main` branch and a clean tree, so the bump commit
    contains the bump and nothing else. Require the new version to be greater than
@@ -111,7 +112,7 @@ CI runs it either way.
 
 `scripts/release-ship.ts` is the half that leaves your machine, and it only runs
 when preparation succeeded in the same invocation. It prints the commit and the
-tag, asks once (`--yes` answers up front), then:
+tag, asks once, then:
 
 1. **Push `main`.** The bump goes through main's ordinary CI like any other
    commit.
@@ -181,7 +182,7 @@ One owner per concern, so a change lands in one place.
 | Concern | Owner |
 | --- | --- |
 | Release trigger | a `v*` tag push (`push: tags` in `.github/workflows/ci.yml`) |
-| Local preparation | `scripts/prerelease.ts` (`bun run release:prepare`) |
+| Local preparation | `scripts/release-cut.ts` (`bun run release`, `bun run release:dry`) |
 | Push, wait, tag | `scripts/release-ship.ts` (`bun run release`) |
 | Tree preparation shared by both | `prepareReleaseTree` in `scripts/release.ts` |
 | Tag and asset policy | `scripts/release-policy.ts` |
@@ -266,10 +267,10 @@ matching section.
 
 ### It failed before the tag was pushed
 
-`release:prepare` refused, or `main`'s CI went red on the bump commit. No remote
+The cut refused, or `main`'s CI went red on the bump commit. No remote
 tag exists, so nothing was published and nothing needs undoing remotely.
 
-If `release:prepare` refused before it wrote anything, it named the reason: a
+If it refused before it wrote anything, it named the reason: a
 dirty tree, the wrong branch, a version that is not ahead of the latest tag, or
 an undocumented package. Fix it and run it again — the tree is untouched.
 
@@ -382,8 +383,7 @@ Then run `veyyon plugin doctor` to confirm health.
 
 #### Then ship the fix
 
-Ship it as an ordinary release. Land the fix on `main`, run `release:prepare`,
-push, wait for that commit's CI to go green, and tag it. `verify-tag` refuses any
+Ship it as an ordinary release. Land the fix on `main` and run `bun run release`. `verify-tag` refuses any
 commit that is not on `main`. Nothing cuts the fix for you and there are no
 release branches.
 
@@ -531,4 +531,4 @@ the checked-in state. All three copies are gitignored and the assets are declare
 in `types/assets/index.d.ts`, so the generated state still type checks and cannot
 be committed by accident.
 
-*Verified against `84fa1d37` on 2026-08-06.*
+*Verified against `b85848b0` on 2026-08-06.*

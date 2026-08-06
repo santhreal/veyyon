@@ -3,7 +3,7 @@ import * as path from "node:path";
 /**
  * Release-tree preparation and the two checks CI runs at a tag.
  *
- * The version cut itself happens on the operator's machine: `scripts/prerelease.ts`
+ * The version cut itself happens on the operator's machine: `scripts/release-cut.ts`
  * calls {@link prepareReleaseTree} to roll every version authority, changelog,
  * lockfile and the natives sentinel, then commits. That commit reaches main
  * through an ordinary push, so main's CI tests it before any tag exists, and
@@ -581,7 +581,7 @@ export async function prepareReleaseTree(version: string, latestTag: string): Pr
  * publication actually produce every asset the installer resolves?
  *
  * Cutting a release is no longer a subcommand here. The version bump is
- * prepared and committed on the operator's machine by `scripts/prerelease.ts`,
+ * prepared and committed on the operator's machine by `scripts/release-cut.ts`,
  * pushed to main like any other commit, and tagged once main's CI is green — so
  * there is no controller to gate, dispatch, correlate, or recover.
  */

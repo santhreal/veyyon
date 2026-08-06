@@ -6,7 +6,7 @@
  * `releases/latest` stayed at `v1.0.27` while the tags marched on. A tag asserts that a tested tree
  * shipped under that name.
  *
- * The release commit is now prepared locally (`scripts/prerelease.ts`) and pushed to main like any
+ * The release commit is now prepared locally (`scripts/release-cut.ts`) and pushed to main like any
  * other commit, so main's ordinary CI tests it before a tag exists. That turns the proof into one
  * question with one answer: is the tagged commit on main? A commit reachable from main is a commit
  * main's CI ran; anything else — a local branch, a rewritten commit, a fork — was never tested.

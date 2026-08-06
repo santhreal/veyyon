@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { parseReleaseRequest } from "./release";
 
 describe("release version argument", () => {
-	/** A bare version argument is the patch release `bun run release:prepare` defaults to. */
+	/** A bare version argument is the patch release `bun run release` defaults to. */
 	it("defaults to a patch release", () => {
 		expect(parseReleaseRequest([])).toBe("patch");
 	});
@@ -24,7 +24,7 @@ describe("release version argument", () => {
 
 describe("release.ts is no longer a cutter", () => {
 	/**
-	 * The version cut moved to `scripts/prerelease.ts`, which runs on an operator's
+	 * The version cut moved to `scripts/release-cut.ts`, which runs on an operator's
 	 * machine and commits nothing but the bump. What is left in `release.ts` for CI
 	 * is verification, so every mutating subcommand the old controller exposed must
 	 * be gone rather than merely unreachable — a lingering `workflow-release` would
