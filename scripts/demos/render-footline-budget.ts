@@ -12,6 +12,8 @@
  * budget a segment competes for is `columns - 3`. Rendering at `columns` and eyeballing
  * the result would over-report the room by three cells and hide a shed at the boundary.
  *
+ * Run:
+ *
  *     bun scripts/demos/render-footline-budget.ts |
  *       bun scripts/demos/render-proof.ts --out /tmp/footline-budget --width 120
  *

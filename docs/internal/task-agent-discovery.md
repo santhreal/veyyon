@@ -11,7 +11,7 @@ It covers runtime behavior as implemented today, including precedence, invalid-d
 - [`src/task/types.ts`](../../packages/coding-agent/src/task/types.ts)
 - [`src/task/index.ts`](../../packages/coding-agent/src/task/index.ts)
 - [`src/task/commands.ts`](../../packages/coding-agent/src/task/commands.ts)
-- [`src/prompts/agents/task.md`](../../packages/coding-agent/src/prompts/agents/task.md)
+- [`src/prompts/agents/deep.md`](../../packages/coding-agent/src/prompts/agents/deep.md)
 - [`src/prompts/tools/task.md`](../../packages/coding-agent/src/prompts/tools/task.md)
 - [`src/discovery/helpers.ts`](../../packages/coding-agent/src/discovery/helpers.ts)
 - [`src/config.ts`](../../packages/coding-agent/src/config.ts)
