@@ -124,6 +124,46 @@ export function orphanedRootEntries(currentRoot: string, expectedRoot: string): 
 	});
 }
 
+/**
+ * Write the root changelog, refusing to delete unreleased entries no package
+ * claims. Returns what it did.
+ *
+ * The guard every writer of the root file has to go through, and it owns the
+ * write so that going around it is a visible thing to do rather than the
+ * default. It used to live inside this script's `main()`, where it protected the
+ * CLI and nothing else: `release.ts` wrote the same file with a bare
+ * `Bun.write(buildRootChangelog())` one line after the changelog roll. That is
+ * the worst place to lose the check, because an entry the release deletes is
+ * gone by the time the tag, the npm packages and the GitHub release have already
+ * shipped under a changelog that never mentioned it.
+ *
+ * `rootPath` exists so a test can drive the refusal against a real file and
+ * assert the bytes survived, rather than trusting the return value alone.
+ */
+export function writeRootChangelog(
+	options: { force?: boolean; rootPath?: string } = {},
+): { wrote: boolean; orphans: string[]; expected: string; current: string | null } {
+	const rootPath = options.rootPath ?? ROOT_PATH;
+	const expected = buildRootChangelog();
+	const current = existsSync(rootPath) ? readFileSync(rootPath, "utf8") : null;
+	const orphans = current === null ? [] : orphanedRootEntries(current, expected);
+	if (orphans.length > 0 && !options.force) return { wrote: false, orphans, expected, current };
+	writeFileSync(rootPath, expected);
+	return { wrote: true, orphans, expected, current };
+}
+
+/** Why regenerating the root would lose work, one line per orphaned entry. */
+export function orphanRefusalLines(orphans: readonly string[]): string[] {
+	return [
+		`the root CHANGELOG.md holds ${orphans.length} unreleased ${orphans.length === 1 ? "entry" : "entries"} ` +
+			`that no package changelog claims.`,
+		"Writing the root would delete them. The root is generated; entries belong to a package.",
+		...orphans.map(orphan => `  - ${orphan.length > 120 ? `${orphan.slice(0, 117)}...` : orphan}`),
+		"",
+		"  Fix:   move each entry under `## [Unreleased]` in the owning packages/<name>/CHANGELOG.md.",
+	];
+}
+
 async function main(): Promise<void> {
 	const check = process.argv.includes("--check");
 	const force = process.argv.includes("--force");
@@ -150,24 +190,14 @@ async function main(): Promise<void> {
 		console.log("CHANGELOG.md (root) already up to date.");
 		return;
 	}
-	const orphans = current === null ? [] : orphanedRootEntries(current, expected);
-	if (orphans.length > 0 && !force) {
-		console.error(
-			`Refusing to regenerate: the root CHANGELOG.md holds ${orphans.length} unreleased ${
-				orphans.length === 1 ? "entry" : "entries"
-			} that no package changelog claims.`,
-		);
-		console.error("Writing the root would delete them. The root is generated; entries belong to a package.");
-		for (const orphan of orphans) {
-			console.error(`  - ${orphan.length > 120 ? `${orphan.slice(0, 117)}...` : orphan}`);
-		}
-		console.error("");
-		console.error("  Fix:   move each entry under `## [Unreleased]` in the owning packages/<name>/CHANGELOG.md,");
+	const result = writeRootChangelog({ force });
+	if (!result.wrote) {
+		console.error("Refusing to regenerate:");
+		for (const line of orphanRefusalLines(result.orphans)) console.error(line);
 		console.error("         then re-run this command.");
 		console.error("  Or:    bun scripts/sync-root-changelog.ts --force   # discard them deliberately");
 		process.exit(1);
 	}
-	writeFileSync(ROOT_PATH, expected);
 	console.log("Wrote CHANGELOG.md (root) from the package changelogs.");
 }
 
