@@ -115,6 +115,12 @@ function keySpecificity(key: string, provider: string, modelId: string): number 
  * `provider/model-id` entry describe the same knob at two scopes, and silently
  * blending them would make the effective policy something the operator never
  * wrote down anywhere.
+ *
+ * An entry that contributes no usable field is not a candidate at all. `{}`,
+ * a cleared value, or a garbage one states no policy, so letting it win on
+ * specificity would let it shadow the broader key the operator did write and
+ * drop that whole layer — and the UI would then explain the result as a
+ * provider default nobody chose.
  */
 function selectOverride(
 	overrides: Record<string, RetryPolicyOverride> | undefined,
@@ -128,6 +134,7 @@ function selectOverride(
 		if (!isRecord(override)) continue;
 		const score = keySpecificity(key, provider, modelId);
 		if (score === undefined) continue;
+		if (!contributes(override)) continue;
 		if (!best || score > best.score) best = { key, override, score };
 	}
 	return best ? { key: best.key, override: best.override } : undefined;
@@ -182,7 +189,7 @@ export function resolveRetryPolicy(
 	}
 
 	const selected = selectOverride(configured, model.provider, model.id);
-	if (selected && contributes(selected.override)) {
+	if (selected) {
 		policy = applyOverride(policy, selected.override);
 		source = "config";
 		matchedKey = selected.key;
