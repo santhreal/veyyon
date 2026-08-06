@@ -20,7 +20,7 @@ The loader is intentionally narrow:
 - On Windows `node_modules` installs, stage addon files into the versioned cache to avoid locked-DLL update failures.
 - Attempt candidates in deterministic order and return the first addon that `require(...)` loads and validates.
 
-For install and compiled-binary paths, the loader verifies a release sentinel export named from `package.json#version` (for example `__veyyonNativesV16_0_3`). Workspace-dev loads downgrade a sentinel mismatch to a loud one-time warning, so a local checkout keeps booting until the next rebuild after a pull. The loader does not validate the full export surface; stale same-version or incomplete binaries still surface as missing members or native errors at use sites.
+For install and compiled-binary paths, the loader verifies a release sentinel export named from `package.json#version` (at version 1.0.46, `__veyyonNativesV1_0_46`; `scripts/release.ts` bumps the name in lock-step with the version). Workspace-dev loads downgrade a sentinel mismatch to a loud one-time warning, so a local checkout keeps booting until the next rebuild after a pull. The loader does not validate the full export surface; stale same-version or incomplete binaries still surface as missing members or native errors at use sites.
 
 ## Runtime inputs and derived state
 
@@ -103,13 +103,13 @@ Candidates are grouped by directory class, in order:
 
 The leaf package dir comes first so the optional-dependency binary published with the release is preferred over any `.node` left in the core package's `native/` (e.g. a stale local-dev build). The trailing versioned-cache fallback lets a source checkout whose gitignored `native/*.node` is missing still boot from an addon a prior standalone install staged into the per-version cache; the version-sentinel check rejects a stale copy.
 
-On Windows installs where `nativeDir` is inside a `node_modules` segment (`shouldStageNodeModulesAddon`), `<versionedDir>/<filename>` staging candidates are prepended ahead of the leaf candidates so a locked `node_modules` binary can be sidestepped during `bun install -g` updates. The staged file is copied from `leafPackageDir ?? nativeDir` before probing.
+On Windows, when `nativeDir` falls inside a `node_modules` segment (`shouldStageNodeModulesAddon`), `<versionedDir>/<filename>` staging candidates are prepended ahead of the leaf candidates, and the staged file is copied from `leafPackageDir ?? nativeDir` before probing. The trigger is those two conditions and nothing else: Windows, and an addon reached through `node_modules`. It exists because Windows holds an open `.node` locked, so a package manager updating a `node_modules` tree while a veyyon process runs can leave an old binary beside a newer `index.js`, which fails at the first missing symbol rather than at load. Staging into the version-pinned cache gives each version its own path and lets the running process keep its handle on the copy it loaded. A compiled binary never takes this path (`maybeExtractEmbeddedAddon` handles it), and neither does a workspace checkout, whose `nativeDir` is not under `node_modules`.
 
 ### Compiled runtime
 
 Candidates are grouped, in order:
 
-1. `<versionedDir>/<filename>` then `<userDataDir>/<filename>`, per filename
+1. every `<versionedDir>/<filename>`, then every `<userDataDir>/<filename>`
 2. `<nativeDir>/<filename>` then `<execDir>/<filename>`, per filename
 
 At load time, an extracted embedded candidate, or a staged Windows candidate when no embedded candidate exists, is prepended ahead of these de-duplicated candidates.
@@ -137,13 +137,12 @@ Variant file selection:
 - x64 + `modern`: prefer `modern`, fallback to `baseline`.
 - x64 + `baseline`: require `baseline`.
 
-Materialization:
+Materialization, with the archive branch first because that is what a release manifest carries:
 
-1. Ensure `<versionedDir>` exists.
-2. Select `<versionedDir>/<selected filename>`.
-3. If the current cached file exists and its size matches manifest metadata, reuse it.
-4. Otherwise extract `embeddedAddon.archive.filePath` into `<versionedDir>` using the manifest `files[]` allowlist.
-5. Verify the selected target by size and return it as the first candidate.
+1. Ensure `<versionedDir>` exists. A failure here is recorded and extraction gives up.
+2. With an `archive`, extract `embeddedAddon.archive.filePath` into `<versionedDir>`, admitting only the paths in the manifest `files[]` allowlist. There is no reuse check first: extraction runs, and then `<versionedDir>/<selected filename>` has to exist with the size the manifest recorded, or the attempt is recorded as an error and returns nothing.
+3. Without an `archive`, the cached file is checked first and reused when its size matches, and only otherwise is the single embedded file copied from its `filePath`.
+4. Either way the returned path becomes the first candidate the loader tries.
 
 Archive, directory, or write failures are appended to the loader error list; probing continues through normal candidates.
 
@@ -242,4 +241,4 @@ Source-install/runtime diagnostics include:
 - local rebuild command (`bun --cwd=packages/natives run build`) with the optional x64 variant hint (`TARGET_VARIANT=baseline|modern`),
 - standalone-binary reinstall hint (`curl -fsSL https://get.veyyon.dev | sh`).
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `03f0da34` on 2026-08-05.*
