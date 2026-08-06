@@ -34,10 +34,11 @@ import { describe, expect, it } from "bun:test";
 import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { GLOBAL_SETTING_BINDINGS } from "../../src/config/settings-domains/global";
+import { SETTINGS_SCHEMA } from "../../src/config/settings-schema";
 
 const PACKAGE_DIR = path.join(import.meta.dir, "..", "..");
 const PACKAGES_DIR = path.join(PACKAGE_DIR, "..");
-const DOMAINS_DIR = path.join(PACKAGE_DIR, "src", "config", "settings-domains");
 
 /**
  * Keys assembled at runtime rather than written as literals, with the site that builds
@@ -71,20 +72,6 @@ async function typescriptFiles(dir: string, out: string[] = []): Promise<string[
 	return out;
 }
 
-/** Every dotted key declared across the settings domain files. */
-async function declaredKeys(): Promise<string[]> {
-	const keys: string[] = [];
-	for (const entry of await readdir(DOMAINS_DIR)) {
-		if (!entry.endsWith(".ts")) continue;
-		const text = await readFile(path.join(DOMAINS_DIR, entry), "utf8");
-		for (const match of text.matchAll(/^\t"([a-zA-Z0-9._]+)":\s*\{/gm)) {
-			const key = match[1];
-			if (key !== undefined) keys.push(key);
-		}
-	}
-	return keys;
-}
-
 /** All non-test source across every workspace package, excluding the schema itself. */
 async function productionFiles(): Promise<Array<{ file: string; text: string }>> {
 	const packages = await readdir(PACKAGES_DIR, { withFileTypes: true });
@@ -102,7 +89,22 @@ async function productionFiles(): Promise<Array<{ file: string; text: string }>>
 
 const FILES = await productionFiles();
 const SOURCE = FILES.map(entry => entry.text).join("\n");
-const KEYS = await declaredKeys();
+/**
+ * Every dotted key the schema declares.
+ *
+ * Read from `SETTINGS_SCHEMA` itself rather than by regexing the domain files it is
+ * assembled from. That regex was `/^\t"([a-zA-Z0-9._]+)":\s*\{/gm`, which requires a
+ * leading quote and excludes `-`, and 45 of 455 keys satisfy neither: 44 are declared
+ * unquoted (`includeModelInPrompt: {`, `personality: {`, every sampling knob) and
+ * `providers.ollama-cloud.maxConcurrency` is excluded by the hyphen. So the lock read 410
+ * keys while presenting itself as covering the schema, and the 45 it could not see are the
+ * oldest and most prompt-relevant ones. The non-vacuity floor below was 350, which 410
+ * clears, so the block written to catch exactly this kind of under-read could not.
+ *
+ * Taking the list from the schema makes an under-read impossible rather than detectable:
+ * there is no second rendering left to disagree with.
+ */
+const KEYS = Object.keys(SETTINGS_SCHEMA);
 const GROUPS_READ = new Set(Array.from(SOURCE.matchAll(/getGroup\("([a-zA-Z0-9._]+)"\)/g), match => match[1]));
 
 /**
@@ -116,9 +118,18 @@ const GROUPS_READ = new Set(Array.from(SOURCE.matchAll(/getGroup\("([a-zA-Z0-9._
  * a field of a returned group object actually is — read off an object as `.field`, or
  * bound out of one by destructuring — which is still a text match, but one a coincidental
  * local variable does not satisfy.
+ *
+ * The binding case is the structural one. A `scope: "global"` key is served by an entry in
+ * `GLOBAL_SETTING_BINDINGS`, whose `read`/`write` closures ARE its reader, and that table
+ * lives in `settings-domains/global.ts` — inside the one directory this walk excludes,
+ * because that directory otherwise only declares keys. So membership in the table is
+ * checked against the table itself rather than by searching text for the key. `authBrokerUrl`
+ * and `authBrokerToken` are wired exactly this way, and were invisible to the walk until the
+ * key list started coming from the schema.
  */
-function readerOf(key: string): "literal" | "group" | "assembled" | null {
+function readerOf(key: string): "literal" | "group" | "assembled" | "binding" | null {
 	if (SOURCE.includes(`"${key}"`) || SOURCE.includes(`'${key}'`)) return "literal";
+	if (key in GLOBAL_SETTING_BINDINGS) return "binding";
 	if (key in ASSEMBLED_AT_RUNTIME) return "assembled";
 	const separator = key.lastIndexOf(".");
 	if (separator > 0) {
@@ -249,7 +260,7 @@ describe("the walk this lock depends on", () => {
 	 * nothing.
 	 */
 	it("reads the whole schema and the whole workspace", () => {
-		expect(KEYS.length).toBeGreaterThan(350);
+		expect(KEYS.length).toBeGreaterThan(450);
 		expect(SOURCE.length).toBeGreaterThan(1_000_000);
 		expect(GROUPS_READ.size).toBeGreaterThan(5);
 		expect(FILES.length).toBeGreaterThan(1_000);
