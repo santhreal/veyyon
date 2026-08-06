@@ -1,4 +1,4 @@
-import { peekFile, peekFileSync } from "./peek-file";
+import { peekFile } from "./peek-file";
 
 const DEFAULT_IMAGE_METADATA_HEADER_BYTES = 256 * 1024;
 
@@ -142,13 +142,6 @@ export function parseImageMetadata(header: Uint8Array): ImageMetadata | null {
 	return (
 		parsePngMetadata(header) ?? parseJpegMetadata(header) ?? parseGifMetadata(header) ?? parseWebpMetadata(header)
 	);
-}
-
-export function readImageMetadataSync(
-	filePath: string,
-	maxBytes = DEFAULT_IMAGE_METADATA_HEADER_BYTES,
-): ImageMetadata | null {
-	return peekFileSync(filePath, maxBytes, parseImageMetadata);
 }
 
 export function readImageMetadata(
