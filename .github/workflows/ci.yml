@@ -59,7 +59,7 @@ jobs:
          # tag straight from `github.ref_name`, and fetching `--tags` while
          # checkout uses an explicit tag refspec makes git refuse — so scope
          # fetch-tags to main refs.
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
            with:
               fetch-tags: ${{ github.ref == 'refs/heads/main' }}
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -167,7 +167,7 @@ jobs:
          linux-x64-run-id: ${{ steps.find.outputs.linux-x64-run-id }}
          cross-platform-run-id: ${{ steps.find.outputs.cross-platform-run-id }}
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - name: Compute native source hash
            id: compute
            shell: bash
@@ -265,7 +265,7 @@ jobs:
       name: Type check & web build
       runs-on: ubuntu-22.04
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/bun-install
          - name: Type check workspace
            run: bun run check:ts
@@ -287,7 +287,7 @@ jobs:
                - { variant: baseline, rust_checks: true }
                - { variant: modern }
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/build-native
            with:
               hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
@@ -313,7 +313,7 @@ jobs:
                - { os: ubuntu-22.04, platform: win32, arch: x64, target: x86_64-pc-windows-msvc, variant: baseline }
       runs-on: ${{ matrix.os }}
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/build-native
            with:
               hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
@@ -336,7 +336,7 @@ jobs:
                - { os: macos-14, platform: darwin, arch: arm64 }
       runs-on: ${{ matrix.os }}
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/build-native
            with:
               hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
@@ -352,7 +352,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 20
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
          - name: Resolve Linux x64 native artifact run
@@ -365,7 +365,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -380,7 +380,7 @@ jobs:
            # userland it runs. There is no /dev/kvm here, so the script builds the
            # userland only and says so; the microVM rung reports itself unavailable
            # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox.sh --build
+           run: bash scripts/test-sandbox/run.sh --build
          - name: Test workspace packages and repo scripts (TS)
            run: bun run ci:test:ts:workspace
 
@@ -391,7 +391,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 20
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
          - name: Resolve Linux x64 native artifact run
@@ -404,7 +404,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -419,7 +419,7 @@ jobs:
            # userland it runs. There is no /dev/kvm here, so the script builds the
            # userland only and says so; the microVM rung reports itself unavailable
            # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox.sh --build
+           run: bash scripts/test-sandbox/run.sh --build
          - name: Test coding-agent singleton/global-state bucket
            # Keep global Settings/env/fake-timer tests serial; native addon
            # artifacts are still available like every other coding-agent bucket.
@@ -432,7 +432,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
@@ -446,7 +446,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -461,7 +461,7 @@ jobs:
            # userland it runs. There is no /dev/kvm here, so the script builds the
            # userland only and says so; the microVM rung reports itself unavailable
            # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox.sh --build
+           run: bash scripts/test-sandbox/run.sh --build
          - name: Test native/TUI/browser-ish packages (TS)
            run: bun run ci:test:ts:native
 
@@ -472,7 +472,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
@@ -486,7 +486,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -501,7 +501,7 @@ jobs:
            # userland it runs. There is no /dev/kvm here, so the script builds the
            # userland only and says so; the microVM rung reports itself unavailable
            # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox.sh --build
+           run: bash scripts/test-sandbox/run.sh --build
          - name: Test coding-agent UI/TUI bucket
            run: bun run ci:test:coding-agent:ui
 
@@ -512,7 +512,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
          - name: Resolve Linux x64 native artifact run
@@ -525,7 +525,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -540,7 +540,7 @@ jobs:
            # userland it runs. There is no /dev/kvm here, so the script builds the
            # userland only and says so; the microVM rung reports itself unavailable
            # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox.sh --build
+           run: bash scripts/test-sandbox/run.sh --build
          - name: Test coding-agent runtime bucket
            # Runtime/session tests import native-backed barrels too; keep this
            # separate for concurrency, not as a native-free guardrail.
@@ -553,7 +553,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
@@ -567,7 +567,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -582,7 +582,7 @@ jobs:
            # userland it runs. There is no /dev/kvm here, so the script builds the
            # userland only and says so; the microVM rung reports itself unavailable
            # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox.sh --build
+           run: bash scripts/test-sandbox/run.sh --build
          - name: Test coding-agent native/unit bucket
            run: bun run ci:test:coding-agent:native
 
@@ -593,7 +593,7 @@ jobs:
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 15
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
@@ -607,7 +607,7 @@ jobs:
                 echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
               fi
          - name: Download native addons
-           uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
               pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
@@ -634,7 +634,7 @@ jobs:
             os: [ubuntu-22.04, macos-14, macos-15-intel]
       runs-on: ${{ matrix.os }}
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/ensure-rust-toolchain
            with:
               toolchain: nightly-2026-04-29
@@ -685,7 +685,7 @@ jobs:
       runs-on: ${{ matrix.os }}
       timeout-minutes: 30
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - name: install.sh end-to-end against the published release
            shell: bash
            continue-on-error: true
@@ -704,7 +704,7 @@ jobs:
       runs-on: windows-latest
       timeout-minutes: 30
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/bun-install
          - name: Build the native addon and the binary
            # bash, not pwsh: the bun-install action puts bun on PATH for the
@@ -742,7 +742,7 @@ jobs:
       runs-on: windows-latest
       timeout-minutes: 30
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - name: install.ps1 end-to-end against the published release
            shell: pwsh
            continue-on-error: true
@@ -757,7 +757,7 @@ jobs:
       # Linux runners) is actually gated. pwsh ships on windows-latest.
       runs-on: windows-latest
       steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - name: install.ps1 function tests
            shell: pwsh
            run: pwsh -File scripts/install-tests/functions.test.ps1
@@ -1443,9 +1443,26 @@ jobs:
            run: bun scripts/verify-deployed-changelog.ts ${{ needs.release_metadata.outputs.release-tag }}
 
    release_install_verify:
-      # These jobs start only after GitHub publication and the final Pages
-      # deployment. They exercise the real installer release lookup and checksum
-      # path against releases/latest, rather than only launching draft assets.
+      # The half of installer verification that cannot be moved earlier, and the
+      # only half left here.
+      #
+      # Everything the installer does AROUND the binary is already proven before
+      # publication and gates it: `install_methods` and `install_ps1_e2e` drive
+      # the real installers with `--local`, and `release_github_verify`,
+      # `release_github_verify_linux` and `release_github_verify_windows`
+      # download each DRAFT asset, verify its `.sha256` the way the installers do
+      # and launch the binary. `release_github_publish` refuses to publish unless
+      # all of those are green, so a broken binary or a bad sidecar never reaches
+      # a user.
+      #
+      # What is left is how the binary GETS there: `resolve_latest_tag` follows
+      # `github.com/<repo>/releases/latest`, and that redirect resolves only to a
+      # non-draft release. There is no ref that names the draft, so this path is
+      # unreachable until the release is public. It runs here because it cannot
+      # run anywhere else, not because it was convenient.
+      #
+      # Which means a failure below is a failure on a release users can already
+      # download, so it is reported as one: see the rollback step at the end.
       name: "Verify published install (${{ matrix.name }})"
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
          needs.release_github_publish.result == 'success' &&
@@ -1477,6 +1494,47 @@ jobs:
               VEYYON_INSTALL_E2E: "1"
               VEYYON_EXPECTED_RELEASE_TAG: ${{ needs.release_metadata.outputs.release-tag }}
            run: pwsh -File scripts/install-tests/e2e.test.ps1 -Mode Binary
+         # This job is the one release gate whose subject is already public, so a
+         # red run here is not "the release did not ship". It is "the release
+         # shipped and the documented install path is broken on it", and every
+         # `curl -fsSL https://get.veyyon.dev | sh` and self-update is resolving
+         # it right now. Nothing above can undo that, so the only useful thing
+         # left is to say so and name the lever.
+         - name: Report that the broken release is already public
+           if: failure()
+           shell: bash
+           env:
+              RELEASE_TAG: ${{ needs.release_metadata.outputs.release-tag }}
+              PLATFORM: ${{ matrix.name }}
+              RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+           run: |
+              set -euo pipefail
+              echo "::error title=Published release $RELEASE_TAG fails to install on $PLATFORM::this release is ALREADY PUBLIC and releases/latest resolves to it; demote it before investigating"
+              {
+                echo "## $RELEASE_TAG is public and does not install on $PLATFORM"
+                echo
+                echo "This ran after publication because it has to: the installer resolves"
+                echo "\`releases/latest\`, and that redirect never names a draft. So the release users"
+                echo "get is this one, and it is broken on \`$PLATFORM\`."
+                echo
+                echo "Roll back FIRST, investigate after. Do not delete the tag."
+                echo
+                echo "1. Open \`$RELEASE_TAG\` in the releases UI and uncheck **Set as the latest"
+                echo "   release**, or mark it a pre-release. GitHub recomputes \`latest\` as the most"
+                echo "   recent stable release below it."
+                echo "2. Confirm what \`latest\` now names:"
+                echo
+                echo "   \`\`\`sh"
+                echo "   gh release view --json tagName -q .tagName"
+                echo "   \`\`\`"
+                echo
+                echo "3. Re-test the install on a clean machine; it should fetch the previous version."
+                echo
+                echo "Full procedure: \`docs/internal/releasing.md\`, \"The release is bad and users are"
+                echo "installing it\"."
+                echo
+                echo "Run: $RUN_URL"
+              } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
    release_train_alert:
       # Eight consecutive releases (v1.0.28-v1.0.35) were tagged and then died red

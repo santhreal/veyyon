@@ -716,3 +716,62 @@ describe("every third-party action is sha-pinned", () => {
 		expect(offenders).toEqual([]);
 	});
 });
+
+describe("every third-party action is pinned to one version", () => {
+	/**
+	 * Sha-pinning above stops a mutable ref. It does not stop TWO immutable refs.
+	 *
+	 * `actions/checkout` was pinned at v4.4.0 in checks.yml, docs.yml, hashline-soak.yml, leak-sweep.yml
+	 * and upstream-radar.yml while ci.yml, release.yml and site.yml were on v6.0.3, and
+	 * `actions/download-artifact` was split v4.3.0/v8.0.1 inside ci.yml alone. Nothing failed, because
+	 * each pin is individually valid. What the repo had was two checkout behaviours nobody chose,
+	 * decided by which file a job happened to live in, and a bump that looked done after touching the
+	 * files someone thought to grep.
+	 *
+	 * The version comment is part of the identity on purpose: two sites naming the same sha with
+	 * different version comments are lying to the next reader about what is pinned.
+	 */
+	async function actionPins(): Promise<Map<string, Map<string, string[]>>> {
+		const byAction = new Map<string, Map<string, string[]>>();
+		for await (const rel of new Bun.Glob("**/*.yml").scan({ cwd: workflowsDir })) {
+			const text = await Bun.file(path.join(workflowsDir, rel)).text();
+			text.split("\n").forEach((line, i) => {
+				const m = /uses:\s*([A-Za-z0-9._-]+\/[A-Za-z0-9._/-]+)@(\S+)(?:\s*#\s*(.*))?/.exec(line);
+				if (!m) return;
+				const [, action, sha, comment] = m;
+				const pin = `${sha} # ${(comment ?? "").trim()}`;
+				const pins = byAction.get(action!) ?? new Map<string, string[]>();
+				pins.set(pin, [...(pins.get(pin) ?? []), `${rel}:${i + 1}`]);
+				byAction.set(action!, pins);
+			});
+		}
+		return byAction;
+	}
+
+	it("names exactly one sha and version comment for each action", async () => {
+		const disagreements: string[] = [];
+		for (const [action, pins] of await actionPins()) {
+			if (pins.size < 2) continue;
+			const where = [...pins].map(([pin, sites]) => `${pin} at ${sites.join(", ")}`).join(" | ");
+			disagreements.push(`${action}: ${where}`);
+		}
+		expect(disagreements, "one version per action; bump every site or none").toEqual([]);
+	});
+
+	/**
+	 * The non-vacuity twin. The assertion above passes over an empty scan and over a scan that found
+	 * one lonely site per action, which is exactly the state a broken glob produces.
+	 */
+	it("scans every workflow and composite action", async () => {
+		const pins = await actionPins();
+		expect(pins.has("actions/checkout")).toBe(true);
+		const sites = [...pins.get("actions/checkout")!.values()].flat();
+		// checkout is the one action used by essentially every job, across workflows and both runners.
+		expect(sites.length).toBeGreaterThan(20);
+		expect(sites.some(site => site.startsWith("workflows/ci.yml"))).toBe(true);
+		expect(sites.some(site => site.startsWith("workflows/checks.yml"))).toBe(true);
+		expect(sites.some(site => site.startsWith("workflows/release.yml"))).toBe(true);
+		// And the composite actions, which live outside `workflows/` and are the easiest to miss.
+		expect([...pins.get("actions/upload-artifact")!.values()].flat().some(s => s.startsWith("actions/"))).toBe(true);
+	});
+});

@@ -727,6 +727,40 @@ const releaseWorkflowOperations: ReleaseWorkflowOperations = {
 	},
 };
 
+/**
+ * What to tell an operator when a dispatched gate never produced a run we could
+ * correlate.
+ *
+ * The window this gives up after is ~145 seconds, and it opens AFTER the atomic
+ * push of `main` plus the tag. So by the time this message is written the tag
+ * exists on the remote and cannot be un-cut by failing the job. The old text was
+ * one line naming the workflow and the SHA, which reads exactly like "the release
+ * never happened" and leaves the operator unable to tell "never started" from
+ * "started and lost track of". Both of those end with a tag on the remote and a
+ * release that has not published, and the recovery for them is the same one
+ * `versionNotNewerFailure` already prints, so it is printed from there rather
+ * than written a second time here and allowed to drift.
+ *
+ * Extending the deadline is not the fix. A longer wait makes this rarer without
+ * making it honest, and the operator still needs to know the tag is live.
+ */
+export function uncorrelatedDispatchFailure(request: WorkflowDispatchRequest): string[] {
+	// Release tags are always `v<x.y.z>`, but normalise anyway: the recovery
+	// block below only exists on `versionNotNewerFailure`'s already-tagged
+	// branch, and that branch is chosen by `v${version} === tag`.
+	const tag = request.tag.startsWith("v") ? request.tag : `v${request.tag}`;
+	return [
+		`${request.label} did not start a correlated run for ${request.tag} (${request.sha})`,
+		"",
+		`  ${tag} IS ALREADY PUSHED. main and the tag went to the remote before this wait began,`,
+		"  so this failure does not mean the release was not cut. It means the gate run could not be",
+		`  found, either because ${request.workflow} never started it or because it started and this`,
+		"  controller lost it. Check the Actions tab for the tag ref before doing anything else.",
+		"",
+		...versionNotNewerFailure(tag.slice(1), tag).slice(2),
+	];
+}
+
 export async function dispatchWorkflowAndWait(
 	request: WorkflowDispatchRequest,
 	operations: ReleaseWorkflowOperations,
@@ -752,7 +786,7 @@ export async function dispatchWorkflowAndWait(
 		}
 		await operations.sleep(Math.min(attempt, 5) * 1000);
 	}
-	throw new Error(`${request.label} did not start a correlated run for ${request.tag} (${request.sha})`);
+	throw new Error(uncorrelatedDispatchFailure(request).join("\n"));
 }
 
 export async function publishPreparedRelease(
