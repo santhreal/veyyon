@@ -119,8 +119,13 @@ describe("an alias parses into its canonical flag", () => {
 	 * Unknown flags are still rejected. Alias support widens the accepted set by
 	 * exactly the declared aliases and not by one name more.
 	 */
-	it("still rejects an undeclared flag", async () => {
-		await expect(parseWith(["--not-a-flag"])).rejects.toBeInstanceOf(CliUsageError);
+	it("still rejects an undeclared flag, naming it", async () => {
+		const error = await parseWith(["--not-a-flag"]).then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+		expect(error).toBeInstanceOf(CliUsageError);
+		expect((error as Error).message).toStartWith("Unknown option '--not-a-flag'.");
 	});
 
 	/**
@@ -136,7 +141,14 @@ describe("an alias parses into its canonical flag", () => {
 		}
 		const command = new ConstrainedCommand(["--output", "yaml"], CONFIG);
 
-		await expect(command.parse(ConstrainedCommand)).rejects.toBeInstanceOf(CliUsageError);
+		// The diagnostic names the CANONICAL flag, so the user is told which
+		// option the constraint belongs to rather than the spelling they typed.
+		const error = await command.parse(ConstrainedCommand).then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+		expect(error).toBeInstanceOf(CliUsageError);
+		expect((error as Error).message).toBe('Expected --mode to be one of: text, json; got "yaml"');
 	});
 });
 

@@ -24,6 +24,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { CLAUDE_CODE_VERSION } from "@veyyon/catalog/wire/anthropic";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const PACKAGES = path.join(import.meta.dir, "..", "..");
 const OWNER = path.join("catalog", "src", "wire", "anthropic.ts");
@@ -108,16 +109,16 @@ describe("the two cheap consumers name the leaf, not the provider", () => {
 	it("the OAuth controller imports the version from the leaf", () => {
 		const source = fs.readFileSync(path.join(PACKAGES, "ai", "src", "registry", "oauth", "anthropic.ts"), "utf-8");
 
-		expect(source).toContain('from "@veyyon/catalog/wire/anthropic"');
-		expect(source).not.toContain('from "../../providers/anthropic"');
+		expect(moduleSpecifiersIn(source)).toContain("@veyyon/catalog/wire/anthropic");
+		expect(moduleSpecifiersIn(source)).not.toContain("../../providers/anthropic");
 	});
 
 	/** The same fact for the usage client, which was paying the same 310 modules for the same string. */
 	it("the usage client imports the version from the leaf", () => {
 		const source = fs.readFileSync(path.join(PACKAGES, "ai", "src", "usage", "claude.ts"), "utf-8");
 
-		expect(source).toContain('from "@veyyon/catalog/wire/anthropic"');
-		expect(source).not.toContain('from "../providers/anthropic"');
+		expect(moduleSpecifiersIn(source)).toContain("@veyyon/catalog/wire/anthropic");
+		expect(moduleSpecifiersIn(source)).not.toContain("../providers/anthropic");
 	});
 
 	/**

@@ -321,8 +321,17 @@ describe("the real-data tripwire refuses writes into the real veyyon directory",
 			const root = __tripwire.FORBIDDEN[0];
 			if (!root) throw new Error("no forbidden root");
 			// Blocking reads would break suites that legitimately inspect real config;
-			// only mutation is forbidden.
-			expect(() => fs.existsSync(root)).not.toThrow();
+			// only mutation is forbidden. A read of a missing child must reach the
+			// native layer and fail ENOENT, which proves the tripwire let it through.
+			const child = path.join(root, "tripwire-read-probe-does-not-exist");
+			expect(fs.existsSync(child)).toBe(false);
+			let error: NodeJS.ErrnoException | undefined;
+			try {
+				fs.readFileSync(child, "utf8");
+			} catch (err) {
+				error = err as NodeJS.ErrnoException;
+			}
+			expect(error?.code).toBe("ENOENT");
 		});
 	});
 

@@ -180,11 +180,14 @@ describe("transformMessages drops thinking-only assistant turns", () => {
 			timestamp: 2,
 		};
 		const transformed = transformMessages([user, partial], model);
-		const kept = transformed.find(
-			m =>
-				m.role === "assistant" &&
-				(m as AssistantMessage).content.some(b => b.type === "thinking" && b.thinkingSignature === "sig_keep"),
-		);
-		expect(kept).toBeDefined();
+		const kept = transformed.find(m => m.role === "assistant") as AssistantMessage | undefined;
+		// The turn must survive INTACT: keeping a stripped shell would lose the
+		// partial answer the user can already read and the signature Anthropic
+		// needs to continue from.
+		expect(kept?.content).toEqual([
+			{ type: "thinking", thinking: "thought", thinkingSignature: "sig_keep" },
+			{ type: "text", text: "partial answer cut off mid-" },
+		]);
+		expect(kept?.stopReason).toBe("length");
 	});
 });

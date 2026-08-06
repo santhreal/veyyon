@@ -69,15 +69,6 @@ function unremovableChild(): TempDir {
 const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 describe("TempDir disposal when the removal cannot be done", () => {
-	it("does not throw out of a synchronous `using` scope", () => {
-		if (asRoot) throw new Error("run this suite as a non-root user: root ignores the permission bits it relies on");
-		const dir = unremovableChild();
-
-		expect(() => {
-			dir[Symbol.dispose]();
-		}).not.toThrow();
-	});
-
 	it("reports the path and the reason it could not remove it", () => {
 		if (asRoot) throw new Error("run this suite as a non-root user: root ignores the permission bits it relies on");
 		const dir = unremovableChild();

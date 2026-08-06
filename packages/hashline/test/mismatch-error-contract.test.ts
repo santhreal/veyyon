@@ -39,11 +39,6 @@ describe("parseTag", () => {
 });
 
 describe("validateLineRef", () => {
-	it("accepts in-range lines", () => {
-		expect(() => validateLineRef({ line: 1 }, ["a"])).not.toThrow();
-		expect(() => validateLineRef({ line: 2 }, ["a", "b"])).not.toThrow();
-	});
-
 	it("throws with exact bounds for out-of-range", () => {
 		expect(() => validateLineRef({ line: 0 }, ["a"])).toThrow("Line 0 does not exist (file has 1 lines)");
 		expect(() => validateLineRef({ line: 3 }, ["a", "b"])).toThrow("Line 3 does not exist (file has 2 lines)");

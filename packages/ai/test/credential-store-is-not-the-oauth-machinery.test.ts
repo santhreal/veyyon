@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { isSqliteBusyError, serializeCredential } from "@veyyon/ai/auth-credential-rows";
+import * as reexported from "@veyyon/ai/auth-storage";
 import { SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage-sqlite";
 import {
 	createModuleReachCache,
@@ -10,6 +11,7 @@ import {
 	moduleReach,
 	moduleReachCount,
 	moduleSpecifiersIn,
+	typeOnlyModuleSpecifiersIn,
 } from "@veyyon/utils/module-reach";
 import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-workspace";
 
@@ -186,8 +188,11 @@ describe("the sqlite store stands on its own", () => {
 	it("takes the credential types from auth-storage as types, not as values", () => {
 		const source = require("node:fs").readFileSync(path.join(SRC, "auth-storage-sqlite.ts"), "utf-8") as string;
 
-		expect(source).toContain("import type {");
-		expect(source).toContain('} from "./auth-storage";');
+		// The PARSED specifier lists, not the characters. `toContain("import type {")` was satisfied by
+		// ANY type import in the file, and `toContain('} from "./auth-storage";')` by the closing brace of
+		// a runtime import that happened to wrap. These two say the same thing about the one edge.
+		expect(typeOnlyModuleSpecifiersIn(source)).toContain("./auth-storage");
+		expect(moduleSpecifiersIn(source)).not.toContain("./auth-storage");
 		expect(runtimeImportsOf("auth-storage-sqlite.ts")).not.toContain("./auth-storage");
 	});
 });
@@ -207,12 +212,16 @@ describe("the OAuth module no longer touches a database", () => {
 		expect(imports).not.toContain("@veyyon/utils/sqlite");
 	});
 
-	/** And it still re-exports both moved pieces, which is what kept every existing caller working. */
+	/**
+	 * And it still hands back both moved pieces, which is what kept every existing caller working.
+	 *
+	 * Asserted as IDENTITY against the leaf modules rather than as `toContain("export { ... }")`. A
+	 * re-export that pointed at a second copy of the store reads the same in source and would give a
+	 * caller a different class with its own statement cache against the same file.
+	 */
 	it("re-exports the store and the row predicate", () => {
-		const source = require("node:fs").readFileSync(path.join(SRC, "auth-storage.ts"), "utf-8") as string;
-
-		expect(source).toContain("export { SqliteAuthCredentialStore }");
-		expect(source).toContain("isSqliteBusyError");
+		expect(reexported.SqliteAuthCredentialStore).toBe(SqliteAuthCredentialStore);
+		expect(reexported.isSqliteBusyError).toBe(isSqliteBusyError);
 	});
 });
 

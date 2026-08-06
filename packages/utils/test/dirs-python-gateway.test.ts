@@ -17,7 +17,7 @@ describe("python gateway directory", () => {
 		// `setAgentDir` WRITES `VEYYON_CODING_AGENT_DIR`, and restoring through it
 		// cannot restore "the variable was unset": the suite exported the
 		// developer's real agent dir to every file that ran after it in the same
-		// process. `scripts/find-test-leaks.ts` reported it.
+		// process. `scripts/test-sandbox/find-test-leaks.ts` reported it.
 		isolated = enterIsolatedConfigRoot("dirs-python-gateway", { defaultProfile: true });
 		tempRoot = path.join(isolated.root, "gateway-fixture", Snowflake.next());
 		await fs.mkdir(tempRoot, { recursive: true });

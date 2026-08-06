@@ -17,6 +17,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import {
 	budgetedTrialTimeoutSec,
 	parseTaskTimeBudget,
@@ -345,7 +346,7 @@ describe("run.ts wiring", () => {
 	/** The resolver must actually be the thing run.ts uses, not a parallel copy. */
 	test("run.ts resolves each trial's timeout through this module", async () => {
 		const source = await Bun.file(runSourcePath).text();
-		expect(source).toContain(`from "./trial-timeout"`);
+		expect(moduleSpecifiersIn(source)).toContain("./trial-timeout");
 		expect(source).toContain("resolveTrialTimeout(budget, trialTimeoutOverrideSec)");
 	});
 

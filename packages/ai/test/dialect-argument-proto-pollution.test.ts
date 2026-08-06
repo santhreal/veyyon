@@ -165,7 +165,8 @@ describe("owned-stream projector: __proto__ argument key across in-band deltas",
 		const message = await stream.result();
 
 		const toolCall = message.content.find((block): block is ToolCall => block.type === "toolCall");
-		expect(toolCall).toBeDefined();
+		expect(toolCall?.name).toBe("read");
 		expectSafeProtoArg(toolCall!.arguments, "evil");
+		expect(events.at(-1)).toMatchObject({ type: "done" });
 	});
 });

@@ -35,12 +35,10 @@ describe("Tokenizer.feed incremental", () => {
 		expect(all.some(tok => tok.kind === "payload-literal")).toBe(true);
 	});
 
-	it("empty feed and end yield no throw", () => {
+	it("empty feed and end emit no tokens", () => {
 		const t = new Tokenizer();
-		expect(() => {
-			t.feed("");
-			t.end();
-		}).not.toThrow();
+		expect([...t.feed("")]).toEqual([]);
+		expect([...t.end()]).toEqual([]);
 	});
 
 	it("CRLF chunked lines produce same kinds as LF one-shot", () => {

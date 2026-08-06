@@ -164,10 +164,13 @@ describe("InMemorySnapshotStore.recordSeenLines", () => {
 		expect([...(snap?.seenLines ?? [])].sort((x, y) => x - y)).toEqual([1, 2, 3]);
 	});
 
-	it("is a no-op (no throw) when no version matches the hash", () => {
+	// An unmatched hash must not fall back to the head version: attaching lines
+	// from one text onto another corrupts seen-line validation.
+	it("attaches nothing when no version matches the hash", () => {
 		const store = new InMemorySnapshotStore();
-		store.record(PATH, "a\nb\n", [1]);
-		expect(() => store.recordSeenLines(PATH, "FFFF", [9])).not.toThrow();
+		const hash = store.record(PATH, "a\nb\n", [1]);
+		store.recordSeenLines(PATH, "FFFF", [9]);
+		expect([...(store.byHash(PATH, hash)?.seenLines ?? [])]).toEqual([1]);
 	});
 });
 

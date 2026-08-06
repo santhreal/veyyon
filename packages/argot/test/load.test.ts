@@ -42,7 +42,15 @@ dbconn = "packages/server/src/database/connection.ts"
 
 	test("throws on a malformed AGENTS.dict rather than degrading to empty", async () => {
 		const root = await projectWith(`version = 1\n[handles]\n`);
-		await expect(load(root)).rejects.toBeInstanceOf(ArgotParseError);
+		// Degrading to empty would look identical to "no dict here", so the error
+		// has to name the file and say what is wrong with it.
+		const error = await load(root).then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+		expect(error).toBeInstanceOf(ArgotParseError);
+		expect((error as ArgotParseError).source).toBe(join(root, "AGENTS.dict"));
+		expect((error as ArgotParseError).message).toEndWith("`[handles]` defines no handles");
 	});
 
 	test("throws when the dict path is a directory, not a silent fallback", async () => {

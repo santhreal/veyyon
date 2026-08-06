@@ -94,7 +94,15 @@ describe("readDictFile", () => {
 		const dir = await scratch();
 		const path = join(dir, "sig.dict");
 		await writeFile(path, "this is not valid toml at = = =", "utf8");
-		await expect(readDictFile(path)).rejects.toBeInstanceOf(ArgotParseError);
+		// The operator has to know WHICH file is broken, so `source` and the
+		// message prefix are part of the contract, not just the class.
+		const error = await readDictFile(path).then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+		expect(error).toBeInstanceOf(ArgotParseError);
+		expect((error as ArgotParseError).source).toBe(path);
+		expect((error as ArgotParseError).message).toStartWith(`${path}: invalid TOML:`);
 	});
 });
 
@@ -253,6 +261,9 @@ describe("resolveProjectCache", () => {
 		await expect(
 			resolveProjectCache({ baseDir: dir, cacheId: "proj", contentSig: "sig1", files: [{ path: PATH }] }),
 		).rejects.toBeInstanceOf(ArgotParseError);
+		// "not silently rebuilt" is the other half: the bad bytes stay on disk so
+		// the operator can look at them, rather than being overwritten mid-failure.
+		expect(await readFile(path, "utf8")).toBe("garbage = = =");
 	});
 
 	test("writes nothing when there is nothing worth a handle", async () => {

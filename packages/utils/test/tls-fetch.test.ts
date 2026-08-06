@@ -132,12 +132,21 @@ describe("wrapFetchForExtraCa", () => {
 		expect(ca).not.toContain(SAMPLE_PEM);
 	});
 
-	it("throws ExtraCaError when the configured path does not exist", async () => {
-		Bun.env.NODE_EXTRA_CA_CERTS = path.join(tmpDir, "missing.pem");
+	it("throws ExtraCaError naming the missing path, and never issues the request", async () => {
+		const missing = path.join(tmpDir, "missing.pem");
+		Bun.env.NODE_EXTRA_CA_CERTS = missing;
 
-		const { fetchImpl } = makeRecordingFetch();
+		const { fetchImpl, calls } = makeRecordingFetch();
 		const wrapped = wrapFetchForExtraCa(fetchImpl);
-		await expect(wrapped("https://corp.example/v1")).rejects.toBeInstanceOf(ExtraCaError);
+		const error = await wrapped("https://corp.example/v1").then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+		expect(error).toBeInstanceOf(ExtraCaError);
+		expect((error as Error).message).toBe(`NODE_EXTRA_CA_CERTS path does not exist: ${missing}`);
+		// Fail closed: a misconfigured trust store must not fall through to a
+		// request that silently uses the default roots.
+		expect(calls).toEqual([]);
 	});
 
 	it("is idempotent — wrapping a wrapped fetch returns the same reference", async () => {

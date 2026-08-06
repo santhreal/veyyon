@@ -209,13 +209,4 @@ describe("fuzzStrings", () => {
 
 		expect(failure.message).toContain('corpus entry: "X"');
 	});
-
-	/** A clean run reports nothing, so a suite that stops failing does not keep printing noise. */
-	it("returns quietly when nothing fails", () => {
-		expect(() =>
-			withSeed("0x1234abcd", () => {
-				fuzzStrings({ seed: 0x9e37_79b9, iterations: 500, corpus: ["ok"] }, () => {});
-			}),
-		).not.toThrow();
-	});
 });

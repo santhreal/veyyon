@@ -500,6 +500,7 @@ describe("Cursor exec local-work tracking (issue #4593)", () => {
 			undefined,
 			{ sawTokenDelta: false },
 			[],
+			[],
 		);
 
 		// The exec round-trip is in flight: the stream must advertise local

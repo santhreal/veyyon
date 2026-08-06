@@ -21,7 +21,7 @@ describe("getInstallId", () => {
 		// WRITES `VEYYON_CODING_AGENT_DIR`, and restoring it with
 		// `setAgentDir(original)` cannot restore "the variable was unset": the suite
 		// left the developer's real agent dir exported to every file that ran after
-		// it in the same process. `scripts/find-test-leaks.ts` reported it.
+		// it in the same process. `scripts/test-sandbox/find-test-leaks.ts` reported it.
 		isolated = enterIsolatedConfigRoot("install-id", { defaultProfile: true });
 		__resetInstallIdCacheForTests();
 	});

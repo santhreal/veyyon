@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { moduleSpecifiersIn } from "../src/module-reach";
 import { escapeLike, SQLITE_NOW_EPOCH, sqlPlaceholders, tableExists } from "../src/sqlite";
 
 // One in-memory database per assertion group; each closes in afterEach so a
@@ -233,7 +234,7 @@ describe("SQLITE_NOW_EPOCH", () => {
 		]) {
 			const text = await Bun.file(path.join(packagesDir, file)).text();
 			expect(text).toContain("SQLITE_NOW_EPOCH");
-			expect(text).toContain('from "@veyyon/utils/sqlite"');
+			expect(moduleSpecifiersIn(text)).toContain("@veyyon/utils/sqlite");
 		}
 	});
 });

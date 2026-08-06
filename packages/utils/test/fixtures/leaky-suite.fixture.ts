@@ -1,5 +1,5 @@
 /**
- * A deliberate leaker, used by `scripts/find-test-leaks.test.ts` to prove the
+ * A deliberate leaker, used by `scripts/test-sandbox/find-test-leaks.test.ts` to prove the
  * tracer reports a real leak rather than always printing "ok".
  *
  * Named `.fixture.ts`, NOT `.fixture.test.ts`, and this matters: `bun test <dir>`

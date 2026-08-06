@@ -109,7 +109,7 @@ export const SANDBOX_MARKER_ENV = SANDBOX_MARKER_ENV_KEY;
 export const HOST_HOME_ENV = "VEYYON_TEST_HOST_HOME";
 
 /** The one command that puts a shell inside the sandbox. */
-export const SANDBOX_ENTRYPOINT = "bash scripts/test-sandbox.sh";
+export const SANDBOX_ENTRYPOINT = "bash scripts/test-sandbox/run.sh";
 
 /**
  * The config-root directory name, spelled here rather than imported.

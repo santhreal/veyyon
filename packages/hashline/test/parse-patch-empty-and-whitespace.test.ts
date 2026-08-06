@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parsePatch } from "@veyyon/hashline";
+import { applyEdits, parsePatch } from "@veyyon/hashline";
 
 /**
  * parsePatch on empty, whitespace-only, and comment-like inputs.
@@ -19,8 +19,11 @@ describe("parsePatch empty and whitespace", () => {
 		}
 	});
 
-	it("trailing newlines after a valid SWAP are fine", () => {
-		const { edits } = parsePatch("SWAP 1.=1:\n+x\n\n\n");
-		expect(edits.length).toBeGreaterThan(0);
+	// Trailing blank lines sit where payload rows would go. They must not be
+	// absorbed as empty `+` payload, which would append blank lines to the file.
+	it("trailing newlines after a valid SWAP contribute no payload", () => {
+		const trailing = parsePatch("SWAP 1.=1:\n+x\n\n\n");
+		expect(trailing.edits).toEqual(parsePatch("SWAP 1.=1:\n+x").edits);
+		expect(applyEdits("a\nb", trailing.edits).text).toBe("x\nb");
 	});
 });

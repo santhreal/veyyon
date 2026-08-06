@@ -82,6 +82,7 @@ async function askForBlob(
 		undefined,
 		{} as never,
 		[],
+		[],
 		undefined,
 		{ systemPromptBlobIds, onFatal: (error: Error) => fatal.push(error) },
 	);

@@ -172,8 +172,19 @@ describe("resolveAwsCredentials credential_process", () => {
 		const script = await writeFixture("hang.js", `setTimeout(()=>{},60_000);`);
 		await writeConfig("hangs", `credential_process = ${quoteForConfig(process.execPath)} ${quoteForConfig(script)}`);
 		const ctrl = new AbortController();
+		const reason = new Error("test abort");
 		const promise = resolveAwsCredentials({ profile: "hangs", signal: ctrl.signal });
-		setTimeout(() => ctrl.abort(new Error("test abort")), 50);
-		await expect(promise).rejects.toBeDefined();
+		// Abort straight away rather than on a timer: the helper hangs for a minute
+		// either way, so what is under test is that the caller's signal ends the
+		// wait rather than how long it waited first.
+		ctrl.abort(reason);
+		// The caller's own reason has to come back out. A generic rejection here
+		// would also be produced by a config parse failure, which is a different
+		// bug wearing the same shape.
+		const error = await promise.then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+		expect(error).toBe(reason);
 	});
 });

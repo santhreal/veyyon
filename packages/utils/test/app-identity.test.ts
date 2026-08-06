@@ -144,7 +144,7 @@ describe("the product name has one owner per form", () => {
 		]) {
 			const text = await Bun.file(path.join(PACKAGES, file)).text();
 			expect(text, file).toContain("APP_DISPLAY_NAME");
-			expect(text, file).toContain('from "@veyyon/utils/app-identity"');
+			expect(moduleSpecifiersIn(text), file).toContain("@veyyon/utils/app-identity");
 		}
 	});
 

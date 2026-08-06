@@ -107,9 +107,15 @@ describe("fuzzSeed", () => {
 	});
 
 	/** The boundary values are accepted, so a legitimate nonce is never rejected as out of range. */
-	it("accepts the whole unsigned 32-bit range", () => {
-		expect(() => withSeedEnv("0", () => fuzzSeed(1))).not.toThrow();
-		expect(() => withSeedEnv("4294967295", () => fuzzSeed(1))).not.toThrow();
+	it("accepts the whole unsigned 32-bit range and nothing past it", () => {
+		// Pinning both edges together is the point: a range check written with the
+		// wrong comparison passes on one side and silently rejects a valid nonce.
+		expect(withSeedEnv("0", () => fuzzSeed(1))).toBe(1);
+		expect(withSeedEnv("4294967295", () => fuzzSeed(1))).toBe(7_116_319);
+		expect(() => withSeedEnv("4294967296", () => fuzzSeed(1))).toThrow(
+			'VEYYON_FUZZ_SEED must be an unsigned 32-bit integer (decimal or 0x-prefixed hex), got "4294967296"',
+		);
+		expect(() => withSeedEnv("-1", () => fuzzSeed(1))).toThrow(/unsigned 32-bit integer/);
 	});
 
 	/** The nonce is resolved once per process, so every suite in a run shares it and replays together. */
