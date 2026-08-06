@@ -120,6 +120,19 @@ In spawn execution (`TaskTool.#executeSync` → `#runSpawn`):
 
 `TaskTool.create()` builds the tool description from discovery results at initialization time. `#executeSync` rediscovers agents, so the runtime set can differ from what was listed in the earlier tool description if agent files changed mid-session. The async entry path still uses the initialization-time list to decide whether an agent is marked `blocking` before scheduling.
 
+### What the model is actually told, and why enablement is inert
+
+The roster the model reads is built in `renderDescription` (`src/task/index.ts`) and rendered by the `Available Agents` block in `src/prompts/tools/task.md`. Per enabled agent it emits four things and nothing else: `name`, `description`, a `READ-ONLY` marker when every entry in `tools` is a read-only tool (`isReadOnlyAgent`), and a `BLOCKING` marker. No cost, no context size, no model, no thinking level. Selection is therefore driven entirely by one description line each.
+
+The routing instruction above that list reads "Spawn the one whose description covers the task; when none covers it, do the work yourself rather than substituting a broader agent." `task` is always enabled and its description is "General-purpose subagent with full capabilities for delegated multi-step tasks", which covers every task by construction. The rule resolves to `task` every time, so turning an agent off does not remove the work it was doing: the work reroutes to `task`, at whatever the session model is, with a larger system prompt. The operator loses a cheaper path and gets no signal that it is gone.
+
+Two facts make this concrete rather than theoretical:
+
+- `task` and `sonic` render the same body, `src/prompts/agents/task.md`, byte for byte. `sonic` differs only by `thinkingLevel: Effort.Medium` and a 100-request budget (`AGENT_REQUEST_BUDGETS` in `src/task/executor.ts`). Neither pins a model, so both resolve through `resolveSubagentModel` to the session model unless the operator fills in an agent row. A worker spawned as `sonic` is told it has "FULL access to all tools" and nothing about staying mechanical.
+- The only pressure toward a narrower agent is advisory and rarely fires: `composeSpawnAdvisory` (`src/task/index.ts`) nudges only when one call resolves two or more items to `task` or `sonic` and the spawner still holds spawn capacity. A single spawn gets nothing.
+
+The agents are a cost ladder, not a taxonomy. Nothing in the roster expresses cost, and the description text is written as job titles, which is why it reads as a taxonomy and routes as one agent. Any change here is measured against one question: does enabling or disabling this agent move where work lands, or only what the prompt says?
+
 ## Structured-output guardrails and schema precedence
 
 Runtime output schema precedence in `TaskTool.#runSpawn`:
