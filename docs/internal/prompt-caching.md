@@ -313,7 +313,7 @@ Prefix caching is positional, so an edit invalidates everything **after** it, no
 | --- | --- |
 | Model switch | nothing at all. `includeModelInPrompt` ships off, so the model identifier is not in the prompt to change (`settings-domains/model.ts`). Turning it on puts `Model:` inside `project`, and then a switch re-prefills that whole block, measured at 14,198 tokens |
 | Terminal change | nothing behind block 0, because `<workstation>` is volatile-last inside `project` (see [system prompt architecture](system-prompt-architecture.md#ordering-rules)). It used to sit first, and cost 5,396 re-prefilled tokens |
-| A statement's condition flipping (a setting change) | block 0 and everything after it |
+| A statement's condition flipping (a setting change) | the whole prompt. Block 0 precedes `project`, so the blast radius is the full 18,012 tokens no matter which statement flips, measured at $0.0675 of Sonnet cache write. 31 of the 58 active statements are gated and can trigger it (1,704 tokens, 45% of the template block); the other 27 are unconditional. Reordering the gated set behind `project` would cut that to the tail, and is deliberately not done, because it would split tool policy across two places in the reading order for 7 cents a toggle |
 | An argot dictionary loading | the `shorthand-handles` block and later blocks; block 0 survives, which is why the handle table is its own block |
 | A new secret becoming spendable | the `available-secrets` block and later blocks |
 | `set_cwd` / `/cd` | the `project` block and later blocks: the cwd line, context files, and workspace tree all change |
