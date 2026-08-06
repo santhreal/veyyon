@@ -223,10 +223,10 @@ describe("SettingsList", () => {
 		);
 
 		list.handleInput("b");
-		expect(list.hasSearchQuery()).toBe(true);
+		expect(list.getSearchQuery()).not.toBe("");
 
 		list.handleInput("\x1b");
-		expect(list.hasSearchQuery()).toBe(false);
+		expect(list.getSearchQuery()).toBe("");
 		expect(cancelCount).toBe(0);
 
 		list.handleInput("\x1b");

@@ -303,10 +303,6 @@ export class SettingsList implements Component {
 		return this.#filterQuery;
 	}
 
-	hasSearchQuery(): boolean {
-		return this.#filterQuery.length > 0;
-	}
-
 	clearSearch(): void {
 		if (this.#filterQuery.length === 0) return;
 		this.#setFilter("");
