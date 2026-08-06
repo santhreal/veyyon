@@ -4,7 +4,15 @@
  * Model entries switch the current session only.
  */
 import type { Model } from "@veyyon/ai";
-import { type Component, padding, routeSgrMouseInput, type SgrMouseEvent, type TUI } from "@veyyon/tui";
+import {
+	type Component,
+	matchesKey,
+	padding,
+	routeSgrMouseInput,
+	type SgrMouseEvent,
+	truncateToWidth,
+	type TUI,
+} from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
@@ -55,6 +63,20 @@ const BROWSER_FRAME_ROWS = 5;
 const MIN_VISIBLE = 5;
 
 const STATUS_HINT = "Interactive model — role / subagent / compaction slots stay unchanged";
+/**
+ * The list is only ever as new as the cached catalog. Opening the picker calls
+ * `refresh("online-if-uncached")`, which answers from a cache that stays fresh
+ * for two hours, so a model a provider shipped this morning is simply absent
+ * with nothing on screen saying why. This names the way to look again.
+ *
+ * The medium card is narrow, and truncating this mid-word ("…from yo…") loses
+ * the only part that matters, so it degrades to a shorter whole sentence
+ * rather than a clipped long one. The key is in both, since that is the
+ * actionable half.
+ */
+const REFRESH_HINT = "Don't see a model? ctrl+r reloads the catalog from your providers and models.dev";
+const REFRESH_HINT_SHORT = "Don't see a model? ctrl+r reloads the catalog";
+const REFRESHING_HINT = "Reloading the model catalog…";
 
 /**
  * The alt+p picker. Hosted fullscreen; ModalShell paints a floating medium card
@@ -71,6 +93,7 @@ export class ModelPickerComponent implements Component {
 	#modelItems: ModelBrowserItem[] = [];
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
+	#refreshing = false;
 	#onCancel: () => void;
 	/** One-shot open unfold (TOUCH-5); settles instantly with shimmer disabled. */
 	#reveal = new ModalRevealDriver();
@@ -158,7 +181,34 @@ export class ModelPickerComponent implements Component {
 			routeSgrMouseInput(data, event => this.#routeMouse(event));
 			return;
 		}
+		// Ahead of the browser, which takes every key it does not claim as query text.
+		if (matchesKey(data, "ctrl+r")) {
+			this.#refreshCatalog();
+			return;
+		}
 		this.#browser.handleInput(data);
+	}
+
+	/**
+	 * Re-fetch every provider past the cache TTL. This is the only strategy that
+	 * ignores a fresh cache, so it is the difference between "the catalog I was
+	 * handed at startup" and "what the providers and models.dev serve now".
+	 */
+	#refreshCatalog(): void {
+		if (this.#refreshing) return;
+		this.#refreshing = true;
+		this.#configError = undefined;
+		this.#tui.requestRender();
+		this.#registry
+			.refresh("online")
+			.then(() => this.#syncFromRegistryState())
+			.catch(error => {
+				this.#configError = errorMessage(error);
+			})
+			.finally(() => {
+				this.#refreshing = false;
+				this.#tui.requestRender();
+			});
 	}
 
 	#routeMouse(event: SgrMouseEvent): boolean {
@@ -188,6 +238,10 @@ export class ModelPickerComponent implements Component {
 			this.#browser.handleInput("\n");
 			return true;
 		}
+		if (chrome.kind === "shortcut" && chrome.id === "refresh") {
+			this.#refreshCatalog();
+			return true;
+		}
 		return true;
 	}
 
@@ -204,16 +258,18 @@ export class ModelPickerComponent implements Component {
 			{ label: "up/down models" },
 			{ label: "enter use", clickable: true, id: "confirm" },
 			{ label: "type to search" },
+			{ label: "ctrl+r refresh", clickable: true, id: "refresh" },
 			// The esc chip mirrors the browser's cancel ladder: with a live
 			// query esc clears the search (close comes on the next press), so
 			// the chip must not advertise "close" it will not perform.
 			{ label: this.#browser.query.length > 0 ? "esc clear" : "esc close", clickable: true, id: "close" },
 		];
-		// The body is the status line plus the browser, so the list gets whatever
-		// the card shows minus those. The old `- 8` was right only by accident: the
-		// shell reserves 7 at this sizing and the status line is the eighth, three
-		// unnamed rows that happened to add up. Change `vPad`, `footerLines`, or
-		// the status line and it silently starts dropping the bottom of the list.
+		// The body is the status line, the browser, and the refresh hint, so the
+		// list gets whatever the card shows minus those. The old `- 8` was right
+		// only by accident: the shell reserves 7 at this sizing and the status
+		// line was the eighth, three unnamed rows that happened to add up. Change
+		// `vPad`, `footerLines`, either bracketing line, or the browser frame and
+		// it silently starts dropping the bottom of the list.
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,
@@ -221,12 +277,19 @@ export class ModelPickerComponent implements Component {
 			shortcuts,
 			hoveredShortcutId: this.#hoveredShortcutId,
 		});
-		const listBudget = Math.max(MIN_VISIBLE, chrome.maxBodyRows - 1 - BROWSER_FRAME_ROWS);
+		const listBudget = Math.max(MIN_VISIBLE, chrome.maxBodyRows - 2 - BROWSER_FRAME_ROWS);
 		this.#browser.setMaxVisible(listBudget);
 
-		const status = this.#configError ? theme.fg("error", this.#configError) : theme.fg("muted", STATUS_HINT);
+		const status = this.#configError
+			? theme.fg("error", this.#configError)
+			: theme.fg("muted", this.#refreshing ? REFRESHING_HINT : STATUS_HINT);
 
-		const body = [status, ...this.#browser.render(dims.contentWidth)];
+		const hint = REFRESH_HINT.length <= dims.contentWidth ? REFRESH_HINT : REFRESH_HINT_SHORT;
+		const body = [
+			status,
+			...this.#browser.render(dims.contentWidth),
+			theme.fg("muted", truncateToWidth(hint, dims.contentWidth)),
+		];
 		const shell = renderModalShell({
 			title: "Switch Model",
 			sizing,
