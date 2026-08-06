@@ -4,6 +4,8 @@ import type { AgentState } from "@veyyon/agent-core";
 import { APP_NAME, isEnoent, logger } from "@veyyon/utils";
 import { isSessionFileName, SESSION_BACKUP_EXTENSION, sessionFileStem } from "@veyyon/utils/session-file";
 import { getResolvedThemeColors, getThemeExportColors } from "../../modes/theme/theme";
+import type { SecretObfuscator } from "../../secrets/obfuscator";
+import { redactSessionDataForShare } from "../redact-snapshot";
 import type { SessionEntry, SessionHeader } from "../../session/session-entries";
 import { loadEntriesFromFile } from "../../session/session-loader";
 import { SessionManager } from "../../session/session-manager";
@@ -61,6 +63,13 @@ export interface ExportOptions {
 	themeName?: string;
 	/** Embed subagent session transcripts found next to the session file (default true). */
 	includeSubSessions?: boolean;
+	/**
+	 * Redact secrets from the snapshot before it is written, through the same typed walk
+	 * `/share` uses. An exported HTML file leaves the machine the moment the operator attaches
+	 * it to a bug report, so a secret that landed in a tool output (a `.env` read, a curl with a
+	 * token) must be replaced with its placeholder here too. Omit to skip redaction.
+	 */
+	obfuscator?: SecretObfuscator;
 }
 
 /** Parse a color string to RGB values. */
@@ -288,8 +297,13 @@ export async function exportSessionToHtml(
 		if (Object.keys(subSessions).length > 0) sessionData.subSessions = subSessions;
 	}
 
+	// After sub-sessions are attached: a subagent transcript carries the same tool output the
+	// primary one does, so redacting before the merge would leave the child's copy verbatim.
+	const redacted = opts.obfuscator?.hasSecrets()
+		? redactSessionDataForShare(opts.obfuscator, sessionData)
+		: sessionData;
 	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
-	const html = await generateHtml(sessionData, palette, opts.themeName);
+	const html = await generateHtml(redacted, palette, opts.themeName);
 	const outputPath = opts.outputPath || `${APP_NAME}-session-${sessionFileStem(path.basename(sessionFile))}.html`;
 
 	await Bun.write(outputPath, html);
@@ -318,8 +332,11 @@ export async function exportFromFile(inputPath: string, options?: ExportOptions 
 		if (Object.keys(subSessions).length > 0) sessionData.subSessions = subSessions;
 	}
 
+	const redacted = opts.obfuscator?.hasSecrets()
+		? redactSessionDataForShare(opts.obfuscator, sessionData)
+		: sessionData;
 	const palette = opts.palette ?? (opts.themeName ? "theme" : "web");
-	const html = await generateHtml(sessionData, palette, opts.themeName);
+	const html = await generateHtml(redacted, palette, opts.themeName);
 	const outputPath = opts.outputPath || `${APP_NAME}-session-${sessionFileStem(path.basename(inputPath))}.html`;
 
 	await Bun.write(outputPath, html);

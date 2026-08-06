@@ -67,6 +67,31 @@ describe("collab link parsing", () => {
 		expect(view.writeToken).toBeUndefined();
 	});
 
+	/**
+	 * WHY: mirrors the host-side contract. A host-bearing link is text a
+	 * terminal linkifies and the operator clicks; with the room secret in the
+	 * path, that click writes the key and the write token into the relay's
+	 * access log. The formatter here must agree with the one in
+	 * `packages/coding-agent/src/collab/protocol.ts`, or the two halves render
+	 * links with different disclosure properties.
+	 */
+	it("keeps the room secret out of the request line of a host-bearing link", () => {
+		const token = Uint8Array.from({ length: 16 }, (_, i) => 0xf0 + i);
+		for (const relay of ["wss://relay.example.com:8443", "ws://127.0.0.1:7466"]) {
+			const link = formatCollabLink(relay, ROOM, KEY, token);
+			const url = new URL(link.includes("://") ? link : `wss://${link}`);
+			expect(url.pathname).toBe(`/r/${ROOM}`);
+			expect(url.search).toBe("");
+			expect(url.hash.slice(1)).not.toBe("");
+			expect(link.slice(0, link.indexOf("#"))).not.toContain(KEY_TEXT.slice(0, 8));
+
+			const parsed = parseCollabLink(link);
+			if ("error" in parsed) throw new Error(parsed.error);
+			expect(parsed.key).toEqual(KEY);
+			expect(parsed.writeToken).toEqual(token);
+		}
+	});
+
 	it("parses web deep links (https://<relay>/#<link>)", () => {
 		const bare = parseCollabLink(`https://share.veyyon.dev/#${ROOM}#${KEY_TEXT}`);
 		if ("error" in bare) throw new Error(bare.error);

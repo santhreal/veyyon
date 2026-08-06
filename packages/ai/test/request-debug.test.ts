@@ -154,7 +154,10 @@ describe("VEYYON_REQ_DEBUG request/response recording", () => {
 			url: "https://provider.test/v1/messages",
 			body: { model: "debug-model", messages: [{ role: "user", content: "hi" }] },
 		});
-		expect(request.headers).toMatchObject({ authorization: "Bearer test-token", "content-type": "application/json" });
+		expect(request.headers).toMatchObject({
+			authorization: "<redacted 17 chars>",
+			"content-type": "application/json",
+		});
 
 		const log = splitResponseLog(await fs.readFile(responsePath));
 		expect(log.headers).toContain("HTTP 201 Created");

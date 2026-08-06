@@ -20,6 +20,7 @@ import type {
 	CollabUiResponseValue,
 	WireSessionEntry,
 } from "@veyyon/wire";
+import { mapJsonStrings } from "../json-transform";
 import type { InteractiveModeContext } from "../modes/types";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
@@ -194,11 +195,34 @@ export class CollabHost {
 		return false;
 	}
 
+	/**
+	 * Redact a frame on its way to a guest.
+	 *
+	 * A collab link is a bearer capability the operator may have forwarded once, and everything
+	 * the host sees goes down it: entries, live events, subagent bus traffic, error strings. The
+	 * same transcript routed through `/share` or `/export` has its configured secrets replaced
+	 * with placeholders, so a guest must not receive the literal value instead. This is the one
+	 * seam every outbound frame passes through, so the walk lives here rather than at each of the
+	 * eight send sites. Identity, and free, when nothing is configured.
+	 */
+	#redact(frame: CollabFrame): CollabFrame {
+		if (!this.#ctx.settings.get("share.redactSecrets")) return frame;
+		const obfuscator = this.#ctx.session.providerRedactor;
+		if (!obfuscator?.hasSecrets()) return frame;
+		return mapJsonStrings(frame, text => obfuscator.obfuscate(text));
+	}
+
+	/** Send one frame to one peer, redacted. Every host-to-guest send goes through here. */
+	#sendTo(frame: CollabFrame, peerId: number): void {
+		this.#socket?.send(this.#redact(frame), peerId);
+	}
+
 	#sendWritablePeers(frame: CollabFrame): void {
 		const socket = this.#socket;
 		if (!socket) return;
+		const redacted = this.#redact(frame);
 		for (const [peerId, peer] of this.#peers) {
-			if (peer.canWrite) socket.send(frame, peerId);
+			if (peer.canWrite) socket.send(redacted, peerId);
 		}
 	}
 
@@ -286,7 +310,7 @@ export class CollabHost {
 	/** Broadcast a goodbye, detach all taps, and close the socket. */
 	async stop(reason: string): Promise<void> {
 		if (this.#stopped) return;
-		this.#socket?.send({ t: "bye", reason });
+		this.#socket?.send(this.#redact({ t: "bye", reason }));
 		await this.#teardown();
 	}
 
@@ -323,7 +347,7 @@ export class CollabHost {
 			this.#ctx.session.emitNotice("warning", "Collab ended: session switched", "collab");
 			return;
 		}
-		this.#socket.send(frame);
+		this.#socket.send(this.#redact(frame));
 	}
 
 	#handleFrame(frame: CollabFrame, fromPeer: number): void {
@@ -361,12 +385,12 @@ export class CollabHost {
 
 	/** Reject a mutating frame from a read-only peer with a targeted error. */
 	#rejectReadOnly(action: string, fromPeer: number): void {
-		this.#socket?.send({ t: "error", message: `${action} is disabled on a read-only link` }, fromPeer);
+		this.#sendTo({ t: "error", message: `${action} is disabled on a read-only link` }, fromPeer);
 	}
 
 	#handleHello(name: string, proto: number, writeToken: string | undefined, fromPeer: number): void {
 		if (proto !== COLLAB_PROTO) {
-			this.#socket?.send(
+			this.#sendTo(
 				{ t: "error", message: `protocol mismatch: host speaks v${COLLAB_PROTO}, guest sent v${proto}` },
 				fromPeer,
 			);
@@ -395,7 +419,7 @@ export class CollabHost {
 		const entries = snapshot.entries.map(toWireSessionEntry).filter(entry => entry !== undefined);
 		const socket = this.#socket;
 		if (!socket) return;
-		socket.send(
+		this.#sendTo(
 			{
 				t: "welcome",
 				proto: COLLAB_PROTO,
@@ -410,7 +434,7 @@ export class CollabHost {
 		this.#sendSnapshotChunks(entries, fromPeer);
 		if (canWrite) {
 			for (const pending of this.#pendingUi.values()) {
-				socket.send({ t: "ui-request", request: pending.request }, fromPeer);
+				this.#sendTo({ t: "ui-request", request: pending.request }, fromPeer);
 			}
 		}
 		this.#ctx.session.emitNotice(
@@ -436,7 +460,7 @@ export class CollabHost {
 		const socket = this.#socket;
 		if (!socket) return;
 		if (entries.length === 0) {
-			socket.send({ t: "snapshot-chunk", entries: [], final: true }, fromPeer);
+			this.#sendTo({ t: "snapshot-chunk", entries: [], final: true }, fromPeer);
 			return;
 		}
 		let i = 0;
@@ -453,7 +477,7 @@ export class CollabHost {
 				batchBytes += entryBytes;
 				i++;
 			}
-			socket.send({ t: "snapshot-chunk", entries: batch, final: i >= entries.length }, fromPeer);
+			this.#sendTo({ t: "snapshot-chunk", entries: batch, final: i >= entries.length }, fromPeer);
 		}
 	}
 
@@ -494,7 +518,7 @@ export class CollabHost {
 			)
 			.catch(err => {
 				logger.warn("collab guest prompt failed", { error: String(err) });
-				this.#socket?.send({ t: "error", message: `prompt failed: ${String(err)}` }, fromPeer);
+				this.#sendTo({ t: "error", message: `prompt failed: ${String(err)}` }, fromPeer);
 			});
 	}
 
@@ -604,7 +628,7 @@ export class CollabHost {
 		// a stale/malicious client must never chat/kill/revive a read-only advisor transcript.
 		const target = AgentRegistry.global().get(agentId);
 		if (target?.kind === "advisor") {
-			this.#socket?.send({ t: "error", message: `agent ${agentId}: advisor transcripts are read-only` }, fromPeer);
+			this.#sendTo({ t: "error", message: `agent ${agentId}: advisor transcripts are read-only` }, fromPeer);
 			return;
 		}
 		// Same defensiveness for the conversation boundary. The snapshot no longer
@@ -612,7 +636,7 @@ export class CollabHost {
 		// off the wire and this is the only thing standing between a guest and an
 		// agent belonging to a session that was never shared with it.
 		if (target && !AgentRegistry.sameScope(target.scope, this.#ctx.sessionManager.getSessionId())) {
-			this.#socket?.send(
+			this.#sendTo(
 				{ t: "error", message: `agent ${agentId}: belongs to a conversation that is not shared here` },
 				fromPeer,
 			);
@@ -620,13 +644,13 @@ export class CollabHost {
 		}
 		const fail = (err: unknown) => {
 			logger.warn("collab agent-cmd failed", { cmd, agentId, error: String(err) });
-			this.#socket?.send({ t: "error", message: `agent ${agentId}: ${String(err)}` }, fromPeer);
+			this.#sendTo({ t: "error", message: `agent ${agentId}: ${String(err)}` }, fromPeer);
 		};
 		switch (cmd) {
 			case "chat": {
 				const trimmed = text?.trim();
 				if (!trimmed) {
-					this.#socket?.send({ t: "error", message: `agent ${agentId}: empty chat message` }, fromPeer);
+					this.#sendTo({ t: "error", message: `agent ${agentId}: empty chat message` }, fromPeer);
 					return;
 				}
 				// Mirrors the hub's #submitChatMessage: revive if parked, steer if mid-turn.
@@ -656,7 +680,7 @@ export class CollabHost {
 	/** Incremental transcript read mirroring the hub's readFileIncremental contract. */
 	async #handleFetchTranscript(reqId: number, agentId: string, fromByte: number, fromPeer: number): Promise<void> {
 		const reply = (text: string, newSize: number, error?: string) =>
-			this.#socket?.send({ t: "transcript", reqId, text, newSize, error }, fromPeer);
+			this.#sendTo({ t: "transcript", reqId, text, newSize, error }, fromPeer);
 		// Scope-checked before the file is even named. This serves raw transcript
 		// BYTES to a remote peer, so an unguarded id lookup is the widest of the
 		// collab leaks: a guest naming an agent of an unshared conversation was

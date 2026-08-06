@@ -145,9 +145,16 @@ bun/
 /.perf-lane/
 
 # The test sandbox's guest artifacts: a kernel image and a ~390MB initramfs, built
-# by `bash scripts/test-sandbox.sh --build` from the local docker image. They are
-# large, machine-local, and reproducible from scripts/test-vm/Dockerfile plus the
-# bun version, so there is nothing to gain from committing them. `boot-verified` is
+# by `bash scripts/test-sandbox/run.sh --build` from the local docker image. They are
+# large, machine-local, and reproducible from scripts/test-sandbox/guest/Dockerfile plus
+# the bun version, so there is nothing to gain from committing them. `boot-verified` is
 # a marker written only after the guest has actually booted and mounted the repo;
 # it must not travel to a machine that has not run that check.
-/scripts/test-vm/.build/
+/scripts/test-sandbox/guest/.build/
+
+# Raw provider traffic captured by VEYYON_REQ_DEBUG=1. It lands in the working directory,
+# which is usually a repo, and it is the request as it went on the wire: prompts, file
+# contents, and whatever a provider echoed back. Credential headers are redacted before the
+# file is written and the file is created 0600, but it is still not something to commit.
+rr-session-*.json
+rr-session-*.res.log

@@ -104,15 +104,22 @@ function normalizeRelayOrigin(relayUrl: string): { origin: string } | { error: s
 }
 
 /**
- * Render the shareable link. Compact forms: the default relay collapses to
- * `<roomId>.<key>`; custom wss relays drop the scheme (`host[:port]/r/…`);
- * plain-ws localhost relays keep the full `ws://` URL.
+ * Render the shareable link. Compact forms: the default relay collapses to a
+ * hostless `<roomId>.<key>`; custom wss relays drop the scheme
+ * (`host[:port]/r/<roomId>#<key>`); plain-ws localhost relays keep the full
+ * `ws://` URL.
  *
- * The room secret is dot-joined (`<roomId>.<key>`) rather than `#`-joined:
- * RFC 3986 forbids a raw `#` inside a fragment, so strict URL stacks (macOS
- * Foundation behind terminal click-to-open) percent-encode a second `#` to
- * `%23` and break the link. Parsers still accept the legacy `#` form and the
- * mangled `%23` form.
+ * When the link names a relay host the secret rides in the fragment, never in
+ * the path. Terminals linkify `host/r/…` and open it as `https://…`; with the
+ * secret in the path, one click on your own link puts the room key and the
+ * write token in the relay's HTTP request line, and from there into its access
+ * log. A fragment is never sent to the server, so a click discloses only
+ * `/r/<roomId>`, which the WebSocket handshake reveals anyway. The default
+ * relay form has no authority for a terminal to linkify, so its dot join is
+ * safe, and it is the form the browser deep link nests inside its own
+ * fragment, where a second raw `#` would be mangled to `%23`.
+ *
+ * Parsers accept the dot form, the `#` form, and the mangled `%23` form.
  *
  * Full links append the write token to the key
  * (`base64url(key ∥ writeToken)`); read-only (view) links carry the bare key.
@@ -131,7 +138,7 @@ export function formatCollabLink(relayUrl: string, roomId: string, key: Uint8Arr
 	const compact = normalized.origin.startsWith("wss://")
 		? normalized.origin.slice("wss://".length)
 		: normalized.origin;
-	return `${compact}/r/${roomId}.${keyText}`;
+	return `${compact}/r/${roomId}#${keyText}`;
 }
 
 export function parseCollabLink(link: string): ParsedCollabLink | { error: string } {
