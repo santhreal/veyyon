@@ -3255,6 +3255,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			sessionApprovals: session.sessionToolApprovals(),
 		});
 		const toolContextStore = new ToolContextStore(getSessionContext);
+		// Tool calls the model makes go through the agent loop, which resolves the
+		// context itself. Calls an eval snippet or a browser page makes reach the
+		// same approval-wrapped tools directly, so they need the same context or
+		// they arrive with no policy at all.
+		toolSession.getToolContext = toolCall => toolContextStore.getContext(toolCall);
 
 		const registeredTools = extensionRunner.getAllRegisteredTools();
 		const sdkCustomTools = options.customTools?.filter(tool => !isLegacyBuiltinToolDefinition(tool)) ?? [];
