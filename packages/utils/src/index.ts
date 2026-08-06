@@ -20,7 +20,6 @@ export * from "./format";
 export * from "./frontmatter";
 export * from "./fs-error";
 export * from "./fs-optional";
-export * from "./github-check-run";
 export * from "./glob";
 export * from "./json";
 export * from "./json-parse";
