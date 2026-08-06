@@ -46,6 +46,7 @@ import bashToolNudge from "./workflow/bash-tool-nudge.md" with { type: "text" };
 import commitDrift from "./workflow/commit-drift.md" with { type: "text" };
 import cwdReroot from "./workflow/cwd-reroot.md" with { type: "text" };
 import projectAuthority from "./workflow/project-authority.md" with { type: "text" };
+import testScope from "./workflow/test-scope.md" with { type: "text" };
 
 /** The directories a bundled rule may live in. */
 export type BuiltinRuleSection = "workflow" | "typescript" | "rust" | "go" | "experimental";
@@ -93,6 +94,7 @@ export const BUILTIN_RULE_SOURCES: readonly BuiltinRuleSource[] = [
 	{ name: "commit-drift", section: "workflow", content: commitDrift },
 	{ name: "cwd-reroot", section: "workflow", content: cwdReroot },
 	{ name: "project-authority", section: "workflow", content: projectAuthority },
+	{ name: "test-scope", section: "workflow", content: testScope },
 	{ name: "go-add-cleanup", section: "go", content: goAddCleanup },
 	{ name: "go-bench-loop", section: "go", content: goBenchLoop },
 	{ name: "go-exp-promoted", section: "go", content: goExpPromoted },
