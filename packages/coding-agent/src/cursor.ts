@@ -9,12 +9,48 @@ import type {
 } from "@veyyon/agent-core";
 import type {
 	CursorMcpCall,
+	CursorRuleInput,
 	CursorShellStreamCallbacks,
 	CursorExecHandlers as ICursorExecHandlers,
+	Model,
 	ToolResultMessage,
 } from "@veyyon/ai";
 import { errorMessage, sanitizeText } from "@veyyon/utils";
+import type { ContextFileEntry } from "./tools";
 import { resolveToCwd } from "./tools/path-utils";
+
+/**
+ * Whether this model's instructions travel through Cursor's `requestContext.rules`
+ * channel instead of the system-prompt blobs every other provider honors.
+ *
+ * This one predicate drives BOTH sides of the delivery policy, because they must never
+ * disagree: the session prompt build inlines no context files when it holds (nothing
+ * would arrive twice, and repository files may not configure the agent), and the model
+ * prompt cache key in `agent-session.ts` includes it so a switch to or from a cursor
+ * model rebuilds the prompt even inside a hidden-policy cohort.
+ */
+export function usesCursorRuleDelivery(model: Pick<Model, "api"> | undefined): boolean {
+	return model?.api === "cursor-agent";
+}
+
+/**
+ * The context files a Cursor-bound request may deliver, as `CursorRuleInput` units.
+ *
+ * Only OPERATOR-OWNED scopes become rules: the operator's cross-profile file (`global`)
+ * and the active profile's own file (`user`). Project files stay out: a repository may
+ * not configure the agent, and `.cursor/rules` is precisely a repository-configuration
+ * mechanism, so populating it from checked-in files would restore that through a side
+ * door. Entries without a `level` were synthesized by a caller rather than discovered,
+ * so their provenance is unknown and they stay out too. The provider wraps each unit in
+ * one `global` (always-apply) `CursorRule` with the file's real path, the same shape
+ * cursor-agent itself uses for AGENTS.md; input order (ascending authority, global
+ * last) is preserved so the strongest file keeps the highest-recency slot.
+ */
+export function cursorContextFileRules(files: readonly ContextFileEntry[]): CursorRuleInput[] {
+	return files
+		.filter(file => file.level === "global" || file.level === "user")
+		.map(file => ({ fullPath: file.path, content: file.content }));
+}
 
 interface CursorExecBridgeOptions {
 	cwd: string;
