@@ -63,35 +63,86 @@ export function resolveReleaseVersion(
 }
 
 /**
- * The paths a `git status --porcelain -z` run reports, including both sides of
- * a rename.
+ * Every path a `git status --porcelain -z` run reports, restorable ones first.
  *
  * Staging is by explicit path rather than `git add -A` because this runs on a
  * developer machine, where the rule is that you stage what you changed and
  * nothing else. The tree was verified clean before preparation, so this list is
  * exactly what preparation produced — and printing it lets the operator see
  * that before it becomes a commit.
+ */
+export function statusPaths(porcelainZ: string): string[] {
+	const { tracked, untracked } = preparationLeftovers(porcelainZ);
+	return [...tracked, ...untracked];
+}
+
+/**
+ * The same records, split by whether git can undo them.
+ *
+ * A tracked path is restorable: it has committed bytes to go back to. An
+ * untracked path was created by preparation and has none, so nothing here
+ * deletes it — a release script that removes files on a failure path is one
+ * bug away from removing the wrong one. It gets named instead, which is the
+ * corrective action the operator needs, because the next run's clean-tree
+ * refusal otherwise reports a dirty tree with no clue which paths to look at.
+ *
+ * Both sides of a rename count as tracked. The origin's delete is a committed
+ * path going missing, and restoring only the new side would leave the tree
+ * still dirty and the retry still blocked.
  *
  * `-z` rather than plain `--porcelain`: the plain form C-quotes any path with a
  * space or a non-ASCII byte and renders a rename as `old -> new` inside one
  * line, so a naive split mints paths that do not exist. With `-z` the records
  * are NUL-separated, never quoted, and a rename's origin is its own record.
  */
-export function statusPaths(porcelainZ: string): string[] {
+export function preparationLeftovers(porcelainZ: string): { tracked: string[]; untracked: string[] } {
 	const records = porcelainZ.split("\0").filter(record => record.length > 0);
-	const paths: string[] = [];
+	const tracked: string[] = [];
+	const untracked: string[] = [];
 	for (let index = 0; index < records.length; index++) {
 		const record = records[index];
 		if (record === undefined) continue;
 		// `XY ` then the path; for a rename or copy the ORIGIN follows as the
 		// next bare record, which must be staged too or the delete is left out.
-		paths.push(record.slice(3));
+		const path = record.slice(3);
+		if (record.startsWith("??")) untracked.push(path);
+		else tracked.push(path);
 		if (record.startsWith("R") || record.startsWith("C")) {
 			const origin = records[++index];
-			if (origin !== undefined) paths.push(origin);
+			if (origin !== undefined) tracked.push(origin);
 		}
 	}
-	return paths;
+	return { tracked, untracked };
+}
+
+/**
+ * What to tell the operator after preparation failed and the tree was put back.
+ *
+ * The failure itself leads, because the restore is housekeeping and the cause
+ * is the thing to fix. The counts follow so it is unambiguous that re-running
+ * is safe: without them the operator has a tree that was rewritten by a command
+ * that then failed, and no way to tell whether the rewrite survived.
+ */
+export function rollbackReport(
+	failure: string,
+	leftovers: { tracked: readonly string[]; untracked: readonly string[] },
+): string[] {
+	const lines = [failure, ""];
+	if (leftovers.tracked.length > 0) {
+		lines.push(
+			`Preparation was rolled back: ${leftovers.tracked.length} modified path(s) restored to HEAD.`,
+			"Fix the cause above and re-run; the tree is clean enough to start over.",
+		);
+	} else lines.push("Preparation wrote nothing that needed rolling back.");
+	if (leftovers.untracked.length > 0) {
+		lines.push(
+			"",
+			`It also created ${leftovers.untracked.length} new file(s), which are left in place:`,
+			...leftovers.untracked.map(path => `  ${path}`),
+			"Remove them yourself if they are not wanted; a real cut refuses while they are there.",
+		);
+	}
+	return lines;
 }
 
 /**
@@ -166,8 +217,29 @@ async function main(argv: readonly string[]): Promise<void> {
 		return;
 	}
 
-	await prepareReleaseTree(version, latestTag);
-	await validateReleaseVersionAuthorities(".", version, `v${version}`);
+	// Preparation rewrites versions, lockfiles and every changelog before the
+	// checks that can reject the result, so a failure anywhere past this line
+	// used to leave the tree rewritten. The clean-tree refusal above then
+	// blocked the retry, and the operator had to work out by hand which of ~40
+	// dirty paths belonged to the release. Restoring is safe precisely because
+	// that refusal ran: everything dirty now is preparation's own writing.
+	try {
+		await prepareReleaseTree(version, latestTag);
+		await validateReleaseVersionAuthorities(".", version, `v${version}`);
+	} catch (error) {
+		const leftovers = preparationLeftovers(await git("status", "--porcelain", "-z"));
+		// A restore that itself fails must not replace the real cause with a git
+		// error, so the original failure is reported either way.
+		if (leftovers.tracked.length > 0) {
+			await git("checkout", "--", ...leftovers.tracked).catch(restoreError => {
+				console.error(
+					`Could not restore the tree: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
+				);
+			});
+		}
+		const failure = error instanceof Error ? error.message : String(error);
+		throw new Error(rollbackReport(failure, leftovers).join("\n"));
+	}
 
 	const paths = statusPaths(await git("status", "--porcelain", "-z"));
 	if (paths.length === 0) {
