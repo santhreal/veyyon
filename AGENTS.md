@@ -273,7 +273,7 @@ Argot is the codec that lets the model write short `§handle` tokens; veyyon exp
 - Commit in **logical chunks**, one concern per commit — never one giant `git add -A`. Stage only the paths you changed.
 - Subject line is imperative and scoped, e.g. `polish(onboarding): …`, `fix: …`, `ci: …`, `test(agent): …`.
 - Do not add AI/assistant attribution trailers (no `Co-Authored-By: <model>`, no `Generated with …`). Commit as the configured git user only.
-- The **release** commit is special. Its subject **must** be exactly `chore: bump version to vX.Y.Z`. `checks.yml` keys its changelog exemption off that prefix, because the bump commit drains every `## [Unreleased]` section by design. `scripts/prerelease.ts` writes it; never hand-craft it.
+- The **release** commit is special. Its subject **must** be exactly `chore: bump version to vX.Y.Z`. `checks.yml` keys its changelog exemption off that prefix, because the bump commit drains every `## [Unreleased]` section by design. `scripts/release-cut.ts` writes it; never hand-craft it.
 
 ## Testing Guidance
 
@@ -377,12 +377,13 @@ release is only real once it is a tagged commit **and** a published GitHub relea
 
 ### How a release happens
 
-One command, and the tag it cuts at the end is the only thing that publishes.
-Nothing on `main` cuts a tag on its own: not a push, not a green CI run, not a
-waiting `## [Unreleased]` bullet.
+Two commands, and the tag one of them cuts at the end is the only thing that
+publishes. Nothing on `main` cuts a tag on its own: not a push, not a green CI
+run, not a waiting `## [Unreleased]` bullet.
 
 ```sh
-bun run release minor
+bun run release:dry minor      # say what a cut would do. Writes nothing.
+bun run release minor          # do it.
 ```
 
 `bun run release <major|minor|patch|x.y.z>` bumps every public `package.json`, the
@@ -390,14 +391,15 @@ root catalog, the Rust workspace, the natives sentinel and the lockfiles, rolls
 each package's `## [Unreleased]` into a dated section, regenerates the root
 changelog, and commits `chore: bump version to vX.Y.Z`. It then shows the commit
 and tag it is about to publish and asks once. On yes it pushes `main`, waits for
-that exact SHA's checks, and tags only once they are green. `--yes` answers the
-prompt up front; `--dry-run` writes nothing and never publishes.
+that exact SHA's checks, and tags only once they are green.
 
 **It still needs explicit approval to run**, because it pushes. The prompt is
-where that approval is given, and an agent never answers it.
+where that approval is given, there is no flag that answers it in advance, and
+an agent never answers it. `release:dry` is the non-interactive mode, and it is
+non-interactive precisely because it publishes nothing.
 
-Three underlying moves, which `release:prepare` stops after the first of, and
-which you can always finish by hand:
+Three underlying moves, which you can always finish by hand and which every
+non-publishing exit prints:
 
 1. **Prepare locally.** Everything above through the bump commit. Never pushes,
    never tags.

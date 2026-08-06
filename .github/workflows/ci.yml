@@ -1,6 +1,6 @@
 name: CI
 
-# A release is a tag push. `scripts/prerelease.ts` prepares the version bump on
+# A release is a tag push. `scripts/release-cut.ts` prepares the version bump on
 # the operator's machine, that commit reaches main through an ordinary push and
 # is tested by the main run below, and pushing `vX.Y.Z` at the green commit is
 # the release. Nothing dispatches this workflow to publish, so there is no

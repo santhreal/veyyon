@@ -2,7 +2,7 @@
 /**
  * The half of a release that leaves your machine.
  *
- * `scripts/prerelease.ts` prepares the bump commit and stops. Everything after
+ * `scripts/release-cut.ts` prepares the bump commit and hands over here. Everything after
  * that was three manual commands and a human watching Actions: push main, wait
  * for green, tag the green commit. Three commands is not the problem; the wait
  * is. It is minutes of staring at a run list, and the two failure modes it
@@ -24,6 +24,31 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * How to finish a cut by hand.
+ *
+ * Printed whenever the cut stopped before it published: a dry run, a declined
+ * prompt, a red gate, a wait that ran out. Every one of those leaves the same
+ * two moves outstanding, so there is one list rather than a branch per exit.
+ *
+ * It exists because a release must never depend on this script being willing to
+ * run. `docs/internal/releasing.md` quotes it, so it lives in one place.
+ */
+export function nextSteps(version: string): string[] {
+	return [
+		"  To finish by hand:",
+		"",
+		"    1. Push the bump and let main's CI test it:",
+		"           git push origin main && gh run watch --exit-status",
+		"",
+		"    2. Tag the green commit. This is the release:",
+		`           git tag v${version} && git push origin v${version}`,
+		"",
+		"  Tagged CI builds the binaries, verifies their checksums, and publishes",
+		"  the GitHub release the installer reads.",
+	];
+}
 
 /**
  * The workflows that run on EVERY push to main, and therefore the ones whose
@@ -118,10 +143,16 @@ async function runsForSha(sha: string): Promise<RunSummary[]> {
 	return parsed as RunSummary[];
 }
 
-/** Ask once, on a tty, before anything becomes public. `--yes` skips it. */
+/**
+ * Ask once, on a tty, before anything becomes public.
+ *
+ * There is no way to skip it. A release that publishes without a human
+ * answering is the CI controller this design replaced, and the dry run already
+ * covers every non-interactive question worth asking.
+ */
 async function confirm(question: string): Promise<boolean> {
 	if (!process.stdin.isTTY) {
-		throw new Error("Shipping needs a terminal to confirm on. Re-run with --yes to skip the prompt.");
+		throw new Error("A release has to be confirmed at a terminal. Use `bun run release:dry` to preview one instead.");
 	}
 	process.stdout.write(`${question} [y/N] `);
 	for await (const chunk of process.stdin) {
@@ -137,7 +168,7 @@ async function confirm(question: string): Promise<boolean> {
  * commit, the tree is clean, and the version authorities agree. Every refusal
  * that belongs before the first write lives there, not here.
  */
-export async function shipRelease(version: string, options: { yes: boolean }): Promise<void> {
+export async function shipRelease(version: string): Promise<void> {
 	const tag = `v${version}`;
 	const sha = (await git("rev-parse", "HEAD")).trim();
 	const subject = (await git("log", "-1", "--format=%s")).trim();
@@ -150,8 +181,9 @@ export async function shipRelease(version: string, options: { yes: boolean }): P
 	console.log("  The tag is the release: it builds the binaries and publishes the");
 	console.log("  GitHub release the installer reads. Nothing before it is public.\n");
 
-	if (!options.yes && !(await confirm(`Publish ${tag}?`))) {
-		console.log("\nStopped. The bump is committed locally and nothing was pushed.");
+	if (!(await confirm(`Publish ${tag}?`))) {
+		console.log("\nStopped. The bump is committed locally and nothing was pushed.\n");
+		for (const line of nextSteps(version)) console.log(line);
 		return;
 	}
 
