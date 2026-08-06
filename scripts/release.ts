@@ -10,7 +10,7 @@ import * as path from "node:path";
  * atomic version cut, exact-tag Checks, tagged CI, and final publication
  * verification.
  */
-import { isNewerVersion, isReleaseTag, isReleaseVersion } from "@veyyon/utils/semver";
+import { isNewerVersion, isReleaseTag, isReleaseVersion, RELEASE_VERSION_BODY } from "@veyyon/utils/semver";
 import { $, Glob, JSONC } from "bun";
 import { runChangelogFixer } from "./fix-changelogs";
 import {
@@ -82,9 +82,21 @@ export function versionNotNewerFailure(version: string, latestTag: string): stri
 	];
 }
 
+/**
+ * Drop version sections that carry nothing, so a package with no changes does
+ * not publish a hollow heading.
+ *
+ * The date is optional. It used to be required, which split the difference with
+ * `hasVersionHeading`, the gate that decides whether a version is documented:
+ * that one accepts a dateless `## [1.2.3]`, so an undated empty section both
+ * survived this cleanup and satisfied the gate, and the release shipped a
+ * heading with no content under it.
+ */
 function removeEmptyVersionEntries(content: string): string {
-	// Remove version entries that have no content (just whitespace until next ## [ or EOF)
-	return content.replace(/## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}\s*\n(?=## \[|\s*$)/g, "");
+	return content.replace(
+		new RegExp(String.raw`## \[${RELEASE_VERSION_BODY}\](?: - \d{4}-\d{2}-\d{2})?\s*\n(?=## \[|\s*$)`, "g"),
+		"",
+	);
 }
 
 /**

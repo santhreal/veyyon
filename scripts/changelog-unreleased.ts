@@ -1,5 +1,8 @@
 /**
- * The one parser for `## [Unreleased]` entries.
+ * The one place that knows what a changelog heading looks like.
+ *
+ * Two headings matter on the release path: `## [Unreleased]` and `## [X.Y.Z]`.
+ * Each had grown several private spellings, and both sets had drifted.
  *
  * There used to be two, `parseUnreleasedBullets` in `require-changelog.ts` and
  * `unreleasedBullets` in `sync-root-changelog.ts`, and both sit on the release
@@ -14,11 +17,19 @@
  * behavior on each axis rather than the average one.
  */
 
+import { RELEASE_VERSION_BODY } from "@veyyon/utils/semver";
+
 /** The heading, anchored to a line. */
 const UNRELEASED_HEADING_LINE = /^## \[Unreleased\][^\n]*$/m;
 
 /** The literal heading text, for the message that tells an author to write one. */
 export const UNRELEASED_HEADING = "## [Unreleased]";
+
+/**
+ * A version heading, anchored to a line. The version body is the shared release
+ * grammar, so this and `isReleaseVersion` cannot drift.
+ */
+const VERSION_HEADING_LINE = new RegExp(String.raw`^## \[(${RELEASE_VERSION_BODY})\]`);
 
 /**
  * Every entry under `## [Unreleased]`, one string per entry, prefix stripped and
@@ -68,4 +79,37 @@ export function unreleasedEntries(md: string): string[] {
 	flush();
 
 	return entries.map(entry => entry.replace(/\s+/g, " ").trim()).filter(entry => entry.length > 0);
+}
+
+/**
+ * Every `## [X.Y.Z]` heading, in document order, with the line it sits on.
+ *
+ * The version grammar is `RELEASE_VERSION_PATTERN`, the same one the release
+ * gate uses to decide whether a version is releasable at all, so a string that
+ * is not a version cannot become a version section by being written as one.
+ * The private spellings this replaces used `\d+\.\d+\.\d+`, which accepts
+ * `01.2.3`, and the release path would then have carried a heading no tag could
+ * ever match.
+ *
+ * `## [Unreleased]` is deliberately not a match. It is a placeholder, and every
+ * caller here is asking about releases.
+ */
+export function versionHeadings(md: string): Array<{ version: string; line: number }> {
+	const found: Array<{ version: string; line: number }> = [];
+	md.split("\n").forEach((text, index) => {
+		const match = VERSION_HEADING_LINE.exec(text);
+		if (match) found.push({ version: match[1] as string, line: index + 1 });
+	});
+	return found;
+}
+
+/**
+ * Whether the changelog already carries a section for this exact version.
+ *
+ * Dateless on purpose: the roll writes `## [X.Y.Z] - YYYY-MM-DD`, but a re-cut
+ * of a version whose bump commit already landed has to recognise its own work,
+ * and the gate that asks this runs before the date is known.
+ */
+export function hasVersionHeading(md: string, version: string): boolean {
+	return versionHeadings(md).some(heading => heading.version === version);
 }

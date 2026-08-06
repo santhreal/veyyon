@@ -25,6 +25,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
+import { versionHeadings } from "./changelog-unreleased.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
@@ -41,13 +42,10 @@ type Duplicate = { version: string; lines: number[] };
  */
 export function duplicateVersionHeadings(markdown: string): Duplicate[] {
 	const seen = new Map<string, number[]>();
-	markdown.split("\n").forEach((line, index) => {
-		const match = /^## \[(\d+\.\d+\.\d+)\]/.exec(line);
-		if (!match) return;
-		const version = match[1] as string;
+	versionHeadings(markdown).forEach(({ version, line }) => {
 		const lines = seen.get(version);
-		if (lines) lines.push(index + 1);
-		else seen.set(version, [index + 1]);
+		if (lines) lines.push(line);
+		else seen.set(version, [line]);
 	});
 	return [...seen].filter(([, lines]) => lines.length > 1).map(([version, lines]) => ({ version, lines }));
 }

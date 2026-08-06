@@ -38,6 +38,7 @@ import { $, Glob } from "bun";
 // semver.ts is self-contained (no imports of its own), so a direct file import
 // needs no install and cannot regress this way.
 import { compareSemver } from "../packages/utils/src/semver.ts";
+import { versionHeadings } from "./changelog-unreleased.ts";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const REPO = process.env.VEYYON_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
@@ -91,11 +92,12 @@ export function enumerateChangelogVersions(content: string): ChangelogVersionSpa
 	for (let i = 0; i < lines.length; i++) {
 		if (lines[i].startsWith("## [")) headingIdx.push(i);
 	}
+	const versions = new Map(versionHeadings(content).map(heading => [heading.line - 1, heading.version]));
 	for (const idx of headingIdx) {
-		const m = lines[idx].match(/^## \[(\d+\.\d+\.\d+)\]/);
-		if (!m) continue;
+		const version = versions.get(idx);
+		if (version === undefined) continue;
 		const nextIdx = headingIdx.find(j => j > idx) ?? lines.length;
-		spans.push({ version: m[1], start: idx, end: nextIdx });
+		spans.push({ version, start: idx, end: nextIdx });
 	}
 	return spans;
 }

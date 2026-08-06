@@ -125,8 +125,19 @@ export function isValidSemver(value: string): boolean {
 	return SEMVER_PATTERN.test(value);
 }
 
+/**
+ * The `X.Y.Z` grammar itself, unanchored: no prerelease, no build metadata, no
+ * leading zeros.
+ *
+ * Exported as source text rather than as a `RegExp` because it is embedded in
+ * larger patterns. A changelog version heading is this grammar inside
+ * `## [...]`, and building that from the anchored pattern would mean slicing
+ * `^` and `$` back off, which silently breaks the moment the anchors change.
+ */
+export const RELEASE_VERSION_BODY = String.raw`(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)`;
+
 /** Exactly `X.Y.Z`, no prerelease, no build metadata, no leading zeros. */
-const RELEASE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const RELEASE_VERSION_PATTERN = new RegExp(`^${RELEASE_VERSION_BODY}$`);
 
 /**
  * Whether `value` is a version this project is willing to RELEASE.

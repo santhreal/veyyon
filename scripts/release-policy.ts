@@ -25,7 +25,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isReleaseTag } from "@veyyon/utils/semver";
-import { unreleasedEntries } from "./changelog-unreleased.ts";
+import { hasVersionHeading, unreleasedEntries } from "./changelog-unreleased.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -366,11 +366,6 @@ export interface PackageChangelog {
 	content: string;
 }
 
-/** True when the changelog already carries a `## [version]` heading, dated or not. */
-function hasVersionSection(content: string, version: string): boolean {
-	return new RegExp(String.raw`^## \[${version.replaceAll(".", String.raw`\.`)}\]`, "m").test(content);
-}
-
 const MISSING_NOTES_FAILURE = `${RELEASE_NOTES_CHANGELOG} is missing; the release notes and the changelog page are built from it.`;
 
 function label(changelog: PackageChangelog): string {
@@ -399,7 +394,7 @@ function changelogGateError(version: string, headline: string, failures: readonl
 export function undocumentedReleaseFailures(version: string, changelogs: readonly PackageChangelog[]): string[] {
 	const notes = changelogs.find(changelog => changelog.path === RELEASE_NOTES_CHANGELOG);
 	if (!notes) return [MISSING_NOTES_FAILURE];
-	if (hasVersionSection(notes.content, version)) return [];
+	if (hasVersionHeading(notes.content, version)) return [];
 	if (unreleasedEntries(notes.content).length > 0) return [];
 	return [`${label(notes)} has no bullet under "## [Unreleased]" and no "## [${version}]" section.`];
 }
@@ -424,7 +419,7 @@ export function preparedReleaseChangelogFailures(version: string, changelogs: re
 	const notes = changelogs.find(changelog => changelog.path === RELEASE_NOTES_CHANGELOG);
 	if (!notes) {
 		failures.push(MISSING_NOTES_FAILURE);
-	} else if (!hasVersionSection(notes.content, version)) {
+	} else if (!hasVersionHeading(notes.content, version)) {
 		failures.push(`${label(notes)} has no "## [${version}]" section after the changelog roll.`);
 	}
 	for (const changelog of changelogs) {
