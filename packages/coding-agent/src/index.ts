@@ -39,8 +39,6 @@ export * from "./extensibility/extensions";
 export type { HookAPI, HookContext } from "./extensibility/hooks/types";
 // Skills
 export * from "./extensibility/skills";
-// Slash commands
-export { type FileSlashCommand, loadSlashCommands as discoverSlashCommands } from "./extensibility/slash-commands";
 export * from "./goals";
 export type * from "./lsp";
 export * from "./lsp";
