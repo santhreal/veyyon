@@ -17873,6 +17873,12 @@ export class AgentSession {
 		const previousSystemPrompt = this.agent.state.systemPrompt;
 		const previousFreshProviderSessionId = this.#freshProviderSessionId;
 		const previousInheritedProviderPromptCacheKey = this.#inheritedProviderPromptCacheKey;
+		// `#inheritedProviderPromptCacheKey` only mirrors what the agent routes on;
+		// the value that actually reaches the wire is `agent.promptCacheKey`. The
+		// try block rewrites BOTH (clear + adopt the target header's identity), so
+		// restoring only the mirror leaves a failed switch sending the target
+		// session's `prompt_cache_key` for every later turn of the source session.
+		const previousAgentPromptCacheKey = this.agent.promptCacheKey;
 		const previousFallbackSelectedMCPToolNames = previousSessionFile
 			? this.#getSessionDefaultSelectedMCPToolNames(previousSessionFile)
 			: undefined;
@@ -18111,6 +18117,7 @@ export class AgentSession {
 			this.#pendingNextTurnMessages = previousPendingNextTurnMessages;
 			this.#scheduledHiddenNextTurnGeneration = previousScheduledHiddenNextTurnGeneration;
 			this.#inheritedProviderPromptCacheKey = previousInheritedProviderPromptCacheKey;
+			this.agent.promptCacheKey = previousAgentPromptCacheKey;
 			this.#checkpointState = previousCheckpointState;
 			this.#pendingRewindReport = previousPendingRewindReport;
 			this.#lastCompletedRewind = previousLastCompletedRewind;
