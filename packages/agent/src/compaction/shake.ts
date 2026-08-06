@@ -14,7 +14,7 @@ import type { TextContent, ToolResultMessage } from "@veyyon/ai";
 import { countTokens } from "../tokenizer";
 import type { AgentMessage, AgentToolCall } from "../types";
 import type { CustomMessageEntry, SessionEntry, SessionMessageEntry } from "./entries";
-import { getToolResultMessage } from "./entries";
+import { getToolResultMessage, resolveCompactionBoundaryIndex } from "./entries";
 import { estimateTokens } from "./token-estimate";
 import {
 	collectToolCallsById,
@@ -293,13 +293,7 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 
 	// Entries before the compaction boundary are summarized away and never sent —
 	// shaking them only churns persisted history (no prompt/cache effect).
-	const boundaryIndex =
-		config.keepBoundaryId === undefined
-			? 0
-			: Math.max(
-					0,
-					entries.findIndex(entry => entry.id === config.keepBoundaryId),
-				);
+	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 
 	const regions: ShakeRegion[] = [];
 	for (let i = 0; i < n; i++) {
@@ -377,13 +371,7 @@ export function collectRedundantToolResultRegions(entries: SessionEntry[], confi
 
 	const toolCallsById = collectToolCallsById(entries);
 
-	const boundaryIndex =
-		config.keepBoundaryId === undefined
-			? 0
-			: Math.max(
-					0,
-					entries.findIndex(entry => entry.id === config.keepBoundaryId),
-				);
+	const boundaryIndex = resolveCompactionBoundaryIndex(entries, config.keepBoundaryId);
 
 	interface Candidate {
 		index: number;
