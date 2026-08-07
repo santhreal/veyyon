@@ -96,7 +96,10 @@ describe("compaction never keeps more recent history than the window can hold", 
 	 */
 	test("a session at the compaction ceiling is compactable, not 'too small'", () => {
 		const entries = branch(6, PROMPT_TOKENS);
-		const settings = { ...DEFAULT_COMPACTION_SETTINGS };
+		// Pin the budget this defect was reported against. The default is 10000
+		// now, which sits UNDER this window's cap and would make the capped and
+		// uncapped answers identical — the guard would pass while testing nothing.
+		const settings = { ...DEFAULT_COMPACTION_SETTINGS, keepRecentTokens: 20_000 };
 
 		// The gauge the user is reading: at or past the trigger for this window.
 		expect(PROMPT_TOKENS).toBeGreaterThanOrEqual(resolveThresholdTokens(CONTEXT_WINDOW, settings));

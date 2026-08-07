@@ -1,6 +1,7 @@
 /**
- * Compaction under a hostile message mix: every message survives intact, and
- * the kept tail stays inside its budget.
+ * Compaction under a hostile message mix: every message survives — intact, or
+ * replaced by a recorded elision marker when its bulk would blow the tail
+ * budget — and the kept tail stays inside its budget.
  *
  * `compaction-large-session-integrity` sweeps a UNIFORM session and proves the
  * tool-call pairing invariant across every keep-recent budget. That leaves the
@@ -189,24 +190,41 @@ describe("the partition of a hostile session", () => {
 	/**
 	 * THE structural contract, and the strongest statement available: identity.
 	 *
-	 * Asserting object identity (`toBe` per element, via `toEqual` on the array of
-	 * the same references) rather than deep equality is deliberate — a copy that
-	 * dropped one content block would still pass a shape check on lengths, and a
-	 * rewritten message is exactly the "truncated mid-structure" failure this
-	 * exists to catch.
+	 * Asserting object identity (`toBe` per element) rather than deep equality is
+	 * deliberate — a copy that dropped one content block would still pass a shape
+	 * check on lengths, and a rewritten message is exactly the "truncated
+	 * mid-structure" failure this exists to catch.
+	 *
+	 * One recorded exception: the tail elision REPLACES a kept heavy tool result
+	 * with a marker message to hold the tail inside its budget. That is the
+	 * feature, not a partition break — but it must be exactly those results, each
+	 * with its original text preserved on the elision record.
 	 */
-	it("reproduces the original message sequence exactly, at every budget", () => {
-		const entries = hostileSession(24);
-		const original = messagesOf(entries);
-
+	it("reproduces the original message sequence, elided results aside, at every budget", () => {
 		for (let budget = 500; budget <= 200_000; budget = Math.floor(budget * 1.7)) {
+			// Fresh fixture per budget: the elision rewrites the entries it is
+			// given, so a reused session would measure the previous pass's markers.
+			const entries = hostileSession(24);
+			const original = messagesOf(entries);
 			const prepared = prepareCompaction(entries, settings(budget));
 			if (!prepared) continue;
 			const rejoined = [...prepared.messagesToSummarize, ...prepared.turnPrefixMessages, ...prepared.recentMessages];
 
 			expect(rejoined).toHaveLength(original.length);
+			const elisionByEntryId = new Map((prepared.tailElisions ?? []).map(e => [e.entryId, e]));
 			for (let i = 0; i < original.length; i++) {
-				expect(rejoined[i]).toBe(original[i]);
+				const elision = elisionByEntryId.get(entries[i]!.id);
+				if (!elision) {
+					expect(rejoined[i]).toBe(original[i]);
+					continue;
+				}
+				// The elided slot holds the marker message, keeps the call pairing
+				// id, and preserves the original bulk on the record for offload.
+				const replaced = rejoined[i] as ToolResultMessage;
+				expect(replaced).toBe(elision.message);
+				expect(replaced.role).toBe("toolResult");
+				expect(replaced.toolCallId).toBe((original[i] as ToolResultMessage).toolCallId);
+				expect(elision.originalText.length).toBeGreaterThan(0);
 			}
 		}
 	});
@@ -214,10 +232,9 @@ describe("the partition of a hostile session", () => {
 	it("holds that identity across every rotation of the message shapes", () => {
 		// The seed moves which turn is the huge one, the image one, the empty one.
 		// A cut that mishandles one shape only fails when it lands on that shape.
-		const original = (seed: number) => messagesOf(hostileSession(12, seed));
-
 		for (let seed = 0; seed < 7; seed++) {
 			const entries = hostileSession(12, seed);
+			const original = messagesOf(entries);
 			const prepared = prepareCompaction(entries, settings(4_000));
 			expect(prepared).toBeDefined();
 			const rejoined = [
@@ -226,7 +243,12 @@ describe("the partition of a hostile session", () => {
 				...prepared!.recentMessages,
 			];
 
-			expect(rejoined).toEqual(original(seed));
+			expect(rejoined).toHaveLength(original.length);
+			const elidedEntryIds = new Set((prepared!.tailElisions ?? []).map(e => e.entryId));
+			for (let i = 0; i < original.length; i++) {
+				if (elidedEntryIds.has(entries[i]!.id)) continue; // marker replacement; covered above
+				expect(rejoined[i]).toBe(original[i]);
+			}
 		}
 	});
 
@@ -266,13 +288,14 @@ describe("the kept tail's budget", () => {
 	 * that the overshoot is bounded by one turn's worth of content.
 	 */
 	it("stays within the budget plus at most the turn the cut landed on", () => {
-		const entries = hostileSession(20);
 		for (const budget of [1_000, 5_000, 20_000, 60_000]) {
+			// Fresh fixture per budget: the elision rewrites the entries it is given.
+			const entries = hostileSession(20);
+			// The largest single message in the session bounds one turn's overshoot.
+			const largest = Math.max(...messagesOf(entries).map(m => estimateTokens(m)));
 			const prepared = prepareCompaction(entries, settings(budget));
 			if (!prepared) continue;
 
-			// The largest single message in the session bounds one turn's overshoot.
-			const largest = Math.max(...messagesOf(entries).map(m => estimateTokens(m)));
 			expect(sum(prepared.recentMessages)).toBeLessThanOrEqual(budget + largest * 5);
 		}
 	});
@@ -280,9 +303,10 @@ describe("the kept tail's budget", () => {
 	it("cuts more aggressively as the budget shrinks", () => {
 		// Monotonicity: the whole mechanism is meaningless if a smaller allowance
 		// does not keep less. Compared on the same session so nothing else varies.
-		const entries = hostileSession(20);
-		const small = prepareCompaction(entries, settings(2_000));
-		const large = prepareCompaction(entries, settings(80_000));
+		// Fresh fixtures: the first preparation's elision rewrites the entries,
+		// and the comparison must not measure that rewrite.
+		const small = prepareCompaction(hostileSession(20), settings(2_000));
+		const large = prepareCompaction(hostileSession(20), settings(80_000));
 		expect(small).toBeDefined();
 		expect(large).toBeDefined();
 
@@ -366,9 +390,13 @@ describe("preparation determinism", () => {
 	 * hot path, so a preparation that varied between calls would produce a cut the
 	 * caller never budgeted for. */
 	it("returns the same cut twice for the same session", () => {
-		const entries = hostileSession(16);
-		const first = prepareCompaction(entries, settings(9_000));
-		const second = prepareCompaction(entries, settings(9_000));
+		// Fresh fixtures with reset ids: the first pass's tail elision rewrites
+		// the entries it is given, so a second pass over the SAME array would read
+		// markers, not the session — determinism is a property of equal inputs.
+		idCounter = 0;
+		const first = prepareCompaction(hostileSession(16), settings(9_000));
+		idCounter = 0;
+		const second = prepareCompaction(hostileSession(16), settings(9_000));
 
 		expect(first?.firstKeptEntryId).toBe(second?.firstKeptEntryId);
 		expect(first?.recentMessages.length).toBe(second?.recentMessages.length);
