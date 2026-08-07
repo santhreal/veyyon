@@ -239,6 +239,13 @@ export async function fetchWithRetry(
 		} catch (error) {
 			if (signal?.aborted) throw new Error("Request was aborted");
 			const wrapped = wrapNetworkError(error);
+			// A named HTTP/2 code this module has already ruled deterministic
+			// (`NON_RETRYABLE_HTTP2_ERROR_CODES`) fails the same way on every replay,
+			// and each replay re-sends the whole request body. `NGHTTP2_CANCEL` is the
+			// expensive one: it is usually our own abort arriving through a per-attempt
+			// signal the loop cannot see on `signal`, so the request was re-sent in
+			// full four more times to reach the same answer.
+			if (http2RetryVerdict(wrapped.message) === false) throw wrapped;
 			if (attempt + 1 >= maxAttempts) throw wrapped;
 			await scheduler.wait(resolveDefaultDelay(defaultDelayMs, attempt, maxDelayMs), { signal });
 			continue;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { constants } from "node:http2";
-import { http2ErrorCode, http2RetryVerdict, isRetryableError } from "@veyyon/utils/fetch-retry";
+import { fetchWithRetry, http2ErrorCode, http2RetryVerdict, isRetryableError } from "@veyyon/utils/fetch-retry";
 
 /**
  * WHY: a Cursor turn died on `Stream closed with error code NGHTTP2_INTERNAL_ERROR`
@@ -103,5 +103,58 @@ describe("HTTP/2 error-code retry classification", () => {
 	it("leaves the pending-stream cancel spelling hard", () => {
 		// ERR_HTTP2_STREAM_CANCEL is our own abort, not the peer's weather.
 		expect(isRetryableError(new Error("The pending stream has been canceled"))).toBe(false);
+	});
+});
+
+/**
+ * WHY: classifying a code as deterministic is only worth something if the retry
+ * loop in the same module acts on it. `fetchWithRetry` used to retry every
+ * thrown transport error without consulting any classifier, so a request that
+ * failed with `NGHTTP2_CANCEL` -- normally our own abort arriving through a
+ * per-attempt signal the loop cannot observe on `signal` -- was re-sent in full
+ * four more times to reach the identical answer. On a provider request that is
+ * four extra copies of the whole prompt on the wire.
+ */
+describe("fetchWithRetry honors the HTTP/2 verdict", () => {
+	const attemptsFor = async (message: string, maxAttempts: number): Promise<number> => {
+		let attempts = 0;
+		await fetchWithRetry("https://example.invalid/v1/messages", {
+			method: "POST",
+			body: "prompt",
+			maxAttempts,
+			defaultDelayMs: 0,
+			fetch: async () => {
+				attempts++;
+				throw new Error(message);
+			},
+		}).catch(() => undefined);
+		return attempts;
+	};
+
+	for (const code of HARD) {
+		it(`sends ${code} exactly once`, async () => {
+			expect(await attemptsFor(`Stream closed with error code ${code}`, 5)).toBe(1);
+		});
+	}
+
+	it("still spends the whole budget on a retryable code", async () => {
+		expect(await attemptsFor("Stream closed with error code NGHTTP2_REFUSED_STREAM", 5)).toBe(5);
+	});
+
+	it("reads the code through the `fetch failed` cause wrapper", async () => {
+		let attempts = 0;
+		await fetchWithRetry("https://example.invalid/v1/messages", {
+			maxAttempts: 5,
+			defaultDelayMs: 0,
+			fetch: async () => {
+				attempts++;
+				throw new Error("fetch failed", { cause: new Error("Stream closed with error code NGHTTP2_CANCEL") });
+			},
+		}).catch(() => undefined);
+		expect(attempts).toBe(1);
+	});
+
+	it("leaves an unclassifiable transport error on the existing budget", async () => {
+		expect(await attemptsFor("socket hang up", 3)).toBe(3);
 	});
 });
