@@ -2679,6 +2679,28 @@ export interface SyntheticToolResultDetails {
 	batchLedger?: ToolBatchLedger;
 }
 
+/**
+ * Details for a call an interrupt cut short.
+ *
+ * Distinct from {@link SyntheticToolResultDetails}, which means the call was
+ * never invoked at all. Here the batch was real and the interrupt arrived
+ * partway through it, so `entered` carries the part a consumer cannot guess:
+ * whether `tool.execute()` had been reached.
+ *
+ * The discriminator exists for the same reason as the synthetic one (#4321).
+ * The headline text is fixed per source, so a consumer that classifies these by
+ * reading the message sees two unrelated interrupts as the same failure
+ * repeating, and anything that reacts to a repeat then reacts to an event that
+ * never happened.
+ */
+export interface SkippedToolResultDetails {
+	__skipped: true;
+	source: SteeringInterruptSource | "irc" | "cancelled-run" | "steering";
+	/** True when `tool.execute()` had been entered, so side effects may be partial. */
+	entered: boolean;
+	batchLedger?: ToolBatchLedger;
+}
+
 function syntheticDetailsFor(
 	reason: "aborted" | "error" | "skipped" | "length",
 	errorMessage: string | undefined,
@@ -2897,6 +2919,12 @@ function createSkippedToolResult(
 				? `This tool had already started running when it was cut off, so it may have applied partial side effects. Check state before retrying it. After the ${blocker} is handled on the next step, decide from that state whether a retry is still needed.`
 				: `After the ${blocker} is handled on the next step, retry the skipped tool if it is still needed.`;
 	const headline = `Skipped due to ${reason}. Do not count this skipped result as completed work or verification. ${advice}`;
+	const details: SkippedToolResultDetails = {
+		__skipped: true,
+		source: source ?? "steering",
+		entered,
+		...(batchLedger ? { batchLedger } : {}),
+	};
 	return {
 		content: [
 			{
@@ -2904,6 +2932,6 @@ function createSkippedToolResult(
 				text: batchLedger ? `${headline}\n\n${renderToolBatchLedger(batchLedger)}` : headline,
 			},
 		],
-		details: batchLedger ? { batchLedger } : {},
+		details,
 	};
 }

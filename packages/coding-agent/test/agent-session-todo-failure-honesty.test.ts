@@ -113,8 +113,18 @@ describe("AgentSession todo failure honesty", () => {
 		session.agent.emitExternalEvent({ type: "agent_end", messages: [msg] });
 	}
 
-	/** Emit one `todo` tool result, failed when `errorText` is a string. */
-	function emitTodoResult(errorText: string | undefined, phases?: TodoPhase[]): void {
+	/**
+	 * Emit one `todo` tool result, failed when `errorText` is a string.
+	 *
+	 * `details` overrides the default so a caller can emit the shape a call that
+	 * never really failed arrives in. Those carry `isError` too, so the details
+	 * are the only honest discriminator.
+	 */
+	function emitTodoResult(
+		errorText: string | undefined,
+		phases?: TodoPhase[],
+		details?: Record<string, unknown>,
+	): void {
 		const toolCallId = `call_todo_${Date.now()}_${Math.random()}`;
 		const toolCall: ToolCall = { type: "toolCall", id: toolCallId, name: "todo", arguments: {} };
 		const assistantMsg: AssistantMessage = {
@@ -144,7 +154,7 @@ describe("AgentSession todo failure honesty", () => {
 				toolName: "todo",
 				content,
 				isError: errorText !== undefined,
-				details: phases ? { phases } : {},
+				details: details ?? (phases ? { phases } : {}),
 				timestamp: Date.now(),
 			},
 		});
@@ -238,6 +248,62 @@ describe("AgentSession todo failure honesty", () => {
 	});
 
 	const FAILURE = 'Validation failed for tool "todo":\n  - op: op must be operation to apply (was missing)';
+
+	// The headline a skipped call carries. Fixed per source, which is the whole
+	// problem: two unrelated interrupts produce byte-identical text.
+	const SKIPPED =
+		"Skipped due to queued user message. Do not count this skipped result as completed work or verification. After the queued message is handled on the next step, retry the skipped tool if it is still needed.";
+	const SKIPPED_DETAILS = { __skipped: true, source: "user", entered: false };
+	const NEVER_DISPATCHED_DETAILS = { __synthetic: true, source: "assistant_stop_skipped", executed: false };
+
+	it("says nothing about the payload when an interrupt skipped the todo call", async () => {
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+		emitTodoResult(SKIPPED, undefined, SKIPPED_DETAILS);
+		emitTodoResult(SKIPPED, undefined, SKIPPED_DETAILS);
+		emitTextOnlyStop();
+		await session.waitForIdle();
+
+		// The board is stale because the write never landed, not because it was
+		// refused. Telling the model to fix a payload that was never read sends it
+		// after a problem that does not exist, and telling it todo is unusable
+		// retires the tool over an event that never happened.
+		expect(todoErrorReminderTexts()).toEqual([]);
+	});
+
+	it("says nothing about the payload when the batch never dispatched the todo call", async () => {
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+		emitTodoResult(
+			"Tool call was not executed because the assistant ended its turn.",
+			undefined,
+			NEVER_DISPATCHED_DETAILS,
+		);
+		emitTodoResult(
+			"Tool call was not executed because the assistant ended its turn.",
+			undefined,
+			NEVER_DISPATCHED_DETAILS,
+		);
+		emitTextOnlyStop();
+		await session.waitForIdle();
+
+		expect(todoErrorReminderTexts()).toEqual([]);
+	});
+
+	it("remembers a real failure across a skip, so the repeat is still caught", async () => {
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+		emitTodoResult(FAILURE);
+		// A skip is neither a landed write nor a refusal, so it must not clear the
+		// memory of the failure either. Clearing it would let the same broken
+		// payload be ordered forever, one interrupt apart.
+		emitTodoResult(SKIPPED, undefined, SKIPPED_DETAILS);
+		emitTodoResult(FAILURE);
+		emitTextOnlyStop();
+		await session.waitForIdle();
+
+		const [first, second] = todoErrorReminderTexts();
+		expect(todoErrorReminderTexts()).toHaveLength(2);
+		expect(first).toContain("Fix the todo payload and call todo again before continuing.");
+		expect(second).toContain("cannot succeed");
+	});
 
 	it("stops ordering a retry once the same todo failure repeats", async () => {
 		vi.spyOn(session.agent, "continue").mockResolvedValue();
