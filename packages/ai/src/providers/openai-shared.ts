@@ -787,11 +787,14 @@ export function resolveOpenAICompatPolicy<TApi extends Api>(
 		compat.supportsReasoningEffort &&
 		!omitReasoningEffort
 	) {
+		// `lowest-effort` means the host cannot be told to stop reasoning, so the
+		// floor tier stands in for off. A model that publishes no tiers has no
+		// floor to pin, and the request still has to go out: send no
+		// `reasoning_effort` and let the model manage its own reasoning. Failing
+		// the whole turn here punished the operator for asking to turn thinking
+		// OFF on a model that never offered the dial.
 		const minEffort = getSupportedEfforts(model)[0];
-		if (minEffort === undefined) {
-			throw new AIError.ConfigurationError(`Model ${model.provider}/${model.id} has no supported reasoning efforts`);
-		}
-		wireEffort = mapOpenAIReasoningEffort(model, compat, minEffort);
+		wireEffort = minEffort === undefined ? undefined : mapOpenAIReasoningEffort(model, compat, minEffort);
 	}
 
 	return {

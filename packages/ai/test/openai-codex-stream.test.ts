@@ -20,6 +20,7 @@ import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { buildModel } from "@veyyon/catalog/build";
 import * as piUtils from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils";
+import { createCodexModel } from "./helpers";
 
 const { getAgentDir, setAgentDir, TempDir } = piUtils;
 
@@ -2322,17 +2323,13 @@ describe("openai-codex streaming", () => {
 			return new Response("not found", { status: 404 });
 		});
 
-		const model = buildModel({
-			id: "gpt-5.3-codex",
+		// Built through the shared helper so the row carries the ladder OpenAI
+		// declares for gpt-5.3-codex; a spec without it exposes no effort surface
+		// and the refusal would name no tiers at all.
+		const model = createCodexModel("gpt-5.3-codex", {
 			name: "GPT-5.3 Codex",
-			api: "openai-codex-responses",
-			provider: "openai-codex",
 			baseUrl: "https://chatgpt.com/backend-api",
-			reasoning: true,
-			input: ["text"],
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			contextWindow: 400000,
-			maxTokens: 128000,
 		});
 
 		const context: Context = {

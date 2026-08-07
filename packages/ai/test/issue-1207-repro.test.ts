@@ -72,14 +72,19 @@ describe("issue #1207 — DeepSeek V4 keeps reasoning with tools", () => {
 		// synthetic model, where no discovery surface can mask it.
 	});
 
-	it("drops user reasoning map entries outside the honest DeepSeek ladder", () => {
+	it("never lets a user reasoning map conjure an effort surface", () => {
 		const model = customDeepseekFlash();
 
 		expect(model.compat.supportsToolChoice).toBe(false);
-		// The stale user `xhigh` alias targets a tier the wire-exact
-		// [high, max] ladder no longer exposes, so it is filtered out.
-		expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
-		expect(model.thinking?.effortMap).toBeUndefined();
+		// A `reasoningEffortMap` renames tiers the endpoint already offers; it is
+		// not itself a declaration. This custom host publishes no ladder, so the
+		// stale `xhigh` alias has nothing to rename and no surface appears.
+		expect(model.thinking).toBeUndefined();
+		// The shipped DeepSeek row is the counterweight: where the endpoint does
+		// declare tiers, they are the ones on offer.
+		const shipped = getBundledModel("deepseek", "deepseek-v4-flash");
+		expect(shipped.thinking?.efforts).toEqual([Effort.Low, Effort.High, Effort.Max]);
+		expect(shipped.thinking?.effortMap).toBeUndefined();
 	});
 
 	it("omits tool_choice but preserves documented reasoning when tools are present", async () => {

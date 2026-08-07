@@ -2,6 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
 import type { ModelSpec } from "@veyyon/catalog/types";
 import { isEnoent } from "@veyyon/utils";
 
@@ -55,13 +56,26 @@ export async function waitForDelayOrAbort(delayMs: number, signal: AbortSignal |
 	}
 }
 
+/**
+ * A Codex model shaped like the one the product ships.
+ *
+ * The effort ladder comes from the bundled catalog row (the ChatGPT-auth
+ * `openai-codex` entry, or its `openai` twin), because a ladder is only ever an
+ * endpoint declaration now: a spec built without one exposes no effort control
+ * at all, and every request carrying an effort is refused. Inheriting the real
+ * declaration keeps these tests pointed at what a user actually gets, and lets
+ * them go red if the shipped surface regresses. Ids models.dev has never
+ * catalogued (the pre-5.3 Codex snapshots) legitimately arrive with no ladder.
+ */
 export function createCodexModel(
 	id: string,
 	spec?: Partial<ModelSpec<"openai-codex-responses">>,
 ): Model<"openai-codex-responses"> {
+	const declared = getBundledModel("openai-codex", id) ?? getBundledModel("openai", id);
 	return buildModel({
 		id,
 		name: id,
+		...(declared?.reasoningOptions !== undefined ? { reasoningOptions: declared.reasoningOptions } : {}),
 		api: "openai-codex-responses",
 		provider: "openai-codex",
 		baseUrl: "https://api.openai.com/v1",
