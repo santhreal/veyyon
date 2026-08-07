@@ -3,6 +3,7 @@ import type { Tool as AiTool } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { SettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import { loadBundledAgents } from "@veyyon/coding-agent/task/agents";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { EvalTool, getEvalToolDescription } from "@veyyon/coding-agent/tools/eval";
 import { makeToolSession } from "../helpers/tool-session";
@@ -85,9 +86,18 @@ describe("eval tool description", () => {
 		expect(description).not.toContain("<dag>");
 	});
 
+	/**
+	 * The session-driven half. `EvalTool.description` no longer reads the raw
+	 * spawn policy: it resolves the enabled catalog and advertises `agent()` only
+	 * when something is left to spawn. Both arms are handed the same bundled
+	 * catalog so the difference between them is the spawn policy alone; building
+	 * the denied arm with no agents at all would pass on an empty catalog and
+	 * prove nothing about the policy.
+	 */
 	it("EvalTool description reflects spawn policy from the session", () => {
-		const wildcard = new EvalTool(makeSession({ spawns: "*" })).description;
-		const denied = new EvalTool(makeSession({ spawns: "" })).description;
+		const agents = loadBundledAgents();
+		const wildcard = new EvalTool(makeSession({ spawns: "*" }), { discoveredAgents: agents }).description;
+		const denied = new EvalTool(makeSession({ spawns: "" }), { discoveredAgents: agents }).description;
 		expect(wildcard).toContain("agent(prompt");
 		expect(denied).not.toContain("agent(prompt");
 	});

@@ -55,8 +55,16 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		"Prefer an absolute path",
 	],
 	task: [
-		// The type-matching rule survives once, next to the agent list.
-		"Each agent below is a distinct type with its own use case",
+		// The routing rule, restated by `fd5edbd34` from "each agent is a distinct
+		// type with its own use case" to a cost ladder. The old sentence invited
+		// routing on subject matter, which is the thing that sent cheap work to
+		// expensive lanes; these two clauses are what replaced it and they carry
+		// the part that must never be cut, that a disabled lane is not a reason to
+		// pick a wider one.
+		"cost lanes, not job titles",
+		"Route on how much is unknown",
+		"A lane that is not listed is disabled",
+		"NEVER substitute a wider lane for a disabled one",
 		// The rules the collapse must not have taken with it.
 		"One-liners or missing acceptance criteria are PROHIBITED",
 		"skip formatters, linters, and project-wide test suites",

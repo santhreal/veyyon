@@ -79,7 +79,7 @@ describe("task execution mode and authorization failures", () => {
 	 * synchronous child result when the host forgot to wire its job manager.
 	 */
 	it("fails loud when async execution is enabled without an AsyncJobManager", async () => {
-		const discoverSpy = vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
 			agents: [taskAgent],
 			projectAgentsDir: null,
 		});
@@ -102,7 +102,10 @@ describe("task execution mode and authorization failures", () => {
 			totalDurationMs: 0,
 			warning: undefined,
 		});
-		expect(discoverSpy).toHaveBeenCalledTimes(1);
+		// Discovery is deliberately re-run per `execute` rather than reused from
+		// `create`, so an agent file written mid-session is visible on the next
+		// call. Its call count is that implementation choice and not a contract;
+		// what this test defends is that the guard fires before any spawn.
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 

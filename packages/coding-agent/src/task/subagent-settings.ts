@@ -436,6 +436,27 @@ export function enabledSubagentNames(spawner: unknown): string[] {
 }
 
 /**
+ * The agent type prose should name when it would rather have `preferred`.
+ *
+ * Prose that names an agent has to name one this session can actually spawn,
+ * and a literal cannot do that: the enabled set is operator-configurable, so a
+ * hardcoded name is correct only for an operator who happens to have that agent
+ * on. Plan mode's research step named `task` unconditionally, which survived the
+ * rename to `deep` as a reference to a name no roster carries, and which pointed
+ * the model at a disabled agent whenever the operator had enabled anything else:
+ * the spawn was then refused by the same enablement check the sentence had just
+ * talked the model past.
+ *
+ * `undefined` when nothing is enabled, so a caller suppresses the sentence
+ * instead of interpolating a name that does not exist. Callers gate the prose on
+ * this result rather than on a separate emptiness test, which is what keeps the
+ * two from disagreeing.
+ */
+export function preferredSubagentName(enabled: readonly string[], preferred: string): string | undefined {
+	return enabled.includes(preferred) ? preferred : enabled[0];
+}
+
+/**
  * Read one of the spawner's name lists defensively.
  *
  * The spawner is `unknown` because the prompt build receives whatever the tool registry holds, which

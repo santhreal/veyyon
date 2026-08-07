@@ -483,7 +483,7 @@ if "__veyyon_prelude_loaded__" not in globals():
     def agent(
         prompt,
         *,
-        agent="deep",
+        agent=None,
         model=None,
         label=None,
         schema=None,
@@ -494,7 +494,8 @@ if "__veyyon_prelude_loaded__" not in globals():
     ):
         """Run a subagent and return its final output.
 
-        `agent` selects the subagent definition (default "task"). Pass
+        `agent` selects the subagent definition; omitted, it resolves to the
+        session's configured default agent from the enabled catalog. Pass
         `model` to override that agent's model, `label` for the output artifact
         id, and `schema` to request structured JSON output; when `schema` is
         supplied the parsed object is returned. Share background by writing a

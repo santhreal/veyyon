@@ -187,4 +187,64 @@ describe("a parent revoking /yolo while a subagent is running", () => {
 		root.setApprovalBypass(false);
 		expect(root.isApprovalBypassed()).toBe(false);
 	});
+
+	/**
+	 * The other widening direction: the child raising ITSELF.
+	 *
+	 * `setApprovalBypass` is not privileged. It is the setter `/yolo` calls, and
+	 * `runtime.session` in a headless run is whichever session is executing, so
+	 * the question of what happens when a subagent flips its own flag is a
+	 * reachable one rather than a hypothetical. It must be inert: the flag is one
+	 * half of an AND, and a child cannot satisfy the half its parent holds. Test
+	 * three above spawns the child already off and toggles the PARENT, so it
+	 * cannot see this; a change that reordered the check to return the child's own
+	 * flag whenever the child had set one would keep that test green and hand any
+	 * subagent a way to ungate itself.
+	 */
+	it("cannot raise its own bypass above a parent that does not have one", async () => {
+		const parent = realSession({ bypassAllApprovals: true });
+		const child = await spawnChildOf(parent);
+		parent.setApprovalBypass(false);
+
+		expect(child.setApprovalBypass(true)).toBe(true);
+
+		// The setter reports the flag it wrote; the gate still answers no.
+		expect(child.isApprovalBypassed()).toBe(false);
+
+		// And the child's own flag is not what was missing: the moment the parent
+		// comes back the same session bypasses again, so the false above is the
+		// parent narrowing rather than the write having been dropped.
+		parent.setApprovalBypass(true);
+		expect(child.isApprovalBypassed()).toBe(true);
+	});
+
+	/**
+	 * Narrowing composes down a chain, not just across one hop.
+	 *
+	 * Each generation is handed a probe over the generation above it, and that
+	 * probe calls `isApprovalBypassed` rather than reading a field, so a
+	 * grandchild's answer walks the whole chain to the root. Depth is where this
+	 * would quietly break: fan-out routinely runs two or three levels, and a
+	 * revocation that stopped at the first child would leave the agents doing the
+	 * actual work bypassing approvals with nothing on screen saying so.
+	 */
+	it("narrows a grandchild when the root revokes", async () => {
+		const root = realSession({ bypassAllApprovals: true });
+		const child = await spawnChildOf(root);
+		const grandchild = await spawnChildOf(child);
+		expect(grandchild.isApprovalBypassed()).toBe(true);
+
+		root.setApprovalBypass(false);
+
+		expect(child.isApprovalBypassed()).toBe(false);
+		expect(grandchild.isApprovalBypassed()).toBe(false);
+
+		root.setApprovalBypass(true);
+		expect(grandchild.isApprovalBypassed()).toBe(true);
+
+		// Revoking in the middle narrows below it and leaves the root alone.
+		child.setApprovalBypass(false);
+		expect(grandchild.isApprovalBypassed()).toBe(false);
+		expect(root.isApprovalBypassed()).toBe(true);
+	});
 });
