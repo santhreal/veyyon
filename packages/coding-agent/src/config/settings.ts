@@ -1623,9 +1623,10 @@ export class Settings {
 	 *
 	 * `task.eager` mapped three values onto delegation strength; the new
 	 * `subagent.delegation` adds `off` at the bottom, so `default` becomes
-	 * `allowed` and `always` becomes `required`. `task.disabledAgents` and
-	 * `task.agentModelOverrides` were parallel maps keyed by agent name; both fold
-	 * into one row per agent in `subagent.agents`.
+	 * `allowed` and `always` becomes `required`. `task.disabledAgents` becomes one
+	 * row per agent in `subagent.agents`; `task.agentModelOverrides` named a per-agent
+	 * model, which no longer exists as a concept, so it is dropped with a report
+	 * rather than folded into a row nothing reads.
 	 */
 	#migrateSubagentSettings(raw: RawSettings): void {
 		// Every value in a settings source is NESTED — the loader builds the tree
@@ -1720,16 +1721,29 @@ export class Settings {
 				agents[name.trim()] = { ...(agents[name.trim()] ?? {}), enabled: false };
 			}
 		}
+		// Per-agent models are NOT carried over. They were a third owner of the
+		// subagent model question, above the blanket setting and invisible from it,
+		// and they are gone; writing them into the new section would only recreate
+		// the drift in a new spelling. Folding them into `subagent.model` instead is
+		// not available either — several agents could name several models and there
+		// is no honest way to pick one. So the values are dropped and named, once,
+		// with the setting that replaced them.
 		const overrides = take(["task", "agentModelOverrides"]);
 		if (isRecord(overrides)) {
-			for (const [name, model] of Object.entries(overrides)) {
-				if (typeof model !== "string" || !model.trim()) continue;
-				agents[name] = { ...(agents[name] ?? {}), model: model.trim() };
+			const dropped = Object.entries(overrides)
+				.filter(([, model]) => typeof model === "string" && model.trim().length > 0)
+				.map(([name, model]) => `${name}=${String(model).trim()}`);
+			if (dropped.length > 0) {
+				logger.warn(
+					`Settings: task.agentModelOverrides (${dropped.join(", ")}) is no longer read — per-agent models were ` +
+						`unified into one subagent model setting. Set Subagents → Subagent Model, or give the agent file its ` +
+						`own \`model:\` frontmatter.`,
+					{ setting: "task.agentModelOverrides", dropped },
+				);
 			}
 		}
-		// An agent in BOTH legacy maps keeps both facts in its one row: the row says
-		// disabled AND remembers the model, so turning it back on later does not
-		// silently lose the model the operator chose.
+		// `disabledAgents` is the only legacy map with a home in the new section, so a
+		// row written here carries exactly one fact: whether the agent runs.
 		if (Object.keys(agents).length > 0) setNew(["agents"], agents);
 
 		// modelRoles.task was the "model for subagents" knob before this section

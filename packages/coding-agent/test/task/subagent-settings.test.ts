@@ -29,6 +29,7 @@ import { describe, expect, it, spyOn } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { getUi, isSettingPath, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
 import {
 	delegationBlockedNotice,
@@ -38,11 +39,13 @@ import {
 	isSubagentEnableDefaulted,
 	isSubagentEnabled,
 	nextSubagentEnableValue,
+	resetRetiredAgentRowReports,
 	resolveDelegation,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	SUBAGENT_ENABLE_STATE_LABEL,
 	type SubagentEnableState,
+	type SubagentModelSource,
 	subagentEnabledByDefault,
 	subagentEnableState,
 	subagentModelSourceLabel,
@@ -229,8 +232,8 @@ describe("subagent enable states: on, off, and nothing in between", () => {
 	});
 });
 
-describe("subagent model precedence: four layers, one owner", () => {
-	const AGENT_ROW = "openai/gpt-5";
+describe("subagent model precedence: three layers, one owner", () => {
+	const RETIRED_ROW = "openai/gpt-5";
 	const BLANKET = "anthropic/claude-sonnet-4-5";
 	const FRONTMATTER = "google/gemini-2.5-pro";
 	const SESSION = "anthropic/claude-opus-4-5";
@@ -269,12 +272,19 @@ describe("subagent model precedence: four layers, one owner", () => {
 		expect(resolved.source).toBe("blanket");
 	});
 
-	/** A per-agent row is the most specific choice and outranks the blanket one. */
-	it("uses the agent's own row over subagent.model", () => {
+	/**
+	 * A LEFTOVER PER-AGENT ROW IS NOT A LAYER. `subagent.agents.<name>.model` used
+	 * to sit above the blanket setting, and it was edited from the Agents screen
+	 * while the blanket model was edited from the Models screen, so the table
+	 * quietly outranked the setting the operator had just changed and the two
+	 * screens printed different answers for the same agent. The field is retired:
+	 * a config that still carries it runs the blanket chain.
+	 */
+	it("ignores a retired per-agent model row", () => {
 		const settings = Settings.isolated({
 			"subagent.model": BLANKET,
-			"subagent.agents": { scout: { model: AGENT_ROW } },
-		});
+			"subagent.agents": { scout: { model: RETIRED_ROW } },
+		} as Parameters<typeof Settings.isolated>[0]);
 
 		const resolved = resolveSubagentModel({
 			settings,
@@ -283,8 +293,25 @@ describe("subagent model precedence: four layers, one owner", () => {
 			activeModelPattern: SESSION,
 		});
 
-		expect(resolved.patterns).toEqual([AGENT_ROW]);
-		expect(resolved.source).toBe("agent");
+		expect(resolved.patterns).toEqual([BLANKET]);
+		expect(resolved.source).toBe("blanket");
+	});
+
+	/** With no blanket model, a retired row does not stand in for one either. */
+	it("falls through a retired per-agent row to frontmatter", () => {
+		const settings = Settings.isolated({
+			"subagent.agents": { scout: { model: RETIRED_ROW } },
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: "scout",
+			agentModel: FRONTMATTER,
+			activeModelPattern: SESSION,
+		});
+
+		expect(resolved.patterns).toEqual([FRONTMATTER]);
+		expect(resolved.source).toBe("frontmatter");
 	});
 
 	/**
@@ -306,12 +333,9 @@ describe("subagent model precedence: four layers, one owner", () => {
 		expect(resolved.source).toBe("frontmatter");
 	});
 
-	/** Layer order is total: the row wins even with all four layers populated. */
-	it("orders all four layers row > blanket > frontmatter > inherit", () => {
-		const settings = Settings.isolated({
-			"subagent.model": BLANKET,
-			"subagent.agents": { scout: { model: AGENT_ROW } },
-		});
+	/** Layer order is total: the blanket setting wins with all three layers populated. */
+	it("orders all three layers blanket > frontmatter > inherit", () => {
+		const settings = Settings.isolated({ "subagent.model": BLANKET });
 
 		expect(
 			resolveSubagentModel({
@@ -320,14 +344,14 @@ describe("subagent model precedence: four layers, one owner", () => {
 				agentModel: FRONTMATTER,
 				activeModelPattern: SESSION,
 			}).patterns,
-		).toEqual([AGENT_ROW]);
+		).toEqual([BLANKET]);
 	});
 
 	/** A comma list or YAML list is a preference order, preserved as given. */
 	it("keeps a multi-pattern value in order", () => {
-		const settings = Settings.isolated({ "subagent.model": `${BLANKET}, ${AGENT_ROW}` });
+		const settings = Settings.isolated({ "subagent.model": `${BLANKET}, ${RETIRED_ROW}` });
 
-		expect(resolveSubagentModel({ settings, agentName: "scout" }).patterns).toEqual([BLANKET, AGENT_ROW]);
+		expect(resolveSubagentModel({ settings, agentName: "scout" }).patterns).toEqual([BLANKET, RETIRED_ROW]);
 	});
 
 	/** With no session model yet (a headless start), the caller's fallback stands in. */
@@ -342,46 +366,6 @@ describe("subagent model precedence: four layers, one owner", () => {
 
 		expect(resolved.patterns).toEqual([SESSION]);
 		expect(resolved.source).toBe("inherit");
-	});
-
-	/** An editor previewing an unsaved value must see what saving it would do. */
-	it("honors a draft row over the saved one", () => {
-		const settings = Settings.isolated({ "subagent.agents": { scout: { model: AGENT_ROW } } });
-
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "scout",
-			draftModel: BLANKET,
-		});
-
-		expect(resolved.patterns).toEqual([BLANKET]);
-		expect(resolved.source).toBe("agent");
-	});
-
-	/** An empty draft clears the override, so the preview shows the layer beneath. */
-	it("treats an empty draft as no row, exposing the layer beneath", () => {
-		const settings = Settings.isolated({
-			"subagent.model": BLANKET,
-			"subagent.agents": { scout: { model: AGENT_ROW } },
-		});
-
-		const resolved = resolveSubagentModel({ settings, agentName: "scout", draftModel: "" });
-
-		expect(resolved.patterns).toEqual([BLANKET]);
-		expect(resolved.source).toBe("blanket");
-	});
-
-	/** `ignoreAgentRow` answers "what would this run WITHOUT an override" for the editor. */
-	it("skips the agent row when asked for the default beneath it", () => {
-		const settings = Settings.isolated({
-			"subagent.model": BLANKET,
-			"subagent.agents": { scout: { model: AGENT_ROW } },
-		});
-
-		const resolved = resolveSubagentModel({ settings, agentName: "scout", ignoreAgentRow: true });
-
-		expect(resolved.patterns).toEqual([BLANKET]);
-		expect(resolved.source).toBe("blanket");
 	});
 });
 
@@ -409,17 +393,22 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 		expect(resolved.unresolved).toEqual({ source: "blanket", value: "@smol" });
 	});
 
-	/** Same rule one layer up: a broken per-agent row does not fall to the blanket model. */
-	it("reports an unresolvable agent row instead of using subagent.model", () => {
+	/**
+	 * A retired per-agent row is not a layer, so a broken one is not a refusal
+	 * either: it cannot resolve to nothing, because it is never consulted. Keeping
+	 * the refusal here would be worse than dropping the field — the operator would
+	 * be blocked from spawning by a value that no longer decides anything.
+	 */
+	it("does not refuse over a retired per-agent row", () => {
 		const settings = Settings.isolated({
 			"subagent.model": "anthropic/claude-sonnet-4-5",
 			"subagent.agents": { scout: { model: "@designer" } },
-		});
+		} as Parameters<typeof Settings.isolated>[0]);
 
 		const resolved = resolveSubagentModel({ settings, agentName: "scout" });
 
-		expect(resolved.unresolved).toEqual({ source: "agent", value: "@designer" });
-		expect(resolved.patterns).toEqual([]);
+		expect(resolved.unresolved).toBeUndefined();
+		expect(resolved.patterns).toEqual(["anthropic/claude-sonnet-4-5"]);
 	});
 
 	/**
@@ -441,25 +430,39 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 		expect(resolved.unresolved).toEqual({ source: "frontmatter", value: "@task" });
 	});
 
-	/** The label names the exact setting to edit, which is what makes the refusal actionable. */
+	/**
+	 * The label names the exact setting to edit, which is what makes the refusal
+	 * actionable. The table is typed `Record<SubagentModelSource, string>`, so
+	 * adding a layer to the union fails this file to compile until the new layer
+	 * has a label of its own — an unnamed layer would refuse a spawn while
+	 * pointing at nothing.
+	 */
 	it("names the setting behind every layer", () => {
-		expect(subagentModelSourceLabel("agent", "scout")).toBe("subagent.agents.scout.model");
-		expect(subagentModelSourceLabel("blanket", "scout")).toBe("subagent.model");
-		expect(subagentModelSourceLabel("frontmatter", "scout")).toBe("scout agent frontmatter");
-		expect(subagentModelSourceLabel("inherit", "scout")).toBe("inherited from the session model");
+		const expected: Record<SubagentModelSource, string> = {
+			blanket: "subagent.model",
+			frontmatter: "scout agent frontmatter",
+			inherit: "inherited from the session model",
+		};
+		for (const [source, label] of Object.entries(expected)) {
+			expect(subagentModelSourceLabel(source as SubagentModelSource, "scout")).toBe(label);
+		}
 	});
 });
 
 describe("subagent thinking level", () => {
-	/** The agent's own row is the most specific effort choice. */
-	it("prefers the agent's row over the definition and the blanket setting", () => {
+	/**
+	 * A retired per-agent effort row does not outrank the one effort setting, for
+	 * the same reason its model twin does not: it was written from a different
+	 * screen and silently won.
+	 */
+	it("ignores a retired per-agent effort row", () => {
 		const settings = Settings.isolated({
 			"subagent.thinkingLevel": "low",
 			"subagent.agents": { scout: { thinkingLevel: "high" } },
-		});
+		} as Parameters<typeof Settings.isolated>[0]);
 
 		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout", agentThinkingLevel: AUTO_THINKING })).toBe(
-			ThinkingLevel.High,
+			ThinkingLevel.Low,
 		);
 	});
 
@@ -502,21 +505,6 @@ describe("subagent thinking level", () => {
 	});
 
 	/**
-	 * The per-agent row is still the most specific layer, so one agent can be raised
-	 * or lowered without moving the rest.
-	 */
-	it("prefers the agent's row over the blanket setting and the definition", () => {
-		const settings = Settings.isolated({
-			"subagent.thinkingLevel": "low",
-			"subagent.agents": { scout: { thinkingLevel: "xhigh" } },
-		});
-
-		expect(
-			resolveSubagentThinkingLevel({ settings, agentName: "scout", agentThinkingLevel: ThinkingLevel.Medium }),
-		).toBe(ThinkingLevel.XHigh);
-	});
-
-	/**
 	 * Effort and model must answer in the SAME order, because the docs describe them
 	 * with one sentence and an operator reasons about them together. This asserts the
 	 * shape rather than one pair of values, so the two cannot drift apart again the
@@ -552,7 +540,7 @@ describe("subagent thinking level", () => {
 	 * one, and effort changes cost.
 	 */
 	it("ignores an unparseable level instead of guessing one", () => {
-		const settings = Settings.isolated({ "subagent.agents": { scout: { thinkingLevel: "hihg" } } });
+		const settings = Settings.isolated({ "subagent.thinkingLevel": "hihg" });
 
 		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBeUndefined();
 	});
@@ -568,15 +556,17 @@ describe("subagent thinking level", () => {
 		const restore = captureLoggerWarnings(warnings);
 		try {
 			// A value no other case uses, because the report fires once per process.
-			const settings = Settings.isolated({ "subagent.agents": { scout: { thinkingLevel: "hgih" } } });
-			resolveSubagentThinkingLevel({ settings, agentName: "scout" });
+			resolveSubagentThinkingLevel({
+				settings: Settings.isolated({ "subagent.thinkingLevel": "hgih" }),
+				agentName: "scout",
+			});
 		} finally {
 			restore();
 		}
 
 		const reported = warnings.find(message => message.includes("hgih"));
 		expect(reported).toBeDefined();
-		expect(reported).toContain("subagent.agents.scout.thinkingLevel");
+		expect(reported).toContain("subagent.thinkingLevel");
 		expect(reported).toContain("inherited");
 		for (const level of CLI_THINKING_LEVELS) expect(reported).toContain(level);
 	});
@@ -612,13 +602,189 @@ describe("subagent thinking level", () => {
 			const settings = Settings.isolated({
 				"subagent.thinkingLevel": "",
 				"subagent.agents": { scout: { thinkingLevel: "   " } },
-			});
+			} as Parameters<typeof Settings.isolated>[0]);
 			expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBeUndefined();
 		} finally {
 			restore();
 		}
 
 		expect(warnings).toEqual([]);
+	});
+});
+
+describe("retired per-agent model and effort rows are named, not honored", () => {
+	/**
+	 * WHY THIS SUITE READS THIS WAY (RETIRED-AGENT-ROWS-ARE-REPORTED).
+	 * `subagent.agents.<name>.model` and `.thinkingLevel` used to outrank the blanket
+	 * settings, so an operator who had pinned one agent will see that agent change
+	 * model and effort the first time they launch a build that stopped reading those
+	 * fields. Nothing in the config file distinguishes a field that is still honored
+	 * from one that is not, so a silent drop reads as veyyon ignoring the config.
+	 *
+	 * The contract is: the value never decides anything, and it is named once with
+	 * the setting that replaced it. It is a report, not a refusal — a leftover field
+	 * must not stop a spawn (see the refusal suite above).
+	 */
+	const RETIRED_FIELDS = [
+		{ field: "model", row: { model: "openai/gpt-5" }, replacement: "Subagent Model" },
+		{ field: "thinkingLevel", row: { thinkingLevel: "xhigh" }, replacement: "Subagent Effort" },
+	] as const;
+
+	// A `for` loop rather than `it.each`: each case needs its own agent name, because
+	// the report is deduplicated per agent and field for the life of the process.
+	for (const { field, row, replacement } of RETIRED_FIELDS) {
+		it(`names subagent.agents.<name>.${field} and where the value moved to`, () => {
+			resetRetiredAgentRowReports();
+			const agentName = `retired-${field}`;
+			const settings = Settings.isolated({
+				"subagent.agents": { [agentName]: row },
+			} as Parameters<typeof Settings.isolated>[0]);
+			const warnings: string[] = [];
+			const restore = captureLoggerWarnings(warnings);
+			try {
+				resolveSubagentModel({ settings, agentName });
+				resolveSubagentThinkingLevel({ settings, agentName });
+			} finally {
+				restore();
+			}
+
+			const reported = warnings.find(message => message.includes(`subagent.agents.${agentName}.${field}`));
+			expect(reported).toBeDefined();
+			expect(reported).toContain("no longer read");
+			expect(reported).toContain(replacement);
+		});
+	}
+
+	/**
+	 * Said once, not once per spawn. Both resolvers report, and both run on every
+	 * spawn and on every settings render, so an undeduplicated message would bury
+	 * the log and the operator would learn to skip it.
+	 */
+	it("reports each retired field once per process", () => {
+		resetRetiredAgentRowReports();
+		const settings = Settings.isolated({
+			"subagent.agents": { "retired-twice": { model: "openai/gpt-5", thinkingLevel: "high" } },
+		} as Parameters<typeof Settings.isolated>[0]);
+		const warnings: string[] = [];
+		const restore = captureLoggerWarnings(warnings);
+		try {
+			for (let attempt = 0; attempt < 3; attempt++) {
+				resolveSubagentModel({ settings, agentName: "retired-twice" });
+				resolveSubagentThinkingLevel({ settings, agentName: "retired-twice" });
+			}
+		} finally {
+			restore();
+		}
+
+		expect(warnings.filter(message => message.includes("subagent.agents.retired-twice.model"))).toHaveLength(1);
+		expect(warnings.filter(message => message.includes("subagent.agents.retired-twice.thinkingLevel"))).toHaveLength(
+			1,
+		);
+	});
+
+	/** The value is ignored, so it can never be the deciding layer. */
+	it("keeps the blanket setting as the answer over a retired row", () => {
+		resetRetiredAgentRowReports();
+		const settings = Settings.isolated({
+			"subagent.model": "anthropic/opus",
+			"subagent.thinkingLevel": "low",
+			"subagent.agents": { "retired-loses": { model: "openai/gpt-5", thinkingLevel: "xhigh" } },
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		const resolved = resolveSubagentModel({ settings, agentName: "retired-loses" });
+		expect(resolved.source).toBe("blanket");
+		expect(resolved.patterns).toEqual(["anthropic/opus"]);
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "retired-loses" })).toBe(ThinkingLevel.Low);
+	});
+
+	/** The retired paths are gone from the schema, so no picker can write one again. */
+	it("declares neither retired field in the settings schema", () => {
+		expect(isSettingPath("subagent.agents.model")).toBe(false);
+		expect(isSettingPath("subagent.agents.thinkingLevel")).toBe(false);
+	});
+});
+
+describe("no settings row hardcodes the effort ladder", () => {
+	/**
+	 * WHY THIS SUITE READS THIS WAY (EFFORT-ROWS-NARROW-TO-THE-MODEL).
+	 * `/thinking` and `/effort` ask the model which efforts it exposes, so a model
+	 * that routes effort through separate ids (the cursor rows) correctly offers
+	 * none. The settings screens printed a fixed ladder instead, so the same
+	 * operator was offered `xhigh` in one place and told it did not exist in
+	 * another. A static list is the defect, not the specific levels in it.
+	 *
+	 * The check is derived from the schema at run time and fails on any NEW effort
+	 * row that ships a static list, which is the only way this class stays closed:
+	 * a hardcoded list of known-good paths would go stale the next time someone adds
+	 * an effort setting.
+	 */
+	const EFFORT_VALUES = new Set<string>([
+		INHERIT_EFFORT_OPTION_VALUE,
+		...CONFIGURED_THINKING_LEVELS,
+		...CLI_THINKING_LEVELS,
+		AUTO_THINKING,
+	]);
+
+	/**
+	 * `low`/`medium`/`high` are not effort words — `textVerbosity` is a different axis with the same
+	 * three names — so a row only counts as an effort ladder when it also offers a level nothing but
+	 * effort has. Every static ladder this closes shipped the WHOLE vocabulary, which always includes
+	 * one of these.
+	 */
+	const EFFORT_ONLY_VALUES = new Set([...EFFORT_VALUES].filter(value => !["low", "medium", "high"].includes(value)));
+
+	/** Is this option list an effort ladder? Applied to the real schema and to a control below. */
+	const isEffortLadder = (options: ReadonlyArray<{ value: string }>): boolean => {
+		if (options.length === 0) return false;
+		const values = options.map(option => option.value);
+		return values.every(value => EFFORT_VALUES.has(value)) && values.some(value => EFFORT_ONLY_VALUES.has(value));
+	};
+
+	it("leaves every effort row's options to the runtime", () => {
+		// Rows whose options are ALL effort levels are effort pickers, whatever they
+		// are named. Not a hardcoded list of paths: the assertion is that none exist.
+		const staticEffortRows = Object.keys(SETTINGS_SCHEMA).filter(path => {
+			if (!isSettingPath(path)) return false;
+			const options = getUi(path)?.options;
+			if (!Array.isArray(options)) return false;
+			return isEffortLadder(options.map(option => ({ value: String(option.value) })));
+		});
+
+		expect(staticEffortRows).toEqual([]);
+	});
+
+	/**
+	 * The detector's own positive control. Without it the ratchet above would also pass on a detector
+	 * that recognizes nothing, which is the failure mode that lets a static ladder ship unnoticed.
+	 */
+	it("recognizes a static ladder and does not mistake verbosity for one", () => {
+		expect(isEffortLadder([...CONFIGURED_THINKING_LEVELS].map(value => ({ value })))).toBe(true);
+		expect(isEffortLadder([{ value: INHERIT_EFFORT_OPTION_VALUE }, { value: ThinkingLevel.High }])).toBe(true);
+		expect(isEffortLadder([{ value: "low" }, { value: "medium" }, { value: "high" }])).toBe(false);
+		expect(isEffortLadder([{ value: "dark" }, { value: "light" }])).toBe(false);
+	});
+
+	it("still finds the effort rows it is guarding", () => {
+		// Without this the suite above passes on a schema with no effort rows at all,
+		// which is the green-by-luck failure it is meant to avoid.
+		const runtimeRows = Object.keys(SETTINGS_SCHEMA).filter(
+			path => isSettingPath(path) && getUi(path)?.options === "runtime",
+		);
+
+		expect(runtimeRows).toContain("subagent.thinkingLevel");
+	});
+
+	it("narrows the effort rows the selector builds to the model in scope", () => {
+		invalidateSettingDefsCache();
+		const def = getSettingsForTab("subagents").find(entry => entry.path === "subagent.thinkingLevel");
+		expect(def?.type).toBe("submenu");
+		// The def itself ships no options; the selector fills them from the model.
+		expect(def && "options" in def ? def.options : undefined).toEqual([]);
+
+		const noEffort = getBundledModel("cursor", "composer-1.5");
+		expect(configuredThinkingLevelOptions({ model: noEffort }).map(option => option.value)).toEqual([
+			INHERIT_EFFORT_OPTION_VALUE,
+		]);
 	});
 });
 
@@ -635,13 +801,12 @@ describe("subagent effort choices", () => {
 	});
 
 	/**
-	 * The blanket setting has no model and never will: it applies to whatever
-	 * model each subagent ends up on, and the level is clamped against that row
-	 * at use. So the model-less picker offers inherit plus the whole vocabulary.
-	 * An empty ladder here is the regression `any-model-effort-is-settable`
-	 * guards on the sibling `defaultEffort` `*` row: with only the inherit
-	 * sentinel left, every pick lands on it and deletes the value instead of
-	 * setting one.
+	 * No model in scope is the one case where the whole vocabulary is right: the
+	 * caller does not know which row the level will be clamped against, so
+	 * narrowing would hide levels that are legal on the model actually used. An
+	 * empty ladder here is the regression `any-model-effort-is-settable` guards on
+	 * the sibling `defaultEffort` `*` row: with only the inherit sentinel left,
+	 * every pick lands on it and deletes the value instead of setting one.
 	 */
 	it("offers inherit plus the whole vocabulary when no model is in scope", () => {
 		const options = configuredThinkingLevelOptions();

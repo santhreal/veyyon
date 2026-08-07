@@ -32,6 +32,7 @@ import type { ModelRegistry } from "../../config/model-registry";
 import {
 	extractExplicitThinkingSelector,
 	normalizeModelPatternList,
+	resolveConfiguredModelPatterns,
 	resolveModelRoleValue,
 } from "../../config/model-resolver";
 import {
@@ -72,12 +73,7 @@ import {
 	subagentSettingsFor,
 } from "../../task/subagent-settings";
 import type { AgentDefinition } from "../../task/types";
-import {
-	AUTO_THINKING,
-	type ConfiguredThinkingLevel,
-	configuredThinkingLevelOptions,
-	hasConfigurableThinkingEffort,
-} from "../../thinking";
+import { configuredThinkingLevelOptions, hasConfigurableThinkingEffort } from "../../thinking";
 import { getTabBarTheme } from "../shared";
 import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
 import {
@@ -100,7 +96,13 @@ import {
 import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
 import { RollbackPanelComponent } from "./rollback-panel";
-import { DEFAULT_MODEL_SETTING_ID, getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
+import {
+	DEFAULT_MODEL_SETTING_ID,
+	getSettingDef,
+	getSettingsForTab,
+	type OptionList,
+	type SettingDef,
+} from "./settings-defs";
 import { getPreset } from "./status-line/presets";
 
 /**
@@ -1202,19 +1204,23 @@ class RulesSubmenu extends Container {
  * {@link ADD_EFFORT_ROW}: an agent may legitimately be named `model`.
  */
 const AGENT_ROW_OFFERED = "\\u0000agent-offered";
-const AGENT_ROW_MODEL = "\\u0000agent-model";
-const AGENT_ROW_EFFORT = "\\u0000agent-effort";
 const AGENT_ROW_RECURSION = "\\u0000agent-recursion";
 const AGENT_ROW_RESET = "\\u0000agent-reset";
 
 /**
  * The `subagent.agents` table: the discovered agents, each with its offered
- * state, its model and its effort.
+ * state and how deeply it may spawn.
  *
  * Every answer comes from `task/subagent-settings.ts` — the enable default, the
  * state wording, the model precedence and the layer that decided it — so this and
  * `/agents` cannot describe the same row differently. It edits settings rows only;
  * writing an agent FILE stays in `/agents`, which is why the footer points there.
+ *
+ * It does NOT edit what an agent runs. A per-agent model and effort used to be
+ * editable here, above the blanket subagent settings in the resolver, so this
+ * screen quietly outranked Subagent Model and the two screens showed different
+ * answers for the same agent. Model and effort are now decided in one place; this
+ * screen SHOWS what each lane resolves to, and names the setting that decided it.
  *
  * The list is discovered rather than read off the stored table: a row exists only
  * once something is overridden, so a table-driven list would be empty on a stock
@@ -1228,8 +1234,6 @@ class SubagentAgentsSubmenu extends Container {
 
 	constructor(
 		private readonly cwd: string,
-		private readonly models: ReadonlyArray<Model>,
-		private readonly registry: ModelRegistry,
 		/** The session's live model, so an inheriting row shows what it will actually run. */
 		private readonly activeModelPattern: string | undefined,
 		private readonly onChange: () => void,
@@ -1274,8 +1278,6 @@ class SubagentAgentsSubmenu extends Container {
 		const table = this.#table();
 		const cleaned: SubagentAgentSettings = {};
 		if (next.enabled !== undefined) cleaned.enabled = next.enabled;
-		if (next.model?.trim()) cleaned.model = next.model.trim();
-		if (next.thinkingLevel?.trim()) cleaned.thinkingLevel = next.thinkingLevel.trim();
 		if (next.maxNestedSpawnDepth !== undefined) cleaned.maxNestedSpawnDepth = next.maxNestedSpawnDepth;
 		if (Object.keys(cleaned).length === 0) delete table[name];
 		else table[name] = cleaned;
@@ -1307,6 +1309,32 @@ class SubagentAgentsSubmenu extends Container {
 			: `${summary} ${theme.fg("dim", `· ${subagentModelSourceLabel(resolved.source, agent.name)}`)}`;
 	}
 
+	/**
+	 * What this lane will actually run, as one read-only line: the resolved model
+	 * with the layer that chose it, plus the effort resolved on its own axis. Both
+	 * axes are decided for every subagent at once, so this screen reports them and
+	 * edits neither.
+	 */
+	#runsSummary(agent: AgentDefinition): string {
+		const model = this.#modelSummary(agent);
+		const head = resolveSubagentModel({
+			settings,
+			agentName: agent.name,
+			agentModel: agent.model,
+			activeModelPattern: this.activeModelPattern,
+		}).patterns[0];
+		// A `:level` suffix on the pattern already prints inside the model summary,
+		// and it outranks every effort layer, so printing a layer's answer beside it
+		// would show two efforts for one agent.
+		if (head && extractExplicitThinkingSelector(head, settings) !== undefined) return model;
+		const effort = resolveSubagentThinkingLevel({
+			settings,
+			agentName: agent.name,
+			agentThinkingLevel: agent.thinkingLevel,
+		});
+		return `${model} ${theme.fg("dim", `· ${effort ?? "inherited"} effort`)}`;
+	}
+
 	#recursionDepthLabel(value: number): string {
 		const option = SUBAGENT_RECURSION_DEPTH_OPTIONS.find(candidate => Number(candidate.value) === value);
 		return option?.label ?? `${value} nested levels`;
@@ -1318,7 +1346,10 @@ class SubagentAgentsSubmenu extends Container {
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(
-				theme.fg("muted", "Which agent types this session offers, and what each one runs. A blank model inherits."),
+				theme.fg(
+					"muted",
+					"Which agent types this session offers, and what each one runs. Model and effort come from the Models settings below.",
+				),
 				0,
 				0,
 			),
@@ -1409,14 +1440,18 @@ class SubagentAgentsSubmenu extends Container {
 			return;
 		}
 		const row = this.#row(name);
-		const resolvedEffort = resolveSubagentThinkingLevel({ settings, agentName: name });
 
 		this.clear();
 		this.addChild(new Text(theme.bold(theme.fg("accent", `Agent: ${name}`)), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("muted", agent.description || `${agent.source} agent`), 0, 0));
 		this.addChild(new Spacer(1));
-
+		// What this lane runs, as a fact rather than a control. The model and the
+		// effort are one decision made for every subagent at once, so editing them
+		// from here would be a second writer for a value this screen does not own.
+		this.addChild(new Text(`  ${theme.fg("muted", "Runs")} ${this.#runsSummary(agent)}`, 0, 0));
+		this.addChild(new Text(theme.fg("dim", "  Change it in Models · Subagent Model and Subagent Effort"), 0, 0));
+		this.addChild(new Spacer(1));
 		const items: SelectItem[] = [
 			{
 				value: AGENT_ROW_OFFERED,
@@ -1427,14 +1462,6 @@ class SubagentAgentsSubmenu extends Container {
 				description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, row.enabled)]}${
 					isSubagentEnableDefaulted(row.enabled) ? theme.fg("dim", " (default)") : ""
 				}`,
-			},
-			{ value: AGENT_ROW_MODEL, label: "Model", description: this.#modelSummary(agent) },
-			{
-				value: AGENT_ROW_EFFORT,
-				label: "Effort",
-				description: row.thinkingLevel?.trim()
-					? row.thinkingLevel.trim()
-					: theme.fg("dim", `inherit${resolvedEffort ? ` · ${resolvedEffort}` : ""}`),
 			},
 			{
 				value: AGENT_ROW_RECURSION,
@@ -1463,12 +1490,6 @@ class SubagentAgentsSubmenu extends Container {
 					this.#writeRow(name, { ...row, enabled: nextSubagentEnableValue(agent, row.enabled) });
 					this.#showAgentEditor(name);
 					break;
-				case AGENT_ROW_MODEL:
-					this.#showAgentModelPicker(name);
-					break;
-				case AGENT_ROW_EFFORT:
-					this.#showAgentEffortPicker(name);
-					break;
 				case AGENT_ROW_RECURSION:
 					this.#showAgentRecursionPicker(name);
 					break;
@@ -1486,70 +1507,6 @@ class SubagentAgentsSubmenu extends Container {
 		this.addChild(this.#selectList);
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("dim", "  Enter to change · Esc to go back"), 0, 0));
-	}
-
-	#showAgentModelPicker(name: string): void {
-		const agent = this.#agent(name);
-		if (!agent) return;
-		this.clear();
-		this.#selectList = undefined;
-		// What this agent would run with no row of its own, so clearing the override
-		// says where the value comes from next instead of just "inherit".
-		const withoutRow = resolveSubagentModel({
-			settings,
-			agentName: name,
-			agentModel: agent.model,
-			activeModelPattern: this.activeModelPattern,
-			ignoreAgentRow: true,
-		});
-		const cleared = withoutRow.patterns[0] ? formatSelectorSummary(withoutRow.patterns[0]) : "the session model";
-		this.addChild(
-			new ModelSelectorPanel(
-				settings,
-				this.registry,
-				this.models,
-				{
-					title: `${name} model`,
-					description: `Model for the \`${name}\` subagent. Del or the (inherit) row clears it, leaving ${cleared} (${subagentModelSourceLabel(withoutRow.source, name)}).`,
-					currentSelector: barePickerSelector(this.#row(name).model?.trim(), this.models as Model<Api>[]),
-					allowClear: true,
-				},
-				{
-					onPick: (model, selector) => {
-						if (!hasConfigurableThinkingEffort(model)) {
-							this.#persistAgentModel(name, selector);
-							return;
-						}
-						this.#selectList = renderEffortStep(
-							this,
-							selector,
-							model,
-							value => this.#persistAgentModel(name, value),
-							() => {
-								this.#showAgentModelPicker(name);
-								this.requestRender?.();
-							},
-						);
-						this.requestRender?.();
-					},
-					onClear: () => {
-						this.#writeRow(name, { ...this.#row(name), model: undefined });
-						this.#showAgentEditor(name);
-						this.requestRender?.();
-					},
-					onCancel: () => {
-						this.#showAgentEditor(name);
-						this.requestRender?.();
-					},
-				},
-			),
-		);
-	}
-
-	#persistAgentModel(name: string, value: string): void {
-		this.#writeRow(name, { ...this.#row(name), model: value });
-		this.#showAgentEditor(name);
-		this.requestRender?.();
 	}
 
 	#showAgentRecursionPicker(name: string): void {
@@ -1587,55 +1544,6 @@ class SubagentAgentsSubmenu extends Container {
 				...this.#row(name),
 				maxNestedSpawnDepth: item.value === "" ? undefined : Number(item.value),
 			});
-			this.#showAgentEditor(name);
-			this.requestRender?.();
-		};
-		this.#selectList.onCancel = () => {
-			this.#showAgentEditor(name);
-			this.requestRender?.();
-		};
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to choose · Esc to go back"), 0, 0));
-	}
-
-	/**
-	 * Per-agent effort, with an inherit row: a per-agent effort the operator cannot
-	 * clear from the UI is a value they can only undo by editing the file.
-	 */
-	#showAgentEffortPicker(name: string): void {
-		this.clear();
-		this.addChild(new Text(theme.bold(theme.fg("accent", `${name} effort`)), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg("muted", "Effort this subagent runs at. Inherit follows Subagent Effort, then the session."),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-		const resolvedModel = resolveSubagentModel({
-			settings,
-			agentName: name,
-			agentModel: this.#agent(name)?.model,
-			activeModelPattern: this.activeModelPattern,
-		});
-		const bareSelector = barePickerSelector(resolvedModel.patterns[0], this.models as Model<Api>[]);
-		const model = this.models.find(candidate => `${candidate.provider}/${candidate.id}` === bareSelector);
-
-		// The same rows as the blanket Subagent Effort setting, from the one effort
-		// vocabulary — a second list here is how two surfaces come to disagree about
-		// which levels exist. Only the inherit row's wording differs, because here it
-		// falls back to that blanket setting first.
-		const items: SelectItem[] = configuredThinkingLevelOptions({
-			model,
-			inheritLabel: "Inherit",
-			inheritDescription: "Follow Subagent Effort, then the session",
-		}).map(option => ({ ...option }));
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
-		this.#selectList.onSelect = item => {
-			this.#writeRow(name, { ...this.#row(name), thinkingLevel: item.value || undefined });
 			this.#showAgentEditor(name);
 			this.requestRender?.();
 		};
@@ -2942,8 +2850,11 @@ export class SettingsSelectorComponent implements Component {
 					description: def.description,
 					currentValue: this.#getSubmenuCurrentValue(def.path, currentValue),
 					// The stored value is often not the readable one: a duration setting keeps
-					// milliseconds, and the option list is where the words for them live.
-					labelForValue: value => def.options.find(option => option.value === value)?.label ?? value,
+					// milliseconds, and the option list is where the words for them live. The
+					// list comes from {@link #submenuOptions} rather than `def.options`, so a
+					// row whose choices only the runtime knows labels its value with the same
+					// rows the picker shows instead of printing the raw stored string.
+					labelForValue: value => this.#submenuOptions(def).find(option => option.value === value)?.label ?? value,
 					submenu: (cv, done) => this.#createSubmenu(def, cv, done),
 					changed,
 				};
@@ -3110,27 +3021,38 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * Create a submenu for a submenu-type setting.
+	 * The model whose effort ladder `subagent.thinkingLevel` must be narrowed to:
+	 * the head of the subagent model chain when one is configured, and the session's
+	 * own model when it is not, because unset means every subagent inherits it.
+	 *
+	 * Undefined when the chain names a model this session has no catalog entry for
+	 * (an unauthenticated provider, a pattern that matches nothing). The picker then
+	 * offers the full vocabulary, which is the honest answer: the level is stored and
+	 * clamped later against whatever model does run.
 	 */
-	#createSubmenu(
-		def: SettingDef & { type: "submenu" },
-		currentValue: string,
-		done: (value?: string) => void,
-	): Container {
-		let options = def.options;
+	#subagentEffortModel(): Model | undefined {
+		const models = this.context.availableModels;
+		const head = resolveConfiguredModelPatterns(settings.get("subagent.model"), settings)[0];
+		if (!head) return this.context.model;
+		if (!models) return undefined;
+		const bare = barePickerSelector(head, models as Model<Api>[]);
+		return models.find(candidate => `${candidate.provider}/${candidate.id}` === bare);
+	}
 
-		// Special case: inject runtime options for thinking level
-		if (def.path === "defaultThinkingLevel") {
-			// Prepend `auto`; the rest are the model's runtime-supported efforts.
-			const levels: ConfiguredThinkingLevel[] = [AUTO_THINKING, ...this.context.availableThinkingLevels];
-			options = levels.map(level => {
-				const baseOpt = options.find(o => o.value === level);
-				return baseOpt || { value: level, label: level };
-			});
-		} else if (def.path === "theme.dark" || def.path === "theme.light") {
-			options = this.context.availableThemes.map(t => ({ value: t, label: t }));
-		} else if (def.path === "personality") {
-			options = [
+	/**
+	 * The rows a submenu setting offers, including the ones only the runtime knows.
+	 *
+	 * ONE owner, because the picker and the row's own value label each used to
+	 * decide: a runtime-populated row (a theme, a personality) labelled its value
+	 * from an empty schema list and printed the raw stored string, while the picker
+	 * showed the real rows.
+	 */
+	#submenuOptions(def: SettingDef & { type: "submenu" }): OptionList {
+		if (def.path === "theme.dark" || def.path === "theme.light") {
+			return this.context.availableThemes.map(name => ({ value: name, label: name }));
+		}
+		if (def.path === "personality") {
+			return [
 				...this.context.availablePersonalities.map(name => ({
 					value: name,
 					label: name.charAt(0).toUpperCase() + name.slice(1),
@@ -3139,6 +3061,37 @@ export class SettingsSelectorComponent implements Component {
 				{ value: NONE_PERSONALITY, label: "None", description: "Omit the personality block entirely" },
 			];
 		}
+		// Effort is narrowed to what the model these subagents run actually accepts,
+		// from the same helper `/effort` and every model picker use. A fixed ladder
+		// here offered `xhigh` on models with no effort field at all, and `off` on
+		// models that route effort through sibling model ids — picks that stored a
+		// value the resolver then had to clamp or ignore.
+		if (def.path === "subagent.thinkingLevel") {
+			return configuredThinkingLevelOptions({
+				model: this.#subagentEffortModel(),
+				inheritLabel: "Inherit",
+				inheritDescription: "Follow the session's effort",
+			}).map(option => ({ ...option }));
+		}
+		return def.options;
+	}
+
+	/**
+	 * Create a submenu for a submenu-type setting.
+	 */
+	#createSubmenu(
+		def: SettingDef & { type: "submenu" },
+		currentValue: string,
+		done: (value?: string) => void,
+	): Container {
+		const options = this.#submenuOptions(def);
+		// A row whose only choice is "inherit" has nothing to pick, and saying why
+		// beats a one-row list: this model decides effort through its model id, so
+		// there is no effort field for this setting to fill.
+		const description =
+			def.path === "subagent.thinkingLevel" && options.length <= 1
+				? `${def.description} This model exposes no selectable effort, so only Inherit applies.`
+				: def.description;
 
 		// Preview handlers
 		let onPreview: ((value: string) => void | Promise<void>) | undefined;
@@ -3181,7 +3134,7 @@ export class SettingsSelectorComponent implements Component {
 
 		return new SelectSubmenu(
 			def.label,
-			def.description,
+			description,
 			options,
 			currentValue,
 			value => {
@@ -3377,30 +3330,21 @@ export class SettingsSelectorComponent implements Component {
 		const rows = Object.values(table);
 		if (rows.length === 0) return "defaults";
 		const blocked = rows.filter(row => row?.enabled === false).length;
-		const pinned = rows.filter(row => row?.model?.trim()).length;
 		const parts = [`${rows.length} configured`];
 		if (blocked > 0) parts.push(`${blocked} blocked`);
-		if (pinned > 0) parts.push(`${pinned} pinned`);
 		return parts.join(", ");
 	}
 
+	/**
+	 * The Agents table needs no model catalog: it decides which lanes are offered
+	 * and how deeply they may spawn, and the model it SHOWS is a resolved settings
+	 * value rather than a pick from the catalog. It used to refuse to open at all
+	 * without a registry, because it carried model and effort pickers.
+	 */
 	#createSubagentAgentsInput(done: (value?: string) => void): Container {
-		const ctx = this.#requireModelPickerContext();
-		if (!ctx) {
-			const fallback = new Container();
-			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
-			fallback.addChild(new Spacer(1));
-			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
-			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
-				if (matchesKey(data, "escape") || data === "\x1b") done();
-			};
-			return fallback;
-		}
 		const active = this.context.model ? `${this.context.model.provider}/${this.context.model.id}` : undefined;
 		return new SubagentAgentsSubmenu(
 			this.context.cwd,
-			ctx.models,
-			ctx.registry,
 			active,
 			() => {
 				this.callbacks.onChange("subagent.agents", settings.get("subagent.agents"));

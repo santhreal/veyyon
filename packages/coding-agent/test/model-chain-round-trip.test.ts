@@ -97,19 +97,19 @@ describe("model chain encoding", () => {
 	});
 
 	/**
-	 * Precedence is unchanged by chains: a per-agent row still replaces the
-	 * blanket list wholesale rather than appending to it. Merging the two would
-	 * mean an agent you pinned to one model could still run on the blanket
-	 * fallbacks, which is not what pinning means.
+	 * A retired per-agent row cannot truncate the chain. It used to replace the
+	 * blanket list wholesale, so a leftover single-model row on an old config would
+	 * quietly strip every fallback the operator configured — the exact failure this
+	 * suite exists to catch, arriving through a field nothing is supposed to read.
 	 */
-	it("a per-agent chain replaces the blanket chain rather than extending it", () => {
+	it("ignores a retired per-agent model row and keeps the blanket chain", () => {
 		const settings = Settings.isolated({
 			"subagent.model": "anthropic/opus,anthropic/sonnet",
 			"subagent.agents": { reviewer: { model: "openai/gpt-5" } },
 		} as Parameters<typeof Settings.isolated>[0]);
 		const resolved = resolveSubagentModel({ settings, agentName: "reviewer", agentModel: undefined });
-		expect(resolved.source).toBe("agent");
-		expect(resolved.patterns).toEqual(["openai/gpt-5"]);
+		expect(resolved.source).toBe("blanket");
+		expect(resolved.patterns).toEqual(["anthropic/opus", "anthropic/sonnet"]);
 	});
 });
 
