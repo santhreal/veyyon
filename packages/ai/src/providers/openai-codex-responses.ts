@@ -19,6 +19,18 @@ import { asRecord, errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
+import {
+	beginCacheTrackedRequest,
+	type CacheEnforcement,
+	CacheRejectedError,
+	type CacheTrackedRequest,
+	type CacheTrackerState,
+	createCacheTrackerState,
+	describeCacheVerdict,
+	recordCacheOutcome,
+	resolveCacheEnforcement,
+	takePendingCacheFailure,
+} from "../cache";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -46,6 +58,7 @@ import {
 	getOpenAIResponsesHistoryItems,
 	getOpenAIResponsesHistoryPayload,
 	normalizeSystemPrompts,
+	resolveCacheRetention,
 	sanitizeOpenAIResponsesAssistantFallbackItemsForReplay,
 	sanitizeOpenAIResponsesAssistantHistoryItemsForReplay,
 } from "../utils";
@@ -397,6 +410,15 @@ interface CodexProviderSessionState extends ProviderSessionState {
 	webSocketSessions: Map<string, CodexWebSocketSessionState>;
 	webSocketPublicToPrivate: Map<string, string>;
 	metadataSessions: Map<string, CodexMetadataSessionState>;
+	/**
+	 * Prompt-cache observations, per cache identity.
+	 *
+	 * Codex carries the bulk of this repo's recorded prompt-cache loss and had no
+	 * observer at all: the checker was wired into `providers/anthropic.ts` and
+	 * nowhere else, so on this surface the enforcement level resolved and then
+	 * governed nothing.
+	 */
+	cacheTracker: CacheTrackerState;
 }
 
 /** Request classification encoded in Codex turn metadata. */
@@ -924,6 +946,7 @@ function createCodexProviderSessionState(): CodexProviderSessionState {
 		webSocketSessions: new Map(),
 		webSocketPublicToPrivate: new Map(),
 		metadataSessions: new Map(),
+		cacheTracker: createCacheTrackerState(),
 		close: () => {
 			for (const session of state.webSocketSessions.values()) {
 				session.connection?.close("session_disposed");
@@ -931,6 +954,7 @@ function createCodexProviderSessionState(): CodexProviderSessionState {
 			state.webSocketSessions.clear();
 			state.webSocketPublicToPrivate.clear();
 			state.metadataSessions.clear();
+			state.cacheTracker = createCacheTrackerState();
 		},
 	};
 	return state;
@@ -2500,10 +2524,39 @@ const streamOpenAICodexResponsesOnce = (
 		};
 		const requestSetup = createRequestSetup(options);
 		let processingContext: CodexStreamProcessor | undefined;
+		const cacheEnforcement: CacheEnforcement = resolveCacheEnforcement(options?.cacheEnforcement);
+		const cacheTracker: CacheTrackerState | undefined =
+			cacheEnforcement === "off"
+				? undefined
+				: getCodexProviderSessionState(options?.providerSessionState)?.cacheTracker;
+		const cacheKey = normalizeOpenAIPromptCacheKey(options?.promptCacheKey ?? options?.sessionId);
+		let cacheTracked: CacheTrackedRequest | undefined;
 		let requestContext: CodexRequestContext | undefined;
 
 		try {
 			requestContext = await buildCodexRequestContext(model, context, options, output);
+			// Anchors are read off the SERIALIZED body, not off the options, for the
+			// same reason the Anthropic path counts markers after placement: an intent
+			// to cache that never reached the wire is exactly the defect class this
+			// module exists to catch. On this surface the only anchor is
+			// `prompt_cache_key`; Codex rejects `prompt_cache_breakpoint` outright
+			// (see `resolveOpenAIPromptCachePolicy`), so one key means one anchor.
+			//
+			// The latched failure from a previous turn is raised here, after the body
+			// is built but before the request is opened, so nothing is paid for twice.
+			if (cacheTracker) {
+				const pending = takePendingCacheFailure(cacheTracker, cacheKey);
+				if (pending) throw new CacheRejectedError(pending, model.provider, model.id);
+				cacheTracked = beginCacheTrackedRequest(cacheTracker, {
+					anchors: typeof requestContext.transformedBody.prompt_cache_key === "string" ? 1 : 0,
+					retention: resolveCacheRetention(options?.cacheRetention),
+					// The Responses family reports `cached_tokens` and nothing about
+					// writes, so a cold first turn is indistinguishable from an ignored
+					// key unless this identity has read before.
+					reportsCacheWrites: false,
+					...(cacheKey === undefined ? {} : { cacheKey }),
+				});
+			}
 			const initialTransport = await openInitialCodexEventStream(model, options, requestSetup, requestContext);
 			const runtime = new CodexStreamRuntime({
 				...initialTransport,
@@ -2527,6 +2580,26 @@ const streamOpenAICodexResponsesOnce = (
 			const completion = await processingContext.process();
 			processingContext.firstTokenTime = completion.firstTokenTime;
 			const message = processingContext.finalize(completion);
+			// Judged only on a completed, finalized turn: `finalize` is where usage
+			// becomes final, and judging a truncated stream would report a cache
+			// defect for a dropped connection.
+			if (cacheTracker && cacheTracked) {
+				const { verdict, decision } = recordCacheOutcome(
+					cacheTracker,
+					cacheTracked,
+					message.usage,
+					cacheEnforcement,
+				);
+				if (decision.report) {
+					logger.warn(`${model.provider}: ${describeCacheVerdict(verdict)}`, {
+						model: model.id,
+						provider: model.provider,
+						verdict: verdict.kind,
+						anchors: cacheTracked.expectation.anchors,
+						willFailNextRequest: decision.failNext,
+					});
+				}
+			}
 			stream.push({ type: "done", reason: message.stopReason as "stop" | "length" | "toolUse", message });
 			stream.end();
 		} catch (error) {

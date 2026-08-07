@@ -38,12 +38,13 @@ export type { CacheEnforcement };
  * `VEYYON_CACHE_ENFORCEMENT=error`, or turn on **Settings → Context → Block On
  * Cache Rejection**.
  *
- * ANTHROPIC ONLY, and that is a gap rather than a design. `providers/anthropic.ts`
- * is the single production importer of this module, so on Bedrock, on OpenAI
- * Responses and on the OpenAI-compatible chat-completions path (OpenRouter
- * Claude) the enforcement level resolves and then governs nothing. Two of the
- * four defects that motivated this subsystem, listed in
- * `test/cache-verdict.test.ts`, happened on providers it does not observe.
+ * COVERAGE, which is still partial. `providers/anthropic.ts` and
+ * `providers/openai-codex-responses.ts` are the production importers. Those two
+ * carry the spend, but on Bedrock, on plain OpenAI Responses, on Gemini and on
+ * the OpenAI-compatible chat-completions path (OpenRouter Claude) the
+ * enforcement level still resolves and then governs nothing. Two of the four
+ * defects that motivated this subsystem, listed in `test/cache-verdict.test.ts`,
+ * happened on providers it does not observe.
  */
 export function resolveCacheEnforcement(explicit?: CacheEnforcement): CacheEnforcement {
 	if (explicit) return explicit;
@@ -81,8 +82,9 @@ export class CacheRejectedError extends Error {
 export function isEnforceableFailure(verdict: CacheVerdict): boolean {
 	// `rejected` is the only provable one: we asked, it was large enough, the
 	// window was open, and the provider reported nothing either way. `degraded`,
-	// `invalidated` and `unverifiable` all have innocent explanations (a moving
-	// window, an edited transcript, a provider that under-reports), so failing on
+	// `invalidated`, `stalled` and `unverifiable` all have innocent explanations
+	// (a moving window, an edited transcript, provider-side routing to a shard
+	// that lacks the newer entry, a provider that under-reports), so failing on
 	// them would halt working sessions.
 	return verdict.kind === "rejected";
 }

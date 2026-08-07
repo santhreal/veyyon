@@ -38,6 +38,13 @@ export interface CacheKeyObservations {
 	lastRequestAtMs?: number;
 	/** Cache tokens the previous request on this key read. */
 	lastReadTokens?: number;
+	/**
+	 * Total prompt tokens the previous request on this key was charged for.
+	 * Remembered alongside the read so a cache that has stopped growing is
+	 * distinguishable from one that is keeping up: both report an unchanged read,
+	 * and only the prompt tells them apart.
+	 */
+	lastTotalInputTokens?: number;
 	/** A rejection observed on the previous request, to be raised before the next. */
 	pendingFailure?: CacheVerdict;
 }
@@ -124,6 +131,9 @@ export function beginCacheTrackedRequest(
 			? {}
 			: { msSincePreviousRequest: nowMs - observations.lastRequestAtMs }),
 		...(observations.lastReadTokens === undefined ? {} : { previousReadTokens: observations.lastReadTokens }),
+		...(observations.lastTotalInputTokens === undefined
+			? {}
+			: { previousTotalInputTokens: observations.lastTotalInputTokens }),
 		...(facts.minCacheableTokens === undefined ? {} : { minCacheableTokens: facts.minCacheableTokens }),
 	};
 	observations.requests += 1;
@@ -170,6 +180,8 @@ export function recordCacheOutcome(
 	const observations = state.keys.get(tracked.key);
 	if (observations) {
 		observations.lastReadTokens = Math.max(0, usage.cacheRead || 0);
+		observations.lastTotalInputTokens =
+			Math.max(0, usage.input || 0) + Math.max(0, usage.cacheRead || 0) + Math.max(0, usage.cacheWrite || 0);
 		if (decision.failNext) observations.pendingFailure = verdict;
 	}
 	return { verdict, decision };
