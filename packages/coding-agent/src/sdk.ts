@@ -3324,10 +3324,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		for (const tool of toolRegistry.values()) {
 			toolRegistry.set(tool.name, new ExtensionToolWrapper(tool, extensionRunner));
 		}
-		if (model?.provider === "cursor") {
-			toolRegistry.delete(TOOL.edit);
-			builtInRegistryToolNames.delete(TOOL.edit);
-		}
 
 		// `resolve` is hidden but must stay in the registry whenever any code path can invoke it:
 		// either a deferrable tool stages a preview action, or plan mode installs a standing handler
