@@ -16834,6 +16834,15 @@ export class AgentSession {
 
 	async #maybeRestoreRetryFallbackPrimary(): Promise<void> {
 		if (!this.#activeRetryFallback) return;
+		if (this.#retryAttempt > 0) return;
+		// Restoring the primary means "the fallback is no longer needed", which is
+		// only ever true between retry sequences, never inside one. The cooldown
+		// that guards this is shorter than a retry budget takes to burn
+		// (SERVER_ERROR suppresses for 20s; ten retries capped at
+		// RETRY_BACKOFF_MAX_DELAY_MS run ~55s), so without this check the primary
+		// came back mid-sequence, the next failure hopped away again on a budget
+		// freshly reset to 1, and the pair cycled for as long as the fault lasted.
+		// Every lap re-sent the whole prompt at full input rate.
 		if (this.#activeRetryFallback.pinned) return;
 		if (this.#getRetryFallbackRevertPolicy() !== "cooldown-expiry") return;
 

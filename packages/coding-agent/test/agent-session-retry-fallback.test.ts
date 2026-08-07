@@ -734,7 +734,7 @@ describe("AgentSession retry fallback", () => {
 		const settings = Settings.isolated({
 			"compaction.enabled": false,
 			"retry.baseDelayMs": 5,
-			"retry.maxRetries": 1,
+			"retry.maxRetries": 4,
 			"retry.fallbackChains": {
 				default: [`${fallbackModel.provider}/${fallbackModel.id}`],
 			},
@@ -2213,5 +2213,75 @@ describe("AgentSession retry fallback", () => {
 			throw new Error(`Expected text content block, got ${contentBlock.type}`);
 		}
 		expect(contentBlock.text).toBe("Recovered after provider finish_reason error");
+	});
+
+	it("does not restore the primary in the middle of a retry sequence", async () => {
+		const primaryModel = getBundledModel("anthropic", "claude-sonnet-4-5");
+		const fallbackModel = getBundledModel("openai", "gpt-4o-mini");
+		if (!primaryModel || !fallbackModel) {
+			throw new Error("Expected bundled test models to exist");
+		}
+
+		const requestedModels: string[] = [];
+		const mock = createMockModel();
+		// The clock only moves when a request is actually made, so the advance
+		// below models a stalled provider rather than a busy loop.
+		let now = Date.now();
+		// Hard cap, so a regression fails this assertion instead of hanging the
+		// suite: the defect this covers is an unbounded loop.
+		const CALL_CAP = 24;
+		const agent = new Agent({
+			getApiKey: model => `${model.provider}-test-key`,
+			initialState: {
+				model: primaryModel,
+				systemPrompt: ["Test"],
+				tools: [],
+				messages: [],
+			},
+			streamFn: (model, context, options) => {
+				requestedModels.push(`${model.provider}/${model.id}`);
+				// Past the cap, fail with something non-retryable so a regression
+				// terminates and reports rather than spinning forever.
+				const failure = requestedModels.length > CALL_CAP ? "401 unauthorized" : "500 internal server error";
+				now += 25_000;
+				mock.push({ throw: failure });
+				return mock.stream(model, context, options);
+			},
+		});
+
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"retry.baseDelayMs": 1,
+			"retry.maxRetries": 4,
+			"retry.fallbackChains": {
+				default: [`${fallbackModel.provider}/${fallbackModel.id}`],
+			},
+			"retry.fallbackRevertPolicy": "cooldown-expiry",
+		});
+		settings.setModelRole("default", `${primaryModel.provider}/${primaryModel.id}`);
+
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry,
+		});
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+
+		await session.prompt("Every model in the chain is failing");
+		await session.waitForIdle();
+
+		// A SERVER_ERROR suppresses the primary for 20s, which is less than a spent
+		// retry budget takes to burn. Restoring the primary mid-sequence handed the
+		// next failure a budget freshly reset to 1, and the pair cycled for as long
+		// as the outage lasted, re-sending the whole prompt at full input rate every
+		// lap. The chain is walked once per turn; it does not loop back.
+		// Measured: without the guard this oscillates primary/fallback for 26 calls
+		// and is stopped only by CALL_CAP. With it, the chain hops once and the
+		// sequence burns out on the fallback in 5.
+		expect(requestedModels.length).toBeLessThan(CALL_CAP);
+		const firstFallback = requestedModels.indexOf(`${fallbackModel.provider}/${fallbackModel.id}`);
+		expect(firstFallback).toBeGreaterThanOrEqual(0);
+		expect(requestedModels.slice(firstFallback)).not.toContain(`${primaryModel.provider}/${primaryModel.id}`);
 	});
 });
