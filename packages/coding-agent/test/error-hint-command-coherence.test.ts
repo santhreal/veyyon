@@ -16,12 +16,17 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { BUILTIN_SLASH_COMMAND_RESERVED_NAMES } from "@veyyon/coding-agent/slash-commands/builtin-registry";
+import {
+	BUILTIN_SLASH_COMMAND_DEFS,
+	BUILTIN_SLASH_COMMAND_RESERVED_NAMES,
+} from "@veyyon/coding-agent/slash-commands/builtin-registry";
 
 const SESSION_SRC = path.join(import.meta.dir, "..", "src", "session", "agent-session.ts");
 
 describe("error-hint slash-command coherence", () => {
-	it("registers /thinking, the command the auto-thinking failure hint recommends", () => {
+	it("registers /effort, the command the auto-thinking failure hint recommends", () => {
+		expect(BUILTIN_SLASH_COMMAND_RESERVED_NAMES.has("effort")).toBe(true);
+		// The old spelling stays reserved as an alias, so no extension can shadow it.
 		expect(BUILTIN_SLASH_COMMAND_RESERVED_NAMES.has("thinking")).toBe(true);
 	});
 
@@ -38,6 +43,12 @@ describe("error-hint slash-command coherence", () => {
 		// The regression this locks: /think was recommended but never registered.
 		for (const name of recommended) {
 			expect(BUILTIN_SLASH_COMMAND_RESERVED_NAMES.has(name)).toBe(true);
+		}
+		// Name the primary, not an alias: a hint is the one place the canonical
+		// spelling is taught, so it must not drift to a rename's leftover.
+		const aliases = new Set(BUILTIN_SLASH_COMMAND_DEFS.flatMap(def => def.aliases ?? []));
+		for (const name of recommended) {
+			expect(aliases.has(name)).toBe(false);
 		}
 	});
 });

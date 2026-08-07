@@ -29,8 +29,8 @@ export function willCompactRemotely(session: {
  * The action part of the compaction loader label. A remote pass compacts on
  * the provider's side, so naming it ("openai remote compaction") keeps the
  * operator from reading a silent minute as a local summarizer grinding. The
- * caller asks `session.willCompactRemotely()`, the same predicate the engine
- * gates on, and adds its own reason prefix and cancel hint around this.
+ * caller passes the session to `willCompactRemotely()`, the admission half
+ * of the engine's gate, and adds its own reason prefix and cancel hint around this.
  */
 export function compactionActionLabel(isAuto: boolean, remote: boolean): string {
 	const base = isAuto ? "Auto-compacting context" : "Compacting context...";
