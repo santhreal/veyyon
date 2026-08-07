@@ -124,7 +124,7 @@ describe("a todo payload carrying items never silently reads", () => {
 
 	/**
 	 * The strongest single case, stated with exact values instead of predicates.
-	 * This is the operator's reported payload: a whole-board write that must LAND.
+	 * This is the failing payload: a whole-board write that must LAND.
 	 */
 	it("lands the whole-board write rather than echoing the previous board", async () => {
 		const { session, phases } = createSession(structuredClone(EXISTING));

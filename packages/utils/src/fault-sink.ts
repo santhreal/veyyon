@@ -106,7 +106,7 @@ export function faultSinkCount(): number {
  * A SINK THAT THROWS DOES NOT BREAK THE CALLER, AND DOES NOT BLOCK THE OTHER SINKS. These are
  * reported from inside filesystem helpers whose whole contract is to carry on, so a broken renderer
  * taking down a directory scan would turn a diagnostic into an outage. Each sink is called in its own
- * `try`, because one surface throwing must not turn every other operator's report into silence. The
+ * `try`, because one surface throwing must not turn every other report into silence. The
  * throw is itself recorded, since a sink that is quietly failing to deliver is the failure this file
  * exists to prevent, one level up.
  *

@@ -18,7 +18,7 @@ import { YAML } from "bun";
 /**
  * Issue #1022: when path-scoped `enabledModels`/`disabledProviders` are
  * configured, the default-model fallback ignores the path-scoped allow-list and
- * picks any provider with stored credentials. In the user's report a Haiku
+ * picks any provider with stored credentials. In the reported case a Haiku
  * model (anthropic) is selected even though the path enables only
  * `openai-codex`.
  */

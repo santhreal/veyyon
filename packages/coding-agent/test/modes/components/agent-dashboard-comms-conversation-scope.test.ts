@@ -10,7 +10,7 @@
  * `kind: "main"` with its own scope.
  *
  * Both directions are pinned, because each is a real defect:
- * - a stranger's exchange must not appear (the leak the operator asked about);
+ * - a stranger's exchange must not appear;
  * - and a line from THIS conversation whose agent has since been released must
  *   still appear. Filtering by who is in the registry right now got that
  *   backwards, dropping the last words of an agent released moments ago, which

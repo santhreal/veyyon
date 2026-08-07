@@ -1217,13 +1217,13 @@ describe("AskDialogComponent", () => {
 });
 
 /**
- * The living-status contract for the ask surface. When the agent asks the user
- * a question the whole terminal should read as "your turn": the shimmer flips to
+ * The living-status contract for the ask surface. When the agent asks the user a
+ * question the whole terminal should read as "your turn": the shimmer flips to
  * the `ask` state on open and back to rest on dispose, and the question text is
  * painted with the same theme token the living `ask` breath uses (not a second
  * hardcoded hue), so a rebrand still owns the one color. These lock the wiring
- * the user asked for — "it has a question that it asks, the terminal shimmers
- * green" — so it can never silently regress to a bland static prompt.
+ * the required behavior — so it can never silently regress to a bland static
+ * prompt.
  */
 describe("AskDialogComponent living-status wiring", () => {
 	// These assertions pin the exact bytes the `ask` token emits. `theme.fg` and

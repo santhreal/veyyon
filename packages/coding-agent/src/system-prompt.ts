@@ -394,8 +394,8 @@ export async function loadProjectContextFilesWithWarnings(
 	// ranked global highest while this sort put it lowest, and position won.
 	//
 	// The old comment already had the right instinct and applied it to only one pair: it said a
-	// user's standing PROFILE rules must not be silently outranked by whatever repository happens
-	// to be checked out. That reasoning is stronger for global, not weaker. A project file is
+	// profile instruction files must not be silently outranked by whatever repository happens to
+	// be checked out. That reasoning is stronger for global, not weaker. A project file is
 	// content checked into a repository the operator may not have written, so it is the lowest
 	// authority of the three and now renders in the weakest position.
 	//
@@ -740,14 +740,14 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const inlineToolDescriptors = providedInlineToolDescriptors ?? OMITTED_GATE_DEFAULTS.inlineToolDescriptors;
 	const resolvedCwd = cwd ?? getProjectDir();
 	const resolvedAgentDir = path.resolve(providedAgentDir ?? getAgentDir());
-	// Every agentConfiguration row derives from ONE dir, `resolvedAgentDir`, which is
-	// also the dir the profile context file was inlined from. Two of the five rows used
-	// to come from `getActiveProfileOrDefault()` / `getProfileRootDir()` instead, i.e. the
-	// process-booted profile: a session rooted in another agent dir was handed a
-	// "Profile AGENTS.md" path pointing at a DIFFERENT file than the one whose bytes were
-	// in its own prompt, so a model told to update the operator's standing rules edited
-	// the wrong profile. The agent dir is always `<config root>/profiles/<name>/agent`,
-	// so the profile name is its parent's basename.
+	// Every agentConfiguration row derives from ONE dir, `resolvedAgentDir`, which is also
+	// the dir the profile context file was inlined from. Two of the five rows used to come
+	// from `getActiveProfileOrDefault` / `getProfileRootDir` instead, i.e. the
+	// process-booted profile: a session rooted in another agent dir was handed a "Profile
+	// AGENTS.md" path pointing at a DIFFERENT file than the one whose bytes were in its
+	// own prompt, so a model told to update the instruction files edited the wrong
+	// profile. The agent dir is always `<config root>/profiles/<name>/agent`, so the
+	// profile name is its parent's basename.
 	const activeProfileName = path.basename(path.dirname(resolvedAgentDir));
 
 	const prepDefaults = {

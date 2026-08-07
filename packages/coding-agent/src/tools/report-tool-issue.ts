@@ -191,8 +191,8 @@ function resolvePushConfig(settings: Settings | undefined, forceUpload: boolean)
 	if (!forceUpload && !isAutoQaEnabled(settings)) return null;
 
 	// The profile toggle is the ordinary network boundary. The environment
-	// override exists for headless QA runs, while `forceUpload` is used only by
-	// the operator's explicit `veyyon grievances push` command.
+	// override exists for headless QA runs, while `forceUpload` is used only by an
+	// explicit `veyyon grievances push` command.
 	if (!forceUpload && settings?.get("dev.autoqaPush.enabled") !== true && !$flag("VEYYON_AUTO_QA_PUSH")) {
 		return null;
 	}

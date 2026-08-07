@@ -68,10 +68,10 @@ describe("UserMessageComponent prompt gutter", () => {
 	});
 
 	/** The OSC 133 prompt-zone markers are gone for good: terminals that paint
-	 * prompt zones (Ghostty class) drew them as an uncontrolled background
-	 * block over the message — the dark slab in operator screenshots
-	 * (2026-07-23). The markers existed for multiplexer prompt grouping, which
-	 * never justified a painted region veyyon does not own. */
+	 * prompt zones (Ghostty class) drew them as an uncontrolled background block
+	 * over the message — the dark slab (2026-07-23). The markers existed for
+	 * multiplexer prompt grouping, which never justified a painted region veyyon
+	 * does not own. */
 	it("emits no OSC 133 zone markers", () => {
 		const rendered = new UserMessageComponent("zoned").render(60);
 		for (const line of rendered) {

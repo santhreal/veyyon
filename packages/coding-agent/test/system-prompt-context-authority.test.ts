@@ -61,10 +61,10 @@ async function renderPrompt(cwd: string, agentDir: string, resolvedCustomPrompt?
  */
 describe("context-file authority", () => {
 	/**
-	 * THE OPERATOR'S REPORT, reproduced.
+	 * THE REGRESSION, reproduced.
 	 *
 	 * A repository's `AGENTS.md` said "do not use subagents for this repository".
-	 * The operator directly asked for subagents. The agent REFUSED, citing the
+	 * A direct request asked for subagents. The agent REFUSED, citing the
 	 * project file over both their own global `AGENTS.md` and their live
 	 * instruction. Four separate causes all told the model that a narrower file
 	 * wins: the authority prose said "later and deeper files override earlier and

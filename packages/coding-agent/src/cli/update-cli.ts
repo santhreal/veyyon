@@ -1168,7 +1168,7 @@ export async function updateViaBinaryAt(
 		await verifyDownloadChecksum(tempPath, `${url}.sha256`);
 	} catch (err) {
 		// Best-effort, for the same reason as above: a checksum mismatch is a
-		// security finding and must reach the operator verbatim, never be displaced
+		// security finding and must reach the terminal verbatim, never be displaced
 		// by a failure to delete the file it is about.
 		await removeFileBestEffort(tempPath);
 		throw err;

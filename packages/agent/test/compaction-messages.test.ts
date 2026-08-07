@@ -210,9 +210,9 @@ describe("convertMessageToLlm: compaction roles", () => {
 	 * compaction summary is model-generated history, so it enters as `user`
 	 * content attributed to the agent and can never outrank a live developer
 	 * message. This landed today; the matching prompt wording did not, because
-	 * the operator ordered upstream's wrapper text verbatim. The earlier
-	 * `toContain("non-authoritative")` assertions named that never-written
-	 * wording and are replaced with the wrapper that is really emitted.
+	 * upstream's wrapper text is pinned verbatim. The earlier
+	 * `toContain("non-authoritative")` assertions named that never-written wording
+	 * and are replaced with the wrapper that is really emitted.
 	 */
 	it("renders a blockless compactionSummary as agent-attributed untrusted user history", () => {
 		const converted = convertMessageToLlm(

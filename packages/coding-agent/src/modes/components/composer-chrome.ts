@@ -139,12 +139,11 @@ export interface ComposerZoneParts {
  * interactive-mode, ARCH-2). The order IS the design: the working loader and
  * hook status sit above the hairline so they read next to the prompt while
  * keeping the one-line gap; the hairline separates transcript from composer;
- * one CardPadRow of tonal air above the input and one below (bare spacers
- * collapse the card to a cramped tinted strip — user screenshot, 2026-07-22);
- * the metadata footline and shortcuts hang under the card; and one margin row
- * floats the block off the terminal's bottom edge. Re-ordering any of these
- * rows is a design regression, which is why mounting lives here, testable,
- * instead of as a paste of addChild calls in the host.
+ * one CardPadRow of tonal air above the input and one below; the metadata
+ * footline and shortcuts hang under the card; and one margin row floats the
+ * block off the terminal's bottom edge. Re-ordering any of these rows is a
+ * design regression, which is why mounting lives here, testable, instead of as
+ * a paste of addChild calls in the host.
  *
  * Returns the number of root children mounted: scroll isolation pins exactly
  * that many children as its live footer, so the count must come from here —

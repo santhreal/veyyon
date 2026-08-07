@@ -4,12 +4,12 @@
  * Why this suite exists: every painted surface (the user-message bubble,
  * custom/skill/hook message cards, tool-state tints, the composer band, the
  * status bar) rendered as a colored SLAB on any terminal whose ground differed
- * from the theme's — black slabs on grey terminals, grey slabs on white ones
- * (operator screenshots 2026-07-22..24). The 2026-07-23 stopgap that hid every
- * theme but alabaster and force-painted its ground made a white terminal
- * strictly worse and is reverted; the root fix is that transcript components
- * simply never emit a background SGR, so the terminal's own background is the
- * ground everywhere and a mismatch is impossible by construction.
+ * from the theme's — black slabs on grey terminals, grey slabs on white ones.
+ * The 2026-07-23 stopgap that hid every theme but alabaster and force-painted
+ * its ground made a white terminal strictly worse and is reverted; the root fix
+ * is that transcript components simply never emit a background SGR, so the
+ * terminal's own background is the ground everywhere and a mismatch is
+ * impossible by construction.
  *
  * The theme under test is alabaster ON PURPOSE: it declares loud, non-empty
  * bg roles (userMsgBg #f5f4f5, customMsgBg #f6f4f7, statusLineBg #ececf0), so

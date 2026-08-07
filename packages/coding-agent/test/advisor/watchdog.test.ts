@@ -14,7 +14,7 @@ import { removeWithRetries } from "@veyyon/utils";
  * every directory from cwd up to the repo root, probing both `<F>` and `.veyyon/<F>`)
  * and orders the hits user-first then project ancestor->leaf. None of it was tested.
  * The ordering and the hidden-directory filter are load-bearing: the advisor injects
- * these files into its system prompt as the user's standing instructions, so a wrong
+ * these files into its system prompt as the instruction files, so a wrong
  * order would let an ancestor's rule shadow a more specific leaf rule, and a broken
  * filter would either leak an unrelated dotfile directory's config or drop the
  * intended `.veyyon/` config.

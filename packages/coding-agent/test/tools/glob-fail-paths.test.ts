@@ -125,7 +125,7 @@ describe("GlobTool fail paths and matches", () => {
 		expect(broadOff).not.toContain(".secret.env");
 		expect(broadOff).toContain("a.ts");
 
-		// Broad listing, hidden on: the operator asked for it, so it appears.
+		// Broad listing, hidden on: the flag requested it, so it appears.
 		const broadOn = await run("g6b", { path: "**/*", hidden: true });
 		expect(broadOn).toContain(".secret.env");
 		expect(broadOn).toContain("a.ts");

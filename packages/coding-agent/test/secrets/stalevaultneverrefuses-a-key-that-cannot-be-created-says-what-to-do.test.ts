@@ -15,7 +15,7 @@
  *     Without a placeholder key there is no obfuscator, and the obfuscator is what REDACTS.
  *     Stored secrets merely become unavailable, which is survivable, but env-derived values
  *     this session would have redacted would reach the model, the transcript and the session
- *     file in the clear, silently, after the operator explicitly turned protection ON.
+ *     file in the clear, silently, after protection was explicitly turned ON.
  *   - Actionable, because a raw rejected promise is not a decision anyone can act on.
  *
  * IF THIS REGRESSES: either veyyon goes back to dying with a bare stack (or nothing at all)

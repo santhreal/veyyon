@@ -457,8 +457,7 @@ bottom.
   overflow alone (`d79cb7ee`, which traded it for drag-select on short screens)
   is what broke the model in practice: with a virtualized transcript the frame
   trims back to about the viewport on every quiet frame, so the gate closed,
-  the wheel went to the terminal, and the composer scrolled off screen
-  ("the composer doesn't come with you", operator report 2026-07-24). A fresh
+  the wheel went to the terminal, and the composer scrolled off screen. A fresh
   session with no history still releases the mouse, so drag-select works until
   the first row scrolls off.
 - **Tradeoff**: with the mouse captured, plain drag-select becomes

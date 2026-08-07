@@ -171,11 +171,11 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 
 		// Chat-surface contract: once a conversation starts, ALL slack routes above
 		// the transcript, so the message hugs the composer at the bottom like any
-		// chat surface. The old between-content fill (message at the top, composer
-		// at the bottom, a void of blank rows between them) committed those blank
-		// rows, and the landing reply pushed the prompt into scrollback (user
-		// screenshots, 2026-07-22). Assert the hug: the message sits directly
-		// above the composer zone, and the composer stays locked to the bottom.
+		// chat surface. The old between-content fill (message at the top, composer at
+		// the bottom, a void of blank rows between them) committed those blank rows,
+		// and the landing reply pushed the prompt into scrollback. Assert the hug:
+		// the message sits directly above the composer zone, and the composer stays
+		// locked to the bottom.
 		const markerRow = afterLines.findIndex(line => line.includes(marker));
 		expect(markerRow).toBeGreaterThanOrEqual(0);
 		// The composer placeholder sits in the bottom region of the 40-row viewport.

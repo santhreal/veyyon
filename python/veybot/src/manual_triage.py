@@ -221,8 +221,8 @@ async def enqueue_port_backlog(
             skipped += 1
             continue
         if len(enqueued) >= limit:
-            # Budget spent, but keep counting: the operator asked how much work
-            # is out there, not how much fits in one run.
+            # Budget spent, but keep counting: the run asked how much work is
+            # out there, not how much fits in one run.
             continue
         if dry_run:
             enqueued.append(PortBacklogEntry(summary.number, summary.title, delivery))

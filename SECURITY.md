@@ -25,7 +25,7 @@ report against the latest `main`. After `1.0.0`, the latest published release an
 In scope:
 
 - Sandbox or approval bypass — any path that runs a command or writes a file outside
-  the policy the user approved.
+  the approved policy.
 - Secret exposure — tokens or keys written to logs, telemetry, session files, or
   reachable by a tool without consent. Credentials live in the encrypted store
   (`local.age` / `veyyon_auth.age`); a plaintext leak is in scope.

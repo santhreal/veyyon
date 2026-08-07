@@ -36,7 +36,7 @@ function makeContext(): Context {
  * stream-consumption loop only races the SDK iterator against the idle/first
  * -event watchdog (default 100s). It does NOT race against the caller's abort
  * signal, so ESC has no observable effect for ~100 seconds — exactly the
- * "infinite Working..." UX the user reports.
+ * "infinite Working..." UX.
  *
  * The mock here returns a 200 + text/event-stream response whose body is a
  * ReadableStream that intentionally ignores the upstream signal — emulating

@@ -2,12 +2,11 @@
  * Pointing at the Agent Control Center: clicking a roster row, and clicking a
  * view tab.
  *
- * WHY. The operator asked to "click into" an agent, and the card was
- * keyboard-only inside its own borders: every gesture that did anything with a
- * mouse belonged to the shell around it (the close glyph, a footer chip, a click
- * outside to dismiss). A row you can see, that is drawn with a cursor on it, and
- * that does nothing when you click it reads as a broken control rather than as a
- * keyboard-only one.
+ * WHY. The card was keyboard-only inside its own borders: every gesture that did
+ * anything with a mouse belonged to the shell around it (the close glyph, a
+ * footer chip, a click outside to dismiss). A row you can see, that is drawn
+ * with a cursor on it, and that does nothing when you click it reads as a broken
+ * control rather than as a keyboard-only one.
  *
  * A row click OPENS the agent rather than only selecting it. The row's one
  * action is "open this agent", so a click that merely moved the cursor would ask
@@ -85,7 +84,7 @@ function colOf(dashboard: AgentDashboard, needle: string): number {
 }
 
 describe("Clicking a roster row", () => {
-	/** The gesture the operator asked for: click the agent, land in its session. */
+	/** The gesture: click the agent, land in its session. */
 	test("opens the agent whose row was clicked", async () => {
 		registerSub("0-Sub", "reviewer");
 		registerSub("1-Sub", "scout");

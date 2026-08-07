@@ -882,10 +882,10 @@ describe("wave 3 commands", () => {
 	/**
 	 * `handoff` is not a compaction mode: `/compact` condenses history in place
 	 * and keeps the session, while a handoff replaces it. Reading the token as
-	 * focus text would summarize when the operator asked for a transfer, and
-	 * routing it into compact() would keep the old session either way, so the
-	 * token is refused by name and the refusal states the command that performs
-	 * the transfer. Nothing may compact on the way out.
+	 * focus text would summarize when a transfer was requested, and routing it
+	 * into compact would keep the old session either way, so the token is refused
+	 * by name and the refusal states the command that performs the transfer.
+	 * Nothing may compact on the way out.
 	 */
 	it("/compact handoff: refuses the token and names the command that transfers", async () => {
 		const { output, session, runtime } = createRuntime();

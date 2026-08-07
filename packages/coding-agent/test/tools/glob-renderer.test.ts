@@ -76,9 +76,8 @@ describe("globToolRenderer", () => {
 
 describe("globToolRenderer truncation reasons", () => {
 	/** details.resultLimitReached and meta.limits.resultLimit describe the SAME
-	 * cap; both being present once rendered "truncated: limit 200 results,
-	 * limit 200 results" (user screenshot, 2026-07-22). Exactly one reason may
-	 * appear. */
+	 * cap; both being present once rendered "truncated: limit 200 results, limit
+	 * 200 results". Exactly one reason may appear. */
 	it("emits the result-cap reason once when details and limits both carry it", async () => {
 		const theme = await getThemeByName("dark");
 		const uiTheme = theme!;

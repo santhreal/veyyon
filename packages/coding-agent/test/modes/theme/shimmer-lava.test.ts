@@ -1,5 +1,5 @@
 /**
- * Lava — the molten warm-arc motion. The user-approved design gives LIVE
+ * Lava — the molten warm-arc motion. The design gives LIVE
  * warm-arc glyphs (selection cursor, match hits, filter caret, spinner paint)
  * a slow heat cycle: deep-ember → ember → gold → back, built from theme
  * tokens (borderAccent, matchHighlight), never literal hexes.

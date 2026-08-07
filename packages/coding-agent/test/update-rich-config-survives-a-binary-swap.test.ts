@@ -223,9 +223,8 @@ describe("a real binary swap and the config beside it", () => {
 describe("the sequence a user actually lives through", () => {
 	it("survives swap, then restart, then a setting change", async () => {
 		// Update, restart, change one setting. Each half is covered elsewhere; the
-		// composition is what a user reports as "the update ate my config", and a
-		// migration that runs on first load after an update is the thing most likely
-		// to do it.
+		// composition is a config lost by the update, and a migration that runs on
+		// first load after an update is the thing most likely to do it.
 		const staged = await stage();
 		await swap(staged);
 

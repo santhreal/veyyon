@@ -1249,7 +1249,7 @@ describe("scrollback divergence — the default repairs a duplicated block", () 
 		if (process.platform === "win32") return;
 		const term = new VirtualTerminal(80, 4);
 		// A direct terminal, not a pane: this is where the erase is safe and where
-		// the operator reports the duplicate.
+		// the duplicate appears.
 		overrideProbe(term, true);
 		const tui = new TUI(term);
 		const root = new SeamLineList([]);

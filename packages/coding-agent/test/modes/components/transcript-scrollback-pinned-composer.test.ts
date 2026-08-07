@@ -15,8 +15,7 @@ import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
  * native scrollback and then drops them from its frame) actually cooperates with
  * scroll isolation. Under the old engine the wheel was released as soon as that
  * dropping trimmed the frame back to the viewport, and scrolling handed the
- * whole window to the terminal, taking the prompt with it — reported by the
- * operator on 2026-07-24 as "the composer doesn't come with you".
+ * whole window to the terminal, taking the prompt with it.
  */
 
 const WIDTH = 60;

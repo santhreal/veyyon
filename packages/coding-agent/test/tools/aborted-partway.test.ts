@@ -167,7 +167,7 @@ describe("the abort message for a sequence cancelled partway", () => {
 
 	/**
 	 * The TYPE is the half the agent loop branches on: a `ToolError` means read the failure and
-	 * retry, a `ToolAbortError` means the operator said stop. Tools that folded a cancellation
+	 * retry, a `ToolAbortError` means a stop was requested. Tools that folded a cancellation
 	 * into an ordinary error result had an Escape answered by a retry of the work just stopped.
 	 */
 	it("is a ToolAbortError, not an ordinary error", () => {

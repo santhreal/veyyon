@@ -351,11 +351,10 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.folder": "",
 	"icon.worktree": "◫",
 	"icon.search": "⌕",
-	// Ephemeral mark: the house "shadowed" square (see status.shadowed). The
-	// old 🗑 read as "this session is garbage"; its ◌ replacement (U+25CC
-	// DOTTED CIRCLE) is the combining-mark placeholder glyph and read as a
-	// rendering artifact next to the blank regular folder icon (user report
-	// 2026-07-22, "stray ◌ in the footline").
+	// Ephemeral mark: the house "shadowed" square (see status.shadowed). The old 🗑
+	// read as "this session is garbage"; its ◌ replacement (U+25CC DOTTED CIRCLE)
+	// is the combining-mark placeholder glyph and read as a rendering artifact
+	// next to the blank regular folder icon.
 	"icon.scratchFolder": "▫",
 	"icon.file": "▤",
 	"icon.git": "",

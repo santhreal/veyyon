@@ -31,9 +31,9 @@ function sectionHeadings(promptText: string): string[] {
 
 describe("the three compaction prompts are the operator-ordered upstream text", () => {
 	/**
-	 * The operator ordered these three files replaced with oh-my-pi's byte for
-	 * byte, on the measurement that upstream scores higher on their long-run
-	 * evals. That order is the contract, so the bytes are the assertion.
+	 * These three files are pinned to oh-my-pi's byte for byte, on the measurement
+	 * that upstream scores higher on their long-run evals. That order is the
+	 * contract, so the bytes are the assertion.
 	 *
 	 * These digests were taken from oh-my-pi at commit da6e80b3b (2026-07-30),
 	 * `packages/agent/src/compaction/prompts/`, and independently reproduce the

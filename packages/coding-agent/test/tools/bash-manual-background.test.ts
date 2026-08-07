@@ -2,13 +2,13 @@
  * Manual bash backgrounding (`app.bash.background`, default Ctrl+B).
  *
  * Why this suite exists: bash could only move to the background AUTOMATICALLY
- * (wall-clock threshold or stall watcher). When the operator could already
- * see a command would run long, the only keys were wait or interrupt — the
- * user's explicit ask (2026-07-22) was a key that reclaims the turn. The
- * registry (bash-foreground-registry.ts) connects the TUI keystroke to the
- * bash tool's foreground wait; this suite locks the registry contract and
- * the end-to-end tool behavior: a foreground-waiting command converts to a
- * background job with `reason: "manual"` and its own operator notice.
+ * (wall-clock threshold or stall watcher). When the operator could already see
+ * a command would run long, the only keys were wait or interrupt — the required
+ * behavior was a key that reclaims the turn. The registry
+ * (bash-foreground-registry.ts) connects the TUI keystroke to the bash tool's
+ * foreground wait; this suite locks the registry contract and the end-to-end
+ * tool behavior: a foreground-waiting command converts to a background job with
+ * `reason: "manual"` and its own operator notice.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {

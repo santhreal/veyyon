@@ -6,9 +6,9 @@
  *
  * THE SILENT DROP. A value-taking flag in the last argv position fell through every branch of the
  * parse loop and vanished. `veyyon -p "..." --approval-mode` exited 0, answered normally, and ran on
- * the DEFAULT approval mode: the operator asked for one approval policy, silently got another, and
- * the only evidence they had that the flag took effect was that they had typed it. There is no typo
- * to notice here, which is what makes it worse than a misspelling. It applied to every string-valued
+ * the DEFAULT approval mode: one approval policy was requested and another applied silently, and the
+ * only evidence they had that the flag took effect was that they had typed it. There is no typo to
+ * notice here, which is what makes it worse than a misspelling. It applied to every string-valued
  * flag, including `--model`, so a session could quietly run on the wrong model too.
  *
  * THE UNHELPFUL REFUSAL. A misspelled flag was rejected, correctly, with "unknown flag: --modle" and

@@ -1,9 +1,9 @@
 /**
  * Profile-switch handoff: `/profile <name>` relaunches the process under a new
  * profile, and the handoff from the dying session to the relaunched child must
- * be atomic from the operator's side. The operator's report: "when you switch
- * profile in veyyon, it closes it and runs a series of commands; it sometimes
- * slips back into the other session before all the commands finish running."
+ * be atomic. The observed failure: a `/profile` switch closes the session and runs a
+ * series of commands, and the old session is sometimes reattached before those
+ * commands finish.
  *
  * WHAT THE RACE WAS. `InteractiveMode.shutdown()` showed "Closing session…" and
  * then awaited the session teardown, a promise-memoized singleton whose

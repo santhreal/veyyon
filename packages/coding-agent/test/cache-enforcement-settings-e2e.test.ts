@@ -92,7 +92,7 @@ describe("prompt-cache enforcement settings", () => {
 		expect(enforcementFor(await initWith(true, true))).toBe("error");
 		expect(enforcementFor(await initWith(false, false))).toBe("off");
 		// Reporting off wins: blocking without reporting would stop a run for a
-		// reason the operator asked not to be told about.
+		// reason that was silenced.
 		expect(enforcementFor(await initWith(false, true))).toBe("off");
 	});
 	/**

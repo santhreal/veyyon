@@ -4,9 +4,8 @@
  * A `task` spawn is BOTH a running subagent and a registered async job (`type: "task"`, written by
  * `task/index.ts`). The job badge used to count `snapshot.running.length` outright, so three
  * subagents rendered as `3 · 3`: two adjacent numbers that moved together and neither of which
- * named what it counted. A user reported exactly that bar. These tests pin the rule that fixed it:
- * the subagent badge owns subagent work, the job badge owns everything else, and a `task` job is
- * never counted by both.
+ * named what it counted. These tests pin the rule that fixed it: the subagent badge owns subagent
+ * work, the job badge owns everything else, and a `task` job is never counted by both.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
@@ -72,11 +71,11 @@ function job(id: string, type: string): FakeJob {
  * Every bare integer the SETTLED footline shows, in order.
  *
  * Two details make this the only honest reading. `renderQuietLine` is the composer footline the
- * user screenshotted; `render()` only ever emits hook statuses, so asserting against it would
- * pass no matter what the badges did. And the job badge slot EASES open over 240ms off
- * `Date.now()`, so the first render legitimately shows a zero-width slot: the clock is moved
- * past the animation rather than slept through, so the assertion reads the state the user sees
- * without tying the suite to wall time.
+ * transcript showed; `render` only ever emits hook statuses, so asserting against it would pass
+ * no matter what the badges did. And the job badge slot EASES open over 240ms off `Date.now`,
+ * so the first render legitimately shows a zero-width slot: the clock is moved past the
+ * animation rather than slept through, so the assertion reads the state the user sees without
+ * tying the suite to wall time.
  */
 function settledNumbersOnBar(statusLine: StatusLineComponent, width = 200): number[] {
 	const clock = vi.spyOn(Date, "now").mockReturnValue(0);

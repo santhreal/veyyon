@@ -21,8 +21,7 @@ import { VirtualTerminal } from "./virtual-terminal";
  * (`#compactCommittedPrefix`), which holds the frame near the viewport height
  * however long the session runs. Under that shape the old engine released the
  * mouse on quiet frames, the wheel went to the terminal, and the pinned
- * composer scrolled off screen — reported by the operator on 2026-07-24 as "the
- * composer doesn't come with you". Every case here fails against that engine.
+ * composer scrolled off screen. Every case here fails against that engine.
  */
 
 const WIDTH = 40;

@@ -167,7 +167,7 @@ describe("a fan-out cancelled part way through", () => {
 	 * The completed work is still returned. This is the reason the fix is not the
 	 * throw used for the sibling cancellation bugs, so it is asserted rather than
 	 * assumed: a fix that turned cancellation into a rejection would satisfy the
-	 * two cases above and lose the three transcripts the operator wanted.
+	 * two cases above and lose the three transcripts.
 	 */
 	it("still returns the output of the agents that finished", async () => {
 		const { result } = await runCancelledMidFlight();

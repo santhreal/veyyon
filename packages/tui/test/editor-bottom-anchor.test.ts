@@ -6,11 +6,11 @@ import { VirtualTerminal } from "./virtual-terminal";
 // Regression for the editor ungluing from the viewport bottom when a tall
 // transient prompt (the ask dialog's "type your own" editor) collapses back to
 // the one-line editor. The tall prompt scrolls transcript rows into native
-// scrollback; on collapse the frame shrinks but no committed row changed, so
-// no prefix resync fires and windowTop floors at #committedRows, stranding the
-// editor mid-screen with blank rows underneath (user report 2026-07-22). The
-// engine's own contract says duplication in history is preferable to a live
-// editor gap, so the tail must be re-shown and the editor re-anchored.
+// scrollback; on collapse the frame shrinks but no committed row changed, so no
+// prefix resync fires and windowTop floors at #committedRows, stranding the
+// editor mid-screen with blank rows underneath. The engine's own contract says
+// duplication in history is preferable to a live editor gap, so the tail must
+// be re-shown and the editor re-anchored.
 
 class Transcript implements Component {
 	lines: string[] = [];

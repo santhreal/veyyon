@@ -230,10 +230,10 @@ mod tests {
 
 	/// A budget at or past the machine size saturates at 10_000, never above.
 	///
-	/// `SetInformationJobObject` rejects a `CpuRate` above 10_000, and a
-	/// rejected write leaves the job entirely uncapped. So the failure mode of
-	/// an unclamped conversion is not "a slightly wrong cap" but "no cap",
-	/// arriving exactly when the operator asked for the largest budget.
+	/// `SetInformationJobObject` rejects a `CpuRate` above 10_000, and a rejected
+	/// write leaves the job entirely uncapped. So the failure mode of an unclamped
+	/// conversion is not "a slightly wrong cap" but "no cap", arriving exactly
+	/// when the largest budget was requested.
 	#[test]
 	fn a_budget_at_or_past_the_machine_size_saturates_at_the_whole_machine() {
 		assert_eq!(cpu_rate_per_10k(8.0, 8.0), 10_000);

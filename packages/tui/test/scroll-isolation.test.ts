@@ -355,10 +355,10 @@ describe("scroll isolation", () => {
 	});
 
 	/**
-	 * THE OPERATOR REPORT: the composer stays pinned only while the ability to select and copy
-	 * is gone. Holding the mouse is what pins it, and on the normal screen mouse reporting is
-	 * the same channel the terminal would use to select, so while isolation is on the grab lasts
-	 * from the first scrolled-off row until the process exits and every selection is Shift+drag.
+	 * The composer stays pinned only while the ability to select and copy is gone. Holding the
+	 * mouse is what pins it, and on the normal screen mouse reporting is the same channel the
+	 * terminal would use to select, so while isolation is on the grab lasts from the first
+	 * scrolled-off row until the process exits and every selection is Shift+drag.
 	 *
 	 * That grab is now PERMANENT for as long as the setting is on, and this pins it. A release
 	 * after a few seconds of quiet was built and then reverted: it unpinned the composer at
@@ -368,7 +368,7 @@ describe("scroll isolation", () => {
 	 * (`tui.scrollIsolation` ships off, see the coding-agent settings suite), not a timer.
 	 *
 	 * If someone reintroduces an idle release, this test fails and they have to reckon with the
-	 * unpinning it caused rather than rediscovering it through an operator report.
+	 * unpinning it caused rather than rediscovering it later.
 	 */
 	it("keeps the mouse for the whole session, because the idle release was reverted", async () => {
 		const term = new VirtualTerminal(40, 10, 1_000);

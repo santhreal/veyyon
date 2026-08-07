@@ -9,9 +9,9 @@ import { applyOpsToPhases, type TodoPhase, TodoTool } from "@veyyon/coding-agent
  * model from an earlier tool result. Every targeting op used raw `===` on it,
  * so a trailing period, a capitalized word, or an en dash where a hyphen was
  * missed the task, and a miss is not soft: the op batch is discarded whole and
- * the board write is lost. That is a second, independent cause of the
- * "updating the todo list fails half the time" the operator reported, on top of
- * the `TodoWrite` shape mismatch already recorded in the failure log.
+ * the board write is lost. That is a second, independent cause of the reported
+ * failure, on top of the `TodoWrite` shape mismatch already recorded in the
+ * failure log.
  *
  * These tests fix the comparison contract: exact text wins, normalized text
  * (lowercased, punctuation and whitespace runs collapsed) is the fallback, and

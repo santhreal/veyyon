@@ -78,8 +78,8 @@ const ELSEWHERE = path.join(os.tmpdir(), "veyyon-reroot-elsewhere-cwd");
 
 describe("resolveProjectRoot", () => {
 	/**
-	 * THE regression, in the shape the user reported it. A repository with deep internal structure
-	 * must be named by its root however far inside it the work happens to sit.
+	 * THE regression. A repository with deep internal structure must be named by its root however
+	 * far inside it the work happens to sit.
 	 */
 	it("climbs out of a deep subtree to the repository root", async () => {
 		mark("keyhog", ".git");
@@ -221,9 +221,8 @@ describe("isRepositoryContainer", () => {
 	});
 
 	/**
-	 * THE case the user reported, at the depth it actually occurs. `Santh/software/veyyon/veyyon`
-	 * puts the nested repository four levels down, so this also fails if `CONTAINER_SCAN_DEPTH` is
-	 * reduced.
+	 * THE case, at the depth it actually occurs. `Santh/software/veyyon/veyyon` puts the nested
+	 * repository four levels down, so this also fails if `CONTAINER_SCAN_DEPTH` is reduced.
 	 */
 	it("is true for a tree holding an unignored repository four levels down", async () => {
 		initRepo("santh");
@@ -244,7 +243,7 @@ describe("isRepositoryContainer", () => {
 	 * THE counterexample that killed the counting rule, in the shape that produced it. A project
 	 * that caches dozens of checkouts as test fixtures is still a project, and it says so by
 	 * ignoring them. Counting classified it as a container and would have stopped suggesting the one
-	 * destination the user explicitly called correct.
+	 * correct destination.
 	 */
 	it("is false for a project whose many nested repositories are all ignored", async () => {
 		initRepo("veyyon", ["packages/deepswe-bench/repo-cache/", "packages/deepswe-bench/deep-swe/"]);

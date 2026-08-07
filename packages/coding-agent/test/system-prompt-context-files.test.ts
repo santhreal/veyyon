@@ -46,8 +46,8 @@ async function renderPrompt(cwd: string, agentDir: string, resolvedCustomPrompt?
  * Loading the right files is necessary and not sufficient: both prompt templates
  * wrap the whole context section in `{{#if contextFiles.length}}`, so a list that
  * arrives empty, or arrives after the section has already been rendered, produces
- * a prompt with no context block, no error, and no clue. The operator's report
- * was exactly that. These cases assert on rendered bytes for that reason.
+ * a prompt with no context block, no error, and no clue. That is exactly what
+ * shipped. These cases assert on rendered bytes for that reason.
  */
 describe("system prompt context files", () => {
 	/**

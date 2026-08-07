@@ -208,8 +208,8 @@ describe("HomeAnchorLayout.sync — conversation slack routing", () => {
 	 * anchor slack moves ABOVE the transcript. The old between-content fill
 	 * painted the prompt at the top and the loader at the bottom with a void of
 	 * blank rows between them; when the reply landed those rows overflowed the
-	 * screen and pushed the prompt into scrollback while the viewport was
-	 * mostly empty (user screenshots, 2026-07-22). */
+	 * screen and pushed the prompt into scrollback while the viewport was mostly
+	 * empty. */
 	test("with a conversation started, all slack goes above so content hugs the composer", () => {
 		const { layout } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
 		layout.sync();

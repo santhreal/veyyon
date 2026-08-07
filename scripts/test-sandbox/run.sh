@@ -55,7 +55,7 @@
 #                bare host run.
 #
 #   2. microvm   qemu-system-x86_64 -machine microvm with KVM. Strictly the
-#                stronger boundary and the one the operator asked for: a separate
+#                stronger boundary and the strongest available: a separate
 #                kernel, its own page tables, and a mount table built from an empty
 #                initramfs. The host home is not merely unmounted, it is not
 #                addressable. The repo enters through virtiofs read-only and the

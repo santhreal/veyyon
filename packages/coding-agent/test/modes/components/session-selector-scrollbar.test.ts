@@ -36,9 +36,8 @@ function makeSelector(sessions: SessionInfo[], rows: number): SessionSelectorCom
 
 describe("SessionSelectorComponent scrollbar", () => {
 	it("renders the ScrollView thumb when sessions overflow the viewport", () => {
-		// 50 titled sessions cannot fit a 30-row viewport, so the picker windows
-		// them and must surface the shared right-edge scrollbar (the /resume
-		// overflow path the user reported).
+		// 50 titled sessions cannot fit a 30-row viewport, so the picker windows them
+		// and must surface the shared right-edge scrollbar.
 		const out = makeSelector(makeSessions(50), 30).render(80).join("\n");
 		expect(out).toContain(THUMB);
 		// The old text position indicator must be gone.

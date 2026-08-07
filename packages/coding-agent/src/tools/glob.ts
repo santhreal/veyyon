@@ -650,8 +650,7 @@ export const globToolRenderer = {
 
 		const truncationReasons: string[] = [];
 		// One reason for the result cap: details and limits both carry the same
-		// number, and pushing both rendered "limit 200 results, limit 200
-		// results" (user screenshot, 2026-07-22).
+		// number, and pushing both rendered "limit 200 results, limit 200 results".
 		const resultLimit = details?.resultLimitReached ?? limits?.resultLimit?.reached;
 		if (resultLimit) truncationReasons.push(`limit ${resultLimit} results`);
 		if (truncation) truncationReasons.push(truncation.truncatedBy === "lines" ? "line limit" : "size limit");

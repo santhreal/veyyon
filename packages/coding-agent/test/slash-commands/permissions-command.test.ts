@@ -215,9 +215,9 @@ describe("invocations that must not change the rung", () => {
 describe("the yolo rung against the yolo bypass", () => {
 	/**
 	 * `yolo` is a rung on the ladder and is reachable here. It is NOT the `/yolo`
-	 * full bypass: that is a separate session flag with its own red editor
-	 * border, and a command that quietly set it would hand out more rope than the
-	 * operator asked for while every surface kept saying "rung".
+	 * full bypass: that is a separate session flag with its own red editor border,
+	 * and a command that quietly set it would hand out more rope than was
+	 * requested while every surface kept saying "rung".
 	 */
 	it("reaches the yolo rung without arming the session bypass", async () => {
 		const harness = createHarness();

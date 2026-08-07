@@ -92,9 +92,9 @@ function expectFalloffParity(source: string, label: string): void {
 
 // Every paintable background surface must stay TRANSPARENT — it inherits the
 // terminal's own ground — except the selection surface, which carries the dim
-// ember wash. Explicit black/near-black fills assumed a pure-black terminal
-// and rendered as harsh slabs on any other ground (user screenshots,
-// 2026-07-22); the derived composer card handles the one raised surface.
+// ember wash. Explicit black/near-black fills assumed a pure-black terminal and
+// rendered as harsh slabs on any other ground; the derived composer card
+// handles the one raised surface.
 const TRANSPARENT_BACKGROUND_KEYS = [
 	"userMessageBg",
 	"customMessageBg",

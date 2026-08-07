@@ -58,8 +58,8 @@ function registerSub(id: string, type: string): void {
 
 describe("an agent blocked on an approval prompt", () => {
 	/**
-	 * The operator's standing concern in one assertion: the roster says
-	 * `blocked`, not `running`, while a person is being waited on.
+	 * The invariant in one assertion: the roster says `blocked`, not `running`,
+	 * while a person is being waited on.
 	 */
 	test("reads as blocked rather than running", () => {
 		registerSub("0-Sub", "reviewer");

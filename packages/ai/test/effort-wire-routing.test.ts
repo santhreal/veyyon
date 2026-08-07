@@ -2,14 +2,13 @@
  * Effort-to-wire-id routing for providers that select reasoning effort by
  * MODEL ID instead of a wire param.
  *
- * Found 2026-07-22 (user report: "almost no LLMs have no reasoning choice"):
- * Cursor's transport carries no effort field, and `buildGrpcRequest` sent
- * `model.requestModelId ?? model.id` unconditionally — so the effort ladders
- * on cursor models were INERT: whatever the user set with /thinking, the same
- * wire id was requested. Devin already routed effort into `chatModelUid`;
- * cursor now mirrors it via `CursorOptions.wireModelId`. These tests lock the
- * mapping at the `mapOptionsForApi` seam for both providers, so a regression
- * to the unconditional id path fails loudly.
+ * Found 2026-07-22: Cursor's transport carries no effort field, and
+ * `buildGrpcRequest` sent `model.requestModelId ?? model.id` unconditionally —
+ * so the effort ladders on cursor models were INERT: whatever the user set with
+ * /thinking, the same wire id was requested. Devin already routed effort into
+ * `chatModelUid`; cursor now mirrors it via `CursorOptions.wireModelId`. These
+ * tests lock the mapping at the `mapOptionsForApi` seam for both providers, so
+ * a regression to the unconditional id path fails loudly.
  */
 import { describe, expect, it } from "bun:test";
 import type { CursorOptions } from "@veyyon/ai/providers/cursor";

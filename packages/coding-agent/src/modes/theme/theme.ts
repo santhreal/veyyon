@@ -226,8 +226,7 @@ export function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = 
 	// The composer quiet card (DS-6 layer 0) defaults to UNPAINTED (the empty
 	// sentinel, `\x1b[49m`): the inline TUI's ground is the terminal's own
 	// background, and inheriting statusLineBg here is how the composer band
-	// rendered as a grey slab on mismatched terminals (2026-07-24 operator
-	// screenshot, alabaster #ececf0 on a white ground). A theme that wants a
+	// rendered as a grey slab on mismatched terminals. A theme that wants a
 	// painted composer card must say so explicitly.
 	if (bgColors.composerBg === undefined) {
 		bgColors.composerBg = "";
