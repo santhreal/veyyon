@@ -130,6 +130,15 @@ export function armPreResponseTimeout(
 	return { signal, clear: () => clearTimeout(timer) };
 }
 
+/**
+ * Longest continuous stretch local work may hold the idle watchdog off.
+ *
+ * Sized above the largest run a local tool can legitimately take (the bash tool
+ * caps its own timeout at 3600s) so this never truncates real work; it exists
+ * only so a wedged bridge ends in a diagnosable error instead of silence.
+ */
+export const DEFAULT_MAX_LOCAL_WORK_HOLD_MS = 90 * 60_000;
+
 export interface IdleTimeoutIteratorOptions {
 	idleTimeoutMs?: number;
 	firstItemTimeoutMs?: number;
@@ -153,6 +162,22 @@ export interface IdleTimeoutIteratorOptions {
 	 * provider that stalls afterwards is still caught.
 	 */
 	hasPendingLocalWork?: () => boolean;
+	/**
+	 * Upper bound (ms) on how long {@link hasPendingLocalWork} may hold the
+	 * watchdog off in one continuous stretch. Defaults to
+	 * {@link DEFAULT_MAX_LOCAL_WORK_HOLD_MS}.
+	 *
+	 * WHY THIS EXISTS. The local-work stand-down slides the deadline forward
+	 * every time it is consulted, so a local tool that never settles disables
+	 * the watchdog for the life of the process: the stream goes silent and the
+	 * only exit is the user cancelling the turn. That is the opposite failure
+	 * from the one the stand-down was added for (#4593, healthy tool runs being
+	 * aborted), and it is worse, because a spurious abort recovers itself and a
+	 * wedge does not. The clock runs only while work is CONTINUOUSLY pending and
+	 * resets the moment it drains, so a session of many ordinary tool calls
+	 * never accumulates toward it.
+	 */
+	maxLocalWorkHoldMs?: number;
 	/**
 	 * Cancel iteration as soon as this signal aborts. Required for caller-driven
 	 * cancellation (ESC) when the underlying transport does not surface signal
@@ -234,10 +259,17 @@ export async function* iterateWithIdleTimeout<T>(
 		}
 	};
 
+	let localWorkHoldStartedAt: number | undefined;
+	let localWorkHoldExpired = false;
+	const maxLocalWorkHoldMs = options.maxLocalWorkHoldMs ?? DEFAULT_MAX_LOCAL_WORK_HOLD_MS;
 	const hasPendingLocalWork = (): boolean => {
 		if (!options.hasPendingLocalWork) return false;
 		try {
-			return options.hasPendingLocalWork();
+			const pending = options.hasPendingLocalWork();
+			// The bound is on one CONTINUOUS stretch of local work, so the clock
+			// starts when work appears and clears the moment it drains.
+			if (!pending) localWorkHoldStartedAt = undefined;
+			return pending;
 		} catch {
 			// False matches the documented default for a caller that supplies no predicate at all, so a
 			// throwing predicate cannot hold the idle timer off forever. The timer is the safety net; a
@@ -249,15 +281,26 @@ export async function* iterateWithIdleTimeout<T>(
 	// not the provider: slide the active deadline a full budget past now
 	// instead of aborting. Once the work completes the watchdog resumes from
 	// the last extension, so a provider that stalls afterwards is still caught.
-	const extendDeadlineForLocalWork = (): void => {
+	const extendDeadlineForLocalWork = (): boolean => {
+		const now = Date.now();
+		localWorkHoldStartedAt ??= now;
+		if (maxLocalWorkHoldMs > 0 && now - localWorkHoldStartedAt >= maxLocalWorkHoldMs) {
+			// Refusing to slide any further is what turns an unbounded silence
+			// into a reported failure the turn can recover from.
+			localWorkHoldExpired = true;
+			return false;
+		}
 		if (awaitingFirstItem) {
 			if (firstItemDeadlineMs !== undefined && firstItemTimeoutMs !== undefined) {
-				firstItemDeadlineMs = Date.now() + firstItemTimeoutMs;
+				firstItemDeadlineMs = now + firstItemTimeoutMs;
 			}
 		} else {
-			lastProgressAt = Date.now();
+			lastProgressAt = now;
 		}
+		return true;
 	};
+	const timeoutMessage = (base: string): string =>
+		localWorkHoldExpired ? `${base} (a local tool held the stream open without completing)` : base;
 
 	const noTimeoutEnforced =
 		(firstItemTimeoutMs === undefined || firstItemTimeoutMs <= 0) &&
@@ -363,24 +406,24 @@ export async function* iterateWithIdleTimeout<T>(
 				if (firstItemDeadlineMs !== undefined) {
 					activeTimeoutMs = firstItemDeadlineMs - Date.now();
 					if (activeTimeoutMs <= 0) {
-						if (!hasPendingLocalWork()) {
+						if (!hasPendingLocalWork() || !extendDeadlineForLocalWork()) {
 							invokeTimeoutHook(options.onFirstItemTimeout);
 							closeIterator();
-							throw new AIError.StreamTimeoutError(options.firstItemErrorMessage ?? options.errorMessage);
+							throw new AIError.StreamTimeoutError(
+								timeoutMessage(options.firstItemErrorMessage ?? options.errorMessage),
+							);
 						}
-						extendDeadlineForLocalWork();
 						activeTimeoutMs = firstItemDeadlineMs! - Date.now();
 					}
 				}
 			} else if (options.idleTimeoutMs !== undefined && options.idleTimeoutMs > 0) {
 				activeTimeoutMs = options.idleTimeoutMs - (Date.now() - lastProgressAt);
 				if (activeTimeoutMs <= 0) {
-					if (!hasPendingLocalWork()) {
+					if (!hasPendingLocalWork() || !extendDeadlineForLocalWork()) {
 						invokeTimeoutHook(options.onIdle);
 						closeIterator();
-						throw new AIError.StreamTimeoutError(options.errorMessage);
+						throw new AIError.StreamTimeoutError(timeoutMessage(options.errorMessage));
 					}
-					extendDeadlineForLocalWork();
 					activeTimeoutMs = options.idleTimeoutMs;
 				}
 			}
@@ -425,10 +468,9 @@ export async function* iterateWithIdleTimeout<T>(
 					throw abortReason(abortSignal!);
 				}
 				if (outcome.kind === "timeout") {
-					if (hasPendingLocalWork()) {
+					if (hasPendingLocalWork() && extendDeadlineForLocalWork()) {
 						// A local tool is still running; the provider cannot make
 						// progress until we hand its result back. Keep waiting.
-						extendDeadlineForLocalWork();
 						continuing = true;
 						continue;
 					}
@@ -439,7 +481,11 @@ export async function* iterateWithIdleTimeout<T>(
 					}
 					closeIterator();
 					throw new AIError.StreamTimeoutError(
-						!awaitingFirstItem ? options.errorMessage : (options.firstItemErrorMessage ?? options.errorMessage),
+						timeoutMessage(
+							!awaitingFirstItem
+								? options.errorMessage
+								: (options.firstItemErrorMessage ?? options.errorMessage),
+						),
 					);
 				}
 				if (outcome.kind === "error") {
@@ -459,6 +505,8 @@ export async function* iterateWithIdleTimeout<T>(
 				if (isProgressItem(item)) {
 					markFirstItemReceived();
 					lastProgressAt = Date.now();
+					// Real progress ends the stretch the bound is measured over.
+					localWorkHoldStartedAt = undefined;
 				}
 				yield item;
 				continuing = true;
