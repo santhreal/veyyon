@@ -498,7 +498,6 @@ describe("Cursor exec local-work tracking (issue #4593)", () => {
 			h2Request,
 			execHandlers,
 			undefined,
-			{ sawTokenDelta: false },
 			[],
 			[],
 		);

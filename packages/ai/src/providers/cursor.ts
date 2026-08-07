@@ -486,7 +486,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			let currentTextBlock: (TextContent & { [kStreamingBlockIndex]: number }) | null = null;
 			let currentThinkingBlock: (ThinkingContent & { [kStreamingBlockIndex]: number }) | null = null;
 			let currentToolCall: ToolCallState | null = null;
-			const usageState: UsageState = { sawTokenDelta: false };
 
 			const state: BlockState = {
 				get currentTextBlock() {
@@ -567,7 +566,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 							h2Request!,
 							options?.execHandlers,
 							options?.onToolResult,
-							usageState,
 							requestContextTools,
 							requestContextRules,
 							onConversationCheckpoint,
@@ -739,10 +737,6 @@ export interface BlockState {
 	setFirstTokenTime: () => void;
 }
 
-export interface UsageState {
-	sawTokenDelta: boolean;
-}
-
 /** Exported for tests: drives one Cursor server message through the stream (exec waits mark the stream busy). */
 export async function handleServerMessage(
 	msg: AgentServerMessage,
@@ -753,7 +747,6 @@ export async function handleServerMessage(
 	h2Request: http2.ClientHttp2Stream,
 	execHandlers: CursorExecHandlers | undefined,
 	onToolResult: CursorToolResultHandler | undefined,
-	usageState: UsageState,
 	requestContextTools: McpToolDefinition[],
 	requestContextRules: CursorRule[],
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
@@ -767,7 +760,7 @@ export async function handleServerMessage(
 		// InteractionUpdateView is a structural subset of the generated type; the
 		// weak-type rule (all-optional view vs. field-less updates like
 		// thinkingCompleted) blocks direct assignability, hence the assertion.
-		processInteractionUpdate(msg.message.value as InteractionUpdateView, output, stream, state, usageState);
+		processInteractionUpdate(msg.message.value as InteractionUpdateView, output, stream, state);
 	} else if (msgCase === "kvServerMessage") {
 		handleKvServerMessage(msg.message.value as KvServerMessage, blobStore, h2Request, blobLookup);
 	} else if (msgCase === "execServerMessage") {
@@ -789,7 +782,7 @@ export async function handleServerMessage(
 			),
 		);
 	} else if (msgCase === "conversationCheckpointUpdate") {
-		handleConversationCheckpointUpdate(msg.message.value, output, usageState, onConversationCheckpoint);
+		handleConversationCheckpointUpdate(msg.message.value, output, onConversationCheckpoint);
 	}
 }
 
@@ -2390,7 +2383,6 @@ export function processInteractionUpdate(
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 	state: BlockState,
-	usageState: UsageState,
 ): void {
 	const updateCase = update.message?.case;
 	const value = update.message?.value ?? {};
@@ -2525,7 +2517,6 @@ export function processInteractionUpdate(
 		output.stopReason = "stop";
 	} else if (updateCase === "tokenDelta") {
 		const tokenDelta = value;
-		usageState.sawTokenDelta = true;
 		output.usage.output += tokenDelta.tokens || 0;
 		output.usage.totalTokens = output.usage.input + output.usage.output;
 	}
@@ -2535,7 +2526,6 @@ export function processInteractionUpdate(
 export function handleConversationCheckpointUpdate(
 	checkpoint: ConversationStateStructure,
 	output: AssistantMessage,
-	usageState: UsageState,
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
 ): void {
 	onConversationCheckpoint?.(checkpoint);
@@ -2547,9 +2537,6 @@ export function handleConversationCheckpointUpdate(
 	const maxTokens = checkpoint.tokenDetails?.maxTokens ?? 0;
 	if (maxTokens > 0) {
 		output.providerContextWindow = maxTokens;
-	}
-	if (usageState.sawTokenDelta) {
-		return;
 	}
 	const usedTokens = checkpoint.tokenDetails?.usedTokens ?? 0;
 	if (usedTokens <= 0) {

@@ -80,7 +80,6 @@ async function askForBlob(
 		h2,
 		undefined,
 		undefined,
-		{} as never,
 		[],
 		[],
 		undefined,
