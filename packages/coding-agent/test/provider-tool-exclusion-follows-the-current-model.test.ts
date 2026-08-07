@@ -69,7 +69,7 @@ describe("the edit tool survives every provider and every model switch", () => {
 		for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 	});
 
-	async function openSession(model: typeof CURSOR_MODEL): Promise<AgentSession> {
+	async function openSession(model: typeof CURSOR_MODEL | typeof ANTHROPIC_MODEL): Promise<AgentSession> {
 		const home = fs.mkdtempSync(path.join(os.tmpdir(), "tool-exclusion-"));
 		dirs.push(home);
 		const cwd = path.join(home, "workspace");
@@ -77,7 +77,7 @@ describe("the edit tool survives every provider and every model switch", () => {
 		fs.mkdirSync(cwd, { recursive: true });
 		fs.mkdirSync(agentDir, { recursive: true });
 
-		const authStorage = new AuthStorage(agentDir);
+		const authStorage = await AuthStorage.create(path.join(agentDir, "auth.db"));
 		authStorage.setRuntimeApiKey("cursor", "test-token");
 		authStorage.setRuntimeApiKey("anthropic", "test-token");
 
