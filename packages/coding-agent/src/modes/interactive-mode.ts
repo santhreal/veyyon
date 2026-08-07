@@ -57,6 +57,7 @@ import {
 	postmortem,
 	prompt,
 } from "@veyyon/utils";
+import { isTerminalTodoStatus } from "@veyyon/wire";
 import chalk from "chalk";
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
@@ -301,7 +302,7 @@ const EDITOR_FALLBACK_ROWS = 24;
 const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
 const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
 /** The idle composer's ghost text. Single spaces around the interpunct — the
- * double-spaced version read as uneven gaps (user screenshot, 2026-07-21). */
+ * double-spaced version read as uneven gaps. */
 const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
 
 /**
@@ -540,6 +541,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	proseOnlyThinking = true;
 	compactionQueuedMessages: CompactionQueuedMessage[] = [];
 	pendingTools = new Map<string, ToolExecutionHandle>();
+	settledToolCalls = new Set<string>();
 	pendingBashComponents: BashExecutionComponent[] = [];
 	bashComponent: BashExecutionComponent | undefined = undefined;
 	pendingPythonComponents: EvalExecutionComponent[] = [];
@@ -689,6 +691,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.streamingMessage = undefined;
 		this.lastAssistantUsage = undefined;
 		this.pendingTools.clear();
+		this.settledToolCalls.clear();
 		// A pinned error banner belongs to the turn that failed, in ONE session.
 		// `resetTranscriptAnchors` already drops the transcript component the
 		// banner mirrors, so leaving the container alone left a banner on screen
@@ -2074,7 +2077,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#isClosedTodo(task: TodoItem): boolean {
-		return task.status === "completed" || task.status === "abandoned";
+		return isTerminalTodoStatus(task.status);
 	}
 
 	#hasClosedTodos(phases: TodoPhase[]): boolean {
@@ -3189,7 +3192,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				// Outcome is consumed after tool-restoration and plan-reference-path
 				// bookkeeping below; `markPlanReferenceSent` is intentionally deferred
 				// past the cancel guard — see the comment at the cancel branch.
-				// Cancellation skips the synthetic-prompt dispatch (operator's explicit
+				// Cancellation skips the synthetic-prompt dispatch (the explicit
 				// abort is honored); failure proceeds best-effort — approval intent stands.
 				const compactionPrompt = prompt.render(planModePrompts["plan-mode/compact-instructions"].text, {
 					planFilePath: options.planFilePath,

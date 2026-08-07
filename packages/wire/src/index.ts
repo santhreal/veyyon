@@ -975,3 +975,70 @@ export function withRecommendedSuffix(label: string): string {
 export function stripRecommendedSuffix(label: string): string {
 	return label.endsWith(RECOMMENDED_SUFFIX) ? label.slice(0, -RECOMMENDED_SUFFIX.length) : label;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Todo status vocabulary
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Every todo status, paired with the one question every surface asks of it:
+ * has the task closed?
+ *
+ * This map is the definition. {@link TodoStatus} is derived from its keys, so a
+ * new status cannot join the union without a terminality decision landing here
+ * with it, and `Record<TodoStatus, …>` tables elsewhere stop compiling until
+ * they answer for it too.
+ *
+ * It lives in `@veyyon/wire` because both renderers of a todo board need it and
+ * they sit on opposite sides of a runtime boundary: the TUI renderer in
+ * `@veyyon/coding-agent` (`src/tools/todo.ts`) and the HTML/collab renderer in
+ * `@veyyon/tool-render`, which cannot import from coding-agent. Two private
+ * copies of the vocabulary is how one renderer ends up calling a board finished
+ * while the other still draws it open.
+ */
+export const TODO_STATUS_IS_TERMINAL = {
+	pending: false,
+	in_progress: false,
+	completed: true,
+	abandoned: true,
+} as const;
+
+export type TodoStatus = keyof typeof TODO_STATUS_IS_TERMINAL;
+
+/** Every status in {@link TODO_STATUS_IS_TERMINAL}, for enumeration at run time. */
+export const TODO_STATUSES: readonly TodoStatus[] = Object.keys(TODO_STATUS_IS_TERMINAL) as TodoStatus[];
+
+/** A status no further work is expected on. The complement is open work. */
+export function isTerminalTodoStatus(status: TodoStatus): boolean {
+	return TODO_STATUS_IS_TERMINAL[status];
+}
+
+/** Narrow arbitrary JSON (a transcript, a wire frame) to a status; anything unknown reads as open. */
+export function asTodoStatus(value: unknown): TodoStatus {
+	return typeof value === "string" && value in TODO_STATUS_IS_TERMINAL ? (value as TodoStatus) : "pending";
+}
+
+/** The single line a finished todo board collapses to, on every surface. */
+export const TODO_DONE_SUMMARY = "Todo list done";
+
+/**
+ * The board holds work and all of it is closed.
+ *
+ * Renderers call this on the phases in hand and collapse to
+ * {@link TODO_DONE_SUMMARY} when it holds. Nothing caches the answer: it is a
+ * function of the current board, so appending a pending task reopens the list
+ * on the very next frame. An empty board is not "done" — there was nothing to
+ * finish.
+ */
+export function isTodoListDone(
+	phases: readonly { readonly tasks?: readonly { readonly status: TodoStatus }[] }[],
+): boolean {
+	let seen = false;
+	for (const phase of phases) {
+		for (const task of phase.tasks ?? []) {
+			if (!isTerminalTodoStatus(task.status)) return false;
+			seen = true;
+		}
+	}
+	return seen;
+}

@@ -1,13 +1,12 @@
 /** `todo` — phased task-list ops and the resulting board. */
 import { formatCount } from "@veyyon/utils/format";
+import { asTodoStatus, isTodoListDone, TODO_DONE_SUMMARY, type TodoStatus } from "@veyyon/wire";
 import type { ReactNode } from "react";
 import { Badges, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, str, truncate } from "../util";
 
-type TaskStatus = "pending" | "in_progress" | "completed" | "abandoned";
-
-const TASK_ICONS: Record<TaskStatus, string> = {
+const TASK_ICONS: Record<TodoStatus, string> = {
 	completed: "✓",
 	in_progress: "→",
 	abandoned: "✕",
@@ -110,31 +109,51 @@ function opRow(entry: unknown, key: number): ReactNode {
 }
 
 function Board({ phases }: { phases: unknown[] }): ReactNode {
-	const rendered: ReactNode[] = [];
-	for (let i = 0; i < phases.length; i++) {
-		const phase = phases[i];
+	const board: Array<{ name: string; tasks: Array<{ status: TodoStatus; content: string }> }> = [];
+	for (const phase of phases) {
 		if (!isRecord(phase)) continue;
+		const tasks: Array<{ status: TodoStatus; content: string }> = [];
+		if (Array.isArray(phase.tasks)) {
+			for (const task of phase.tasks) {
+				if (!isRecord(task)) continue;
+				tasks.push({ status: asTodoStatus(task.status), content: str(task.content) ?? "" });
+			}
+		}
+		board.push({ name: str(phase.name) ?? "", tasks });
+	}
+	if (board.length === 0) return null;
+	// Same derivation the TUI card uses, from the same owner, so an exported
+	// transcript and the live terminal never disagree about whether a plan is
+	// finished. Recomputed from the phases in the result on every render; the
+	// export carries no "was collapsed" bit to read back.
+	if (isTodoListDone(board)) {
+		let done = 0;
+		for (const phase of board) done += phase.tasks.length;
+		const summary = `${TASK_ICONS.completed} ${TODO_DONE_SUMMARY} · ${formatCount("task", done)}`;
+		return (
+			<div className="tv-todo">
+				<div className="tv-todo-done">{summary}</div>
+			</div>
+		);
+	}
+	const rendered: ReactNode[] = [];
+	for (let i = 0; i < board.length; i++) {
+		const phase = board[i];
 		rendered.push(
 			<div key={`p${i}`} className="tv-todo-phase">
-				{roman(i + 1)}. {str(phase.name) ?? ""}
+				{roman(i + 1)}. {phase.name}
 			</div>,
 		);
-		if (!Array.isArray(phase.tasks)) continue;
 		for (let t = 0; t < phase.tasks.length; t++) {
-			const task: unknown = phase.tasks[t];
-			if (!isRecord(task)) continue;
-			const raw: unknown = task.status;
-			const status: TaskStatus =
-				raw === "completed" || raw === "in_progress" || raw === "abandoned" ? raw : "pending";
+			const task = phase.tasks[t];
 			rendered.push(
-				<div key={`p${i}t${t}`} className={`tv-task tv-task--${status}`}>
-					<span className="tv-task-icon">{TASK_ICONS[status]}</span>
-					<span>{str(task.content) ?? ""}</span>
+				<div key={`p${i}t${t}`} className={`tv-task tv-task--${task.status}`}>
+					<span className="tv-task-icon">{TASK_ICONS[task.status]}</span>
+					<span>{task.content}</span>
 				</div>,
 			);
 		}
 	}
-	if (rendered.length === 0) return null;
 	return <div className="tv-todo">{rendered}</div>;
 }
 

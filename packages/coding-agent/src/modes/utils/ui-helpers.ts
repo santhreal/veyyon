@@ -87,6 +87,7 @@ export type UiHelpersContext = Pick<
 	| "pendingMessagesContainer"
 	| "pendingPythonComponents"
 	| "pendingTools"
+	| "settledToolCalls"
 	| "present"
 	| "proseOnlyThinking"
 	| "recordLocalSubmission"
@@ -329,6 +330,12 @@ export class UiHelpers {
 	): void {
 		// Preserved: message_start handler owns this lifecycle (see #783)
 		this.ctx.pendingTools.clear();
+		// The transcript is being torn down and re-derived from messages, so the
+		// settled ledger is re-derived with it: every paired toolResult below
+		// re-settles its call. This is the ONLY place it is cleared — clearing it
+		// per turn would let a post-turn replay resurrect a finished card, which
+		// is the ghost this ledger exists to stop.
+		this.ctx.settledToolCalls.clear();
 		// Reseed the cache-invalidation baseline: this rebuild re-derives every
 		// turn's marker from usage, and the last turn becomes the live baseline.
 		this.ctx.lastAssistantUsage = undefined;
@@ -570,6 +577,10 @@ export class UiHelpers {
 				pendingUsageDuration = message.duration;
 				pendingUsageTtft = message.ttft;
 			} else if (message.role === "toolResult") {
+				// A recorded result means this call's card is final in the rebuilt
+				// transcript, whichever branch below paints it. Settle before the
+				// branching so a new branch cannot be added without the ledger entry.
+				this.ctx.settledToolCalls.add(message.toolCallId);
 				const pendingReadComponent = this.ctx.pendingTools.get(message.toolCallId);
 				const isReadGroupResult =
 					message.toolName === "read" &&
@@ -680,8 +691,11 @@ export class UiHelpers {
 				component.setArgsComplete(toolCallId);
 			}
 		} else {
-			for (const component of this.ctx.pendingTools.values()) {
+			for (const [toolCallId, component] of this.ctx.pendingTools) {
 				component.seal();
+				// Sealed as history: no result is coming, so nothing may re-mount
+				// this call as a live card later.
+				this.ctx.settledToolCalls.add(toolCallId);
 			}
 			this.ctx.pendingTools.clear();
 		}
