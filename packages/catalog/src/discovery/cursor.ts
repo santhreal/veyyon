@@ -367,6 +367,14 @@ function normalizeCursorModel(
 		// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		pricing: "unknown",
+		// Guesses, not readings. `ModelDetails` carries an id, display names,
+		// aliases, thinking details and a max-mode flag, and nothing about limits,
+		// so discovery has no honest number to put here and the gateway default
+		// stands in. It under-reports: the live gateway answers 256k for
+		// grok-4.5, and a 1M-window model would be reported at a fifth of its
+		// size. The real window arrives per turn as
+		// `ConversationTokenDetails.max_tokens` and the provider promotes it to
+		// `providerContextWindow`, which outranks this row.
 		contextWindow: AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW,
 		maxTokens: AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
 		cursorMaxMode: details.maxMode,

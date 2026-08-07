@@ -1,14 +1,25 @@
 import { describe, expect, it } from "bun:test";
 import {
 	type BlockState,
+	createCursorUsageAccount,
 	mergeCursorMcpToolCallArgs,
 	processInteractionUpdate,
 	synthesizeCursorExecToolCall,
 	type ToolCallState,
 } from "@veyyon/ai/providers/cursor";
-import type { AssistantMessage, AssistantMessageEvent } from "@veyyon/ai/types";
+import type { AssistantMessage, AssistantMessageEvent, Model } from "@veyyon/ai/types";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+
+/** Cursor publishes no pricing, so the zeros here are what a real Cursor model carries. */
+function cursorUsageModel(): Model<"cursor-agent"> {
+	return {
+		id: "cursor-composer-2.5",
+		provider: "cursor",
+		api: "cursor-agent",
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	} as Model<"cursor-agent">;
+}
 
 interface Harness {
 	output: AssistantMessage;
@@ -47,6 +58,7 @@ function newHarness(): Harness {
 	let thinkingBlock: BlockState["currentThinkingBlock"] = null;
 	let toolCall: ToolCallState | null = null;
 	const state: BlockState = {
+		usage: createCursorUsageAccount(cursorUsageModel(), output),
 		get currentTextBlock() {
 			return textBlock;
 		},

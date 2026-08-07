@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import * as http2 from "node:http2";
-import { create, fromBinary } from "@bufbuild/protobuf";
+import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { streamBedrock } from "@veyyon/ai/providers/amazon-bedrock";
 import { sha256Hex } from "@veyyon/ai/providers/aws-sigv4";
 import { streamCursor } from "@veyyon/ai/providers/cursor";
@@ -11,6 +11,9 @@ import {
 	AgentClientMessageSchema,
 	type AgentRunRequest,
 	AgentRunRequestSchema,
+	AgentServerMessageSchema,
+	InteractionUpdateSchema,
+	TurnEndedUpdateSchema,
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { withEnv } from "./helpers";
 
@@ -77,6 +80,22 @@ function cursorModel(baseUrl: string): Model<"cursor-agent"> {
 	});
 }
 
+function turnEndedFrame(): Buffer {
+	const message = create(AgentServerMessageSchema, {
+		message: {
+			case: "interactionUpdate",
+			value: create(InteractionUpdateSchema, {
+				message: { case: "turnEnded", value: create(TurnEndedUpdateSchema, {}) },
+			}),
+		},
+	});
+	const payload = toBinary(AgentServerMessageSchema, message);
+	const header = Buffer.alloc(5);
+	header.writeUInt8(0, 0);
+	header.writeUInt32BE(payload.length, 1);
+	return Buffer.concat([header, Buffer.from(payload)]);
+}
+
 interface H2CaptureServer {
 	baseUrl: string;
 	frames: Buffer[];
@@ -100,6 +119,10 @@ async function startH2CaptureServer(): Promise<H2CaptureServer> {
 			responded = true;
 			frames.push(buffered.subarray(0, 5 + length));
 			stream.respond({ ":status": 200, "content-type": "application/connect+proto" });
+			// `turn_ended` is the only thing that tells the provider the turn is
+			// over; without it the round is an incomplete stream, which is a
+			// different subject from the payload seam this suite is about.
+			stream.write(turnEndedFrame());
 			stream.end();
 		});
 	});
