@@ -205,10 +205,9 @@ export class QuietZoneLine implements Component, MouseRoutable {
 
 /**
  * One blank row of vertical air above and below the input. This row paints
- * NOTHING: the composer has no card and no tinted ground (user order,
- * 2026-07-22 — every attempt at a painted composer box read as a gray slab
- * on the real terminal; the composer is hairline + text + footline on the
- * terminal's own background). The class survives only to keep the zone's
+ * NOTHING: the composer has no card and no tinted ground. Every painted
+ * composer box read as a grey slab on a real terminal, so the composer is
+ * hairline + text + footline on the terminal's own background. The class survives only to keep the zone's
  * mount order and row count stable; reintroducing any background paint here
  * is a design regression locked out by the composer suites.
  */

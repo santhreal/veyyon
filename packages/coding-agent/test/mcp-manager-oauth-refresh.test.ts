@@ -173,8 +173,7 @@ describe("MCPManager OAuth refresh failure", () => {
 			"https://logfire.example.com/mcp",
 			{ authorizationUrl: undefined, stripSameOriginResource: true, signal: expect.any(AbortSignal) },
 		);
-		// The poisoned Bearer must not be re-injected — that is the loop the user
-		// reported (#1908).
+		// The poisoned Bearer must not be re-injected — that is the loop in #1908.
 		expect(getAuthorizationHeader(prepared)).toBeUndefined();
 		// The credential row is gone so neither this nor a future session keeps
 		// shipping the dead refresh token.

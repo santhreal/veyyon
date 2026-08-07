@@ -3,8 +3,8 @@
  * ORDER is the design: loader and hook status above the hairline, one blank
  * pad row on each side of the input, footline and shortcuts under the card,
  * one margin row off the terminal floor. The pads paint nothing — every
- * tinted composer ground read as a grey slab on a mismatched terminal (user
- * order, 2026-07-22), so the air around the input is the terminal's own
+ * tinted composer ground read as a grey slab on a mismatched terminal, so
+ * the air around the input is the terminal's own
  * background. `mountComposerZone` is the ONE owner of that order; these tests
  * pin every row by identity and by what it renders, so a re-ordered, dropped,
  * or re-painted row fails loudly.

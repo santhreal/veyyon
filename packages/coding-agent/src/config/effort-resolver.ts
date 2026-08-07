@@ -4,8 +4,8 @@
  * Effort used to live in three stores with the precedence written inline at the
  * call site, so nothing could tell you which one was in effect: a profile-wide
  * `defaultThinkingLevel` enum, a `:level` suffix on a model selector, and the
- * session's own level. The operator's verdict was "effort level is very muddled"
- * (2026-07-24).
+ * session's own level. Three sources and no single answer is why the setting
+ * read as muddled.
  *
  * There is now one persisted, user-visible store — the `defaultEffort` list of
  * model to effort rows, per profile — and one ordered rule, below. A `*` row
@@ -16,7 +16,13 @@
  * which is the only reason the enum existed.
  */
 
-import { AUTO_THINKING, type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
+import { logger } from "@veyyon/utils";
+import {
+	AUTO_THINKING,
+	CLI_THINKING_LEVELS,
+	type ConfiguredThinkingLevel,
+	parseConfiguredThinkingLevel,
+} from "../thinking";
 
 /** The row key matching every model, i.e. the profile-wide default. */
 export const ANY_MODEL_EFFORT_KEY = "*";
@@ -61,13 +67,58 @@ export interface EffortInputs {
 }
 
 /**
+ * Effort values already reported as unusable, so the warning is said once per
+ * process instead of once per read. `resolveEffort` runs on every status-line
+ * render, so an ungated warning would be a log flood rather than a report.
+ * Keyed by setting and value, so a second key with a different typo is still
+ * reported.
+ */
+const reportedUnusableEfforts = new Set<string>();
+
+/**
+ * Parse a persisted effort value, reporting one that names no level.
+ *
+ * Every settings-borne effort goes through here, so one typo is answered the
+ * same way wherever it was written: the value is NOT guessed at (running at an
+ * effort nobody chose is worse than inheriting) and it is NOT dropped quietly
+ * either. "Inherited" is what setting nothing looks like, so a silently ignored
+ * value leaves a setting that reads as configured and does nothing — which is
+ * why this function is shared rather than reimplemented per store.
+ *
+ * Absent and blank both mean inherit and neither is reported: blank is exactly
+ * what an effort picker's inherit row stores.
+ */
+export function parseConfiguredEffortSetting(setting: string, value: unknown): ConfiguredThinkingLevel | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	if (trimmed.length === 0) return undefined;
+	const parsed = parseConfiguredThinkingLevel(trimmed);
+	if (parsed !== undefined) return parsed;
+	const key = `${setting}=${trimmed}`;
+	if (reportedUnusableEfforts.has(key)) return undefined;
+	reportedUnusableEfforts.add(key);
+	logger.warn(
+		`Settings: ${setting} is "${trimmed}", which is not an effort level, so it is being ignored and the session's effort is inherited. ` +
+			`Accepted values: ${CLI_THINKING_LEVELS.join(", ")}.`,
+		{ setting, value: trimmed, accepted: CLI_THINKING_LEVELS },
+	);
+	return undefined;
+}
+
+/**
  * Normalize a stored row value. Rows are hand-editable in `settings.json`, so a
  * junk value is dropped rather than trusted: an unparseable effort must not
  * silently become `off` (which would quietly disable thinking) nor throw at
  * request time.
+ *
+ * `setting` names the key for the report. It is omitted by the two callers that
+ * only DISPLAY a row ({@link formatEffortRow}, which already echoes the raw
+ * value back) and by the legacy-enum migration, so the warning belongs to the
+ * read that actually decides an effort.
  */
-function rowLevel(raw: string | undefined): ConfiguredThinkingLevel | undefined {
-	return raw === undefined ? undefined : parseConfiguredThinkingLevel(raw.trim());
+function rowLevel(raw: string | undefined, setting?: string): ConfiguredThinkingLevel | undefined {
+	if (raw === undefined) return undefined;
+	return setting === undefined ? parseConfiguredThinkingLevel(raw.trim()) : parseConfiguredEffortSetting(setting, raw);
 }
 
 /**
@@ -91,10 +142,10 @@ export function resolveEffort(inputs: EffortInputs): ResolvedEffort {
 	}
 	const rows = inputs.defaultEffort ?? {};
 	if (inputs.modelSelector) {
-		const own = rowLevel(rows[inputs.modelSelector]);
+		const own = rowLevel(rows[inputs.modelSelector], `defaultEffort["${inputs.modelSelector}"]`);
 		if (own !== undefined) return { level: own, source: "model-row" };
 	}
-	const any = rowLevel(rows[ANY_MODEL_EFFORT_KEY]);
+	const any = rowLevel(rows[ANY_MODEL_EFFORT_KEY], `defaultEffort["${ANY_MODEL_EFFORT_KEY}"]`);
 	if (any !== undefined) return { level: any, source: "any-row" };
 	return { level: undefined, source: "model-default" };
 }

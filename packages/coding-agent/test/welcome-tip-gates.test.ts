@@ -1,6 +1,6 @@
 /**
  * Welcome tip gates — a tip must never advertise behavior the user disabled.
- * Found by the 2026-07-22 logic audit: with `magicKeywords.enabled: false`
+ * Found by a logic audit: with `magicKeywords.enabled: false`
  * the hero could still say "type `orchestrate` … watch it glow", promising a
  * glow and an orchestration that would not happen. Tips now carry an optional
  * `[gate:<setting>]` prefix and resolve it against live settings at pick time.

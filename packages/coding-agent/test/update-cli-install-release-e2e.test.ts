@@ -275,10 +275,9 @@ describe.skipIf(isWindows)("installRelease end to end (binary self-update pipeli
 	/** A source install (PATH resolves into the checkout launcher) must never
 	 * touch the release-binary path: no fetch, no swap. It updates in its own
 	 * terms — the git/bun source steps — and a failing first step surfaces the
-	 * manual guidance while leaving the launcher untouched. (A user hit the
-	 * dead-end version of this on 2026-07-24: the updater refused source
-	 * installs with advice instead of updating, stranding them on a version
-	 * whose TUI bug had already been fixed.) */
+	 * manual guidance while leaving the launcher untouched. The dead-end
+	 * version of this refused source installs with advice instead of updating,
+	 * stranding the install on a version whose TUI bug was already fixed. */
 	it("updates a source install via the source steps, never fetching a release binary", async () => {
 		const dir = await makeTempDir();
 		// The real source-launcher suffix: packages/coding-agent/scripts/veyyon.
