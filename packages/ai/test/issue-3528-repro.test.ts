@@ -439,8 +439,8 @@ describe("llama.cpp warm-prefix preservation (#3528)", () => {
 	});
 
 	it("emits preserve_thinking on the wire for local Qwen + thinking", () => {
-		// End-to-end pin for the user's reported setup (#3541):
-		// `enable_thinking: true` + `preserve_thinking: true` (twin top-level
+		// End-to-end pin for the setup in #3541: `enable_thinking: true` +
+		// `preserve_thinking: true` (twin top-level
 		// + chat_template_kwargs) must both ride the body so the chat template
 		// preserves `<think>...</think>` for older assistants. The twin
 		// emission covers llama.cpp / vLLM / SGLang / Alibaba shapes without

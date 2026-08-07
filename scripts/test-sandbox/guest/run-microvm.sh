@@ -17,7 +17,7 @@
 # --------------------
 # No BIOS, no PCI bus, no ACPI tables, no legacy timers. The kernel is loaded
 # directly into guest memory and the only devices are virtio-mmio ones we ask for.
-# It is the same shape Firecracker gives, which is what the operator asked for;
+# It is the same shape Firecracker gives, which is what matters here;
 # Firecracker and cloud-hypervisor are not installed on this host and QEMU is, so
 # this is the microVM that can actually run here.
 #

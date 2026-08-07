@@ -101,13 +101,12 @@ export type ExecutionColorKey = "dim" | "bashMode" | "pythonMode";
 
 /**
  * Build the content container + loader scaffold that bash and eval execution
- * components share. The caller appends the header (command vs `>>>` prompt)
- * and the returned loader to `contentContainer` so per-mode order is
- * preserved. No full-width border rules: the V1 aligned-quiet merge
- * (user-approved 2026-07-22) sits execution blocks on the transcript's shared
- * left rail — the mode color lives on the `$`/`>>>` header, and two
- * full-bleed rules around two short lines read as chrome shouting over
- * content.
+ * components share. The caller appends the header (command vs `>>>` prompt) and
+ * the returned loader to `contentContainer` so per-mode order is preserved. No
+ * full-width border rules: the V1 aligned-quiet merge sits execution blocks on
+ * the transcript's shared left rail — the mode color lives on the `$`/`>>>`
+ * header, and two full-bleed rules around two short lines read as chrome
+ * shouting over content.
  */
 export function buildExecutionFrame(
 	parent: Container,

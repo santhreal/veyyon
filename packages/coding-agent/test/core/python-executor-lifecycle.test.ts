@@ -233,9 +233,9 @@ describe("executePython session kernels", () => {
 
 	/**
 	 * Two cells from one session asking for a reset at the same time used to crash the
-	 * second with "Python kernel reset already in progress", which the user reported as
-	 * eval returning only a status line and no executed output. The second reset now waits
-	 * for the in-flight one and then proceeds, so both cells succeed.
+	 * second with "Python kernel reset already in progress", so eval returned only a
+	 * status line and no executed output. The second reset now waits for the in-flight one
+	 * and then proceeds, so both cells succeed.
 	 */
 	it("coalesces concurrent reset requests instead of failing the second cell", async () => {
 		const seeded = new FakeKernel(OK_RESULT);

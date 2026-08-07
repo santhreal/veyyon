@@ -556,8 +556,8 @@ describe("CombinedAutocompleteProvider", () => {
 		});
 
 		it("uses immediate-directory prefix completion for @../ (no recursive fuzzy walk)", async () => {
-			// Sibling-of-cwd layout, mirroring the user-reported case: parent
-			// dir holds many unrelated projects, each with deep subtrees.
+			// Sibling-of-cwd layout, mirroring that layout: parent dir holds many
+			// unrelated projects, each with deep subtrees.
 			fs.mkdirSync(path.join(outsideDir, "workspace"), { recursive: true });
 			fs.mkdirSync(path.join(outsideDir, "workflows"), { recursive: true });
 			fs.mkdirSync(path.join(outsideDir, "other"), { recursive: true });

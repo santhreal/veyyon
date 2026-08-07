@@ -38,7 +38,7 @@ describe("accent tokens — titanium binds the approved Daybreak arcs", () => {
 	const theme = createTheme(titanium as ThemeJson, { mode: "truecolor" });
 
 	/** Each row is (token, approved artifact hex). If any assertion fails, the
-	 * brand theme has drifted from the user-approved design artifact. */
+	 * brand theme has drifted from the design artifact. */
 	const APPROVED: [Parameters<typeof theme.getFgAnsi>[0], string][] = [
 		["sessionAccent", "#3FB6A8"],
 		["modeAccent", "#9B7EDE"],
@@ -147,10 +147,9 @@ describe("composerBg — the quiet card ground (DS-6 layer 0)", () => {
 	/** A theme that omits composerBg gets the UNPAINTED sentinel (`\x1b[49m`),
 	 * never a painted fallback. The old default inherited statusLineBg, which
 	 * painted the composer band as a colored slab on any terminal whose ground
-	 * differed from the theme (2026-07-24 operator screenshot: alabaster's
-	 * #ececf0 band on a white terminal). Locks the slab-class fix: the inline
-	 * TUI's ground is the terminal's own background unless a theme explicitly
-	 * declares a composer card. */
+	 * differed from the theme. Locks the slab-class fix: the inline TUI's ground
+	 * is the terminal's own background unless a theme explicitly declares a
+	 * composer card. */
 	it("defaults to the unpainted terminal ground when omitted", () => {
 		for (const [name, json] of Object.entries(defaultThemes)) {
 			const colors = (json as ThemeJson).colors as Record<string, unknown>;

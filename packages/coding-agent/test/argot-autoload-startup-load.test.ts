@@ -60,7 +60,7 @@ describe("shouldAutoloadArgotAtStartup: the startup load happens only with all t
 	/**
 	 * The setting doing its one job. Nothing else about the session changes -- the
 	 * feature is still on and the codec is still unarmed -- so this case is what
-	 * distinguishes "the operator asked us not to" from the other two refusals.
+	 * distinguishes "loading was disabled" from the other two refusals.
 	 */
 	it("refuses when autoload is off, with everything else unchanged", () => {
 		const argot = new ArgotSession();

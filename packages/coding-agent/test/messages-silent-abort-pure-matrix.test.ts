@@ -71,7 +71,7 @@ describe("resolveAbortLabel pure matrix", () => {
 
 	/** AbortError's bare-cancel shape carries no reason beyond "aborted";
 	 * rendered verbatim it stacked into "Error: Aborted: Cancelled" in the
-	 * transcript (user screenshot, 2026-07-22). It must take the generic path. */
+	 * transcript. It must take the generic path. */
 	it("bare AbortError text (Aborted: Cancelled) → Operation aborted", () => {
 		expect(resolveAbortLabel({ errorMessage: "Aborted: Cancelled" })).toBe("Operation aborted");
 		// A REAL threaded reason stays verbatim — only the bare shape is generic.

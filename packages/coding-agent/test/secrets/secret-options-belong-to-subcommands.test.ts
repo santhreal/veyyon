@@ -55,8 +55,8 @@ describe("--scope on a subcommand that ignores it", () => {
 	 * This case used to be the suite's headline refusal, because `rm` walked scopes narrowest-first
 	 * and an accepted-and-ignored `--scope project` printed "Removed X from the profile vault". The
 	 * fix could have stayed a refusal forever; instead the option was implemented, which is the
-	 * better answer to "the operator asked for something we do not do". If somebody restores the
-	 * refusal, this fails and points at the suite that owns the behaviour now.
+	 * better answer to "an unsupported option was passed". If somebody restores the refusal, this
+	 * fails and points at the suite that owns the behaviour now.
 	 */
 	it("no longer refuses --scope on rm, because rm implements it", () => {
 		const request = parseSecretCommand("rm github-token --scope project", "noninteractive");

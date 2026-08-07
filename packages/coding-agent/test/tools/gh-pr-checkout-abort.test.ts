@@ -192,9 +192,9 @@ describe("cancelling a multi-PR checkout", () => {
 	});
 
 	/**
-	 * An abort is an abort, not a failure. This is the property the agent loop branches on:
-	 * a `ToolError` means read the message and try again, `ToolAbortError` means the operator
-	 * said stop. Before the fix a cancellation with two unfinished checkouts produced
+	 * An abort is an abort, not a failure. This is the property the agent loop branches on: a
+	 * `ToolError` means read the message and try again, `ToolAbortError` means a stop was
+	 * requested. Before the fix a cancellation with two unfinished checkouts produced
 	 * `ToolError("all 2 PR checkouts failed: …")`, which reads as two broken PRs.
 	 */
 	it("rejects as an abort rather than a failed-checkout error", async () => {

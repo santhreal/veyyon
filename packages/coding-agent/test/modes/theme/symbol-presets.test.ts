@@ -54,7 +54,7 @@ describe("unicode preset width contract — no ambiguous or emoji-width glyphs",
 	 *  - U+FE0F variation selector (forces emoji presentation)
 	 *  - all emoji planes above U+1F000
 	 *  - U+25CC DOTTED CIRCLE (not a width bug but the combining-mark
-	 *    placeholder glyph — it reads as a rendering artifact; user report
+	 *    placeholder glyph — it reads as a rendering artifact
 	 *    2026-07-22, "stray ◌ in the footline")
 	 */
 	it("keeps every unicode symbol out of the known double-width ranges", () => {

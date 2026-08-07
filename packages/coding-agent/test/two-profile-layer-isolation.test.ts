@@ -262,9 +262,9 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 	 * from the resolved agent dir, while "Active profile" and "Profile AGENTS.md"
 	 * came from the process-booted profile. So a session rooted in another agent
 	 * dir was told to edit a Profile AGENTS.md that was NOT the file whose bytes it
-	 * had just been given, and a model asked to update the operator's standing
-	 * rules wrote them into the wrong profile. All four rows must name the one dir
-	 * the instructions actually came from.
+	 * had just been given, and a model asked to update the instruction files wrote
+	 * them into the wrong profile. All four rows must name the one dir the
+	 * instructions actually came from.
 	 */
 	test("every agentConfiguration row names the NAMED profile, not the booted one", async () => {
 		const f = fixture("rows-active");

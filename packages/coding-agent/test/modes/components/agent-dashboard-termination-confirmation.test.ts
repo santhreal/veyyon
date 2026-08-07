@@ -3,7 +3,7 @@
  *
  * WHY. A single stray `x` used to abort a live provider turn and remove the
  * agent immediately. The confirmation keeps that destructive action reversible
- * until the operator explicitly accepts it, without changing the established
+ * until it is explicitly accepted, without changing the established
  * abort-before-release lifecycle once accepted. The pointer affordance follows
  * the same rule: it is local to a terminable row, appears only while that row is
  * hovered, and opens the same confirmation instead of becoming a faster kill.

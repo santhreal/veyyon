@@ -11,7 +11,7 @@
  * already resolved this" and skips discovery entirely. So the child was handed no
  * rules AND the project prompt's standing claim that "every AGENTS.md is already
  * inlined", which forbids it from looking for them. Nothing warned. Every
- * subagent in the product ran with none of the operator's standing orders.
+ * subagent in the product ran with none of the instruction files.
  *
  * WHY THIS SUITE AND NOT THE EXISTING ONES.
  *  - `test/context-files-agent-type-parity.test.ts` calls `inheritContextFiles`

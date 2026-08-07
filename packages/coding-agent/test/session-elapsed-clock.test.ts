@@ -4,8 +4,8 @@
  * MODEL RUNTIME from the ONE active-processing meter (the same accounting
  * behind the `time_spent` segment), never wall time since launch: the first
  * shipped version anchored at TUI construction and ticked while the model had
- * not even started — the exact bug the user reported ("the model didnt even
- * start and the timer is ticking"). These tests lock the corrected contract.
+ * not even started — the exact bug: the timer
+ * ticked before the model had started. These tests lock the corrected contract.
  *
  * Locks:
  *  1. Before the model has EVER run: no clock, no stopped receipt, nothing.

@@ -18,12 +18,11 @@ export class UserMessageComponent extends Container {
 	#zoneLines: string[] | undefined;
 	// While the agent works on this prompt, its `›` glyph turns ember so the
 	// operator can see at a glance WHICH message is being worked. The event
-	// controller flips this on the turn's agent_start and off at agent_end.
-	// STATIC by design: an animated per-frame paint here either pins the
-	// live-region seam open (unfinalized block near the top of the transcript
-	// = a giant blank hole below it — shipped regression, user screenshot
-	// 2026-07-22) or churns the committed-prefix audit. The bytes change only
-	// on arm/disarm, surfaced through the block version.
+	// controller flips this on the turn's agent_start and off at agent_end. STATIC
+	// by design: an animated per-frame paint here either pins the live-region seam
+	// open (unfinalized block near the top of the transcript = a giant blank hole
+	// below it — shipped regression) or churns the committed-prefix audit. The
+	// bytes change only on arm/disarm, surfaced through the block version.
 	#working = false;
 	#version = 0;
 
@@ -75,14 +74,12 @@ export class UserMessageComponent extends Container {
 	}
 
 	override render(width: number): readonly string[] {
-		// The prompt gutter (approved composer mockups, §02 "full screen at
-		// rest"): a past prompt reads `› …` — the same glyph you typed behind,
-		// with the glyph dim and the TEXT bright (the operator's own words were
-		// gray-on-gray and unreadable, user report 2026-07-22). The glyph sits at
-		// COMPOSER_INSET_COLS so past prompts share ONE left rail with the
-		// composer's `›` (V1 aligned-quiet, user-approved merge 2026-07-22).
-		// Children render 4 columns narrower so the gutter never pushes a
-		// wrapped line past the terminal edge.
+		// The prompt gutter (approved composer mockups, §02 "full screen at rest"): a
+		// past prompt reads `› …` — the same glyph you typed behind, with the glyph
+		// dim and the TEXT bright. The glyph sits at COMPOSER_INSET_COLS so past
+		// prompts share ONE left rail with the composer's `›`. Children render 4
+		// columns narrower so the gutter never pushes a wrapped line past the
+		// terminal edge.
 		const lines = super.render(Math.max(1, width - 4));
 		if (lines.length === 0) {
 			return lines;

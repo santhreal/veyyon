@@ -18,9 +18,9 @@ export function formatActiveRepoWatchdogPrompt(activeRepoContext: ActiveRepoCont
 /**
  * Render the project context files (AGENTS.md and the like) into a block for the
  * advisor's system prompt, mirroring how the primary agent receives them. Gives
- * the read-only reviewer the user's standing project instructions so it can hold
- * the driving agent to them instead of advising against project conventions it
- * cannot otherwise see. Returns undefined when there are no context files.
+ * the read-only reviewer the instruction files so it can hold the driving agent
+ * to them instead of advising against project conventions it cannot otherwise
+ * see. Returns undefined when there are no context files.
  */
 export function formatAdvisorContextPrompt(
 	contextFiles: ReadonlyArray<{ path: string; content: string }>,

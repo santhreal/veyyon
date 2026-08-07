@@ -6,8 +6,8 @@
  * themselves with a full-bleed rule above and below, which at 120 columns cut the
  * transcript into slabs, competed with the composer's rule for the same meaning,
  * and carried no information — a passing run and a failing run were fenced
- * identically. The V1 aligned-quiet merge removed them (user-approved 2026-07-22)
- * and put every block on the shared left rail instead.
+ * identically. The V1 aligned-quiet merge removed them and put every block on the
+ * shared left rail instead.
  *
  * Nothing stopped them coming back, so this suite is the lock. It asserts on
  * RENDERED lines rather than on source shape, because the fences were rendered

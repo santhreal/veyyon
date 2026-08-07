@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Comment prose in `tui.ts` that credited a chat report or a screenshot now states the constraint on its own terms. Comments only, so nothing renders differently.
+
 ### Breaking Changes
 
 - The editor's top border no longer carries status content, and `Editor.setTopBorder`, `Editor.setTopBorderProvider` and the `EditorTopBorder` type are gone. The whole mechanism was unreachable: nothing in this repository ever installed either a provider or eager content, so the branch that laid a status line into the top rule and the lazy provider added to coalesce its rebuilds both ran zero times per frame in production while a test suite exercised them thoroughly. The host they were built for, the coding agent, hides the editor border entirely and renders its status as a quiet footline below the input. A visible border now draws a plain rule, which is what it always drew. `getTopBorderAvailableWidth` stays: it answers the content width inside the editor's horizontal chrome, which is still a real question.

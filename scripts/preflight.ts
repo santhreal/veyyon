@@ -61,13 +61,12 @@ const CONTRACTS: readonly Contract[] = [
 		symptom: "a prompt shipped on disk is not registered, so a feature silently renders nothing",
 	},
 	{
-		// The operator ordered these three prompts replaced with oh-my-pi's byte for byte,
-		// on the measurement that upstream scores higher on their long-run evals. Prompt
-		// text is the least visible thing in the tree: nothing type-checks it, nothing
-		// crashes, and an edit shows up only as worse summaries several sessions later.
-		// The suite pins each prompt by SHA-256, so an edit is a build failure instead.
-		// A deliberate, operator-approved prompt change updates the digest in the same
-		// commit; that friction is the point.
+		// These three prompts are pinned to oh-my-pi's byte for byte, on the measurement
+		// that upstream scores higher on their long-run evals. Prompt text is the least
+		// visible thing in the tree: nothing type-checks it, nothing crashes, and an edit
+		// shows up only as worse summaries several sessions later. The suite pins each
+		// prompt by SHA-256, so an edit is a build failure instead. A deliberate prompt
+		// change updates the digest in the same commit; that friction is the point.
 		suite: "packages/agent/test/compaction-strategy-contracts.test.ts",
 		symptom:
 			"a compaction prompt drifted from the upstream text the operator ordered, so summary quality changes with no visible cause",

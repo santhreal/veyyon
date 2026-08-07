@@ -105,7 +105,7 @@ export interface CpuLimitProbe {
 	/** Whether the selected backend makes the kernel throttle the group. */
 	throttles: boolean;
 	backend: CpuLimitBackend | null;
-	/** Which backend was selected, or WHY none works. Shown to the operator verbatim. */
+	/** Which backend was selected, or WHY none works. Shown verbatim. */
 	detail: string;
 }
 

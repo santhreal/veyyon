@@ -4256,7 +4256,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const advisorWatchdogPrompt = advisorWatchdogPrompts.length > 0 ? advisorWatchdogPrompts.join("\n\n") : undefined;
 		// Hand the advisor the same project context files (AGENTS.md, etc.) the
 		// primary agent gets in its system prompt, so the read-only reviewer judges
-		// against the user's standing project rules instead of advising blind.
+		// against the instruction files instead of advising blind.
 		const advisorContextPrompt = formatAdvisorContextPrompt(contextFiles);
 		// Owned only when this session created the manager; subagents receive a
 		// parent's manager via `options.mcpManager` and MUST NOT disconnect it.

@@ -316,11 +316,11 @@ describe("large session memory guards", () => {
 	});
 
 	it("keeps all 200 summaries byte-for-byte across a 100s-of-compactions lifetime with interleaved turns", async () => {
-		// WHY: the user reported the loss "after 100s of compactions". This drives that
-		// exact scale — 200 compactions interleaved with real user/assistant turns — and
-		// asserts every summary survives in memory, on disk, and through a resume-rewrite
-		// load, in order. Each summary is also unique, so a single elided or duplicated
-		// entry fails. This is the headline regression at the reported magnitude.
+		// WHY: the loss appears after 100s of compactions. This drives that exact scale —
+		// 200 compactions interleaved with real user/assistant turns — and asserts every
+		// summary survives in memory, on disk, and through a resume-rewrite load, in
+		// order. Each summary is also unique, so a single elided or duplicated entry
+		// fails. This is the headline regression at the reported magnitude.
 		const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-200-compactions-"));
 		tempDirs.push(tempDir);
 		const storage = new CountingMemorySessionStorage();

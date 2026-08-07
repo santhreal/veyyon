@@ -90,8 +90,8 @@ describe("XDG_CONFIG_HOME and the config root", () => {
 		const expected = path.join(os.homedir(), CONFIG_DIR_NAME, PROFILES_DIR_NAME, DEFAULT_PROFILE_DIR_NAME);
 		expect(getConfigRootDir()).toBe(expected);
 		expect(getGlobalConfigRootDir()).toBe(path.join(os.homedir(), CONFIG_DIR_NAME));
-		// Stated the other way round too, because the failure a user reported was "I set it and
-		// nothing happened", and the failure this test guards against is its mirror image.
+		// Stated the other way round too, because the observed failure was a variable set and
+		// ignored, and the failure this test guards against is its mirror image.
 		expect(getConfigRootDir().startsWith(configHome)).toBe(false);
 	});
 

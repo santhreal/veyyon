@@ -1,13 +1,15 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import {
 	ANY_MODEL_EFFORT_KEY,
 	formatEffortRow,
+	parseConfiguredEffortSetting,
 	resolveEffort,
 	withLegacyDefaultEffort,
 	withPersistedEffort,
 } from "@veyyon/coding-agent/config/effort-resolver";
-import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
+import { AUTO_THINKING, CLI_THINKING_LEVELS } from "@veyyon/coding-agent/thinking";
+import { logger } from "@veyyon/utils";
 
 /**
  * The precedence table for thinking effort, asserted case by case.
@@ -129,6 +131,128 @@ describe("resolving which effort applies", () => {
 	});
 });
 
+/**
+ * WHY THIS SUITE EXISTS (A CONFIGURED EFFORT THAT DOES NOTHING SAYS SO).
+ *
+ * "Ignores a junk row" above is only half a contract. The other half is that
+ * ignoring it is AUDIBLE, because "inherited" is exactly what an operator sees
+ * when they set nothing: a typo left a row that looked configured and did
+ * nothing, forever, with no way to notice. `resolveSubagentThinkingLevel` already
+ * reported its own store that way, and `defaultEffort` — the ONE persisted effort
+ * store the settings screen edits — did not, so the same mistake was loud in one
+ * place and silent in the other.
+ *
+ * `parseConfiguredEffortSetting` is now the single owner both stores read, so the
+ * accepted-values list cannot drift between them, and the assertions below derive
+ * that list from the vocabulary rather than restating it.
+ */
+describe("a defaultEffort row that names no level is reported, not swallowed", () => {
+	/**
+	 * Collect `logger.warn` messages while a block runs, and restore the logger after.
+	 *
+	 * The reports under test are said once per process per key, so every case that
+	 * asserts one uses a value no other case uses — otherwise a later case sees
+	 * nothing and passes for the wrong reason.
+	 */
+	function captureLoggerWarnings(into: string[]): () => void {
+		const spy = spyOn(logger, "warn").mockImplementation((message: unknown) => {
+			into.push(String(message));
+		});
+		return () => spy.mockRestore();
+	}
+
+	it("names the row key, the value, and every level that would have worked", () => {
+		const warnings: string[] = [];
+		const restore = captureLoggerWarnings(warnings);
+		try {
+			// A value no other case in this file uses: the report fires once per process.
+			const resolved = resolveEffort({ modelSelector: OPUS, defaultEffort: { [OPUS]: "hihg" } });
+			expect(resolved).toEqual({ level: undefined, source: "model-default" });
+		} finally {
+			restore();
+		}
+
+		const reported = warnings.find(message => message.includes("hihg"));
+		expect(reported).toBeDefined();
+		expect(reported).toContain(`defaultEffort["${OPUS}"]`);
+		expect(reported).toContain("inherited");
+		for (const level of CLI_THINKING_LEVELS) expect(reported).toContain(level);
+	});
+
+	it("names the any-model row when that is the value at fault", () => {
+		const warnings: string[] = [];
+		const restore = captureLoggerWarnings(warnings);
+		try {
+			resolveEffort({ modelSelector: HAIKU, defaultEffort: { [ANY_MODEL_EFFORT_KEY]: "ludicrous" } });
+		} finally {
+			restore();
+		}
+
+		const reported = warnings.find(message => message.includes("ludicrous"));
+		expect(reported).toBeDefined();
+		expect(reported).toContain(`defaultEffort["${ANY_MODEL_EFFORT_KEY}"]`);
+		expect(reported).not.toContain(HAIKU);
+	});
+
+	/**
+	 * A row that resolves cleanly, an absent row, and a blank row are the ordinary
+	 * states of this setting. Warning on any of them would fire on every status-line
+	 * render, which is the failure mode that makes a report worth ignoring.
+	 */
+	it("says nothing about a row that resolves, is absent, or is blank", () => {
+		const warnings: string[] = [];
+		const restore = captureLoggerWarnings(warnings);
+		try {
+			resolveEffort({ modelSelector: OPUS, defaultEffort: { [OPUS]: ThinkingLevel.High } });
+			resolveEffort({ modelSelector: OPUS, defaultEffort: {} });
+			resolveEffort({ modelSelector: OPUS, defaultEffort: { [OPUS]: "   ", [ANY_MODEL_EFFORT_KEY]: "" } });
+			resolveEffort({ modelSelector: OPUS, defaultEffort: { [OPUS]: `  ${AUTO_THINKING}  ` } });
+		} finally {
+			restore();
+		}
+
+		expect(warnings).toEqual([]);
+	});
+
+	/**
+	 * One store, one sentence. Both persisted effort settings go through the shared
+	 * parser, so an operator who mistypes either one is told the same thing with the
+	 * same accepted list — the drift this replaced had two copies of the message.
+	 */
+	it("reports the subagent effort setting through the same owner", () => {
+		const warnings: string[] = [];
+		const restore = captureLoggerWarnings(warnings);
+		try {
+			expect(parseConfiguredEffortSetting("subagent.thinkingLevel", "sideways")).toBeUndefined();
+			expect(parseConfiguredEffortSetting("defaultEffort[\"*\"]", "sideways")).toBeUndefined();
+		} finally {
+			restore();
+		}
+
+		expect(warnings).toHaveLength(2);
+		for (const message of warnings) {
+			expect(message).toContain("sideways");
+			expect(message).toContain("inherited");
+			for (const level of CLI_THINKING_LEVELS) expect(message).toContain(level);
+		}
+	});
+
+	/** Said once per process per key, or `resolveEffort` would flood the log from the status line. */
+	it("reports one bad value once, however many reads follow", () => {
+		const warnings: string[] = [];
+		const restore = captureLoggerWarnings(warnings);
+		try {
+			for (let read = 0; read < 5; read++) {
+				resolveEffort({ modelSelector: OPUS, defaultEffort: { [OPUS]: "furious" } });
+			}
+		} finally {
+			restore();
+		}
+
+		expect(warnings.filter(message => message.includes("furious"))).toHaveLength(1);
+	});
+});
+
 describe("migrating the retired global default", () => {
 	it("turns a legacy defaultThinkingLevel into the any-model row", () => {
 		expect(withLegacyDefaultEffort(undefined, ThinkingLevel.High)).toEqual({
@@ -245,8 +369,8 @@ describe("persisting a durable default effort", () => {
 	});
 
 	it("writes the any-model row for a model that has none of its own", () => {
-		// Nothing more specific governs, so `*` is both the row that answers for
-		// this model and the profile-wide default the operator asked to set.
+		// Nothing more specific governs, so `*` is both the row that answers for this
+		// model and the profile-wide default being set.
 		expect(withPersistedEffort({ [OPUS]: ThinkingLevel.Low }, undefined, ThinkingLevel.High, "openai/gpt-5")).toEqual(
 			{
 				[OPUS]: ThinkingLevel.Low,

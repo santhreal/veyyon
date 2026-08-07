@@ -51,10 +51,11 @@ describe("session.workdir settings UI", () => {
 });
 
 describe("session.workdir is settable through the settings layer", () => {
-	// WHY: the core of the user report is "cant even be set". This proves the settings
-	// layer accepts, stores, and returns the value — the same `set`/`get` the settings
-	// screen's text-input persist path uses. Default-unset returns nothing, preserving
-	// today's launch-from-current-directory behavior when the setting is left blank.
+	// WHY: the reported failure is a value that cannot be set. This proves the
+	// settings layer accepts, stores, and returns the value — the same `set`/`get` the
+	// settings screen's text-input persist path uses. Default-unset returns nothing,
+	// preserving today's launch-from-current-directory behavior when the setting is
+	// left blank.
 	it("defaults to unset so launch falls back to the current directory", () => {
 		const settings = Settings.isolated();
 		expect(settings.get("session.workdir")).toBeUndefined();

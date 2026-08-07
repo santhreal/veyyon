@@ -192,7 +192,7 @@ describe("Opening an agent", () => {
 	});
 
 	/**
-	 * Handing the main view over is what closes the card: the operator asked to go
+	 * Handing the main view over is what closes the card: the request is to land in the session
 	 * somewhere, and a card left on top of the session they were sent to would
 	 * have to be dismissed by hand before they could type to the agent they just
 	 * opened.
@@ -346,7 +346,7 @@ describe("Card chrome", () => {
 	 * The card used to take the whole terminal unconditionally. A run with four
 	 * agents drew four roster rows and then about twenty rows of empty card under
 	 * them, bordered and titled as though something were there, over a transcript
-	 * the operator wanted to see. Judged on rendered images at four, twelve and
+	 * the view must show. Judged on rendered images at four, twelve and
 	 * forty agents (`docs/internal/testing.md`, "Judging how a surface LOOKS"),
 	 * not from the row count alone.
 	 */
@@ -431,7 +431,7 @@ describe("Card chrome", () => {
 
 /**
  * The card has to stay readable on a terminal that renders no colour: NO_COLOR,
- * a dumb terminal, a piped capture, or an operator's screenshot pipeline.
+ * a dumb terminal, a piped capture, or a screenshot pipeline.
  *
  * Every signal the card carries had exactly one encoding, and for two of them
  * that encoding was a background tint. `theme.bg` returns its text unchanged

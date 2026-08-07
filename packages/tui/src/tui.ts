@@ -1070,12 +1070,12 @@ export class TUI extends Container {
 	// The scroll tape: every PREPARED row the engine has painted and let scroll
 	// off the window, oldest first — the engine's own mirror of what the
 	// terminal's scrollback holds. Scroll isolation reads history from here and
-	// not from the composed frame, because virtualized roots (the coding
-	// agent's TranscriptContainer) DROP committed rows from their render output
-	// once the engine reports them committed. That keeps the frame near the
-	// viewport height however long the session runs, so a frame-sourced frozen
-	// view could only ever scroll back by the commit lag — a few rows — and the
-	// wheel then did nothing at all (operator report 2026-07-24).
+	// not from the composed frame, because virtualized roots (the coding agent's
+	// TranscriptContainer) DROP committed rows from their render output once the
+	// engine reports them committed. That keeps the frame near the viewport height
+	// however long the session runs, so a frame-sourced frozen view could only
+	// ever scroll back by the commit lag — a few rows — and the wheel then did
+	// nothing at all.
 	//
 	// It mirrors the terminal, it is not a court record: a tail re-anchor
 	// re-shows rows that are already on the tape (the "duplication, never loss"

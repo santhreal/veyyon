@@ -605,8 +605,7 @@ describe("Esc means what the frame says it means", () => {
 	});
 
 	/**
-	 * THE NAVIGATION KILLER, in the operator's own words: "the onboarding is
-	 * still shit hard to navigate".
+	 * THE NAVIGATION KILLER.
 	 *
 	 * Every list in setup turns into a type-to-filter list once it holds more
 	 * rows than the terminal leaves it, which an 80x24 terminal does on two

@@ -153,11 +153,11 @@ function describeApprovalMode(from: Settings, session?: AgentSession): string {
  * both accept exactly the same words and report the same sentence.
  *
  * A rung set here is a RUNTIME override: it holds for this session and is never
- * written to config. That is the split the operator asked for — the persisted
- * default is chosen once (onboarding, then `/settings`), and a session that
- * needs more or less rope says so without editing anything. `reset` drops the
- * override rather than writing the default back, so the saved value keeps
- * winning afterwards even if it changes.
+ * written to config. That is the intended split — the persisted default is
+ * chosen once (onboarding, then `/settings`), and a session that needs more or
+ * less rope says so without editing anything. `reset` drops the override rather
+ * than writing the default back, so the saved value keeps winning afterwards
+ * even if it changes.
  */
 function applyPermissionsCommand(
 	rawArgs: string,
@@ -839,10 +839,10 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 					runtime,
 				);
 			}
-			// Session only. A command typed mid-run changes this run; the saved
-			// default is a settings edit, so trying an effort never rewrites it (the
-			// cycle keybinding already worked this way, and the two disagreeing is
-			// what made effort feel "muddled", operator report 2026-07-24).
+			// Session only. A command typed mid-run changes this run; the saved default
+			// is a settings edit, so trying an effort never rewrites it (the cycle
+			// keybinding already worked this way, and the two disagreeing is what made
+			// effort feel "muddled").
 			runtime.session.setThinkingLevel(level, false);
 			await runtime.output(`Effort set to ${level} for this session. ${DEFAULT_EFFORT_POINTER}`);
 			await runtime.notifyConfigChanged?.();

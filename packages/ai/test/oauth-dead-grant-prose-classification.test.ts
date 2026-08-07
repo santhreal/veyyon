@@ -16,7 +16,7 @@
  *    now" branch and blamed a lapsed subscription or unpaid balance, which is
  *    not what happened and sends the user to the wrong place;
  *  - the five-minute block expired and the whole thing repeated, every five
- *    minutes, indefinitely. The operator report was "this constantly happens".
+ *    minutes, indefinitely.
  *
  * It surfaced only with more than one account signed in, because usage ranking
  * (and therefore this whole resolution path) only engages when a provider has

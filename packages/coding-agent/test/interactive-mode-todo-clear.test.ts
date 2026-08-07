@@ -121,9 +121,9 @@ describe("InteractiveMode todo HUD persistence", () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
-	// NON-DEFAULT configuration: the operator asked for a one second delay. This
-	// proves the mechanism still works for anyone who wants it, and it is not
-	// evidence of what an unconfigured board does. See the test above for that.
+	// NON-DEFAULT configuration: a one second delay is configured. This proves the
+	// mechanism still works for anyone who wants it, and it is not evidence of
+	// what an unconfigured board does. See the test above for that.
 	it("clears closed todos after an explicitly configured delay", async () => {
 		await createMode(1);
 		vi.useFakeTimers();

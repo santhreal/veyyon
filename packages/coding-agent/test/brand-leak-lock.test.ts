@@ -154,12 +154,12 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 	});
 
 	it("every @veyyon/* package manifest is authored by santhreal, never an upstream/placeholder name", async () => {
-		// The published author identity of veyyon's OWN packages is `santhreal`
-		// (the user's explicit decision). Two foreign names had leaked in: the
-		// upstream fork author `Can Boluk` across most manifests, and a
-		// zero-footprint placeholder `Derek Rynd` on @veyyon/swarm-extension. This
-		// scans every workspace package manifest so neither — nor any other
-		// non-santhreal author — can reappear when a package is added or bumped.
+		// The published author identity of veyyon's OWN packages is `santhreal`. Two
+		// foreign names had leaked in: the upstream fork author `Can Boluk` across
+		// most manifests, and a zero-footprint placeholder `Derek Rynd` on
+		// @veyyon/swarm-extension. This scans every workspace package manifest so
+		// neither — nor any other non-santhreal author — can reappear when a package
+		// is added or bumped.
 		const glob = new Glob("packages/*/package.json");
 		const offenders: Array<{ pkg: string; author: unknown }> = [];
 		let scanned = 0;

@@ -174,10 +174,10 @@ describe("bash stall detection and wall-clock auto-background", () => {
 	});
 
 	/** The third lever: the operator's background key (`app.bash.background`,
-	 * default Ctrl+B). The TUI resolves the foreground wait through the
-	 * registry; the run converts with reason `manual` and its own notice —
-	 * the user's explicit 2026-07-22 ask (no way to reclaim the turn from a
-	 * long command besides waiting or interrupting). */
+	 * default Ctrl+B). The TUI resolves the foreground wait through the registry;
+	 * the run converts with reason `manual` and its own notice — the required
+	 * behavior (no way to reclaim the turn from a long command besides waiting or
+	 * interrupting). */
 	it("manual background request converts the wait with reason 'manual'", async () => {
 		const session = makeSession(tempDir, manager, {
 			"bash.autoBackground.enabled": false,

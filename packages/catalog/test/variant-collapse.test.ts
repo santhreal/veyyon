@@ -872,10 +872,9 @@ describe("antigravity discovery collapsing", () => {
 });
 
 /**
- * Devin effort-suffixed families collapsed 2026-07-22 (user report: "almost no
- * LLMs have no reasoning choice"). The bundled catalog carried raw
- * `claude-5-fable-*`, `claude-sonnet-5-*`, `grok-4-5-*` sibling ids and
- * GLM-5.2's `-none` off pair as separate dial-less models, so the effort
+ * Devin effort-suffixed families collapsed 2026-07-22. The bundled catalog
+ * carried raw `claude-5-fable-*`, `claude-sonnet-5-*`, `grok-4-5-*` sibling ids
+ * and GLM-5.2's `-none` off pair as separate dial-less models, so the effort
  * choice these SKUs actually serve was invisible: `getSupportedEfforts`
  * returned [] and /thinking had nothing to set. These lock the collapsed
  * bundled specs, the wire routing, and the alias that keeps old persisted
@@ -936,13 +935,12 @@ describe("devin effort-suffixed family collapse (bundled)", () => {
 
 /**
  * Cursor tier families, the aggregator thinking-pair cache-price gate, and the
- * o-series reasoning-flag corrector (2026-07-22, same user report as the devin
- * collapse above). Cursor's raw discovery rows carried effort-tier siblings
- * (`gpt-5.4-high` etc.) as separate `reasoning: false` models; the bare codex
- * ids claimed wire-effort ladders the cursor transport ignored. Aggregator
- * rows from models.dev shipped OpenAI o-series entries `reasoning: false`,
- * and thinking twins with unreported (zero) cache prices were refused pairing
- * by a strict per-field cost compare.
+ * o-series reasoning-flag corrector. Cursor's raw discovery rows carried
+ * effort-tier siblings (`gpt-5.4-high` etc.) as separate `reasoning: false`
+ * models; the bare codex ids claimed wire-effort ladders the cursor transport
+ * ignored. Aggregator rows from models.dev shipped OpenAI o-series entries
+ * `reasoning: false`, and thinking twins with unreported (zero) cache prices
+ * were refused pairing by a strict per-field cost compare.
  */
 describe("cursor tier families and aggregator reasoning metadata (bundled)", () => {
 	it("bundles cursor gpt-5.4 as a four-tier reasoning family (was four dial-less non-reasoners)", () => {

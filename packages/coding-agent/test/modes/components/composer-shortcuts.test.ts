@@ -55,12 +55,12 @@ describe("composer contextual shortcuts", () => {
 		expect(idle.length).toBe(0);
 	});
 
-	// Scroll position is NOT the composer's business (operator report
-	// 2026-07-24). This row used to be overwritten with "↓ N rows up · click to
-	// go to the bottom" whenever the transcript was frozen, so scrolling up
-	// during a run took away the `esc interrupt` chip. The engine draws the
-	// position on the right edge of the region that actually scrolled, and the
-	// composer zone renders the same bytes in both states.
+	// Scroll position is NOT the composer's business. This row used to be
+	// overwritten with "↓ N rows up · click to go to the bottom" whenever the
+	// transcript was frozen, so scrolling up during a run took away the `esc
+	// interrupt` chip. The engine draws the position on the right edge of the
+	// region that actually scrolled, and the composer zone renders the same bytes
+	// in both states.
 	it("keeps its own chips while the transcript is scrolled — no scroll readout in the composer", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
@@ -106,10 +106,10 @@ describe("composer contextual shortcuts", () => {
 		expect(plain.startsWith("  escape")).toBe(true);
 	});
 
-	// Regression lock for the footer jump (user report 2026-07-22): a band
-	// that renders 0 rows idle and 1 row busy changes the composer zone's
-	// height on every busy flip, jerking the whole footer vertically. The
-	// band is fixed-height: exactly one row in every state.
+	// Regression lock for the footer jump: a band that renders 0 rows idle and 1
+	// row busy changes the composer zone's height on every busy flip, jerking the
+	// whole footer vertically. The band is fixed-height: exactly one row in every
+	// state.
 	it("renders exactly one row in every state so the footer height never changes", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();

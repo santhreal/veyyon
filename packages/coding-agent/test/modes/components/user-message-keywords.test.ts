@@ -50,9 +50,8 @@ describe("UserMessageComponent magic-keyword highlighting", () => {
 	});
 
 	it("emits no OSC 133 prompt-zone markers", () => {
-		// Terminals that paint prompt zones drew them as an uncontrolled
-		// background block over the message (operator screenshots 2026-07-23);
-		// the markers were removed, so none may reappear.
+		// Terminals that paint prompt zones drew them as an uncontrolled background
+		// block over the message; the markers were removed, so none may reappear.
 		const raw = render("first line\nsecond line");
 		expect(raw).not.toContain("\x1b]133;");
 	});

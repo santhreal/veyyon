@@ -64,12 +64,12 @@ export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: Com
 }
 
 /**
- * Contextual chip band under the composer, left-aligned at the composer
- * rail so it sits under the footline's location group on one shared axis.
- * Fixed height: exactly one row in every state, chips or blank. A 0/1-row
- * band changes the composer zone's height on every busy flip, jerking the
- * whole footer up and down mid-conversation (user report 2026-07-22); the
- * zone reserves this row whether or not there is a live action to surface.
+ * Contextual chip band under the composer, left-aligned at the composer rail so
+ * it sits under the footline's location group on one shared axis. Fixed height:
+ * exactly one row in every state, chips or blank. A 0/1-row band changes the
+ * composer zone's height on every busy flip, jerking the whole footer up and
+ * down mid-conversation; the zone reserves this row whether or not there is a
+ * live action to surface.
  *
  * It carries the composer's own actions and NOTHING else. This row used to be
  * taken over by the scroll indicator while the transcript was frozen, which

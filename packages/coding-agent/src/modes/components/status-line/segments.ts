@@ -611,12 +611,12 @@ const CONTEXT_BAR_TIP_STEP_URGENT_MS = 500;
  *
  * Strictly two glyphs, two tones: mixing shaded quarter-step glyphs (░▒▓) into
  * the outlined track read as a rendering artifact ("a random rectangle in the
- * middle of the context window box", user report 2026-07-22) — the adjacent
- * percent text already carries the sub-cell precision. While the agent RUNS
- * (`live`) the last remaining cell pulses between filled and empty in the SAME
- * two-glyph vocabulary: that is the cell being spent right now. Motion means
- * "the model is working"; at rest the bar is fully static. Pure in
- * (ratio, level, nowMs, live) so tests can pin exact frames.
+ * middle of the context window box") — the adjacent percent text already
+ * carries the sub-cell precision. While the agent RUNS (`live`) the last
+ * remaining cell pulses between filled and empty in the SAME two-glyph
+ * vocabulary: that is the cell being spent right now. Motion means "the model
+ * is working"; at rest the bar is fully static. Pure in (ratio, level, nowMs,
+ * live) so tests can pin exact frames.
  */
 export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs: number, live: boolean): string {
 	const clamped = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));

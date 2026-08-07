@@ -1713,7 +1713,7 @@ describe("regression: trailing context lines don't delete file content", () => {
 
 	test("context anchor duplicated as first context line preserves file content", async () => {
 		const filePath = path.join(tempDir, "terminal.ts");
-		// Original file - exact structure from user's report
+		// Original file - exact structure from the failing case
 		await Bun.write(
 			filePath,
 			`export class ProcessTerminal implements Terminal {

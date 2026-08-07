@@ -3,14 +3,13 @@
  *
  * Why this suite exists: prompts rendered gray-on-gray (titanium's
  * `userMessageText` was the dim tone) and nothing indicated WHICH message the
- * agent was working on (user report, 2026-07-22). The first shipped fix
- * animated a per-frame sheen and kept the block unfinalized for the whole
- * turn — that pinned the transcript's live-region seam open and committed a
- * giant blank hole into the transcript (user screenshot, 2026-07-22). The
- * indicator is therefore STATIC: an ember `›` glyph while working, bytes
- * changing only at arm/disarm, surfaced through the block version. These
- * tests pin both the visibility fix and the static-indicator contract so
- * neither the gray-on-gray text nor the animated-seam regression can return.
+ * agent was working on. The first shipped fix animated a per-frame sheen and
+ * kept the block unfinalized for the whole turn — that pinned the transcript's
+ * live-region seam open and committed a giant blank hole into the transcript.
+ * The indicator is therefore STATIC: an ember `›` glyph while working, bytes
+ * changing only at arm/disarm, surfaced through the block version. These tests
+ * pin both the visibility fix and the static-indicator contract so neither the
+ * gray-on-gray text nor the animated-seam regression can return.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -127,8 +126,7 @@ describe("UserMessageComponent working indicator", () => {
 	});
 
 	/** The OSC 133 zone markers are gone in both states: terminals painting
-	 * prompt zones drew them as an uncontrolled background block over the
-	 * message (operator screenshots, 2026-07-23). */
+	 * prompt zones drew them as an uncontrolled background block over the message. */
 	it("emits no OSC 133 zone markers in either state", () => {
 		const component = new UserMessageComponent("hi");
 		component.setWorking(true);

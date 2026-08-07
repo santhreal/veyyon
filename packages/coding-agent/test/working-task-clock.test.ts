@@ -4,7 +4,7 @@
  * the CURRENT task label has been showing (each tool call sets a new label),
  * so the operator can see at a glance whether a step is 2 seconds or 4
  * minutes old. Before this feature the working line carried no timing at all,
- * which is the exact gap the user reported from a live keyhog run.
+ * which is the exact gap seen on a live run.
  *
  * Locks:
  *  1. The clock appears immediately (`0:00`) for the default Working… phase.

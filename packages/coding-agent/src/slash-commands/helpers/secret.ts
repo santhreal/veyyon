@@ -64,7 +64,7 @@ export interface SecretCommandOutcome {
 	/** True when the operator cancelled a prompt, so the surface can stay quiet about it. */
 	cancelled?: true;
 	/**
-	 * True when the operator asked for the manager, which the surface opens itself.
+	 * True when the manager was requested, which the surface opens itself.
 	 *
 	 * Returned rather than thrown, and decided HERE rather than by the caller re-reading the
 	 * argument line, so `manager` is reserved in exactly one place. A caller that checked the text
@@ -308,10 +308,10 @@ export function namePromptHint(): string {
  * WHAT MOVED OUT, and why the correction survived it. This used to carry four clauses in one
  * accent colour: the imperative, the correction, the promise of a later name, and the assurance
  * that typing is hidden and storage encrypted. Every clause was true and every clause was equally
- * weighted, so the sentence read as a paragraph and the operator reported it did not tell them
- * what to do. The two clauses that describe what the FIELD IS, rather than what to DO, are now
- * {@link maskedPromptHint} on the legend row. The correction stays here, in the imperative, since
- * it is the one clause that exists to stop a specific unrecoverable mistake.
+ * weighted, so the sentence read as a paragraph and it did not say what to do. The two clauses
+ * that describe what the FIELD IS, rather than what to DO, are now {@link maskedPromptHint} on
+ * the legend row. The correction stays here, in the imperative, since it is the one clause that
+ * exists to stop a specific unrecoverable mistake.
  *
  * It takes no name and has no second form. The field is only ever reached by a bare `/secret`,
  * before any name exists, so a "value for X" variant would be dead text that only looked reachable.

@@ -275,10 +275,10 @@ describe("the verbless /secret grammar in a terminal", () => {
  *
  * These assert the PAINTED FIELD rather than the title string. The four things this field has to
  * communicate used to live in one sentence, which made the string the whole surface and a string
- * assertion sufficient. It read as a paragraph and a user reported it did not tell them what to
- * do, so the two mechanical facts moved to the legend row. Had these stayed string tests they
- * would have failed for a copy improvement while a genuinely broken field, one whose hint never
- * reached the component, would have passed.
+ * assertion sufficient. It read as a paragraph and it did not say what to do, so the two
+ * mechanical facts moved to the legend row. Had these stayed string tests they would have failed
+ * for a copy improvement while a genuinely broken field, one whose hint never reached the
+ * component, would have passed.
  *
  * So the field is presented through the REAL {@link ExtensionUiController}, the same call the
  * registry makes, rather than by constructing the component here. That is the seam the hint has
@@ -365,7 +365,7 @@ describe("the masked credential field as the operator sees it", () => {
 describe("a credential entered through the real masked dialog", () => {
 	/**
 	 * The end-to-end contract nothing else covers: keystrokes typed into the REAL component reach
-	 * the vault as the exact bytes typed, under the name the operator asked for afterwards. A
+	 * the vault as the exact bytes typed, under the name given afterwards. A
 	 * regression anywhere in dialog settlement, masking, or `request.value` assignment fails here.
 	 */
 	it("stores exactly the typed bytes under the name given afterwards", async () => {

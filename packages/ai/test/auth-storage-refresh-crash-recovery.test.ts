@@ -17,7 +17,7 @@ const SOURCE_ID = "auth-storage-refresh-crash-recovery-test";
  * question this suite answers is not whether the crash can be prevented (it
  * cannot) but whether the run after it RECOVERS or FAILS LOUDLY. The one
  * outcome that is unacceptable is the middle: a silent logout, or a wait with
- * no bound, which is what the user reported as "logged out after a rebuild".
+ * no bound.
  *
  * Three crash points matter, and they are the three cases below.
  *
