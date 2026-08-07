@@ -19,6 +19,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, getModelDbPath, HOUR_MS } from "@veyyon/utils";
+import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import type { DiscoveryFailure, DiscoveryHooks } from "./discovery/failure";
 import type { ModelsDevFallback } from "./model-manager";
 import { MODELS_DEV_PROVIDER_DESCRIPTORS, mapModelsDevToModels } from "./provider-models/openai-compat";
@@ -95,46 +96,54 @@ async function fetchPayloadUncached(hooks?: DiscoveryHooks, dbPath?: string): Pr
 	// Stale or absent: conditional refetch. A 304 (or any failure) keeps the
 	// stale payload — stale models.dev data beats none, and the row-level
 	// overlay only ever wins fields it declares.
-	let response: Response;
+	// The timer is cancelled the instant this settles. A bare abort-signal timeout
+	// stays armed for the full window after the request is done, and thousands of
+	// live ones is the documented Bun concurrent-GC crash trigger.
+	const timeout = scopedTimeoutSignal(15_000);
 	try {
-		response = await fetch(MODELS_DEV_API_URL, {
-			method: "GET",
-			headers: {
-				Accept: "application/json",
-				...(disk?.etag ? { "If-None-Match": disk.etag } : {}),
-			},
-			signal: AbortSignal.timeout(15_000),
-		});
-	} catch (error) {
-		report(hooks, "request", errorMessage(error));
-		if (disk) return disk.payload;
-		failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
-		return null;
-	}
-	if (response.status === 304 && disk) {
-		const renewed = { ...disk, fetchedAt: now };
-		memoryCache = renewed;
-		void writeDiskCache(renewed, dbPath);
-		return disk.payload;
-	}
-	if (!response.ok) {
-		report(hooks, "status", `HTTP ${response.status} ${response.statusText}`.trim());
-		if (disk) return disk.payload;
-		failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
-		return null;
-	}
-	try {
-		const payload: unknown = await response.json();
-		const etag = response.headers.get("etag") ?? undefined;
-		const fresh: PayloadCache = { fetchedAt: now, etag, payload };
-		memoryCache = fresh;
-		void writeDiskCache(fresh, dbPath);
-		return payload;
-	} catch (error) {
-		report(hooks, "body", errorMessage(error));
-		if (disk) return disk.payload;
-		failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
-		return null;
+		let response: Response;
+		try {
+			response = await fetch(MODELS_DEV_API_URL, {
+				method: "GET",
+				headers: {
+					Accept: "application/json",
+					...(disk?.etag ? { "If-None-Match": disk.etag } : {}),
+				},
+				signal: timeout.signal,
+			});
+		} catch (error) {
+			report(hooks, "request", errorMessage(error));
+			if (disk) return disk.payload;
+			failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
+			return null;
+		}
+		if (response.status === 304 && disk) {
+			const renewed = { ...disk, fetchedAt: now };
+			memoryCache = renewed;
+			void writeDiskCache(renewed, dbPath);
+			return disk.payload;
+		}
+		if (!response.ok) {
+			report(hooks, "status", `HTTP ${response.status} ${response.statusText}`.trim());
+			if (disk) return disk.payload;
+			failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
+			return null;
+		}
+		try {
+			const payload: unknown = await response.json();
+			const etag = response.headers.get("etag") ?? undefined;
+			const fresh: PayloadCache = { fetchedAt: now, etag, payload };
+			memoryCache = fresh;
+			void writeDiskCache(fresh, dbPath);
+			return payload;
+		} catch (error) {
+			report(hooks, "body", errorMessage(error));
+			if (disk) return disk.payload;
+			failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
+			return null;
+		}
+	} finally {
+		timeout.cancel();
 	}
 }
 

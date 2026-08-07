@@ -20,7 +20,6 @@ import { describe, expect, it } from "bun:test";
 import { type OpenAICompletionsOptions, streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import type { AssistantMessage, Context } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
-import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { moonshotModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
 import type { Model, ModelSpec } from "@veyyon/catalog/types";
