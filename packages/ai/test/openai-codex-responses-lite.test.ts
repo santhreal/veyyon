@@ -184,19 +184,22 @@ describe("openai-codex reasoning.context", () => {
 
 	// gpt-5.1-codex / gpt-5.3-codex / gpt-5.3-codex-spark reject `all_turns`
 	// ("Unsupported value: 'all_turns' is not supported with this model").
+	// The effort is `none` so the gate under test is the model id and nothing
+	// else: gpt-5.1-codex predates models.dev's Codex rows and therefore ships
+	// with no declared ladder, which would refuse any real tier here.
 	it.each(["gpt-5.1-codex", "gpt-5.3-codex", "gpt-5.3-codex-spark"])(
 		"omits the all_turns default for pre-5.4 model %s",
 		async modelId => {
 			const model = createCodexModel(modelId);
 
-			const defaulted = await transformRequestBody({ model: model.id }, model, { reasoningEffort: "medium" });
+			const defaulted = await transformRequestBody({ model: model.id }, model, { reasoningEffort: "none" });
 			expect(defaulted.reasoning).toBeDefined();
 			expect(defaulted.reasoning?.context).toBeUndefined();
 			expect("context" in (defaulted.reasoning ?? {})).toBe(false);
 
 			// A supported override (current_turn/auto) is still honored.
 			const overridden = await transformRequestBody({ model: model.id }, model, {
-				reasoningEffort: "medium",
+				reasoningEffort: "none",
 				reasoningContext: "current_turn",
 			});
 			expect(overridden.reasoning?.context).toBe("current_turn");
@@ -242,13 +245,13 @@ describe("openai-codex reasoning.summary", () => {
 		async modelId => {
 			const model = createCodexModel(modelId);
 
-			const defaulted = await transformRequestBody({ model: model.id }, model, { reasoningEffort: "medium" });
+			const defaulted = await transformRequestBody({ model: model.id }, model, { reasoningEffort: "none" });
 			expect(defaulted.reasoning).toBeDefined();
 			expect("summary" in (defaulted.reasoning ?? {})).toBe(false);
 
 			// Even an explicit summary level is suppressed on unsupported ids.
 			const forced = await transformRequestBody({ model: model.id }, model, {
-				reasoningEffort: "medium",
+				reasoningEffort: "none",
 				reasoningSummary: "detailed",
 			});
 			expect("summary" in (forced.reasoning ?? {})).toBe(false);
@@ -802,7 +805,7 @@ describe("openai-codex concurrent reasoning summaries", () => {
 		expect(noReasoning.stream_options).toBeUndefined();
 
 		const legacy = createCodexModel("gpt-5.1-codex");
-		const unsupported = await transformRequestBody({ model: legacy.id }, legacy, { reasoningEffort: "medium" });
+		const unsupported = await transformRequestBody({ model: legacy.id }, legacy, { reasoningEffort: "none" });
 		expect(unsupported.stream_options).toBeUndefined();
 	});
 

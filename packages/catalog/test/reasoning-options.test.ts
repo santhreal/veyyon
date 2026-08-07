@@ -2,8 +2,21 @@ import { describe, expect, it } from "bun:test";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
-import { mapModelsDevReasoningOptions } from "@veyyon/catalog/provider-models/openai-compat";
-import type { Api, Model, ModelSpec, Provider } from "@veyyon/catalog/types";
+import {
+	MODELSDEV_REASONING_OPTION_TYPES,
+	mapModelsDevReasoningOptions,
+} from "@veyyon/catalog/provider-models/openai-compat";
+import type { Api, Model, ModelSpec, Provider, ThinkingControlMode } from "@veyyon/catalog/types";
+import { THINKING_CONTROL_MODES } from "@veyyon/catalog/types";
+
+const EFFORT_ORDER: readonly Effort[] = [
+	Effort.Minimal,
+	Effort.Low,
+	Effort.Medium,
+	Effort.High,
+	Effort.XHigh,
+	Effort.Max,
+];
 
 function createModel<TApi extends Api>(overrides: {
 	id: string;
@@ -100,17 +113,218 @@ describe("mapModelsDevReasoningOptions", () => {
 		});
 	});
 
-	it("opens the fixed high/max budget pair for budget-only declarations, nothing for future tiers", () => {
-		// opencode's budgetVariants contract: a budget_tokens declaration with
-		// no effort levels maps to the fixed high/max pair the encoder ranges.
-		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens", min: 0, max: 16384 }])).toEqual({
-			efforts: [Effort.High, Effort.Max],
-		});
-		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens" }, { type: "toggle" }])).toEqual({
-			efforts: [Effort.High, Effort.Max],
-		});
+	it("declares no levels for a budget_tokens range, and none for future tiers", () => {
+		// `budget_tokens` publishes a token RANGE, not a list of levels. Reading
+		// [high, max] out of it was a guess wearing a declaration's clothes, and
+		// it outranked every real declaration: a row in budget mode collapsed to
+		// two rungs and an operator asking for `low` was served `high`. The
+		// budget ladder is Veyyon's own (reasoning-budget.ts) and is applied
+		// downstream, where it is visibly a local schedule.
+		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens", min: 0, max: 16384 }])).toBeUndefined();
+		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens" }, { type: "toggle" }])).toBeUndefined();
 		expect(mapModelsDevReasoningOptions([{ type: "effort", values: ["ultra"] }])).toBeUndefined();
 		expect(mapModelsDevReasoningOptions(undefined)).toBeUndefined();
+	});
+});
+
+/**
+ * A transport decides whether an UNDECLARED model may still be offered an effort
+ * ladder. Get that wrong in either direction and the damage is silent: offer a
+ * ladder nobody published and every request 400s, withhold one the endpoint
+ * never validates and the operator's `low` resolves upward into a more
+ * expensive tier. There is no way to read the answer off a transport's name, so
+ * each one carries a decision recorded here.
+ */
+type TransportDecision =
+	| { readonly surface: "closed" }
+	| { readonly surface: "keeps-ladder"; readonly derivedMode: ThinkingControlMode }
+	| { readonly surface: "conditional" };
+
+interface TransportCase {
+	readonly decision: TransportDecision;
+	/**
+	 * A spec that derives to THIS transport. Proven rather than asserted: the
+	 * probe is built WITH a declaration, and a declared row keeps its inferred
+	 * mode, so a representative that has drifted into another transport fails
+	 * here instead of quietly making the decision below vacuous.
+	 */
+	readonly probe: { id: string; api: Api; provider: Provider };
+	/** A second probe for a transport whose answer depends on the model. */
+	readonly alternate?: { id: string; api: Api; provider: Provider; surface: "closed" | "keeps-ladder" };
+}
+
+const TRANSPORT_CASES = {
+	// Sends `reasoning_effort` / `reasoning.effort`, a name the endpoint checks.
+	effort: {
+		decision: { surface: "closed" },
+		probe: { id: "deepseek-v4-flash", api: "openai-completions", provider: "deepseek" },
+	},
+	// Sends a token count from Veyyon's own schedule. No name, nothing to reject.
+	budget: {
+		decision: { surface: "keeps-ladder", derivedMode: "budget" },
+		probe: { id: "claude-sonnet-4-5", api: "anthropic-messages", provider: "anthropic" },
+	},
+	// Sends Google's published `thinkingLevel` enum. No catalogue covers Cloud
+	// Code Assist, so a declaration will never arrive for this transport.
+	"google-level": {
+		decision: { surface: "keeps-ladder", derivedMode: "google-level" },
+		probe: { id: "gemini-3.1-pro-preview", api: "google-gemini-cli", provider: "google-gemini-cli" },
+	},
+	// Sends `output_config.effort` ALONGSIDE a budget. Undeclared, the enum is
+	// dropped (guessing it is #3497's HTTP 400) and the budget dial survives, so
+	// the row degrades to a different transport rather than going dark.
+	"anthropic-budget-effort": {
+		decision: { surface: "keeps-ladder", derivedMode: "budget" },
+		probe: { id: "claude-opus-4-5", api: "anthropic-messages", provider: "anthropic" },
+	},
+	// Sends an effort name, EXCEPT on MiniMax where every tier collapses to the
+	// single literal `adaptive`. The transport alone does not settle it.
+	"anthropic-adaptive": {
+		decision: { surface: "conditional" },
+		probe: { id: "MiniMax-M3", api: "anthropic-messages", provider: "minimax" },
+		alternate: { id: "claude-mythos-5", api: "anthropic-messages", provider: "anthropic", surface: "closed" },
+	},
+} satisfies Record<ThinkingControlMode, TransportCase>;
+
+describe("every thinking transport records what an undeclared model gets", () => {
+	// `satisfies` above closes the class at typecheck; this closes it in the
+	// suite, so a sixth transport is RED here and not merely a type error
+	// somebody runs later.
+	it("covers the whole transport union with no member left undecided", () => {
+		expect(Object.keys(TRANSPORT_CASES).toSorted()).toEqual([...THINKING_CONTROL_MODES].toSorted());
+	});
+
+	it.each([...THINKING_CONTROL_MODES])("honors the recorded decision for %s", mode => {
+		const entry: TransportCase = TRANSPORT_CASES[mode];
+
+		// The probe really is this transport: a declared row keeps its inferred
+		// mode, so this fails loudly if the fixture drifted.
+		const declared = createModel({ ...entry.probe, reasoningOptions: { efforts: [Effort.High] } });
+		expect(declared.thinking?.mode).toBe(mode);
+		expect(getSupportedEfforts(declared)).toEqual([Effort.High]);
+
+		const undeclared = createModel(entry.probe);
+		if (entry.decision.surface === "closed") {
+			expect(undeclared.thinking).toBeUndefined();
+			expect(getSupportedEfforts(undeclared)).toEqual([]);
+			return;
+		}
+		if (entry.decision.surface === "keeps-ladder") {
+			expect(undeclared.thinking?.mode).toBe(entry.decision.derivedMode);
+			expect(getSupportedEfforts(undeclared).length).toBeGreaterThan(0);
+			return;
+		}
+		// Conditional: the transport says nothing on its own, so BOTH sides of
+		// the condition are pinned. One-sided coverage here is how the MiniMax
+		// dial was lost while every Anthropic row looked fine.
+		expect(getSupportedEfforts(undeclared).length).toBeGreaterThan(0);
+		const alternate = entry.alternate;
+		if (!alternate) throw new Error(`conditional transport ${mode} must record an alternate probe`);
+		const other = createModel(alternate);
+		expect(other.thinking).toBeUndefined();
+	});
+
+	it("never offers an effort the model does not list, on any transport", () => {
+		// The invariant at the choke point, rather than one transport's ladder:
+		// whatever a row ends up offering, every tier is inside its own declared
+		// or computed set, and asking outside it is refused rather than clamped.
+		for (const mode of THINKING_CONTROL_MODES) {
+			const model = createModel(TRANSPORT_CASES[mode].probe);
+			const offered = getSupportedEfforts(model);
+			expect(offered).toEqual([...new Set(offered)]);
+			expect(offered).toEqual([...offered].toSorted((a, b) => EFFORT_ORDER.indexOf(a) - EFFORT_ORDER.indexOf(b)));
+			for (const effort of offered) {
+				expect(model.thinking?.efforts).toContain(effort);
+			}
+		}
+	});
+});
+
+describe("every models.dev reasoning-option type records an outcome", () => {
+	const OPTION_OUTCOMES = {
+		// Names the accepted levels. The only type that can open a ladder.
+		effort: { opensLadder: true },
+		// A token RANGE, not a level list. Declares nothing about levels.
+		budget_tokens: { opensLadder: false },
+		// Binary on/off. Reasons, no addressable effort.
+		toggle: { opensLadder: false },
+	} satisfies Record<(typeof MODELSDEV_REASONING_OPTION_TYPES)[number], { opensLadder: boolean }>;
+
+	it("covers every recognized option type", () => {
+		expect(Object.keys(OPTION_OUTCOMES).toSorted()).toEqual([...MODELSDEV_REASONING_OPTION_TYPES].toSorted());
+	});
+
+	it.each([...MODELSDEV_REASONING_OPTION_TYPES])("maps a bare %s declaration to its recorded outcome", type => {
+		const mapped = mapModelsDevReasoningOptions([{ type, values: ["high"], min: 0, max: 16384 }]);
+		if (OPTION_OUTCOMES[type].opensLadder) {
+			expect(mapped).toEqual({ efforts: [Effort.High] });
+			return;
+		}
+		// A `values` list is present and deliberately ignored: only `effort`
+		// carries levels, so no other type may read one out of the payload.
+		expect(mapped?.efforts).toBeUndefined();
+	});
+
+	it("keeps an unrecognized option type closed rather than guessing", () => {
+		// models.dev is external and can add a type at any time. An unknown
+		// declaration must never open a ladder; it means "reasons, no dial".
+		expect(mapModelsDevReasoningOptions([{ type: "thinking_level_2027", values: ["low", "high"] }])).toEqual({
+			noEffortControl: true,
+		});
+	});
+});
+
+describe("transports whose control Veyyon computes keep a ladder undeclared", () => {
+	// The declared-surface rule exists because an invented effort NAME earns a
+	// 400 from the endpoint. These three transports send no name, so applying
+	// the rule to them takes away a working dial and silently resolves an
+	// operator's `low` upward into whatever tier survives.
+	it("gives an undeclared Anthropic budget row the full local token schedule", () => {
+		// The wire carries `thinking.budget_tokens`, a number from Veyyon's own
+		// per-effort schedule. Anthropic's schedule gives xhigh its own 32k.
+		const model = createModel({ id: "claude-sonnet-4-5", api: "anthropic-messages", provider: "anthropic" });
+		expect(model.thinking?.mode).toBe("budget");
+		expect(getSupportedEfforts(model)).toEqual([
+			Effort.Minimal,
+			Effort.Low,
+			Effort.Medium,
+			Effort.High,
+			Effort.XHigh,
+		]);
+	});
+
+	it("stops an undeclared Google budget row at high, where its schedule stops", () => {
+		const model = createModel({ id: "gemini-2.5-flash", api: "google-generative-ai", provider: "google" });
+		expect(model.thinking?.mode).toBe("budget");
+		expect(getSupportedEfforts(model)).toEqual([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High]);
+	});
+
+	it("keeps Google's published thinkingLevel enum per family on Cloud Code Assist", () => {
+		// No catalogue covers Cloud Code Assist, so a declaration will never
+		// arrive for the first-party Gemini CLI transport. Google publishes the
+		// enum itself: LOW/HIGH for 3.x Pro, MINIMAL..HIGH for the Flash line.
+		const pro = createModel({
+			id: "gemini-3.1-pro-preview",
+			api: "google-gemini-cli",
+			provider: "google-gemini-cli",
+		});
+		expect(pro.thinking?.mode).toBe("google-level");
+		expect(getSupportedEfforts(pro)).toEqual([Effort.Low, Effort.High]);
+
+		const flash = createModel({ id: "gemini-3.1-flash", api: "google-gemini-cli", provider: "google-gemini-cli" });
+		expect(getSupportedEfforts(flash)).toEqual([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High]);
+	});
+
+	it("keeps the MiniMax adaptive dial, whose every tier is the same wire literal", () => {
+		// MiniMax on the Anthropic endpoint collapses each tier to the literal
+		// `adaptive`, so no name reaches the endpoint and there is nothing to
+		// reject. Every other adaptive row does send a name and stays closed.
+		const minimax = createModel({ id: "MiniMax-M3", api: "anthropic-messages", provider: "minimax" });
+		expect(getSupportedEfforts(minimax)).toEqual([Effort.Low, Effort.Medium, Effort.High]);
+		expect(minimax.thinking?.effortMap).toEqual({ low: "adaptive", medium: "adaptive", high: "adaptive" });
+
+		const claude = createModel({ id: "claude-mythos-5", api: "anthropic-messages", provider: "anthropic" });
+		expect(claude.thinking?.mode).not.toBe("anthropic-adaptive");
 	});
 });
 
@@ -152,9 +366,10 @@ describe("discovery-declared reasoning surfaces", () => {
 		expect(getSupportedEfforts(model)).toEqual([]);
 	});
 
-	it("opens the high/max budget surface when discovery declares a budget range only", () => {
-		// models.dev budget-only declarations normalize to the fixed high/max
-		// pair (opencode parity); no ladder is identity-derived.
+	it("lets a discovery-declared pair replace the budget transport's own ladder", () => {
+		// Budget transports supply a local ladder when nothing is declared, so
+		// this pins the precedence: a declaration still wins over it, and the row
+		// offers the two tiers discovery named rather than the full schedule.
 		const model = createModel({
 			id: "gemini-3.1-pro-preview",
 			api: "google-generative-ai",

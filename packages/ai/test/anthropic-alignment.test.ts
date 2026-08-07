@@ -24,6 +24,7 @@ import {
 import { getEnvApiKey, streamSimple } from "@veyyon/ai/stream";
 import type { AssistantMessage, Context, Model, ModelSpec, TJsonSchema, TokenTaskBudget, Tool } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { type as arkType } from "arktype";
 import { withEnv } from "./helpers";
@@ -42,6 +43,18 @@ const ANTHROPIC_MODEL_SPEC: ModelSpec<"anthropic-messages"> = {
 };
 
 const ANTHROPIC_MODEL: Model<"anthropic-messages"> = buildModel(ANTHROPIC_MODEL_SPEC);
+
+/**
+ * A shipped Anthropic row, not a hand-built spec. Effort ladders and the
+ * adaptive display flag are endpoint declarations baked into the catalog, so a
+ * spec assembled in a test carries neither and answers differently from the
+ * model a user actually gets.
+ */
+function bundledAnthropic(id: string): Model<"anthropic-messages"> {
+	const model = getBundledModel("anthropic", id);
+	if (!model) throw new Error(`anthropic/${id} must be in bundled models.json`);
+	return model as Model<"anthropic-messages">;
+}
 
 const CLOUDFLARE_ANTHROPIC_MODEL: Model<"anthropic-messages"> = buildModel({
 	...ANTHROPIC_MODEL_SPEC,
@@ -1564,7 +1577,7 @@ describe("Anthropic request fingerprint alignment", () => {
 		expect(legacy.defaultHeaders["anthropic-beta"]).toContain("interleaved-thinking-2025-05-14");
 
 		const modern = buildAnthropicClientOptions({
-			model: buildModel({ ...ANTHROPIC_MODEL_SPEC, id: "claude-opus-4-7", name: "Claude Opus 4.7" }),
+			model: bundledAnthropic("claude-opus-4-7"),
 			apiKey: "sk-ant-api-test",
 			extraBetas: [],
 			stream: true,
@@ -2085,11 +2098,7 @@ describe("Anthropic request fingerprint alignment", () => {
 		// The catalog flips Opus 4.5 specifically back to `anthropic-budget-effort`
 		// while Sonnet 4.5 / Haiku 4.5 stay on plain `budget`.
 		const payload = (await captureAnthropicPayload(
-			buildModel({
-				...ANTHROPIC_MODEL_SPEC,
-				id: "claude-opus-4-5",
-				name: "Claude Opus 4.5",
-			}),
+			bundledAnthropic("claude-opus-4-5"),
 			{
 				systemPrompt: ["Stay concise."],
 				messages: [{ role: "user", content: "Hi", timestamp: Date.now() }],

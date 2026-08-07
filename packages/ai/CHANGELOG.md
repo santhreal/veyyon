@@ -21,6 +21,7 @@
 
 ### Fixed
 
+- Turning thinking off on a host that cannot be told to stop reasoning no longer fails the whole turn. Fireworks and its kind are served a disable request by pinning the floor tier instead, and a model that publishes no tiers has no floor, so `resolveOpenAICompatPolicy` threw a configuration error and the request never went out. The knob is simply omitted now and the model manages its own reasoning, which is what an operator asking to turn thinking off wants.
 - Stop a wedged local tool bridge from holding the stream idle watchdog off forever. The #4593 stand-down slid the deadline forward for as long as local work was pending, with no upper bound, so a local tool that never returned a result left the stream silent until the user cancelled the turn. The stand-down is now bounded to one continuous stretch and reports a local-tool hold by name.
 - Keep the timeout reading on an HTTP/2 error whose surrounding prose names a timeout. A named RFC 7540 code decides whether the transport fault is transient, but it says nothing about whether the fault was a timeout, and `Flag.Timeout` authorizes no retry on its own: it is the signal the auto-compaction candidate loop breaks on. Suppressing it alongside transience made that loop re-send a full context to the model that had just timed out instead of moving to the next candidate.
 

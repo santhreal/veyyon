@@ -97,6 +97,25 @@ export interface ModelsDevModel {
  * sentinel, not a level); `toggle` is binary on/off; `budget_tokens` is a
  * token range Veyyon maps from its own ladder, so it carries no level data.
  */
+/**
+ * The `reasoning_options` types this mapper recognizes, as a value so the set
+ * can be enumerated at run time. `hasReasoningOptionType` only accepts a member,
+ * so a branch on a new type cannot be added without adding it here, and the
+ * tests iterate this array and fail on a member with no recorded outcome. Any
+ * type NOT listed is unrecognized and falls to the closed default, which is the
+ * safe direction: an unknown declaration never opens a ladder.
+ */
+export const MODELSDEV_REASONING_OPTION_TYPES = ["effort", "budget_tokens", "toggle"] as const;
+
+type ModelsDevReasoningOptionType = (typeof MODELSDEV_REASONING_OPTION_TYPES)[number];
+
+function hasReasoningOptionType(
+	options: readonly ModelsDevReasoningOption[],
+	type: ModelsDevReasoningOptionType,
+): boolean {
+	return options.some(option => option.type === type);
+}
+
 export interface ModelsDevReasoningOption {
 	type?: string;
 	values?: unknown[];
@@ -116,10 +135,11 @@ const REASONING_NON_LEVEL_VALUES: Record<string, true> = { none: true, default: 
 /**
  * Map models.dev `reasoning_options` to the spec-level reasoning surface.
  * The declared effort ladder is authoritative; an empty list or a toggle-only
- * surface means the model reasons but exposes no effort control. Budget-only
- * declarations open the fixed high/max budget pair (opencode's budgetVariants
- * contract). An effort option naming only values Veyyon does not know (a
- * future tier) returns `undefined` rather than hiding a working control.
+ * surface means the model reasons but exposes no effort control. A budget-only
+ * declaration declares no levels at all, so it returns `undefined` and the
+ * budget transport's own ladder stands. An effort option naming only values
+ * Veyyon does not know (a future tier) returns `undefined` rather than hiding
+ * a working control.
  *
  * An effort declaration carrying no level at all is the toggle case, not the
  * future-tier case, and maps like the empty option list: `cerebras/zai-glm-4.7`
@@ -132,7 +152,9 @@ export function mapModelsDevReasoningOptions(
 	modelId?: string,
 ): ModelReasoningOptions | undefined {
 	if (!options) return undefined;
-	const effortOption = options.find(option => option.type === "effort");
+	const effortOption = hasReasoningOptionType(options, "effort")
+		? options.find(option => option.type === "effort")
+		: undefined;
 	if (effortOption) {
 		const values = Array.isArray(effortOption.values) ? effortOption.values : undefined;
 		const efforts = (values ?? []).filter((value): value is Effort => isEffort(value));
@@ -153,11 +175,16 @@ export function mapModelsDevReasoningOptions(
 		}
 		return undefined;
 	}
-	// Budget-only declarations carry no levels; opencode opens the fixed
-	// high/max budget pair for them (budgetVariants), and Veyyon maps that
-	// pair onto the endpoint's token range at encode time. Copy that surface.
-	if (options.some(option => option.type === "budget_tokens")) {
-		return { efforts: [Effort.High, Effort.Max] };
+	// A `budget_tokens` option is a token RANGE, not a level list: the endpoint
+	// validates a number Veyyon computes from its own effort schedule, so the
+	// declaration says nothing about which efforts exist. Report "nothing
+	// declared" and let the budget transport supply its own ladder
+	// (`resolveModelThinking`). Naming a fixed pair here was a guess wearing a
+	// declaration's clothes, and it read as an endpoint fact: every budget row
+	// collapsed to high/max, so an operator who picked `low` on Sonnet 4.5 or
+	// Gemini 2.5 Pro silently got the `high` budget instead.
+	if (hasReasoningOptionType(options, "budget_tokens")) {
+		return undefined;
 	}
 	return { noEffortControl: true };
 }

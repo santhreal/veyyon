@@ -7324,12 +7324,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -7345,8 +7339,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -7474,12 +7470,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -7495,8 +7485,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -7676,7 +7668,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 163840,
-			"maxTokens": 81920
+			"maxTokens": 81920,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"eu.anthropic.claude-3-5-haiku-20241022-v1:0": {
 			"id": "eu.anthropic.claude-3-5-haiku-20241022-v1:0",
@@ -7865,12 +7866,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -7886,8 +7881,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -7942,7 +7939,16 @@
 				"cacheWrite": 18.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 32000
+			"maxTokens": 32000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"eu.anthropic.claude-opus-4-5-20251101-v1:0": {
 			"id": "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -8154,7 +8160,16 @@
 				"cacheWrite": 3.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"eu.anthropic.claude-sonnet-4-5-20250929-v1:0": {
 			"id": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -8163,12 +8178,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -8184,8 +8193,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -8348,12 +8359,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -8369,8 +8374,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -8584,7 +8591,16 @@
 				"cacheWrite": 3.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"global.anthropic.claude-sonnet-4-5-20250929-v1:0": {
 			"id": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -8593,12 +8609,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -8614,8 +8624,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -8743,12 +8755,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -8764,8 +8770,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -8896,12 +8904,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -8917,8 +8919,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -10010,7 +10014,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 16384
+			"maxTokens": 16384,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"us.amazon.nova-pro-v1:0": {
 			"id": "us.amazon.nova-pro-v1:0",
@@ -10099,12 +10112,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -10120,8 +10127,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -10132,12 +10141,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -10153,8 +10156,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -10176,7 +10181,16 @@
 				"cacheWrite": 18.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 32000
+			"maxTokens": 32000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"us.anthropic.claude-opus-4-5-20251101-v1:0": {
 			"id": "us.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -10388,7 +10402,16 @@
 				"cacheWrite": 3.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"us.anthropic.claude-sonnet-4-5-20250929-v1:0": {
 			"id": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -10397,12 +10420,6 @@
 			"provider": "amazon-bedrock",
 			"baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -10418,8 +10435,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -10878,6 +10897,16 @@
 				"requiresThinkingEnabled": false,
 				"replayUnsignedThinking": false,
 				"escapeBuiltinToolNames": false
+			},
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
 			}
 		},
 		"claude-3-haiku-20240307": {
@@ -11015,12 +11044,6 @@
 			"provider": "anthropic",
 			"baseUrl": "https://api.anthropic.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -11036,8 +11059,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -11048,12 +11074,6 @@
 			"provider": "anthropic",
 			"baseUrl": "https://api.anthropic.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -11069,8 +11089,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -11112,7 +11135,17 @@
 				"cacheWrite": 18.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 32000
+			"maxTokens": 32000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"claude-opus-4-1": {
 			"id": "claude-opus-4-1",
@@ -11132,7 +11165,17 @@
 				"cacheWrite": 18.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 32000
+			"maxTokens": 32000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"claude-opus-4-1-20250805": {
 			"id": "claude-opus-4-1-20250805",
@@ -11419,7 +11462,17 @@
 				"cacheWrite": 3.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"claude-sonnet-4-20250514": {
 			"id": "claude-sonnet-4-20250514",
@@ -11448,12 +11501,6 @@
 			"provider": "anthropic",
 			"baseUrl": "https://api.anthropic.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -11469,8 +11516,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -11481,12 +11531,6 @@
 			"provider": "anthropic",
 			"baseUrl": "https://api.anthropic.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -11502,8 +11546,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -14075,7 +14122,17 @@
 				"cacheWrite": 3.75
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"moonshotai/kimi-k3": {
 			"id": "moonshotai/kimi-k3",
@@ -18755,12 +18812,6 @@
 			"provider": "github-copilot",
 			"baseUrl": "https://api.githubcopilot.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -18781,8 +18832,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -18793,12 +18847,6 @@
 			"provider": "github-copilot",
 			"baseUrl": "https://api.githubcopilot.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -18816,10 +18864,13 @@
 				"X-GitHub-Api-Version": "2026-06-01"
 			},
 			"thinking": {
-				"mode": "anthropic-budget-effort",
+				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -19031,12 +19082,6 @@
 			"provider": "github-copilot",
 			"baseUrl": "https://api.githubcopilot.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -19056,8 +19101,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -20151,7 +20199,17 @@
 			},
 			"contextWindow": 200000,
 			"maxTokens": 64000,
-			"provider": "gitlab-duo"
+			"provider": "gitlab-duo",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"claude-opus-4-5-20251101": {
 			"id": "claude-opus-4-5-20251101",
@@ -20171,7 +20229,17 @@
 			},
 			"contextWindow": 200000,
 			"maxTokens": 64000,
-			"provider": "gitlab-duo"
+			"provider": "gitlab-duo",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"claude-sonnet-4-5-20250929": {
 			"id": "claude-sonnet-4-5-20250929",
@@ -20191,7 +20259,17 @@
 			},
 			"contextWindow": 200000,
 			"maxTokens": 64000,
-			"provider": "gitlab-duo"
+			"provider": "gitlab-duo",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"duo-chat-gpt-5-1": {
 			"id": "duo-chat-gpt-5-1",
@@ -20311,7 +20389,17 @@
 				"cacheWrite": 1.25
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"duo-chat-opus-4-5": {
 			"id": "duo-chat-opus-4-5",
@@ -20331,7 +20419,17 @@
 				"cacheWrite": 18.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"duo-chat-opus-4-6": {
 			"id": "duo-chat-opus-4-6",
@@ -20351,7 +20449,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"duo-chat-sonnet-4-5": {
 			"id": "duo-chat-sonnet-4-5",
@@ -20371,7 +20479,17 @@
 				"cacheWrite": 3.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"duo-chat-sonnet-4-6": {
 			"id": "duo-chat-sonnet-4-6",
@@ -20391,7 +20509,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"gpt-5-codex": {
 			"id": "gpt-5-codex",
@@ -20654,12 +20782,6 @@
 			"provider": "google",
 			"baseUrl": "https://generativelanguage.googleapis.com/v1beta",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -20675,8 +20797,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -20687,12 +20811,6 @@
 			"provider": "google",
 			"baseUrl": "https://generativelanguage.googleapis.com/v1beta",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -20708,8 +20826,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -20731,7 +20851,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemini-2.5-flash-lite-preview-09-2025": {
 			"id": "gemini-2.5-flash-lite-preview-09-2025",
@@ -20751,7 +20880,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemini-2.5-flash-preview-04-17": {
 			"id": "gemini-2.5-flash-preview-04-17",
@@ -20771,7 +20909,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemini-2.5-flash-preview-05-20": {
 			"id": "gemini-2.5-flash-preview-05-20",
@@ -20791,7 +20938,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemini-2.5-flash-preview-09-2025": {
 			"id": "gemini-2.5-flash-preview-09-2025",
@@ -20811,7 +20967,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemini-2.5-pro": {
 			"id": "gemini-2.5-pro",
@@ -20820,12 +20985,6 @@
 			"provider": "google",
 			"baseUrl": "https://generativelanguage.googleapis.com/v1beta",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -20841,8 +21000,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				],
 				"requiresEffort": true
 			}
@@ -20865,7 +21026,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		},
 		"gemini-2.5-pro-preview-06-05": {
 			"id": "gemini-2.5-pro-preview-06-05",
@@ -20885,7 +21056,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		},
 		"gemini-3-flash-preview": {
 			"id": "gemini-3-flash-preview",
@@ -21385,7 +21566,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 128000,
-			"maxTokens": 8000
+			"maxTokens": 8000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemini-live-2.5-flash-preview-native-audio": {
 			"id": "gemini-live-2.5-flash-preview-native-audio",
@@ -21404,7 +21594,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 131072,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemini-robotics-er-1.6-preview": {
 			"id": "gemini-robotics-er-1.6-preview",
@@ -21413,12 +21612,6 @@
 			"provider": "google",
 			"baseUrl": "https://generativelanguage.googleapis.com/v1beta",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -21434,8 +21627,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -21477,7 +21672,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 256000,
-			"maxTokens": 8192
+			"maxTokens": 8192,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemma-4-26b-a4b-it": {
 			"id": "gemma-4-26b-a4b-it",
@@ -21520,7 +21724,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 256000,
-			"maxTokens": 8192
+			"maxTokens": 8192,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemma-4-31b": {
 			"id": "gemma-4-31b",
@@ -21540,7 +21753,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 256000,
-			"maxTokens": 8192
+			"maxTokens": 8192,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemma-4-31b-it": {
 			"id": "gemma-4-31b-it",
@@ -21583,7 +21805,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 131072,
-			"maxTokens": 8192
+			"maxTokens": 8192,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemma-4-E4B-it": {
 			"id": "gemma-4-E4B-it",
@@ -21603,7 +21834,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 131072,
-			"maxTokens": 8192
+			"maxTokens": 8192,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		}
 	},
 	"google-antigravity": {
@@ -21794,7 +22034,16 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65535
+			"maxTokens": 65535,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				]
+			}
 		},
 		"gemini-2.5-pro": {
 			"id": "gemini-2.5-pro",
@@ -21814,7 +22063,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		},
 		"gemini-3-flash": {
 			"id": "gemini-3-flash",
@@ -21931,7 +22190,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65535
+			"maxTokens": 65535,
+			"thinking": {
+				"mode": "google-level",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		},
 		"gemini-3.1-pro": {
 			"id": "gemini-3.1-pro",
@@ -22158,7 +22427,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		},
 		"gemini-3-flash-preview": {
 			"id": "gemini-3-flash-preview",
@@ -22178,7 +22457,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "google-level",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		},
 		"gemini-3-pro-preview": {
 			"id": "gemini-3-pro-preview",
@@ -22198,7 +22487,15 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "google-level",
+				"efforts": [
+					"low",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		},
 		"gemini-3.1-flash-lite-preview": {
 			"id": "gemini-3.1-flash-lite-preview",
@@ -22218,7 +22515,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "google-level",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		},
 		"gemini-3.1-pro-preview": {
 			"id": "gemini-3.1-pro-preview",
@@ -22238,7 +22545,15 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "google-level",
+				"efforts": [
+					"low",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		}
 	},
 	"google-vertex": {
@@ -22249,12 +22564,6 @@
 			"provider": "google-vertex",
 			"baseUrl": "https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/anthropic/models/claude-haiku-4-5@20251001:streamRawPredict",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -22270,8 +22579,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -22474,12 +22786,6 @@
 			"provider": "google-vertex",
 			"baseUrl": "https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/anthropic/models/claude-sonnet-4-5@20250929:streamRawPredict",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -22495,8 +22801,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -22584,12 +22893,6 @@
 			"provider": "google-vertex",
 			"baseUrl": "https://{location}-aiplatform.googleapis.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -22605,8 +22908,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -22617,12 +22922,6 @@
 			"provider": "google-vertex",
 			"baseUrl": "https://{location}-aiplatform.googleapis.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -22638,8 +22937,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				]
 			}
 		},
@@ -22650,12 +22951,6 @@
 			"provider": "google-vertex",
 			"baseUrl": "https://{location}-aiplatform.googleapis.com",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -22671,8 +22966,10 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
-					"high",
-					"max"
+					"minimal",
+					"low",
+					"medium",
+					"high"
 				],
 				"requiresEffort": true
 			}
@@ -39246,7 +39543,21 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 204800,
-			"maxTokens": 32000
+			"maxTokens": 32000,
+			"thinking": {
+				"mode": "anthropic-adaptive",
+				"efforts": [
+					"low",
+					"medium",
+					"high"
+				],
+				"effortMap": {
+					"low": "adaptive",
+					"medium": "adaptive",
+					"high": "adaptive"
+				},
+				"requiresEffort": true
+			}
 		},
 		"MiniMax-M2.7": {
 			"id": "MiniMax-M2.7",
@@ -39422,7 +39733,21 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 204800,
-			"maxTokens": 32000
+			"maxTokens": 32000,
+			"thinking": {
+				"mode": "anthropic-adaptive",
+				"efforts": [
+					"low",
+					"medium",
+					"high"
+				],
+				"effortMap": {
+					"low": "adaptive",
+					"medium": "adaptive",
+					"high": "adaptive"
+				},
+				"requiresEffort": true
+			}
 		},
 		"MiniMax-M2.7": {
 			"id": "MiniMax-M2.7",
@@ -66076,12 +66401,6 @@
 			"provider": "nvidia",
 			"baseUrl": "https://integrate.api.nvidia.com/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -66093,15 +66412,7 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 256000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				],
-				"requiresEffort": true
-			}
+			"maxTokens": 65536
 		},
 		"nvidia/nemotron-3-super-120b-a12b": {
 			"id": "nvidia/nemotron-3-super-120b-a12b",
@@ -71140,7 +71451,21 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 204800,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "anthropic-adaptive",
+				"efforts": [
+					"low",
+					"medium",
+					"high"
+				],
+				"effortMap": {
+					"low": "adaptive",
+					"medium": "adaptive",
+					"high": "adaptive"
+				},
+				"requiresEffort": true
+			}
 		},
 		"minimax-m2.7": {
 			"id": "minimax-m2.7",
@@ -71214,12 +71539,6 @@
 			"provider": "opencode-go",
 			"baseUrl": "https://opencode.ai/zen/go/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -71231,14 +71550,7 @@
 				"cacheWrite": 0.625
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65536
 		},
 		"qwen3.7-max": {
 			"id": "qwen3.7-max",
@@ -71247,12 +71559,6 @@
 			"provider": "opencode-go",
 			"baseUrl": "https://opencode.ai/zen/go",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text"
 			],
@@ -71267,8 +71573,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -71279,12 +71588,6 @@
 			"provider": "opencode-go",
 			"baseUrl": "https://opencode.ai/zen/go",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -71300,8 +71603,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		},
@@ -71312,12 +71618,6 @@
 			"provider": "opencode-go",
 			"baseUrl": "https://opencode.ai/zen/go",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -71333,8 +71633,11 @@
 			"thinking": {
 				"mode": "budget",
 				"efforts": [
+					"minimal",
+					"low",
+					"medium",
 					"high",
-					"max"
+					"xhigh"
 				]
 			}
 		}
@@ -71473,7 +71776,17 @@
 				"cacheWrite": 18.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 32000
+			"maxTokens": 32000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"claude-opus-4-5": {
 			"id": "claude-opus-4-5",
@@ -71966,7 +72279,15 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "google-level",
+				"efforts": [
+					"low",
+					"high"
+				],
+				"requiresEffort": true
+			}
 		},
 		"gemini-3.1-pro": {
 			"id": "gemini-3.1-pro",
@@ -73449,7 +73770,21 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 204800,
-			"maxTokens": 131072
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "anthropic-adaptive",
+				"efforts": [
+					"low",
+					"medium",
+					"high"
+				],
+				"effortMap": {
+					"low": "adaptive",
+					"medium": "adaptive",
+					"high": "adaptive"
+				},
+				"requiresEffort": true
+			}
 		},
 		"minimax-m2.7": {
 			"id": "minimax-m2.7",
@@ -73758,12 +74093,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -73775,14 +74104,7 @@
 				"cacheWrite": 1.25
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 64000
 		},
 		"~anthropic/claude-opus-latest": {
 			"id": "~anthropic/claude-opus-latest",
@@ -74506,12 +74828,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -74523,14 +74839,7 @@
 				"cacheWrite": 1.25
 			},
 			"contextWindow": 200000,
-			"maxTokens": 64000,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 64000
 		},
 		"anthropic/claude-haiku-4.5:batch": {
 			"id": "anthropic/claude-haiku-4.5:batch",
@@ -74560,12 +74869,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -74577,14 +74880,7 @@
 				"cacheWrite": 18.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 32000,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 32000
 		},
 		"anthropic/claude-opus-4.1": {
 			"id": "anthropic/claude-opus-4.1",
@@ -74593,12 +74889,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -74610,14 +74900,7 @@
 				"cacheWrite": 18.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 32000,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 32000
 		},
 		"anthropic/claude-opus-4.1:batch": {
 			"id": "anthropic/claude-opus-4.1:batch",
@@ -75078,12 +75361,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -75095,14 +75372,7 @@
 				"cacheWrite": 3.75
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 64000,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 64000
 		},
 		"anthropic/claude-sonnet-4.5": {
 			"id": "anthropic/claude-sonnet-4.5",
@@ -75111,12 +75381,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -75128,14 +75392,7 @@
 				"cacheWrite": 3.75
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 64000,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 64000
 		},
 		"anthropic/claude-sonnet-4.5:batch": {
 			"id": "anthropic/claude-sonnet-4.5:batch",
@@ -76051,12 +76308,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -76068,14 +76319,7 @@
 				"cacheWrite": 0.083333
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65535,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65535
 		},
 		"google/gemini-2.5-flash-lite": {
 			"id": "google/gemini-2.5-flash-lite",
@@ -76084,12 +76328,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -76101,14 +76339,7 @@
 				"cacheWrite": 0.083333
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65535,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65535
 		},
 		"google/gemini-2.5-flash-lite-preview-09-2025": {
 			"id": "google/gemini-2.5-flash-lite-preview-09-2025",
@@ -76199,12 +76430,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -76216,15 +76441,7 @@
 				"cacheWrite": 0.375
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				],
-				"requiresEffort": true
-			}
+			"maxTokens": 65536
 		},
 		"google/gemini-2.5-pro-preview": {
 			"id": "google/gemini-2.5-pro-preview",
@@ -76233,12 +76450,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -76250,15 +76461,7 @@
 				"cacheWrite": 0.375
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				],
-				"requiresEffort": true
-			}
+			"maxTokens": 65536
 		},
 		"google/gemini-2.5-pro-preview-05-06": {
 			"id": "google/gemini-2.5-pro-preview-05-06",
@@ -76267,12 +76470,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -76284,15 +76481,7 @@
 				"cacheWrite": 0.375
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65535,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				],
-				"requiresEffort": true
-			}
+			"maxTokens": 65535
 		},
 		"google/gemini-2.5-pro:batch": {
 			"id": "google/gemini-2.5-pro:batch",
@@ -77384,12 +77573,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text"
 			],
@@ -77400,14 +77583,7 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048756,
-			"maxTokens": 262144,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 262144
 		},
 		"meituan/longcat-flash-chat": {
 			"id": "meituan/longcat-flash-chat",
@@ -78800,12 +78976,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -78817,15 +78987,7 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 256000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				],
-				"requiresEffort": true
-			}
+			"maxTokens": 65536
 		},
 		"nvidia/nemotron-3-super-120b-a12b": {
 			"id": "nvidia/nemotron-3-super-120b-a12b",
@@ -82075,12 +82237,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text"
 			],
@@ -82091,14 +82247,7 @@
 				"cacheWrite": 0.5
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 32768,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 32768
 		},
 		"qwen/qwen-turbo": {
 			"id": "qwen/qwen-turbo",
@@ -82168,12 +82317,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text"
 			],
@@ -82184,14 +82327,7 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 131072,
-			"maxTokens": 8192,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 8192
 		},
 		"qwen/qwen3-235b-a22b-2507": {
 			"id": "qwen/qwen3-235b-a22b-2507",
@@ -82874,12 +83010,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -82891,14 +83021,7 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65536
 		},
 		"qwen/qwen3.5-plus-02-15": {
 			"id": "qwen/qwen3.5-plus-02-15",
@@ -82907,12 +83030,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -82924,14 +83041,7 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65536
 		},
 		"qwen/qwen3.5-plus-20260420": {
 			"id": "qwen/qwen3.5-plus-20260420",
@@ -82940,12 +83050,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -82957,14 +83061,7 @@
 				"cacheWrite": 0.375
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65536
 		},
 		"qwen/qwen3.6-27b": {
 			"id": "qwen/qwen3.6-27b",
@@ -83019,12 +83116,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -83036,14 +83127,7 @@
 				"cacheWrite": 0.234375
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65536
 		},
 		"qwen/qwen3.6-max-preview": {
 			"id": "qwen/qwen3.6-max-preview",
@@ -83052,12 +83136,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text"
 			],
@@ -83068,14 +83146,7 @@
 				"cacheWrite": 1.28375
 			},
 			"contextWindow": 262144,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65536
 		},
 		"qwen/qwen3.6-plus": {
 			"id": "qwen/qwen3.6-plus",
@@ -83084,12 +83155,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -83101,14 +83166,7 @@
 				"cacheWrite": 0.40625
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65536
 		},
 		"qwen/qwen3.6-plus-preview:free": {
 			"id": "qwen/qwen3.6-plus-preview:free",
@@ -83156,12 +83214,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -83173,14 +83225,7 @@
 				"cacheWrite": 0.038
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 65536
 		},
 		"qwen/qwen3.7-max": {
 			"id": "qwen/qwen3.7-max",
@@ -83189,12 +83234,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text"
 			],
@@ -83205,14 +83244,7 @@
 				"cacheWrite": 1.84375
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 131072,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 131072
 		},
 		"qwen/qwen3.7-plus": {
 			"id": "qwen/qwen3.7-plus",
@@ -83221,12 +83253,6 @@
 			"provider": "openrouter",
 			"baseUrl": "https://openrouter.ai/api/v1",
 			"reasoning": true,
-			"reasoningOptions": {
-				"efforts": [
-					"high",
-					"max"
-				]
-			},
 			"input": [
 				"text",
 				"image"
@@ -83238,14 +83264,7 @@
 				"cacheWrite": 0.4
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 131072,
-			"thinking": {
-				"mode": "effort",
-				"efforts": [
-					"high",
-					"max"
-				]
-			}
+			"maxTokens": 131072
 		},
 		"qwen/qwen3.8-max": {
 			"id": "qwen/qwen3.8-max",
@@ -86205,6 +86224,16 @@
 			"maxTokens": 393215,
 			"compat": {
 				"escapeBuiltinToolNames": true
+			},
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
 			}
 		},
 		"umans-flash": {
@@ -90696,7 +90725,17 @@
 			},
 			"contextWindow": 1000000,
 			"maxTokens": 1000000,
-			"pricing": "unknown"
+			"pricing": "unknown",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"amazon/nova-lite": {
 			"id": "amazon/nova-lite",
@@ -90855,7 +90894,17 @@
 				"cacheWrite": 3.75
 			},
 			"contextWindow": 200000,
-			"maxTokens": 8192
+			"maxTokens": 8192,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"anthropic/claude-fable-5": {
 			"id": "anthropic/claude-fable-5",
@@ -90969,7 +91018,17 @@
 			},
 			"contextWindow": 200000,
 			"maxTokens": 32000,
-			"pricing": "unknown"
+			"pricing": "unknown",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"anthropic/claude-opus-4.5": {
 			"id": "anthropic/claude-opus-4.5",
@@ -91397,7 +91456,17 @@
 			},
 			"contextWindow": 131072,
 			"maxTokens": 131072,
-			"pricing": "unknown"
+			"pricing": "unknown",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"bytedance/seed-1.6": {
 			"id": "bytedance/seed-1.6",
@@ -91581,7 +91650,17 @@
 			},
 			"contextWindow": 128000,
 			"maxTokens": 8000,
-			"pricing": "unknown"
+			"pricing": "unknown",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"deepseek/deepseek-v3.2-thinking": {
 			"id": "deepseek/deepseek-v3.2-thinking",
@@ -91815,7 +91894,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1048576,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"google/gemini-2.5-flash-preview-09-2025": {
 			"id": "google/gemini-2.5-flash-preview-09-2025",
@@ -91835,7 +91924,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 65536
+			"maxTokens": 65536,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"google/gemini-2.5-pro": {
 			"id": "google/gemini-2.5-pro",
@@ -91927,7 +92026,18 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 64000
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				],
+				"requiresEffort": true
+			}
 		},
 		"google/gemini-3.1-flash-lite": {
 			"id": "google/gemini-3.1-flash-lite",
@@ -92293,7 +92403,17 @@
 			},
 			"pricing": "unknown",
 			"contextWindow": 256000,
-			"maxTokens": 32000
+			"maxTokens": 32000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"interfaze/interfaze-beta": {
 			"id": "interfaze/interfaze-beta",
@@ -92314,7 +92434,17 @@
 			},
 			"contextWindow": 1000000,
 			"maxTokens": 32000,
-			"pricing": "unknown"
+			"pricing": "unknown",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"kwaipilot/kat-coder-air-v2.5": {
 			"id": "kwaipilot/kat-coder-air-v2.5",
@@ -92440,7 +92570,18 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 128000,
-			"maxTokens": 8192
+			"maxTokens": 8192,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				],
+				"requiresEffort": true
+			}
 		},
 		"meituan/longcat-flash-thinking-2601": {
 			"id": "meituan/longcat-flash-thinking-2601",
@@ -92459,7 +92600,18 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 32768,
-			"maxTokens": 32768
+			"maxTokens": 32768,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				],
+				"requiresEffort": true
+			}
 		},
 		"meta/llama-3.1-70b": {
 			"id": "meta/llama-3.1-70b",
@@ -93460,7 +93612,17 @@
 			},
 			"contextWindow": 262144,
 			"maxTokens": 262144,
-			"pricing": "unknown"
+			"pricing": "unknown",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"nvidia/nemotron-3-super-120b-a12b": {
 			"id": "nvidia/nemotron-3-super-120b-a12b",
@@ -93480,7 +93642,17 @@
 			},
 			"contextWindow": 256000,
 			"maxTokens": 32000,
-			"pricing": "unknown"
+			"pricing": "unknown",
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"nvidia/nemotron-3-ultra-550b-a55b": {
 			"id": "nvidia/nemotron-3-ultra-550b-a55b",
@@ -93567,7 +93739,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 272000,
-			"maxTokens": 100000
+			"maxTokens": 100000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"openai/gpt-3.5-turbo": {
 			"id": "openai/gpt-3.5-turbo",
@@ -93764,7 +93946,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 128000,
-			"maxTokens": 16384
+			"maxTokens": 16384,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"openai/gpt-5-codex": {
 			"id": "openai/gpt-5-codex",
@@ -94994,7 +95186,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 131072,
-			"maxTokens": 131072
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"sakana/fugu-ultra": {
 			"id": "sakana/fugu-ultra",
@@ -95357,7 +95559,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 256000,
-			"maxTokens": 256000
+			"maxTokens": 256000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"xai/grok-4-fast-non-reasoning": {
 			"id": "xai/grok-4-fast-non-reasoning",
@@ -95397,7 +95609,18 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 2000000,
-			"maxTokens": 256000
+			"maxTokens": 256000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				],
+				"requiresEffort": true
+			}
 		},
 		"xai/grok-4.1-fast-non-reasoning": {
 			"id": "xai/grok-4.1-fast-non-reasoning",
@@ -95712,7 +95935,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 256000,
-			"maxTokens": 256000
+			"maxTokens": 256000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"xiaomi/mimo-v2-flash": {
 			"id": "xiaomi/mimo-v2-flash",
@@ -95731,7 +95964,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 262144,
-			"maxTokens": 32000
+			"maxTokens": 32000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"xiaomi/mimo-v2-pro": {
 			"id": "xiaomi/mimo-v2-pro",
@@ -95750,7 +95993,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 1000000,
-			"maxTokens": 128000
+			"maxTokens": 128000,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"xiaomi/mimo-v2.5": {
 			"id": "xiaomi/mimo-v2.5",
@@ -97844,7 +98097,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 131072,
-			"maxTokens": 98304
+			"maxTokens": 98304,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-4.5-air": {
 			"id": "glm-4.5-air",
@@ -97863,7 +98126,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 131072,
-			"maxTokens": 98304
+			"maxTokens": 98304,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-4.5-flash": {
 			"id": "glm-4.5-flash",
@@ -97882,7 +98155,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 131072,
-			"maxTokens": 98304
+			"maxTokens": 98304,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-4.5v": {
 			"id": "glm-4.5v",
@@ -97902,7 +98185,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 64000,
-			"maxTokens": 16384
+			"maxTokens": 16384,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-4.6": {
 			"id": "glm-4.6",
@@ -97921,7 +98214,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 204800,
-			"maxTokens": 131072
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-4.6v": {
 			"id": "glm-4.6v",
@@ -97941,7 +98244,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 128000,
-			"maxTokens": 32768
+			"maxTokens": 32768,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-4.7": {
 			"id": "glm-4.7",
@@ -97982,7 +98295,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
-			"maxTokens": 131072
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-4.7-flashx": {
 			"id": "glm-4.7-flashx",
@@ -98001,7 +98324,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
-			"maxTokens": 131072
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-5": {
 			"id": "glm-5",
@@ -98020,7 +98353,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 204800,
-			"maxTokens": 131072
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-5-turbo": {
 			"id": "glm-5-turbo",
@@ -98061,7 +98404,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
-			"maxTokens": 131072
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		},
 		"glm-5.2": {
 			"id": "glm-5.2",
@@ -98145,7 +98498,17 @@
 				"cacheWrite": 0
 			},
 			"contextWindow": 200000,
-			"maxTokens": 131072
+			"maxTokens": 131072,
+			"thinking": {
+				"mode": "budget",
+				"efforts": [
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh"
+				]
+			}
 		}
 	},
 	"zenmux": {

@@ -67,37 +67,35 @@ function assistantToolCall(
 
 describe("DeepSeek reasoning_content tool-call replay", () => {
 	// ----------------------------------------------------------------
-	// Fix 1: honest [high, max] ladder for DeepSeek-family on any provider
+	// Fix 1: the DeepSeek ladder is whatever the endpoint declares
 	// ----------------------------------------------------------------
 	describe("thinking ladder (Fix 1)", () => {
-		it("bakes the honest [high, max] ladder with no effortMap on opencode-go", () => {
+		// The ladder is a property of the endpoint, not of the model family, so
+		// the same DeepSeek weights expose different tiers depending on who
+		// serves them. Asserting the shipped rows is the only way to catch a
+		// provider that quietly gains or loses a tier.
+		it.each([
+			["opencode-go", "deepseek-v4-flash", [Effort.Low, Effort.High, Effort.Max]],
+			["deepseek", "deepseek-v4-flash", [Effort.Low, Effort.High, Effort.Max]],
+			["nvidia", "deepseek-ai/deepseek-v4-flash", [Effort.High, Effort.Max]],
+			["deepseek", "deepseek-v4-pro", [Effort.High, Effort.Max]],
+		] as const)("ships %s/%s with the declared ladder and no effortMap", (provider, id, efforts) => {
+			const model = getBundledModel(provider, id);
+			expect(model.thinking?.efforts).toEqual([...efforts]);
+			expect(model.thinking?.effortMap).toBeUndefined();
+		});
+
+		// Negative control for the identity guess this replaced: a DeepSeek name
+		// on an endpoint that declares nothing used to be handed a fabricated
+		// [high, max]. An operator would then send `max` at a server that never
+		// agreed to accept it.
+		it("offers no effort surface when the endpoint declares no ladder", () => {
 			const model = deepseekModel({
-				provider: "opencode-go",
-				baseUrl: "https://opencode.ai/zen/go/v1",
+				provider: "custom-openai-compatible",
+				baseUrl: "https://example.invalid/v1",
 				id: "deepseek-v4-flash",
 			});
-			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
-			expect(model.thinking?.effortMap).toBeUndefined();
-		});
-
-		it("bakes the honest [high, max] ladder with no effortMap on NVIDIA", () => {
-			const model = deepseekModel({
-				provider: "nvidia",
-				baseUrl: "https://integrate.api.nvidia.com/v1",
-				id: "deepseek-ai/deepseek-v4-flash",
-			});
-			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
-			expect(model.thinking?.effortMap).toBeUndefined();
-		});
-
-		it("bakes the honest [high, max] ladder with no effortMap on the official endpoint", () => {
-			const model = deepseekModel({
-				provider: "deepseek",
-				baseUrl: "https://api.deepseek.com/v1",
-				id: "deepseek-v4-pro",
-			});
-			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
-			expect(model.thinking?.effortMap).toBeUndefined();
+			expect(model.thinking).toBeUndefined();
 		});
 
 		it("does NOT map xhigh for non-DeepSeek models", () => {

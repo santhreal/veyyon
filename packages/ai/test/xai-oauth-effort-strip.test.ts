@@ -28,15 +28,11 @@ describe("effort-dial-less reasoner encoding (regression)", () => {
 		const grok43 = getBundledModel("xai-oauth", "grok-4.3");
 		if (!grok43) throw new Error("xai-oauth/grok-4.3 must be in bundled models.json");
 		// The negative control for the strip: a sibling xai-oauth reasoner that
-		// DOES take a wire effort keeps its full ladder.
+		// DOES take a wire effort keeps the ladder xAI published for it. The
+		// tiers are theirs to name, so the assertion tracks the declaration
+		// rather than a five-rung shape assumed for the whole family.
 		expect(grok43.thinking?.mode).toBe("effort");
-		expect(getSupportedEfforts(grok43)).toEqual([
-			Effort.Minimal,
-			Effort.Low,
-			Effort.Medium,
-			Effort.High,
-			Effort.XHigh,
-		]);
+		expect(getSupportedEfforts(grok43)).toEqual([Effort.Low, Effort.Medium, Effort.High]);
 	});
 
 	test("xai-oauth/grok-4.20-0309-reasoning reasons but carries no thinking config", () => {

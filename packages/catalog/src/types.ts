@@ -22,13 +22,24 @@ export type KnownApi =
 	| "devin-agent";
 export type Api = KnownApi | (string & {});
 
+/**
+ * Canonical thinking transports, as a value so the set can be enumerated at run
+ * time. A transport decides whether an undeclared model may still be offered an
+ * effort ladder (see `clientComputedSurface`), and that decision cannot be
+ * inferred from the name, so every member needs one recorded deliberately.
+ * Tests iterate this array and fail on a member with no recorded decision,
+ * which is what keeps a sixth transport from landing green.
+ */
+export const THINKING_CONTROL_MODES = [
+	"effort",
+	"budget",
+	"google-level",
+	"anthropic-adaptive",
+	"anthropic-budget-effort",
+] as const;
+
 /** Canonical thinking transport used by a model. */
-export type ThinkingControlMode =
-	| "effort"
-	| "budget"
-	| "google-level"
-	| "anthropic-adaptive"
-	| "anthropic-budget-effort";
+export type ThinkingControlMode = (typeof THINKING_CONTROL_MODES)[number];
 
 /** Per-model thinking capabilities used to clamp and map user-facing effort levels. */
 export interface ThinkingConfig {
@@ -175,13 +186,21 @@ export interface Usage {
 
 export type OpenAIReasoningFormat = "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
 
-export type OpenAIReasoningDisableMode =
-	| "omit"
-	| "lowest-effort"
-	| "openrouter-enabled-false"
-	| "zai-thinking-disabled"
-	| "qwen-enable-thinking-false"
-	| "qwen-template-false";
+/**
+ * How each OpenAI-compatible dialect encodes "stop reasoning", as a value so
+ * the set can be enumerated at run time. Every mode has to survive a model with
+ * no declared effort ladder, and only one of them was ever exercised that way.
+ */
+export const OPENAI_REASONING_DISABLE_MODES = [
+	"omit",
+	"lowest-effort",
+	"openrouter-enabled-false",
+	"zai-thinking-disabled",
+	"qwen-enable-thinking-false",
+	"qwen-template-false",
+] as const;
+
+export type OpenAIReasoningDisableMode = (typeof OPENAI_REASONING_DISABLE_MODES)[number];
 
 export type OpenAIStreamMarkupHealingPattern = "kimi" | "dsml" | "thinking";
 
