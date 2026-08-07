@@ -10,6 +10,7 @@ import { settings } from "../../config/settings-instance";
 import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { detectCacheInvalidation, usesExplicitPromptCache } from "../../modes/components/cache-invalidation-marker";
+import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
 import {
 	ReadToolGroupComponent,
 	readArgsHaveTarget,
@@ -1470,7 +1471,7 @@ export class EventController {
 					: event.reason === "idle"
 						? "Idle "
 						: "";
-		const actionLabel = "Auto-compacting context";
+		const actionLabel = compactionActionLabel(true, willCompactRemotely(this.ctx.viewSession));
 		this.ctx.autoCompactionLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),
