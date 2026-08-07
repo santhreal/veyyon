@@ -57,9 +57,9 @@ const COMPACT_HANDOFF_ERROR =
 	"`handoff` is not a compaction mode. Use `/handoff [focus instructions]` to transfer context to a new session.";
 
 const RETIRED_COMPACT_MODES: Readonly<Record<string, string>> = {
-	soft: "`soft` is no longer a compaction mode. It only existed to SKIP provider-native remote compaction, which veyyon no longer has, so in-place summarization is what runs now: use `/compact summary`.",
+	soft: "`soft` is no longer a compaction mode. It existed to SKIP server-side compaction for one invocation, and that is a setting now rather than a mode: turn off `compaction.remote` to always compact locally. Use `/compact summary`.",
 	remote:
-		"`remote` is no longer a compaction mode. It asked the provider to compact its own way, which handed your durable history to an opaque provider-side blob; veyyon summarizes locally instead: use `/compact summary`.",
+		"`remote` is no longer a compaction mode. Server-side compaction is not something you ask for per invocation: the `compaction.remote` setting governs it, and it runs on its own when the session model's provider supports it. Use `/compact summary`.",
 };
 
 /** Parsed `/compact` arguments: the optional canonical mode plus optional focus text. */
