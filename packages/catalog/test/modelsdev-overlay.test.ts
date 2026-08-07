@@ -12,14 +12,24 @@
  * The contract pinned here: a stale disk payload is served during the backoff
  * window, and the window contains exactly ONE network attempt.
  */
-import { afterEach, expect, it, vi } from "bun:test";
+import { afterEach, beforeEach, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { defaultModelsDevFallback } from "@veyyon/catalog/modelsdev-overlay";
+import { defaultModelsDevFallback, resetModelsDevOverlayState } from "@veyyon/catalog/modelsdev-overlay";
+
+// The overlay's caches are process-global, so a file that ran earlier in the
+// same bun process decides what this one observes. Without this the memo is
+// already warm, the first fetch is served from it, and the assertion that one
+// network attempt happened fails for a reason that has nothing to do with the
+// contract under test.
+beforeEach(() => {
+	resetModelsDevOverlayState();
+});
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	resetModelsDevOverlayState();
 });
 
 it("serves the stale disk payload through the backoff window with a single network attempt", async () => {

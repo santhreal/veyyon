@@ -73,6 +73,27 @@ function report(hooks: DiscoveryHooks | undefined, stage: DiscoveryFailure["stag
 let failureBackoffUntil = 0;
 const FAILURE_BACKOFF_MS = 5 * 60 * 1000;
 
+/**
+ * Drop every piece of process-global overlay state.
+ *
+ * `memoryCache`, `inflight` and `failureBackoffUntil` outlive any single
+ * caller by design: they are what stops 100+ descriptor-covered providers
+ * each re-reading the disk file and re-attempting a 15s fetch on one offline
+ * session start. Nothing could clear them, so the state also outlived a test
+ * file, and whichever file ran first decided what the next one observed. That
+ * is how `serves the stale disk payload through the backoff window` passed on
+ * its own and failed in the suite: an earlier file had already populated the
+ * memo, so the first fetch returned it and made no network attempt at all.
+ *
+ * A suite-order-dependent test guards nothing, so the state that causes it
+ * gets an owner rather than the assertion getting loosened.
+ */
+export function resetModelsDevOverlayState(): void {
+	memoryCache = null;
+	inflight = null;
+	failureBackoffUntil = 0;
+}
+
 async function fetchPayload(hooks?: DiscoveryHooks, dbPath?: string): Promise<unknown> {
 	const now = Date.now();
 	if (memoryCache && now - memoryCache.fetchedAt < PAYLOAD_TTL_MS) return memoryCache.payload;
