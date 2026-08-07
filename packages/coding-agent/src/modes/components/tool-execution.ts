@@ -211,7 +211,7 @@ let toolExecutionInstanceSeq = 0;
 /**
  * Why a tool call produced no work, in the operator's words.
  *
- * Two shapes reach the transcript and neither one used to say anything. The
+ * Three shapes reach the transcript and none of them used to say anything. The
  * loop synthesizes a placeholder result for a call the assistant emitted but
  * never dispatched, tagging it `__synthetic` with an `executed: false` and a
  * `source` naming the assistant-side stop (`agent-loop.ts`
@@ -219,9 +219,16 @@ let toolExecutionInstanceSeq = 0;
  * history consumers can key on `__synthetic === true` to render or classify
  * these as 'call emitted, not executed' instead of a real local tool failure").
  * Nothing in the transcript ever read it, so those placeholders rendered with
- * the same red `failed` chrome as a command that ran and exited non-zero. The
- * other shape is a block the turn `seal()`ed with no result at all, which
- * rendered byte-identically to a call still in flight.
+ * the same red `failed` chrome as a command that ran and exited non-zero.
+ *
+ * The second is `__skipped`: a call an interrupt cut short. It is the same claim
+ * as the first and was read here for the same reason, one release later, which
+ * is the recurring shape of this defect: the branch gets written for the
+ * discriminator someone had in mind and its sibling keeps rendering as a
+ * failure. It is also by far the more common of the two.
+ *
+ * The third is a block the turn `seal()`ed with no result at all, which rendered
+ * byte-identically to a call still in flight.
  */
 function notExecutedReason(result: { details?: unknown } | undefined, sealed: boolean): string | undefined {
 	if (result === undefined) {
@@ -230,6 +237,16 @@ function notExecutedReason(result: { details?: unknown } | undefined, sealed: bo
 	const details = result.details;
 	if (details == null || typeof details !== "object") return undefined;
 	const record = details as Record<string, unknown>;
+	if (record.__skipped === true) {
+		// A skip says two things and the second is the one that matters. `entered`
+		// is whether control had crossed into the tool: false means nothing was
+		// applied, true means the tool was running and may have left half its work
+		// behind. Rendering both as one line would flatten the distinction the
+		// placeholder exists to carry.
+		return record.entered === true
+			? "cut off while running: side effects may be partial"
+			: "not executed: an interrupt cut the batch short before this call ran";
+	}
 	if (record.__synthetic !== true || record.executed !== false) return undefined;
 	switch (record.source) {
 		case "assistant_stop_aborted":
