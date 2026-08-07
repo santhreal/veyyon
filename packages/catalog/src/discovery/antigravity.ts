@@ -2,15 +2,15 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
 import type { ModelSpec } from "../types";
-import { discoveryFetch, toPositiveNumber } from "../utils";
+import { discoveryFetch } from "../utils";
 import {
 	ANTIGRAVITY_VARIANT_COLLAPSE_TABLE,
 	collapseEffortVariants,
 	type VariantCollapseTable,
 } from "../variant-collapse";
 import { getAntigravityUserAgent } from "../wire/gemini-headers";
-import { AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW, AGENT_GATEWAY_DEFAULT_MAX_TOKENS } from "./default-limits";
 import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
+import { gatewayContextWindow, gatewayMaxTokens } from "./gateway-limits";
 
 // Re-exported, not redeclared: `@veyyon/catalog/provider-endpoints` owns the hosts, and this module's
 // existing importers keep the names they already use.
@@ -259,8 +259,12 @@ export async function fetchAntigravityDiscoveryModels(
 					cacheWrite: 0,
 				},
 				pricing: "unknown",
-				contextWindow: toPositiveNumber(model.maxTokens, AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW),
-				maxTokens: toPositiveNumber(model.maxOutputTokens, AGENT_GATEWAY_DEFAULT_MAX_TOKENS),
+				// Reported when this endpoint says anything, else the catalog's own numbers for the
+				// proxied model, else the gateway assumption. `maxTokens`/`maxOutputTokens` are absent
+				// on most rows here, and falling straight to 200k described a 1M-window Gemini as a
+				// fifth of its size.
+				contextWindow: gatewayContextWindow(modelId, model.maxTokens),
+				maxTokens: gatewayMaxTokens(modelId, model.maxOutputTokens),
 			});
 		}
 

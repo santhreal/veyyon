@@ -8,8 +8,8 @@ import { toModelSpec } from "../provider-models/bundled-references";
 import type { Model, ModelSpec } from "../types";
 import { stripEffortTierSuffix } from "../variant-collapse";
 import { GetUsableModelsRequestSchema, GetUsableModelsResponseSchema } from "./cursor-gen/agent_pb";
-import { AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW, AGENT_GATEWAY_DEFAULT_MAX_TOKENS } from "./default-limits";
 import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
+import { gatewayContextWindow, gatewayMaxTokens } from "./gateway-limits";
 
 const CURSOR_DEFAULT_CLIENT_VERSION = "cli-2026.02.13-41ac335";
 const CURSOR_GET_USABLE_MODELS_PATH = "/agent.v1.AgentService/GetUsableModels";
@@ -367,16 +367,16 @@ function normalizeCursorModel(
 		// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		pricing: "unknown",
-		// Guesses, not readings. `ModelDetails` carries an id, display names,
-		// aliases, thinking details and a max-mode flag, and nothing about limits,
-		// so discovery has no honest number to put here and the gateway default
-		// stands in. It under-reports: the live gateway answers 256k for
-		// grok-4.5, and a 1M-window model would be reported at a fifth of its
-		// size. The real window arrives per turn as
-		// `ConversationTokenDetails.max_tokens` and the provider promotes it to
-		// `providerContextWindow`, which outranks this row.
-		contextWindow: AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW,
-		maxTokens: AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
+		// Not readings. `ModelDetails` carries an id, display names, aliases, thinking details and a
+		// max-mode flag, and nothing about limits, so this endpoint tells us nothing. What the CATALOG
+		// knows about the proxied model stands in instead: a gateway-only `grok-4.5` row is a 500k
+		// model, not the 200k Claude-class assumption, and describing it as 200k made auto-compaction
+		// fire at two fifths of the window and told the operator a 256k threshold was too large. Only a
+		// model the catalog has never heard of falls to the gateway assumption. The live per-turn
+		// number still outranks this: `ConversationTokenDetails.max_tokens` is promoted to
+		// `providerContextWindow`.
+		contextWindow: gatewayContextWindow(id),
+		maxTokens: gatewayMaxTokens(id),
 		cursorMaxMode: details.maxMode,
 	};
 }
