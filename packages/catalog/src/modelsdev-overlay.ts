@@ -113,9 +113,9 @@ async function fetchPayloadUncached(hooks?: DiscoveryHooks, dbPath?: string): Pr
 			});
 		} catch (error) {
 			report(hooks, "request", errorMessage(error));
-			if (disk) return disk.payload;
+			if (disk) memoryCache = disk;
 			failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
-			return null;
+			return disk?.payload ?? null;
 		}
 		if (response.status === 304 && disk) {
 			const renewed = { ...disk, fetchedAt: now };
@@ -125,9 +125,9 @@ async function fetchPayloadUncached(hooks?: DiscoveryHooks, dbPath?: string): Pr
 		}
 		if (!response.ok) {
 			report(hooks, "status", `HTTP ${response.status} ${response.statusText}`.trim());
-			if (disk) return disk.payload;
+			if (disk) memoryCache = disk;
 			failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
-			return null;
+			return disk?.payload ?? null;
 		}
 		try {
 			const payload: unknown = await response.json();
@@ -138,9 +138,9 @@ async function fetchPayloadUncached(hooks?: DiscoveryHooks, dbPath?: string): Pr
 			return payload;
 		} catch (error) {
 			report(hooks, "body", errorMessage(error));
-			if (disk) return disk.payload;
+			if (disk) memoryCache = disk;
 			failureBackoffUntil = Date.now() + FAILURE_BACKOFF_MS;
-			return null;
+			return disk?.payload ?? null;
 		}
 	} finally {
 		timeout.cancel();
