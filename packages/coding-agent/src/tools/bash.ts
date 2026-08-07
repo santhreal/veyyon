@@ -78,7 +78,7 @@ import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./
 export const BASH_DEFAULT_PREVIEW_LINES = DEFAULT_TERMINAL_PREVIEW_LINES;
 
 const BASH_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS = 60_000;
+const DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS = 300_000;
 const DEFAULT_STALL_DETECTION_MS = 30_000;
 
 /**
@@ -185,6 +185,9 @@ const bashSchemaBase = type({
 	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
 	"cwd?": type("string").describe(BASH_CWD_DESCRIPTION),
 	"pty?": type("boolean").describe("run in pty mode"),
+	"backgroundAfter?": type("number").describe(
+		"seconds this command may hold the foreground before it moves to a background job; 0 backgrounds it immediately. Overrides the auto-background setting for this one call, and applies even when that setting is off.",
+	),
 });
 
 const bashSchemaWithAsync = type({
@@ -194,6 +197,9 @@ const bashSchemaWithAsync = type({
 	"cwd?": type("string").describe(BASH_CWD_DESCRIPTION),
 	"pty?": "boolean",
 	"async?": type("boolean").describe("run in background"),
+	"backgroundAfter?": type("number").describe(
+		"seconds this command may hold the foreground before it moves to a background job; 0 backgrounds it immediately. Overrides the auto-background setting for this one call, and applies even when that setting is off.",
+	),
 });
 
 type BashToolSchema = typeof bashSchemaBase | typeof bashSchemaWithAsync;
@@ -206,6 +212,7 @@ export interface BashToolInput {
 
 	async?: boolean;
 	pty?: boolean;
+	backgroundAfter?: number;
 }
 
 export interface BashToolDetails {
@@ -537,6 +544,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		return prompt.render(toolsPrompts["tools/bash"].text, {
 			asyncEnabled: this.#asyncEnabled,
 			autoBackgroundEnabled: this.#autoBackgroundEnabled,
+			autoBackgroundSeconds: Math.max(0, Math.floor(this.#autoBackgroundThresholdMs / 1000)),
 			stallDetectionEnabled: this.#stallDetectionEnabled,
 			stallSeconds: Math.max(0, Math.floor(this.#stallMs / 1000)),
 			hasGrep: isToolActive("grep", this.session.settings.get("grep.enabled")),
@@ -863,10 +871,11 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	 * wall-clock threshold elapses (auto-background), the output goes quiet for
 	 * the stall window (stall detection), or the caller aborts.
 	 *
-	 * A `thresholdMs` of `0` disables the wall-clock timer (stall-only mode); a
-	 * `stallMs` of `0` disables stall detection (threshold-only mode). At least
-	 * one is positive whenever this is reached. The `background` result carries
-	 * the reason so the operator notice can name it.
+	 * A `thresholdMs` of `0` disables the wall-clock timer and a `stallMs` of `0`
+	 * disables stall detection. Both may be `0`: with neither lever on, this still
+	 * races completion against the operator's manual key, which is the whole
+	 * reason the key works on a stock install. The `background` result carries the
+	 * reason so the operator notice can name it.
 	 */
 	async #waitForManagedBashJob(
 		job: ManagedBashJobHandle,
@@ -959,10 +968,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		return clampLow(timeoutMs - timeoutBufferMs, 0, baseMs);
 	}
 
-	#resolveAutoBackgroundWaitMs(timeoutMs: number | undefined): number {
-		return this.#resolveWaitMs(this.#autoBackgroundThresholdMs, timeoutMs);
-	}
-
 	#resolveStallWaitMs(timeoutMs: number | undefined): number {
 		return this.#resolveWaitMs(this.#stallMs, timeoutMs);
 	}
@@ -977,6 +982,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 
 			async: asyncRequested = false,
 			pty = false,
+			backgroundAfter: rawBackgroundAfter,
 		}: BashToolInput,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<BashToolDetails>,
@@ -1139,26 +1145,34 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		);
 
 		const autoBgManager = this.session.asyncJobManager;
-		// Either lever routes a bash call through the managed-job machinery:
-		// auto-background (wall-clock) or stall detection (idle output). At the
-		// running-job cap, fall through to direct foreground execution instead of
-		// failing every bash call until a slot frees up.
-		if (
-			(this.#autoBackgroundEnabled || this.#stallDetectionEnabled) &&
-			!pty &&
-			!bridgeTerminalAvailable &&
-			autoBgManager &&
-			!autoBgManager.atCapacity
-		) {
-			// Wall-clock timer only when auto-background is on; stall timer only
-			// when stall detection is on. A stall-only session has no wall-clock
-			// timer, so it foregrounds until the output goes quiet (or it finishes).
-			const wallThresholdMs = this.#autoBackgroundEnabled ? this.#resolveAutoBackgroundWaitMs(timeoutMs) : 0;
+		// A per-call `backgroundAfter` is the model's own deadline. It overrides the
+		// configured threshold and arms the wall-clock timer even when the setting
+		// is off, because asking for it IS the opt-in.
+		const requestedBackgroundAfterMs =
+			rawBackgroundAfter === undefined ? undefined : Math.max(0, Math.floor(rawBackgroundAfter * 1000));
+		const autoBackgroundActive = requestedBackgroundAfterMs !== undefined || this.#autoBackgroundEnabled;
+		const configuredThresholdMs = requestedBackgroundAfterMs ?? this.#autoBackgroundThresholdMs;
+		// EVERY non-PTY, non-bridge call routes through the managed-job machinery,
+		// not only one with a timer armed. That registration is what gives the
+		// operator's manual background key something to win: the foreground wait
+		// publishes a resolver for its duration, and that same registration raises
+		// the `ctrl+b background` chip. Gating this on the two auto levers meant
+		// that with both off, which was the default, the key was dead and the chip
+		// never appeared, so a documented shortcut did nothing on a stock install.
+		// At the running-job cap, fall through to direct foreground execution
+		// instead of failing every bash call until a slot frees up.
+		if (!pty && !bridgeTerminalAvailable && autoBgManager && !autoBgManager.atCapacity) {
+			// Wall-clock timer only when auto-background is on, stall timer only
+			// when stall detection is on. With neither, the race still runs so the
+			// manual key and the completion path stay live, just without a timer.
+			const wallThresholdMs = autoBackgroundActive ? this.#resolveWaitMs(configuredThresholdMs, timeoutMs) : 0;
 			const stallMs = this.#stallDetectionEnabled ? this.#resolveStallWaitMs(timeoutMs) : 0;
-			// Background up front only when auto-background is on with a zero
-			// threshold ("Immediately"). Stall-only never starts backgrounded: it
-			// must foreground-watch output to detect the stall.
-			const startBackgrounded = this.#autoBackgroundEnabled && wallThresholdMs === 0;
+			// "Immediately" is a CONFIGURED zero, never a clamped one. `#resolveWaitMs`
+			// collapses the timer to 0 when the command's own timeout would fire
+			// first, and reading that as "background now" would shunt every
+			// short-timeout command straight to a background job the moment
+			// auto-background became the default.
+			const startBackgrounded = autoBackgroundActive && configuredThresholdMs === 0;
 			const job = this.#startManagedBashJob({
 				command,
 				commandCwd,

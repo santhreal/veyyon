@@ -42,11 +42,11 @@
 		},
 		{
 			"id": "settings-bash-auto-background-default",
-			"contract": "bash.autoBackground.enabled default is false on empty config",
+			"contract": "bash.autoBackground.enabled default is true on empty config",
 			"surface": "settings-get-default",
 			"tags": ["positive", "negative"],
 			"input": { "path": "bash.autoBackground.enabled" },
-			"expect": { "default": false, "isolated": false }
+			"expect": { "default": true, "isolated": true }
 		},
 		{
 			"id": "settings-compaction-enabled-default",
