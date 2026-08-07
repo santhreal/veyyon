@@ -81,18 +81,27 @@ export async function compactWithProvider(
 		);
 	}
 
-	// Chain the previous window when the last compaction on this branch was
-	// also remote AND ran on this same host: per the guide, the latest
-	// compaction item carries the context, so the new call compacts
-	// [previous window, new span]. A window from a different provider or api
-	// is dropped rather than chained — it is an opaque blob only its minting
-	// host can decrypt, so sending it would buy a rejected request instead of
-	// a compaction (see chainableRemoteCompactionWindow).
-	const previousWindow = chainableRemoteCompactionWindow(preparation.previousPreserveData, model);
+	// Chain the previous window when the branch already holds one this host can
+	// read: per the guide, the latest compaction item carries the context, so the
+	// new call compacts [previous window, span since it]. `prepareCompaction`
+	// hands that narrower span over on `remoteChain`; it cannot come from
+	// `previousPreserveData`, because a server-side entry carries no summary a
+	// local pass can build on and the preparation therefore looks straight past
+	// it and re-expands everything behind it. That re-expansion is right for a
+	// local pass and wrong here: sending it would pay for a span the window
+	// already holds and make every compaction larger than the one before it.
+	//
+	// All or nothing. A window from a different provider or api is an opaque
+	// blob only its minting host can decrypt, so it is dropped rather than
+	// chained (see chainableRemoteCompactionWindow) and the full re-expanded
+	// span is sent instead, which is exactly what that span is for.
+	const chain = preparation.remoteChain;
+	const previousWindow = chainableRemoteCompactionWindow(chain?.previousPreserveData, model);
+	const span = previousWindow && chain ? chain : preparation;
 	const convertToLlm = options?.convertToLlm ?? defaultConvertToLlm;
 	// In a split turn the discarded span is messagesToSummarize followed by
 	// turnPrefixMessages; concatenated they are the chronological window.
-	const llmMessages = convertToLlm([...preparation.messagesToSummarize, ...preparation.turnPrefixMessages]);
+	const llmMessages = convertToLlm([...span.messagesToSummarize, ...span.turnPrefixMessages]);
 
 	// The operator's compaction instructions used to reach only the local
 	// summary. That summary is gone, so they must ride the provider call or

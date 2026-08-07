@@ -52,7 +52,12 @@ import {
 import { requestRemoteCompaction } from "./remote-summarizer";
 // The trigger decision moved to the module whose header owns it, and is re-exported below so no caller
 // changed. What is left here is the ENGINE: the summarizer, the cut point, the provider round trip.
-import { type CompactionSettings, DEFAULT_RESERVE_TOKENS } from "./threshold";
+import {
+	AUTO_COMPACTION_THRESHOLD,
+	type CompactionSettings,
+	DEFAULT_RESERVE_TOKENS,
+	resolveThresholdTokens,
+} from "./threshold";
 // The estimator moved to the module whose header owns it, and is re-exported below so no caller changed.
 import { estimateTokens } from "./token-estimate";
 
@@ -1040,6 +1045,32 @@ export async function generateHandoff(
 // Compaction Preparation (for hooks)
 // ============================================================================
 
+/**
+ * The narrower span a SERVER-SIDE pass compacts when the branch already holds
+ * a server-side window this model can chain in front of it.
+ *
+ * The two passes need different spans over the same branch, which is why this
+ * cannot be folded into the fields above. A local pass must look straight past
+ * a remote entry and re-expand everything behind it, because that entry holds
+ * no summary text to build on and the local summary it writes replaces the
+ * window. A remote pass must do the opposite: chain the window and send only
+ * what arrived after it, because the window already carries that history
+ * (encrypted reasoning included) and re-sending it as plain messages pays for
+ * the same span twice and grows every compaction past the last one.
+ *
+ * Absent when there is no such entry, or when the cut point falls before it,
+ * where the window is still in the retained tail and chaining would double the
+ * span it covers.
+ */
+export interface RemoteCompactionChain {
+	/** `preserveData` of the entry whose window is being chained. */
+	previousPreserveData: Record<string, unknown>;
+	/** Messages after that entry, up to the cut point. */
+	messagesToSummarize: AgentMessage[];
+	/** Same turn prefix the local pass uses: it lies after the cut either way. */
+	turnPrefixMessages: AgentMessage[];
+}
+
 export interface CompactionPreparation {
 	/** UUID of first entry to keep */
 	firstKeptEntryId: string;
@@ -1056,6 +1087,11 @@ export interface CompactionPreparation {
 	previousSummary?: string;
 	/** Preserved opaque compaction payload from the previous compaction, if any. */
 	previousPreserveData?: Record<string, unknown>;
+	/**
+	 * Span and window for a chained server-side pass. See {@link
+	 * RemoteCompactionChain}; a local pass ignores it.
+	 */
+	remoteChain?: RemoteCompactionChain;
 	/** File operations extracted from messagesToSummarize */
 	fileOps: FileOperations;
 	/** Compaction settions from settings.jsonl	*/
@@ -1111,6 +1147,16 @@ export interface CompactionPreparationOptions {
 	 * is genuinely unknown; the scaling is then skipped rather than guessed.
 	 */
 	nonMessageTokens?: number;
+	/**
+	 * Context window of the model this session is running on.
+	 *
+	 * Compaction uses it to derive how much conversation the prompt is allowed
+	 * to hold, and caps the recent-token budget there: a configured budget
+	 * larger than that asks compaction to keep more than can ever fit, which is
+	 * how a full session ends up reported as too small to compact. Omit it only
+	 * when the window is genuinely unknown; the cap is then skipped.
+	 */
+	contextWindow?: number;
 }
 
 /**
@@ -1222,6 +1268,11 @@ export function prepareCompaction(
 	}
 
 	let prevCompactionIndex = -1;
+	// Newest server-side entry ahead of that boundary, if any. The scan below
+	// walks past it because a local pass cannot build on it, and that is exactly
+	// the entry a REMOTE pass has to chain rather than re-read, so it is picked
+	// up on the same walk instead of a second one.
+	let remoteCompactionIndex = -1;
 	for (let i = pathEntries.length - 1; i >= 0; i--) {
 		if (pathEntries[i].type !== "compaction") continue;
 		// Skip an entry whose summary a local pass cannot build on: one of the two
@@ -1229,7 +1280,12 @@ export function prepareCompaction(
 		// artifact is the window rather than text. Re-expand the original messages
 		// behind it and summarize them locally rather than stranding that span.
 		const entry = pathEntries[i] as CompactionEntry;
-		if (!hasReusableSummary(entry.preserveData)) continue;
+		if (!hasReusableSummary(entry.preserveData)) {
+			if (remoteCompactionIndex === -1 && getRemoteCompactionPreserveData(entry.preserveData)) {
+				remoteCompactionIndex = i;
+			}
+			continue;
+		}
 		prevCompactionIndex = i;
 		break;
 	}
@@ -1238,7 +1294,43 @@ export function prepareCompaction(
 
 	const lastUsage = getLastAssistantUsage(pathEntries);
 	const tokensBefore = lastUsage ? calculateContextTokens(lastUsage) : 0;
+	// The configured floor asks to keep a fixed amount of recent history, and on
+	// a model with less usable conversation budget than that it asks for more
+	// than can ever be there. Every compactable range then estimates under the
+	// budget, `findCutPoint` never crosses it, the dead-end guard is skipped
+	// because the range genuinely fits, and this function returns undefined --
+	// which the manual path spells "Nothing to compact (session too small)"
+	// against a gauge with no room left. That is the reported symptom, and the
+	// floor is what produces it.
+	//
+	// The ceiling is derived, not chosen: it is the space the conversation is
+	// allowed to occupy at all, the compaction trigger minus everything in the
+	// prompt that belongs to no entry. Keeping the whole of that is still a
+	// no-op, but it puts the crossing inside the range, and the dead-end guard
+	// owns the rest. Both figures come from the caller and both are optional,
+	// so an unknown window or an unknown prefix means no ceiling rather than a
+	// guessed one.
+	//
+	// Only when the trigger itself is derived from the window. An operator who
+	// sets an absolute threshold has stated the trigger directly, and it may sit
+	// far under the window, which makes this subtraction arbitrarily small: a
+	// ceiling of a few tokens cuts inside the exchange that just finished and
+	// sends the model a tool result whose call is gone. That is not a smaller
+	// compaction, it is a broken one. A budget of zero or less says the prefix
+	// alone already exceeds the trigger, which no amount of summarizing can fix,
+	// so leave the configured budget alone and let the dead-end guard speak.
 	let keepRecentTokens = settings.keepRecentTokens;
+	const nonMessageTokens = options?.nonMessageTokens;
+	const contextWindow = options?.contextWindow;
+	if (
+		settings.threshold === AUTO_COMPACTION_THRESHOLD &&
+		nonMessageTokens !== undefined &&
+		contextWindow !== undefined &&
+		contextWindow > 0
+	) {
+		const conversationBudget = resolveThresholdTokens(contextWindow, settings) - nonMessageTokens;
+		if (conversationBudget > 0) keepRecentTokens = Math.min(keepRecentTokens, conversationBudget);
+	}
 	if (lastUsage) {
 		const estimatedTokens = estimateEntriesTokens(pathEntries, boundaryStart, boundaryEnd);
 		// Scale the recent budget by how far the local estimate undershoots what
@@ -1250,9 +1342,23 @@ export function prepareCompaction(
 		// and compaction must not treat it as such. Callers that know the figure
 		// pass it; when nobody does, the ratio is only trustworthy if it is not
 		// dominated by content we cannot see, so an unknown prefix means no scaling.
-		const nonMessageTokens = options?.nonMessageTokens;
-		const promptTokens = calculatePromptTokens(lastUsage) - (nonMessageTokens ?? 0);
-		const ratio = nonMessageTokens !== undefined && estimatedTokens > 0 ? promptTokens / estimatedTokens : 0;
+		const conversationPromptTokens = calculatePromptTokens(lastUsage) - (nonMessageTokens ?? 0);
+		// A negative count is not a small conversation, it is proof that the
+		// prefix figure and the provider's prompt count disagree about what is in
+		// the prompt, and the subtraction is where that shows. The scaling below
+		// already ignores it, since a negative ratio is not above 1, so nothing
+		// downstream needs a clamp. What it must not do is stay silent: this runs
+		// every turn and hid the disagreement at the one moment both numbers were
+		// in hand. Warn and carry on rather than throw.
+		if (conversationPromptTokens < 0) {
+			logger.warn("compaction: non-message token estimate exceeds the provider's whole prompt count", {
+				nonMessageTokens,
+				promptTokens: calculatePromptTokens(lastUsage),
+				estimatedTokens,
+			});
+		}
+		const ratio =
+			nonMessageTokens !== undefined && estimatedTokens > 0 ? conversationPromptTokens / estimatedTokens : 0;
 		if (Number.isFinite(ratio) && ratio > 1) {
 			keepRecentTokens = Math.max(1, Math.floor(keepRecentTokens / ratio));
 		}
@@ -1318,6 +1424,24 @@ export function prepareCompaction(
 		extractFileOpsFromMessages(turnPrefixMessages, fileOps);
 	}
 
+	// The span a chained server-side pass sends: only what arrived after the
+	// window, because the window already carries everything before it. Skipped
+	// when the cut lands at or before that entry, where the window is still in
+	// the retained tail and chaining it would send its span twice.
+	let remoteChain: RemoteCompactionChain | undefined;
+	if (remoteCompactionIndex >= 0 && remoteCompactionIndex < historyEnd) {
+		const chainMessages: AgentMessage[] = [];
+		for (let i = remoteCompactionIndex + 1; i < historyEnd; i++) {
+			const msg = getMessageFromEntry(pathEntries[i], options?.excludedCustomMessageTypes);
+			if (msg) chainMessages.push(msg);
+		}
+		remoteChain = {
+			previousPreserveData: (pathEntries[remoteCompactionIndex] as CompactionEntry).preserveData ?? {},
+			messagesToSummarize: chainMessages,
+			turnPrefixMessages,
+		};
+	}
+
 	return {
 		firstKeptEntryId,
 		messagesToSummarize,
@@ -1327,6 +1451,7 @@ export function prepareCompaction(
 		tokensBefore,
 		previousSummary,
 		previousPreserveData,
+		remoteChain,
 		fileOps,
 		settings,
 	};

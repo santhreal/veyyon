@@ -140,10 +140,10 @@ export function getRemoteCompactionPreserveData(
  * A session that switches hosts mid-run (openai -> azure, or the reverse)
  * still has the old window sitting in `previousPreserveData`, and sending it
  * to the new host buys a guaranteed provider rejection: a wasted compaction
- * round trip, a user-visible warning, and a fall back to local compaction at
- * the exact moment the context is overflowing. Dropping the window instead
- * costs only the extra span the fresh compaction has to read, and the
- * readable summary of that span is carried forward regardless.
+ * the exact moment the context is overflowing. Dropping the window costs the
+ * extra span the fresh compaction has to read, and nothing else: there is no
+ * readable summary of that span to fall back on, so the span itself is what
+ * `prepareCompaction` re-expands and hands to the fresh call.
  *
  * This is the write-side twin of the read-side check: replay drops a foreign
  * window in `getOpenAIResponsesHistoryPayload`, and `remoteCompactionProviderPayload`
