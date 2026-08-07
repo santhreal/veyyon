@@ -112,6 +112,14 @@ export interface CacheExpectation {
 	 */
 	previousReadTokens?: number;
 	/**
+	 * Total prompt tokens the previous request on this key was charged for, when
+	 * known. Paired with {@link previousReadTokens} it is what makes a STALLED
+	 * cache visible: a read that never moves while the prompt keeps growing is
+	 * identical turn to turn, so every signal derived from turn-over-turn CHANGE
+	 * reports it as healthy.
+	 */
+	previousTotalInputTokens?: number;
+	/**
 	 * Whether this provider reports cache WRITES. OpenAI-family surfaces report
 	 * only `cached_tokens`, so a cold-but-working first turn is indistinguishable
 	 * from an ignored marker unless something else vouches for the key.
@@ -150,6 +158,28 @@ export type CacheVerdict =
 	| { kind: "invalidated"; writeTokens: number; totalInputTokens: number }
 	/** Cache served far less of the prompt than the previous turn on this key did. */
 	| { kind: "degraded"; readTokens: number; previousReadTokens: number; shortfall: number }
+	/**
+	 * The entry stopped growing. The provider serves the same prefix it served
+	 * last turn, byte for byte, while the prompt keeps growing past it, so the
+	 * uncached remainder is re-billed in full on every turn and gets larger each
+	 * time.
+	 *
+	 * This is the shape every other signal here misses, and it is the expensive
+	 * one. `degraded` compares this turn's read against the previous turn's, so a
+	 * read that never moves can never trigger it; `ok` is returned for any
+	 * non-zero read regardless of how little of the prompt it covers. Recorded
+	 * sessions show a read pinned at one value for thirty-plus consecutive turns
+	 * while the prompt triples, every one of them judged `ok`.
+	 */
+	| {
+			kind: "stalled";
+			readTokens: number;
+			totalInputTokens: number;
+			/** Prompt tokens past the frozen prefix, re-billed this turn. */
+			uncachedTokens: number;
+			/** How much that remainder grew since the previous turn. */
+			growthTokens: number;
+	  }
 	/**
 	 * We asked, it was big enough, it was not the first turn, the window was
 	 * open, and the provider neither read nor wrote a cache entry. The markers
@@ -203,6 +233,42 @@ export function verifyCacheUsage(
 		) {
 			return { kind: "degraded", readTokens, previousReadTokens: previous, shortfall: previous - readTokens };
 		}
+		// The entry stopped growing. Every condition is required, and each one
+		// removes a shape that is innocent:
+		//
+		// - The read is EXACTLY the previous read. An advancing cache moves by the
+		//   provider's block size every turn, so equality is not "about the same",
+		//   it is "the provider returned the identical entry and wrote no new one".
+		// - The prompt grew. Without this a pair of turns inside one already-cached
+		//   segment reads the same value legitimately, which is 29% of healthy
+		//   turns in the recorded corpus and would drown the signal.
+		// - Most of the prompt is now uncached. An ordinary turn that appends new
+		//   content is still mostly served from cache, so its remainder stays well
+		//   under the cached prefix; a stall keeps re-billing everything past a
+		//   prefix that no longer moves, and the remainder overtakes it.
+		//
+		// Together they fire on 0.36% of recorded turns. Deliberately not
+		// enforceable: the innocent explanation (provider-side routing to a shard
+		// that lacks the newer entry) is outside our control, and failing a working
+		// session over a cost signal is the mistake this module already warns about.
+		const previousTotal = expectation.previousTotalInputTokens;
+		const uncachedTokens = totalInputTokens - readTokens;
+		if (
+			previous !== undefined &&
+			previousTotal !== undefined &&
+			readTokens > MIN_CACHEABLE_TOKENS &&
+			readTokens === previous &&
+			totalInputTokens > previousTotal &&
+			uncachedTokens >= readTokens
+		) {
+			return {
+				kind: "stalled",
+				readTokens,
+				totalInputTokens,
+				uncachedTokens,
+				growthTokens: totalInputTokens - previousTotal,
+			};
+		}
 		return {
 			kind: "ok",
 			readTokens,
@@ -252,6 +318,7 @@ export function isCacheHealthy(verdict: CacheVerdict): boolean {
 		case "cold":
 			return true;
 		case "degraded":
+		case "stalled":
 		case "invalidated":
 		case "rejected":
 		case "unverifiable":
@@ -292,6 +359,8 @@ export function describeCacheVerdict(verdict: CacheVerdict): string {
 			return `prompt cache prefix changed: rewrote ${verdict.writeTokens} of ${verdict.totalInputTokens} input tokens instead of reading them`;
 		case "degraded":
 			return `prompt cache served ${verdict.readTokens} tokens where the previous turn served ${verdict.previousReadTokens} (${verdict.shortfall} fewer)`;
+		case "stalled":
+			return `prompt cache stopped growing: it has served the same ${verdict.readTokens} tokens since the previous turn while the prompt reached ${verdict.totalInputTokens}, so ${verdict.uncachedTokens} tokens were re-billed (${verdict.growthTokens} more than last turn)`;
 		case "rejected":
 			return `prompt cache was NOT accepted: the request carried ${verdict.anchors} cache ${verdict.anchors === 1 ? "anchor" : "anchors"} and the provider reported neither a read nor a write for ${verdict.totalInputTokens} input tokens`;
 		case "unverifiable":
