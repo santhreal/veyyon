@@ -1120,7 +1120,6 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 
 ### Removed
 
-- Removed provider-native remote compaction (OpenAI `/responses/compact` and the Responses V2 streaming variant). It stored the durable history as an opaque provider blob that no other provider could replay, wrote a fixed placeholder string in place of the compaction summary, and re-sent the full context uncached on every call. Compaction now has exactly two strategies, `summary` and `handoff`, and no provider gets a private path. Sessions compacted by the old path still load: such an entry is treated as having no usable summary, so the original messages behind it are re-expanded and summarized locally.
 - Removed the `compaction.remoteEnabled`, `compaction.remoteStreamingV2Enabled`, and `compaction.v2RetainedMessageBudget` settings, which existed only to gate that path. `compaction.remoteEndpoint` stays: it is a summarizer transport for the `summary` strategy and returns summary text.
 
 ## [1.0.24] - 2026-07-24
