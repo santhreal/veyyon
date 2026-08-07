@@ -66,7 +66,7 @@ describe("mapModelsDevReasoningOptions", () => {
 			noEffortControl: true,
 		});
 		// An `effort` option with no `values` key declares nothing about levels,
-		// which is the identity-fallback case and stays one.
+		// so no surface is offered.
 		expect(mapModelsDevReasoningOptions([{ type: "effort" }])).toBeUndefined();
 	});
 

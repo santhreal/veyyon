@@ -447,6 +447,15 @@ function mergeDynamicModel<TApi extends Api>(existingModel: Model<TApi>, dynamic
 	return buildModel({
 		...existingModel,
 		...dynamicModel,
+		// A collapsed row's effort routing is owned by its collapse table:
+		// neither discovery nor the overlay may re-derive it (the same rule
+		// resolveModelThinking implements). buildModel always emits the
+		// `thinking` key, so an overlay row declaring no surface would
+		// otherwise overwrite the routing with undefined.
+		thinking:
+			existingModel.thinking?.effortRouting !== undefined
+				? existingModel.thinking
+				: (dynamicModel.thinking ?? existingModel.thinking),
 		name: preferDiscoveryName(dynamicModel.name, existingModel.name, dynamicModel.id),
 		reasoning: existingModel.reasoning || dynamicModel.reasoning,
 		input: supportsImage ? ["text", "image"] : ["text"],
