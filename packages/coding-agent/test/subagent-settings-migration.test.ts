@@ -9,10 +9,12 @@
  * off while a model override for it lived on invisibly, and what let a role
  * outrank the subagent model.
  *
- * They are now one section with one row per agent. That is only worth anything if
- * an existing config arrives intact, so every legacy shape is pinned here: the
- * value remaps, the key renames, the two maps folding into one row set, and the
- * rule that an explicit new-key value already on disk always wins.
+ * They are now one section with one row per agent, and "what model does it run" has
+ * exactly one owner: the blanket `subagent.model`. That is only worth anything if an
+ * existing config arrives intact, so every legacy shape is pinned here: the value
+ * remaps, the key renames, `disabledAgents` folding into the row set, the retired
+ * model map being dropped with a report instead of rewritten, and the rule that an
+ * explicit new-key value already on disk always wins.
  *
  * Each case loads through the real loader and reads the new setting back, because
  * reaching the migration is part of the contract and so is writing a key shape the
@@ -21,11 +23,11 @@
  * legacy config silently reverted to defaults. Only a test that went through the
  * loader could catch that.
  */
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { removeWithRetries } from "@veyyon/utils";
+import { logger, removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../utils/test/helpers/destructive-guard";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
@@ -176,11 +178,14 @@ describe("subagent settings migration", () => {
 	});
 
 	/**
-	 * The headline consolidation: a disabled-name LIST and a name→model MAP become
-	 * one row per agent. Two maps meant two lookups that could disagree, and the
-	 * dashboard and the spawn path read different ones.
+	 * The headline consolidation: a disabled-name LIST and a name→model MAP were two
+	 * lookups that could disagree, and the dashboard and the spawn path read
+	 * different ones. The list becomes one row per agent. The model map has no
+	 * successor — per-agent models were retired in favour of the one blanket
+	 * `subagent.model` — so it is consumed and dropped rather than rewritten into a
+	 * row nothing reads.
 	 */
-	test("folds disabledAgents and agentModelOverrides into one row per agent", async () => {
+	test("folds disabledAgents into one row per agent and drops the model map", async () => {
 		writeConfig({
 			task: {
 				disabledAgents: ["designer"],
@@ -190,17 +195,42 @@ describe("subagent settings migration", () => {
 
 		expect((await load()).get("subagent.agents")).toEqual({
 			designer: { enabled: false },
-			scout: { model: "openai/gpt-5" },
 		});
 	});
 
 	/**
-	 * An agent that appears in BOTH legacy maps keeps both facts in its single row.
-	 * Dropping the model because the agent was off would lose a choice the operator
-	 * made, and they would only find out by turning the agent back on and watching
-	 * it run something else.
+	 * A dropped value is only acceptable if the operator is told. They chose that
+	 * model, and the agent will run something else from now on; the report names
+	 * each override and the setting that replaced the whole map.
 	 */
-	test("keeps the model of an agent that was also disabled", async () => {
+	test("names every dropped model override and where models are set now", async () => {
+		writeConfig({
+			task: { agentModelOverrides: { scout: "openai/gpt-5", reviewer: "anthropic/claude-opus-4-5" } },
+		});
+		const warnings: string[] = [];
+		const warn = spyOn(logger, "warn").mockImplementation((message: string) => {
+			warnings.push(message);
+		});
+		try {
+			await load();
+		} finally {
+			warn.mockRestore();
+		}
+
+		const reported = warnings.find(message => message.includes("task.agentModelOverrides"));
+		expect(reported).toBeDefined();
+		expect(reported).toContain("scout=openai/gpt-5");
+		expect(reported).toContain("reviewer=anthropic/claude-opus-4-5");
+		expect(reported).toContain("no longer read");
+		expect(reported).toContain("Subagent Model");
+	});
+
+	/**
+	 * An agent that appeared in BOTH legacy maps keeps the one fact that still has a
+	 * home. Writing the model beside it would put a value in the new section that no
+	 * resolver reads, which is the drift this section exists to remove.
+	 */
+	test("keeps the disabled state of an agent that also had a model", async () => {
 		writeConfig({
 			task: {
 				disabledAgents: ["reviewer"],
@@ -209,7 +239,7 @@ describe("subagent settings migration", () => {
 		});
 
 		expect((await load()).get("subagent.agents")).toEqual({
-			reviewer: { enabled: false, model: "anthropic/claude-opus-4-5" },
+			reviewer: { enabled: false },
 		});
 	});
 

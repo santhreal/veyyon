@@ -471,9 +471,7 @@ function readNameList(spawner: unknown, key: keyof EnabledSubagentSource): strin
 
 /** Which setting decided a subagent's model. Shown next to the model on every agent surface. */
 export type SubagentModelSource =
-	/** `subagent.agents.<name>.model` — this agent's own row. */
-	| "agent"
-	/** `subagent.model` — the blanket subagent model. */
+	/** `subagent.model` — the one subagent model setting. */
 	| "blanket"
 	/** The agent definition's `model:` frontmatter. */
 	| "frontmatter"
@@ -496,8 +494,6 @@ export interface ResolvedSubagentModel {
 /** Human-readable name of the setting behind a {@link SubagentModelSource}. */
 export function subagentModelSourceLabel(source: SubagentModelSource, agentName: string): string {
 	switch (source) {
-		case "agent":
-			return `subagent.agents.${agentName}.model`;
 		case "blanket":
 			return "subagent.model";
 		case "frontmatter":
@@ -508,14 +504,77 @@ export function subagentModelSourceLabel(source: SubagentModelSource, agentName:
 }
 
 /**
+ * Retired per-agent fields, reported once each rather than once per spawn.
+ * Keyed by agent and field so a second agent's leftover row is still named.
+ */
+const reportedRetiredAgentFields = new Set<string>();
+
+/**
+ * Report a `subagent.agents.<name>` row that still carries `model` or
+ * `thinkingLevel`.
+ *
+ * Those two fields were removed: model and effort for every subagent are now
+ * decided by the one subagent setting (`subagent.model`, whose entries carry
+ * their own `:effort`) plus the agent file's own frontmatter. A leftover row is
+ * a value the operator can still see in their config and that no longer
+ * governs anything, which is the exact shape of a setting that looks configured
+ * and does nothing — so it is said out loud instead of dropped in silence.
+ */
+function reportRetiredAgentRowField(agentName: string, field: "model" | "thinkingLevel", value: unknown): void {
+	const key = `${agentName}.${field}`;
+	if (reportedRetiredAgentFields.has(key)) return;
+	reportedRetiredAgentFields.add(key);
+	const replacement =
+		field === "model"
+			? "Set Subagents → Subagent Model, or the agent file's own `model:` frontmatter."
+			: "Set the effort on the Subagent Model entry (`model:effort`), Subagents → Subagent Effort, or the agent file's own `thinking-level:` frontmatter.";
+	logger.warn(
+		`Settings: subagent.agents.${agentName}.${field} is "${String(value)}", which is no longer read — ` +
+			`per-agent model and effort were unified into the subagent model setting. ${replacement}`,
+		{ setting: `subagent.agents.${agentName}.${field}`, value },
+	);
+}
+
+/**
+ * Name any retired field left on an agent's row. Called from both resolvers so
+ * the report happens on the path that would previously have honored the value.
+ *
+ * A blank field is what a cleared row leaves behind and what the old pickers'
+ * Inherit rows stored, so it is not a value anyone is losing and gets no report.
+ */
+function reportRetiredAgentRow(settings: Settings, agentName: string): void {
+	const row = subagentSettingsFor(settings, agentName) as SubagentAgentSettings & {
+		model?: unknown;
+		thinkingLevel?: unknown;
+	};
+	for (const field of ["model", "thinkingLevel"] as const) {
+		const value = row[field];
+		if (value === undefined || (typeof value === "string" && value.trim().length === 0)) continue;
+		reportRetiredAgentRowField(agentName, field, value);
+	}
+}
+
+/** Test seam: forget which retired rows have been reported. */
+export function resetRetiredAgentRowReports(): void {
+	reportedRetiredAgentFields.clear();
+}
+
+/**
  * Resolve the model patterns one subagent runs, with the deciding layer.
  *
  * Precedence, highest first:
- *  1. `subagent.agents.<name>.model` — this agent's row in the Agents table.
- *  2. `subagent.model` — the blanket model for every enabled subagent.
- *  3. The agent definition's `model:` frontmatter, which for a user-authored
+ *  1. `subagent.model` — the one subagent model setting, which every enabled
+ *     subagent follows and whose entries carry their own `:effort`.
+ *  2. The agent definition's `model:` frontmatter, which for a user-authored
  *     agent is that author's deliberate choice.
- *  4. Inherit the session's live model.
+ *  3. Inherit the session's live model.
+ *
+ * There is deliberately no per-agent settings layer. `subagent.agents.<name>.model`
+ * used to sit above all of these and was editable from one screen while the
+ * blanket model was editable from another, so the Agents table quietly outranked
+ * the setting the operator had just changed. Model and effort are now decided in
+ * ONE place; the Agents table decides only whether a lane is offered, and an
+ * agent that wants its own model says so in its own file.
  *
  * A configured layer that expands to NOTHING does not fall through: it comes back
  * as `unresolved` so the caller can refuse to spawn and say which setting is
@@ -524,7 +583,7 @@ export function subagentModelSourceLabel(source: SubagentModelSource, agentName:
  * instead.
  *
  * Bundled specialists intentionally carry no `model:` frontmatter, so on a stock
- * install every subagent lands on case 4 and runs the model the operator is
+ * install every subagent lands on case 3 and runs the model the operator is
  * looking at.
  */
 export function resolveSubagentModel(options: {
@@ -536,23 +595,11 @@ export function resolveSubagentModel(options: {
 	activeModelPattern?: string;
 	/** Fallback when the session has no active model yet (headless start). */
 	fallbackModelPattern?: string;
-	/**
-	 * An unsaved edit standing in for this agent's row, so an editor can preview
-	 * what a value would do before writing it.
-	 */
-	draftModel?: string;
-	/**
-	 * Skip the agent's own row, answering "what would this agent run WITHOUT an
-	 * override" — the default an editor shows next to the override it is editing.
-	 */
-	ignoreAgentRow?: boolean;
 }): ResolvedSubagentModel {
 	const { settings, agentName, agentModel, activeModelPattern, fallbackModelPattern } = options;
 
-	const rowModel =
-		options.draftModel !== undefined ? options.draftModel : subagentSettingsFor(settings, agentName).model;
+	reportRetiredAgentRow(settings, agentName);
 	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined }> = [
-		{ source: "agent", value: options.ignoreAgentRow ? undefined : rowModel },
 		{ source: "blanket", value: settings.get("subagent.model") },
 		{ source: "frontmatter", value: agentModel },
 	];
@@ -615,14 +662,17 @@ function parseEffortSetting(setting: string, value: unknown): ConfiguredThinking
  * Resolve a subagent's thinking level. Precedence, highest first, deliberately
  * the same shape as {@link resolveSubagentModel} so one sentence describes both:
  *
- *  1. `subagent.agents.<name>.thinkingLevel` — this agent's row.
- *  2. `subagent.thinkingLevel` — the blanket subagent effort.
- *  3. the agent definition's `thinking-level` frontmatter.
- *  4. undefined — inherit the session's effort.
+ *  1. `subagent.thinkingLevel` — the one subagent effort setting.
+ *  2. the agent definition's `thinking-level` frontmatter.
+ *  3. undefined — inherit the session's effort.
  *
  * An explicit `:level` suffix on the resolved model pattern still outranks all of
  * these; the executor applies that, since only it knows whether the suffix was
  * present (see `resolveEffectiveSubagentThinkingLevel`).
+ *
+ * There is no per-agent settings layer, for the reason spelled out on
+ * {@link resolveSubagentModel}: effort is decided in one place, and an agent that
+ * wants its own effort declares `thinking-level` in its own file.
  *
  * A configured value that names no level does not silently become "inherited":
  * it is reported with the setting and the accepted values, then skipped, so the
@@ -634,11 +684,7 @@ export function resolveSubagentThinkingLevel(options: {
 	agentName: string;
 	agentThinkingLevel?: ConfiguredThinkingLevel;
 }): ConfiguredThinkingLevel | undefined {
-	const fromRow = parseEffortSetting(
-		`subagent.agents.${options.agentName}.thinkingLevel`,
-		subagentSettingsFor(options.settings, options.agentName).thinkingLevel,
-	);
-	if (fromRow !== undefined) return fromRow;
+	reportRetiredAgentRow(options.settings, options.agentName);
 	// Blanket BEFORE frontmatter, the same order {@link resolveSubagentModel} uses.
 	// This used to be the other way round, and bundled agents carry a
 	// `thinking-level` even though they carry no `model:` (scout `medium`,

@@ -59,7 +59,9 @@ export interface EnumSettingDef extends BaseSettingDef {
 	values: readonly string[];
 }
 
-type OptionList = ReadonlyArray<SubmenuOption>;
+/** The choices a submenu setting offers. Exported so the selector's runtime
+ *  option owner (`#submenuOptions`) returns the same shape the defs declare. */
+export type OptionList = ReadonlyArray<SubmenuOption>;
 
 export interface SubmenuSettingDef extends BaseSettingDef {
 	type: "submenu";

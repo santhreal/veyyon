@@ -26,23 +26,28 @@
  *     when named", and nobody could tell what the switch did.
  */
 
-import { configuredThinkingLevelOptions } from "../../thinking";
-
 /**
  * Per-agent configuration held in {@link SUBAGENTS_SETTINGS}`["subagent.agents"]`,
  * keyed by agent name (`deep`, `scout`, a user-authored agent, …).
  *
  * Every field is optional and an omitted field means "use the default", never
- * "off": `enabled` defaults per {@link subagentEnabledByDefault}, and `model` /
- * `thinkingLevel` default to inheriting the session's.
+ * "off": `enabled` defaults per {@link subagentEnabledByDefault} and
+ * `maxNestedSpawnDepth` defaults to the blanket limit.
+ *
+ * There is deliberately no per-agent `model` or `thinkingLevel`. Both existed
+ * here, above the blanket `subagent.model` / `subagent.thinkingLevel` in the
+ * resolver, so this table silently outranked the setting an operator had just
+ * changed and the same axis was editable from two screens that disagreed about
+ * the value. What a subagent runs is now ONE question with one answer;
+ * this table only decides which lanes are offered. An agent that needs its own
+ * model or effort declares it in its own file (`model:` / `thinking-level:`),
+ * which is a statement about that agent rather than a fourth override layer.
+ * A leftover row field is reported by `task/subagent-settings.ts` rather than
+ * honored.
  */
 export interface SubagentAgentSettings {
 	/** Whether this agent can be spawned at all. */
 	enabled?: boolean;
-	/** Model pattern for this agent; blank inherits the session's live model. */
-	model?: string;
-	/** Thinking level / effort for this agent; blank inherits the session's. */
-	thinkingLevel?: string;
 	/** Nested levels this agent may still spawn; blank inherits the blanket limit. */
 	maxNestedSpawnDepth?: number;
 }
@@ -146,7 +151,7 @@ export const SUBAGENTS_SETTINGS = {
 	},
 
 	// ────────────────────────────────────────────────────────────────────────
-	// Agents — the per-agent table (enabled + model + effort)
+	// Agents — which lanes this session offers
 	// ────────────────────────────────────────────────────────────────────────
 
 	/**
@@ -166,7 +171,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Agents",
 			description:
-				"Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits.",
+				"Which agent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. What each one RUNS is not set here: Subagent Model and Subagent Effort decide that for every subagent at once, and an agent that needs its own model or effort declares it in its own file.",
 			keywords: [
 				"agents",
 				"scout",
@@ -183,7 +188,7 @@ export const SUBAGENTS_SETTINGS = {
 	},
 
 	// ────────────────────────────────────────────────────────────────────────
-	// Models
+	// Models — the one place a subagent's model and effort are chosen
 	// ────────────────────────────────────────────────────────────────────────
 
 	"subagent.model": {
@@ -194,8 +199,8 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Models",
 			label: "Subagent Model",
 			description:
-				"Models for every enabled subagent that has no per-agent model of its own, tried in order: the rest are used when an earlier one errors. Unset means inherit: subagents follow the session's live main model. A per-agent model in the Agents table wins over this.",
-			keywords: ["task", "deep", "subagent", "spawn", "delegate", "worker"],
+				"Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset.",
+			keywords: ["task", "deep", "subagent", "spawn", "delegate", "worker", "effort"],
 		},
 	},
 
@@ -207,12 +212,15 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Models",
 			label: "Subagent Effort",
 			description:
-				"Thinking level for every enabled subagent that has no per-agent effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins.",
+				"Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins.",
 			keywords: ["thinking", "reasoning", "effort"],
-			// Picked from the one effort vocabulary rather than typed. As a free-text
-			// field this accepted anything, and an unrecognized value resolved to
-			// "inherited" — a setting that looked configured and did nothing.
-			options: configuredThinkingLevelOptions(),
+			// Narrowed at render time to the levels the model these subagents will
+			// actually run accepts, exactly as `/effort` does — a fixed list here is
+			// how this screen came to offer levels a model has no wire field for. A
+			// free-text field came before that and accepted anything, and an
+			// unrecognized value resolved to "inherited": configured, and doing
+			// nothing.
+			options: "runtime",
 		},
 	},
 
