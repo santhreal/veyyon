@@ -178,6 +178,39 @@ describe("AgentSession refreshMCPTools rebuild skipping", () => {
 		expect(rebuildCount).toBe(baseline + 2);
 	});
 
+	// A reorder of the SAME active tool set is a pure prefix-cache defect: the
+	// provider-bound `tools` array sits inside the cached prefix, tools are
+	// addressed by name so their order carries no meaning for the model, and
+	// several call sites rebuild the active list in a different order than the one
+	// already on the wire (`refreshSshTool` re-pushes `ssh` at the tail,
+	// `#restoreMCPSelectionsForSessionContext` emits every non-MCP tool ahead of
+	// every MCP tool, plan/goal-mode exit replays a saved list). A permutation
+	// changes the serialized prefix without changing its token count, which is
+	// exactly the signature measured on 547 mid-session collapses: the provider
+	// served fewer cached tokens than the system+tools prefix is long.
+	it("keeps the provider-bound tool order when the active set is only permuted", async () => {
+		let rebuildCount = 0;
+		const { session } = newSession(async toolNames => {
+			rebuildCount++;
+			return `tools:${toolNames.join(",")}`;
+		});
+
+		const a = createMcpCustomTool("mcp__nucleus_search", "nucleus", "search", "Search");
+		const b = createMcpCustomTool("mcp__nucleus_explain", "nucleus", "explain", "Explain");
+		await session.refreshMCPTools([a, b]);
+
+		await session.setActiveToolsByName(["read", "mcp__nucleus_search", "mcp__nucleus_explain"]);
+		const order = session.getActiveToolNames();
+		expect(order).toEqual(["read", "mcp__nucleus_search", "mcp__nucleus_explain"]);
+		const baseline = rebuildCount;
+
+		// Same set, different order — what `refreshSshTool` and the mode-exit paths
+		// hand over. The bytes on the wire must not move.
+		await session.setActiveToolsByName(["mcp__nucleus_explain", "read", "mcp__nucleus_search"]);
+		expect(session.getActiveToolNames()).toEqual(order);
+		expect(rebuildCount).toBe(baseline);
+	});
+
 	it("updates live active-tool predicates before rebuilding the prompt", async () => {
 		const activeToolNames = new Set(["read", "bash", "grep"]);
 		const readTool = createBasicTool("read", "Read");
