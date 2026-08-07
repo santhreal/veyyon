@@ -810,6 +810,23 @@ function compactionDeadEndWarning(remedies: string): string {
 	);
 }
 
+/**
+ * Context window compaction may price itself against, or undefined when the
+ * model declares none.
+ *
+ * `Model.contextWindow` is nullable, and null there is a statement: this model
+ * never told us how much it holds. Compaction caps its recent-history budget
+ * against that window so it cannot ask to keep more conversation than the
+ * prompt is allowed to carry, and there is nothing to cap against here.
+ * Substituting a default would clamp against a number nobody stated, so the
+ * cap is skipped and the configured budget stands, which is the behaviour
+ * every session had before the cap existed.
+ */
+function declaredContextWindow(model: Model | undefined): number | undefined {
+	const contextWindow = model?.contextWindow;
+	return typeof contextWindow === "number" && contextWindow > 0 ? contextWindow : undefined;
+}
+
 function createCodexCompactionContext(options: {
 	trigger: CodexCompactionContext["trigger"];
 	reason: CodexCompactionContext["reason"];
@@ -4043,6 +4060,7 @@ export class AgentSession {
 		);
 		const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings), {
 			nonMessageTokens: computeNonMessageTokens(this),
+			contextWindow: declaredContextWindow(this.model),
 		});
 		if (!preparation) {
 			// Cannot prepare compaction, fallback to re-prime
@@ -12850,6 +12868,7 @@ export class AgentSession {
 			const pathEntries = this.sessionManager.getBranch();
 			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(effectiveSettings), {
 				nonMessageTokens: computeNonMessageTokens(this),
+				contextWindow: declaredContextWindow(this.model),
 			});
 			if (!preparation) {
 				// Check why we can't compact
@@ -12857,6 +12876,12 @@ export class AgentSession {
 				if (lastEntry?.type === "compaction") {
 					throw new Error("Already compacted");
 				}
+				// The window being full and this returning nothing were once the
+				// same state, and the sentence below was a lie in it. The cut-point
+				// budget is now capped by what the window can hold, so a full
+				// window always produces a cut and only a genuinely small session
+				// reaches here. Do not restore a second message for the other case
+				// without first restoring a way to get into it.
 				throw new Error("Nothing to compact (session too small)");
 			}
 
@@ -15815,6 +15840,7 @@ export class AgentSession {
 
 			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings), {
 				nonMessageTokens: computeNonMessageTokens(this),
+				contextWindow: declaredContextWindow(this.model),
 			});
 			if (!preparation) {
 				await this.#emitSessionEvent({

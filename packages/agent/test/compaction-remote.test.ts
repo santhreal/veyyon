@@ -7,10 +7,12 @@ import {
 	createFileOps,
 	DEFAULT_COMPACTION_SETTINGS,
 	getRemoteCompactionPreserveData,
+	prepareCompaction,
 	REMOTE_COMPACTION_PRESERVE_KEY,
 	remoteCompactionAttribution,
 	remoteCompactionProviderPayload,
 	resolveServerCompactionTransport,
+	type SessionEntry,
 } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, Model } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
@@ -18,10 +20,11 @@ import { getBundledModel } from "@veyyon/catalog/models";
 
 /**
  * Server-side (remote) compaction: the provider compacts the span through
- * `POST /responses/compact` (OpenAI Compaction guide) while the entry
- * dual-writes a real local summary plus the provider's canonical window.
- * These tests pin the wire shape, the dual-write, window chaining, and the
- * stale-window strip in the local path.
+ * `POST /responses/compact` (OpenAI Compaction guide) and the entry stores the
+ * window it returns with an EMPTY summary. One compaction, one artifact: there
+ * is no local summary beside the window and there never was one to dual-write.
+ * These tests pin the wire shape, that single artifact, window chaining, and
+ * the stale-window strip in the local path.
  */
 
 function makeAssistantStop(text: string): AssistantMessage {
@@ -100,6 +103,75 @@ function mockCompactFetch(responseBody: unknown = COMPACT_RESPONSE) {
 		),
 	);
 	return calls;
+}
+
+const PRIOR_ITEM = { id: "cmp_prior", type: "compaction", encrypted_content: "prior-blob" };
+
+/**
+ * A branch that already carries a server-side window, prepared the way the
+ * session prepares one.
+ *
+ * Built through the real `prepareCompaction` rather than by hand, because the
+ * hand-built shape is what hid the defect these cases now cover. A server-side
+ * entry holds no summary a local pass can build on, so the preparation looks
+ * straight past it and re-expands the branch behind it; a chaining test that
+ * plants the window on `previousPreserveData` asserts against a preparation
+ * this function can never return, and stayed green while nothing chained.
+ */
+function chainedPreparation(provider: string, api: string): CompactionPreparation {
+	const entries: SessionEntry[] = [
+		messageEntry("msg-pre", undefined, "pre-window work"),
+		{
+			type: "compaction",
+			id: "compaction-remote",
+			parentId: "msg-pre",
+			timestamp: new Date().toISOString(),
+			summary: "",
+			firstKeptEntryId: "msg-pre",
+			tokensBefore: 200_000,
+			preserveData: {
+				[REMOTE_COMPACTION_PRESERVE_KEY]: {
+					version: 1,
+					provider,
+					api,
+					model: "gpt-5.1",
+					window: [PRIOR_ITEM],
+					compactedAt: new Date().toISOString(),
+				},
+			},
+		} as SessionEntry,
+		messageEntry("msg-post", "compaction-remote", "history msg"),
+		messageEntry("msg-tail", "msg-post", "recent msg"),
+	];
+	// Keep nothing on token grounds, so the cut lands at the newest turn and
+	// every earlier entry is inside the span under test.
+	const prepared = prepareCompaction(entries, { ...DEFAULT_COMPACTION_SETTINGS, keepRecentTokens: 0 });
+	if (!prepared) throw new Error("Expected the fixture branch to be compactable");
+	return prepared;
+}
+
+function messageEntry(id: string, parentId: string | undefined, text: string): SessionEntry {
+	return {
+		type: "message",
+		id,
+		parentId,
+		timestamp: new Date().toISOString(),
+		message: makeUserMessage(text),
+	} as SessionEntry;
+}
+
+/** Always compacts on openai/gpt-5.1, so the stored identity is the only variable. */
+async function compactAndReadInput(provider: string, api: string): Promise<unknown[]> {
+	vi.spyOn(ai, "completeSimple").mockResolvedValue(makeAssistantStop("summary"));
+	const calls = mockCompactFetch();
+	await compactWithProvider(chainedPreparation(provider, api), getOpenAIModel(), "test-key");
+	expect(calls).toHaveLength(1);
+	const input = calls[0].body.input;
+	// The posted body is JSON this test just parsed, so prove the shape here
+	// rather than asserting it: a malformed body must fail loudly, not read
+	// as an empty input that trivially satisfies every "not chained" check.
+	if (!Array.isArray(input)) throw new Error(`Expected an input array on the compact body, got ${typeof input}`);
+	return input;
 }
 
 afterEach(() => {
@@ -214,28 +286,11 @@ describe("compactWithProvider", () => {
 	test("chains the previous remote window ahead of the new span", async () => {
 		vi.spyOn(ai, "completeSimple").mockResolvedValue(makeAssistantStop("updated summary"));
 		const calls = mockCompactFetch();
-		const previousWindow = [{ id: "cmp_prior", type: "compaction", encrypted_content: "prior-blob" }];
 
-		await compactWithProvider(
-			makePreparation({
-				previousSummary: "prior summary",
-				previousPreserveData: {
-					[REMOTE_COMPACTION_PRESERVE_KEY]: {
-						version: 1,
-						provider: "openai",
-						api: "openai-responses",
-						model: "gpt-5.1",
-						window: previousWindow,
-						compactedAt: new Date().toISOString(),
-					},
-				},
-			}),
-			getOpenAIModel(),
-			"test-key",
-		);
+		await compactWithProvider(chainedPreparation("openai", "openai-responses"), getOpenAIModel(), "test-key");
 
 		const input = calls[0].body.input as Array<Record<string, unknown>>;
-		expect(input[0]).toEqual(previousWindow[0]);
+		expect(input[0]).toEqual(PRIOR_ITEM);
 		expect(input.length).toBeGreaterThan(1);
 	});
 
@@ -244,19 +299,7 @@ describe("compactWithProvider", () => {
 		mockCompactFetch();
 
 		const result = await compactWithProvider(
-			makePreparation({
-				previousSummary: "prior summary",
-				previousPreserveData: {
-					[REMOTE_COMPACTION_PRESERVE_KEY]: {
-						version: 1,
-						provider: "openai",
-						api: "openai-responses",
-						model: "gpt-5.1",
-						window: [{ id: "cmp_prior", type: "compaction", encrypted_content: "prior-blob" }],
-						compactedAt: new Date().toISOString(),
-					},
-				},
-			}),
+			chainedPreparation("openai", "openai-responses"),
 			getOpenAIModel(),
 			"test-key",
 		);
@@ -278,51 +321,28 @@ describe("compactWithProvider", () => {
  * A compacted window is bound to the host that minted it: its `compaction`
  * item is opaque `encrypted_content` and the endpoint is stateless, so that
  * blob is the whole conversation state and only its minting provider can
- * decrypt it. A session that switched hosts mid-run still carries the old
- * window in `previousPreserveData`, and chaining it would post a blob the new
- * host must reject: a wasted compaction round trip plus a warned fallback to
- * local compaction at exactly the moment the context is overflowing. So the
- * stored `provider`/`api` decide whether the window is chained at all.
+ * decrypt it. A session that switched hosts mid-run still has the old window
+ * on the branch, and chaining it would post a blob the new host must reject: a
+ * wasted compaction round trip plus a warned fallback to local compaction at
+ * exactly the moment the context is overflowing. So the stored `provider`/`api`
+ * decide whether the window is chained at all.
+ *
+ * Chaining is all or nothing, and that is what these cases pin. A chained call
+ * posts the window plus only what arrived after it. A dropped window means the
+ * span it covered has to travel as messages instead, so the whole branch goes
+ * up. Getting that pairing wrong is silent either way: send both and the
+ * provider is billed twice for one span, send neither and the history behind
+ * the window is gone.
  */
 describe("a stored window chains only onto the host that minted it", () => {
-	const PRIOR_ITEM = { id: "cmp_prior", type: "compaction", encrypted_content: "prior-blob" };
-
-	function preparationWithStoredWindow(provider: string, api: string): CompactionPreparation {
-		return makePreparation({
-			previousSummary: "prior summary",
-			previousPreserveData: {
-				[REMOTE_COMPACTION_PRESERVE_KEY]: {
-					version: 1,
-					provider,
-					api,
-					model: "gpt-5.1",
-					window: [PRIOR_ITEM],
-					compactedAt: new Date().toISOString(),
-				},
-			},
-		});
-	}
-
-	// Always compacts on openai/gpt-5.1, so the stored identity is the only variable.
-	async function compactAndReadInput(provider: string, api: string): Promise<unknown[]> {
-		vi.spyOn(ai, "completeSimple").mockResolvedValue(makeAssistantStop("summary"));
-		const calls = mockCompactFetch();
-		await compactWithProvider(preparationWithStoredWindow(provider, api), getOpenAIModel(), "test-key");
-		expect(calls).toHaveLength(1);
-		const input = calls[0].body.input;
-		// The posted body is JSON this test just parsed, so prove the shape here
-		// rather than asserting it: a malformed body must fail loudly, not read
-		// as an empty input that trivially satisfies every "not chained" check.
-		if (!Array.isArray(input)) throw new Error(`Expected an input array on the compact body, got ${typeof input}`);
-		return input;
-	}
-
-	test("a window minted by a different provider is dropped, not posted to this host", async () => {
+	test("a window minted by a different provider is dropped, and its span travels as messages", async () => {
 		const input = await compactAndReadInput("azure", "azure-openai-responses");
 
 		expect(input).not.toContainEqual(PRIOR_ITEM);
 		expect(JSON.stringify(input)).not.toContain("prior-blob");
-		// The span itself still goes up; only the foreign window is withheld.
+		// Nothing replaces the dropped window, so the branch behind it must be
+		// re-read in full or that history is simply lost.
+		expect(JSON.stringify(input)).toContain("pre-window work");
 		expect(JSON.stringify(input)).toContain("history msg");
 	});
 
@@ -331,13 +351,18 @@ describe("a stored window chains only onto the host that minted it", () => {
 
 		expect(input).not.toContainEqual(PRIOR_ITEM);
 		expect(JSON.stringify(input)).not.toContain("prior-blob");
+		expect(JSON.stringify(input)).toContain("pre-window work");
 	});
 
-	test("a window minted by this same provider and api is chained ahead of the span", async () => {
+	test("a window minted by this same provider and api is chained ahead of its span alone", async () => {
 		const input = await compactAndReadInput("openai", "openai-responses");
 
 		expect(input[0]).toEqual(PRIOR_ITEM);
-		expect(input.length).toBeGreaterThan(1);
+		// The window already carries everything before it. Re-reading that span
+		// as messages pays the provider twice for it and makes each compaction
+		// larger than the one before, which is the opposite of compacting.
+		expect(JSON.stringify(input)).not.toContain("pre-window work");
+		expect(JSON.stringify(input)).toContain("history msg");
 	});
 });
 
