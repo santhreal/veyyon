@@ -635,9 +635,9 @@ while setting up a session, but none pretends the others do not exist.
 `subagent.agents` holds one row per agent, keyed by agent name. One surface edits it
 rather than hand-written config: the **Agents** row in `/settings` → Subagents, which
 lists every discovered agent with the model it resolves to and opens one agent at a
-time to set its state, model and effort. `/agents` used to carry a second copy of the
-same table, so the same two facts had two homes that had to be kept in step; it is the
-live picture now and configures nothing.
+time to set its state. `/agents` used to carry a second copy of the same table, so the
+same two facts had two homes that had to be kept in step; it is the live picture now
+and configures nothing.
 
 An agent is either enabled or disabled. There is no third state:
 
@@ -673,36 +673,46 @@ list above is the complete list. If you ask for an agent in plain prose instead 
 through a command ("use the scout agent"), that is the model choosing, and a disabled
 scout is refused.
 
-A row may also carry `model` and `thinkingLevel` for that agent alone.
+A row carries whether the agent is enabled and how deep it may nest its own spawns. It
+does **not** carry a model or an effort: those have one owner, described next.
 
 #### Which model a subagent runs
 
-Four things can name the model a subagent runs. The first one that names a model wins:
+Three things can name the model a subagent runs. The first one that names a model wins:
 
-1. `subagent.agents.<name>.model`: that agent's own row.
-2. `subagent.model`: the blanket model for every subagent.
-3. the agent definition's own `model:` frontmatter, for an agent you wrote.
-4. otherwise the subagent inherits the model you are working with.
+1. `subagent.model`: the blanket model for every subagent.
+2. the agent definition's own `model:` frontmatter, for an agent you wrote.
+3. otherwise the subagent inherits the model you are working with.
+
+There is no per-agent model row. There was one, above the blanket setting, and it is
+the reason this section used to have four layers: the agent editor showed a Model row
+and an Effort row for one agent while `subagent.model` and `subagent.thinkingLevel`
+showed the same two facts for all of them, and the two screens could disagree on
+screen. A `subagent.agents.<name>.model` or `.thinkingLevel` still sitting in a config
+is ignored, and named once in the log with the setting that replaced it, rather than
+being honored invisibly or dropped in silence.
 
 None of the bundled agents pin a model, so on a fresh install every subagent runs the
-model you are looking at. Change `subagent.model` and they all move together.
+model you are looking at. Change `subagent.model` and they all move together. To give
+one agent its own model, write it in that agent's own `model:` frontmatter, which is
+where an agent's identity already lives.
 
 A configured value that matches no available model does **not** fall through to the
 next layer. The spawn is refused and the message names the setting to fix, because a
 silent fall-through is indistinguishable from your setting having no effect.
 
-Effort works the same way. Both effort settings are picked from one list: `off`,
-`minimal` through `max`, `auto`, and `Inherit`. A level you choose in the panel is
-always one that exists. A value that names no level (from a hand-written config) is
-reported with the setting and the accepted levels, then ignored, and the next layer
-decides. It is never rounded to a neighbouring effort: running at an effort you did not
-choose costs money and would not show up anywhere.
+Effort works the same way, through `subagent.thinkingLevel`. The levels offered are the
+ones the model in scope actually exposes, so a model that routes effort through
+separate model ids offers **Inherit** alone and says so, rather than listing levels it
+would reject. A value that names no level (from a hand-written config) is reported with
+the setting and the accepted levels, then ignored. It is never rounded to a
+neighbouring effort: running at an effort you did not choose costs money and would not
+show up anywhere.
 
 The Agents table names, for the selected agent, the model it will run on and the
-setting that decided, so an override that was outranked is visible instead of merely
-disappointing. Open one agent to walk the four stages in full: the default pattern,
-what it resolves to, the override, and the effective pattern. That is what you need
-when an override is not doing what you expected.
+setting that decided, and the agent editor repeats it as a read-only line pointing at
+**Subagent Model** and **Subagent Effort**. What decided is visible, in one place, so
+an agent running something you did not expect is a question you can answer.
 
 #### The two views in `/agents`
 
@@ -728,9 +738,9 @@ They used to open a separate screen with its own roster, which meant two answers
 |---|---|---|---|
 | `subagent.enabled` | boolean | `true` | The master switch. `false` removes subagents entirely: no `task` tool, no delegation guidance. See above. |
 | `subagent.delegation` | enum | `preferred` | `allowed`, `preferred`, `required`. How hard the prompt pushes; it never removes the ability to delegate. See above. |
-| `subagent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`. Edit in the Agents row of the Subagents tab. |
+| `subagent.agents` | record | `{}` | One row per agent: `enabled`, `maxNestedSpawnDepth`. Edit in the Agents row of the Subagents tab. Model and effort are not per-agent; see `subagent.model`. |
 | `subagent.model` | modelChain | unset | Models for every subagent that has no model of its own, tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: subagents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. A pattern that matches no model refuses the spawn rather than falling through to the next entry. |
-| `subagent.thinkingLevel` | string | unset | Blanket subagent effort, picked from `off`, `minimal`..`max`, `auto`. Unset or **Inherit** passes the current session's effective effort into the child. It does not ask the provider to choose `auto`. |
+| `subagent.thinkingLevel` | string | unset | Blanket subagent effort, picked from the levels the model in scope exposes. Unset or **Inherit** passes the current session's effective effort into the child. It does not ask the provider to choose `auto`. |
 | `subagent.batch` | boolean | `true` | Batch shape for the `task` tool: one call, many items. |
 | `subagent.maxConcurrency` | number | `32` | Subagents running at once. |
 | `subagent.maxNestedSpawnDepth` | number | `0` | Nested levels that subagents may spawn. Direct children receive no `task` tool at `0`; an agent-specific override may raise the limit. |
@@ -1049,7 +1059,8 @@ Applied whenever raw settings are loaded (profile config, `--config` overlays, a
 | `task.batch`, `task.maxConcurrency`, `task.maxRecursionDepth`, `task.maxRuntimeMs`, `task.softRequestBudget`, `task.softRequestBudgetNotice`, `task.showResolvedModelBadge`, `task.enableLsp` | the same names under `subagent.` |
 | `task.agentIdleTtlMs` | `subagent.idleTtlMs` |
 | `task.isolation.*` | `subagent.isolation.*` |
-| `task.disabledAgents` and `task.agentModelOverrides` | one row per agent in `subagent.agents` |
+| `task.disabledAgents` | one row per agent in `subagent.agents` |
+| `task.agentModelOverrides` | dropped, and each override is named in the log. Per-agent models no longer exist: `subagent.model` (with `subagent.thinkingLevel`) is the one owner, and an agent that needs its own model says so in its own `model:` frontmatter. A `subagent.agents.<name>.model` or `.thinkingLevel` left in a config is ignored and reported the same way. |
 | `modelRoles.task` | `subagent.model` (the `task` role is retired) |
 | `lastChangelogVersion` | moved to a marker file and stripped from `config.yml` |
 | `collapseChangelog` | removed; startup no longer prints release notes, so there is nothing to collapse. Use `startup.updateNotice` to control the one-line notice that replaced it. |
