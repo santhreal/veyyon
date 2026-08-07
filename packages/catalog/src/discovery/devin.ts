@@ -4,13 +4,13 @@ import { errorMessage, trimTrailingSlashes } from "@veyyon/utils";
 import { DEVIN_CASCADE_ENDPOINT } from "../provider-endpoints";
 import type { FetchImpl, ModelSpec } from "../types";
 import { discoveryFetch } from "../utils";
-import { AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW, AGENT_GATEWAY_DEFAULT_MAX_TOKENS } from "./default-limits";
 import {
 	GetCliModelConfigsRequestSchema,
 	GetCliModelConfigsResponseSchema,
 } from "./devin-gen/exa/api_server_pb/api_server_pb";
 import { type ClientModelConfig, MetadataSchema } from "./devin-gen/exa/codeium_common_pb/codeium_common_pb";
 import type { DiscoveryHooks } from "./failure";
+import { gatewayContextWindow, gatewayMaxTokens } from "./gateway-limits";
 
 const DEVIN_GET_CLI_MODEL_CONFIGS_PATH = "/exa.api_server_pb.ApiServerService/GetCliModelConfigs";
 
@@ -225,7 +225,10 @@ function normalizeDevinModels(
 			continue;
 		}
 		const input: ("text" | "image")[] = config.supportsImages ? ["text", "image"] : ["text"];
-		const contextWindow = config.maxTokens > 0 ? config.maxTokens : AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW;
+		// One reported number has to serve as the context window; when it is absent the catalog's own
+		// entry for the proxied model answers, and only an unknown model falls to the gateway
+		// assumption. A gateway-only `grok-4.5` row is a 500k model, not a 200k Claude-class one.
+		const contextWindow = gatewayContextWindow(id, config.maxTokens);
 		byId.set(id, {
 			id,
 			name: config.label.trim() || id,
@@ -239,10 +242,10 @@ function normalizeDevinModels(
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			pricing: "unknown",
 			contextWindow,
-			maxTokens: Math.min(
-				config.maxTokens > 0 ? config.maxTokens : AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
-				AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
-			),
+			// The reported number is a CONTEXT window, not an output cap, so it is never trusted as one:
+			// asking a gateway for half a megabyte of output is refused outright by some of them. Passing
+			// no reported value keeps this at or below the gateway assumption.
+			maxTokens: gatewayMaxTokens(id),
 		});
 	}
 	return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));

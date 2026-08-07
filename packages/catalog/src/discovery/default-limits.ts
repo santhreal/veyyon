@@ -1,11 +1,15 @@
 /**
- * The token limits assumed for an agent-gateway endpoint that does not publish its own.
+ * The token limits assumed for an agent-gateway model NOTHING is known about.
  *
  * Several providers here are gateways rather than model hosts: Antigravity, Cursor and Devin each expose a
  * catalog of models they proxy, and none of them reports a context window or an output cap you can rely on.
  * Cursor reports nothing at all, Devin reports one number that has to serve as both, and Antigravity reports
- * fields that are frequently absent. Every one of those endpoints proxies Claude-class models, so the assumption
- * is a Claude-class pair: a 200k context window and a 64k output cap.
+ * fields that are frequently absent.
+ *
+ * This pair is the FLOOR, not the answer. `./gateway-limits` is what discovery calls, and it reaches the catalog's
+ * own entry for the proxied model first — a gateway-hosted `grok-4.5` is a 500k model whoever is proxying it. The
+ * pair below is used only for a model id the catalog has never heard of, and it is Claude-class because that is
+ * what these gateways mostly proxy.
  *
  * WHY THIS IS ONE DECISION AND NOT THREE COINCIDENCES. All three modules also carry the same comment about
  * pricing, that the zeros mean "not told" rather than "free", because they are the same KIND of endpoint with the
@@ -32,11 +36,12 @@
  */
 
 /**
- * Context window assumed for a gateway that does not report one: 200k, the Claude-class window.
+ * Context window assumed for a gateway model the catalog cannot identify at all: 200k, the Claude-class window.
  *
  * A guess that is too LOW is the safe direction. Auto-compaction and the context panel both read this number, so
  * an over-estimate means the agent keeps filling a window the model does not have and the provider rejects the
- * request, while an under-estimate only compacts earlier than it needed to.
+ * request, while an under-estimate only compacts earlier than it needed to. That is also why it stays the floor
+ * for an unknown id rather than being raised: an unknown id is exactly the case with no evidence either way.
  */
 export const AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW = 200_000;
 

@@ -155,14 +155,22 @@ describe("the discovery limits have one owner", () => {
 		}
 	});
 
-	/** The positive half: all three gateways read the shared pair. */
-	it("has all three gateways importing the owner", async () => {
+	/**
+	 * The positive half. The pair has ONE reader now — `gateway-limits.ts`, which resolves a gateway model's
+	 * limits from the catalog and uses the pair only for a model it cannot identify — and all three gateways read
+	 * that. A gateway reaching past it to the raw pair is the defect this replaced: it described every proxied
+	 * model as Claude-class, including 500k and 1M ones.
+	 */
+	it("routes all three gateways through the one resolver, not the raw pair", async () => {
 		for (const file of SHARERS) {
 			const text = await Bun.file(path.join(DISCOVERY, file)).text();
-			expect(text, file).toContain("AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW");
-			expect(text, file).toContain("AGENT_GATEWAY_DEFAULT_MAX_TOKENS");
-			expect(text, file).toMatch(/from "\.\/default-limits";/);
+			expect(moduleSpecifiersIn(text), file).toContain("./gateway-limits");
+			expect(moduleSpecifiersIn(text), file).not.toContain("./default-limits");
 		}
+		const resolver = await Bun.file(path.join(DISCOVERY, "gateway-limits.ts")).text();
+		expect(resolver).toContain("AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW");
+		expect(resolver).toContain("AGENT_GATEWAY_DEFAULT_MAX_TOKENS");
+		expect(moduleSpecifiersIn(resolver)).toContain("./default-limits");
 	});
 
 	/**
