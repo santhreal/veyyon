@@ -71,12 +71,48 @@ describe("commands the built-in tools cannot replace", () => {
 		["ripgrep over a command's output", "cargo test | rg failed"],
 		["a multi-stage pipeline", "bun test 2>&1 | grep -c pass | head -1"],
 		["no whitespace around the pipe", "bun test|grep pass"],
+		[
+			"a sandboxed test run whose filter pattern itself contains an anchor character",
+			'bash scripts/test-sandbox/run.sh --rung=docker bun test ./pkg 2>&1 | grep -E "^\\s*\\(fail\\)|Expected:"',
+		],
 	])("stays quiet on %s", (_label, command) => {
 		expect(nudges(command)).toBe(false);
 	});
 
 	test("stays quiet on a bash command that runs no search tool at all", () => {
 		expect(nudges("bun test packages/coding-agent")).toBe(false);
+	});
+});
+
+/**
+ * A pipe is not the only way a search tool ends up reading stdin. A heredoc or a
+ * herestring feeds it text that lives in the shell, and the tool then STARTS the
+ * command, so the positional rule alone would fire on it. There is still no path
+ * to hand the built-in tools, so the advice is still unobeyable. A single `<`
+ * redirect is the opposite case: that operand is a file on disk, which is exactly
+ * what the built-in grep wants, so the nudge belongs there.
+ */
+describe("stdin fed by a redirect rather than a pipe", () => {
+	test.each([
+		["a herestring", 'grep -q "^ok" <<<"$output"'],
+		["a herestring after &&", 'bun test && grep -c fail <<<"$log"'],
+		["a heredoc", "grep -n needle <<EOF\nhaystack\nEOF"],
+		["ripgrep over a herestring", 'rg "error" <<<"$out"'],
+	])("stays quiet on %s", (_label, command) => {
+		expect(nudges(command)).toBe(false);
+	});
+
+	test.each([
+		["a plain file redirect", "grep -c error < build.log"],
+		["a file argument alongside a later pipe", "grep -n foo src/main.ts | head -3"],
+	])("still nudges on %s", (_label, command) => {
+		expect(nudges(command)).toBe(true);
+	});
+
+	/** The suppression is scoped to the segment: a later command that really is a
+	 *  file search still gets caught. */
+	test("nudges on a file search that follows a herestring search", () => {
+		expect(nudges('grep -q ok <<<"$out"; grep -rn foo src')).toBe(true);
 	});
 });
 
