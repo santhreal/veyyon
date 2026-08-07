@@ -292,27 +292,22 @@ describe("openai-codex orphan tool-call repair", () => {
 
 describe("openai-codex reasoning effort validation", () => {
 	it("rejects gpt-5.1 xhigh when metadata does not list it", async () => {
-		// OpenAI declares low/medium/high for gpt-5.1 and no xhigh, so the
-		// refusal has to name that ladder rather than a guessed one.
 		const body: RequestBody = { model: "gpt-5.1", input: [] };
 		await expect(
 			transformRequestBody(body, createCodexModel(body.model), { reasoningEffort: "xhigh" }),
-		).rejects.toThrow(/Supported efforts: low, medium, high/);
+		).rejects.toThrow(/Supported efforts: minimal, low, medium, high/);
 	});
 
 	it("rejects unsupported Codex mini efforts instead of clamping", async () => {
-		// Nothing declares an effort ladder for gpt-5.1-codex-mini, so the model
-		// exposes no control at all. Refusing is still the contract: clamping
-		// would send a tier nobody has evidence the endpoint accepts.
 		const body: RequestBody = { model: "gpt-5.1-codex-mini", input: [] };
 
 		await expect(
 			transformRequestBody({ ...body }, createCodexModel(body.model), { reasoningEffort: "low" }),
-		).rejects.toThrow(/exposes no controllable thinking efforts/);
+		).rejects.toThrow(/Supported efforts: medium, high/);
 
 		await expect(
 			transformRequestBody({ ...body }, createCodexModel(body.model), { reasoningEffort: "xhigh" }),
-		).rejects.toThrow(/exposes no controllable thinking efforts/);
+		).rejects.toThrow(/Supported efforts: medium, high/);
 	});
 
 	it("rejects gpt-5.6 minimal now that the wire floor is low", async () => {

@@ -24,9 +24,17 @@ export type Api = KnownApi | (string & {});
 
 /**
  * Canonical thinking transports, as a value so the set can be enumerated at run
- * time. A transport decides whether an undeclared model may still be offered an
- * effort ladder (see `clientComputedSurface`), and that decision cannot be
- * inferred from the name, so every member needs one recorded deliberately.
+ * time. A transport says only how a chosen effort is ENCODED on the wire: a
+ * level name, a token budget, a Google thinkingLevel, an adaptive literal.
+ *
+ * It does NOT decide which efforts exist. That comes from the declaration in
+ * models.dev, and where models.dev declares no levels the surface is whatever
+ * opencode offers for that shape, copied rather than derived. A transport that
+ * carries a number instead of a name is not permission to invent the names:
+ * that reasoning is exactly how a ladder of tiers no endpoint ever published
+ * got shipped, and how operators were handed `low` and `medium` rungs that
+ * silently resolved to something else.
+ *
  * Tests iterate this array and fail on a member with no recorded decision,
  * which is what keeps a sixth transport from landing green.
  */

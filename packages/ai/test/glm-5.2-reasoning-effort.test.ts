@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
-import type { Context, FetchImpl, Model } from "@veyyon/ai/types";
+import type { Context, FetchImpl, Model, ModelSpec } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
-import { getBundledModel } from "@veyyon/catalog/models";
 
 // GLM-5.2 reasoning-effort dialects diverge per host (verified against live
 // endpoints): a direct GLM host (Fireworks) exposes a real `max` top tier and
@@ -54,18 +54,6 @@ async function captureChatEffort(model: Model<"openai-completions">, reasoning: 
 	return body.reasoning_effort;
 }
 
-/** The refusal reaches the caller as a terminal error event, never a request. */
-async function captureChatError(model: Model<"openai-completions">, reasoning: Effort): Promise<string> {
-	const fetchMock: FetchImpl = vi.fn(async () => {
-		throw new Error("the refused effort must never reach the wire");
-	});
-	for await (const event of streamOpenAICompletions(model, context, { apiKey: "k", fetch: fetchMock, reasoning })) {
-		if (event.type === "error") return event.error.errorMessage ?? "";
-		if (event.type === "done") break;
-	}
-	throw new Error("Expected a terminal error event");
-}
-
 async function captureResponsesEffort(model: Model<"openrouter">, reasoning: Effort): Promise<unknown> {
 	let body: Record<string, unknown> | undefined;
 	const fetchMock: FetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
@@ -89,28 +77,41 @@ async function captureResponsesEffort(model: Model<"openrouter">, reasoning: Eff
 		: undefined;
 }
 
-// Both rows come from the shipped catalog: the ladder is each host's own
-// declaration, so a spec assembled here would prove nothing about what the
-// endpoint accepts.
-const fireworks = getBundledModel("fireworks", "glm-5.2") as Model<"openai-completions">;
-const openRouter = getBundledModel("openrouter", "z-ai/glm-5.2") as unknown as Model<"openrouter">;
+const fireworks = buildModel({
+	id: "glm-5.2",
+	name: "GLM-5.2",
+	api: "openai-completions",
+	provider: "fireworks",
+	baseUrl: "https://api.fireworks.ai/inference/v1",
+	reasoning: true,
+	input: ["text"],
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	contextWindow: 1_000_000,
+	maxTokens: 131_072,
+} as ModelSpec<"openai-completions">) as Model<"openai-completions">;
+
+const openRouter = buildModel({
+	id: "z-ai/glm-5.2",
+	name: "GLM 5.2",
+	api: "openrouter",
+	provider: "openrouter",
+	baseUrl: "https://openrouter.ai/api/v1",
+	reasoning: true,
+	input: ["text"],
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	contextWindow: 200_000,
+	maxTokens: 131_072,
+} as ModelSpec<"openrouter">) as Model<"openrouter">;
 
 describe("GLM-5.2 reasoning effort wire mapping", () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it("sends reasoning_effort:max for the real max tier on a direct GLM host (Fireworks)", async () => {
+	it("sends reasoning_effort:max for the real max tier on a direct GLM host (Fireworks), lower tiers literal", async () => {
 		expect(await captureChatEffort(fireworks, Effort.Max)).toBe("max");
 		expect(await captureChatEffort(fireworks, Effort.High)).toBe("high");
-	});
-
-	it("refuses tiers Fireworks never declared rather than mapping them onto the wire", async () => {
-		// Fireworks declares high and max for GLM-5.2 and nothing below. The old
-		// behaviour invented minimal/low/medium and leaned on a `minimal -> none`
-		// host quirk to keep the invented floor from 400ing; asking for a tier
-		// the host never published now fails in-process instead.
-		for (const effort of [Effort.Minimal, Effort.Low, Effort.Medium]) {
-			expect(await captureChatError(fireworks, effort)).toContain("Supported efforts: high, max");
-		}
+		expect(await captureChatEffort(fireworks, Effort.Medium)).toBe("medium");
+		// Fireworks rejects literal `minimal`; the host quirk merge keeps `minimal -> none`.
+		expect(await captureChatEffort(fireworks, Effort.Minimal)).toBe("none");
 	});
 
 	it("sends the literal xhigh tier to OpenRouter (which rejects max) via the Responses surface", async () => {

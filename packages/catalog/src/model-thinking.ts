@@ -110,14 +110,6 @@ export const OLLAMA_WIRE_EFFORTS: readonly Effort[] = [Effort.Low, Effort.Medium
 
 const OLLAMA_CLOUD_GLM_52_WIRE_EFFORTS: readonly Effort[] = [Effort.High, Effort.Max];
 
-/** Efforts a budget transport's token schedule addresses distinctly. */
-const BUDGET_EFFORTS: readonly Effort[] = [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High];
-const ANTHROPIC_BUDGET_EFFORTS: readonly Effort[] = [...BUDGET_EFFORTS, Effort.XHigh];
-
-/** Google's published `thinkingLevel` vocabulary: Pro takes two levels, the rest four. */
-const GEMINI_LEVEL_EFFORTS_PRO: readonly Effort[] = [Effort.Low, Effort.High];
-const GEMINI_LEVEL_EFFORTS: readonly Effort[] = [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High];
-
 function normalizeOllamaWireEfforts<TApi extends Api>(
 	spec: ModelSpec<TApi>,
 	efforts: readonly Effort[],
@@ -154,12 +146,7 @@ export function resolveModelThinking<TApi extends Api>(
 		if (spec.reasoningOptions.noEffortControl === true) return undefined;
 		const discovered = spec.reasoningOptions.efforts;
 		if (discovered !== undefined && discovered.length > 0) {
-			return thinkingConfigFromEfforts(
-				spec,
-				compat,
-				inferThinkingControlMode(spec, parseKnownModel(spec.id)),
-				canonicalizeEfforts(discovered),
-			);
+			return thinkingConfigFromEfforts(spec, compat, normalizeOllamaWireEfforts(spec, canonicalizeEfforts(discovered)));
 		}
 	}
 	if (spec.thinking && Array.isArray(spec.thinking.efforts) && spec.thinking.efforts.length > 0) {
@@ -176,93 +163,12 @@ export function resolveModelThinking<TApi extends Api>(
 	// cache rows from before discovery declared the ladder — still get the host
 	// vocabulary. This is a host fact, not per-model identity derivation.
 	if (spec.reasoning === true && (spec.provider === "ollama" || spec.provider === "ollama-cloud")) {
-		return thinkingConfigFromEfforts(
-			spec,
-			compat,
-			inferThinkingControlMode(spec, parseKnownModel(spec.id)),
-			normalizeOllamaWireEfforts(spec, OLLAMA_WIRE_EFFORTS),
-		);
+		return thinkingConfigFromEfforts(spec, compat, normalizeOllamaWireEfforts(spec, OLLAMA_WIRE_EFFORTS));
 	}
-	// Nothing declared. A transport whose thinking control is NOT an
-	// endpoint-validated effort name still has a ladder, because the ladder is
-	// ours: see clientComputedLadder. Everything else offers no surface —
-	// fabricating an effort enum from the model id is how the picker used to
-	// offer tiers the endpoint rejects.
-	const fallback = clientComputedSurface(spec, parseKnownModel(spec.id));
-	if (fallback !== undefined) {
-		return thinkingConfigFromEfforts(spec, compat, fallback.mode, fallback.efforts);
-	}
+	// Nothing declared: the model reasons (or not) as shipped, and no effort
+	// surface is offered. Fabricating a ladder from the model id is how the
+	// picker used to offer tiers the endpoint rejects.
 	return undefined;
-}
-
-/**
- * The ladder for a transport that does not validate an effort NAME.
- *
- * The declared-surface rule exists because an invented `reasoning_effort`
- * value gets a 400 from the endpoint. Two control modes carry no such risk and
- * therefore keep their ladders when no catalogue declares one:
- *
- * - `budget`: the wire carries `thinking.budget_tokens` / `thinkingBudget`, a
- *   NUMBER that Veyyon computes from its own per-effort schedule (`@veyyon/ai`
- *   `reasoning-budget.ts`). models.dev states exactly this by declaring
- *   `budget_tokens` with a token range and no values. The ladder is the set of
- *   efforts that schedule addresses distinctly, so every tier changes the
- *   request; a shorter ladder does not protect anyone, it just resolves the
- *   operator's `low` upward into a more expensive budget.
- * - `google-level`: the wire carries Google's `thinkingLevel` enum, which
- *   Google publishes per family (LOW/HIGH for Gemini 3 Pro,
- *   MINIMAL/LOW/MEDIUM/HIGH for the Flash line). No catalogue covers Cloud
- *   Code Assist at all, so a declaration will never arrive for the first-party
- *   Gemini CLI and Antigravity transports; without this they lose thinking
- *   control entirely.
- *
- * Effort-enum transports (`effort`, `anthropic-budget-effort`,
- * `anthropic-adaptive`) are deliberately absent: those send a level name the
- * endpoint checks, so an undeclared ladder there is the guess the declared
- * surface rule was written to stop. MiniMax on the Anthropic endpoint is the
- * one adaptive exception, below, because it sends no name at all.
- */
-function clientComputedSurface<TApi extends Api>(
-	spec: ModelSpec<TApi>,
-	parsed: ParsedModel,
-): { mode: ThinkingConfig["mode"]; efforts: readonly Effort[] } | undefined {
-	const mode = inferThinkingControlMode(spec, parsed);
-	switch (mode) {
-		case "budget":
-			return { mode, efforts: budgetLadder(spec) };
-		// `output_config.effort` rides ALONGSIDE `thinking.budget_tokens` here, so
-		// an undeclared row still has a working control: drop the unverified enum
-		// and keep the budget. Sending an effort a model rejects is #3497's HTTP
-		// 400 ("This model does not support the effort parameter"), so this is
-		// both safer than guessing the enum and better than offering nothing.
-		case "anthropic-budget-effort":
-			return { mode: "budget", efforts: budgetLadder(spec) };
-		case "google-level":
-			return {
-				mode,
-				efforts:
-					parsed.family === "gemini" && parsed.kind === "pro" ? GEMINI_LEVEL_EFFORTS_PRO : GEMINI_LEVEL_EFFORTS,
-			};
-		// MiniMax collapses every tier to the single literal `adaptive`
-		// (MINIMAX_ANTHROPIC_ADAPTIVE_EFFORT_MAP), so no effort NAME reaches the
-		// endpoint and there is nothing for it to reject. The tiers still differ
-		// in what Veyyon does locally, so keeping them costs nothing and dropping
-		// them would take the dial away from a model that has one.
-		case "anthropic-adaptive":
-			return isMinimaxReasoningModelOnAnthropicEndpoint(spec)
-				? { mode, efforts: Object.keys(MINIMAX_ANTHROPIC_ADAPTIVE_EFFORT_MAP) as Effort[] }
-				: undefined;
-		default:
-			return undefined;
-	}
-}
-
-/**
- * Anthropic's schedule gives xhigh its own 32k budget; Google's and Bedrock's
- * top out at high, so a fifth tier there would just repeat bytes.
- */
-function budgetLadder<TApi extends Api>(spec: ModelSpec<TApi>): readonly Effort[] {
-	return spec.api === "anthropic-messages" ? ANTHROPIC_BUDGET_EFFORTS : BUDGET_EFFORTS;
 }
 
 /**
@@ -279,8 +185,7 @@ function fillThinkingWireDefaults<TApi extends Api>(
 	const parsed = parseKnownModel(spec.id);
 	// Canonicalize the ladder so a hand-authored `thinking.efforts` that violates
 	// the documented least->most order (or carries duplicates) still bakes into a
-	// canonical ladder; identity-derived ladders are already canonical, so this is
-	// a no-op for them. Without it, an out-of-order user ladder reaches the clamp
+	// canonical ladder. Without it, an out-of-order user ladder reaches the clamp
 	// helpers, which walk it in array order and pick the wrong effort.
 	const normalizedEfforts = normalizeOllamaWireEfforts(spec, canonicalizeEfforts(thinking.efforts));
 	const effortsChanged = !sameEffortList(normalizedEfforts, thinking.efforts);
@@ -325,11 +230,13 @@ function fillThinkingWireDefaults<TApi extends Api>(
 function thinkingConfigFromEfforts<TApi extends Api>(
 	spec: ModelSpec<TApi>,
 	compat: CompatOf<TApi>,
-	mode: ThinkingConfig["mode"],
 	efforts: readonly Effort[],
 ): ThinkingConfig {
 	const parsed = parseKnownModel(spec.id);
-	const config: ThinkingConfig = { mode, efforts };
+	const config: ThinkingConfig = {
+		mode: inferThinkingControlMode(spec, parsed),
+		efforts,
+	};
 	const effortMap = inferEffortMap(spec, compat, config.mode, config.efforts);
 	if (effortMap !== undefined) {
 		config.effortMap = effortMap;
