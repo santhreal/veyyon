@@ -463,6 +463,26 @@ describe("the gate's exit code", () => {
 			const gate = runGate(dir);
 
 			expect(gate.out).toContain("1 failed to run");
+			expect(gate.out).toContain("could not load (no leak verdict):");
+			expect(gate.exitCode).toBe(1);
+		});
+	}, 60_000);
+
+	/**
+	 * A red suite is not a suite that could not run, and the report has to say which
+	 * it was. Both still fail the gate: a suite that aborted partway may never have
+	 * reached the test that leaks, so its verdict is missing either way. But the two
+	 * need different work, and calling a failing assertion "could not run" sends the
+	 * reader looking for a missing dependency. Eight `scripts` suites were reported
+	 * that way across two nightly sweeps while every one of them loaded and ran.
+	 */
+	it("says a suite ran and failed rather than calling it unrunnable", () => {
+		const red = 'import { expect, test } from "bun:test";\ntest("red", () => expect(1).toBe(2));\n';
+		withTempDir({ "a.test.ts": red }, dir => {
+			const gate = runGate(dir);
+
+			expect(gate.out).toContain("loaded, but its own tests failed (no leak verdict):");
+			expect(gate.out).not.toContain("could not load");
 			expect(gate.exitCode).toBe(1);
 		});
 	}, 60_000);

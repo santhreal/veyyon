@@ -89,6 +89,38 @@ export interface FileResult {
 	leaks: LeakReport[];
 	/** True when the runner itself failed (a crash, not a leak). */
 	runnerFailed: boolean;
+	/** Why there is no verdict, when `runnerFailed`. Absent otherwise. */
+	failure?: RunFailure;
+}
+
+/**
+ * The two ways a file leaves the sweep with no verdict, which need different work.
+ *
+ * `did-not-load` is the tool's own problem to report: an import threw, the native
+ * addon is missing, the process died before any test ran. `tests-failed` is a red
+ * suite, and the tree it belongs to is broken for reasons that have nothing to do
+ * with leaks.
+ *
+ * The distinction is worth carrying because reading one as the other sends the
+ * reader to the wrong place. Eight `scripts` suites reported "could not run" for
+ * two nightly sweeps in a row while every one of them loaded and ran perfectly
+ * well: their assertions were failing, three of them were named by no runner at
+ * all, and the sweep was the only job looking. A reader who trusts the message
+ * goes hunting for a missing dependency instead of reading the assertion.
+ */
+export type RunFailure = "did-not-load" | "tests-failed";
+
+/**
+ * Which of the two a non-zero run was, from what bun printed.
+ *
+ * A per-test result line (`(pass)`, `(fail)`, `(skip)`, `(todo)`) is only printed
+ * once bun has collected the file's tests and started running them, so one is
+ * proof the file loaded. The summary counts are NOT that proof: a module whose
+ * import throws is counted as `1 fail` with no test having run at all, which is
+ * exactly the pair this function has to keep apart.
+ */
+export function classifyRunFailure(output: string): RunFailure {
+	return /^\s*\((?:pass|fail|skip|todo)\)/m.test(output) ? "tests-failed" : "did-not-load";
 }
 
 /**
@@ -145,14 +177,17 @@ export function traceFile(repoRoot: string, file: string): FileResult {
 		{ cwd: repoRoot, encoding: "utf8", env: { ...process.env, [LEAK_FILE_ENV]: file } },
 	);
 	const output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
+	const leaks = parseLeaks(output);
+	// A non-zero exit with no leak lines means the file failed for its own
+	// reasons. Reported rather than swallowed: a file whose tests do not run
+	// tells this tool nothing about whether it leaks, and calling that "clean"
+	// would be a silent skip.
+	const runnerFailed = run.status !== 0 && leaks.length === 0;
 	return {
 		file,
-		leaks: parseLeaks(output),
-		// A non-zero exit with no leak lines means the file failed for its own
-		// reasons. Reported rather than swallowed: a file whose tests do not run
-		// tells this tool nothing about whether it leaks, and calling that "clean"
-		// would be a silent skip.
-		runnerFailed: run.status !== 0 && parseLeaks(output).length === 0,
+		leaks,
+		runnerFailed,
+		...(runnerFailed ? { failure: classifyRunFailure(output) } : {}),
 	};
 }
 
@@ -206,7 +241,13 @@ if (import.meta.main) {
 				}
 			}
 		}
-		for (const result of failed) console.log(`\ncould not run (no leak verdict): ${result.file}`);
+		for (const result of failed) {
+			console.log(
+				result.failure === "tests-failed"
+					? `\nloaded, but its own tests failed (no leak verdict): ${result.file}`
+					: `\ncould not load (no leak verdict): ${result.file}`,
+			);
+		}
 	}
 
 	// A file that could not RUN has no leak verdict, and the exit code used to call
