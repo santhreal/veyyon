@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildModel } from "@veyyon/catalog/build";
 import { buildOpenAIResponsesCompat } from "@veyyon/catalog/compat/openai";
-import { Effort } from "@veyyon/catalog/effort";
 import {
 	DEFAULT_MODEL_PER_PROVIDER,
 	MODELS_DEV_PROVIDER_DESCRIPTORS,

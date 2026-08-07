@@ -22,18 +22,20 @@
  * lose a tier), or a regen that drops `reasoning_options`. Both are invisible
  * in review and show up as a capability the user simply cannot select.
  *
- * The third test is the one that holds the predicate open: it strips the
- * declaration off every paired row and rebuilds, which is exactly what a regen
- * without `reasoning_options` produces, and demands the two hosts still agree.
+ * A third test used to hold that predicate open by stripping the declaration
+ * off every paired row and rebuilding. Once the ladders come from the
+ * declarations alone, stripping them leaves both hosts with no ladder at all,
+ * so that test agreed for the wrong reason and was removed. The floor counts
+ * in the second test are the live guard now: a regen without
+ * `reasoning_options` takes `xhigh` off every Bedrock row at once, and
+ * `fiveTier` collapses to zero well below its floor.
  *
  * Pinning agreement rather than the literal tiers keeps this true as Anthropic
  * adds ladders: a new model lands in both catalogs, and the test only cares
  * that Bedrock is not the narrower of the two.
  */
 import { describe, expect, test } from "bun:test";
-import { buildModel } from "../src/build";
 import { getBundledModels } from "../src/models";
-import type { Api, Model, ModelSpec } from "../src/types";
 
 /** `eu.anthropic.claude-opus-5` and `anthropic.claude-opus-5` are one model. */
 const BEDROCK_ROW = /^(?:[a-z]{2}\.|global\.)?anthropic\.(.+)$/;
