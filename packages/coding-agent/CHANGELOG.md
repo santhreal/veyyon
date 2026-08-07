@@ -19,6 +19,8 @@
 
 ### Added
 
+- A subagent that sends a bare acknowledgement over `irc` is now told to say something the peer can act on, or nothing. Waking an idle peer costs it a whole turn, so `Ack`, `Understood`, `On it` and `Quick update: still working on it` spend a turn to convey nothing, and two agents trading them is how an IRC loop sustains itself. The new `irc-signal` rule is scoped to the `irc` tool, so it never fires on an edit or a file read, and it stays silent on a message that names a file, a location, or a decision.
+
 - The compaction loader now names a server-side pass while it runs: "Compacting context... (openai remote compaction)" for `/compact` and the same suffix on the auto-compaction loader. A remote pass is one provider round trip with no local summarizer behind it, and the only on-screen difference from a local pass used to be nothing at all, so a silent minute read as a summarizer grinding through the history on the operator's dime. The label asks `willCompactRemotely(session)` (modes/components/compaction-summary-message.ts), which reads the same two primitives the engine's `#tryServerSideCompaction` gate reads — the `compaction.remote` setting plus a session model whose capability data resolves a server-compaction transport — so the indicator cannot disagree with the engine about which path a pass will take.
 
 
