@@ -322,10 +322,10 @@ describe("the commands the guard reaches through", () => {
 	});
 
 	/**
-	 * A script argument is shell text and has to be read as shell text. All four
-	 * of these were allowed. The unreadable one is critical because there is no
-	 * reading of `$SCRIPT` that can be called safe: refusing to decide is not the
-	 * same as deciding it is fine.
+	 * A script argument is shell text and has to be read as shell text. All five
+	 * of these were allowed. The delete inside a command substitution is the one
+	 * the reading cannot reach, because the whole `$(…)` is a single word to the
+	 * splitter, so it is refused on the raw text instead.
 	 */
 	it("reads the script a command hands to a shell", () => {
 		expect(refuses('eval "rm -rf ~/"')).toBe(true);
@@ -333,7 +333,7 @@ describe("the commands the guard reaches through", () => {
 		expect(refuses("sh -lc 'rm -rf ~'")).toBe(true);
 		expect(refuses("bash -c \"sh -c 'rm -rf ~/'\"")).toBe(true);
 		expect(refuses('trap "rm -rf ~/" EXIT')).toBe(true);
-		expect(refuses('sh -c "$SCRIPT"')).toBe(true);
+		expect(refuses('eval "$(rm -rf /)"')).toBe(true);
 	});
 
 	/** Scanning every position must not start refusing what an agent writes all
