@@ -56,6 +56,24 @@ function execTool(name = "bash"): AgentTool {
 	} as unknown as AgentTool;
 }
 
+/**
+ * The same tool, judged per call: `{ danger: true }` is the shape the bash
+ * guard's critical floor stands for. Two calls to this tool are the same tool
+ * name and the same session, so they share a coalescing key, and they authorise
+ * completely different things.
+ */
+function perArgumentCriticalTool(name = "bash"): AgentTool {
+	return {
+		name,
+		label: name,
+		summary: "records that it ran",
+		description: "records that it ran",
+		parameters: type({ "danger?": "boolean" }),
+		approval: (args: { danger?: boolean }) => ({ tier: "exec" as const, critical: args?.danger === true }),
+		execute: async () => ({ content: [{ type: "text", text: RAN }] }),
+	} as unknown as AgentTool;
+}
+
 interface GatedUi {
 	runner: ExtensionRunner;
 	/** One entry per approval card actually presented. */
@@ -142,7 +160,9 @@ async function batch(options: {
 	count: number;
 	choice: string | undefined;
 	sessionId?: string | ((index: number) => string);
-	tool?: () => AgentTool;
+	tool?: (index: number) => AgentTool;
+	/** Arguments for call `index`. A batch is only interesting when they differ. */
+	params?: (index: number) => Record<string, unknown>;
 	/** Make the first card reject, as a dialog surface that dies mid-prompt. */
 	failFirst?: boolean;
 }): Promise<BatchOutcome> {
@@ -165,10 +185,11 @@ async function batch(options: {
 
 	const calls: Array<Promise<string | undefined>> = [];
 	for (let index = 0; index < options.count; index++) {
-		const wrapped = new ExtensionToolWrapper(options.tool ? options.tool() : execTool(), ui.runner);
+		const wrapped = new ExtensionToolWrapper(options.tool ? options.tool(index) : execTool(), ui.runner);
+		const params = options.params ? options.params(index) : {};
 		calls.push(
 			wrapped
-				.execute(`call-${index}`, {} as never, undefined, undefined, contextFor(index) as never)
+				.execute(`call-${index}`, params as never, undefined, undefined, contextFor(index) as never)
 				.then(result => {
 					const first = result.content[0];
 					return first && first.type === "text" ? first.text : undefined;
@@ -260,5 +281,50 @@ describe("a dialog that dies while calls are queued behind it", () => {
 		clearTimeout(handle);
 
 		expect(outcome).not.toBe("stranded");
+	});
+});
+
+/**
+ * Coalescing is the dangerous half of this fix, and it is dangerous in the
+ * opposite direction to the glitch it cured. Merging a duplicate question is a
+ * cosmetic win; merging two questions that only LOOK alike is an authorisation
+ * the operator never gave.
+ *
+ * The key is deliberately coarse (session plus tool name) and does NOT include
+ * the arguments, so both calls below share it. That is safe only because of what
+ * actually crosses between them: not the answer to the card, but the SESSION
+ * GRANT, whose scope is the tool name by construction and whose card says so.
+ * The properties that belong to one call's arguments -- a critical decision, a
+ * path leaving the working directory, a stored credential being spent -- are
+ * recomputed from the waiter's OWN arguments and re-checked when it wakes. Drop
+ * that re-check and "Approve for session" given on `bash ls` silently runs the
+ * `rm -rf $HOME` queued behind it, off one card, with no second question.
+ */
+describe("two calls that share a coalescing key but authorise different things", () => {
+	it("still asks for the critical call, even though a session grant is already recorded", async () => {
+		const outcome = await batch({
+			count: 2,
+			choice: APPROVE_SESSION,
+			tool: () => perArgumentCriticalTool(),
+			params: index => (index === 0 ? {} : { danger: true }),
+		});
+
+		expect(outcome.presented.length).toBe(2);
+	});
+
+	/**
+	 * A deny is not bounded the same way, and must not be: it only ever refuses
+	 * more. One "Deny for session" settles the batch including the critical call.
+	 */
+	it("lets a session deny settle the critical call off the one card", async () => {
+		const outcome = await batch({
+			count: 2,
+			choice: DENY_SESSION,
+			tool: () => perArgumentCriticalTool(),
+			params: index => (index === 0 ? {} : { danger: true }),
+		});
+
+		expect(outcome.presented.length).toBe(1);
+		expect(outcome.ran).toBe(0);
 	});
 });

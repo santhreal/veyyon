@@ -251,10 +251,19 @@ export function stripLegacyUnsetSentinels(raw: RawSettings): string[] {
  * the file is being rewritten anyway, and the stamp is what makes the new value
  * survivable. Anything still holding a legacy `-1` is stripped in the same write,
  * so the stamp can never certify a config the migration has not finished.
+ *
+ * The stamp only ever moves FORWARD. Two versions of veyyon share a config
+ * directory more often than it looks (an installed binary beside a source
+ * checkout, or a downgrade after a bad release), and a stamp of 2 rewritten to
+ * 1 by the older build tells the newer one that a one-shot migration has not
+ * run yet. It then runs a second time, on values the user set in between, which
+ * is the exact deletion the stamp exists to prevent. `stripLegacyUnsetSentinels`
+ * already reads the stamp as "at least this far", so anything below would
+ * disagree with it.
  */
 export function stampOwnedConfigMigrations(raw: RawSettings): string[] {
 	const changed = stripLegacyUnsetSentinels(raw);
-	if (appliedMigrationVersion(raw) !== SETTINGS_MIGRATION_VERSION) {
+	if (appliedMigrationVersion(raw) < SETTINGS_MIGRATION_VERSION) {
 		raw.settingsMigrationVersion = SETTINGS_MIGRATION_VERSION;
 		changed.push("settingsMigrationVersion");
 	}
