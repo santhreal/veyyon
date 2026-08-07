@@ -31,8 +31,16 @@ jobs:
         with:
           bun-version: "1.3.14"
       - run: bun install --frozen-lockfile
+      - name: Build the test sandbox image
+        # `bun test` refuses to run unless it can prove the operator's home is
+        # unreachable, so the boundary has to exist before the soak starts.
+        # This nightly was green until that gate landed and would otherwise
+        # fail on the refusal without running a single seed.
+        run: bash scripts/test-sandbox/run.sh --build
       - name: Run the full seed corpus
         # hashline is pure TypeScript (no native addon), so no build step is
         # needed. The soak env makes seedBand yield every seed in every band.
-        run: bun test --timeout 120000 test/apply-edits-past-6000-seeds-*.test.ts test/support/seed-band.test.ts
-        working-directory: packages/hashline
+        # The paths are repo-root relative because every rung runs the command
+        # at the repo root, so a `working-directory` on this step would not
+        # reach the process inside the sandbox.
+        run: bash scripts/test-sandbox/run.sh bun test --timeout 120000 ./packages/hashline/test/apply-edits-past-6000-seeds-*.test.ts ./packages/hashline/test/support/seed-band.test.ts

@@ -940,19 +940,33 @@ jobs:
                 exit 1
               fi
 
-              api_error="$(mktemp)"
-              set +e
-              release_json="$(gh api "repos/$repo/releases/tags/$tag" 2>"$api_error")"
-              api_status=$?
-              set -e
-              if [ "$api_status" -ne 0 ]; then
-                if ! grep -Eq 'HTTP 404|Not Found' "$api_error"; then
-                  cat "$api_error" >&2
-                  exit "$api_status"
-                fi
+              # A draft is INVISIBLE to the by-tag endpoint. GitHub only resolves
+              # /releases/tags/<tag> for a PUBLISHED release, because a draft has no
+              # git tag standing behind it yet. Reading a just-created draft back
+              # through that endpoint is what failed seven release attempts in a row:
+              # each one 404'd on its own draft, failed verification, and left the
+              # draft behind, so the next attempt burned the next version number.
+              # v1.0.40 through v1.0.45 are still sitting unpublished from that.
+              #
+              # Creating through REST fixes the CREATE half, because the POST response
+              # is the draft JSON itself. This lookup is the RESUME half, and it has to
+              # enumerate /releases, which lists drafts, rather than ask by tag, which
+              # never does. Asking by tag here meant a retry could never find the draft
+              # it already owned and would POST a second one against the same tag.
+              existing_ids="$(
+                gh api --paginate "repos/$repo/releases" \
+                  --jq '.[] | select(.tag_name == $ENV.RELEASE_TAG) | .id'
+              )"
+              id_count="$(printf '%s\n' "$existing_ids" | awk 'NF{n++} END{print n+0}')"
+              if [ "$id_count" -gt 1 ]; then
+                echo "::error::tag $tag is carried by $id_count releases ($(printf '%s' "$existing_ids" | tr '\n' ' ')); refusing to guess which one to publish"
+                exit 1
+              fi
+              if [ "$id_count" -eq 1 ]; then
+                release_json="$(gh api "repos/$repo/releases/$existing_ids")"
+              else
                 # ci-release-notes.ts already includes every commit and enforces
-                # GitHub's body limit. Create through REST so the response is the
-                # draft JSON itself; the tag lookup endpoint does not expose drafts.
+                # GitHub's body limit.
                 release_json="$(
                   gh api --method POST "repos/$repo/releases" \
                     -f tag_name="$tag" -f name="$tag" \

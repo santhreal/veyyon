@@ -273,6 +273,7 @@ export const workspaceTestPackages = [
 export const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
 	"scripts/every-workflow-pipeline-sets-pipefail.test.ts",
+	"scripts/every-workflow-runs-bun-test-in-the-sandbox.test.ts",
 	"scripts/gh-repo-context.test.ts",
 	"scripts/ci-build-native.test.ts",
 	"scripts/bun-install-action.test.ts",

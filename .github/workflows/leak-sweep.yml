@@ -49,15 +49,21 @@ jobs:
         # RUN without it, and a file whose tests do not run yields no leak verdict at all —
         # the sweep would report "failed to run" for them and silently cover less.
         run: bun run ci:build:native
+      - name: Build the test sandbox image
+        # `bun test` refuses to run unless it can prove the operator's home is
+        # unreachable. The tracer spawns one `bun test` per file, so both the
+        # self-tests and the sweep itself have to run inside the boundary or
+        # every file reports "could not run" and the sweep measures nothing.
+        run: bash scripts/test-sandbox/run.sh --build
       - name: Tracer self-tests
         # Fail loudly on a broken tracer rather than sweeping 3,200 files and calling them
         # all clean.
-        run: bun test scripts/test-sandbox/find-test-leaks.test.ts
+        run: bash scripts/test-sandbox/run.sh bun test scripts/test-sandbox/find-test-leaks.test.ts
       - name: Sweep every test tree
         # The script takes directories and walks them, skipping node_modules and fixtures.
         # It exits non-zero when any file leaks or fails to run, and prints the offending
         # key with its before -> after values plus the test index that first changed it.
-        run: bun scripts/test-sandbox/find-test-leaks.ts packages scripts
+        run: bash scripts/test-sandbox/run.sh bun scripts/test-sandbox/find-test-leaks.ts packages scripts
 
   memory:
     name: What one more test file costs
@@ -73,12 +79,16 @@ jobs:
         # Same reason as the sweep: a suite that cannot load the addon does not run, and a
         # file that does not run reports no memory either.
         run: bun run ci:build:native
+      - name: Build the test sandbox image
+        # Same gate as the sweep job: the measurement spawns `bun test` runs,
+        # and each of those faces the refusal on a bare runner.
+        run: bash scripts/test-sandbox/run.sh --build
       - name: Gate self-tests
         # The arithmetic first. A slope taken from the endpoints, or a peak summed across
         # workers, reports health it did not measure.
-        run: bun test scripts/check-test-memory.test.ts
+        run: bash scripts/test-sandbox/run.sh bun test scripts/check-test-memory.test.ts
       - name: Measure the sample under both run modes
         # Nightly rather than per-commit because it runs the sample twice, once serial and
         # once with workers, and each run is minutes. See docs/internal/testing.md for what
         # the two numbers mean and why one ceiling is no use for the other.
-        run: bun run scripts/check-test-memory.ts
+        run: bash scripts/test-sandbox/run.sh bun run scripts/check-test-memory.ts

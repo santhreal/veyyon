@@ -149,26 +149,26 @@ fn write_quota(dir: &Path, cores: f64) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+	use veyyon_test_scratch::TempTree;
+
 	use super::*;
 
-	fn fake_delegated_parent() -> PathBuf {
-		let dir = std::env::temp_dir().join(format!(
-			"veyyon-cpu-budget-test-{}-{}",
-			std::process::id(),
-			std::time::SystemTime::now()
-				.duration_since(std::time::UNIX_EPOCH)
-				.map_or(0, |d| d.as_nanos()),
-		));
-		std::fs::create_dir_all(&dir).expect("create fake parent");
+	/// The parent is a scratch tree rather than a hand-built path under the
+	/// system temp directory, so it is removed when the test that made it ends,
+	/// including when that test panics before reaching its cleanup line.
+	fn fake_delegated_parent() -> TempTree {
+		let tree = veyyon_test_scratch::scratch_dir("cpu-budget");
+		let dir = tree.path();
 		std::fs::write(dir.join("cgroup.controllers"), "cpu io memory pids\n").expect("controllers");
 		std::fs::write(dir.join("cgroup.subtree_control"), "").expect("subtree_control");
 		std::fs::write(dir.join("cgroup.procs"), "").expect("procs");
-		dir
+		tree
 	}
 
 	#[test]
 	fn create_writes_the_exact_quota_bytes() {
-		let parent = fake_delegated_parent();
+		let parent_tree = fake_delegated_parent();
+		let parent = parent_tree.path();
 		let budget =
 			LinuxBudget::create(parent.to_str().expect("utf8"), "veyyon-cpu-quota-test", 2.0)
 				.expect("create budget");
@@ -185,7 +185,6 @@ mod tests {
 		);
 		budget.teardown();
 		assert!(!dir.exists(), "teardown removes an owned cgroup");
-		std::fs::remove_dir_all(&parent).expect("clean parent");
 	}
 
 	/// WHY: zero cores means "no cap", and creation and `set_cores` formatted
@@ -195,7 +194,8 @@ mod tests {
 	/// is capped) or honours by freezing every process adopted into it.
 	#[test]
 	fn zero_cores_is_an_absent_cap_on_both_write_paths() {
-		let parent = fake_delegated_parent();
+		let parent_tree = fake_delegated_parent();
+		let parent = parent_tree.path();
 		let budget = LinuxBudget::create(parent.to_str().expect("utf8"), "veyyon-cpu-zero-test", 0.0)
 			.expect("create budget");
 		let dir = parent.join("veyyon-cpu-zero-test");
@@ -213,12 +213,12 @@ mod tests {
 			"both write paths agree on the spelling of no cap",
 		);
 		budget.teardown();
-		std::fs::remove_dir_all(&parent).expect("clean parent");
 	}
 
 	#[test]
 	fn adopt_and_meter_against_the_group_files() {
-		let parent = fake_delegated_parent();
+		let parent_tree = fake_delegated_parent();
+		let parent = parent_tree.path();
 		let budget =
 			LinuxBudget::create(parent.to_str().expect("utf8"), "veyyon-cpu-adopt-test", 1.0)
 				.expect("create budget");
@@ -230,12 +230,12 @@ mod tests {
 		assert_eq!(budget.usage_usec(), Some(123_456));
 		assert_eq!(budget.members(), vec![4242]);
 		budget.teardown();
-		std::fs::remove_dir_all(&parent).expect("clean parent");
 	}
 
 	#[test]
 	fn manage_existing_never_touches_quota_or_removal() {
-		let parent = fake_delegated_parent();
+		let parent_tree = fake_delegated_parent();
+		let parent = parent_tree.path();
 		let scope = parent.join("veyyon-cpu-existing.scope");
 		std::fs::create_dir(&scope).expect("scope dir");
 		std::fs::write(scope.join("cgroup.procs"), "").expect("procs");
@@ -244,6 +244,5 @@ mod tests {
 		assert!(!scope.join("cpu.max").exists(), "a managed scope's quota is systemd's to write");
 		budget.teardown();
 		assert!(scope.exists(), "teardown leaves a managed scope in place");
-		std::fs::remove_dir_all(&parent).expect("clean parent");
 	}
 }

@@ -118,10 +118,17 @@ jobs:
         # Same reason as the test job: suites that touch grep/PTY/hashline need the
         # compiled addon, and a suite that fails to RUN gives no leak verdict at all.
         run: bun run ci:build:native
+      - name: Build the test sandbox image
+        # This job is separate from `test` below and never built the sandbox, so
+        # the unconditional gate refused both steps here and the job went red
+        # without leak-checking anything. The tracer spawns one `bun test` per
+        # file, and those children face the same gate, so the whole tracer runs
+        # inside the boundary rather than only its self-tests.
+        run: bash scripts/test-sandbox/run.sh --build
       - name: Tracer self-tests
         # The tracer's own contract tests, so a broken tracer fails loudly here instead
         # of silently reporting every changed suite as clean.
-        run: bun test scripts/test-sandbox/find-test-leaks.test.ts
+        run: bash scripts/test-sandbox/run.sh bun test scripts/test-sandbox/find-test-leaks.test.ts
       - name: Leak-check changed test files
         env:
           LEAK_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
@@ -141,7 +148,7 @@ jobs:
           mapfile -t changed <<<"$changed_list"
           printf 'Leak-checking %d changed test file(s):\n' "${#changed[@]}"
           printf '  %s\n' "${changed[@]}"
-          bun scripts/test-sandbox/find-test-leaks.ts "${changed[@]}"
+          bash scripts/test-sandbox/run.sh bun scripts/test-sandbox/find-test-leaks.ts "${changed[@]}"
 
   test:
     name: TypeScript tests
