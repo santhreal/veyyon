@@ -161,7 +161,7 @@ describe("automatic compaction and explicit handoff stay distinct", () => {
 	 * The converse assertion, that the automatic-compaction prompt does NOT
 	 * describe a cold restart, is deliberately absent. Upstream's summary prompt
 	 * opens "structured handoff summary for another LLM to resume the task",
-	 * which is false for how either fork actually compacts: both keep a 20000
+	 * which is false for how either fork actually compacts: both keep a 10000
 	 * token recent tail (`keepRecentTokens`) and inject the summary in front of
 	 * it in the SAME session. That mismatch is escalated to the operator as a
 	 * candidate deviation from the ordered text, and no test here presumes the

@@ -57,7 +57,13 @@ export interface ResolvedCompactionThreshold {
 	 * percent for `percent`, absent for `auto`.
 	 */
 	configured?: number;
-	/** True when {@link tokens} had to be reduced to fit the current window. */
+	/**
+	 * True when the configured amount exceeds the current window, so the
+	 * resolver capped it. Strictly greater only: at equality the amount fits
+	 * the window, and the one-token reduction to `window - 1` is the
+	 * resolver's below-window invariant, not lost headroom — a notice that
+	 * claims "larger than" there is wrong.
+	 */
 	clamped: boolean;
 	/**
 	 * Set when the value came from a retired key rather than `compaction.threshold`,
@@ -165,7 +171,11 @@ export function resolveCompactionThreshold(
 		// all — `parseCompactionThreshold` sends them to auto — so the helper's own
 		// non-finite guard is defence in depth rather than the live path.
 		const tokens = clampLow(spec.tokens, 1, contextWindow - 1);
-		return { tokens, origin: "tokens", configured: spec.tokens, clamped: tokens < spec.tokens, legacyKey };
+		// `clamped` is strict `>`, not `tokens < spec.tokens`: at equality the
+		// cap removes exactly one token (the below-window invariant), which no
+		// display precision even shows, and callers word the notice "larger
+		// than the window" — false at equality.
+		return { tokens, origin: "tokens", configured: spec.tokens, clamped: spec.tokens > contextWindow, legacyKey };
 	}
 
 	if (spec.kind === "percent") {
@@ -273,7 +283,7 @@ export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
 	thresholdPercent: -1,
 	thresholdTokens: -1,
 	midTurnEnabled: true,
-	keepRecentTokens: 20000,
+	keepRecentTokens: 10000,
 	autoContinue: true,
 };
 

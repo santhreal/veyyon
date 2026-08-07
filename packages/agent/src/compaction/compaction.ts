@@ -17,7 +17,9 @@ import type {
 	Model,
 	ProviderSessionState,
 	SimpleStreamOptions,
+	TextContent,
 	Tool,
+	ToolResultMessage,
 	Usage,
 } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
@@ -38,7 +40,7 @@ import {
 	canUseCacheAlignedCompaction,
 	estimateCacheAlignedRequestTokens,
 } from "./cache-aligned-context";
-import type { CompactionEntry, SessionEntry } from "./entries";
+import type { CompactionEntry, SessionEntry, SessionMessageEntry } from "./entries";
 import { KEEP_NOTHING_ENTRY_ID } from "./entries";
 import { CompactionCancelledError } from "./errors";
 import { LEGACY_REMOTE_PRESERVE_KEYS } from "./legacy-provider-native";
@@ -58,6 +60,7 @@ import {
 	DEFAULT_RESERVE_TOKENS,
 	resolveThresholdTokens,
 } from "./threshold";
+import { collectToolCallsById, isSkillReadToolResult } from "./tool-protection";
 // The estimator moved to the module whose header owns it, and is re-exported below so no caller changed.
 import { estimateTokens } from "./token-estimate";
 
@@ -417,12 +420,23 @@ export function findCutPoint(
 			// a result is never a valid cut point, because cutting there would
 			// separate it from the call it answers, so nothing behind it is usable.
 			//
-			// The old fallback kept from the newest valid point, which is the
-			// assistant message CARRYING that call, so the oversized result stayed in
-			// the tail and compaction freed nothing however often it ran. That is the
-			// dead-end loop: a warning every turn against a full gauge. Keep nothing
-			// instead and let the summary stand in for the whole range.
-			if (!found) cutIndex = endIndex;
+			// The turn's own start IS a valid cut point, and keeping the newest turn
+			// is now safe: prepareCompaction elides the oversized result inside the
+			// kept tail, so the bulk leaves the context without taking the user's
+			// latest message and the assistant's reasoning with it. Both older
+			// answers were wrong. Keeping from the newest valid point, the assistant
+			// message CARRYING the call, retained the whole result and freed nothing
+			// however often compaction ran: a warning every turn against a full
+			// gauge. Keeping nothing sent the entire newest turn, the most
+			// informative part of the session, to the summarizer, bulk and all.
+			//
+			// No turn start inside the range means the turn's opening was summarized
+			// by an earlier pass, so no cut here keeps call and result together:
+			// keep nothing and let the summary stand in for the whole range.
+			if (!found) {
+				const turnStart = findTurnStartIndex(entries, i, startIndex);
+				cutIndex = turnStart === -1 ? endIndex : turnStart;
+			}
 			break;
 		}
 	}
@@ -1092,6 +1106,15 @@ export interface CompactionPreparation {
 	 * RemoteCompactionChain}; a local pass ignores it.
 	 */
 	remoteChain?: RemoteCompactionChain;
+	/**
+	 * Tool results elided from the retained tail to bring it under
+	 * `keepRecentTokens`, largest first. Always set by `prepareCompaction`
+	 * (empty when the tail already fit); absent only on hand-built fixtures.
+	 * The elision is already applied to the branch entries: the caller
+	 * offloads `originalText` to a recovery artifact, patches the markers
+	 * with the pointer, and persists the rewrite once the pass completes.
+	 */
+	tailElisions?: TailElision[];
 	/** File operations extracted from messagesToSummarize */
 	fileOps: FileOperations;
 	/** Compaction settions from settings.jsonl	*/
@@ -1258,6 +1281,152 @@ export function estimateCompactionRequestTokens(
 	return requests.length > 0 ? Math.max(...requests) : 0;
 }
 
+// ============================================================================
+// Retained-tail elision
+// ============================================================================
+
+/**
+ * One tool result elided from the retained tail to bring it under budget.
+ *
+ * The elision is already applied to the branch when the caller sees this:
+ * `message` is the replacement sitting in the entry, so the caller can patch
+ * its marker with the recovery pointer once `originalText` is offloaded.
+ */
+export interface TailElision {
+	/** Id of the entry whose tool-result message was replaced. */
+	entryId: string;
+	/** Tool that produced the elided output. */
+	toolName: string;
+	/** Estimated tokens the result carried before elision. */
+	tokens: number;
+	/** The full original output text, for offload to a recovery artifact. */
+	originalText: string;
+	/** The replacement message now held by the entry. */
+	message: ToolResultMessage;
+}
+
+/**
+ * The marker left in place of an elided tool result: what was removed, how
+ * much of it, and why, so the model never mistakes the elision for an empty
+ * tool response. With an artifact id it also says where the bytes went.
+ */
+export function renderTailElisionMarker(toolName: string, tokens: number, artifactId?: string): string {
+	const recovery = artifactId ? `; recover the full output at artifact://${artifactId}` : "";
+	return `[output elided by compaction: ~${tokens} tokens of "${toolName}" output removed to keep the retained tail within budget${recovery}]`;
+}
+
+/** Render elided originals as one recovery-artifact document. */
+export function renderTailElisionArtifact(elisions: readonly TailElision[]): string {
+	const parts: string[] = [];
+	for (let i = 0; i < elisions.length; i++) {
+		const elision = elisions[i];
+		parts.push(
+			`### elision ${i + 1} (${elision.toolName}, ~${elision.tokens} tokens, entry ${elision.entryId})`,
+			"",
+			elision.originalText,
+			"",
+		);
+	}
+	return parts.join("\n");
+}
+
+/**
+ * Below this estimate a result is not worth eliding: the marker that replaces
+ * it costs about as much as the result itself, so eliding it would churn the
+ * prompt cache for nothing.
+ */
+const TAIL_ELISION_MIN_TOKENS = 100;
+
+function tailToolResultText(message: ToolResultMessage): string {
+	if (typeof message.content === "string") return message.content;
+	return message.content
+		.filter((block): block is TextContent => block.type === "text")
+		.map(block => block.text)
+		.join("\n");
+}
+
+/**
+ * Bring the retained tail within `budgetTokens` by eliding heavy tool output
+ * inside it.
+ *
+ * `findCutPoint` can only cut at a turn boundary, so a kept turn can carry the
+ * tail far past the budget on its own — one enormous tool result is enough —
+ * and before this pass that bulk survived every compaction: the tail was
+ * bounded by what the cut happened to spare, not by the budget. What leaves
+ * is chosen by information density, not recency: bulk tool output (file
+ * reads, command stdout) is the lowest-information content in a tail and goes
+ * first, largest result first. Never candidates at any size: error results
+ * (the error IS the information) and skill reads (the agent's live
+ * instructions). User messages, assistant text, and the tool calls themselves
+ * are never candidates by construction, because only tool-result content is
+ * ever replaced.
+ *
+ * The entry's message object is REPLACED, never mutated: `estimateTokens`
+ * caches by message identity, and a mutated message would keep reading its
+ * pre-elision size. The replacement is stamped `prunedAt` so the prune and
+ * shake passes treat the marker as already handled.
+ */
+function elideTailToolResults(
+	entries: SessionEntry[],
+	startIndex: number,
+	endIndex: number,
+	budgetTokens: number,
+	excludedCustomMessageTypes?: ReadonlySet<string>,
+): TailElision[] {
+	if (startIndex >= endIndex) return [];
+
+	let tailTokens = 0;
+	for (let i = startIndex; i < endIndex; i++) {
+		const msg = getMessageFromEntry(entries[i], excludedCustomMessageTypes);
+		if (msg) tailTokens += estimateTokens(msg);
+	}
+	if (tailTokens <= budgetTokens) return [];
+
+	const toolCallsById = collectToolCallsById(entries);
+	interface Candidate {
+		entry: SessionMessageEntry;
+		message: ToolResultMessage;
+		tokens: number;
+	}
+	const candidates: Candidate[] = [];
+	for (let i = startIndex; i < endIndex; i++) {
+		const entry = entries[i];
+		if (entry.type !== "message" || entry.message.role !== "toolResult") continue;
+		const message = entry.message as ToolResultMessage;
+		if (message.isError === true) continue;
+		if (message.prunedAt !== undefined) continue;
+		if (isSkillReadToolResult({ toolResult: message, toolCall: toolCallsById.get(message.toolCallId) })) continue;
+		const tokens = estimateTokens(message as AgentMessage);
+		if (tokens <= TAIL_ELISION_MIN_TOKENS) continue;
+		candidates.push({ entry: entry as SessionMessageEntry, message, tokens });
+	}
+	// Largest first, regardless of recency: the biggest bulk is the lowest
+	// information per token and the fastest way back under budget.
+	candidates.sort((a, b) => b.tokens - a.tokens);
+
+	const elisions: TailElision[] = [];
+	for (const candidate of candidates) {
+		if (tailTokens <= budgetTokens) break;
+		const replacement: ToolResultMessage = {
+			...candidate.message,
+			content: [
+				{ type: "text", text: renderTailElisionMarker(candidate.message.toolName, candidate.tokens) },
+			],
+			prunedAt: Date.now(),
+		};
+		candidate.entry.message = replacement;
+		tailTokens -= Math.max(0, candidate.tokens - estimateTokens(replacement as AgentMessage));
+		elisions.push({
+			entryId: candidate.entry.id,
+			toolName: candidate.message.toolName,
+			tokens: candidate.tokens,
+			originalText: tailToolResultText(candidate.message),
+			message: replacement,
+		});
+	}
+	return elisions;
+}
+
 export function prepareCompaction(
 	pathEntries: SessionEntry[],
 	settings: CompactionSettings,
@@ -1396,15 +1565,33 @@ export function prepareCompaction(
 		}
 	}
 
-	// Messages kept after compaction (recent history)
+	// Nothing to summarize means compaction would be a no-op. Refuse BEFORE
+	// the elision below rewrites anything: a pass that will not happen must
+	// not leave its marks on the branch.
+	if (messagesToSummarize.length === 0 && turnPrefixMessages.length === 0) {
+		return undefined;
+	}
+	
+	// Hard-bound the retained tail. The cut can only land on a turn boundary,
+	// so one oversized kept turn — a huge file read, a long command output —
+	// used to carry the tail far past the budget, and the next turn tripped
+	// compaction again over the same bulk. Elide that bulk in place, largest
+	// result first; user messages, assistant text, tool calls, and errors are
+	// never touched.
+	const tailElisions = elideTailToolResults(
+		pathEntries,
+		cutPoint.firstKeptEntryIndex,
+		boundaryEnd,
+		keepRecentTokens,
+		options?.excludedCustomMessageTypes,
+	);
+	
+	// Messages kept after compaction (recent history). Collected AFTER the
+	// elision above so the retained view is the bounded one.
 	const recentMessages: AgentMessage[] = [];
 	for (let i = cutPoint.firstKeptEntryIndex; i < boundaryEnd; i++) {
 		const msg = getMessageFromEntry(pathEntries[i], options?.excludedCustomMessageTypes);
 		if (msg) recentMessages.push(msg);
-	}
-	// Nothing to summarize means compaction would be a no-op.
-	if (messagesToSummarize.length === 0 && turnPrefixMessages.length === 0) {
-		return undefined;
 	}
 
 	// Get previous summary and preserved data for iterative updates
@@ -1447,6 +1634,7 @@ export function prepareCompaction(
 		messagesToSummarize,
 		turnPrefixMessages,
 		recentMessages,
+		tailElisions,
 		isSplitTurn: cutPoint.isSplitTurn,
 		tokensBefore,
 		previousSummary,

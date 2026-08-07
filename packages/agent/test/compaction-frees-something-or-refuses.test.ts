@@ -76,7 +76,6 @@ const settings = { ...DEFAULT_COMPACTION_SETTINGS, keepRecentTokens: 30_000 };
 /** Every shape here is over budget by two orders of magnitude. */
 const overBudgetShapes: Array<[string, SessionEntry[]]> = [
 	["a call and its oversized result", [entry(withCall()), entry(result(HUGE))]],
-	["a whole turn ending in an oversized result", [entry(user("q")), entry(withCall()), entry(result(HUGE))]],
 	["an oversized result with nothing before it", [entry(result(HUGE))]],
 	["one oversized assistant message", [entry(assistant([{ type: "text", text: HUGE }]))]],
 ];
@@ -127,6 +126,36 @@ describe("an over-budget range always frees something", () => {
 
 		expect(prepareCompaction(entries, settings)).toBeUndefined();
 		expect(findCutPoint(entries, 0, entries.length, settings.keepRecentTokens).firstKeptEntryIndex).toBe(0);
+	});
+});
+
+describe("a whole turn ending in an oversized result", () => {
+	// The one shape whose answer changed when the retained tail became
+	// information-aware. Keeping nothing used to be the only cut that freed
+	// anything, because the result rode the tail whole — and it sent the
+	// user's message to the summarizer to get rid of tool output. Now the
+	// turn splits at the call: the user message becomes the turn prefix and
+	// the result is elided inside the kept tail, which frees the same bulk
+	// without discarding the turn.
+	const shape = (): SessionEntry[] => [entry(user("q")), entry(withCall()), entry(result(HUGE))];
+
+	test("splits the turn and elides the result rather than keeping nothing", () => {
+		const cut = findCutPoint(shape(), 0, 3, settings.keepRecentTokens);
+
+		expect(cut).toEqual({ firstKeptEntryIndex: 1, turnStartIndex: 0, isSplitTurn: true });
+	});
+
+	test("frees the bulk: the kept tail fits the budget with the result elided", () => {
+		const prepared = prepareCompaction(shape(), settings);
+
+		expect(prepared).toBeDefined();
+		expect(prepared!.messagesToSummarize).toEqual([]);
+		expect(prepared!.turnPrefixMessages.map(m => m.role)).toEqual(["user"]);
+		expect(prepared!.recentMessages.map(m => m.role)).toEqual(["assistant", "toolResult"]);
+		const kept = prepared!.recentMessages[1] as ToolResultMessage;
+		expect(kept.content[0].type === "text" && kept.content[0].text).toContain("elided by compaction");
+		expect(prepared!.tailElisions).toHaveLength(1);
+		expect(prepared!.tailElisions![0]!.originalText).toBe(HUGE);
 	});
 });
 

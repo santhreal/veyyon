@@ -150,6 +150,21 @@ describe("resolving a threshold to tokens with its origin", () => {
 		expect(resolved.clamped).toBe(true);
 	});
 
+	it("does not flag the clamp when the amount equals the window", () => {
+		// WHY: `clamped` used to be `tokens < configured`, which is also true at
+		// equality because every threshold is held strictly below the window. The
+		// session notice then claimed the amount was "larger than this model's
+		// context window" — false at equality — and warned on a config that exactly
+		// matches the model (a 256000 threshold on a 256k window). The cap there
+		// removes exactly one token (the below-window invariant), which is not lost
+		// headroom and must stay silent.
+		const resolved = resolveCompactionThreshold(WINDOW, { threshold: String(WINDOW) }, () => 180_000);
+		expect(resolved.tokens).toBe(WINDOW - 1);
+		expect(resolved.configured).toBe(WINDOW);
+		expect(resolved.clamped).toBe(false);
+		expect(isThresholdTokensClampedForWindow(WINDOW, withReserve({ threshold: String(WINDOW) }))).toBe(false);
+	});
+
 	it("scales a percent against the window and reports the percent configured", () => {
 		const resolved = resolveCompactionThreshold(WINDOW, { threshold: "85%" }, () => 180_000);
 		expect(resolved.tokens).toBe(170_000);
