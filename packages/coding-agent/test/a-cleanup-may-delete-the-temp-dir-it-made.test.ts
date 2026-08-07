@@ -107,3 +107,65 @@ describe("the exemption stays narrow", () => {
 		expect(isCritical("TMP=$(mktemp -d) && rm -rf ~/")).toBe(true);
 	});
 });
+/**
+ * Condition 2 of the exemption is "the name is not reassigned between the
+ * creation and the delete", and it was only ever checked against the leading
+ * `NAME=value` run, which is the one place a BARE assignment can sit. Every
+ * other way a shell writes a name puts it after the command word, so the check
+ * never saw it and the exemption survived a rebinding to anything at all.
+ *
+ * The check is now an allowlist on how the name is SPELLED: reading it spells
+ * `$T`, writing it spells `T` bare, so a construct nobody enumerated is still
+ * covered. The last three cases here are the ones a list of builtins would
+ * have missed, and they are the reason it is not a list of builtins.
+ */
+describe("a name rebound after the command word", () => {
+	it("withdraws the exemption when export rebinds it", () => {
+		expect(isCritical('T=$(mktemp -d) && export T=/ && rm -rf "$T"')).toBe(true);
+	});
+
+	it("withdraws it for declare, readonly and local, which bind the same way", () => {
+		expect(isCritical('T=$(mktemp -d) && declare T=/ && rm -rf "$T"')).toBe(true);
+		expect(isCritical('T=$(mktemp -d) && readonly T=/ && rm -rf "$T"')).toBe(true);
+		expect(isCritical('T=$(mktemp -d) && local T=/ && rm -rf "$T"')).toBe(true);
+	});
+
+	/** `read` fills the name from stdin, so its value is whatever was piped in. */
+	it("withdraws it when read fills the name from input", () => {
+		expect(isCritical('T=$(mktemp -d) && read T && rm -rf "$T"')).toBe(true);
+	});
+
+	it("withdraws it for a loop that rebinds the same name", () => {
+		expect(isCritical('T=$(mktemp -d) && for T in / ; do rm -rf "$T" ; done')).toBe(true);
+	});
+
+	/** `eval` and `source` can write any name, so nothing carried survives them. */
+	it("withdraws everything across a construct it cannot read", () => {
+		expect(isCritical('T=$(mktemp -d) && eval T=/ && rm -rf "$T"')).toBe(true);
+		expect(isCritical('T=$(mktemp -d) && source ./setup.sh && rm -rf "$T"')).toBe(true);
+	});
+
+	/** No enumeration of builtins produced these, and the spelling rule does. */
+	it("withdraws it for writers nobody enumerated", () => {
+		expect(isCritical('T=$(mktemp -d) && printf -v T / && rm -rf "$T"')).toBe(true);
+		expect(isCritical('T=$(mktemp -d) && getopts o T && rm -rf "$T"')).toBe(true);
+		expect(isCritical('T=$(mktemp -d) && mapfile T < list && rm -rf "$T"')).toBe(true);
+		expect(isCritical('T=$(mktemp -d) && T[0]=/ && rm -rf "$T"')).toBe(true);
+	});
+
+	/** A script this scan never reads can write any name without naming it here. */
+	it("withdraws everything across a script it cannot read", () => {
+		expect(isCritical('T=$(mktemp -d) && bash ./setup.sh && rm -rf "$T"')).toBe(true);
+	});
+
+	/**
+	 * Withdrawal must not fire on a name merely MENTIONED. Logging the path is
+	 * part of the shape this exemption exists for, and a guard that refuses the
+	 * shape it was written to allow is the earlier defect again.
+	 */
+	it("leaves the exemption alone when the name is only read", () => {
+		expect(isCritical('T=$(mktemp -d) && echo "made $T" && rm -rf "$T"')).toBe(false);
+		expect(isCritical('T=$(mktemp -d) && cd "$T" && rm -rf "$T"')).toBe(false);
+		expect(isCritical('T=$(mktemp -d) && if true ; then rm -rf "$T" ; fi')).toBe(false);
+	});
+});

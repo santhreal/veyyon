@@ -334,8 +334,8 @@ describe("Settings", () => {
 		});
 	});
 
-	describe("malformed project settings surfacing (Law 10)", () => {
-		// Both cases below open the foreign-config gate, which lands in MODULE-GLOBAL
+	describe("a repository cannot hand the agent settings", () => {
+		// The case below opens the foreign-config gate, which lands in MODULE-GLOBAL
 		// state in capability/index.ts that `resetSettingsForTest` does not touch.
 		// Unrestored, this file left the gate OPEN for every later file in the process,
 		// so they ambiently loaded other tools' config that is off by default.
@@ -350,56 +350,35 @@ describe("Settings", () => {
 			registrySnapshot = undefined;
 		});
 
-		it("warns instead of silently ignoring a malformed foreign project settings file", async () => {
-			// A foreign settings provider (gemini) flags a broken .gemini/settings.json
-			// with an "Invalid JSON" warning. #loadProjectSettings used to read only
-			// result.items and drop result.warnings, so the broken file vanished with
-			// no signal. Ensure the warning now reaches the operator.
+		/**
+		 * A checkout contributes AGENTS.md and CLAUDE.md context and nothing else.
+		 * This describe used to assert the opposite: that a project settings file was
+		 * read, and that a broken one drew a warning. The project scope is gone from
+		 * the loader, `settings.ts` joins `settings.json` onto the agent dir and
+		 * nowhere else, and six suites were re-aimed off the removed scope in
+		 * 704768029 while this one was missed.
+		 *
+		 * A checked-in settings file asking for values the operator did not choose
+		 * changes nothing. Asserted against the defaults rather than literals, so it
+		 * still means what it says if a default moves. The gate that proves it is not
+		 * vacuous: give `Settings` the project file as an overlay and both values
+		 * follow the repository instead.
+		 *
+		 * The warning case that stood here is deleted rather than re-aimed. It looked
+		 * for a log line the loader no longer emits at all, so no behaviour could
+		 * make it fail and it asserted nothing.
+		 */
+		it("takes no value from a settings file a clone shipped", async () => {
 			initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
-			const geminiDir = path.join(projectDir, ".gemini");
-			fs.mkdirSync(geminiDir, { recursive: true });
-			fs.writeFileSync(path.join(geminiDir, "settings.json"), '{ "mcpServers": { broken ');
+			await Bun.write(
+				path.join(getProjectAgentDir(projectDir), "settings.json"),
+				JSON.stringify({ startup: { quiet: true }, autocompleteMaxVisible: 99 }),
+			);
 
-			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
-			await Settings.init({ cwd: projectDir, agentDir });
+			const settings = await Settings.init({ cwd: projectDir, agentDir });
 
-			const surfaced = warnSpy.mock.calls.some(([message, context]) => {
-				const ctx = context as Record<string, unknown> | undefined;
-				const warning = typeof ctx?.warning === "string" ? ctx.warning : "";
-				return (
-					message === "Settings: project settings discovery warning" &&
-					warning.includes("Invalid JSON") &&
-					warning.includes("settings.json")
-				);
-			});
-			expect(surfaced).toBe(true);
-		});
-
-		it("does not flag a well-formed project settings file as invalid", async () => {
-			// A well-formed .gemini/settings.json under this project must not draw an
-			// "Invalid JSON" warning that names it. Scope the assertion to this
-			// project's own path: ambient user-level foreign config on the host may
-			// surface its own unrelated discovery warnings, which are not what this
-			// test is about.
-			initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
-			const geminiDir = path.join(projectDir, ".gemini");
-			fs.mkdirSync(geminiDir, { recursive: true });
-			const settingsPath = path.join(geminiDir, "settings.json");
-			fs.writeFileSync(settingsPath, JSON.stringify({ mcpServers: {} }));
-
-			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
-			await Settings.init({ cwd: projectDir, agentDir });
-
-			const flagged = warnSpy.mock.calls.some(([message, context]) => {
-				const ctx = context as Record<string, unknown> | undefined;
-				const warning = typeof ctx?.warning === "string" ? ctx.warning : "";
-				return (
-					message === "Settings: project settings discovery warning" &&
-					warning.includes("Invalid JSON") &&
-					warning.includes(settingsPath)
-				);
-			});
-			expect(flagged).toBe(false);
+			expect(settings.get("startup.quiet")).toBe(getDefault("startup.quiet"));
+			expect(settings.get("autocompleteMaxVisible")).toBe(getDefault("autocompleteMaxVisible"));
 		});
 	});
 
@@ -872,13 +851,21 @@ describe("Settings", () => {
 			expect(settings.getEditVariantForModel("openrouter/moonshotai/Kimi-K2-Instruct")).toBe("hashline");
 		});
 
-		it("refreshes cached model variants when the active project settings change", async () => {
+		/**
+		 * Reload for a new cwd used to be proven by having each project supply its
+		 * own variants, which stopped meaning anything once the project scope was
+		 * removed. The reload contract is still real, so it is asserted the way that
+		 * survives: the operator's variant is the one in force before and after, and
+		 * two repositories asking for something else move nothing.
+		 */
+		it("keeps the operator's model variants when the cwd moves to a project that wants others", async () => {
 			const otherProjectDir = tempDir.join("other-project");
 			fs.mkdirSync(getProjectAgentDir(otherProjectDir), { recursive: true });
+			await writeSettings({ edit: { modelVariants: { kimi: "hashline" } } });
 
 			await Bun.write(
 				path.join(getProjectAgentDir(projectDir), "settings.json"),
-				JSON.stringify({ edit: { modelVariants: { kimi: "hashline" } } }),
+				JSON.stringify({ edit: { modelVariants: { kimi: "apply_patch" } } }),
 			);
 			await Bun.write(
 				path.join(getProjectAgentDir(otherProjectDir), "settings.json"),
@@ -891,8 +878,8 @@ describe("Settings", () => {
 
 			await settings.reloadForCwd(otherProjectDir);
 
-			expect(settings.getEditVariantForModel("openrouter/moonshotai/Kimi-K2-Instruct")).toBeNull();
-			expect(settings.getEditVariantForModel("openai/gpt-5.2-codex")).toBe("apply_patch");
+			expect(settings.getEditVariantForModel("openrouter/moonshotai/Kimi-K2-Instruct")).toBe("hashline");
+			expect(settings.getEditVariantForModel("openai/gpt-5.2-codex")).toBeNull();
 		});
 	});
 
@@ -1237,15 +1224,22 @@ describe("Settings", () => {
 				);
 			});
 
-			it("rejects invalid provider limits from project settings", async () => {
+			/**
+			 * This used to assert a rejection, which was the wrong shape once the
+			 * project scope was removed: a limit of 0 from a cloned repository is not
+			 * rejected, it is never read, so `init` resolves. The two cases either
+			 * side still pin the rejection itself from the scopes that ARE read, so
+			 * nothing is lost by asserting the boundary here instead.
+			 */
+			it("takes no provider limit from project settings, valid or not", async () => {
 				await Bun.write(
 					path.join(getProjectAgentDir(projectDir), "settings.json"),
 					JSON.stringify({ providers: { maxInFlightRequests: { anthropic: 0 } } }),
 				);
 
-				await expect(Settings.init({ cwd: projectDir, agentDir, inMemory: true })).rejects.toThrow(
-					"Provider request limits must be positive numbers: anthropic",
-				);
+				const settings = await Settings.init({ cwd: projectDir, agentDir, inMemory: true });
+
+				expect(settings.get("providers.maxInFlightRequests")).not.toHaveProperty("anthropic");
 			});
 
 			it("rejects invalid provider limits from config overlays", async () => {

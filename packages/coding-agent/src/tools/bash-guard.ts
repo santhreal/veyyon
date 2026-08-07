@@ -219,6 +219,50 @@ function namesSelfCreatedTemp(raw: { text: string; literal: boolean }, created: 
 	return name !== undefined && created.has(name);
 }
 
+/** Commands that can run shell text this scan never sees. */
+const RUNS_UNSEEN_SHELL = new Set(["eval", "source", ".", "bash", "sh", "zsh", "dash", "ksh", "ash"]);
+
+/**
+ * Withdraw the mktemp exemption from every name this segment could rebind.
+ *
+ * The exemption is keyed on a NAME, and a name can be written again, so the
+ * rule that keeps it honest is "not reassigned since". There is nothing
+ * unrebindable to key on instead: the guard sees command text, the delete
+ * target is spelled `$T`, and `$T` is a name by definition. So the key stays a
+ * name and this is what makes it sound.
+ *
+ * It is an ALLOWLIST on how the name is spelled, not a list of the builtins
+ * that write one. Reading a name spells it as an expansion, `$T` or `${T}`.
+ * Writing one spells it BARE, and every shell form does: `T=`, `export T=`,
+ * `declare T=`, `read T`, `for T in`, `printf -v T`, `getopts o T`, `let T=1`,
+ * `((T=1))`. So any bare occurrence withdraws, and a construct nobody here has
+ * heard of is covered as long as it names its target, which it must.
+ *
+ * Naming the builtins was the first attempt and it was a blocklist: `export`,
+ * `declare`, `readonly`, `local`, `read` and `eval` were six holes, each
+ * leaving `rm -rf /` exempt, and the seventh is whatever the next shell ships.
+ *
+ * The residue is a command that writes a name without spelling it here, which
+ * means a script this scan cannot read. Those withdraw everything. Withdrawal
+ * only ever removes an exemption, so reading a word too broadly costs one
+ * question and reading it too narrowly costs a directory.
+ */
+function withdrawReboundNames(
+	words: readonly { text: string }[],
+	carried: ReadonlySet<string>,
+	staged: { name: string; created: boolean }[],
+): void {
+	if (carried.size === 0) return;
+	if (RUNS_UNSEEN_SHELL.has(basename(words[0]?.text ?? ""))) {
+		for (const name of carried) staged.push({ name, created: false });
+		return;
+	}
+	for (const word of words) {
+		const bare = /^([A-Za-z_][A-Za-z0-9_]*)(?:$|=|\[)/.exec(word.text)?.[1];
+		if (bare !== undefined && carried.has(bare)) staged.push({ name: bare, created: false });
+	}
+}
+
 /** What a word turned out to be once the parts we can expand were expanded. */
 export interface ExpandedWord {
 	/** The word with quotes removed and known expansions substituted. */
@@ -783,6 +827,13 @@ export function findCriticalBashRisk(
 	 * unjudged, which is the old behaviour.
 	 */
 	cwd = "",
+	/**
+	 * How many `sh -c` / `eval` strings deep this scan already is. A script
+	 * argument is shell text and has to be judged as shell text, so the scan
+	 * re-enters itself; the bound stops a self-referential command line from
+	 * spinning and is far above any real nesting.
+	 */
+	depth = 0,
 ): CriticalBashRisk | undefined {
 	// Names this command line assigned from a `mktemp` substitution, carried
 	// across segments as provenance with no value attached. See isMktempCreation.
@@ -806,12 +857,17 @@ export function findCriticalBashRisk(
 		// assignment word left exactly those spellings reading the ambient value.
 		const rawWords = splitWords(segment);
 		let segmentEnv = env;
+		let commandIndex = 0;
 		for (const word of rawWords) {
 			const assignment = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(word.text);
 			if (!assignment) {
-				if (isPrefixCommand(word.text)) continue;
+				if (isPrefixCommand(word.text)) {
+					commandIndex += 1;
+					continue;
+				}
 				break;
 			}
+			commandIndex += 1;
 			const name = assignment[1] as string;
 			const value = assignment[2] ?? "";
 			if (segmentEnv === env) segmentEnv = { ...env };
@@ -826,35 +882,46 @@ export function findCriticalBashRisk(
 				staged.push({ name, created: isMktempCreation(value) });
 			}
 		}
+		withdrawReboundNames(rawWords.slice(commandIndex), selfCreatedTemp, staged);
 		const words = rawWords.map(word => expandWord(word, home, segmentEnv));
 		if (words.length === 0) continue;
 
 		const overwrite = findTruncatingWriteRisk(words, home);
 		if (overwrite) return overwrite;
 
-		// Skip `sudo`, `env FOO=bar`, `nice` and friends so the real command is judged.
-		let start = 0;
-		while (start < words.length && isPrefixCommand(words[start]!.text)) start += 1;
-		const argv = words.slice(start);
-		if (argv.length === 0 || !isRecursiveDelete(argv)) continue;
+		// EVERY WORD IS A POSSIBLE COMMAND. This used to read `argv[0]` after
+		// stepping over `sudo` and friends, so anything else standing where the
+		// command word goes hid the whole rule rather than weakening it:
+		// `for i in 1 ; do rm -rf ~ ; done` and `if true ; then rm -rf ~ ; fi`
+		// were not critical, and in yolo they ran with no prompt. Naming the
+		// keywords would have been a blocklist, and the next shape walks past a
+		// blocklist by construction, so the classifier asks the question at every
+		// position instead. A word that is not a delete command answers no, which
+		// is what the old scan did once and now does n times.
+		for (let position = 0; position < words.length; position += 1) {
+			const interpreted = findRiskInInterpretedShell(words, position, home, extraProtectedPaths, env, cwd, depth);
+			if (interpreted) return interpreted;
+			const argv = words.slice(position);
+			if (!isRecursiveDelete(argv)) continue;
 
-		const commandName = basename(argv[0]!.text);
-		for (let index = 1; index < argv.length; index += 1) {
-			const candidate = argv[index]!;
-			if (isFlag(candidate)) continue;
-			if (commandName === "find" && candidate.text.startsWith("-")) continue;
-			const reason = judgeDeleteTarget(candidate, home, extraProtectedPaths, cwd);
-			if (reason === undefined) continue;
-			// A path this command line created with `mktemp` is not one it can
-			// destroy more of than it made. Judged on the RAW word, because the
-			// ambient value of the name is stale the moment the assignment ran.
-			if (namesSelfCreatedTemp(rawWords[start + index]!, selfCreatedTemp)) continue;
-			return {
-				command: commandName,
-				argument: candidate.text,
-				...(candidate.unknown ? {} : { target: normalizeAbsolutePath(candidate.text) }),
-				reason: `${commandName} would recursively remove ${reason}`,
-			};
+			const commandName = basename(argv[0]!.text);
+			for (let index = 1; index < argv.length; index += 1) {
+				const candidate = argv[index]!;
+				if (isFlag(candidate)) continue;
+				if (commandName === "find" && candidate.text.startsWith("-")) continue;
+				const reason = judgeDeleteTarget(candidate, home, extraProtectedPaths, cwd);
+				if (reason === undefined) continue;
+				// A path this command line created with `mktemp` is not one it can
+				// destroy more of than it made. Judged on the RAW word, because the
+				// ambient value of the name is stale the moment the assignment ran.
+				if (namesSelfCreatedTemp(rawWords[position + index]!, selfCreatedTemp)) continue;
+				return {
+					command: commandName,
+					argument: candidate.text,
+					...(candidate.unknown ? {} : { target: normalizeAbsolutePath(candidate.text) }),
+					reason: `${commandName} would recursively remove ${reason}`,
+				};
+			}
 		}
 	}
 	return undefined;
@@ -901,12 +968,68 @@ function findTruncatingWriteRisk(words: ExpandedWord[], home: string): CriticalB
 	return undefined;
 }
 
-/** Wrappers that take the real command as their tail. */
+/**
+ * Wrappers that take the real command as their tail.
+ *
+ * Only used to decide which leading words carry a `VAR=value` binding. Finding
+ * the delete no longer depends on it: the scan asks at every word position, so
+ * a wrapper this list has never heard of cannot hide anything.
+ */
 function isPrefixCommand(word: string): boolean {
 	const name = basename(word);
 	if (name === "sudo" || name === "doas" || name === "nice" || name === "ionice" || name === "env") return true;
 	// `FOO=bar rm -rf /` puts an assignment where the command word would be.
 	return /^[A-Za-z_][A-Za-z0-9_]*=/.test(word);
+}
+
+/** How many `sh -c` / `eval` strings deep the scan will follow before refusing. */
+const MAX_INTERPRETED_SHELL_DEPTH = 3;
+
+/** Commands whose `-c` argument is a shell script rather than a plain word. */
+const SHELL_INTERPRETERS = new Set(["bash", "sh", "zsh", "dash", "ksh", "ash"]);
+
+/**
+ * The risk inside a shell string this command hands to an interpreter.
+ *
+ * `bash -c "rm -rf ~"` and `eval "rm -rf ~"` are one word to the word scan and
+ * a whole command line to the shell, so the text has to be judged as what it
+ * is. Both were allowed before this.
+ *
+ * A script the guard cannot READ is critical on its own. `sh -c "$SCRIPT"`
+ * carries an unresolvable expansion into a shell, which is every command at
+ * once, and there is no reading of it that can be called safe. That costs a
+ * prompt on a command that may well have been harmless, which is the right
+ * direction to be wrong in: the alternative is calling a command safe because
+ * it could not be read.
+ */
+function findRiskInInterpretedShell(
+	words: readonly ExpandedWord[],
+	position: number,
+	home: string,
+	extraProtectedPaths: readonly string[],
+	env: NodeJS.ProcessEnv,
+	cwd: string,
+	depth: number,
+): CriticalBashRisk | undefined {
+	const name = basename(words[position]!.text);
+	let script: ExpandedWord | undefined;
+	// `trap "rm -rf $T" EXIT` is a delete scheduled rather than a delete written,
+	// and the shell runs it as shell all the same.
+	if (name === "eval" || name === "trap") script = words[position + 1];
+	else if (SHELL_INTERPRETERS.has(name)) {
+		// `-c`, and the bundled spellings an agent writes: `-lc`, `-ec`, `-euc`.
+		const flag = words.findIndex((word, index) => index > position && /^-[a-z]*c$/.test(word.text));
+		if (flag !== -1) script = words[flag + 1];
+	}
+	if (script === undefined) return undefined;
+	if (script.unknown || depth >= MAX_INTERPRETED_SHELL_DEPTH) {
+		return {
+			command: name,
+			argument: script.text,
+			reason: `${name} would run a shell script this guard cannot read`,
+		};
+	}
+	return findCriticalBashRisk(script.text, home, extraProtectedPaths, env, cwd, depth + 1);
 }
 
 /**
