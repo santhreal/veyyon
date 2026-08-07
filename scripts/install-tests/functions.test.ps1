@@ -1457,12 +1457,22 @@ Remove-Item Function:Global:Invoke-WebRequest -ErrorAction SilentlyContinue
 # The unknown-option arm lives in the Main block, which the dot-source at the top
 # of this file deliberately skips, so this runs the installer as a CHILD process:
 # the exit status and what lands on screen are the contract here.
+#
+# And the child has to be given a clean VEYYON_INSTALL_SOURCED. The top of this
+# file sets it as a PROCESS variable so the dot-source loads the functions without
+# installing, and a child pwsh inherits the whole environment, so the installer ran
+# with its Main block switched off: it printed nothing, exited 0, and the three
+# assertions below read that silence as an installer that accepts -Source. The
+# guard is real; only the harness was hiding it. Cleared here and put back in the
+# finally, so the variable this file was started with survives the block.
 $refuseSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-ps1-refuse-$PID"
 if (Test-Path $refuseSandbox) { Remove-Item -Recurse -Force $refuseSandbox }
 New-Item -ItemType Directory -Force -Path $refuseSandbox | Out-Null
 $savedUserProfile = $env:USERPROFILE
 $savedEnvInstallDir = $env:VEYYON_INSTALL_DIR
+$savedSourced = $env:VEYYON_INSTALL_SOURCED
 try {
+    $env:VEYYON_INSTALL_SOURCED = $null
     # Its own USERPROFILE, because the last assertion is about what the run left in
     # it: $SrcDir defaults to %USERPROFILE%\.veyyon\src, so a run that still cloned
     # would land exactly there.
@@ -1484,6 +1494,7 @@ try {
 } finally {
     $env:USERPROFILE = $savedUserProfile
     $env:VEYYON_INSTALL_DIR = $savedEnvInstallDir
+    $env:VEYYON_INSTALL_SOURCED = $savedSourced
     Remove-Item -Recurse -Force $refuseSandbox -ErrorAction SilentlyContinue
 }
 
@@ -1494,6 +1505,17 @@ try {
 $usageText = (Write-Usage 6>&1 | Out-String)
 Check "the option list documents the binary install" ([bool]($usageText -match '-Binary')) "True"
 Check "and documents no source install" ([bool]($usageText -match '-Source')) "False"
+# The RENDERED text, not the source line. A backtick is PowerShell's escape
+# character inside a here-string, so the single-backtick spelling of ``bun run
+# setup`` compiled to a BACKSPACE followed by "un run setup": the option list told
+# the reader whose ref is not installable to run `un run setup`, and the parity
+# suite in scripts/installer-help-parity.test.ts could not see it because it reads
+# install.ps1 as text, where the `b` is still there. Assert the command a user can
+# type, and that no control character reached the screen.
+Check "the checkout route names the setup command a user can type" `
+    ([bool]($usageText -match 'bun run setup')) "True"
+Check "and the option list carries no control characters" `
+    ([bool]($usageText -match "[\x00-\x08\x0b\x0c\x0e-\x1f]")) "False"
 
 # --- Get-TagFromRedirect: the release lookup no longer needs the GitHub API ---
 # api.github.com allows 60 requests an hour per IP without a token, shared by

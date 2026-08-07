@@ -1771,7 +1771,7 @@ Options:
   -Ref <tag>        Install a specific published release tag. A bare version
                     resolves to its published tag, so 1.0.37 and v1.0.37 are the
                     same release. Branches and commits are not installable: clone
-                    the repository and run `bun run setup` in that checkout.
+                    the repository and run ``bun run setup`` in that checkout.
   -NoVerify         Skip the download's checksum verification (NOT recommended)
   -Uninstall        Remove veyyon, the vey shim, completions, and any source
                     checkout an older installer left behind
