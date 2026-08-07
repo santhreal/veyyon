@@ -396,7 +396,10 @@ describe("a TTSR rule that matches a tool call", () => {
 	describe("closed over every interrupt mode the settings schema declares", () => {
 		it("classifies exactly the modes the schema declares, so a new mode is a red test", () => {
 			expect(INTERRUPT_MODES.length).toBeGreaterThan(0);
-			expect([...INTERRUPT_MODES].sort()).toEqual(Object.keys(INTERRUPTS_ON_TOOL_MATCH).sort());
+			// Widened to string[] on the way in: both sides are compared as plain names, and the
+			// literal-union element type made the matcher reject the schema's own string keys.
+			const declared: string[] = [...INTERRUPT_MODES];
+			expect(declared.sort()).toEqual(Object.keys(INTERRUPTS_ON_TOOL_MATCH).sort());
 		});
 
 		it("covers every TTSR delivery template the prompt registry holds", () => {

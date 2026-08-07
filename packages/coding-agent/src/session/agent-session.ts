@@ -69,6 +69,8 @@ import {
 	prepareCompaction,
 	redactLegacyArchiveText,
 	renderHandoffPrompt,
+	renderTailElisionArtifact,
+	renderTailElisionMarker,
 	resolveBudgetReserveTokens,
 	resolveServerCompactionTransport,
 	resolveThresholdTokens,
@@ -8988,12 +8990,29 @@ export class AgentSession {
 		const previousSelectedMCPToolNames = options?.previousSelectedMCPToolNames ?? this.getSelectedMCPToolNames();
 		const tools: AgentTool[] = [];
 		let validToolNames: string[] = [];
+		// A requested name the registry does not hold is dropped, because a stale
+		// selection naming a tool this build no longer ships must not fail a whole
+		// session. It is LOGGED because dropping it silently is how a tool goes
+		// missing for weeks: the session advertised 22 tools and sent 21, the model
+		// simply never called the absent one, and nothing anywhere said a name had
+		// been asked for and not found. Any future wiring defect that removes a tool
+		// from the registry now leaves a record naming it.
+		const droppedToolNames: string[] = [];
 		for (const name of toolNames) {
 			const tool = this.#toolRegistry.get(name);
 			if (tool) {
 				tools.push(this.#wrapToolForAcpPermission(tool));
 				validToolNames.push(name);
+			} else {
+				droppedToolNames.push(name);
 			}
+		}
+		if (droppedToolNames.length > 0) {
+			logger.warn("requested tools are not in the session registry and were dropped", {
+				sessionId: this.sessionManager.getSessionId(),
+				dropped: droppedToolNames,
+				model: this.model ? `${this.model.provider}/${this.model.id}` : undefined,
+			});
 		}
 		// Auto-QA tool must survive any runtime tool-set mutation.
 		if (isAutoQaEnabled(this.settings) && !validToolNames.includes(TOOL.report_tool_issue)) {
@@ -13084,6 +13103,7 @@ export class AgentSession {
 				fromExtension,
 				preserveData,
 			);
+			await this.#persistCompactionTailElisions(preparation);
 			const newEntries = this.sessionManager.getEntries();
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
@@ -15822,6 +15842,33 @@ export class AgentSession {
 		return false;
 	}
 
+	/**
+	 * Persist a compaction's tail elisions. `prepareCompaction` replaces
+	 * over-budget tool-result bulk in the kept tail with markers on the live
+	 * branch; this offloads the originals to one recovery artifact, points the
+	 * markers at it, and rewrites the session file so the bounded tail — not
+	 * the pre-elision bulk — is what a resume rebuilds. A failed offload still
+	 * rewrites: the elision is the bound, the artifact is only the pointer.
+	 */
+	async #persistCompactionTailElisions(preparation: CompactionPreparation): Promise<void> {
+		const elisions = preparation.tailElisions ?? [];
+		if (elisions.length === 0) return;
+		let artifactId: string | undefined;
+		try {
+			artifactId = await this.sessionManager.saveArtifact(renderTailElisionArtifact(elisions), "compaction-tail");
+		} catch {
+			artifactId = undefined;
+		}
+		if (artifactId) {
+			for (const elision of elisions) {
+				elision.message.content = [
+					{ type: "text", text: renderTailElisionMarker(elision.toolName, elision.tokens, artifactId) },
+				];
+			}
+		}
+		await this.sessionManager.rewriteEntries();
+	}
+
 	/** Notice fragment for a dead-end elide tier: what was freed and where it went. */
 	#describeElideRescue(elided: number, tokensFreed: number, sink: string): string {
 		return `elided ${formatCount("heavy block", elided)} (~${tokensFreed.toLocaleString()} tokens) to ${sink}`;
@@ -16215,6 +16262,7 @@ export class AgentSession {
 				fromExtension,
 				preserveData,
 			);
+			await this.#persistCompactionTailElisions(preparation);
 			const newEntries = this.sessionManager.getEntries();
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
