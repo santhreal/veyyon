@@ -586,9 +586,21 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	"bash.autoBackground.enabled": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "shell",
+			group: "Bash",
+			label: "Bash Auto-Background",
+			description:
+				"Move a long-running bash command to a background job on its own and deliver the result when it lands, instead of holding the turn open. Off, a command holds the foreground until it finishes or times out. Either way you can background the running command yourself with the composer's background key.",
+		},
+	},
+
 	"bash.autoBackground.thresholdMs": {
 		type: "number",
-		default: 60_000,
+		default: 300_000,
 		ui: {
 			tab: "shell",
 			group: "Bash",

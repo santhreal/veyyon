@@ -277,17 +277,6 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
-	"bash.autoBackground.enabled": {
-		type: "boolean",
-		default: false,
-		ui: {
-			tab: "shell",
-			group: "Bash",
-			label: "Bash Auto-Background",
-			description: "Automatically background long-running bash commands and deliver the result later",
-		},
-	},
-
 	"bash.stallDetection.enabled": {
 		type: "boolean",
 		default: false,

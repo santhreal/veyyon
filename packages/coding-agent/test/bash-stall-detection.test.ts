@@ -215,6 +215,109 @@ describe("bash stall detection and wall-clock auto-background", () => {
 		expect(resultText(result)).toContain("done");
 		expect(requestManualBackground()).toBe(false);
 	});
+	/**
+	 * THE STOCK INSTALL. Both auto levers off is what a fresh profile used to
+	 * look like, and the managed-job route was gated on one of them being on.
+	 * The foreground wait is what publishes the registry entry, so with both off
+	 * nothing registered: `hasForegroundBashWait()` stayed false, the composer
+	 * never raised the `ctrl+b background` chip, and the keybinding fell through
+	 * to readline cursor-left. A documented shortcut that silently did nothing.
+	 *
+	 * Reported 2026-08-06: "there is no hint below the command that says you can
+	 * background nor does it work". Both halves are this one gate.
+	 */
+	it("registers the wait and honours the background key with both auto levers off", async () => {
+		const session = makeSession(tempDir, manager, {
+			"bash.autoBackground.enabled": false,
+			"bash.stallDetection.enabled": false,
+		});
+		const tool = new BashTool(session);
+		const pending = tool.execute("manual-off", { command: "sleep 5", timeout: 30 });
+
+		// The chip's gate. False here is the bug the operator saw as a missing hint.
+		await waitForForegroundWait();
+		expect(hasForegroundBashWait()).toBe(true);
+		expect(requestManualBackground()).toBe(true);
+
+		const result = await pending;
+		const async = asyncDetails(result);
+		expect(async.state).toBe("running");
+		expect(async.reason).toBe("manual");
+		expect(resultText(result)).toContain(`Backgrounded as job ${async.jobId} at the operator's request`);
+		expect(manager.cancel(async.jobId)).toBe(true);
+	});
+
+	/**
+	 * A configured "Immediately" is a real choice; a clamped zero is not.
+	 * `#resolveWaitMs` collapses the wall timer to 0 when the command's own
+	 * timeout would fire first, and `startBackgrounded` used to read that
+	 * collapsed value. Harmless while auto-background shipped off, but the
+	 * moment it became the default every short-timeout command would have been
+	 * shunted straight to a background job without ever running in view.
+	 */
+	it("does not background a short-timeout command that merely clamps the timer to zero", async () => {
+		const session = makeSession(tempDir, manager, {
+			"bash.autoBackground.enabled": true,
+			"bash.autoBackground.thresholdMs": 300_000,
+			"bash.stallDetection.enabled": false,
+		});
+		const tool = new BashTool(session);
+		const result = await tool.execute("clamp-1", { command: "echo inline", timeout: 1 });
+
+		expect(result.details?.async).toBeUndefined();
+		expect(resultText(result)).toContain("inline");
+	});
+
+	/**
+	 * The per-call lever. A model that already knows a command is slow should not
+	 * have to hold the foreground for the configured default, and one that needs
+	 * output inline should be able to buy more time. `backgroundAfter` overrides
+	 * the setting in both directions, and asking for it IS the opt-in: it arms the
+	 * wall-clock timer even with auto-background switched off.
+	 */
+	it("backgrounds immediately on backgroundAfter 0 even with auto-background off", async () => {
+		const session = makeSession(tempDir, manager, {
+			"bash.autoBackground.enabled": false,
+			"bash.stallDetection.enabled": false,
+		});
+		const tool = new BashTool(session);
+		const result = await tool.execute("after-0", { command: "sleep 5", timeout: 30, backgroundAfter: 0 });
+
+		const async = asyncDetails(result);
+		expect(async.state).toBe("running");
+		expect(async.reason).toBe("threshold");
+		expect(manager.cancel(async.jobId)).toBe(true);
+	});
+
+	it("lets backgroundAfter beat a configured threshold that would never fire", async () => {
+		const session = makeSession(tempDir, manager, {
+			"bash.autoBackground.enabled": true,
+			// Far past the command's own timeout: only the per-call value can win.
+			"bash.autoBackground.thresholdMs": 600_000,
+			"bash.stallDetection.enabled": false,
+		});
+		const tool = new BashTool(session);
+		const result = await tool.execute("after-short", { command: "sleep 5", timeout: 30, backgroundAfter: 0.2 });
+
+		const async = asyncDetails(result);
+		expect(async.state).toBe("running");
+		expect(async.reason).toBe("threshold");
+		expect(manager.cancel(async.jobId)).toBe(true);
+	});
+
+	/** The other direction: a generous per-call budget keeps a quick command inline. */
+	it("keeps a fast command in the foreground when backgroundAfter is generous", async () => {
+		const session = makeSession(tempDir, manager, {
+			"bash.autoBackground.enabled": true,
+			"bash.autoBackground.thresholdMs": 0,
+			"bash.stallDetection.enabled": false,
+		});
+		const tool = new BashTool(session);
+		const result = await tool.execute("after-long", { command: "echo kept", timeout: 30, backgroundAfter: 60 });
+
+		expect(result.details?.async).toBeUndefined();
+		expect(resultText(result)).toContain("kept");
+	});
 });
 
 /** Resolve once the foreground wait registers (poll capped at 2s — the wait

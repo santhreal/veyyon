@@ -75,13 +75,15 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 - Need a long-running process or >3600s run? Use an external process supervisor; avoid detached shell jobs you cannot later observe or stop.
 {{/unless}}
 {{/if}}
+
+## Backgrounding a foreground call
 {{#if autoBackgroundEnabled}}
 
-## Auto-background
-
-- A long-running foreground call may convert to a background job; the final result arrives as a follow-up tool call. NOT a failure — don't retry or wait synchronously.
+- A long-running foreground call may convert to a background job after {{autoBackgroundSeconds}}s; the final result arrives as a follow-up tool call. NOT a failure — don't retry or wait synchronously.
 - Need the result inline (e.g. piping into another command)? Raise `timeout` above expected duration{{#if asyncEnabled}}, or set `async: true` up front{{/if}}.
 {{/if}}
+- `backgroundAfter` is seconds of foreground time for THIS call before it converts to a background job, overriding the configured default in both directions: raise it for a command whose output you need inline, lower it for one you know is slow. `backgroundAfter: 0` backgrounds immediately.
+- The operator can also background a running command by hand at any time. Same outcome: the result arrives later as a follow-up, so treat it as normal.
 {{#if stallDetectionEnabled}}
 
 ## Stall detection

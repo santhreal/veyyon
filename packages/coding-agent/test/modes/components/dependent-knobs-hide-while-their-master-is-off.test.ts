@@ -4,7 +4,7 @@
  * THE DEFECT. `speech.mode`, `speech.enhanced`, `speech.voice`, `stt.modelName`,
  * `stt.submitTrigger`, `bash.autoBackground.thresholdMs` and
  * `bash.stallDetection.stallMs` all render unconditionally, while each one's master
- * toggle ships OFF. Every read of them is behind that master, so with stock settings
+ * toggle shipped OFF. Every read of them is behind that master, so with stock settings
  * an operator could open `/settings`, pick "Final message only" or "Stall After: 15
  * seconds", watch the row take the new value, and get no change in behaviour at all.
  * That is the same failure as a dead flag, and worse than an absent feature, because
@@ -65,6 +65,11 @@ function visiblePaths(tab: SettingTab): string[] {
 interface Feature {
 	master: SettingPath;
 	tab: SettingTab;
+	/**
+	 * What the master itself defaults to. Most of these features ship off; auto-background
+	 * ships ON, so the stock state is pinned per feature rather than assumed uniform.
+	 */
+	shipsOn: boolean;
 	/** Dependents that must appear only while `master` is on, with their pinned defaults. */
 	dependents: ReadonlyArray<{ path: SettingPath; default: string | number | boolean }>;
 }
@@ -73,6 +78,7 @@ const FEATURES: readonly Feature[] = [
 	{
 		master: "speech.enabled",
 		tab: "providers",
+		shipsOn: false,
 		dependents: [
 			{ path: "speech.mode", default: "assistant" },
 			{ path: "speech.enhanced", default: false },
@@ -82,6 +88,7 @@ const FEATURES: readonly Feature[] = [
 	{
 		master: "stt.enabled",
 		tab: "interaction",
+		shipsOn: false,
 		dependents: [
 			{ path: "stt.modelName", default: "parakeet" },
 			{ path: "stt.submitTrigger", default: "never" },
@@ -90,11 +97,13 @@ const FEATURES: readonly Feature[] = [
 	{
 		master: "bash.autoBackground.enabled",
 		tab: "shell",
-		dependents: [{ path: "bash.autoBackground.thresholdMs", default: 60_000 }],
+		shipsOn: true,
+		dependents: [{ path: "bash.autoBackground.thresholdMs", default: 300_000 }],
 	},
 	{
 		master: "bash.stallDetection.enabled",
 		tab: "shell",
+		shipsOn: false,
 		dependents: [{ path: "bash.stallDetection.stallMs", default: 30_000 }],
 	},
 ];
@@ -119,9 +128,9 @@ describe("the harness this lock depends on", () => {
 	 * Without this, a `visiblePaths` that returned `[]` — or a selector that hid
 	 * everything — would make the whole suite green for the wrong reason.
 	 */
-	it("reports an unconditioned row as visible while the feature is off", () => {
-		for (const { master, tab } of FEATURES) {
-			expect(settings.get(master)).toBe(false);
+	it("reports an unconditioned row as visible whatever the feature is set to", () => {
+		for (const { master, tab, shipsOn } of FEATURES) {
+			expect(settings.get(master), `${master} stock value moved`).toBe(shipsOn);
 			expect(getSettingDef(master)?.condition, `${master} must stay unconditioned`).toBeUndefined();
 			expect(visiblePaths(tab), `${master} is the control and must render`).toContain(master);
 		}
@@ -164,7 +173,9 @@ describe("the harness this lock depends on", () => {
 
 describe.each([...FEATURES])("$master", ({ master, tab, dependents }) => {
 	it("keeps its dependent knobs off the settings screen while it is off", () => {
-		expect(settings.get(master)).toBe(false);
+		// Driven rather than assumed: one of these masters now ships on, and the
+		// contract under test is "off hides the dependents", not "off is the default".
+		settings.set(master, false);
 
 		const visible = visiblePaths(tab);
 		for (const { path } of dependents) {
@@ -187,6 +198,7 @@ describe.each([...FEATURES])("$master", ({ master, tab, dependents }) => {
 	 * there, whether or not the row was on screen a moment ago.
 	 */
 	it("leaves every dependent's value untouched by its own visibility", () => {
+		settings.set(master, false);
 		for (const { path, default: expected } of dependents) {
 			expect(getDefault(path), `${path} schema default moved`).toBe(expected);
 			expect(settings.get(path), `${path} reads differently while hidden`).toBe(expected);
