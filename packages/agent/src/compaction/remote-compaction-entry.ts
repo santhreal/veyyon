@@ -6,45 +6,65 @@
  * model-visible context. It deliberately has no engine imports so
  * `session-context.ts` can read it from any graph.
  *
- * THE CONTRACT (the dual-write decision, and why):
+ * WHEN THIS APPLIES. Server-side compaction runs only when the operator turns
+ * `compaction.remote` on AND `resolveServerCompactionTransport` admits the
+ * model. Admission is capability data, never a provider-name check: the model
+ * must be on the OpenAI Responses wire api (so Azure OpenAI Responses
+ * deployments qualify, and OpenAI Codex does not, its api is a different one)
+ * AND its model row must report server-compaction support, which a host
+ * resolves at build time and config or discovery can flip per row. Anything
+ * else compacts locally on the ordinary summary path.
  *
- * A remote compaction entry is an ordinary `CompactionEntry` — real readable
- * `summary`, real `firstKeptEntryId`, real `tokensBefore` — whose
- * `preserveData[REMOTE_COMPACTION_PRESERVE_KEY]` additionally carries the
- * provider's canonical compacted window verbatim (retained items plus the
+ * Do not confuse this with `compaction.remoteEndpoint` and
+ * `remote-summarizer.ts`. That is a separate feature: an operator-configured
+ * external endpoint that returns summary TEXT for the local `summary`
+ * strategy. Neither replaces the other. They only share the word "remote".
+ *
+ * THE CONTRACT: one compaction, one artifact.
+ *
+ * A remote compaction entry is a `CompactionEntry` with a real
+ * `firstKeptEntryId`, a real `tokensBefore`, an EMPTY `summary`, and the
+ * provider's canonical compacted window verbatim under
+ * `preserveData[REMOTE_COMPACTION_PRESERVE_KEY]` (retained items plus the
  * opaque `compaction` item, per the OpenAI Compaction guide: "do not prune
  * /responses/compact output; the returned window is the canonical next
- * context window").
+ * context window"). The window IS the artifact for that span.
  *
- * Both halves are always written, because each half covers a rebuild the
- * other cannot:
+ * The empty summary is deliberate, and it is not a gap waiting to be filled.
+ * Writing a local summary alongside the window would mean paying a model to
+ * summarize a span the provider has already compacted, and then keeping two
+ * accounts of one range that are free to disagree the moment either side is
+ * regenerated. So there is no second half, and code that assumes one is wrong.
+ * `assertValidCompactionResult` encodes this: an empty summary is valid only
+ * when a well-formed window is present.
  *
- * - The NATIVE WINDOW is only meaningful to the provider family that produced
- *   it. On rebuild, `buildSessionContext` attaches it to the compaction
- *   summary message as a `ProviderPayload`; a Responses-family provider then
- *   replays the window INSTEAD of the summary text (the existing
+ * What the single artifact costs, and who pays it:
+ *
+ * - REPLAY is provider-bound. On rebuild, `buildSessionContext` attaches the
+ *   window to the compaction summary message as a `ProviderPayload`, and a
+ *   Responses-family provider replays it INSTEAD of summary text (the
  *   `buildResponsesInput` seam replays user-message payloads containing a
  *   `compaction` item). This preserves encrypted reasoning across the
- *   compaction, which is the entire value of compacting server-side.
- * - The READABLE SUMMARY is what every other rebuild sees: a fork or resume
- *   onto a different provider, a provider row whose capability flag is off,
- *   the display transcript, the session listing, and the next compaction's
- *   `previousSummary`. It is generated locally on the session model at
- *   compaction time, so the log always carries real content — never the
- *   placeholder sentence that stranded sessions written by the removed
- *   provider-native path (see legacy-provider-native.ts).
+ *   compaction, which is the entire reason to compact server-side.
+ * - EVERY OTHER READER sees no summary text, because there is none: a fork or
+ *   resume onto a different provider, a provider row whose capability flag is
+ *   off, the display transcript, the session listing. Those readers must fall
+ *   back to the underlying messages rather than to a summary. That fallback is
+ *   `hasReusableSummary` in compaction.ts, which refuses to treat such an entry
+ *   as a reusable prior compaction so the span behind it is re-expanded and
+ *   summarized locally on the next pass.
  *
  * The window is stateless provider data (the endpoint is documented as
  * "fully stateless and ZDR-friendly"), so it survives process restarts and
  * reloads as plain JSON in the session file. What it never survives is a
- * provider switch — which is exactly when the summary takes over.
+ * provider switch, which is exactly when re-expansion takes over.
  *
  * Chaining: a second remote compaction sends the previous window in front of
  * the new span ("The latest compaction item carries the necessary context to
  * continue the conversation") and stores ONLY the newly returned window. A
  * later LOCAL compaction drops the key entirely (`compact()` strips it): its
- * summary already covers the span, and a stale window replayed beside it
- * would double the history.
+ * summary covers the span, and a stale window replayed beside it would double
+ * that history.
  */
 
 import type { ProviderPayload } from "@veyyon/ai/types";

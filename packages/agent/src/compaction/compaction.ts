@@ -44,7 +44,11 @@ import { CompactionCancelledError } from "./errors";
 import { LEGACY_REMOTE_PRESERVE_KEYS } from "./legacy-provider-native";
 import { hasLegacyArchive, legacyArchiveSourceText, stripLegacyArchive } from "./legacy-snapcompact-archive";
 import { type ConvertToLlm, createBranchSummaryMessage, createCustomMessage, defaultConvertToLlm } from "./messages";
-import { stripRemoteCompactionPreserveData } from "./remote-compaction-entry";
+import {
+	getRemoteCompactionPreserveData,
+	REMOTE_COMPACTION_PRESERVE_KEY,
+	stripRemoteCompactionPreserveData,
+} from "./remote-compaction-entry";
 import { requestRemoteCompaction } from "./remote-summarizer";
 // The trigger decision moved to the module whose header owns it, and is re-exported below so no caller
 // changed. What is left here is the ENGINE: the summarizer, the cut point, the provider round trip.
@@ -1059,17 +1063,38 @@ export interface CompactionPreparation {
 }
 
 /**
- * Whether a prior compaction entry carries a summary this session can actually
- * use. Every compaction veyyon writes now holds real summary text, so the answer
- * is yes — except for entries left by the removed provider-native remote path,
- * whose payload is an opaque provider blob no local code can read or replay and
- * whose summary field is a placeholder. Those are never reusable: the caller
- * re-expands the original messages behind them and summarizes locally instead,
- * which is what recovers a session that was compacted by the old path.
+ * Preserve-data keys whose entry carries no summary text a later local pass
+ * can build on. Two of them are the DEAD provider-native keys, whose payload
+ * is an opaque blob nothing shipping today can read, sitting behind a
+ * placeholder summary. The third is the LIVE server-side compaction key, which
+ * is not dead at all: its entry simply has no summary, because the window the
+ * provider returned is the artifact for that span.
+ */
+const NON_REUSABLE_SUMMARY_KEYS: readonly string[] = [...LEGACY_REMOTE_PRESERVE_KEYS, REMOTE_COMPACTION_PRESERVE_KEY];
+
+/**
+ * Whether a prior compaction entry carries summary text a later local pass can
+ * actually build on.
+ *
+ * For a server-side entry the answer is always no, and that is not a defect in
+ * the remote path. veyyon never writes a local summary beside a provider
+ * compaction window: that would pay a model to re-summarize a span the
+ * provider already compacted and leave two accounts of one range free to
+ * disagree. It was rejected, not deferred, so the summary is permanently empty.
+ *
+ * The consequence lands here. Call such an entry reusable and
+ * `prepareCompaction` adopts it as the previous compaction with a
+ * `previousSummary` of "", so the span behind the window is never re-expanded,
+ * and the local pass that follows strips the window on its way out. The span
+ * is then neither summarized nor replayable: lost.
+ *
+ * So all three keys get the same treatment a legacy entry gets. Look straight
+ * past the entry, re-expand the original messages behind it, and summarize
+ * them locally.
  */
 function hasReusableSummary(preserveData: Record<string, unknown> | undefined): boolean {
 	if (!preserveData) return true;
-	return !LEGACY_REMOTE_PRESERVE_KEYS.some(key => key in preserveData);
+	return !NON_REUSABLE_SUMMARY_KEYS.some(key => key in preserveData);
 }
 
 export interface CompactionPreparationOptions {
@@ -1092,10 +1117,29 @@ export interface CompactionPreparationOptions {
  * Validate the complete result immediately before a runtime rewrites history.
  * A malformed extension result must fail before its cut point can discard the
  * live tail.
+ *
+ * A compaction must leave behind an artifact that stands in for the span it
+ * discards, and there are exactly two legal artifacts. A local pass leaves
+ * summary text. A server-side pass leaves the compacted window the provider
+ * returned, and no summary. The empty summary there is correct, not a miss:
+ * writing a local summary beside the window would pay a model to re-summarize
+ * a span the provider already compacted and store two accounts of one range
+ * free to disagree. So an empty summary is checked against the window rather
+ * than rejected outright.
  */
 export function assertValidCompactionResult(preparation: CompactionPreparation, result: CompactionResult): void {
 	if (typeof result.summary !== "string" || result.summary.trim().length === 0) {
-		throw new Error("Compaction failed: the generated summary is empty; history was left unchanged.");
+		// Not `key in preserveData`: a payload that fails validation cannot be
+		// replayed by any reader, so it is no better than an absent one here.
+		if (!getRemoteCompactionPreserveData(result.preserveData)) {
+			const claimedRemote =
+				result.preserveData !== undefined && REMOTE_COMPACTION_PRESERVE_KEY in result.preserveData;
+			throw new Error(
+				claimedRemote
+					? "Compaction failed: the summary is empty and the server-side compaction window stored beside it is malformed, so nothing replaces the discarded history; history was left unchanged."
+					: "Compaction failed: the generated summary is empty and no server-side compaction window was stored, so nothing replaces the discarded history; history was left unchanged.",
+			);
+		}
 	}
 	if (result.firstKeptEntryId !== preparation.firstKeptEntryId) {
 		throw new Error(
@@ -1180,9 +1224,10 @@ export function prepareCompaction(
 	let prevCompactionIndex = -1;
 	for (let i = pathEntries.length - 1; i >= 0; i--) {
 		if (pathEntries[i].type !== "compaction") continue;
-		// Skip a compaction left by the removed provider-native remote path: its
-		// summary is only an opaque placeholder, so re-expand its original messages
-		// and summarize them locally rather than stranding that history.
+		// Skip an entry whose summary a local pass cannot build on: one of the two
+		// dead provider-native keys, or a live OpenAI server-side entry whose
+		// artifact is the window rather than text. Re-expand the original messages
+		// behind it and summarize them locally rather than stranding that span.
 		const entry = pathEntries[i] as CompactionEntry;
 		if (!hasReusableSummary(entry.preserveData)) continue;
 		prevCompactionIndex = i;
@@ -1354,21 +1399,30 @@ export async function compact(
 		previousSummary,
 		previousLegacyArchiveText,
 	);
-	// Provider-native compaction is deliberately absent. Compaction has exactly
-	// two strategies — `summary` and `handoff` — and both produce a real,
-	// readable artifact veyyon owns. Delegating history to an opaque
-	// provider-side replay payload (OpenAI's /responses/compact) was removed:
-	// the payload is unreadable to veyyon, dies the moment the session switches
-	// provider, and left the session log carrying a placeholder in place of a
-	// summary. See BACKLOG.md row 1 and the `no provider gets a private
-	// compaction path` tests.
+	// This function is the LOCAL pass and it always produces summary text. It is
+	// what runs whenever server-side compaction does not apply, which is most of
+	// the time.
+	//
+	// The server-side pass is live, not absent. When `compaction.remote` is on
+	// and `resolveServerCompactionTransport` admits the model,
+	// `compactWithProvider` calls the provider's compaction endpoint and stores
+	// the window it returns under REMOTE_COMPACTION_PRESERVE_KEY, with an empty
+	// summary. Admission is capability data, never a provider-name check: the
+	// model must be on the OpenAI Responses wire api (Azure OpenAI Responses
+	// deployments included) AND its row must report server-compaction support.
+	//
+	// One compaction, one artifact. That pass does not also come through here to
+	// mint a local summary for the same span. Doing both was rejected, not
+	// deferred: it would pay a model to redo work the provider already did and
+	// leave two accounts of one range free to disagree. What follows only has to
+	// keep some OTHER pass's artifact from riding forward on this entry.
 	let preserveData = previousPreserveData;
 	if (preserveData !== undefined) {
 		const carried: Record<string, unknown> = { ...preserveData };
-		// A session compacted by the removed remote path carries an opaque payload
-		// no local code can replay. Drop it here so it is never copied forward;
-		// prepareCompaction has already re-expanded the original messages behind
-		// it, so the history itself is intact and gets summarized locally below.
+		// A session compacted by one of the two dead provider-native paths carries
+		// an opaque payload no local code can replay. Drop it here so it is never
+		// copied forward; prepareCompaction has already re-expanded the original
+		// messages behind it, so the history is intact and gets summarized below.
 		let dropped = false;
 		for (const key of LEGACY_REMOTE_PRESERVE_KEYS) {
 			if (key in carried) {
@@ -1378,10 +1432,11 @@ export async function compact(
 		}
 		if (dropped) preserveData = Object.keys(carried).length > 0 ? carried : undefined;
 	}
-	// A prior REMOTE window must not ride a new local entry forward either: this
-	// summary covers the span the window covered, and replaying the stale window
-	// beside the new summary would double that history on every rebuild. The
-	// remote path re-stamps a fresh window after this function returns.
+	// A prior REMOTE window must not ride this new local entry forward either.
+	// The summary generated below covers the span that window covered, and
+	// replaying the stale window beside it would double that history on every
+	// rebuild. A later remote pass does not come through here at all: it mints
+	// its own entry carrying only a fresh window.
 	preserveData = stripRemoteCompactionPreserveData(preserveData);
 
 	// Generate summaries (can be parallel if both needed) and merge into one
