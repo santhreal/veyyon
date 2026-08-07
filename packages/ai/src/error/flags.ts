@@ -1,4 +1,4 @@
-import { isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
+import { http2RetryVerdict, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
 import type { Api, AssistantMessage } from "../types";
 import { AwsCredentialsError } from "./aws";
 import {
@@ -297,6 +297,19 @@ export function is(id: number | undefined, flag: Flag): boolean {
 	return ((id ?? 0) & flag) !== 0;
 }
 
+/**
+ * Whether a failed turn is worth another attempt.
+ *
+ * `replayUnsafe` means the failed assistant message already carried a tool
+ * call, so the tool may have run and replaying would duplicate its effect. That
+ * is a separate question from whether the failure was transient, and it wins:
+ * a transport fault says the next attempt could differ, never that repeating
+ * the turn is safe. HTTP/2 stream resets are classified transient for exactly
+ * that reason and deliberately get no bypass here, because a reset that arrives
+ * after the stream delivered a tool call is precisely the case the guard
+ * exists for. `MalformedFunctionCall` is the one exception: the call was never
+ * well-formed enough to execute, so there is nothing to duplicate.
+ */
 export function retriable(id: number | undefined, opts?: { replayUnsafe?: boolean }): boolean {
 	if (is(id, Flag.ContentBlocked)) return false;
 	if (is(id, Flag.MalformedFunctionCall)) return true;
@@ -420,7 +433,16 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 			kinds |= Flag.UsageLimit;
 		}
 
-		if (isTimeoutText(errorMessage)) kinds |= Flag.Transient | Flag.Timeout;
+		// A named HTTP/2 error code (RFC 7540 section 7) is a fact about the
+		// transport, so it decides transience on its own and the wording heuristics
+		// below never see the message. They cannot read these codes: they matched
+		// `NGHTTP2_INTERNAL_ERROR` only because it contains the phrase "internal
+		// error", and they would just as happily promote a wrapper around
+		// `NGHTTP2_CANCEL` -- our own abort -- back into the retry loop.
+		const http2Verdict = http2RetryVerdict(errorMessage);
+		if (http2Verdict !== undefined) {
+			if (http2Verdict) kinds |= Flag.Transient;
+		} else if (isTimeoutText(errorMessage)) kinds |= Flag.Transient | Flag.Timeout;
 		else if (isTransientErrorText(errorMessage)) kinds |= Flag.Transient;
 		if ((api === "openai-responses" || api === "openai-codex-responses") && isStaleResponsesText(errorMessage)) {
 			kinds |= Flag.StaleResponsesItem;
