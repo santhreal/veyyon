@@ -89,9 +89,15 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
+	// Off by default. Canonical todo state already stopped auto-clearing for the
+	// reason recorded in agent-session.ts: watching a phase total shrink after
+	// marking a task done reads as work being lost. A reader draws the same
+	// conclusion when finished rows evaporate from the board a minute after they
+	// land, which is the complaint this setting used to cause rather than solve.
+	// The timer is kept for anyone who wants the board to tidy itself.
 	"tasks.todoClearDelay": {
 		type: "number",
-		default: 60,
+		default: -1,
 		ui: {
 			tab: "tools",
 			group: "Todos",
@@ -99,12 +105,12 @@ export const TASKS_SETTINGS = {
 			description: "Delay before completed or abandoned todos are removed from the todo widget",
 			options: [
 				{ value: "0", label: "Instant" },
-				{ value: "60", label: "1 minute", description: "Default" },
+				{ value: "60", label: "1 minute" },
 				{ value: "300", label: "5 minutes" },
 				{ value: "900", label: "15 minutes" },
 				{ value: "1800", label: "30 minutes" },
 				{ value: "3600", label: "1 hour" },
-				{ value: "-1", label: "Never" },
+				{ value: "-1", label: "Never", description: "Default" },
 			],
 		},
 	},
