@@ -13,7 +13,7 @@ import { createAgentSession } from "../../sdk";
 import type { AgentSessionEvent } from "../../session/agent-session";
 import type { AuthStorage } from "../../session/auth-storage";
 import type { CommitAgentState } from "./state";
-import { createCommitTools } from "./tools";
+import { commitAnalysisSpawnTarget, createCommitTools } from "./tools";
 
 export interface CommitAgentInput {
 	cwd: string;
@@ -42,13 +42,17 @@ export async function runCommitAgentSession(input: CommitAgentInput): Promise<Co
 		types_description: typesDescription,
 	});
 	const state: CommitAgentState = { diffText: input.diffText };
-	const spawns = "sonic";
+	// The session's spawn capability is the SAME resolved name `analyze_files`
+	// will request, so the two cannot disagree. It was the literal `"sonic"`,
+	// which meant an operator with that agent off ran a session permitted to
+	// spawn one agent that the enablement check then refused. An empty string is
+	// the spelling for "spawn nothing", used when nothing at all is enabled.
+	const spawns = commitAnalysisSpawnTarget(input.settings) ?? "";
 	const tools = createCommitTools({
 		cwd: input.cwd,
 		authStorage: input.authStorage,
 		modelRegistry: input.modelRegistry,
 		settings: input.settings,
-		spawns,
 		state,
 		changelogTargets: input.changelogTargets,
 		enableAnalyzeFiles: true,
