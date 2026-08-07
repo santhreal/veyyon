@@ -1,0 +1,61 @@
+{
+	"type": "module",
+	"name": "@veyyon/simulations",
+	"version": "1.0.46",
+	"private": true,
+	"description": "Deterministic offline simulations that drive real Veyyon subsystems against scripted inputs",
+	"homepage": "https://veyyon.dev",
+	"author": "santhreal",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/santhreal/veyyon.git",
+		"directory": "packages/simulations"
+	},
+	"bugs": {
+		"url": "https://github.com/santhreal/veyyon/issues"
+	},
+	"keywords": [
+		"simulation",
+		"testing",
+		"deterministic"
+	],
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"scripts": {
+		"check": "biome check . && bun run check:types",
+		"check:types": "tsgo -p tsconfig.json --noEmit",
+		"lint": "biome lint .",
+		"fix": "biome check --write --unsafe .",
+		"fmt": "biome format --write .",
+		"test": "bun test --parallel"
+	},
+	"devDependencies": {
+		"@types/bun": "catalog:",
+		"@veyyon/agent-core": "catalog:",
+		"@veyyon/ai": "catalog:",
+		"@veyyon/catalog": "catalog:",
+		"@veyyon/coding-agent": "catalog:",
+		"@veyyon/utils": "catalog:",
+		"arktype": "catalog:"
+	},
+	"engines": {
+		"bun": ">=1.3.14"
+	},
+	"files": [
+		"src",
+		"README.md",
+		"CHANGELOG.md"
+	],
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		},
+		"./*": {
+			"types": "./src/*.ts",
+			"import": "./src/*.ts"
+		},
+		"./*.js": "./src/*.ts"
+	}
+}

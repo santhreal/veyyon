@@ -208,6 +208,10 @@ export const fastWorkspacePackages = [
 	// needing the real model fails by name, here and locally, rather than pulling
 	// 270MB into a runner and turning this bucket slow and flaky.
 	"packages/mnemopi",
+	// Simulations. Offline and deterministic, but they drive a real AgentSession
+	// per scenario, so they belong with the fast workspace suites rather than the
+	// native bucket.
+	"packages/simulations",
 ];
 
 // These suites cover the native package, TUI/browser-ish behavior, local servers,
