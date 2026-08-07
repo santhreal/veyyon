@@ -1563,6 +1563,32 @@ function dedupeEphemeralReply(text: string): string {
  * without a real storage layer still work; the resolver simply skips the lookup
  * and emits `{ session_id }` alone, matching the no-OAuth-credential path.
  */
+/**
+ * Whether `next` is the same tool set as `current` in a different order.
+ *
+ * Order-only differences are the case worth catching: they cost a full prefix
+ * re-encode and buy nothing, because the model selects a tool by name. A genuine
+ * set change (a tool added, removed, or swapped) is NOT a permutation and must
+ * reach the provider in the order the caller asked for.
+ */
+function isToolOrderPermutation(current: readonly string[], next: readonly string[]): boolean {
+	if (current.length !== next.length || current.length === 0) return false;
+	let sameOrder = true;
+	for (let index = 0; index < current.length; index++) {
+		if (current[index] !== next[index]) {
+			sameOrder = false;
+			break;
+		}
+	}
+	if (sameOrder) return false;
+	const currentSet = new Set(current);
+	if (currentSet.size !== current.length) return false;
+	for (const name of next) {
+		if (!currentSet.delete(name)) return false;
+	}
+	return currentSet.size === 0;
+}
+
 function buildSessionMetadata(
 	sessionId: string,
 	provider: string,
@@ -8872,7 +8898,7 @@ export class AgentSession {
 		toolNames = normalizeToolNames(toolNames);
 		const previousSelectedMCPToolNames = options?.previousSelectedMCPToolNames ?? this.getSelectedMCPToolNames();
 		const tools: AgentTool[] = [];
-		const validToolNames: string[] = [];
+		let validToolNames: string[] = [];
 		for (const name of toolNames) {
 			const tool = this.#toolRegistry.get(name);
 			if (tool) {
@@ -8886,6 +8912,28 @@ export class AgentSession {
 			if (qaTool) {
 				tools.push(this.#wrapToolForAcpPermission(qaTool));
 				validToolNames.push(TOOL.report_tool_issue);
+			}
+		}
+		// A permutation of the tool set already on the wire keeps the order it is
+		// replacing. The provider-bound `tools` array is part of the cached prompt
+		// prefix, and tools are addressed by name, so their order means nothing to the
+		// model and everything to the cache: reordering the same set re-serializes the
+		// prefix from the tools block onward and the next request pays full input rate
+		// for it. Several callers hand over a different order for an unchanged set --
+		// `refreshSshTool` filters `ssh` out and re-pushes it at the tail,
+		// `#restoreMCPSelectionsForSessionContext` emits every non-MCP tool ahead of
+		// every MCP one, and plan/goal-mode exit replays a list saved before later
+		// activations moved it. None of them intends a change, and the token count does
+		// not move, which is why the cost was invisible: the provider simply served
+		// fewer cached tokens than the system+tools prefix is long.
+		const currentToolNames = this.agent.state.tools.map(tool => tool.name);
+		if (isToolOrderPermutation(currentToolNames, validToolNames)) {
+			const byName = new Map(validToolNames.map((name, index) => [name, tools[index]]));
+			validToolNames = [...currentToolNames];
+			tools.length = 0;
+			for (const name of currentToolNames) {
+				const tool = byName.get(name);
+				if (tool) tools.push(tool);
 			}
 		}
 		if (this.#mcpDiscoveryEnabled) {
@@ -15871,12 +15919,71 @@ export class AgentSession {
 					codexCompaction,
 				});
 
+				// The payload was sized against the MAIN model's threshold, so a
+				// candidate whose window cannot hold it overflows mid-compact. The
+				// manual path has always skipped those candidates loudly (see
+				// #compactWithFallbackModel); this one did not, and it is the path that
+				// fires unattended on every threshold crossing and every overflow
+				// recovery. Sending a request the window provably cannot hold buys a
+				// guaranteed failure, and then the next candidate pays for the same span
+				// again. `compaction.modelContextWindow` (unset = the candidate's own
+				// metadata) overrides for proxies serving a window they do not advertise.
+				const configuredCompactionWindow = this.settings.get("compaction.modelContextWindow");
+
 				for (let candidateIndex = 0; !compactResult && candidateIndex < candidates.length; candidateIndex++) {
 					const candidate = candidates[candidateIndex];
 					const hasMoreCandidates = candidateIndex < candidates.length - 1;
 					const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
 					if (!apiKey) continue;
 					const cachePrefix = await this.#cacheAlignedCompactionPrefix(candidate, autoCompactionSignal);
+					const candidateOptions: SummaryOptions = {
+						promptOverride: this.#obfuscateTextForProvider(compactionPrep.hookPrompt),
+						extraContext: compactionPrep.hookContext,
+						remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
+						metadata: this.agent.metadataForProvider(candidate.provider),
+						initiatorOverride: "agent",
+						convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
+						telemetry,
+						// Effort configured on this compaction candidate wins;
+						// otherwise honor the user's /model thinking selection.
+						// The most-fired compaction site. Clamped per-model
+						// inside compact() via resolveCompactionEffort.
+						thinkingLevel: configuredEffortByModel.get(this.#getModelKey(candidate)) ?? this.thinkingLevel,
+						sessionSystemPrompt: cachePrefix?.sessionSystemPrompt,
+						sessionMessages: cachePrefix?.sessionMessages,
+						tools: cachePrefix?.tools ?? this.agent.state.tools,
+						sessionId: this.sessionId,
+						// Same routing rule as the manual-compaction call site above:
+						// mirror the pinned key the live turns cached under.
+						promptCacheKey: this.agent.promptCacheKey ?? this.sessionId,
+						providerSessionState: this.#providerSessionState,
+						obfuscateProviderText: text => this.obfuscateProviderText(text),
+						codexCompaction,
+					};
+					const candidateWindow =
+						typeof configuredCompactionWindow === "number" && configuredCompactionWindow > 0
+							? configuredCompactionWindow
+							: (candidate.contextWindow ?? 0);
+					const summarizePayloadTokens = estimateCompactionRequestTokens(
+						preparation,
+						candidate,
+						undefined,
+						candidateOptions,
+					);
+					if (candidateWindow > 0 && summarizePayloadTokens > candidateWindow) {
+						logger.warn("compaction candidate skipped: summarization payload exceeds its context window", {
+							candidate: `${candidate.provider}/${candidate.id}`,
+							candidateWindow,
+							summarizePayloadTokens,
+						});
+						// Keep a real reason for the failure event when every candidate is
+						// skipped this way. A thrown provider error from a later candidate
+						// still overwrites it (the catch assigns unconditionally).
+						lastError ??= new Error(
+							`Compaction failed: ${candidate.provider}/${candidate.id} holds ${candidateWindow} tokens and the summary needed ${summarizePayloadTokens}.`,
+						);
+						continue;
+					}
 
 					let attempt = 0;
 					while (true) {
@@ -15887,31 +15994,7 @@ export class AgentSession {
 								this.#modelRegistry.resolver(candidate, this.sessionId),
 								undefined,
 								autoCompactionSignal,
-								{
-									promptOverride: this.#obfuscateTextForProvider(compactionPrep.hookPrompt),
-									extraContext: compactionPrep.hookContext,
-									remoteInstructions: this.#baseSystemPrompt.join("\n\n"),
-									metadata: this.agent.metadataForProvider(candidate.provider),
-									initiatorOverride: "agent",
-									convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
-									telemetry,
-									// Effort configured on this compaction candidate wins;
-									// otherwise honor the user's /model thinking selection.
-									// The most-fired compaction site. Clamped per-model
-									// inside compact() via resolveCompactionEffort.
-									thinkingLevel:
-										configuredEffortByModel.get(this.#getModelKey(candidate)) ?? this.thinkingLevel,
-									sessionSystemPrompt: cachePrefix?.sessionSystemPrompt,
-									sessionMessages: cachePrefix?.sessionMessages,
-									tools: cachePrefix?.tools ?? this.agent.state.tools,
-									sessionId: this.sessionId,
-									// Same routing rule as the manual-compaction call site above:
-									// mirror the pinned key the live turns cached under.
-									promptCacheKey: this.agent.promptCacheKey ?? this.sessionId,
-									providerSessionState: this.#providerSessionState,
-									obfuscateProviderText: text => this.obfuscateProviderText(text),
-									codexCompaction,
-								},
+								candidateOptions,
 							);
 							break;
 						} catch (error) {
