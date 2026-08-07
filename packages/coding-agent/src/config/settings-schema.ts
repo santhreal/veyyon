@@ -289,7 +289,7 @@ interface SettingDefBase {
 	 * from `config list` and from the settings UI, and `config get`/`set` name the
 	 * replacement. Without this marker a superseded key kept advertising itself as
 	 * settable next to the key that replaced it, which is the confusion the
-	 * supersession was meant to end (operator review 2026-07-24).
+	 * supersession was meant to end.
 	 */
 	retiredBy?: string;
 }

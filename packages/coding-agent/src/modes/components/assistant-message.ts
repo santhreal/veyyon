@@ -913,7 +913,7 @@ export class AssistantMessageComponent extends Container {
 
 				// A muted "Thinking" label heads the first visible reasoning block:
 				// without it the trace read as ordinary italic prose,
-				// indistinguishable from the answer (user defect #9, 2026-07-22).
+				// indistinguishable from the answer.
 				// Same vocabulary as the hidden-thinking pulse label.
 				if (thinkingIndex === 0) {
 					this.#thinkingLabel = new Text(theme.fg("muted", "Thinking"), 2, 0);

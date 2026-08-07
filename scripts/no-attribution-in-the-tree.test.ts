@@ -15,8 +15,11 @@
  *
  * WHAT IT DOES NOT CATCH. Paraphrase. "The requirement here is a key that reclaims the turn" is
  * indistinguishable from a rewritten quote, and a reviewer, not a regex, is the only thing that can
- * tell. It also allows CHANGELOG files, whose released sections are immutable by policy, and the
- * instruction files (AGENTS.md, CLAUDE.md, SKILL.md), which address the reader on purpose.
+ * tell. Nor "the user asked for full output", which is deliberately legal: in a comment about a
+ * flag it names WHERE a value came from, so a pattern for it would fire on 40-odd accurate lines and
+ * teach the next reader to delete the explanation instead of the attribution. It also allows
+ * CHANGELOG files, whose released sections are immutable by policy, and the instruction files
+ * (AGENTS.md, CLAUDE.md, SKILL.md), which address the reader on purpose.
  */
 import { describe, expect, it } from "bun:test";
 import { execFile } from "node:child_process";
@@ -49,6 +52,9 @@ const EXEMPT_NAMES = new Set(["CHANGELOG.md", "AGENTS.md", "CLAUDE.md", "SKILL.m
 const SCANNED_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".rs", ".py", ".sh", ".bash", ".css", ".md"]);
 
 function inScope(file: string): boolean {
+	// This file spells out every construction it forbids, in its header and in its positive
+	// controls, so it is the one file that must quote them to work at all.
+	if (file === "scripts/no-attribution-in-the-tree.test.ts") return false;
 	if (EXEMPT_DIRS.some(dir => file.startsWith(dir))) return false;
 	const base = path.basename(file);
 	if (EXEMPT_NAMES.has(base) || base.includes(".min.")) return false;
@@ -89,6 +95,14 @@ const BANNED: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }>
 	{
 		name: "a person's standing instructions as authority",
 		pattern: /\b(?:operator|user)'s\s+standing\s+(?:order|orders|rule|rules|instruction|instructions)\b/i,
+	},
+	{
+		name: "a person's ask or complaint as the reason",
+		pattern: /\b(?:operator|user)'s\s+(?:ask|asks|complaint|complaints|wording|screenshot|screenshots)\b/i,
+	},
+	{
+		name: "a dated credit next to a person",
+		pattern: /\b(?:operator|user)(?:'s)?\b[^\n]{0,40}?\b20\d\d-\d\d-\d\d\b/i,
 	},
 ];
 
@@ -155,6 +169,14 @@ describe("no comment or internal doc attributes a change to a person", () => {
 			["attributing an order to a person", " * The operator ordered these three files replaced byte for byte."],
 			["citing a person as the authority", "// reported by the operator on 2026-07-24"],
 			["a person's standing instructions as authority", " * ran with none of the operator's standing orders."],
+			[
+				"a person's ask or complaint as the reason",
+				"\t\t// The operator's ask (2026-07-23): the indicator says \"click to",
+			],
+			[
+				"a dated credit next to a person",
+				" *    tell unset from a genuinely negative value (operator review 2026-07-24).",
+			],
 		];
 		expect(samples.map(([name]) => name).sort()).toEqual(BANNED.map(rule => rule.name).sort());
 		for (const [name, sample] of samples) {

@@ -127,7 +127,7 @@ describe("composer card ground derivation", () => {
 		resetGroundTintsForTest();
 	});
 
-	/** The composer card is DEAD (user order 2026-07-22: every painted
+	/* * The composer card is DEAD (every painted
 	 * composer box — absolute hex and derived tint alike — read as a gray
 	 * slab on the real terminal). CardPadRow must render a bare blank row
 	 * with NO escape bytes even when a ground IS detected: this is the

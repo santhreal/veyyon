@@ -8,7 +8,7 @@
  *
  * Why it exists: the addon is a gitignored BUILT artifact. A fresh clone or a
  * bare `git pull` has none, and veyyon died at boot with a raw resolve-error
- * dump (user-hit 2026-07-24) because nothing on the shipped source path ever
+ * dump because nothing on the shipped source path ever
  * produced one. Bun runs no root lifecycle scripts on workspace installs, so
  * an install hook cannot do it either.
  *

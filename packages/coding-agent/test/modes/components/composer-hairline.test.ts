@@ -166,7 +166,7 @@ describe("CardPadRow — the card's vertical body", () => {
 	});
 
 	/**
-	 * The composer has NO card (user order 2026-07-22: every painted composer
+	 * The composer has NO card (every painted composer
 	 * box, theme token and derived tint alike, read as a gray slab on the
 	 * real terminal). The pad row is pure vertical air: an empty string with
 	 * zero escape bytes, regardless of what the theme's composerBg token says.

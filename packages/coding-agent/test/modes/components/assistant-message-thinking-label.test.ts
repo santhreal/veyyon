@@ -3,7 +3,7 @@
  *
  * Why this suite exists: with thinking display enabled, a reasoning trace
  * rendered as bare italic prose with NO label, indistinguishable from the
- * answer until you read it (user defect #9, 2026-07-22 screenshots). The
+ * answer until you read it. The
  * first visible thinking block now carries a muted "Thinking" heading, the
  * same vocabulary as the hidden-thinking pulse label, so the transcript
  * separates reasoning from the answer at a glance.

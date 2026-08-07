@@ -10,7 +10,7 @@
  *
  *  - The settings list showed `Default` for one setting and a literal `-1` for the
  *    next, and `veyyon config get` printed `-1` either way, so a reader could not
- *    tell unset from a genuinely negative value (operator review 2026-07-24).
+ *    tell unset from a genuinely negative value.
  *  - `presencePenalty` and `repetitionPenalty` accept negative values at the
  *    providers, and the `>= 0` read dropped every one of them. Setting a negative
  *    penalty did nothing, silently.

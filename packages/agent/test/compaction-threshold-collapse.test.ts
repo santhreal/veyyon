@@ -22,7 +22,7 @@ import {
  * settings on one axis, both labelled "Compaction Threshold" in the UI, both
  * defaulting to `-1`, with their precedence recorded only in a comment. An
  * operator could not tell which was in force, and setting one silently did
- * nothing when the other was already set (operator review 2026-07-24). The
+ * nothing when the other was already set. The
  * collapse to `compaction.threshold` must not move anyone's trigger, and the
  * resolver must now REPORT where its number came from so no choice is applied
  * silently.

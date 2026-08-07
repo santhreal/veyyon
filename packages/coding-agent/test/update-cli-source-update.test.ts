@@ -5,7 +5,7 @@
  * recovery on any step failure.
  *
  * Why this suite exists: the updater used to REFUSE source installs with
- * advice ("run git pull"), which stranded a real user (2026-07-24) on a stale
+ * advice ("run git pull"), which stranded a source install on a stale
  * checkout — and even following the advice broke boot, because `git pull`
  * without the dependency reinstall leaves gitignored build artifacts
  * (tool-views.generated.js) missing. The updater owning BOTH steps is the fix;

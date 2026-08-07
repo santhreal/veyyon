@@ -254,13 +254,13 @@ describe("normalizeGeneratedTitle source-aware casing", () => {
 	});
 
 	it("does not re-shout emphatic ALL-CAPS the model normalized to sentence case", () => {
-		// Reported regression: the user shouted "ALL ERROR HANDLING" / "IDIOTIC"
-		// for emphasis; the model returned clean sentence case and we must not
-		// restore the shouting over it ("error handling" stayed "ERROR HANDLING").
+		// Emphatic ALL-CAPS in the source message is emphasis, not casing to copy:
+		// the model returns clean sentence case and the restore must leave it alone
+		// ("error handling" must not come back as "ERROR HANDLING").
 		expect(
 			normalizeGeneratedTitle(
 				"Unify error handling with error IDs",
-				"unify ALL ERROR HANDLING instead of IDIOTIC substring checks",
+				"unify ALL ERROR HANDLING instead of BRITTLE substring checks",
 			),
 		).toBe("Unify error handling with error IDs");
 	});

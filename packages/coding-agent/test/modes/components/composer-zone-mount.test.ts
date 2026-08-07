@@ -64,7 +64,7 @@ describe("mountComposerZone", () => {
 	/**
 	 * The two pad rows are the vertical air around the input, and they PAINT NOTHING. An earlier
 	 * revision tinted them, and every painted composer ground read as a grey slab on a terminal
-	 * whose own background differed (user order, 2026-07-22); `CardPadRow`'s doc names reintroducing
+	 * whose own background differed; `CardPadRow`'s doc names reintroducing
 	 * paint here as the regression. So the assertion is on what the slots RENDER — exactly one row
 	 * each, blank, with no SGR at all — rather than on which class occupies them: the class identity
 	 * held while the rows painted a slab, and would hold again.

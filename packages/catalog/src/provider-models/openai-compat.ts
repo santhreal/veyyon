@@ -1333,7 +1333,7 @@ interface XAICuratedModel {
 // Source of truth for the xai-oauth chat picker. Top of list = headline.
 // Context windows from hermes-agent/agent/model_metadata.py:205-220
 // ("Values sourced from models.dev (2026-04)"). grok-build is xAI's
-// coding-fine-tuned chat model; 512K context per user spec (2026-05-17).
+// coding-fine-tuned chat model; 512K context per xAI's published spec.
 //
 // supportsReasoningEffort=false entries reason natively but reject the wire
 // `reasoning.effort` param (api.x.ai returns HTTP 400). The corresponding

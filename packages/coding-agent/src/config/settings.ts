@@ -243,7 +243,7 @@ export function stripLegacyUnsetSentinels(raw: RawSettings): string[] {
  * reasons that pull in opposite directions:
  *
  *  - The stamp must be on disk before a `-1` can be trusted, or the next load
- *    deletes a value the user just set (dogfooded, 2026-07-25).
+ *    deletes a value the user just set.
  *  - Stamping at load time would add a line to every config in existence,
  *    including ones that have never touched a sampling knob.
  *

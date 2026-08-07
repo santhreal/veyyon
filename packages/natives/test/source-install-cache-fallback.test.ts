@@ -1,5 +1,5 @@
 /**
- * Regression for the source-install native-addon brick (user-hit 2026-07-24).
+ * Regression for the source-install native-addon brick.
  *
  * The bug: veyyon has three install methods that stage the native `.node` in
  * DIFFERENT places — the compiled/standalone binary extracts into the per-version

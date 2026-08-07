@@ -15,7 +15,7 @@ import type { SegmentContext } from "./types";
  * Its icon used to be appended immediately BEFORE the thinking-level glyph and
  * colored with it as `statusLineModel`, so a fast-mode session showed two adjacent
  * same-colored markers on the model label and the tier read as a fourth rung on
- * the effort scale (operator review 2026-07-24). These cases pin the separation in
+ * the effort scale. These cases pin the separation in
  * bytes: distinct color, distinct position, and a word that says what it is.
  */
 

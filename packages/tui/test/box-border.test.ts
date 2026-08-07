@@ -79,7 +79,7 @@ describe("Box border", () => {
 describe("Box content hugging", () => {
 	/** Why this exists: bordered cards padded every row to the full given
 	 * width, so a three-word skill card stretched its frame to the terminal
-	 * edge and read as a wall, not a card (user defect #12, 2026-07-22).
+	 * edge and read as a wall, not a card.
 	 * setHugContent(true) shrinks the emitted rows (and the border rule) to
 	 * the widest child line; the given width stays the wrap limit. */
 	it("shrinks the frame to the widest child line", () => {

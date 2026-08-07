@@ -3,7 +3,7 @@
  *
  * Why this suite exists: a fresh clone or a bare `git pull` has no built
  * native addon (it is gitignored), and veyyon died at boot with a raw
- * resolve-error dump (user-hit 2026-07-24) because nothing on the shipped
+ * resolve-error dump because nothing on the shipped
  * source path ever produced one. ensure-native.ts is the single owner of
  * provisioning; these tests prove its two load-bearing judgments:
  * which filenames satisfy this host, and when a present file counts as

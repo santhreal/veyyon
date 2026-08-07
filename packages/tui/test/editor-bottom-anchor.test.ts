@@ -95,7 +95,7 @@ describe("editor bottom anchor on transient prompt collapse", () => {
 	});
 
 	it("re-anchors even when the transcript still overflows the viewport after collapse", async () => {
-		// The exact user scenario of 2026-07-22: a long transcript (frame much
+		// The scenario that produced it: a long transcript (frame much
 		// taller than the viewport), a tall transient prompt scrolling rows
 		// into scrollback, then collapse. frameLength stays > height, so a gate
 		// limited to `frameLength <= height` never fires and the editor floats

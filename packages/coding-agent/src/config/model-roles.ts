@@ -85,7 +85,7 @@ export const DEFAULT_MODEL_SLOT = "default" as const;
  * The slot accumulated names — `default` in storage, `interactive` in `setModel`'s
  * parameter default and in the session log — with the translation between them
  * written inline at each call site, including one line that stored `default` and
- * logged `interactive` for the same write (operator review 2026-07-24). Callers now
+ * logged `interactive` for the same write. Callers now
  * pass whatever they have and {@link resolveModelSlot} translates, once, here.
  *
  * This is about role arguments only. Enumerating CONFIGURED roles (cycle order,
