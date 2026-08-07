@@ -16,19 +16,26 @@ function createAbortedSignal(): AbortSignal {
 }
 
 function captureResponsesPayload(model: Model<"openai-responses">): Promise<unknown> {
-	const { promise, resolve } = Promise.withResolvers<unknown>();
-	streamOpenAIResponses(model, testContext, {
+	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
+	const stream = streamOpenAIResponses(model, testContext, {
 		apiKey: "ghu_test_copilot_token",
 		reasoning: Effort.High,
 		signal: createAbortedSignal(),
 		onPayload: payload => resolve(payload),
 	});
+	// A failure before the request is built never reaches `onPayload`, so
+	// without this the helper hangs until the test deadline and reports a
+	// timeout in place of the error.
+	stream.result().then(
+		() => reject(new Error("the request stream ended without emitting a payload")),
+		(error: unknown) => reject(error),
+	);
 	return promise;
 }
 
 function captureAnthropicPayload(model: Model<"anthropic-messages">): Promise<unknown> {
-	const { promise, resolve } = Promise.withResolvers<unknown>();
-	streamAnthropic(model, testContext, {
+	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
+	const stream = streamAnthropic(model, testContext, {
 		apiKey: "ghu_test_copilot_token",
 		isOAuth: false,
 		reasoning: Effort.High,
@@ -36,6 +43,13 @@ function captureAnthropicPayload(model: Model<"anthropic-messages">): Promise<un
 		signal: createAbortedSignal(),
 		onPayload: payload => resolve(payload),
 	});
+	// A failure before the request is built never reaches `onPayload`, so
+	// without this the helper hangs until the test deadline and reports a
+	// timeout in place of the error.
+	stream.result().then(
+		() => reject(new Error("the request stream ended without emitting a payload")),
+		(error: unknown) => reject(error),
+	);
 	return promise;
 }
 
