@@ -4,6 +4,7 @@ import {
 	type BlockState,
 	buildCursorHistoryForTest,
 	buildCursorSystemPromptJsons,
+	createCursorUsageAccount,
 	emptyGrepPatternRejection,
 	handleServerMessage,
 	resolveExecHandler,
@@ -420,11 +421,20 @@ function cursorAssistantMessage(): AssistantMessage {
 	};
 }
 
-function newBlockState(): BlockState {
+function newBlockState(output: AssistantMessage): BlockState {
 	let textBlock: BlockState["currentTextBlock"] = null;
 	let thinkingBlock: BlockState["currentThinkingBlock"] = null;
 	let toolCall: ToolCallState | null = null;
 	return {
+		usage: createCursorUsageAccount(
+			{
+				id: "cursor-composer-2.5",
+				provider: "cursor",
+				api: "cursor-agent",
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			} as Model<"cursor-agent">,
+			output,
+		),
 		get currentTextBlock() {
 			return textBlock;
 		},
@@ -452,7 +462,7 @@ describe("Cursor exec local-work tracking (issue #4593)", () => {
 	it("marks the stream busy for the duration of a local exec handler", async () => {
 		const output = cursorAssistantMessage();
 		const stream = new AssistantMessageEventStream();
-		const state = newBlockState();
+		const state = newBlockState(output);
 		const written: unknown[] = [];
 		const h2Request = {
 			write: (chunk: unknown) => {

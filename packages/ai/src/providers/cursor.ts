@@ -393,6 +393,8 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			timestamp: Date.now(),
 		};
 
+		const usageAccount = createCursorUsageAccount(model, output);
+
 		let h2Client: http2.ClientHttp2Session | null = null;
 		let h2Request: http2.ClientHttp2Stream | null = null;
 		let heartbeatTimer: NodeJS.Timeout | null = null;
@@ -512,6 +514,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				setFirstTokenTime: () => {
 					if (!firstTokenTime) firstTokenTime = performance.now();
 				},
+				usage: usageAccount,
 			};
 
 			const onConversationCheckpoint = (checkpoint: ConversationStateStructure) => {
@@ -519,6 +522,10 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			};
 
 			let resolveH2: (() => void) | undefined;
+			// `turnEnded` is the only thing that says the server finished this turn.
+			// The h2 stream also ends when the connection simply stops, and those two
+			// are not the same event.
+			let turnCompleted = false;
 
 			h2Request.on("response", headers => {
 				debugResponseLogPromise = debugSession?.openResponseLog(
@@ -582,8 +589,9 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 							});
 						});
 
-						// Resolve only on explicit turnEnded. stopReason defaults to "stop"
-						// and is not a reliable signal for stream completion.
+						// The one place the turn is declared over. Both the resolve and the
+						// completion check below read this, so there is no second opinion.
+						if (isTurnEnded) turnCompleted = true;
 						if (isTurnEnded && resolveH2) {
 							const r = resolveH2;
 							resolveH2 = undefined;
@@ -666,6 +674,19 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				}
 			});
 
+			// The stream is over. Whether the TURN is over is a different question,
+			// and only `turnEnded` answers it: a dropped connection that happens to
+			// close cleanly reaches here with a half-written reply. Reporting "stop"
+			// for that persisted a truncated turn as a finished one, and the compaction
+			// anchor then trusted its partial token counts. Same treatment the other
+			// providers give a stream that ends with no finish reason.
+			if (!turnCompleted) {
+				throw new AIError.ProviderResponseError(
+					"Cursor stream ended without a turn_ended update (connection dropped or response truncated)",
+					{ provider: model.provider, kind: "incomplete-stream" },
+				);
+			}
+
 			endCurrentTextBlock(output, stream, state);
 			endCurrentThinkingBlock(output, stream, state);
 			if (state.currentToolCall) {
@@ -679,8 +700,6 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					partial: output,
 				});
 			}
-
-			calculateCost(model, output.usage);
 
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
@@ -726,11 +745,70 @@ export type ToolCallState = ToolCall & {
 	[kCursorExecResolved]?: true;
 };
 
+/**
+ * Every token number Cursor puts on the wire, and the only place any of them
+ * becomes `usage`.
+ *
+ * Cursor reports two quantities and neither one is a usage object.
+ * `TokenDeltaUpdate.tokens` is an increment of THIS turn's completion.
+ * `ConversationTokenDetails` is a gauge of the WHOLE conversation against the
+ * model's window: `used_tokens` counts the system prompt, the tool schemas, the
+ * rules, the skills, the subagent definitions and the conversation, and it is
+ * sampled after this turn's reply was appended, so it already contains the
+ * completion. Nothing on the wire reports a prompt-cache breakdown, which is
+ * why `cacheRead` and `cacheWrite` stay zero: Cursor does not say.
+ *
+ * Three shipped defects came from folding those two quantities into `usage`
+ * where each one happened to arrive. They are accumulated raw here instead, and
+ * turned into a usage object by {@link CursorUsageAccount.fold} alone.
+ */
+export interface CursorUsageAccount {
+	/** Running sum of `TokenDeltaUpdate.tokens`: this turn's completion. */
+	completionTokens: number;
+	/** Latest populated `ConversationTokenDetails.used_tokens`. */
+	conversationTokens: number;
+	/** Latest populated `ConversationTokenDetails.max_tokens`. */
+	contextWindow: number;
+	/** Recompute the message's usage, cost and reported window from the above. */
+	fold: () => void;
+}
+
+/** The turn's token account, bound to the message it reports into. */
+export function createCursorUsageAccount(model: Model<"cursor-agent">, output: AssistantMessage): CursorUsageAccount {
+	const account: CursorUsageAccount = {
+		completionTokens: 0,
+		conversationTokens: 0,
+		contextWindow: 0,
+		fold: () => {
+			output.usage.output = account.completionTokens;
+			// The conversation gauge is sampled with this turn's reply already in
+			// it, so the prompt side is whatever is left once the completion comes
+			// out. Reporting the gauge as `input` and then adding the completion on
+			// top counted the reply twice, which is how a 98k-token turn spent 38%
+			// of a 256k window on tokens that were never there.
+			output.usage.input = Math.max(0, account.conversationTokens - account.completionTokens);
+			output.usage.totalTokens = output.usage.input + output.usage.output;
+			// A window the provider states beats a catalog default, which is a guess
+			// for every model the catalog predates. Only a populated gauge carries
+			// one: most checkpoints report an empty `token_details`.
+			if (account.contextWindow > 0) {
+				output.providerContextWindow = account.contextWindow;
+			}
+			// Folded here rather than once at the end of a clean turn, so an aborted
+			// or failed turn still reports what it spent.
+			calculateCost(model, output.usage);
+		},
+	};
+	return account;
+}
+
 export interface BlockState {
 	currentTextBlock: (TextContent & { [kStreamingBlockIndex]: number }) | null;
 	currentThinkingBlock: (ThinkingContent & { [kStreamingBlockIndex]: number }) | null;
 	currentToolCall: ToolCallState | null;
 	firstTokenTime: number | undefined;
+	/** This turn's token account. See {@link CursorUsageAccount}. */
+	usage: CursorUsageAccount;
 	setTextBlock: (b: (TextContent & { [kStreamingBlockIndex]: number }) | null) => void;
 	setThinkingBlock: (b: (ThinkingContent & { [kStreamingBlockIndex]: number }) | null) => void;
 	setToolCall: (t: ToolCallState | null) => void;
@@ -782,7 +860,7 @@ export async function handleServerMessage(
 			),
 		);
 	} else if (msgCase === "conversationCheckpointUpdate") {
-		handleConversationCheckpointUpdate(msg.message.value, output, onConversationCheckpoint);
+		handleConversationCheckpointUpdate(msg.message.value, state.usage, onConversationCheckpoint);
 	}
 }
 
@@ -2513,45 +2591,35 @@ export function processInteractionUpdate(
 			stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: state.currentToolCall, partial: output });
 			state.setToolCall(null);
 		}
-	} else if (updateCase === "turnEnded") {
-		output.stopReason = "stop";
 	} else if (updateCase === "tokenDelta") {
-		const tokenDelta = value;
-		output.usage.output += tokenDelta.tokens || 0;
-		output.usage.totalTokens = output.usage.input + output.usage.output;
+		// `turnEnded` is deliberately not handled here. It is the turn's only
+		// completion signal and `streamCursor` owns it, because a turn that never
+		// receives one did not finish and must not report that it did.
+		state.usage.completionTokens += value.tokens || 0;
+		state.usage.fold();
 	}
 }
 
-/** Exported for tests: folds one conversation checkpoint into the turn's usage. */
+/** Exported for tests: folds one conversation checkpoint into the turn's token account. */
 export function handleConversationCheckpointUpdate(
 	checkpoint: ConversationStateStructure,
-	output: AssistantMessage,
+	usage: CursorUsageAccount,
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
 ): void {
 	onConversationCheckpoint?.(checkpoint);
-	// The window is metadata about the conversation, not a token count, so it is
-	// recorded whichever way the tokens themselves are being counted. Cursor
-	// adds models faster than the catalog is regenerated, and a model the
-	// catalog has never seen falls back to a default window that is only a
-	// guess; this is the real number, and it is on the wire every turn.
+	// Most checkpoints carry an empty `token_details`: the server only populates
+	// the gauge on some of them. Zero is "not reported", not "the conversation is
+	// empty", so an empty one must leave the last real reading standing rather
+	// than blank the window and the prompt.
 	const maxTokens = checkpoint.tokenDetails?.maxTokens ?? 0;
 	if (maxTokens > 0) {
-		output.providerContextWindow = maxTokens;
+		usage.contextWindow = maxTokens;
 	}
 	const usedTokens = checkpoint.tokenDetails?.usedTokens ?? 0;
-	if (usedTokens <= 0) {
-		return;
+	if (usedTokens > 0) {
+		usage.conversationTokens = usedTokens;
 	}
-	// `ConversationTokenDetails.used_tokens` gauges the WHOLE conversation
-	// against `max_tokens`, so it is the prompt side of this turn, not the
-	// completion. Billing it as output charged the conversation at output rates
-	// and, worse, made every consumer that reads the prompt count see zero and
-	// fall back to the total, so the context gauge measured the conversation
-	// twice over.
-	if (output.usage.input !== usedTokens) {
-		output.usage.input = usedTokens;
-		output.usage.totalTokens = output.usage.input + output.usage.output;
-	}
+	usage.fold();
 }
 
 function createBlobId(data: Uint8Array): Uint8Array {
