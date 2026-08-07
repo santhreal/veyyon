@@ -105,12 +105,18 @@ const BANNED: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }>
 			/\b(?:operator|user)'s\s+(?:ask|asks|complaint|complaints|wording|verdict|verdicts|phrasing|screenshot|screenshots)\b/i,
 	},
 	{
-		// Past tense and a quote. A bare "the user asked for full output" names where a value came
-		// from and stays legal, and so does the present tense — `the operator says "remember this"`
-		// describes what someone MAY type. "told" is excluded outright because the common direction
-		// is the product telling the operator: `an operator told only "cannot discard"`.
+		// Past tense and a quotation that opens after the verb. A bare "the user asked for full
+		// output" names where a value came from and stays legal, and so does the present tense —
+		// `the operator says "remember this"` describes what someone MAY type. "told" is excluded
+		// outright because the common direction is the product telling the operator: `an operator
+		// told only "cannot discard"`. "wrote" is excluded too, and that one is a judgement rather
+		// than a gap: in prose about a coding tool it almost always means what somebody typed at
+		// the CLI, or labels where a value came from (`"the operator wrote this"` against `"the
+		// binary shipped this"`), and neither reproduces anything anybody said. The gap admits no
+		// quote or backtick so the quotation has to be the verb's own object.
 		name: "quoting what a person said",
-		pattern: /\b(?:the\s+)?(?:operator|user)\s+(?:said|put\s+it|asked\s+to|asked\s+for)\b[^\n]{0,24}["“]/i,
+		pattern:
+			/\b(?:the\s+)?(?:operator|user)\s+(?:said|wanted|put\s+it|called\s+it|described\s+it\s+as|asked\s+to|asked\s+for)\b[^\n`"“]{0,24}["“]/i,
 	},
 	{
 		name: "a dated credit next to a person",
@@ -239,6 +245,16 @@ describe("no comment or internal doc attributes a change to a person", () => {
 			// Present tense describes what someone MAY type, which is product behavior, not a record
 			// of anyone having typed it.
 			' * how the model learns WHERE to write when the operator says "remember this".',
+			// A provenance label that is itself quoted: the quotation opens before the verb, so it
+			// names a category of origin rather than reproducing anything anybody said.
+			' * alone does not separate "the operator wrote this" from "the binary shipped this".',
+			// What somebody typed at the CLI is product behavior, and the quote inside it belongs to
+			// the command line rather than to a conversation.
+			' * It means the user wrote `--plan --profile work "message"` without the extension loaded.',
+			// Reaches its quote only through a code span, so the quotation belongs to the command
+			// line and not to the verb. This is the control that makes the gap's backtick exclusion
+			// load-bearing: remove it from the pattern and this line starts matching.
+			' * the user said `--profile "work"` was ignored, and the bootstrap had already stripped it.',
 		];
 		for (const line of legal) {
 			for (const { name, pattern } of BANNED) {
@@ -269,5 +285,36 @@ describe("no comment or internal doc attributes a change to a person", () => {
 		// per-line scan reports nothing and the wrap is what does the hiding.
 		const perLine = windows.filter(entry => BANNED.some(rule => rule.pattern.test(entry.text)));
 		expect(perLine).toEqual([]);
+	});
+
+	/**
+	 * The quoting rule is a list of speech verbs, and a list is only as good as the day it was
+	 * written: the first draft held `said` alone, so `the operator wrote "…"` and
+	 * `the user called it "…"` were the same leak wearing a different verb and landed green. The
+	 * verbs are read back out of the pattern source here rather than retyped, so a verb removed
+	 * from the rule fails this test instead of quietly narrowing the guard, and every verb the
+	 * rule claims is proven to match a real quotation.
+	 */
+	it("catches a quotation behind any speech verb the rule claims", () => {
+		const rule = BANNED.find(entry => entry.name === "quoting what a person said");
+		if (!rule) throw new Error("the quoting rule is gone");
+
+		const alternation = /\(\?:said\|([^)]*)\)/.exec(rule.pattern.source);
+		if (!alternation) throw new Error("the quoting rule no longer lists its verbs");
+		const verbs = ["said", ...alternation[1].split("|")].map(verb => verb.replace(/\\s\+/g, " "));
+		// The two shapes that actually leaked here, so narrowing the rule back to one verb fails.
+		expect(verbs).toContain("said");
+		expect(verbs).toContain("asked for");
+		expect(verbs.length).toBeGreaterThanOrEqual(6);
+
+		for (const verb of verbs) {
+			expect(rule.pattern.test(` * the operator ${verb} "exactly this", so the row never moves.`), verb).toBe(true);
+			expect(rule.pattern.test(` * the user ${verb} “exactly this”, so the row never moves.`), verb).toBe(true);
+			// Without a quotation it is ordinary prose about what somebody wanted, not a record of
+			// the words they used, and the guard must leave it alone.
+			expect(rule.pattern.test(` * the operator ${verb} the row pinned to the bottom of the frame.`), verb).toBe(
+				false,
+			);
+		}
 	});
 });
