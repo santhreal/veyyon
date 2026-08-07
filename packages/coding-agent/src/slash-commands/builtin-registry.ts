@@ -809,7 +809,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
-	thinking: {
+	effort: {
 		getTuiAutocompleteDescription: runtime => {
 			const level = runtime.ctx.session.configuredThinkingLevel();
 			return level ? `Set thinking effort · now ${level}` : "Set thinking effort";
@@ -2575,7 +2575,7 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	pause: "modes",
 	model: "model",
 	switch: "model",
-	thinking: "model",
+	effort: "model",
 	force: "model",
 	retry: "model",
 	share: "share",

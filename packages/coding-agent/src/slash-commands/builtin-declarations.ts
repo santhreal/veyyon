@@ -219,9 +219,9 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
-		name: "thinking",
+		name: "effort",
 		textMode: true,
-		aliases: ["effort"],
+		aliases: ["thinking"],
 		description: "Set the effort for this session (saved defaults live in /settings)",
 		acpDescription: "Set thinking effort",
 		// Static fallback only: the advertised hint is derived per session from

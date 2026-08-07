@@ -3,7 +3,7 @@
  *
  * Found live (2026-07-22): the auto-thinking classifier failure hint told the
  * user to "set a fixed thinking level with /think" — but the registered
- * command is /thinking (alias /effort). Typing the suggested /think submitted
+ * command is /effort (alias /thinking). Typing the suggested /think submitted
  * the text to the MODEL as a plain message and burned a turn on "I don't
  * recognize /think as a command". A hint that names a nonexistent command is
  * worse than no hint.

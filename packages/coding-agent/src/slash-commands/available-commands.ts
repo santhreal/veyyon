@@ -56,7 +56,7 @@ export async function buildAvailableSlashCommands(
 		// declared levels), so its hint is derived from the session's active
 		// model rather than declared statically.
 		const hint =
-			declaration.name === "thinking"
+			declaration.name === "effort"
 				? (thinkingLevelArgHint(session.model) ?? declaration.acpInputHint)
 				: (declaration.acpInputHint ?? declaration.inlineHint);
 		appendCommand({

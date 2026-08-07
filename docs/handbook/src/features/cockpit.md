@@ -18,7 +18,7 @@ Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `mo
 
 The `model` segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:
 
-- The **thinking effort** joins the model label as one unit (`Sonnet 4.5 @high` in the quiet footline, `Sonnet 4.5 · high` elsewhere), in the model's own color. It is how much reasoning the model does per turn. Change it with `/thinking` (its alias is `/effort`), or set a per-model default under Settings → Model → Default Effort.
+- The **thinking effort** joins the model label as one unit (`Sonnet 4.5 @high` in the quiet footline, `Sonnet 4.5 · high` elsewhere), in the model's own color. It is how much reasoning the model does per turn. Change it with `/effort` (its alias is `/thinking`), or set a per-model default under Settings → Model → Default Effort.
   The effort picker has a **Default** row followed by only the active model's valid variants. Choose Default to clear the session override and return to the saved per-model effort or the model default.
 - The **priority tier** follows the effort as its own chip, named and in the warning color (`⚡ priority`, or just `priority` when your symbol preset has no icon). It is how your requests are queued and served, not how deeply the model thinks. Toggle it with `/fast`, or set it per provider family under Settings → Model → Service Tier.
 
