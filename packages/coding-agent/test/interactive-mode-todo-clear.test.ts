@@ -47,11 +47,15 @@ describe("InteractiveMode todo HUD persistence", () => {
 		settingsState = undefined;
 	});
 
-	async function createMode(todoClearDelay: number): Promise<void> {
+	/** `todoClearDelay` omitted means the shipped default, which is what the
+	 *  board does for a user who has never opened this setting. Pass a value only
+	 *  when the test is deliberately exercising a NON-DEFAULT configuration. */
+	async function createMode(todoClearDelay?: number): Promise<void> {
+		const overrides = todoClearDelay === undefined ? {} : { "tasks.todoClearDelay": todoClearDelay };
 		await Settings.init({
 			inMemory: true,
 			cwd: tempDir.path(),
-			overrides: { "tasks.todoClearDelay": todoClearDelay },
+			overrides,
 		});
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		const modelRegistry = new ModelRegistry(authStorage);
@@ -69,7 +73,7 @@ describe("InteractiveMode todo HUD persistence", () => {
 				},
 			}),
 			sessionManager: SessionManager.create(tempDir.path(), tempDir.path()),
-			settings: Settings.isolated({ "tasks.todoClearDelay": todoClearDelay }),
+			settings: Settings.isolated(overrides),
 			modelRegistry,
 		});
 		mode = new InteractiveMode(session, "test", undefined, undefined, undefined, eventBus);
@@ -95,20 +99,38 @@ describe("InteractiveMode todo HUD persistence", () => {
 		expect(session.getTodoPhases()).toEqual(phases);
 	});
 
-	it("leaves closed todos visible when auto-clear is disabled", async () => {
-		await createMode(-1);
+	/**
+	 * The default. Finished work stays on the board for the rest of the session,
+	 * because a row that disappears on its own reads as work being lost. The hour
+	 * is deliberate: it clears the 60 seconds this used to wait by a wide margin,
+	 * so the test still fails if someone reinstates a timer with a longer delay
+	 * instead of no timer. The pending-timer count is what separates "never
+	 * armed" from "armed and never reached", which render identically here and
+	 * not at all identically to a process trying to exit.
+	 */
+	it("keeps closed todos on the board indefinitely at the default delay", async () => {
+		await createMode();
+		vi.useFakeTimers();
 
 		mode.setTodos([{ name: "Implementation", tasks: [{ content: "done task", status: "completed" }] }]);
-
 		expect(renderTodos(mode)).toContain("done task");
+		expect(vi.getTimerCount()).toBe(0);
+
+		vi.advanceTimersByTime(3_600_000);
+		expect(renderTodos(mode)).toContain("done task");
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
-	it("clears closed todos after the configured delay", async () => {
+	// NON-DEFAULT configuration: the operator asked for a one second delay. This
+	// proves the mechanism still works for anyone who wants it, and it is not
+	// evidence of what an unconfigured board does. See the test above for that.
+	it("clears closed todos after an explicitly configured delay", async () => {
 		await createMode(1);
 		vi.useFakeTimers();
 
 		mode.setTodos([{ name: "Implementation", tasks: [{ content: "done task", status: "completed" }] }]);
 		expect(renderTodos(mode)).toContain("done task");
+		expect(vi.getTimerCount()).toBe(1);
 
 		vi.advanceTimersByTime(999);
 		expect(renderTodos(mode)).toContain("done task");
@@ -118,7 +140,7 @@ describe("InteractiveMode todo HUD persistence", () => {
 	});
 
 	it("keeps the anchored todo panel in the live region while visible", async () => {
-		await createMode(-1);
+		await createMode();
 
 		mode.setTodos([{ name: "Implementation", tasks: [{ content: "pending task", status: "pending" }] }]);
 		const liveRegion = mode.todoContainer as unknown as NativeScrollbackLiveRegion;

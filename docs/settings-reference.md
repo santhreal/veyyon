@@ -452,7 +452,7 @@ veyyon config get compaction.threshold
 | `todo.reminders` | Todo Reminders | boolean | `true` | Prompt continued execution when unfinished todos remain. |
 | `todo.reminders.max` | Todo Reminder Limit | number | `3` | Maximum distinct todo-state reminders before reminders stay silent. |
 | `todo.eager` | Create Todos Automatically | enum | `default` | How strongly to push automatic todo-list creation after the first message. Values: `default`, `preferred`, `always`. |
-| `tasks.todoClearDelay` | Todo Auto-Clear Delay | number | `60` | Delay before completed or abandoned todos are removed from the todo widget. |
+| `tasks.todoClearDelay` | Todo Auto-Clear Delay | number | `-1` | Delay before completed or abandoned todos are removed from the todo widget. |
 
 ### Grep & Browser
 
