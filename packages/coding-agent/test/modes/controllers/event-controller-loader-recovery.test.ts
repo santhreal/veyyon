@@ -88,6 +88,8 @@ function createContext(options: { terminalProgress?: boolean } = {}) {
 		ui: { requestRender: vi.fn(), requestComponentRender: vi.fn(), terminal: { setProgress } },
 		viewSession: {
 			isCompacting: false,
+			settings: { get: () => false },
+			model: undefined,
 			getLastAssistantMessage: () => undefined,
 			get isStreaming() {
 				return streamState.isStreaming;

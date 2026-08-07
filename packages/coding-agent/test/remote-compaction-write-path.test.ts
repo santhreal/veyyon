@@ -23,20 +23,24 @@
  * an empty summary is valid ONLY because a window stands in its place.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 import * as path from "node:path";
-import { Agent } from "@veyyon/agent-core";
+import { Agent, type StreamFn } from "@veyyon/agent-core";
 import {
 	assertValidCompactionResult,
 	type CompactionPreparation,
 	REMOTE_COMPACTION_PRESERVE_KEY,
 	resolveServerCompactionTransport,
 } from "@veyyon/agent-core/compaction";
+import type { AssistantMessage } from "@veyyon/ai";
+import * as ai from "@veyyon/ai";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { willCompactRemotely } from "@veyyon/coding-agent/modes/components/compaction-summary-message";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import type { CompactionEntry } from "@veyyon/coding-agent/session/session-entries";
@@ -167,6 +171,7 @@ describe("a remote compaction result reaching the driver write path", () => {
 	});
 
 	afterEach(async () => {
+		vi.restoreAllMocks();
 		try {
 			await session?.dispose();
 		} finally {
@@ -178,12 +183,17 @@ describe("a remote compaction result reaching the driver write path", () => {
 
 	it("persists the provider window and trims history instead of rejecting the empty summary", async () => {
 		const entriesBefore = sessionManager.getBranch().length;
+		// No duplicate compaction: the window the provider returned is the
+		// artifact, so the local summarizer must never run for the same span.
+		const completeSpy = vi.spyOn(ai, "completeSimple");
 
 		const result = await session.compact();
 
 		// The provider really was called: this is the write path for a live
 		// round trip, not a synthesized result handed to the validator.
 		expect(compactServer.requests).toHaveLength(1);
+		expect(completeSpy).not.toHaveBeenCalled();
+		expect(willCompactRemotely(session)).toBe(true);
 
 		// Single-window: no summary text, and the window is the artifact.
 		expect(result.summary).toBe("");
@@ -249,5 +259,137 @@ describe("a remote compaction result reaching the driver write path", () => {
 				},
 			}),
 		).toThrow(/malformed/);
+	});
+});
+
+describe("compaction.remote off: the local pass runs with the configured compaction model", () => {
+	let tempDir: TempDir;
+	let compactServer: CompactServer;
+	let session: AgentSession;
+	let sessionManager: SessionManager;
+	let authStorage: AuthStorage;
+	let summarizerModels: string[];
+
+	beforeEach(async () => {
+		summarizerModels = [];
+		tempDir = TempDir.createSync("@pi-remote-compaction-off-");
+		compactServer = await startCompactServer();
+
+		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
+		authStorage.setRuntimeApiKey("openai", "test-key");
+		const modelRegistry = new ModelRegistry(authStorage);
+		sessionManager = SessionManager.create(tempDir.path(), tempDir.path());
+
+		const bundled = getBundledModel("openai", "gpt-5.1");
+		if (!bundled) throw new Error("Expected built-in openai/gpt-5.1 to exist");
+		// Same model as the remote suite: a transport resolves, so the setting is
+		// the ONLY thing keeping the provider's compact endpoint out of this run.
+		const model = { ...bundled, baseUrl: compactServer.baseUrl, contextWindow: 200_000, maxTokens: 64_000 };
+		expect(resolveServerCompactionTransport(model)).toBeDefined();
+
+		for (let i = 0; i < 8; i++) {
+			sessionManager.appendMessage({
+				role: "user",
+				content: `discarded turn ${i}`,
+				timestamp: Date.now(),
+			});
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: `discarded reply ${i}` }],
+				api: "openai-responses",
+				provider: "openai",
+				model: model.id,
+				stopReason: "stop",
+				usage: {
+					input: 1000,
+					output: 100,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 1100,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				timestamp: Date.now(),
+			});
+		}
+
+		// The local summarizer runs through the session's side stream seam
+		// (#compactWithFallbackModel installs a completeImpl over #sideStreamFn),
+		// so the fake answers there and records which model each pass asked for.
+		const sideStreamFn: StreamFn = requestModel => {
+			summarizerModels.push(requestModel.id);
+			const stream = new AssistantMessageEventStream();
+			queueMicrotask(() => {
+				const message: AssistantMessage = {
+					role: "assistant",
+					content: [{ type: "text", text: "local summary text" }],
+					api: requestModel.api,
+					provider: requestModel.provider,
+					model: requestModel.id,
+					stopReason: "stop",
+					usage: {
+						input: 100,
+						output: 50,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 150,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					timestamp: Date.now(),
+				};
+				stream.push({ type: "done", reason: "stop", message });
+			});
+			return stream;
+		};
+
+		const agent = new Agent({
+			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
+		});
+		session = new AgentSession({
+			agent,
+			sessionManager,
+			settings: Settings.isolated({
+				"compaction.remote": false,
+				"compaction.keepRecentTokens": 200,
+				"compaction.model": "openai/gpt-5-mini",
+			}),
+			modelRegistry,
+			sideStreamFn,
+		});
+	});
+
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		try {
+			await session?.dispose();
+		} finally {
+			authStorage?.close();
+			await compactServer?.close();
+			await tempDir?.remove();
+		}
+	});
+
+	it("writes a standard summary produced by the configured model and never calls the provider endpoint", async () => {
+		expect(willCompactRemotely(session)).toBe(false);
+
+		const result = await session.compact();
+
+		// The provider's compact endpoint was never called: the setting, not the
+		// model's capability data, decided the path.
+		expect(compactServer.requests).toHaveLength(0);
+
+		// Every summarizer pass ran on the configured compaction model, not on
+		// the session model and not on a fallback the operator did not name.
+		expect(summarizerModels.length).toBeGreaterThan(0);
+		expect([...new Set(summarizerModels)]).toEqual(["gpt-5-mini"]);
+
+		// A standard local artifact: the engine's composed summary (history plus
+		// the split-turn context section), and no provider window beside it.
+		expect(result.summary).toContain("local summary text");
+		expect(result.summary).toContain("**Turn Context (split turn):**");
+		expect(result.preserveData?.[REMOTE_COMPACTION_PRESERVE_KEY]).toBeUndefined();
+		const compactionEntry = sessionManager.getBranch().find(e => e.type === "compaction") as
+			| CompactionEntry
+			| undefined;
+		expect(compactionEntry?.summary).toBe(result.summary);
 	});
 });

@@ -32,6 +32,7 @@ import {
 import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../../memory-backend";
 import { BashExecutionComponent } from "../../modes/components/bash-execution";
 import { BorderedLoader } from "../../modes/components/bordered-loader";
+import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
 import { DynamicBorder } from "../../modes/components/dynamic-border";
 import { EvalExecutionComponent } from "../../modes/components/eval-execution";
 import { modalRevealEnabled } from "../../modes/components/modal-shell";
@@ -1152,7 +1153,7 @@ export class CommandController {
 		this.ctx.clearWorkingLoader();
 		this.ctx.statusContainer.disposeChildren();
 
-		const label = isAuto ? "Auto-compacting context... (esc to cancel)" : "Compacting context... (esc to cancel)";
+		const label = `${compactionActionLabel(isAuto, willCompactRemotely(this.ctx.session))} (esc to cancel)`;
 		const compactingLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),

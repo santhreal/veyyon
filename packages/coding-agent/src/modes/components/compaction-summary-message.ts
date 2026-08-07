@@ -1,9 +1,41 @@
+import { resolveServerCompactionTransport } from "@veyyon/agent-core/compaction";
+import type { Api, Model } from "@veyyon/ai";
 import { Box, type Component, Markdown } from "@veyyon/tui";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { actionKeyHint } from "../../modes/utils/key-hint";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
+
+/**
+ * Whether the next compaction pass will go to the provider's own compaction
+ * endpoint. This mirrors the admission half of the engine's gate
+ * (`AgentSession.#tryServerSideCompaction`): `compaction.remote` on, plus a
+ * session model whose capability data resolves a server-compaction transport.
+ * It is restated here rather than imported because the gate's method is
+ * private and the two primitives it reads are public; the engine's async
+ * remainder (an api key must resolve) means a true answer can still fall back
+ * to local, and the failure notice says so when that happens.
+ */
+export function willCompactRemotely(session: {
+	settings: { get(key: "compaction.remote"): unknown };
+	model: Model<Api> | undefined;
+}): boolean {
+	if (session.settings.get("compaction.remote") !== true) return false;
+	return !!session.model && resolveServerCompactionTransport(session.model) !== undefined;
+}
+
+/**
+ * The action part of the compaction loader label. A remote pass compacts on
+ * the provider's side, so naming it ("openai remote compaction") keeps the
+ * operator from reading a silent minute as a local summarizer grinding. The
+ * caller asks `session.willCompactRemotely()`, the same predicate the engine
+ * gates on, and adds its own reason prefix and cancel hint around this.
+ */
+export function compactionActionLabel(isAuto: boolean, remote: boolean): string {
+	const base = isAuto ? "Auto-compacting context" : "Compacting context...";
+	return remote ? `${base} (openai remote compaction)` : base;
+}
 
 interface SummaryDividerOptions {
 	label: () => string;

@@ -3,6 +3,7 @@ import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	CompactionSummaryMessageComponent,
+	compactionActionLabel,
 	createHandoffSummaryMessageComponent,
 	HandoffSummaryMessageComponent,
 } from "@veyyon/coding-agent/modes/components/compaction-summary-message";
@@ -158,5 +159,17 @@ describe("handoff summary divider", () => {
 		message.customType = "extension-note";
 
 		expect(createHandoffSummaryMessageComponent(message, false)).toBeUndefined();
+	});
+});
+
+describe("compactionActionLabel", () => {
+	it("names a remote pass so a silent provider round trip is not read as a local summarizer", () => {
+		expect(compactionActionLabel(false, true)).toBe("Compacting context... (openai remote compaction)");
+		expect(compactionActionLabel(true, true)).toBe("Auto-compacting context (openai remote compaction)");
+	});
+
+	it("keeps the plain label for a local pass", () => {
+		expect(compactionActionLabel(false, false)).toBe("Compacting context...");
+		expect(compactionActionLabel(true, false)).toBe("Auto-compacting context");
 	});
 });
