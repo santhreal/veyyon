@@ -358,7 +358,7 @@ import {
 } from "../slash-commands/helpers/parse";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
-import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settings";
+import { enabledSubagentNames, preferredSubagentName, resolveDelegation } from "../task/subagent-settings";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -10076,14 +10076,21 @@ export class AgentSession {
 
 		const planExists = fs.existsSync(resolvedPlanPath);
 		// Plan mode's research step names `scout` when that agent is on offer and
-		// falls back to the general worker otherwise, so the instruction always
-		// points at an agent this session can actually spawn.
+		// any other enabled type otherwise, so the instruction always points at an
+		// agent this session can actually spawn. It used to name a literal, which
+		// is wrong for two reasons at once: the literal was `task`, a name no
+		// roster has carried since the rename to `deep`, and a literal cannot
+		// track a set the operator configures, so with only `sonic` enabled the
+		// sentence sent the model at an agent the spawn path then refused.
 		const subagentNames = enabledSubagentNames(this.#toolRegistry.get(TOOL.task));
+		const researchAgent = preferredSubagentName(subagentNames, "scout"); // not-a-tool-name: agent ids
 		const content = prompt.render(planModePrompts["plan-mode/active"].text, {
 			planFilePath: displayPlanPath,
 			planExists,
-			canDelegate: subagentNames.length > 0,
-			researchAgent: subagentNames.includes("scout") ? "scout" : "task", // not-a-tool-name: agent ids
+			// Gated on the name rather than on a separate emptiness test: the prose
+			// that survives is exactly the prose there is a name for.
+			canDelegate: researchAgent !== undefined,
+			researchAgent,
 			askToolName: TOOL.ask,
 			writeToolName: TOOL.write,
 			editToolName: TOOL.edit,

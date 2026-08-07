@@ -319,6 +319,74 @@ describe("runEvalAgent", () => {
 	});
 
 	/**
+	 * A disabled agent is never substituted for. The caller is refused and told
+	 * what IS enabled; nothing quietly spawns a different lane on its behalf.
+	 *
+	 * This is the routing boundary the roster wording exists to hold up. The
+	 * prompt tells the model that an agent type it cannot see is disabled and that
+	 * it should do that work itself rather than hand it to a wider one, and this
+	 * is the half of that contract the code owns: with the configured default
+	 * turned off, `agent()` with no `agent` field refuses rather than falling
+	 * through to whatever else happens to be enabled.
+	 *
+	 * The refusal also must not blame an agent the caller never named. The bridge
+	 * used to resolve an omitted field against `resolveSpawnPolicy("*")
+	 * .defaultAgent`, the `DEFAULT_SPAWN_AGENT` literal, which knows nothing about
+	 * the enabled set, so the error read `Agent "deep" is disabled` at an operator
+	 * who had never written `deep` anywhere. It now resolves from the same
+	 * `catalog.defaultAgent` the `task` tool uses.
+	 */
+	it("refuses an omitted agent when the configured default is disabled, and names the enabled ones", async () => {
+		mockAgents([
+			{ ...taskAgent, name: "deep" },
+			{ ...reviewerAgent, name: "scout" },
+		]);
+		const runSpy = vi
+			.spyOn(taskExecutor, "runSubprocess")
+			.mockImplementation(async options => singleResult(options, { output: options.agent.name }));
+		const session = makeSession({
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"subagent.isolation.mode": "none",
+				"subagent.agents": { deep: { enabled: false }, scout: { enabled: true } },
+			}),
+		});
+
+		await expect(runEvalAgent({ prompt: "hello" }, { session })).rejects.toThrow(
+			"agent() has no enabled default agent. Pass an enabled agent type explicitly or enable the configured default. Enabled: scout",
+		);
+		// The point of the refusal: no wider (or narrower) lane ran in its place.
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * Naming the enabled specialist outright still works, so the refusal above is
+	 * about the bridge choosing, not about the operator's configuration being
+	 * unusable.
+	 */
+	it("spawns the enabled specialist when the caller names it", async () => {
+		mockAgents([
+			{ ...taskAgent, name: "deep" },
+			{ ...reviewerAgent, name: "scout" },
+		]);
+		const runSpy = vi
+			.spyOn(taskExecutor, "runSubprocess")
+			.mockImplementation(async options => singleResult(options, { output: options.agent.name }));
+		const session = makeSession({
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"subagent.isolation.mode": "none",
+				"subagent.agents": { deep: { enabled: false }, scout: { enabled: true } },
+			}),
+		});
+
+		const result = await runEvalAgent({ prompt: "hello", agent: "scout" }, { session });
+
+		expect(result.text).toBe("scout");
+		expect(runSpy.mock.calls[0]?.[0].agent.name).toBe("scout");
+	});
+
+	/**
 	 * A nested-spawn cap names the deepest parent that may spawn, so cap 0 includes the root
 	 * while making its depth-1 child a leaf.
 	 */

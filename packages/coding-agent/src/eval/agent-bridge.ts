@@ -161,10 +161,22 @@ function assertDepthAllowed(session: ToolSession): void {
 	}
 }
 
-function assertSpawnAllowed(spawnPolicy: ResolvedSpawnPolicy, agentName: string): void {
+/**
+ * Refuse a spawn the parent's `spawns` frontmatter does not permit.
+ *
+ * `agentName` is undefined when the caller expressed no preference. The
+ * spawns-disabled half still runs for that case, because a caller who omitted
+ * the field needs to hear that this agent may not spawn at all rather than that
+ * no default exists; the allowlist half cannot, since the name it would check
+ * is not chosen until the enabled catalog is known.
+ */
+function assertSpawnAllowed(spawnPolicy: ResolvedSpawnPolicy, agentName: string | undefined): void {
 	if (!spawnPolicy.enabled) {
-		throw new ToolError(`Cannot spawn '${agentName}'. Allowed: ${spawnPolicy.allowedErrorText}`);
+		throw new ToolError(
+			`Cannot spawn '${agentName ?? spawnPolicy.defaultAgent}'. Allowed: ${spawnPolicy.allowedErrorText}`,
+		);
 	}
+	if (agentName === undefined) return;
 	if (spawnPolicy.allowedAgents !== null && !spawnPolicy.allowedAgents.includes(agentName)) {
 		throw new ToolError(`Cannot spawn '${agentName}'. Allowed: ${spawnPolicy.allowedErrorText}`);
 	}
@@ -333,12 +345,12 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	const parsed = parseAgentArgs(args);
 	const parentSpawns = options.session.getSessionSpawns();
 	const spawnPolicy = resolveSpawnPolicy(parentSpawns);
-	const agentName = parsed.agent ?? spawnPolicy.defaultAgent;
+	const explicitAgent = parsed.agent;
 	const structured = Object.hasOwn(parsed, "schema");
 
 	assertNotPlanMode(options.session);
 	assertDepthAllowed(options.session);
-	assertSpawnAllowed(spawnPolicy, agentName);
+	assertSpawnAllowed(spawnPolicy, explicitAgent);
 
 	const turnBudget = options.session.getTurnBudget?.();
 	if (turnBudget?.hard && turnBudget.total !== null && turnBudget.spent >= turnBudget.total) {
@@ -356,6 +368,23 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	});
 	if (!subagentsEnabled(options.session.settings)) {
 		throw new ToolError("agent() is unavailable because subagents are disabled in settings.");
+	}
+	// An omitted `agent` resolves against the ENABLED catalog, the same source the
+	// `task` tool uses (`catalog.defaultAgent`). Resolving it against the spawn
+	// policy instead named `DEFAULT_SPAWN_AGENT` verbatim under an unrestricted
+	// `spawns: "*"`, so an operator who had turned that agent off and a specialist
+	// on saw their `agent()` call refused by name for an agent they had never
+	// asked for, over a choice the bridge had made on their behalf.
+	//
+	// The refusal stays a refusal. Nothing here picks a different lane just
+	// because the configured one is off: the caller is told which agents ARE
+	// enabled and names one, which is the same answer the `task` tool gives.
+	const agentName = explicitAgent ?? catalog.defaultAgent;
+	if (agentName === undefined) {
+		const available = catalog.agents.map(candidate => candidate.name).join(", ") || "none";
+		throw new ToolError(
+			`agent() has no enabled default agent. Pass an enabled agent type explicitly or enable the configured default.${available !== "none" ? ` Enabled: ${available}` : ""}`,
+		);
 	}
 	const discoveredAgent = taskDiscovery.getAgent(agents, agentName);
 	if (!discoveredAgent) {

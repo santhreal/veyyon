@@ -401,28 +401,56 @@ export class AgentLifecycleManager {
 	}
 
 	/**
-	 * Kill an agent: abort the turn it is in the middle of, then release it.
+	 * Kill an agent and everything it spawned: abort the turn each one is in the
+	 * middle of, then release it.
 	 *
-	 * The order matters. Releasing a running session disposes it with a provider
-	 * request still in flight and nothing left to receive the answer, so the
-	 * abort has to land first. A parked or idle agent has no turn to abort and
-	 * goes straight to release.
+	 * The order matters twice over.
+	 *
+	 * Within one agent: releasing a running session disposes it with a provider
+	 * request still in flight and nothing left to receive the answer, so the abort
+	 * has to land first. A parked or idle agent has no turn to abort and goes
+	 * straight to release.
+	 *
+	 * Across the subtree: deepest first, and the whole subtree before the agent
+	 * that was named. Killing only the named agent unregisters it, and
+	 * `descendantsOf` walks `parentId` through the registry, so the moment its ref
+	 * is gone its children stop resolving as anyone's descendants. They keep
+	 * running and spending tokens, they still appear in `job list` under "Running
+	 * Agents" because that listing is scoped rather than descended, and the
+	 * descent bound on `cancel` then refuses every attempt to kill them: the
+	 * chain from the child reaches a parent id the registry no longer holds. That
+	 * is precisely the visible-running-immortal agent this kill was added to
+	 * abolish, recreated one level down by the kill itself.
 	 *
 	 * Shared rather than reimplemented per caller: the dashboard's `x` key and
-	 * the `job` tool's `cancel` are the same operation reached two ways, and the
-	 * abort-then-release ordering is exactly the kind of detail a second copy
-	 * gets wrong. The transcript survives at `history://<id>`; what is destroyed
-	 * is the live agent, not the record of what it did.
+	 * the `job` tool's `cancel` are the same operation reached two ways, and both
+	 * orderings are exactly the kind of detail a second copy gets wrong. The
+	 * transcript of every agent involved survives at `history://<id>`; what is
+	 * destroyed is the live agent, not the record of what it did.
 	 *
-	 * A throwing abort propagates and the release does NOT run. That looks like
-	 * the wrong call for a method whose purpose is to guarantee a kill, and it is
-	 * deliberate: a session that cannot abort is a session whose provider request
-	 * cannot be stopped, and disposing it anyway is the exact "response lands on
-	 * nothing" the ordering exists to prevent. The caller surfaces the failure to
-	 * whoever asked, which is the only thing that turns it into something a human
-	 * can act on.
+	 * A throwing abort propagates and NOTHING below it is released. That looks
+	 * like the wrong call for a method whose purpose is to guarantee a kill, and
+	 * it is deliberate on both axes. A session that cannot abort is a session
+	 * whose provider request cannot be stopped, and disposing it anyway is the
+	 * exact "response lands on nothing" the ordering exists to prevent. And
+	 * leaving the named agent registered when one of its descendants would not die
+	 * is what keeps that descendant reachable: it still resolves through the
+	 * parent chain, so the caller can retry, which an orphan can never be. The
+	 * caller surfaces the failure to whoever asked, which is the only thing that
+	 * turns it into something a human can act on.
 	 */
 	async terminate(id: string, reason: string): Promise<void> {
+		// Snapshotted before anything is unregistered: the walk reads live
+		// `parentId` links, and releasing as we go would cut the tree from under it.
+		// Reversed because the walk is breadth-first from `id`, so the tail is the
+		// deepest generation and a parent is never released before its children.
+		for (const descendant of this.#registry.descendantsOf(id).reverse()) {
+			await this.#terminateOne(descendant, reason);
+		}
+		await this.#terminateOne(id, reason);
+	}
+
+	async #terminateOne(id: string, reason: string): Promise<void> {
 		const ref = this.#registry.get(id);
 		if (ref?.status === "running" && ref.session) {
 			await ref.session.abort({ reason });

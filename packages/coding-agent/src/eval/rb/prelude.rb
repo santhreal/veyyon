@@ -392,7 +392,11 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
     schema.nil? ? text : JSON.parse(text)
   end
 
-  def agent(prompt, agent: "task", model: nil, label: nil, schema: nil, isolated: nil, apply: nil, merge: nil, handle: false)
+  # `agent` defaults to the session's configured default agent: the key is left
+  # out of the payload so the host resolves it from the enabled catalog. A
+  # literal here would name one agent for every operator, and the one it named
+  # was `task`, retired in favour of `deep`.
+  def agent(prompt, agent: nil, model: nil, label: nil, schema: nil, isolated: nil, apply: nil, merge: nil, handle: false)
     args = { "prompt" => prompt }
     args["agent"] = agent unless agent.nil?
     args["model"] = model unless model.nil?
