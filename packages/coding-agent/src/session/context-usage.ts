@@ -17,7 +17,7 @@ import type { CompactionSettings } from "@veyyon/agent-core/compaction";
 import { estimateTokens } from "@veyyon/agent-core/compaction";
 import type { Tool as AiTool, ContextSnapshot, Model } from "@veyyon/ai";
 import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
-import { toolWireSchema } from "@veyyon/ai/utils/schema";
+import { stripSchemaDescriptions, toolWireSchema } from "@veyyon/ai/utils/schema";
 // Imported from their owners rather than the `@veyyon/utils` barrel: this module is
 // on `tools/read.ts`'s reach graph through `session/agent-session.ts`, and
 // `test/architecture/leveraged-imports-stay-cut.test.ts` asserts that graph does not
@@ -25,6 +25,7 @@ import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { resolveContextLimit } from "../config/compaction-strategy";
+import { shouldInlineToolDescriptors } from "../config/inline-tool-descriptors-mode";
 import type { Skill } from "../extensibility/skills";
 import type { Tool } from "../tools";
 import type { AgentSession } from "./agent-session";
@@ -123,11 +124,18 @@ const EMPTY_SKILLS: readonly Skill[] = [];
 /** Memoize wire-schema JSON per stable `parameters` object — tool defs are
  *  replaced wholesale via setTools, never mutated in place. */
 const toolWireJsonByParameters = new WeakMap<object, string>();
+/** Same memo for the pruned form. Keyed separately: one `parameters` object now
+ *  has two wire encodings and they must not evict each other. */
+const prunedToolWireJsonByParameters = new WeakMap<object, string>();
 
-function wireSchemaJsonFragment(tool: Pick<Tool, "name" | "description" | "parameters">): string {
+function wireSchemaJsonFragment(
+	tool: Pick<Tool, "name" | "description" | "parameters">,
+	pruneDescriptions = false,
+): string {
 	const parameters = tool.parameters;
+	const cache = pruneDescriptions ? prunedToolWireJsonByParameters : toolWireJsonByParameters;
 	if (parameters !== null && typeof parameters === "object") {
-		const cached = toolWireJsonByParameters.get(parameters);
+		const cached = cache.get(parameters);
 		if (cached !== undefined) return cached;
 	}
 	try {
@@ -136,9 +144,10 @@ function wireSchemaJsonFragment(tool: Pick<Tool, "name" | "description" | "param
 			description: tool.description,
 			parameters: tool.parameters as AiTool["parameters"],
 		};
-		const json = JSON.stringify(toolWireSchema(wireTool) ?? {});
+		const wire = toolWireSchema(wireTool) ?? {};
+		const json = JSON.stringify(pruneDescriptions ? stripSchemaDescriptions(wire as Record<string, unknown>) : wire);
 		if (parameters !== null && typeof parameters === "object") {
-			toolWireJsonByParameters.set(parameters, json);
+			cache.set(parameters, json);
 		}
 		return json;
 	} catch (error) {
@@ -168,12 +177,33 @@ export function estimateSkillsTokens(skills: readonly Skill[]): number {
 
 export function estimateToolSchemaTokens(
 	tools: ReadonlyArray<Pick<Tool, "name" | "description" | "parameters">>,
+	pruneDescriptions = false,
 ): number {
 	const fragments: string[] = [];
 	for (const tool of tools) {
-		fragments.push(tool.name, tool.description, wireSchemaJsonFragment(tool));
+		fragments.push(tool.name);
+		// The pruned form empties the top-level description and drops the nested
+		// schema annotations, so counting either here would bill text the request
+		// does not carry.
+		if (!pruneDescriptions) fragments.push(tool.description);
+		fragments.push(wireSchemaJsonFragment(tool, pruneDescriptions));
 	}
 	return countTokens(fragments);
+}
+
+/**
+ * Whether this session's requests ship tool schemas WITHOUT their descriptions.
+ *
+ * When the full catalog is rendered into the system prompt, the provider-bound
+ * specs are pruned so the text rides the wire once rather than twice. Counting
+ * the registry instead of the pruned form overstated the tool half by about
+ * 11.5k tokens per turn on Gemini, which is the only family `auto` inlines. That
+ * total is not cosmetic: it feeds the compaction scaling ratio, where an
+ * inflated value keeps `keepRecentTokens` high, so each pass frees less and the
+ * session returns to the threshold sooner.
+ */
+function prunesToolDescriptions(session: AgentSession): boolean {
+	return shouldInlineToolDescriptors(session.settings?.get("inlineToolDescriptors"), session.model?.id);
 }
 
 /**
@@ -201,6 +231,7 @@ interface NonMessageTokenCache {
 	systemPromptRef: readonly string[];
 	toolsRef: ReadonlyArray<Pick<Tool, "name" | "description" | "parameters">>;
 	skillsRef: readonly Skill[];
+	prune: boolean;
 	tokens: number | undefined;
 	breakdown:
 		| {
@@ -218,16 +249,21 @@ function nonMessageTokenCacheEntry(session: AgentSession): NonMessageTokenCache 
 	const systemPromptRef = session.systemPrompt ?? EMPTY_STRING_PARTS;
 	const toolsRef = session.agent?.state?.tools ?? EMPTY_TOOLS;
 	const skillsRef = session.skills ?? EMPTY_SKILLS;
+	// The same tools array yields two totals depending on the active model, so a
+	// mid-session model switch has to miss this cache rather than serve the
+	// previous model's number.
+	const prune = prunesToolDescriptions(session);
 	let entry = nonMessageTokenCache.get(session);
 	if (
 		entry &&
 		entry.systemPromptRef === systemPromptRef &&
 		entry.toolsRef === toolsRef &&
-		entry.skillsRef === skillsRef
+		entry.skillsRef === skillsRef &&
+		entry.prune === prune
 	) {
 		return entry;
 	}
-	entry = { systemPromptRef, toolsRef, skillsRef, tokens: undefined, breakdown: undefined };
+	entry = { systemPromptRef, toolsRef, skillsRef, prune, tokens: undefined, breakdown: undefined };
 	nonMessageTokenCache.set(session, entry);
 	return entry;
 }
@@ -237,7 +273,7 @@ export function computeNonMessageTokens(session: AgentSession): number {
 	if (entry.tokens !== undefined) return entry.tokens;
 	const systemPromptParts = session.systemPrompt ?? EMPTY_STRING_PARTS;
 	const tools = session.agent?.state?.tools ?? EMPTY_TOOLS;
-	const tokens = countTokens(systemPromptParts) + estimateToolSchemaTokens(tools);
+	const tokens = countTokens(systemPromptParts) + estimateToolSchemaTokens(tools, entry.prune);
 	entry.tokens = tokens;
 	return tokens;
 }
@@ -331,7 +367,7 @@ export function computeNonMessageBreakdown(session: AgentSession): {
 	const entry = nonMessageTokenCacheEntry(session);
 	if (entry.breakdown) return entry.breakdown;
 	const skillsTokens = estimateSkillsTokens(session.skills ?? EMPTY_SKILLS);
-	const toolsTokens = estimateToolSchemaTokens(session.agent?.state?.tools ?? EMPTY_TOOLS);
+	const toolsTokens = estimateToolSchemaTokens(session.agent?.state?.tools ?? EMPTY_TOOLS, entry.prune);
 	const systemPromptParts = session.systemPrompt ?? EMPTY_STRING_PARTS;
 	const systemContextTokens = countTokens(systemPromptParts.slice(1));
 	const systemPromptTokens = Math.max(0, countTokens(systemPromptParts[0] ?? "") - skillsTokens);

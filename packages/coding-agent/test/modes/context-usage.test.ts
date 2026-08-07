@@ -7,6 +7,7 @@
  */
 import { describe, expect, it, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
+import { countTokens } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
 import { arkToWireSchema } from "@veyyon/ai/utils/schema";
 import { renderContextUsage } from "@veyyon/coding-agent/modes/utils/context-usage";
@@ -263,5 +264,69 @@ describe("renderContextUsage — bytes kept out of the request", () => {
 		const line = rendered.split("\n").find(l => l.includes("Kept out of context")) ?? "";
 		expect(line.indexOf("thought signatures")).toBeLessThan(line.indexOf("absolute paths"));
 		expect(line).toContain("2.7MB of thought signatures, 4.0KB of absolute paths");
+	});
+});
+
+/**
+ * The provider-bound tool specs are pruned of their descriptions whenever the
+ * full catalog is rendered into the system prompt, which under the `auto` policy
+ * is Gemini and only Gemini. The accounting used to measure the raw registry
+ * regardless, overstating the tool half by roughly 11.5k tokens per turn on that
+ * family. It is not a display number: it feeds the compaction scaling ratio, so
+ * an inflated value keeps `keepRecentTokens` high and every pass frees less.
+ */
+describe("non-message tokens count the tools the request actually carries", () => {
+	// Long descriptions on purpose: the prune removes description text, so a
+	// toolset without any would show no gap and the test would prove nothing.
+	const tools = [
+		{
+			name: "read",
+			description: "Read files, directories, archives and documents. ".repeat(40),
+			parameters: {
+				type: "object",
+				properties: { path: { type: "string", description: "the path to read ".repeat(20) } },
+			},
+		},
+		{
+			name: "bash",
+			description: "Run a command in the embedded shell. ".repeat(40),
+			parameters: {
+				type: "object",
+				properties: { command: { type: "string", description: "the command to run ".repeat(20) } },
+			},
+		},
+	];
+
+	function sessionOn(modelId: string) {
+		return {
+			systemPrompt: ["system prompt"],
+			agent: { state: { tools } },
+			skills: [],
+			model: { id: modelId },
+			settings: { get: () => "auto" },
+		};
+	}
+
+	it("prunes the tool half on an inlining model and leaves it whole elsewhere", () => {
+		const gemini = computeNonMessageTokens(sessionOn("gemini-3.6-flash") as never);
+		const claude = computeNonMessageTokens(sessionOn("claude-sonnet-4-5") as never);
+
+		// The non-inlining arm must stay whole. If a regression reddens BOTH arms
+		// the change is measuring the wrong thing, so both directions are pinned.
+		const prompt = countTokens(["system prompt"]);
+		expect(claude).toBe(prompt + estimateToolSchemaTokens(tools as never, false));
+		expect(gemini).toBe(prompt + estimateToolSchemaTokens(tools as never, true));
+		expect(gemini).toBeLessThan(claude);
+	});
+
+	it("does not serve one model's tool total to another after a switch", () => {
+		// Same session object and the same tools array reference: only the active
+		// model changes. The memo keys on the tools reference, so without the
+		// prune flag in the key this returns the previous model's number.
+		const session = sessionOn("gemini-3.6-flash");
+		const asGemini = computeNonMessageTokens(session as never);
+		session.model = { id: "claude-sonnet-4-5" };
+		const asClaude = computeNonMessageTokens(session as never);
+		expect(asClaude).toBeGreaterThan(asGemini);
 	});
 });
