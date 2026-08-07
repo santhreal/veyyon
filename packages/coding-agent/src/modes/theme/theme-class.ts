@@ -609,10 +609,15 @@ export class Theme {
 		};
 	}
 
+	/** Three task states, not two plus a colour. `progress` is total the same way
+	 *  its siblings are: every preset is typed `SymbolMap`, so a preset cannot
+	 *  omit the key, and the override loop above only assigns keys already
+	 *  present rather than introducing or deleting any. */
 	get checkbox() {
 		return {
 			checked: this.#symbols["checkbox.checked"],
 			unchecked: this.#symbols["checkbox.unchecked"],
+			progress: this.#symbols["checkbox.progress"],
 		};
 	}
 

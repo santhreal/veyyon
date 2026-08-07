@@ -1465,7 +1465,9 @@ function formatTodoLine(
 			return uiTheme.fg("success", `${prefix}${checkbox.checked} ${content}`);
 		}
 		case "in_progress":
-			return uiTheme.fg("accent", `${prefix}${checkbox.unchecked} ${safeContent}`);
+			// Its own glyph, not the pending box in a different colour, and the
+			// same one the HUD above the composer draws for this state.
+			return uiTheme.fg("accent", `${prefix}${checkbox.progress} ${safeContent}`);
 		case "abandoned":
 			return uiTheme.fg("error", `${prefix}${checkbox.unchecked} ${strikethroughText(safeContent)}`);
 		default:

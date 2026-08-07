@@ -132,9 +132,12 @@ export type SymbolKey =
 	| "thinking.xhigh"
 	| "thinking.max"
 	| "thinking.autoPending"
-	// Checkboxes
+	// Checkboxes. `progress` is a third state, not a colour variant: an
+	// in-progress task has to stay distinguishable from a pending one in a
+	// monochrome capture and for a reader who cannot separate the two hues.
 	| "checkbox.checked"
 	| "checkbox.unchecked"
+	| "checkbox.progress"
 	// Radio (single-choice)
 	| "radio.selected"
 	| "radio.unselected"
@@ -408,9 +411,13 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"thinking.xhigh": "xhigh",
 	"thinking.max": "max",
 	"thinking.autoPending": "◐",
-	// Checkboxes
+	// Checkboxes. `progress` sits in the same Geometric Shapes block and the same
+	// East Asian width class as the other two, so a terminal that widens `■`
+	// widens all three and the column stays aligned. Half-filled reads as
+	// half-done without depending on colour.
 	"checkbox.checked": "■",
 	"checkbox.unchecked": "□",
+	"checkbox.progress": "◧",
 	// Radio (single-choice): squared to match the house block style, and kept
 	// visually distinct from the `■`/`□` checkbox — `▣` is a square-in-square so
 	// a selected radio never reads as a checked box.
@@ -731,6 +738,8 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"checkbox.checked": "\uf14a",
 	// pick:  | alt: 
 	"checkbox.unchecked": "\uf096",
+	// pick:  (nf-fa-minus_square, the conventional indeterminate box) | alt:
+	"checkbox.progress": "\uf146",
 	// Radio (single-choice)
 	// pick:  (fa-dot-circle-o) | alt:  ◉
 	"radio.selected": "\uf192",
@@ -963,6 +972,9 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	// Checkboxes
 	"checkbox.checked": "[x]",
 	"checkbox.unchecked": "[ ]",
+	// Three columns like its siblings, so the ASCII board's content column does
+	// not shift when a task starts.
+	"checkbox.progress": "[~]",
 	"radio.selected": "(o)",
 	"radio.unselected": "( )",
 	"format.bullet": "*",

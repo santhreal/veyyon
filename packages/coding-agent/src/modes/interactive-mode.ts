@@ -128,7 +128,7 @@ import { hasForegroundBashWait, onForegroundBashWaitChange } from "../tools/bash
 import { normalizeLocalScheme } from "../tools/path-utils";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../tools/render-utils";
 import { type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
-import { formatPhaseDisplayName, todoMatchesAnyDescription } from "../tools/todo";
+import { boundedTodoPreviewText, formatPhaseDisplayName, todoMatchesAnyDescription } from "../tools/todo";
 import { ToolError } from "../tools/tool-errors";
 import { vocalizer } from "../tts/vocalizer";
 import { renderTreeList } from "../tui/tree-list";
@@ -1978,18 +1978,31 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#transcriptComposer.rebuild();
 	}
 
-	#formatTodoLine(todo: TodoItem, prefix: string, matched: boolean): string {
+	/**
+	 * One HUD row for one task.
+	 *
+	 * Every state is separated by its glyph before it is separated by colour.
+	 * In-progress used to draw the pending box and differ only in accent, which
+	 * is no distinction at all for a reader who cannot tell the two hues apart,
+	 * in a low-contrast theme, or in any capture that drops SGR.
+	 *
+	 * `contentWidth` is the caller's remaining column budget after row chrome.
+	 * The board is an anchored live region above the composer, so a row that
+	 * overflows does not scroll away: it wraps and the block grows every frame.
+	 */
+	#formatTodoLine(todo: TodoItem, prefix: string, matched: boolean, contentWidth: number): string {
 		const checkbox = theme.checkbox;
+		const content = boundedTodoPreviewText(todo.content, contentWidth);
 		switch (todo.status) {
 			case "completed":
-				return theme.fg("success", `${prefix}${checkbox.checked} ${chalk.strikethrough(todo.content)}`);
+				return theme.fg("success", `${prefix}${checkbox.checked} ${chalk.strikethrough(content)}`);
 			case "in_progress":
-				return theme.fg("accent", `${prefix}${checkbox.unchecked} ${todo.content}`);
+				return theme.fg("accent", `${prefix}${checkbox.progress} ${content}`);
 			case "abandoned":
-				return theme.fg("error", `${prefix}${checkbox.unchecked} ${chalk.strikethrough(todo.content)}`);
+				return theme.fg("error", `${prefix}${checkbox.unchecked} ${chalk.strikethrough(content)}`);
 			default:
-				if (matched) return theme.fg("accent", `${prefix}${checkbox.unchecked} ${todo.content}`);
-				return theme.fg("dim", `${prefix}${checkbox.unchecked} ${todo.content}`);
+				if (matched) return theme.fg("accent", `${prefix}${checkbox.unchecked} ${content}`);
+				return theme.fg("dim", `${prefix}${checkbox.unchecked} ${content}`);
 		}
 	}
 
@@ -2180,6 +2193,24 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Fixed budgets keep the HUD bounded regardless of plan size / progress.
 		const subsequentStageCap = 4; // stages shown after the active one (header count implies the rest)
 		const activeTaskCap = 5; // open tasks previewed for the active stage
+		const doneTaskCap = 2; // most recently finished tasks kept alongside them
+
+		// Column budgets, so nothing in this block can wrap. The block is an
+		// anchored live region above the composer: a wrapped row does not scroll
+		// away, it makes the region taller on every rebuild. The last column is
+		// left clear because a row that fills it triggers the terminal's pending
+		// wrap. Row chrome is the Text's left padding (1), the phase shift
+		// applied to every line below (1) and the phase connector (3); a task row
+		// adds its own connector (3) plus the widest status glyph and the space
+		// after it.
+		const glyphColumns = Math.max(
+			visibleWidth(theme.checkbox.checked),
+			visibleWidth(theme.checkbox.unchecked),
+			visibleWidth(theme.checkbox.progress),
+		);
+		const usableColumns = Math.max(24, (this.ui.terminal.columns || 80) - 1);
+		const contentWidth = Math.max(16, usableColumns - 8 - glyphColumns - 1);
+		const labelWidth = (progress: string): number => Math.max(8, usableColumns - 5 - visibleWidth(progress));
 
 		const activeDescs = this.#getActiveSubagentDescriptions();
 		// A pending todo "lights up" (accent) when an in-flight subagent is doing
@@ -2187,15 +2218,27 @@ export class InteractiveMode implements InteractiveModeContext {
 		const isMatched = (todo: TodoItem): boolean =>
 			activeDescs.length > 0 && todoMatchesAnyDescription(todo.content, activeDescs);
 
-		// Task subtree for a phase. Collapsed previews the first open tasks — the
-		// stage's `done/total` makes the hidden count obvious, so there is no
-		// "… more" row; expanded lists every task.
+		// Task subtree for a phase. Expanded lists every task. Collapsed previews
+		// the open tasks AND the tasks most recently finished: showing remaining
+		// work only meant a stage that had just closed three tasks looked exactly
+		// like one that had done nothing, which is most of why the board reads as
+		// stalled. The stage's `done/total` still implies whatever is not listed,
+		// so there is no "… more" row.
+		const collapsedTasks = (phase: TodoPhase): TodoItem[] => {
+			const closed = phase.tasks.filter(task => this.#isClosedTodo(task));
+			const open = phase.tasks.filter(task => !this.#isClosedTodo(task));
+			if (open.length === 0) return closed.slice(-activeTaskCap);
+			const keep = new Set<TodoItem>([...closed.slice(-doneTaskCap), ...open.slice(0, activeTaskCap)]);
+			return phase.tasks.filter(task => keep.has(task));
+		};
 		const renderTasks = (phase: TodoPhase): string[] => {
-			const open = phase.tasks.filter(t => t.status === "pending" || t.status === "in_progress");
-			const base = expanded ? phase.tasks : open.length > 0 ? open : phase.tasks;
-			const items = expanded ? base : base.slice(0, activeTaskCap);
+			const items = expanded ? phase.tasks : collapsedTasks(phase);
 			return renderTreeList(
-				{ items, expanded: true, renderItem: todo => this.#formatTodoLine(todo, "", isMatched(todo)) },
+				{
+					items,
+					expanded: true,
+					renderItem: todo => this.#formatTodoLine(todo, "", isMatched(todo), contentWidth),
+				},
 				theme,
 			);
 		};
@@ -2204,9 +2247,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		// progress; other stages render their whole row (name + progress) in the
 		// brighter muted gray. The root header carries overall stage progression.
 		const renderPhase = (phase: TodoPhase, oneBased: number, isActive: boolean): string | string[] => {
-			const label = multiPhase ? formatPhaseDisplayName(phase.name, oneBased) : phase.name;
 			const done = phase.tasks.filter(t => t.status === "completed").length;
 			const progress = ` · ${done}/${phase.tasks.length}`;
+			const label = boundedTodoPreviewText(
+				multiPhase ? formatPhaseDisplayName(phase.name, oneBased) : phase.name,
+				labelWidth(progress),
+			);
 			if (!isActive) {
 				const header = theme.fg("muted", label) + theme.fg("dim", progress);
 				return expanded ? [header, ...renderTasks(phase)] : header;

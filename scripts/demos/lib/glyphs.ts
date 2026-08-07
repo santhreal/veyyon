@@ -184,6 +184,12 @@ const FONT: Readonly<Record<string, string>> = {
 	"■": "...../.###./.###./.###./.###./...../.....",
 	"□": "...../.###./.#.#./.#.#./.###./...../.....",
 	"▣": "...../.###./.#.#./.###./.#.#./.###./.....",
+	// The in-progress box. A board proof exists to show three task states at once,
+	// so the middle one cannot be the one drawn as an anonymous placeholder. The
+	// terminal glyph splits left/right, which a three-column box cannot express;
+	// the raster splits top/bottom instead, because what the proof has to show is
+	// that the state is neither `■` nor `□`, not which way the fill runs.
+	"◧": "...../.###./.#.#./.###./.###./...../.....",
 	// The account-state marks from the `/providers` card, and the reason all three are here: the
 	// card's whole claim is that you can tell at a glance which of several accounts is spending your
 	// tokens, which is idle, and which is temporarily unusable. Rastering any of them as an
