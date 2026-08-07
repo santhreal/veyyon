@@ -38,14 +38,14 @@ import { fetchDevinModels } from "../src/discovery/devin";
 import { GetCliModelConfigsResponseSchema } from "../src/discovery/devin-gen/exa/api_server_pb/api_server_pb";
 import { ClientModelConfigSchema } from "../src/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
 import { gatewayContextWindow, gatewayMaxTokens, gatewayModelReference } from "../src/discovery/gateway-limits";
-import { getBundledModel } from "../src/models";
+import { type GeneratedProvider, getBundledModel } from "../src/models";
 
 /**
  * The corpus is read out of the bundled catalog rather than written down: these are the numbers the catalog
  * itself publishes for these models, so the assertions cannot drift from the data they are about. A missing row
  * throws here rather than turning every case below into a comparison against `undefined`.
  */
-function catalogWindow(provider: string, id: string): number {
+function catalogWindow(provider: GeneratedProvider, id: string): number {
 	const contextWindow = getBundledModel(provider, id)?.contextWindow;
 	if (typeof contextWindow !== "number") {
 		throw new Error(`the bundled catalog publishes no context window for ${provider}/${id}`);
