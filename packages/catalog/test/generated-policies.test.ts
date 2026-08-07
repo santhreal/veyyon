@@ -71,19 +71,11 @@ describe("generated model policies", () => {
 
 		applyGeneratedModelPolicies(models);
 
-		// Opus 4.5 declares nothing here, so its `output_config.effort` enum is
-		// dropped: that value is checked by the endpoint and guessing it is
-		// #3497's HTTP 400. The budget dial survives, because `budget_tokens` is a
-		// number Veyyon computes locally and no endpoint validates it. Dropping it
-		// too would silently resolve an operator's `low` upward.
-		expect(models[0]?.thinking).toEqual({
-			mode: "budget",
-			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
-		});
+		// Nothing declared on these rows: the stale baked ladder is dropped,
+		// not replaced with an identity-derived one.
+		expect(models[0]?.thinking).toBeUndefined();
 		expect(models[0]?.cost.cacheRead).toBe(0.5);
 		expect(models[0]?.cost.cacheWrite).toBe(6.25);
-		// The Bedrock adaptive row keeps nothing: adaptive sends an effort NAME and
-		// nothing declares one for it.
 		expect(models[1]?.thinking).toBeUndefined();
 		expect(models[1]?.cost.cacheRead).toBe(0.5);
 		expect(models[1]?.cost.cacheWrite).toBe(6.25);

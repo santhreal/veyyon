@@ -936,14 +936,10 @@ describe("openai-completions compatibility", () => {
 		expect(payloadObject?.tool_stream).toBeUndefined();
 	});
 
-	it("ships the declared [high, max] Z.AI GLM-5.2 ladder with no effortMap", () => {
-		// The ladder rides on the shipped row, because it is Z.AI's declaration
-		// and not something derivable from the id. A locally assembled spec has
-		// no declaration and therefore no effort surface at all.
-		const model = getBundledModel("zhipu-coding-plan", "glm-5.2");
+	it("bakes the honest [high, max] Z.AI GLM-5.2 ladder with no effortMap", () => {
+		const model = zaiGlm52Model();
 		expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
 		expect(model.thinking?.effortMap).toBeUndefined();
-		expect(zaiGlm52Model().thinking).toBeUndefined();
 	});
 
 	it("treats finish_reason end as stop", async () => {
