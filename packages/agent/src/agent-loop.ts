@@ -2331,7 +2331,15 @@ async function executeToolCalls(
 				toolName: toolCall.name,
 				status: "aborted",
 			});
-			emitToolResult(record, createToolSignalAbortedResult(record.signal), true);
+			emitToolResult(
+				record,
+				createToolSignalAbortedResult(
+					record.signal,
+					interruptState.triggered ? interruptState.source : "cancelled-run",
+					record.entered,
+				),
+				true,
+			);
 			return;
 		}
 		record.started = true;
@@ -2363,7 +2371,11 @@ async function executeToolCalls(
 			try {
 				if (!tool) throw new Error(`Tool ${toolCall.name} not found`);
 				if (record.signal.aborted) {
-					result = createToolSignalAbortedResult(record.signal);
+					result = createToolSignalAbortedResult(
+						record.signal,
+						interruptState.triggered ? interruptState.source : "cancelled-run",
+						record.entered,
+					);
 					isError = true;
 					return;
 				}
@@ -2383,7 +2395,11 @@ async function executeToolCalls(
 					}
 				}
 				if (record.signal.aborted) {
-					result = createToolSignalAbortedResult(record.signal);
+					result = createToolSignalAbortedResult(
+						record.signal,
+						interruptState.triggered ? interruptState.source : "cancelled-run",
+						record.entered,
+					);
 					isError = true;
 					return;
 				}
@@ -2863,11 +2879,31 @@ function createAbortedToolResult(
 	return toolResultMessage;
 }
 
-function createToolSignalAbortedResult(signal: AbortSignal): AgentToolResult<unknown> {
+/**
+ * Placeholder for a call whose signal had already aborted when dispatch reached
+ * it: the siblings queued behind the call that cancelled the run.
+ *
+ * It carries {@link SkippedToolResultDetails} for the same reason
+ * {@link createSkippedToolResult} does. The text here is fixed per abort reason,
+ * so a whole batch of siblings reaches the model as one byte-identical line
+ * repeated, and a consumer that classifies by reading it counts one failure
+ * happening over and over. This shipped with an empty details bag, which made it
+ * the one skip shape the discriminator could not describe, on the path that
+ * produces the longest runs of it.
+ *
+ * `entered` is always false here (control has not reached `tool.execute()`), but
+ * it is read from the record rather than asserted, so the field keeps meaning
+ * what it says if the dispatch order ever changes.
+ */
+function createToolSignalAbortedResult(
+	signal: AbortSignal,
+	source: SteeringInterruptSource | "irc" | "cancelled-run" | undefined,
+	entered: boolean,
+): AgentToolResult<SkippedToolResultDetails> {
 	const reason = abortReasonText(signal);
 	return {
 		content: [{ type: "text", text: `Tool was not executed because the run was aborted: ${reason}.` }],
-		details: {},
+		details: { __skipped: true, source: source ?? "steering", entered },
 	};
 }
 
