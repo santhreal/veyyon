@@ -3745,8 +3745,8 @@ export class TUI extends Container {
 			// tall transient prompt (the ask dialog's inline editor) shrinking
 			// back to the one-line editor (no resync: the committed transcript
 			// rows never changed). Flooring windowTop at #committedRows would pin
-			// the editor mid-screen with blank rows underneath — the operator's
-			// standing order is that the prompt NEVER floats, so the frame tail
+			// the editor mid-screen with blank rows underneath. The prompt NEVER
+			// floats, so the frame tail
 			// is re-shown even when the transcript still overflows the viewport.
 			// The stale committed copy stays in native history; duplicating a few
 			// rows is preferable to a live editor gap — "duplication, never loss"

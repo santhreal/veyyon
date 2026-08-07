@@ -51,8 +51,8 @@ async function renderPrompt(cwd: string, agentDir: string, resolvedCustomPrompt?
  * WHICH CONTEXT FILE WINS, and what the prompt tells the model about it.
  *
  * This is the precedence file. A reader looking for "does a project AGENTS.md
- * outrank my own one" should land here, and the first case is the operator's
- * report reproduced end to end rather than paraphrased.
+ * outrank my own one" should land here, and the first case reproduces the
+ * reported precedence failure end to end rather than paraphrasing it.
  *
  * Every case measures through the REAL loader on a real temp fixture. Passing
  * `contextFiles` to `buildSystemPrompt` explicitly BYPASSES the authority sort and

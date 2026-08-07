@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	type CompactionSettings,
@@ -26,7 +25,6 @@ import type {
 	SessionMessageEntry,
 	ThinkingLevelChangeEntry,
 } from "@veyyon/coding-agent/session/session-entries";
-import { parseSessionEntries } from "@veyyon/coding-agent/session/session-loader";
 import { migrateSessionEntries } from "@veyyon/coding-agent/session/session-migrations";
 import { e2eApiKey } from "./helpers/e2e-session";
 
@@ -34,12 +32,116 @@ import { e2eApiKey } from "./helpers/e2e-session";
 // Test fixtures
 // ============================================================================
 
-async function loadLargeSessionEntries(): Promise<SessionEntry[]> {
-	const sessionPath = path.join(import.meta.dirname, "fixtures/large-session.jsonl");
-	const content = await Bun.file(sessionPath).text();
-	const entries = parseSessionEntries(content);
-	migrateSessionEntries(entries); // Add id/parentId for v1 fixtures
-	return entries.filter((e): e is SessionEntry => e.type !== "session");
+/**
+ * A large, non-uniform session, generated rather than replayed.
+ *
+ * This used to read a captured `.jsonl` transcript. A recorded session is
+ * somebody's actual conversation, so it cannot be committed, and it made the
+ * fixture unreadable besides: what the cut point had to land on was buried in
+ * a megabyte of prose. The generator states the shape the cut point depends on
+ * — 88 user turns, 453 assistant turns, 373 tool results, one enormous result,
+ * and every tool call paired with its result — and is seeded, so the entry
+ * sequence is identical on every run.
+ */
+function buildLargeSessionEntries(): SessionEntry[] {
+	let seed = 0x5eed_1a7e;
+	const rand = () => {
+		seed = (seed * 1_103_515_245 + 12_345) & 0x7fff_ffff;
+		return seed / 0x7fff_ffff;
+	};
+	const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)];
+
+	const start = Date.UTC(2026, 0, 2, 9, 0, 0);
+	let tick = 0;
+	const stamp = () => new Date(start + tick++ * 1_000).toISOString();
+	const prose = (words: number) =>
+		Array.from({ length: words }, () =>
+			pick(["index", "buffer", "resolve", "entry", "budget", "token", "cursor", "segment", "commit", "range"]),
+		).join(" ");
+
+	const entries: SessionEntry[] = [];
+	const push = (entry: SessionEntry) => entries.push(entry);
+	const message = (msg: Record<string, unknown>): SessionEntry =>
+		({ type: "message", timestamp: stamp(), message: msg }) as unknown as SessionEntry;
+
+	// Exactly 373 of the 453 assistant turns carry a tool call, so every count is
+	// reached by construction. Deciding per turn on a coin flip cannot hit 373 out
+	// of 453 and spins forever waiting to.
+	const kinds: boolean[] = [
+		...Array.from({ length: 373 }, () => true),
+		...Array.from({ length: 453 - 373 }, () => false),
+	];
+	for (let i = kinds.length - 1; i > 0; i--) {
+		const j = Math.floor(rand() * (i + 1));
+		[kinds[i], kinds[j]] = [kinds[j], kinds[i]];
+	}
+
+	// One result is two orders of magnitude larger than the median, which is what
+	// pushes the cut point away from the tail and makes this fixture worth having.
+	const huge = 43_000;
+	let calls = 0;
+	let results = 0;
+	let next = 0;
+
+	for (let user = 0; user < 88; user++) {
+		push(message({ role: "user", content: [{ type: "text", text: prose(12) }], timestamp: start + tick }));
+
+		// The tail user turn drains whatever is left, so no turn is dropped.
+		const remaining = kinds.length - next;
+		const turns = user === 87 ? remaining : Math.min(remaining, 1 + Math.floor(rand() * 9));
+		for (let t = 0; t < turns; t++) {
+			const wantsTool = kinds[next++];
+			const id = `call_${calls}`;
+			const content = wantsTool
+				? [
+						{
+							type: "toolCall",
+							id,
+							name: pick(["read", "grep", "bash", "edit"]),
+							arguments: { path: "src/mod.ts" },
+						},
+					]
+				: [{ type: "text", text: prose(8 + Math.floor(rand() * 40)) }];
+			push(
+				message({
+					role: "assistant",
+					content,
+					api: "anthropic-messages",
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					usage: createMockUsage(1_200, 240),
+					stopReason: wantsTool ? "toolUse" : "stop",
+					timestamp: start + tick,
+				}),
+			);
+			if (wantsTool) {
+				calls++;
+				const size = results === 40 ? huge : 40 + Math.floor(rand() * 300);
+				push(
+					message({
+						role: "toolResult",
+						toolCallId: id,
+						toolName: "read",
+						content: [{ type: "text", text: "x".repeat(size) }],
+						isError: false,
+						timestamp: start + tick,
+					}),
+				);
+				results++;
+			}
+		}
+		if (rand() < 0.12) {
+			push({
+				type: "thinking_level_change",
+				timestamp: stamp(),
+				thinkingLevel: pick(["off", "low", "medium", "high"]),
+			} as ThinkingLevelChangeEntry);
+		}
+	}
+	push({ type: "model_change", timestamp: stamp(), model: "gpt-4" } as ModelChangeEntry);
+
+	migrateSessionEntries(entries); // the loader assigns id/parentId; generated entries need the same
+	return entries;
 }
 
 function createMockUsage(input: number, output: number, cacheRead = 0, cacheWrite = 0): Usage {
@@ -892,18 +994,38 @@ describe("buildSessionContext", () => {
 });
 
 // ============================================================================
-// Integration tests with real session data
+// Integration tests over a full-size session
 // ============================================================================
 
-describe("Large session fixture", () => {
+describe("Large session", () => {
 	it("should find cut point in large session", async () => {
-		const entries = await loadLargeSessionEntries();
+		const entries = buildLargeSessionEntries();
 		const result = findCutPoint(entries, 0, entries.length, DEFAULT_COMPACTION_SETTINGS.keepRecentTokens);
+
+		// Interior, or the assertions below hold for free: index 0 is a user
+		// message in any session, so a cut point that never moved would pass the
+		// role check while proving nothing.
+		expect(result.firstKeptEntryIndex).toBeGreaterThan(0);
+		expect(result.firstKeptEntryIndex).toBeLessThan(entries.length - 1);
 
 		// Cut point should be at a message entry (user or assistant)
 		expect(entries[result.firstKeptEntryIndex].type).toBe("message");
 		const role = (entries[result.firstKeptEntryIndex] as SessionMessageEntry).message.role;
 		expect(role === "user" || role === "assistant").toBe(true);
+
+		// A cut that lands between a tool call and its result would resume a
+		// session whose first kept entry answers a call that is no longer there.
+		const kept = entries.slice(result.firstKeptEntryIndex);
+		const offered = new Set<string>();
+		for (const entry of kept) {
+			if (entry.type !== "message") continue;
+			const msg = (entry as SessionMessageEntry).message;
+			if (msg.role === "assistant") {
+				for (const block of msg.content) if (block.type === "toolCall") offered.add(block.id);
+			} else if (msg.role === "toolResult") {
+				expect(offered.has(msg.toolCallId)).toBe(true);
+			}
+		}
 	});
 });
 
@@ -913,7 +1035,7 @@ describe("Large session fixture", () => {
 
 describe.skipIf(!e2eApiKey("ANTHROPIC_API_KEY"))("LLM summarization", () => {
 	it("should produce valid session after compaction", async () => {
-		const entries = await loadLargeSessionEntries();
+		const entries = buildLargeSessionEntries();
 		const loaded = buildSessionContext(entries);
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
 

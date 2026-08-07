@@ -103,8 +103,7 @@ export class HomeAnchorLayout {
 		// painted the prompt at the top and the loader at the bottom with a
 		// void of blank rows between them; when the reply landed, those
 		// committed blank rows overflowed the screen and pushed the prompt
-		// into scrollback while the viewport was mostly empty (user
-		// screenshots, 2026-07-22).
+		// into scrollback while the viewport was mostly empty.
 		const conversation = this.port.transcriptChildCount() > 0;
 		const top = this.port.hasHero() ? Math.floor((slack * 2) / 5) : conversation ? slack : 0;
 		if (top !== currentTopFill) this.topFill.setLines(top);

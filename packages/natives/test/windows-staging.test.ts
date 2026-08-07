@@ -119,8 +119,8 @@ describe("windows native addon staging", () => {
 		// build must be tried FIRST — a rebuild there must never be shadowed by a
 		// stale cache copy — but the per-version cache is now a TRAILING fallback so
 		// a source-tree sync that dropped the gitignored `native/*.node` still loads
-		// the binary a prior standalone install left in the cache (user-hit
-		// 2026-07-24). Before this fix the cache was never probed on this path and
+		// the binary a prior standalone install left in the cache. Before this
+		// fix the cache was never probed on this path and
 		// the loader bricked with a resolve-error dump.
 		const versionedDir = "/home/u/.omp/natives/15.0.1";
 		const candidates = resolveLoaderCandidates({

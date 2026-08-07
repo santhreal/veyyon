@@ -6,8 +6,8 @@ import { filterSettingItems, rankSettingItems } from "@veyyon/tui";
  * What settings search treats as a match, and in what order.
  *
  * Ranking used to concatenate label, id, CURRENT VALUE, description and every
- * enum value into one string and fuzzy-score the blob, which is why the operator
- * reported "search in settings isn't great" (2026-07-24). Each case below pins
+ * enum value into one string and fuzzy-score the blob, which is why settings
+ * search ranked badly. Each case below pins
  * one of the specific ways that behaved wrongly, so the blob cannot come back.
  */
 

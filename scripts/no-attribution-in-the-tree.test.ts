@@ -97,8 +97,20 @@ const BANNED: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }>
 		pattern: /\b(?:operator|user)'s\s+standing\s+(?:order|orders|rule|rules|instruction|instructions)\b/i,
 	},
 	{
+		// Not "instruction"/"instructions": an operator's instruction FILES are AGENTS.md and
+		// CLAUDE.md, a real technical noun, and not "words", which rule one already covers in the
+		// only shape that is an attribution.
 		name: "a person's ask or complaint as the reason",
-		pattern: /\b(?:operator|user)'s\s+(?:ask|asks|complaint|complaints|wording|screenshot|screenshots)\b/i,
+		pattern:
+			/\b(?:operator|user)'s\s+(?:ask|asks|complaint|complaints|wording|verdict|verdicts|phrasing|screenshot|screenshots)\b/i,
+	},
+	{
+		// Past tense and a quote. A bare "the user asked for full output" names where a value came
+		// from and stays legal, and so does the present tense — `the operator says "remember this"`
+		// describes what someone MAY type. "told" is excluded outright because the common direction
+		// is the product telling the operator: `an operator told only "cannot discard"`.
+		name: "quoting what a person said",
+		pattern: /\b(?:the\s+)?(?:operator|user)\s+(?:said|put\s+it|asked\s+to|asked\s+for)\b[^\n]{0,24}["“]/i,
 	},
 	{
 		name: "a dated credit next to a person",
@@ -106,16 +118,30 @@ const BANNED: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }>
 	},
 ];
 
-/** Comment and prose lines only: a string literal that is test DATA is not prose about a person. */
-function proseLines(file: string, source: string): ReadonlyArray<{ readonly line: number; readonly text: string }> {
+/**
+ * Comment and prose lines only: a string literal that is test DATA is not prose about a person.
+ *
+ * Each entry carries a `window` that appends the NEXT prose line, because at 80 columns an
+ * attribution and the sentence it introduces routinely straddle a wrap:
+ *
+ *     /// Not a header, not an empty bucket, not a placeholder. The operator
+ *     /// asked for "actual completely separate workspaces with blank sidebars",
+ *
+ * Matching one line at a time sees neither half and reports nothing, which is how a leak of
+ * exactly this shape survived an earlier pass of this suite.
+ */
+function proseLines(
+	file: string,
+	source: string,
+): ReadonlyArray<{ readonly line: number; readonly text: string; readonly window: string }> {
 	const markdown = path.extname(file) === ".md";
-	const out: { line: number; text: string }[] = [];
+	const raw: { line: number; text: string }[] = [];
 	let inFence = false;
-	source.split("\n").forEach((raw, index) => {
-		const trimmed = raw.trim();
+	source.split("\n").forEach((line, index) => {
+		const trimmed = line.trim();
 		if (markdown) {
 			if (trimmed.startsWith("```")) inFence = !inFence;
-			else if (!inFence && trimmed.length > 0) out.push({ line: index + 1, text: raw });
+			else if (!inFence && trimmed.length > 0) raw.push({ line: index + 1, text: line });
 			return;
 		}
 		const isComment =
@@ -123,9 +149,16 @@ function proseLines(file: string, source: string): ReadonlyArray<{ readonly line
 			trimmed.startsWith("*") ||
 			trimmed.startsWith("/*") ||
 			(trimmed.startsWith("#") && !trimmed.startsWith("#!") && !trimmed.startsWith("#["));
-		if (isComment) out.push({ line: index + 1, text: raw });
+		if (isComment) raw.push({ line: index + 1, text: line });
 	});
-	return out;
+
+	// Strip the leading comment marker before joining, so the continuation reads as prose.
+	const asProse = (text: string) => text.trim().replace(/^(?:\/{2,3}!?|\/\*+|\*+\/?|#)\s?/, "");
+	return raw.map((entry, index) => {
+		const next = raw[index + 1];
+		const joined = next && next.line === entry.line + 1 ? `${entry.text} ${asProse(next.text)}` : entry.text;
+		return { line: entry.line, text: entry.text, window: joined };
+	});
 }
 
 describe("no comment or internal doc attributes a change to a person", () => {
@@ -143,9 +176,9 @@ describe("no comment or internal doc attributes a change to a person", () => {
 			const source = await fs.readFile(path.join(REPO_ROOT, file), "utf8");
 			// Cheap pre-filter: the vast majority of files mention neither word.
 			if (!/operator|user/i.test(source)) continue;
-			for (const { line, text } of proseLines(file, source)) {
+			for (const { line, text, window } of proseLines(file, source)) {
 				for (const { name, pattern } of BANNED) {
-					if (pattern.test(text)) violations.push(`${file}:${line} (${name}): ${text.trim()}`);
+					if (pattern.test(window)) violations.push(`${file}:${line} (${name}): ${text.trim()}`);
 				}
 			}
 		}
@@ -174,6 +207,10 @@ describe("no comment or internal doc attributes a change to a person", () => {
 				"\t\t// The operator's ask (2026-07-23): the indicator says \"click to",
 			],
 			[
+				"quoting what a person said",
+				' * user said "these and nothing else", and silently restoring seven tools they did not name',
+			],
+			[
 				"a dated credit next to a person",
 				" *    tell unset from a genuinely negative value (operator review 2026-07-24).",
 			],
@@ -198,11 +235,39 @@ describe("no comment or internal doc attributes a change to a person", () => {
 			"\t// The provider's own words survive: a rewritten summary loses the reason.",
 			"\t// `reload *` is an explicit request to re-read config from disk.",
 			"// roots keep each scan bounded to exactly what the caller asked for.",
+			"\t// the user asked for full output, so nothing here is filtered.",
+			// Present tense describes what someone MAY type, which is product behavior, not a record
+			// of anyone having typed it.
+			' * how the model learns WHERE to write when the operator says "remember this".',
 		];
 		for (const line of legal) {
 			for (const { name, pattern } of BANNED) {
 				expect(pattern.test(line), `${name} must not match: ${line}`).toBe(false);
 			}
 		}
+	});
+
+	/**
+	 * An attribution that wraps is the same violation, and it is the shape this codebase actually
+	 * produces: comments are hard-wrapped, so the clause naming the person and the sentence it
+	 * quotes land on different lines. Scanning line by line found neither half.
+	 */
+	it("catches an attribution split across a comment wrap", () => {
+		const source = [
+			"/// A brand new workspace draws NOTHING.",
+			"///",
+			"/// Not a header, not an empty bucket, not a placeholder. The operator",
+			'/// asked for "actual completely separate workspaces with blank sidebars",',
+			"/// and a header over nothing makes a blank sidebar look broken.",
+		].join("\n");
+
+		const windows = proseLines("app/src/state/tests.rs", source);
+		const caught = windows.filter(entry => BANNED.some(rule => rule.pattern.test(entry.window)));
+		expect(caught.map(entry => entry.line)).toEqual([3]);
+
+		// The negative control for the same input: no single LINE carries the violation, so a
+		// per-line scan reports nothing and the wrap is what does the hiding.
+		const perLine = windows.filter(entry => BANNED.some(rule => rule.pattern.test(entry.text)));
+		expect(perLine).toEqual([]);
 	});
 });
