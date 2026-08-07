@@ -501,6 +501,11 @@
 	text-decoration: line-through;
 }
 
+/* One-line stand-in for a board whose every task has closed. */
+.tv-todo-done {
+	color: var(--tv-ok);
+}
+
 /* ---- notes ---- */
 
 .tv-note {

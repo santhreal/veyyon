@@ -6,6 +6,7 @@ import { Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
+import { isTodoListDone, TODO_DONE_SUMMARY, type TodoStatus } from "@veyyon/wire";
 import { type } from "arktype";
 import chalk from "chalk";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -21,7 +22,7 @@ import { formatErrorDetail } from "./render-utils";
 // Types
 // =============================================================================
 
-export type TodoStatus = "pending" | "in_progress" | "completed" | "abandoned";
+export type { TodoStatus };
 /** Operation names accepted by the todo tool and echoed in successful result details. */
 export type TodoOperation = "init" | "start" | "done" | "rm" | "drop" | "append" | "view";
 
@@ -1527,6 +1528,18 @@ export const todoToolRenderer = {
 		}
 
 		const phases = (result.details?.phases ?? []).filter(phase => phase.tasks.length > 0);
+		// A board with work on it and nothing left open is one green line: the
+		// card is history the moment it is finished, and a finished plan redrawn
+		// in full on every later turn is the bulk of a long transcript.
+		//
+		// Derived here, on the phases this render was handed, and stored nowhere.
+		// The collapse is not a mode the widget can be left in — the next `append`
+		// puts a pending task on the board and the full list comes straight back.
+		if (isTodoListDone(phases)) {
+			const doneTasks = phases.reduce((count, phase) => count + phase.tasks.length, 0);
+			const summary = `${uiTheme.checkbox.checked} ${TODO_DONE_SUMMARY} · ${formatCount("task", doneTasks)}`;
+			return new Text(uiTheme.fg("success", summary), 0, 0);
+		}
 		const completedTasks = result.details?.completedTasks ?? [];
 		const completionKeysByPhase = new Map<string, Set<string>>();
 		for (const task of completedTasks) {

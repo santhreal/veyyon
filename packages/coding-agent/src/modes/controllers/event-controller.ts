@@ -78,6 +78,7 @@ export type EventControllerContext = Pick<
 	| "noteDisplayableThinkingContent"
 	| "optimisticUserMessageSignature"
 	| "pendingTools"
+	| "settledToolCalls"
 	| "present"
 	| "proseOnlyThinking"
 	| "rebuildChatFromMessages"
@@ -920,6 +921,7 @@ export class EventController {
 						continue;
 					}
 					if (!readArgsTargetInternalUrl(content.arguments)) {
+						if (this.ctx.settledToolCalls.has(content.id)) continue;
 						if (!this.ctx.pendingTools.has(content.id)) this.#resolveDisplaceablePoll(content.name);
 						this.#trackReadToolCall(content.id, content.arguments);
 						const component = this.ctx.pendingTools.get(content.id);
@@ -963,6 +965,7 @@ export class EventController {
 					this.#toolArgsReveal.finish(content.id);
 					renderArgs = content.arguments;
 				}
+				if (this.ctx.settledToolCalls.has(content.id)) continue;
 				if (!this.ctx.pendingTools.has(content.id)) {
 					this.#resolveDisplaceablePoll(content.name);
 					this.#resetReadGroup();
@@ -1172,6 +1175,7 @@ export class EventController {
 		setShimmerActivity("tool");
 		this.#updateWorkingMessageFromIntent(event.intent);
 		this.#resolveDisplaceablePoll(event.toolName);
+		if (this.ctx.settledToolCalls.has(event.toolCallId)) return;
 		if (!this.ctx.pendingTools.has(event.toolCallId)) {
 			if (event.toolName === "read" && readArgsHaveTarget(event.args) && !readArgsTargetInternalUrl(event.args)) {
 				this.#trackReadToolCall(event.toolCallId, event.args);
@@ -1255,6 +1259,7 @@ export class EventController {
 			if (isTerminal) {
 				this.ctx.pendingTools.delete(event.toolCallId);
 				this.#backgroundTaskCallIds.delete(event.toolCallId);
+				this.ctx.settledToolCalls.add(event.toolCallId);
 			}
 			this.ctx.ui.requestRender();
 		}
@@ -1268,6 +1273,23 @@ export class EventController {
 		// which only fire `tool_execution_end`, never `_update` — do not leave
 		// the UI looking idle while the session keeps streaming (#3857).
 		this.#ensureWorkingLoaderWhileStreaming();
+		// A result for a call whose card is already final changes nothing on
+		// screen, and letting it through is not harmless: the read branch below
+		// BUILDS a group component when it finds no pending one, so a replayed
+		// end event grew a second read card after turn teardown reset the group.
+		// The handler's side effects (plan approval, todo displacement) must not
+		// re-fire on a duplicate either.
+		if (this.ctx.settledToolCalls.has(event.toolCallId)) return;
+		// Settle ONCE, at the handler's entry, ahead of every branch below. Doing
+		// it next to each `pendingTools.delete` instead would mean a branch added
+		// later silently reopens the ghost-question hole; there is exactly one
+		// door into "this call finished" and this is it. A background `task` that
+		// reports `async.state === "running"` has NOT finished — its card stays
+		// live and settles from `#handleToolExecutionUpdate`'s terminal branch.
+		const endAsyncState = (event.result.details as { async?: { state?: string } } | undefined)?.async?.state;
+		if (event.toolName !== "task" || endAsyncState !== "running") {
+			this.ctx.settledToolCalls.add(event.toolCallId);
+		}
 		if (event.toolName === "read") {
 			if (this.#inlineReadToolImages(event.toolCallId, event.result)) {
 				const component = this.ctx.pendingTools.get(event.toolCallId);
@@ -1398,6 +1420,10 @@ export class EventController {
 					component.seal();
 				}
 				this.ctx.pendingTools.delete(toolCallId);
+				// The card is frozen history now. A late replay of this call's
+				// `tool_execution_start` (collab resync, focus re-attach, an
+				// aborted-turn placeholder) must not build a fresh live one beside it.
+				this.ctx.settledToolCalls.add(toolCallId);
 			}
 		}
 		this.#backgroundTaskCallIds = new Set(

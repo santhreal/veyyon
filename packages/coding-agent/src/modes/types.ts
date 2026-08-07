@@ -178,6 +178,22 @@ export interface InteractiveModeContext {
 	proseOnlyThinking: boolean;
 	compactionQueuedMessages: CompactionQueuedMessage[];
 	pendingTools: Map<string, ToolExecutionHandle>;
+	/**
+	 * Tool calls whose transcript card is FINAL: a result landed, or the card was
+	 * sealed at turn end. `pendingTools` cannot answer this — its entry is deleted
+	 * the moment a call resolves, so `pendingTools.has(id)` reads false both before
+	 * a card exists and after it finished, and every mount site that tested it
+	 * happily built a second, pending-shaped card for an already-finished call.
+	 * For `ask` the pending shape IS the question, so a replayed `tool_execution_start`
+	 * re-asked a question the user had already answered ("ghost question").
+	 *
+	 * Resolution therefore lives here, on the transcript's own record of the call,
+	 * and every render path consults it before creating a card. Scope is the
+	 * transcript, NOT the turn: the ghost surfaces after the turn ends, so clearing
+	 * at a turn boundary would reopen the hole. It is cleared only where the
+	 * transcript itself is torn down and re-derived.
+	 */
+	settledToolCalls: Set<string>;
 	pendingBashComponents: BashExecutionComponent[];
 	bashComponent: BashExecutionComponent | undefined;
 	pendingPythonComponents: EvalExecutionComponent[];
