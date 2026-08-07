@@ -983,10 +983,85 @@ function isPrefixCommand(word: string): boolean {
 }
 
 /** How many `sh -c` / `eval` strings deep the scan will follow before refusing. */
-const MAX_INTERPRETED_SHELL_DEPTH = 3;
+export const MAX_INTERPRETED_SHELL_DEPTH = 3;
 
-/** Commands whose `-c` argument is a shell script rather than a plain word. */
-const SHELL_INTERPRETERS = new Set(["bash", "sh", "zsh", "dash", "ksh", "ash"]);
+/**
+ * Where a command that runs shell text keeps that text.
+ *
+ * `nextWord` is the `eval "…"` / `trap "…" EXIT` shape, where the script is the
+ * argument straight after the command. `afterScriptFlag` is the interpreter
+ * shape, where the script follows a `-c` in whatever bundle the caller spelled.
+ */
+export type ScriptArgumentShape = "afterScriptFlag" | "nextWord";
+
+/**
+ * Every command this guard knows hands shell text to a shell, and where each
+ * one keeps that text.
+ *
+ * ONE REGISTRY, BECAUSE THE CLASS IS WHAT MATTERS HERE. This lookup used to be
+ * two conditionals inside the scan, so the set of commands that reach a shell
+ * was something you could only learn by reading the branch. Adding a shell to
+ * it was therefore a silent change: nothing enumerated the members, so nothing
+ * could notice a new one arriving with no decision recorded about it, and this
+ * rule is only as good as its least-considered member. Exported so a test can
+ * enumerate the class at run time and fail on a member it has no case for,
+ * rather than pinning the three spellings somebody happened to think of.
+ */
+export const INTERPRETED_SCRIPT_COMMANDS: ReadonlyMap<string, ScriptArgumentShape> = new Map<
+	string,
+	ScriptArgumentShape
+>([
+	["eval", "nextWord"],
+	["trap", "nextWord"],
+	["bash", "afterScriptFlag"],
+	["sh", "afterScriptFlag"],
+	["zsh", "afterScriptFlag"],
+	["dash", "afterScriptFlag"],
+	["ksh", "afterScriptFlag"],
+	["ash", "afterScriptFlag"],
+]);
+
+/** `-c`, and the bundled spellings an agent writes: `-lc`, `-ec`, `-euc`. */
+export const SCRIPT_FLAG = /^-[a-z]*c$/;
+
+/**
+ * Commands whose presence in an unreadable script is worth refusing over.
+ *
+ * Exported for the same reason the registry above is: a verb added to either
+ * source set joins this class silently otherwise, and a delete verb nobody
+ * wrote a case for is the recurring way this rule loses a member.
+ */
+export const DESTRUCTIVE_VERBS: ReadonlySet<string> = new Set([
+	...RECURSIVE_DELETE_COMMANDS,
+	...RECURSIVE_REWRITE_COMMANDS,
+	"find",
+]);
+
+/**
+ * True when a script's raw text names a delete the word scan never saw.
+ *
+ * `eval "$(rm -rf /)"` is one word to the splitter and `$(rm` is not `rm`, so
+ * the scan that reads the script as shell walks straight past the delete. A
+ * crude split on the punctuation a shell separates words with finds it.
+ *
+ * A verb the word scan DID see is not reported. It has already been judged, by
+ * the same rule that judges it at the top level, and reporting it again here
+ * would make `sh -c "rm -f $LOCK"` critical while the identical bare
+ * `rm -f $LOCK` is not. Being stricter about a command because of the quotes
+ * around it is the asymmetry this function exists to avoid.
+ */
+function namesUnparsedDestructiveVerb(script: string): boolean {
+	const parsed = new Set<string>();
+	for (const segment of splitCommandSegments(script)) {
+		for (const word of splitWords(segment)) parsed.add(basename(word.text));
+	}
+	for (const token of script.split(/[\s;|&()<>{}`"'$]+/)) {
+		if (token === "") continue;
+		const name = basename(token);
+		if (DESTRUCTIVE_VERBS.has(name) && !parsed.has(name)) return true;
+	}
+	return false;
+}
 
 /**
  * The risk inside a shell string this command hands to an interpreter.
@@ -995,12 +1070,40 @@ const SHELL_INTERPRETERS = new Set(["bash", "sh", "zsh", "dash", "ksh", "ash"]);
  * a whole command line to the shell, so the text has to be judged as what it
  * is. Both were allowed before this.
  *
- * A script the guard cannot READ is critical on its own. `sh -c "$SCRIPT"`
- * carries an unresolvable expansion into a shell, which is every command at
- * once, and there is no reading of it that can be called safe. That costs a
- * prompt on a command that may well have been harmless, which is the right
- * direction to be wrong in: the alternative is calling a command safe because
- * it could not be read.
+ * WHY AN UNREADABLE SCRIPT IS NO LONGER CRITICAL ON ITS OWN. The first version
+ * of this refused any script word carrying an expansion it could not resolve,
+ * on the reasoning that an unreadable script is every command at once. The
+ * reasoning was right about the text and wrong about the guard, in two ways
+ * that only showed up once it shipped.
+ *
+ * It bought no security. This module classifies one thing, a recursive delete
+ * of a protected path, and it cannot classify what it cannot see. Every other
+ * way of running text the guard cannot read stays allowed: `sh ./setup.sh`,
+ * `make`, `npm run clean`, and a bare `$SCRIPT` standing where the command word
+ * goes. Refusing one spelling of unreadable execution while permitting the
+ * obvious four does not stop anybody who wants to hide a delete; it only picks
+ * out the spelling honest scripts happen to use.
+ *
+ * It was not a prompt. `critical` is a floor `/yolo` cannot lift and a standing
+ * grant cannot apply to, so a run with no interactive surface (headless, CI,
+ * `-p` with no terminal, and every subagent underneath such a root) has no
+ * answer to give and the call fails outright. Fifteen ordinary shapes reached
+ * that, including `sh -c "$SCRIPT"`, `bash -lc "$CMD"`, `eval "$SETUP"`, and
+ * every `eval "$(direnv hook bash)"` / `eval "$(ssh-agent -s)"` line a shell
+ * profile is made of. A guard that turns `eval "$(rbenv init -)"` into a hard
+ * failure is not being careful, it is being wrong loudly.
+ *
+ * So the script is READ whether or not it resolved. The parts that resolve are
+ * judged as ordinary shell text, and a part that did not resolve stays a
+ * literal `$NAME` the inner scan calls unknown again, which keeps
+ * `sh -c "rm -rf $DIR"` critical for the target it cannot name. Two refusals
+ * remain on top of that reading:
+ *
+ *   - a script past the nesting bound, where the guard stops reading entirely;
+ *   - an unreadable script naming a delete the word scan never reached, which
+ *     is the `eval "$(rm -rf /)"` shape: the substitution is one word to the
+ *     splitter, so the reading above walks past the delete inside it. See
+ *     {@link namesUnparsedDestructiveVerb}.
  */
 function findRiskInInterpretedShell(
 	words: readonly ExpandedWord[],
@@ -1012,24 +1115,42 @@ function findRiskInInterpretedShell(
 	depth: number,
 ): CriticalBashRisk | undefined {
 	const name = basename(words[position]!.text);
+	const shape = INTERPRETED_SCRIPT_COMMANDS.get(name);
+	if (shape === undefined) return undefined;
 	let script: ExpandedWord | undefined;
-	// `trap "rm -rf $T" EXIT` is a delete scheduled rather than a delete written,
-	// and the shell runs it as shell all the same.
-	if (name === "eval" || name === "trap") script = words[position + 1];
-	else if (SHELL_INTERPRETERS.has(name)) {
-		// `-c`, and the bundled spellings an agent writes: `-lc`, `-ec`, `-euc`.
-		const flag = words.findIndex((word, index) => index > position && /^-[a-z]*c$/.test(word.text));
+	if (shape === "nextWord") {
+		// `trap "rm -rf $T" EXIT` is a delete scheduled rather than a delete
+		// written, and the shell runs it as shell all the same.
+		script = words[position + 1];
+	} else if (shape === "afterScriptFlag") {
+		const flag = words.findIndex((word, index) => index > position && SCRIPT_FLAG.test(word.text));
 		if (flag !== -1) script = words[flag + 1];
+	} else {
+		// A shape added to the union with no branch here is a compile error
+		// rather than a command that quietly stops being read.
+		const unhandled: never = shape;
+		return unhandled;
 	}
 	if (script === undefined) return undefined;
-	if (script.unknown || depth >= MAX_INTERPRETED_SHELL_DEPTH) {
+
+	// A BOUND IS NOT A JUDGEMENT. Past it the guard stops reading, so it has
+	// nothing to say about the text and says that rather than saying it is fine.
+	if (depth >= MAX_INTERPRETED_SHELL_DEPTH) {
 		return {
 			command: name,
 			argument: script.text,
-			reason: `${name} would run a shell script this guard cannot read`,
+			reason: `${name} would run a shell script nested deeper than this guard reads (${MAX_INTERPRETED_SHELL_DEPTH} levels)`,
 		};
 	}
-	return findCriticalBashRisk(script.text, home, extraProtectedPaths, env, cwd, depth + 1);
+
+	const inner = findCriticalBashRisk(script.text, home, extraProtectedPaths, env, cwd, depth + 1);
+	if (inner) return inner;
+	if (!script.unknown || !namesUnparsedDestructiveVerb(script.text)) return undefined;
+	return {
+		command: name,
+		argument: script.text,
+		reason: `${name} would run a delete this guard cannot read, so there is no telling what it removes`,
+	};
 }
 
 /**
