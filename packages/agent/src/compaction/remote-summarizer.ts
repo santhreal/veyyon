@@ -6,12 +6,16 @@
  * a locally generated summary: readable in the session log, usable by any model,
  * and portable across providers.
  *
- * It deliberately replaces the removed provider-native compaction paths (OpenAI
- * `/responses/compact` and the Responses V2 streaming variant). Those handed the
- * durable history to an opaque provider-side blob that veyyon could not read,
- * that no other provider could replay, and that left a placeholder string where
- * the summary should have been. Compaction now has exactly two strategies —
- * `summary` and `handoff` — and no provider gets a private history format.
+ * Do not confuse it with server-side compaction, which is a separate feature.
+ * That one is gated on `compaction.remote` plus a model
+ * `resolveServerCompactionTransport` admits, calls the provider's own
+ * compaction endpoint, and stores the window it returns as the artifact with
+ * no summary at all (`remote-compaction.ts`, `remote-compaction-entry.ts`).
+ * This one is gated on `compaction.remoteEndpoint`, points at whatever the
+ * operator runs (llama.cpp, vLLM, a purpose-built summarizer), and still
+ * writes ordinary summary text. Neither replaces the other. They only share
+ * the word "remote", which is how a comment claiming one had replaced the
+ * other survived here for as long as it did.
  */
 
 import { ProviderHttpError } from "@veyyon/ai/error";
@@ -20,13 +24,9 @@ import type { FetchImpl, Model } from "@veyyon/ai/types";
 import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils";
 
 /**
- * `preserveData` keys written by the removed provider-native compaction paths.
- *
- * Sessions compacted before the removal still carry these on disk. Nothing can
- * read them anymore, so they are treated as "no usable summary": compaction
- * re-expands the original messages behind such an entry and summarizes them
- * locally, and the dead key is dropped from the new entry rather than copied
- * forward. Keep this list — deleting it would strand those sessions.
+ * Re-exported for callers that already import compaction transports from here.
+ * The two dead provider-native keys, and why they are looked past rather than
+ * read, are documented at the definition.
  */
 export * from "./legacy-provider-native";
 
