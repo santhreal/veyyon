@@ -6596,9 +6596,6 @@ export class AgentSession {
 			)
 			.join("\n\n");
 		const ruleNames = rules.map(r => r.name.trim()).filter(n => n.length > 0);
-		if (ctx.isError && ctx.result && Array.isArray(ctx.result.content)) {
-			ctx.result.content.unshift({ type: "text", text: reminder });
-		}
 		this.#pendingTtsrToolReminders.push({ content: reminder, rules: ruleNames });
 		return undefined;
 	}
