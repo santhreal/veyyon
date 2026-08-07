@@ -13,12 +13,16 @@ import { buildSessionContext } from "@veyyon/coding-agent/session/session-contex
 import type { CompactionEntry, SessionEntry, SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 
 /**
- * The resume/rebuild contract for server-side (remote) compaction — the
- * contract the removed provider-native path got wrong. A remote compaction
- * entry dual-writes a real readable summary plus the provider's canonical
- * compacted window. These tests compact remotely, then prove rebuild, reload
- * (JSON round trip), fork, and provider replay all produce the correct
- * model-visible context with exact content and counts.
+ * The resume/rebuild contract for OpenAI server-side (remote) compaction.
+ *
+ * A remote compaction entry is single-window: it stores the provider's
+ * canonical compacted window and NO summary text, because the window is the
+ * compacted context. Nothing dual-writes a local summary beside it, and
+ * nothing is meant to. These tests compact remotely, then prove rebuild,
+ * reload (JSON round trip), fork, and provider replay all produce the correct
+ * model-visible context with exact content and counts, including the fork and
+ * cross-provider cases where the window cannot be replayed and the original
+ * messages are re-expanded instead.
  */
 
 function msg(id: string, parentId: string | null, role: "user" | "assistant", text: string): SessionMessageEntry {
@@ -76,16 +80,38 @@ function remoteCompaction(id: string, parentId: string | null, firstKeptEntryId:
 		id,
 		parentId,
 		timestamp: "2025-01-01T00:01:00Z",
-		summary: "Real summary of the early turns.",
+		// What `compactWithProvider` writes, verbatim: the window and no summary.
+		// A fixture carrying summary text here would pin an entry shape nothing
+		// produces, and every assertion below would be about an artifact that
+		// does not exist.
+		summary: "",
 		firstKeptEntryId,
 		tokensBefore: 221_568,
 		preserveData: { [REMOTE_COMPACTION_PRESERVE_KEY]: data },
 	};
 }
 
-function sessionEntries(): SessionEntry[] {
+/**
+ * `activeModel` seeds a model_change entry, which is how the rebuild learns
+ * which provider the session is on now. That is the whole input to the replay
+ * decision, so a suite that never sets it can only ever test one half.
+ */
+function sessionEntries(activeModel?: string): SessionEntry[] {
+	const head: SessionEntry[] = activeModel
+		? [
+				{
+					type: "model_change",
+					id: "model-0",
+					parentId: null,
+					timestamp: "2025-01-01T00:00:00Z",
+					model: activeModel,
+				},
+			]
+		: [];
+	const rootParent = activeModel ? "model-0" : null;
 	return [
-		msg("msg-1", null, "user", "turn one"),
+		...head,
+		msg("msg-1", rootParent, "user", "turn one"),
 		msg("msg-2", "msg-1", "assistant", "reply one"),
 		msg("msg-3", "msg-2", "user", "turn two"),
 		msg("msg-4", "msg-3", "assistant", "reply two"),
@@ -108,14 +134,14 @@ function summaryMessage(messages: AgentMessage[]) {
 }
 
 describe("remote compaction entry rebuild", () => {
-	test("rebuild emits the real summary first, then the kept tail, with the window attached", () => {
-		const ctx = buildSessionContext(sessionEntries());
+	test("rebuild emits the window-bearing divider first, then the kept tail", () => {
+		const ctx = buildSessionContext(sessionEntries("openai/gpt-5.1"));
 
-		// Summary + kept user turn + post-compaction turn: 3 messages, and the
-		// four pre-cut messages are gone behind the summary.
+		// Divider + kept user turn + post-compaction turn: 3 messages, and the
+		// four pre-cut messages are gone behind the window.
 		expect(ctx.messages).toHaveLength(3);
 		const summary = summaryMessage(ctx.messages);
-		expect(summary.summary).toBe("Real summary of the early turns.");
+		expect(summary.summary).toBe("");
 		expect(summary.compactedBy).toBe("openai/gpt-5.1");
 		expect(summary.providerPayload?.type).toBe("openaiResponsesHistory");
 		expect(summary.providerPayload?.items).toEqual(REMOTE_WINDOW);
@@ -124,31 +150,27 @@ describe("remote compaction entry rebuild", () => {
 	});
 
 	test("reload after a JSON round trip (process restart) rebuilds the identical context", () => {
-		const revived = JSON.parse(JSON.stringify(sessionEntries())) as SessionEntry[];
+		const revived = JSON.parse(JSON.stringify(sessionEntries("openai/gpt-5.1"))) as SessionEntry[];
 		const ctx = buildSessionContext(revived);
 
 		expect(ctx.messages).toHaveLength(3);
-		const summary = summaryMessage(ctx.messages);
-		expect(summary.summary).toBe("Real summary of the early turns.");
 		// The opaque window survives persistence byte-for-byte: it is stateless
 		// provider data, so a reloaded session still replays it natively.
-		expect(summary.providerPayload?.items).toEqual(REMOTE_WINDOW);
+		expect(summaryMessage(ctx.messages).providerPayload?.items).toEqual(REMOTE_WINDOW);
 	});
 
-	test("fork below the compaction keeps the summary and window on the new branch", () => {
-		const entries = [...sessionEntries(), msg("msg-7", "msg-6", "user", "forked turn")];
+	test("fork below the compaction keeps the window on the new branch", () => {
+		const entries = [...sessionEntries("openai/gpt-5.1"), msg("msg-7", "msg-6", "user", "forked turn")];
 		const ctx = buildSessionContext(entries, "msg-7");
 
 		expect(ctx.messages).toHaveLength(4);
-		const summary = summaryMessage(ctx.messages);
-		expect(summary.summary).toBe("Real summary of the early turns.");
-		expect(summary.providerPayload?.items).toEqual(REMOTE_WINDOW);
+		expect(summaryMessage(ctx.messages).providerPayload?.items).toEqual(REMOTE_WINDOW);
 		const last = ctx.messages[3];
 		expect(last.role === "user" && last.content).toBe("forked turn");
 	});
 
-	test("a Responses provider replays the native window in place of the summary text", () => {
-		const ctx = buildSessionContext(sessionEntries());
+	test("a Responses provider replays the native window at the wire level", () => {
+		const ctx = buildSessionContext(sessionEntries("openai/gpt-5.1"));
 		const llmMessages = ctx.messages
 			.map(message => convertMessageToLlm(message))
 			.filter((message): message is Message => message !== undefined);
@@ -164,18 +186,22 @@ describe("remote compaction entry rebuild", () => {
 		});
 
 		const wire = JSON.stringify(input);
-		// The opaque item replays; the summary text it replaces does NOT ride
-		// beside it; the kept and post-compaction turns follow the window.
+		// The opaque item replays, and the span it stands in for is not sent a
+		// second time beside it. That non-duplication is the whole saving.
 		expect(wire).toContain("gAAAAABpM0Yj-fake");
-		expect(wire).not.toContain("Real summary of the early turns.");
+		expect(wire).not.toContain("reply two");
 		expect(wire).toContain("kept turn");
 		expect(wire).toContain("after compaction");
 	});
 
-	test("a provider that does not match the window sees the readable summary instead", () => {
+	test("a provider that cannot replay the window sends the original messages instead", () => {
 		const azure = getBundledModel("azure", "gpt-4");
 		if (!azure) throw new Error("Expected built-in azure/gpt-4 to exist");
-		const ctx = buildSessionContext(sessionEntries());
+		// Resumed onto azure: the window is an openai blob azure cannot decrypt,
+		// and no summary stands in for the span. The rebuild must re-expand the
+		// real messages, because the alternative is a blank divider where four
+		// turns used to be, with those turns still sitting on disk.
+		const ctx = buildSessionContext(sessionEntries("azure/gpt-4"));
 		const llmMessages = ctx.messages
 			.map(message => convertMessageToLlm(message))
 			.filter((message): message is Message => message !== undefined);
@@ -191,10 +217,9 @@ describe("remote compaction entry rebuild", () => {
 		});
 
 		const wire = JSON.stringify(input);
-		// provider "azure" never replays an "openai" window: the fork/resume
-		// degradation is the real summary, never a foreign blob and never nothing.
-		expect(wire).toContain("Real summary of the early turns.");
 		expect(wire).not.toContain("gAAAAABpM0Yj-fake");
+		expect(wire).toContain("turn one");
+		expect(wire).toContain("reply two");
 		expect(wire).toContain("kept turn");
 	});
 });

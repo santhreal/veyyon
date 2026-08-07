@@ -41,17 +41,20 @@ export interface ProviderValidationConfig {
 }
 
 /**
- * `remoteCompaction` was provider-native compaction configuration. Nothing has
- * read it since that feature was removed, so a config that still carries it
- * configures nothing at all — the exact silent no-op this codebase refuses to
- * ship. Say so, name the setting that replaces it, and refuse the file rather
- * than start a session whose compaction is not what the config says it is.
+ * `remoteCompaction` was per-provider configuration for provider-native
+ * compaction. Nothing has read it since that shape was retired, so a config
+ * that still carries it configures nothing at all — the exact silent no-op
+ * this codebase refuses to ship. Server-side compaction is still here, but it
+ * is governed by the `compaction.remote` setting and takes no per-provider
+ * configuration, so there is nothing for this key to mean. Say so, name what
+ * replaces it, and refuse the file rather than start a session whose
+ * compaction is not what the config says it is.
  */
 function refuseRetiredRemoteCompaction(providerName: string, where: string, value: unknown): void {
 	if (value === undefined) return;
 	throw new Error(
 		`Provider ${providerName}${where}: "remoteCompaction" is retired and does nothing. ` +
-			`Provider-native compaction was removed; remove the key. To compact on a different model, ` +
+			`Server-side compaction is governed by the "compaction.remote" setting and takes no per-provider configuration, so remove the key. To compact on a different model, ` +
 			`set "compactionModel" on the model, or the "compaction.model" setting.`,
 	);
 }

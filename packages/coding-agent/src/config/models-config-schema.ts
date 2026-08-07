@@ -166,8 +166,10 @@ function buildModelsConfigSchemas() {
 			};
 		});
 
-	// `remoteCompaction` is RETIRED. Nothing has read it since provider-native
-	// compaction was removed, so a config that still sets it configures nothing.
+	// `remoteCompaction` is RETIRED. Nothing has read it since per-provider
+	// compaction configuration went away, so a config that still sets it
+	// configures nothing. Server-side compaction survives as the
+	// `compaction.remote` setting, which takes no per-provider configuration.
 	// It stays declared here — as opaque, unvalidated data — for one reason: an
 	// undeclared key is dropped before validation runs, and a dropped key cannot
 	// be reported. Declaring it keeps the value alive long enough for

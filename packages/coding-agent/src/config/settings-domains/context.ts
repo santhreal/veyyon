@@ -31,14 +31,31 @@ export const CONTEXT_SETTINGS = {
 		default: true,
 	},
 
-	// Server-side (remote) compaction. Effective only when the resolved session
-	// model carries the capability data (`compat.supportsServerCompaction`:
-	// official OpenAI and Azure OpenAI Responses hosts today); on every other
-	// model the toggle is inert and compaction stays local. When it applies, the
-	// provider compacts the history on its side and `compaction.model` does not
-	// apply to that compaction; the entry still stores a real local summary, so
-	// reload, fork, and resume onto another provider degrade to the correct
-	// local context.
+	// Server-side (remote) compaction: OpenAI compacting the history on its own
+	// side. Unrelated to `compaction.remoteEndpoint`, which is an
+	// operator-configured external summarizer and shares nothing but the word.
+	//
+	// It applies when the SESSION model is on the OpenAI Responses API family
+	// (`openai-responses` or `azure-openai-responses`, so Azure OpenAI
+	// Responses deployments are included) AND that model's row reports
+	// `compat.supportsServerCompaction`. Both halves are DATA, resolved per
+	// host at model build time and flippable per row by config or discovery;
+	// nothing here checks a provider name. OpenAI Codex is on a different api
+	// and is therefore excluded. On any other model the toggle is inert and
+	// compaction stays local; with the toggle off, compaction is local on every
+	// model. Local means the ordinary LLM summary path, unchanged.
+	//
+	// When it applies, veyyon calls the compaction endpoint and stores the
+	// window it returns. That window IS the compacted context, so the entry's
+	// `summary` is empty and `compaction.model` does not apply. The empty
+	// summary is correct: not a bug, not a placeholder, not an unfinished
+	// dual-write. Writing a local summary beside the window was rejected, and
+	// stays rejected, because it would pay a model to re-summarize a span the
+	// provider already compacted and leave two versions of one range that can
+	// disagree. Nothing is lost with one artifact: the entries the window
+	// stands in for stay on disk, so a fork or a resume onto a model that
+	// cannot replay the window re-expands them and compacts them locally on the
+	// next pass.
 	"compaction.remote": {
 		type: "boolean",
 		default: true,
@@ -47,7 +64,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Compaction",
 			label: "Remote Compaction",
 			description:
-				"Let providers that support server-side compaction (OpenAI Responses, Azure OpenAI) compact history on their side, preserving reasoning state across the cut. The session model does it, so the compaction model chain does not apply. Off always compacts locally. Has no effect on models without support.",
+				"Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments; every other model, OpenAI Codex included, ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.",
 			keywords: ["compaction", "remote", "server", "provider", "openai", "context"],
 		},
 	},

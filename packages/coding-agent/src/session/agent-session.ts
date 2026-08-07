@@ -15244,14 +15244,25 @@ export class AgentSession {
 	}
 
 	/**
-	 * Server-side (remote) compaction attempt, or undefined when the ordinary
-	 * local path should run. Applies when `compaction.remote` is on and the
-	 * SESSION model resolves a transport from its capability data, never from
-	 * provider identity alone, and never a configured compaction model: the
-	 * provider compacts server-side, so `compaction.model` does not apply to
-	 * it. The result dual-writes a real local summary plus the provider window
-	 * (see remote-compaction-entry.ts), so rebuild, fork, and resume stay
-	 * correct. A failed attempt warns once per distinct failure and returns
+	 * OpenAI server-side (remote) compaction attempt, or undefined when the
+	 * ordinary local path should run. Applies when `compaction.remote` is on and
+	 * the SESSION model resolves a transport from its capability data: the
+	 * OpenAI Responses api family (Azure Responses deployments included) plus
+	 * `compat.supportsServerCompaction` on the row. Never a provider-name check,
+	 * and never a configured compaction model, because the provider compacts
+	 * server-side and `compaction.model` cannot apply to that.
+	 * The result is single-window. The window the provider returns IS the
+	 * compacted artifact, so the result carries an empty `summary` and the
+	 * window under `REMOTE_COMPACTION_PRESERVE_KEY` (see
+	 * remote-compaction-entry.ts). That
+	 * empty summary is correct, not a placeholder and not a half-built
+	 * dual-write: writing a local summary beside the window was rejected,
+	 * because it would pay a model to re-summarize a span OpenAI already
+	 * compacted and leave two versions of one range that can disagree. Rebuild,
+	 * fork, and resume stay correct with one artifact because the entries the
+	 * window stands in for are still on disk, and a context that cannot replay
+	 * the window re-expands them (see session-context.ts).
+	 * A failed attempt warns once per distinct failure and returns
 	 * undefined so the caller falls through to the local candidate loop:
 	 * compaction is the recovery path for context overflow and must not fail
 	 * closed on a transport error.

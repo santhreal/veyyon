@@ -512,15 +512,18 @@ describe("bigint tool arguments", () => {
 });
 
 /**
- * `compaction.remoteEndpoint` is a summarizer transport for the `summary`
- * strategy: it returns summary TEXT that veyyon stores like any local summary.
+ * `compaction.remoteEndpoint` is an operator-configured external summarizer for
+ * the `summary` strategy (llama.cpp, vLLM, a purpose-built summarizer host). It
+ * returns summary TEXT that veyyon stores like any local summary.
  *
- * This replaces the former "remote compaction setting" suite, which covered
- * OpenAI's provider-native path (`/responses/compact` and the Responses V2
- * streaming variant). That path was removed: it stored an opaque
- * `encrypted_content` blob no other provider could replay and overwrote the
- * compaction summary with a fixed placeholder string. The tests below pin what
- * is left — a transport that must still produce a real, readable summary.
+ * It did not replace anything and it is not the server-side path. OpenAI
+ * server-side compaction (`POST /responses/compact`) is a separate mechanism,
+ * live today: the transport is `packages/ai/src/providers/openai-compaction.ts`,
+ * the engine is `@veyyon/agent-core/compaction/remote-compaction`, and the
+ * operator reaches it through `compaction.remote`. It is single-window, so it
+ * stores the provider's window and no summary text at all. The two share only
+ * the word "remote". The suite below covers the summarizer transport, which
+ * must still produce a real, readable summary.
  */
 /** Minimal preparation for a summary-strategy compaction. */
 function makeSummarizerPreparation(settings?: Partial<CompactionSettings>) {
