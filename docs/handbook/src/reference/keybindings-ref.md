@@ -35,8 +35,8 @@ live list after your remaps. For the full guide on customizing, see
 | `ctrl+shift+v` or `alt+shift+v` | Paste clipboard text raw, no collapse (`app.clipboard.pasteTextRaw`) |
 
 You can also set the effort by name with the `/effort` command (its alias is `/thinking`). With no
-argument it opens a picker; `/effort high` sets the level directly. The choice persists with the
-active profile.
+argument it opens a picker; `/effort high` sets the level directly. The choice lasts for this session; the saved default
+lives under Settings → Model → Default Effort.
 
 Unbound by default, remappable: `app.session.new`, `app.session.tree`, `app.session.fork`,
 `app.session.resume`, and `app.stt.toggle` (speech-to-text; hold `Space` to record by default).

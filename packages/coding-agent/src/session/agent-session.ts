@@ -12399,7 +12399,7 @@ export class AgentSession {
 				error: classificationError,
 				fallbackLevel: effort ?? "none",
 				timeoutMs: AgentSession.#AUTO_THINKING_TIMEOUT_MS,
-				fix: "If this repeats, the classifier model may be unreachable; set a fixed thinking level with /thinking to stop relying on it.",
+				fix: "If this repeats, the classifier model may be unreachable; set a fixed thinking level with /effort to stop relying on it.",
 			});
 		}
 		if (effort === undefined) return;

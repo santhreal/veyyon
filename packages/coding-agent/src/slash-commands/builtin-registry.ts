@@ -198,7 +198,7 @@ function formatThinkingLevelChoices(session: AgentSession): string {
 }
 
 /**
- * Why `/thinking` has nothing to set on this model, naming the cause. A row
+ * Why `/effort` has nothing to set on this model, naming the cause. A row
  * whose effort is baked into its id (`gpt-5.4-high`) names the baked tier and
  * points at the base id, where the control lives.
  */
@@ -211,7 +211,7 @@ function noThinkingControlMessage(session: AgentSession): string {
 	const tierBase = stripEffortTierSuffix(model.id);
 	if (tierBase !== undefined) {
 		const tier = model.id.slice(tierBase.length + 1);
-		return `${model.provider}/${model.id} has effort "${tier}" baked into the model id; /thinking has nothing to set. Select ${tierBase} to choose an effort.`;
+		return `${model.provider}/${model.id} has effort "${tier}" baked into the model id; /effort has nothing to set. Select ${tierBase} to choose an effort.`;
 	}
 	return `${model.provider}/${model.id} manages reasoning itself; there is no effort to set.`;
 }
@@ -825,7 +825,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			if (!arg) {
 				const current = runtime.session.configuredThinkingLevel();
 				await runtime.output(
-					`Effort: ${current ?? "auto"} (this session). Choose one of: ${available}. Usage: /thinking <level>. ${DEFAULT_EFFORT_POINTER}`,
+					`Effort: ${current ?? "auto"} (this session). Choose one of: ${available}. Usage: /effort <level>. ${DEFAULT_EFFORT_POINTER}`,
 				);
 				return commandConsumed();
 			}

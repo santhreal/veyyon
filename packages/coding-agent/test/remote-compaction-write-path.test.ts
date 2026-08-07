@@ -35,7 +35,6 @@ import {
 	resolveServerCompactionTransport,
 } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage } from "@veyyon/ai";
-import * as ai from "@veyyon/ai";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -112,8 +111,10 @@ describe("a remote compaction result reaching the driver write path", () => {
 	let sessionManager: SessionManager;
 	let authStorage: AuthStorage;
 	let firstKeptEntryId: string;
+	let sideStreamCalls: number;
 
 	beforeEach(async () => {
+		sideStreamCalls = 0;
 		tempDir = TempDir.createSync("@pi-remote-compaction-write-");
 		compactServer = await startCompactServer();
 
@@ -162,11 +163,43 @@ describe("a remote compaction result reaching the driver write path", () => {
 		const agent = new Agent({
 			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
 		});
+		// The session's local summarizer runs through #sideStreamFn (installed as
+		// completeImpl), never through the completeSimple barrel export, so the
+		// no-dual-write guard has to watch THIS seam to mean anything.
+		const sideStreamFn: StreamFn = () => {
+			sideStreamCalls++;
+			const stream = new AssistantMessageEventStream();
+			queueMicrotask(() => {
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "local summary that must never run" }],
+						api: "openai-responses",
+						provider: "openai",
+						model: "gpt-5.1",
+						stopReason: "stop",
+						usage: {
+							input: 1,
+							output: 1,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 2,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+						timestamp: Date.now(),
+					},
+				});
+			});
+			return stream;
+		};
 		session = new AgentSession({
 			agent,
 			sessionManager,
 			settings: Settings.isolated({ "compaction.remote": true, "compaction.keepRecentTokens": 200 }),
 			modelRegistry,
+			sideStreamFn,
 		});
 	});
 
@@ -183,16 +216,15 @@ describe("a remote compaction result reaching the driver write path", () => {
 
 	it("persists the provider window and trims history instead of rejecting the empty summary", async () => {
 		const entriesBefore = sessionManager.getBranch().length;
-		// No duplicate compaction: the window the provider returned is the
-		// artifact, so the local summarizer must never run for the same span.
-		const completeSpy = vi.spyOn(ai, "completeSimple");
 
 		const result = await session.compact();
 
 		// The provider really was called: this is the write path for a live
 		// round trip, not a synthesized result handed to the validator.
 		expect(compactServer.requests).toHaveLength(1);
-		expect(completeSpy).not.toHaveBeenCalled();
+		// No duplicate compaction: the window the provider returned is the
+		// artifact, so the local summarizer must never run for the same span.
+		expect(sideStreamCalls).toBe(0);
 		expect(willCompactRemotely(session)).toBe(true);
 
 		// Single-window: no summary text, and the window is the artifact.

@@ -366,7 +366,7 @@ See [Advisor and WATCHDOG.md](./advisor-watchdog.md) for runtime behavior, `WATC
 
 Effort has one persisted home: the `defaultEffort` list, per profile. A row keyed
 by a model selector applies to that model; the `*` row applies to every model
-without its own. `/thinking` (and its `/effort` alias) changes only the current
+without its own. `/effort` (and its `/thinking` alias) changes only the current
 session and prints where the saved default lives, so trying an effort never
 rewrites your default.
 
@@ -380,7 +380,7 @@ remains in force until you clear it.
 
 Effort is resolved in this order, highest first:
 
-1. the current session's choice, from `/thinking`, `/effort`, or the cycle keybinding
+1. the current session's choice, from `/effort`, `/thinking`, or the cycle keybinding
 2. an explicit `:level` on the selector a role resolved through, e.g. `modelRoles.plan: anthropic/claude-opus-5:xhigh`
 3. the `defaultEffort` row for the model about to run
 4. the `defaultEffort` `*` row

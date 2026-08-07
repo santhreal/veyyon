@@ -358,7 +358,7 @@ describe("the ACP advertisement", () => {
 	});
 
 	/**
-	 * `/thinking` is the concrete case for the hint, and the exception to the rule above. Its
+	 * `/effort` is the concrete case for the hint, and the exception to the rule above. Its
 	 * accepted values are the active model's catalog row, so a fixed list would advertise levels the
 	 * model rejects; this static table carries only the fallback, and the per-session builder in
 	 * `available-commands.ts` derives the real hint from `thinkingLevelArgHint(session.model)`. The

@@ -212,7 +212,7 @@ export function configuredThinkingLevelsForModel(model: Model | undefined): read
 }
 
 /**
- * Bracketed argument hint for `/thinking` listing the choices the model
+ * Bracketed argument hint for `/effort` listing the choices the model
  * actually accepts (`[off|auto|high|max]`), derived from the same row read as
  * every other surface. Undefined when the model exposes no effort control.
  */
