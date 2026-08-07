@@ -220,13 +220,14 @@ describe("InteractiveMode todo HUD anchor", () => {
 		const root = lines.find(line => line.includes("Todos"));
 		expect(root).toContain("1/2");
 		// Active stage: highlighted header with its own task progress, expanded as a
-		// connector tree; the completed task slid out of the open-task window.
+		// connector tree. The finished task stays on the board next to the open
+		// ones, and in-progress carries its own glyph rather than the pending box.
 		expect(lines.some(line => line.includes("I. Foundation") && line.includes("1/3"))).toBe(true);
 		const secondLine = lines.find(line => line.includes("second task"));
 		expect(secondLine).toContain(theme.tree.branch);
-		expect(secondLine).toContain(theme.checkbox.unchecked);
+		expect(secondLine).toContain(theme.checkbox.progress);
 		expect(lines.some(line => line.includes("third task"))).toBe(true);
-		expect(lines.some(line => line.includes("first task"))).toBe(false);
+		expect(lines.find(line => line.includes("first task"))).toContain(theme.checkbox.checked);
 		// Upcoming stage: header with its own progress, but collapsed (no task rows).
 		expect(lines.some(line => line.includes("II. Verification") && line.includes("0/1"))).toBe(true);
 		expect(lines.some(line => line.includes("run tests"))).toBe(false);

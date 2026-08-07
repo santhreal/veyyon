@@ -123,6 +123,9 @@ const VERIFIED_IN_PLAIN_MONOSPACE: readonly number[] = [
 	0x25cf, // ●  status.active
 	0x25d0, // ◐  status.running, thinking.autoPending
 	0x25e6, // ◦  status.connecting
+	// Measured 2026-08-06 with the command above, same two faces: DejaVu Sans
+	// Mono 2.37 and FreeMono (internal version 0412.4267, the 20120503 release).
+	0x25e7, // ◧  checkbox.progress
 	0x25eb, // ◫  icon.worktree
 	0x2709, // ✉  icon.unread
 	0x270e, // ✎  tool.edit
