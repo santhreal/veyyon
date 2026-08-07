@@ -40,7 +40,7 @@ function checkpoint(usedTokens: number, maxTokens: number) {
 describe("cursor conversation checkpoint token details", () => {
 	test("used_tokens is the conversation's prompt side, not this turn's completion", () => {
 		const output = emptyOutput();
-		handleConversationCheckpointUpdate(checkpoint(210_000, 1_000_000), output, { sawTokenDelta: false } as never);
+		handleConversationCheckpointUpdate(checkpoint(210_000, 1_000_000), output);
 
 		expect(output.usage.input).toBe(210_000);
 		expect(output.usage.output).toBe(0);
@@ -49,28 +49,32 @@ describe("cursor conversation checkpoint token details", () => {
 
 	test("max_tokens is adopted as the provider-reported context window", () => {
 		const output = emptyOutput();
-		handleConversationCheckpointUpdate(checkpoint(210_000, 1_000_000), output, { sawTokenDelta: false } as never);
+		handleConversationCheckpointUpdate(checkpoint(210_000, 1_000_000), output);
 
 		expect(output.providerContextWindow).toBe(1_000_000);
 	});
 
-	test("the window is recorded even when token deltas already counted the turn", () => {
-		// Deltas own the token counts, but the window is metadata and is still the
-		// only place the real value appears.
+	test("the prompt count is recorded even when token deltas already counted the output", () => {
+		// Token deltas carry the COMPLETION only; they never carry a prompt count.
+		// A guard that skipped the whole fold once any delta had arrived therefore
+		// zeroed the prompt on every turn that streamed a single token: across the
+		// recorded sessions 311 of 311 Cursor turns billed 2.05M output tokens
+		// against no prompt at all, and the context gauge read them as empty.
 		const output = emptyOutput();
 		output.usage.output = 512;
 		output.usage.totalTokens = 512;
 
-		handleConversationCheckpointUpdate(checkpoint(210_000, 1_000_000), output, { sawTokenDelta: true } as never);
+		handleConversationCheckpointUpdate(checkpoint(210_000, 1_000_000), output);
 
 		expect(output.providerContextWindow).toBe(1_000_000);
 		expect(output.usage.output).toBe(512);
-		expect(output.usage.input).toBe(0);
+		expect(output.usage.input).toBe(210_000);
+		expect(output.usage.totalTokens).toBe(210_512);
 	});
 
 	test("a checkpoint that reports no window leaves the catalog value alone", () => {
 		const output = emptyOutput();
-		handleConversationCheckpointUpdate(checkpoint(1_000, 0), output, { sawTokenDelta: false } as never);
+		handleConversationCheckpointUpdate(checkpoint(1_000, 0), output);
 
 		expect(output.providerContextWindow).toBeUndefined();
 		expect(output.usage.input).toBe(1_000);
@@ -83,7 +87,7 @@ describe("cursor conversation checkpoint token details", () => {
 		output.usage.output = 4_096;
 		output.usage.totalTokens = 4_096;
 
-		handleConversationCheckpointUpdate(checkpoint(210_000, 1_000_000), output, { sawTokenDelta: false } as never);
+		handleConversationCheckpointUpdate(checkpoint(210_000, 1_000_000), output);
 
 		expect(output.usage.output).toBe(4_096);
 		expect(output.usage.input).toBe(210_000);

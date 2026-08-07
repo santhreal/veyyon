@@ -47,7 +47,6 @@ async function answerRules(rules: CursorRule[]): Promise<CursorRule[]> {
 		h2,
 		undefined,
 		undefined,
-		{} as never,
 		[],
 		rules,
 	);
