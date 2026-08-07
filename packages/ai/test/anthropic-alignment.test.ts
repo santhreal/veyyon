@@ -86,8 +86,13 @@ function captureAnthropicPayload(
 	context: Context,
 	options?: CaptureAnthropicOptions,
 ): Promise<unknown> {
-	const { promise, resolve } = Promise.withResolvers<unknown>();
-	streamAnthropic(model, context, {
+	// `result()` is the only place a failure BEFORE the request is built can
+	// surface: `onPayload` never fires, so without this the helper hangs until
+	// the test times out and reports a deadline instead of the actual error.
+	// On the happy path the payload resolves first and the abort this helper
+	// arms rejects afterwards, where it is ignored.
+	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
+	const stream = streamAnthropic(model, context, {
 		apiKey: "sk-ant-oat-test",
 		isOAuth: options?.isOAuth ?? true,
 		signal: createAbortedSignal(),
@@ -104,6 +109,10 @@ function captureAnthropicPayload(
 		headers: options?.headers,
 		onPayload: payload => resolve(payload),
 	});
+	stream.result().then(
+		() => reject(new Error("the request stream ended without emitting a payload")),
+		(error: unknown) => reject(error),
+	);
 	return promise;
 }
 
@@ -112,13 +121,17 @@ function captureSimpleAnthropicPayload(
 	context: Context,
 	reasoning: Effort,
 ): Promise<unknown> {
-	const { promise, resolve } = Promise.withResolvers<unknown>();
-	streamSimple(model, context, {
+	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
+	const stream = streamSimple(model, context, {
 		apiKey: "sk-ant-oat-test",
 		signal: createAbortedSignal(),
 		reasoning,
 		onPayload: payload => resolve(payload),
 	});
+	stream.result().then(
+		() => reject(new Error("the request stream ended without emitting a payload")),
+		(error: unknown) => reject(error),
+	);
 	return promise;
 }
 
