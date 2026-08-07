@@ -61,6 +61,7 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 | `packages/metaharness` | Benchmark runners plus Harbor run storage, its REST/SSE API, and the live dashboard (private). |
 | `packages/deepswe-bench` | DeepSWE bench runner for performance-affecting changes (private). |
 | `packages/typescript-edit-benchmark` | Edit-tool benchmark built from TypeScript source mutations (private). |
+| `packages/simulations` | Deterministic offline simulations that drive real subsystems end to end against scripted inputs (private). |
 | `crates/veyyon-natives` (+ siblings) | Rust hot paths: grep, PTY, shell, text/AST. |
 
 `packages/tsconfig.workspace.json` is shared TypeScript configuration, not a workspace member — it

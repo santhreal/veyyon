@@ -46,6 +46,7 @@ This repo contains multiple packages, but **`packages/coding-agent/`** is the pr
 | `packages/metaharness`  | Benchmark runners, Harbor run storage, REST/SSE API, live dashboard (private) |
 | `packages/deepswe-bench` | DeepSWE bench runner for performance-affecting changes (private) |
 | `packages/typescript-edit-benchmark` | Edit-tool benchmark from TypeScript source mutations (private) |
+| `packages/simulations`  | Deterministic offline simulations driving real subsystems end to end (private) |
 | `crates/veyyon-natives`     | Rust crate for performance-critical text/grep ops    |
 
 `packages/tsconfig.workspace.json` is shared TypeScript config, not a package: no `package.json`, no sources. `scripts/package-map-coverage.test.ts` fails when a directory under `packages/` carries a manifest and is missing from either table, so a new package cannot land undocumented.

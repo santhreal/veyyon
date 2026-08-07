@@ -249,6 +249,19 @@
         "@types/bun": "catalog:",
       },
     },
+    "packages/simulations": {
+      "name": "@veyyon/simulations",
+      "version": "1.0.46",
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "@veyyon/agent-core": "catalog:",
+        "@veyyon/ai": "catalog:",
+        "@veyyon/catalog": "catalog:",
+        "@veyyon/coding-agent": "catalog:",
+        "@veyyon/utils": "catalog:",
+        "arktype": "catalog:",
+      },
+    },
     "packages/stats": {
       "name": "@veyyon/stats",
       "version": "1.0.46",
@@ -1041,6 +1054,8 @@
     "@veyyon/mnemopi": ["@veyyon/mnemopi@workspace:packages/mnemopi"],
 
     "@veyyon/natives": ["@veyyon/natives@workspace:packages/natives"],
+
+    "@veyyon/simulations": ["@veyyon/simulations@workspace:packages/simulations"],
 
     "@veyyon/stats": ["@veyyon/stats@workspace:packages/stats"],
 
