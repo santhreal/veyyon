@@ -21,6 +21,7 @@ import {
 import { clampLow, collapseWhitespace, formatCount, formatMoreLines } from "@veyyon/utils";
 import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 import type {
+	ExtensionAskDialogOption,
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResultItem,
 	ExtensionAskDialogSubmitResult,
@@ -330,6 +331,100 @@ function renderRowLabel(
 	return lines;
 }
 
+function describeAskValue(value: unknown): string {
+	if (value === undefined) return "missing";
+	if (typeof value === "string") return `the string ${JSON.stringify(value)}`;
+	if (typeof value === "object") return value === null ? "null" : `a ${Array.isArray(value) ? "array" : "object"}`;
+	return `the ${typeof value} ${String(value)}`;
+}
+
+function isAskText(value: unknown): boolean {
+	return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Refuse a question this dialog cannot render, naming the field and the question
+ * that carried it.
+ *
+ * The rendered fields are read with no fallback — `replaceTabs(question.question)`,
+ * `question.options.length` — because the declared type makes them mandatory. That
+ * holds for every in-tree caller and for nobody else: `ExtensionUI.askDialog` is a
+ * published extension API, and the collab and RPC paths hand over JSON that was
+ * decoded rather than type-checked. A question with no `question` field reached the
+ * header renderer and took the process down with `undefined is not an object
+ * (evaluating 'text.replaceAll')` — an uncaught exception thrown from inside a
+ * render pass, so there was no tool error and no notice, just a dead session and
+ * every live subagent with it.
+ *
+ * The precondition is therefore checked once, where the dialog is built, and a
+ * violation is an ordinary rejection: `#presentDialog` catches a throwing
+ * presenter, releases the modal surface, and the caller — a tool call, an
+ * extension command — is handed an error naming what to fix. Refusing beats
+ * substituting a placeholder, because a dialog reading "undefined" asks a question
+ * nobody wrote and records an answer to it.
+ */
+function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQuestion[]): void {
+	if (!Array.isArray(questions) || questions.length === 0) {
+		throw new Error("Ask dialog needs a non-empty array of questions.");
+	}
+	for (let index = 0; index < questions.length; index++) {
+		const raw: unknown = questions[index];
+		const at = `Ask dialog question ${index}`;
+		if (typeof raw !== "object" || raw === null) {
+			throw new Error(`${at} is ${describeAskValue(raw)}, not an object.`);
+		}
+		const question = raw as Partial<ExtensionAskDialogQuestion>;
+		if (!isAskText(question.id)) {
+			throw new Error(`${at} has no id (${describeAskValue(question.id)}); it must be a non-empty string.`);
+		}
+		const where = `${at} (${question.id})`;
+		if (!isAskText(question.question)) {
+			throw new Error(
+				`${where} has no question text (${describeAskValue(question.question)}); it must be a non-empty string.`,
+			);
+		}
+		if (question.header !== undefined && typeof question.header !== "string") {
+			throw new Error(`${where} has a header that is ${describeAskValue(question.header)}, not a string.`);
+		}
+		if (!Array.isArray(question.options)) {
+			throw new Error(`${where} has options that are ${describeAskValue(question.options)}, not an array.`);
+		}
+		for (let optionIndex = 0; optionIndex < question.options.length; optionIndex++) {
+			const option: unknown = question.options[optionIndex];
+			const optionAt = `${where} option ${optionIndex}`;
+			if (typeof option !== "object" || option === null) {
+				throw new Error(`${optionAt} is ${describeAskValue(option)}, not an object.`);
+			}
+			const { label, description, preview } = option as Partial<ExtensionAskDialogOption>;
+			if (!isAskText(label)) {
+				throw new Error(`${optionAt} has no label (${describeAskValue(label)}); it must be a non-empty string.`);
+			}
+			if (description !== undefined && typeof description !== "string") {
+				throw new Error(`${optionAt} has a description that is ${describeAskValue(description)}, not a string.`);
+			}
+			if (preview !== undefined && typeof preview !== "string") {
+				throw new Error(`${optionAt} has a preview that is ${describeAskValue(preview)}, not a string.`);
+			}
+		}
+		if (question.multi !== undefined && typeof question.multi !== "boolean") {
+			throw new Error(`${where} has multi set to ${describeAskValue(question.multi)}, not a boolean.`);
+		}
+		if (question.recommended !== undefined && !Number.isFinite(question.recommended)) {
+			throw new Error(`${where} has recommended set to ${describeAskValue(question.recommended)}, not a number.`);
+		}
+		if (question.preselected !== undefined && !Array.isArray(question.preselected)) {
+			throw new Error(
+				`${where} has preselected set to ${describeAskValue(question.preselected)}, not an array of option labels.`,
+			);
+		}
+		for (const label of question.preselected ?? []) {
+			if (typeof label !== "string") {
+				throw new Error(`${where} has a preselected label that is ${describeAskValue(label)}, not a string.`);
+			}
+		}
+	}
+}
+
 export class AskDialogComponent implements Component {
 	#states: QuestionState[];
 	#activeTabIndex = 0;
@@ -350,6 +445,7 @@ export class AskDialogComponent implements Component {
 		private readonly callbacks: AskDialogCallbacks,
 		private readonly options: AskDialogOptions = {},
 	) {
+		assertRenderableAskQuestions(questions);
 		this.#states = questions.map(question => {
 			const recommended = Number.isInteger(question.recommended) ? question.recommended : 0;
 			const maxIndex = Math.max(0, question.options.length - 1);
