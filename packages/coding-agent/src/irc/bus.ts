@@ -387,10 +387,21 @@ export class IrcBus {
 	 * the pair has no such gap, and it also catches the one-directional runaway,
 	 * which is the same pathology with one of the two agents mute.
 	 *
-	 * The chain ends at the first line involving anyone else at all, in either
+	 * The chain ends when one of the pair talks to somebody else, in either
 	 * field. That is what keeps it off legitimate traffic: a pair that is also
 	 * reporting to a third agent, or to its spawner, resets on every such
 	 * message and can talk to each other indefinitely.
+	 *
+	 * A line involving NEITHER of them is skipped rather than ending the chain,
+	 * because it is not evidence about this pair at all. The log is global and
+	 * several subagents run at once, so ending the chain on any foreign line
+	 * made the cap depend on whether an unrelated agent happened to send
+	 * something between two of these messages. Under concurrency something
+	 * almost always did, the count almost never reached the cap, and the loop
+	 * this guard exists to stop ran unbounded. The refusal text has always
+	 * stated this narrower rule ("without either of you talking to anyone
+	 * else"), so the broad reading also promised the operator a contract the
+	 * code did not keep.
 	 *
 	 * Failed lines are counted like any other. A pair whose sends keep failing is
 	 * still a pair burning turns on each other, and counting only successful
@@ -401,6 +412,7 @@ export class IrcBus {
 		let length = 0;
 		for (let index = this.#log.length - 1; index >= 0; index--) {
 			const { from, to } = this.#log[index]!.message;
+			if (from !== a && to !== a && from !== b && to !== b) continue;
 			if (!((from === a && to === b) || (from === b && to === a))) break;
 			length++;
 		}

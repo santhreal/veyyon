@@ -42,7 +42,7 @@ beforeEach(() => {
 	IrcBus.resetGlobalForTests();
 	bus = IrcBus.global();
 	const registry = AgentRegistry.global();
-	for (const id of ["Alpha", "Beta", "Gamma"]) {
+	for (const id of ["Alpha", "Beta", "Gamma", "Delta"]) {
 		registry.register({
 			id,
 			displayName: "reviewer",
@@ -143,6 +143,48 @@ describe("IRC ping-pong cap", () => {
 
 		const otherPair = await bus.send({ from: "Gamma", to: "Alpha", body: "unrelated" });
 		expect(otherPair.outcome).not.toBe("failed");
+	});
+
+	/**
+	 * The concurrency hole, and the reason this cap did not work in practice.
+	 *
+	 * The log is global and several subagents run at once, so the tail of it is
+	 * interleaved. Ending the pair's chain at any foreign line meant a message
+	 * between two OTHER agents reset Alpha and Beta's budget, even though it says
+	 * nothing about whether Alpha and Beta are looping. With four agents live
+	 * something almost always landed in between, the count almost never reached
+	 * the cap, and the guard was effectively off in exactly the situation it was
+	 * written for: a real loop observed while other agents worked.
+	 *
+	 * Traffic that involves neither of the pair is skipped, not counted and not
+	 * treated as a break. Only one of the pair talking to somebody else ends the
+	 * chain, which is the rule the refusal text has always stated.
+	 */
+	test("unrelated traffic between two other agents does not reset the pair", async () => {
+		for (let index = 0; index < CAP; index++) {
+			const from = index % 2 === 0 ? "Alpha" : "Beta";
+			await bus.send({ from, to: from === "Alpha" ? "Beta" : "Alpha", body: String(index) });
+			// A fully foreign line, in both fields, between every exchange.
+			await bus.send({ from: "Gamma", to: "Delta", body: `unrelated ${index}` });
+		}
+
+		const overCap = await bus.send({ from: "Alpha", to: "Beta", body: "one too many" });
+		expect(overCap.outcome).toBe("failed");
+		expect(overCap.error).toContain(`${CAP} messages in a row`);
+	});
+
+	/**
+	 * The other half of the same rule, kept explicit so a fix that simply
+	 * ignored every foreign line would still be caught. A pair reporting
+	 * outward is coordinating, and the reset must survive.
+	 */
+	test("one of the pair messaging a third agent still resets the chain", async () => {
+		await pingPong(CAP);
+		await bus.send({ from: "Gamma", to: "Delta", body: "noise" });
+		await bus.send({ from: "Beta", to: "Gamma", body: "status report" });
+
+		const afterBreak = await bus.send({ from: "Alpha", to: "Beta", body: "still working" });
+		expect(afterBreak.outcome).not.toBe("failed");
 	});
 
 	/**
