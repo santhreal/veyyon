@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { fromBinary } from "@bufbuild/protobuf";
+import { ConversationTokenDetailsSchema } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { emptyUsage } from "@veyyon/catalog/models";
 import {
 	type CursorUsageAccount,
@@ -146,5 +148,91 @@ describe("cursor turn accounting", () => {
 
 		expect(output.usage.cacheRead).toBe(0);
 		expect(output.usage.cacheWrite).toBe(0);
+	});
+});
+
+/**
+ * WHY: `ConversationTokenDetails.detailed = 3` is not in the schema Cursor's
+ * client ships, so protobuf dropped it silently for as long as it went
+ * undeclared. It is the provider measuring our own context composition for us,
+ * which no local estimate can do: the gateway knows what the tool schemas cost
+ * after its serialization, we only know what we sent.
+ *
+ * The bytes below are a verbatim `ConversationTokenDetails` lifted out of
+ * `~/.cursor/chats/2dd91e628898a0b3a8343c759f96cc77/.../store.db`, so this
+ * pins the real wire encoding rather than a round-trip of our own writer. The
+ * sum identity is what makes the field trustworthy: the eight buckets add up
+ * to `used_tokens` exactly, which is only true if every field number and wire
+ * type in the declaration is right.
+ */
+const RECORDED_TOKEN_DETAILS = Buffer.from(
+	"CJNxEIDQDxqdAgiTcRCA0A8aJAoNc3lzdGVtX3Byb21wdBINU3lzdGVtIHByb21wdBjzAyDeDxogCgV0b29scxIQVG9vbCBkZWZpbml0aW9ucxiGQSDUhgIaFAoFcnVsZXMSBVJ1bGVzGKIUIOpRGhYKBnNraWxscxIGU2tpbGxzGKoTIIlOGhwKA21jcBITTUNQICYgZHluYW1pYyB0b29scyAAGicKCXN1YmFnZW50cxIUU3ViYWdlbnQgZGVmaW5pdGlvbnMY/QMgiBAaNAoXc3VtbWFyaXplZF9jb252ZXJzYXRpb24SF1N1bW1hcml6ZWQgY29udmVyc2F0aW9uIAAaIQoMY29udmVyc2F0aW9uEgxDb252ZXJzYXRpb24YUSDIAg==",
+	"base64",
+);
+
+describe("cursor context composition", () => {
+	test("the recorded detailed field decodes to eight buckets that sum to used_tokens", () => {
+		const details = fromBinary(ConversationTokenDetailsSchema, RECORDED_TOKEN_DETAILS);
+
+		expect(details.usedTokens).toBe(14_483);
+		expect(details.maxTokens).toBe(256_000);
+		// The wrapper repeats both totals, and disagreement would mean the field
+		// is not the composition of the gauge it sits inside.
+		expect(details.detailed?.usedTokens).toBe(14_483);
+		expect(details.detailed?.maxTokens).toBe(256_000);
+
+		const buckets = details.detailed?.entry ?? [];
+		expect(buckets.map(b => [b.key, b.tokens, b.chars])).toEqual([
+			["system_prompt", 499, 2014],
+			["tools", 8326, 33_620],
+			["rules", 2594, 10_474],
+			["skills", 2474, 9993],
+			["mcp", 0, 0],
+			["subagents", 509, 2056],
+			["summarized_conversation", 0, 0],
+			["conversation", 81, 328],
+		]);
+		expect(buckets.reduce((total, b) => total + b.tokens, 0)).toBe(details.usedTokens);
+	});
+
+	test("a checkpoint carrying the composition surfaces it on the assistant message", () => {
+		const { output, usage } = newTurn();
+		const details = fromBinary(ConversationTokenDetailsSchema, RECORDED_TOKEN_DETAILS);
+
+		handleConversationCheckpointUpdate(
+			{ tokenDetails: details } as Parameters<typeof handleConversationCheckpointUpdate>[0],
+			usage,
+		);
+
+		expect(output.providerContextComposition?.find(b => b.key === "tools")).toEqual({
+			key: "tools",
+			label: "Tool definitions",
+			tokens: 8326,
+			chars: 33_620,
+		});
+		// Every bucket the server measured survives, including the two it measured
+		// as empty: an absent key must mean "not measured", not "nothing there".
+		expect(output.providerContextComposition).toHaveLength(8);
+	});
+
+	test("a later checkpoint with no composition leaves the last real reading standing", () => {
+		const { output, usage } = newTurn();
+		const details = fromBinary(ConversationTokenDetailsSchema, RECORDED_TOKEN_DETAILS);
+
+		handleConversationCheckpointUpdate(
+			{ tokenDetails: details } as Parameters<typeof handleConversationCheckpointUpdate>[0],
+			usage,
+		);
+		handleConversationCheckpointUpdate(checkpoint(0, 0), usage);
+
+		expect(output.providerContextComposition).toHaveLength(8);
+	});
+
+	test("a turn Cursor never described has no composition rather than an empty one", () => {
+		const { output, usage } = newTurn();
+
+		handleConversationCheckpointUpdate(checkpoint(14_483, 256_000), usage);
+
+		expect(output.providerContextComposition).toBeUndefined();
 	});
 });

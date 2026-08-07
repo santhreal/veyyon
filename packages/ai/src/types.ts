@@ -767,6 +767,20 @@ export interface IncompleteToolCall {
 	name: string;
 }
 
+/**
+ * One bucket of a provider-reported context composition. See
+ * {@link AssistantMessage.providerContextComposition}.
+ */
+export interface ProviderContextBucket {
+	/** Stable provider identifier to branch on (`"tools"`, `"rules"`, `"skills"`, ...). */
+	key: string;
+	/** The provider's own display string for the bucket. */
+	label: string;
+	tokens: number;
+	/** Characters the provider measured, or 0 when it reports tokens only. */
+	chars: number;
+}
+
 export interface AssistantMessage {
 	role: "assistant";
 	content: (TextContent | ThinkingContent | RedactedThinkingContent | AnthropicFallbackContent | ToolCall)[];
@@ -801,6 +815,21 @@ export interface AssistantMessage {
 	 * provider said nothing, NOT that the catalog window is wrong.
 	 */
 	providerContextWindow?: number;
+	/**
+	 * How the PROVIDER says its own reported context is composed, when it says.
+	 *
+	 * Only a gateway that assembles the prompt for us can measure this: it knows
+	 * what the tool schemas, the rules and the skills actually cost after its own
+	 * serialization, where we can only estimate them from what we sent. Cursor
+	 * reports it per turn and the buckets sum to its `used_tokens` exactly, which
+	 * is what makes it worth carrying: one real sample puts tool definitions at
+	 * 8,326 of 14,483 tokens, and no local estimate would have found that.
+	 *
+	 * Undefined means the provider said nothing. An empty bucket the provider did
+	 * measure is present with `tokens: 0`, so an absent key is "not measured"
+	 * rather than "nothing there".
+	 */
+	providerContextComposition?: ProviderContextBucket[];
 	usage: Usage;
 	stopReason: StopReason;
 	stopDetails?: StopDetails | null;

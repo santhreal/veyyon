@@ -602,6 +602,33 @@ message ConversationSummaryArchive {
 message ConversationTokenDetails {
    uint32 used_tokens = 1;
    uint32 max_tokens = 2;
+   // Absent from the schema Cursor's client ships and dropped silently by
+   // protobuf until it was declared here. Recovered by decoding the raw field
+   // out of `~/.cursor/chats/*/store.db`, where every populated gauge carries
+   // one. It is the provider's own measurement of where the window went, and
+   // its buckets sum to `used_tokens` exactly.
+   ConversationTokenDetails_Detailed detailed = 3;
+}
+
+// Composition of `ConversationTokenDetails.used_tokens`. Repeats the two
+// totals its parent already carries; the recorded samples agree on both, and
+// the entries are what the parent cannot say.
+message ConversationTokenDetails_Detailed {
+   uint32 used_tokens = 1;
+   uint32 max_tokens = 2;
+   repeated ConversationTokenDetails_Entry entry = 3;
+}
+
+// One context bucket. `key` is the stable identifier to branch on (`tools`,
+// `rules`, `skills`, `subagents`, `system_prompt`, `conversation`, `mcp`,
+// `summarized_conversation`); `label` is Cursor's own display string. A bucket
+// the server measured as empty is still sent, with `tokens` and `chars` at
+// zero, so an absent key means "not measured" rather than "nothing there".
+message ConversationTokenDetails_Entry {
+   string key = 1;
+   string label = 2;
+   uint32 tokens = 3;
+   uint32 chars = 4;
 }
 
 message FileState {

@@ -19,6 +19,7 @@ import {
 	type ConversationStateStructure,
 	ConversationStateStructureSchema,
 	ConversationStepSchema,
+	type ConversationTokenDetails,
 	ConversationTurnStructureSchema,
 	type CursorRule,
 	CursorRuleSchema,
@@ -128,6 +129,7 @@ import type {
 	ImageContent,
 	Message,
 	Model,
+	ProviderContextBucket,
 	StreamFunction,
 	StreamOptions,
 	TextContent,
@@ -769,6 +771,11 @@ export interface CursorUsageAccount {
 	conversationTokens: number;
 	/** Latest populated `ConversationTokenDetails.max_tokens`. */
 	contextWindow: number;
+	/**
+	 * Latest populated `ConversationTokenDetails.detailed.entry`, mapped to the
+	 * provider-neutral shape. Undefined until a checkpoint carries one.
+	 */
+	contextComposition: ProviderContextBucket[] | undefined;
 	/** Recompute the message's usage, cost and reported window from the above. */
 	fold: () => void;
 }
@@ -779,6 +786,7 @@ export function createCursorUsageAccount(model: Model<"cursor-agent">, output: A
 		completionTokens: 0,
 		conversationTokens: 0,
 		contextWindow: 0,
+		contextComposition: undefined,
 		fold: () => {
 			output.usage.output = account.completionTokens;
 			// The conversation gauge is sampled with this turn's reply already in
@@ -794,6 +802,12 @@ export function createCursorUsageAccount(model: Model<"cursor-agent">, output: A
 			if (account.contextWindow > 0) {
 				output.providerContextWindow = account.contextWindow;
 			}
+			// No guard, unlike the window above: `contextWindow: 0` is a sentinel
+			// that would be a wrong answer if written, where an undefined
+			// composition is exactly the right answer for a turn Cursor never
+			// described. The account is the one thing that refuses to forget a
+			// reading, and keeping that rule in one place is the point of the type.
+			output.providerContextComposition = account.contextComposition;
 			// Folded here rather than once at the end of a clean turn, so an aborted
 			// or failed turn still reports what it spent.
 			calculateCost(model, output.usage);
@@ -2600,6 +2614,25 @@ export function processInteractionUpdate(
 	}
 }
 
+/**
+ * Map `ConversationTokenDetails.detailed` onto the provider-neutral buckets.
+ *
+ * The entries are the whole point of the field: `used_tokens` and `max_tokens`
+ * are repeated inside it and are already read off the parent. An entry list
+ * that is empty means the server sent the wrapper and measured nothing, which
+ * is not a reading, so it maps to undefined and leaves the last one standing.
+ */
+function cursorContextComposition(details?: ConversationTokenDetails): ProviderContextBucket[] | undefined {
+	const entries = details?.detailed?.entry;
+	if (!entries?.length) return undefined;
+	return entries.map(entry => ({
+		key: entry.key,
+		label: entry.label,
+		tokens: entry.tokens,
+		chars: entry.chars,
+	}));
+}
+
 /** Exported for tests: folds one conversation checkpoint into the turn's token account. */
 export function handleConversationCheckpointUpdate(
 	checkpoint: ConversationStateStructure,
@@ -2618,6 +2651,10 @@ export function handleConversationCheckpointUpdate(
 	const usedTokens = checkpoint.tokenDetails?.usedTokens ?? 0;
 	if (usedTokens > 0) {
 		usage.conversationTokens = usedTokens;
+	}
+	const composition = cursorContextComposition(checkpoint.tokenDetails);
+	if (composition) {
+		usage.contextComposition = composition;
 	}
 	usage.fold();
 }
