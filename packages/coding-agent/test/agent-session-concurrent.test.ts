@@ -40,6 +40,14 @@ const originalSchedulerWait = scheduler.wait.bind(scheduler);
 function collapseSchedulerSettleDelays(): void {
 	vi.spyOn(scheduler, "wait").mockImplementation((_delayMs, options) => originalSchedulerWait(0, options));
 }
+/** Text of a `custom` message, whose content may be a plain string or content blocks. */
+function customMessageText(message: AgentMessage | undefined): string {
+	if (!message || message.role !== "custom") return "";
+	const content = message.content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content.map(part => (part.type === "text" ? part.text : "")).join("\n");
+}
 
 describe("AgentSession concurrent prompt guard", () => {
 	let session: AgentSession;
@@ -1810,7 +1818,7 @@ describe("AgentSession TTSR resume gate", () => {
 		expect(streamCallCount).toBeGreaterThanOrEqual(3);
 		expect(session.isStreaming).toBe(false);
 	});
-	it("interruptMode never folds tool-match reminder into the toolResult instead of driving an extra turn", async () => {
+	it("interruptMode never keeps the tool-match reminder off the tool result and off an extra turn", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
 		let streamCallCount = 0;
 		let toolExecuted = false;
@@ -1914,7 +1922,8 @@ describe("AgentSession TTSR resume gate", () => {
 		expect(toolExecuted).toBe(true);
 		expect(streamCallCount).toBe(2);
 
-		// The matched tool's result must carry the in-band reminder.
+		// The tool result is the tool's own output and nothing else. The reminder used to be
+		// prepended here, which put model-directed markup on a surface the user reads.
 		const toolResult = agent.state.messages.find(
 			(m): m is Extract<typeof m, { role: "toolResult" }> =>
 				m.role === "toolResult" && m.toolCallId === toolCallContent.id,
@@ -1926,10 +1935,23 @@ describe("AgentSession TTSR resume gate", () => {
 					.map(c => c.text)
 					.join("\n")
 			: "";
-		expect(text).toContain("<system-reminder");
-		expect(text).toContain('rule="no-unwrap"');
-		expect(text).toContain("Do not use .unwrap()");
-		expect(text.indexOf("<system-reminder")).toBeLessThan(text.indexOf("edit applied"));
+		expect(text).toBe("edit applied");
+
+		// The model still gets the reminder, on the hidden channel the interrupting path uses,
+		// and it lands after the tool result rather than in front of it.
+		const toolResultIndex = agent.state.messages.findIndex(
+			m => m.role === "toolResult" && m.toolCallId === toolCallContent.id,
+		);
+		const injectionIndex = agent.state.messages.findIndex(
+			m => m.role === "custom" && m.customType === "ttsr-injection",
+		);
+		expect(injectionIndex).toBeGreaterThan(toolResultIndex);
+		const injection = agent.state.messages[injectionIndex];
+		expect(injection?.role === "custom" ? injection.display : undefined).toBe(false);
+		const injectionText = customMessageText(injection);
+		expect(injectionText).toContain('rule="no-unwrap"');
+		expect(injectionText).toContain("Do not use .unwrap()");
+		expect(injectionText).toContain("The tool ran because the rule is configured not to interrupt.");
 	});
 
 	it("interruptMode never deduplicates the reminder across sibling tool calls in one batch", async () => {
@@ -2051,12 +2073,17 @@ describe("AgentSession TTSR resume gate", () => {
 			(m): m is Extract<typeof m, { role: "toolResult" }> => m.role === "toolResult",
 		);
 		expect(toolResults).toHaveLength(3);
+		// No tool result carries the reminder any more; it rides one hidden aside instead.
 		const withReminder = toolResults.filter(r =>
 			Array.isArray(r.content)
 				? r.content.some(c => c.type === "text" && c.text.includes("<system-reminder"))
 				: false,
 		);
-		expect(withReminder).toHaveLength(1);
+		expect(withReminder).toHaveLength(0);
+		const injections = agent.state.messages.filter(m => m.role === "custom" && m.customType === "ttsr-injection");
+		expect(injections).toHaveLength(1);
+		// One rule, claimed by exactly one of the three sibling calls, so one reminder block.
+		expect(customMessageText(injections[0]).match(/<system-reminder/g)).toHaveLength(1);
 	});
 
 	it("prompt() waits for context-promotion continuation to finish", async () => {

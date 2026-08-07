@@ -2401,9 +2401,13 @@ export class AgentSession {
 	#ttsrManager: TtsrManager | undefined = undefined;
 	#pendingTtsrInjections: Rule[] = [];
 	/** Per-tool TTSR rules whose `interruptMode` opted out of aborting the stream.
-	 *  These are folded into the matched tool call's `toolResult` content as an
-	 *  in-band system reminder, instead of spawning a separate follow-up turn. */
+	 *  Bucketed while the tool call's arguments stream, then rendered in
+	 *  `#ttsrAfterToolCall` into `#pendingTtsrToolReminders`. */
 	#perToolTtsrInjections = new Map<string, Rule[]>();
+	/** Rendered tool-scoped TTSR reminders waiting for the next aside boundary.
+	 *  Model-only: they never enter a tool result, so nothing the user reads
+	 *  carries `<system-reminder>` markup. See {@link #ttsrAfterToolCall}. */
+	#pendingTtsrToolReminders: { content: string; rules: string[] }[] = [];
 	/** Drives the `commit-drift` rule: this session's edits that are not committed yet. */
 	readonly #commitDrift = new CommitDriftTracker();
 	#ttsrAbortPending = false;
@@ -3241,6 +3245,10 @@ export class AgentSession {
 			// mental-model reload) rides in here instead of rewriting the system
 			// prompt, which would cost a full uncached re-read of the conversation.
 			thunks.push(() => this.#takePendingVolatileMemoryContext());
+			// Tool-scoped TTSR reminders. An aside rather than a steer: a steer
+			// aborts the tool batch still in flight, and a reminder about a call
+			// that already finished has no business cutting its siblings short.
+			thunks.push(() => this.#takePendingTtsrToolReminders());
 			return thunks;
 		});
 		this.#convertToLlm = config.convertToLlm ?? convertToLlm;
@@ -6508,12 +6516,19 @@ export class AgentSession {
 	 * from the state after a successful injection, so nothing anywhere reported a problem.
 	 */
 	#dropUndeliveredPerToolInjections(): void {
-		if (this.#perToolTtsrInjections.size === 0) return;
+		if (this.#perToolTtsrInjections.size === 0 && this.#pendingTtsrToolReminders.length === 0) return;
 		const undelivered = new Set<string>();
 		for (const bucket of this.#perToolTtsrInjections.values()) {
 			for (const rule of bucket) undelivered.add(rule.name);
 		}
+		// A reminder rendered but not yet drained as an aside is undelivered too.
+		// The turn dying between `afterToolCall` and the next step boundary is the
+		// same loss as the turn dying before the tool ran, so it releases the same way.
+		for (const reminder of this.#pendingTtsrToolReminders) {
+			for (const name of reminder.rules) undelivered.add(name);
+		}
 		this.#perToolTtsrInjections.clear();
+		this.#pendingTtsrToolReminders = [];
 		this.#ttsrManager?.releaseInjectedByNames([...undelivered]);
 	}
 
@@ -6538,27 +6553,69 @@ export class AgentSession {
 		return this.#ttsrAfterToolCall(ctx);
 	}
 
-	/** `afterToolCall` hook: fold any per-tool TTSR reminders into the result. */
+	/**
+	 * `afterToolCall` hook: queue any per-tool TTSR reminders for model-only delivery.
+	 *
+	 * This used to PREPEND the rendered reminder into `ctx.result.content`. Two things
+	 * fell out of that, both reported from one screenshot. The reminder is model-directed
+	 * `<system-reminder>` markup and a tool result is a surface the user reads, so the
+	 * markup was shown to them, duplicating the `Injecting rule:` banner already on screen.
+	 * And on a call that ALSO errored the reminder became the first text block, which is
+	 * what the TUI prints as the error headline, so the real failure was pushed out of view
+	 * for the user and displaced for the model.
+	 *
+	 * Appending would have fixed only the second half. The interrupting path has always
+	 * delivered its reminder as a `display: false` `ttsr-injection` custom message, so this
+	 * takes the same channel and the two paths now differ only in timing: an aside rides the
+	 * next step boundary, which is before the model's next call and after the batch in flight
+	 * finishes. A steer would reach the model just as promptly but aborts the remaining tool
+	 * calls in the batch, and a reminder about a call that already returned must not do that.
+	 *
+	 * Persistence moves with the delivery. `message_end` marks and records any
+	 * `ttsr-injection` custom message, so recording here as well would double-count, and
+	 * recording here at all would claim a delivery that a dying turn never makes.
+	 */
 	#ttsrAfterToolCall(ctx: AfterToolCallContext): AfterToolCallResult | undefined {
 		const rules = this.#perToolTtsrInjections.get(ctx.toolCall.id);
 		if (!rules || rules.length === 0) return undefined;
 		this.#perToolTtsrInjections.delete(ctx.toolCall.id);
+		// The reminder states that the tool ran. On an errored or skipped call that is
+		// false, and a false statement about what just happened is worse than no reminder.
+		const details = ctx.result?.details;
+		const skipped = isRecord(details) && details.__skipped === true;
+		const ran = !ctx.isError && !skipped;
 		const reminder = rules
 			.map(r =>
 				prompt.render(rulesPrompts["rules/ttsr-tool-reminder"].text, {
 					name: r.name,
 					path: this.#displayRulePath(r.path),
 					content: this.#renderRuleBody(r),
+					tool: ctx.toolCall.name,
+					ran,
 				}),
 			)
 			.join("\n\n");
-		// The TTSR manager was already claimed at bucket time; only persistence remains.
 		const ruleNames = rules.map(r => r.name.trim()).filter(n => n.length > 0);
-		if (ruleNames.length > 0) {
-			this.sessionManager.appendTtsrInjection(ruleNames);
+		if (ctx.isError && ctx.result && Array.isArray(ctx.result.content)) {
+			ctx.result.content.unshift({ type: "text", text: reminder });
 		}
+		this.#pendingTtsrToolReminders.push({ content: reminder, rules: ruleNames });
+		return undefined;
+	}
+
+	/** Drain queued tool-scoped TTSR reminders as one model-only aside, if any wait. */
+	#takePendingTtsrToolReminders(): AgentMessage | null {
+		if (this.#pendingTtsrToolReminders.length === 0) return null;
+		const pending = this.#pendingTtsrToolReminders;
+		this.#pendingTtsrToolReminders = [];
 		return {
-			content: [{ type: "text", text: reminder }, ...ctx.result.content],
+			role: "custom",
+			customType: "ttsr-injection",
+			content: pending.map(reminder => reminder.content).join("\n\n"),
+			display: false,
+			details: { rules: pending.flatMap(reminder => reminder.rules) },
+			attribution: "agent",
+			timestamp: Date.now(),
 		};
 	}
 
