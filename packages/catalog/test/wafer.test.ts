@@ -42,9 +42,8 @@ describe("Wafer Serverless provider", () => {
 		// would mis-pick "openai" because the Wafer baseUrl/provider doesn't match
 		// the api.moonshot.ai / api.kimi.com URL patterns in `buildOpenAICompat`).
 		expect(kimi.compatConfig?.thinkingFormat).toBe("zai");
-		// Kimi-K2.6's retail Serverless rate per wafer.ai (= API cents × 0.0125):
-		// $1.425 in / $6.00 out / $0.2375 cached.
-		expect(kimi.cost).toEqual({ input: 1.425, output: 6, cacheRead: 0.2375, cacheWrite: 0 });
+		// Kimi-K2.6 pricing per the models.dev wafer.ai declaration.
+		expect(kimi.cost).toEqual({ input: 1.14, output: 4.8, cacheRead: 0.19, cacheWrite: 0 });
 
 		const qwen36 = getBundledModel<"openai-completions">("wafer-serverless", "Qwen3.6-35B-A3B");
 		expect(qwen36).toBeDefined();

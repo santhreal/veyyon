@@ -60,7 +60,8 @@ describe("Sakana AI provider support", () => {
 		expect(bundled.find(model => model.id === "fugu-ultra-20260615")?.contextWindow).toBe(1_000_000);
 		for (const model of bundled) {
 			expect(model.api).toBe("openai-responses");
-			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
+			// models.dev declares the Fugu effort pair as high/xhigh.
+			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.XHigh]);
 			expect(model.thinking?.effortMap).toBeUndefined();
 			expect((model.compat as ResolvedOpenAIResponsesCompat).includeEncryptedReasoning).toBe(false);
 			expect((model.compat as ResolvedOpenAIResponsesCompat).streamIdleTimeoutMs).toBe(0);

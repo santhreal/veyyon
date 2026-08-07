@@ -3,6 +3,7 @@ import { buildModel } from "./build";
 import type { DiscoveryFailure, DiscoveryHooks } from "./discovery/failure";
 import { readModelCache, writeModelCache } from "./model-cache";
 import { type GeneratedProvider, getBundledModels } from "./models";
+import { defaultModelsDevFallback } from "./modelsdev-overlay";
 import type { Api, Model, ModelSpec, Provider } from "./types";
 import { isRecord } from "./utils";
 import { collapseBuiltModelVariants } from "./variant-collapse";
@@ -190,7 +191,7 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 				options.dropCachedModelIdsOnStaticMismatch,
 			);
 	const dynamicModels = fetchedDynamicModels ?? [];
-	const mergedWithCache = mergeDynamicModels(mergeModelSources(staticModels, modelsDevModels), cacheModels);
+	const mergedWithCache = mergeDynamicModels(mergeDynamicModels(staticModels, modelsDevModels), cacheModels);
 	const mergedModels = mergeDynamicModels(mergedWithCache, dynamicModels);
 	const models = collapseBuiltModelVariants(
 		dynamicModelsAuthoritative && dynamicFetchSucceeded ? retainModelIds(mergedModels, dynamicModels) : mergedModels,
@@ -198,7 +199,7 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 	const dynamicAuthoritative = !hasDynamicFetcher || dynamicFetchSucceeded || shouldUseFreshCacheAsAuthoritative;
 	if (shouldFetchFromNetwork) {
 		if (dynamicFetchSucceeded) {
-			const mergedSnapshot = mergeDynamicModels(mergeModelSources(staticModels, modelsDevModels), dynamicModels);
+			const mergedSnapshot = mergeDynamicModels(mergeDynamicModels(staticModels, modelsDevModels), dynamicModels);
 			const snapshotModels = dynamicModelsAuthoritative
 				? retainModelIds(mergedSnapshot, dynamicModels)
 				: mergedSnapshot;
@@ -219,7 +220,7 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 				now(),
 				collapseBuiltModelVariants(
 					mergeDynamicModels(
-						mergeModelSources(staticModels, modelsDevModels),
+						mergeDynamicModels(staticModels, modelsDevModels),
 						prepareCacheModelsForStaticMismatch(
 							normalizeModelList<TApi>(latestCache?.models ?? cache?.models ?? []),
 							staticModels,
@@ -243,15 +244,21 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 async function fetchModelsDev<TApi extends Api, TModelsDevPayload>(
 	options: ModelManagerOptions<TApi, TModelsDevPayload>,
 ): Promise<Model<TApi>[] | null> {
-	if (!options.modelsDev) {
+	// A provider without its own hook gets the shared models.dev overlay: one
+	// cached catalog fetch, mapped through the provider's descriptor, so its
+	// declared surfaces track upstream between releases (OpenCode's ModelsDev
+	// discipline — the catalog comes from models.dev, never from local
+	// derivation). Providers models.dev does not catalog get no overlay.
+	const modelsDev = options.modelsDev ?? defaultModelsDevFallback<TApi>(options.providerId, options.cacheDbPath);
+	if (!modelsDev) {
 		return null;
 	}
 
 	const onFailure = options.onDiscoveryFailure;
 	try {
-		const payload = await options.modelsDev.fetch({ onFailure });
+		const payload = await modelsDev.fetch({ onFailure });
 		const rejected: string[] = [];
-		const models = normalizeModelList<TApi>(options.modelsDev.map(payload, options.providerId), rejection => {
+		const models = normalizeModelList<TApi>(modelsDev.map(payload, options.providerId), rejection => {
 			rejected.push(`${rejection.id} (${rejection.field})`);
 		});
 		if (rejected.length > 0) {
@@ -361,23 +368,6 @@ function prepareCacheModelsForStaticMismatch<TApi extends Api>(
 		sanitizedModels.push(staticIds?.has(model.id) ? { ...model, contextWindow: null, maxTokens: null } : model);
 	}
 	return sanitizedModels;
-}
-
-function mergeModelSources<TApi extends Api>(...sources: readonly (readonly Model<TApi>[])[]): Model<TApi>[] {
-	// Strip out empty/missing sources up front. The hot path is `(static, [])`
-	// (modelsDev disabled / failed) — a single non-empty source means we can
-	// skip the Map churn entirely and just hand back the array.
-	const nonEmpty = sources.filter(source => source.length > 0);
-	if (nonEmpty.length === 0) return [];
-	if (nonEmpty.length === 1) return [...nonEmpty[0]];
-	const merged = new Map<string, Model<TApi>>();
-	for (const source of nonEmpty) {
-		for (const model of source) {
-			if (!model?.id) continue;
-			merged.set(model.id, model);
-		}
-	}
-	return Array.from(merged.values());
 }
 
 function mergeDynamicModels<TApi extends Api>(

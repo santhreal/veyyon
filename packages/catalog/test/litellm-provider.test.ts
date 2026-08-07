@@ -275,12 +275,10 @@ describe("LiteLLM provider discovery", () => {
 			provider: "litellm",
 			baseUrl: "http://primary:4000/v1",
 			reasoning: true,
+			// The reference carries the models.dev-declared GLM-5.2 surface.
 			thinking: {
 				mode: "effort",
-				efforts: ["minimal", "low", "medium", "high", "max"],
-				effortMap: {
-					minimal: "none",
-				},
+				efforts: ["high", "max"],
 			},
 		});
 	});
@@ -700,17 +698,16 @@ describe("LiteLLM provider discovery", () => {
 		expect(models).toHaveLength(1);
 		expect(models?.[0]).toMatchObject({
 			id: "glm-5.2",
-			name: "GLM-5.2",
+			// The bundled reference (models.dev) owns the display name here.
+			name: "GLM 5.2",
 			api: "openai-completions",
 			provider: "litellm",
 			baseUrl: "http://primary:4000/v1",
 			reasoning: true,
+			// The reference carries the models.dev-declared GLM-5.2 surface.
 			thinking: {
 				mode: "effort",
-				efforts: ["minimal", "low", "medium", "high", "max"],
-				effortMap: {
-					minimal: "none",
-				},
+				efforts: ["high", "max"],
 			},
 		});
 	});

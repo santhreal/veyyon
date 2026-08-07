@@ -155,10 +155,9 @@ describe("Fireworks control-plane serverless discovery", () => {
 		if (!kimi) return;
 		const built = buildModel(kimi);
 		expect(built.reasoning).toBe(true);
-		// reasoning + Fireworks host ⇒ buildModel derives an effort-mode thinking
-		// config (the Fireworks effort map), so the model is usable with thinking
-		// tiers without any bundled metadata.
-		expect(built.thinking?.mode).toBe("effort");
+		// models.dev declares kimi-k2.7-code on Fireworks as toggle-only, so no
+		// effort ladder is offered; none is fabricated from identity either.
+		expect(built.thinking).toBeUndefined();
 	});
 
 	it("returns null on a control-plane transport failure so the manager keeps its cache", async () => {

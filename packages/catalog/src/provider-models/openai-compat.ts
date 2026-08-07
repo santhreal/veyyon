@@ -7,7 +7,12 @@ import {
 	type OpenAICompatibleModelRecord,
 } from "../discovery/openai-compatible";
 import { canonicalizeEfforts, Effort, isEffort } from "../effort";
-import { FIREWORKS_FAST_SUFFIX, toFireworksPublicModelId } from "../fireworks-model-id";
+import {
+	FIREPASS_WIRE_PREFIX,
+	FIREWORKS_FAST_SUFFIX,
+	toFirepassPublicModelId,
+	toFireworksPublicModelId,
+} from "../fireworks-model-id";
 import {
 	isGlmVisionModelId,
 	isGrokReasoningEffortCapable,
@@ -15,6 +20,7 @@ import {
 	isReasoningGlmModelId,
 } from "../identity/family";
 import type { ModelManagerOptions } from "../model-manager";
+import { OLLAMA_WIRE_EFFORTS } from "../model-thinking";
 import { getBundledModels } from "../models";
 import type {
 	Api,
@@ -109,11 +115,11 @@ const REASONING_NON_LEVEL_VALUES: Record<string, true> = { none: true, default: 
 
 /**
  * Map models.dev `reasoning_options` to the spec-level reasoning surface.
- * The declared effort ladder is authoritative over the identity-derived one;
- * an empty list or a toggle-only surface means the model reasons but exposes
- * no effort control. Budget-only declarations carry no levels, and an effort
- * option naming only values Veyyon does not know (a future tier) falls back
- * to identity rather than hiding a working control: both return `undefined`.
+ * The declared effort ladder is authoritative; an empty list or a toggle-only
+ * surface means the model reasons but exposes no effort control. Budget-only
+ * declarations open the fixed high/max budget pair (opencode's budgetVariants
+ * contract). An effort option naming only values Veyyon does not know (a
+ * future tier) returns `undefined` rather than hiding a working control.
  *
  * An effort declaration carrying no level at all is the toggle case, not the
  * future-tier case, and maps like the empty option list: `cerebras/zai-glm-4.7`
@@ -147,7 +153,12 @@ export function mapModelsDevReasoningOptions(
 		}
 		return undefined;
 	}
-	if (options.some(option => option.type === "budget_tokens")) return undefined;
+	// Budget-only declarations carry no levels; opencode opens the fixed
+	// high/max budget pair for them (budgetVariants), and Veyyon maps that
+	// pair onto the endpoint's token range at encode time. Copy that surface.
+	if (options.some(option => option.type === "budget_tokens")) {
+		return { efforts: [Effort.High, Effort.Max] };
+	}
 	return { noEffortControl: true };
 }
 
@@ -294,9 +305,14 @@ function buildAnthropicReferenceMap(
  * Seeded into model generation so the bundled catalog is never gated on
  * models.dev's update cadence; deduped behind upstream catalog / models.dev
  * entries once those appear. Token limits and pricing are pinned either directly or
- * in `applyAnthropicCatalogPolicy`, and `thinking` is re-baked
- * by the generator's policy pass (scripts/generated-policies.ts).
+ * in `applyAnthropicCatalogPolicy`. The reasoning surface is a hand-authored
+ * declaration (Anthropic's first-party docs put the 5.x generation on the
+ * adaptive low..max effort scale); the generator's policy pass bakes the wire
+ * facts (mode, display support) around it.
  */
+const ANTHROPIC_CURATED_REASONING_OPTIONS: ModelReasoningOptions = {
+	efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+};
 export const ANTHROPIC_CURATED_FALLBACK_MODELS: readonly ModelSpec<"anthropic-messages">[] = [
 	{
 		id: "claude-sonnet-5",
@@ -305,6 +321,7 @@ export const ANTHROPIC_CURATED_FALLBACK_MODELS: readonly ModelSpec<"anthropic-me
 		provider: "anthropic",
 		baseUrl: "https://api.anthropic.com",
 		reasoning: true,
+		reasoningOptions: ANTHROPIC_CURATED_REASONING_OPTIONS,
 		input: ["text", "image"],
 		cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
 		contextWindow: 1_000_000,
@@ -317,6 +334,7 @@ export const ANTHROPIC_CURATED_FALLBACK_MODELS: readonly ModelSpec<"anthropic-me
 		provider: "anthropic",
 		baseUrl: "https://api.anthropic.com",
 		reasoning: true,
+		reasoningOptions: ANTHROPIC_CURATED_REASONING_OPTIONS,
 		input: ["text", "image"],
 		cost: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
 		contextWindow: 1_000_000,
@@ -329,6 +347,7 @@ export const ANTHROPIC_CURATED_FALLBACK_MODELS: readonly ModelSpec<"anthropic-me
 		provider: "anthropic",
 		baseUrl: "https://api.anthropic.com",
 		reasoning: true,
+		reasoningOptions: ANTHROPIC_CURATED_REASONING_OPTIONS,
 		input: ["text", "image"],
 		cost: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
 		contextWindow: 1_000_000,
@@ -500,7 +519,7 @@ function getOllamaThinkingConfig(capabilities: string[] | undefined): ThinkingCo
 	if (!capabilities?.includes("thinking")) {
 		return undefined;
 	}
-	return { mode: "effort", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] };
+	return { mode: "effort", efforts: [...OLLAMA_WIRE_EFFORTS] };
 }
 
 /**
@@ -2717,6 +2736,7 @@ export function kimiCodeModelManagerOptions(
 ): ModelManagerOptions<"openai-completions"> {
 	const apiKey = config?.apiKey;
 	const baseUrl = config?.baseUrl ?? "https://api.kimi.com/coding/v1";
+	const references = createBundledReferenceMap<"openai-completions">("kimi-code");
 	return {
 		providerId: "kimi-code",
 		...(apiKey && {
@@ -2736,14 +2756,23 @@ export function kimiCodeModelManagerOptions(
 						defaults: ModelSpec<"openai-completions">,
 						_context: OpenAICompatibleModelMapperContext<"openai-completions">,
 					): ModelSpec<"openai-completions"> => {
-						const id = defaults.id;
+						// The bundled reference carries the models.dev-declared reasoning
+						// surface and endpoint limits; the live listing only wins for the
+						// fields it actually reports (name, modalities, context length).
+						const model = mapWithBundledReference(entry, defaults, references.get(defaults.id));
 						return {
-							...defaults,
-							name: typeof entry.display_name === "string" ? entry.display_name : defaults.name,
-							reasoning: entry.supports_reasoning === true || id.includes("thinking"),
-							input: entry.supports_image_in === true || id.includes("k2.5") ? ["text", "image"] : ["text"],
-							contextWindow: typeof entry.context_length === "number" ? entry.context_length : 262144,
-							maxTokens: 32000,
+							...model,
+							name: typeof entry.display_name === "string" ? entry.display_name : model.name,
+							reasoning: entry.supports_reasoning === true || model.reasoning,
+							input:
+								entry.supports_image_in === true || model.input.includes("image")
+									? ["text", "image"]
+									: ["text"],
+							contextWindow:
+								typeof entry.context_length === "number"
+									? entry.context_length
+									: (model.contextWindow ?? 262144),
+							maxTokens: model.maxTokens ?? 32000,
 							compat: {
 								thinkingFormat: "zai",
 								reasoningContentField: "reasoning_content",
@@ -3156,27 +3185,12 @@ export function moonshotModelManagerOptions(
 					baseUrl,
 					apiKey,
 					mapModel: (entry, defaults) => {
-						const reference = references.get(defaults.id);
-						const model = mapWithBundledReference(entry, defaults, reference);
-						const id = model.id.toLowerCase();
-						// Moonshot's K2.x family (K2.5, K2.6, kimi-k2-thinking, …) is reasoning-capable
-						// and vision-capable on the native API. Without these flags the openai-completions
-						// path skips the z.ai-format `thinking` block, and Moonshot K2.6 stalls on first
-						// turn because its endpoint expects an explicit `thinking: {type}` (#2113). Match
-						// the bundled K2.5 metadata for every K2.x id we discover.
-						const isKimiK2Reasoning = id.includes("thinking") || /(^|\/)kimi-k2(?:\.\d+)?(?:[-:]|$)/.test(id);
-						const isVision =
-							id.includes("vision") || id.includes("vl") || /(^|\/)kimi-k2(?:\.\d+)?(?:[-:]|$)/.test(id);
-						return {
-							...model,
-							reasoning: isKimiK2Reasoning || model.reasoning,
-							input: isVision ? ["text", "image"] : model.input,
-							thinking:
-								model.thinking ??
-								(isKimiK2Reasoning
-									? { mode: "effort", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] }
-									: undefined),
-						};
+						// The bundled reference is the models.dev-mapped row for this
+						// id: it carries the declared reasoning surface (K2.6's
+						// mandatory z.ai thinking block included, #2113) and the
+						// declared modalities. No id-pattern guessing: an id models.dev
+						// has not catalogued exposes no fabricated ladder.
+						return mapWithBundledReference(entry, defaults, references.get(defaults.id));
 					},
 					fetch: config?.fetch,
 				}),
@@ -4779,7 +4793,18 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CODING_PLANS: readonly ModelsDevProviderDe
 	// --- zAI ---
 	anthropicMessagesDescriptor("zai-coding-plan", "zai", "https://api.z.ai/api/anthropic"),
 	// --- Umans AI Coding Plan ---
-	anthropicMessagesDescriptor("umans-ai-coding-plan", "umans", UMANS_BASE_URL),
+	anthropicMessagesDescriptor("umans-ai-coding-plan", "umans", UMANS_BASE_URL, {
+		transformModel: model => ({
+			...model,
+			// Verified against the live endpoint: the GLM rows report
+			// supports_vision: "via-handoff" and 400 on raw image blocks (vision
+			// routes through a handoff pre-analysis step), and umans-coder's
+			// recommended output cap is 32768. models.dev's modalities/output
+			// describe the upstream model, not this endpoint.
+			input: (UMANS_VIA_HANDOFF_MODEL_IDS as readonly string[]).includes(model.id) ? ["text"] : model.input,
+			maxTokens: model.id === "umans-coder" ? 32_768 : model.maxTokens,
+		}),
+	}),
 	// --- Xiaomi ---
 	openAiCompletionsDescriptor("xiaomi", "xiaomi", "https://api.xiaomimimo.com/v1", {
 		defaultContextWindow: 262144,
@@ -4791,6 +4816,33 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CODING_PLANS: readonly ModelsDevProviderDe
 			requiresReasoningContentForToolCalls: true,
 			allowsSyntheticReasoningContentForToolCalls: false,
 		},
+	}),
+	// --- Fireworks (models.dev ships wire-form ids; translate to the public ids
+	// the catalog and request path use) ---
+	openAiCompletionsDescriptor("fireworks-ai", "fireworks", "https://api.fireworks.ai/inference/v1", {
+		compat: { supportsToolChoice: false, requiresAssistantContentForToolCalls: true },
+		transformModel: model => ({
+			...model,
+			id: model.id.startsWith(FIREPASS_WIRE_PREFIX)
+				? toFirepassPublicModelId(model.id)
+				: toFireworksPublicModelId(model.id),
+		}),
+	}),
+	// --- Baseten ---
+	openAiCompletionsDescriptor("baseten", "baseten", "https://inference.baseten.co/v1"),
+	// --- Novita ---
+	openAiCompletionsDescriptor("novita-ai", "novita", "https://api.novita.ai/openai/v1"),
+	// --- Vercel AI Gateway ---
+	openAiCompletionsDescriptor("vercel", "vercel-ai-gateway", "https://ai-gateway.vercel.sh"),
+	// --- Wafer Serverless (models.dev key: wafer.ai) ---
+	openAiCompletionsDescriptor("wafer.ai", "wafer-serverless", "https://pass.wafer.ai/v1"),
+	// --- Sakana ---
+	simpleModelsDevDescriptor("sakana", "sakana", "openai-responses", "https://api.sakana.ai/v1", {
+		compat: { includeEncryptedReasoning: false, streamIdleTimeoutMs: 0 },
+	}),
+	// --- Kimi Code (models.dev key: kimi-for-coding) ---
+	openAiCompletionsDescriptor("kimi-for-coding", "kimi-code", "https://api.kimi.com/coding/v1", {
+		headers: { "User-Agent": "KimiCLI/1.0", "X-Msh-Platform": "kimi_cli" },
 	}),
 	// --- MiniMax Coding Plan ---
 	openAiCompletionsDescriptor("minimax-coding-plan", "minimax-code", "https://api.minimax.io/v1", {

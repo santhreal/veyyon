@@ -46,9 +46,11 @@ describe("ollama local provider discovery", () => {
 		expect(model?.api).toBe("openai-responses");
 		expect(model?.contextWindow).toBe(1048576);
 		expect(model?.reasoning).toBe(true);
+		// Ollama's wire vocabulary is host-declared: low..max for every
+		// thinking model, `none` handled as the disable sentinel.
 		expect(model?.thinking).toEqual({
 			mode: "effort",
-			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High],
+			efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.Max],
 		});
 		expect(model?.input).toEqual(["text", "image"]);
 	});

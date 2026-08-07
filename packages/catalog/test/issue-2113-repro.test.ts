@@ -102,7 +102,7 @@ async function runHiTurn(
 }
 
 describe("issue #2113 — moonshot kimi-k2.6 discovery and wire format", () => {
-	it("moonshot discovery mapper marks kimi-k2.6 as reasoning + vision with thinking metadata", async () => {
+	it("moonshot discovery mapper marks kimi-k2.6 as reasoning + vision without fabricating an effort ladder", async () => {
 		const fetchMock = (async (input: string | URL | Request): Promise<Response> => {
 			const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 			expect(url).toContain("api.moonshot.ai/v1/models");
@@ -124,22 +124,22 @@ describe("issue #2113 — moonshot kimi-k2.6 discovery and wire format", () => {
 		expect(models).toBeDefined();
 		const byId = new Map(models?.map(m => [m.id, m]));
 
+		// models.dev declares the K2.5/K2.6 rows toggle-only (no effort levels)
+		// and K2-Thinking with an empty surface, so no ladder is offered; the
+		// wire thinking block keys off `reasoning`, which stays true.
 		const k25 = byId.get("kimi-k2.5");
 		expect(k25?.reasoning).toBe(true);
 		expect(k25?.input).toEqual(["text", "image"]);
-		expect(k25?.thinking).toBeDefined();
+		expect(k25?.thinking).toBeUndefined();
 
 		const k26 = byId.get("kimi-k2.6");
 		expect(k26?.reasoning).toBe(true);
 		expect(k26?.input).toEqual(["text", "image"]);
-		expect(k26?.thinking).toEqual({
-			mode: "effort",
-			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High],
-		});
+		expect(k26?.thinking).toBeUndefined();
 
 		const thinkingOnly = byId.get("kimi-k2-thinking");
 		expect(thinkingOnly?.reasoning).toBe(true);
-		expect(thinkingOnly?.thinking).toBeDefined();
+		expect(thinkingOnly?.thinking).toBeUndefined();
 	});
 
 	it("wire body for moonshot kimi-k2.6 carries an explicit thinking parameter", async () => {

@@ -1,5 +1,5 @@
 const FIREWORKS_WIRE_PREFIX = "accounts/fireworks/models/";
-const FIREPASS_WIRE_PREFIX = "accounts/fireworks/routers/";
+export const FIREPASS_WIRE_PREFIX = "accounts/fireworks/routers/";
 const VERSION_SEPARATOR_PATTERN = /(?<=\d)p(?=\d)/g;
 const VERSION_DOT_PATTERN = /(?<=\d)\.(?=\d)/g;
 

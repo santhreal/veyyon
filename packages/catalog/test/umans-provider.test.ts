@@ -273,7 +273,9 @@ describe("umans provider catalog", () => {
 			reasoning: true,
 			input: ["text", "image"],
 			contextWindow: 262_144,
-			maxTokens: 262_144,
+			// The endpoint's own recommended output cap wins over models.dev's
+			// output==context figure.
+			maxTokens: 32_768,
 		});
 	});
 

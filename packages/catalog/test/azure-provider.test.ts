@@ -61,7 +61,10 @@ describe("azure catalog provider", () => {
 		expect(compat.supportsDeveloperRole).toBe(true);
 	});
 
-	test("Azure reasoning models infer the OpenAI Responses effort vocabulary", () => {
+	test("Azure reasoning models without a declared surface expose no effort control", () => {
+		// Azure deployment ids are user-chosen and models.dev does not catalog
+		// the Azure host, so nothing declares an effort vocabulary for a bare
+		// spec: the build must not fabricate one from the model id.
 		const spec: ModelSpec<"azure-openai-responses"> = {
 			id: "o3",
 			name: "o3",
@@ -75,7 +78,6 @@ describe("azure catalog provider", () => {
 			maxTokens: 100000,
 		};
 		const model = buildModel(spec);
-		expect(model.thinking?.mode).toBe("effort");
-		expect(model.thinking?.efforts).toContain(Effort.XHigh);
+		expect(model.thinking).toBeUndefined();
 	});
 });
