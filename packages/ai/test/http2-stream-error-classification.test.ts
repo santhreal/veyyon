@@ -81,4 +81,28 @@ describe("HTTP/2 stream error classification", () => {
 		const id = AIError.classify(streamError("NGHTTP2_INTERNAL_ERROR"));
 		expect(AIError.retriable(id, { replayUnsafe: true })).toBe(false);
 	});
+
+	it("keeps the timeout reading when prose names a timeout around an HTTP/2 code", () => {
+		// Flag.Timeout is not in RETRIABLE_KINDS, so it authorizes no retry. It is
+		// the signal the auto-compaction candidate loop breaks on, and losing it
+		// makes that loop re-send a full context to the model that just timed out
+		// instead of moving to the next candidate.
+		const id = AIError.classify(
+			new Error("Request timed out: Stream closed with error code NGHTTP2_SETTINGS_TIMEOUT"),
+		);
+		expect(AIError.is(id, AIError.Flag.Timeout)).toBe(true);
+		expect(AIError.is(id, AIError.Flag.Transient)).toBe(true);
+	});
+
+	it("reads a timeout off a non-retryable code without making it retryable", () => {
+		const id = AIError.classify(new Error("operation timed out; Stream closed with error code NGHTTP2_CANCEL"));
+		expect(AIError.is(id, AIError.Flag.Timeout)).toBe(true);
+		expect(AIError.is(id, AIError.Flag.Transient)).toBe(false);
+		expect(AIError.retriable(id)).toBe(false);
+	});
+
+	it("does not invent a timeout for a code whose message never names one", () => {
+		const id = AIError.classify(streamError("NGHTTP2_INTERNAL_ERROR"));
+		expect(AIError.is(id, AIError.Flag.Timeout)).toBe(false);
+	});
 });
