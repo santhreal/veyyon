@@ -32,7 +32,7 @@ function buildToolSession(
 		authStorage: AuthStorage;
 		modelRegistry: ModelRegistry;
 		settings: Settings;
-		spawns: string;
+		analysisAgent: string;
 	},
 ): ToolSession {
 	return {
@@ -42,7 +42,9 @@ function buildToolSession(
 		// model choosing further spawns, so the specialization nudge is noise here.
 		suppressSpawnAdvisory: true,
 		getSessionFile: () => ctx.sessionManager.getSessionFile() ?? null,
-		getSessionSpawns: () => options.spawns,
+		// The capability and the request are the same value by construction. When
+		// they were two literals, a change to one silently made the other refuse.
+		getSessionSpawns: () => options.analysisAgent,
 		settings: options.settings,
 		authStorage: options.authStorage,
 		modelRegistry: options.modelRegistry,
@@ -57,7 +59,12 @@ export function createAnalyzeFileTool(options: {
 	authStorage: AuthStorage;
 	modelRegistry: ModelRegistry;
 	settings: Settings;
-	spawns: string;
+	/**
+	 * The agent every spawn from this tool runs as, resolved against the enabled
+	 * catalog by `commitAnalysisSpawnTarget`. Passed in rather than named here,
+	 * because a literal here cannot know what the operator has turned on.
+	 */
+	analysisAgent: string;
 	state: CommitAgentState;
 }): CustomTool<typeof analyzeFileSchema> {
 	return {
@@ -84,7 +91,7 @@ export function createAnalyzeFileTool(options: {
 					});
 					const taskParams: TaskParams = {
 						name: `AnalyzeFile${index + 1}`,
-						agent: "sonic",
+						agent: options.analysisAgent,
 						task: assignment,
 					};
 					return taskTool.execute(`${toolCallId}-${index + 1}`, taskParams, signal);

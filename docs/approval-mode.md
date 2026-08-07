@@ -201,3 +201,5 @@ When ACP approval is required, Veyyon routes it through the ACP client instead o
 ## Subagents
 
 A spawned subagent inherits the spawning session's approval mode through its forked settings; nothing hardcodes a rung for it. The parent `task` approval is the authorization boundary for the delegation itself, and your `tools.approval.<tool>` policies apply inside the subagent exactly as they do in the parent. A subagent runs headless, so a call that would prompt fails with an error naming what needed approval rather than stalling on a UI that does not exist.
+
+The `/yolo` bypass is the one part that is not a pure snapshot, and it moves in only one direction. A child is built with the bypass the parent held at spawn time, and `isApprovalBypassed()` then also consults the live parent on every check, so `/yolo off` in the parent reaches a subagent that is already running. It can only narrow: the child's own spawn-time value is checked first, so a parent turning `/yolo` on mid-run cannot hand a bypass to a child that was spawned without one. Without the live read, revoking the bypass left every running subagent executing unasked with nothing on screen to say so.

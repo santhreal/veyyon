@@ -30,7 +30,7 @@ import { configuredThinkingLevelOptions } from "../../thinking";
 
 /**
  * Per-agent configuration held in {@link SUBAGENTS_SETTINGS}`["subagent.agents"]`,
- * keyed by agent name (`task`, `scout`, a user-authored agent, …).
+ * keyed by agent name (`deep`, `scout`, a user-authored agent, …).
  *
  * Every field is optional and an omitted field means "use the default", never
  * "off": `enabled` defaults per {@link subagentEnabledByDefault}, and `model` /
@@ -166,8 +166,19 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Agents",
 			description:
-				"Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general task worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits.",
-			keywords: ["agents", "scout", "reviewer", "librarian", "designer", "sonic", "enable", "disable", "per-agent"],
+				"Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits.",
+			keywords: [
+				"agents",
+				"scout",
+				"designer",
+				"reviewer",
+				"librarian",
+				"deep",
+				"sonic",
+				"enable",
+				"disable",
+				"per-agent",
+			],
 		},
 	},
 
@@ -184,7 +195,7 @@ export const SUBAGENTS_SETTINGS = {
 			label: "Subagent Model",
 			description:
 				"Models for every enabled subagent that has no per-agent model of its own, tried in order: the rest are used when an earlier one errors. Unset means inherit: subagents follow the session's live main model. A per-agent model in the Agents table wins over this.",
-			keywords: ["task", "spawn", "delegate", "worker"],
+			keywords: ["task", "deep", "subagent", "spawn", "delegate", "worker"],
 		},
 	},
 

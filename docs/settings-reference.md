@@ -548,7 +548,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.agents` | Agents | record | `{}` | Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general task worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits. |
+| `subagent.agents` | Agents | record | `{}` | Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits. |
 
 ### Models
 
