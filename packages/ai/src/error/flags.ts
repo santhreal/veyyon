@@ -442,6 +442,21 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 		const http2Verdict = http2RetryVerdict(errorMessage);
 		if (http2Verdict !== undefined) {
 			if (http2Verdict) kinds |= Flag.Transient;
+			// The verdict owns TRANSIENCE and nothing else. Flag.Timeout is not in
+			// RETRIABLE_KINDS, so it authorizes no retry on its own; it tells the
+			// candidate loops the fault was a timeout, which is what makes
+			// auto-compaction move to the next model instead of re-sending a full
+			// context to the one that just timed out. Suppressing it alongside
+			// transience threw that signal away for every wrapper whose prose named
+			// a timeout around an HTTP/2 code.
+			if (isTimeoutText(errorMessage)) kinds |= Flag.Timeout;
+			// The verdict owns TRANSIENCE and nothing else. Flag.Timeout is not in
+			// RETRIABLE_KINDS, so it authorizes no retry on its own; it tells the
+			// candidate loops the fault was a timeout, which is what makes
+			// auto-compaction move to the next model instead of re-sending a full
+			// context to the one that just timed out. Suppressing it alongside
+			// transience threw that signal away for every wrapper whose prose named
+			// a timeout around an HTTP/2 code.
 		} else if (isTimeoutText(errorMessage)) kinds |= Flag.Transient | Flag.Timeout;
 		else if (isTransientErrorText(errorMessage)) kinds |= Flag.Transient;
 		if ((api === "openai-responses" || api === "openai-codex-responses") && isStaleResponsesText(errorMessage)) {
