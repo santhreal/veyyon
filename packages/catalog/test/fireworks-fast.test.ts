@@ -73,7 +73,8 @@ describe("buildFireworksFastSeed", () => {
 	it("inherits limits and modalities from the base model", () => {
 		const kimi = byId.get("kimi-k2.6-fast");
 		expect(kimi?.input).toEqual(["text", "image"]);
-		expect(kimi?.contextWindow).toBe(262144);
+		// Inherited from the base row, whose limits are the models.dev declaration.
+		expect(kimi?.contextWindow).toBe(262000);
 		expect(kimi?.reasoning).toBe(true);
 		expect(byId.get("glm-5.1-fast")?.input).toEqual(["text"]);
 	});

@@ -58,30 +58,6 @@ function ladders(): { bedrock: string; model: string; onBedrock: string; onAnthr
 	return paired;
 }
 
-/** The row a regen without `reasoning_options` would produce: identity only. */
-function withoutDeclaration(model: Model<Api>): Model<Api> {
-	return buildModel({ ...(model as unknown as ModelSpec<Api>), thinking: undefined, reasoningOptions: undefined });
-}
-
-function laddersFromIdentityAlone(): { bedrock: string; onBedrock: string; onAnthropic: string }[] {
-	const direct = new Map<string, string>();
-	for (const model of getBundledModels("anthropic")) {
-		direct.set(model.id, withoutDeclaration(model).thinking?.efforts?.join(",") ?? "(none)");
-	}
-	const paired: { bedrock: string; onBedrock: string; onAnthropic: string }[] = [];
-	for (const model of getBundledModels("amazon-bedrock")) {
-		const bare = BEDROCK_ROW.exec(model.id)?.[1];
-		const onAnthropic = bare === undefined ? undefined : direct.get(bare);
-		if (bare === undefined || onAnthropic === undefined) continue;
-		paired.push({
-			bedrock: model.id,
-			onBedrock: withoutDeclaration(model).thinking?.efforts?.join(",") ?? "(none)",
-			onAnthropic,
-		});
-	}
-	return paired;
-}
-
 describe("a Claude model on Bedrock", () => {
 	test("offers the same effort ladder as the same model on Anthropic direct", () => {
 		const disagreeing = ladders()
@@ -98,29 +74,5 @@ describe("a Claude model on Bedrock", () => {
 		expect(paired.length).toBeGreaterThanOrEqual(20);
 		expect(fiveTier.length).toBeGreaterThanOrEqual(10);
 		expect(new Set(fiveTier.map(row => row.model)).size).toBeGreaterThanOrEqual(3);
-	});
-
-	test("earns the fifth tier from identity, not from the declaration", () => {
-		// A regen that drops `reasoning_options` leaves identity as the only
-		// source of the ladder. With `anthropicModelHasRealXHighEffort`
-		// restricted to `anthropic-messages`, every 4.7+ Bedrock row falls to
-		// four tiers here while Anthropic direct keeps five, and the user loses
-		// `xhigh` on Bedrock with nothing saying so.
-		//
-		// Scoped to the `xhigh` tier rather than the whole ladder because the
-		// identity route has one unrelated asymmetry: budget-mode Claude 4.6
-		// derives a leading `minimal` on Bedrock that Anthropic direct does not
-		// have. That gap is real but is not this predicate's, and folding it in
-		// would make this test fail for a reason it does not describe.
-		const paired = laddersFromIdentityAlone();
-		const lostOnBedrock = paired
-			.filter(row => row.onAnthropic.split(",").includes("xhigh") && !row.onBedrock.split(",").includes("xhigh"))
-			.map(row => `${row.bedrock}: bedrock=[${row.onBedrock}] anthropic=[${row.onAnthropic}]`);
-		expect(lostOnBedrock).toEqual([]);
-
-		// Non-vacuity: the identity route must actually be producing the fifth
-		// tier, not agreeing by stripping both sides down to four.
-		const fiveTier = paired.filter(row => row.onBedrock.split(",").includes("xhigh"));
-		expect(fiveTier.length).toBeGreaterThanOrEqual(10);
 	});
 });

@@ -4,6 +4,9 @@
 
 ### Changed
 
+- Effort ladders, context windows, and provider listings now come from models.dev declarations only; identity no longer fabricates an effort ladder. `resolveModelThinking` returns no surface when neither the spec nor a models.dev declaration provides one, the picker stays closed for those models instead of offering tiers the endpoint never accepted, and every provider with a models.dev descriptor — now including Fireworks, Baseten, Novita, Vercel AI Gateway, Wafer Serverless, Sakana, and Kimi Code — has its declared `reasoning_options` mapped verbatim. First-party twins inherit the declared surface of their catalog sibling: `openai-codex` from `openai`, `xai-oauth` from `xai`, `opencode` from `opencode-zen`, and the `kimi-for-coding` aliases from the K3 row they route to. Budget-only declarations open the fixed high/max pair, matching opencode's budgetVariants contract. Ollama keeps its host-declared low..max wire vocabulary (models.dev cannot catalog a local daemon), and stale ollama cache rows normalize back to it. models.dev is also a runtime overlay now: one process-memoized, disk-cached, ETag-conditional api.json fetch enriches every descriptor-covered provider field-wise instead of wholesale-replacing static rows, with silent stale-on-failure (the bundled catalog remains the baseline, same contract as opencode's ignored refresh).
+
+
 - Added shared GPT-5.6 prompt-cache-breakpoint capability classification for OpenAI Responses transports.
 - Added a canonical reasoning selection contract that resolves supported effort, wire effort, mandatory-thinking floors, and effort-tier model routing from one model capability.
 

@@ -5,6 +5,7 @@ import type { DiscoveryFailure, DiscoveryHooks } from "../discovery/failure";
 import { Effort } from "../effort";
 import { isGlm52ReasoningEffortModelId } from "../identity/family";
 import type { ModelManagerOptions } from "../model-manager";
+import { OLLAMA_WIRE_EFFORTS } from "../model-thinking";
 import type { FetchImpl, ThinkingConfig } from "../types";
 import { discoveryFetch } from "../utils";
 import { createBundledReferenceMap, createReferenceResolver } from "./bundled-references";
@@ -68,7 +69,7 @@ function getThinkingConfig(modelId: string, capabilities: string[] | undefined):
 	if (isGlm52ReasoningEffortModelId(modelId)) {
 		return OLLAMA_CLOUD_GLM_52_THINKING;
 	}
-	return { mode: "effort", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] };
+	return { mode: "effort", efforts: [...OLLAMA_WIRE_EFFORTS] };
 }
 /**
  * Read one model's capabilities and size caps from `/api/show`.

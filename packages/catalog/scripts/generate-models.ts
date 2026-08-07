@@ -53,7 +53,6 @@ import {
 	applyGeneratedModelPolicies,
 	CLOUDFLARE_FALLBACK_MODEL,
 	linkOpenAIPromotionTargets,
-	noteDiscoveryIdentityLadderDivergence,
 } from "./generated-policies";
 
 const packageRoot = path.join(import.meta.dir, "..");
@@ -188,15 +187,23 @@ function applyGlobalModelsDevFallback(
 	models: readonly ModelSpec[],
 	modelsDevModels: readonly ModelSpec[],
 ): ModelSpec[] {
-	const providerScopedKeys = new Set(modelsDevModels.map(model => `${model.provider}/${model.id}`));
 	const globalReferences = createGlobalModelsDevReferenceMap(modelsDevModels);
+	const twinByKey = new Map(modelsDevModels.map(model => [`${model.provider}/${model.id}`, model]));
 	return models.map(model => {
-		if (
-			providerScopedKeys.has(`${model.provider}/${model.id}`) ||
-			model.provider === "devin" ||
-			model.provider === "baseten"
-		) {
+		if (model.provider === "devin" || model.provider === "baseten") {
 			return model;
+		}
+		// Same provider AND id: the models.dev twin owns the declared surface.
+		// Discovery-reported limits lose to it — a stale or context-sized
+		// discovery number is how wrong windows ship (the reasoning surface is
+		// overlaid separately by overlayModelsDevReasoningOptions).
+		const twin = twinByKey.get(`${model.provider}/${model.id}`);
+		if (twin) {
+			return {
+				...model,
+				contextWindow: twin.contextWindow ?? model.contextWindow,
+				maxTokens: twin.maxTokens ?? model.maxTokens,
+			};
 		}
 		const reference = globalReferences.get(model.id);
 		if (!reference) {
@@ -207,8 +214,8 @@ function applyGlobalModelsDevFallback(
 			name: reference.name,
 			reasoning: reference.reasoning,
 			input: reference.input,
-			// Fill unknown endpoint limits from same-id models.dev references, but keep
-			// provider-specific values when discovery returned them explicitly.
+			// Cross-provider same-id references only FILL unknown limits: context
+			// sizes differ per host, so a foreign host's number never overrides.
 			contextWindow: model.contextWindow ?? reference.contextWindow,
 			maxTokens: model.maxTokens ?? reference.maxTokens,
 		};
@@ -282,6 +289,65 @@ function applyCodexPricingFallback(models: readonly ModelSpec[]): ModelSpec[] {
 			...model,
 			cost: { ...openAICost },
 		};
+	});
+}
+
+/**
+ * The Kimi Code subscription endpoint aliases `kimi-for-coding` and
+ * `kimi-for-coding-highspeed` to its current flagship (K3) server-side;
+ * models.dev declares the alias rows with empty reasoning_options because
+ * the alias itself has no distinct surface. The aliases accept the same
+ * effort levels as the K3 row they route to (same provider, same host),
+ * so they inherit its declared surface; their own subscription limits stay.
+ */
+function applyKimiCodingAliasSurface(models: readonly ModelSpec[], modelsDevModels: readonly ModelSpec[]): ModelSpec[] {
+	const k3 = modelsDevModels.find(model => model.provider === "kimi-code" && model.id === "k3");
+	const surface = k3?.reasoningOptions;
+	if (surface === undefined) return [...models];
+	const aliasIds = new Set(["kimi-for-coding", "kimi-for-coding-highspeed"]);
+	return models.map(model => {
+		if (model.provider !== "kimi-code" || !aliasIds.has(model.id)) return model;
+		// models.dev's empty alias declaration normalizes to `noEffortControl`;
+		// that describes the alias row, not the K3 it routes to, so it is
+		// replaced here. A real declared ladder always wins.
+		if (model.reasoning !== true || model.reasoningOptions?.efforts !== undefined) return model;
+		return { ...model, reasoningOptions: surface };
+	});
+}
+
+/**
+ * First-party twin providers: same company serving the same models over the
+ * same wire API under a different auth surface, which models.dev catalogs only
+ * once. The twin's declared reasoning surface applies verbatim:
+ * - `openai` → `openai-codex`: ChatGPT-auth Codex endpoint, Responses API
+ *   (mirrors the pricing twin fallback above).
+ * - `xai` → `xai-oauth`: SuperGrok OAuth endpoint, same Grok models.
+ * - `opencode-zen` → `opencode`: legacy provider id for the same Zen gateway.
+ * Ids without a twin keep no surface.
+ */
+const REASONING_SURFACE_TWINS: Readonly<Record<string, string>> = {
+	"openai-codex": "openai",
+	"xai-oauth": "xai",
+	opencode: "opencode-zen",
+};
+
+function applyTwinReasoningSurfaces(models: readonly ModelSpec[], modelsDevModels: readonly ModelSpec[]): ModelSpec[] {
+	const surfacesByProvider = new Map<string, Map<string, NonNullable<ModelSpec["reasoningOptions"]>>>();
+	for (const model of modelsDevModels) {
+		if (model.reasoningOptions === undefined) continue;
+		let surfaces = surfacesByProvider.get(model.provider);
+		if (!surfaces) {
+			surfaces = new Map();
+			surfacesByProvider.set(model.provider, surfaces);
+		}
+		surfaces.set(model.id, model.reasoningOptions);
+	}
+	return models.map(model => {
+		const sourceProvider = REASONING_SURFACE_TWINS[model.provider];
+		if (sourceProvider === undefined || model.reasoning !== true) return model;
+		if (model.reasoningOptions !== undefined) return model;
+		const surface = surfacesByProvider.get(sourceProvider)?.get(model.id);
+		return surface === undefined ? model : { ...model, reasoningOptions: surface };
 	});
 }
 
@@ -610,8 +676,9 @@ async function generateModels() {
 	// policy re-bake so the aliases get the same baked thinking metadata.
 	allModels = projectOpenAIProReasoningAliases(allModels);
 	allModels = overlayModelsDevReasoningOptions(allModels, modelsDevModels);
+	allModels = applyKimiCodingAliasSurface(allModels, modelsDevModels);
+	allModels = applyTwinReasoningSurfaces(allModels, modelsDevModels);
 	applyGeneratedModelPolicies(allModels);
-	noteDiscoveryIdentityLadderDivergence(allModels);
 	linkOpenAIPromotionTargets(allModels);
 	// Collapse effort-tier variants AFTER the policy re-bake: live-discovery
 	// entries are already collapsed (rebake skips them); this pass folds

@@ -39,10 +39,13 @@ function createModel<TApi extends Api>(overrides: {
 
 describe("model thinking derivation", () => {
 	it("stores supported efforts for Codex mini in model metadata", () => {
+		// The declared ladder (codex-mini accepts only medium/high on the wire)
+		// flows through unchanged; unsupported tiers reject with the declared list.
 		const model = createModel({
 			id: "gpt-5.1-codex-mini",
 			api: "openai-codex-responses",
 			provider: "openai-codex",
+			thinking: { mode: "effort", efforts: [Effort.Medium, Effort.High] },
 		});
 
 		expect(model.thinking).toEqual({
@@ -58,6 +61,7 @@ describe("model thinking derivation", () => {
 			id: "gpt-5.2-codex",
 			api: "openai-codex-responses",
 			provider: "openai-codex",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh] },
 		});
 
 		expect(model.thinking).toEqual({
@@ -73,12 +77,14 @@ describe("model thinking derivation", () => {
 			api: "openai-completions",
 			provider: "fireworks",
 			baseUrl: "https://api.fireworks.ai/inference/v1",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High] },
 		});
 		const gptOss = createModel({
 			id: "gpt-oss-120b",
 			api: "openai-completions",
 			provider: "fireworks",
 			baseUrl: "https://api.fireworks.ai/inference/v1",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High] },
 		});
 
 		expect(minimax.thinking).toEqual({
@@ -101,30 +107,14 @@ describe("model thinking derivation", () => {
 			api: "openai-completions",
 			provider: "opencode-go",
 			baseUrl: "https://opencode.ai/zen/go/v1",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High] },
 		});
 		const openRouterMimo = createModel({
 			id: "xiaomi/mimo-v2.5-pro",
 			api: "openrouter",
 			provider: "openrouter",
 			baseUrl: "https://openrouter.ai/api/v1",
-		});
-		const staleMimo = createModel({
-			id: "mimo-v2.5-pro",
-			api: "openai-completions",
-			provider: "nanogpt",
-			baseUrl: "https://nano-gpt.com/api/v1",
-			compat: { reasoningEffortMap: {} },
-			thinking: {
-				mode: "effort",
-				efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
-				effortMap: { minimal: "low", xhigh: "high" },
-			},
-		});
-		const nativeXiaomi = createModel({
-			id: "mimo-v2.5-pro",
-			api: "openai-completions",
-			provider: "xiaomi",
-			baseUrl: "https://api.xiaomimimo.com/v1",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High] },
 		});
 
 		const expectedThinking = {
@@ -133,19 +123,31 @@ describe("model thinking derivation", () => {
 		};
 		expect(mimo.thinking).toEqual(expectedThinking);
 		expect(openRouterMimo.thinking).toEqual(expectedThinking);
-		expect(staleMimo.thinking).toEqual(expectedThinking);
+		// The MiMo wire map (minimal->low, xhigh->high) is a compat wire fact and
+		// still derives from identity; only the displayed ladder is declared data.
 		expect(mimo.compat.reasoningEffortMap).toEqual({ minimal: "low", xhigh: "high" });
 		expect(openRouterMimo.compat.reasoningEffortMap).toEqual({ minimal: "low", xhigh: "high" });
-		expect(staleMimo.compat.reasoningEffortMap).toEqual({ minimal: "low", xhigh: "high" });
 		expect(requireSupportedEffort(mimo, Effort.High)).toBe(Effort.High);
 		expect(() => requireSupportedEffort(mimo, Effort.XHigh)).toThrow(/Supported efforts: low, medium, high/);
 		expect(clampThinkingLevelForModel(mimo, Effort.Minimal)).toBe(Effort.Low);
 		expect(clampThinkingLevelForModel(mimo, Effort.XHigh)).toBe(Effort.High);
 
-		expect(nativeXiaomi.thinking?.efforts).toEqual([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High]);
+		// Nothing declared: no surface, even on the native Xiaomi host. models.dev
+		// does not catalog xiaomi, so no effort ladder is fabricated from the id.
+		const nativeXiaomi = createModel({
+			id: "mimo-v2.5-pro",
+			api: "openai-completions",
+			provider: "xiaomi",
+			baseUrl: "https://api.xiaomimimo.com/v1",
+		});
+		expect(nativeXiaomi.thinking).toBeUndefined();
 	});
 
-	it("normalizes stale explicit MiniMax M2 / GPT-OSS effort metadata from caches", () => {
+	it("keeps stale declared MiniMax M2 / GPT-OSS ladders as authored, backfilling wire facts", () => {
+		// A cache row from the fabrication era carries its authored ladder; the
+		// build canonicalizes and backfills wire facts but never rewrites the
+		// declared tier set from identity. Refresh (2h cache TTL) is what replaces
+		// the stale ladder with the models.dev-declared one.
 		const staleMinimax = createModel({
 			id: "minimax-m2.7",
 			api: "openai-completions",
@@ -170,12 +172,15 @@ describe("model thinking derivation", () => {
 
 		expect(staleMinimax.thinking).toEqual({
 			mode: "effort",
-			efforts: [Effort.Low, Effort.Medium, Effort.High],
+			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+			effortMap: { minimal: "none", xhigh: "max" },
 			requiresEffort: true,
 		});
 		expect(staleGptOss.thinking).toEqual({
 			mode: "effort",
-			efforts: [Effort.Low, Effort.Medium, Effort.High],
+			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+			// Map-less declared thinking gains the detected Fireworks wire quirk.
+			effortMap: { minimal: "none" },
 		});
 	});
 
@@ -185,12 +190,17 @@ describe("model thinking derivation", () => {
 			api: "openai-completions",
 			provider: "fireworks",
 			baseUrl: "https://api.fireworks.ai/inference/v1",
+			thinking: {
+				mode: "effort",
+				efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.Max],
+			},
 		});
 		const groqQwen = createModel({
 			id: "qwen/qwen3-32b",
 			api: "openai-completions",
 			provider: "groq",
 			baseUrl: "https://api.groq.com/openai/v1",
+			thinking: { mode: "effort", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] },
 		});
 		const deepseek = createModel({
 			id: "deepseek-v4-flash",
@@ -198,14 +208,20 @@ describe("model thinking derivation", () => {
 			provider: "deepseek",
 			baseUrl: "https://api.deepseek.com/v1",
 			compat: { reasoningEffortMap: { max: "max-plus" } },
+			thinking: { mode: "effort", efforts: [Effort.High, Effort.Max] },
 		});
 		const openRouterAnthropic = createModel({
 			id: "anthropic/claude-opus-4.7",
 			api: "openai-completions",
 			provider: "openrouter",
 			baseUrl: "https://openrouter.ai/api/v1",
+			thinking: {
+				mode: "effort",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
 		});
 
+		// Wire maps are host facts: they attach around the declared ladder.
 		expect(fireworks.thinking?.effortMap).toEqual({ minimal: "none" });
 		expect(groqQwen.thinking?.effortMap).toEqual({
 			minimal: "default",
@@ -213,12 +229,11 @@ describe("model thinking derivation", () => {
 			medium: "default",
 			high: "default",
 		});
-		// DeepSeek's ladder is the wire-exact high/max pair; explicit compat
-		// overrides still win over the identity wire values.
+		// Explicit compat overrides win over the detected wire values.
 		expect(getSupportedEfforts(deepseek)).toEqual([Effort.High, Effort.Max]);
 		expect(deepseek.thinking?.effortMap).toEqual({ max: "max-plus" });
-		// OpenRouter-hosted Anthropic adaptive models carry the wire-exact
-		// five-tier ladder with no remapping.
+		// OpenRouter-hosted Anthropic adaptive models pass the declared ladder
+		// through with no remapping.
 		expect(getSupportedEfforts(openRouterAnthropic)).toEqual([
 			Effort.Low,
 			Effort.Medium,
@@ -234,11 +249,16 @@ describe("model thinking derivation", () => {
 			id: "anthropic--claude-4.8-opus",
 			api: "anthropic-messages",
 			provider: "custom",
+			thinking: {
+				mode: "anthropic-adaptive",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
 		});
 		const opus46 = createModel({
 			id: "anthropic--claude-4.6-opus",
 			api: "anthropic-messages",
 			provider: "custom",
+			thinking: { mode: "anthropic-adaptive", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.Max] },
 		});
 
 		expect(opus48.thinking).toEqual({
@@ -259,26 +279,32 @@ describe("model thinking derivation", () => {
 			api: "openai-completions",
 			provider: "zai",
 			baseUrl: "https://api.z.ai/api/paas/v4",
+			// models.dev zai glm-5.2: high/max (none disables).
+			thinking: { mode: "effort", efforts: [Effort.High, Effort.Max] },
 		});
 		const fireworks = createModel({
 			id: "glm-5.2",
 			api: "openai-completions",
 			provider: "fireworks",
 			baseUrl: "https://api.fireworks.ai/inference/v1",
+			thinking: {
+				mode: "effort",
+				efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.Max],
+			},
 		});
 		const openRouter = createModel({
 			id: "z-ai/glm-5.2",
 			api: "openrouter",
 			provider: "openrouter",
 			baseUrl: "https://openrouter.ai/api/v1",
+			// models.dev openrouter z-ai/glm-5.2: high/xhigh.
+			thinking: { mode: "effort", efforts: [Effort.High, Effort.XHigh] },
 		});
 
-		// Z.ai dialect: the model only does none/high/max on the wire, so the
-		// ladder is the honest high/max pair (none = thinking off).
 		expect(getSupportedEfforts(zai)).toEqual([Effort.High, Effort.Max]);
 		expect(zai.thinking?.effortMap).toBeUndefined();
 		// Fireworks keeps its distinct lower tiers and the `minimal -> none`
-		// quirk; the genuine `max` tier sits above `high`.
+		// host quirk; the genuine `max` tier sits above `high`.
 		expect(getSupportedEfforts(fireworks)).toEqual([
 			Effort.Minimal,
 			Effort.Low,
@@ -287,8 +313,7 @@ describe("model thinking derivation", () => {
 			Effort.Max,
 		]);
 		expect(fireworks.thinking?.effortMap).toEqual({ minimal: "none" });
-		// OpenRouter rejects `max` and treats `xhigh` as its max tier: expose the
-		// `xhigh` tier and pass it through unmapped.
+		// OpenRouter passes the declared xhigh tier through unmapped.
 		expect(getSupportedEfforts(openRouter)).toContain(Effort.XHigh);
 		expect(openRouter.thinking?.effortMap).toBeUndefined();
 	});
@@ -298,6 +323,8 @@ describe("model thinking derivation", () => {
 			id: "gemini-3-pro-preview",
 			api: "google-generative-ai",
 			provider: "google",
+			// models.dev google gemini-3-pro-preview: low/high, no medium tier.
+			thinking: { mode: "google-level", efforts: [Effort.Low, Effort.High] },
 		});
 
 		expect(model.thinking).toEqual({
@@ -312,12 +339,15 @@ describe("model thinking derivation", () => {
 	});
 
 	it("bakes requiresEffort for Gemini 3.x on any provider and backfills explicit metadata", () => {
-		// Derivation: aggregator-hosted Gemini 3.5 gets the flag, 2.5 does not.
+		// The mandatory-reasoning floor is a wire fact: it backfills onto any
+		// declared ladder (models.dev gemini-3.5-flash: minimal/low/medium/high),
+		// on any provider. Gemini 2.5 keeps the off switch.
 		const openRouterFlash = createModel({
 			id: "google/gemini-3.5-flash",
 			api: "openai-completions",
 			provider: "openrouter",
 			baseUrl: "https://openrouter.ai/api/v1",
+			thinking: { mode: "effort", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] },
 		});
 		expect(openRouterFlash.thinking?.requiresEffort).toBe(true);
 
@@ -325,6 +355,7 @@ describe("model thinking derivation", () => {
 			id: "gemini-2.5-flash",
 			api: "google-generative-ai",
 			provider: "google",
+			thinking: { mode: "google-level", efforts: [Effort.Low, Effort.High] },
 		});
 		expect(legacyFlash.thinking?.requiresEffort).toBeUndefined();
 
@@ -352,86 +383,171 @@ describe("model thinking derivation", () => {
 	});
 
 	it("flags reasoning-only families and thinking-variant orphans", () => {
+		// The mandatory-reasoning floor backfills onto any declared ladder;
+		// without one, nothing is offered at all.
+		const declared = { mode: "effort" as const, efforts: [Effort.Low, Effort.High] };
 		expect(
 			createModel({
 				id: "openai/o3-mini",
 				api: "openai-completions",
 				provider: "openrouter",
 				baseUrl: "https://openrouter.ai/api/v1",
+				thinking: declared,
 			}).thinking?.requiresEffort,
 		).toBe(true);
 		expect(
-			createModel({ id: "minimax-m2.7", api: "openai-completions", provider: "fireworks" }).thinking?.requiresEffort,
+			createModel({ id: "minimax-m2.7", api: "openai-completions", provider: "fireworks", thinking: declared })
+				.thinking?.requiresEffort,
 		).toBe(true);
 		expect(
-			createModel({ id: "kimi-k2-thinking", api: "openai-completions", provider: "venice" }).thinking
-				?.requiresEffort,
+			createModel({ id: "kimi-k2-thinking", api: "openai-completions", provider: "venice", thinking: declared })
+				.thinking?.requiresEffort,
 		).toBe(true);
 		expect(
-			createModel({ id: "deepseek-reasoner", api: "openai-completions", provider: "deepseek" }).thinking
-				?.requiresEffort,
+			createModel({ id: "deepseek-reasoner", api: "openai-completions", provider: "deepseek", thinking: declared })
+				.thinking?.requiresEffort,
 		).toBe(true);
 		// Negated tokens name the NON-thinking SKU.
 		expect(
-			createModel({ id: "deepseek-non-thinking-v3.2-exp", api: "openai-completions", provider: "aimlapi" }).thinking
-				?.requiresEffort,
+			createModel({
+				id: "deepseek-non-thinking-v3.2-exp",
+				api: "openai-completions",
+				provider: "aimlapi",
+				thinking: declared,
+			}).thinking?.requiresEffort,
 		).toBeUndefined();
 		// Gemini 2.5: Pro floors thinkingBudget at 128; Flash keeps the off switch.
 		expect(
-			createModel({ id: "gemini-2.5-pro", api: "google-generative-ai", provider: "google" }).thinking
-				?.requiresEffort,
+			createModel({ id: "gemini-2.5-pro", api: "google-generative-ai", provider: "google", thinking: declared })
+				.thinking?.requiresEffort,
 		).toBe(true);
 	});
 
 	it("encodes anthropic transport mode and adaptive wire maps in metadata", () => {
-		const opus45 = createModel({ id: "claude-opus-4-5", api: "anthropic-messages", provider: "anthropic" });
-		const opus46 = createModel({ id: "claude-opus-4.6", api: "anthropic-messages", provider: "anthropic" });
-		const opus47 = createModel({ id: "claude-opus-4.7", api: "anthropic-messages", provider: "anthropic" });
+		// Ladders are declared data (models.dev); what identity still owns here is
+		// the transport mode and the wire encoding around the declared ladder.
+		const opus45 = createModel({
+			id: "claude-opus-4-5",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: { mode: "anthropic-budget-effort", efforts: [Effort.Low, Effort.Medium, Effort.High] },
+		});
+		const opus46 = createModel({
+			id: "claude-opus-4.6",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: { mode: "anthropic-adaptive", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.Max] },
+		});
+		const opus47 = createModel({
+			id: "claude-opus-4.7",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: {
+				mode: "anthropic-adaptive",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
+		});
 		const opus46Bedrock = createModel({
 			id: "us.anthropic.claude-opus-4-6-v1",
 			api: "bedrock-converse-stream",
 			provider: "amazon-bedrock",
+			thinking: { mode: "anthropic-adaptive", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.Max] },
 		});
 		const opus47Bedrock = createModel({
 			id: "us.anthropic.claude-opus-4-7",
 			api: "bedrock-converse-stream",
 			provider: "amazon-bedrock",
+			thinking: {
+				mode: "anthropic-adaptive",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
 		});
-		const sonnet46 = createModel({ id: "claude-sonnet-4.6", api: "anthropic-messages", provider: "anthropic" });
-		const sonnet5 = createModel({ id: "claude-sonnet-5", api: "anthropic-messages", provider: "anthropic" });
+		const sonnet46 = createModel({
+			id: "claude-sonnet-4.6",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: { mode: "anthropic-adaptive", efforts: [Effort.Low, Effort.Medium, Effort.High] },
+		});
+		const sonnet5 = createModel({
+			id: "claude-sonnet-5",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: {
+				mode: "anthropic-adaptive",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
+		});
 		const sonnet5Bedrock = createModel({
 			id: "global.anthropic.claude-sonnet-5",
 			api: "bedrock-converse-stream",
 			provider: "amazon-bedrock",
+			thinking: {
+				mode: "anthropic-adaptive",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
 		});
-		const mythos = createModel({ id: "claude-mythos-5", api: "anthropic-messages", provider: "anthropic" });
+		const mythos = createModel({
+			id: "claude-mythos-5",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: {
+				mode: "anthropic-adaptive",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
+		});
 		const mythosBedrock = createModel({
 			id: "global.anthropic.claude-mythos-5",
 			api: "bedrock-converse-stream",
 			provider: "amazon-bedrock",
+			thinking: {
+				mode: "anthropic-adaptive",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
 		});
-		const minimaxM2 = createModel({ id: "MiniMax-M2.7", api: "anthropic-messages", provider: "minimax" });
-		const minimaxM3 = createModel({ id: "MiniMax-M3", api: "anthropic-messages", provider: "minimax" });
+		const minimaxM2 = createModel({
+			id: "MiniMax-M2.7",
+			api: "anthropic-messages",
+			provider: "minimax",
+			thinking: { mode: "anthropic-adaptive", efforts: [Effort.Low, Effort.Medium, Effort.High] },
+		});
+		const minimaxM3 = createModel({
+			id: "MiniMax-M3",
+			api: "anthropic-messages",
+			provider: "minimax",
+			thinking: { mode: "anthropic-adaptive", efforts: [Effort.Low, Effort.Medium, Effort.High] },
+		});
 
 		// Direct Anthropic Claude 4.5: Opus 4.5 supports `output_config.effort`
 		// (sent alongside `thinking.budget_tokens`), Sonnet 4.5 and Haiku 4.5
 		// reject the field with HTTP 400 "This model does not support the effort
-		// parameter." (#3497). Adaptive (4.6+) classification is exercised below.
+		// parameter." (#3497).
 		expect(opus45.thinking?.mode).toBe("anthropic-budget-effort");
 		const opus45Bedrock = createModel({
 			id: "us.anthropic.claude-opus-4-5-20251101",
 			api: "bedrock-converse-stream",
 			provider: "amazon-bedrock",
+			thinking: { mode: "anthropic-budget-effort", efforts: [Effort.Low, Effort.Medium, Effort.High] },
 		});
 		expect(opus45Bedrock.thinking?.mode).toBe("anthropic-budget-effort");
-		const sonnet45 = createModel({ id: "claude-sonnet-4-5", api: "anthropic-messages", provider: "anthropic" });
+		const sonnet45 = createModel({
+			id: "claude-sonnet-4-5",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: { mode: "budget", efforts: [Effort.Low, Effort.Medium, Effort.High] },
+		});
 		expect(sonnet45.thinking?.mode).toBe("budget");
-		const haiku45 = createModel({ id: "claude-haiku-4-5", api: "anthropic-messages", provider: "anthropic" });
+		const haiku45 = createModel({
+			id: "claude-haiku-4-5",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: { mode: "budget", efforts: [Effort.Low, Effort.Medium, Effort.High] },
+		});
 		expect(haiku45.thinking?.mode).toBe("budget");
 		const sonnet45Bedrock = createModel({
 			id: "us.anthropic.claude-sonnet-4-5-20250929",
 			api: "bedrock-converse-stream",
 			provider: "amazon-bedrock",
+			thinking: { mode: "budget", efforts: [Effort.Low, Effort.Medium, Effort.High] },
 		});
 		expect(sonnet45Bedrock.thinking?.mode).toBe("budget");
 		expect(opus46.thinking?.mode).toBe("anthropic-adaptive");
@@ -459,7 +575,7 @@ describe("model thinking derivation", () => {
 			},
 		});
 		expect(mapEffortToAnthropicAdaptiveEffort(minimaxM3, Effort.High)).toBe("adaptive");
-		// Opus 4.6 has no real xhigh tier — the honest ladder is the four-tier
+		// Opus 4.6 has no real xhigh tier — the declared ladder is the four-tier
 		// low/medium/high/max wire scale, mapped 1:1.
 		expect(getSupportedEfforts(opus46)).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.Max]);
 		expect(opus46.thinking?.effortMap).toBeUndefined();
@@ -502,26 +618,55 @@ describe("model thinking derivation", () => {
 	});
 
 	it("bakes adaptive display support for Opus 4.7+, Sonnet 5+, and Fable/Mythos 5", () => {
-		const opus46 = createModel({ id: "claude-opus-4.6", api: "anthropic-messages", provider: "anthropic" });
-		const opus47 = createModel({ id: "claude-opus-4-7", api: "anthropic-messages", provider: "anthropic" });
+		const declared = { mode: "effort" as const, efforts: [Effort.Low, Effort.Medium, Effort.High] };
+		const opus46 = createModel({
+			id: "claude-opus-4.6",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: declared,
+		});
+		const opus47 = createModel({
+			id: "claude-opus-4-7",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: declared,
+		});
 		// Dotted and dashed version forms are equivalent; bare dated ids stay Opus 4.0.
-		const opus47Dotted = createModel({ id: "claude-opus-4.7", api: "anthropic-messages", provider: "anthropic" });
+		const opus47Dotted = createModel({
+			id: "claude-opus-4.7",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: declared,
+		});
 		const opus4Dated = createModel({
 			id: "claude-opus-4-20250514",
 			api: "anthropic-messages",
 			provider: "anthropic",
+			thinking: declared,
 		});
-		const fable = createModel({ id: "claude-fable-5", api: "anthropic-messages", provider: "anthropic" });
+		const fable = createModel({
+			id: "claude-fable-5",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: declared,
+		});
 		const fableBedrock = createModel({
 			id: "global.anthropic.claude-fable-5",
 			api: "bedrock-converse-stream",
 			provider: "amazon-bedrock",
+			thinking: declared,
 		});
-		const sonnet5 = createModel({ id: "claude-sonnet-5", api: "anthropic-messages", provider: "anthropic" });
+		const sonnet5 = createModel({
+			id: "claude-sonnet-5",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			thinking: declared,
+		});
 		const sonnet5Bedrock = createModel({
 			id: "global.anthropic.claude-sonnet-5",
 			api: "bedrock-converse-stream",
 			provider: "amazon-bedrock",
+			thinking: declared,
 		});
 
 		expect(opus46.thinking?.supportsDisplay).toBeUndefined();
@@ -535,9 +680,8 @@ describe("model thinking derivation", () => {
 	});
 
 	it("backfills wire facts onto explicit thinking, explicit values winning", () => {
-		// Authored partial ladders on wire-exact models normalize to the
-		// model-defined ladder, and the wire map is re-derived alongside:
-		// stale cached surfaces cannot pin retired wire facts.
+		// An authored ladder stands verbatim (canonical order); the build only
+		// backfills wire facts (here: adaptive display for Opus 4.8) around it.
 		const filled = createModel({
 			id: "claude-opus-4-8",
 			api: "anthropic-messages",
@@ -546,12 +690,11 @@ describe("model thinking derivation", () => {
 		});
 		expect(filled.thinking).toEqual({
 			mode: "anthropic-adaptive",
-			efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			efforts: [Effort.Low, Effort.High],
 			supportsDisplay: true,
 		});
 
-		// Explicit wire facts are authoritative — including `false` — when the
-		// authored ladder matches the wire truth.
+		// Explicit wire facts are authoritative — including `false`.
 		const pinned = createModel({
 			id: "claude-opus-4-8",
 			api: "anthropic-messages",
@@ -567,7 +710,9 @@ describe("model thinking derivation", () => {
 		expect(pinned.thinking?.supportsDisplay).toBe(false);
 	});
 
-	it("infers thinking when explicit metadata omits efforts", () => {
+	it("treats explicit thinking metadata without efforts as no declared surface", () => {
+		// A `mode` with no ladder declares nothing: the build must not invent
+		// tiers from the model id to fill the gap.
 		const model = buildModel(
 			JSON.parse(`{
 				"id": "gpt-5",
@@ -584,10 +729,7 @@ describe("model thinking derivation", () => {
 			}`),
 		);
 
-		expect(model.thinking).toEqual({
-			mode: "effort",
-			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High],
-		});
+		expect(model.thinking).toBeUndefined();
 	});
 
 	it("bakes sampling-param rejection into anthropic compat", () => {
@@ -619,11 +761,12 @@ describe("model thinking derivation", () => {
 		expect(clampThinkingLevelForModel(model, Effort.High)).toBeUndefined();
 	});
 
-	it("keeps grok-build on the effort-capable allowlist with a real effort ladder", () => {
+	it("keeps grok-build effort-capable on the wire without fabricating a ladder", () => {
 		// Regression lock: grok-build was curated `supportsReasoningEffort:
 		// false`, which stripped its thinking dial entirely — the model DOES
-		// accept the wire effort param. A dial-less encode here would silently
-		// discard the user's chosen thinking level on every grok-build turn.
+		// accept the wire effort param, so the compat allowlist must keep it
+		// effort-capable. But models.dev declares no effort levels for grok-build,
+		// so no ladder is fabricated from identity either.
 		const model = createModel({
 			id: "grok-build",
 			api: "openai-responses",
@@ -631,8 +774,8 @@ describe("model thinking derivation", () => {
 		});
 
 		expect(model.reasoning).toBe(true);
-		expect(getSupportedEfforts(model).length).toBeGreaterThan(0);
-		expect(clampThinkingLevelForModel(model, Effort.High)).toBeDefined();
+		expect((model.compat as { supportsReasoningEffort?: boolean }).supportsReasoningEffort).not.toBe(false);
+		expect(model.thinking).toBeUndefined();
 	});
 
 	it("explains the no-effort-surface case instead of listing zero supported efforts", () => {
@@ -653,21 +796,20 @@ describe("model thinking derivation", () => {
 		expect(() => requireSupportedEffort(model, Effort.High)).not.toThrow(/Supported efforts:\s*$/);
 	});
 
-	it("bakes the wire-exact five-tier low..max ladder on GPT-5.6 wire-effort APIs", () => {
+	it("never fabricates the GPT-5.6 ladder; declared surfaces stand as authored", () => {
+		// The bundled openai-codex rows carry the models.dev-declared low..max
+		// ladder. A bare spec with no declaration gets nothing — identity must not
+		// invent tiers.
 		const codex = createModel({
 			id: "gpt-5.6-sol",
 			api: "openai-codex-responses",
 			provider: "openai-codex",
 		});
+		expect(codex.thinking).toBeUndefined();
 
-		expect(codex.thinking).toEqual({
-			mode: "effort",
-			efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
-		});
-
-		// Stale baked metadata (caches/discovery) — including shifted-era maps —
-		// normalizes to the wire-exact ladder with the map re-derived away, and
-		// namespaced OpenRouter ids parse.
+		// Stale baked metadata (caches/discovery) keeps its authored ladder and
+		// map; canonicalization is the only rewrite. The 2h cache TTL and the
+		// models.dev overlay are what converge stale rows onto declared truth.
 		const staleOpenRouter = createModel({
 			id: "openai/gpt-5.6-terra",
 			api: "openrouter",
@@ -688,7 +830,14 @@ describe("model thinking derivation", () => {
 
 		expect(staleOpenRouter.thinking).toEqual({
 			mode: "effort",
-			efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+			effortMap: {
+				minimal: "low",
+				low: "medium",
+				medium: "high",
+				high: "xhigh",
+				xhigh: "max",
+			},
 		});
 	});
 
@@ -697,6 +846,8 @@ describe("model thinking derivation", () => {
 			id: "gpt-5.5",
 			api: "openai-responses",
 			provider: "openai",
+			// models.dev openai gpt-5.5: low..xhigh (none disables).
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh] },
 		});
 
 		expect(gpt55.thinking).toEqual({
@@ -731,15 +882,16 @@ describe("model thinking derivation", () => {
 	});
 	it("classifies Z.ai GLM-5.2 on the anthropic-messages coding endpoint as budget-effort with high/max", () => {
 		// Z.ai's anthropic-messages proxy (api.z.ai/api/anthropic) serves
-		// GLM-5.2 with the same two-tier high/max reasoning scale as Umans.
+		// GLM-5.2 with the two-tier high/max scale models.dev declares for it.
 		// The catalog must derive mode:"anthropic-budget-effort" (not plain
-		// "budget" with five synthetic tiers) so the wire encoder emits
-		// output_config.effort instead of only thinking.budget_tokens.
+		// "budget") so the wire encoder emits output_config.effort instead of
+		// only thinking.budget_tokens.
 		const model = createModel({
 			id: "glm-5.2",
 			api: "anthropic-messages",
 			provider: "zai",
 			baseUrl: "https://api.z.ai/api/anthropic",
+			thinking: { mode: "anthropic-budget-effort", efforts: [Effort.High, Effort.Max] },
 		});
 
 		expect(model.thinking?.mode).toBe("anthropic-budget-effort");
@@ -777,11 +929,12 @@ describe("model thinking runtime helpers", () => {
 		expect(clampThinkingLevelForModel(model, Effort.High)).toBeUndefined();
 	});
 
-	it("enables xhigh for openai-completions API (custom models)", () => {
+	it("passes a declared xhigh tier through on openai-completions custom models", () => {
 		const model = createModel({
 			id: "custom-model",
 			api: "openai-completions",
 			provider: "custom",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh] },
 		});
 
 		expect(model.thinking?.efforts.at(-1)).toBe(Effort.XHigh);
@@ -795,6 +948,7 @@ describe("model thinking runtime helpers", () => {
 			provider: "zai",
 			baseUrl: "https://api.z.ai/v1",
 			compat: { thinkingFormat: "zai" },
+			thinking: { mode: "effort", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] },
 		});
 
 		expect(model.thinking).toEqual({
@@ -814,6 +968,7 @@ describe("model thinking runtime helpers", () => {
 			provider: "zhipu-coding-plan",
 			baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
 			compat: { thinkingFormat: "zai" },
+			thinking: { mode: "effort", efforts: [Effort.High, Effort.Max] },
 		});
 
 		expect(model.thinking).toEqual({
@@ -843,13 +998,14 @@ describe("model thinking runtime helpers", () => {
 		expect(() => requireSupportedEffort(model, Effort.Medium)).toThrow(/Supported efforts: high, max/);
 	});
 
-	it("derives binary-thinking fallback from resolved compat when catalog compat is partial", () => {
+	it("caps tiers at the declared ladder when catalog compat is partial", () => {
 		const model = createModel({
 			id: "qwen/qwen3-32b",
 			api: "openai-completions",
 			provider: "openrouter",
 			baseUrl: "https://openrouter.ai/api/v1",
 			compat: { supportsToolChoice: true },
+			thinking: { mode: "effort", efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] },
 		});
 
 		expect(model.thinking).toEqual({
@@ -863,25 +1019,36 @@ describe("model thinking runtime helpers", () => {
 	});
 
 	it("exposes wire-exact adaptive ladders for OpenRouter-hosted Anthropic models", () => {
+		// Ladder values are the models.dev openrouter declarations.
 		const fable = createModel({
 			id: "anthropic/claude-fable-5",
 			api: "openai-completions",
 			provider: "openrouter",
+			thinking: {
+				mode: "effort",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
 		});
 		const opus46 = createModel({
 			id: "anthropic/claude-opus-4.6",
 			api: "openai-completions",
 			provider: "openrouter",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.Max] },
 		});
 		const sonnet46 = createModel({
 			id: "anthropic/claude-sonnet-4.6",
 			api: "openai-completions",
 			provider: "openrouter",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High] },
 		});
 		const sonnet5 = createModel({
 			id: "anthropic/claude-sonnet-5",
 			api: "openai-completions",
 			provider: "openrouter",
+			thinking: {
+				mode: "effort",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			},
 		});
 		expect(fable.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max]);
 		expect(opus46.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.Max]);
@@ -892,9 +1059,19 @@ describe("model thinking runtime helpers", () => {
 		expect(() => requireSupportedEffort(opus46, Effort.XHigh)).toThrow(/not supported/);
 	});
 
-	it("enables xhigh for openai-responses and openai-codex-responses APIs", () => {
-		const responsesModel = createModel({ id: "custom-responses", api: "openai-responses", provider: "custom" });
-		const codexModel = createModel({ id: "custom-codex", api: "openai-codex-responses", provider: "custom" });
+	it("passes a declared xhigh tier through on openai-responses and openai-codex-responses APIs", () => {
+		const responsesModel = createModel({
+			id: "custom-responses",
+			api: "openai-responses",
+			provider: "custom",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh] },
+		});
+		const codexModel = createModel({
+			id: "custom-codex",
+			api: "openai-codex-responses",
+			provider: "custom",
+			thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh] },
+		});
 
 		expect(responsesModel.thinking?.efforts.at(-1)).toBe(Effort.XHigh);
 		expect(codexModel.thinking?.efforts.at(-1)).toBe(Effort.XHigh);
@@ -919,7 +1096,7 @@ describe("model thinking runtime helpers", () => {
 		expect(() => requireSupportedEffort(spec, Effort.High)).toThrow(/not supported/);
 	});
 
-	it("drops authored thinking on non-reasoning models and re-derives empty efforts", () => {
+	it("drops authored thinking on non-reasoning models and treats empty efforts as undeclared", () => {
 		const nonReasoning = createModel({
 			id: "plain-model",
 			api: "openai-responses",
@@ -930,17 +1107,14 @@ describe("model thinking runtime helpers", () => {
 		});
 		expect(nonReasoning.thinking).toBeUndefined();
 
-		// Empty explicit efforts are treated as absent metadata: infer instead.
+		// Empty explicit efforts are absent metadata: no ladder is fabricated.
 		const emptyEfforts = createModel({
 			id: "gpt-5.2-codex",
 			api: "openai-codex-responses",
 			provider: "openai-codex",
 			thinking: { mode: "effort", efforts: [] },
 		});
-		expect(emptyEfforts.thinking).toEqual({
-			mode: "effort",
-			efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
-		});
+		expect(emptyEfforts.thinking).toBeUndefined();
 	});
 });
 

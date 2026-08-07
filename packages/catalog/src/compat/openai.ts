@@ -67,8 +67,8 @@ const DSML_HEALING_PROVIDERS = new Set([
 ]);
 
 // Ollama's OpenAI-compatible `reasoning.effort` accepts `high|medium|low|max|none`;
-// `ollama`-provider reasoning models carry the wire-exact `low..max` effort
-// ladder (see getModelDefinedEfforts), so no compat-level remapping is needed.
+// `ollama`-provider reasoning models carry that host-declared `low..max` effort
+// ladder (see OLLAMA_WIRE_EFFORTS), so no compat-level remapping is needed.
 // Custom OpenAI-compatible providers pointed at a local Ollama port under a
 // different provider id must set `compat.reasoningEffortMap` themselves.
 

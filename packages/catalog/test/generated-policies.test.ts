@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Effort } from "@veyyon/catalog/effort";
+import { ANTHROPIC_CURATED_FALLBACK_MODELS } from "@veyyon/catalog/provider-models/openai-compat";
 import type { Api, ModelSpec, Provider } from "@veyyon/catalog/types";
 import { applyGeneratedModelPolicies, linkOpenAIPromotionTargets } from "../scripts/generated-policies";
 
@@ -14,6 +15,7 @@ function createSpec<TApi extends Api>(overrides: {
 	applyPatchToolType?: "freeform" | "function";
 	cost?: ModelSpec<TApi>["cost"];
 	thinking?: ModelSpec<TApi>["thinking"];
+	reasoningOptions?: ModelSpec<TApi>["reasoningOptions"];
 }): ModelSpec<TApi> {
 	return {
 		id: overrides.id,
@@ -23,6 +25,7 @@ function createSpec<TApi extends Api>(overrides: {
 		baseUrl: "https://example.com",
 		reasoning: overrides.reasoning ?? true,
 		thinking: overrides.thinking,
+		reasoningOptions: overrides.reasoningOptions,
 		input: ["text"],
 		cost: overrides.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: overrides.contextWindow ?? 200000,
@@ -68,16 +71,12 @@ describe("generated model policies", () => {
 
 		applyGeneratedModelPolicies(models);
 
-		expect(models[0]?.thinking).toEqual({
-			mode: "anthropic-budget-effort",
-			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
-		});
+		// Nothing declared on these rows: the stale baked ladder is dropped,
+		// not replaced with an identity-derived one.
+		expect(models[0]?.thinking).toBeUndefined();
 		expect(models[0]?.cost.cacheRead).toBe(0.5);
 		expect(models[0]?.cost.cacheWrite).toBe(6.25);
-		expect(models[1]?.thinking).toEqual({
-			mode: "anthropic-adaptive",
-			efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.Max],
-		});
+		expect(models[1]?.thinking).toBeUndefined();
 		expect(models[1]?.cost.cacheRead).toBe(0.5);
 		expect(models[1]?.cost.cacheWrite).toBe(6.25);
 		expect(models[1]?.contextWindow).toBe(1000000);
@@ -86,14 +85,36 @@ describe("generated model policies", () => {
 		expect(models[3]?.priority).toBe(1);
 	});
 
-	it("pins Claude Mythos 5 first-party Anthropic catalog metadata", () => {
+	it("re-bakes thinking from the declared reasoning surface, replacing stale metadata", () => {
 		const models: ModelSpec<Api>[] = [
 			createSpec({
-				id: "claude-mythos-5",
+				id: "claude-opus-4-7",
 				api: "anthropic-messages",
 				provider: "anthropic",
+				// Stale baked metadata must be replaced by the declaration's output.
+				thinking: { mode: "budget", efforts: [Effort.High] },
+				reasoningOptions: {
+					efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+				},
 			}),
 		];
+
+		applyGeneratedModelPolicies(models);
+
+		expect(models[0]?.thinking).toEqual({
+			mode: "anthropic-adaptive",
+			efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+			supportsDisplay: true,
+		});
+	});
+
+	it("pins Claude Mythos 5 first-party Anthropic catalog metadata", () => {
+		// The curated seed carries the hand-authored first-party declaration
+		// (models.dev has not catalogued Mythos 5); the policy pass pins limits
+		// and pricing and bakes the wire facts around the declared ladder.
+		const seed = ANTHROPIC_CURATED_FALLBACK_MODELS.find(model => model.id === "claude-mythos-5");
+		expect(seed).toBeDefined();
+		const models: ModelSpec<Api>[] = [{ ...seed! }];
 
 		applyGeneratedModelPolicies(models);
 

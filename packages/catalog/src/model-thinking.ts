@@ -1,37 +1,41 @@
 /**
- * Thinking metadata: build-time derivation and runtime field-read helpers.
+ * Thinking metadata: declared-surface resolution and runtime field reads.
  *
- * Derivation (`resolveModelThinking`) runs exactly once per model — from
+ * The effort ladder a model exposes is EXACTLY the ladder its endpoint
+ * declared (models.dev `reasoning_options`, normalized onto
+ * `spec.reasoningOptions`) or an explicit hand-authored `spec.thinking`.
+ * When neither exists the model carries no `thinking` at all and the picker
+ * stays closed — the same contract OpenCode implements in
+ * `provider/transform.ts` `reasoningVariants` (undefined options, no
+ * variants). Identity-derived ladders were removed on purpose: a guessed
+ * ladder offers tiers the endpoint rejects, and it silently lags every
+ * upstream release.
+ *
+ * Resolution (`resolveModelThinking`) runs exactly once per model — from
  * `buildModel` for dynamic specs and from the catalog generator for bundled
- * entries. Everything below the "runtime helpers" divider reads baked fields
- * only: no id parsing, no host matching, no compat detection per request.
+ * entries. Identity is still consulted for WIRE facts a declared ladder does
+ * not carry: the control mode (budget vs effort vs adaptive), the effort wire
+ * map, and mandatory-reasoning floors. Everything below the "runtime helpers"
+ * divider reads baked fields only: no id parsing, no host matching, no compat
+ * detection per request.
  */
 import { canonicalizeEfforts, Effort, THINKING_EFFORTS } from "./effort";
 import { modelMatchesHost } from "./hosts";
 import {
-	type AnthropicModel,
 	bareModelId,
-	type GeminiModel,
 	isAnthropicAdaptiveGenAtLeast,
-	type OpenAIModel,
 	type ParsedModel,
-	parseAnthropicModel,
 	parseKnownModel,
-	parseOpenAIModel,
-	semverEqual,
 	semverGte,
 } from "./identity/classify";
 import {
 	findThinkingVariantToken,
-	isDeepseekModelIdOrName,
 	isGlm52ReasoningEffortModelId,
 	isMimoModelIdOrName,
 	isMinimaxM2FamilyModelId,
 	isMinimaxM3FamilyModelId,
-	isOpenAIGptOssModelId,
 	supportsAdaptiveThinkingDisplay,
 } from "./identity/family";
-import { basetenRouteReasoning } from "./provider-models/baseten-reasoning";
 import type {
 	Api,
 	CompatOf,
@@ -50,47 +54,6 @@ import type {
  */
 type ApiModel<TApi extends Api = Api> = ModelSpec<TApi> | Model<TApi>;
 
-const DEFAULT_REASONING_EFFORTS: readonly Effort[] = [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High];
-const DEFAULT_REASONING_EFFORTS_WITH_XHIGH: readonly Effort[] = [
-	Effort.Minimal,
-	Effort.Low,
-	Effort.Medium,
-	Effort.High,
-	Effort.XHigh,
-];
-const GEMINI_3_PRO_EFFORTS: readonly Effort[] = [Effort.Low, Effort.High];
-const GEMINI_3_FLASH_EFFORTS: readonly Effort[] = [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High];
-const GPT_5_2_PLUS_EFFORTS: readonly Effort[] = [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh];
-const GPT_5_1_CODEX_MINI_EFFORTS: readonly Effort[] = [Effort.Medium, Effort.High];
-const LOW_MEDIUM_HIGH_REASONING_EFFORTS: readonly Effort[] = [Effort.Low, Effort.Medium, Effort.High];
-/** Wire-exact two-tier scale (`high`/`max`): GLM-5.2 on Z.ai/Umans/Ollama Cloud/Baseten, Sakana Fugu, DeepSeek. */
-const HIGH_MAX_REASONING_EFFORTS: readonly Effort[] = [Effort.High, Effort.Max];
-/** OpenRouter's DeepSeek route accepts only `high`. */
-const HIGH_ONLY_REASONING_EFFORTS: readonly Effort[] = [Effort.High];
-/**
- * Five wire tiers with a `low` floor: GPT-5.6+, Anthropic adaptive models
- * with the real xhigh tier (Opus 4.7+, Sonnet 5+, Fable/Mythos 5), and the
- * Fire Pass Kimi router (distinct xhigh and max budgets).
- */
-const FIVE_TIER_EFFORTS_LOW_TO_MAX: readonly Effort[] = [
-	Effort.Low,
-	Effort.Medium,
-	Effort.High,
-	Effort.XHigh,
-	Effort.Max,
-];
-/** Legacy adaptive scale (Opus/Sonnet 4.6, every Bedrock adaptive model): four wire tiers, no xhigh. */
-const FOUR_TIER_EFFORTS_LOW_TO_MAX: readonly Effort[] = [Effort.Low, Effort.Medium, Effort.High, Effort.Max];
-/** GLM-5.2 resellers that pass the default lower tiers verbatim and expose the genuine `max` top tier. */
-const DEFAULT_REASONING_EFFORTS_WITH_MAX: readonly Effort[] = [
-	Effort.Minimal,
-	Effort.Low,
-	Effort.Medium,
-	Effort.High,
-	Effort.Max,
-];
-/** Local Ollama wire vocabulary (`low`/`medium`/`high`/`max`; `none` is thinking-off). */
-const OLLAMA_REASONING_EFFORTS: readonly Effort[] = [Effort.Low, Effort.Medium, Effort.High, Effort.Max];
 type EffortMap = Partial<Record<Effort, string>>;
 
 const GROQ_QWEN3_32B_REASONING_EFFORT_MAP: Readonly<EffortMap> = {
@@ -127,12 +90,41 @@ const MINIMAX_ANTHROPIC_ADAPTIVE_EFFORT_MAP: Readonly<EffortMap> = {
  *   (`compat.supportsReasoningEffort: false` on openai-responses*) carry no
  *   thinking either: `reasoning: true, thinking: undefined` IS the encoding
  *   for "thinks, but exposes no control surface".
- * - Explicit spec thinking (generator-baked or user-authored) owns the
- *   capability surface (`mode`, `efforts`, `defaultLevel`); the wire facts
- *   (`effortMap`, `supportsDisplay`) are backfilled from identity when not
- *   explicitly set, so configs never need to know provider wire tier tables.
- * - Sparse specs go through full inference.
+ * - The models.dev-declared surface (`reasoningOptions`) owns the ladder when
+ *   present; an explicit `spec.thinking` owns it otherwise. The wire facts
+ *   (`effortMap`, `supportsDisplay`, mandatory-reasoning floors) are
+ *   backfilled around the declared ladder, never in place of it.
+ * - A spec with no declared surface gets NO thinking config. There is no
+ *   identity inference: guessing a ladder from the model id is how the picker
+ *   used to offer tiers the endpoint rejects.
  */
+/**
+ * Ollama declares its effort vocabulary server-wide, not per model:
+ * `reasoning.effort` accepts low|medium|high|max (plus `none` to disable) for
+ * every thinking model on both the local daemon and Ollama Cloud. models.dev
+ * cannot catalog a local daemon, so this host fact is declared at discovery
+ * time; stale cache rows from the remap era still carry minimal/xhigh and get
+ * normalized back to the wire vocabulary in fillThinkingWireDefaults.
+ */
+export const OLLAMA_WIRE_EFFORTS: readonly Effort[] = [Effort.Low, Effort.Medium, Effort.High, Effort.Max];
+
+const OLLAMA_CLOUD_GLM_52_WIRE_EFFORTS: readonly Effort[] = [Effort.High, Effort.Max];
+
+function normalizeOllamaWireEfforts<TApi extends Api>(
+	spec: ModelSpec<TApi>,
+	efforts: readonly Effort[],
+): readonly Effort[] {
+	if (spec.provider !== "ollama" && spec.provider !== "ollama-cloud") return efforts;
+	// Ollama Cloud's GLM-5.2 endpoint 400s on every level except high/max.
+	if (spec.provider === "ollama-cloud" && isGlm52ReasoningEffortModelId(spec.id)) {
+		return OLLAMA_CLOUD_GLM_52_WIRE_EFFORTS;
+	}
+	if (efforts.includes(Effort.Minimal) || efforts.includes(Effort.XHigh)) {
+		return OLLAMA_WIRE_EFFORTS;
+	}
+	return efforts;
+}
+
 export function resolveModelThinking<TApi extends Api>(
 	spec: ModelSpec<TApi>,
 	compat: CompatOf<TApi>,
@@ -166,17 +158,24 @@ export function resolveModelThinking<TApi extends Api>(
 	if ((compat as ResolvedDevinCompat | ResolvedCursorCompat | undefined)?.trustExplicitThinkingOnly === true) {
 		return undefined;
 	}
-	// Empty/malformed explicit metadata is treated as absent: infer instead.
-	return deriveThinking(spec, compat);
+	// Ollama declares its effort vocabulary host-wide (see OLLAMA_WIRE_EFFORTS)
+	// and models.dev cannot catalog a local daemon, so bare ollama specs — stale
+	// cache rows from before discovery declared the ladder — still get the host
+	// vocabulary. This is a host fact, not per-model identity derivation.
+	if (spec.reasoning === true && (spec.provider === "ollama" || spec.provider === "ollama-cloud")) {
+		return thinkingConfigFromEfforts(spec, compat, normalizeOllamaWireEfforts(spec, OLLAMA_WIRE_EFFORTS));
+	}
+	// Nothing declared: the model reasons (or not) as shipped, and no effort
+	// surface is offered. Fabricating a ladder from the model id is how the
+	// picker used to offer tiers the endpoint rejects.
+	return undefined;
 }
 
 /**
- * Backfill identity-derived wire facts onto explicit thinking metadata.
- * Explicit `effortMap` / `supportsDisplay` (including `false`) win, except
- * when the model-defined effort ladder disagrees with the cached surface:
- * then both the ladder AND the wire map are re-derived from identity, so
- * stale cached metadata from before a wire-truth change (e.g. the retired
- * shifted five-tier maps) cannot survive normalization.
+ * Backfill wire facts onto declared thinking metadata. The declared ladder
+ * always stands; only the wire encoding around it (`effortMap`,
+ * `supportsDisplay`, `requiresEffort`) is derived, and only when not
+ * explicitly set.
  */
 function fillThinkingWireDefaults<TApi extends Api>(
 	spec: ModelSpec<TApi>,
@@ -189,7 +188,7 @@ function fillThinkingWireDefaults<TApi extends Api>(
 	// canonical ladder; identity-derived ladders are already canonical, so this is
 	// a no-op for them. Without it, an out-of-order user ladder reaches the clamp
 	// helpers, which walk it in array order and pick the wrong effort.
-	const normalizedEfforts = canonicalizeEfforts(getModelDefinedEfforts(spec, compat) ?? thinking.efforts);
+	const normalizedEfforts = normalizeOllamaWireEfforts(spec, canonicalizeEfforts(thinking.efforts));
 	const effortsChanged = !sameEffortList(normalizedEfforts, thinking.efforts);
 	const effortMap =
 		thinking.effortMap === undefined || effortsChanged
@@ -224,21 +223,10 @@ function fillThinkingWireDefaults<TApi extends Api>(
 	return filled;
 }
 
-/** Derive thinking from identity + resolved compat, ignoring any baked value. Generator-side entry. */
-export function deriveThinking<TApi extends Api>(spec: ModelSpec<TApi>, compat: CompatOf<TApi>): ThinkingConfig {
-	const parsed = parseKnownModel(spec.id);
-	const efforts = inferSupportedEfforts(parsed, spec, compat);
-	if (efforts.length === 0) {
-		throw new Error(`Model ${spec.provider}/${spec.id} resolved to an empty thinking range`);
-	}
-	return thinkingConfigFromEfforts(spec, compat, efforts);
-}
-
 /**
- * Assemble the thinking config around a known ladder: the control mode and
+ * Assemble the thinking config around a declared ladder: the control mode and
  * every wire fact (effort map, adaptive display, mandatory reasoning) derive
- * from identity + compat, so a discovery-declared ladder and an
- * identity-derived ladder bake into the same shape.
+ * from identity + compat, so any declared ladder bakes into the same shape.
  */
 function thinkingConfigFromEfforts<TApi extends Api>(
 	spec: ModelSpec<TApi>,
@@ -318,122 +306,6 @@ function isOpenAICompatReasoningApi(api: Api): boolean {
 	return api === "openai-completions" || api === "openrouter";
 }
 
-/**
- * GPT-5.6+ addressed through a wire `reasoning.effort`/`reasoning_effort`
- * field, where the five-tier `low..max` wire scale applies. Devin
- * (`devin-agent`) selects effort by routing to per-tier sibling model ids
- * instead and must stay unmapped.
- */
-function isGpt56PlusWireEffortModel<TApi extends Api>(spec: ModelSpec<TApi>): boolean {
-	switch (spec.api) {
-		case "openai-responses":
-		case "openai-codex-responses":
-		case "azure-openai-responses":
-		case "openai-completions":
-		case "openrouter":
-			break;
-		default:
-			return false;
-	}
-	const parsed = parseOpenAIModel(bareModelId(spec.id));
-	return parsed !== null && semverGte(parsed.version, "5.6");
-}
-
-function getModelDefinedEfforts<TApi extends Api>(
-	spec: ModelSpec<TApi>,
-	compat: CompatOf<TApi>,
-): readonly Effort[] | undefined {
-	const basetenRoute = spec.provider === "baseten" ? basetenRouteReasoning(spec.id) : undefined;
-	if (basetenRoute?.efforts !== undefined) return basetenRoute.efforts;
-	if (isGlm52ReasoningEffortModelId(spec.id)) {
-		// GLM-5.2's reasoning_effort dialect is host-specific (verified against
-		// live endpoints):
-		//   - Z.ai/Zhipu ("zai" dialect) expose only high/max ("none" is the
-		//     thinking-off state, not a user tier).
-		//   - Umans, Ollama Cloud, and Baseten serve the same two-tier
-		//     high/max scale on their GLM-5.2 routes.
-		//   - OpenRouter rejects `max` — `xhigh` IS its top tier.
-		//   - Other openai-compat hosts (Fireworks, resellers) pass the
-		//     default lower tiers through verbatim and expose the genuine
-		//     `max` above `high` (host quirks like Fireworks' minimal→none
-		//     stay in the host maps).
-		if (isOpenRouterThinkingFormat(compat)) {
-			return DEFAULT_REASONING_EFFORTS_WITH_XHIGH;
-		}
-		if (
-			isZaiThinkingFormat(compat) ||
-			isAnthropicMessagesGlm52ReasoningEffortModel(spec) ||
-			isOllamaCloudGlm52ReasoningEffortModel(spec) ||
-			spec.provider === "baseten"
-		) {
-			return HIGH_MAX_REASONING_EFFORTS;
-		}
-		if (isOpenAICompatReasoningApi(spec.api)) {
-			return DEFAULT_REASONING_EFFORTS_WITH_MAX;
-		}
-	}
-	if (isSakanaFuguReasoningModel(spec)) {
-		return HIGH_MAX_REASONING_EFFORTS;
-	}
-	if (isGpt56PlusWireEffortModel(spec)) {
-		// Normalize stale baked/discovered `low..xhigh` surfaces to the
-		// wire-exact five-tier `low..max` ladder.
-		return FIVE_TIER_EFFORTS_LOW_TO_MAX;
-	}
-	const anthropicAdaptive = getAnthropicAdaptiveEfforts(spec);
-	if (anthropicAdaptive !== undefined) {
-		return anthropicAdaptive;
-	}
-	// Fire Pass's Kimi router accepts low..max with distinct xhigh and max
-	// budgets; user minimal has no wire tier there.
-	if (spec.provider === "firepass") {
-		return FIVE_TIER_EFFORTS_LOW_TO_MAX;
-	}
-	// Local Ollama's effort vocabulary is low/medium/high/max regardless of
-	// model. Custom OpenAI-compatible providers pointed at an Ollama port
-	// under a different provider id must set `compat.reasoningEffortMap`
-	// themselves.
-	if (spec.provider === "ollama") {
-		return OLLAMA_REASONING_EFFORTS;
-	}
-	if (isOpenAICompatReasoningApi(spec.api) && isDeepseekReasoningModel(spec)) {
-		// DeepSeek's reasoning_effort accepts only high/max; OpenRouter's
-		// DeepSeek route tops out at high.
-		return isOpenRouterThinkingFormat(compat) ? HIGH_ONLY_REASONING_EFFORTS : HIGH_MAX_REASONING_EFFORTS;
-	}
-	return isOpenAICompatReasoningApi(spec.api) &&
-		(isMinimaxM2FamilyModelId(spec.id) ||
-			isOpenAIGptOssModelId(spec.id) ||
-			isOpenAICompatMimoReasoningEffortModel(spec, compat))
-		? LOW_MEDIUM_HIGH_REASONING_EFFORTS
-		: undefined;
-}
-
-/**
- * Wire-exact effort ladders for Anthropic adaptive models (4.6+). Model-defined
- * so stale cached surfaces normalize on every build: models with the real xhigh
- * tier (4.7+) expose the full five-tier `low..max` scale on both the Messages
- * API and Bedrock Converse, which serve the tier identically; Opus/Sonnet 4.6
- * stay on the four-tier `low/medium/high/max` scale on either host.
- */
-function getAnthropicAdaptiveEfforts<TApi extends Api>(spec: ModelSpec<TApi>): readonly Effort[] | undefined {
-	const parsed = parseAnthropicModel(bareModelId(spec.id));
-	if (!parsed || !isAnthropicAdaptiveGenAtLeast(parsed, "4.6")) return undefined;
-	if (spec.api === "anthropic-messages" || spec.api === "bedrock-converse-stream") {
-		return anthropicModelHasRealXHighEffort(spec, parsed)
-			? FIVE_TIER_EFFORTS_LOW_TO_MAX
-			: FOUR_TIER_EFFORTS_LOW_TO_MAX;
-	}
-	if (isOpenRouterAnthropicAdaptiveReasoningModel(parsed, spec)) {
-		return isAnthropicAdaptiveGenAtLeast(parsed, "4.7") ? FIVE_TIER_EFFORTS_LOW_TO_MAX : FOUR_TIER_EFFORTS_LOW_TO_MAX;
-	}
-	return undefined;
-}
-
-function isOllamaCloudGlm52ReasoningEffortModel<TApi extends Api>(spec: ModelSpec<TApi>): boolean {
-	return spec.api === "ollama-chat" && spec.provider === "ollama-cloud" && isGlm52ReasoningEffortModelId(spec.id);
-}
-
 function isAnthropicMessagesGlm52ReasoningEffortModel<TApi extends Api>(spec: ModelSpec<TApi>): boolean {
 	return (
 		spec.api === "anthropic-messages" &&
@@ -467,14 +339,6 @@ function readCompatEffortMap(compat: unknown): EffortMap | undefined {
 	return map && Object.keys(map).length > 0 ? map : undefined;
 }
 
-function isOpenRouterThinkingFormat(compat: CompatOf<Api>): boolean {
-	return compat !== undefined && "thinkingFormat" in compat && compat.thinkingFormat === "openrouter";
-}
-
-function isZaiThinkingFormat(compat: CompatOf<Api>): boolean {
-	return compat !== undefined && "thinkingFormat" in compat && compat.thinkingFormat === "zai";
-}
-
 function inferDetectedEffortMap<TApi extends Api>(
 	spec: ModelSpec<TApi>,
 	compat: CompatOf<TApi>,
@@ -505,66 +369,6 @@ function inferDetectedEffortMap<TApi extends Api>(
 	return undefined;
 }
 
-function isSakanaFuguReasoningModel<TApi extends Api>(spec: ModelSpec<TApi>): boolean {
-	return spec.provider === "sakana" && /^fugu(?:$|-)/i.test(spec.id);
-}
-
-function isDeepseekReasoningModel<TApi extends Api>(spec: ModelSpec<TApi>): boolean {
-	if (!spec.reasoning) return false;
-	const lowerId = spec.id.toLowerCase();
-	const lowerName = (spec.name ?? "").toLowerCase();
-	const isOpenCodeDeepseekAlias =
-		spec.provider === "opencode-zen" && (lowerId === "big-pickle" || lowerName === "big pickle");
-	return (
-		modelMatchesHost(spec, "deepseekFamily") ||
-		isDeepseekModelIdOrName(spec.id) ||
-		isDeepseekModelIdOrName(spec.name ?? "") ||
-		isOpenCodeDeepseekAlias
-	);
-}
-
-function inferSupportedEfforts<TApi extends Api>(
-	parsedModel: ParsedModel,
-	spec: ModelSpec<TApi>,
-	compat: CompatOf<TApi>,
-): readonly Effort[] {
-	const modelDefinedEfforts = getModelDefinedEfforts(spec, compat);
-	if (modelDefinedEfforts !== undefined) {
-		return modelDefinedEfforts;
-	}
-	switch (parsedModel.family) {
-		case "openai":
-			return inferOpenAISupportedEfforts(parsedModel);
-		case "gemini":
-			return inferGeminiSupportedEfforts(parsedModel);
-		case "anthropic":
-			return inferAnthropicSupportedEfforts(parsedModel, spec, compat);
-		case "unknown":
-			return inferFallbackEfforts(spec, compat);
-	}
-}
-
-function inferOpenAISupportedEfforts(model: OpenAIModel): readonly Effort[] {
-	if (model.variant === "codex-mini" && semverEqual(model.version, "5.1")) {
-		return GPT_5_1_CODEX_MINI_EFFORTS;
-	}
-	// 5.6+ exposes the wire-exact five-tier ladder low..max.
-	if (semverGte(model.version, "5.6")) {
-		return FIVE_TIER_EFFORTS_LOW_TO_MAX;
-	}
-	if (semverGte(model.version, "5.2")) {
-		return GPT_5_2_PLUS_EFFORTS;
-	}
-	return DEFAULT_REASONING_EFFORTS;
-}
-
-function inferGeminiSupportedEfforts(model: GeminiModel): readonly Effort[] {
-	if (!semverGte(model.version, "3.0")) {
-		return DEFAULT_REASONING_EFFORTS;
-	}
-	return model.kind === "pro" ? GEMINI_3_PRO_EFFORTS : GEMINI_3_FLASH_EFFORTS;
-}
-
 const OPENAI_O_SERIES_RE = /^o[134](?:$|[-:.])/i;
 
 /**
@@ -587,60 +391,6 @@ function impliesMandatoryReasoning(parsed: ParsedModel, modelId: string): boolea
 	if (isMinimaxM2FamilyModelId(modelId)) return true;
 	if (OPENAI_O_SERIES_RE.test(bareModelId(modelId))) return true;
 	return findThinkingVariantToken(modelId) !== undefined;
-}
-
-function inferAnthropicSupportedEfforts<TApi extends Api>(
-	parsedModel: AnthropicModel,
-	spec: ModelSpec<TApi>,
-	compat: CompatOf<TApi>,
-): readonly Effort[] {
-	// Ladders for adaptive-generation models (Opus 4.6+, Sonnet 5+,
-	// Fable/Mythos) are model-defined and already resolved by
-	// getAnthropicAdaptiveEfforts. Every other 4.6+ model on the Messages
-	// API (Sonnet/Haiku 4.6) still runs adaptive mode with the three-tier
-	// low/medium/high wire scale — no minimal, no max.
-	if (spec.api === "anthropic-messages" && semverGte(parsedModel.version, "4.6")) {
-		return LOW_MEDIUM_HIGH_REASONING_EFFORTS;
-	}
-	// Non-adaptive 4.6 models on Bedrock stay budget-mode, where minimal is
-	// a legitimate synthetic budget tier.
-	if (spec.api === "bedrock-converse-stream" && semverGte(parsedModel.version, "4.6")) {
-		return DEFAULT_REASONING_EFFORTS;
-	}
-	return inferFallbackEfforts(spec, compat);
-}
-
-function inferFallbackEfforts<TApi extends Api>(spec: ModelSpec<TApi>, compat: CompatOf<TApi>): readonly Effort[] {
-	const modelDefinedEfforts = getModelDefinedEfforts(spec, compat);
-	if (modelDefinedEfforts !== undefined) return modelDefinedEfforts;
-	if (isMinimaxReasoningModelOnAnthropicEndpoint(spec)) {
-		return LOW_MEDIUM_HIGH_REASONING_EFFORTS;
-	}
-	if (spec.api === "anthropic-messages") {
-		return DEFAULT_REASONING_EFFORTS_WITH_XHIGH;
-	}
-	if (spec.name.includes("deepseek-v4")) {
-		return DEFAULT_REASONING_EFFORTS_WITH_XHIGH;
-	}
-	if (spec.api === "bedrock-converse-stream") {
-		return DEFAULT_REASONING_EFFORTS;
-	}
-	if (isOpenAICompatReasoningApi(spec.api)) {
-		const resolved = compat as ResolvedOpenAICompat;
-		if (resolved.thinkingFormat === "openai" && resolved.supportsReasoningEffort) {
-			return DEFAULT_REASONING_EFFORTS_WITH_XHIGH;
-		}
-		return DEFAULT_REASONING_EFFORTS;
-	}
-	// OpenAI Responses APIs encode discrete effort levels, including xhigh.
-	if (
-		spec.api === "openai-responses" ||
-		spec.api === "openai-codex-responses" ||
-		spec.api === "azure-openai-responses"
-	) {
-		return DEFAULT_REASONING_EFFORTS_WITH_XHIGH;
-	}
-	return DEFAULT_REASONING_EFFORTS;
 }
 
 function inferThinkingControlMode<TApi extends Api>(
@@ -695,35 +445,6 @@ function inferThinkingControlMode<TApi extends Api>(
 		default:
 			return "effort";
 	}
-}
-
-function isOpenRouterAnthropicAdaptiveReasoningModel<TApi extends Api>(
-	parsedModel: AnthropicModel,
-	spec: ModelSpec<TApi>,
-): boolean {
-	if (!isOpenAICompatReasoningApi(spec.api)) return false;
-	if (!modelMatchesHost(spec, "openrouter")) return false;
-	return isAnthropicAdaptiveGenAtLeast(parsedModel, "4.6");
-}
-
-/**
- * Opus 4.7+, Sonnet 5+, and Fable/Mythos 5+ expose the full five-tier adaptive
- * scale (low/medium/high/xhigh/max); earlier adaptive generations stay on four.
- *
- * Host does not narrow the ladder. Both `anthropic-messages` and
- * `bedrock-converse-stream` resolve these models to `anthropic-adaptive`
- * (`inferThinkingControlMode`), and both transports send the tier as
- * `output_config.effort` built by `mapEffortToAnthropicAdaptiveEffort`, which
- * passes `xhigh` through as the literal wire value — Bedrock's adaptive branch
- * in `buildAdditionalModelRequestFields` never reaches the four-tier
- * `budget_tokens` schedule where `xhigh` and `max` collapse onto 32_768.
- * `xhigh` therefore arrives at the model identically on either host, so the
- * ladder is a fact about the model and identity may state it for both.
- */
-function anthropicModelHasRealXHighEffort<TApi extends Api>(spec: ModelSpec<TApi>, parsedModel: ParsedModel): boolean {
-	if (spec.api !== "anthropic-messages" && spec.api !== "bedrock-converse-stream") return false;
-	if (parsedModel.family !== "anthropic") return false;
-	return isAnthropicAdaptiveGenAtLeast(parsedModel, "4.7");
 }
 
 // ---------------------------------------------------------------------------

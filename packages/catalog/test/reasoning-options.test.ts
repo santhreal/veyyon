@@ -100,9 +100,15 @@ describe("mapModelsDevReasoningOptions", () => {
 		});
 	});
 
-	it("falls back to identity for budget-only declarations and unknown future tiers", () => {
-		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens", min: 0, max: 16384 }])).toBeUndefined();
-		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens" }, { type: "toggle" }])).toBeUndefined();
+	it("opens the fixed high/max budget pair for budget-only declarations, nothing for future tiers", () => {
+		// opencode's budgetVariants contract: a budget_tokens declaration with
+		// no effort levels maps to the fixed high/max pair the encoder ranges.
+		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens", min: 0, max: 16384 }])).toEqual({
+			efforts: [Effort.High, Effort.Max],
+		});
+		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens" }, { type: "toggle" }])).toEqual({
+			efforts: [Effort.High, Effort.Max],
+		});
 		expect(mapModelsDevReasoningOptions([{ type: "effort", values: ["ultra"] }])).toBeUndefined();
 		expect(mapModelsDevReasoningOptions(undefined)).toBeUndefined();
 	});
@@ -146,14 +152,16 @@ describe("discovery-declared reasoning surfaces", () => {
 		expect(getSupportedEfforts(model)).toEqual([]);
 	});
 
-	it("keeps the identity ladder when discovery declares a budget range only", () => {
+	it("opens the high/max budget surface when discovery declares a budget range only", () => {
+		// models.dev budget-only declarations normalize to the fixed high/max
+		// pair (opencode parity); no ladder is identity-derived.
 		const model = createModel({
 			id: "gemini-3.1-pro-preview",
 			api: "google-generative-ai",
 			provider: "google",
+			reasoningOptions: { efforts: [Effort.High, Effort.Max] },
 		});
-		// No reasoningOptions (budget_tokens maps to undefined): identity owns the ladder.
-		expect(getSupportedEfforts(model).length).toBeGreaterThan(0);
+		expect(getSupportedEfforts(model)).toEqual([Effort.High, Effort.Max]);
 	});
 
 	it("never overrides a collapsed row's routed surface with discovery data", () => {
