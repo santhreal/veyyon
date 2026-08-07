@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cde59638.js";
+            window.path_to_searchindex_js = "searchindex-859f1a96.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -3205,7 +3205,7 @@ your own session instead when you want that project’s configuration to apply.<
 <p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
 <p>The <code>model</code> segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:</p>
 <ul>
-<li>The <strong>thinking effort</strong> joins the model label as one unit (<code>Sonnet 4.5 @high</code> in the quiet footline, <code>Sonnet 4.5 · high</code> elsewhere), in the model’s own color. It is how much reasoning the model does per turn. Change it with <code>/thinking</code> (its alias is <code>/effort</code>), or set a per-model default under Settings → Model → Default Effort.
+<li>The <strong>thinking effort</strong> joins the model label as one unit (<code>Sonnet 4.5 @high</code> in the quiet footline, <code>Sonnet 4.5 · high</code> elsewhere), in the model’s own color. It is how much reasoning the model does per turn. Change it with <code>/effort</code> (its alias is <code>/thinking</code>), or set a per-model default under Settings → Model → Default Effort.
 The effort picker has a <strong>Default</strong> row followed by only the active model’s valid variants. Choose Default to clear the session override and return to the saved per-model effort or the model default.</li>
 <li>The <strong>priority tier</strong> follows the effort as its own chip, named and in the warning color (<code>⚡ priority</code>, or just <code>priority</code> when your symbol preset has no icon). It is how your requests are queued and served, not how deeply the model thinks. Toggle it with <code>/fast</code>, or set it per provider family under Settings → Model → Service Tier.</li>
 </ul>
@@ -5839,7 +5839,8 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/model [id]</code>, <code>/models</code></td><td>Select the <strong>interactive</strong> model only (no role cycle; roles live in settings)</td></tr>
 <tr><td><code>/switch</code></td><td>Try a model for this session only, without saving it as default (same as alt+p)</td></tr>
 <tr><td><code>/fast on|off|status</code></td><td>Fast mode</td></tr>
-<tr><td><code>/thinking [level]</code> (<code>/effort</code>)</td><td>Set reasoning effort; no argument opens the picker</td></tr>
+<tr><td><code>/effort [level]</code> (<code>/thinking</code>)</td><td>Set reasoning effort; no argument opens the picker</td></tr>
+<tr><td><code>/cpu-limit [cores]</code> (<code>/cpu</code>)</td><td>Set this session’s CPU budget for spawned commands</td></tr>
 <tr><td><code>/permissions [rung]</code> (<code>/approval</code>)</td><td>Set how much the agent does unasked, for this session only: <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, or <code>plan</code>. <code>/permissions status</code> reports the rung in force and where it came from; <code>reset</code> drops the session override and returns to the saved default from Settings. A bare <code>/permissions</code> opens the picker</td></tr>
 <tr><td><code>/yolo on|off|status</code></td><td>Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation)</td></tr>
 <tr><td><code>/plan</code></td><td>Toggle plan mode</td></tr>
@@ -6070,8 +6071,8 @@ live list after your remaps. For the full guide on customizing, see
 </tbody>
 </table>
 </div>
-<p>You can also set the effort by name with the <code>/thinking</code> command (its alias is <code>/effort</code>). With no
-argument it opens a picker; <code>/thinking high</code> sets the level directly. The choice persists with the
+<p>You can also set the effort by name with the <code>/effort</code> command (its alias is <code>/thinking</code>). With no
+argument it opens a picker; <code>/effort high</code> sets the level directly. The choice persists with the
 active profile.</p>
 <p>Unbound by default, remappable: <code>app.session.new</code>, <code>app.session.tree</code>, <code>app.session.fork</code>,
 <code>app.session.resume</code>, and <code>app.stt.toggle</code> (speech-to-text; hold <code>Space</code> to record by default).</p>

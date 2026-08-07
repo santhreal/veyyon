@@ -22,14 +22,14 @@ import { AUTO_THINKING, type ConfiguredThinkingLevel, parseConfiguredThinkingLev
 export const ANY_MODEL_EFFORT_KEY = "*";
 
 /**
- * Where the saved default lives, appended by `/thinking` and `/effort`.
+ * Where the saved default lives, appended by `/effort` (alias `/thinking`).
  *
  * The command changes THIS session only. Saying so, and saying where the durable
  * setting is, is what keeps one axis from feeling like two: before this, typing
  * the command silently rewrote the profile default while the cycle keybinding did
  * not, so the same change stuck or evaporated depending on how you made it.
  *
- * BOTH SPELLINGS, because `/thinking` is a text-mode command and this sentence
+ * BOTH REMEDIES, because `/effort` is a text-mode command and this sentence
  * reaches ACP, where `/settings` is neither advertised nor dispatchable. Naming
  * only the settings screen sent a client without a terminal to a command it
  * cannot type, with nothing else to do.
@@ -50,7 +50,7 @@ export interface ResolvedEffort {
 }
 
 export interface EffortInputs {
-	/** This session's override: `/thinking`, `/effort`, or the cycle keybinding. */
+	/** This session's override: `/effort` (alias `/thinking`), or the cycle keybinding. */
 	sessionOverride?: ConfiguredThinkingLevel | undefined;
 	/** An explicit `:level` on the selector the active role resolved through. */
 	selectorLevel?: ConfiguredThinkingLevel | undefined;

@@ -365,8 +365,8 @@ describe("the ACP advertisement", () => {
 	 * test used to pin the fixed ladder here, which stopped being the shipped behaviour when the
 	 * hint became per-model.
 	 */
-	it("advertises the fallback hint for /thinking, leaving the levels to the session", () => {
-		const advertised = ACP_BUILTIN_SLASH_COMMANDS.find(command => command.name === "thinking");
+	it("advertises the fallback hint for /effort, leaving the levels to the session", () => {
+		const advertised = ACP_BUILTIN_SLASH_COMMANDS.find(command => command.name === "effort");
 
 		expect(advertised?.input?.hint).toBe("[level]");
 	});
