@@ -370,6 +370,98 @@ export function isUnexpectedSocketCloseMessage(message: string): boolean {
 	return /\b(?:the\s+)?socket connection (?:was )?closed unexpectedly\b/i.test(message);
 }
 
+/**
+ * HTTP/2 error codes (RFC 7540 section 7) whose meaning is "the transport or
+ * the peer failed", not "the request you sent is wrong". A fresh stream, and in
+ * most cases a fresh connection, has a real chance of succeeding.
+ *
+ * Two of these carry their own argument:
+ *
+ * - `REFUSED_STREAM` is the only code the RFC gives a normative replay
+ *   guarantee. Section 8.1.4 says the stream closed "prior to any processing
+ *   having occurred" and that the request "can be safely retried".
+ * - `NO_ERROR` on a stream that was still in flight is a graceful GOAWAY, which
+ *   is what a peer rolling out a deploy looks like from here. It is the most
+ *   common real-world member of this set.
+ *
+ * `PROTOCOL_ERROR` is the loosest inclusion: it can in principle mean our own
+ * framing is wrong, in which case a replay reproduces it. In practice it is an
+ * intermediary hiccup, and the bounded attempt count caps the cost of being
+ * wrong about it.
+ */
+const RETRYABLE_HTTP2_ERROR_CODES: ReadonlySet<string> = new Set([
+	"NGHTTP2_NO_ERROR",
+	"NGHTTP2_PROTOCOL_ERROR",
+	"NGHTTP2_INTERNAL_ERROR",
+	"NGHTTP2_SETTINGS_TIMEOUT",
+	"NGHTTP2_STREAM_CLOSED",
+	"NGHTTP2_REFUSED_STREAM",
+	"NGHTTP2_CONNECT_ERROR",
+	"NGHTTP2_ENHANCE_YOUR_CALM",
+]);
+
+/**
+ * HTTP/2 error codes where the next attempt fails the same way, so retrying
+ * only hides the real answer behind a loop.
+ *
+ * `CANCEL` is the one to be careful about: it usually means our own side
+ * aborted the stream, and retrying a user-initiated cancel is a bug, not a
+ * recovery. `FLOW_CONTROL_ERROR`, `FRAME_SIZE_ERROR` and `COMPRESSION_ERROR`
+ * are protocol defects a replay reproduces. `INADEQUATE_SECURITY` and
+ * `HTTP_1_1_REQUIRED` are configuration answers: the fix is a different TLS
+ * profile or a protocol downgrade, never another identical attempt.
+ */
+const NON_RETRYABLE_HTTP2_ERROR_CODES: ReadonlySet<string> = new Set([
+	"NGHTTP2_FLOW_CONTROL_ERROR",
+	"NGHTTP2_FRAME_SIZE_ERROR",
+	"NGHTTP2_CANCEL",
+	"NGHTTP2_COMPRESSION_ERROR",
+	"NGHTTP2_INADEQUATE_SECURITY",
+	"NGHTTP2_HTTP_1_1_REQUIRED",
+]);
+
+/**
+ * Node spells an HTTP/2 failure as `Stream closed with error code
+ * NGHTTP2_INTERNAL_ERROR` (`ERR_HTTP2_STREAM_ERROR`) or `Session closed with
+ * error code ...` (`ERR_HTTP2_SESSION_ERROR`). The optional colon absorbs
+ * wrappers that reformat the code onto the phrase.
+ */
+const HTTP2_ERROR_CODE_PATTERN = /\b(?:stream|session) closed with error code:?\s+(NGHTTP2_[A-Z0-9_]+)/i;
+
+/**
+ * `New streams cannot be created after receiving a GOAWAY`
+ * (`ERR_HTTP2_GOAWAY_SESSION`). The stream never existed, so nothing was
+ * processed and a replay on a new connection is unambiguously safe.
+ */
+const HTTP2_GOAWAY_PATTERN = /new streams cannot be created after receiving a goaway/i;
+
+/** The `NGHTTP2_*` code named by a Node HTTP/2 stream or session error message. */
+export function http2ErrorCode(message: string): string | undefined {
+	const match = HTTP2_ERROR_CODE_PATTERN.exec(message);
+	return match === null ? undefined : match[1].toUpperCase();
+}
+
+/**
+ * Retry verdict for an HTTP/2 transport failure, or `undefined` when the
+ * message names no code we recognise.
+ *
+ * A named code is a definite statement about whether another attempt can
+ * differ, so callers should let it win over generic wording heuristics: those
+ * read `NGHTTP2_INTERNAL_ERROR` as the phrase "internal error" they happen to
+ * know and would just as happily read a transient-sounding wrapper around
+ * `NGHTTP2_CANCEL`. An unknown code returns `undefined` rather than a guess, so
+ * a future code still reaches the existing heuristics.
+ */
+export function http2RetryVerdict(message: string): boolean | undefined {
+	const code = http2ErrorCode(message);
+	if (code !== undefined) {
+		if (RETRYABLE_HTTP2_ERROR_CODES.has(code)) return true;
+		if (NON_RETRYABLE_HTTP2_ERROR_CODES.has(code)) return false;
+		return undefined;
+	}
+	return HTTP2_GOAWAY_PATTERN.test(message) ? true : undefined;
+}
+
 const TRANSIENT_MESSAGE_PATTERN =
 	/overloaded|rate.?limit|too many requests|service.?unavailable|server error|internal error|connection.?error|unable to connect|fetch failed|network error|stream stall|other side closed|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)/i;
 
@@ -381,10 +473,16 @@ const VALIDATION_MESSAGE_PATTERN =
  * message, retryable HTTP statuses (see `isRetryableStatus`), unexpected socket
  * closes, and the standard transient phrases. 4xx statuses other than 408/429
  * and validation-shaped messages short-circuit to `false`.
+ *
+ * A named HTTP/2 error code (see {@link http2RetryVerdict}) answers first,
+ * because it is a fact about the transport rather than an inference from
+ * wording.
  */
 export function isRetryableError(error: unknown): boolean {
 	const info = error as { message?: string; name?: string } | null;
 	const message = info?.message ?? "";
+	const http2Verdict = http2RetryVerdict(message);
+	if (http2Verdict !== undefined) return http2Verdict;
 	if (isAbortError(error) || /timeout|timed out|aborted/i.test(message)) return true;
 
 	const status = extractHttpStatusFromError(error);
