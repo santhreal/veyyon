@@ -206,7 +206,7 @@ export function resolveLoaderCandidates({
 		// then fall back to any version-pinned binary the standalone installer staged
 		// into the per-version cache. Without this trailing fallback a source-tree
 		// sync that omits the gitignored `native/*.node` bricks at boot even though
-		// the cache holds a loadable, sentinel-matched addon (user-hit 2026-07-24).
+		// the cache holds a loadable, sentinel-matched addon.
 		// The sentinel check in `evaluateLoadedBindings` still rejects a stale copy,
 		// and the in-tree path is tried first so a fresh local build always wins.
 		releaseCandidates = [...leafCandidates, ...baseReleaseCandidates, ...versionedCandidates];

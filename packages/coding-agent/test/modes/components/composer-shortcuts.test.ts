@@ -87,7 +87,7 @@ describe("composer contextual shortcuts", () => {
 	// The band left-aligns at the composer rail (COMPOSER_INSET_COLS), under
 	// the footline's location group — one shared axis with the row above,
 	// instead of a terminal-centered position whose relationship to the
-	// footline changed with every content state (operator review 2026-07-23).
+	// footline changed with every content state.
 	it("aligns band content at the composer rail", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();

@@ -1942,7 +1942,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor.setPromptGutter(accents.promptGutter);
 		this.editor.setPromptGutterContinuation(accents.promptGutterContinuation);
 		// No composer card: the input renders on the terminal's own ground.
-		// (User order 2026-07-22: the tinted box is gone entirely; the composer
+		// (the tinted box is gone entirely; the composer
 		// is hairline + text + footline, nothing painted behind it.)
 		this.editor.setRowBackground(undefined);
 		this.ui.requestRender();

@@ -16,7 +16,7 @@ import {
  * unset with its own comparison. Two things went wrong, and both are pinned here:
  * the UI showed `Default` for one setting and a literal `-1` for the next, and the
  * `>= 0` read test discarded legitimate negative values, which made a negative
- * presence/repetition penalty silently unreachable (operator review 2026-07-24).
+ * presence/repetition penalty silently unreachable.
  */
 
 describe("reading an optional numeric setting", () => {

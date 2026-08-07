@@ -17,7 +17,7 @@ import { DEFAULT_MODEL_SETTING_ID } from "@veyyon/coding-agent/modes/components/
  * `setModel`'s parameter default, and `defaultModel` as the settings row id — with
  * the translation written inline at each call site. One line in `setModel` stored
  * `default` while logging `interactive` for the same write, so a session log entry
- * could not be matched to the setting it changed (operator review 2026-07-24).
+ * could not be matched to the setting it changed.
  * These cases pin the single translation point and the storage key it produces.
  */
 

@@ -17,7 +17,7 @@ import { logger } from "@veyyon/utils";
  * Effort used to live in three stores (a profile-wide `defaultThinkingLevel`
  * enum, a `:level` suffix on a model selector, and session state) with the
  * ordering written inline at `main.ts`, which is why nobody could say which one
- * was in effect: "effort level is very muddled" (operator, 2026-07-24). One
+ * was in effect. One
  * owner now answers it, and every rung of the ladder is pinned here — including
  * both places `auto` may appear, since `auto` not fitting in a selector suffix
  * is the reason the extra store existed at all.
@@ -224,7 +224,7 @@ describe("a defaultEffort row that names no level is reported, not swallowed", (
 		const restore = captureLoggerWarnings(warnings);
 		try {
 			expect(parseConfiguredEffortSetting("subagent.thinkingLevel", "sideways")).toBeUndefined();
-			expect(parseConfiguredEffortSetting("defaultEffort[\"*\"]", "sideways")).toBeUndefined();
+			expect(parseConfiguredEffortSetting('defaultEffort["*"]', "sideways")).toBeUndefined();
 		} finally {
 			restore();
 		}

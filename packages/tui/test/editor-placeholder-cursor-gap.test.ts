@@ -5,11 +5,10 @@
  * emitted DIRECTLY after the cursor cell, so the cursor visually sat on the
  * hint's first character — the shipped `▏` software cursor renders on the
  * left edge of its cell and merged with the "a" of "ask anything", and in
- * terminal-cursor mode the hardware block covered the character outright
- * (user defect #3, 2026-07-22 screenshots). Every hint-composition path now
- * inserts exactly ONE blank cell between the cursor cell and the hint, and
- * drops the hint (never the gap alone) when the width budget cannot fit any
- * hint text.
+ * terminal-cursor mode the hardware block covered the character outright.
+ * Every hint-composition path now inserts exactly ONE blank cell between the
+ * cursor cell and the hint, and drops the hint (never the gap alone) when the
+ * width budget cannot fit any hint text.
  */
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";

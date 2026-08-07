@@ -187,7 +187,7 @@ const modelSegment: StatusLineSegment = {
 		if (!compact && thinkingDisplay) {
 			// Roomy (quiet footline): the effort merges into the model label as
 			// ONE segment (`Model @high`) — a fake ` · ` separator made it read
-			// as two segments (operator review 2026-07-23).
+			// as two segments.
 			tail += opts.roomy ? ` @${thinkingDisplay}` : `${theme.sep.dot}${thinkingDisplay}`;
 		}
 
@@ -203,7 +203,7 @@ const modelSegment: StatusLineSegment = {
 		// The priority service tier is a QUEUE tier, not a fourth effort level. Its
 		// icon used to sit immediately BEFORE the effort glyph in the same
 		// `statusLineModel` color, so `⚡ ◉ high` read as one more rung on the
-		// thinking scale (operator review 2026-07-24). It now trails the effort as
+		// thinking scale. It now trails the effort as
 		// its own `warning`-colored chip, and it names itself wherever there is room,
 		// so it reads as a serving choice. Naming it also makes the tier visible in
 		// symbol themes whose `icon.fast` is empty, where it used to show nothing.

@@ -197,7 +197,7 @@ describe("scroll isolation over dropped history", () => {
 	});
 
 	it("renders the composer zone byte-identically whether frozen or following", async () => {
-		// The operator's second complaint: the prompt must not CHANGE either.
+		// Freezing the transcript must not CHANGE the composer either.
 		// The footer is drawn from the live frame in both states, so its bytes
 		// are equal — no scroll readout takes over a composer row.
 		const { term, tui, scheduler } = await session();

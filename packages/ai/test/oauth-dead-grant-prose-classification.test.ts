@@ -38,7 +38,7 @@ import { isDefinitiveOAuthFailure } from "../src/error/auth-classify";
 
 describe("dead-grant classification", () => {
 	it("classifies the exact Kimi rejection that caused the loop", () => {
-		// The verbatim string from the operator's log (veyyon.2026-07-24.log),
+		// The verbatim string from a session log,
 		// which classified transient and produced the five-minute retry loop.
 		expect(
 			isDefinitiveOAuthFailure(

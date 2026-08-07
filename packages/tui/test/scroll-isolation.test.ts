@@ -240,10 +240,10 @@ describe("scroll isolation", () => {
 	});
 
 	it("resumes following when the pinned footer is clicked", async () => {
-		// The operator's ask (2026-07-23): the scroll indicator says "click to
-		// go to the bottom" — a left click anywhere in the pinned footer (band
-		// or composer) snaps back to the live tail. Clicks in the frozen
-		// transcript region do NOT resume (that region is for reading).
+		// The scroll indicator says "click to go to the bottom", so a left click
+		// anywhere in the pinned footer (band or composer) snaps back to the live
+		// tail. Clicks in the frozen transcript region do NOT resume (that region
+		// is for reading).
 		const { term, tui, scheduler } = await setup(30);
 		try {
 			term.sendInput(WHEEL_UP);
