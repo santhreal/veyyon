@@ -391,12 +391,12 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `bash.enabled` | Bash | boolean | `true` | Enable the bash tool for shell command execution. |
-| `bash.autoBackground.enabled` | Bash Auto-Background | boolean | `false` | Automatically background long-running bash commands and deliver the result later. |
 | `bash.stallDetection.enabled` | Bash Stall Detection | boolean | `false` | Watch for a bash command that stops producing output; background it and tell the model it may be stuck so it can cancel a truly hung command. Recommends, never force-kills. |
 | `bashInterceptor.enabled` | Bash Interceptor | boolean | `false` | Block shell commands that have dedicated tools. |
 | `shellMinimizer.enabled` | Shell Minimizer | boolean | `true` | Compress verbose shell output (git, npm, cargo, etc.) before returning it to the agent. |
 | `shellMinimizer.sourceOutlineLevel` | Shell Minimizer Source Outline | enum | `default` | Source outline mode for cat/read of source files: default or aggressive. Values: `default`, `aggressive`. |
-| `bash.autoBackground.thresholdMs` | Auto-Background After | number | `60000` | Max wall-clock time a bash call runs in the foreground before it is moved to a background job (result delivered later). Frees the model to keep working and protects the prompt cache, which a long foreground command would otherwise blow past. Fires on elapsed time even while output is streaming. 0 backgrounds immediately. |
+| `bash.autoBackground.enabled` | Bash Auto-Background | boolean | `true` | Move a long-running bash command to a background job on its own and deliver the result when it lands, instead of holding the turn open. Off, a command holds the foreground until it finishes or times out. Either way you can background the running command yourself with the composer's background key. |
+| `bash.autoBackground.thresholdMs` | Auto-Background After | number | `300000` | Max wall-clock time a bash call runs in the foreground before it is moved to a background job (result delivered later). Frees the model to keep working and protects the prompt cache, which a long foreground command would otherwise blow past. Fires on elapsed time even while output is streaming. 0 backgrounds immediately. |
 | `bash.stallDetection.stallMs` | Stall After | number | `30000` | When stall detection is on, how long a bash call may produce no new output before it is treated as possibly stuck, backgrounded, and flagged so the model can cancel it if it is truly hung. Measures idle time (quiet output), not total run time. |
 
 ### Eval & Runtimes

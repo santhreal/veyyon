@@ -168,3 +168,11 @@ rr-session-*.res.log
 */sessions/*.jsonl
 scratch-docs-lane/
 
+# The release-notes staging buffer. `scripts/ci-release-notes.ts` writes it from
+# the CHANGELOG on a tag build and the release job feeds it straight to the
+# GitHub API, so CI regenerates it every time and nothing reads a committed copy.
+# It was tracked as an empty placeholder, which bought nothing and left a real
+# release body one `git add` away from landing in the repository.
+/release-notes.md
+/release-notes-dryrun.md
+

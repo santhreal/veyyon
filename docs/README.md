@@ -86,7 +86,6 @@ A handful of first-party pages sit next to the thing they describe rather than u
 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | The package map and the cross-cutting rules. Conventional at the root, and the first file a new contributor opens. |
 | [`SECURITY.md`](../SECURITY.md), [`SUPPORT.md`](../SUPPORT.md) | GitHub reads these from the root to render the security and support links on the repository page. Moving them breaks that. |
 | [`UPSTREAM.md`](../UPSTREAM.md) | How this fork tracks `can1357/oh-my-pi`. Root-level because it is about the repository itself, not about the code in it. |
-| [`release-notes.md`](../release-notes.md) | The staging buffer for the next release's notes, written by the release tooling. Not a page anyone reads outside a release. |
 | [`packages/coding-agent/DEVELOPMENT.md`](../packages/coding-agent/DEVELOPMENT.md) | Maps `src/` subsystems to their authoritative doc. It belongs beside the tree it maps, since a map that lives elsewhere goes stale the first time a directory moves. |
 | [`packages/coding-agent/docs/modal-shell.md`](../packages/coding-agent/docs/modal-shell.md) | The `ModalShell` overlay contract, read while editing the component it specifies. |
 | [`packages/ai/src/utils/schema/CONSTRAINTS.md`](../packages/ai/src/utils/schema/CONSTRAINTS.md) | The normalization and strictness contract for the module it sits in, and the module is the only reader. |
