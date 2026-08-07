@@ -12,6 +12,7 @@
  */
 
 import { logger } from "@veyyon/utils";
+import { parseConfiguredEffortSetting } from "../config/effort-resolver";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import type { SubagentAgentSettings } from "../config/settings-domains/subagents";
@@ -22,7 +23,7 @@ import {
 	DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
 	DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
 } from "../config/settings-domains/subagents";
-import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
+import type { ConfiguredThinkingLevel } from "../thinking";
 import { currentAgentName, type ResolvedSpawnPolicy, resolveSpawnPolicy } from "./spawn-policy";
 import type { AgentDefinition } from "./types";
 
@@ -622,43 +623,6 @@ export function resolveSubagentModel(options: {
 }
 
 /**
- * Effort values already reported as unusable, so the warning is said once per
- * process instead of once per spawn. Keyed by setting and value, so a second
- * agent with a different typo is still reported.
- */
-const reportedBadEfforts = new Set<string>();
-
-/**
- * Report a configured effort that names no level. Unparseable resolves to
- * "inherit", which is indistinguishable from having set nothing — the setting
- * looks configured and does nothing, so it has to be said out loud (Law 10).
- * Never guesses a neighbouring level: running at an effort nobody chose would be
- * worse than inheriting.
- */
-function reportUnusableEffort(setting: string, value: string): void {
-	const key = `${setting}=${value}`;
-	if (reportedBadEfforts.has(key)) return;
-	reportedBadEfforts.add(key);
-	logger.warn(
-		`Settings: ${setting} is "${value}", which is not an effort level, so it is being ignored and the session's effort is inherited. ` +
-			`Accepted values: ${CLI_THINKING_LEVELS.join(", ")}.`,
-		{ setting, value, accepted: CLI_THINKING_LEVELS },
-	);
-}
-
-/** Parse one configured effort, reporting a value that names no level. */
-function parseEffortSetting(setting: string, value: unknown): ConfiguredThinkingLevel | undefined {
-	if (typeof value !== "string") return undefined;
-	const trimmed = value.trim();
-	// Absent and blank both mean inherit, and neither is a mistake worth reporting:
-	// blank is exactly what the picker's Inherit row stores.
-	if (trimmed.length === 0) return undefined;
-	const parsed = parseConfiguredThinkingLevel(trimmed);
-	if (parsed === undefined) reportUnusableEffort(setting, trimmed);
-	return parsed;
-}
-
-/**
  * Resolve a subagent's thinking level. Precedence, highest first, deliberately
  * the same shape as {@link resolveSubagentModel} so one sentence describes both:
  *
@@ -691,7 +655,10 @@ export function resolveSubagentThinkingLevel(options: {
 	// librarian `minimal`), so "Subagent Effort" did nothing for exactly those
 	// agents — an operator setting outranked by bundled frontmatter, which is the
 	// defect this whole area exists to remove, surviving in the effort axis.
-	const fromBlanket = parseEffortSetting("subagent.thinkingLevel", options.settings.get("subagent.thinkingLevel"));
+	const fromBlanket = parseConfiguredEffortSetting(
+		"subagent.thinkingLevel",
+		options.settings.get("subagent.thinkingLevel"),
+	);
 	if (fromBlanket !== undefined) return fromBlanket;
 	return options.agentThinkingLevel;
 }

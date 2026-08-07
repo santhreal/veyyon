@@ -10,6 +10,8 @@
  * - Events: AgentSessionEvent objects streamed as they occur
  * - Extension UI: Extension UI requests are emitted, client responds with extension_ui_response
  */
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
 import { $env, errorMessage, isRecord, readJsonl, Snowflake } from "@veyyon/utils";
@@ -29,6 +31,7 @@ import type { AgentSession } from "../../session/agent-session";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands } from "../../slash-commands/available-commands";
+import { configuredThinkingLevelsForModel } from "../../thinking";
 import type { EventBus } from "../../utils/event-bus";
 import { initializeExtensions } from "../runtime-init";
 import { isRpcHostToolResult, isRpcHostToolUpdate, RpcHostToolBridge } from "./host-tools";
@@ -632,6 +635,32 @@ export function rpcUnknownCommandResponse(commandType: string): RpcResponse {
 }
 
 /**
+ * Why `set_thinking_level` must be refused, or `undefined` when it is accepted.
+ *
+ * An RPC client is an effort-choosing surface like any other, so it is held to the
+ * SAME narrowing the pickers, `/effort` and ACP's `thought_level` option use: the
+ * levels the model in scope declares, and nothing else. Before this it applied
+ * whatever arrived and answered `success`, while `AgentSession.setThinkingLevel`
+ * quietly clamped the value to a supported neighbour (or dropped it) — so a client
+ * was told `xhigh` was set on a model that has no such wire field, and the log line
+ * naming the clamp went somewhere the client never reads. Refusing is what the
+ * neighbouring `set_model` arm already does for an unknown model.
+ *
+ * `inherit` is always accepted: it is how a client clears its choice, not a level,
+ * and it is the one value every picker keeps offering for exactly that reason. No
+ * model in scope means no row to narrow against, so nothing is refused — the same
+ * rule {@link configuredThinkingLevelsForModel} applies to a missing model.
+ */
+export function rpcThinkingLevelRefusal(model: Model | undefined, level: ThinkingLevel): string | undefined {
+	if (level === ThinkingLevel.Inherit) return undefined;
+	const choices = configuredThinkingLevelsForModel(model);
+	if (choices.includes(level)) return undefined;
+	const accepted = choices.length > 0 ? choices.join(", ") : "none (this model exposes no effort control)";
+	const subject = model ? `${model.provider}/${model.id}` : "The active model";
+	return `${subject} does not accept thinking level ${level}. Accepted: ${accepted}`;
+}
+
+/**
  * Run in RPC mode.
  * Listens for JSON commands on stdin, outputs events and responses on stdout.
  */
@@ -1165,6 +1194,8 @@ export async function runRpcMode(
 			// =================================================================
 
 			case "set_thinking_level": {
+				const refusal = rpcThinkingLevelRefusal(session.model, command.level);
+				if (refusal) return error(id, "set_thinking_level", refusal);
 				session.setThinkingLevel(command.level);
 				return success(id, "set_thinking_level");
 			}

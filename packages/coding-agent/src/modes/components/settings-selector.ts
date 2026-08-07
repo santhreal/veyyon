@@ -73,7 +73,11 @@ import {
 	subagentSettingsFor,
 } from "../../task/subagent-settings";
 import type { AgentDefinition } from "../../task/types";
-import { configuredThinkingLevelOptions, hasConfigurableThinkingEffort } from "../../thinking";
+import {
+	configuredThinkingLevelOptions,
+	hasConfigurableThinkingEffort,
+	noSelectableEffortNotice,
+} from "../../thinking";
 import { getTabBarTheme } from "../shared";
 import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
 import {
@@ -1565,6 +1569,17 @@ class SubagentAgentsSubmenu extends Container {
 	}
 }
 
+/**
+ * Submenu rows whose options are efforts, filled from the model in scope rather
+ * than the schema.
+ *
+ * ONE owner, because two places read it: the row's option list and the sentence
+ * that explains a one-row list. Those disagreeing is exactly how this screen came
+ * to narrow correctly and then say nothing about why, so a row added here gets
+ * both behaviours or neither.
+ */
+const EFFORT_SUBMENU_PATHS: Readonly<Record<string, true>> = { "subagent.thinkingLevel": true };
+
 /** Synthetic list id for the "add a model" row: not a settings key, and never a
  *  model selector, so it cannot collide with a real row. */
 const ADD_EFFORT_ROW = "\u0000add-effort-row";
@@ -1584,11 +1599,10 @@ const CHAIN_CLEAR_ROW = "\u0000chain-clear-row";
  *
  * This is the ONE persisted effort surface. Effort used to be split across a
  * profile-wide `defaultThinkingLevel` enum and a `:level` suffix on each role's
- * selector, so two settings wrote one axis and neither said which won (operator
- * report 2026-07-24, "effort level is very muddled"). `config/effort-resolver.ts`
- * owns the ordering; this owns the editing. Adding a row reuses the same
- * searchable model picker and the same effort list the role slots use, so a
- * third effort vocabulary cannot appear here.
+ * selector, so two settings wrote one axis and neither said which won.
+ * `config/effort-resolver.ts` owns the ordering; this owns the editing. Adding a
+ * row reuses the same searchable model picker and the same effort list the role
+ * slots use, so a third effort vocabulary cannot appear here.
  */
 class DefaultEffortSubmenu extends Container {
 	#selectList: SelectList | undefined;
@@ -3066,7 +3080,7 @@ export class SettingsSelectorComponent implements Component {
 		// here offered `xhigh` on models with no effort field at all, and `off` on
 		// models that route effort through sibling model ids — picks that stored a
 		// value the resolver then had to clamp or ignore.
-		if (def.path === "subagent.thinkingLevel") {
+		if (Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path)) {
 			return configuredThinkingLevelOptions({
 				model: this.#subagentEffortModel(),
 				inheritLabel: "Inherit",
@@ -3089,8 +3103,8 @@ export class SettingsSelectorComponent implements Component {
 		// beats a one-row list: this model decides effort through its model id, so
 		// there is no effort field for this setting to fill.
 		const description =
-			def.path === "subagent.thinkingLevel" && options.length <= 1
-				? `${def.description} This model exposes no selectable effort, so only Inherit applies.`
+			Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path) && options.length <= 1
+				? `${def.description} ${noSelectableEffortNotice()}`
 				: def.description;
 
 		// Preview handlers
