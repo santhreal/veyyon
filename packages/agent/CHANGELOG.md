@@ -35,6 +35,8 @@
 ### Removed
 
 - `compact()` no longer generates a short PR-style summary, saving one model request per compaction. The `shortSummary` field stays on `CompactionResult`, the compaction entry, and the collab and share projections: compaction hooks still set it, and sessions written before this change still carry it. Its only display consumer is the session-listing title fallback, which veyyon reaches only when its own tiny-model titler is disabled or declined the first message.
+- A tool call that an interrupt skipped now says so in its details, not only in its text. A queued message or a peer interrupt can cut a batch short before a call is dispatched, and the placeholder result that stands in for it is marked as an error, because from the provider's side the call produced no answer. The headline is fixed per source, so two unrelated interrupts produce byte-identical text, and anything reading that text to decide whether a tool failed sees one failure repeating. The same discriminator already existed for calls the assistant never dispatched at all; this is the interrupt case it did not cover.
+
 
 ## [16.5.2] - 2026-07-14
 

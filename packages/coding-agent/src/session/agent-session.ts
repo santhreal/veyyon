@@ -5809,11 +5809,28 @@ export class AgentSession {
 			if (event.message.role === "toolResult") {
 				const { toolName, details, isError, content } = event.message as {
 					toolName?: string;
-					details?: { op?: string; path?: string; phases?: TodoPhase[]; report?: string; startedAt?: string };
+					details?: {
+						op?: string;
+						path?: string;
+						phases?: TodoPhase[];
+						report?: string;
+						startedAt?: string;
+						__synthetic?: true;
+						__skipped?: true;
+					};
 					isError?: boolean;
 					content?: Array<TextContent | ImageContent>;
 				};
-				if (toolName === TOOL.todo) {
+				// A call the batch never dispatched, and a call an interrupt cut short,
+				// both arrive here carrying isError. Neither is a verdict on the payload:
+				// the board is stale because the write never landed, not because it was
+				// refused, so the advice below is for a problem that does not exist. The
+				// headline is also fixed per source, so two interrupts in a row read as
+				// one failure repeating and retire todo for the rest of the turn over an
+				// event that never happened. Leave the failure memory untouched rather
+				// than clearing it: a skip is not a landed write either.
+				const todoCallDidNotFail = details?.__synthetic === true || details?.__skipped === true;
+				if (toolName === TOOL.todo && !todoCallDidNotFail) {
 					const errorText = isError ? (content?.find(part => part.type === "text")?.text ?? "") : undefined;
 					if (errorText === undefined) {
 						// A landed write makes the board authoritative again.
