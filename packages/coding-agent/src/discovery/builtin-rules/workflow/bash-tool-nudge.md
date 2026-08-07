@@ -1,6 +1,6 @@
 ---
 description: "Suggest built-in grep/glob tools when a bash command starts with grep/rg/find"
-condition: "(?:^|\\n|&&|\\|\\||;|\\()\\s*(?:grep|rg|ripgrep|ag|ack|find|fd)\\s+"
+condition: "(?:^|\\n|&&|\\|\\||;|\\()\\s*(?:grep|rg|ripgrep|ag|ack|find|fd)(?![^\\n;&|]*<<)\\s+"
 scope: "tool:bash"
 interruptMode: never
 repeatMode: per-compact
