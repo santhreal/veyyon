@@ -9,6 +9,7 @@
 
 - Added shared GPT-5.6 prompt-cache-breakpoint capability classification for OpenAI Responses transports.
 - Added a canonical reasoning selection contract that resolves supported effort, wire effort, mandatory-thinking floors, and effort-tier model routing from one model capability.
+- The bundled Cursor protobuf binding declares `ConversationTokenDetails.detailed`, the field 3 the schema Cursor's client ships leaves out and protobuf therefore dropped without a trace. It is the provider's own per-bucket breakdown of `used_tokens`, recovered from recorded client bytes and pinned by a sum identity, and `@veyyon/ai`'s Cursor provider now reads it. The binding is regenerated with the toolchain the rest of the generated files already use, which is why every optional message field in it now spells its type as `T | undefined`.
 
 ### Fixed
 
