@@ -19,6 +19,7 @@ import {
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
 // One owner for how `/fast` names the state it changes, so this suite cannot drift
 // from the command the way it did when the wording became "priority tier".
 import { PRIORITY_TIER_COMMAND_LABEL } from "@veyyon/coding-agent/config/service-tier";
@@ -34,6 +35,7 @@ import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/sessi
 import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "@veyyon/coding-agent/stt/models";
+import { CONFIGURED_THINKING_LEVELS, configuredThinkingLevelsForModel } from "@veyyon/coding-agent/thinking";
 import {
 	DEFAULT_TTS_LOCAL_MODEL_KEY,
 	DEFAULT_TTS_VOICE,
@@ -2534,5 +2536,89 @@ describe("ACP agent", () => {
 			expect(second.sessionId).toBe("session-after-switch");
 			expect(third.sessionId).toBe("session-after-switch");
 		});
+	});
+});
+
+/**
+ * WHY THIS BLOCK EXISTS (ACP IS AN EFFORT PICKER TOO).
+ *
+ * The `thought_level` config option is a select an ACP client renders as a menu, so it is the same kind
+ * of surface as the settings rows and the model hub's thinking strip, and it is held to the same rule:
+ * the choices are the levels the model in scope declares, never a fixed ladder. Nothing here asserted
+ * the option LIST before — three existing cases read `currentValue` only — which left the one screen
+ * whose narrowing is invisible from inside this repo untested.
+ *
+ * The trap is right in the harness: `FakeAgentSession.getAvailableThinkingLevels()` returns a fixed
+ * `["low", "medium", "high"]`, which is exactly the wrong source to publish from, and a build that
+ * switched to it would still satisfy every other case in this file.
+ */
+describe("ACP publishes only the effort levels the model in scope declares", () => {
+	/** Republish the config options without changing anything: setting the live mode is a no-op refresh. */
+	async function republishedConfigOptions(
+		harness: AgentHarness,
+		sessionId: string,
+		model: Model,
+	): Promise<Array<{ id: string; options?: Array<{ value: string }> }>> {
+		const session = harness.findSession(sessionId);
+		if (!session) throw new Error("session not registered");
+		session.model = model;
+		const refreshed = await harness.agent.setSessionConfigOption({ sessionId, configId: "mode", value: "default" });
+		return (refreshed.configOptions ?? []) as Array<{ id: string; options?: Array<{ value: string }> }>;
+	}
+
+	it("offers a declaring model exactly its own ladder, and no option at all to a model with none", async () => {
+		const ladder = getBundledModel("anthropic", "claude-sonnet-4-6");
+		const declared = configuredThinkingLevelsForModel(ladder);
+		// A strict, non-empty subset. Without both bounds this case passes on a build that publishes the
+		// whole vocabulary AND on one that publishes nothing, which are the two ways to get it wrong.
+		expect(declared.length).toBeGreaterThan(0);
+		expect(declared.length).toBeLessThan(CONFIGURED_THINKING_LEVELS.length);
+
+		const harness = await createHarness();
+		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
+
+		const withLadder = await republishedConfigOptions(harness, created.sessionId, ladder);
+		const thinking = withLadder.find(option => option.id === "thinking");
+		expect(thinking?.options?.map(option => option.value)).toEqual([...declared]);
+
+		// A model whose effort is baked into its id declares nothing, and an empty select whose every
+		// choice would be refused is worse than no select: the option is dropped entirely.
+		const noEffort = getBundledModel("cursor", "composer-1.5");
+		expect(configuredThinkingLevelsForModel(noEffort)).toEqual([]);
+		const withoutLadder = await republishedConfigOptions(harness, created.sessionId, noEffort);
+		expect(withoutLadder.find(option => option.id === "thinking")).toBeUndefined();
+		// The refresh itself still worked, so the assertion above is about thinking and not about a
+		// response that came back empty.
+		expect(withoutLadder.map(option => option.id)).toContain("mode");
+	});
+
+	it("refuses a level the model does not declare, naming the model and what would have worked", async () => {
+		const ladder = getBundledModel("anthropic", "claude-sonnet-4-6");
+		const declared = configuredThinkingLevelsForModel(ladder);
+		const forbidden = CONFIGURED_THINKING_LEVELS.find(level => !declared.includes(level));
+		if (!forbidden) throw new Error("this model declares the whole vocabulary, so nothing is forbidden");
+
+		const harness = await createHarness();
+		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
+		const session = harness.findSession(created.sessionId);
+		if (!session) throw new Error("session not registered");
+		session.model = ladder;
+		session.thinkingLevel = undefined;
+
+		await expect(
+			harness.agent.setSessionConfigOption({ sessionId: created.sessionId, configId: "thinking", value: forbidden }),
+		).rejects.toThrow(new RegExp(`${ladder.provider}/${ladder.id}.*${forbidden}`));
+		// Refused means unchanged, not "rejected and applied anyway".
+		expect(session.thinkingLevel).toBeUndefined();
+
+		// A level the model does declare still goes through, so the check is a narrowing and not a wall.
+		const accepted = declared[0];
+		if (accepted === undefined) throw new Error("this model declares no level to accept");
+		await harness.agent.setSessionConfigOption({
+			sessionId: created.sessionId,
+			configId: "thinking",
+			value: accepted,
+		});
+		expect(harness.findSession(created.sessionId)?.thinkingLevel).toBe(accepted);
 	});
 });

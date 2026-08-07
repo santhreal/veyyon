@@ -231,6 +231,21 @@ export const CLI_THINKING_LEVELS: readonly string[] = CONFIGURED_THINKING_LEVELS
 /** The value an effort picker stores for "no effort of my own — inherit". */
 export const INHERIT_EFFORT_OPTION_VALUE = "";
 
+/**
+ * Why an effort picker has a single row, said in one sentence with one owner.
+ *
+ * A model whose effort lives in sibling model ids (or that has no effort field
+ * at all) narrows to nothing, so the only honest row left is the inherit row. A
+ * one-row list with no explanation reads as a broken screen, and every picker
+ * has to say the same thing or the same model reads as differently broken on
+ * each surface — which is the class this whole area exists to close. The label
+ * is a parameter because the inherit row is called "Inherit" on the settings
+ * rows and "Model default" in the model-selector step.
+ */
+export function noSelectableEffortNotice(inheritLabel = "Inherit"): string {
+	return `This model exposes no selectable effort, so only ${inheritLabel} applies.`;
+}
+
 export interface ConfiguredThinkingLevelOptions {
 	model?: Model;
 	includeInherit?: boolean;
