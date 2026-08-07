@@ -91,7 +91,7 @@ impl BudgetGroup {
 	#[cfg(not(target_os = "linux"))]
 	fn create_cgroup(parent_dir: &str, name: &str, cores: f64) -> Result<Self> {
 		let _ = (parent_dir, name, cores);
-		Err(Error::msg("cgroup budgets are Linux-only"))
+		Err(anyhow::Error::msg("cgroup budgets are Linux-only"))
 	}
 
 	#[cfg(target_os = "linux")]
@@ -105,7 +105,7 @@ impl BudgetGroup {
 	#[cfg(not(target_os = "linux"))]
 	fn manage_cgroup(dir: &str, name: &str, cores: f64) -> Result<Self> {
 		let _ = (dir, name, cores);
-		Err(Error::msg("cgroup budgets are Linux-only"))
+		Err(anyhow::Error::msg("cgroup budgets are Linux-only"))
 	}
 
 	#[cfg(target_os = "windows")]

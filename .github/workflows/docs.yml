@@ -107,13 +107,20 @@ jobs:
       # job below generates it for the same reason.
       - name: Generate tool views
         run: bun --cwd=packages/coding-agent run gen:tool-views
+      - name: Build the test sandbox image
+        # Every `bun test` in this repo refuses to run unless it can prove the
+        # operator's home is unreachable, so CI has to establish the same
+        # boundary a workstation does. Without this the two suites below exit 1
+        # on the refusal before running a single assertion, which is how this
+        # job went red the moment the gate landed.
+        run: bash scripts/test-sandbox/run.sh --build
       - name: Checker self-tests
-        run: bun test scripts/check-doc-links.test.ts scripts/check-doc-freshness.test.ts scripts/check-doc-imports.test.ts scripts/check-doc-paths.test.ts scripts/gen-example-js.test.ts scripts/docs-book-pin.test.ts scripts/gen-settings-reference.test.ts scripts/settings-doc-coherence.test.ts
+        run: bash scripts/test-sandbox/run.sh bun test scripts/check-doc-links.test.ts scripts/check-doc-freshness.test.ts scripts/check-doc-imports.test.ts scripts/check-doc-paths.test.ts scripts/gen-example-js.test.ts scripts/docs-book-pin.test.ts scripts/gen-settings-reference.test.ts scripts/settings-doc-coherence.test.ts
       # The two package maps (ARCHITECTURE.md, AGENTS.md) must describe every package
       # and no package that is gone. Adding a package is what makes them stale, and
       # nothing about adding one prompts anybody to open a markdown table.
       - name: Check the package maps cover every package
-        run: bun test scripts/package-map-coverage.test.ts
+        run: bash scripts/test-sandbox/run.sh bun test scripts/package-map-coverage.test.ts
       - name: Check internal markdown links
         run: bun scripts/check-doc-links.ts
       - name: Check internal doc verification stamps
@@ -161,8 +168,12 @@ jobs:
       # the same) before the test can load that module.
       - name: Generate tool views
         run: bun --cwd=packages/coding-agent run gen:tool-views
+      - name: Build the test sandbox image
+        # Same refusal as the link-check job above: the gate is unconditional,
+        # so this suite needs the boundary built before it can run.
+        run: bash scripts/test-sandbox/run.sh --build
       - name: Docs examples match the real CLI
-        run: bun test packages/coding-agent/test/docs-examples.test.ts
+        run: bash scripts/test-sandbox/run.sh bun test packages/coding-agent/test/docs-examples.test.ts
 
   book-staleness:
     # The rendered handbook (docs/handbook/book) is committed because the
