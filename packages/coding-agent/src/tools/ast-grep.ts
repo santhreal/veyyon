@@ -172,20 +172,8 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			call: { pat: "console.log($$$)", path: "src/**/*.ts" },
 		},
 		{
-			caption: "Named imports from a specific package",
-			call: { pat: 'import { $$$IMPORTS } from "react"', path: "src/**/*.ts" },
-		},
-		{
-			caption: "Arrow functions assigned to a const",
-			call: { pat: "const $NAME = ($$$ARGS) => $BODY", path: "src/utils/**/*.ts" },
-		},
-		{
 			caption: "Method call on any object, ignoring method name with `$_`",
 			call: { pat: "logger.$_($$$ARGS)", path: "src/**/*.ts" },
-		},
-		{
-			caption: "Loosest existence check for a symbol in one file",
-			call: { pat: "processItems", path: "src/worker.ts" },
 		},
 	];
 	readonly loadMode = "discoverable";

@@ -394,14 +394,6 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 			},
 		},
 		{
-			caption: "Third call — reuse the loaded config",
-			call: {
-				language: "py",
-				title: "scan deps",
-				code: "display(sorted(data['dependencies']))",
-			},
-		},
-		{
 			caption: "Ruby first call — set up once",
 			call: {
 				language: "rb",

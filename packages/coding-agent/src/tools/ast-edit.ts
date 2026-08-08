@@ -224,38 +224,10 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 			},
 		},
 		{
-			caption: "Delete matching calls",
-			call: {
-				ops: [{ pat: "console.log($$$ARGS)", out: "" }],
-				paths: ["src/**/*.ts"],
-			},
-		},
-		{
-			caption: "Rewrite import source path",
-			call: {
-				ops: [{ pat: 'import { $$$IMPORTS } from "old-package"', out: 'import { $$$IMPORTS } from "new-package"' }],
-				paths: ["src/**/*.ts"],
-			},
-		},
-		{
 			caption: "Modernize to optional chaining (same metavariable enforces identity)",
 			call: {
 				ops: [{ pat: "$A && $A()", out: "$A?.()" }],
 				paths: ["src/**/*.ts"],
-			},
-		},
-		{
-			caption: "Swap two arguments using captures",
-			call: {
-				ops: [{ pat: "assertEqual($A, $B)", out: "assertEqual($B, $A)" }],
-				paths: ["tests/**/*.ts"],
-			},
-		},
-		{
-			caption: "Python — convert print calls to logging",
-			call: {
-				ops: [{ pat: "print($$$ARGS)", out: "logger.info($$$ARGS)" }],
-				paths: ["src/**/*.py"],
 			},
 		},
 	];

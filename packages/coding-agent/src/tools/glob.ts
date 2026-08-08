@@ -112,20 +112,12 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 
 	readonly examples: readonly ToolExample<typeof findSchema.infer>[] = [
 		{
-			caption: "Glob files",
-			call: { path: "src/**/*.ts" },
-		},
-		{
 			caption: "Multiple targets — semicolon-delimited list",
 			call: { path: "src/**/*.ts; test/**/*.ts" },
 		},
 		{
 			caption: "Glob gitignored files like .env",
 			call: { path: ".env*", gitignore: false },
-		},
-		{
-			caption: "Glob directories matching a name (returns both files and dirs; directories are suffixed with `/`)",
-			call: { path: "**/tests" },
 		},
 	];
 	readonly strict = true;

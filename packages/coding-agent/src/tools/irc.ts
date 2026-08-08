@@ -78,10 +78,6 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 
 	readonly examples: readonly ToolExample<typeof ircSchema.infer>[] = [
 		{
-			caption: "List peers",
-			call: { op: "list" },
-		},
-		{
 			caption: "Fire-and-forget DM — same send wakes idle/parked peers",
 			call: {
 				op: "send",
@@ -96,22 +92,6 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 				to: "Main",
 				message: "JWT or session cookies for the auth flow?",
 				await: true,
-			},
-		},
-		{
-			caption: "Block until a specific peer answers",
-			call: { op: "wait", from: "AuthLoader", timeoutMs: 60000 },
-		},
-		{
-			caption: "Drain pending messages",
-			call: { op: "inbox" },
-		},
-		{
-			caption: "Broadcast to live peers (no replies expected)",
-			call: {
-				op: "send",
-				to: "all",
-				message: "About to refactor src/server/middleware/*. Anyone already in there?",
 			},
 		},
 	];
