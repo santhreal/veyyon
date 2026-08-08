@@ -114,6 +114,10 @@ packages/natives/native/.build/
 
 # Local agent scratch: Claude Code worktrees and per-machine config, never part of the repo
 .claude/
+# Ad-hoc working notes and probe output. A release cut refuses to start from a
+# dirty tree, so an untracked scratch directory is enough to block a bump; that
+# is friction with no safety value, since nothing here is ever built or shipped.
+.scratch/
 
 # get.veyyon.dev deploy tree (build artifact from website/build.mjs)
 /website-get/
