@@ -89,6 +89,7 @@ import { AgentOutputManager } from "./output-manager";
 import { mapWithConcurrencyLimit, Semaphore } from "./parallel";
 import { renderResult, renderCall as renderTaskCall } from "./render";
 import { repairTaskParams } from "./repair-args";
+import { treeSpawnSemaphore } from "./spawn-semaphore";
 import { parseIsolationMode } from "./worktree";
 
 function renderSubagentUserPrompt(assignment: string): string {
@@ -609,11 +610,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	readonly #discoveredAgents: AgentDefinition[];
 	readonly #blockedAgent: string | undefined;
 	/**
-	 * One semaphore per TaskTool instance (i.e. per session): bounds concurrent
-	 * subagents across parallel `task` calls within the session. Resized in
-	 * place from `task.maxConcurrency` before every acquire/release so a
-	 * mid-session settings change (UI toggle, `/settings`) applies to both new
-	 * spawns and work already parked in the semaphore queue.
+	 * Fallback semaphore for a session with no budget group to key on (the
+	 * embedded SDK case). Otherwise the tree's shared semaphore is used, so a
+	 * concurrency ceiling is not multiplied by the number of agents spawning:
+	 * see `treeSpawnSemaphore`.
 	 */
 	#spawnSemaphore: Semaphore | undefined;
 
@@ -681,6 +681,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 	#getSpawnSemaphore(): Semaphore {
 		const max = this.session.settings.get("subagent.maxConcurrency");
+		// Resized on every acquire and release so a mid-session settings change
+		// applies to queued work as well as to new spawns.
+		const shared = treeSpawnSemaphore(this.session.getSessionId?.() ?? null, max);
+		if (shared) return shared;
 		if (this.#spawnSemaphore) {
 			this.#spawnSemaphore.resize(max);
 		} else {

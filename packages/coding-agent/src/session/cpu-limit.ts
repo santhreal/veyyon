@@ -1212,6 +1212,22 @@ export function sessionCpuLimit(sessionId: string | null | undefined): SessionCp
 	return owner ? limiters.get(owner) : undefined;
 }
 
+/**
+ * The id of the session that OWNS this session's budget group: itself for a
+ * root session, its spawner's owner for a subagent at any depth. Undefined
+ * before registration.
+ *
+ * This is the process's one answer to "which session tree is this", and
+ * anything else that has to be shared by a whole tree keys on it rather than
+ * inventing a second notion of the same thing.
+ */
+export function sessionTreeId(sessionId: string | null | undefined): string | undefined {
+	if (!sessionId) return undefined;
+	if (limiters.has(sessionId)) return sessionId;
+	const owner = aliasOwners.get(sessionId);
+	return owner !== undefined && limiters.has(owner) ? owner : undefined;
+}
+
 /** Drop one alias, leaving the group it borrowed untouched. */
 function unregisterAlias(aliasId: string): boolean {
 	const owner = aliasOwners.get(aliasId);
