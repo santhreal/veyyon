@@ -200,6 +200,10 @@ const FONT: Readonly<Record<string, string>> = {
 	"●": "...../.###./#####/#####/#####/.###./.....",
 	"◦": "...../...../..#../.#.#./..#../...../.....",
 	"⊗": "...../.###./##.##/#.#.#/##.##/.###./.....",
+	// The settings screen's group bullet, which marks the section a filtered row belongs to. A
+	// settings differential is a picture of ONE row and its group heading, so drawing the heading's
+	// mark as a hollow box makes the shot ambiguous about whether the row is in a group at all.
+	"◆": "..#../.###./#####/#####/.###./..#../.....",
 };
 
 /**
