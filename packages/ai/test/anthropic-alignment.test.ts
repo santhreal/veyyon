@@ -1564,7 +1564,18 @@ describe("Anthropic request fingerprint alignment", () => {
 		expect(legacy.defaultHeaders["anthropic-beta"]).toContain("interleaved-thinking-2025-05-14");
 
 		const modern = buildAnthropicClientOptions({
-			model: buildModel({ ...ANTHROPIC_MODEL_SPEC, id: "claude-opus-4-7", name: "Claude Opus 4.7" }),
+			model: buildModel({
+				...ANTHROPIC_MODEL_SPEC,
+				id: "claude-opus-4-7",
+				name: "Claude Opus 4.7",
+				// Bundled anthropic/claude-opus-4-7 surface: adaptive thinking with
+				// native display support, which is what retires the interleaved beta.
+				thinking: {
+					mode: "anthropic-adaptive",
+					efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+					supportsDisplay: true,
+				},
+			}),
 			apiKey: "sk-ant-api-test",
 			extraBetas: [],
 			stream: true,
@@ -2060,7 +2071,13 @@ describe("Anthropic request fingerprint alignment", () => {
 		// via `thinking.budget_tokens`. Opus 4.5 supports the field and keeps
 		// emitting it — covered in the next test.
 		const payload = (await captureAnthropicPayload(
-			ANTHROPIC_MODEL,
+			// Bundled anthropic/claude-sonnet-4-5 surface: budget thinking opens the
+			// fixed high/max pair (opencode's budgetVariants contract); medium is not
+			// selectable on this SKU.
+			buildModel({
+				...ANTHROPIC_MODEL_SPEC,
+				thinking: { mode: "budget", efforts: [Effort.High, Effort.Max] },
+			}),
 			{
 				systemPrompt: ["Stay concise."],
 				messages: [{ role: "user", content: "Hi", timestamp: Date.now() }],
@@ -2068,7 +2085,7 @@ describe("Anthropic request fingerprint alignment", () => {
 			{
 				isOAuth: false,
 				thinkingEnabled: true,
-				reasoning: Effort.Medium,
+				reasoning: Effort.High,
 			},
 		)) as {
 			thinking?: { type?: string; budget_tokens?: number; display?: string };
@@ -2089,6 +2106,9 @@ describe("Anthropic request fingerprint alignment", () => {
 				...ANTHROPIC_MODEL_SPEC,
 				id: "claude-opus-4-5",
 				name: "Claude Opus 4.5",
+				// Bundled anthropic/claude-opus-4-5 surface: budget thinking plus the
+				// declared low/medium/high effort dial (output_config.effort).
+				thinking: { mode: "anthropic-budget-effort", efforts: [Effort.Low, Effort.Medium, Effort.High] },
 			}),
 			{
 				systemPrompt: ["Stay concise."],

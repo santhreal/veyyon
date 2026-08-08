@@ -201,6 +201,41 @@ export class BoundedLruMap<K, V> {
 const CURSOR_CONVERSATION_CACHE_MAX = 128;
 const conversationStateCache = new BoundedLruMap<string, ConversationStateStructure>(CURSOR_CONVERSATION_CACHE_MAX);
 const conversationBlobStores = new BoundedLruMap<string, Map<string, Uint8Array>>(CURSOR_CONVERSATION_CACHE_MAX);
+/**
+ * The rules this process has actually put on the wire for a conversation, by content.
+ *
+ * The rules channel is the ONLY way a Cursor turn carries the caller's system prompt and the
+ * operator's instruction files, and it is driven by the SERVER: nothing leaves the client until a
+ * `requestContextArgs` ask arrives. A turn where the ask never comes therefore runs on Cursor's
+ * canned CLI prompt with none of the caller's instructions, which is exactly the failure the
+ * kv-channel blob miss already fails closed on.
+ *
+ * The value is a FINGERPRINT rather than a flag, because "this conversation received something
+ * once" is not the guarantee that matters. The operator can edit an instruction file, reload, or
+ * move the session mid-conversation, and the caller composes the new bytes on the next turn; if
+ * the server does not ask again, those bytes never arrive and a flag would call that delivered.
+ * Comparing content is what makes a CHANGED instruction set an undelivered one.
+ *
+ * Bounded like the two caches above, and for the same reason.
+ */
+const conversationRulesDelivered = new BoundedLruMap<string, string>(CURSOR_CONVERSATION_CACHE_MAX);
+
+/**
+ * Identity of a composed rule set: every path and every byte, in order.
+ *
+ * Order matters as much as content. The caller hands the rules over in ascending authority, so a
+ * reordering is a different instruction set even when the bytes are the same multiset.
+ */
+function cursorRulesFingerprint(rules: readonly CursorRule[]): string {
+	const hash = createHash("sha256");
+	for (const rule of rules) {
+		hash.update(rule.fullPath);
+		hash.update("\u0000");
+		hash.update(rule.content);
+		hash.update("\u0000");
+	}
+	return hash.digest("hex");
+}
 
 export interface CursorOptions extends StreamOptions {
 	customSystemPrompt?: string;
@@ -528,6 +563,10 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			// The h2 stream also ends when the connection simply stops, and those two
 			// are not the same event.
 			let turnCompleted = false;
+			// Whether THIS turn answered a `requestContextArgs` ask. Distinct from the
+			// conversation ledger: a turn that did not deliver is only a fault when the
+			// conversation has never delivered either.
+			let requestContextDelivered = false;
 
 			h2Request.on("response", headers => {
 				debugResponseLogPromise = debugSession?.openResponseLog(
@@ -578,7 +617,13 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 							requestContextTools,
 							requestContextRules,
 							onConversationCheckpoint,
-							{ systemPromptBlobIds, onFatal: failTurn },
+							{
+								systemPromptBlobIds,
+								onFatal: failTurn,
+								onRequestContextDelivered: () => {
+									requestContextDelivered = true;
+								},
+							},
 						).catch(error => {
 							// `log` is a no-op unless DEBUG_CURSOR is set, so every failure inside a server-message
 							// handler used to vanish: an exec handler that threw, a malformed interaction update, a
@@ -686,6 +731,32 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 				throw new AIError.ProviderResponseError(
 					"Cursor stream ended without a turn_ended update (connection dropped or response truncated)",
 					{ provider: model.provider, kind: "incomplete-stream" },
+				);
+			}
+
+			// The delivery invariant. `requestContextRules` carries the caller's system prompt
+			// and the operator's instruction files, and it is the ONLY channel Cursor honors for
+			// them: on a cursor-agent model the coding-agent deliberately inlines no context
+			// files in the prompt blobs, because the server discards those. But nothing here
+			// pushes the rules; the SERVER decides whether to ask, and a turn where the ask
+			// never arrives simply runs on Cursor's canned CLI prompt with none of the
+			// operator's instructions and reports success. That is the failure an operator hit
+			// twice, and it looked exactly like a normal turn both times.
+			//
+			// A later turn in a conversation the server already holds THESE rules for
+			// legitimately gets no ask, which is why the ledger is consulted rather than this
+			// turn alone. Anything else is a drop: never delivered at all, or delivered when the
+			// instructions were different, which is the same fault one edit later.
+			const rulesFingerprint = cursorRulesFingerprint(requestContextRules);
+			if (requestContextDelivered) {
+				conversationRulesDelivered.set(conversationId, rulesFingerprint);
+			} else if (
+				requestContextRules.length > 0 &&
+				conversationRulesDelivered.get(conversationId) !== rulesFingerprint
+			) {
+				throw new AIError.ProviderResponseError(
+					`Cursor completed a turn without ever requesting the request context, so the ${requestContextRules.length} rule(s) carrying the system prompt and the operator's instruction files were never delivered and the model ran on Cursor's own prompt. Retry the turn; if it repeats, the account or model is not being served the agent protocol and a non-cursor model is the way forward.`,
+					{ provider: model.provider, kind: "runtime" },
 				);
 			}
 
@@ -842,7 +913,7 @@ export async function handleServerMessage(
 	requestContextTools: McpToolDefinition[],
 	requestContextRules: CursorRule[],
 	onConversationCheckpoint?: (checkpoint: ConversationStateStructure) => void,
-	blobLookup?: CursorBlobLookup,
+	delivery?: CursorTurnDelivery,
 ): Promise<void> {
 	const msgCase = msg.message.case;
 
@@ -854,7 +925,7 @@ export async function handleServerMessage(
 		// thinkingCompleted) blocks direct assignability, hence the assertion.
 		processInteractionUpdate(msg.message.value as InteractionUpdateView, output, stream, state);
 	} else if (msgCase === "kvServerMessage") {
-		handleKvServerMessage(msg.message.value as KvServerMessage, blobStore, h2Request, blobLookup);
+		handleKvServerMessage(msg.message.value as KvServerMessage, blobStore, h2Request, delivery);
 	} else if (msgCase === "execServerMessage") {
 		// The server is waiting on OUR local tool result during this window — no
 		// AssistantMessageEvent flows until the handler finishes. Mark the wait
@@ -871,6 +942,7 @@ export async function handleServerMessage(
 				output,
 				stream,
 				state,
+				delivery,
 			),
 		);
 	} else if (msgCase === "conversationCheckpointUpdate") {
@@ -879,24 +951,30 @@ export async function handleServerMessage(
 }
 
 /**
- * Options a blob lookup needs beyond the store itself.
+ * Turn-scoped hooks the message handlers need beyond the blob store itself.
  *
  * `systemPromptBlobIds` is the set of hex ids `buildGrpcRequest` minted for this request's system
  * prompt entries. The kv channel only ever sees an opaque id, so without it a miss on the system
  * prompt and a miss on some historical turn are the same event, and they are not: one is a
  * degraded transcript, the other is a model running with no instructions at all.
+ *
+ * `onRequestContextDelivered` is the other half of the same guarantee on the other channel. Both
+ * channels can drop the caller's instructions without any error, so both report what they actually
+ * did and let the turn decide.
  */
-interface CursorBlobLookup {
+interface CursorTurnDelivery {
 	systemPromptBlobIds: ReadonlySet<string>;
 	/** Fails the turn. Wired to the same `endStreamError` channel a Connect end-stream error uses. */
 	onFatal: (error: Error) => void;
+	/** Called once the `requestContextResult` frame carrying the rules has been written. */
+	onRequestContextDelivered?: () => void;
 }
 
 function handleKvServerMessage(
 	kvMsg: KvServerMessage,
 	blobStore: Map<string, Uint8Array>,
 	h2Request: http2.ClientHttp2Stream,
-	lookup?: CursorBlobLookup,
+	lookup?: CursorTurnDelivery,
 ): void {
 	const kvCase = kvMsg.message.case;
 
@@ -1270,6 +1348,7 @@ async function handleExecServerMessage(
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 	state: BlockState,
+	delivery?: CursorTurnDelivery,
 ): Promise<void> {
 	const execCase = execMsg.message.case;
 	log("exec", "dispatch", { execCase, execId: execMsg.execId, hasHandlers: !!execHandlers });
@@ -1309,6 +1388,11 @@ async function handleExecServerMessage(
 		});
 
 		sendExecClientMessage(h2Request, execMsg, "requestContextResult", requestContextResult);
+		// The turn's only proof that the caller's instructions actually left this process.
+		// Recorded AFTER the write, so a throw above cannot report a delivery that never
+		// happened. `streamCursor` fails the turn when this never fires (see the delivery
+		// invariant at the end of the round).
+		delivery?.onRequestContextDelivered?.();
 		log("execClient", "requestContextResult", {
 			rules: requestContextRules.map(rule => ({
 				fullPath: rule.fullPath,

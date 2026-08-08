@@ -88,6 +88,8 @@ const fireworks = buildModel({
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 	contextWindow: 1_000_000,
 	maxTokens: 131_072,
+	// Bundled fireworks/glm-5.2 declaration (models.dev fireworks-ai): high/max.
+	reasoningOptions: { efforts: [Effort.High, Effort.Max] },
 } as ModelSpec<"openai-completions">) as Model<"openai-completions">;
 
 const openRouter = buildModel({
@@ -106,12 +108,12 @@ const openRouter = buildModel({
 describe("GLM-5.2 reasoning effort wire mapping", () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it("sends reasoning_effort:max for the real max tier on a direct GLM host (Fireworks), lower tiers literal", async () => {
+	it("sends the declared high/max tiers literal on a direct GLM host (Fireworks)", async () => {
 		expect(await captureChatEffort(fireworks, Effort.Max)).toBe("max");
 		expect(await captureChatEffort(fireworks, Effort.High)).toBe("high");
-		expect(await captureChatEffort(fireworks, Effort.Medium)).toBe("medium");
-		// Fireworks rejects literal `minimal`; the host quirk merge keeps `minimal -> none`.
-		expect(await captureChatEffort(fireworks, Effort.Minimal)).toBe("none");
+		// Lower tiers are not declared for fireworks/glm-5.2, so nothing upstream
+		// can select them (requireSupportedEffort); the transport only ever sees
+		// the declared pair.
 	});
 
 	it("sends the literal xhigh tier to OpenRouter (which rejects max) via the Responses surface", async () => {

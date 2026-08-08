@@ -15,6 +15,10 @@ function googleModel(id: string): Model<"google-generative-ai"> {
 		provider: "google",
 		baseUrl: "https://generativelanguage.googleapis.com/v1beta",
 		reasoning: true,
+		// Declared surface mirroring the bundled google/gemini-3-flash-preview row
+		// (models.dev): bare specs derive no ladder, so the fixture declares the
+		// same one to exercise the google-level floor.
+		reasoningOptions: { efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High] },
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 200_000,

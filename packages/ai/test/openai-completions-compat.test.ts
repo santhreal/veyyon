@@ -95,6 +95,8 @@ function zaiGlm52Model(): Model<"openai-completions"> {
 			reasoningContentField: "reasoning_content",
 			supportsDeveloperRole: false,
 		},
+		// Bundled zhipu-coding-plan/glm-5.2 declaration (models.dev zai-coding-plan).
+		reasoningOptions: { efforts: [Effort.High, Effort.Max] },
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 1_000_000,

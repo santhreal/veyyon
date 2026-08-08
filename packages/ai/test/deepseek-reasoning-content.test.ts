@@ -67,35 +67,23 @@ function assistantToolCall(
 
 describe("DeepSeek reasoning_content tool-call replay", () => {
 	// ----------------------------------------------------------------
-	// Fix 1: honest [high, max] ladder for DeepSeek-family on any provider
+	// Fix 1: bundled DeepSeek rows carry the models.dev-declared ladder verbatim
 	// ----------------------------------------------------------------
 	describe("thinking ladder (Fix 1)", () => {
-		it("bakes the honest [high, max] ladder with no effortMap on opencode-go", () => {
-			const model = deepseekModel({
-				provider: "opencode-go",
-				baseUrl: "https://opencode.ai/zen/go/v1",
-				id: "deepseek-v4-flash",
-			});
+		it("mirrors the models.dev [low, high, max] declaration on the bundled opencode-go row", () => {
+			const model = getBundledModel("opencode-go", "deepseek-v4-flash");
+			expect(model.thinking?.efforts).toEqual([Effort.Low, Effort.High, Effort.Max]);
+			expect(model.thinking?.effortMap).toBeUndefined();
+		});
+
+		it("mirrors the models.dev [high, max] declaration on the bundled NVIDIA row", () => {
+			const model = getBundledModel("nvidia", "deepseek-ai/deepseek-v4-flash");
 			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
 			expect(model.thinking?.effortMap).toBeUndefined();
 		});
 
-		it("bakes the honest [high, max] ladder with no effortMap on NVIDIA", () => {
-			const model = deepseekModel({
-				provider: "nvidia",
-				baseUrl: "https://integrate.api.nvidia.com/v1",
-				id: "deepseek-ai/deepseek-v4-flash",
-			});
-			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
-			expect(model.thinking?.effortMap).toBeUndefined();
-		});
-
-		it("bakes the honest [high, max] ladder with no effortMap on the official endpoint", () => {
-			const model = deepseekModel({
-				provider: "deepseek",
-				baseUrl: "https://api.deepseek.com/v1",
-				id: "deepseek-v4-pro",
-			});
+		it("mirrors the models.dev [high, max] declaration on the bundled official-endpoint row", () => {
+			const model = getBundledModel("deepseek", "deepseek-v4-pro");
 			expect(model.thinking?.efforts).toEqual([Effort.High, Effort.Max]);
 			expect(model.thinking?.effortMap).toBeUndefined();
 		});

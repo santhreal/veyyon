@@ -55,6 +55,9 @@ function customDeepseekFlash(): Model<"openai-completions"> {
 			supportsReasoningEffort: true,
 			reasoningEffortMap: { xhigh: "max" },
 		},
+		// The custom endpoint is pinned to DeepSeek's declared Pro ladder
+		// (models.dev deepseek/deepseek-v4-pro: high/max).
+		reasoningOptions: { efforts: [Effort.High, Effort.Max] },
 	} as ModelSpec<"openai-completions">);
 }
 

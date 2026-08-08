@@ -25,7 +25,9 @@ export const GOOGLE_THINKING_BUDGETS: ThinkingBudgetSchedule = {
 	low: 4096,
 	medium: 8192,
 	high: 16_384,
-	xhigh: 24_575,
+	// Google documents the 2.5-flash thinking_budget ceiling as 24576; the
+	// upstream 24575 this inherited was an off-by-one.
+	xhigh: 24_576,
 	max: 32_768,
 };
 

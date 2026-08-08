@@ -78,7 +78,7 @@ describe("issue #2315 — MiniMax M2 / GPT-OSS catalog excludes unsupported reas
 		expect(body.reasoning_effort).toBe("low");
 	});
 
-	it("normalizes stale cached MiniMax M2 thinking metadata before disableReasoning sends a request", async () => {
+	it("keeps stale cached MiniMax M2 thinking metadata as authored (refresh, not build, replaces it)", async () => {
 		const base = getBundledModel("fireworks", "minimax-m2.7") as Model<"openai-completions">;
 		const model = buildModel({
 			id: base.id,
@@ -98,10 +98,21 @@ describe("issue #2315 — MiniMax M2 / GPT-OSS catalog excludes unsupported reas
 			maxTokens: base.maxTokens,
 		});
 
-		expect(getSupportedEfforts(model)).toEqual([Effort.Low, Effort.Medium, Effort.High]);
-		expect(model.thinking?.effortMap).toBeUndefined();
+		// Authored (stale) ladders stand: build canonicalizes and backfills wire
+		// facts but never rewrites the declared tier set. Production correction is
+		// the 2h cache TTL / models.dev overlay refresh, covered in the catalog
+		// overlay suites.
+		expect(getSupportedEfforts(model)).toEqual([
+			Effort.Minimal,
+			Effort.Low,
+			Effort.Medium,
+			Effort.High,
+			Effort.XHigh,
+		]);
+		expect(model.thinking?.effortMap).toEqual({ minimal: "none", xhigh: "max" });
 		const body = await capturePayload(model, { disableReasoning: true });
-		expect(body.reasoning_effort).toBe("low");
+		// lowest-effort disable pins the authored floor (minimal), mapped to none.
+		expect(body.reasoning_effort).toBe("none");
 	});
 
 	it("preserves a custom compat.whenThinking reasoningEffortMap override at request time", async () => {
@@ -138,9 +149,13 @@ describe("issue #2315 — MiniMax M2 / GPT-OSS catalog excludes unsupported reas
 		expect(highBody.reasoning_effort).toBe("high");
 	});
 
-	it("keeps the Fireworks-wide minimal→none mapping for non-restricted models (glm-5.1)", async () => {
+	it("omits reasoning_effort when disabling a reasoner with no declared surface (glm-5.1)", async () => {
+		// models.dev declares no fireworks/glm-5.1 ladder, so there is no floor
+		// tier to pin: the request goes out without reasoning_effort and the
+		// model manages its own reasoning (documented lowest-effort policy).
 		const model = getBundledModel("fireworks", "glm-5.1") as Model<"openai-completions">;
+		expect(model.thinking).toBeUndefined();
 		const body = await capturePayload(model, { disableReasoning: true });
-		expect(body.reasoning_effort).toBe("none");
+		expect(body.reasoning_effort).toBeUndefined();
 	});
 });

@@ -1840,6 +1840,9 @@ function getGoogleBudget(
 			case "medium":
 				return 8192;
 			case "high":
+				// models.dev declares these rows budget-only, which opens the fixed
+				// high/max pair; high must sit below max or the pair is decorative.
+				return 16_384;
 			case "xhigh":
 			case "max":
 				return model.id.includes("2.5-flash") ? 24576 : 32768;

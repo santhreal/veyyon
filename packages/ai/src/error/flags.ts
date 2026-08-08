@@ -415,14 +415,24 @@ function matchesOverflowText(text: string): boolean {
 function classifyText(errorMessage: string | undefined, errorStatus: number | undefined, api?: Api): number {
 	let kinds = 0;
 	if (errorMessage) {
-		if (matchesOverflowText(errorMessage)) kinds |= Flag.ContextOverflow;
-		if (isMalformedFunctionCallText(errorMessage)) kinds |= Flag.MalformedFunctionCall;
-		if (isProviderFinishErrorText(errorMessage)) kinds |= Flag.ProviderFinishError;
-		if (isContentBlockedText(errorMessage)) kinds |= Flag.ContentBlocked;
-		if (isAuthFailureText(errorMessage)) kinds |= Flag.AuthFailed;
+		// Classify the MESSAGE, never the stack. Callers reach here with
+		// `String(error)`, and this codebase's errors embed their cause chain and
+		// their stack, so the text carries our own file and frame names. A frame
+		// like `at async withScopedTimeoutSignal (…/utils/src/scoped-timeout.ts)`
+		// contains "timeout", which used to set Flag.Transient — and Transient is
+		// in RETRIABLE_KINDS, so a dead credential got retried to exhaustion
+		// instead of being surfaced once. {@link isOAuthExpiry} already sanitized
+		// for exactly this reason; the general classifier did not.
+		const cleanMessage = withoutStackTrace(errorMessage);
+		if (matchesOverflowText(cleanMessage)) kinds |= Flag.ContextOverflow;
+		if (isMalformedFunctionCallText(cleanMessage)) kinds |= Flag.MalformedFunctionCall;
+		if (isProviderFinishErrorText(cleanMessage)) kinds |= Flag.ProviderFinishError;
+		if (isContentBlockedText(cleanMessage)) kinds |= Flag.ContentBlocked;
+		if (isAuthFailureText(cleanMessage)) kinds |= Flag.AuthFailed;
 
+		// Status parsing stays on the raw string: a status code is a token the
+		// caller prefixed to the message, and stripping frames cannot add one.
 		const statusClean = errorStatus ? errorStatus : (status({ message: errorMessage }) ?? undefined);
-		const cleanMessage = errorMessage;
 		const isOpaque = isOpaqueStatusBody(cleanMessage);
 
 		const isLimitStatus = statusClean === 429;
@@ -439,7 +449,7 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 		// `NGHTTP2_INTERNAL_ERROR` only because it contains the phrase "internal
 		// error", and they would just as happily promote a wrapper around
 		// `NGHTTP2_CANCEL` -- our own abort -- back into the retry loop.
-		const http2Verdict = http2RetryVerdict(errorMessage);
+		const http2Verdict = http2RetryVerdict(cleanMessage);
 		if (http2Verdict !== undefined) {
 			if (http2Verdict) kinds |= Flag.Transient;
 			// The verdict owns TRANSIENCE and nothing else. Flag.Timeout is not in
@@ -449,7 +459,7 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 			// context to the one that just timed out. Suppressing it alongside
 			// transience threw that signal away for every wrapper whose prose named
 			// a timeout around an HTTP/2 code.
-			if (isTimeoutText(errorMessage)) kinds |= Flag.Timeout;
+			if (isTimeoutText(cleanMessage)) kinds |= Flag.Timeout;
 			// The verdict owns TRANSIENCE and nothing else. Flag.Timeout is not in
 			// RETRIABLE_KINDS, so it authorizes no retry on its own; it tells the
 			// candidate loops the fault was a timeout, which is what makes
@@ -457,9 +467,9 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 			// context to the one that just timed out. Suppressing it alongside
 			// transience threw that signal away for every wrapper whose prose named
 			// a timeout around an HTTP/2 code.
-		} else if (isTimeoutText(errorMessage)) kinds |= Flag.Transient | Flag.Timeout;
-		else if (isTransientErrorText(errorMessage)) kinds |= Flag.Transient;
-		if ((api === "openai-responses" || api === "openai-codex-responses") && isStaleResponsesText(errorMessage)) {
+		} else if (isTimeoutText(cleanMessage)) kinds |= Flag.Transient | Flag.Timeout;
+		else if (isTransientErrorText(cleanMessage)) kinds |= Flag.Transient;
+		if ((api === "openai-responses" || api === "openai-codex-responses") && isStaleResponsesText(cleanMessage)) {
 			kinds |= Flag.StaleResponsesItem;
 		}
 

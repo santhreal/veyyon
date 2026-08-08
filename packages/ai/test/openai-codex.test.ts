@@ -295,7 +295,7 @@ describe("openai-codex reasoning effort validation", () => {
 		const body: RequestBody = { model: "gpt-5.1", input: [] };
 		await expect(
 			transformRequestBody(body, createCodexModel(body.model), { reasoningEffort: "xhigh" }),
-		).rejects.toThrow(/Supported efforts: minimal, low, medium, high/);
+		).rejects.toThrow(/Supported efforts: low, medium, high/);
 	});
 
 	it("rejects unsupported Codex mini efforts instead of clamping", async () => {

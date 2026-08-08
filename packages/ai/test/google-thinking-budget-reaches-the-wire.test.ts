@@ -33,7 +33,7 @@ function bundledRow(provider: string, id: string): Model {
 	return getBundledModel(provider as Parameters<typeof getBundledModel>[0], id) as Model;
 }
 
-function budgetFor(model: Model, effort: (typeof EFFORTS)[number]): number | undefined {
+function budgetFor(model: Model, effort: Effort): number | undefined {
 	const options = mapOptionsForApi(model, { reasoning: effort }, "test-key") as {
 		thinking?: { enabled?: boolean; budgetTokens?: number };
 	};
@@ -60,12 +60,14 @@ describe("Google thinking budgets reach the wire", () => {
 	 * two of the efforts it advertises, or the control is decorative.
 	 */
 	it.each([
-		["google", "gemini-2.5-pro", [128, 2048, 8192, 32_768]],
-		["google", "gemini-2.5-flash", [128, 2048, 8192, 24_576]],
+		["google", "gemini-2.5-pro", [16_384, 32_768]],
+		["google", "gemini-2.5-flash", [16_384, 24_576]],
 	])("gives %s/%s a distinct budget per effort", (provider, id, expected) => {
 		const model = bundledRow(provider, id);
 
-		expect(EFFORTS.map(effort => budgetFor(model, effort))).toEqual(expected);
+		// models.dev declares these rows budget-only (`budget_tokens` min/max), which
+		// opens the fixed high/max pair; both ends of the pair must reach the wire.
+		expect([Effort.High, Effort.Max].map(effort => budgetFor(model, effort))).toEqual(expected);
 		expect(new Set(expected).size).toBeGreaterThan(1);
 	});
 

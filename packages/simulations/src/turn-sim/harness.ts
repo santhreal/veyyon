@@ -36,6 +36,7 @@ import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions, ToolCa
 import { setBedrockProviderModule } from "@veyyon/ai/providers/register-builtins";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
+import { emptyUsage } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
@@ -44,6 +45,7 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createSettingsAwareStreamFn } from "@veyyon/coding-agent/session/settings-stream-fn";
+import { wrapStreamFnWithProviderConcurrency } from "@veyyon/coding-agent/task/provider-concurrency";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 
@@ -143,14 +145,7 @@ function baseMessage(model: Model<Api>, content: AssistantMessage["content"]): A
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason: "stop",
 		timestamp: Date.now(),
 	};
@@ -260,19 +255,31 @@ export function scriptTurns(...turns: ProviderScript[]): ProviderScript {
 }
 
 /** Build a simulated model. `id` matters: the loop guard keys off it. */
-export function simulatedModel(id = "sim-model"): Model<typeof SIM_API> {
+export function simulatedModel(id = "sim-model", options?: SimulatedModelOptions): Model<typeof SIM_API> {
 	return buildModel({
 		id,
 		name: id,
 		api: SIM_API,
-		provider: "amazon-bedrock",
+		provider: options?.provider ?? "amazon-bedrock",
 		baseUrl: "https://simulation.invalid",
 		reasoning: false,
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 200_000,
+		contextWindow: options?.contextWindow ?? 200_000,
 		maxTokens: 32_768,
 	});
+}
+
+export interface SimulatedModelOptions {
+	/**
+	 * Provider id. Keep the bedrock default unless a scenario needs another
+	 * provider's settings surface (e.g. `ollama-cloud` is the one provider with
+	 * a `maxConcurrency` semaphore). The scripted transport keys off the API,
+	 * so any provider id still routes to the script.
+	 */
+	provider?: string;
+	/** Shrink the window when a scenario needs compaction to engage. */
+	contextWindow?: number;
 }
 
 const ANY_OBJECT = type("object");
@@ -299,6 +306,15 @@ export interface SimulationOptions {
 	tools?: AgentTool[];
 	settings?: Record<string, unknown>;
 	modelId?: string;
+	/** Model options (provider id, context window) for the simulated model. */
+	model?: SimulatedModelOptions;
+	/**
+	 * Mirror the production wiring in sdk.ts: the settings-aware stream fn
+	 * wrapped in the per-provider concurrency limiter. Off by default because
+	 * only providers with a `maxConcurrency` setting (ollama-cloud) get a
+	 * semaphore; pair with `model: { provider: "ollama-cloud" }`.
+	 */
+	providerConcurrency?: boolean;
 	/** Stream-matched rule engine, when a scenario needs rules to fire. */
 	ttsrManager?: TtsrManager;
 }
@@ -306,6 +322,7 @@ export interface SimulationOptions {
 export interface Simulation {
 	readonly session: AgentSession;
 	readonly sessionManager: SessionManager;
+	readonly modelRegistry: ModelRegistry;
 	readonly events: AgentSessionEvent[];
 	/** Events of one type, in order. */
 	eventsOfType<T extends AgentSessionEvent["type"]>(type: T): Array<Extract<AgentSessionEvent, { type: T }>>;
@@ -340,20 +357,26 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 	// the simulation registers a runtime key. Nothing reads it: the scripted
 	// module replaces the transport before any request is shaped.
 	authStorage.setRuntimeApiKey("amazon-bedrock", "simulation-key");
+	if (options.model?.provider) {
+		authStorage.setRuntimeApiKey(options.model.provider, "simulation-key");
+	}
 	const modelRegistry = new ModelRegistry(authStorage, `${tempDir.path()}/models.yml`);
 	const settings = simulationSettings(options.settings);
 	const sessionManager = SessionManager.inMemory(tempDir.path());
 
+	const baseStreamFn = createSettingsAwareStreamFn(settings);
 	const agent = new Agent({
 		getApiKey: () => "simulation-key",
 		initialState: {
-			model: simulatedModel(options.modelId),
+			model: simulatedModel(options.modelId, options.model),
 			systemPrompt: ["Simulation"],
 			tools: options.tools ?? [],
 			messages: [],
 		},
 		convertToLlm,
-		streamFn: createSettingsAwareStreamFn(settings),
+		streamFn: options.providerConcurrency
+			? wrapStreamFnWithProviderConcurrency(settings, baseStreamFn)
+			: baseStreamFn,
 	});
 
 	const session = new AgentSession({
@@ -371,6 +394,7 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 	return {
 		session,
 		sessionManager,
+		modelRegistry,
 		events,
 		eventsOfType(type) {
 			return events.filter(event => event.type === type) as Array<Extract<AgentSessionEvent, { type: typeof type }>>;
