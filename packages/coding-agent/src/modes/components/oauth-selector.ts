@@ -23,10 +23,9 @@ import {
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
 	type ModalShellGeometry,
-	modalNeedsCompactPadding,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 import { renderScrollableList, selectionBand } from "./selector-helpers";
 
@@ -561,7 +560,7 @@ export class OAuthSelectorComponent implements Component {
 		}
 
 		const height = process.stdout.rows || 40;
-		const sizing = withCompact(MODAL_SIZING_MEDIUM, modalNeedsCompactPadding(height, MODAL_SIZING_MEDIUM));
+		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, height);
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

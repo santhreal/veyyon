@@ -61,10 +61,9 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 import { fit } from "./overlay-box";
 import { renderScrollableList, selectionBand } from "./selector-helpers";
@@ -850,7 +849,7 @@ export class AccountManagerComponent implements Component {
 		// several rows away from where they are painted. `computeModalDims` already refuses a screen
 		// too small to draw on, which is the case a minimum height was standing in for.
 		const height = this.#terminalHeight ?? (process.stdout.rows || 40);
-		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

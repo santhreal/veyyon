@@ -19,10 +19,9 @@ import {
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
 	type ModalShellGeometry,
-	modalNeedsCompactPadding,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 
 export interface ModalSelectListCallbacks {
@@ -188,7 +187,7 @@ export class ModalSelectListComponent implements Component {
 
 	render(width: number): string[] {
 		const termHeight = Math.max(14, this.#getTerminalRows());
-		const sizing = withCompact(MODAL_SIZING_MEDIUM, modalNeedsCompactPadding(termHeight, MODAL_SIZING_MEDIUM));
+		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, termHeight);
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

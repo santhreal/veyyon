@@ -29,10 +29,9 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 
 /** Minimum rows reserved for the tree even on short terminals. */
@@ -254,7 +253,7 @@ export class CopySelectorComponent implements Component {
 
 	render(width: number): readonly string[] {
 		const height = process.stdout.rows || 40;
-		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			return Array.from({ length: height }, () => padding(width));
