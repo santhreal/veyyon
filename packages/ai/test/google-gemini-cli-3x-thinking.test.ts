@@ -3,6 +3,24 @@ import { Effort, type FetchImpl } from "@veyyon/ai";
 import { streamSimple } from "@veyyon/ai/stream";
 import type { Context, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
+import type { ThinkingConfig } from "@veyyon/catalog/types";
+
+// Declared thinking surfaces per fixture id. models.dev does not catalog the
+// cloudcode-pa endpoint, so these mirror the endpoint-verified CCA collapse
+// families (geminiProFamily/geminiFlashFamily on the google-level transport,
+// budget mode for 2.5): a bare spec derives NO surface, and identity-derived
+// ladders are gone.
+const FIXTURE_THINKING: Record<string, ThinkingConfig> = {
+	"gemini-3.1-pro-preview": { mode: "google-level", efforts: [Effort.Low, Effort.High] },
+	"gemini-3.1-flash-preview": {
+		mode: "google-level",
+		efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High],
+	},
+	"gemini-2.5-pro": {
+		mode: "budget",
+		efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High],
+	},
+};
 
 interface GeminiCliThinkingConfig {
 	thinkingLevel?: string;
@@ -26,6 +44,7 @@ function createModel(id: string): Model<"google-gemini-cli"> {
 		provider: "google-gemini-cli",
 		baseUrl: "https://cloudcode-pa.googleapis.com",
 		reasoning: true,
+		thinking: FIXTURE_THINKING[id],
 		input: ["text", "image"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 1_000_000,

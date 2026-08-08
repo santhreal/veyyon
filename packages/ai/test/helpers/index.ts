@@ -2,6 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import type { ModelSpec } from "@veyyon/catalog/types";
 import { isEnoent } from "@veyyon/utils";
 
@@ -55,10 +56,31 @@ export async function waitForDelayOrAbort(delayMs: number, signal: AbortSignal |
 	}
 }
 
+// Declared effort ladders for the Codex ids these suites exercise, mirroring the
+// bundled models.json declarations (models.dev openai-codex) so a bare fixture
+// sees the same surface as the real catalog row. gpt-5.1-codex-mini has no
+// bundled row; its [medium, high] ladder is endpoint-verified. An id absent
+// here intentionally exposes no effort surface.
+const CODEX_FIXTURE_EFFORTS: Record<string, Effort[]> = {
+	"gpt-5.1": [Effort.Low, Effort.Medium, Effort.High],
+	// models.dev declares no efforts for gpt-5.1-codex (production exposes no
+	// surface); the fixture authors the codex line's documented tiers so the
+	// summary/context wire gates have a reasoning object to act on.
+	"gpt-5.1-codex": [Effort.Low, Effort.Medium, Effort.High],
+	"gpt-5.1-codex-mini": [Effort.Medium, Effort.High],
+	"gpt-5.3-codex": [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+	"gpt-5.3-codex-spark": [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+	"gpt-5.4": [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+	"gpt-5.5": [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+	"gpt-5.6-sol": [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+	"gpt-5.6-terra": [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max],
+};
+
 export function createCodexModel(
 	id: string,
 	spec?: Partial<ModelSpec<"openai-codex-responses">>,
 ): Model<"openai-codex-responses"> {
+	const efforts = CODEX_FIXTURE_EFFORTS[id];
 	return buildModel({
 		id,
 		name: id,
@@ -70,6 +92,7 @@ export function createCodexModel(
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 272000,
 		maxTokens: 128000,
+		...(efforts ? { reasoningOptions: { efforts } } : {}),
 		...spec,
 	});
 }

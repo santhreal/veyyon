@@ -108,6 +108,10 @@ export function streamOpenAIAnthropicShim(
 				for await (const event of innerStream) {
 					stream.push(event);
 				}
+				// An inner that ends without a terminal event must still settle this
+				// stream; a result-less end rejects innerStream.result() into the
+				// catch, which emits a terminal error. Otherwise consumers park forever.
+				if (!stream.done) stream.end(await innerStream.result());
 			} else {
 				const openaiModel: Model<"openai-completions"> = config.openaiBaseUrl
 					? buildModel({
@@ -144,6 +148,10 @@ export function streamOpenAIAnthropicShim(
 				for await (const event of innerStream) {
 					stream.push(event);
 				}
+				// An inner that ends without a terminal event must still settle this
+				// stream; a result-less end rejects innerStream.result() into the
+				// catch, which emits a terminal error. Otherwise consumers park forever.
+				if (!stream.done) stream.end(await innerStream.result());
 			}
 		} catch (err) {
 			stream.push({

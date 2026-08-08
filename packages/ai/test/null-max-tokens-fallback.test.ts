@@ -161,6 +161,13 @@ describe("null maxTokens fallback wire tests", () => {
 			provider: "google-gemini-cli",
 			baseUrl: "https://cloudcode-pa.googleapis.com",
 			reasoning: true,
+			// Declared budget surface: models.dev does not catalog cloudcode-pa, and
+			// bare specs derive nothing; this mirrors the endpoint's 2.5 budget
+			// transport (same ladder as the bundled google-gemini-cli/gemini-2.5-flash row).
+			thinking: {
+				mode: "budget",
+				efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High],
+			},
 			input: ["text"],
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			contextWindow: 100000,

@@ -393,6 +393,10 @@ export function streamGitLabDuo(
 			for await (const event of inner) {
 				stream.push(event);
 			}
+			// An inner that ends without a terminal event must still settle this
+			// stream; a result-less end rejects inner.result() into the catch,
+			// which emits a terminal error. Otherwise consumers park forever.
+			if (!stream.done) stream.end(await inner.result());
 		} catch (err) {
 			stream.push({
 				type: "error",

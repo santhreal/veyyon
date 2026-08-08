@@ -166,6 +166,15 @@ export function wrapInbandToolStream(
 						return;
 				}
 			}
+			// Inner ended via end(result) without a terminal event (same case
+			// wrapLeakedThinkingStream handles): settle `out` through the same
+			// finish path a `done` event takes; a result-less end rejects into
+			// the catch, which fails `out`. Otherwise consumers park forever.
+			if (!out.done) {
+				const result = await inner.result();
+				projector ??= new InbandStreamProjector(out, tools, dialect, result, true);
+				projector.finish(result, true);
+			}
 		} catch (err) {
 			out.fail(err);
 		}

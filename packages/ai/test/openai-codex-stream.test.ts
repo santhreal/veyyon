@@ -18,6 +18,7 @@ import type {
 } from "@veyyon/ai/types";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import * as piUtils from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils";
 
@@ -2333,6 +2334,8 @@ describe("openai-codex streaming", () => {
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			contextWindow: 400000,
 			maxTokens: 128000,
+			// Bundled models.dev declaration for openai-codex/gpt-5.3-codex.
+			reasoningOptions: { efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh] },
 		});
 
 		const context: Context = {

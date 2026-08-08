@@ -1,4 +1,4 @@
-import { resetHeaderTargetMs } from "@veyyon/utils/fetch-retry";
+import { anthropicResetDelayMs, resetHeaderTargetMs } from "@veyyon/utils/fetch-retry";
 
 export type HeadersLike = Headers | Record<string, string | undefined> | undefined | null;
 
@@ -43,8 +43,14 @@ export function getRetryAfterMsFromHeaders(headers: HeadersLike): number | undef
 		const candidates = [retryAfterMs, retryAfter, resetMs, resetSeconds].filter(
 			(value): value is number => value !== undefined,
 		);
-		if (candidates.length === 0) return undefined;
-		return Math.max(...candidates);
+		if (candidates.length > 0) return Math.max(...candidates);
+		// Anthropic omits `retry-after` on a meaningful share of its 429s while
+		// still stating, per bucket, when the limit refills. Consulted only after
+		// the generic headers because those are the provider's direct answer to
+		// "how long should you wait"; the reset clocks are the fallback for when
+		// it did not give one.
+		if (!(headers instanceof Headers)) return undefined;
+		return anthropicResetDelayMs(headers);
 	} catch {
 		// Header bags are provider-controlled and occasionally Proxy-backed. A
 		// malformed bag must not replace the request error we are formatting.

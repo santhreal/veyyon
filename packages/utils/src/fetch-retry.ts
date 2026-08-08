@@ -11,6 +11,104 @@ const RETRY_DELAY_FIELD_PATTERN = /"retryDelay":\s*"([0-9.]+)(ms|s)"/i;
 // "try again in 5 min" / "try again in ~158 min." / "try again in 2h" /
 // "try again in 90 minutes" / "try again in 1 hour"
 const TRY_AGAIN_PATTERN = /try again in\s+~?\s*([0-9.]+)\s*(ms|sec|s|minutes?|mins?|m|hours?|hrs?|h)\b/i;
+/**
+ * `retry-after-ms=62000` / `retry-after-ms: 62000`. This is the spelling this
+ * codebase's OWN formatter appends to a provider error message when the
+ * response carried a `retry-after` header, and until it was listed here the
+ * text-only callers of {@link extractRetryHint} — the auth gateway passes
+ * `extractRetryHint(undefined, message)` with no headers left to read — could
+ * not see the very hint we had just written for them, and fell back to a flat
+ * default block that returned an exhausted account to the pool early.
+ */
+const RETRY_AFTER_MS_TEXT_PATTERN = /retry-after-ms\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
+/**
+ * `retry-after: 60` / `retry-after 60`, in seconds. Providers that answer over
+ * a transport with no headers (Connect trailers, some proxies) write the value
+ * into the prose instead. The `-ms` spelling is matched first, and cannot match
+ * here: `-` is neither a separator nor a digit.
+ */
+const RETRY_AFTER_SECONDS_TEXT_PATTERN = /retry-after\s*[:=]?\s*(\d+(?:\.\d+)?)/i;
+
+/**
+ * Anthropic's per-bucket rate-limit reset clocks, each an RFC 3339 timestamp
+ * (`anthropic-ratelimit-unified-reset` may also arrive as epoch seconds).
+ *
+ * Anthropic omits `retry-after` on a meaningful share of its 429s, and those
+ * responses still say exactly when the exhausted bucket refills. Without these
+ * the caller has no stated window at all and falls back to a sub-10s
+ * exponential backoff against a limit measured in minutes, which is the
+ * immediate-repeat signature that dominates the error telemetry.
+ *
+ * Each entry names the reset clock and the sibling header that says whether
+ * THAT bucket is the exhausted one, so a 60-second request bucket is not
+ * mistaken for a multi-hour unified window or the other way round.
+ */
+export const ANTHROPIC_RESET_HEADERS: readonly { reset: string; remaining: string }[] = [
+	{ reset: "anthropic-ratelimit-unified-reset", remaining: "anthropic-ratelimit-unified-remaining" },
+	{ reset: "anthropic-ratelimit-requests-reset", remaining: "anthropic-ratelimit-requests-remaining" },
+	{ reset: "anthropic-ratelimit-tokens-reset", remaining: "anthropic-ratelimit-tokens-remaining" },
+	{ reset: "anthropic-ratelimit-input-tokens-reset", remaining: "anthropic-ratelimit-input-tokens-remaining" },
+	{ reset: "anthropic-ratelimit-output-tokens-reset", remaining: "anthropic-ratelimit-output-tokens-remaining" },
+];
+
+/**
+ * Upper bound on a window derived from {@link ANTHROPIC_RESET_HEADERS}. A reset
+ * clock is provider-controlled data, and a skewed or malformed one must not be
+ * able to translate into an unbounded stand-down. Anything past this is treated
+ * as absent, so the caller keeps its own backoff instead of inheriting garbage.
+ */
+const ANTHROPIC_RESET_MAX_HOLD_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The delay implied by Anthropic's rate-limit reset clocks, or `undefined` when
+ * none are present, parseable, and in the future.
+ *
+ * Buckets whose `-remaining` sibling reads `0` are the ones that actually
+ * rejected the request, so when any of those is present the LONGEST of them
+ * wins: retrying while the bucket that failed is still empty fails again. With
+ * no `-remaining` evidence at all we cannot tell which bucket rejected, so the
+ * SHORTEST reset wins — under-waiting costs one more retry, while over-waiting
+ * on a guess strands the caller behind a window that may not even apply.
+ */
+export function anthropicResetDelayMs(headers: Headers, nowMs: number = Date.now()): number | undefined {
+	let exhaustedMs: number | undefined;
+	let anyMs: number | undefined;
+	for (const { reset, remaining } of ANTHROPIC_RESET_HEADERS) {
+		const raw = headers.get(reset);
+		if (!raw) continue;
+		const atMs = parseResetClockMs(raw.trim());
+		if (atMs === undefined) continue;
+		const delta = atMs - nowMs;
+		if (delta <= 0 || delta > ANTHROPIC_RESET_MAX_HOLD_MS) continue;
+		if (anyMs === undefined || delta < anyMs) anyMs = delta;
+		if (isExhaustedBucket(headers, remaining)) {
+			if (exhaustedMs === undefined || delta > exhaustedMs) exhaustedMs = delta;
+		}
+	}
+	return exhaustedMs ?? anyMs;
+}
+
+/** An RFC 3339 timestamp, or a bare Unix epoch in seconds. */
+function parseResetClockMs(value: string): number | undefined {
+	if (/^\d+$/.test(value)) {
+		const seconds = Number(value);
+		return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+	}
+	const parsed = Date.parse(value);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * Whether the bucket behind `remainingHeader` is the one that rejected. The
+ * unified bucket also reports a `-status`, and `rejected` is the direct
+ * statement of the same fact.
+ */
+function isExhaustedBucket(headers: Headers, remainingHeader: string): boolean {
+	const remaining = headers.get(remainingHeader);
+	if (remaining !== null && Number(remaining.trim()) === 0) return true;
+	if (remainingHeader !== "anthropic-ratelimit-unified-remaining") return false;
+	return headers.get("anthropic-ratelimit-unified-status")?.trim().toLowerCase() === "rejected";
+}
 
 /**
  * A rate-limit `reset` header value at or above this is a Unix epoch already in
@@ -48,8 +146,11 @@ export function resetHeaderTargetMs(value: number): { atMs: number } | { delta: 
  *  - `x-ratelimit-reset-ms` (delta ms, or Unix epoch ms/s for large values)
  *  - `x-ratelimit-reset` (Unix epoch seconds)
  *  - `x-ratelimit-reset-after` (seconds)
+ *  - `anthropic-ratelimit-*-reset` (see {@link anthropicResetDelayMs})
  *
  * Body patterns:
+ *  - `retry-after-ms=62000` / `retry-after-ms: 62000` (milliseconds)
+ *  - `retry-after: 60` / `retry-after 60` (seconds)
  *  - `Your quota will reset after 18h31m10s` / `10m15s` / `39s`
  *  - `Please retry in 250ms` / `Please retry in 12s`
  *  - `"retryDelay": "34.074824224s"` (JSON error detail field)
@@ -95,9 +196,21 @@ export function extractRetryHint(source: Response | Headers | null | undefined, 
 			const seconds = Number(rateLimitResetAfter);
 			if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
 		}
+		const anthropicMs = anthropicResetDelayMs(headers);
+		if (anthropicMs !== undefined) return anthropicMs;
 	}
 
 	if (!body) return undefined;
+	const retryAfterMsText = RETRY_AFTER_MS_TEXT_PATTERN.exec(body);
+	if (retryAfterMsText) {
+		const ms = Number.parseFloat(retryAfterMsText[1]!);
+		if (Number.isFinite(ms) && ms > 0) return ms;
+	}
+	const retryAfterSecondsText = RETRY_AFTER_SECONDS_TEXT_PATTERN.exec(body);
+	if (retryAfterSecondsText) {
+		const seconds = Number.parseFloat(retryAfterSecondsText[1]!);
+		if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+	}
 
 	const quotaMatch = QUOTA_RESET_PATTERN.exec(body);
 	if (quotaMatch) {
