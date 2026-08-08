@@ -57,6 +57,7 @@ function createFixture() {
 		settings,
 		chatContainer,
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		toolOutputExpanded: false,
 		effectiveHideThinkingBlock: false,
 		proseOnlyThinking: true,

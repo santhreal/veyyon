@@ -6,7 +6,7 @@ import { Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
-import { isTodoListDone, TODO_DONE_SUMMARY, type TodoStatus } from "@veyyon/wire";
+import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY, type TodoStatus } from "@veyyon/wire";
 import { type } from "arktype";
 import chalk from "chalk";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -357,12 +357,14 @@ function countTodoTaskStates(phases: readonly TodoPhase[]): TodoTaskStateCounts 
 	for (const phase of phases) {
 		for (const task of phase.tasks) {
 			counts.total++;
+			// `open` is the COMPLEMENT of terminal, not a list of the two open
+			// spellings. A status added to the vocabulary lands on the correct side
+			// of this count without anyone remembering to come back here.
+			if (!isTerminalTodoStatus(task.status)) counts.open++;
 			switch (task.status) {
 				case "pending":
-					counts.open++;
 					break;
 				case "in_progress":
-					counts.open++;
 					counts.inProgress++;
 					break;
 				case "abandoned":
@@ -371,6 +373,9 @@ function countTodoTaskStates(phases: readonly TodoPhase[]): TodoTaskStateCounts 
 				case "completed":
 					counts.completed++;
 					break;
+				default:
+					// A new status needs its own tally before it can be counted here.
+					task.status satisfies never;
 			}
 		}
 	}
@@ -445,6 +450,11 @@ function countTaskTransitions(transitions: readonly TodoTaskTransition[]): TodoT
 			case "completed":
 				counts.toCompleted++;
 				break;
+			default:
+				// A new status needs its own tally before a transition into it can
+				// be reported. Silently uncounted transitions read as "nothing
+				// happened" in telemetry.
+				transition.to satisfies never;
 		}
 	}
 	return counts;
@@ -504,13 +514,20 @@ function normalizeInProgressTask(phases: TodoPhase[]): void {
 
 function nextActionableEntry(phases: readonly TodoPhase[]): { task: TodoItem; phase: TodoPhase } | undefined {
 	let firstPending: { task: TodoItem; phase: TodoPhase } | undefined;
+	let firstOpen: { task: TodoItem; phase: TodoPhase } | undefined;
 	for (const phase of phases) {
 		for (const task of phase.tasks) {
 			if (task.status === "in_progress") return { task, phase };
-			if (!firstPending && task.status === "pending") firstPending = { task, phase };
+			// The preference order names two statuses; the FALLBACK asks the owner.
+			// Naming only `pending` here meant a board whose open work sat in a
+			// status added later reported no next task at all, while the summary
+			// printed above it still counted that work as open.
+			if (isTerminalTodoStatus(task.status)) continue;
+			firstOpen ??= { task, phase };
+			if (task.status === "pending") firstPending ??= { task, phase };
 		}
 	}
-	return firstPending;
+	return firstPending ?? firstOpen;
 }
 
 /** Return the active todo task, preferring an in-progress item over the first pending item. */
@@ -1084,7 +1101,7 @@ function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string 
 			throw new Error("view operations require the full todo summary");
 	}
 
-	const closed = tasks.filter(item => item.status === "completed" || item.status === "abandoned").length;
+	const closed = tasks.filter(item => isTerminalTodoStatus(item.status)).length;
 	const next = nextActionableEntry(phases);
 	const nextText = next
 		? ` Next: ${boundedTodoPreviewText(`${next.task.content} (${next.phase.name})`, TODO_ITEM_PREVIEW_WIDTH)}.`
@@ -1105,6 +1122,18 @@ function formatSummary(phases: TodoPhase[], report: TodoOpReport, readOnly = fal
 	return `Applied with adjustments: ${notes}\n${body}`;
 }
 
+/**
+ * Bracket markers for the model-facing board preview. A table rather than a
+ * ternary chain so a status added to the vocabulary stops the build here
+ * instead of silently borrowing the pending marker and reading as open work.
+ */
+const TODO_PREVIEW_MARKERS: Record<TodoStatus, string> = {
+	pending: "[ ]",
+	in_progress: "[/]",
+	completed: "[X]",
+	abandoned: "[-]",
+};
+
 function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: boolean, params?: TodoParams): string {
 	const tasks = phases.flatMap(phase => phase.tasks);
 	const errorSummary =
@@ -1122,20 +1151,19 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 	const remainingByPhase = phases
 		.map(phase => ({
 			name: phase.name,
-			tasks: phase.tasks.filter(task => task.status === "pending" || task.status === "in_progress"),
+			tasks: phase.tasks.filter(task => !isTerminalTodoStatus(task.status)),
 		}))
 		.filter(phase => phase.tasks.length > 0);
 	const remainingTasks = remainingByPhase.flatMap(phase => phase.tasks.map(task => ({ ...task, phase: phase.name })));
 
-	const currentIdx = phases.findIndex(phase =>
-		phase.tasks.some(task => task.status === "pending" || task.status === "in_progress"),
-	);
+	const currentIdx = phases.findIndex(phase => phase.tasks.some(task => !isTerminalTodoStatus(task.status)));
 
 	const lines: string[] = [];
 	if (errorSummary) lines.push(errorSummary);
 	lines.push(remainingTasks.length === 0 ? "Remaining items: none." : `Remaining items: ${remainingTasks.length}.`);
-	// Closed = completed + abandoned, mirroring the per-phase progress count.
-	const closedAll = tasks.filter(task => task.status === "completed" || task.status === "abandoned").length;
+	// Open and closed are complements of one owner's decision, so
+	// `closed + open === total` holds for any status the vocabulary grows.
+	const closedAll = tasks.filter(task => isTerminalTodoStatus(task.status)).length;
 	lines.push(`Overall: ${closedAll}/${tasks.length} done, ${remainingTasks.length} open.`);
 	if (currentIdx === -1) {
 		lines.push(
@@ -1143,13 +1171,12 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 		);
 	} else {
 		const current = phases[currentIdx];
-		const done = current.tasks.filter(task => task.status === "completed" || task.status === "abandoned").length;
+		const done = current.tasks.filter(task => isTerminalTodoStatus(task.status)).length;
 		// The active phase is the EARLIEST one still holding open work, so the
 		// in-progress pointer can sit in a phase whose successors already have
 		// completed tasks. Explain that worked-ahead case explicitly.
 		const workedAhead = phases.some(
-			(phase, idx) =>
-				idx > currentIdx && phase.tasks.some(task => task.status === "completed" || task.status === "abandoned"),
+			(phase, idx) => idx > currentIdx && phase.tasks.some(task => isTerminalTodoStatus(task.status)),
 		);
 		lines.push(
 			`Active phase ${currentIdx + 1}/${phases.length} "${boundedTodoPreviewText(current.name, TODO_ITEM_PREVIEW_WIDTH)}" (${done}/${current.tasks.length})${
@@ -1164,14 +1191,7 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 	);
 	const preview = createBoundedTodoPreview();
 	for (const item of previewItems.slice(0, TODO_REMINDER_PREVIEW_LIMIT)) {
-		const marker =
-			item.status === "completed"
-				? "[X]"
-				: item.status === "in_progress"
-					? "[/]"
-					: item.status === "abandoned"
-						? "[-]"
-						: "[ ]";
+		const marker = TODO_PREVIEW_MARKERS[item.status];
 		if (!preview.push(`- ${marker} `, `${item.content} (${item.phase})`)) break;
 	}
 	lines.push(...preview.lines);
@@ -1471,7 +1491,13 @@ function formatTodoLine(
 			return uiTheme.fg("accent", `${prefix}${checkbox.progress} ${safeContent}`);
 		case "abandoned":
 			return uiTheme.fg("error", `${prefix}${checkbox.unchecked} ${strikethroughText(safeContent)}`);
+		case "pending":
+			return uiTheme.fg("dim", `${prefix}${checkbox.unchecked} ${safeContent}`);
 		default:
+			// A new status needs its own glyph and colour before the card can draw
+			// it. Falling through to the pending box would paint closed work as
+			// open, which is the collapse defect wearing a per-row disguise.
+			item.status satisfies never;
 			return uiTheme.fg("dim", `${prefix}${checkbox.unchecked} ${safeContent}`);
 	}
 }

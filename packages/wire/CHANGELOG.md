@@ -10,6 +10,10 @@
 - `sealBytes` and `openBytes` expose the sealed envelope itself, `[12B random IV][AES-256-GCM ciphertext with its tag]`, for payloads that are not JSON. `sealFrame` and `openFrame` are now the JSON layer on top of them rather than a second writer of the same bytes. Session sharing gzips before it seals, so it could not use `sealFrame` and had hand-written the envelope a second time with its own copy of the IV length; that copy is read by a browser from an already-published link, so a drift between the two halves would have surfaced as a link that no longer opens, after the session was gone from the machine that sealed it.
 - `TODO_STATUS_IS_TERMINAL` owns the todo status vocabulary and the one question every renderer asks of it: has the task closed? `TodoStatus` derives from its keys, `TODO_STATUSES` enumerates them at run time, and `isTerminalTodoStatus`, `asTodoStatus`, `isTodoListDone` and `TODO_DONE_SUMMARY` sit alongside it. A todo board is drawn on both sides of a runtime boundary — the TUI in `@veyyon/coding-agent` and the HTML/collab renderer in `@veyyon/tool-render`, which cannot import from it — and each held a private copy of the vocabulary, so the two could disagree about whether a plan had finished. Adding a status now forces a terminality decision at the definition and breaks every `Record<TodoStatus, …>` table until it is answered.
 
+### Fixed
+
+- `asTodoStatus` no longer accepts a prototype key as a status. It tested membership with `in`, which walks the prototype chain, so a transcript carrying `status: "toString"` narrowed to that string and then read as TERMINAL, because `TODO_STATUS_IS_TERMINAL["toString"]` resolves to `Object.prototype.toString`. A board with open work collapsed to "Todo list done". Membership is now `Object.hasOwn` and terminality compares `=== true`.
+
 ## [16.3.0] - 2026-07-02
 
 ### Breaking Changes
