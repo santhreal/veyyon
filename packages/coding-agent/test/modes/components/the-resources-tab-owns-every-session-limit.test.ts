@@ -284,6 +284,37 @@ describe("every numeric limit on the tab survives the UI adapter", () => {
 			).toContain(off);
 		}
 	});
+
+	/**
+	 * One spelling for "no limit", across every ladder on the tab.
+	 *
+	 * All four limits sit in ONE viewport, so a row that calls zero `Unlimited` while its
+	 * neighbours call it `Off` reads as a different KIND of state rather than the same one.
+	 * The memory row shipped exactly that way, and what caught it was looking at the proof
+	 * shot (assets/resources-write-budget-off.png), which no assertion in this file was in a
+	 * position to notice. Derived from the rendered ladders rather than from the four keys
+	 * that exist today, so a fifth limit spelling it `None` turns this RED instead of quietly
+	 * landing beside them. `Off` is the spelling because the CPU row shipped it first.
+	 *
+	 * It reads the `0` rung rather than the row's DEFAULT rung, which are the same thing for
+	 * all four limits today. A later limit that ships already capped would otherwise be
+	 * compared on its cap ("Off vs 100 GB") and fail here for a reason that has nothing to do
+	 * with how it spells having no cap.
+	 */
+	it("spells the off rung the same way on every ladder", () => {
+		const spellings = new Map<string, string[]>();
+		for (const def of getSettingsForTab("resources")) {
+			if (def.type !== "submenu" || getType(def.path as SettingPath) !== "number") continue;
+			const label = def.options.find(option => option.value === "0")?.label;
+			// A ladder with no off rung at all is the sibling test's failure, not this one's.
+			if (label === undefined) continue;
+			spellings.set(label, [...(spellings.get(label) ?? []), def.path]);
+		}
+
+		expect(spellings.size, "no numeric ladders found, so this proves nothing").toBeGreaterThan(0);
+		const spread = [...spellings.entries()].map(([label, paths]) => `${label} (${paths.join(", ")})`).join(" vs ");
+		expect([...spellings.keys()], `the tab spells "no limit" more than one way: ${spread}`).toEqual(["Off"]);
+	});
 });
 
 /**
