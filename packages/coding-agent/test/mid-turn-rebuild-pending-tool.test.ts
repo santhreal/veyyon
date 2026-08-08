@@ -58,6 +58,7 @@ function createFixture(opts: { isStreaming: boolean }) {
 		init: vi.fn(async () => {}),
 		chatContainer,
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		ui: { requestRender: vi.fn() },
 		statusLine: { invalidate: vi.fn() },
 		updateEditorBorderColor: vi.fn(),

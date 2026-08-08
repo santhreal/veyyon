@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
-import { z } from "@veyyon/ai";
+import { type StopReason, z } from "@veyyon/ai";
 import { createMockModel, type MockModel, type MockResponse } from "@veyyon/ai/providers/mock";
 import { AutoLearnController } from "@veyyon/coding-agent/autolearn/controller";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -238,7 +238,9 @@ describe("AgentSession empty stop guard", () => {
 		await session.prompt("record gamma");
 		await session.waitForIdle();
 		expect(mock.calls).toHaveLength(5);
-		expect(reminderMessages(session.agent.state.messages)).toHaveLength(3);
+		// The reminders exist only to nudge a stalled turn. Once the cycle gives up
+		// they describe an assistant turn that has been discarded, so they go too.
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
 		const activeBranchMessages = session.sessionManager
 			.getBranch()
 			.filter(entry => entry.type === "message")
@@ -264,14 +266,16 @@ describe("AgentSession empty stop guard", () => {
 		await session.waitForIdle();
 
 		expect(mock.calls).toHaveLength(5);
-		expect(reminderMessages(session.agent.state.messages)).toHaveLength(3);
-		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(1);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(0);
 
 		const activeBranchMessages = session.sessionManager
 			.getBranch()
 			.filter(entry => entry.type === "message")
 			.map(entry => entry.message as AgentMessage);
-		expect(emptyAssistantStops(activeBranchMessages)).toHaveLength(1);
+		// The cap used to keep the empty turn in the branch, so reloading the
+		// session replayed it and re-sent the context that produced it.
+		expect(emptyAssistantStops(activeBranchMessages)).toHaveLength(0);
 	});
 
 	it("emits failed auto-retry end when repeated empty stops exhaust the retry cap", async () => {
@@ -334,8 +338,8 @@ describe("AgentSession empty stop guard", () => {
 			attempt: 1,
 		});
 		expect(retryEndEvents[0]?.finalError).toContain("empty stop");
-		expect(reminderMessages(session.agent.state.messages)).toHaveLength(3);
-		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(1);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(0);
 
 		mock.push({ content: ["fresh unrelated success"], stopReason: "stop" });
 		await session.prompt("start unrelated turn after cap");
@@ -540,7 +544,7 @@ describe("AgentSession empty stop guard", () => {
 		await session.waitForIdle();
 
 		expect(mock.calls).toHaveLength(8);
-		expect(reminderMessages(session.agent.state.messages)).toHaveLength(3);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
 		expect(retryEndEvents).toHaveLength(1);
 		expect(retryEndEvents[0]).toMatchObject({
 			type: "auto_retry_end",
@@ -571,4 +575,219 @@ describe("AgentSession empty stop guard", () => {
 		expect(reminderMessages(withTool.session.agent.state.messages)).toHaveLength(0);
 		expect(assistantText(withTool.session.agent.state.messages)).toContain("tool path complete");
 	});
+});
+
+/**
+ * WHY: the empty-stop retry cycle used to leave its own wreckage behind when it
+ * gave up. Ground truth from a live session (2026-08-08, session 019fdb42,
+ * cursor/cursor-grok-4.5-medium): four empty completions capped the cycle at
+ * 00:20:03 reporting `attempts: 3`; the todo-completion nudge started the next
+ * turn three seconds later; that turn capped on its FIRST empty completion and
+ * reported `attempts: 4` — a count for requests it never made, and no retry
+ * budget at all for a turn that had asked for none. Cause: the cap reset
+ * `#retryAttempt` but not `#emptyStopRetryCount`, and only a user prompt runs the
+ * per-prompt reset. On top of that the cap kept the empty assistant turn (for
+ * stopReason "stop") and the three developer reminders, so every later turn
+ * carried instructions about a turn that had already been discarded, and a reload
+ * replayed the empty turn that provoked them.
+ *
+ * The class: no path may inherit a spent empty-stop budget, and no ending of the
+ * cycle may leave the cycle's scaffolding behind, for ANY stop reason the guard
+ * treats as empty. `EMPTY_STOP_TREATMENT` is keyed by `StopReason`, so a new
+ * member of that union fails type checking until it records a decision here.
+ *
+ * What this does NOT catch: a nudge that starts a turn without going through
+ * `prompt`/`sendCustomMessage`, and cost — a fresh budget per turn means a model
+ * that empty-stops forever still burns four requests for every turn something
+ * triggers.
+ */
+type EmptyStopTreatment = "cleans-up-at-the-cap" | "never-an-empty-stop";
+
+const EMPTY_STOP_TREATMENT: Record<StopReason, EmptyStopTreatment> = {
+	stop: "cleans-up-at-the-cap",
+	toolUse: "cleans-up-at-the-cap",
+	// A truncated, failed, or aborted turn is not a stalled turn: retrying it with
+	// a "you produced nothing" reminder would hide a real failure.
+	length: "never-an-empty-stop",
+	error: "never-an-empty-stop",
+	aborted: "never-an-empty-stop",
+};
+
+function zeroContentStop(reason: StopReason): MockResponse {
+	return { content: [], stopReason: reason, usage: { output: 1, cacheRead: 100 } };
+}
+
+function zeroContentStops(messages: AgentMessage[], reason: StopReason): AgentMessage[] {
+	return messages.filter(
+		message =>
+			message.role === "assistant" &&
+			message.stopReason === reason &&
+			!message.content.some(
+				content => content.type === "toolCall" || (content.type === "text" && content.text.trim().length > 0),
+			),
+	);
+}
+
+function branchMessages(session: AgentSession): AgentMessage[] {
+	return session.sessionManager
+		.getBranch()
+		.filter(entry => entry.type === "message")
+		.map(entry => entry.message as AgentMessage);
+}
+
+/** Start a turn the way a maintenance nudge does: no user prompt, so none of the
+ *  per-prompt reset that hid this defect from every existing test. */
+async function nudgeTurn(session: AgentSession, content: string): Promise<void> {
+	await expectPromptCompletes(
+		session.sendCustomMessage(
+			{ customType: "advisor", content, display: false, attribution: "agent" },
+			{ triggerTurn: true },
+		),
+	);
+	await session.waitForIdle();
+}
+
+describe("AgentSession empty stop retry cap cleanup", () => {
+	it("hands the next turn a whole retry budget even when no user prompt intervenes", async () => {
+		const { session, mock } = await createHarness(Array.from({ length: 8 }, () => emptyStop()));
+		const failures: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_end" && !event.success) failures.push(event);
+		});
+
+		await expectPromptCompletes(session.prompt("a turn the model answers with nothing"));
+		await session.waitForIdle();
+		expect(mock.calls).toHaveLength(4);
+
+		await nudgeTurn(session, "maintenance nudge after the cap");
+
+		// Four more requests: one attempt plus the three retries the cap allows.
+		// Inheriting the spent budget made this turn a single request.
+		expect(mock.calls).toHaveLength(8);
+		expect(failures.map(event => event.attempt)).toEqual([3, 3]);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(0);
+	});
+
+	it("does not carry a recovered cycle's reminder into a later prompt", async () => {
+		const { session, mock } = await createHarness([
+			emptyStop(),
+			{ content: ["recovered on the retry"], stopReason: "stop" },
+			{ content: ["a later unrelated answer"], stopReason: "stop" },
+		]);
+
+		await expectPromptCompletes(session.prompt("a turn that stalls once"));
+		await session.waitForIdle();
+		// The reminder earned its place in the turn it rescued: the assistant text
+		// after it is a reply to it, so this cycle keeps it.
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(1);
+
+		await session.prompt("an unrelated later turn");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(3);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+		const laterCall = mock.calls[2];
+		if (!laterCall) throw new Error("Expected the later prompt to reach the model");
+		expect(JSON.stringify(laterCall.context.messages)).not.toContain("You stopped without completing the task");
+	});
+
+	it("never reports more attempts than the cap allows, however many cycles run back to back", async () => {
+		const cycles = 3;
+		const { session, mock } = await createHarness(Array.from({ length: cycles * 4 }, () => emptyStop()));
+		const failures: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_end" && !event.success) failures.push(event);
+		});
+
+		for (let cycle = 0; cycle < cycles; cycle++) {
+			await nudgeTurn(session, `nudge ${cycle}`);
+		}
+
+		expect(mock.calls).toHaveLength(cycles * 4);
+		expect(failures).toHaveLength(cycles);
+		expect(failures.map(event => event.attempt)).toEqual([3, 3, 3]);
+	});
+
+	it("names the model in the failure the operator reads", async () => {
+		const { session, mock } = await createHarness(Array.from({ length: 4 }, () => emptyStop()));
+		const failures: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_end" && !event.success) failures.push(event);
+		});
+
+		await expectPromptCompletes(session.prompt("a turn the model answers with nothing"));
+		await session.waitForIdle();
+
+		expect(failures).toHaveLength(1);
+		expect(failures[0]?.finalError).toContain("empty stop");
+		expect(failures[0]?.finalError).toContain(`${mock.provider}/${mock.id}`);
+	});
+
+	it("leaves nothing behind when the capped turns carried only thinking", async () => {
+		// A zero-block turn and a thinking-only turn are different shapes reaching
+		// the same branch: a cleanup keyed on `content.length === 0` would keep this
+		// one and put reasoning-only turns back into every later request.
+		const { session, mock } = await createHarness([
+			...Array.from({ length: 4 }, () => thinkingOnlyStop()),
+			...Array.from({ length: 4 }, () => thinkingOnlyStop()),
+		]);
+
+		await expectPromptCompletes(session.prompt("a turn that only thinks"));
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(4);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+		expect(zeroContentStops(session.agent.state.messages, "stop")).toHaveLength(0);
+		expect(zeroContentStops(branchMessages(session), "stop")).toHaveLength(0);
+
+		await nudgeTurn(session, "nudge after the thinking-only cap");
+		expect(mock.calls).toHaveLength(8);
+	});
+
+	for (const [stopReason, treatment] of Object.entries(EMPTY_STOP_TREATMENT) as Array<
+		[StopReason, EmptyStopTreatment]
+	>) {
+		if (treatment === "cleans-up-at-the-cap") {
+			it(`leaves nothing behind when a zero-content ${stopReason} stop exhausts the cap`, async () => {
+				const { session, mock } = await createHarness([
+					...Array.from({ length: 4 }, () => zeroContentStop(stopReason)),
+					...Array.from({ length: 4 }, () => zeroContentStop(stopReason)),
+				]);
+				const failures: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+				session.subscribe(event => {
+					if (event.type === "auto_retry_end" && !event.success) failures.push(event);
+				});
+
+				await expectPromptCompletes(session.prompt(`a ${stopReason} turn with no content`));
+				await session.waitForIdle();
+
+				expect(mock.calls).toHaveLength(4);
+				expect(failures.map(event => event.attempt)).toEqual([3]);
+				expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+				expect(zeroContentStops(session.agent.state.messages, stopReason)).toHaveLength(0);
+				expect(zeroContentStops(branchMessages(session), stopReason)).toHaveLength(0);
+
+				await nudgeTurn(session, `nudge after the ${stopReason} cap`);
+				expect(mock.calls).toHaveLength(8);
+				expect(failures.map(event => event.attempt)).toEqual([3, 3]);
+				expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+			});
+			continue;
+		}
+
+		it(`does not run the empty-stop cycle for a zero-content ${stopReason} stop`, async () => {
+			const { session } = await createHarness([zeroContentStop(stopReason)]);
+			const failures: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+			session.subscribe(event => {
+				if (event.type === "auto_retry_end" && !event.success) failures.push(event);
+			});
+
+			await expectPromptCompletes(session.prompt(`a ${stopReason} turn with no content`));
+			await session.waitForIdle();
+
+			expect(failures.filter(event => (event.finalError ?? "").includes("empty stop"))).toEqual([]);
+			expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+		});
+	}
 });

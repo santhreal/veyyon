@@ -209,8 +209,42 @@ describe("AgentSession unexpected stop guard", () => {
 
 		expect(spy).toHaveBeenCalledTimes(4);
 		expect(mock.calls).toHaveLength(4);
-		expect(reminderMessages(session.agent.state.messages)).toHaveLength(3);
+		// The cycle has stopped trying to finish this turn, so its nudges go with it:
+		// left behind they tell every later turn to finish a turn that already ended.
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
 		expect(warnSpy).toHaveBeenCalled();
+	});
+
+	it("does not carry a recovered unexpected-stop reminder into a later prompt", async () => {
+		let calls = 0;
+		vi.spyOn(unexpectedStopClassifier, "classifyUnexpectedStop").mockImplementation(async () => {
+			calls++;
+			return calls === 1;
+		});
+		const { session, mock } = await createHarness(
+			[
+				unexpectedStop("I should fix this next."),
+				{ content: ["done now"], stopReason: "stop" },
+				{ content: ["a later unrelated answer"], stopReason: "stop" },
+			],
+			{
+				"features.unexpectedStopDetection": true,
+				"providers.unexpectedStopModel": "online",
+			},
+		);
+
+		await session.prompt("do the thing");
+		await session.waitForIdle();
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(1);
+
+		await session.prompt("an unrelated later turn");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(3);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+		const laterCall = mock.calls[2];
+		if (!laterCall) throw new Error("Expected the later prompt to reach the model");
+		expect(JSON.stringify(laterCall.context.messages)).not.toContain("You said you would continue");
 	});
 
 	it("does not classify a message that contains a tool call", async () => {

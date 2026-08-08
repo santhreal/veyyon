@@ -242,7 +242,7 @@ export const CONTEXT_SETTINGS = {
 	// every session look explicitly configured.
 	"compaction.reserveTokens": { type: "number", default: undefined },
 
-	"compaction.keepRecentTokens": { type: "number", default: 20000 },
+	"compaction.keepRecentTokens": { type: "number", default: 10000 },
 
 	"compaction.autoContinue": { type: "boolean", default: true },
 

@@ -152,7 +152,7 @@ describe("a session ending in one ~100k-token tool result", () => {
 
 		expect(prepared).toBeDefined();
 		expect(prepared!.tailElisions).toEqual([]);
-		const kept = prepared!.recentMessages.find(m => m.role === "user");
+		const kept = prepared!.recentMessages.find((m): boolean => m.role === "user");
 		expect(kept).toBe(messageOf(entries[2]!));
 	});
 });

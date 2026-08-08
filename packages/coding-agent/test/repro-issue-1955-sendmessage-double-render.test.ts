@@ -110,6 +110,7 @@ function createHarness(): Harness {
 		pendingBashComponents: [],
 		pendingPythonComponents: [],
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		ui: { requestRender: vi.fn() },
 		isBackgrounded: false,
 		initialChatRendered: false,

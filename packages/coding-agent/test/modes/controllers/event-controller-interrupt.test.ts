@@ -18,6 +18,7 @@ function createContext() {
 		settings: { get: () => false },
 		statusLine: { invalidate: vi.fn(), markActivityStart: vi.fn(), markActivityEnd: vi.fn() },
 		pendingTools,
+		settledToolCalls: new Set<string>(),
 		hideThinkingBlock: false,
 		setWorkingMessage,
 		clearPinnedError: vi.fn(),

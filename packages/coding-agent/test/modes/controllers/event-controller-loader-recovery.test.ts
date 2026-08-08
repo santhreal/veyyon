@@ -52,6 +52,7 @@ function createContext(options: { terminalProgress?: boolean } = {}) {
 		},
 		statusLine: { invalidate: vi.fn(), markActivityStart: vi.fn(), markActivityEnd: vi.fn() },
 		pendingTools: new Map<string, unknown>(),
+		settledToolCalls: new Set<string>(),
 		hideThinkingBlock: false,
 		setWorkingMessage: vi.fn(),
 		clearPinnedError: vi.fn(),

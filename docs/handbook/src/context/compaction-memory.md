@@ -31,7 +31,7 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
 
 `/compact <focus>` steers a run with an "Additional focus:" directive. The most
 recent user, assistant, and tool messages stay verbatim up to
-`compaction.keepRecentTokens` (default 20,000 tokens).
+`compaction.keepRecentTokens` (default 10,000 tokens).
 
 Use `/handoff <focus>` when you explicitly want a new session. Handoff is not a
 compaction strategy, and automatic maintenance never selects it.

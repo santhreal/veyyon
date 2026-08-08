@@ -60,9 +60,9 @@ import {
 	DEFAULT_RESERVE_TOKENS,
 	resolveThresholdTokens,
 } from "./threshold";
-import { collectToolCallsById, isSkillReadToolResult } from "./tool-protection";
 // The estimator moved to the module whose header owns it, and is re-exported below so no caller changed.
 import { estimateTokens } from "./token-estimate";
+import { collectToolCallsById, isSkillReadToolResult } from "./tool-protection";
 
 export {
 	type CompactionSettings,
@@ -1289,8 +1289,11 @@ export function estimateCompactionRequestTokens(
  * One tool result elided from the retained tail to bring it under budget.
  *
  * The elision is already applied to the branch when the caller sees this:
- * `message` is the replacement sitting in the entry, so the caller can patch
- * its marker with the recovery pointer once `originalText` is offloaded.
+ * `message` is the replacement sitting in the entry. On success the caller
+ * offloads `originalText` to a recovery artifact and swaps `message` for a
+ * pointered copy; on failure it puts `originalMessage` back (see
+ * `rollbackTailElisions`), because until the offload is persisted the
+ * preparation is the only place the pre-elision bytes survive.
  */
 export interface TailElision {
 	/** Id of the entry whose tool-result message was replaced. */
@@ -1301,6 +1304,8 @@ export interface TailElision {
 	tokens: number;
 	/** The full original output text, for offload to a recovery artifact. */
 	originalText: string;
+	/** The pre-elision message, restored verbatim when the pass fails. */
+	originalMessage: ToolResultMessage;
 	/** The replacement message now held by the entry. */
 	message: ToolResultMessage;
 }
@@ -1328,6 +1333,34 @@ export function renderTailElisionArtifact(elisions: readonly TailElision[]): str
 		);
 	}
 	return parts.join("\n");
+}
+
+/**
+ * Undo a preparation's tail elisions on the live branch after the compaction
+ * pass that produced them failed. The elision replaced the entry's message
+ * with a pointerless marker whose only remaining copy of the original bytes
+ * rides on the preparation, so a pass that never reaches the persist step
+ * strands the content unless the originals are put back: the `prunedAt`
+ * stamp excludes the marker from re-elision, the next summarizer receives
+ * the marker text instead of the content, and the next rewriteEntries
+ * persists the pointerless marker over the last on-disk copy. Restoring the
+ * original message object is exact — no marker, no `prunedAt` — and makes
+ * the entry an elision candidate again on the retry.
+ *
+ * An entry is restored only while it still holds this pass's marker; a
+ * different message means the entry moved on after the preparation was made
+ * and its bytes are owned elsewhere.
+ */
+export function rollbackTailElisions(entries: SessionEntry[], elisions: readonly TailElision[]): number {
+	let restored = 0;
+	for (const elision of elisions) {
+		const entry = entries.find(e => e.id === elision.entryId);
+		if (entry?.type !== "message") continue;
+		if (entry.message !== elision.message) continue;
+		entry.message = elision.originalMessage;
+		restored++;
+	}
+	return restored;
 }
 
 /**
@@ -1365,6 +1398,12 @@ function tailToolResultText(message: ToolResultMessage): string {
  * caches by message identity, and a mutated message would keep reading its
  * pre-elision size. The replacement is stamped `prunedAt` so the prune and
  * shake passes treat the marker as already handled.
+ *
+ * The elision is live on the branch before any summarizer runs, and the
+ * original message survives only on the returned elisions, so the caller
+ * MUST either persist the offload or restore the originals
+ * (`rollbackTailElisions`) — a pass that does neither strands the bytes
+ * behind a pointerless marker.
  */
 function elideTailToolResults(
 	entries: SessionEntry[],
@@ -1409,18 +1448,22 @@ function elideTailToolResults(
 		if (tailTokens <= budgetTokens) break;
 		const replacement: ToolResultMessage = {
 			...candidate.message,
-			content: [
-				{ type: "text", text: renderTailElisionMarker(candidate.message.toolName, candidate.tokens) },
-			],
+			content: [{ type: "text", text: renderTailElisionMarker(candidate.message.toolName, candidate.tokens) }],
 			prunedAt: Date.now(),
 		};
 		candidate.entry.message = replacement;
-		tailTokens -= Math.max(0, candidate.tokens - estimateTokens(replacement as AgentMessage));
+		// Estimate through a scratch twin, never through `replacement` itself:
+		// the persist step re-renders this marker's content with the recovery
+		// pointer, and `estimateTokens` caches by message identity, so a cache
+		// entry primed for the marker object would serve its pre-pointer size
+		// to every later estimate.
+		tailTokens -= Math.max(0, candidate.tokens - estimateTokens({ ...replacement } as AgentMessage));
 		elisions.push({
 			entryId: candidate.entry.id,
 			toolName: candidate.message.toolName,
 			tokens: candidate.tokens,
 			originalText: tailToolResultText(candidate.message),
+			originalMessage: candidate.message,
 			message: replacement,
 		});
 	}
@@ -1571,7 +1614,7 @@ export function prepareCompaction(
 	if (messagesToSummarize.length === 0 && turnPrefixMessages.length === 0) {
 		return undefined;
 	}
-	
+
 	// Hard-bound the retained tail. The cut can only land on a turn boundary,
 	// so one oversized kept turn — a huge file read, a long command output —
 	// used to carry the tail far past the budget, and the next turn tripped
@@ -1585,7 +1628,7 @@ export function prepareCompaction(
 		keepRecentTokens,
 		options?.excludedCustomMessageTypes,
 	);
-	
+
 	// Messages kept after compaction (recent history). Collected AFTER the
 	// elision above so the retained view is the bounded one.
 	const recentMessages: AgentMessage[] = [];

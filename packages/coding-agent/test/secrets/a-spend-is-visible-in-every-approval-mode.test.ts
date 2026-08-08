@@ -345,6 +345,7 @@ function noticeContext() {
 		init: vi.fn(async () => {}),
 		ui: { requestRender: vi.fn() },
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		statusLine: { invalidate: vi.fn(), markActivityStart: vi.fn() },
 		viewSession: { isStreaming: false },
 		present,

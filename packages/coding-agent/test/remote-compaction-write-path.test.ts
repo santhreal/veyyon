@@ -40,7 +40,7 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { willCompactRemotely } from "@veyyon/coding-agent/modes/components/compaction-summary-message";
-import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import type { CompactionEntry } from "@veyyon/coding-agent/session/session-entries";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -423,5 +423,149 @@ describe("compaction.remote off: the local pass runs with the configured compact
 			| CompactionEntry
 			| undefined;
 		expect(compactionEntry?.summary).toBe(result.summary);
+	});
+});
+
+describe("remote compaction with no resolvable credential", () => {
+	let tempDir: TempDir;
+	let compactServer: CompactServer;
+	let session: AgentSession;
+	let authStorage: AuthStorage;
+	let sideStreamCalls: number;
+	let notices: Array<Extract<AgentSessionEvent, { type: "notice" }>>;
+
+	beforeEach(async () => {
+		sideStreamCalls = 0;
+		notices = [];
+		tempDir = TempDir.createSync("@pi-remote-compaction-nokey-");
+		compactServer = await startCompactServer();
+
+		// No key for openai: the admission gate's async half must fail open to a
+		// local pass AND say so, because the loader label only mirrors the sync
+		// half and would otherwise claim "(openai remote compaction)" while a
+		// local summarizer grinds in silence.
+		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
+		// Only anthropic is keyed: openai (the session model) resolves no credential,
+		// and the anthropic key gives the local fallback chain a live candidate.
+		authStorage.setRuntimeApiKey("anthropic", "test-key");
+		const modelRegistry = new ModelRegistry(authStorage);
+		const sessionManager = SessionManager.create(tempDir.path(), tempDir.path());
+
+		const bundled = getBundledModel("openai", "gpt-5.1");
+		if (!bundled) throw new Error("Expected built-in openai/gpt-5.1 to exist");
+		const model = { ...bundled, baseUrl: compactServer.baseUrl, contextWindow: 200_000, maxTokens: 64_000 };
+		expect(resolveServerCompactionTransport(model)).toBeDefined();
+
+		for (let i = 0; i < 8; i++) {
+			sessionManager.appendMessage({ role: "user", content: `turn ${i}`, timestamp: Date.now() });
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: `reply ${i}` }],
+				api: "openai-responses",
+				provider: "openai",
+				model: model.id,
+				stopReason: "stop",
+				usage: {
+					input: 1000,
+					output: 100,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 1100,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				timestamp: Date.now(),
+			});
+		}
+
+		const sideStreamFn: StreamFn = () => {
+			sideStreamCalls++;
+			const stream = new AssistantMessageEventStream();
+			queueMicrotask(() => {
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "local fallback summary" }],
+						api: "openai-responses",
+						provider: "openai",
+						model: "gpt-5.1",
+						stopReason: "stop",
+						usage: {
+							input: 1,
+							output: 1,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 2,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+						timestamp: Date.now(),
+					},
+				});
+			});
+			return stream;
+		};
+		session = new AgentSession({
+			agent: new Agent({ initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] } }),
+			sessionManager,
+			settings: Settings.isolated({ "compaction.remote": true, "compaction.keepRecentTokens": 200 }),
+			modelRegistry,
+			sideStreamFn,
+		});
+		session.subscribe(event => {
+			if (event.type === "notice") notices.push(event);
+		});
+	});
+
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		try {
+			await session?.dispose();
+		} finally {
+			authStorage?.close();
+			await compactServer?.close();
+			await tempDir?.remove();
+		}
+	});
+
+	it("falls back to the local summarizer and announces the downgrade once", async () => {
+		// The label still resolves remote: the notice is the honesty backstop.
+		expect(willCompactRemotely(session)).toBe(true);
+
+		const result = await session.compact();
+
+		expect(compactServer.requests).toHaveLength(0);
+		// The local chain ran: at least one candidate was summarization-driven
+		// (openai first, then the keyed fallback).
+		expect(sideStreamCalls).toBeGreaterThanOrEqual(1);
+		expect(result.summary).toContain("local fallback summary");
+
+		const fallbackNotices = notices.filter(
+			n => n.level === "warning" && n.message.includes("no API key for openai/gpt-5.1"),
+		);
+		expect(fallbackNotices).toHaveLength(1);
+		expect(fallbackNotices[0]?.message).toContain("falling back to local compaction");
+
+		// The dedupe is per failure: a second pass warns again only for a NEW
+		// failure, not the same missing key. Fresh history first so the second
+		// pass is legal.
+		for (let i = 0; i < 8; i++) {
+			session.sessionManager.appendMessage({ role: "user", content: `after turn ${i}`, timestamp: Date.now() });
+			session.sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: `after reply ${i}` }],
+				api: "openai-responses", provider: "openai", model: "gpt-5.1",
+				stopReason: "stop",
+				usage: {
+					input: 1000, output: 100, cacheRead: 0, cacheWrite: 0, totalTokens: 1100,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				timestamp: Date.now(),
+			});
+		}
+		await session.compact();
+		expect(
+			notices.filter(n => n.level === "warning" && n.message.includes("no API key for openai/gpt-5.1")),
+		).toHaveLength(1);
 	});
 });

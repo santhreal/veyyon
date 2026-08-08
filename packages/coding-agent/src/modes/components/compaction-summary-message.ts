@@ -15,7 +15,8 @@ import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } fr
  * It is restated here rather than imported because the gate's method is
  * private and the two primitives it reads are public; the engine's async
  * remainder (an api key must resolve) means a true answer can still fall back
- * to local, and the failure notice says so when that happens.
+ * to local; the engine announces that fallback (missing key or failed pass)
+ * with a one-time warning notice.
  */
 export function willCompactRemotely(session: {
 	settings: { get(key: "compaction.remote"): unknown };

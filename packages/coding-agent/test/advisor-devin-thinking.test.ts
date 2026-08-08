@@ -118,15 +118,30 @@ describe("AgentSession advisor descriptor thinking level", () => {
 		expect(advisor.state.disableReasoning).toBe(false);
 	});
 
-	it("Anthropic advisor with no configured thinking suffix still gets the medium default", () => {
-		// Guard against over-clamping: models that support `medium` MUST keep
-		// receiving it so the historical advisor thinking budget is preserved.
+	it("Anthropic advisor with no configured thinking suffix clamps the medium default to the declared ladder", () => {
+		// claude-sonnet-4-5 declares the budget-only pair [high, max] (models.dev
+		// anthropic: budget_tokens, no effort levels), so the historical medium
+		// default is not selectable and clamps up to high. The Devin test above
+		// guards the no-surface direction; opus-4-5 (which declares medium) pins
+		// the preserved direction.
 		session.settings.setModelRole("advisor", `${anthropicModel.provider}/${anthropicModel.id}`);
 		expect(session.setAdvisorEnabled(true)).toBe(true);
 
 		const advisor = session.getAdvisorAgent();
 		if (!advisor) throw new Error("Expected advisor Agent to be live");
 		expect(advisor.state.model.provider).toBe(anthropicModel.provider);
+		expect(advisor.state.thinkingLevel).toBe(Effort.High);
+	});
+
+	it("Anthropic advisor on a model declaring medium keeps the medium default", () => {
+		// claude-opus-4-5 declares [low, medium, high]: no clamp may fire.
+		const opus = getBundledModel("anthropic", "claude-opus-4-5");
+		if (!opus) throw new Error("Expected bundled anthropic/claude-opus-4-5 to exist");
+		session.settings.setModelRole("advisor", `${opus.provider}/${opus.id}`);
+		expect(session.setAdvisorEnabled(true)).toBe(true);
+
+		const advisor = session.getAdvisorAgent();
+		if (!advisor) throw new Error("Expected advisor Agent to be live");
 		expect(advisor.state.thinkingLevel).toBe(Effort.Medium);
 	});
 

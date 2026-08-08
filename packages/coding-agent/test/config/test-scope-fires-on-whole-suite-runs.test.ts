@@ -103,3 +103,45 @@ test("the body offers the narrower selection and the batching discipline, not ju
 	expect(rule.content).toContain("narrowest selection");
 	expect(rule.content).toContain("Batch before you gate");
 });
+
+describe("once per compaction window", () => {
+	// WHY: the rule shipped with `repeatMode: after-gap, repeatGap: 10`, which re-armed it
+	// every ten completed turns inside the SAME context window, no compaction required. A
+	// long window heard the same reminder five times over; the user contract is that a rule
+	// injection fires at most once per compaction cycle and may speak again only in the
+	// fresh window after one. The per-compact machinery already exists (`resetForCompaction`,
+	// called from the session's compaction path); this pins that test-scope uses it.
+	// `markInjectedByNames` stands in for the claim the session takes the moment a match is
+	// bucketed, which is what suppresses the second identical call.
+	test("the shipped rule repeats per compaction, not per turn gap", () => {
+		expect(rule.repeatMode).toBe("per-compact");
+	});
+
+	test("the same triggering call twice injects exactly once", () => {
+		expect(nudges("bun test")).toBe(true);
+		manager.markInjectedByNames([RULE_NAME]);
+
+		expect(nudges("bun test")).toBe(false);
+	});
+
+	test("turn count alone does not re-arm the rule inside one window", () => {
+		expect(nudges("bun test")).toBe(true);
+		manager.markInjectedByNames([RULE_NAME]);
+
+		// Well past the old repeatGap of 10: under after-gap this fired again here.
+		for (let i = 0; i < 12; i++) manager.incrementMessageCount();
+		expect(nudges("bun test")).toBe(false);
+	});
+
+	test("a compaction re-arms the rule for exactly one more injection", () => {
+		expect(nudges("bun test")).toBe(true);
+		manager.markInjectedByNames([RULE_NAME]);
+		expect(nudges("bun test")).toBe(false);
+
+		manager.resetForCompaction();
+		expect(nudges("bun test")).toBe(true);
+
+		manager.markInjectedByNames([RULE_NAME]);
+		expect(nudges("bun test")).toBe(false);
+	});
+});

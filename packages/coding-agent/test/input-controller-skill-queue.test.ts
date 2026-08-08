@@ -781,6 +781,7 @@ function createEventControllerFixture() {
 		addMessageToChat,
 		updatePendingMessagesDisplay,
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		session: {},
 		get viewSession() {
 			return (this as typeof ctx).session;

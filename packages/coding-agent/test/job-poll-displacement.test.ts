@@ -164,6 +164,7 @@ describe("EventController displaces consecutive waiting polls", () => {
 			statusLine: { invalidate: vi.fn() },
 			toolOutputExpanded: false,
 			pendingTools,
+			settledToolCalls: new Set<string>(),
 			chatContainer,
 			session: { getToolByName: () => undefined },
 			showWarning: vi.fn(),
@@ -410,6 +411,7 @@ describe("UiHelpers.renderSessionContext collapses repeated todo snapshots", () 
 		const ctx = {
 			chatContainer,
 			pendingTools: new Map(),
+			settledToolCalls: new Set<string>(),
 			ui: { requestRender: vi.fn() },
 			statusLine: { invalidate: vi.fn() },
 			updateEditorBorderColor: vi.fn(),
@@ -492,6 +494,7 @@ describe("UiHelpers.renderSessionContext collapses repeated todo snapshots", () 
 		const ctx = {
 			chatContainer,
 			pendingTools: new Map(),
+			settledToolCalls: new Set<string>(),
 			ui: { requestRender: vi.fn() },
 			statusLine: { invalidate: vi.fn() },
 			updateEditorBorderColor: vi.fn(),

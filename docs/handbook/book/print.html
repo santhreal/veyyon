@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-859f1a96.js";
+            window.path_to_searchindex_js = "searchindex-f1493838.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -6072,8 +6072,8 @@ live list after your remaps. For the full guide on customizing, see
 </table>
 </div>
 <p>You can also set the effort by name with the <code>/effort</code> command (its alias is <code>/thinking</code>). With no
-argument it opens a picker; <code>/effort high</code> sets the level directly. The choice persists with the
-active profile.</p>
+argument it opens a picker; <code>/effort high</code> sets the level directly. The choice lasts for this session; the saved default
+lives under Settings → Model → Default Effort.</p>
 <p>Unbound by default, remappable: <code>app.session.new</code>, <code>app.session.tree</code>, <code>app.session.fork</code>,
 <code>app.session.resume</code>, and <code>app.stt.toggle</code> (speech-to-text; hold <code>Space</code> to record by default).</p>
 <h2 id="composer"><a class="header" href="#composer">Composer</a></h2>
@@ -7159,7 +7159,7 @@ below and <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.<
 </ul>
 <p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. The most
 recent user, assistant, and tool messages stay verbatim up to
-<code>compaction.keepRecentTokens</code> (default 20,000 tokens).</p>
+<code>compaction.keepRecentTokens</code> (default 10,000 tokens).</p>
 <p>Use <code>/handoff &lt;focus&gt;</code> when you explicitly want a new session. Handoff is not a
 compaction strategy, and automatic maintenance never selects it.</p>
 <p>Compaction and handoff both write a machine-owned continuity record separate

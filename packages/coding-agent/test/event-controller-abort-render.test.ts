@@ -65,6 +65,7 @@ function createFixture(opts: {
 		streamingComponent,
 		streamingMessage: opts.streamingMessage,
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		noteDisplayableThinkingContent: vi.fn(() => false),
 	};
 	const sessionMock = {
