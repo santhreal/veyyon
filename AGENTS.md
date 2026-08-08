@@ -295,6 +295,73 @@ Test the contract the system exposes — not the easiest internal detail to asse
 - Don't add tests for tiny low-risk changes unless they protect a real contract or fix a regression-prone edge case.
 - Prefer focused package-local verification for the changed area.
 
+### Regression suites: close the class, not the incident (BINDING)
+
+A fix is not finished when the reported symptom stops reproducing. It is finished when
+you can say this sentence out loud about the suite you wrote, and defend it:
+
+> As long as this suite passes, this exact defect cannot happen again, AND no other
+> member of its general class can happen either.
+
+If you cannot say that, the work is not done. Not "the reported case is covered", not
+"mostly closed". Not done. Two failures below the bar have both shipped here:
+
+- **The incident-only suite.** It pins the one input from the report. The next variant of
+  the same mistake lands green, because the mechanism was fixed for the case someone had
+  in mind and not for its siblings.
+- **The green-by-luck suite.** It passes for a reason other than the one you think, so it
+  stays green while the behavior is broken.
+
+The rules that follow are what separate a suite that closes a class from one that
+describes a bug report.
+
+1. **Drive the production path, not a stand-in for it.** Construct the real component,
+   the real session, the real registry, the real tool, and reach the defect the way a
+   user reaches it. A mock is legitimate only at an external boundary you cannot run (a
+   provider's HTTP endpoint, the clock, a missing binary); mocking the code that carries
+   the bug proves the mock behaves, which nobody was worried about. A suite whose subject
+   is a hand-rolled fake of the thing under test is not evidence, and neither is one that
+   asserts a spy was called.
+2. **Enumerate the variant space from source at run time.** Sweep the registry, the union
+   type, the enum, the exported table, the directory. A hardcoded list of members goes
+   stale in silence, which is the same as having no test: the member added next year is
+   the one that breaks.
+3. **Fail by default on a new member.** Adding a provider, tool, agent, route, setting,
+   error source, or dialect must turn the suite RED until someone records a decision for
+   it. Opt-outs are pinned by exact equality (`expect(optedOut).toEqual(["yield"])`),
+   never counted and never matched loosely, so a second member cannot slip into the
+   exemption.
+4. **A member that cannot be exercised is a hole, not a pass.** If a sweep cannot
+   construct one of the things it enumerates, fix the harness until it can and assert the
+   unconstructable set is empty. Silently skipping the awkward member is how the class
+   stays open.
+5. **Observe RED, then mutation-gate every branch.** Re-inject the original defect and
+   watch the suite fail for the right reason; a suite never seen red is an assumption.
+   Then mutate each branch you claim to cover, one at a time, including the tempting
+   refactor a later reader would try. A mutation that stays green means the TEST is
+   wrong. Mutate by editing the source and restoring it in the same step, proving the
+   restore with `git diff --numstat`; never `git checkout`, `revert`, or `stash` in this
+   shared tree.
+6. **Assert termination and bounds, not only values.** Anything with a deadline, retry,
+   backoff, queue, or stand-down gets an assertion that it ends and an assertion of the
+   bound. A test that can only observe a wrong value cannot see a hang.
+7. **Version anything persisted and test the stale copy.** A cached, serialized, or
+   on-disk shape resurrects fixed bugs after the fix ships. Changing such a shape means a
+   version bump plus a test that a stale entry is rejected rather than served.
+8. **Say what the suite does not catch.** Open with a WHY comment naming the defect, the
+   class it closes, and the gap it leaves. The next reader needs to know where the fence
+   ends.
+9. **Try to break your own suite before you report it.** Describe a change that
+   reintroduces the defect or a sibling and leaves the suite green. If you can describe
+   even one, go back and cover it, then write down in your report which variants you
+   tried to smuggle past your own tests and whether each was caught. A report that never
+   attempted this has verified nothing.
+
+Name the file after the behavior it defends, in prose
+(`a-question-to-the-user-ends-the-turn.test.ts`,
+`a-cell-cannot-run-a-tool-with-arguments-its-schema-rejects.test.ts`), not after the
+module or the issue number. The filename is the contract; an issue number is a lookup.
+
 ## Changelog
 
 Location: `packages/*/CHANGELOG.md` (per package).
