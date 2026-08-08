@@ -42,7 +42,7 @@ import {
 	minModalChromeRows,
 	planModalChrome,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "@veyyon/coding-agent/modes/components/modal-shell";
 import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/model-hub";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
@@ -131,7 +131,7 @@ describe("the shell's chrome reservation has one owner", () => {
 
 	/** The compact strip drops vPad entirely, so the two forms coincide there — which is why a short-terminal test would not have caught the bug. */
 	test("the compact sizing collapses vPad, where both forms agree", () => {
-		const compact = withCompact(MODAL_SIZING_LARGE, true);
+		const compact = sizingForArea(MODAL_SIZING_LARGE, 10);
 		expect(compact.vPad).toBe(0);
 		expect(minModalChromeRows(compact)).toBe(3 + compact.footerLines + compact.vPad);
 	});
@@ -263,7 +263,7 @@ describe("planModalChrome is the contract callers size against", () => {
 	const SHORTCUTS = [{ label: "enter pick" }, { label: "esc close" }];
 
 	function renderBody(rows: number, bodyRows: number): string[] {
-		const sizing = withCompact(MODAL_SIZING_LARGE, rows < 24);
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, rows);
 		const dims = computeModalDims(200, rows, sizing);
 		if (!dims) throw new Error("no dims");
 		const body = Array.from({ length: bodyRows }, (_, i) => `BODY-${i}`);
@@ -280,7 +280,7 @@ describe("planModalChrome is the contract callers size against", () => {
 	}
 
 	function budgetFor(rows: number): number {
-		const sizing = withCompact(MODAL_SIZING_LARGE, rows < 24);
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, rows);
 		const dims = computeModalDims(200, rows, sizing);
 		if (!dims) throw new Error("no dims");
 		return planModalChrome({
@@ -330,7 +330,7 @@ describe("planModalChrome is the contract callers size against", () => {
 	/** The plan never promises rows the card cannot hold. */
 	test("maxBodyRows plus chrome equals the modal height it was planned for", () => {
 		for (const rows of [24, 30, 40, 60]) {
-			const sizing = withCompact(MODAL_SIZING_LARGE, rows < 24);
+			const sizing = sizingForArea(MODAL_SIZING_LARGE, rows);
 			const dims = computeModalDims(200, rows, sizing)!;
 			const plan = planModalChrome({
 				sizing,

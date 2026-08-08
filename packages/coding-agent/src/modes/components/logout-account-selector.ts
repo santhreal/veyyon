@@ -18,9 +18,8 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalNeedsCompactPadding,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 
 const LOGOUT_SELECTOR_MAX_VISIBLE = 10;
@@ -215,7 +214,7 @@ export class LogoutAccountSelectorComponent implements Component {
 
 	render(width: number): readonly string[] {
 		const height = process.stdout.rows || 40;
-		const sizing = withCompact(MODAL_SIZING_MEDIUM, modalNeedsCompactPadding(height, MODAL_SIZING_MEDIUM));
+		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, height);
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

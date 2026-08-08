@@ -47,10 +47,9 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 import {
 	buildBrowserItems,
@@ -2055,7 +2054,7 @@ export class ModelHubComponent implements Component {
 	 */
 	render(width: number): string[] {
 		const height = Math.max(16, this.#tui.terminal?.rows || process.stdout.rows || 40);
-		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

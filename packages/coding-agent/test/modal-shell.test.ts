@@ -13,7 +13,7 @@ import {
 	renderModalShell,
 	renderModalShortcuts,
 	SETTINGS_BROWSE_SHORTCUTS,
-	withCompact,
+	sizingForArea,
 } from "@veyyon/coding-agent/modes/components/modal-shell";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
@@ -45,8 +45,8 @@ describe("ModalShell", () => {
 	 * margin is the card's relationship to the screen and does not change with
 	 * how tight the card is inside.
 	 */
-	it("withCompact strips the padding and keeps the margin", () => {
-		const c = withCompact(MODAL_SIZING_SETTINGS, true);
+	it("sizingForArea strips the padding and keeps the margin", () => {
+		const c = sizingForArea(MODAL_SIZING_SETTINGS, 10);
 		expect(c.vMargin).toBe(MODAL_SIZING_SETTINGS.vMargin);
 		expect(c.hPad).toBe(1);
 		expect(c.vPad).toBe(0);

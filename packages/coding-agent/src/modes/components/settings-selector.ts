@@ -89,13 +89,12 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
 	SETTINGS_BROWSE_SHORTCUTS,
 	SETTINGS_FILTER_SHORTCUTS,
 	SETTINGS_SUBPANE_SHORTCUTS,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
@@ -2376,7 +2375,7 @@ export class SettingsSelectorComponent implements Component {
 	 */
 	render(width: number): readonly string[] {
 		const termHeight = Math.max(1, process.stdout.rows || 40);
-		const sizing = withCompact(MODAL_SIZING_SETTINGS, modalNeedsCompactPadding(termHeight, MODAL_SIZING_SETTINGS));
+		const sizing = sizingForArea(MODAL_SIZING_SETTINGS, termHeight);
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims || dims.contentWidth < MIN_SETTINGS_CONTENT_WIDTH) return this.#renderTooSmall(width, termHeight);
 		this.#viewportTooSmall = false;

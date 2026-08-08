@@ -27,10 +27,9 @@ import {
 	MODAL_SIZING_LARGE,
 	ModalRevealDriver,
 	type ModalShellGeometry,
-	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 
 /**
@@ -962,10 +961,7 @@ export class SessionSelectorComponent extends Container {
 	 */
 	render(width: number): readonly string[] {
 		const termHeight = Math.max(14, this.#getTerminalRows());
-		const sizing = withCompact(
-			MODAL_SIZING_LARGE,
-			modalNeedsCompactPadding(termHeight, MODAL_SIZING_LARGE) || !this.#fillHeight,
-		);
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, termHeight, !this.#fillHeight);
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

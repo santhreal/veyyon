@@ -26,7 +26,7 @@ import {
 	type ModalShellGeometry,
 	planModalChrome,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 import {
 	buildBrowserItems,
@@ -247,7 +247,7 @@ export class ModelPickerComponent implements Component {
 
 	render(width: number): string[] {
 		const termRows = Math.max(16, this.#tui.terminal?.rows || process.stdout.rows || 40);
-		const sizing = withCompact(MODAL_SIZING_MEDIUM, termRows < 24);
+		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, termRows);
 		const dims = computeModalDims(width, termRows, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

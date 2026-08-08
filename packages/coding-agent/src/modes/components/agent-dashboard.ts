@@ -105,10 +105,9 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 import { clampSelection, handleTabSwitchKey, selectionBand } from "./selector-helpers";
 
@@ -530,7 +529,7 @@ class AgentTerminationDialog implements Component {
 
 	render(width: number): readonly string[] {
 		const height = this.terminalRows();
-		const sizing = withCompact(MODAL_SIZING_MEDIUM, modalNeedsCompactPadding(height, MODAL_SIZING_MEDIUM));
+		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, height);
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
@@ -1255,7 +1254,7 @@ export class AgentDashboard extends Container {
 		// every other modal floated in the middle. The shell shrinks the card to
 		// `preferredBodyRows` below and re-centres it in this area.
 		const area = this.#terminalRows();
-		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(area, MODAL_SIZING_LARGE));
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, area);
 		const dims = computeModalDims(width, area, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

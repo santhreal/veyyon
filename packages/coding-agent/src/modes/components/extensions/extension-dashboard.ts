@@ -37,10 +37,9 @@ import {
 	MODAL_SIZING_LARGE,
 	ModalRevealDriver,
 	type ModalShellGeometry,
-	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "../modal-shell";
 import { ExtensionList } from "./extension-list";
 import { InspectorPanel } from "./inspector-panel";
@@ -174,7 +173,7 @@ export class ExtensionDashboard implements Component {
 	 */
 	render(width: number): readonly string[] {
 		const height = Math.max(14, this.#terminalRows());
-		const sizing = withCompact(MODAL_SIZING_LARGE, modalNeedsCompactPadding(height, MODAL_SIZING_LARGE));
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

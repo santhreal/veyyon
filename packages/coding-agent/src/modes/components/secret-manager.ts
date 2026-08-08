@@ -100,10 +100,9 @@ import {
 	type ModalShellGeometry,
 	type ModalShortcut,
 	type ModalSizing,
-	modalNeedsCompactPadding,
 	planModalChrome,
 	renderModalShell,
-	withCompact,
+	sizingForArea,
 } from "./modal-shell";
 import { SecretAddFlow } from "./secret-add-flow";
 import { SecretDetailPane } from "./secret-detail-pane";
@@ -1920,7 +1919,7 @@ export class SecretManager extends Container {
 		// Laid out against the WHOLE terminal, not against the card's own height, so the shell
 		// has slack to centre the card in rather than pinning it to the top of the screen.
 		const area = this.#terminalRows();
-		const padded = withCompact(MANAGER_SIZING, modalNeedsCompactPadding(area, MANAGER_SIZING));
+		const padded = sizingForArea(MANAGER_SIZING, area);
 		// Resolved AFTER the compact decision, because the columns the border and the horizontal
 		// padding take are part of the card width being asked for, and the compact path pays for
 		// one column of padding a side rather than two. This inverts the content width

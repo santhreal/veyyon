@@ -210,17 +210,32 @@ export function modalNeedsCompactPadding(areaHeight: number, sizing: ModalSizing
 }
 
 /**
- * Compact strip: shed the padding a card cannot afford.
+ * The sizing a card should actually use in an area this tall.
  *
- * It used to zero `vMargin` as well, which is what made leaving compact mode a
- * cliff rather than a step: a compact card took the WHOLE screen, so the first
- * height that stopped being compact dropped it by two full margins at once (14
- * rows for LARGE) and the list lost more than half its rows. The margin is now
- * handled continuously by the floor in {@link computeModalDims}, which already
- * gives a short terminal its whole screen, so this only sheds padding.
+ * This is the ONLY way to reach the compact strip, and it takes the AREA HEIGHT
+ * rather than a decision, because every hand-rolled decision this replaced was
+ * wrong in the same direction. `ModelPicker` carried `termRows < 24` and so kept
+ * its padding for every height from 24 to 32, where {@link modalNeedsCompactPadding}
+ * says the card is still pinned to its floor: the card grew four rows at 33 and
+ * the list lost them, which is precisely the cliff the shared rule exists to
+ * remove. A threshold read off the terminal cannot be right for more than one
+ * sizing, since the answer depends on that sizing's own margins.
+ *
+ * `forceCompact` can only make a card compact EARLIER than the height rule would.
+ * It exists for a card whose own mode already denies it the room (the session
+ * selector when it is not filling the height), and because the height rule is
+ * always applied underneath it, no caller can push the boundary later and bring
+ * the cliff back.
+ *
+ * The strip sheds padding and nothing else. It used to zero `vMargin` too, which
+ * is what made leaving compact mode a cliff rather than a step: a compact card
+ * took the WHOLE screen, so the first height that stopped being compact dropped
+ * it by two full margins at once (14 rows for LARGE) and the list lost more than
+ * half its rows. The margin is now handled continuously by the floor in
+ * {@link computeModalDims}, which already gives a short terminal its whole screen.
  */
-export function withCompact(sizing: ModalSizing, compact: boolean): ModalSizing {
-	if (!compact) return sizing;
+export function sizingForArea(sizing: ModalSizing, areaHeight: number, forceCompact = false): ModalSizing {
+	if (!forceCompact && !modalNeedsCompactPadding(areaHeight, sizing)) return sizing;
 	return { ...sizing, hPad: 1, vPad: 0 };
 }
 
