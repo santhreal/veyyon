@@ -61,6 +61,23 @@ describe("AgentSession handoff", () => {
 		await session.waitForIdle();
 	}
 
+	/**
+	 * Pin the session effort and prove it landed unclamped.
+	 *
+	 * The fixture model is the real bundled `anthropic/claude-sonnet-4-5`, whose
+	 * thinking ladder is `[high, max]`. Any level below High (Low, Medium) is
+	 * lifted to High by `resolveThinkingLevelForModel`, so a test that pinned Low
+	 * and expected High was observing the clamp rather than the behavior under
+	 * test: it stayed green whether the compaction effort came from the session,
+	 * from an `:effort` suffix, or from pi-agent's built-in High default.
+	 * Asserting the pinned level survived keeps these assertions meaningful, and
+	 * fails loudly naming the effort if the catalog ladder shifts again.
+	 */
+	function pinSessionEffort(level: ThinkingLevel): void {
+		session.setThinkingLevel(level);
+		expect(session.thinkingLevel).toBe(level);
+	}
+
 	beforeAll(async () => {
 		sharedDir = TempDir.createSync("@pi-handoff-shared-");
 		authStorage = await AuthStorage.create(path.join(sharedDir.path(), "testauth.db"));
@@ -839,9 +856,11 @@ describe("AgentSession handoff", () => {
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
-		// Session effort is Low, but the compaction model is pinned to :high — the
-		// candidate's own configured effort must win over the session effort.
-		session.setThinkingLevel(ThinkingLevel.Low);
+		// The session runs at Max while the compaction model is pinned to :high, so
+		// the candidate's own configured effort must win over the session effort.
+		// Max is the session effort on purpose: a level under High is not
+		// expressible on this model, and would leave the suffix unproven.
+		pinSessionEffort(ThinkingLevel.Max);
 		session.settings.set("compaction.model", `${model.provider}/${model.id}:high`);
 
 		let capturedCandidateKey: string | undefined;
@@ -873,8 +892,11 @@ describe("AgentSession handoff", () => {
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
-		session.setThinkingLevel(ThinkingLevel.Low);
-		// Bare selector, no `:effort` — the session effort (Low) governs compaction.
+		// Bare selector, no `:effort`, so the session effort governs compaction.
+		// Max also separates inheritance from pi-agent's built-in compaction
+		// default of High (`resolveCompactionEffort`), which a broken inheritance
+		// path would fall back to.
+		pinSessionEffort(ThinkingLevel.Max);
 		session.settings.set("compaction.model", `${model.provider}/${model.id}`);
 
 		let capturedCandidateKey: string | undefined;
@@ -898,7 +920,7 @@ describe("AgentSession handoff", () => {
 		await waitFor(() => capturedCandidateKey !== undefined);
 
 		expect(capturedCandidateKey).toBe(`${model.provider}/${model.id}`);
-		expect(capturedLevel).toBe(ThinkingLevel.Low);
+		expect(capturedLevel).toBe(ThinkingLevel.Max);
 	});
 
 	it("keeps pre-prompt context-full checks aligned with provider-anchored usage", async () => {
