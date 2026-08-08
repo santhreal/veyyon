@@ -431,8 +431,16 @@ function formatWallTimeSeconds(wallTimeMs: number): string {
 	return (wallTimeMs / 1000).toFixed(2);
 }
 
-function formatWallTimeNotice(_wallTimeMs: number): string {
-	return "";
+/**
+ * The wall-time line the tool USED to append to its payload. It is no longer
+ * emitted (the footer states wall time once, and the string cost every result
+ * tokens), but sessions recorded before that still hold it, so the renderer
+ * folds this exact line out of a persisted result instead of printing it beside
+ * the footer. Reconstructed from the result's own `wallTimeMs`, so it can only
+ * match the line we wrote, never a coincidental line of command output.
+ */
+function legacyWallTimeNotice(wallTimeMs: number): string {
+	return `Wall time: ${formatWallTimeSeconds(wallTimeMs)} seconds`;
 }
 
 function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "threshold"): string {
@@ -496,7 +504,7 @@ function stripTrailingNotice(text: string, notice: string): string {
 
 function stripWallTimeNotice(text: string, wallTimeMs: number | undefined): string {
 	if (wallTimeMs === undefined) return text;
-	return stripTrailingNotice(text, formatWallTimeNotice(wallTimeMs));
+	return stripTrailingNotice(text, legacyWallTimeNotice(wallTimeMs));
 }
 
 function stripExitCodeNotice(text: string, exitCode: number | undefined, signal?: number): string {
@@ -674,9 +682,6 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 
 		const outputLines = [this.#formatResultOutput(result)];
 		const notices: string[] = [];
-		if (options.wallTimeMs !== undefined) {
-			notices.push(formatWallTimeNotice(options.wallTimeMs));
-		}
 		if (options.notices) {
 			for (const notice of options.notices) {
 				if (notice) notices.push(notice);
