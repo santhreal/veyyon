@@ -844,21 +844,28 @@ describe("the configured default lifetime", () => {
 
 describe("usage text", () => {
 	/**
-	 * Each surface's help names exactly the grammar that surface accepts, so neither can drift from
-	 * what its branch of the parser reads.
+	 * Both surfaces parse every verb, so both name every verb. The terminal ALSO names the value
+	 * forms, which is the half of the grammar the other surface cannot offer safely.
 	 *
-	 * A user who mistypes gets this text. A verb missing from the noninteractive help is a verb
-	 * nobody discovers; a verb PRESENT in the terminal help is worse, because typing it there stores
-	 * it as a credential and the help is what suggested doing so.
+	 * A user who mistypes gets this text. What this replaced was accurate and useless: the verbs were
+	 * in noninteractive help and deliberately absent from terminal help, because the terminal parsed
+	 * no verbs at all, so an operator who found `list` in the docs and typed it stored the word
+	 * `list` as a credential. Now the verbs work on both surfaces, and help that omitted them on
+	 * either one would hide working commands.
 	 */
-	it("documents every verb where verbs exist, and none where they do not", () => {
+	it("documents every verb on both surfaces", () => {
 		const noninteractive = secretCommandUsage("noninteractive");
 		const tui = secretCommandUsage("tui");
 
-		for (const verb of ["add", "list", "rm", "extend", "log", "discard"]) {
+		for (const verb of ["list", "rm", "extend", "log", "discard"]) {
 			expect(noninteractive).toContain(`/secret ${verb}`);
-			expect(tui).not.toContain(`/secret ${verb}`);
+			expect(tui).toContain(`/secret ${verb}`);
 		}
+		// `add` is spelled per surface, which is the one asymmetry left: a name and a variable where a
+		// value cannot be typed at all, the bare value form where it can.
+		expect(noninteractive).toContain("/secret add <name>");
+		expect(tui).toContain("/secret <value>");
+		expect(tui).not.toContain("/secret add");
 	});
 
 	/** The terminal help documents the three ways in and the one reserved word, and nothing else. */
@@ -885,14 +892,14 @@ describe("usage text", () => {
 });
 
 /**
- * The other branch of the same parser: in a terminal `/secret` has no verbs at all.
+ * The other branch of the same parser: in a terminal the FIRST WORD decides.
  *
  * WHY IT IS PINNED HERE TOO. `the-masked-prompt-cannot-be-read-as-a-name-prompt.test.ts` drives
  * this grammar through the real dialogs and the real vault, which is the right place to prove that
  * what an operator types is what gets stored. It cannot show the REQUEST, though, and the request
- * is where the two grammars actually part: whether a line came back as a value, as the reserved
- * word, or as a verb is decided here, before any surface sees it. So these assert the returned
- * object directly and nothing downstream of it.
+ * is where the two grammars actually part: whether a line came back as a value, as a verb, or as an
+ * escaped value is decided here, before any surface sees it. So these assert the returned object
+ * directly and nothing downstream of it.
  */
 describe("the terminal grammar", () => {
 	/**
@@ -917,12 +924,21 @@ describe("the terminal grammar", () => {
 	});
 
 	/**
-	 * The reservation is exactly one word long. Anything after it and the line is a credential
-	 * again, so an operator whose token happens to start with that word is not locked out and a
-	 * longer paste cannot open the GUI by accident.
+	 * A reserved word is a command however much follows it, so a malformed one is REFUSED rather
+	 * than re-read as a credential. Refusing is what closes the silent-storage class: the older
+	 * grammar reserved `manager` for exactly one word and treated every longer line as a value, so
+	 * `/secret rm TOKEN` and `/secret log 50` both quietly became credentials.
+	 *
+	 * The refusal has to carry the escape, because the operator whose credential really does start
+	 * with a reserved word has exactly one way to say so and no reason to guess it.
 	 */
-	it("stops reserving the word as soon as anything follows it", () => {
-		expect(parseSecretCommand("manager key 8891", "tui")).toEqual({
+	it("refuses a malformed reserved line and names the escape", () => {
+		expect(() => parseSecretCommand("manager key 8891", "tui")).toThrow(/\/secret -- <value>/u);
+	});
+
+	/** And the escape stores that same line verbatim, reserved first word and all. */
+	it("stores an escaped line as the credential, byte for byte", () => {
+		expect(parseSecretCommand("-- manager key 8891", "tui")).toEqual({
 			subcommand: "add",
 			value: "manager key 8891",
 		});
@@ -941,16 +957,25 @@ describe("the terminal grammar", () => {
 	});
 
 	/**
-	 * THE EXACT INVERSE OF THE NONINTERACTIVE GRAMMAR ABOVE, and the sharpest statement of the
-	 * change: `add` is not a verb in a terminal, so this stores the literal text rather than reading
-	 * `GITHUB_TOKEN` as a name with no value attached, which is how a live token used to be stored
-	 * as a NAME. A regression that restored verb parsing on this surface fails here.
+	 * `add` IS a verb again in a terminal, and it is a synonym for the bare form rather than the
+	 * noninteractive `add <name> <value>`. The distinction is the security property: a name parsed
+	 * off this line would be a live credential written to the vault's plaintext metadata and echoed
+	 * back on screen, which is how `/secret add ghp_realToken` used to store a token as a NAME.
+	 *
+	 * So the value is the rest of the line and `name` stays absent. A regression that restored
+	 * positional-name parsing on this surface fails on the `name` assertion, not the value one.
 	 */
-	it("reads a former verb as ordinary credential text", () => {
-		expect(parseSecretCommand("add GITHUB_TOKEN", "tui")).toEqual({
-			subcommand: "add",
-			value: "add GITHUB_TOKEN",
-		});
+	it("reads add as a synonym for the bare value form, with no name", () => {
+		const request = parseSecretCommand("add GITHUB_TOKEN", "tui");
+
+		expect(request).toEqual({ subcommand: "add", value: "GITHUB_TOKEN" });
+		expect(request.name).toBeUndefined();
+	});
+
+	/** `/secret add` alone is the masked field, exactly as a bare line is. */
+	it("opens the masked field for a bare add", () => {
+		expect(parseSecretCommand("add", "tui")).toEqual({ subcommand: "add" });
+		expect(parseSecretCommand("add --from-env MY_VAR", "tui")).toEqual({ subcommand: "add", fromEnv: "MY_VAR" });
 	});
 
 	/**

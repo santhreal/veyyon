@@ -43,6 +43,7 @@ import { describeLoopLimitRuntime } from "../modes/loop-limit";
 import { theme } from "../modes/theme/theme";
 import type { InteractiveModeContext } from "../modes/types";
 import { extractLastCodeBlock, extractLastCommand } from "../modes/utils/copy-targets";
+import { SECRET_TUI_SUBCOMMANDS } from "../secrets/secret-command";
 import {
 	type AccountRow,
 	accountDisplayLabel,
@@ -2652,26 +2653,61 @@ function buildProfileArgumentCompletions(): (prefix: string) => Promise<Autocomp
 }
 
 /**
- * Argument completion for `/secret`, which under the terminal grammar can only ever offer one
- * word.
+ * Argument completion for `/secret`, one entry per subcommand the terminal parses.
  *
- * WHAT THIS REPLACED WAS A TRAP. It used to complete the verbs and then the names of stored
- * secrets, so `/secret rm git` offered `GITHUB_TOKEN`. In a terminal there are no verbs any more:
- * the argument line IS the credential, so accepting that suggestion would have STORED the text
- * `rm GITHUB_TOKEN` as a secret. A dropdown that quietly turns a revoke into a bogus credential is
- * worse than no dropdown, and the convenience it offered now lives in the manager, where a name is
- * picked from a list rather than recalled and retyped.
+ * DERIVED, NOT LISTED. `SECRET_TUI_SUBCOMMANDS` is built from the parser's own table of reserved
+ * words, so a subcommand cannot be typeable and unoffered, which is what this menu was: it offered
+ * `manager` alone while the help text advertised five verbs, and in a terminal those five did not
+ * parse at all, so an operator who read the help and typed `/secret list` stored the word `list` as
+ * a credential. Both halves of that are fixed together, because either alone is still a lie.
  *
- * The prefix filter is what keeps it out of the way: a real credential shares no prefix with
- * `manager`, so the dropdown closes on the first character of a pasted token and never reads far
- * enough into one to matter. Names are not offered here at all, so nothing about the vault is
- * rendered on a keystroke.
+ * NAMES ARE STILL NEVER OFFERED. An earlier version completed the verbs and then the names of
+ * stored secrets, so `/secret rm git` offered `GITHUB_TOKEN`; picking one rendered part of the
+ * vault on a keystroke, and under the verbless grammar it also stored the whole suggestion as a
+ * credential. Choosing a name from a list is what the manager is for.
+ *
+ * The prefix filter is what keeps the menu out of a paste: a pasted credential arrives as one
+ * insert, so the prefix is the entire token and matches nothing. Only a hand-typed word that is
+ * genuinely the start of a subcommand opens the dropdown.
  */
-const SECRET_MANAGER_COMPLETION: AutocompleteItem = {
-	value: "manager",
-	label: "manager",
-	description: "list, rename, extend, revoke and copy what you have stored",
+const secretArgumentCompletions = (argumentPrefix: string): AutocompleteItem[] | null => {
+	if (argumentPrefix.includes(" ")) return null; // past the subcommand
+	const prefix = argumentPrefix.toLowerCase();
+	const matches = SECRET_TUI_SUBCOMMANDS.filter(sub => sub.name.startsWith(prefix)).map(sub => ({
+		value: sub.usage === "" ? sub.name : `${sub.name} `,
+		label: sub.name,
+		description: sub.description,
+		hint: sub.usage === "" ? undefined : sub.usage,
+	}));
+	return matches.length > 0 ? matches : null;
 };
+
+/**
+ * The ghost text after `/secret`, which is the only thing on screen before anything is typed.
+ *
+ * Two hints, because the two moments want different sentences. Empty line: the declared summary of
+ * the whole grammar, since the operator has been given a blank field and needs to know a value can
+ * go straight into it. Mid-word: the usage of the subcommand being typed, so `/secret ex` completes
+ * itself and says it wants a name and a lifetime.
+ */
+function buildSecretInlineHint(inlineHint: string | undefined): (argumentText: string) => string | null {
+	return (argumentText: string) => {
+		const trimmed = argumentText.trimStart();
+		if (trimmed.length === 0) return inlineHint ?? null;
+		if (trimmed.includes(" ")) {
+			const typed = trimmed.slice(0, trimmed.indexOf(" ")).toLowerCase();
+			const exact = SECRET_TUI_SUBCOMMANDS.find(sub => sub.name === typed);
+			// Only while the argument is still just the verb: past that the operator is typing a name
+			// or a credential, and a hint that keeps naming the usage overwrites nothing but reads as
+			// if the line were incomplete.
+			return exact !== undefined && trimmed.trimEnd() === typed && exact.usage !== "" ? exact.usage : null;
+		}
+		const match = SECRET_TUI_SUBCOMMANDS.find(sub => sub.name.startsWith(trimmed.toLowerCase()));
+		if (match === undefined) return null;
+		const remaining = match.name.slice(trimmed.length);
+		return match.usage === "" ? remaining : `${remaining} ${match.usage}`;
+	};
+}
 
 /**
  * Build getArgumentCompletions that suggests directories relative to the
@@ -2883,16 +2919,21 @@ function materializeTuiBuiltinSlashCommand(
 	runtime?: TuiSlashCommandRuntime,
 ): TuiBuiltinSlashCommand {
 	const materialized: TuiBuiltinSlashCommand = { ...cmd };
-	// `secret` keeps its `subcommands` for the ACP command listing, where the verbs are still real,
-	// but must NOT complete or hint them here: in a terminal they are not commands, they are the
-	// first words of a credential.
+	// `secret` completes the TERMINAL grammar, which is not the declaration's: `add` takes no name
+	// here and `manager` is not declared at all, because the declared list is also what an ACP
+	// client is told it may run and that client has no screen to open.
 	if (cmd.name === "secret") {
-		materialized.getArgumentCompletions = (argumentPrefix: string) =>
-			SECRET_MANAGER_COMPLETION.value.startsWith(argumentPrefix.toLowerCase()) ? [SECRET_MANAGER_COMPLETION] : null;
-		if (cmd.inlineHint) materialized.getInlineHint = buildStaticInlineHint(cmd.inlineHint);
+		materialized.getArgumentCompletions = secretArgumentCompletions;
+		materialized.getInlineHint = buildSecretInlineHint(cmd.inlineHint);
 	} else if (cmd.subcommands) {
 		materialized.getArgumentCompletions = buildArgumentCompletions(cmd.subcommands);
-		materialized.getInlineHint = buildSubcommandInlineHint(cmd.subcommands);
+		// A command may declare both, and until this fell back it declared the static hint into a
+		// void: the subcommand hint is null on an empty line, which is the one moment an operator
+		// who has typed `/collab ` and nothing else needs to be told what may follow.
+		const subcommandHint = buildSubcommandInlineHint(cmd.subcommands);
+		const staticHint = cmd.inlineHint === undefined ? undefined : buildStaticInlineHint(cmd.inlineHint);
+		materialized.getInlineHint = (argumentText: string) =>
+			subcommandHint(argumentText) ?? staticHint?.(argumentText) ?? null;
 	} else if (cmd.name === "move") {
 		materialized.getArgumentCompletions = buildDirectoryArgumentCompletions();
 		if (cmd.inlineHint) materialized.getInlineHint = buildStaticInlineHint(cmd.inlineHint);

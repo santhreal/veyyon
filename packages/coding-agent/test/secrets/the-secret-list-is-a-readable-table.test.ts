@@ -460,17 +460,20 @@ describe("the two usage variants", () => {
 	});
 
 	/**
-	 * THE DIVERGENCE, stated as a set. A verb only reaches an operator who has nothing better: the
-	 * noninteractive text lists all of them because that client has no field and no manager screen,
-	 * and the TUI text lists exactly one word, the one it reserves. Any verb appearing in the TUI
-	 * list is a word a terminal would now store as a credential, and any verb missing from the
-	 * noninteractive list is a client whose secrets simply expire.
+	 * THE SET OF COMMANDS EACH SURFACE NAMES. Both parse every verb, so both name every verb, and
+	 * the terminal additionally names the manager, which is the one command that needs a screen.
+	 *
+	 * The state this replaced had the terminal listing exactly one word, on the reasoning that a
+	 * verb in that list is a word the terminal would store as a credential. That was true of the
+	 * parser at the time, and the two together meant the help was consistent and the commands were
+	 * unreachable: `/secret list` stored `list`. The verbs work here now, so a verb MISSING from
+	 * either list is a working command nobody discovers.
 	 */
-	it("list every verb for a client with no screen, and only the manager for a terminal", () => {
+	it("list every verb on both surfaces, and the manager only where there is a screen", () => {
 		const commandWords = (usage: string) =>
 			[...new Set([...usage.matchAll(/^ {2}\/secret (\w+)/gmu)].map(match => match[1]))].sort();
 
-		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(["manager"]);
+		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(["discard", "extend", "list", "log", "manager", "rm"]);
 		expect(commandWords(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual([
 			"add",
 			"discard",
@@ -500,19 +503,25 @@ describe("the two usage variants", () => {
 			expect(lines[manage - 1]).toBe("");
 			expect(lines.slice(store + 1, manage - 1).every(line => line.startsWith("  /secret "))).toBe(true);
 
-			// The management body itself, exactly, because that group is where the two texts diverge:
-			// a terminal offers the manager screen and a client with no screen gets the verbs. Bounded
-			// by the heading above and the blank line below rather than by fixed offsets, so the claim
-			// survives any reflow of the group in front of it.
+			// The management body itself, exactly, because the two texts still diverge there: a terminal
+			// leads with the manager screen, which is the better way to do four of the five, and a
+			// client with no screen has only the verbs. Bounded by the heading above and the blank line
+			// below rather than by fixed offsets, so the claim survives any reflow of the group in
+			// front of it.
+			const management = [
+				"  /secret list                          show active secrets, never their values",
+				"  /secret rm <name> [--scope global]    remove a secret",
+				"  /secret extend <name> --ttl 7d        give a secret a fresh lifetime",
+				"  /secret log [--limit 50]              show which secrets were used, and where",
+				"  /secret discard --scope project       move a broken vault file aside",
+			];
 			expect(lines.slice(manage + 1, lines.indexOf("", manage + 1))).toEqual(
 				usage === SECRET_COMMAND_USAGE
-					? ["  /secret manager                       list, rename, extend, revoke, copy"]
-					: [
-							"  /secret rm <name> [--scope global]    remove a secret",
-							"  /secret extend <name> --ttl 7d        give a secret a fresh lifetime",
-							"  /secret log [--limit 50]              show which secrets were used, and where",
-							"  /secret discard --scope project       move a broken vault file aside",
-						],
+					? [
+							"  /secret manager                       open the manager: rename, extend, revoke, copy",
+							...management,
+						]
+					: management,
 			);
 		}
 	});
@@ -538,14 +547,14 @@ describe("the two usage variants", () => {
 	});
 
 	/**
-	 * Terminal help states the option values without naming a verb that takes them.
+	 * Terminal help states the option values without the annotation column beside them.
 	 *
-	 * The annotation column is a fact about the VERB grammar, and the terminal has no verbs: its
-	 * whole argument line is the credential. Sharing one footer put "on add, rm and discard" on
-	 * this surface, advertising a `discard` an operator here cannot type. Pinned as an exact list
-	 * so a future footer line has to be placed on the surface it is true for.
+	 * The column says WHICH VERB reads each option, and it is noise on a surface whose first line is
+	 * `/secret <value>`: the everyday path there takes no options at all, and the verbs that do take
+	 * them spell the option in their own usage line two rows up. Pinned as an exact list so a future
+	 * footer line has to be placed on the surface it is true for.
 	 */
-	it("state the options in the terminal without naming verbs that surface does not have", () => {
+	it("state the option values in the terminal without the per-verb column", () => {
 		const lines = SECRET_COMMAND_USAGE.split("\n");
 
 		expect(lines.slice(-3)).toEqual([
@@ -554,7 +563,7 @@ describe("the two usage variants", () => {
 			"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
 		]);
 		expect(lines[lines.length - 4]).toBe("");
-		expect(SECRET_COMMAND_USAGE).not.toContain("discard");
+		expect(SECRET_COMMAND_USAGE).not.toContain("on add, rm and discard");
 	});
 });
 
