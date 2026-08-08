@@ -4,6 +4,7 @@ import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selec
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { formatProviderName } from "@veyyon/coding-agent/slash-commands/helpers/format";
 import type { TUI } from "@veyyon/tui";
 
 interface RenderableBlock {
@@ -31,6 +32,19 @@ describe("SelectorController login", () => {
 			login: vi.fn(async () => {
 				loginSaved.resolve();
 			}),
+			// A finished login now opens the account manager, which reloads storage and reads the rows
+			// back. The stub answers that with an empty account list: this case is about the success
+			// block, and an incomplete stub turned a passing assertion into an unhandled rejection.
+			reload: vi.fn(async () => {}),
+			listStoredCredentials: vi.fn(() => []),
+			listProvidersWithFailedRefresh: vi.fn(() => []),
+			getAccountName: vi.fn(() => undefined),
+			getCredentialOrigin: vi.fn(() => undefined),
+			sessionCredentialRouting: vi.fn(() => undefined),
+			credentialBlockedUntil: vi.fn(() => undefined),
+			disabledCredentialCause: vi.fn(() => undefined),
+			checkCredentials: vi.fn(async () => []),
+			listUsageWindows: vi.fn(() => []),
 		} as unknown as AuthStorage;
 		const refresh = vi.fn(() => new Promise<void>(() => {}));
 		const refreshInBackground = vi.fn();
@@ -45,12 +59,21 @@ describe("SelectorController login", () => {
 					refresh,
 					refreshInBackground,
 				},
+				// The account manager the finished login opens reads the balancing setting.
+				settings: { get: () => undefined },
+				fetchUsageReports: async () => [],
 			},
 			// The login flow swaps the editor slot for the cancellable dialog
 			// and restores it when the flow settles.
 			editorContainer: { clear: vi.fn(), addChild: vi.fn(), children: [] },
 			editor: {},
-			ui: { setFocus: vi.fn(), requestRender: vi.fn() },
+			ui: {
+				setFocus: vi.fn(),
+				requestRender: vi.fn(),
+				requestComponentRender: vi.fn(),
+				// The finished login opens the account card in an overlay; this case is about the success block.
+				showOverlay: vi.fn(() => ({ close: vi.fn(), update: vi.fn() })),
+			},
 			showStatus: vi.fn(),
 			showError: vi.fn(),
 			present: vi.fn((block: unknown) => {
@@ -70,7 +93,11 @@ describe("SelectorController login", () => {
 		await loginSaved.promise;
 		await Promise.resolve();
 
-		expect(renderPresented(presentedBlocks)).toContain("Successfully logged in to xai-oauth");
+		// Through the label owner, not the slug: pinning `xai-oauth` here made a correct label change
+		// (the whole product now says "xAI OAuth") look like a routing regression.
+		expect(renderPresented(presentedBlocks)).toContain(
+			`Successfully logged in to ${formatProviderName("xai-oauth")}`,
+		);
 		expect(refreshInBackground).toHaveBeenCalledTimes(1);
 		expect(refresh).not.toHaveBeenCalled();
 		expect(ctx.showError).not.toHaveBeenCalled();
@@ -130,7 +157,7 @@ describe("SelectorController login", () => {
 	it("routes enhanced paste into a direct API-key prompt", async () => {
 		const tui = { requestRender: vi.fn() } as unknown as TUI;
 		const dialog = new LoginDialogComponent(tui, "openrouter", vi.fn());
-		const prompt = dialog.showPrompt("Paste your OpenRouter API key");
+		const prompt = dialog.showPrompt({ message: "Paste your OpenRouter API key", secret: true });
 
 		dialog.pasteText("VEYYON_PASTE_TEST_123");
 		dialog.handleInput("\n");

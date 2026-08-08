@@ -1,11 +1,11 @@
 import type { AuthStorage } from "@veyyon/ai";
-import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // The derived provider set from the registry that derives it (164 modules) rather than the
 // barrel (346), which additionally brings the streaming engine and every transport.
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import { type Component, type Focusable, Input, matchesKey, type SgrMouseEvent, wrapTextWithAnsi } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath } from "@veyyon/utils";
+import { formatProviderName } from "../../../slash-commands/helpers/format";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { OAuthSelectorComponent } from "../../components/oauth-selector";
 import { theme } from "../../theme/theme";
@@ -19,9 +19,14 @@ function loginCopyHint(): string {
 	return theme.fg("dim", "(clipboard copy attempted; Alt+C retries)");
 }
 
-/** Friendly provider name for status copy (e.g. "Anthropic"), falling back to the raw id. */
+/**
+ * Friendly provider name for status copy (e.g. "Anthropic"), through the one label owner the account
+ * card, the model hub, the footline and the login dialog all use. This scene used to read the
+ * browser-login table and fall back to the raw slug, which printed `Signing in to groq` for every
+ * provider that authenticates with a pasted key, because that table has no row for one.
+ */
 function providerDisplayName(providerId: string): string {
-	return getOAuthProviders().find(provider => provider.id === providerId)?.name ?? providerId;
+	return formatProviderName(providerId);
 }
 
 class CopyablePromptInput implements Component, Focusable {
@@ -334,9 +339,14 @@ export class SignInTab implements SetupTab {
 		this.host.requestRender();
 	}
 
-	#showPrompt(prompt: { message: string; placeholder?: string }): Promise<string> {
+	#showPrompt(prompt: { message: string; placeholder?: string; secret?: boolean }): Promise<string> {
 		this.#resolvePrompt("");
 		const input = new Input();
+		// An API key pasted during onboarding is a credential and stayed on screen in clear text,
+		// including on whatever recording or shoulder was watching. `credentialMode` masks the render
+		// and keeps the pasted bytes exactly as pasted. The flow that asks declares this, so a
+		// verification code (`secret` absent) is still readable while it is typed.
+		input.credentialMode = prompt.secret === true;
 		const focusInput = new CopyablePromptInput(
 			input,
 			() => {

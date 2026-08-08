@@ -52,6 +52,7 @@ import type {
 	OAuthAuthInfo,
 	OAuthController,
 	OAuthCredentials,
+	OAuthPrompt,
 	OAuthProvider,
 	OAuthProviderId,
 } from "./registry/oauth/types";
@@ -988,6 +989,32 @@ export interface OAuthLoginIdentity {
 	accountId?: string;
 	orgId?: string;
 	orgName?: string;
+	/**
+	 * Row id the credential landed on, so the caller can act on THAT account: name it, select it,
+	 * or report it. Absent only when the write went somewhere the row cannot be identified
+	 * afterwards (a remote store that answers with a different row set than it was given).
+	 */
+	credentialId?: number;
+}
+
+/**
+ * The row an upsert just wrote, found by the secret it holds.
+ *
+ * An upsert answers with every row the provider now has, not the one it added, and a login needs the
+ * one it added: naming an account is meaningless if it names a sibling. The secret is the only field
+ * that is unique per row - two rows can share an email, an account id, an organization, and a
+ * creation timestamp, which is exactly the Anthropic two-subscription case.
+ */
+function storedCredentialSecret(credential: AuthCredential): string {
+	return credential.type === "api_key" ? credential.key : credential.access;
+}
+
+function matchStoredCredentialId(
+	stored: readonly { id: number; credential: AuthCredential }[],
+	written: AuthCredential,
+): number | undefined {
+	const secret = storedCredentialSecret(written);
+	return stored.find(entry => storedCredentialSecret(entry.credential) === secret)?.id;
 }
 
 export interface OAuthAccessFailure {
@@ -3228,7 +3255,8 @@ export class AuthStorage {
 		}
 	}
 
-	async #upsertOAuthCredential(provider: string, credential: OAuthCredential): Promise<void> {
+	/** Returns the row the credential landed on, so a caller can name or select that account. */
+	async #upsertOAuthCredential(provider: string, credential: OAuthCredential): Promise<number | undefined> {
 		const stored = this.#store.upsertAuthCredentialRemote
 			? await this.#store.upsertAuthCredentialRemote(provider, credential)
 			: this.#store.upsertAuthCredentialForProvider(provider, credential);
@@ -3237,6 +3265,7 @@ export class AuthStorage {
 			stored.map(entry => ({ id: entry.id, credential: entry.credential })),
 		);
 		this.#resetProviderAssignments(provider);
+		return matchStoredCredentialId(stored, credential);
 	}
 
 	/**
@@ -3512,8 +3541,13 @@ export class AuthStorage {
 		ctrl: OAuthController & {
 			/** onAuth is required by auth-storage but optional in OAuthController */
 			onAuth: (info: OAuthAuthInfo) => void;
-			/** onPrompt is required for some providers (github-copilot, openai-codex) */
-			onPrompt: (prompt: { message: string; placeholder?: string }) => Promise<string>;
+			/**
+			 * onPrompt is required for some providers (github-copilot, openai-codex). The parameter is
+			 * the flow's own `OAuthPrompt`, restated here as a structural type rather than narrowed:
+			 * spelling out two of its fields hid `secret` from every caller, so a UI reading this
+			 * signature could not know an answer was a credential to be masked.
+			 */
+			onPrompt: (prompt: OAuthPrompt) => Promise<string>;
 		},
 	): Promise<OAuthLoginIdentity | undefined> {
 		// Only paste-code providers (fixed non-loopback redirect, e.g. GitLab Duo
@@ -3555,19 +3589,21 @@ export class AuthStorage {
 				stored.map(entry => ({ id: entry.id, credential: entry.credential })),
 			);
 			this.#resetProviderAssignments(provider);
-			return { type: "api_key" };
+			const credentialId = matchStoredCredentialId(stored, newCredential);
+			return { type: "api_key", ...(credentialId !== undefined ? { credentialId } : {}) };
 		}
 		const newCredential: OAuthCredential = { type: "oauth", ...result };
 		// Use #upsertOAuthCredential to upsert the new credential.
 		// Any legacy api_key rows from older versions will be cleaned up so they do not
 		// shadow the new OAuth row, while preserving other active OAuth credentials.
-		await this.#upsertOAuthCredential(def.storeCredentialsAs ?? provider, newCredential);
+		const credentialId = await this.#upsertOAuthCredential(def.storeCredentialsAs ?? provider, newCredential);
 		return {
 			type: "oauth",
 			email: newCredential.email,
 			accountId: newCredential.accountId,
 			orgId: newCredential.orgId,
 			orgName: newCredential.orgName,
+			...(credentialId !== undefined ? { credentialId } : {}),
 		};
 	}
 

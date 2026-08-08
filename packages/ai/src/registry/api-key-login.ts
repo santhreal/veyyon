@@ -64,6 +64,9 @@ export function createApiKeyLogin(config: ApiKeyLoginConfig): (options: OAuthCon
 		const apiKey = await options.onPrompt({
 			message: config.promptMessage,
 			placeholder: config.placeholder,
+			// An API key is a bearer credential. The UI masks it and takes the paste
+			// byte for byte rather than echoing it into the transcript.
+			secret: true,
 		});
 
 		if (options.signal?.aborted) {
