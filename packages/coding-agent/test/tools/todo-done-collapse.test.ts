@@ -31,11 +31,19 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { TodoTool, type TodoPhase, type TodoToolDetails, todoToolRenderer } from "@veyyon/coding-agent/tools/todo";
+import {
+	getLatestTodoPhasesSnapshotFromEntries,
+	type TodoPhase,
+	TodoTool,
+	type TodoToolDetails,
+	todoToolRenderer,
+} from "@veyyon/coding-agent/tools/todo";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import {
 	isTerminalTodoStatus,
+	isTodoListDone,
 	TODO_DONE_SUMMARY,
 	TODO_STATUS_IS_TERMINAL,
 	TODO_STATUSES,
@@ -313,12 +321,138 @@ describe("terminality vocabulary is closed", () => {
 	/** Any mixture of closed statuses, across any number of phases, is done. */
 	it("collapses a board mixing every closed status across phases", () => {
 		const closed = TODO_STATUSES.filter(status => isTerminalTodoStatus(status));
-		const phases: TodoPhase[] = closed.map((status, index) => ({
+		const phases: TodoPhase[] = closed.map((_, index) => ({
 			name: `Phase ${index + 1}`,
 			tasks: closed.map((inner, position) => ({ content: `p${index}-t${position}`, status: inner })),
 		}));
 
 		expect(renderLines(resultFor(phases))).toEqual([doneLine(closed.length * closed.length)]);
+	});
+});
+
+describe("the TUI card and the shared owner never disagree", () => {
+	/**
+	 * The full cross product, across one and two phases, compared board by board
+	 * against `isTodoListDone`. The reported defect was a decision that happened
+	 * to be right for the mixture someone had in mind; every mixture of every
+	 * status is checked here, and the card's verdict is read off its rendered
+	 * bytes rather than off any flag, so a card that collapses AND keeps drawing
+	 * rows fails too.
+	 */
+	it("collapses exactly when the owner says the board is done, for every board of two tasks", () => {
+		let checked = 0;
+		for (const first of TODO_STATUSES) {
+			for (const second of TODO_STATUSES) {
+				const layouts: TodoPhase[][] = [
+					board([first, second]),
+					[
+						{ name: "Alpha", tasks: [{ content: `a-${first}`, status: first }] },
+						{ name: "Beta", tasks: [{ content: `b-${second}`, status: second }] },
+					],
+					[
+						{ name: "Empty", tasks: [] },
+						{ name: "Alpha", tasks: [{ content: `a-${first}`, status: first }] },
+						{ name: "Beta", tasks: [{ content: `b-${second}`, status: second }] },
+					],
+				];
+				for (const phases of layouts) {
+					const expected = isTodoListDone(phases);
+					const lines = renderLines(resultFor(phases), { expanded: true, isPartial: false });
+					if (expected) {
+						expect(lines).toEqual([doneLine(2)]);
+					} else {
+						const rendered = Bun.stripANSI(lines.join("\n"));
+						expect(rendered).not.toContain(TODO_DONE_SUMMARY);
+						expect(lines.length).toBeGreaterThan(1);
+					}
+					checked++;
+				}
+			}
+		}
+		const statuses = TODO_STATUSES.length;
+		expect(checked).toBe(statuses * statuses * 3);
+	});
+
+	/**
+	 * A status this build has never heard of reads as OPEN, so the card draws the
+	 * work instead of announcing a finish nobody recorded. `toString` and its
+	 * `Object.prototype` siblings are here because the owner's membership check
+	 * used `in`, which walks the prototype chain: a session file carrying
+	 * `status: "toString"` looked up a truthy function and the card collapsed a
+	 * board with open work on it.
+	 */
+	it("never collapses a board carrying a status it does not recognize", () => {
+		for (const foreign of ["cancelled", "blocked", "toString", "constructor", "valueOf", "__proto__"]) {
+			const phases: TodoPhase[] = [
+				{
+					name: "Alpha",
+					tasks: [
+						{ content: "shipped", status: "completed" },
+						{ content: `odd-${foreign}`, status: foreign as TodoStatus },
+					],
+				},
+			];
+			const rendered = Bun.stripANSI(
+				renderLines(resultFor(phases), { expanded: true, isPartial: false }).join("\n"),
+			);
+
+			expect(rendered).not.toContain(TODO_DONE_SUMMARY);
+			expect(rendered).toContain(`odd-${foreign}`);
+		}
+	});
+});
+
+describe("nothing about a collapse reaches the session or the transcript", () => {
+	/**
+	 * The reporter's clarification, taken all the way to what is written down.
+	 * The card is a read; the board that a later session reads back has to be the
+	 * full board, so reopening it with an `append` brings the list straight back
+	 * even after a restart. Driven through the real reader the resume path uses,
+	 * `getLatestTodoPhasesSnapshotFromEntries`, over the real tool's own result
+	 * details, and asserted AFTER the collapsed card has been rendered several
+	 * times.
+	 */
+	it("persists the full board a finished card collapsed, and reopens from it", async () => {
+		const session = createSession();
+		const tool = new TodoTool(session);
+		await tool.execute("c1", { op: "init", list: [{ phase: "Alpha", items: ["a1", "a2"] }] });
+		await tool.execute("c2", { op: "done", task: "a1" });
+		const finished = await tool.execute("c3", { op: "done", task: "a2" });
+
+		expect(renderLines(finished)).toEqual([doneLine(2)]);
+		renderLines(finished, { expanded: true, isPartial: false });
+		renderLines(finished, { expanded: false, isPartial: true });
+
+		const entries = [
+			{
+				type: "message",
+				message: { role: "toolResult", toolName: "todo", details: finished.details, isError: false },
+			},
+		] as unknown as SessionEntry[];
+		const snapshot = getLatestTodoPhasesSnapshotFromEntries(entries);
+
+		expect(snapshot.found).toBe(true);
+		expect(snapshot.phases).toEqual([
+			{
+				name: "Alpha",
+				tasks: [
+					{ content: "a1", status: "completed" },
+					{ content: "a2", status: "completed" },
+				],
+			},
+		]);
+		// Not one line, not a summary, not a marker: the whole board, so a resumed
+		// session can append to it.
+		expect(JSON.stringify(snapshot.phases)).not.toMatch(/collaps|expand|Todo list done/i);
+
+		// And the resumed board reopens on the next append, through the same reader.
+		const resumed = new TodoTool(createSession(snapshot.phases));
+		const reopened = await resumed.execute("c4", { op: "append", phase: "Alpha", items: ["a3"] });
+		const rendered = Bun.stripANSI(renderLines(reopened, { expanded: true, isPartial: false }).join("\n"));
+
+		expect(rendered).not.toContain(TODO_DONE_SUMMARY);
+		expect(rendered).toContain("a1");
+		expect(rendered).toContain("a3");
 	});
 });
 

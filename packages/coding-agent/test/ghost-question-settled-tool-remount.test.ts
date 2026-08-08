@@ -190,16 +190,83 @@ function replayFor(kind: keyof typeof MOUNT_RISK, toolName: string): AgentSessio
 const REPLAYABLE = Object.entries(MOUNT_RISK)
 	.filter(([, risk]) => risk === "can-mount")
 	.map(([kind]) => kind as keyof typeof MOUNT_RISK);
+/**
+ * The second axis: RENDER PATHS, enumerated from source at run time.
+ *
+ * `pendingTools` and `settledToolCalls` are consulted by exactly two classes,
+ * and every way a tool card can reach the transcript starts at a public method
+ * of one of them. Those method names are read off the prototypes below, so a new
+ * public entry point — a collab resync handler, a replay method, a second
+ * rebuild — turns this suite RED until somebody records whether it can mount a
+ * card, and if it can, supplies a driver that the settled-inertness sweep runs.
+ *
+ * The classification is pinned by exact set equality, never by a count and never
+ * by a loose match: renaming a method fails just as loudly as adding one.
+ */
+const CONTROLLER_ENTRY_POINTS = {
+	constructor: "not-an-entry-point",
+	handleEvent: "mounts-tool-cards",
+	// Wires `session.subscribe` straight to `handleEvent`; it reaches no mount
+	// site of its own, and driving it would only re-test `handleEvent`.
+	subscribeToAgent: "inert",
+	dispose: "inert",
+	resetTranscriptAnchors: "inert",
+	inheritDisplaceableTodo: "inert",
+	sendCompletionNotification: "inert",
+} as const;
 
-function createFixture(opts: { isStreaming?: boolean } = {}) {
+const HELPER_ENTRY_POINTS = {
+	constructor: "not-an-entry-point",
+	renderSessionContext: "mounts-tool-cards",
+	renderInitialMessages: "mounts-tool-cards",
+	// Asserted inert below rather than assumed: its `toolResult` case is a
+	// deliberate no-op and its `assistant` case renders prose only.
+	addMessageToChat: "inert",
+	getUserMessageText: "inert",
+	showStatus: "inert",
+	clearEditor: "inert",
+	showError: "inert",
+	showWarning: "inert",
+	showUpdateReadyNotification: "inert",
+	showUpdateFailedNotification: "inert",
+	showUnparseableSettingsNotification: "inert",
+	showSettingsSaveFailureNotification: "inert",
+	showNewVersionNotification: "inert",
+	showPluginUpdatesNotification: "inert",
+	showPluginUpdatesInstalledNotification: "inert",
+	updatePendingMessagesDisplay: "inert",
+	queueCompactionMessage: "inert",
+	isKnownSlashCommand: "inert",
+	flushCompactionQueue: "inert",
+	flushPendingBashComponents: "inert",
+	findLastAssistantMessage: "inert",
+	extractAssistantText: "inert",
+} as const;
+
+/**
+ * Which mounting entry point each driver in the sweep exercises. Every
+ * `mounts-tool-cards` name above must appear here, or the run-time check throws:
+ * a new render path cannot be classified as dangerous and then left undriven.
+ */
+const DRIVEN_ENTRY_POINTS: readonly string[] = [
+	"EventController.handleEvent",
+	"UiHelpers.renderSessionContext",
+	"UiHelpers.renderInitialMessages",
+];
+
+function createFixture(opts: { isStreaming?: boolean; messages?: AgentMessage[] } = {}) {
 	const chatContainer = new TranscriptContainer();
 	const session = {
 		retryAttempt: 0,
 		getToolByName: () => undefined,
 		getArgotSession: () => undefined,
-		sessionManager: { getCwd: () => process.cwd(), getSessionName: () => "test-session" },
+		sessionManager: { getCwd: () => process.cwd(), getSessionName: () => "test-session", getEntries: () => [] },
 		isStreaming: opts.isStreaming ?? true,
 		systemPromptInvalidations: () => [],
+		// What `renderInitialMessages` replays. Same messages the direct
+		// `renderSessionContext` driver uses, reached through the production
+		// caller instead of by hand.
+		buildTranscriptSessionContext: () => ({ messages: opts.messages ?? [] }) as SessionContext,
 	};
 	let helpers!: UiHelpers;
 	const ctx = {
@@ -214,6 +281,16 @@ function createFixture(opts: { isStreaming?: boolean } = {}) {
 		updateEditorBorderColor: vi.fn(),
 		settings: { get: () => false },
 		addMessageToChat: (message: AgentMessage) => helpers.addMessageToChat(message),
+		renderSessionContext: (
+			context: SessionContext,
+			options?: { updateFooter?: boolean; populateHistory?: boolean },
+		) => helpers.renderSessionContext(context, options),
+		resetTranscript: () => chatContainer.clear(),
+		initialChatRendered: false,
+		pendingMessagesContainer: { disposeChildren: vi.fn(), removeChild: vi.fn(), addChild: vi.fn() },
+		pendingBashComponents: [],
+		pendingPythonComponents: [],
+		focusedAgentId: undefined,
 		session,
 		viewSession: session,
 		sessionManager: { getCwd: () => process.cwd(), getSessionName: () => "test-session" },
@@ -304,6 +381,47 @@ describe("a settled tool call can never re-mount as a live card", () => {
 		expect(REPLAYABLE).toContain("tool_execution_start");
 		expect(REPLAYABLE).toContain("message_update");
 		expect(REPLAYABLE.length).toBe(6);
+	});
+
+	/**
+	 * The render-path axis, read off the prototypes at run time. Exact set
+	 * equality both ways: a new public method on either class fails here, and so
+	 * does a rename or a removal, which is what keeps this list from going stale
+	 * in silence the way a hardcoded roster does.
+	 */
+	it("classifies every public entry point of the two classes that mount tool cards", () => {
+		expect(Object.getOwnPropertyNames(EventController.prototype).sort()).toEqual(
+			Object.keys(CONTROLLER_ENTRY_POINTS).sort(),
+		);
+		expect(Object.getOwnPropertyNames(UiHelpers.prototype).sort()).toEqual(Object.keys(HELPER_ENTRY_POINTS).sort());
+
+		const mounting = [
+			...Object.entries(CONTROLLER_ENTRY_POINTS)
+				.filter(([, role]) => role === "mounts-tool-cards")
+				.map(([name]) => `EventController.${name}`),
+			...Object.entries(HELPER_ENTRY_POINTS)
+				.filter(([, role]) => role === "mounts-tool-cards")
+				.map(([name]) => `UiHelpers.${name}`),
+		];
+		// A path classified as dangerous and then left undriven is a hole, not a
+		// pass. Exact equality, so a driver for a path nobody classified fails too.
+		expect(mounting.sort()).toEqual([...DRIVEN_ENTRY_POINTS].sort());
+	});
+
+	/**
+	 * The one classification above that is an assertion rather than a reading:
+	 * `addMessageToChat` sees the assistant message that CARRIES the tool call and
+	 * the toolResult that answers it, and must build a card from neither. If it
+	 * ever does, it becomes a mount site with no ledger consult.
+	 */
+	it("mounts no tool card from a message handed straight to addMessageToChat", () => {
+		const { helpers, chatContainer } = createFixture({ isStreaming: false });
+
+		helpers.addMessageToChat(assistantCalling("ask"));
+		helpers.addMessageToChat(toolResultMessage("ask"));
+
+		expect(toolCards(chatContainer).length).toBe(0);
+		expect(stripAnsi(chatContainer.render(100).join("\n"))).not.toContain("Which auth method?");
 	});
 
 	// Three phases, because WHEN the stray event lands decides which state has
@@ -403,22 +521,99 @@ describe("a settled tool call can never re-mount as a live card", () => {
 		// The rebuild tears the ledger down with the transcript, so resolution has
 		// to come back out of the recorded toolResult — otherwise every rebuild
 		// (idle auto-compaction, overlay close, focus attach) reopens the hole.
-		const { ctx, helpers, chatContainer, controller } = createFixture({ isStreaming: false });
+		const { helpers, chatContainer, controller } = createFixture({ isStreaming: false });
 
 		helpers.renderSessionContext({
 			messages: [assistantCalling("ask"), toolResultMessage("ask")],
 		} as SessionContext);
 
+		// The rebuilt card is the ANSWERED card, byte for byte, and stays that way.
+		// Asserting the ledger here instead would pass while the transcript showed
+		// a fresh question beside it.
+		const rebuilt = stripAnsi(chatContainer.render(100).join("\n"));
 		expect(toolCards(chatContainer).length).toBe(1);
-		expect(ctx.settledToolCalls.has(CALL_ID)).toBe(true);
+		expect(rebuilt).toContain("▣ JWT");
+		expect(rebuilt).not.toContain("Ask 1 questions");
 
 		for (const kind of REPLAYABLE) {
 			for (const event of replayFor(kind, "ask")) await controller.handleEvent(event);
 		}
 
-		expect(toolCards(chatContainer).length).toBe(1);
-		expect(stripAnsi(chatContainer.render(100).join("\n"))).not.toContain("Ask 1 questions");
+		expect(stripAnsi(chatContainer.render(100).join("\n"))).toBe(rebuilt);
+		expect(rebuilt.split("Which auth method?").length - 1).toBe(1);
 	});
+
+	/**
+	 * The same rebuild reached through the caller production actually uses.
+	 * `renderInitialMessages` is what a focus attach, an overlay close and a
+	 * resume run; it clears the transcript and replays the session's own context.
+	 * Driving only the inner method would leave this path's clear-and-re-derive
+	 * untested, which is exactly the shape of gap that shipped the defect.
+	 */
+	for (const toolName of ["ask", "read", "bash"]) {
+		it(`freezes a rebuilt '${toolName}' card when the rebuild ran through renderInitialMessages`, async () => {
+			const { helpers, chatContainer, controller } = createFixture({
+				isStreaming: false,
+				messages: [assistantCalling(toolName), toolResultMessage(toolName)],
+			});
+
+			helpers.renderInitialMessages();
+
+			const rebuilt = toolCardBytes(chatContainer);
+			expect(rebuilt.length).toBe(1);
+
+			for (const kind of REPLAYABLE) {
+				for (const event of replayFor(kind, toolName)) await controller.handleEvent(event);
+			}
+
+			expect(toolCardBytes(chatContainer)).toEqual(rebuilt);
+		});
+	}
+
+	/**
+	 * The turn that ended in an error stop. The rebuild paints the error INTO the
+	 * tool card and never puts it in `pendingTools`, because no result is coming —
+	 * the card is final the moment it is drawn. Two branches do this, one for
+	 * grouped reads and one for every other tool, and both were left out of the
+	 * ledger by the original fix: the settle was written next to the recorded
+	 * `toolResult` and next to the trailing seal, and this third way of producing
+	 * a final card was not either of those. A `tool_execution_start` replay for
+	 * the same call then built a live card beside the errored one, which for `ask`
+	 * is the ghost question with the error still on screen above it.
+	 */
+	// What the errored card shows, per tool, so the test proves the ERROR branch
+	// ran rather than some other branch that also happens to leave one card. The
+	// grouped read collapses to a failed row instead of printing the message;
+	// without the error branch it would leave no card at all, which the count
+	// below catches.
+	const ERRORED_CARD_MARK: Record<string, string> = {
+		ask: "provider closed the stream",
+		read: "✗ Read README.md",
+		bash: "provider closed the stream",
+	};
+	for (const toolName of ["ask", "read", "bash"]) {
+		it(`freezes a '${toolName}' card the rebuild painted with a turn-ending error`, async () => {
+			const { helpers, chatContainer, controller } = createFixture({ isStreaming: false });
+			const failed = {
+				...assistantCalling(toolName),
+				stopReason: "error",
+				errorMessage: "provider closed the stream",
+			} as unknown as AgentMessage;
+
+			helpers.renderSessionContext({ messages: [failed] } as SessionContext);
+
+			const painted = toolCardBytes(chatContainer);
+			expect(painted.length).toBe(1);
+			expect(painted[0]).toContain(ERRORED_CARD_MARK[toolName]);
+
+			for (const kind of REPLAYABLE) {
+				for (const event of replayFor(kind, toolName)) await controller.handleEvent(event);
+			}
+
+			expect(toolCardBytes(chatContainer)).toEqual(painted);
+			expect(stripAnsi(chatContainer.render(100).join("\n"))).not.toContain("Ask 1 questions");
+		});
+	}
 
 	it("cannot resurrect a call an idle rebuild sealed with no result on record", async () => {
 		// The other half of the rebuild: a toolCall whose result was never
@@ -467,6 +662,55 @@ describe("a settled tool call can never re-mount as a live card", () => {
 		}
 
 		expect(toolCards(chatContainer).length).toBe(1);
+	});
+
+	/**
+	 * The other direction of the same invariant, and the one a reader is most
+	 * tempted to break: the ledger describes the transcript that is on screen, so
+	 * a rebuild that tears the transcript down re-derives it and holds nothing
+	 * from the transcript it replaced.
+	 *
+	 * Dropping the clear looks harmless because ids from one provider stream do
+	 * not repeat. They repeat across streams: the ACP and Cursor exec channels
+	 * number their calls per session, and a focus attach rebuilds the transcript
+	 * of a different agent into the same context. A stale entry then makes the
+	 * NEW agent's genuinely live card deaf: `#handleToolExecutionEnd` sees the id
+	 * already settled and returns, so the spinner never resolves. Never mounting
+	 * a second card must not decay into never finishing the first one.
+	 */
+	it("re-derives the ledger from the rebuilt transcript and holds nothing from the old one", async () => {
+		const { ctx, helpers, chatContainer, controller } = createFixture({
+			isStreaming: true,
+			messages: [assistantCalling("ask")],
+		});
+
+		// A previous transcript settled this id.
+		await runToCompletion(controller, "ask");
+		expect(ctx.settledToolCalls.has(CALL_ID)).toBe(true);
+
+		// Focus attach: the transcript is replaced while the viewed session is
+		// still streaming, and the same id now names an in-flight call.
+		helpers.renderInitialMessages();
+
+		expect([...ctx.settledToolCalls]).toEqual([]);
+		expect(ctx.pendingTools.has(CALL_ID)).toBe(true);
+		const live = toolCardBytes(chatContainer);
+		expect(live.length).toBe(1);
+		expect(live[0]).not.toContain("▣ JWT");
+
+		await controller.handleEvent({
+			type: "tool_execution_end",
+			toolCallId: CALL_ID,
+			toolName: "ask",
+			result: TOOL_RESULT,
+			isError: false,
+		} as unknown as AgentSessionEvent);
+
+		// The result reached the card the rebuild drew, and did not open a second.
+		const answered = toolCardBytes(chatContainer);
+		expect(answered.length).toBe(1);
+		expect(answered[0]).toContain("▣ JWT");
+		expect(ctx.settledToolCalls.has(CALL_ID)).toBe(true);
 	});
 
 	it("still mounts a genuinely new call, and keeps a backgrounded task live", async () => {

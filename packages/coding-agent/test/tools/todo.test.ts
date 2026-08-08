@@ -182,9 +182,12 @@ describe("nextActionableTask", () => {
 	});
 });
 
+// The board keeps a second task so it is still OPEN: a board whose every task
+// has closed collapses to the one-line "Todo list done" summary and has no rows
+// left to strike through (see todo-done-collapse.test.ts).
 it("renders completed tasks as checked before revealing strikethrough", async () => {
 	const tool = new TodoTool(createSession());
-	await tool.execute("call-1", { op: "init", list: [{ phase: "Execution", items: ["finish"] }] });
+	await tool.execute("call-1", { op: "init", list: [{ phase: "Execution", items: ["finish", "carry on"] }] });
 	const result = await tool.execute("call-2", { op: "done", task: "finish" });
 	const options = { expanded: true, isPartial: false, spinnerFrame: 0 };
 	const component = todoToolRenderer.renderResult(result, options, theme);

@@ -477,6 +477,12 @@ export class UiHelpers {
 								false,
 								content.id,
 							);
+							// The turn ended in an error, so this row carries its final
+							// content and no result is ever coming for it. That makes it
+							// history exactly like a paired toolResult, and it settles for
+							// the same reason: the ledger is what stops a later replay of
+							// this call from mounting a live card beside it.
+							this.ctx.settledToolCalls.add(content.id);
 						} else if (afterToolSegment) {
 							if (!readGroup) {
 								readGroup = new ReadToolGroupComponent({
@@ -545,6 +551,11 @@ export class UiHelpers {
 							false,
 							content.id,
 						);
+						// Same reason as the read branch above. A card is settled when it
+						// is final, and there are three ways to be final on this path: a
+						// recorded result, a turn-ending error, and the trailing seal.
+						// Missing any one of them reopens the ghost.
+						this.ctx.settledToolCalls.add(content.id);
 					} else {
 						this.ctx.pendingTools.set(content.id, component);
 					}

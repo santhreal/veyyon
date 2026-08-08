@@ -1008,14 +1008,30 @@ export type TodoStatus = keyof typeof TODO_STATUS_IS_TERMINAL;
 /** Every status in {@link TODO_STATUS_IS_TERMINAL}, for enumeration at run time. */
 export const TODO_STATUSES: readonly TodoStatus[] = Object.keys(TODO_STATUS_IS_TERMINAL) as TodoStatus[];
 
-/** A status no further work is expected on. The complement is open work. */
+/**
+ * A status no further work is expected on. The complement is open work.
+ *
+ * Compared against `true` rather than returned raw: the argument is typed, but
+ * the values behind it come off session files and wire frames, and a board
+ * carrying `status: "toString"` reached `TODO_STATUS_IS_TERMINAL["toString"]`
+ * and got `Object.prototype.toString` back — a truthy function that read as
+ * CLOSED and collapsed a board with open work on it.
+ */
 export function isTerminalTodoStatus(status: TodoStatus): boolean {
-	return TODO_STATUS_IS_TERMINAL[status];
+	return TODO_STATUS_IS_TERMINAL[status] === true;
 }
 
-/** Narrow arbitrary JSON (a transcript, a wire frame) to a status; anything unknown reads as open. */
+/**
+ * Narrow arbitrary JSON (a transcript, a wire frame) to a status; anything
+ * unknown reads as open.
+ *
+ * Own keys only. `in` walks the prototype chain, so every `Object.prototype`
+ * member name passed this check and came back out typed as a status.
+ */
 export function asTodoStatus(value: unknown): TodoStatus {
-	return typeof value === "string" && value in TODO_STATUS_IS_TERMINAL ? (value as TodoStatus) : "pending";
+	return typeof value === "string" && Object.hasOwn(TODO_STATUS_IS_TERMINAL, value)
+		? (value as TodoStatus)
+		: "pending";
 }
 
 /** The single line a finished todo board collapses to, on every surface. */
