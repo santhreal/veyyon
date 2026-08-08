@@ -19,12 +19,12 @@
  *  2. Every provider that has NO login is refused with a credential remedy and never with the
  *     callback sentence, enumerated from `PROVIDER_REGISTRY` the same way.
  *  3. An unknown name gets a BOUNDED answer: a did-you-mean drawn from `nearestNames` and a pointer
- *     to the picker, never the whole registry. The first version of this refusal printed all 41 ids
+ *     to the picker, never the whole registry. The first version of this refusal printed all 57 ids
  *     over twelve transcript lines, so the assertion is an upper bound on how many it may name.
  *  4. A callback-shaped string with nothing pending keeps the manual-callback message that is true
  *     for exactly that case.
  *  5. `/logout` reaches anything the account card can remove: any provider with a stored credential,
- *     not only one with a browser login, driven through BOTH spellings (`/logout` and
+ *     not only one with an interactive login, driven through BOTH spellings (`/logout` and
  *     `/account logout`) against real storage with a real api_key row.
  *  6. A refusal starts NO login. A message that reads well while the selector opens anyway would
  *     pass a text-only assertion.
@@ -220,7 +220,7 @@ describe("/login resolves its argument", () => {
 	/**
 	 * A refusal is read, so it has to be short enough to read.
 	 *
-	 * The first version of this message named every signable provider, and a recording of it is 41
+	 * The first version of this message named every signable provider, and a recording of it is 57
 	 * ids over twelve transcript lines in answer to one typo. The contract is therefore an upper
 	 * bound on how many ids a refusal may name, derived from the registry so it stays a bound as the
 	 * registry grows, plus the pointer to the picker with the count in it. A message that goes back
@@ -235,7 +235,7 @@ describe("/login resolves its argument", () => {
 		const warning = calls.warnings[0]!;
 		expect(warning).toContain('Unknown provider "gpt-9-turbo-max"');
 		expect(warning).toContain(
-			`Run /login with no argument to pick from ${oauthProviders.length} providers that support a browser login.`,
+			`Run /login with no argument to pick from ${oauthProviders.length} providers you can sign in to.`,
 		);
 		const named = oauthProviders.filter(provider => warning.includes(provider.id) || warning.includes(provider.name));
 		expect(named.length).toBeLessThanOrEqual(3);
@@ -330,7 +330,7 @@ for (const command of LOGOUT_COMMANDS) {
 			const warning = calls.warnings[0]!;
 			expect(warning).toContain('Unknown provider "gpt-9-turbo-max"');
 			expect(warning).toContain(
-				`Run /logout with no argument to pick from ${oauthProviders.length} providers that support a browser login.`,
+				`Run /logout with no argument to pick from ${oauthProviders.length} providers you can sign in to.`,
 			);
 			const named = oauthProviders.filter(
 				provider => warning.includes(provider.id) || warning.includes(provider.name),
