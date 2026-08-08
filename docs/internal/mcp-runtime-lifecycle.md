@@ -27,8 +27,8 @@ This document describes how MCP servers are discovered, connected, exposed as to
 
 Both paths:
 
-- pass `authStorage`, cache storage, and browser-MCP filtering based on the `browser.enabled` setting,
-- always set `filterExa: true`,
+- share one discover options object: `onStatus`, `filterExa: true`, `filterBrowser` from the `browser.enabled` setting, and `agentDir` (the session's own profile, so its MCP servers come from the same profile as its rules and commands),
+- give the manager auth storage and a tool cache, by different routes: the headless path passes `authStorage` and `cacheStorage` as loader options, the interactive path constructs `MCPManager` with the cache and calls `setAuthStorage`,
 - log per-server load/connect errors,
 - store the manager in `toolSession.mcpManager` and the session result.
 
@@ -40,18 +40,19 @@ If `enableMCP` is false, MCP discovery is skipped entirely.
 
 Filtering behavior:
 
-- There is no project-level filter. The `enableProjectConfig` option and its `mcp.enableProjectConfig` settings row are gone, together with the project config files they gated: no provider reads a repository's `.mcp.json`, `mcp.json`, or `.veyyon/mcp.json`, because a repository must not name a server the agent connects to. The native provider reads `<agentDir>/mcp.json` and `<agentDir>/.mcp.json` only, and each foreign provider (claude, codex, cursor, gemini, opencode, windsurf) reads its own home config only. A server whose `_source.level` is `project` is still reachable one way, and only because it was explicitly installed: `getEnabledPlugins` enumerates `<projectAnchor>/.veyyon/plugins` for a plugin installed with `--scope project`, and the `veyyon-plugins` provider loads that package's own `.mcp.json` at the root's level.
+- There is no project-level filter. The `enableProjectConfig` option and its `mcp.enableProjectConfig` settings row are gone, together with the project config files they gated: no provider reads a repository's `.mcp.json`, `mcp.json`, or `.veyyon/mcp.json`, because a repository must not name a server the agent connects to. The native provider reads `<agentDir>/mcp.json` and `<agentDir>/.mcp.json` only, and each foreign provider (claude, codex, cursor, gemini, opencode, windsurf) reads its own home config only. A server whose `_source.level` is `project` is reachable two ways, and both only because it was explicitly installed: `getEnabledPlugins` enumerates `<projectAnchor>/.veyyon/plugins` for a plugin installed with `--scope project`, and the `veyyon-plugins` provider loads that package's own `.mcp.json` or `mcp.json` at the root's level; the `claude-plugins` provider does the same, reading `.mcp.json` from a marketplace plugin whose entry in the nearest `.veyyon/plugins/installed_plugins.json` is project-scoped.
 - Servers named in the user config's `disabledServers` list are dropped, and `enabled: false` servers are skipped before connect attempts unless the same file's `enabledServers` list force-enables them.
 - Exa servers are filtered out by default and API keys are extracted for native Exa tool integration; browser automation MCP servers are filtered when `filterBrowser` is true.
 
-Result includes both `configs` and `sources` (metadata used later for provider labeling).
+Result carries `configs`, `sources` (metadata used later for provider labeling), `exaApiKeys`, and `warnings` (config files that were present but unreadable, so a server that never got a name still has something to report a failure against).
 
 ### Discovery-level failure behavior
 
-`discoverAndLoadMCPTools()` distinguishes two failure classes:
+`discoverAndLoadMCPTools()` distinguishes two failure classes, and `discoverAndConnect()` surfaces a third:
 
 - **Discovery hard failure** (exception from `manager.discoverAndConnect`, typically from config discovery): returns an empty tool set and one synthetic error `{ path: ".mcp.json", error }`.
 - **Per-server runtime/connect failure**: manager returns partial success with `errors` map; other servers continue.
+- **Config-file warning** (a file that is present but does not parse, an entry with neither `command` nor `url`): `discoverAndConnect` reports each one through `onStatus` as a failure under the pseudo-server label `MCP_CONFIG_STATUS_LABEL` (`"mcp config"`), emitted after `connectServers` returns so its `connecting` event cannot wipe it. Every other server still loads.
 
 So startup does not fail the whole agent session when individual MCP servers fail.
 
@@ -66,6 +67,7 @@ So startup does not fail the whole agent session when individual MCP servers fai
 - `#sources: Map<string, SourceMeta>`: provider/source metadata even before connect completes.
 - `#pendingReconnections: Map<string, Promise<MCPServerConnection | null>>`: reconnects in progress after a dropped transport or explicit reconnect.
 - `#serverConfigs: Map<string, MCPServerConfig>`: original unresolved configs preserved so reconnect can re-resolve credentials without leaking resolved tokens.
+- `#lastErrors: Map<string, string>`: last connection failure per server, cleared when it connects, read back by `getLastError` so `/mcp list` can say why a server is not connected.
 
 `getConnectionStatus(name)` derives status from these maps:
 
@@ -91,11 +93,11 @@ For each discovered server in `connectServers()`:
 
 `connectToServer()` behavior (`src/mcp/client.ts`):
 
-- creates stdio or HTTP/SSE transport,
+- creates a stdio, Streamable HTTP, or legacy HTTP+SSE transport (`type` defaults to `stdio`; any other value is rejected),
 - performs MCP `initialize`,
-- for HTTP/SSE, starts the optional background SSE listener before `notifications/initialized`,
+- for the Streamable HTTP transport, calls its `startSSEListener()` between the `initialize` response and `notifications/initialized`, so server-to-client requests that the notification triggers can be delivered; the legacy SSE transport already opened its stream during `connect()`,
 - sends `notifications/initialized`,
-- uses timeout (`VEYYON_MCP_TIMEOUT_MS`: `config.timeout`, or 30s default; `0` disables the client-side timeout),
+- uses the timeout `resolveMCPTimeoutMs` returns: `VEYYON_MCP_TIMEOUT_MS` when it parses as a non-negative number, else `config.timeout`, else 30s; `0` disables the client-side timeout,
 - closes transport on init failure.
 
 ### Fast startup gate + deferred fallback
@@ -137,7 +139,7 @@ Each pending `toolsPromise` also has a background continuation that eventually:
 - `DeferredMCPTool` waits for `waitForConnection(server)` before calling; this allows cached tools to exist before connection is ready.
 - Both attempt a reconnect + single retry for retriable connection failures.
 
-Both return structured tool output and convert remaining transport/tool errors into `MCP error: ...` tool content (abort remains abort).
+Both return structured tool output and convert remaining transport/tool errors into a result reading `MCP tool "<tool>" on server "<server>" failed: <detail>`, followed by a fixed next-step line that caps the model's retries at one (abort remains abort). A detail that echoes the call's own arguments back is withheld and replaced with a note saying so, so a credential passed as an argument cannot land in the transcript.
 
 ## Refresh/reload paths (startup vs live reload)
 
@@ -172,7 +174,7 @@ Operationally:
 
 - one server failing does not remove tools from healthy servers,
 - connect/list failures are isolated per server,
-- stale tools may remain visible while reconnect is attempted; calls report MCP errors if recovery fails,
+- stale tools may remain visible while reconnect is attempted; calls return the MCP tool-failure result if recovery fails,
 - tool cache, resource/prompt loading, subscriptions, and background updates are best-effort (warnings/errors logged, no hard stop).
 
 ## Teardown semantics
@@ -205,7 +207,7 @@ In current wiring, explicit teardown is used in MCP command flows (for reload/re
 | `tools/list` still pending at startup with cache hit | Deferred tools returned immediately                                                                                       | Best-effort fast startup       |
 | `tools/list` still pending at startup without cache  | No tools at startup; background continuation registers them via `#onToolsChanged` when ready                              | Best-effort late registration  |
 | Late background tool-load failure                    | Logged after startup gate                                                                                                 | Best-effort logging            |
-| Runtime dropped transport                            | Manager attempts reconnect; stale tools remain while reconnecting and future calls may retry once or fail with MCP errors | Best-effort automatic recovery |
+| Runtime dropped transport                            | Manager attempts reconnect; stale tools remain while reconnecting and future calls may retry once or return the tool-failure result | Best-effort automatic recovery |
 
 ## Public API surface
 
@@ -224,4 +226,4 @@ In current wiring, explicit teardown is used in MCP command flows (for reload/re
 - [`src/modes/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/controllers/mcp-command-controller.ts): interactive reload/reconnect flows.
 - [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): subagent MCP proxying via parent manager connections.
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `19234e94d39e` on 2026-08-07.*
