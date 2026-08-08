@@ -15,6 +15,7 @@ import {
 	getProjectDir,
 	listProfiles,
 	logger,
+	nearestNames,
 	truncate,
 } from "@veyyon/utils";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
@@ -52,6 +53,7 @@ import {
 	loadAccountInventory,
 } from "../session/account-inventory";
 import type { AgentSession, FreshSessionResult, HandoffResult } from "../session/agent-session";
+import type { AuthStorage } from "../session/auth-storage";
 import { parseCompactArgs } from "../session/compact-modes";
 import { resolveResumableSession } from "../session/session-listing";
 import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
@@ -584,25 +586,43 @@ function looksLikeOAuthCallback(text: string): boolean {
 }
 
 /**
- * A provider that exists but signs in with an API key rather than a browser, resolved the same
- * folded way as an OAuth provider. Naming it is what separates "you typed a provider that does not
- * do logins" from "you typed nothing we recognise", which need different next steps.
+ * Any provider in the registry, resolved the same folded way as an OAuth provider.
+ *
+ * Naming a provider that plainly exists is what separates "this one does not do browser logins" and
+ * "you have nothing stored for it" from "we do not know that name", and those three need three
+ * different next steps.
  */
-function findApiKeyProvider(requested: string): { id: string } | undefined {
+function findRegistryProvider(requested: string): { id: string; login?: unknown } | undefined {
 	const wanted = foldProviderKey(requested);
 	if (!wanted) return undefined;
 	return PROVIDER_REGISTRY.find(
-		provider =>
-			!provider.login && (foldProviderKey(provider.id) === wanted || foldProviderKey(provider.name) === wanted),
+		provider => foldProviderKey(provider.id) === wanted || foldProviderKey(provider.name) === wanted,
 	);
 }
 
-/** Every provider id a login can be started for, for a refusal that has to name the alternatives. */
-function signableProviderList(): string {
-	return getOAuthProviders()
-		.map(provider => provider.id)
-		.sort()
-		.join(", ");
+/** A provider that exists and signs in with an API key rather than a browser. */
+function findApiKeyProvider(requested: string): { id: string } | undefined {
+	const provider = findRegistryProvider(requested);
+	return provider && !provider.login ? provider : undefined;
+}
+
+/**
+ * What to say after "we do not know that name", for either command.
+ *
+ * NOT the list of every provider. The first version of this refusal named all of them, and a real
+ * recording of it is 41 ids across twelve lines of transcript: a wall an operator scans instead of
+ * reads, in answer to what is nearly always a typo. So the near misses come first, through
+ * `nearestNames`, the repo's one owner of "what did they probably mean", and the fallback is the
+ * picker the command already has, which lists the providers properly and does not have to be
+ * remembered. The count stays because it is the one number that tells you the picker is worth
+ * opening.
+ */
+function providerSuggestionSentence(requested: string, command: "login" | "logout"): string {
+	const providers = getOAuthProviders();
+	const candidates = providers.flatMap(provider => [provider.id, provider.name]);
+	const near = nearestNames(requested, candidates, 3);
+	const suggestion = near.length > 0 ? `Did you mean ${near.join(", ")}? ` : "";
+	return `${suggestion}Run /${command} with no argument to pick from ${providers.length} providers that support a browser login.`;
 }
 
 /**
@@ -621,20 +641,39 @@ function loginTargetRefusal(requested: string): string {
 	if (looksLikeOAuthCallback(requested)) {
 		return "No OAuth login is waiting for a manual callback. Start one with /login <provider>.";
 	}
-	return `Unknown provider "${truncate(requested, 40)}". Sign in with one of: ${signableProviderList()}.`;
+	return `Unknown provider "${truncate(requested, 40)}". ${providerSuggestionSentence(requested, "login")}`;
 }
 
 /**
- * Why `/logout <text>` could not start. Same resolution as login, different remedy: an API-key
- * provider holds no stored login to remove, and its credential lives in the environment or the
- * models config, where veyyon cannot delete it on the operator's behalf.
+ * Why `/logout <text>` could not start, when nothing stored answers to `text`.
+ *
+ * Reached only after the stored-credential lookup came back empty, so a provider named here is one
+ * veyyon knows and has nothing to delete for. Saying it "has no stored login" while the account card
+ * listed one and removed it with `x` is the two surfaces disagreeing, which is the defect the
+ * resolution order below exists to prevent.
  */
 function logoutTargetRefusal(requested: string): string {
-	const apiKeyProvider = findApiKeyProvider(requested);
-	if (apiKeyProvider) {
-		return `${formatProviderName(apiKeyProvider.id)} has no stored login to remove. Its credential comes from the environment or the models config; remove it at that source.`;
+	const provider = findRegistryProvider(requested);
+	if (provider) {
+		return `No stored login for ${formatProviderName(provider.id)} to remove. If it is still serving requests, its credential comes from the environment or the models config, where veyyon cannot delete it for you.`;
 	}
-	return `Unknown provider "${truncate(requested, 40)}". Stored logins use one of: ${signableProviderList()}.`;
+	return `Unknown provider "${truncate(requested, 40)}". ${providerSuggestionSentence(requested, "logout")}`;
+}
+
+/**
+ * The provider a `/logout <text>` should open, or `undefined` when nothing stored answers to it.
+ *
+ * An OAuth provider always resolves, so `/logout anthropic` still reaches the selector that reports
+ * having nothing stored. Beyond that, ANY provider holding a stored credential resolves, because the
+ * account card lists those rows and deletes them with `x`: a groq api_key row is visibly removable
+ * there, and `/logout groq` refusing it was the command contradicting the card.
+ */
+function findLogoutProvider(requested: string, authStorage: AuthStorage): string | undefined {
+	const oauth = findOAuthProvider(requested);
+	if (oauth) return oauth.id;
+	const provider = findRegistryProvider(requested);
+	if (provider && authStorage.listStoredCredentials(provider.id).length > 0) return provider.id;
+	return undefined;
 }
 
 /**
@@ -904,14 +943,16 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			if (verb === "logout") {
 				const requested = rest.trim();
 				if (requested) {
-					// The same resolver `/login` uses. One command accepting `OpenAI Codex` while its
-					// opposite accepts only `openai-codex` is a difference nothing justifies.
-					const matched = findOAuthProvider(requested);
+					// The same resolver `/login` uses, widened by what is actually stored. One command
+					// accepting `OpenAI Codex` while its opposite accepts only `openai-codex` is a
+					// difference nothing justifies, and refusing a provider the card removes with `x` is
+					// the two surfaces disagreeing about what a stored login is.
+					const matched = findLogoutProvider(requested, runtime.ctx.session.modelRegistry.authStorage);
 					if (!matched) {
 						runtime.ctx.showWarning(logoutTargetRefusal(requested));
 						return;
 					}
-					void runtime.ctx.showOAuthSelector("logout", matched.id);
+					void runtime.ctx.showOAuthSelector("logout", matched);
 					return;
 				}
 				void runtime.ctx.showOAuthSelector("logout");
@@ -1965,13 +2006,13 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		handleTui: (command, runtime) => {
 			const providerId = command.args.trim();
 			if (providerId) {
-				const matchedProvider = findOAuthProvider(providerId);
-				if (!matchedProvider) {
+				const matched = findLogoutProvider(providerId, runtime.ctx.session.modelRegistry.authStorage);
+				if (!matched) {
 					runtime.ctx.showWarning(logoutTargetRefusal(providerId));
 					runtime.ctx.editor.setText("");
 					return;
 				}
-				void runtime.ctx.showOAuthSelector("logout", matchedProvider.id);
+				void runtime.ctx.showOAuthSelector("logout", matched);
 				runtime.ctx.editor.setText("");
 				return;
 			}

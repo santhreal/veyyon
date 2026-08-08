@@ -18,19 +18,30 @@
  *     the original bug had.
  *  2. Every provider that has NO login is refused with a credential remedy and never with the
  *     callback sentence, enumerated from `PROVIDER_REGISTRY` the same way.
- *  3. Text that is neither gets the alternatives, and a callback-shaped string with nothing pending
- *     keeps the manual-callback message that is true for exactly that case.
- *  4. A refusal starts NO login. A message that reads well while the selector opens anyway would
+ *  3. An unknown name gets a BOUNDED answer: a did-you-mean drawn from `nearestNames` and a pointer
+ *     to the picker, never the whole registry. The first version of this refusal printed all 41 ids
+ *     over twelve transcript lines, so the assertion is an upper bound on how many it may name.
+ *  4. A callback-shaped string with nothing pending keeps the manual-callback message that is true
+ *     for exactly that case.
+ *  5. `/logout` reaches anything the account card can remove: any provider with a stored credential,
+ *     not only one with a browser login, driven through BOTH spellings (`/logout` and
+ *     `/account logout`) against real storage with a real api_key row.
+ *  6. A refusal starts NO login. A message that reads well while the selector opens anyway would
  *     pass a text-only assertion.
  *
  * WHAT IT DOES NOT CATCH. It drives the command handlers with a fake `InteractiveModeContext`, so
  * it proves which context call each argument produces and not what the selector then renders; the
  * card that a successful login lands on is proven in
  * `test/modes/controllers/a-command-login-lands-in-the-account-manager.test.ts` against the real
- * controller. It also says nothing about whether a provider's login FLOW works, only about routing.
+ * controller. It also says nothing about whether a provider's login FLOW works, only about routing,
+ * and nothing about whether the logout selector then lists the api_key row it was opened for.
  */
 
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
@@ -44,6 +55,29 @@ interface Recorder {
 	readonly statuses: string[];
 	readonly submitted: string[];
 }
+
+/**
+ * Real credential storage, because what `/logout` resolves against is what is STORED.
+ *
+ * A hand-written `listStoredCredentials` would let the suite agree with itself about a shape the
+ * product does not have: an api_key row is written through a different path than an OAuth one, and
+ * whether it comes back from a fresh `AuthStorage` without a reload is exactly the question the
+ * defect turned on.
+ */
+let tempDir = "";
+let store: SqliteAuthCredentialStore | undefined;
+let authStorage: AuthStorage | undefined;
+
+beforeAll(async () => {
+	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-login-resolve-"));
+	store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
+	authStorage = new AuthStorage(store);
+});
+
+afterAll(async () => {
+	store?.close();
+	if (tempDir) await fs.rm(tempDir, { recursive: true, force: true });
+});
 
 /**
  * A runtime whose context records the calls the handlers make.
@@ -60,6 +94,7 @@ function recorder(pendingProvider?: string): Recorder {
 	let pending = pendingProvider;
 	const runtime = {
 		ctx: {
+			session: { modelRegistry: { authStorage } },
 			editor: { setText: () => {} },
 			oauthManualInput: {
 				hasPending: () => pending !== undefined,
@@ -97,11 +132,18 @@ function recorder(pendingProvider?: string): Recorder {
  * has shipped before. `true` is the dispatcher's "consumed entirely"; anything else is a routing
  * failure and is surfaced here rather than swallowed into an empty recorder.
  */
-async function run(name: "login" | "logout", args: string, calls: Recorder): Promise<void> {
+async function run(name: string, args: string, calls: Recorder): Promise<void> {
 	const text = args.length > 0 ? `/${name} ${args}` : `/${name}`;
 	const handled = await executeBuiltinSlashCommand(text, calls.runtime);
 	if (handled !== true) throw new Error(`/${name} did not consume ${JSON.stringify(text)}: got ${String(handled)}`);
 }
+
+/**
+ * Both spellings of the logout command, because they are two members of one class and have already
+ * disagreed: `/account logout` is the canonical verb and `/logout` is its alias, each with its own
+ * handler body, and a resolution fixed in one of them is a resolution the other still gets wrong.
+ */
+const LOGOUT_COMMANDS = ["logout", "account logout"] as const;
 
 /** The OAuth providers `/login` may start, straight from the registry so a new one joins the suite. */
 const oauthProviders = getOAuthProviders();
@@ -175,15 +217,56 @@ describe("/login resolves its argument", () => {
 		}
 	});
 
-	it("refuses an unknown name by listing the providers that would have worked", async () => {
+	/**
+	 * A refusal is read, so it has to be short enough to read.
+	 *
+	 * The first version of this message named every signable provider, and a recording of it is 41
+	 * ids over twelve transcript lines in answer to one typo. The contract is therefore an upper
+	 * bound on how many ids a refusal may name, derived from the registry so it stays a bound as the
+	 * registry grows, plus the pointer to the picker with the count in it. A message that goes back
+	 * to listing everything fails on the bound even though every word in it is true.
+	 */
+	it("refuses an unknown name without reciting the registry", async () => {
 		const calls = recorder();
 		await run("login", "gpt-9-turbo-max", calls);
 
 		expect(calls.selectors).toEqual([]);
 		expect(calls.warnings).toHaveLength(1);
-		expect(calls.warnings[0]).toContain('Unknown provider "gpt-9-turbo-max"');
-		for (const provider of oauthProviders) {
-			expect(calls.warnings[0]).toContain(provider.id);
+		const warning = calls.warnings[0]!;
+		expect(warning).toContain('Unknown provider "gpt-9-turbo-max"');
+		expect(warning).toContain(
+			`Run /login with no argument to pick from ${oauthProviders.length} providers that support a browser login.`,
+		);
+		const named = oauthProviders.filter(provider => warning.includes(provider.id) || warning.includes(provider.name));
+		expect(named.length).toBeLessThanOrEqual(3);
+	});
+
+	/**
+	 * The answer to a typo is the name it nearly was, for EVERY provider rather than the one that was
+	 * convenient to write down: a suggestion built from a curated list is a suggestion that goes
+	 * stale the next time a provider is added. `nearestNames` is the repo's one owner of the
+	 * threshold, so the surfaces that reject a typed name cannot disagree about what counts as near.
+	 */
+	it("suggests the provider a near miss nearly was", async () => {
+		const spellings = oauthProviders
+			.map(provider => ({ provider, typo: provider.id.slice(0, -1) }))
+			.filter(
+				({ typo }) =>
+					typo.length > 2 &&
+					!oauthProviders.some(
+						other =>
+							other.id.toLowerCase() === typo.toLowerCase() || other.name.toLowerCase() === typo.toLowerCase(),
+					),
+			);
+		expect(spellings.length).toBeGreaterThan(3);
+
+		for (const { provider, typo } of spellings) {
+			const calls = recorder();
+			await run("login", typo, calls);
+			expect(calls.selectors).toEqual([]);
+			const warning = calls.warnings[0]!;
+			expect(warning).toContain("Did you mean");
+			expect(warning).toMatch(new RegExp(`Did you mean [^?]*\\b${provider.id}\\b`));
 		}
 	});
 
@@ -227,35 +310,77 @@ describe("/login resolves its argument", () => {
 	});
 });
 
-describe("/logout resolves its argument the same way", () => {
-	it("accepts every provider id and display name", async () => {
-		for (const provider of oauthProviders) {
-			for (const spelling of [provider.id, provider.name, provider.id.toUpperCase()]) {
-				const calls = recorder();
-				await run("logout", spelling, calls);
-				expect(calls.selectors).toEqual([["logout", provider.id]]);
+for (const command of LOGOUT_COMMANDS) {
+	describe(`/${command} resolves its argument the same way`, () => {
+		it("accepts every provider id and display name", async () => {
+			for (const provider of oauthProviders) {
+				for (const spelling of [provider.id, provider.name, provider.id.toUpperCase()]) {
+					const calls = recorder();
+					await run(command, spelling, calls);
+					expect(calls.selectors).toEqual([["logout", provider.id]]);
+				}
 			}
-		}
+		});
+
+		it("refuses an unknown name without opening a selector, and without reciting the registry", async () => {
+			const calls = recorder();
+			await run(command, "gpt-9-turbo-max", calls);
+
+			expect(calls.selectors).toEqual([]);
+			const warning = calls.warnings[0]!;
+			expect(warning).toContain('Unknown provider "gpt-9-turbo-max"');
+			expect(warning).toContain(
+				`Run /logout with no argument to pick from ${oauthProviders.length} providers that support a browser login.`,
+			);
+			const named = oauthProviders.filter(
+				provider => warning.includes(provider.id) || warning.includes(provider.name),
+			);
+			expect(named.length).toBeLessThanOrEqual(3);
+		});
+
+		/**
+		 * A provider with nothing stored is refused by NAME, never as an unknown one: saying "unknown
+		 * provider" about a provider that plainly exists is the lie. Every API-key provider is checked
+		 * rather than one representative, because one resolution order decides this for all of them.
+		 */
+		it("names a provider that has nothing stored instead of calling it unknown", async () => {
+			for (const provider of apiKeyProviders) {
+				const calls = recorder();
+				await run(command, provider.id, calls);
+				expect(calls.selectors).toEqual([]);
+				expect(calls.warnings[0]).toContain("No stored login for");
+				expect(calls.warnings[0]).not.toContain("Unknown provider");
+			}
+		});
+
+		/**
+		 * THE DEFECT THIS CLOSES. `/logout` resolved only against OAuth providers, so `/logout groq`
+		 * answered "has no stored login to remove" while the account card listed that exact api_key row
+		 * and deleted it with `x`. Two surfaces over one credential store, disagreeing about whether it
+		 * exists.
+		 *
+		 * Every API-key provider is driven, with a real row written to real storage and removed after,
+		 * because the resolution is "anything with a stored credential" and a suite that proved it for
+		 * groq alone would let the next provider regress silently. The cleanup is asserted, so a case
+		 * cannot pass by leaving a row behind for the next one.
+		 */
+		it("opens the logout selector for any provider that has a stored credential", async () => {
+			const storage = authStorage;
+			if (!storage) throw new Error("no auth storage");
+			for (const provider of apiKeyProviders) {
+				await storage.set(provider.id, [{ type: "api_key", key: `key-${provider.id}` }]);
+				try {
+					for (const spelling of [provider.id, provider.name, provider.id.toUpperCase()]) {
+						const calls = recorder();
+						await run(command, spelling, calls);
+						expect(calls.selectors).toEqual([["logout", provider.id]]);
+						expect(calls.warnings).toEqual([]);
+					}
+				} finally {
+					await storage.set(provider.id, []);
+				}
+				expect(storage.listStoredCredentials(provider.id)).toEqual([]);
+			}
+		});
 	});
-
-	it("refuses an unknown name without opening a selector", async () => {
-		const calls = recorder();
-		await run("logout", "gpt-9-turbo-max", calls);
-
-		expect(calls.selectors).toEqual([]);
-		expect(calls.warnings[0]).toContain('Unknown provider "gpt-9-turbo-max"');
-	});
-
-	/**
-	 * Logging out of an API-key provider is not a thing veyyon can do, and the remedy is different
-	 * from the login one: there is no stored row to delete, only an env var or a config file the
-	 * operator owns. Saying "unknown provider" about a provider that plainly exists is the lie.
-	 */
-	it("tells an API-key provider apart from an unknown one", async () => {
-		const calls = recorder();
-		await run("logout", apiKeyProviders[0]!.id, calls);
-
-		expect(calls.selectors).toEqual([]);
-		expect(calls.warnings[0]).toContain("no stored login to remove");
-	});
-});
+}
