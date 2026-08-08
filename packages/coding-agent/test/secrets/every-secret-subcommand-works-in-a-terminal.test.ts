@@ -156,7 +156,7 @@ describe("the terminal help and the terminal menu describe the same grammar", ()
 		expect(SECRET_TUI_SUBCOMMANDS.map(sub => sub.name)).toEqual(
 			Object.entries(SECRET_VERB_SPELLINGS)
 				.filter(([word, subcommand]) => word === subcommand)
-				.map(([word]) => word),
+				.map(([, subcommand]) => subcommand),
 		);
 		// Each alias completed to the shape of the subcommand it reaches, not to `rm`'s: `audit` is
 		// `log`, which takes no bare word, and a shared line would refuse for the wrong reason.

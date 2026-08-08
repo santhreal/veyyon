@@ -3,8 +3,8 @@
  *
  * The card could list, rename, extend and revoke credentials, and could not store one. An
  * operator who wanted a new secret had to close the card and type `/secret add`, which teaches
- * people that the card is not the real surface. This holds the three questions adding takes,
- * in the order that keeps the answers honest, and hands the container a plan for `vault.add`.
+ * people that the card is not the real surface. This holds the questions adding takes, in the order
+ * that keeps the answers honest, and hands the container a plan for `vault.add`.
  *
  * IT NEVER TOUCHES THE VAULT, the audit log, or the filesystem. It collects, refuses, and
  * yields a plan; the container performs the mutation. That separation is what lets the flow be
@@ -66,6 +66,30 @@ export const SHORT_VALUE_REFUSAL =
  */
 export const UNKNOWN_SCOPE_REFUSAL = `That is not a scope a vault has. Choose ${SCOPE_LIST}.`;
 
+/** Why a blank answer at the environment step is refused: there is no variable to read. */
+export const EMPTY_ENV_NAME_REFUSAL =
+	"Name the environment variable to read the credential out of, such as GITHUB_TOKEN.";
+
+/**
+ * Why a variable that is not in the environment is refused.
+ *
+ * The NAME is echoed, unlike every other refusal in this file, and the difference is deliberate: a
+ * variable name is not a credential, it is the one thing the operator typed that they can see, and
+ * a refusal that hides it cannot be told apart from a typo in it. This is also why the field is
+ * unmasked.
+ */
+export function missingEnvRefusal(variable: string): string {
+	return (
+		`${variable} is not set in this process's environment, so there is nothing to read. veyyon sees the ` +
+		`environment it was launched with, so a variable exported in your shell afterwards is not visible here.`
+	);
+}
+
+/** Why a variable that exists but holds nothing usable is refused, named so the two cannot be confused. */
+export function emptyEnvRefusal(variable: string): string {
+	return `${variable} is set but holds nothing, so there is no credential in it to store.`;
+}
+
 /**
  * One question the flow is asking, in the form a prompt needs in order to draw it.
  *
@@ -99,6 +123,13 @@ export interface AddFlowPlan {
 	readonly name: string | undefined;
 	readonly value: string;
 	readonly scope: VaultScope;
+	/**
+	 * The environment variable the credential was read out of, when it was.
+	 *
+	 * Safe to render, and the confirmation does: an operator who names the wrong variable has stored
+	 * the wrong credential, and the only moment that is cheap to notice is the moment it is stored.
+	 */
+	readonly fromEnv?: string;
 }
 
 /**
@@ -115,6 +146,12 @@ const FIELDS: Readonly<Record<Exclude<AddFlowStep, "done">, AddFlowField>> = {
 		hint: "The credential itself, such as the token or the password. It stays masked, and the manager never shows it again.",
 		masked: true,
 	},
+	env: {
+		step: "env",
+		title: "New secret: name the environment variable",
+		hint: "The variable's NAME, not its value: veyyon reads the credential out of its own environment, so nothing secret is typed or drawn. This field is not masked, because a variable name is not a credential.",
+		masked: false,
+	},
 	name: {
 		step: "name",
 		title: "New secret: name it",
@@ -130,20 +167,63 @@ const FIELDS: Readonly<Record<Exclude<AddFlowStep, "done">, AddFlowField>> = {
 };
 
 /**
+ * Where the credential itself comes from, enumerable at run time.
+ *
+ * A list rather than a bare union so a suite can drive EVERY source instead of the one whoever
+ * wrote the test had in mind. Adding a third source here without giving it a first step below fails
+ * to compile, and without giving it a row in the flow's own suite fails that suite.
+ */
+export const ADD_FLOW_SOURCES = ["paste", "env"] as const;
+
+/** One of {@link ADD_FLOW_SOURCES}. */
+export type AddFlowSource = (typeof ADD_FLOW_SOURCES)[number];
+
+/**
+ * The question each source opens at.
+ *
+ * Exhaustive over {@link AddFlowSource} on purpose: a source with no first step is a flow that opens
+ * on a field nobody chose, and this is the cheapest place for that to be a compile error.
+ */
+const FIRST_STEP: Readonly<Record<AddFlowSource, "value" | "env">> = {
+	paste: "value",
+	env: "env",
+};
+
+/**
  * Ask for a credential, then a name, then a scope, and produce a plan.
  *
  * VALUE FIRST is the whole point of the ordering, not a preference. Asking the name first puts a
  * masked field on screen before any credential has been given, and a masked field reads as
  * "type the secret". That is how `/secret add` came to hold an entry whose value was the literal
  * string `GITHUB_TOKEN`: the operator answered the question the field appeared to be asking.
+ *
+ * TWO SOURCES FOR THAT FIRST ANSWER. `paste` opens the masked field; `env` names a variable and the
+ * credential is read out of the environment, which is the only entry form where the value never
+ * reaches the screen or the input buffer at all. `/secret --from-env VAR` has always offered that on
+ * the command line, and the manager could not, so the safest path was the one the GUI lacked.
  */
 export class SecretAddFlow {
-	#state: AddFlowState = {
-		step: "value",
-		value: "",
-		name: "",
-		scope: DEFAULT_ADD_SCOPE,
-	};
+	#state: AddFlowState;
+
+	/**
+	 * How the environment is read, injected so a test can drive the env source without mutating the
+	 * process. Defaults to the real environment, which is the only thing production wants.
+	 */
+	readonly #readEnv: (variable: string) => string | undefined;
+
+	/** The step this flow opened at, which is where a back out of the name question returns to. */
+	readonly #firstStep: "value" | "env";
+
+	constructor(options: { source?: AddFlowSource; readEnv?: (variable: string) => string | undefined } = {}) {
+		this.#firstStep = FIRST_STEP[options.source ?? "paste"];
+		this.#state = {
+			step: this.#firstStep,
+			value: "",
+			name: "",
+			scope: DEFAULT_ADD_SCOPE,
+		};
+		this.#readEnv = options.readEnv ?? (variable => process.env[variable]);
+	}
 
 	#refusal: string | null = null;
 
@@ -185,21 +265,24 @@ export class SecretAddFlow {
 	 * print; this is not.
 	 */
 	get plan(): AddFlowPlan | undefined {
-		const { step, name, value, scope } = this.#state;
+		const { step, name, value, scope, fromEnv } = this.#state;
 		if (step !== "done") return undefined;
-		return { name: name === "" ? undefined : name, value, scope };
+		return { name: name === "" ? undefined : name, value, scope, ...(fromEnv === undefined ? {} : { fromEnv }) };
 	}
 
 	/**
 	 * Answer the current question and advance, or record a refusal and stay put.
 	 *
-	 * One entry point for all three fields because the container has one prompt: it does not need
-	 * to know which question it is showing in order to hand over what was typed.
+	 * One entry point for every field because the container has one prompt: it does not need to know
+	 * which question it is showing in order to hand over what was typed.
 	 */
 	submit(input: string): void {
 		switch (this.#state.step) {
 			case "value":
 				this.#submitValue(input);
+				return;
+			case "env":
+				this.#submitEnv(input);
 				return;
 			case "name":
 				this.#submitName(input);
@@ -220,17 +303,22 @@ export class SecretAddFlow {
 	 * Stepping back from `done` is allowed and returns to the scope step, so an operator who reads
 	 * the summary and changes their mind can amend the entry rather than store the wrong one and
 	 * then fix it.
+	 *
+	 * A back out of `name` returns to whichever FIRST step this flow started at, so an operator who
+	 * named the wrong variable is asked for the variable again rather than handed a masked field they
+	 * never chose.
 	 */
 	back(): void {
 		this.#refusal = null;
 		switch (this.#state.step) {
 			case "value":
+			case "env":
 				// The first question has nothing behind it. The container reads a back at this step as
 				// cancel and closes the flow, so this changes nothing rather than quietly discarding
 				// the answer under it.
 				return;
 			case "name":
-				this.#state.step = "value";
+				this.#state.step = this.#firstStep;
 				return;
 			case "scope":
 				this.#state.step = "name";
@@ -239,6 +327,40 @@ export class SecretAddFlow {
 				this.#state.step = "scope";
 				return;
 		}
+	}
+
+	/**
+	 * Read the credential out of the environment, refusing every way that can fail to produce one.
+	 *
+	 * The value is measured by the same guard the pasted path uses, because a variable holding three
+	 * characters is refused by the vault for the same reason a typed one is, and finding that out at
+	 * the write would be a refusal two questions after the mistake.
+	 */
+	#submitEnv(input: string): void {
+		const variable = input.trim();
+		if (variable.length === 0) {
+			this.#refusal = EMPTY_ENV_NAME_REFUSAL;
+			return;
+		}
+		const value = this.#readEnv(variable);
+		if (value === undefined) {
+			this.#refusal = missingEnvRefusal(variable);
+			return;
+		}
+		if (value.trim().length === 0) {
+			this.#refusal = emptyEnvRefusal(variable);
+			return;
+		}
+		if (!canObfuscatePlainValue(value)) {
+			this.#refusal = SHORT_VALUE_REFUSAL;
+			return;
+		}
+		// Verbatim, exactly as the pasted path keeps it: a credential may legitimately end in a
+		// newline the exporting tool left there, and a trimmed copy authenticates against nothing.
+		this.#state.value = value;
+		this.#state.fromEnv = variable;
+		this.#state.step = "name";
+		this.#refusal = null;
 	}
 
 	#submitValue(input: string): void {

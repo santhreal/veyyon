@@ -110,6 +110,13 @@ interface SectionOptions {
 	 * proof taken here. Naming the height is what makes the section reproduce the operator's card.
 	 */
 	terminalHeight?: number;
+	/**
+	 * The environment `f` reads, so an env scene paints the same bytes on every machine.
+	 *
+	 * Absent, the flow reads the real `process.env`, and a proof whose content depends on whoever
+	 * ran it is not a proof.
+	 */
+	readEnv?: (variable: string) => string | undefined;
 }
 
 /** A fresh manager over the shared vault, or over whatever `options` names instead. */
@@ -118,6 +125,7 @@ async function manager(options: SectionOptions = {}): Promise<SecretManager> {
 		vault: new SecretVault(options.locations ?? locations),
 		auditLog: options.auditLog === null ? undefined : (options.auditLog ?? auditLog),
 		...(options.terminalHeight === undefined ? {} : { terminalHeight: options.terminalHeight }),
+		...(options.readEnv === undefined ? {} : { readEnv: options.readEnv }),
 	});
 	await component.settled();
 	return component;
@@ -241,6 +249,34 @@ await section("storing a credential, the second field:", async component => {
 	for (const character of "ghp_valueTypedIntoTheField") component.handleInput(character);
 	component.handleInput("\r");
 });
+
+// THE ENV PAIR, and it only means anything beside the masked field above. `f` asks for the NAME of
+// an environment variable, unmasked, so what the operator types is readable; `a` asks for the
+// credential and hides it. Two frames, one key apart, showing that the manager has an entry form
+// where the credential is never typed and never drawn.
+await section(
+	"storing a credential from an environment variable, the first field:",
+	component => {
+		component.handleInput("f");
+	},
+	undefined,
+	{ readEnv: variable => (variable === "GITHUB_TOKEN" ? "ghp_readOutOfTheEnvironment" : undefined) },
+);
+
+// The refusal, which NAMES the variable. Every other refusal on this card withholds what was typed
+// because it is a credential; this one must echo it, or a typo in a variable name is indistinguishable
+// from a variable the shell never exported.
+await section(
+	"storing a credential from an environment variable, the variable is not set:",
+	async component => {
+		component.handleInput("f");
+		await component.settled();
+		for (const character of "GITHUB_TOEKN") component.handleInput(character);
+		component.handleInput("\r");
+	},
+	undefined,
+	{ readEnv: () => undefined },
+);
 
 // The move confirmation, which names both scopes and never the value.
 await section("moving a credential to another scope:", component => {
