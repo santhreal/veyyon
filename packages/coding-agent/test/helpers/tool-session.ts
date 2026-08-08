@@ -22,6 +22,7 @@
  */
 import type { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools/index";
+import { getAgentDir } from "@veyyon/utils";
 
 /**
  * A stand-in for `Settings`, which a test cannot construct.
@@ -43,17 +44,26 @@ export type ToolSessionOverrides = Omit<Partial<ToolSession>, "settings"> & { se
  *
  * The defaults are the inert ones: the current directory, no UI, no session
  * file, no spawns, and settings that answer `undefined` for everything (so each
- * setting falls to its own default). A test that depends on any of these states
- * it explicitly.
+ * setting falls to its own default) from the process-booted profile directory. A
+ * test that depends on any of these states it explicitly.
+ *
+ * `getAgentDir` is part of that default because a tool loader may need to know
+ * WHICH profile the session loaded from, not only what a setting says: `ssh`
+ * reads it to scope `ssh.json`. A stub that answers `get` alone left every such
+ * loader throwing `getAgentDir is not a function` from inside the tool.
  */
 export function makeToolSession(overrides: ToolSessionOverrides = {}): ToolSession {
 	const { settings, ...rest } = overrides;
+	// A plain stub gets the default accessor; a real `Settings` already has it on
+	// its prototype, and `??=` leaves that alone rather than shadowing it.
+	const resolved: SettingsStub = settings ?? { get: () => undefined };
+	resolved.getAgentDir ??= () => getAgentDir();
 	return {
 		cwd: process.cwd(),
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => null,
-		settings: (settings ?? { get: () => undefined }) as Settings,
+		settings: resolved as Settings,
 		...rest,
 	};
 }
