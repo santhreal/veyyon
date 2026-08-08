@@ -182,6 +182,11 @@ function inventoryNow() {
 }
 
 const noop = () => {};
+// `onToggleLoadBalancing` returns the state the chip should then claim, because the component
+// deliberately does not assume the flip landed. No section below drives `b`, but a lambda returning
+// a constant would make the first one that does render a chip disagreeing with its own keypress, so
+// this keeps the state it reports.
+let loadBalancing = false;
 const callbacks = {
 	onUseAccount: noop,
 	onRename: noop,
@@ -189,6 +194,10 @@ const callbacks = {
 	onLogout: noop,
 	onShowUsage: noop,
 	onAddAccount: noop,
+	onToggleLoadBalancing: () => {
+		loadBalancing = !loadBalancing;
+		return loadBalancing;
+	},
 	onCancel: noop,
 };
 

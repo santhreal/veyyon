@@ -45,6 +45,9 @@ const authStorage = await discoverAuthStorage(agentDir);
 const HOUR = 60 * 60_000;
 const NOW = Date.now();
 
+// The rows carry no plan: a plan is not a stored credential field. It reaches the card as
+// `planTier`, derived from the usage probe's `limit.scope.tier`, and is deliberately never
+// guessed from a quota size, so a demo that authenticates to nothing shows no plan badge.
 // Three Anthropic accounts, because one provider holding several is the case the card exists for.
 // Two are healthy and share nothing; the third is expired, which is the row whose health line has
 // to say something an operator can act on.
@@ -55,7 +58,6 @@ await authStorage.set("anthropic", [
 		refresh: "demo-anthropic-work-refresh",
 		expires: NOW + 6 * HOUR,
 		email: "maya@northwind.example",
-		plan: "max",
 	},
 	{
 		type: "oauth",
@@ -63,7 +65,6 @@ await authStorage.set("anthropic", [
 		refresh: "demo-anthropic-personal-refresh",
 		expires: NOW + 4 * HOUR,
 		email: "maya.k@fastmail.example",
-		plan: "pro",
 	},
 	{
 		type: "oauth",
@@ -71,7 +72,6 @@ await authStorage.set("anthropic", [
 		refresh: "demo-anthropic-stale-refresh",
 		expires: NOW - 2 * HOUR,
 		email: "ops@northwind.example",
-		plan: "team",
 	},
 ]);
 
@@ -82,7 +82,6 @@ await authStorage.set("openai-codex", [
 		refresh: "demo-codex-refresh",
 		expires: NOW + 5 * HOUR,
 		email: "maya@northwind.example",
-		plan: "plus",
 	},
 ]);
 
