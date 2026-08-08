@@ -153,22 +153,25 @@ describe("the /secret declaration", () => {
 	});
 
 	/**
-	 * THE INLINE HINT IS THE COMPOSER'S, so it describes the TERMINAL grammar and not the verb list
-	 * beside it.
+	 * THE INLINE HINT IS THE COMPOSER'S, and it is the only thing on screen after `/secret ` before
+	 * anything is typed, so it has to name both halves of the terminal grammar.
 	 *
 	 * `inlineHint` is read only by `materializeTuiBuiltinSlashCommand`; ACP is handed `acpInputHint`
-	 * instead. It is the one string shown to an operator mid-typing, so a verb in it is a word they
-	 * would type expecting a command and store as the first bytes of a credential — the original bug
-	 * offered back through autocomplete. Asserted in both directions: the three forms a terminal
-	 * really has, and no declared verb, matched on a word boundary so a substring cannot hide one.
+	 * instead. It used to be asserted to contain NO verb, on the reasoning that a verb in it is a
+	 * word an operator would type expecting a command and store as the first bytes of a credential.
+	 * The premise was true and the fix was the wrong one: the verbs now parse in a terminal, so the
+	 * hint naming them is the discoverability that was missing, and it is the parser that stops one
+	 * from being swallowed.
+	 *
+	 * Asserted in both directions: the value forms a terminal has, and the verbs it now parses.
 	 */
-	it("hints the terminal forms in the composer, and no verb", () => {
+	it("hints both the value forms and the verbs in the composer", () => {
 		expect(declaration?.inlineHint).toContain("<value>");
 		expect(declaration?.inlineHint).toContain("manager");
 		expect(declaration?.inlineHint).toContain("--from-env");
 
-		for (const subcommand of declaration?.subcommands ?? []) {
-			expect(declaration?.inlineHint).not.toMatch(new RegExp(`\\b${subcommand.name}\\b`, "u"));
+		for (const verb of ["list", "rm", "extend", "log"]) {
+			expect(declaration?.inlineHint).toMatch(new RegExp(`\\b${verb}\\b`, "u"));
 		}
 	});
 
@@ -350,20 +353,23 @@ describe("what the two surfaces still agree about", () => {
 /**
  * The half that changed, stated as a closed list.
  *
- * Every row below is the same fact from a different direction: in a terminal an argument line is a
- * credential, there is exactly one word it does not treat as one, and a client with no field reads
- * that same line as the verb grammar it still has.
+ * The disagreement used to be the whole verb grammar: in a terminal an argument line was a
+ * credential and nothing else, and every verb belonged to the other surface. It is now exactly two
+ * members wide, `add` and `manager`, and the first row below is what shrank it: every other verb
+ * routes identically wherever it is typed.
  */
 describe("what the two surfaces deliberately disagree about", () => {
 	/**
-	 * THE ENTRY GRAMMAR. Every verb line is a command on the surface with no field, and the literal
-	 * bytes of a credential on the surface that has one. `add` is included precisely because its
-	 * subcommand name coincides on both sides: the discriminator is `value`, which is set only where
-	 * the line was read as data.
+	 * THE AGREEMENT THAT REPLACED THE DISAGREEMENT, and the row that proves the terminal has verbs at
+	 * all. Each line routes to the same subcommand on both surfaces and reads as data on neither.
+	 *
+	 * Derived per line rather than asserted once, because a shared parser that regressed on one
+	 * branch, which is precisely what shipped, still passes a single-surface row. `value` is asserted
+	 * absent because it is the discriminator: it is set only where a line was read as a credential,
+	 * and the defect was that in a terminal every one of these lines came back with it set.
 	 */
-	it("read a verb as a command only where there is no field to open", () => {
+	it("route every verb to the same subcommand on both surfaces", () => {
 		const verbLines: Record<string, SecretSubcommand> = {
-			add: "add",
 			list: "list",
 			"rm TOKEN_NAME": "rm",
 			"extend TOKEN_NAME --ttl 7d": "extend",
@@ -373,10 +379,27 @@ describe("what the two surfaces deliberately disagree about", () => {
 		};
 
 		for (const [line, subcommand] of Object.entries(verbLines)) {
-			expect(parseSecretCommand(line, "noninteractive").subcommand).toBe(subcommand);
-			expect(parseSecretCommand(line, "noninteractive").value).toBeUndefined();
-			expect(parseSecretCommand(line, "tui")).toEqual({ subcommand: "add", value: line });
+			for (const surface of ["noninteractive", "tui"] as const) {
+				const request = parseSecretCommand(line, surface);
+
+				expect(request.subcommand).toBe(subcommand);
+				expect(request.value).toBeUndefined();
+			}
 		}
+	});
+
+	/**
+	 * `add` IS the disagreement now, and the difference is where the credential may be. A client with
+	 * no field takes a name and reads a value only from the environment; a terminal takes the value
+	 * itself and asks for the name afterwards. A terminal that read the first word as a name would be
+	 * writing a live credential into plaintext metadata, which is the original bug.
+	 */
+	it("read the word after add as a name only where a value cannot be typed", () => {
+		expect(parseSecretCommand("add GITHUB_TOKEN", "noninteractive")).toEqual({
+			subcommand: "add",
+			name: "GITHUB_TOKEN",
+		});
+		expect(parseSecretCommand("add GITHUB_TOKEN", "tui")).toEqual({ subcommand: "add", value: "GITHUB_TOKEN" });
 	});
 
 	/**

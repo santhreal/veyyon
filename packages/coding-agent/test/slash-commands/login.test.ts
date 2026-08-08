@@ -91,7 +91,13 @@ describe("/login slash command", () => {
 		expect(harness.getSelectorProvider()).toBe("parallel");
 	});
 
-	it("warns when no pending login exists for manual callback", async () => {
+	/**
+	 * A callback URL with no login waiting is a dead end, so the warning has to say how to get out of
+	 * it. The remedy clause is pinned as part of the sentence rather than matched loosely: a refusal
+	 * that only says no is what this text used to be, and it left the operator with a URL, a warning,
+	 * and nothing to do next.
+	 */
+	it("warns when no pending login exists for manual callback, and names the way out", async () => {
 		const manualInput = new OAuthManualInputManager();
 		const harness = createRuntimeHarness(manualInput);
 
@@ -99,6 +105,8 @@ describe("/login slash command", () => {
 
 		expect(handled).toBe(true);
 		expect(harness.getSelectorMode()).toBeUndefined();
-		expect(harness.getWarning()).toBe("No OAuth login is waiting for a manual callback.");
+		expect(harness.getWarning()).toBe(
+			"No OAuth login is waiting for a manual callback. Start one with /login <provider>.",
+		);
 	});
 });

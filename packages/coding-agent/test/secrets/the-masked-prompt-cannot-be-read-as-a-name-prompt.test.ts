@@ -186,17 +186,19 @@ describe("the verbless /secret grammar in a terminal", () => {
 	});
 
 	/**
-	 * THE EXACT INVERSE OF THE ORIGINAL BUG, and the sharpest statement of the new grammar: the
-	 * word `add` is no longer a verb in a terminal, so `/secret add GITHUB_TOKEN` stores that
-	 * literal text as a credential rather than treating `GITHUB_TOKEN` as a name with no value.
-	 * A regression that quietly restored verb parsing would store nothing here and fail.
+	 * THE EXACT INVERSE OF THE ORIGINAL BUG, driven through the real dialogs: `/secret add <value>`
+	 * stores the VALUE and asks for a name afterwards, so `GITHUB_TOKEN` here is the credential and
+	 * never becomes a name with no value attached. `add` is a synonym for the bare form in a
+	 * terminal, and a regression that restored positional-name parsing would store nothing under
+	 * that value and fail.
 	 */
-	it("treats a former verb as ordinary credential text", async () => {
+	it("reads add as a synonym for the bare value form", async () => {
 		await secretThroughRealDialog("add GITHUB_TOKEN", { typeName: type("") });
 
 		const entries = await stored();
 		expect(entries).toHaveLength(1);
-		expect(entries[0]?.value).toBe("add GITHUB_TOKEN");
+		expect(entries[0]?.value).toBe("GITHUB_TOKEN");
+		expect(entries[0]?.name).not.toBe("GITHUB_TOKEN");
 	});
 
 	/**
@@ -229,12 +231,25 @@ describe("the verbless /secret grammar in a terminal", () => {
 	});
 
 	/**
-	 * The reservation is exactly one word long. `manager` followed by anything is a credential
-	 * again, so an operator whose token really does begin with that word is not locked out, and the
-	 * GUI cannot be opened by accident from a longer paste.
+	 * A reserved word is a command however much follows it, so a malformed one stores NOTHING and
+	 * refuses. The grammar this replaced reserved `manager` for exactly one word and read every
+	 * longer line as a credential, which is the same rule that turned `/secret rm TOKEN` into a
+	 * stored credential named after the command.
 	 */
-	it("reserves only the bare word, so a longer line is still a credential", async () => {
-		const { outcome } = await secretThroughRealDialog("manager key 8891", { typeName: type("") });
+	it("refuses a malformed reserved line rather than storing it", async () => {
+		await expect(secretThroughRealDialog("manager key 8891", { typeName: type("") })).rejects.toThrow(
+			/\/secret -- <value>/u,
+		);
+
+		expect(await stored()).toEqual([]);
+	});
+
+	/**
+	 * And the escape stores that same line, so an operator whose credential really does begin with a
+	 * reserved word is not locked out. This is the row that makes the refusal above defensible.
+	 */
+	it("stores an escaped line whose first word is reserved", async () => {
+		const { outcome } = await secretThroughRealDialog("-- manager key 8891", { typeName: type("") });
 
 		expect(outcome.openManager).toBeUndefined();
 		const entries = await stored();

@@ -7,18 +7,20 @@
  * the 2000-line builtin registry, would make the security-relevant behaviour reachable only
  * through a live TUI.
  *
- * TWO GRAMMARS, ONE SET OF RULES. In a terminal `/secret` has no verbs: the argument line is the
- * credential, a bare `/secret` opens a masked field, and `manager` is the only reserved word. A
- * client with neither a field nor a GUI keeps the verb grammar (`add`, `list`, `rm`, `extend`,
- * `log`, `discard`), because there is nothing there to replace it with. Both are parsed by the
- * same function, branching on `surface`, so the two cannot drift into different ideas of what a
- * lifetime or a scope means.
+ * ONE GRAMMAR, TWO ENTRY FORMS. Every subcommand parses on every surface: `add`, `list`, `rm`,
+ * `extend`, `log`, `discard`, `help`, and `manager` wherever there is a screen to open. What the
+ * surfaces disagree about is how a credential is entered, because that is a security property and
+ * not a matter of taste. In a terminal the first word decides: a reserved word is a command, and
+ * anything else is the credential itself, so stashing a token costs one paste and no verb, while
+ * `--` stores a value that happens to begin with a reserved word. A client with neither a masked
+ * field nor a GUI cannot accept a bare value at all, and reaches one only through `--from-env`.
  *
  * WHY THE TERMINAL FORM DROPPED THE NAME. `/secret add <name> <value>` demanded a label before it
  * would accept the thing being labelled, and the two positionals had no unique reading once the
  * value was arbitrary text. Worse, the name came FIRST, so `/secret add ghp_realToken` stored a
- * live credential as a NAME with no value attached. Now the value is the whole line and the name
- * is asked afterwards, optional, with a generated one waiting if the operator declines.
+ * live credential as a NAME with no value attached. In a terminal `add` is now a synonym for the
+ * bare form: it takes no name, the value is the rest of the line, and the name is asked afterwards,
+ * optional, with a generated one waiting if the operator declines.
  *
  * WHERE THE VALUE COMES FROM, in order of how much it leaks:
  *   - `--from-env VAR` reads it out of the environment. The credential is never typed, so it
@@ -137,28 +139,36 @@ export type SecretCommandSurface = "tui" | "noninteractive";
  * offered a masked prompt it cannot open, or an inline form that would park the credential in
  * its request history forever.
  *
- * The TUI forms describe the verbless grammar: in a terminal `/secret <anything>` IS the value,
- * so there is no `add` to spell and no name to invent up front. The noninteractive forms keep
- * the verb, because a client with no way to open a field or a manager has nothing else to say.
+ * The TUI forms describe a grammar where the value needs no verb: `/secret <anything>` IS the
+ * credential, so stashing one costs a paste. The verbs are spelled out below it because they work
+ * in the terminal too, and an operator told that `list` exists has to be able to type it. The
+ * noninteractive forms drop the bare value, because that surface has no way to hide what is typed.
  */
 const USAGE_TUI_INLINE = "/secret <value>                       store it now, then name it (optional)";
 const USAGE_TUI_MASKED = "/secret                               paste into a hidden field instead";
 const USAGE_TUI_FROM_ENV = "/secret --from-env <VAR>              store the value of an environment variable";
+/**
+ * The escape for the one input the reserved words cost: a credential whose first word is one.
+ *
+ * Listed with the entry forms rather than dropped in a footnote, because the operator who needs it
+ * is mid-refusal and the refusal points here.
+ */
+const USAGE_TUI_ESCAPE = "/secret -- <value>                    store a value starting with a word below";
 const USAGE_ADD_FROM_ENV = "/secret add <name> --from-env <VAR>   store the value of an environment variable";
 
-/** Reading what is stored. Grouped with entry because between them they are the everyday path. */
-const USAGE_LIST = "/secret list                          show active secrets, never their values";
-
 /**
- * Everything you only need once a secret exists.
+ * Everything you only need once a secret exists, shared by both surfaces.
  *
- * ONE LINE IN THE TUI. Rename, extend, revoke and copy are actions inside the manager, not six
- * command spellings to remember: the point of the verbless grammar is that the only word you
- * ever type after `/secret` is the one that opens the manager. The noninteractive list below it
- * keeps every verb, since that surface cannot open one.
+ * ONE LIST, because both surfaces parse all of it. The terminal used to advertise `manager` alone,
+ * on the reasoning that rename and revoke are actions inside the GUI. That held for the actions and
+ * not for the words: `/secret rm TOKEN` was read as a credential, so the vault gained an entry
+ * whose value was the name of the command the operator had been told to type. The manager line
+ * stays first, because it is still the better way to do all four.
  */
-const USAGE_TUI_MANAGE = ["/secret manager                       list, rename, extend, revoke, copy"];
+const USAGE_MANAGER = "/secret manager                       open the manager: rename, extend, revoke, copy";
+const USAGE_LIST = "/secret list                          show active secrets, never their values";
 const USAGE_MANAGE = [
+	USAGE_LIST,
 	"/secret rm <name> [--scope global]    remove a secret",
 	"/secret extend <name> --ttl 7d        give a secret a fresh lifetime",
 	"/secret log [--limit 50]              show which secrets were used, and where",
@@ -224,16 +234,16 @@ function buildUsage(
 	return lines.join("\n");
 }
 
-/** TUI help describes the verbless grammar and the manager. */
+/** TUI help leads with the verbless value forms, then every verb the terminal also parses. */
 export const SECRET_COMMAND_USAGE = buildUsage(
-	[USAGE_TUI_INLINE, USAGE_TUI_MASKED, USAGE_TUI_FROM_ENV],
-	USAGE_TUI_MANAGE,
+	[USAGE_TUI_INLINE, USAGE_TUI_MASKED, USAGE_TUI_FROM_ENV, USAGE_TUI_ESCAPE],
+	[USAGE_MANAGER, ...USAGE_MANAGE],
 	USAGE_FOOTER_TUI,
 );
 
 /** Noninteractive help exposes only environment-backed creation and the text management verbs. */
 export const NONINTERACTIVE_SECRET_COMMAND_USAGE = buildUsage(
-	[USAGE_ADD_FROM_ENV, USAGE_LIST],
+	[USAGE_ADD_FROM_ENV],
 	USAGE_MANAGE,
 	USAGE_FOOTER_NONINTERACTIVE,
 );
@@ -275,14 +285,137 @@ const SECRET_COMMAND_OPTIONS: Record<string, true> = Object.fromEntries(
 );
 
 /**
- * The one word `/secret` reserves in a terminal.
+ * The words `/secret` reserves, and which subcommand each one names.
  *
- * Everything else typed after `/secret` is the credential, so this is the only string a real
- * secret could collide with. It is safe to reserve because a stored value is arbitrary bytes
- * chosen by an issuer: nobody's API token is the literal word `manager`, and the collision has
- * an escape anyway, since the masked field reached by a bare `/secret` accepts any text at all.
+ * ONE OWNER for every spelling, so the parser, the help text and the completion menu cannot
+ * disagree about what is a command and what is a credential. The menu derives its entries from
+ * this map rather than listing them again, which is what makes a new subcommand offerable the
+ * moment it is parseable.
+ *
+ * WHY RESERVING WORDS IS SAFE. A stored value is arbitrary bytes chosen by an issuer, so nobody's
+ * API token is the literal word `list`, and the collision has two escapes: the masked field
+ * reached by a bare `/secret` accepts any text at all, and `--` stores the rest of the line
+ * verbatim. What was NOT safe is the grammar this replaced, in which the terminal reserved only
+ * `manager`: `/secret list` stored the string `list` as a credential and switched protection on,
+ * and `/secret rm TOKEN` stored `rm TOKEN`, so the two commands an operator reaches for right
+ * after storing something both filled the vault with garbage while the help text advertised them.
+ *
+ * THE FIRST WORD DECIDES, not the shape of the rest. `/secret log 50` is a malformed `log` and is
+ * refused; it is never re-read as a credential that happens to begin with `log`. A grammar that
+ * fell back to storing on a shape mismatch would put the silent-storage bug back for exactly the
+ * lines an operator gets slightly wrong, which are the ones that need the explanation.
  */
 const MANAGER_WORD = "manager";
+
+export const SECRET_VERB_SPELLINGS: Record<string, SecretSubcommand> = {
+	// Ordered as the completion menu is read, which is why the manager comes first: it is the one
+	// entry that replaces four of the others.
+	[MANAGER_WORD]: "manager",
+	add: "add",
+	list: "list",
+	rm: "rm",
+	remove: "rm",
+	delete: "rm",
+	extend: "extend",
+	renew: "extend",
+	log: "log",
+	audit: "log",
+	// No alias. `rm` and `extend` have two natural spellings each; `discard` has no twin, and
+	// inventing one for a destructive-looking repair only widens what a typo can reach.
+	discard: "discard",
+	help: "help",
+};
+
+/**
+ * What the terminal says each subcommand is for, and what it takes after the verb.
+ *
+ * A Record over the union rather than a list, so a subcommand cannot be parseable and unoffered:
+ * adding a member to {@link SecretSubcommand} fails to compile until it has a line here. That is
+ * the completion menu's completeness expressed as a type instead of as a test nobody updates.
+ *
+ * THE TERMINAL'S TRUTH, WHICH IS NOT THE DECLARATION'S. `/secret add` takes no name here, because
+ * a name parsed off this line would be a credential in plaintext metadata, and `manager` exists at
+ * all only where there is a screen. The declaration in `builtin-declarations.ts` keeps the
+ * noninteractive spellings, which is what an ACP client is told it may run.
+ */
+const SECRET_TUI_SUBCOMMAND_HELP: Record<SecretSubcommand, { usage: string; description: string }> = {
+	manager: { usage: "", description: "Open the manager: list, rename, extend, revoke, copy" },
+	add: { usage: "<value>", description: "Store a credential; the rest of the line is the value" },
+	list: { usage: "", description: "Show active secrets, never their values" },
+	rm: { usage: "<name> [--scope global]", description: "Remove a stored secret" },
+	extend: { usage: "<name> --ttl 7d", description: "Give a stored secret a fresh lifetime" },
+	log: { usage: "[--limit 50]", description: "Show which secrets were used, and where" },
+	discard: { usage: "--scope project", description: "Move a broken vault file aside" },
+	help: { usage: "", description: "Show every form /secret understands" },
+};
+
+/**
+ * The terminal completion menu: canonical spellings only, in the order above.
+ *
+ * Aliases are parsed and not offered. `remove`, `delete`, `renew` and `audit` exist so muscle
+ * memory lands somewhere, and listing all four beside their canonical twins would double a menu
+ * whose whole job is to say what the eight things are.
+ */
+export const SECRET_TUI_SUBCOMMANDS: readonly { name: string; usage: string; description: string }[] = Object.entries(
+	SECRET_VERB_SPELLINGS,
+)
+	.filter(([word, subcommand]) => word === subcommand)
+	.map(([word, subcommand]) => ({ name: word, ...SECRET_TUI_SUBCOMMAND_HELP[subcommand] }));
+
+/**
+ * The word that means "everything after me is the credential".
+ *
+ * Spelled `--` because that is what it means everywhere else a command line carries both options
+ * and data.
+ */
+const VALUE_ESCAPE = "--";
+
+/** One whitespace-delimited word of an argument line, with the offsets its slice needs. */
+interface SecretToken {
+	value: string;
+	start: number;
+	end: number;
+}
+
+/**
+ * Read a terminal line as a credential, which is what `/secret` does with anything unreserved.
+ *
+ * Shared by the bare form and by `/secret add`, so the verb is a synonym rather than a second
+ * grammar: whatever `/secret <value>` does, `/secret add <value>` does identically.
+ */
+function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretCommandRequest {
+	if (tokens.length === 0) return { subcommand: "add" };
+
+	// `--from-env` stays reachable, and only in this exact leading position. It is the one entry
+	// form that never puts the credential on screen, so dropping it from the TUI would leave the
+	// safest path available to ACP clients and not to the operator sitting at the terminal. The
+	// leading position is what keeps it unambiguous: a credential whose first word is literally
+	// `--from-env` is not a thing an issuer mints, while a `--from-env` appearing LATER is far
+	// more likely to be part of a pasted command line than a flag, and is stored verbatim.
+	if (tokens[0].value === "--from-env") {
+		const variable = tokens[1]?.value;
+		if (tokens.length !== 2 || variable === undefined || variable.startsWith("--")) {
+			throw new Error("--from-env needs the name of an environment variable, and nothing else.");
+		}
+		return { subcommand: "add", fromEnv: variable };
+	}
+
+	if (tokens[0].value === VALUE_ESCAPE) {
+		const rest = tokens.slice(1);
+		if (rest.length === 0) {
+			throw new Error(
+				`${VALUE_ESCAPE} means "the rest of this line is the credential", and nothing followed it. ` +
+					`Type /secret on its own to paste into a hidden field instead.`,
+			);
+		}
+		return { subcommand: "add", value: args.slice(rest[0].start, rest[rest.length - 1].end) };
+	}
+
+	// Sliced from the first token's start to the last one's end, rather than trimmed: that drops
+	// the whitespace a terminal adds around what was typed while preserving, byte for byte, any
+	// whitespace INSIDE the credential. A passphrase is allowed to contain spaces.
+	return { subcommand: "add", value: args.slice(tokens[0].start, tokens[tokens.length - 1].end) };
+}
 
 /**
  * Parse a `/secret` argument line.
@@ -298,72 +431,32 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 		end: match.index + match[0].length,
 	}));
 
-	// THE TERMINAL GRAMMAR HAS NO VERBS. Storing a credential is the thing operators come here to
-	// do, and every verb between them and it was a word to remember, a name to invent, and a way
-	// to get it wrong: `/secret add ghp_x` stored `ghp_x` as a NAME with no value. So in a TUI the
-	// argument line IS the value, a bare line opens the masked field, and the single reserved word
-	// opens the manager. The verbs survive only where there is no field and no GUI to replace
-	// them, which is why this branch is on `surface` and not on the shape of the input.
+	// THE FIRST WORD DECIDES. A reserved word is a command, anything else is the credential, so
+	// stashing one still costs one paste and no verb. `--from-env` and `--` belong to the value
+	// grammar, which both a bare line and `/secret add` reach through the same function.
 	if (surface === "tui") {
-		if (tokens.length === 0) return { subcommand: "add" };
-		if (tokens.length === 1 && tokens[0].value.toLowerCase() === MANAGER_WORD) return { subcommand: "manager" };
-		// `--from-env` stays reachable, and only in this exact leading position. It is the one entry
-		// form that never puts the credential on screen, so dropping it from the TUI would leave the
-		// safest path available to ACP clients and not to the operator sitting at the terminal. The
-		// leading position is what keeps it unambiguous: a credential whose first word is literally
-		// `--from-env` is not a thing an issuer mints, while a `--from-env` appearing LATER is far
-		// more likely to be part of a pasted command line than a flag, and is stored verbatim.
-		if (tokens[0].value === "--from-env") {
-			const variable = tokens[1]?.value;
-			if (tokens.length !== 2 || variable === undefined || variable.startsWith("--")) {
-				throw new Error("--from-env needs the name of an environment variable, and nothing else.");
-			}
-			return { subcommand: "add", fromEnv: variable };
-		}
-		// Sliced from the first token's start to the last one's end, rather than trimmed: that drops
-		// the whitespace a terminal adds around what was typed while preserving, byte for byte, any
-		// whitespace INSIDE the credential. A passphrase is allowed to contain spaces.
-		return { subcommand: "add", value: args.slice(tokens[0].start, tokens[tokens.length - 1].end) };
+		const reserved = tokens.length > 0 ? SECRET_VERB_SPELLINGS[tokens[0].value.toLowerCase()] : undefined;
+		if (reserved === undefined) return parseTuiValue(args, tokens);
+		// `add` is a synonym for the bare form, NOT the noninteractive `add <name> <value>`. The
+		// terminal never takes a name inline: the name is asked afterwards, and a name parsed off
+		// this line would be a credential written to the vault's plaintext metadata and echoed back
+		// on screen, which is the mistake the verbless grammar exists to prevent.
+		if (reserved === "add") return parseTuiValue(args, tokens.slice(1));
 	}
 
 	if (tokens.length === 0) return { subcommand: "help" };
 
-	const verb = tokens[0].value.toLowerCase();
-	const request: SecretCommandRequest = { subcommand: "help" };
+	const subcommand = SECRET_VERB_SPELLINGS[tokens[0].value.toLowerCase()];
+	if (subcommand === undefined) throw new Error(`Unknown /secret subcommand.\n\n${usageText}`);
 
 	// Named explicitly rather than falling through to "Unknown subcommand". The word IS a real
 	// command, just not one this surface can carry out, and telling an ACP or `-p` caller it does
 	// not exist would send them looking for a typo instead of at the text verbs below.
-	if (verb === MANAGER_WORD) {
+	if (subcommand === "manager" && surface !== "tui") {
 		throw new Error(`The secret manager is a terminal screen, and this client has none.\n\n${usageText}`);
 	}
 
-	switch (verb) {
-		case "add":
-		case "list":
-		case "rm":
-		case "remove":
-		case "delete":
-		case "extend":
-		case "renew":
-		case "log":
-		case "audit":
-		// No alias. `rm` and `extend` have two natural spellings each; `discard` has no twin, and
-		// inventing one for a destructive-looking repair only widens what a typo can reach.
-		case "discard":
-		case "help":
-			request.subcommand =
-				verb === "remove" || verb === "delete"
-					? "rm"
-					: verb === "renew"
-						? "extend"
-						: verb === "audit"
-							? "log"
-							: (verb as SecretSubcommand);
-			break;
-		default:
-			throw new Error(`Unknown /secret subcommand.\n\n${usageText}`);
-	}
+	const request: SecretCommandRequest = { subcommand };
 
 	const positional: string[] = [];
 	const suppliedOptions = new Set<string>();
@@ -441,7 +534,7 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 
 	if (request.subcommand !== "add" && positional.length > 0) request.name = positional[0];
 
-	refuseExtraWords(request, positional, usageText);
+	refuseExtraWords(request, positional, usageText, surface);
 	refuseMissingScope(request, usageText);
 	return request;
 }
@@ -473,8 +566,18 @@ function ambiguousInlineCredential(): Error {
  * transcript, so the one command whose entire purpose is keeping credentials off the screen put one
  * there permanently. Verified by hand across every verb before this changed. Naming the POSITION
  * tells the operator what to remove without repeating the secret back at them.
+ *
+ * IN A TERMINAL IT ALSO NAMES THE ESCAPE, because the second reading of every one of those lines is
+ * "this is a credential that starts with a reserved word", and the operator who meant that has to
+ * be told the one spelling that expresses it. Not on the noninteractive surface, where `--` is not
+ * a value escape and the value arrives as `add <name> --from-env VAR`.
  */
-function refuseExtraWords(request: SecretCommandRequest, words: readonly string[], usageText: string): void {
+function refuseExtraWords(
+	request: SecretCommandRequest,
+	words: readonly string[],
+	usageText: string,
+	surface: SecretCommandSurface,
+): void {
 	const shape = SUBCOMMAND_SHAPES[request.subcommand];
 	if (words.length <= shape.words) return;
 
@@ -484,11 +587,16 @@ function refuseExtraWords(request: SecretCommandRequest, words: readonly string[
 	const countedHint = /^[0-9]+$/.test(extra) ? extra : undefined;
 	const hint =
 		request.subcommand === "log" ? ` To show more records, write /secret log --limit ${countedHint ?? "50"}.` : "";
+	const escapeHint =
+		surface === "tui"
+			? ` If the line is itself a credential that begins with /secret ${request.subcommand}, store it with ` +
+				`/secret ${VALUE_ESCAPE} <value>.`
+			: "";
 	const position = shape.words === 0 ? "the extra word" : `the word after the ${ordinalWord(shape.words)}`;
 	throw new Error(
 		`/secret ${request.subcommand} takes ${shape.words === 0 ? "no arguments" : `${shape.words} argument(s)`}, ` +
 			`and ${position} would be ignored rather than used, so it was refused instead. The word itself is ` +
-			`not repeated here, in case it is the credential.${hint}\n\n${usageText}`,
+			`not repeated here, in case it is the credential.${hint}${escapeHint}\n\n${usageText}`,
 	);
 }
 

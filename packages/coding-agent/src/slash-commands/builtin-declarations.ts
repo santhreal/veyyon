@@ -339,11 +339,14 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Store a credential the agent can use without ever seeing it",
 		acpDescription: "Manage credentials; new values are accepted only from environment variables",
 		allowArgs: true,
-		inlineHint: "<value> | manager | --from-env VAR",
+		// Every canonical spelling but `add`, `help` and `discard`: `add` is a synonym for the bare
+		// value form, and the other two are rare enough that spending a third of one line of ghost
+		// text on them would push the value form off the end. The dropdown lists all eight.
+		inlineHint: "<value> | manager | list | rm | extend | log | --from-env VAR",
 		acpInputHint: "add <name> --from-env <VAR>",
-		// Bare /secret opens the masked value field. The terminal grammar is deliberately verbless
-		// (`/secret <value>` stores a value), so `add` is the identity operation rather than a
-		// hidden default, and a picker would put back the verb that grammar removed.
+		// Bare /secret opens the masked value field rather than a subcommand picker: the value form
+		// needs no verb, so `add` is a synonym rather than a hidden default, and a picker would put a
+		// mandatory verb back in front of the one action that does not need one.
 		bareAction: "distinct",
 		subcommands: [
 			{

@@ -350,31 +350,33 @@ describe("/secret discard", () => {
 	});
 
 	/**
-	 * The repair belongs to the noninteractive surface, and its help is the one that has to carry it.
-	 * A broken vault is most likely to be met by a headless client, which cannot open a masked prompt
-	 * or a manager screen and so takes the noninteractive help; a verb missing from that surface, or
-	 * from its help, leaves those operators with no in-product route at all.
+	 * The repair runs on EVERY surface, and every surface's help carries it.
 	 *
-	 * The TUI help deliberately does NOT list it. That surface has no verbs to list: it offers
-	 * `/secret manager`, and a `discard` line there would advertise a word a terminal now stores as
-	 * a credential. Asserted, rather than left implied, because a `discard` line reappearing in the
-	 * TUI text is exactly the drift that would teach an operator to type it.
+	 * A broken vault is most likely to be met by a headless client, which cannot open a masked prompt
+	 * or a manager screen, so the noninteractive help has always had to name it. The terminal
+	 * deliberately did not, because that surface parsed no verbs and a `discard` line there would
+	 * have advertised a word it stored as a credential. Both halves of that are now wrong: the verb
+	 * parses here too, and the manager has no equivalent action, so a terminal operator whose vault
+	 * file is corrupt had no in-product route at all.
+	 *
+	 * Run once per surface rather than once, because "the verb parses on both" is exactly the claim,
+	 * and a shared parser that regressed on one branch would still pass a single-surface row.
 	 */
-	it("runs from the noninteractive surface, whose help is the only one that lists it", async () => {
-		const f = await fixture();
-		const broken = await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
+	for (const surface of ["noninteractive", "tui"] as const) {
+		it(`runs from the ${surface} surface, whose help lists it`, async () => {
+			const f = await fixture();
+			const broken = await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
 
-		const result = await f.secret("discard --scope profile", "noninteractive");
+			const result = await f.secret("discard --scope profile", surface);
 
-		expect({ moved: (await f.movedAside("profile")).length, originalPathStillThere: await exists(broken) }).toEqual({
-			moved: 1,
-			originalPathStillThere: false,
+			expect({
+				moved: (await f.movedAside("profile")).length,
+				originalPathStillThere: await exists(broken),
+			}).toEqual({ moved: 1, originalPathStillThere: false });
+			expect(result.message).toContain("profile");
+			expect(secretCommandUsage(surface)).toContain("/secret discard");
 		});
-		expect(result.message).toContain("profile");
-		expect(secretCommandUsage("noninteractive")).toContain("/secret discard");
-		expect(secretCommandUsage("tui")).not.toContain("discard");
-		expect(secretCommandUsage("tui")).toContain("/secret manager");
-	});
+	}
 
 	/**
 	 * Named the wrong scope, and there is nothing there. That has to read as nothing to do, not as a
