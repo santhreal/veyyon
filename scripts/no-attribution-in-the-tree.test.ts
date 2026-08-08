@@ -49,22 +49,113 @@ const EXEMPT_DIRS = [
 	"packages/catalog/src/discovery/cursor-gen/",
 ];
 const EXEMPT_NAMES = new Set(["CHANGELOG.md", "AGENTS.md", "CLAUDE.md", "SKILL.md", "UPSTREAM.md"]);
-const SCANNED_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".rs", ".py", ".sh", ".bash", ".css", ".md"]);
 
-function inScope(file: string): boolean {
+/** Why an extension carries no prose about anybody. Shared so the table below stays readable. */
+const NO_COMMENT_SYNTAX = { skip: "no comment syntax, so a line is data rather than prose" } as const;
+const RECORDED_OUTPUT = { skip: "recorded command output kept byte for byte as a fixture" } as const;
+const GENERATED_DATA = { skip: "generated data, not written by hand" } as const;
+const LEGAL_TEXT = { skip: "licence or notice text taken verbatim from upstream" } as const;
+const BINARY_ASSET = { skip: "binary asset" } as const;
+
+type ExtensionDecision = "scan" | { readonly skip: string };
+
+/**
+ * One decision per extension the repository actually contains.
+ *
+ * Keyed by extension rather than expressed as a scanned-only list, because a list of what to scan
+ * fails open: the first `.go` or `.kt` tree lands invisible to this gate and nothing says so. The
+ * census tests below compare this table against the extensions git is tracking in both directions,
+ * so a new language turns them RED until someone records a decision here, and a decision left
+ * behind by a deleted tree turns them RED too rather than sitting here as decoration.
+ */
+const EXTENSION_POLICY: Readonly<Record<string, ExtensionDecision>> = {
+	"": "scan", // Dockerfiles, git hooks, ignore files: `#` comments
+	".ts": "scan",
+	".tsx": "scan",
+	".js": "scan",
+	".rs": "scan",
+	".py": "scan",
+	".rb": "scan",
+	".jl": "scan",
+	".sh": "scan",
+	".ps1": "scan",
+	".css": "scan",
+	".md": "scan",
+	".html": "scan",
+	".xml": "scan",
+	".hbs": "scan",
+	".j2": "scan",
+	".toml": "scan",
+	".yml": "scan",
+	".yaml": "scan",
+	".jsonc": "scan",
+	".proto": "scan",
+	".lark": "scan",
+	".sublime-syntax": "scan",
+	".tape": "scan",
+	".dockerfile": "scan",
+	".dockerignore": "scan",
+	".veybot": "scan",
+	".example": "scan",
+	".json": NO_COMMENT_SYNTAX,
+	".webmanifest": NO_COMMENT_SYNTAX,
+	".lock": GENERATED_DATA,
+	".dict": GENERATED_DATA,
+	".hex": GENERATED_DATA,
+	".bdf": GENERATED_DATA,
+	".txt": RECORDED_OUTPUT,
+	".raw": RECORDED_OUTPUT,
+	".min": RECORDED_OUTPUT,
+	".exit": RECORDED_OUTPUT,
+	".cmd": RECORDED_OUTPUT,
+	".patch": RECORDED_OUTPUT,
+	".typed": { skip: "empty marker file" },
+	".LICENSE": LEGAL_TEXT,
+	".png": BINARY_ASSET,
+	".jpg": BINARY_ASSET,
+	".webp": BINARY_ASSET,
+	".gif": BINARY_ASSET,
+	".ico": BINARY_ASSET,
+	".mp4": BINARY_ASSET,
+	".pdf": BINARY_ASSET,
+	".ttf": BINARY_ASSET,
+	".gz": BINARY_ASSET,
+	".svg": { skip: "vector art, not prose" },
+};
+
+/** Extensions whose prose is the document itself rather than a comment inside code. */
+const MARKUP_EXTENSIONS = new Set([".md", ".html", ".xml", ".hbs", ".j2"]);
+
+/**
+ * Markdown under a package's `src/`, under `agents/` or under `.veyyon/` is product content:
+ * prompts and agent definitions, which describe the user to a model as part of their job.
+ */
+function isProductMarkdown(file: string): boolean {
+	return (
+		path.extname(file) === ".md" &&
+		(file.includes("/src/") || file.startsWith("agents/") || file.startsWith(".veyyon/"))
+	);
+}
+
+/**
+ * Everything the path rules alone admit, before the extension decision.
+ *
+ * Separate from {@link inScope} so the census can ask "which extensions reach the extension
+ * decision at all", which is the set the policy table has to answer for.
+ */
+function scopedByPath(file: string): boolean {
 	// This file spells out every construction it forbids, in its header and in its positive
 	// controls, so it is the one file that must quote them to work at all.
 	if (file === "scripts/no-attribution-in-the-tree.test.ts") return false;
 	if (EXEMPT_DIRS.some(dir => file.startsWith(dir))) return false;
 	const base = path.basename(file);
 	if (EXEMPT_NAMES.has(base) || base.includes(".min.")) return false;
-	const ext = path.extname(file);
-	if (!SCANNED_EXTENSIONS.has(ext)) return false;
-	// Markdown under a package's src/ or under agents/ is product content: prompts and agent
-	// definitions, which describe the user to a model as part of their job.
-	if (ext === ".md" && (file.includes("/src/") || file.startsWith("agents/") || file.startsWith(".veyyon/")))
-		return false;
-	return true;
+	return !isProductMarkdown(file);
+}
+
+function inScope(file: string): boolean {
+	if (!scopedByPath(file)) return false;
+	return EXTENSION_POLICY[path.extname(file)] === "scan";
 }
 
 /**
@@ -122,6 +213,17 @@ const BANNED: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }>
 		name: "a dated credit next to a person",
 		pattern: /\b(?:operator|user)(?:'s)?\b[^\n]{0,40}?\b20\d\d-\d\d-\d\d\b/i,
 	},
+	{
+		// Every rule above keys off the words "operator" and "user", so naming the person outright
+		// walked straight past all of them: `reported by @santhreal`, `per Mukund's screenshot`.
+		// A handle or a capitalised name after a credit verb is a person; the ordinary technical
+		// senses put a lowercase common noun there (`reported by the provider`, `requested by the
+		// caller`) and stay legal. The identity list is this repository's own accounts, so a URL
+		// like github.com/santhreal/veyyon does not match: it needs a credit noun behind it.
+		name: "attributing a change to a named person",
+		pattern:
+			/\b(?:reported|requested|approved|reviewed|verified|confirmed|screenshotted)\s+by\s+@[\w-]+|\b(?:mukund|santhreal|santhsecurity|anionicsanth)(?:'s)?\s+(?:report|reports|screenshot|screenshots|review|reviews|request|requests|ask|asks|words|verdict|complaint)\b/i,
+	},
 ];
 
 /**
@@ -140,7 +242,9 @@ function proseLines(
 	file: string,
 	source: string,
 ): ReadonlyArray<{ readonly line: number; readonly text: string; readonly window: string }> {
-	const markdown = path.extname(file) === ".md";
+	// Markup carries its prose outside any comment marker, so every line is prose. The fence rule
+	// still applies: a code block in a document is code.
+	const markdown = MARKUP_EXTENSIONS.has(path.extname(file));
 	const raw: { line: number; text: string }[] = [];
 	let inFence = false;
 	source.split("\n").forEach((line, index) => {
@@ -220,6 +324,7 @@ describe("no comment or internal doc attributes a change to a person", () => {
 				"a dated credit next to a person",
 				" *    tell unset from a genuinely negative value (operator review 2026-07-24).",
 			],
+			["attributing a change to a named person", "// the wrap fix, reported by @santhreal, keeps the row pinned."],
 		];
 		expect(samples.map(([name]) => name).sort()).toEqual(BANNED.map(rule => rule.name).sort());
 		for (const [name, sample] of samples) {
@@ -255,6 +360,12 @@ describe("no comment or internal doc attributes a change to a person", () => {
 			// line and not to the verb. This is the control that makes the gap's backtick exclusion
 			// load-bearing: remove it from the pattern and this line starts matching.
 			' * the user said `--profile "work"` was ignored, and the bootstrap had already stripped it.',
+			// A credit verb followed by a component, not a person: this is what the ordinary
+			// technical sense looks like, and the rule above must leave every one of them alone.
+			"\t// A retry is requested by the caller, never by the classifier.",
+			"\t// reported by the provider as a rate limit, so the classifier trusts it.",
+			" * approved by the approval policy before the tool ever runs.",
+			" * See github.com/santhreal/veyyon/releases for what the installer resolves.",
 		];
 		for (const line of legal) {
 			for (const { name, pattern } of BANNED) {
@@ -295,6 +406,144 @@ describe("no comment or internal doc attributes a change to a person", () => {
 	 * from the rule fails this test instead of quietly narrowing the guard, and every verb the
 	 * rule claims is proven to match a real quotation.
 	 */
+	/**
+	 * The scope constants are the fail-open of a text gate: a violation is silenced by adding one
+	 * directory here, or by dropping one extension, and the gate stays green while the leak ships.
+	 * They are pinned by exact equality so widening scope is a decision someone makes on purpose
+	 * and defends in review, rather than a diff nobody reads.
+	 */
+	it("pins every exemption, so scope cannot be widened quietly", () => {
+		expect(EXEMPT_DIRS).toEqual([
+			"crates/vendor/",
+			"docs/handbook/book/",
+			"website/",
+			"packages/coding-agent/src/export/html/vendor/",
+			"packages/catalog/src/discovery/cursor-gen/",
+		]);
+		expect([...EXEMPT_NAMES].sort()).toEqual(["AGENTS.md", "CHANGELOG.md", "CLAUDE.md", "SKILL.md", "UPSTREAM.md"]);
+		expect([...MARKUP_EXTENSIONS].sort()).toEqual([".hbs", ".html", ".j2", ".md", ".xml"]);
+		// The product-markdown carve-out is a path rule, so it is pinned by behavior: these three
+		// prefixes are exempt and an ordinary document is not.
+		expect(isProductMarkdown("packages/coding-agent/src/prompts/system.md")).toBe(true);
+		expect(isProductMarkdown("agents/deep.md")).toBe(true);
+		expect(isProductMarkdown(".veyyon/skills/record-demo/SKILL.md")).toBe(true);
+		expect(isProductMarkdown("docs/internal/releasing.md")).toBe(false);
+		expect(isProductMarkdown("packages/coding-agent/src/eval/prelude.py")).toBe(false);
+	});
+
+	/**
+	 * A decision for every extension in the tree, in both directions. Adding a language turns this
+	 * red until the table answers for it, which is the only thing standing between a new tree and
+	 * a gate that silently does not read it.
+	 */
+	it("records a decision for every extension git tracks", async () => {
+		const present = new Set((await trackedFiles()).filter(scopedByPath).map(file => path.extname(file)));
+		const undecided = [...present].filter(ext => EXTENSION_POLICY[ext] === undefined).sort();
+		expect(undecided).toEqual([]);
+	});
+
+	it("keeps no decision for an extension the tree no longer has", async () => {
+		const present = new Set((await trackedFiles()).filter(scopedByPath).map(file => path.extname(file)));
+		const stale = Object.keys(EXTENSION_POLICY)
+			.filter(ext => !present.has(ext))
+			.sort();
+		expect(stale).toEqual([]);
+	});
+
+	/**
+	 * Every scanned extension is proven to have its comment syntax recognized. A decision to scan
+	 * a language whose comments this file cannot find is worse than skipping it: the census above
+	 * reports it as covered and nothing reads it. Each sample is the same attribution written in
+	 * that language's own comment form, and it must be caught.
+	 */
+	it("finds an attribution in every language it claims to scan", () => {
+		const commentFor: Readonly<Record<string, (line: string) => string>> = {
+			"": line => `# ${line}`,
+			".ts": line => `// ${line}`,
+			".tsx": line => `// ${line}`,
+			".js": line => `// ${line}`,
+			".rs": line => `/// ${line}`,
+			".py": line => `# ${line}`,
+			".rb": line => `# ${line}`,
+			".jl": line => `# ${line}`,
+			".sh": line => `# ${line}`,
+			".ps1": line => `# ${line}`,
+			".css": line => `/* ${line} */`,
+			".md": line => line,
+			".html": line => line,
+			".xml": line => line,
+			".hbs": line => `{{! ${line} }}`,
+			".j2": line => `{# ${line} #}`,
+			".toml": line => `# ${line}`,
+			".yml": line => `# ${line}`,
+			".yaml": line => `# ${line}`,
+			".jsonc": line => `// ${line}`,
+			".proto": line => `// ${line}`,
+			".lark": line => `// ${line}`,
+			".sublime-syntax": line => `# ${line}`,
+			".tape": line => `# ${line}`,
+			".dockerfile": line => `# ${line}`,
+			".dockerignore": line => `# ${line}`,
+			".veybot": line => `# ${line}`,
+			".example": line => `# ${line}`,
+		};
+		const scanned = Object.entries(EXTENSION_POLICY)
+			.filter(([, decision]) => decision === "scan")
+			.map(([ext]) => ext)
+			.sort();
+		// Every scanned extension needs a sample, and a sample for something no longer scanned is
+		// dead weight: both directions are pinned so the two lists cannot drift apart.
+		expect(Object.keys(commentFor).sort()).toEqual(scanned);
+
+		const attribution = 'the operator asked for "exactly this", so the row never moves.';
+		for (const ext of scanned) {
+			const render = commentFor[ext];
+			if (!render) throw new Error(`no comment form for ${ext}`);
+			const source = ["line one of the file", render(attribution), "line after it"].join("\n");
+			const windows = proseLines(`fixture${ext === "" ? "" : ext}`, source);
+			const caught = windows.filter(entry => BANNED.some(rule => rule.pattern.test(entry.window)));
+			expect(caught.length, `${ext} must be scanned for attributions`).toBeGreaterThan(0);
+		}
+	});
+
+	/**
+	 * The named-person rule has two branches and one sample cannot gate both: a handle behind a
+	 * credit verb, and one of this repository's own identities behind a credit noun. Each verb and
+	 * each identity the pattern claims is read back out of its source and proven to match, so
+	 * narrowing the rule to the one shape that leaked fails here instead of quietly shrinking.
+	 */
+	it("catches an attribution to a named person on both of its branches", () => {
+		const rule = BANNED.find(entry => entry.name === "attributing a change to a named person");
+		if (!rule) throw new Error("the named-person rule is gone");
+
+		const verbs = /\\b\(\?:([a-z|]+)\)\\s\+by/.exec(rule.pattern.source);
+		if (!verbs) throw new Error("the named-person rule no longer lists its credit verbs");
+		const identities = /\\b\(\?:([a-z|]+)\)\(\?:'s\)\?/.exec(rule.pattern.source);
+		if (!identities) throw new Error("the named-person rule no longer lists the identities");
+		const credited = verbs[1].split("|");
+		const people = identities[1].split("|");
+		expect(credited).toContain("reported");
+		expect(credited.length).toBeGreaterThanOrEqual(5);
+		expect(people).toContain("santhreal");
+		expect(people.length).toBeGreaterThanOrEqual(3);
+
+		for (const verb of credited) {
+			expect(rule.pattern.test(`// the wrap fix, ${verb} by @santhsecurity, keeps the row pinned.`), verb).toBe(
+				true,
+			);
+			// A component rather than a person is the ordinary technical sense and stays legal.
+			expect(rule.pattern.test(`// the retry is ${verb} by the caller, never by the classifier.`), verb).toBe(false);
+		}
+		for (const person of people) {
+			expect(rule.pattern.test(` * per ${person}'s screenshot the row sat one cell low.`), person).toBe(true);
+			// The same identity with no credit noun behind it is ordinary prose about an account,
+			// which is how it appears in release and auth documentation.
+			expect(rule.pattern.test(` * ${person} is the account the release workflow acts as.`), person).toBe(false);
+			// The repository URL carries the same word with no credit noun behind it.
+			expect(rule.pattern.test(` * see github.com/${person}/veyyon/releases for the assets.`), person).toBe(false);
+		}
+	});
+
 	it("catches a quotation behind any speech verb the rule claims", () => {
 		const rule = BANNED.find(entry => entry.name === "quoting what a person said");
 		if (!rule) throw new Error("the quoting rule is gone");
