@@ -4,6 +4,7 @@ import {
 	formatFullOutputReference,
 	formatOutputNotice,
 	formatTruncationMetaNotice,
+	RETIRED_TRUNCATION_NOTICES,
 	stripGeneratedOutputNotice,
 	stripOutputNotice,
 	stripRawOutputArtifactNotice,
@@ -50,6 +51,19 @@ function lineWindowMeta(): OutputMeta {
 			outputLines: 500,
 			outputBytes: 22_000,
 			shownRange: { start: 1, end: 500 },
+		},
+	};
+}
+
+/** The shape an upstream-truncated payload produces: a tail kept, elided amount unmeasurable. */
+function unknownElisionMeta(): OutputMeta {
+	return {
+		truncation: {
+			direction: "tail",
+			truncatedBy: "bytes",
+			outputLines: 12,
+			outputBytes: 2_048,
+			elidedAmountUnknown: true,
 		},
 	};
 }
@@ -123,7 +137,7 @@ describe("the notice text", () => {
 			elidedAmountUnknown: true,
 		});
 
-		expect(notice).toBe("Output was truncated before veyyon received it; 2.0KB kept, elided amount not reported");
+		expect(notice).toBe("Truncated upstream: 2.0KB kept, elided amount not reported");
 	});
 
 	/**
@@ -226,6 +240,41 @@ describe("the strippers agree with the text, byte for byte", () => {
 
 		expect(stripOutputNotice("still streaming\n", meta)).toBe("still streaming\n");
 		expect(stripOutputNotice("no notice here", undefined)).toBe("no notice here");
+	});
+	/**
+	 * A RESULT OUTLIVES THE WORDING THAT WROTE IT. The stripper rebuilds the notice from the metadata,
+	 * so it folds only what this build would write, and a session recorded under an earlier wording
+	 * would print its notice twice: verbatim in the body and again in the styled warning. That shipped
+	 * once, when the upstream-truncation sentence was compacted for tokens and the strip silently
+	 * stopped matching, so every retired wording keeps a builder in `RETIRED_TRUNCATION_NOTICES` and
+	 * every one of them is exercised here rather than only the sentence someone remembered.
+	 *
+	 * Enumerated from the list at run time, so retiring a wording without teaching the stripper is not
+	 * possible: the entry is what the case is built from. The other half of the guard is the exact
+	 * string pinned above for the CURRENT wording, which goes red the moment the text changes and is
+	 * what forces the old sentence to be recorded here instead of deleted.
+	 */
+	it("folds a notice written by every wording this module has shipped", () => {
+		const meta = unknownElisionMeta();
+		expect(RETIRED_TRUNCATION_NOTICES.length).toBeGreaterThan(0);
+
+		for (const retired of RETIRED_TRUNCATION_NOTICES) {
+			const legacy = retired(meta.truncation!);
+			expect(legacy).toBeDefined();
+			// The retired wording is genuinely different from what we write now, or the case would
+			// be asserting the current one twice and proving nothing about the fold.
+			expect(legacy).not.toBe(formatTruncationMetaNotice(meta.truncation!));
+			expect(stripOutputNotice(`body\n\n[${legacy}]`, meta)).toBe("body");
+		}
+	});
+
+	/** A retired wording is not a licence to eat any bracketed line: the body still has to END with it. */
+	it("leaves a legacy-looking line that is not the trailing notice alone", () => {
+		const meta = unknownElisionMeta();
+		const legacy = RETIRED_TRUNCATION_NOTICES[0]!(meta.truncation!);
+		const body = `[${legacy}]\nmore output after it`;
+
+		expect(stripOutputNotice(body, meta)).toBe(body);
 	});
 
 	/**

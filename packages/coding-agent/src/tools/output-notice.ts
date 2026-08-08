@@ -176,9 +176,13 @@ export function formatTruncationMetaNotice(truncation: TruncationMeta): string {
 
 	if (truncation.elidedAmountUnknown) {
 		// No range and no total: both would be invented. What the agent needs to
-		// know is that the tail it is reading is not the whole output, and that
-		// asking for a byte count would be answering a question nobody measured.
-		notice = `Truncated upstream: ${formatBytes(truncation.outputBytes)} kept`;
+		// know is that the tail it is reading is not the whole output, AND that the
+		// amount dropped is unknown rather than merely unstated here: without the
+		// second half the obvious next move is to go looking for a number nobody
+		// measured, which is the loop this flag exists to cut. Compact, because it
+		// rides on output the agent already paid for, but not so compact that the
+		// fact is gone.
+		notice = `Truncated upstream: ${formatBytes(truncation.outputBytes)} kept, elided amount not reported`;
 		if (truncation.artifactId != null) {
 			notice += `. ${formatFullOutputReference(truncation.artifactId)}`;
 		}
@@ -247,6 +251,47 @@ export function formatOutputNotice(meta: OutputMeta | undefined): string {
 }
 
 /**
+ * Wordings this module has shipped for a truncation notice and then retired.
+ *
+ * The stripper rebuilds the notice from the metadata and matches the tail, so it can only fold the
+ * text the CURRENT code would write. A result recorded under an older wording is still resumable,
+ * and without its builder here the notice prints twice: verbatim in the body and again as the
+ * styled warning beside it. That is exactly what shipped when the upstream-truncation sentence was
+ * compacted, so a wording change now means adding the old sentence to this list rather than
+ * deleting it. The exact-string test on the current wording is what forces the decision to be
+ * made: change the text and it goes red.
+ *
+ * A builder returns `undefined` when the metadata never produced that wording.
+ */
+export const RETIRED_TRUNCATION_NOTICES: ReadonlyArray<(truncation: TruncationMeta) => string | undefined> = [
+	truncation => {
+		// Retired 2026-08-05 in favour of `Truncated upstream: …`.
+		if (!truncation.elidedAmountUnknown) return undefined;
+		let notice = `Output was truncated before veyyon received it; ${formatBytes(truncation.outputBytes)} kept, elided amount not reported`;
+		if (truncation.artifactId != null) {
+			notice += `. ${formatFullOutputReference(truncation.artifactId)}`;
+		}
+		return notice;
+	},
+];
+
+/**
+ * Every spelling of `meta`'s notice the body may legitimately end with: what this build writes
+ * first, then the retired wordings, so an older transcript strips as cleanly as a fresh result.
+ */
+function outputNoticeVariants(meta: OutputMeta | undefined): string[] {
+	const current = formatOutputNotice(meta);
+	if (!current || !meta?.truncation) return current ? [current] : [];
+	const variants = [current];
+	const currentTruncation = formatTruncationMetaNotice(meta.truncation);
+	for (const retired of RETIRED_TRUNCATION_NOTICES) {
+		const text = retired(meta.truncation);
+		if (text && text !== currentTruncation) variants.push(current.replace(currentTruncation, text));
+	}
+	return variants;
+}
+
+/**
  * Strip the trailing notice that {@link appendOutputNotice} bakes into the
  * LLM-facing content body. Renderers should call this before printing
  * `result.content` text in the TUI, because they emit a styled warning line of
@@ -257,17 +302,19 @@ export function formatOutputNotice(meta: OutputMeta | undefined): string {
  * (e.g. during streaming, before {@link wrappedExecute} runs).
  */
 export function stripOutputNotice(text: string, meta: OutputMeta | undefined): string {
-	const notice = formatOutputNotice(meta);
-	if (!notice) return text;
+	const variants = outputNoticeVariants(meta);
+	if (variants.length === 0) return text;
 	// Trim trailing whitespace from `text` and from the notice itself so we
 	// match regardless of whether: (a) the caller already trimEnd()'d, (b)
 	// extra blank lines slipped in after the notice (diagnostics blocks add
 	// `\n\n` between sections, OutputSink may pad), or (c) neither. Returns
 	// the prefix before the notice so the caller can re-trim as needed.
 	const trimmedText = text.trimEnd();
-	const trimmedNotice = notice.trimEnd();
-	if (trimmedText.endsWith(trimmedNotice)) {
-		return trimmedText.slice(0, -trimmedNotice.length);
+	for (const variant of variants) {
+		const trimmedNotice = variant.trimEnd();
+		if (trimmedText.endsWith(trimmedNotice)) {
+			return trimmedText.slice(0, -trimmedNotice.length);
+		}
 	}
 	return text;
 }

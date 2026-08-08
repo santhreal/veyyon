@@ -54,9 +54,7 @@ describe("a truncation with no reported total is reported as unmeasured", () => 
 				.get() ?? {};
 
 		expect(meta.truncation?.elidedAmountUnknown).toBe(true);
-		expect(noticeFor(meta)).toBe(
-			"Output was truncated before veyyon received it; 7B kept, elided amount not reported",
-		);
+		expect(noticeFor(meta)).toBe("Truncated upstream: 7B kept, elided amount not reported");
 	});
 
 	/**
@@ -237,9 +235,7 @@ describe("the unknown-elision notice reads as incomplete", () => {
 			truncatedBy: "bytes",
 		};
 
-		expect(formatTruncationMetaNotice(truncation)).toBe(
-			"Output was truncated before veyyon received it; 1.0KB kept, elided amount not reported",
-		);
+		expect(formatTruncationMetaNotice(truncation)).toBe("Truncated upstream: 1.0KB kept, elided amount not reported");
 	});
 
 	/**
