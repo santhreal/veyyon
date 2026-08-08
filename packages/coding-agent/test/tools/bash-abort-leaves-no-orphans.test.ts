@@ -24,6 +24,7 @@
  * it before concluding this suite proves nothing escapes.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import * as nodeFs from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -55,13 +56,44 @@ afterEach(async () => {
 	await removeWithRetries(tmpDir);
 });
 
-/** Whether `pid` still exists. Signal 0 performs the permission and existence
- * check without delivering anything. */
+/**
+ * Whether `pid` is a LIVE process. Signal 0 performs the permission and
+ * existence check without delivering anything.
+ *
+ * A zombie answers signal 0 successfully and is not what this suite is about: it
+ * has already been killed, holds no port, burns no CPU, and owns nothing but a
+ * slot in its parent's wait queue. The distinction is load-bearing rather than
+ * pedantic, because the sandbox runs the suite as PID 1 of a container and PID 1
+ * here is the test harness, which never reaps a child it did not spawn. So a
+ * grandchild whose own parent exited first is adopted by the harness, killed,
+ * and then stays a zombie for the rest of the run. Signal 0 alone read that as a
+ * surviving orphan, which is why `kills a descendant two levels down` failed
+ * while the process had in fact been reaped: whether the middle shell or the leaf
+ * died first decided the verdict.
+ *
+ * The state byte is read from procfs where there is one, and signal 0 remains
+ * the answer everywhere else. A real escapee is `R`, `S` or `D` and is still
+ * reported alive on every platform.
+ */
 function isAlive(pid: number): boolean {
 	try {
 		process.kill(pid, 0);
-		return true;
 	} catch {
+		return false;
+	}
+	return !isZombie(pid);
+}
+
+function isZombie(pid: number): boolean {
+	try {
+		const stat = nodeFs.readFileSync(`/proc/${pid}/stat`, "utf8");
+		// The comm field is parenthesised and may itself contain spaces, so state
+		// is the first field after the LAST ')'.
+		const afterComm = stat.slice(stat.lastIndexOf(")") + 1).trim();
+		return afterComm.startsWith("Z");
+	} catch {
+		// No procfs (macOS, Windows) or the process vanished between the two
+		// reads: signal 0 already had the answer.
 		return false;
 	}
 }
