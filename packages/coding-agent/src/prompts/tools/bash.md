@@ -62,14 +62,13 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 </critical>
 
 <output>
-- Returns output (stderr merged into stdout); exit code shown on non-zero exit.
-- Truncated output → `artifact://<id>` (linked in metadata).
+- Returns output with stderr merged into stdout; a non-zero exit shows the exit code. Truncated output is linked as `artifact://<id>` in metadata.
 </output>
 
 {{#if asyncEnabled}}
 # Timeout and async
 
-- `timeout` is seconds; default 300; nonzero values are clamped to `1..3600` and the process is killed on elapse. Set `timeout: 0` only for finite commands whose completion is cancellation-owned.
+- `timeout` is seconds, default 300, clamped to `1..3600`, and the process is killed on elapse. Set `timeout: 0` only for a finite command whose completion is cancellation-owned.
 - `async: true` defers only reporting; it does NOT extend a nonzero timeout.
 {{#unless hasLaunch}}
 - Need a long-running process or >3600s run? Use an external process supervisor; avoid detached shell jobs you cannot later observe or stop.
@@ -79,11 +78,10 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 ## Backgrounding a foreground call
 {{#if autoBackgroundEnabled}}
 
-- A long-running foreground call may convert to a background job after {{autoBackgroundSeconds}}s; the final result arrives as a follow-up tool call. NOT a failure — don't retry or wait synchronously.
+- A long-running foreground call may convert to a background job after {{autoBackgroundSeconds}}s, and the operator can also background one by hand at any time. Either way the final result arrives as a follow-up tool call: NOT a failure, so don't retry or wait synchronously.
 - Need the result inline (e.g. piping into another command)? Raise `timeout` above expected duration{{#if asyncEnabled}}, or set `async: true` up front{{/if}}.
 {{/if}}
 - `backgroundAfter` is seconds of foreground time for THIS call before it converts to a background job, overriding the configured default in both directions: raise it for a command whose output you need inline, lower it for one you know is slow. `backgroundAfter: 0` backgrounds immediately.
-- The operator can also background a running command by hand at any time. Same outcome: the result arrives later as a follow-up, so treat it as normal.
 {{#if stallDetectionEnabled}}
 
 ## Stall detection
@@ -94,5 +92,4 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 
 # Output minimizer
 
-- Long output truncated; test/lint runner output filtered to failures. When visible text changed, a `[raw output: artifact://<id>]` footer links the full capture — read it if a run looks suspicious or you need exact bytes.
-- No footer = what you see is exactly what the command emitted.
+- Long output is truncated and test/lint runner output filtered to failures. A `[raw output: artifact://<id>]` footer appears whenever visible text changed: read it if a run looks suspicious or you need exact bytes. No footer means you saw exactly what the command emitted.

@@ -56,11 +56,11 @@ import { BASE_SETTINGS, HOST_DEPENDENT_TOOL_NAMES } from "./tool-loading-differe
  */
 const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	edit: 8030,
-	eval: 5790,
-	irc: 4720,
-	read: 4290,
-	bash: 4010,
+	eval: 5610,
+	read: 4180,
+	bash: 3910,
 	todo: 3800,
+	irc: 3450,
 	launch: 2820,
 	task: 2720,
 	debug: 2350,
@@ -76,7 +76,7 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 };
 
 /** Total the whole active set may ship, description + examples. */
-const TOTAL_PROMPT_CEILING = 49_200;
+const TOTAL_PROMPT_CEILING = 48_000;
 
 /**
  * How far under its ceiling a tool may sit before the row is stale.

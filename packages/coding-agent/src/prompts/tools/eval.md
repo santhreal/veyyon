@@ -1,9 +1,7 @@
 Run one step of code in a persistent kernel.
 
 <instruction>
-**One eval call = one cell = one logical step.** State persists per language across separate eval calls, tool calls, and `task` subagents — define helpers/datasets/clients in one call, then later calls reuse them directly.
-
-Work incrementally: imports in one call, define in the next, test, then use, each its own eval call. Parallelize work *within* a cell with the `parallel(thunks)` helper, not by batching steps.
+**One eval call = one cell = one logical step.** State persists per language across eval calls, tool calls, and `task` subagents, so imports go in one call, definitions in the next, then the test, then the use, each its own call. Parallelize *within* a cell with `parallel(thunks)`, never by batching steps.
 
 Fields:
 
@@ -38,7 +36,7 @@ output(*ids, format?="raw", query?=None, offset?=None, limit?=None) → str | di
 tool.<name>(args) → unknown
     Invoke any session tool; `args` = its parameter object.
 completion(prompt, model?="default", system?=None, schema?=None) → str | dict
-    Oneshot, stateless (no history/tools). `model`: "smol" fast | "default" session | "slow" most capable. `schema` (JSON-Schema) → structured output, parsed object.
+    Oneshot, stateless (no history/tools). `model`: "smol" | "default" | "slow". `schema` (JSON-Schema) → parsed structured output.
 {{#if spawns}}
 {{#if hasSpawnDefaultAgent}}agent(prompt, agent?="{{spawnDefaultAgent}}", model?=None, label?=None, schema?=None, handle?=False) → str | dict
     Run a subagent → final output. `agent` picks another enabled agent; omit it to use `{{spawnDefaultAgent}}`.{{else}}agent(prompt, agent, model?=None, label?=None, schema?=None, handle?=False) → str | dict
@@ -47,7 +45,7 @@ completion(prompt, model?="default", system?=None, schema?=None) → str | dict
 {{/if}}
 {{/if}}
 parallel(thunks) → list
-    Thunks through a bounded pool (wide as a `task` batch — don't pre-shrink), input order kept; returns when all finish, a throwing thunk propagates.
+    Thunks through a bounded pool (wide as a `task` batch; don't pre-shrink), input order kept; returns when all finish, a throwing thunk propagates.
 pipeline(items, ...stages) → list
     Map items through one-arg stages left-to-right, barrier between stages; stage 1 gets the item, later stages the previous result.
 log(message) → None
@@ -60,11 +58,11 @@ budget → per-turn token budget
 </prelude>
 {{#if spawns}}
 <dag>
-Pipe handles through stage helpers to build a dependency graph — acyclic waves:
+Pipe handles through stage helpers to build an acyclic dependency graph:
 - **Name nodes.** Capture each `agent(…, {{#if py}}handle=True{{/if}}{{#if js}}{ handle: true }{{/if}}{{#if jl}}handle=true{{/if}})` result; carries `handle` (`agent://<id>`) + `output`.
-- **Wire edges by reference.** Put an upstream node's `handle`/`output` in the dependent stage's prompt — large transcript never re-inlined. Bulk: `write("local://<name>.md", …)`, pass the URI.
+- **Wire edges by reference.** Put an upstream node's `handle`/`output` in the dependent stage's prompt, so a large transcript is never re-inlined. Bulk: `write("local://<name>.md", …)` and pass the URI.
 - **`pipeline(items, *stages)` = staged waves**, barrier between stages (every item clears stage N before any enters N+1). **`parallel(thunks)` = one wave** of independent nodes.
-- **Isolate failure.** A raising node re-raises the lowest-index error, aborts its wave; wrap risky nodes in try/except so a failure degrades only its dependent subtree, independent branches finish.
+- **Isolate failure.** A raising node re-raises the lowest-index error and aborts its wave; wrap risky nodes so a failure degrades only its dependent subtree.
 - **Acyclic only.** A node never waits on its own descendant.
 </dag>
 {{/if}}
