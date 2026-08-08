@@ -1,7 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getOAuthProviders } from "@veyyon/ai/oauth";
+import { getOAuthProviders, type OAuthProviderInfo } from "@veyyon/ai/oauth";
+import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { stripEffortTierSuffix } from "@veyyon/catalog/variant-collapse";
 import { type AutocompleteItem, DEFAULT_MASK_CHAR, Spacer } from "@veyyon/tui";
 import {
@@ -19,7 +20,7 @@ import {
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
 import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
-import { missingCredentialsMessage } from "../config/missing-credentials";
+import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import {
 	expandRoleAlias,
@@ -548,6 +549,94 @@ async function useProviderAccount(session: AgentSession, args: string): Promise<
 	};
 }
 
+/** Case- and separator-insensitive provider key: `OpenAI Codex`, `openai-codex` and `openai_codex` agree. */
+function foldProviderKey(value: string): string {
+	return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Resolve what an operator typed after `/login` or `/logout` to ONE OAuth provider.
+ *
+ * Folded over the id AND the display name, because those are the two spellings the product itself
+ * puts in front of them: the palette suggests `openai-codex`, the account card says `OpenAI Codex`,
+ * and typing either one back is not a mistake. Exact-id matching sent `/login Anthropic` down the
+ * pasted-callback path instead, which answered "No OAuth login is waiting for a manual callback":
+ * true of a subsystem the operator never mentioned, and no help at all in reaching a login.
+ */
+function findOAuthProvider(requested: string): OAuthProviderInfo | undefined {
+	const wanted = foldProviderKey(requested);
+	if (!wanted) return undefined;
+	const providers = getOAuthProviders();
+	return (
+		providers.find(provider => foldProviderKey(provider.id) === wanted) ??
+		providers.find(provider => foldProviderKey(provider.name) === wanted)
+	);
+}
+
+/**
+ * Does this text look like an OAuth redirect the operator pasted?
+ *
+ * It only chooses which REFUSAL to print, never whether a login happens, so a wrong guess costs a
+ * less precise sentence and cannot cost a sign-in.
+ */
+function looksLikeOAuthCallback(text: string): boolean {
+	return text.includes("://") || text.includes("code=") || text.startsWith("?");
+}
+
+/**
+ * A provider that exists but signs in with an API key rather than a browser, resolved the same
+ * folded way as an OAuth provider. Naming it is what separates "you typed a provider that does not
+ * do logins" from "you typed nothing we recognise", which need different next steps.
+ */
+function findApiKeyProvider(requested: string): { id: string } | undefined {
+	const wanted = foldProviderKey(requested);
+	if (!wanted) return undefined;
+	return PROVIDER_REGISTRY.find(
+		provider =>
+			!provider.login && (foldProviderKey(provider.id) === wanted || foldProviderKey(provider.name) === wanted),
+	);
+}
+
+/** Every provider id a login can be started for, for a refusal that has to name the alternatives. */
+function signableProviderList(): string {
+	return getOAuthProviders()
+		.map(provider => provider.id)
+		.sort()
+		.join(", ");
+}
+
+/**
+ * Why `/login <text>` could not start, when `text` named no OAuth provider.
+ *
+ * Three situations that need three different next steps, where the old code gave all three the
+ * same one. A provider that exists but authenticates with an API key needs an env var, not a
+ * browser. Text shaped like a callback with nothing waiting means that login was already
+ * abandoned. Anything else is a typo, and the answer to a typo is the set of names that work.
+ */
+function loginTargetRefusal(requested: string): string {
+	const apiKeyProvider = findApiKeyProvider(requested);
+	if (apiKeyProvider) {
+		return `${formatProviderName(apiKeyProvider.id)} has no browser login. ${credentialRemedySentence(apiKeyProvider.id)}`;
+	}
+	if (looksLikeOAuthCallback(requested)) {
+		return "No OAuth login is waiting for a manual callback. Start one with /login <provider>.";
+	}
+	return `Unknown provider "${truncate(requested, 40)}". Sign in with one of: ${signableProviderList()}.`;
+}
+
+/**
+ * Why `/logout <text>` could not start. Same resolution as login, different remedy: an API-key
+ * provider holds no stored login to remove, and its credential lives in the environment or the
+ * models config, where veyyon cannot delete it on the operator's behalf.
+ */
+function logoutTargetRefusal(requested: string): string {
+	const apiKeyProvider = findApiKeyProvider(requested);
+	if (apiKeyProvider) {
+		return `${formatProviderName(apiKeyProvider.id)} has no stored login to remove. Its credential comes from the environment or the models config; remove it at that source.`;
+	}
+	return `Unknown provider "${truncate(requested, 40)}". Stored logins use one of: ${signableProviderList()}.`;
+}
+
 /**
  * Log in and add an account, for BOTH spellings that ask for it.
  *
@@ -557,10 +646,11 @@ async function useProviderAccount(session: AgentSession, args: string): Promise<
  * URL, so an operator who reached the account surface through `/account` had no way to finish a
  * login whose browser callback never came back.
  *
- * Three argument shapes, in the order a user produces them: a known provider id starts that
- * provider's login, any other non-empty text is a pasted OAuth redirect URL, and nothing at all
- * opens the provider picker. The paste path is checked LAST because a provider id is a closed set
- * and a redirect URL is not; the reverse order would swallow `anthropic` as a malformed callback.
+ * Three argument shapes, and each one is CLASSIFIED rather than fallen through: a provider (by id
+ * or display name) starts that provider's login, any other text is the pending callback when a
+ * login is actually waiting for one, and nothing at all opens the picker. Text that is neither is
+ * refused by name. The old order treated "not a provider id" as "must be a callback", so every
+ * misspelled provider produced a message about manual callbacks.
  */
 function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): void {
 	const manualInput = runtime.ctx.oauthManualInput;
@@ -568,11 +658,11 @@ function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): v
 	const pendingNotice = (): string => {
 		const provider = manualInput.pendingProviderId;
 		return provider
-			? `OAuth login already in progress for ${provider}. Paste the redirect URL with /login <url>.`
+			? `OAuth login already in progress for ${formatProviderName(provider)}. Paste the redirect URL with /login <url>.`
 			: "OAuth login already in progress. Paste the redirect URL with /login <url>.";
 	};
 	if (args.length > 0) {
-		const matchedProvider = getOAuthProviders().find(provider => provider.id === args);
+		const matchedProvider = findOAuthProvider(args);
 		if (matchedProvider) {
 			if (manualInput.hasPending()) {
 				runtime.ctx.showWarning(pendingNotice());
@@ -583,11 +673,14 @@ function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): v
 			runtime.ctx.editor.setText("");
 			return;
 		}
-		if (manualInput.submit(args)) {
+		if (manualInput.hasPending()) {
+			// `submit` refuses only when nothing is pending, which this branch has ruled out.
+			manualInput.submit(args);
 			runtime.ctx.showStatus("OAuth callback received; completing login…");
-		} else {
-			runtime.ctx.showWarning("No OAuth login is waiting for a manual callback.");
+			runtime.ctx.editor.setText("");
+			return;
 		}
+		runtime.ctx.showWarning(loginTargetRefusal(args));
 		runtime.ctx.editor.setText("");
 		return;
 	}
@@ -811,9 +904,11 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			if (verb === "logout") {
 				const requested = rest.trim();
 				if (requested) {
-					const matched = getOAuthProviders().find(provider => provider.id === requested);
+					// The same resolver `/login` uses. One command accepting `OpenAI Codex` while its
+					// opposite accepts only `openai-codex` is a difference nothing justifies.
+					const matched = findOAuthProvider(requested);
 					if (!matched) {
-						runtime.ctx.showWarning(`Unknown OAuth provider: ${requested}`);
+						runtime.ctx.showWarning(logoutTargetRefusal(requested));
 						return;
 					}
 					void runtime.ctx.showOAuthSelector("logout", matched.id);
@@ -1870,9 +1965,9 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		handleTui: (command, runtime) => {
 			const providerId = command.args.trim();
 			if (providerId) {
-				const matchedProvider = getOAuthProviders().find(provider => provider.id === providerId);
+				const matchedProvider = findOAuthProvider(providerId);
 				if (!matchedProvider) {
-					runtime.ctx.showWarning(`Unknown OAuth provider: ${providerId}`);
+					runtime.ctx.showWarning(logoutTargetRefusal(providerId));
 					runtime.ctx.editor.setText("");
 					return;
 				}
@@ -2807,7 +2902,7 @@ export async function executeBuiltinSlashCommand(
 	const command = BUILTIN_SLASH_COMMAND_LOOKUP.get(parsed.name);
 	if (!command) return false;
 	if (parsed.args.length > 0 && !command.allowArgs) {
-		return false;
+		return text.includes("://") || text.includes("code=") || text.startsWith("?");
 	}
 	// Collab guests run a read-mostly replica: session-mutating builtins are
 	// host-only; the allowlist covers purely local/read-only commands.

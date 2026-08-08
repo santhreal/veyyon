@@ -19,6 +19,13 @@
  * no resolve ever followed, and must name the dying account by the label it was known by even
  * though its row is gone by the time the notice is built.
  *
+ * The WITHHELD notice is the other half of the gate, and it exists because a setting the operator
+ * never hears about is a setting they cannot revisit: the moment it costs something is the moment
+ * quota is gone while idle accounts sit there. It must fire when a move was actually withheld, stay
+ * silent when nothing could have served (no sibling, or every sibling blocked) and when the setting
+ * is on, and announce one exhausted window once however many times a turn retries into it, while
+ * still announcing the NEXT window.
+ *
  * WHAT IT DOES NOT CATCH. This file is the library-level contract: it constructs `AuthStorage`
  * directly and passes its own `loadBalancing` resolver. The coding-agent's product default (OFF) and
  * the wiring that reads the operator's `accounts.loadBalancing` setting live one package up and are
@@ -36,6 +43,7 @@ import {
 	AuthStorage,
 	type CredentialFailoverEvent,
 	SqliteAuthCredentialStore,
+	type UsageLimitWithheldEvent,
 } from "@veyyon/ai/auth-storage";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
 
@@ -324,5 +332,131 @@ describe("exhaustion moves accounts only when load balancing is on", () => {
 		setSystemTime(new Date(NOW_MS + NOTICE_WINDOW_MS + 2));
 		expect(await storage.getApiKey(PROVIDER, SESSION_ID)).toBe("access-sibling");
 		expect(events).toEqual([]);
+	});
+
+	/**
+	 * The one moment the setting costs something is the one moment it announces itself: quota is
+	 * gone, idle accounts exist, and the operator is about to wait instead of using them. The event
+	 * carries what a sentence about that needs, and the exhausted account is named by the label the
+	 * account list shows rather than by its row id.
+	 */
+	test("withholding a move from idle siblings announces itself once, with the count and this account's reset", async () => {
+		if (!store) throw new Error("test setup failed");
+		const withheld: UsageLimitWithheldEvent[] = [];
+		const storage = new AuthStorage(store, {
+			loadBalancing: false,
+			onUsageLimitWithheld: event => {
+				withheld.push(event);
+			},
+		});
+		const { targetId, targetEmail } = await seed(storage);
+
+		const result = await storage.markUsageLimitReached(PROVIDER, SESSION_ID, {
+			credentialId: targetId,
+			retryAfterMs: 60_000,
+		});
+
+		expect(result).toEqual({ switched: false, retryAtMs: NOW_MS + 60_000 });
+		expect(withheld).toEqual([
+			{
+				provider: PROVIDER,
+				account: { credentialId: targetId, label: targetEmail },
+				idleSiblings: 1,
+				retryAtMs: NOW_MS + 60_000,
+			},
+		]);
+	});
+
+	/**
+	 * A turn retries into the same exhausted window several times, and each retry re-enters this
+	 * path. Announcing per call would repeat one fact until it is noise, so the notice is deduped by
+	 * the window it describes. A LATER exhaustion is a different window and is announced again,
+	 * which is what separates deduping from announcing once per process.
+	 */
+	test("one exhausted window is announced once, and a later window is announced again", async () => {
+		if (!store) throw new Error("test setup failed");
+		const withheld: UsageLimitWithheldEvent[] = [];
+		const storage = new AuthStorage(store, {
+			loadBalancing: false,
+			onUsageLimitWithheld: event => {
+				withheld.push(event);
+			},
+		});
+		const { targetId } = await seed(storage);
+
+		await storage.markUsageLimitReached(PROVIDER, SESSION_ID, { credentialId: targetId, retryAfterMs: 60_000 });
+		await storage.markUsageLimitReached(PROVIDER, SESSION_ID, { credentialId: targetId, retryAfterMs: 60_000 });
+		expect(withheld).toHaveLength(1);
+
+		// The window reset arrived and quota ran out again, which the operator has not been told
+		// about: same account, different window.
+		setSystemTime(new Date(NOW_MS + 2 * 60_000));
+		await storage.markUsageLimitReached(PROVIDER, SESSION_ID, { credentialId: targetId, retryAfterMs: 60_000 });
+
+		expect(withheld.map(event => event.retryAtMs)).toEqual([NOW_MS + 60_000, NOW_MS + 3 * 60_000]);
+	});
+
+	/**
+	 * Nothing was withheld, so there is nothing to say. Both shapes of "no idle sibling" are here
+	 * because they arrive by different routes: no sibling exists at all, and every sibling is
+	 * already blocked. A notice in either case would advertise a setting that could not have helped,
+	 * which is how a useful sentence becomes one the operator learns to skip.
+	 */
+	test("nothing is announced when no idle sibling could have served", async () => {
+		if (!store) throw new Error("test setup failed");
+		const withheld: UsageLimitWithheldEvent[] = [];
+		const storage = new AuthStorage(store, {
+			loadBalancing: false,
+			onUsageLimitWithheld: event => {
+				withheld.push(event);
+			},
+		});
+		await storage.set(PROVIDER, [
+			{
+				type: "oauth",
+				access: "access-only",
+				refresh: "refresh-only",
+				expires: NOW_MS + HOUR_MS,
+				accountId: "account-only",
+				email: "only@example.com",
+			},
+		]);
+		const onlyId = storage.listStoredCredentials(PROVIDER)[0]!.id;
+
+		await storage.markUsageLimitReached(PROVIDER, SESSION_ID, { credentialId: onlyId, retryAfterMs: 60_000 });
+		expect(withheld).toEqual([]);
+
+		// Now two accounts, both exhausted. The second mark has a sibling, and that sibling is
+		// blocked, so the gate withheld nothing.
+		const { targetId, siblingId } = await seed(storage);
+		await storage.markUsageLimitReached(PROVIDER, SESSION_ID, { credentialId: siblingId, retryAfterMs: 60_000 });
+		const before = withheld.length;
+		await storage.markUsageLimitReached(PROVIDER, SESSION_ID, { credentialId: targetId, retryAfterMs: 60_000 });
+
+		expect(withheld.slice(before).filter(event => event.account.credentialId === targetId)).toEqual([]);
+	});
+
+	/**
+	 * With the setting ON the move happens, so there is nothing withheld and nothing to announce.
+	 * The notice pointing at a setting that is already on would be advice to do what was done.
+	 */
+	test("nothing is announced when load balancing is on", async () => {
+		if (!store) throw new Error("test setup failed");
+		const withheld: UsageLimitWithheldEvent[] = [];
+		const storage = new AuthStorage(store, {
+			loadBalancing: true,
+			onUsageLimitWithheld: event => {
+				withheld.push(event);
+			},
+		});
+		const { targetId } = await seed(storage);
+
+		const result = await storage.markUsageLimitReached(PROVIDER, SESSION_ID, {
+			credentialId: targetId,
+			retryAfterMs: 60_000,
+		});
+
+		expect(result).toEqual({ switched: true });
+		expect(withheld).toEqual([]);
 	});
 });
