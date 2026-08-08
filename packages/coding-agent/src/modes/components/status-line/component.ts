@@ -1488,6 +1488,25 @@ export class StatusLineComponent implements Component {
 		return `${left}${gap}${theme.fg("dim", readout)}`;
 	}
 
+	/**
+	 * The focus badge on its own, with no segments: the footline row a composer renders while
+	 * `statusLine.enabled` is off. Null when nothing is proxied, so the zone drops the row.
+	 *
+	 * Esc means "leave this view" while the view is proxied onto an agent and "clear the line"
+	 * everywhere else, and this badge is the only persistent thing on screen that says which one
+	 * you are in. Turning standing status off must therefore not be able to strip the exit sign
+	 * off a view whose edge is otherwise invisible, so the badge is outside the setting.
+	 *
+	 * The recorded footline layout is cleared, not kept: with no segments on the row there is
+	 * nothing to hit-test, and stale bounds from an earlier render would resolve a click to a
+	 * segment that is no longer there.
+	 */
+	renderFocusBadge(width: number): string | null {
+		this.#quietLineBounds = [];
+		if (!this.#focusedAgentId) return null;
+		return truncateToWidth(focusExitBadge(this.#focusedAgentId), Math.max(1, width));
+	}
+
 	renderQuietLine(width: number, extras?: { locationRight?: string | null }): string | null {
 		// The focus badge rides the footline while the view is proxied onto an
 		// agent. It was built for `getTopBorder`, but the borderless composer

@@ -816,6 +816,10 @@ export class SelectorController {
 				break;
 			}
 			case "git.enabled":
+			// The composer reads `statusLine.enabled` on each render, so applying it is a
+			// render request; it is here so the row appears or disappears under the open
+			// settings screen rather than on the next unrelated frame.
+			case "statusLine.enabled":
 			case "statusLinePreset":
 			case "statusLine.preset":
 			case "statusLineSeparator":

@@ -61,6 +61,32 @@ export const APPEARANCE_SETTINGS = {
 	},
 
 	// Status line
+	/**
+	 * The composer footline is OPT-IN.
+	 *
+	 * It is a permanent row of standing state under a composer whose entire design is quiet, and
+	 * almost everything on it is either already known (which model, which mode, which directory) or
+	 * available on demand (`/context` for the gauge's own breakdown, `/account`, `/usage`). A row
+	 * that is paid for on every frame for the life of the session, to repeat what the operator just
+	 * chose, is the kind of chrome this composer exists to not have — so it ships off, and an
+	 * operator who wants it turns it on here.
+	 *
+	 * Off does not silence the focus badge: while the view is proxied onto an agent, the footline
+	 * still renders the agent's name and `esc to go back`. See `#composerFootline` in
+	 * `modes/interactive-mode.ts` for why that one line is not configurable.
+	 */
+	"statusLine.enabled": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "appearance",
+			group: "Status Line",
+			label: "Composer Footline",
+			description:
+				"Show the quiet metadata line under the composer (model, mode, path, git, context). Off by default; the agent-focus exit hint still shows while a view is proxied.",
+		},
+	},
+
 	"statusLine.preset": {
 		type: "enum",
 		values: ["default", "minimal", "compact", "full", "nerd", "ascii", "custom"] as const,
@@ -79,6 +105,11 @@ export const APPEARANCE_SETTINGS = {
 				{ value: "ascii", label: "ASCII", description: "No special characters" },
 				{ value: "custom", label: "Custom", description: "User-defined segments" },
 			],
+			// Hidden while the footline is off: a preset is a layout for a row that is not
+			// on screen. `statusLine.sessionAccent` deliberately keeps its row — it colors
+			// the editor border and the working-message accent, neither of which is the
+			// footline.
+			condition: "statusLineEnabled",
 		},
 	},
 
@@ -133,6 +164,7 @@ export const APPEARANCE_SETTINGS = {
 			label: "Compact Thinking Level",
 			description:
 				"Show the thinking level as a single icon on the model name instead of a separate ` · <level>` suffix.",
+			condition: "statusLineEnabled",
 			advanced: true,
 		},
 	},

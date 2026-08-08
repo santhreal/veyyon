@@ -55,6 +55,10 @@ describe("InteractiveMode MCP connection status", () => {
 		resetSettingsForTest();
 		tempDir = TempDir.createSync("@pi-interactive-mode-mcp-connecting-");
 		await Settings.init({ inMemory: true, cwd: tempDir.path() });
+		// The footline is opt-in (`statusLine.enabled` defaults to false, see
+		// `the-composer-footline-is-opt-in.test.ts`), and the MCP boot-health zone lives on it. This
+		// suite is about what the zone says once there is a row to say it on.
+		await Settings.instance.set("statusLine.enabled", true);
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		const modelRegistry = new ModelRegistry(authStorage);
 		const model = modelRegistry.find("anthropic", "claude-sonnet-4-5");

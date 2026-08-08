@@ -152,18 +152,24 @@ describe("settings sidebar focus", () => {
 		}
 	});
 
-	/** A pane click transfers keyboard focus so the next arrow moves rows, not categories. */
+	/**
+	 * A pane click transfers keyboard focus so the next arrow moves rows, not categories.
+	 *
+	 * The clicked row is deliberately an unconditional one. This used to click `Status Line Preset`,
+	 * which is now hidden while the composer footline is off (`statusLine.enabled` defaults to
+	 * false), so the click had nothing to land on and the failure looked like a focus bug.
+	 */
 	it("hands sidebar focus back to a clicked settings row", () => {
 		const comp = createSelector();
 		const initial = comp.render(160);
 		comp.handleInput(LEFT);
-		comp.handleInput(pointerAt(initial, "Status Line Preset"));
-		expect(comp.getSelectedSettingId()).toBe("statusLine.preset");
+		comp.handleInput(pointerAt(initial, "Color-Blind Mode"));
+		expect(comp.getSelectedSettingId()).toBe("colorBlindMode");
 		expect(footerText(comp.render(160))).toContain("up/down navigate");
 
 		comp.handleInput(DOWN);
 
-		expect(comp.getSelectedSettingId()).not.toBe("statusLine.preset");
+		expect(comp.getSelectedSettingId()).not.toBe("colorBlindMode");
 	});
 
 	/** Wheel input over the pane also transfers focus before later arrows are routed. */
