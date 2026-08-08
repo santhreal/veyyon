@@ -906,10 +906,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor.setBorderVisible(false);
 		this.editor.setPlaceholder(COMPOSER_PLACEHOLDER);
 		this.composerHairline = new ComposerHairline();
-		this.capabilityLine = new QuietZoneLine(
-			width => this.statusLine.renderQuietLine(width, { locationRight: this.#locationRightZone() }),
-			COMPOSER_INSET_COLS,
-		);
+		this.capabilityLine = new QuietZoneLine(width => this.#composerFootline(width), COMPOSER_INSET_COLS);
 		// GMI-2b: the goal readout in the footline (the `mode` segment while goal
 		// mode is active) is clickable — it opens the same goal detail view as
 		// the keyboard path. Hit-testing comes from the footline's own recorded
@@ -1003,6 +1000,25 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Boot health lives on the location line's right side (a fixed quiet
 		// home), not as a floating transcript status.
 		this.ui.requestRender();
+	}
+
+	/**
+	 * The composer's footline row, or null when the operator has not asked for one.
+	 *
+	 * `statusLine.enabled` ships OFF (see its entry in `config/settings-domains/appearance.ts`), so
+	 * the default composer is hairline, input, shortcuts — nothing standing. Read per render rather
+	 * than captured at construction: settings live in memory, so toggling the row in `/settings`
+	 * lands on the next frame with no re-mount, and the reads behind the row (git state, usage,
+	 * account inventory) never happen at all while it is off.
+	 *
+	 * The one part that is not configurable is the focus badge. While the view is proxied onto an
+	 * agent, Esc means "go back" instead of "clear the line", and the badge is the only persistent
+	 * thing that says so; a footline preference must not be able to hide the exit from a view whose
+	 * edge is otherwise invisible. So off means "no segments", not "no row ever".
+	 */
+	#composerFootline(width: number): string | null {
+		if (!settings.get("statusLine.enabled")) return this.statusLine.renderFocusBadge(width);
+		return this.statusLine.renderQuietLine(width, { locationRight: this.#locationRightZone() });
 	}
 
 	/**

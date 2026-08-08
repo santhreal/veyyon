@@ -66,11 +66,15 @@ const EXTRA_ADVANCED_APPEARANCE_PATHS = ["tui.scrollIsolation", "display.toolOut
 const ALL_ADVANCED_APPEARANCE_PATHS = [...DEMOTED_APPEARANCE_PATHS, ...EXTRA_ADVANCED_APPEARANCE_PATHS] as const;
 const ADVANCED_COUNT = ALL_ADVANCED_APPEARANCE_PATHS.length;
 
-// The 12 keys that stay visible in appearance's default (collapsed) view.
+// The 13 keys that stay visible in appearance's default (collapsed) view.
 // `display.transitions` joined the visible set with the TOUCH-5 overlay
 // unfold: it is the reduced-motion switch for structural chrome animation, a
 // first-class taste choice like Shimmer, not an experimental toggle.
+// `statusLine.enabled` joined it as the composer footline's master toggle: the
+// footline ships off, so this is the row that turns it on, and a master toggle
+// folded away behind Advanced would strand the feature.
 const KEPT_APPEARANCE_PATHS = [
+	"statusLine.enabled",
 	"theme.dark",
 	"theme.light",
 	"symbolPreset",
@@ -102,7 +106,7 @@ describe("appearance advanced fold — schema", () => {
 		resetSettingsForTest();
 	});
 
-	it("keeps exactly the 12 curated non-advanced rows in appearance, with 3 groups and no Images group", () => {
+	it("keeps exactly the 13 curated non-advanced rows in appearance, with 3 groups and no Images group", () => {
 		const appearanceDefs = getSettingsForTab("appearance");
 		const visible = appearanceDefs.filter(def => !def.advanced);
 		const advanced = appearanceDefs.filter(def => def.advanced);
@@ -149,10 +153,13 @@ describe("appearance advanced fold — panel rendering", () => {
 	beforeEach(async () => {
 		resetSettingsForTest();
 		await Settings.init({ inMemory: true });
-		// terminal.showImages carries `condition: hasImageProtocol`; stub the
-		// protocol so the row renders deterministically alongside the other
-		// 10 kept appearance settings (11 total).
+		// Two appearance rows are conditional; satisfy both so the tab renders its whole
+		// inventory and the fold counts below are about the fold rather than about a
+		// condition. `terminal.showImages` needs an image protocol, and `statusLine.preset`
+		// plus `statusLine.compactThinkingLevel` need the composer footline switched on
+		// (it ships off, and a preset for a row that is not on screen is hidden).
 		terminal.imageProtocol = ImageProtocol.Kitty;
+		await Settings.instance.set("statusLine.enabled", true);
 	});
 
 	afterEach(() => {
@@ -194,14 +201,17 @@ describe("appearance advanced fold — panel rendering", () => {
 
 	it("expands the Advanced fold on Enter to reveal the demoted rows, keeping the count stable", () => {
 		const comp = createSelector();
-		// The 12 kept rows precede the Advanced toggle in tab order; that many Down
-		// presses lands selection on the toggle row itself.
+		// The kept rows precede the Advanced toggle in tab order; that many Down presses lands
+		// selection on the toggle row itself.
 		for (let i = 0; i < KEPT_APPEARANCE_PATHS.length; i++) comp.handleInput("\x1b[B");
 		comp.handleInput("\n");
 
 		const rendered = comp.render(FLAT_WIDTH).join("\n");
 		expect(rendered).toContain(`Advanced (${ADVANCED_COUNT})`);
-		expect(rendered).toContain("Color-Blind Mode");
+		// A kept row still paints above the open fold: expanding adds rows rather than replacing
+		// the list. It is the LAST kept row rather than an early one, because the viewport follows
+		// the selection and the rows at the top of the tab have scrolled out by now.
+		expect(rendered).toContain("Show Token Usage");
 		expect(rendered).toContain("Render Mermaid Diagrams");
 		expect(rendered).toContain("Session Accent");
 		// Demoted rows below the floating viewport are reachable by scroll; the
@@ -321,11 +331,21 @@ describe("settings selector — initial item jump (/statusline)", () => {
 		expect(comp.getSelectedSettingId()).toBe("theme.dark");
 	});
 
-	it("pre-selects statusLine.preset when opened via /statusline", () => {
-		const comp = createSelector("statusLine.preset");
-		expect(comp.getSelectedSettingId()).toBe("statusLine.preset");
-		// Cursor row renders the Status Line group's preset item, not the default Theme item.
+	it("pre-selects the footline toggle when opened via /statusline", () => {
+		const comp = createSelector("statusLine.enabled");
+		expect(comp.getSelectedSettingId()).toBe("statusLine.enabled");
+		// Cursor row renders the Status Line group's toggle item, not the default Theme item.
 		comp.render(70);
+	});
+
+	/**
+	 * A jump to a row a condition is hiding falls back to the tab's default rather than selecting
+	 * something invisible. `statusLine.preset` is exactly that row while the footline is off, which
+	 * is why `/statusline` names the toggle instead.
+	 */
+	it("falls back to the default selection for a row a condition hides", () => {
+		const comp = createSelector("statusLine.preset");
+		expect(comp.getSelectedSettingId()).toBe("theme.dark");
 	});
 
 	it("falls back to the default selection for an unknown initial item id", () => {
