@@ -51,3 +51,5 @@ export * from "./ttyid";
 export * from "./tui";
 // Utilities
 export * from "./utils";
+// Terminal window focus (DECSET 1004), read by the notification gate
+export * from "./window-focus";

@@ -17,6 +17,12 @@ import {
 	wrapTmuxPassthrough,
 } from "./terminal-capabilities";
 import { type HangulCompatibilityJamoWidth, setHangulCompatibilityJamoWidth } from "./utils";
+import {
+	consumeWindowFocusEvent,
+	FOCUS_REPORTING_DISABLE,
+	FOCUS_REPORTING_ENABLE,
+	setWindowFocusState,
+} from "./window-focus";
 
 const TERMINAL_PROGRESS_KEEPALIVE_MS = 1000;
 const TERMINAL_PROGRESS_ACTIVE_SEQUENCE = "\x1b]9;4;3\x07";
@@ -372,6 +378,7 @@ export function emergencyTerminalRestore(): void {
 				"\x1b[?2026l" + // End synchronized output
 					"\x1b[?7h" + // Restore autowrap
 					"\x1b[?2004l" + // Disable bracketed paste
+					FOCUS_REPORTING_DISABLE + // Stop focus reporting (mode 1004)
 					"\x1b[?2031l" + // Disable Mode 2031 appearance notifications
 					"\x1b[?2048l" + // Disable in-band resize notifications
 					"\x1b[?5522l" + // Disable enhanced paste notifications
@@ -718,6 +725,18 @@ export class ProcessTerminal implements Terminal {
 
 		// Enable bracketed paste mode - terminal will wrap pastes in \x1b[200~ ... \x1b[201~
 		this.#safeWrite("\x1b[?2004h");
+
+		// Ask the terminal to report window focus (DECSET 1004). The only consumer
+		// is the notification gate: a toast is an interruption and is worth
+		// nothing while the operator is looking at this very window. Terminals
+		// that do not implement the mode ignore the write and never report, which
+		// leaves the focus state `unknown` and notifications unchanged.
+		this.#safeWrite(FOCUS_REPORTING_ENABLE);
+		// A previous run in this terminal may have left the state populated (the
+		// singleton outlives a stop/start pair in tests and in an overlay restart),
+		// and a stale `focused` would silently swallow notifications until the next
+		// real event. Start from "nothing reported yet".
+		setWindowFocusState("unknown");
 
 		// Set up resize handler immediately. The OS refreshes process.stdout
 		// dimensions before firing `resize`, so it is authoritative for geometry:
@@ -1118,6 +1137,11 @@ export class ProcessTerminal implements Terminal {
 				}
 			}
 
+			// Focus in / focus out (DECSET 1004). Consumed rather than forwarded:
+			// `CSI I` and `CSI O` are not keystrokes, and a terminal left in mode
+			// 1004 by a previous application was delivering them into the editor.
+			if (consumeWindowFocusEvent(sequence)) return;
+
 			// Mode 2031 change notification: re-query OSC 11 with 100ms debounce
 			// (Neovim convention — coalesces rapid notifications during transitions)
 			const appearanceMatch = sequence.match(appearanceDsrPattern);
@@ -1486,6 +1510,12 @@ export class ProcessTerminal implements Terminal {
 		// Disable bracketed paste mode
 		this.#safeWrite("\x1b[?2004l");
 		this.#safeWrite("\x1b[?5522l");
+
+		// Stop focus reporting and forget what it reported: the shell that gets the
+		// terminal back never asked for mode 1004, and a `focused` left behind
+		// would gate the notifications of whatever runs next in this process.
+		this.#safeWrite(FOCUS_REPORTING_DISABLE);
+		setWindowFocusState("unknown");
 
 		// Disable mouse tracking (enabled only by fullscreen overlays; safe
 		// no-ops otherwise). Covers crash paths that reach stop() without the

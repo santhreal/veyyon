@@ -11,6 +11,7 @@ import {
 	setKittyGraphics,
 } from "./kitty-graphics";
 import { isInsideTmux, wrapTmuxPassthrough, wrapTmuxPassthroughIfNeeded } from "./tmux";
+import { isWindowFocused } from "./window-focus";
 
 export { isInsideTmux, wrapTmuxPassthrough } from "./tmux";
 
@@ -112,6 +113,17 @@ export class TerminalInfo {
 
 	sendNotification(message: string | TerminalNotification): void {
 		if (isNotificationSuppressed() || isTerminalHeadless()) return;
+		// The operator is looking at this window, so there is nothing an
+		// interruption can tell them that the screen is not already showing. Both
+		// halves are suppressed on purpose: the in-band OSC raises a desktop toast
+		// on the terminals that implement it, and the BEL fan-out raises one
+		// through libnotify on the terminals that do not, so gating only one of
+		// them would silence half the users and keep nagging the rest.
+		//
+		// Delivered while the state is `unknown` (no focus report ever seen), which
+		// is every terminal without DECSET 1004 support. A diagnostic the operator
+		// explicitly asked for opts out with `deliverWhenFocused`.
+		if (isWindowFocused() && !(typeof message === "object" && message.deliverWhenFocused === true)) return;
 		const formatted = this.formatNotification(message);
 		// Under tmux, terminals whose notify protocol is OSC 9 / OSC 99 would
 		// otherwise lose the notification entirely: tmux does not forward bare
@@ -1133,6 +1145,15 @@ export interface TerminalNotification {
 	sound?: "silent" | "system" | "info" | "warning" | "error" | "question";
 	actions?: "focus" | "report" | "focus-report" | "none";
 	expiresMs?: number;
+	/**
+	 * Deliver even while the terminal window holds focus.
+	 *
+	 * Off by default, because a notification exists to reach an operator who is
+	 * looking somewhere else. The one legitimate use is a diagnostic the operator
+	 * just asked for (`/debug` protocol probe): suppressing that would report
+	 * "notifications do not work" about a working notifier.
+	 */
+	deliverWhenFocused?: boolean;
 }
 
 /**

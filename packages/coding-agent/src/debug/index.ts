@@ -496,6 +496,11 @@ export class DebugSelectorComponent {
 				body: "Terminal protocol test",
 				type: "test",
 				actions: "focus",
+				// The operator pressed this to find out whether notifications reach
+				// their desktop, and they are looking at this window while they do
+				// it. The focus gate that silences turn-completion toasts would
+				// otherwise report "no notification" about a working notifier.
+				deliverWhenFocused: true,
 			};
 			TERMINAL.sendNotification(notification);
 		}

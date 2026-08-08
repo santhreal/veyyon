@@ -4,6 +4,7 @@
 
 ### Changed
 
+- A desktop notification is no longer delivered while the terminal window has focus. `TerminalInfo.sendNotification` fired unconditionally, so the turn-completion toast and the `ask` toast arrived on the screen the operator was already looking at, and an autonomous run produced one per turn. Focus comes from the terminal itself: `ProcessTerminal.start` enables focus reporting (DECSET 1004) and teardown disables it, and `CSI I` / `CSI O` are consumed rather than forwarded, which also stops a terminal left in mode 1004 by a previous application from delivering them into the editor as keystrokes. Both delivery halves are gated at the one choke point, the in-band OSC and the libnotify fan-out, since gating one would silence half the terminals and keep nagging the rest. The gate fails open: a terminal that reports nothing stays at focus state `unknown` and notifies exactly as before.
 - Comment prose in `tui.ts` that credited a chat report or a screenshot now states the constraint on its own terms. Comments only, so nothing renders differently.
 
 ### Breaking Changes
@@ -19,6 +20,7 @@
 
 ### Added
 
+- `window-focus.ts` owns the terminal's reported window focus and exports what reads it: `windowFocusState()`, `isWindowFocused()`, `setWindowFocusState()`, `consumeWindowFocusEvent()`, and the two mode-1004 sequences. `TerminalNotification.deliverWhenFocused` opts a single notification out of the focus gate, which is for a diagnostic the operator just asked for and nothing else.
 - `SelectList.setRowBudget(rows)` sizes a list so its whole render fits a number of terminal rows, while `setMaxVisible` keeps its item-only meaning. `render` emits the item window and, whenever the list overflows or a filter is live, one status row, so a host fitting a list into a fixed viewport had to subtract that row by hand. Three setup-wizard scenes each did it differently and one forgot it entirely, and the host then clipped a row off the bottom of the list. A budget of one row spends it on an item rather than on the status row.
 - `SelectListLayoutOptions.statusLegend` turns off the `↑↓ move · ↵ select · esc close` legend on the status row while keeping the search text. It is for a host that already names those keys and means something else by them: the setup wizard's footer names every key for the whole step, and its Esc leaves onboarding rather than closing the list, so the built-in legend contradicted the footer on the same screen.
 - `SettingItem.labelForValue` renders a stored value as the text a person reads, for the rows whose value is a machine number. It is applied at render time and nowhere else, so submenu preselection, value cycling and the `onChange` write-back all keep working from `currentValue`, and a labelled row still round-trips its real value. A mapper that returns nothing useful falls back to the value itself rather than blanking the column. The alternative, storing the display string in a second field beside the value, goes stale the moment a submenu selection writes the first one.
