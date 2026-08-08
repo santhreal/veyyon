@@ -120,4 +120,65 @@ describe("SelectorController logout", () => {
 		expect(ctx.showError).not.toHaveBeenCalled();
 		expect(ctx.present).toHaveBeenCalled();
 	});
+
+	/**
+	 * The provider that has no browser login at all.
+	 *
+	 * `/logout groq` used to be refused outright, so this selector only ever opened for a provider
+	 * `getOAuthProviders()` knew about, and its title read that provider's registry name. Opening it
+	 * for an api-key provider exposed the fallback: the title printed the raw slug `groq` while the
+	 * account card, the status line and every message around it said `Groq`. The row detail is pinned
+	 * with it because both are what this dialog says about a credential it is about to delete: a line
+	 * repeating the row number the label already carries spends the only detail line saying nothing,
+	 * where the scope of the removal (the machine, not this profile) is the fact worth having.
+	 */
+	it("names an api-key provider the way every other surface does, and says the key is removable", async () => {
+		const editorContainer = createEditorContainer();
+		const credentials: StoredAuthCredential[] = [
+			{
+				id: 5,
+				provider: "groq",
+				disabledCause: null,
+				credential: { type: "api_key", key: "gsk-demo-key" },
+			},
+		];
+		const authStorage = {
+			reload: vi.fn(async () => undefined),
+			listStoredCredentials: (_provider?: string) => credentials,
+			getOAuthAccountIdentity: (_provider: string, _sessionId?: string) => undefined,
+			getCredentialOrigin: (_provider: string) => ({ kind: "api_key" }),
+			describeCredentialSource: (_provider: string, _sessionId?: string) => undefined,
+			removeCredential: vi.fn(async () => true),
+		} as unknown as AuthStorage;
+		const overlayHost = createOverlayHost();
+		const ctx = {
+			editorContainer,
+			editor: {},
+			ui: { setFocus: vi.fn(), requestRender: vi.fn(), showOverlay: overlayHost.showOverlay },
+			session: {
+				sessionId: "session-logout-api-key",
+				modelRegistry: { authStorage, refresh: vi.fn(async () => undefined) },
+			},
+			showError: vi.fn(),
+			present: vi.fn(),
+			refreshComposerShortcuts: vi.fn(),
+			dismissWelcome: vi.fn(),
+		} as unknown as InteractiveModeContext;
+
+		await new SelectorController(ctx).showOAuthSelector("logout", "groq");
+
+		const selector = overlayHost.getOverlaid();
+		if (!(selector instanceof LogoutAccountSelectorComponent)) {
+			throw new Error("Expected logout account selector");
+		}
+		const rendered = selector
+			.render(100)
+			.map(line => Bun.stripANSI(line))
+			.join("\n");
+		expect(rendered).toContain("Groq");
+		expect(rendered).not.toContain("groq");
+		expect(rendered).toContain("stored on this machine");
+		expect(rendered).not.toContain("stored API key #5");
+		expect(ctx.showError).not.toHaveBeenCalled();
+	});
 });

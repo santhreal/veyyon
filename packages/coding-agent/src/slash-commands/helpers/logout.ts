@@ -36,7 +36,11 @@ function oauthLabel(row: StoredAuthCredential): string {
 
 function oauthDetail(row: StoredAuthCredential, label: string): string {
 	const credential = row.credential;
-	if (credential.type === "api_key") return `stored API key #${row.id}`;
+	// The label already carries the row number, so repeating it here would spend the only line under
+	// it saying nothing new. What an operator needs from an api-key row is whether this logout can
+	// remove it at all, and the scope of doing so: a key in the store belongs to the machine rather
+	// than this profile or session, and a key coming from the environment never reaches this list.
+	if (credential.type === "api_key") return "stored on this machine";
 	const parts: string[] = [];
 	const email = nonEmpty(credential.email);
 	const accountId = nonEmpty(credential.accountId);

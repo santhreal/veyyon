@@ -610,7 +610,7 @@ function findApiKeyProvider(requested: string): { id: string } | undefined {
  * What to say after "we do not know that name", for either command.
  *
  * NOT the list of every provider. The first version of this refusal named all of them, and a real
- * recording of it is 41 ids across twelve lines of transcript: a wall an operator scans instead of
+ * recording of it is 57 ids across twelve lines of transcript: a wall an operator scans instead of
  * reads, in answer to what is nearly always a typo. So the near misses come first, through
  * `nearestNames`, the repo's one owner of "what did they probably mean", and the fallback is the
  * picker the command already has, which lists the providers properly and does not have to be
@@ -622,7 +622,7 @@ function providerSuggestionSentence(requested: string, command: "login" | "logou
 	const candidates = providers.flatMap(provider => [provider.id, provider.name]);
 	const near = nearestNames(requested, candidates, 3);
 	const suggestion = near.length > 0 ? `Did you mean ${near.join(", ")}? ` : "";
-	return `${suggestion}Run /${command} with no argument to pick from ${providers.length} providers that support a browser login.`;
+	return `${suggestion}Run /${command} with no argument to pick from ${providers.length} providers you can sign in to.`;
 }
 
 /**

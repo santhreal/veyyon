@@ -1593,7 +1593,6 @@ export class SelectorController {
 			this.ctx.showError(`Could not load stored credentials: ${errorMessage(error)}`);
 			return;
 		}
-		const provider = getOAuthProviders().find(candidate => candidate.id === providerId);
 		const accounts = toLogoutAccounts(providerId, authStorage.listStoredCredentials(providerId), {
 			activeIdentity: authStorage.getOAuthAccountIdentity(providerId, this.ctx.session.sessionId),
 			activeApiKey: authStorage.getCredentialOrigin(providerId)?.kind === "api_key",
@@ -1607,7 +1606,10 @@ export class SelectorController {
 
 		this.showModalSelector(done => {
 			const selector = new LogoutAccountSelectorComponent(
-				provider?.name ?? providerId,
+				// One label owner. `getOAuthProviders()` has no row for a provider that authenticates with
+				// an api key, and this selector now opens for those too, so reading its name from there
+				// printed the raw slug (`Logout · groq`) while every other surface said `Groq`.
+				formatProviderName(providerId),
 				accounts,
 				account => {
 					done();
