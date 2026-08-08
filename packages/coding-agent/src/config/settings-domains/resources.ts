@@ -69,12 +69,12 @@ export const RESOURCES_SETTINGS = {
 			group: "Memory",
 			label: "Session Memory Limit",
 			description:
-				"Maximum resident memory the session tree may hold at once, in gigabytes (0 = unlimited). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it.",
+				"Maximum resident memory the session tree may hold at once, in gigabytes (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it.",
 			keywords: ["memory", "ram", "limit", "oom", "cgroup", "budget", "gb"],
 			// Optionless numbers are dropped by the UI adapter; the ladder is what
 			// makes the row exist. See session.cpuLimitCores.
 			options: [
-				{ value: "0", label: "Unlimited", description: "Default" },
+				{ value: "0", label: "Off", description: "Default" },
 				{ value: "2", label: "2 GB" },
 				{ value: "4", label: "4 GB" },
 				{ value: "8", label: "8 GB" },
