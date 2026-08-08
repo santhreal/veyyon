@@ -452,7 +452,7 @@ async function renameActiveAccount(session: AgentSession, text: string): Promise
 	}
 	const inventory = await loadAccountInventory(session.modelRegistry.authStorage, { sessionId: session.sessionId });
 	const rows = accountsForProvider(inventory, provider);
-	const row = rows.find(entry => entry.activeForSession) ?? rows.find(entry => entry.pinnedForSession);
+	const row = rows.find(entry => entry.activeForSession) ?? rows.find(entry => entry.selectedForProvider);
 	if (!row) {
 		return {
 			ok: false,
@@ -480,6 +480,126 @@ async function credentialedProviderIds(session: AgentSession): Promise<string[]>
 		sessionId: session.sessionId,
 	});
 	return inventory.providers.map(entry => entry.provider);
+}
+
+/**
+ * `/account use <provider> <account>`: make one account the machine-wide choice for its provider.
+ *
+ * The text twin of pressing `enter` on the account card, for the callers that have no card to
+ * press: ACP clients, `--print`, and anything driving veyyon from a script. It writes the SAME
+ * durable per-provider selection the card writes rather than a session pin, because a caller that
+ * cannot see the card also cannot see a choice that quietly expires with the session.
+ *
+ * An account is named by any of the things an account surface prints for it — the name it was
+ * given, its email, its account id, or the label the card renders — matched case-insensitively,
+ * exact before prefix. A prefix matching two accounts is REFUSED with both named: picking either
+ * one would start spending a subscription the caller did not ask for.
+ */
+async function useProviderAccount(session: AgentSession, args: string): Promise<{ ok: boolean; message: string }> {
+	const parts = args
+		.trim()
+		.split(/\s+/)
+		.filter(part => part.length > 0);
+	const providerArg = parts[0];
+	const accountArg = parts.slice(1).join(" ");
+	if (!providerArg || !accountArg) {
+		return { ok: false, message: "Usage: /account use <provider> <account>" };
+	}
+	const authStorage = session.modelRegistry.authStorage;
+	const inventory = await loadAccountInventory(authStorage, { sessionId: session.sessionId });
+	const provider = providerArg.toLowerCase();
+	const rows = accountsForProvider(inventory, provider);
+	if (rows.length === 0) {
+		const stored = inventory.providers.map(entry => entry.provider);
+		return {
+			ok: false,
+			message: `No accounts stored for "${providerArg}". Providers with accounts: ${stored.length > 0 ? stored.join(", ") : "none"}.`,
+		};
+	}
+	const needle = accountArg.toLowerCase();
+	const names = (row: AccountRow): string[] =>
+		[row.name, row.email, row.accountId, accountDisplayLabel(row)]
+			.filter((value): value is string => typeof value === "string" && value.length > 0)
+			.map(value => value.toLowerCase());
+	const exact = rows.filter(row => names(row).includes(needle));
+	const matched = exact.length > 0 ? exact : rows.filter(row => names(row).some(value => value.startsWith(needle)));
+	if (matched.length === 0) {
+		const known = rows.map(row => accountDisplayLabel(row)).join(", ");
+		return {
+			ok: false,
+			message: `No ${formatProviderName(provider)} account matches "${accountArg}". Stored: ${known}.`,
+		};
+	}
+	if (matched.length > 1) {
+		const ambiguous = matched.map(row => accountDisplayLabel(row)).join(", ");
+		return {
+			ok: false,
+			message: `"${accountArg}" matches ${matched.length} accounts: ${ambiguous}. Name one of them exactly.`,
+		};
+	}
+	const row = matched[0] as AccountRow;
+	const label = accountDisplayLabel(row);
+	if (!authStorage.selectProviderCredential(provider, row.credentialId, { sessionId: session.sessionId })) {
+		return { ok: false, message: `Could not switch to ${label}: that account is no longer stored.` };
+	}
+	return {
+		ok: true,
+		message: `${row.providerLabel}: now using ${label} everywhere on this machine.`,
+	};
+}
+
+/**
+ * Log in and add an account, for BOTH spellings that ask for it.
+ *
+ * `/account login` is the canonical name — accounts have one command now — and `/login` is a
+ * permanent alias that calls this same function with the same argument string. One body rather
+ * than two, because the two spellings previously drifted: only `/login` accepted a pasted redirect
+ * URL, so an operator who reached the account surface through `/account` had no way to finish a
+ * login whose browser callback never came back.
+ *
+ * Three argument shapes, in the order a user produces them: a known provider id starts that
+ * provider's login, any other non-empty text is a pasted OAuth redirect URL, and nothing at all
+ * opens the provider picker. The paste path is checked LAST because a provider id is a closed set
+ * and a redirect URL is not; the reverse order would swallow `anthropic` as a malformed callback.
+ */
+function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): void {
+	const manualInput = runtime.ctx.oauthManualInput;
+	const args = rawArgs.trim();
+	const pendingNotice = (): string => {
+		const provider = manualInput.pendingProviderId;
+		return provider
+			? `OAuth login already in progress for ${provider}. Paste the redirect URL with /login <url>.`
+			: "OAuth login already in progress. Paste the redirect URL with /login <url>.";
+	};
+	if (args.length > 0) {
+		const matchedProvider = getOAuthProviders().find(provider => provider.id === args);
+		if (matchedProvider) {
+			if (manualInput.hasPending()) {
+				runtime.ctx.showWarning(pendingNotice());
+				runtime.ctx.editor.setText("");
+				return;
+			}
+			void runtime.ctx.showOAuthSelector("login", matchedProvider.id);
+			runtime.ctx.editor.setText("");
+			return;
+		}
+		if (manualInput.submit(args)) {
+			runtime.ctx.showStatus("OAuth callback received; completing login…");
+		} else {
+			runtime.ctx.showWarning("No OAuth login is waiting for a manual callback.");
+		}
+		runtime.ctx.editor.setText("");
+		return;
+	}
+
+	if (manualInput.hasPending()) {
+		runtime.ctx.showWarning(pendingNotice());
+		runtime.ctx.editor.setText("");
+		return;
+	}
+
+	void runtime.ctx.showOAuthSelector("login");
+	runtime.ctx.editor.setText("");
 }
 
 /**
@@ -608,15 +728,22 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				await runtime.output(await refreshActiveAccounts(runtime.session));
 				return commandConsumed();
 			}
+			// The text path for the card's `enter`. It is here rather than TUI-only on purpose: the
+			// selection it writes is machine-wide and durable, so a caller with no card — ACP,
+			// `--print`, a script — must be able to make it too.
+			if (verb === "use") {
+				await runtime.output((await useProviderAccount(runtime.session, rest)).message);
+				return commandConsumed();
+			}
 			// The one usage renderer, the one `/usage` prints. A second one here would be a second
 			// answer to "how much have I spent", and they would drift.
 			if (verb === "usage") {
 				await runtime.output(await buildUsageReportText(runtime));
 				return commandConsumed();
 			}
-			if (verb === "manager" || verb === "switch" || verb === "logout" || verb === "add") {
+			if (verb === "manager" || verb === "switch" || verb === "logout" || verb === "login") {
 				return usage(
-					`/account ${verb} opens a view, which needs the interactive TUI. From here: /account status, /account name <text>, /account refresh, /account usage.`,
+					`/account ${verb} opens a view, which needs the interactive TUI. From here: /account status, /account use <provider> <account>, /account name <text>, /account refresh, /account usage.`,
 					runtime,
 				);
 			}
@@ -660,12 +787,23 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				runtime.ctx.showStatus(await refreshActiveAccounts(runtime.ctx.session), { dim: false });
 				return;
 			}
+			if (verb === "use") {
+				const used = await useProviderAccount(runtime.ctx.session, rest);
+				if (used.ok) runtime.ctx.showStatus(used.message, { dim: false });
+				else runtime.ctx.showWarning(used.message);
+				return;
+			}
 			if (verb === "usage") {
 				await runtime.ctx.handleUsageCommand();
 				return;
 			}
-			if (verb === "logout" || verb === "add") {
-				const mode = verb === "logout" ? "logout" : "login";
+			// The canonical login. `/login` is the alias, and both land on the same function, so
+			// `/account login <redirect URL>` finishes a stalled callback exactly as `/login` does.
+			if (verb === "login") {
+				startProviderLogin(rest, runtime);
+				return;
+			}
+			if (verb === "logout") {
 				const requested = rest.trim();
 				if (requested) {
 					const matched = getOAuthProviders().find(provider => provider.id === requested);
@@ -673,10 +811,10 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 						runtime.ctx.showWarning(`Unknown OAuth provider: ${requested}`);
 						return;
 					}
-					void runtime.ctx.showOAuthSelector(mode, matched.id);
+					void runtime.ctx.showOAuthSelector("logout", matched.id);
 					return;
 				}
-				void runtime.ctx.showOAuthSelector(mode);
+				void runtime.ctx.showOAuthSelector("logout");
 				return;
 			}
 			runtime.ctx.showWarning(`Unknown /account subcommand "${verb}". Use ${ACCOUNT_VERBS.join(", ")}.`);
@@ -1720,46 +1858,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				? `Log in to a provider · waiting for ${runtime.ctx.oauthManualInput.pendingProviderId ?? "OAuth"} callback`
 				: "Log in to a provider with OAuth",
 		handleTui: (command, runtime) => {
-			const manualInput = runtime.ctx.oauthManualInput;
-			const args = command.args.trim();
-			if (args.length > 0) {
-				const matchedProvider = getOAuthProviders().find(provider => provider.id === args);
-				if (matchedProvider) {
-					if (manualInput.hasPending()) {
-						const pendingProvider = manualInput.pendingProviderId;
-						const message = pendingProvider
-							? `OAuth login already in progress for ${pendingProvider}. Paste the redirect URL with /login <url>.`
-							: "OAuth login already in progress. Paste the redirect URL with /login <url>.";
-						runtime.ctx.showWarning(message);
-						runtime.ctx.editor.setText("");
-						return;
-					}
-					void runtime.ctx.showOAuthSelector("login", matchedProvider.id);
-					runtime.ctx.editor.setText("");
-					return;
-				}
-				const submitted = manualInput.submit(args);
-				if (submitted) {
-					runtime.ctx.showStatus("OAuth callback received; completing login…");
-				} else {
-					runtime.ctx.showWarning("No OAuth login is waiting for a manual callback.");
-				}
-				runtime.ctx.editor.setText("");
-				return;
-			}
-
-			if (manualInput.hasPending()) {
-				const provider = manualInput.pendingProviderId;
-				const message = provider
-					? `OAuth login already in progress for ${provider}. Paste the redirect URL with /login <url>.`
-					: "OAuth login already in progress. Paste the redirect URL with /login <url>.";
-				runtime.ctx.showWarning(message);
-				runtime.ctx.editor.setText("");
-				return;
-			}
-
-			void runtime.ctx.showOAuthSelector("login");
-			runtime.ctx.editor.setText("");
+			startProviderLogin(command.args, runtime);
 		},
 	},
 	logout: {

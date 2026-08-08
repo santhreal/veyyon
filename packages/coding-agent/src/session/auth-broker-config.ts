@@ -37,6 +37,7 @@ import {
 	readGlobalProfileSharingSafe,
 } from "@veyyon/utils";
 import { resolveConfigValue } from "../config/resolve-config-value";
+import { settingsOrNull } from "../config/settings-instance";
 import type { AuthStorage } from "./auth-storage";
 
 export { type AuthBrokerClientConfig, getAuthBrokerTokenFilePath };
@@ -97,7 +98,7 @@ export function resolveAuthBrokerConfig(): Promise<AuthBrokerClientConfig | null
  */
 export function discoverAuthStorage(
 	agentDir: string = getAgentDir(),
-	options?: Omit<DiscoverAuthStorageOptions, "agentDir" | "configValueResolver" | "storeAgentDir">,
+	options?: Omit<DiscoverAuthStorageOptions, "agentDir" | "configValueResolver" | "loadBalancing" | "storeAgentDir">,
 ): Promise<AuthStorage> {
 	const storeAgentDir = readGlobalProfileSharingSafe() ? getSharedAuthDir() : undefined;
 	// When seeding the shared store on first run, look past the current profile's
@@ -114,5 +115,10 @@ export function discoverAuthStorage(
 		storeAgentDir,
 		seedSourceDbPaths,
 		configValueResolver: resolveConfigValue,
+		// A resolver, not a snapshot: this runs before `Settings.init` on the boot path, and the
+		// operator can flip the toggle mid-session from `/settings`. Reading per decision is what
+		// makes both of those work without a restart. Absent settings mean the product default,
+		// which is off — never the library's permissive default.
+		loadBalancing: () => settingsOrNull()?.get("accounts.loadBalancing") === true,
 	});
 }

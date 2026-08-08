@@ -14,7 +14,7 @@
  * only thing this file adds is the `(no name set)` placeholder in the NAME column, which is a
  * statement about the name being absent rather than a sixth fallback for it.
  *
- * It also never presents a rotated substitute as the user's choice. When `pinnedButRotated`
+ * It also never presents a rotated substitute as the user's choice. When `selectedButRotated`
  * reports divergence the block says what was pinned, what is serving instead and why, because a
  * silent swap is the failure this whole surface exists to make visible.
  */
@@ -26,10 +26,10 @@ import {
 	accountDisplayLabel,
 	accountIdentityDetail,
 	activeSessionAccounts,
-	pinnedButRotated,
+	selectedButRotated,
 } from "../../session/account-inventory";
 import { TRUNCATE_LENGTHS } from "../../tools/render-utils";
-import { formatDurationCoarse, formatUsageWindowLine } from "./format";
+import { formatDurationCoarse, formatUsageWindowLine, usageWindowLabelColumn } from "./format";
 
 /** Left margin of every account row, matching the other inline report blocks. */
 const ROW_INDENT = "  ";
@@ -108,10 +108,12 @@ function line(...parts: string[]): string {
 	return parts.join("").trimEnd();
 }
 
-/** `5h  [███████░░░] 71%   resets in 2h` for one usage window. */
+/** `5 Hour   [███████░░░] 71%   resets in 2h` for one usage window. */
 function usageLines(row: AccountRow, now: number): string[] {
 	const lines: string[] = [];
-	for (const window of row.usage) {
+	const labels = row.usage.map(window => sanitizeText(window.label));
+	const column = usageWindowLabelColumn(labels);
+	for (const [index, window] of row.usage.entries()) {
 		const resets =
 			window.resetsAtMs !== undefined && window.resetsAtMs > now
 				? `   resets in ${formatDurationCoarse(window.resetsAtMs - now)}`
@@ -119,36 +121,36 @@ function usageLines(row: AccountRow, now: number): string[] {
 		lines.push(
 			line(
 				DETAIL_INDENT,
-				formatUsageWindowLine(sanitizeText(window.label), window.usedFraction, USAGE_BAR_WIDTH, resets),
+				formatUsageWindowLine(labels[index] ?? "", window.usedFraction, USAGE_BAR_WIDTH, resets, column),
 			),
 		);
 	}
 	return lines;
 }
 
-/** Why a pin stopped serving, in the words the store actually has for it. */
-function rotationReason(pinned: AccountRow, now: number): string {
-	if (pinned.blockedUntilMs !== undefined && pinned.blockedUntilMs > now) return "usage limit";
-	if (pinned.healthReason) return cell(pinned.healthReason, TRUNCATE_LENGTHS.CONTENT);
+/** Why the chosen account stopped serving, in the words the store actually has for it. */
+function rotationReason(chosen: AccountRow, now: number): string {
+	if (chosen.blockedUntilMs !== undefined && chosen.blockedUntilMs > now) return "usage limit";
+	if (chosen.healthReason) return cell(chosen.healthReason, TRUNCATE_LENGTHS.CONTENT);
 	return "unavailable";
 }
 
 /**
- * The two lines a rotated pin gets, naming the pin the user set and what replaced it.
+ * The two lines a rotated choice gets, naming the account the user picked and what replaced it.
  *
  * This is the case the surface exists for. The account serving the session is NOT the one they
  * chose, so the block reports the swap and how to undo it instead of printing the substitute's
  * name as though they had picked it.
  */
-function divergenceLines(provider: string, pinned: AccountRow, now: number): string[] {
-	const pinnedLabel = cell(accountDisplayLabel(pinned), TRUNCATE_LENGTHS.TITLE);
+function divergenceLines(provider: string, chosen: AccountRow, now: number): string[] {
+	const chosenLabel = cell(accountDisplayLabel(chosen), TRUNCATE_LENGTHS.TITLE);
 	const unblocks =
-		pinned.blockedUntilMs !== undefined && pinned.blockedUntilMs > now
-			? ` · ${formatDurationCoarse(pinned.blockedUntilMs - now)} until it unblocks`
+		chosen.blockedUntilMs !== undefined && chosen.blockedUntilMs > now
+			? ` · ${formatDurationCoarse(chosen.blockedUntilMs - now)} until it unblocks`
 			: "";
 	return [
-		line(DETAIL_INDENT, `pinned to ${pinnedLabel}, rotated off it (${rotationReason(pinned, now)})`),
-		line(DETAIL_INDENT, `/account switch ${provider} to re-pin ${pinnedLabel}${unblocks}`),
+		line(DETAIL_INDENT, `you chose ${chosenLabel}, rotated off it (${rotationReason(chosen, now)})`),
+		line(DETAIL_INDENT, `/account use ${provider} ${chosenLabel} to switch back${unblocks}`),
 	];
 }
 
@@ -207,8 +209,8 @@ export function renderAccountStatus(
 			lines.push(line(DETAIL_INDENT, cell(identity.join(" · "), TRUNCATE_LENGTHS.CONTENT)));
 		}
 
-		const rotated = pinnedButRotated(inventory, provider);
-		if (rotated) lines.push(...divergenceLines(provider, rotated.pinned, now));
+		const rotated = selectedButRotated(inventory, provider);
+		if (rotated) lines.push(...divergenceLines(provider, rotated.chosen, now));
 
 		lines.push(...usageLines(row, now));
 

@@ -33,7 +33,7 @@ function account(credentialId: number, name: string, extra: Partial<AccountRow> 
 		origin: { kind: "oauth" },
 		usage: [],
 		activeForSession: false,
-		pinnedForSession: false,
+		selectedForProvider: false,
 		name,
 		...extra,
 	};
@@ -64,6 +64,7 @@ function harness(rows: AccountRow[]) {
 		onLogout: row => recorded.loggedOut.push(row.credentialId),
 		onShowUsage: row => recorded.usage.push(row.credentialId),
 		onAddAccount: provider => recorded.added.push(provider),
+		onToggleLoadBalancing: () => false,
 		onCancel: () => {},
 	};
 	const component = new AccountManagerComponent(inventory(rows), callbacks, { terminalHeight: 40 });

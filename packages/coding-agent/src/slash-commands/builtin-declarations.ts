@@ -132,17 +132,22 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		textMode: true,
 		description: "Accounts this session is using, per provider",
 		acpDescription: "Show the accounts this session is using",
-		acpInputHint: "[status|manager|switch|name|refresh|usage|logout|add]",
+		acpInputHint: "[status|manager|switch|use|name|refresh|usage|login|logout]",
 		allowArgs: true,
 		subcommands: [
 			{ name: "status", description: "Show the account each provider is serving this session with" },
 			{ name: "manager", description: "Open the account manager" },
 			{ name: "switch", description: "Open the account manager focused on one provider", usage: "[provider]" },
+			{
+				name: "use",
+				description: "Switch a provider to one account, everywhere on this machine",
+				usage: "<provider> <account>",
+			},
 			{ name: "name", description: "Name this session's active account for its provider", usage: "<text>" },
 			{ name: "refresh", description: "Re-probe the credentials this session is using" },
 			{ name: "usage", description: "Show provider usage and limits" },
+			{ name: "login", description: "Log in and add an account for a provider", usage: "[provider]" },
 			{ name: "logout", description: "Log an account out", usage: "[provider]" },
-			{ name: "add", description: "Add another account for a provider", usage: "[provider]" },
 		],
 	},
 
@@ -529,9 +534,13 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Navigate session tree (switch branches)",
 	},
 
+	// `/login` is a permanent alias of `/account login`: both spellings reach ONE handler, so the
+	// paste path (`/login <redirect URL>`) and the provider path behave identically whichever is
+	// typed. Accounts have one surface now, and the alias exists because it is what a decade of
+	// other tools taught people to type.
 	{
 		name: "login",
-		description: "Login with OAuth provider",
+		description: "Log in and add an account for a provider (alias of /account login)",
 		inlineHint: "[provider|redirect URL]",
 		allowArgs: true,
 	},

@@ -22,7 +22,11 @@
  */
 import type { AccountInventory, AccountRow } from "../../session/account-inventory";
 import { accountDisplayLabel, accountIdentityDetail, accountOriginLabel } from "../../session/account-inventory";
-import { formatDurationCoarse, formatUsageWindowLine } from "../../slash-commands/helpers/format";
+import {
+	formatDurationCoarse,
+	formatUsageWindowLine,
+	usageWindowLabelColumn,
+} from "../../slash-commands/helpers/format";
 
 /** Width of the usage bar in the manager's body pane, in cells. */
 export const USAGE_BAR_WIDTH = 10;
@@ -167,7 +171,7 @@ export interface AccountHeadLine {
 	label: string;
 	/** The strongest identity fact the label did not already say (usually the email). */
 	detail: string;
-	/** Right-aligned routing tag: `this session`, `pinned`, `rate limited`, `needs attention`. */
+	/** Right-aligned routing tag: `serving`, `your choice`, `rate limited`, `needs attention`. */
 	tag: string;
 }
 
@@ -184,12 +188,15 @@ export interface AccountHeadLine {
 export function accountHeadLine(row: AccountRow, nowMs: number): AccountHeadLine {
 	const detail = accountIdentityDetail(row)[0] ?? "";
 	let tag = "";
-	// A serving row that the user PINNED says both. `activeForSession` used to swallow the pin, so
-	// pressing enter on the account already serving changed nothing on screen: the pin was recorded
-	// and the card was byte-identical. The host's confirmation goes to the transcript, which is
-	// BEHIND this fullscreen card, so the row itself is the only place feedback can land.
-	if (row.activeForSession) tag = row.pinnedForSession ? "this session · pinned" : "this session";
-	else if (row.pinnedForSession) tag = "pinned";
+	// A serving row the user CHOSE says both. `activeForSession` used to swallow the choice, so
+	// pressing enter on the account already serving changed nothing on screen: the choice was
+	// recorded and the card was byte-identical. The host's confirmation goes to the transcript,
+	// which is BEHIND this fullscreen card, so the row itself is the only place feedback can land.
+	//
+	// "your choice" rather than "pinned": the choice outlives this session and this profile, and a
+	// word that says "for now" would misdescribe what pressing enter did.
+	if (row.activeForSession) tag = row.selectedForProvider ? "serving · your choice" : "serving";
+	else if (row.selectedForProvider) tag = "your choice";
 	else if (row.blockedUntilMs !== undefined && row.blockedUntilMs > nowMs) tag = "rate limited";
 	else if (row.health === "failed") tag = "needs attention";
 	return {
@@ -222,14 +229,22 @@ export function accountPlanLine(row: AccountRow): string {
 	return parts.join(" · ");
 }
 
-/** One line per usage window: `5h  [███░░░░░░░] 34%   resets in 4h`. */
+/**
+ * One line per usage window: `5 Hour   [███░░░░░░░] 34%   resets in 4h`.
+ *
+ * The label column is sized against THIS account's own labels, so an account whose bars carry a
+ * qualifier (`Daily · Anthropic`) still lines its bars up without padding an account whose windows
+ * are plain out to the same width.
+ */
 export function accountUsageLines(row: AccountRow, nowMs: number): string[] {
-	return row.usage.map(window => {
+	const labels = row.usage.map(window => sanitizeAccountText(window.label));
+	const column = usageWindowLabelColumn(labels);
+	return row.usage.map((window, index) => {
 		const resets =
 			window.resetsAtMs === undefined
 				? undefined
 				: `   resets in ${formatDurationCoarse(Math.max(0, window.resetsAtMs - nowMs))}`;
-		return formatUsageWindowLine(sanitizeAccountText(window.label), window.usedFraction, USAGE_BAR_WIDTH, resets);
+		return formatUsageWindowLine(labels[index] ?? "", window.usedFraction, USAGE_BAR_WIDTH, resets, column);
 	});
 }
 
@@ -258,21 +273,21 @@ export function accountNoticeLines(row: AccountRow, nowMs: number): string[] {
 }
 
 /**
- * The two lines a provider shows when the account the user pinned is not the one serving.
+ * The two lines a provider shows when the account the user chose is not the one serving.
  *
  * This exists so the card never presents the substitute as a choice. The rotation happened to
- * the user, not because of them, and a card that silently shows `personal · this session` after
- * they pinned `work` reads as their own setting having changed.
+ * the user, not because of them, and a card that silently shows `personal · serving` after they
+ * chose `work` reads as their own setting having changed.
  */
-export function divergenceLines(divergence: { pinned: AccountRow; serving: AccountRow }, nowMs: number): string[] {
-	const pinned = sanitizeAccountText(accountDisplayLabel(divergence.pinned));
+export function divergenceLines(divergence: { chosen: AccountRow; serving: AccountRow }, nowMs: number): string[] {
+	const chosen = sanitizeAccountText(accountDisplayLabel(divergence.chosen));
 	const serving = sanitizeAccountText(accountDisplayLabel(divergence.serving));
-	const lines = [`pinned to ${pinned}, rotated off it onto ${serving}`];
-	const until = divergence.pinned.blockedUntilMs;
+	const lines = [`you chose ${chosen}, rotated off it onto ${serving}`];
+	const until = divergence.chosen.blockedUntilMs;
 	if (until !== undefined && until > nowMs) {
-		lines.push(`enter re-pins ${pinned} · ${formatDurationCoarse(until - nowMs)} until it unblocks`);
+		lines.push(`enter switches back to ${chosen} · ${formatDurationCoarse(until - nowMs)} until it unblocks`);
 	} else {
-		lines.push(`enter re-pins ${pinned}`);
+		lines.push(`enter switches back to ${chosen}`);
 	}
 	return lines;
 }

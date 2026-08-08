@@ -1337,6 +1337,16 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.#syncStatusLineSettings();
 				this.#handleSessionAccentInputsChanged();
 			}),
+			// Auth death moved a provider to a different account. Not gated by
+			// `accounts.loadBalancing` — a revoked credential cannot serve the request at all — so
+			// it is the one account move that can happen without the operator asking, and it says
+			// so, naming both accounts. Silently spending a second subscription is exactly the
+			// surprise this notice exists to prevent.
+			this.session.modelRegistry.authStorage.onCredentialFailover(event => {
+				this.showWarning(
+					`${event.provider}: ${event.from.label} could not authenticate (${event.cause}) — now using ${event.to.label}`,
+				);
+			}),
 		);
 		// Set up theme file watcher
 		this.#eventBusUnsubscribers.push(

@@ -82,7 +82,7 @@ describe("/account declares the verbs it answers to", () => {
 		expect(account.textMode).toBe(true);
 		expect(account.allowArgs).toBe(true);
 		expect(account.acpDescription).toBe("Show the accounts this session is using");
-		expect(account.acpInputHint).toBe("[status|manager|switch|name|refresh|usage|logout|add]");
+		expect(account.acpInputHint).toBe("[status|manager|switch|use|name|refresh|usage|login|logout]");
 	});
 
 	/**
@@ -95,11 +95,12 @@ describe("/account declares the verbs it answers to", () => {
 			"status",
 			"manager",
 			"switch",
+			"use",
 			"name",
 			"refresh",
 			"usage",
+			"login",
 			"logout",
-			"add",
 		]);
 	});
 
@@ -116,11 +117,12 @@ describe("/account declares the verbs it answers to", () => {
 			status: undefined,
 			manager: undefined,
 			switch: "[provider]",
+			use: "<provider> <account>",
 			name: "<text>",
 			refresh: undefined,
 			usage: undefined,
+			login: "[provider]",
 			logout: "[provider]",
-			add: "[provider]",
 		});
 	});
 });

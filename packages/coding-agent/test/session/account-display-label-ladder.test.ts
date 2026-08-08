@@ -27,7 +27,7 @@ function fullRow(overrides: Partial<AccountRow> = {}): AccountRow {
 		orgId: "org-7b1",
 		usage: [],
 		activeForSession: false,
-		pinnedForSession: false,
+		selectedForProvider: false,
 		...overrides,
 	};
 }
@@ -104,7 +104,7 @@ describe("accountDisplayLabel", () => {
 			type: "api_key" as const,
 			usage: [],
 			activeForSession: false,
-			pinnedForSession: false,
+			selectedForProvider: false,
 		};
 
 		expect(accountDisplayLabel({ ...bare, credentialId: 7 })).toBe("Groq credential #7");

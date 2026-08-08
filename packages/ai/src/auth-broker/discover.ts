@@ -66,6 +66,12 @@ export interface DiscoverAuthStorageOptions {
 	configValueResolver?: (config: string) => Promise<string | undefined>;
 	cachePath?: string;
 	sourceLabel?: string;
+	/**
+	 * Forwarded verbatim to {@link AuthStorage}: whether quota exhaustion may move a provider to
+	 * another of its accounts. Threaded through here because the discovery entry point is the only
+	 * place the app constructs its storage, and the option would otherwise be unreachable from it.
+	 */
+	loadBalancing?: boolean | (() => boolean);
 }
 
 /** Path to the local bearer token file. Created by `veyyon auth-broker token`. */
@@ -269,6 +275,7 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
 		const storage = new AuthStorage(store, {
 			configValueResolver: options.configValueResolver,
 			sourceLabel: options.sourceLabel ?? `broker ${brokerConfig.url}`,
+			loadBalancing: options.loadBalancing,
 		});
 		await storage.reload();
 		return storage;
@@ -290,6 +297,7 @@ export async function discoverAuthStorage(options: DiscoverAuthStorageOptions = 
 	const storage = await AuthStorage.create(dbPath, {
 		configValueResolver: options.configValueResolver,
 		sourceLabel: options.sourceLabel ?? `local ${dbPath}`,
+		loadBalancing: options.loadBalancing,
 	});
 	await storage.reload();
 	return storage;

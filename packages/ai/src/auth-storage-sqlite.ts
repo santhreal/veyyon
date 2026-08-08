@@ -102,6 +102,9 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	#listAccountNamesStmt: Statement;
 	#upsertAccountNameStmt: Statement;
 	#deleteAccountNameStmt: Statement;
+	#getProviderSelectionStmt: Statement;
+	#upsertProviderSelectionStmt: Statement;
+	#deleteProviderSelectionStmt: Statement;
 	#lastUsageHistoryStmt: Statement;
 	#listUsageHistoryStmt: Statement;
 	#updateUsageHistoryStmt: Statement;
@@ -250,6 +253,14 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			 ON CONFLICT(identity) DO UPDATE SET name = excluded.name, updated_at = ${SQLITE_NOW_EPOCH}`,
 		);
 		this.#deleteAccountNameStmt = this.#db.prepare("DELETE FROM auth_account_names WHERE identity = ?");
+		this.#getProviderSelectionStmt = this.#db.prepare(
+			"SELECT identity FROM auth_provider_selection WHERE provider = ?",
+		);
+		this.#upsertProviderSelectionStmt = this.#db.prepare(
+			`INSERT INTO auth_provider_selection (provider, identity, updated_at) VALUES (?, ?, ${SQLITE_NOW_EPOCH})
+			 ON CONFLICT(provider) DO UPDATE SET identity = excluded.identity, updated_at = ${SQLITE_NOW_EPOCH}`,
+		);
+		this.#deleteProviderSelectionStmt = this.#db.prepare("DELETE FROM auth_provider_selection WHERE provider = ?");
 	}
 
 	static async open(dbPath: string = getAgentDbPath()): Promise<SqliteAuthCredentialStore> {
@@ -358,6 +369,11 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			CREATE TABLE IF NOT EXISTS auth_account_names (
 				identity TEXT PRIMARY KEY,
 				name TEXT NOT NULL,
+				updated_at INTEGER NOT NULL
+			);
+			CREATE TABLE IF NOT EXISTS auth_provider_selection (
+				provider TEXT PRIMARY KEY,
+				identity TEXT NOT NULL,
 				updated_at INTEGER NOT NULL
 			);
 			CREATE INDEX IF NOT EXISTS idx_usage_history_recorded ON usage_history(recorded_at);
@@ -1114,6 +1130,29 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 
 	deleteAccountName(identity: string): void {
 		this.#deleteAccountNameStmt.run(identity);
+	}
+
+	/**
+	 * The globally chosen account for a provider, as an identity string.
+	 *
+	 * Its own table rather than a `cache` row: the cache is expiry-driven and gets pruned, and a
+	 * user's account choice must outlive any TTL. It sits in the shared auth database beside the
+	 * credentials, which is what makes the choice cross-profile without a per-profile copy to
+	 * reconcile.
+	 */
+	getProviderSelection(provider: string): string | undefined {
+		const row = this.#getProviderSelectionStmt.get(provider);
+		if (!row || typeof row !== "object" || !("identity" in row)) return undefined;
+		const identity = typeof row.identity === "string" ? row.identity.trim() : "";
+		return identity.length > 0 ? identity : undefined;
+	}
+
+	setProviderSelection(provider: string, identity: string): void {
+		this.#upsertProviderSelectionStmt.run(provider, identity);
+	}
+
+	clearProviderSelection(provider: string): void {
+		this.#deleteProviderSelectionStmt.run(provider);
 	}
 
 	cleanExpiredCredentialBlocks(nowMs: number): void {

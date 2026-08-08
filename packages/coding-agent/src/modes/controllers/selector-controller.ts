@@ -1715,8 +1715,10 @@ export class SelectorController {
 			await loadAccountInventory(authStorage, { sessionId }),
 			{
 				onUseAccount: row => {
-					if (authStorage.pinSessionCredential(row.provider, sessionId, row.credentialId)) {
-						this.ctx.showStatus(`${row.providerLabel}: this session now uses ${accountDisplayLabel(row)}`);
+					if (authStorage.selectProviderCredential(row.provider, row.credentialId, { sessionId })) {
+						this.ctx.showStatus(
+							`${row.providerLabel}: now using ${accountDisplayLabel(row)} everywhere on this machine`,
+						);
 					} else {
 						// The credential vanished between render and keypress (a peer logged it out).
 						// Say so; a silent no-op reads as the key being broken.
@@ -1769,10 +1771,19 @@ export class SelectorController {
 					done();
 					void this.showOAuthSelector("login", provider);
 				},
+				onToggleLoadBalancing: () => {
+					const next = !this.ctx.session.settings.get("accounts.loadBalancing");
+					this.ctx.session.settings.set("accounts.loadBalancing", next);
+					// Read back rather than trusting `next`: the card paints from what the settings
+					// object actually holds, so a refused or coerced write cannot leave the footer
+					// advertising a state the config does not have.
+					return this.ctx.session.settings.get("accounts.loadBalancing") === true;
+				},
 				onCancel: done,
 			},
 			{
 				initialProviderId: providerId,
+				loadBalancing: this.ctx.session.settings.get("accounts.loadBalancing") === true,
 				reveal: modalRevealEnabled(),
 				requestRender: () => {
 					const component = manager;
