@@ -31,7 +31,7 @@ import type { Theme } from "../modes/theme/theme-class";
 import { expandHintSuffix } from "../modes/utils/key-hint";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "../session/client-bridge";
-import { sessionCpuLimit } from "../session/cpu-limit";
+import { sessionBudgetLimits, sessionCpuLimit } from "../session/cpu-limit";
 import {
 	artifactFooter,
 	DEFAULT_MAX_BYTES,
@@ -1100,14 +1100,17 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			: clampTimeout("bash", requestedTimeoutSec, this.session.settings.get("tools.maxTimeout"));
 		const timeoutMs = timeoutSec === undefined ? undefined : timeoutSec * 1000;
 		const pendingNotices: string[] = [];
-		// The session CPU budget: pick up live settings, then refuse while the
-		// watcher reports sustained saturation. Every spawn path below (PTY,
-		// executor, bridge) is gated by this one check.
+		// The session tree's budget group: pick up live settings for every limit,
+		// then refuse while any of them says so (CPU saturated, write budget
+		// spent, process cap reached, or a memory cap that cannot be enforced
+		// here). Every spawn path below (PTY, executor, bridge) is gated by this
+		// one check.
 		const cpuLimit = sessionCpuLimit(this.session.getSessionId?.() ?? null);
 		if (cpuLimit) {
 			await cpuLimit.update(
 				this.session.settings.get("session.cpuLimitCores"),
 				this.session.settings.get("session.cpuLimitKill"),
+				sessionBudgetLimits(this.session.settings),
 			);
 			cpuLimit.assertMaySpawn("a bash command");
 		}

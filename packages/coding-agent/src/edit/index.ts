@@ -8,6 +8,7 @@ import { createLspWritethrough, flushLspWritethroughBatch, type WritethroughCall
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
 import { PROMPTS } from "../prompts/registry";
+import { budgetedFileCommit, sessionBudgetLimits } from "../session/cpu-limit";
 import type { ToolSession } from "../tools";
 import { abortedPartway } from "../tools/aborted-partway";
 import { truncateForPrompt } from "../tools/approval";
@@ -103,12 +104,22 @@ function resolveFuzzyThreshold(session: ToolSession, rawValue: string): number {
 	return threshold;
 }
 
+/**
+ * The edit tool's disk-commit path, wrapped in the session tree's write
+ * budget.
+ *
+ * Every hashline apply writes through this one callback, including the batch
+ * and multi-file paths, so the budget sees a whole `edit` call's bytes
+ * whatever shape it took. It has to be counted here rather than by the group:
+ * the harness process is deliberately not a member of its own budget group,
+ * so an edit is invisible to `io.stat` and to `/proc/<pid>/io`.
+ */
 function createEditWritethrough(session: ToolSession): WritethroughCallback {
 	const enableLsp = session.enableLsp ?? true;
 	const enableDiagnostics = enableLsp && session.settings.get("lsp.diagnosticsOnEdit");
 	const enableFormat = enableLsp && session.settings.get("lsp.formatOnWrite");
 	const dedup = enableDiagnostics && session.settings.get("lsp.diagnosticsDeduplicate");
-	return enableLsp
+	const commit = enableLsp
 		? createLspWritethrough(session.cwd, {
 				enableFormat,
 				enableDiagnostics,
@@ -117,6 +128,13 @@ function createEditWritethrough(session: ToolSession): WritethroughCallback {
 					: undefined,
 			})
 		: writethroughNoop;
+	return budgetedFileCommit(
+		{
+			sessionId: () => session.getSessionId?.() ?? null,
+			limits: () => sessionBudgetLimits(session.settings),
+		},
+		commit,
+	);
 }
 
 /**

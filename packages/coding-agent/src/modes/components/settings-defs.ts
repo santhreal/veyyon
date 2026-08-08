@@ -221,6 +221,9 @@ const CONDITIONS: Record<string, () => boolean> = {
 	// The kill policy only matters while a budget exists; at 0 cores the toggle
 	// would be a knob with nothing behind it.
 	cpuLimitEnabled: () => whenSettingsSay(() => Settings.instance.get("session.cpuLimitCores") > 0),
+	// Same shape for the write budget: at 0 GB nothing is metered, so a choice
+	// between refusing and killing has no case where it applies.
+	writeBudgetEnabled: () => whenSettingsSay(() => Settings.instance.get("session.writeBudgetGb") > 0),
 	// Blocking on a rejection only makes sense while rejections are reported: a
 	// run that stopped for a reason nothing was going to tell you about is worse
 	// than one that quietly overpays.

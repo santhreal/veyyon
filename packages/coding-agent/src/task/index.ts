@@ -1702,6 +1702,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				parentTelemetry: this.session.getTelemetry?.(),
 				parentEvalSessionId,
 				parentAgentId: this.session.getAgentId?.() ?? MAIN_AGENT_ID,
+				// The child joins THIS session's budget group instead of opening a
+				// second one, so a resource limit cannot be multiplied by delegating.
+				parentSessionId: this.session.getSessionId?.() ?? undefined,
 				// Live source of truth for `tier.subagent: inherit`. When the session
 				// exposes a tier accessor, pass the per-family map or null (null =
 				// explicit none, e.g. /fast off); otherwise leave undefined so inherit

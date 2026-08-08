@@ -555,6 +555,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		parentMnemopiSessionState: options.session.getMnemopiSessionState?.(),
 		parentTelemetry: options.session.getTelemetry?.(),
 		parentAgentId: options.session.getAgentId?.() ?? MAIN_AGENT_ID,
+		parentSessionId: options.session.getSessionId?.() ?? undefined,
 		// Live source of truth for `tier.subagent: inherit` (null = explicit none).
 		parentServiceTier: options.session.getServiceTierByFamily
 			? (options.session.getServiceTierByFamily() ?? null)

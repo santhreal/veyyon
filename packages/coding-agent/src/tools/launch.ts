@@ -16,7 +16,7 @@ import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot, DaemonSpec, Daem
 import { renderTerminalOutput } from "../launch/terminal-output";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { sessionCpuAdoption, sessionCpuLimit } from "../session/cpu-limit";
+import { sessionBudgetLimits, sessionCpuAdoption, sessionCpuLimit } from "../session/cpu-limit";
 import { framedBlock, outputBlockContentWidth, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
 import { foldToolOutputBookkeeping } from "./output-fold";
@@ -397,6 +397,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			await cpuLimit.update(
 				this.session.settings.get("session.cpuLimitCores"),
 				this.session.settings.get("session.cpuLimitKill"),
+				sessionBudgetLimits(this.session.settings),
 			);
 			cpuLimit.assertMaySpawn("a background process");
 		}

@@ -9,6 +9,7 @@ import { GLOBAL_SETTINGS } from "./settings-domains/global";
 import { INTERACTION_SETTINGS } from "./settings-domains/interaction";
 import { MODEL_SETTINGS } from "./settings-domains/model";
 import { PROVIDERS_SETTINGS } from "./settings-domains/providers";
+import { RESOURCES_SETTINGS } from "./settings-domains/resources";
 import { SUBAGENTS_SETTINGS } from "./settings-domains/subagents";
 import { TASKS_SETTINGS } from "./settings-domains/tasks";
 import { TOOLS_SETTINGS } from "./settings-domains/tools";
@@ -40,6 +41,7 @@ export type SettingTab =
 	| "appearance"
 	| "model"
 	| "interaction"
+	| "resources"
 	| "context"
 	| "rules"
 	| "memory"
@@ -64,6 +66,7 @@ export const SETTING_TABS: SettingTab[] = [
 	"appearance",
 	"model",
 	"interaction",
+	"resources",
 	"context",
 	"rules",
 	"memory",
@@ -83,6 +86,7 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
 	appearance: { label: "Appearance", icon: "tab.appearance" },
 	model: { label: "Model", icon: "tab.model" },
 	interaction: { label: "Interaction", icon: "tab.interaction" },
+	resources: { label: "Resources", icon: "tab.resources" },
 	context: { label: "Context", icon: "tab.context" },
 	rules: { label: "Rules", icon: "tab.rules" },
 	memory: { label: "Memory", icon: "tab.memory" },
@@ -128,11 +132,12 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Agent",
 		"Git",
 	],
+	resources: ["CPU", "Memory", "Disk", "Processes"],
 	context: ["General", "Prompt cache", "Session instrumentation"],
 	rules: ["Rules", "Stream interrupts (TTSR)"],
 	memory: ["General", "Mnemopi", "Hindsight"],
 	files: ["Editing", "Reading", "Read Summaries", "LSP"],
-	shell: ["Bash", "Eval & Runtimes", "CPU Limit"],
+	shell: ["Bash", "Eval & Runtimes"],
 	tools: [
 		"Available Tools",
 		"Todos",
@@ -427,6 +432,7 @@ export const SETTINGS_DOMAIN_SLICES: Record<string, Record<string, unknown>> = {
 	interaction: INTERACTION_SETTINGS,
 	context: CONTEXT_SETTINGS,
 	editing: EDITING_SETTINGS,
+	resources: RESOURCES_SETTINGS,
 	tools: TOOLS_SETTINGS,
 	tasks: TASKS_SETTINGS,
 	subagents: SUBAGENTS_SETTINGS,
@@ -441,6 +447,7 @@ export const SETTINGS_SCHEMA = {
 	...INTERACTION_SETTINGS,
 	...CONTEXT_SETTINGS,
 	...EDITING_SETTINGS,
+	...RESOURCES_SETTINGS,
 	...TOOLS_SETTINGS,
 	...TASKS_SETTINGS,
 	...SUBAGENTS_SETTINGS,
