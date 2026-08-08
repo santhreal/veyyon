@@ -311,6 +311,37 @@ describe("AccountManagerComponent interaction", () => {
 	});
 
 	/**
+	 * Locks out an armed confirm that survives whatever the user does next. Escape was the only key
+	 * that disarmed it, plus the arrows, so `x` then a rename, a refresh, a balancing toggle or a
+	 * provider switch left the confirm live: the next `x`, pressed minutes later about something
+	 * else, removed a credential. A destructive confirmation whose two halves are not adjacent is
+	 * not a confirmation, and the key that most invites this is `n`, which opens an editor and holds
+	 * the screen while the arm sits behind it.
+	 *
+	 * Derived from the card's own key table rather than a curated list, so a key added later is
+	 * covered the moment it exists.
+	 */
+	test("any key other than a second x disarms the logout", () => {
+		// `x` is the confirm itself and `esc` has its own case above; the arrows and pane keys are
+		// here as sequences because that is what a terminal sends.
+		const others = ["n", "r", "u", "a", "b", "\r", "\x1b[A", "\x1b[B", "\x1b[C", "\x1b[D"];
+		for (const key of others) {
+			const { component, recorded, frame } = harness(THREE_ACCOUNTS());
+
+			component.handleInput("x");
+			expect(lineWith(frame(), "press x again")).toContain("press x again");
+
+			component.handleInput(key);
+			// A rename editor is modal, so back out of it before pressing `x` again: the point is
+			// that the ARM is gone, not that `x` is unreachable.
+			if (key === "n") component.handleInput("\x1b");
+			component.handleInput("x");
+
+			expect(recorded.loggedOut).toEqual([]);
+		}
+	});
+
+	/**
 	 * Locks out one Escape taking the rename editor and the whole card with it, which is how
 	 * typed text disappears without the user seeing where it went. Escape cancels the innermost
 	 * thing they opened; the card stays up and the name is not written.

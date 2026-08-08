@@ -342,6 +342,14 @@ export class AccountManagerComponent implements Component {
 			return;
 		}
 
+		// A second `x` is the confirm, and ANY other key is not. The arm used to survive a rename, a
+		// balancing toggle, a refresh and a provider switch, so an `x` pressed after all of those
+		// still deleted a credential the operator had stopped thinking about: a destructive
+		// confirmation whose two halves are not adjacent is not a confirmation. Cleared at the one
+		// point every non-`x` key passes rather than inside each branch, so a key added later cannot
+		// forget to do it.
+		if (data !== "x") this.#pendingLogoutCredentialId = null;
+
 		if (matchesSelectUp(data)) {
 			this.#step(-1);
 			return;
@@ -352,12 +360,10 @@ export class AccountManagerComponent implements Component {
 		}
 		if (matchesKey(data, "left")) {
 			this.#focus = "sidebar";
-			this.#pendingLogoutCredentialId = null;
 			return;
 		}
 		if (matchesKey(data, "right")) {
 			this.#focus = "body";
-			this.#pendingLogoutCredentialId = null;
 			return;
 		}
 		if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
@@ -841,18 +847,30 @@ export class AccountManagerComponent implements Component {
 				: entry
 					? `enter switch ${entry.label} to this account`
 					: "enter switch to this account";
+		// The three account-scoped keys are omitted while the add entry is selected. `n`, `u` and `x`
+		// all read the selected ACCOUNT, and the add entry is not one, so each was a chip the card
+		// painted, made clickable, and answered with nothing: the same defect the `enter` chip above
+		// used to have, left in place for the keys either side of it. A footer that advertises a key
+		// which does nothing teaches the operator that the card is unresponsive rather than that the
+		// row is different.
+		const onAddEntry = this.#bodySelection.kind === "add";
 		return [
 			{ label: "↑↓ move" },
 			{ label: "←→ pane" },
 			{ label: use, clickable: true, id: "confirm" },
-			{ label: "n name", clickable: true, id: "name" },
+			...(onAddEntry ? [] : [{ label: "n name", clickable: true, id: "name" }]),
+			// Provider-scoped, so it acts from the add entry as well and stays.
 			{ label: "r refresh", clickable: true, id: "refresh" },
-			{ label: "u usage", clickable: true, id: "usage" },
-			{
-				label: this.#pendingLogoutCredentialId === null ? "x logout" : "x confirm logout",
-				clickable: true,
-				id: "logout",
-			},
+			...(onAddEntry
+				? []
+				: [
+						{ label: "u usage", clickable: true, id: "usage" },
+						{
+							label: this.#pendingLogoutCredentialId === null ? "x logout" : "x confirm logout",
+							clickable: true,
+							id: "logout",
+						},
+					]),
 			{ label: "a add", clickable: true, id: "add" },
 			{ label: `b balancing ${this.#loadBalancing ? "on" : "off"}`, clickable: true, id: "balance" },
 			{ label: "esc close", clickable: true, id: "close" },
