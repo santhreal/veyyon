@@ -59,7 +59,7 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	eval: 5610,
 	read: 4180,
 	bash: 3910,
-	todo: 3800,
+	todo: 2640,
 	irc: 3450,
 	launch: 2820,
 	task: 2720,
@@ -76,7 +76,7 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 };
 
 /** Total the whole active set may ship, description + examples. */
-const TOTAL_PROMPT_CEILING = 48_000;
+const TOTAL_PROMPT_CEILING = 46_800;
 
 /**
  * How far under its ceiling a tool may sit before the row is stale.

@@ -84,6 +84,17 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		"Re-run setup only after `reset`, a crash, or a `NameError`/`ReferenceError`",
 		"NEVER re-import, re-require, or re-declare a helper",
 	],
+	todo: [
+		// The example array went 8 -> 2 because the ops table already documents every
+		// op. What the examples never carried, and prose must: that a task is named
+		// by its content string, that a finished task is marked immediately, and that
+		// a plan handed over by the operator is enumerated in full rather than
+		// summarized, which is the failure this tool exists to prevent.
+		"NEVER an auto-generated ID",
+		"Mark tasks done immediately after finishing",
+		"MUST `init` the list with EVERY item",
+		"NEVER summarize into fewer tasks",
+	],
 	irc: [
 		// The prose cut collapsed two statements of the narration rule into one and
 		// removed a duplicated "never send a progress report" list. What no cut may

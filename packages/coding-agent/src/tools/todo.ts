@@ -1227,35 +1227,8 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 			},
 		},
 		{
-			caption: "View current state (read-only)",
-			call: { op: "view" },
-		},
-		{
-			caption: "Initial setup (single phase)",
-			call: {
-				op: "init",
-				list: [{ phase: "Implementation", items: ["Apply fix", "Run tests"] }],
-			},
-		},
-		{
 			caption: "Complete one task",
 			call: { op: "done", task: "Wire workspace" },
-		},
-		{
-			caption: "Complete a whole phase",
-			call: { op: "done", phase: "Auth" },
-		},
-		{
-			caption: "Remove all tasks",
-			call: { op: "rm" },
-		},
-		{
-			caption: "Drop one task",
-			call: { op: "drop", task: "Run cargo test" },
-		},
-		{
-			caption: "Append tasks to a phase",
-			call: { op: "append", phase: "Auth", items: ["Handle retries", "Run tests"] },
 		},
 	];
 	readonly loadMode = "discoverable";
