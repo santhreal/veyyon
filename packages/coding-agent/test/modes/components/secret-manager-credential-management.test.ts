@@ -24,6 +24,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { SECRET_MANAGER_HELP } from "@veyyon/coding-agent/modes/components/secret-help-overlay";
 import { SecretManager } from "@veyyon/coding-agent/modes/components/secret-manager";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { SecretAuditLog, secretAuditPath } from "@veyyon/coding-agent/secrets/audit";
@@ -86,12 +87,18 @@ function text(manager: SecretManager): string {
 	return screen(manager).join("\n");
 }
 
-async function open(auditLog?: SecretAuditLog): Promise<SecretManager> {
+async function open(
+	auditLog?: SecretAuditLog,
+	readEnv?: (variable: string) => string | undefined,
+): Promise<SecretManager> {
 	const manager = new SecretManager({
 		vault: vault(),
 		terminalHeight: HEIGHT,
 		now: () => NOW,
 		auditLog,
+		// Injected rather than written into `process.env`, which would leak the variable into every
+		// test file that runs after this one.
+		readEnv,
 	});
 	await manager.settled();
 	manager.render(WIDTH);
@@ -235,6 +242,102 @@ describe("storing a credential from inside the card", () => {
 
 		expect(text(manager).toLowerCase()).toContain("empty");
 		expect(await vault().load()).toHaveLength(0);
+	});
+
+	/**
+	 * `f`: THE CREDENTIAL IS NEVER TYPED AND NEVER DRAWN.
+	 *
+	 * `/secret --from-env VAR` has offered this on the command line since the feature shipped, and the
+	 * card could not do it at all, so the manager was missing the one entry form where the value does
+	 * not pass through the screen, the input buffer or the shell history. The assertion is on the
+	 * VAULT: a card that said "Stored" without writing the variable's bytes would pass a screen check.
+	 */
+	it("stores a credential read out of an environment variable", async () => {
+		const manager = await open(undefined, variable =>
+			variable === "GITHUB_TOKEN" ? "ghp_from_the_environment" : undefined,
+		);
+
+		manager.handleInput("f");
+		await type(manager, "GITHUB_TOKEN");
+		await type(manager, "DEPLOY_KEY");
+		await type(manager, "project");
+
+		const stored = await vault().load();
+		expect(stored).toHaveLength(1);
+		expect(stored[0].name).toBe("DEPLOY_KEY");
+		expect(stored[0].value).toBe("ghp_from_the_environment");
+		expect(stored[0].scope).toBe("project");
+	});
+
+	/**
+	 * The confirmation SAYS WHICH VARIABLE was read. It is the only add whose value the operator never
+	 * saw, so the moment it is stored is the only cheap moment to notice that the wrong variable was
+	 * named; after that the credential is only ever spent as a placeholder.
+	 */
+	it("names the variable in the confirmation, and never the value", async () => {
+		const manager = await open(undefined, () => "ghp_from_the_environment");
+
+		manager.handleInput("f");
+		await type(manager, "GITHUB_TOKEN");
+		await type(manager, "DEPLOY_KEY");
+		await type(manager, "profile");
+
+		const painted = text(manager);
+		expect(painted).toContain("Stored #DEPLOY_KEY# from $GITHUB_TOKEN in the profile vault.");
+		expect(painted).not.toContain("ghp_from_the_environment");
+	});
+
+	/**
+	 * The variable's NAME is drawn while it is typed, unlike the value field. Masking it would make a
+	 * typo indistinguishable from an unset variable, which are the two failures that step tells apart,
+	 * and it would also imply the operator was being asked for the credential itself.
+	 */
+	it("shows the variable name as it is typed and asks for a name, not a value", async () => {
+		const manager = await open(undefined, () => "ghp_from_the_environment");
+
+		manager.handleInput("f");
+		await manager.settled();
+		const prompt = text(manager);
+		for (const character of "GITHUB_TOKEN") manager.handleInput(character);
+
+		expect(prompt).toContain("New secret: name the environment variable");
+		expect(prompt.toLowerCase()).not.toContain("paste the value");
+		expect(text(manager)).toContain("GITHUB_TOKEN");
+	});
+
+	/**
+	 * A variable that is not set is refused AT THE FIELD, naming it, with the flow still open. The
+	 * class this closes is a refusal arriving from `vault.add` after all three questions, which tears
+	 * the flow down and costs the operator every answer they gave.
+	 */
+	it("refuses an unset variable by name and keeps the field open", async () => {
+		const manager = await open(undefined, () => undefined);
+
+		manager.handleInput("f");
+		await type(manager, "GITHUB_TOEKN");
+
+		const painted = text(manager);
+		expect(painted).toContain("GITHUB_TOEKN");
+		expect(painted).toContain("New secret: name the environment variable");
+		expect(await vault().load()).toHaveLength(0);
+	});
+
+	/**
+	 * `f` is reachable with the pointer as well as the key. A chip that draws and does nothing when
+	 * clicked is the exact defect the footer was rebuilt to remove: it advertises an action the card
+	 * refuses to perform, on the screen a new operator sees first.
+	 */
+	it("starts the same flow when the footer's from-env chip is clicked", async () => {
+		const manager = await open(undefined, () => "ghp_from_the_environment");
+		const footer = screen(manager).findIndex(line => line.includes("f from env"));
+		expect(footer).toBeGreaterThan(-1);
+		const column = screen(manager)[footer].indexOf("f from env") + 2;
+
+		manager.handleInput(`\u001b[<0;${column + 1};${footer + 1}M`);
+		manager.handleInput(`\u001b[<0;${column + 1};${footer + 1}m`);
+		await manager.settled();
+
+		expect(text(manager)).toContain("New secret: name the environment variable");
 	});
 });
 
@@ -642,10 +745,75 @@ describe("the key map", () => {
 		// occur in ordinary prose, so `toContain("a")` passes against a blank overlay.
 		const bound = new Set<string>();
 		for (const line of body(manager)) {
-			const match = /^\s+(\S+)\s{2,}[a-z]/.exec(line);
+			// The key column can hold spaces (`up/down, j/k`), so the split is on the COLUMN GAP of two
+			// or more spaces, not on the first space. Splitting on the first space matched `up/down,`
+			// and made a row that renders correctly look absent.
+			const match = /^\s+(\S.*?)\s{2,}[a-z]/.exec(line);
 			if (match) bound.add(match[1]);
 		}
-		for (const key of ["a", "m", "i", "s", "/"]) expect(bound).toContain(key);
+		// DERIVED FROM THE MAP, not from the keys whoever wrote this remembered. A row added to
+		// SECRET_MANAGER_HELP that the overlay cannot draw at this width fails here, and the hardcoded
+		// list this replaced would have stayed green.
+		for (const entry of SECRET_MANAGER_HELP) {
+			if (entry.view === "log") continue;
+			expect(bound).toContain(entry.keys);
+		}
+	});
+
+	/**
+	 * EVERY DOCUMENTED KEY DOES SOMETHING. The map is prose: a row can be added for a key the switch
+	 * never handles, and the operator then presses a documented key and watches the card ignore it.
+	 * `f` was the reverse of that defect for a week — the action existed on the command line and had
+	 * no key at all — so the agreement is asserted in both directions and derived from the map, which
+	 * means a new row fails this test until it is either bound or recorded below.
+	 *
+	 * WHAT IT DOES NOT CATCH: that the key does the RIGHT thing. Each action has its own test above;
+	 * this one only refuses a documented key that is not wired to anything.
+	 */
+	it("acts on every single-letter key the map documents for the roster", async () => {
+		/**
+		 * Keys whose effect is deliberately invisible on a healthy vault, with the reason recorded.
+		 *
+		 * A key added to the map and to neither this table nor the switch fails the assertion below,
+		 * which is the point: the decision has to be written down somewhere.
+		 */
+		const SILENT_ON_A_HEALTHY_ROSTER: Readonly<Record<string, string>> = {
+			// `d` repairs a vault FILE that would not open. There is no such file here, so the card
+			// correctly does nothing: the action belongs to a broken row, and `secret-manager-degenerate-states`
+			// drives it against one.
+			d: "only a broken vault row offers it",
+			// `i` toggles the detail panel, and `u`, `s`, `/`, `c` all repaint. Nothing else is silent.
+		};
+
+		const silent: string[] = [];
+		for (const entry of SECRET_MANAGER_HELP) {
+			if (entry.view === "log" || entry.keys.length !== 1 || !/[a-z]/.test(entry.keys)) continue;
+			await seed();
+			const manager = await open();
+			// `q` closes the card, which repaints nothing: the effect leaves through `onClose`. Watching
+			// it here is what keeps `q` out of the recorded-silent table, where it would have sat as an
+			// excuse covering a key that in fact works.
+			let closed = false;
+			manager.onClose = () => {
+				closed = true;
+			};
+			const before = text(manager);
+
+			manager.handleInput(entry.keys);
+			await manager.settled();
+
+			if (text(manager) === before && !closed) {
+				silent.push(entry.keys);
+				continue;
+			}
+			// Escape out so the next key is delivered to a roster rather than into an open dialog.
+			manager.handleInput("\x1b");
+			await manager.settled();
+		}
+		// COMPARED AS A SET, so the failure names the key rather than printing a frame. A key that went
+		// silent appears here; a recorded key that started working also appears, which is the direction
+		// that would otherwise leave a stale excuse in the table forever.
+		expect(silent.toSorted()).toEqual(Object.keys(SILENT_ON_A_HEALTHY_ROSTER).toSorted());
 	});
 
 	/**

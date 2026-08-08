@@ -179,7 +179,9 @@ describe("what /secret offers in its argument dropdown", () => {
 			expect(filled).toBeDefined();
 			const request = parseSecretCommand([item.label, filled].join(" ").trim(), "tui");
 
-			expect(request.subcommand).toBe(item.label);
+			// The label is the subject: it is the string the menu offered, and the parse is what the
+			// terminal does with it.
+			expect(item.label).toBe(request.subcommand);
 			if (item.label !== "add") expect(request.value).toBeUndefined();
 		}
 	});

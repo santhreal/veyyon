@@ -356,11 +356,13 @@ const SECRET_TUI_SUBCOMMAND_HELP: Record<SecretSubcommand, { usage: string; desc
  * memory lands somewhere, and listing all four beside their canonical twins would double a menu
  * whose whole job is to say what the eight things are.
  */
-export const SECRET_TUI_SUBCOMMANDS: readonly { name: string; usage: string; description: string }[] = Object.entries(
-	SECRET_VERB_SPELLINGS,
-)
-	.filter(([word, subcommand]) => word === subcommand)
-	.map(([word, subcommand]) => ({ name: word, ...SECRET_TUI_SUBCOMMAND_HELP[subcommand] }));
+export const SECRET_TUI_SUBCOMMANDS: readonly { name: SecretSubcommand; usage: string; description: string }[] =
+	Object.entries(SECRET_VERB_SPELLINGS)
+		.filter(([word, subcommand]) => word === subcommand)
+		// The VALUE is used as the name, not the key: the filter above has just established they are
+		// the same string, and the value carries the `SecretSubcommand` type a caller needs in order to
+		// push a menu entry back through the parser without a cast.
+		.map(([, subcommand]) => ({ name: subcommand, ...SECRET_TUI_SUBCOMMAND_HELP[subcommand] }));
 
 /**
  * The word that means "everything after me is the credential".

@@ -7,8 +7,13 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+	ADD_FLOW_SOURCES,
+	type AddFlowSource,
 	DEFAULT_ADD_SCOPE,
+	EMPTY_ENV_NAME_REFUSAL,
 	EMPTY_VALUE_REFUSAL,
+	emptyEnvRefusal,
+	missingEnvRefusal,
 	SecretAddFlow,
 	SHORT_VALUE_REFUSAL,
 	UNKNOWN_SCOPE_REFUSAL,
@@ -455,4 +460,249 @@ describe("SecretAddFlow value containment", () => {
 		flow.submit("project");
 		expect(flow.plan).toEqual({ name: "DEPLOY_KEY", value: SECRET, scope: "project" });
 	});
+});
+
+/**
+ * Reading the credential out of the environment, which is the `f` key on the card.
+ *
+ * WHY THIS PATH EXISTS AT ALL: it is the only entry form where the credential never reaches the
+ * screen, the input buffer, or the shell history. `/secret --from-env VAR` has always offered it on
+ * the command line; the manager could not, so the safest way in was the one the GUI lacked.
+ *
+ * WHAT THIS SUITE CLOSES: every way naming a variable can fail to produce a storable credential is
+ * refused AT THE FIELD, and the refusal names the variable. The class it is guarding against is a
+ * refusal that arrives from `vault.add` two questions later, after the container has torn the flow
+ * down: that is what made the pasted path lose the credential, the name and the scope on a value
+ * the obfuscator could not protect, and the environment path can fail four ways rather than two.
+ *
+ * WHAT IT DOES NOT CATCH: whether the real `process.env` is the environment the operator meant.
+ * `readEnv` is injected here, deliberately, because a test that wrote `process.env` would leak that
+ * variable into every file that ran after it. The default wiring to `process.env` is asserted below
+ * by the ONE case that reads a variable this process really has.
+ */
+describe("SecretAddFlow reading a credential out of the environment", () => {
+	const ENV_VALUE = "ghp_FromTheEnvironment_71c4";
+	const env = (variables: Record<string, string>) => (variable: string) => variables[variable];
+
+	it("asks for the variable's name, unmasked, and says so", () => {
+		// UNMASKED IS THE POINT, and it is the one field here that must not be hidden. A variable name
+		// is not a credential; masking it would make a typo in `GITHUB_TOEKN` indistinguishable from
+		// the variable being unset, which are the two failures this step exists to tell apart.
+		const flow = new SecretAddFlow({ source: "env", readEnv: env({}) });
+		expect(flow.step).toBe("env");
+		expect(flow.field).toEqual({
+			step: "env",
+			title: "New secret: name the environment variable",
+			hint: "The variable's NAME, not its value: veyyon reads the credential out of its own environment, so nothing secret is typed or drawn. This field is not masked, because a variable name is not a credential.",
+			masked: false,
+		});
+	});
+
+	it("reads the variable and carries it into the plan", () => {
+		// The plan says WHERE the value came from, which is what lets the card's confirmation name the
+		// variable. Without it an operator who read the wrong variable has stored the wrong credential
+		// and the only screen that could have said so said "Stored #NAME#" like any other add.
+		const flow = new SecretAddFlow({ source: "env", readEnv: env({ GITHUB_TOKEN: ENV_VALUE }) });
+		flow.submit("GITHUB_TOKEN");
+		expect(flow.step).toBe("name");
+		flow.submit("deploy key");
+		flow.submit("project");
+		expect(flow.plan).toEqual({ name: "DEPLOY_KEY", value: ENV_VALUE, scope: "project", fromEnv: "GITHUB_TOKEN" });
+	});
+
+	it("keeps the variable's bytes verbatim", () => {
+		// A credential exported by another tool legitimately carries a trailing newline, and a trimmed
+		// copy authenticates against nothing. The pasted path keeps bytes for the same reason.
+		const raw = `${ENV_VALUE}\n`;
+		const flow = new SecretAddFlow({ source: "env", readEnv: env({ TOKEN: raw }) });
+		flow.submit("TOKEN");
+		flow.submit("");
+		flow.submit("");
+		expect(flow.plan?.value).toBe(raw);
+	});
+
+	it("trims the variable NAME, because a stray space is not part of it", () => {
+		// The name is typed, so it collects the spaces typing collects. `env["TOKEN "]` is not `TOKEN`,
+		// and refusing a variable the operator can see in their shell would be indistinguishable from
+		// the variable being unset.
+		const flow = new SecretAddFlow({ source: "env", readEnv: env({ TOKEN: ENV_VALUE }) });
+		flow.submit("  TOKEN  ");
+		expect(flow.refusal).toBeNull();
+		expect(flow.step).toBe("name");
+	});
+
+	/**
+	 * THE FOUR WAYS THIS STEP CAN FAIL, each refused here rather than at the write.
+	 *
+	 * Named as a table so a fifth failure mode added to `#submitEnv` without a row is visible as a
+	 * gap in one place, rather than as four tests that happen to exist and a fifth that does not.
+	 */
+	const REFUSALS: readonly {
+		readonly why: string;
+		readonly variables: Record<string, string>;
+		readonly typed: string;
+		readonly refusal: string;
+	}[] = [
+		{ why: "nothing was typed", variables: {}, typed: "   ", refusal: EMPTY_ENV_NAME_REFUSAL },
+		{
+			why: "the variable is unset",
+			variables: {},
+			typed: "GITHUB_TOEKN",
+			refusal: missingEnvRefusal("GITHUB_TOEKN"),
+		},
+		{ why: "the variable is empty", variables: { TOKEN: "   " }, typed: "TOKEN", refusal: emptyEnvRefusal("TOKEN") },
+		{
+			why: "the value is too short to protect",
+			variables: { TOKEN: "ab" },
+			typed: "TOKEN",
+			refusal: SHORT_VALUE_REFUSAL,
+		},
+	];
+
+	for (const { why, variables, typed, refusal } of REFUSALS) {
+		it(`refuses, stays on the step, and stores nothing when ${why}`, () => {
+			const flow = new SecretAddFlow({ source: "env", readEnv: env(variables) });
+			flow.submit(typed);
+			expect(flow.refusal).toBe(refusal);
+			expect(flow.step).toBe("env");
+			expect(flow.plan).toBeUndefined();
+		});
+	}
+
+	it("names the variable in the refusals that are about a variable", () => {
+		// The one refusal in this module that echoes what was typed. Hiding it leaves "something is not
+		// set" on screen, which an operator cannot act on: the whole diagnosis is which name was read.
+		expect(missingEnvRefusal("GITHUB_TOEKN")).toContain("GITHUB_TOEKN");
+		expect(emptyEnvRefusal("GITHUB_TOEKN")).toContain("GITHUB_TOEKN");
+		// And they are DIFFERENT sentences: "unset" and "set but empty" are different mistakes with
+		// different fixes, and one sentence for both sends half of the operators to the wrong shell.
+		expect(missingEnvRefusal("TOKEN")).not.toBe(emptyEnvRefusal("TOKEN"));
+	});
+
+	it("recovers from a refusal without restarting the flow", () => {
+		// A refusal that cost the operator the flow is the defect the value step was already fixed for.
+		// The corrected variable is read on the spot.
+		const flow = new SecretAddFlow({ source: "env", readEnv: env({ GITHUB_TOKEN: ENV_VALUE }) });
+		flow.submit("GITHUB_TOEKN");
+		flow.submit("GITHUB_TOKEN");
+		expect(flow.refusal).toBeNull();
+		flow.submit("");
+		flow.submit("");
+		expect(flow.plan?.value).toBe(ENV_VALUE);
+	});
+
+	it("never lets the value it read reach a rendered string", () => {
+		// The same containment rule the pasted path is held to, asserted on the path where the operator
+		// never saw the value: a leak here is worse, because nothing on screen would look wrong.
+		const flow = new SecretAddFlow({ source: "env", readEnv: env({ TOKEN: ENV_VALUE }) });
+		const seen: string[] = [];
+		const capture = (): void => {
+			seen.push(flow.step, flow.scope, ...flow.scopeChoices);
+			if (flow.refusal !== null) seen.push(flow.refusal);
+			const field = flow.field;
+			if (field !== undefined) seen.push(field.step, field.title, field.hint);
+		};
+		capture();
+		flow.submit("TOKEN");
+		capture();
+		flow.submit("deploy key");
+		capture();
+		flow.submit("project");
+		capture();
+		expect(seen.length).toBeGreaterThan(0);
+		for (const text of seen) {
+			expect(text).not.toContain(ENV_VALUE);
+			expect(text).not.toContain("ghp_");
+		}
+		expect(flow.plan?.value).toBe(ENV_VALUE);
+	});
+
+	it("reads the real process environment when nothing is injected", () => {
+		// The default wiring, proven against a variable every process has rather than one this test
+		// exports: writing `process.env` here would leak into every file that runs afterwards.
+		process.env.PATH ??= "/usr/bin";
+		const flow = new SecretAddFlow({ source: "env" });
+		flow.submit("PATH");
+		expect(flow.refusal).toBeNull();
+		flow.submit("");
+		flow.submit("");
+		expect(flow.plan?.value).toBe(process.env.PATH);
+		expect(flow.plan?.fromEnv).toBe("PATH");
+	});
+});
+
+/**
+ * What every source has in common, driven over ADD_FLOW_SOURCES rather than over the two anybody
+ * remembered.
+ *
+ * WHY IT IS DERIVED: a third source added to the flow reaches these same name and scope steps, and
+ * the failure mode is that it reaches them slightly differently. Deriving the rows from the exported
+ * list means such a source has no test row, so `FIRST_ANSWER` returns `undefined` and the suite goes
+ * red until somebody records what it answers. A hardcoded pair of sources would stay green.
+ */
+describe("every add source reaches the same questions", () => {
+	const ENV_VALUE = "ghp_SourceParityValue_44de";
+	/** How each source answers its own first question, and what a submitted first answer stores. */
+	const FIRST_ANSWER: Partial<Record<AddFlowSource, { readonly answer: string; readonly stored: string }>> = {
+		paste: { answer: ENV_VALUE, stored: ENV_VALUE },
+		env: { answer: "TOKEN", stored: ENV_VALUE },
+	};
+	const flowFor = (source: AddFlowSource): SecretAddFlow =>
+		new SecretAddFlow({ source, readEnv: variable => (variable === "TOKEN" ? ENV_VALUE : undefined) });
+
+	for (const source of ADD_FLOW_SOURCES) {
+		const first = FIRST_ANSWER[source];
+		it(`asks ${source} for its own first answer, then the name, then the scope`, () => {
+			// A source with no row here is a source nobody has said anything about. That is the failure
+			// this expectation is for: it fires the moment ADD_FLOW_SOURCES grows.
+			expect(first).toBeDefined();
+			if (first === undefined) return;
+			const flow = flowFor(source);
+			const steps = [flow.step];
+			for (const answer of [first.answer, "deploy key", "project"]) {
+				flow.submit(answer);
+				steps.push(flow.step);
+			}
+			expect(steps.slice(1)).toEqual(["name", "scope", "done"]);
+			expect(flow.plan?.value).toBe(first.stored);
+			expect(flow.plan?.name).toBe("DEPLOY_KEY");
+			expect(flow.plan?.scope).toBe("project");
+		});
+
+		it(`treats a back at ${source}'s first question as nothing`, () => {
+			// The container reads a back at the first step as cancel. A source that stepped somewhere
+			// else would leave the card showing a field with no question behind it.
+			const flow = flowFor(source);
+			const opened = flow.step;
+			flow.back();
+			expect(flow.step).toBe(opened);
+			expect(flow.field?.step).toBe(opened);
+		});
+
+		it(`returns from the name step to ${source}'s own first question`, () => {
+			// THE DEFECT THIS CLOSES: back was hardcoded to the masked value field, so an operator who
+			// mistyped a variable name and pressed escape was handed a masked field asking for a
+			// credential they had deliberately chosen never to type.
+			expect(first).toBeDefined();
+			if (first === undefined) return;
+			const flow = flowFor(source);
+			const opened = flow.step;
+			flow.submit(first.answer);
+			flow.back();
+			expect(flow.step).toBe(opened);
+			expect(flow.field?.step).toBe(opened);
+		});
+
+		it(`defaults ${source} to the ${DEFAULT_ADD_SCOPE} scope`, () => {
+			expect(first).toBeDefined();
+			if (first === undefined) return;
+			const flow = flowFor(source);
+			expect(flow.scope).toBe(DEFAULT_ADD_SCOPE);
+			expect(flow.scopeChoices).toEqual(VAULT_SCOPES);
+			flow.submit(first.answer);
+			flow.submit("");
+			flow.submit("");
+			expect(flow.plan?.scope).toBe(DEFAULT_ADD_SCOPE);
+		});
+	}
 });

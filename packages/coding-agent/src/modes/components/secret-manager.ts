@@ -104,7 +104,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { SecretAddFlow } from "./secret-add-flow";
+import { type AddFlowSource, SecretAddFlow } from "./secret-add-flow";
 import { SecretDetailPane } from "./secret-detail-pane";
 import { SecretHelpOverlay } from "./secret-help-overlay";
 import { describeSort, nextSortKey, shapeSecretRows } from "./secret-list-shaping";
@@ -202,6 +202,12 @@ export interface SecretManagerDeps {
 	reveal?: boolean;
 	/** Clock for the EXPIRES column, so a test can pin what "3d left" means. */
 	now?: () => number;
+	/**
+	 * How `f` reads the environment, injected for the same reason `/secret --from-env` injects it:
+	 * a test that proved this path by writing `process.env` would leak that variable into every file
+	 * that runs after it. Defaults to the real environment, which is all production wants.
+	 */
+	readEnv?: (variable: string) => string | undefined;
 }
 
 /**
@@ -215,11 +221,27 @@ export interface SecretManagerDeps {
  * and denied by the footer, on the only screen a new operator ever sees first.
  *
  * `a add` is unconditional because it is the one action that is ALWAYS available: it needs no row,
- * and on an empty vault it is the only thing left to do. `? keys` is unconditional for the same
- * reason it is in the Log view's footer, which is that the key map is where the rest of the keys
- * (`m` move, `i` detail, `s` sort, `/` search) are documented. Those stay out of this footer
- * deliberately: restating them here would duplicate the map and wrap the footer onto three rows on
- * a 40-column card, spending the table's budget to say something `?` already says completely.
+ * and on an empty vault it is the only thing left to do. `f from env` sits beside it because it is
+ * the same action with the safest source, and until it existed the manager could not reach the one
+ * entry form where the credential is never typed and never drawn: `/secret --from-env VAR` offered
+ * it on the command line and the GUI did not. `? keys` is unconditional for the same reason it is in
+ * the Log view's footer, which is that the key map is where the rest of the keys (`m` move, `i`
+ * detail, `s` sort, `/` search) are documented. Those stay out of this footer deliberately:
+ * restating them here would duplicate the map and wrap the footer onto a further row on a
+ * 40-column card, spending the table's budget to say something `?` already says completely.
+ *
+ * THE FOOTER LISTS ACTIONS, AND NAVIGATION IS NOT ONE. `up/down navigate` used to lead the band
+ * whenever a row existed, and it was the widest chip in it while being the one control an operator
+ * tries without being told. Adding `f from env` ran the band onto a third row at every width, which
+ * costs a row of the table on a card whose complaint is that it shows too little; dropping the
+ * navigation hint pays for the new action and leaves the band at two rows exactly where it was. The
+ * keys are still documented, in the key map, as `up/down, j/k`, next to `pgup/pgdn` which was never
+ * in the footer either.
+ *
+ * That is a DELIBERATE divergence from the selectors, which all lead with `up/down navigate`. Those
+ * are three-chip footers over a list whose only interaction is moving the cursor. This is an
+ * eleven-chip band over a table that is also clickable, and it is the only footer here in which the
+ * hint competes with actions for room rather than sitting beside them.
  *
  * THE ESCAPE CHIP SAYS `back`, NOT `close`. Both the key and the chip run {@link
  * SecretManager#dismiss}, which peels one level per press — a log search, then the credential the
@@ -243,8 +265,8 @@ function secretShortcuts(row: ManagerRow | undefined): readonly ModalShortcut[] 
 						{ label: "u uses", clickable: true, id: "uses" },
 					];
 	return [
-		...(row === undefined ? [] : [{ label: "up/down navigate" }]),
 		{ label: "a add", clickable: true, id: "add" },
+		{ label: "f from env", clickable: true, id: "add-from-env" },
 		...rowActions,
 		{ label: "? keys", clickable: true, id: "help" },
 		{ label: "left/right view" },
@@ -857,6 +879,10 @@ class SecretTablePane implements Component {
 			theme.fg("muted", "  Nothing stored."),
 			"",
 			theme.fg("dim", "  Press a to store a credential, and it lands here."),
+			// Named on the ONE screen that has nothing else to read, and named beside `a` because the
+			// two are the same action with different sources. The footer offers both, and prose that
+			// mentioned only `a` would leave the other chip looking like decoration.
+			theme.fg("dim", "  Press f to read one out of an environment variable instead."),
 			theme.fg("dim", "  The model spends it by writing the #NAME# placeholder,"),
 			theme.fg("dim", "  and the value is never shown again, including on this card."),
 		];
@@ -947,6 +973,7 @@ export class SecretManager extends Container {
 	readonly #terminalHeight: number;
 	readonly #now: () => number;
 	readonly #auditLog: SecretAuditLog | undefined;
+	readonly #readEnv: ((variable: string) => string | undefined) | undefined;
 	readonly #input = new Input();
 	#reveal = new ModalRevealDriver();
 
@@ -971,6 +998,7 @@ export class SecretManager extends Container {
 		this.#terminalHeight = deps.terminalHeight ?? process.stdout.rows ?? 24;
 		this.#auditLog = deps.auditLog;
 		this.#now = deps.now ?? (() => Date.now());
+		this.#readEnv = deps.readEnv;
 		this.#input.prompt = "> ";
 		this.#input.setUseTerminalCursor(false);
 		this.#input.onSubmit = value => this.#submitPrompt(value);
@@ -1296,15 +1324,20 @@ export class SecretManager extends Container {
 	}
 
 	/**
-	 * `a`: store a new credential without leaving the card.
+	 * `a` and `f`: store a new credential without leaving the card.
 	 *
 	 * The flow asks for the VALUE first and the name second. That ordering is the whole reason
 	 * this runs through `SecretAddFlow` rather than a pair of prompts written here: asking the
 	 * name first is what once stored the literal string `GITHUB_TOKEN` as a live credential,
 	 * because a masked field opened before any value was given reads as a request for the name.
+	 *
+	 * `f` answers that first question with an environment variable instead, which is the only entry
+	 * form where the credential never reaches the screen or the input buffer. One function for both,
+	 * with the source as an argument, because everything after the first field is identical and a
+	 * second copy of the name and scope steps would drift.
 	 */
-	#startAdd(): void {
-		this.#addFlow = new SecretAddFlow();
+	#startAdd(source: AddFlowSource = "paste"): void {
+		this.#addFlow = new SecretAddFlow({ source, ...(this.#readEnv ? { readEnv: this.#readEnv } : {}) });
 		// The first field is opened through the queue so `settled()` covers it, the same way every
 		// later field is opened from inside the previous field's submit.
 		this.#run(() => this.#advanceAdd());
@@ -1313,9 +1346,13 @@ export class SecretManager extends Container {
 	/**
 	 * Show the add flow's current field, or store the credential once it has them all.
 	 *
-	 * One prompt is reused across the three steps rather than three prompts being nested, so
-	 * escape always means the same thing and the field cannot be left holding a value from a
-	 * step you have already passed.
+	 * One prompt is reused across every step rather than the steps being nested, so escape always
+	 * means the same thing and the field cannot be left holding a value from a step you have already
+	 * passed.
+	 *
+	 * The confirmation SAYS WHERE THE VALUE CAME FROM when it came from the environment. It is the
+	 * only entry form whose value the operator never saw, so naming the variable is the one chance to
+	 * catch having read the wrong one before the credential is spent under a placeholder.
 	 */
 	async #advanceAdd(): Promise<void> {
 		const flow = this.#addFlow;
@@ -1331,7 +1368,8 @@ export class SecretManager extends Container {
 			// `settled()` had already resolved.
 			await this.#mutate(async () => {
 				const stored = await this.#vault.add({ name: plan.name, value: plan.value, scope: plan.scope });
-				return `Stored ${buildNamePlaceholder(stored.name)} in the ${plan.scope} vault.`;
+				const source = plan.fromEnv === undefined ? "" : ` from $${plan.fromEnv}`;
+				return `Stored ${buildNamePlaceholder(stored.name)}${source} in the ${plan.scope} vault.`;
 			});
 			return;
 		}
@@ -2133,6 +2171,9 @@ export class SecretManager extends Container {
 				case "add":
 					this.#startAdd();
 					break;
+				case "add-from-env":
+					this.#startAdd("env");
+					break;
 				case "copy":
 					this.#copySelected();
 					break;
@@ -2292,6 +2333,9 @@ export class SecretManager extends Container {
 				return;
 			case "a":
 				this.#startAdd();
+				return;
+			case "f":
+				this.#startAdd("env");
 				return;
 			case "m":
 				this.#requestScopeMove();
