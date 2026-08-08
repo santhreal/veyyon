@@ -548,14 +548,14 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.agents` | Agents | record | `{}` | Which agent types the model may choose, and the model, effort, and recursion limit each one uses. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. Per-agent values win over the blanket Subagent Model, Subagent Effort, and Max Nested Spawn Depth settings; blank inherits. |
+| `subagent.agents` | Agents | record | `{}` | Which agent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. What each one RUNS is not set here: Subagent Model and Subagent Effort decide that for every subagent at once, and an agent that needs its own model or effort declares it in its own file. |
 
 ### Models
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.model` | Subagent Model | modelChain | _(unset)_ | Models for every enabled subagent that has no per-agent model of its own, tried in order: the rest are used when an earlier one errors. Unset means inherit: subagents follow the session's live main model. A per-agent model in the Agents table wins over this. |
-| `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Thinking level for every enabled subagent that has no per-agent effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. |
+| `subagent.model` | Subagent Model | modelChain | _(unset)_ | Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset. |
+| `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. |
 | `subagent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. |
 
 ### Limits
@@ -594,6 +594,12 @@ veyyon config get compaction.threshold
 | `irc.timeoutMs` | IRC Timeout | number | `120000` | Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout. IRC is how a parent and its subagents talk, which is why it is configured here. |
 
 ## Providers
+
+### Accounts
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `accounts.loadBalancing` | Account Load Balancing | boolean | `false` | When one account hits its quota or rate limit, continue on another account of the same provider. Off: the session waits for that account's window. A revoked account always fails over regardless, with a notice. |
 
 ### Services
 
@@ -718,4 +724,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-337 settings.
+338 settings.

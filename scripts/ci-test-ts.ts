@@ -384,6 +384,10 @@ export const repoScriptTests = [
 	// Reads manifests against shipped imports, so it catches a break that only an
 	// installer outside this workspace would ever see.
 	"scripts/a-published-package-declares-what-it-imports.test.ts",
+	// The privacy scrub's gate: no source comment, doc, or changelog line credits, quotes, or dates a
+	// chat message. It landed on disk unwired, which for a scan-the-whole-tree gate means the scrub it
+	// enforces silently stops being enforced on the next commit.
+	"scripts/no-attribution-in-the-tree.test.ts",
 	// Seven suites that were on disk, tracked, and in no runner. They are all
 	// release and changelog gates, which is the worst place for a suite to be
 	// silently unrun: the thing they guard is only exercised on the day a release
