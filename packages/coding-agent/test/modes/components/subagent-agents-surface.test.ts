@@ -79,12 +79,36 @@ describe("subagent.agents settings surface", () => {
 	});
 
 	/**
+	 * The right-hand pane of one rendered line, with the tab sidebar cut off.
+	 *
+	 * WHY THIS EXISTS, and why a whole-line search is a trap. The sidebar and the pane share a rendered
+	 * LINE: `│ › Subagents        │    Nested spawn depth        Two nested levels     │`. The sidebar
+	 * draws its own `›` for the selected TAB, so `line.includes("›")` is true for whichever pane row
+	 * happens to sit on the Subagents line, and every helper that located a row that way reported it as
+	 * selected without ever moving the cursor. That is not hypothetical: this case passed for months while
+	 * pressing Enter on the wrong row, toggling `Enabled` instead of opening the depth picker, and its
+	 * assertion on the selected value was reading the sidebar's marker.
+	 */
+	function paneOf(line: string): string {
+		const columns = stripVTControlCharacters(line).split("│");
+		return columns.length >= 4 ? columns[2]! : "";
+	}
+
+	function paneLines(component: SettingsSelectorComponent): string[] {
+		return component.render(120).map(paneOf);
+	}
+
+	/**
 	 * Opening a picker must highlight the value already stored on the agent row.
 	 * Starting every picker on Inherit makes an explicit override look inactive
 	 * and lets Enter erase it without the operator moving the cursor.
 	 */
 	it("opens the recursion picker on the persisted per-agent override", async () => {
 		settings.set("subagent.agents", { designer: { maxNestedSpawnDepth: 2 } });
+		// Agent discovery is async and reports completion by asking for a re-render, so wait on that
+		// callback rather than on the clock: the frame is checked once per request until the roster is
+		// there, and a discovery that never reports fails as a test timeout instead of a flaky sleep.
+		let rendered = Promise.withResolvers<void>();
 		const component = new SettingsSelectorComponent(
 			{
 				availableThinkingLevels: [],
@@ -95,31 +119,25 @@ describe("subagent.agents settings surface", () => {
 				cwd: process.cwd(),
 				modelRegistry: {} as ModelRegistry,
 				availableModels: [],
+				requestRender: () => rendered.resolve(),
 			},
 			{ onChange: () => {}, onCancel: () => {} },
 		);
 		component.openTab("subagents");
 		expect(component.selectSetting("subagent.agents")).toBe(true);
 		component.handleInput("\n");
-		const deadline = Date.now() + 4_000;
-		while (!component.render(120).some(line => stripVTControlCharacters(line).includes("designer"))) {
-			if (Date.now() >= deadline) {
-				throw new Error(
-					`Agent settings did not finish discovery:\n${component.render(120).map(stripVTControlCharacters).join("\n")}`,
-				);
-			}
-			await Bun.sleep(10);
+		while (!paneLines(component).some(line => line.includes("designer"))) {
+			await rendered.promise;
+			rendered = Promise.withResolvers<void>();
 		}
+
 		// Reach the rows by name rather than by a press count. The roster is alphabetical,
 		// so renaming any agent reorders it, and a fixed number of Down presses silently
 		// configured whichever agent happened to sort first instead of the one with the
 		// persisted override.
 		const selectRow = (needle: string): void => {
 			for (let step = 0; step < 32; step++) {
-				const line = component
-					.render(120)
-					.map(stripVTControlCharacters)
-					.find(candidate => candidate.includes(needle));
+				const line = paneLines(component).find(candidate => candidate.includes(needle));
 				if (line?.includes("›")) return;
 				component.handleInput("\u001b[B");
 			}
@@ -131,10 +149,15 @@ describe("subagent.agents settings surface", () => {
 		selectRow("Nested spawn depth");
 		component.handleInput("\n");
 
-		const frame = component.render(120).map(stripVTControlCharacters);
+		const frame = paneLines(component);
+		// The picker is open, which the row it replaced no longer being on screen is what proves: the
+		// options are the depths themselves, so finding "Two nested levels" on the editor page would
+		// have matched the row's own VALUE column and said nothing about a picker.
+		expect(frame.some(line => line.includes("Nested spawn depth") && line.includes("Enabled"))).toBe(false);
 		const selected = frame.find(line => line.includes("Two nested levels"));
 		expect(selected).toContain("›");
 		const inherit = frame.find(line => line.includes("Inherit"));
+		expect(inherit).toBeDefined();
 		expect(inherit).not.toContain("›");
 	});
 });

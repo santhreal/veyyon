@@ -318,19 +318,30 @@ describe("an ACP-reachable remedy names something an ACP client can run", () => 
 		]);
 	});
 
-	it("/thinking names the config key beside the settings screen", async () => {
+	/**
+	 * The usage line names `/effort`, the primary spelling, whichever spelling the client typed. That
+	 * is the point of the rename rather than an oversight in it: one string is built from the command's
+	 * canonical declaration, so a client cannot be told two different names for one knob, and a reply
+	 * that echoed the deprecated spelling back would keep teaching it. `/thinking` stays dispatchable
+	 * forever, which is what the equality below pins: a pure alias, not a second implementation with
+	 * its own wording to drift.
+	 */
+	it("/effort names the config key beside the settings screen, under either spelling", async () => {
 		// The ladder comes from the session's own model through formatThinkingLevelChoices,
 		// not from a runtime callback, so there is nothing to stub here: what the command
 		// offers is what the model accepts.
-		const h = acpRuntime({ configuredThinkingLevel: () => undefined });
-
-		await executeAcpBuiltinSlashCommand("/thinking", h.runtime);
-
-		expect(h.said).toEqual([
+		const expected =
 			"Effort: auto (this session). Choose one of: off, auto, minimal, low, medium, high, xhigh, max. " +
-				"Usage: /thinking <level>. " +
-				'To change the saved default, use /settings → Model → Default Effort, or run: veyyon config set defaultEffort \'{"*":"high"}\'.',
-		]);
+			"Usage: /effort <level>. " +
+			'To change the saved default, use /settings → Model → Default Effort, or run: veyyon config set defaultEffort \'{"*":"high"}\'.';
+
+		const primary = acpRuntime({ configuredThinkingLevel: () => undefined });
+		await executeAcpBuiltinSlashCommand("/effort", primary.runtime);
+		expect(primary.said).toEqual([expected]);
+
+		const alias = acpRuntime({ configuredThinkingLevel: () => undefined });
+		await executeAcpBuiltinSlashCommand("/thinking", alias.runtime);
+		expect(alias.said).toEqual([expected]);
 	});
 
 	it("/cwd names the config key beside the settings path", async () => {
