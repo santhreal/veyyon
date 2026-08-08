@@ -153,6 +153,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 export type StatusLineSegmentId =
 	| "pi"
 	| "model"
+	| "account"
 	| "mode"
 	| "path"
 	| "git"

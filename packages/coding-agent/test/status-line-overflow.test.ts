@@ -80,6 +80,7 @@ function createCtx(overrides?: { pathMaxLength?: number; branch?: string | null 
 			status: null,
 			pr: null,
 		},
+		account: null,
 		usage: null,
 	};
 }

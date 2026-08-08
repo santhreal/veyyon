@@ -75,6 +75,7 @@ function createPathContext(): SegmentContext {
 			status: null,
 			pr: null,
 		},
+		account: null,
 		usage: null,
 	};
 }

@@ -12,7 +12,13 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 		// `profile` leads: it hides on the built-in "default" profile, so a vanilla
 		// user sees nothing, but any named sandbox ("work", "rec") reads first, so you
 		// always know which config, sessions, and keys are live.
-		leftSegments: ["profile", "model", "mode", "path", "git", "context_pct"],
+		//
+		// `account` is in every preset, including `minimal`, on the same terms: it is silent for a
+		// provider with one stored credential, so a single-account user pays nothing for it, and it
+		// names the serving account the moment there are two. Load balancing is off by default, so
+		// one of those accounts is being spent and the others are not; which one that is cannot be
+		// something you have to open a card to find out.
+		leftSegments: ["profile", "model", "account", "mode", "path", "git", "context_pct"],
 		rightSegments: ["session_name"],
 		segmentOptions: {
 			model: { showThinkingLevel: true },
@@ -22,7 +28,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	minimal: {
-		leftSegments: ["profile", "path", "git"],
+		leftSegments: ["profile", "account", "path", "git"],
 		rightSegments: ["session_name", "mode", "context_pct"],
 		segmentOptions: {
 			path: { abbreviate: true, maxLength: 30 },
@@ -31,7 +37,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	compact: {
-		leftSegments: ["profile", "model", "mode", "git", "pr"],
+		leftSegments: ["profile", "model", "account", "mode", "git", "pr"],
 		rightSegments: ["session_name", "cost", "context_pct"],
 		segmentOptions: {
 			model: { showThinkingLevel: false },
@@ -40,7 +46,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	full: {
-		leftSegments: ["pi", "hostname", "profile", "model", "mode", "path", "git", "pr", "subagents"],
+		leftSegments: ["pi", "hostname", "profile", "model", "account", "mode", "path", "git", "pr", "subagents"],
 		rightSegments: [
 			"session_name",
 			"cache_hit",
@@ -63,7 +69,19 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	nerd: {
 		// Full preset with all Nerd Font icons
-		leftSegments: ["pi", "hostname", "profile", "model", "mode", "path", "git", "pr", "session", "subagents"],
+		leftSegments: [
+			"pi",
+			"hostname",
+			"profile",
+			"model",
+			"account",
+			"mode",
+			"path",
+			"git",
+			"pr",
+			"session",
+			"subagents",
+		],
 		rightSegments: [
 			"session_name",
 			"token_in",
@@ -87,7 +105,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	ascii: {
 		// No Nerd Font dependencies
-		leftSegments: ["profile", "model", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "model", "account", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		segmentOptions: {
 			model: { showThinkingLevel: true },
@@ -98,7 +116,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	custom: {
 		// User-defined - these are just defaults that get overridden
-		leftSegments: ["profile", "model", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "model", "account", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		segmentOptions: {},
 	},
