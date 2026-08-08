@@ -1503,8 +1503,11 @@ export class SelectorController {
 						dialog.showProgress(MANUAL_LOGIN_TIP);
 					}
 				},
-				onPrompt: (prompt: { message: string; placeholder?: string }) =>
-					dialog.showPrompt(prompt.message, prompt.placeholder),
+				// The whole prompt, not two of its fields: the flow that asks declares whether the answer
+				// is a credential (`secret`), and the dialog masks the input from that rather than
+				// guessing from the message text.
+				onPrompt: (prompt: { message: string; placeholder?: string; secret?: boolean }) =>
+					dialog.showPrompt(prompt),
 				onProgress: (message: string) => {
 					dialog.showProgress(message);
 				},
@@ -1517,6 +1520,10 @@ export class SelectorController {
 				},
 			});
 			this.ctx.session.modelRegistry.refreshInBackground();
+			// Naming happens here, while the operator still knows which account this was. Doing it from
+			// the account card instead asks them to recognize it later, among the others, which is the
+			// moment the name would have helped.
+			const accountName = await this.#offerAccountName(dialog, providerId, providerLabel, identity?.credentialId);
 			const block = new TranscriptBlock();
 			// Name the account (and Anthropic organization) that was stored so a
 			// login that lands on an unintended account/subscription is visible
@@ -1532,6 +1539,10 @@ export class SelectorController {
 				),
 			);
 			block.addChild(new Text(theme.fg("dim", `Credentials saved to ${getActiveAuthDbPath()}`), 1, 0));
+			if (accountName) {
+				const named = `Named "${accountName}". Change it any time with /account`;
+				block.addChild(new Text(theme.fg("dim", named), 1, 0));
+			}
 			this.ctx.present(block);
 			return true;
 		} catch (error: unknown) {
@@ -1548,6 +1559,37 @@ export class SelectorController {
 			}
 			restoreEditor();
 		}
+	}
+
+	/**
+	 * Offer to name the account a login just stored, and return the name that was kept.
+	 *
+	 * Asked only from the SECOND account for a provider onwards. A lone Anthropic credential is
+	 * unambiguous everywhere it appears, so asking for a nickname there is a step that buys nothing;
+	 * the moment a second one lands, every list that shows them needs a way to tell them apart, and
+	 * the operator knows which is which exactly now. Esc skips, and skipping is not a failure: the
+	 * credential is already stored.
+	 */
+	async #offerAccountName(
+		dialog: LoginDialogComponent,
+		providerId: string,
+		providerLabel: string,
+		credentialId: number | undefined,
+	): Promise<string | undefined> {
+		// No row id means the store could not say which row it wrote, and naming the wrong sibling is
+		// worse than not asking.
+		if (credentialId === undefined) return undefined;
+		const authStorage = this.ctx.session.modelRegistry.authStorage;
+		if (authStorage.listStoredCredentials(providerId).length < 2) return undefined;
+		const name = await dialog.askOptionalName(`Name this ${providerLabel} account (optional)`, "work");
+		if (!name) return undefined;
+		if (!authStorage.setAccountName(providerId, credentialId, name)) {
+			this.ctx.showWarning(
+				`Could not name that account: ${providerLabel} credentials are stored where names cannot be kept`,
+			);
+			return undefined;
+		}
+		return name;
 	}
 
 	async #handleCredentialLogout(providerId: string, account: LogoutAccount): Promise<void> {

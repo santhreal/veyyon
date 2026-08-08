@@ -28,6 +28,14 @@ export type OAuthPrompt = {
 	message: string;
 	placeholder?: string;
 	allowEmpty?: boolean;
+	/**
+	 * The answer is a credential, so a UI MUST NOT echo it.
+	 *
+	 * Declared by the flow that asks, because only it knows what it is asking for: an API key paste
+	 * and a pasted verification code reach the same `onPrompt`, and a UI guessing from the message
+	 * text would be wrong for whichever provider words it differently.
+	 */
+	secret?: boolean;
 };
 
 export type OAuthAuthInfo = {
