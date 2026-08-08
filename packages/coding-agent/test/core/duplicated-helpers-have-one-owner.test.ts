@@ -162,10 +162,20 @@ describe("parseJsonOrYamlByExtension", () => {
 });
 
 describe("formatProviderName", () => {
-	it("title-cases a slug on both separators", () => {
-		expect(formatProviderName("openai")).toBe("Openai");
-		expect(formatProviderName("openai-compat")).toBe("Openai Compat");
-		expect(formatProviderName("z_ai")).toBe("Z Ai");
+	it("gives a known segment the vendor's spelling and title-cases the rest", () => {
+		expect(formatProviderName("openai")).toBe("OpenAI");
+		expect(formatProviderName("openai-compat")).toBe("OpenAI Compat");
+		expect(formatProviderName("z_ai")).toBe("Z AI");
+		expect(formatProviderName("sakana")).toBe("Sakana");
+	});
+
+	/**
+	 * The table is keyed by a provider id a user can type, so it must not answer with anything off
+	 * `Object.prototype`. A record literal rendered `openai-constructor` as the source of `Object`.
+	 */
+	it("does not resolve a segment through the prototype chain", () => {
+		expect(formatProviderName("constructor")).toBe("Constructor");
+		expect(formatProviderName("openai-toString")).toBe("OpenAI ToString");
 	});
 
 	/** Degenerate input is rendered, not crashed on: these strings come from config a user typed. */

@@ -65,6 +65,13 @@ function harness(
 	card: () => string;
 	/** The whole card, ANSI stripped but columns intact, for screen-space mouse arithmetic. */
 	raw: () => string[];
+	/**
+	 * The body pane at one width, its rows joined by a single space.
+	 *
+	 * Wrapping turns one sentence into several rows, so a per-row assertion cannot say whether the
+	 * sentence survived. Joined this way it reads back exactly as written, at any width.
+	 */
+	paneAt: (width: number) => string;
 } {
 	const recorded: Recorded = {
 		used: [],
@@ -88,20 +95,28 @@ function harness(
 		},
 	};
 	const component = new AccountManagerComponent(inventory(rows, options.disabledCause), callbacks, options);
-	const render = (): string[] => component.render(120).map(line => stripVTControlCharacters(line));
+	const paneOf = (width: number): string[] =>
+		component.render(width).map(line => {
+			// A border row carries no `│` at all, so it falls back to the whole row - stripped, because
+			// a raw one puts colour escapes into every failure message this helper produces.
+			const plain = stripVTControlCharacters(line);
+			const cells = plain.split("│");
+			return (cells.length >= 4 ? cells[2] : (cells[1] ?? plain))?.trim() ?? "";
+		});
 	return {
 		component,
 		recorded,
 		// Only the body pane. A whole card row is `│ sidebar │ body │`, and the sidebar carries
 		// every other provider's name, so asserting against full rows matches text this card
 		// merely happens to list beside the accounts under test.
-		frame: () =>
-			render().map(line => {
-				const cells = line.split("│");
-				return (cells.length >= 4 ? cells[2] : (cells[1] ?? line))?.trim() ?? "";
-			}),
-		card: () => render().join("\n"),
-		raw: render,
+		frame: () => paneOf(120),
+		card: () =>
+			component
+				.render(120)
+				.map(line => stripVTControlCharacters(line))
+				.join("\n"),
+		raw: () => component.render(120).map(line => stripVTControlCharacters(line)),
+		paneAt: (width: number) => paneOf(width).join(" ").replace(/\s+/g, " "),
 	};
 }
 
@@ -446,6 +461,92 @@ describe("a long warning is clipped once, not twice", () => {
 		expect(clipped.length).toBeGreaterThan(0);
 		for (const line of clipped) {
 			expect(line.endsWith("\u2026\u2026")).toBe(false);
+		}
+	});
+});
+
+/**
+ * WHY: the card's own prose used to be truncated to the pane width, and the pane is the NARROW half
+ * of the split - the sidebar takes up to 30 columns plus its separator - so on a real terminal every
+ * sentence the card writes itself lost its end. A VHS recording read
+ * `press x again to log out of Groq cr…`, which drops both which credential is about to go and that
+ * `esc` backs out; `shared by every profile and session on thi…`, which drops the load-balancing
+ * state the sentence exists to deliver; and `Anthropic · 3 accounts · 1 needs attenti…`, which cuts
+ * the only clause saying something is wrong.
+ *
+ * The class is "prose the card composes", not "the lines someone recorded", and its invariant is
+ * width-independent: a sentence the card writes is WRAPPED, so it reads back whole at every width the
+ * card renders at. Each test sweeps the width range rather than pinning the one the recording
+ * happened to use, since a single width is exactly what let this ship (the rest of this suite asserts
+ * at 120, where nothing truncates).
+ *
+ * What they do NOT catch, deliberately:
+ *  - text the card RECEIVES. A provider's own failure cause is still clipped at three lines, and the
+ *    test above pins that clip.
+ *  - an account's own head line, where a tag that does not fit is dropped rather than truncated, and
+ *    the identity is clipped last. That is data competing for one row, not a sentence.
+ *  - the `+ add another … account` entry, which is a selectable ROW: its click target and selection
+ *    band are per row, so it is one line by construction.
+ */
+describe("the prose the card writes itself survives a narrow pane", () => {
+	// From the width where the split first has a usable pane up to a wide terminal. `render` is given
+	// the TERMINAL width; the modal takes 90% of it and the sidebar up to 30 of what is left.
+	const WIDTHS = Array.from({ length: 61 }, (_, i) => 80 + i);
+
+	test("the armed logout confirmation names the account and the way out, at every width", () => {
+		const { component, paneAt } = harness(THREE_ACCOUNTS());
+		component.handleInput("x");
+
+		for (const width of WIDTHS) {
+			expect(paneAt(width), `width ${width}`).toContain("press x again to log out of work · esc cancels");
+		}
+	});
+
+	test("the scope line keeps the load-balancing clause, at every width", () => {
+		const off = harness(THREE_ACCOUNTS(), { loadBalancing: false });
+		const on = harness(THREE_ACCOUNTS(), { loadBalancing: true });
+
+		for (const width of WIDTHS) {
+			expect(off.paneAt(width), `off at width ${width}`).toContain(
+				"shared by every profile and session on this machine · quota load balancing off",
+			);
+			expect(on.paneAt(width), `on at width ${width}`).toContain(
+				"shared by every profile and session on this machine · quota load balancing on",
+			);
+		}
+	});
+
+	test("the provider header keeps the attention count, at every width", () => {
+		const { paneAt } = harness(THREE_ACCOUNTS());
+
+		for (const width of WIDTHS) {
+			expect(paneAt(width), `width ${width}`).toContain("Anthropic · 3 accounts · 1 needs attention");
+		}
+	});
+
+	test("the rotation explanation keeps both accounts and the way back, at every width", () => {
+		const { paneAt } = harness([
+			account(1, {
+				name: "work",
+				email: "first@example.com",
+				selectedForProvider: true,
+				blockedUntilMs: NOW + HOUR,
+			}),
+			account(2, { name: "personal", email: "second@example.com", activeForSession: true }),
+		]);
+
+		for (const width of WIDTHS) {
+			const pane = paneAt(width);
+			expect(pane, `width ${width}`).toContain("you chose work, rotated off it onto personal");
+			expect(pane, `width ${width}`).toContain("enter switches back to work · 1h until it unblocks");
+		}
+	});
+
+	test("the empty-provider sentence survives, at every width", () => {
+		const { paneAt } = harness([]);
+
+		for (const width of WIDTHS) {
+			expect(paneAt(width), `width ${width}`).toContain("No accounts stored for this provider yet.");
 		}
 	});
 });

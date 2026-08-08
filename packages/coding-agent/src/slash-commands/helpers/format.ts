@@ -102,15 +102,66 @@ export function formatUsageWindowLine(
 }
 
 /**
- * Render a provider slug the way a person writes it: `openai-compat` becomes `Openai Compat`.
+ * Vendor spellings for the slug segments whose mechanical title case is factually wrong.
+ *
+ * Every value here is the spelling this repo already uses for that vendor, so the account card and
+ * the usage surfaces cannot disagree with the catalog and the CLI help about how a name is written:
+ * `catalogDiscovery.label` in `packages/catalog/src/provider-models/descriptors.ts` ("AIML API",
+ * "CoreWeave Serverless Inference", "DeepSeek", "Hugging Face", "NanoGPT", "NVIDIA", "OpenRouter",
+ * "ZenMux", "xAI Grok OAuth"), the discovery display names ("GitHub Copilot" in
+ * `discovery/github.ts`, "OpenCode" in `discovery/opencode.ts`), and the env-var help in
+ * `cli/args.ts` ("xAI Grok models", "MiniMax models", "z.ai models"). A segment is listed only when
+ * a vendor writes it in a way title case cannot reach; anything else keeps the mechanical rule, so
+ * a new provider slug still renders without an entry here.
+ *
+ * The catalog descriptor is the authority when two in-repo spellings differ, which is why `zai`
+ * resolves to "zAI" (`catalogDiscovery.label`) and not to the "z.ai" of the env-var help: that keeps
+ * one name for one provider, and it matches how `xai` already renders.
+ *
+ * A Map, not an object literal: these keys come from a provider id a user can type into config, and
+ * a plain record answers `constructor` with a function.
+ */
+export const PROVIDER_NAME_SEGMENTS: ReadonlyMap<string, string> = new Map([
+	["ai", "AI"],
+	["aimlapi", "AIML API"],
+	["ams", "AMS"],
+	["cli", "CLI"],
+	["cn", "CN"],
+	["coreweave", "CoreWeave"],
+	["deepseek", "DeepSeek"],
+	["github", "GitHub"],
+	["gitlab", "GitLab"],
+	["huggingface", "Hugging Face"],
+	["litellm", "LiteLLM"],
+	["minimax", "MiniMax"],
+	["nanogpt", "NanoGPT"],
+	["nvidia", "NVIDIA"],
+	["oauth", "OAuth"],
+	["openai", "OpenAI"],
+	["opencode", "OpenCode"],
+	["openrouter", "OpenRouter"],
+	["sgp", "SGP"],
+	["vllm", "vLLM"],
+	["xai", "xAI"],
+	["zai", "zAI"],
+	["zenmux", "ZenMux"],
+]);
+
+/**
+ * Render a provider slug the way a person writes it: `openai-codex` becomes `OpenAI Codex`.
  *
  * Three surfaces showed the same provider name (the `/usage` report, the usage CLI, and the command
  * controller's status line) and each had its own copy of this, so a change to how a provider reads
- * would have landed in one of the three.
+ * would have landed in one of the three. The account manager card joined them, which is where the
+ * mechanical rule became visible as a defect: a card listing every provider read `Openai Codex`,
+ * `Github Copilot`, `Cloudflare Ai Gateway` and `Deepseek`, none of which is how the vendor spells
+ * its own name. Segments the table below knows get that spelling; the rest keep title case.
  */
 export function formatProviderName(provider: string): string {
 	return provider
 		.split(/[-_]/g)
-		.map(part => (part ? part[0].toUpperCase() + part.slice(1) : ""))
+		.map(part =>
+			part ? (PROVIDER_NAME_SEGMENTS.get(part.toLowerCase()) ?? part[0].toUpperCase() + part.slice(1)) : "",
+		)
 		.join(" ");
 }

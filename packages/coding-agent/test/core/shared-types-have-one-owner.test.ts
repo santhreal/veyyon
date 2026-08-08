@@ -238,8 +238,9 @@ const UNIFIED = [
 	},
 	{
 		name: "TodoStatus",
-		owner: "packages/coding-agent/src/tools/todo.ts",
-		resolution: "byte-identical in both copies, which is how the two `TodoItem`s looked interchangeable",
+		owner: "packages/wire/src/index.ts",
+		resolution:
+			"byte-identical in both copies, which is how the two `TodoItem`s looked interchangeable. The union then moved OUT of the coding agent entirely: it is derived from `TODO_STATUS_IS_TERMINAL` in `@veyyon/wire`, so a new status cannot join it without a terminality decision landing beside it, and both renderers of a todo board read the same vocabulary. `tools/todo.ts` and `modes/types.ts` re-export the name and declare nothing",
 	},
 	{
 		name: "Usage",
