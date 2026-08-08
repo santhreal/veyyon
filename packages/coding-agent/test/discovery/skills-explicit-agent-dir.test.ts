@@ -138,20 +138,33 @@ describe("skills honor an explicitly named agent dir", () => {
 		expect(explicit.skills.map(skill => skill.name)).toEqual(["named-plugin-skill"]);
 	});
 
-	test("a project-scoped plugin package survives a redirected load", async () => {
-		// The redirect must move only the PROFILE scope. A package declared in
-		// `<cwd>/.veyyon/settings.json` belongs to the repository, so naming another agent
-		// dir must not drop it: that would trade one silent loss for another.
+	test("a project-declared extension package is not loaded at all, redirected or not", async () => {
+		// This case used to assert the OPPOSITE: that `<cwd>/.veyyon/settings.json#extensions`
+		// survived a redirect, because a package the repository declared belonged to the
+		// repository. That layer is gone (see `listVeyyonExtensionRoots`: the project settings
+		// scope was removed along with the file that fed it), and it went for a good reason - a
+		// checked-in file naming arbitrary package roots had its `skills/`, `commands/`, `rules/`,
+		// `prompts/`, `hooks/`, `tools/` and MCP all scanned, so cloning a repository configured
+		// the agent. The guard is kept pointing the other way rather than deleted: a project
+		// settings file that starts being read again is a re-opened hole, and it has to fail here.
 		const projectPackage = await writePluginPackage(projectDir, "project-pkg", "project-plugin-skill");
 		await fs.mkdir(path.join(projectDir, ".veyyon"), { recursive: true });
 		await fs.writeFile(
 			path.join(projectDir, ".veyyon", "settings.json"),
 			JSON.stringify({ extensions: [projectPackage] }),
 		);
+		const namedPackage = await writePluginPackage(namedRoot, "named-pkg", "named-plugin-skill");
+		await declareExtensions(namedProfile, [namedPackage]);
 
-		const { skills } = await loadSkills({ cwd: projectDir, agentDir: namedProfile });
+		const redirected = await loadSkills({ cwd: projectDir, agentDir: namedProfile });
+		const defaulted = await loadSkills({ cwd: projectDir });
 
-		expect(skills.map(skill => skill.name)).toEqual(["project-plugin-skill"]);
+		// The named profile's own package still loads, so the project package's absence is a scope
+		// decision rather than a loader that happened to return nothing.
+		expect(redirected.skills.map(skill => skill.name)).toEqual(["named-plugin-skill"]);
+		// And the active profile declares no packages, so the default path sees the project's file
+		// and takes nothing from it either.
+		expect(defaulted.skills.map(skill => skill.name)).toEqual([]);
 	});
 
 	test("a named agent dir with no skills at all yields nothing, never the active profile's", async () => {
