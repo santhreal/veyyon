@@ -16,7 +16,7 @@ import { type AccountRow, accountDisplayLabel } from "@veyyon/coding-agent/sessi
 function fullRow(overrides: Partial<AccountRow> = {}): AccountRow {
 	return {
 		provider: "openai-codex",
-		providerLabel: "Openai Codex",
+		providerLabel: "OpenAI Codex",
 		credentialId: 42,
 		type: "oauth",
 		name: "work",

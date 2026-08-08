@@ -363,17 +363,26 @@ describe("executeJs", () => {
 		expect(result.exitCode).toBe(0);
 		expect(getStatusEvents(result)).toHaveLength(2);
 		expect(getJsonData(result)).toEqual({ wide: "wide", limited: "limited" });
+		// Five arguments, not three: the bridge hands the tool its abort signal, no progress
+		// callback, and the SESSION'S tool context, which is what makes an eval call answer to the
+		// approval policy rather than bypassing it. This fake session exposes no context, so the
+		// last two positions are undefined - asserted rather than omitted, because a bridge that
+		// stopped passing the context would otherwise still match.
 		expect(execute).toHaveBeenNthCalledWith(
 			1,
 			expect.stringMatching(/^js-read-/),
 			{ path: "artifact://15:raw:1-1400", [INTENT_FIELD]: "js prelude" },
 			expect.any(AbortSignal),
+			undefined,
+			undefined,
 		);
 		expect(execute).toHaveBeenNthCalledWith(
 			2,
 			expect.stringMatching(/^js-read-/),
 			{ path: "artifact://15:raw:1-2", [INTENT_FIELD]: "js prelude" },
 			expect.any(AbortSignal),
+			undefined,
+			undefined,
 		);
 	});
 

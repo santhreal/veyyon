@@ -259,7 +259,7 @@ export class AccountManagerComponent implements Component {
 			this.#inventory,
 			// `formatProviderName`, the SAME rule the inventory labels a populated provider with, not
 			// the catalog's marketing name. One list cannot label the same provider two ways depending
-			// on whether you happen to hold an account: `openai-codex` read as "Openai Codex" once it
+			// on whether you happen to hold an account: `openai-codex` read as "OpenAI Codex" once it
 			// had a credential and "ChatGPT Plus/Pro (Codex Sub…" while it did not. The catalog names
 			// also carry parenthetical model lists that only ever render truncated in a 30-column
 			// sidebar, so the short form is both consistent and more readable here.
@@ -686,26 +686,32 @@ export class AccountManagerComponent implements Component {
 		const entry = this.#activeEntry();
 		if (!entry) return [{ text: theme.fg("muted", "No providers available") }];
 		const rows = this.#rows();
-		const lines: BodyLine[] = [
-			{ text: theme.bold(truncateToWidth(providerHeaderLine(entry.label, rows), width)) },
-			// The scope, stated once per provider, because the choice below is not what a user
-			// assumes. Every account here is shared by every profile and every session on this
-			// machine, so pressing enter changes what a different terminal will use too. The
-			// load-balancing state rides the same line: it is the answer to "what happens when this
-			// account runs out", which is the next question the bars below provoke.
-			{
-				text: theme.fg(
-					"dim",
-					truncateToWidth(
-						`shared by every profile and session on this machine · quota load balancing ${
-							this.#loadBalancing ? "on" : "off"
-						}`,
-						width,
-					),
-				),
-			},
-			{ text: "" },
-		];
+		// The header wraps for the same reason the scope line does: it is the card's own sentence, and
+		// the fact at its END is the one a user is looking for. Truncated, the recording read
+		// `Anthropic · 3 accounts · 1 needs attenti…`, which cuts the only clause that says something
+		// is wrong.
+		const lines: BodyLine[] = this.#wrapNote(providerHeaderLine(entry.label, rows), "", width).map(wrapped => ({
+			text: theme.bold(wrapped),
+		}));
+		// The scope, stated once per provider, because the choice below is not what a user
+		// assumes. Every account here is shared by every profile and every session on this
+		// machine, so pressing enter changes what a different terminal will use too. The
+		// load-balancing state rides the same line: it is the answer to "what happens when this
+		// account runs out", which is the next question the bars below provoke.
+		//
+		// WRAPPED, not truncated: with the sidebar taking its 30 columns the pane is ~54 wide, and
+		// truncation cut this at `…on thi…`, dropping the load-balancing clause entirely. A scope
+		// warning that only renders in full on a wide terminal is not a warning.
+		for (const wrapped of this.#wrapNote(
+			`shared by every profile and session on this machine · quota load balancing ${
+				this.#loadBalancing ? "on" : "off"
+			}`,
+			"",
+			width,
+		)) {
+			lines.push({ text: theme.fg("dim", wrapped) });
+		}
+		lines.push({ text: "" });
 
 		const group = this.#inventory.providers.find(candidate => candidate.provider === this.#activeProviderId);
 		if (group) {
@@ -720,7 +726,9 @@ export class AccountManagerComponent implements Component {
 		const divergence = selectedButRotated(this.#inventory, this.#activeProviderId);
 		if (divergence) {
 			for (const line of divergenceLines(divergence, nowMs)) {
-				lines.push({ text: theme.fg("warning", truncateToWidth(`  ${line}`, width)) });
+				for (const wrapped of this.#wrapNote(line, "  ", width)) {
+					lines.push({ text: theme.fg("warning", wrapped) });
+				}
 			}
 			lines.push({ text: "" });
 		}
@@ -767,19 +775,25 @@ export class AccountManagerComponent implements Component {
 				}
 			}
 			if (this.#pendingLogoutCredentialId === row.credentialId) {
-				lines.push({
-					text: theme.fg(
-						"warning",
-						truncateToWidth(`       press x again to log out of ${head.label} · esc cancels`, width),
-					),
-					target,
-				});
+				// The confirmation for the one destructive key on this card, so it is WRAPPED: at pane
+				// width it truncated to `log out of Groq cr…`, which loses both which credential is
+				// about to go and that `esc` backs out. A confirmation prompt missing its escape is a
+				// worse defect than a clipped label.
+				for (const wrapped of this.#wrapNote(
+					`press x again to log out of ${head.label} · esc cancels`,
+					"       ",
+					width,
+				)) {
+					lines.push({ text: theme.fg("warning", wrapped), target });
+				}
 			}
 			lines.push({ text: "" });
 		}
 
 		if (rows.length === 0) {
-			lines.push({ text: theme.fg("muted", truncateToWidth("  No accounts stored for this provider yet.", width)) });
+			for (const wrapped of this.#wrapNote("No accounts stored for this provider yet.", "  ", width)) {
+				lines.push({ text: theme.fg("muted", wrapped) });
+			}
 			lines.push({ text: "" });
 		}
 

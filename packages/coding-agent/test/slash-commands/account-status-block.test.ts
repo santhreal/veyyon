@@ -73,7 +73,7 @@ const anthropicWork = row({
 
 const codexMain = row({
 	provider: "openai-codex",
-	providerLabel: "Openai Codex",
+	providerLabel: "OpenAI Codex",
 	credentialId: 2,
 	name: "codex-main",
 	email: "first@example.com",
@@ -83,20 +83,20 @@ const codexMain = row({
 
 const geminiPersonal = row({
 	provider: "google-gemini-cli",
-	providerLabel: "Google Gemini Cli",
+	providerLabel: "Google Gemini CLI",
 	credentialId: 3,
 	email: "second@example.com",
 	projectId: "example-project",
 	activeForSession: true,
 });
 
-const xaiIdle = row({ provider: "xai", providerLabel: "Xai", credentialId: 4 });
+const xaiIdle = row({ provider: "xai", providerLabel: "xAI", credentialId: 4 });
 
 const fullInventory = inventory(
 	{ provider: "anthropic", label: "Anthropic", rows: [anthropicWork] },
-	{ provider: "google-gemini-cli", label: "Google Gemini Cli", rows: [geminiPersonal] },
-	{ provider: "openai-codex", label: "Openai Codex", rows: [codexMain] },
-	{ provider: "xai", label: "Xai", rows: [xaiIdle] },
+	{ provider: "google-gemini-cli", label: "Google Gemini CLI", rows: [geminiPersonal] },
+	{ provider: "openai-codex", label: "OpenAI Codex", rows: [codexMain] },
+	{ provider: "xai", label: "xAI", rows: [xaiIdle] },
 );
 
 const fullRoles = accountRoleAnnotations({
@@ -122,10 +122,10 @@ describe("the /account status block reports the accounts in use", () => {
 				"                     5h      [███████░░░] 71%   resets in 2h",
 				"                     7d      [███░░░░░░░] 34%   resets in 4d",
 				"",
-				"  Google Gemini Cli  (no name set)               web search",
+				"  Google Gemini CLI  (no name set)               web search",
 				"                     second@example.com · project example-project",
 				"",
-				"  Openai Codex       codex-main                  subagents",
+				"  OpenAI Codex       codex-main                  subagents",
 				"                     first@example.com",
 				"                     5h      [████░░░░░░] 44%   resets in 1h",
 				"",
@@ -147,7 +147,7 @@ describe("the /account status block reports the accounts in use", () => {
 	it("omits a provider the session never routed to", () => {
 		const rendered = render(fullInventory, fullRoles);
 
-		expect(rendered).not.toContain("Xai");
+		expect(rendered).not.toContain("xAI");
 		expect(rendered).not.toContain("xai");
 	});
 
@@ -168,11 +168,11 @@ describe("the /account status block reports the accounts in use", () => {
 			},
 			{
 				provider: "google-gemini-cli",
-				label: "Google Gemini Cli",
+				label: "Google Gemini CLI",
 				rows: [row({ ...geminiPersonal, activeForSession: false })],
 			},
-			{ provider: "openai-codex", label: "Openai Codex", rows: [row({ ...codexMain, activeForSession: false })] },
-			{ provider: "xai", label: "Xai", rows: [xaiIdle] },
+			{ provider: "openai-codex", label: "OpenAI Codex", rows: [row({ ...codexMain, activeForSession: false })] },
+			{ provider: "xai", label: "xAI", rows: [xaiIdle] },
 		);
 
 		expect(render(twoAccountsOneRouted).split("\n").at(-1)).toBe(
@@ -191,10 +191,10 @@ describe("the /account status block reports the accounts in use", () => {
 	 */
 	it("marks an unnamed account and offers the naming command once", () => {
 		const rendered = render(
-			inventory({ provider: "google-gemini-cli", label: "Google Gemini Cli", rows: [geminiPersonal] }),
+			inventory({ provider: "google-gemini-cli", label: "Google Gemini CLI", rows: [geminiPersonal] }),
 		);
 
-		expect(rendered).toContain(`  Google Gemini Cli  ${NO_NAME_PLACEHOLDER}`);
+		expect(rendered).toContain(`  Google Gemini CLI  ${NO_NAME_PLACEHOLDER}`);
 		expect(rendered).toContain("                     second@example.com · project example-project");
 		expect(rendered).toContain(`  1 account has no name · ${NAME_HINT}`);
 		// Not under the row: the indented per-row form is what this replaced.
@@ -208,8 +208,8 @@ describe("the /account status block reports the accounts in use", () => {
 	it("counts and pluralises the unnamed accounts in the single hint", () => {
 		const rendered = render(
 			inventory(
-				{ provider: "google-gemini-cli", label: "Google Gemini Cli", rows: [geminiPersonal] },
-				{ provider: "xai", label: "Xai", rows: [row({ ...xaiIdle, activeForSession: true, name: undefined })] },
+				{ provider: "google-gemini-cli", label: "Google Gemini CLI", rows: [geminiPersonal] },
+				{ provider: "xai", label: "xAI", rows: [row({ ...xaiIdle, activeForSession: true, name: undefined })] },
 			),
 		);
 
