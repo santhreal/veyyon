@@ -367,7 +367,15 @@ impl CommandBuilder<'_> {
 			// Replace all occurrences in initial args with the extra arg,
 			// Thanks to `MaxArgsCommandSizeLimiter`, we only process a single extra arg
 			// here.
-			let replacement = self.extra_args[0].to_string_lossy();
+			// An empty batch reaches here when the input produced no arguments and
+			// `-r` was not given: `process_input` runs the command once anyway for
+			// GNU compatibility. In replace mode there is nothing to substitute, and
+			// GNU xargs runs the command zero times, so return without spawning
+			// rather than indexing into an empty vector.
+			let Some(extra_arg) = self.extra_args.first() else {
+				return Ok(CommandResult::Success);
+			};
+			let replacement = extra_arg.to_string_lossy();
 			initial_args
 				.iter()
 				.map(|arg| {
