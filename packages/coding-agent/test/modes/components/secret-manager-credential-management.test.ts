@@ -847,3 +847,79 @@ describe("the key map", () => {
 		expect(text(manager)).toContain("#GITHUB_TOKEN#");
 	});
 });
+
+/**
+ * THE FOOTER'S CHIPS, ALL OF THEM, CLICKED.
+ *
+ * The defect this closes shipped twice. First the roster's band was derived from the selected row, so
+ * `a add` never appeared on any screen while the body text told the operator to press it. Then the
+ * chip was added and its mouse dispatch was not, so it drew, highlighted under the pointer, and did
+ * nothing when clicked. Both are the same class: a chip is a promise, and the card is the only thing
+ * that can keep it.
+ *
+ * DERIVED FROM THE PAINTED FOOTER, not from a list of chips written here. A chip added to
+ * `secretShortcuts` with no `case` in the mouse dispatch fails this test the first time it is
+ * painted, which is the only way this cannot rot: the ids live in a switch the compiler does not
+ * check against the label list.
+ *
+ * WHAT IT DOES NOT CATCH: whether the chip does what its LABEL says. Each action is asserted by its
+ * own test above; this one only refuses a chip that is decoration.
+ */
+describe("every chip the roster footer paints", () => {
+	/**
+	 * Chips that are hints rather than actions, with the reason recorded.
+	 *
+	 * A chip added to the band and to neither this table nor the mouse dispatch fails the assertion
+	 * below. That is the point: the decision has to be written down rather than inferred from a chip
+	 * that happens to do nothing.
+	 */
+	const HINTS_NOT_ACTIONS: Readonly<Record<string, string>> = {
+		// Two keys, and no single point to click: the pointer switches views by clicking the tab strip,
+		// which `secret-manager-log-table-and-pointer` drives.
+		"left/right view": "names the arrow keys, and the tabs above are what a pointer clicks",
+	};
+
+	/** The footer rows: everything painted below the card's divider. */
+	function footerRows(manager: SecretManager): { row: number; text: string }[] {
+		const lines = screen(manager);
+		const divider = lines.findIndex(line => line.includes("├"));
+		return lines
+			.slice(divider + 1, lines.length - 1)
+			.map((text, index) => ({ row: divider + 1 + index, text }))
+			.filter(entry => entry.text.includes("·"));
+	}
+
+	it("does something when it is clicked", async () => {
+		await seed();
+		const labels = footerRows(await open())
+			.flatMap(entry => entry.text.split("·"))
+			.map(chip => chip.replace(/[│\s]+$/u, "").replace(/^[│\s]+/u, ""))
+			.filter(chip => chip.length > 0);
+		// A footer that painted nothing would make every assertion below vacuous, and the roster's band
+		// is the widest one the card has.
+		expect(labels.length).toBeGreaterThan(8);
+
+		const inert: string[] = [];
+		for (const label of labels) {
+			const manager = await open();
+			let closed = false;
+			manager.onClose = () => {
+				closed = true;
+			};
+			const before = text(manager);
+			const target = footerRows(manager).find(entry => entry.text.includes(label));
+			expect(target).toBeDefined();
+			if (target === undefined) continue;
+			// The middle of the label, so a click cannot land on the separator beside it. SGR-1006 press
+			// then release, one-based on the wire, which is what a terminal sends.
+			const column = target.text.indexOf(label) + Math.floor(label.length / 2) + 1;
+			manager.handleInput(`\u001b[<0;${column};${target.row + 1}M`);
+			manager.handleInput(`\u001b[<0;${column};${target.row + 1}m`);
+			await manager.settled();
+
+			if (text(manager) === before && !closed) inert.push(label);
+		}
+
+		expect(inert.toSorted()).toEqual(Object.keys(HINTS_NOT_ACTIONS).toSorted());
+	});
+});
