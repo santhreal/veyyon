@@ -91,11 +91,17 @@ describe("task subagent effort inheritance", () => {
 		expect(options.parentThinkingLevel).toBe(ThinkingLevel.High);
 	});
 
-	/** A user override remains authoritative while the parent value is still available as the fallback layer. */
-	it("keeps an explicit per-agent auto override instead of replacing it with inherited effort", async () => {
+	/**
+	 * A per-agent `thinkingLevel` row is retired: model and effort have one owner
+	 * (the blanket setting plus the agent file's frontmatter), and this row is a
+	 * value an operator can still see in their config that governs nothing. It must
+	 * not resurface as an override here, and the parent's effort must still cross
+	 * the boundary as the fallback layer.
+	 */
+	it("ignores a retired per-agent effort row and still inherits the parent effort", async () => {
 		const options = await dispatch({ task: { thinkingLevel: AUTO_THINKING } });
 
-		expect(options.thinkingLevel).toBe(AUTO_THINKING);
+		expect(options.thinkingLevel).toBeUndefined();
 		expect(options.parentThinkingLevel).toBe(ThinkingLevel.High);
 	});
 });

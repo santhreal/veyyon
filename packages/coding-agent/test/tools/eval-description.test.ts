@@ -139,9 +139,10 @@ describe("eval tool dynamic schema", () => {
 		expect(fields.codeDescription).toBe("code to run in this eval call, verbatim. Use top-level await freely.");
 		expect(tool.summary).toBe("Execute Python or JavaScript code in an in-process eval backend");
 		expect(tool.description).not.toMatch(/ruby|julia/i);
-		// Examples must not advertise a disabled backend.
+		// Examples must not advertise a disabled backend. Two py cells: the third
+		// (reuse the loaded config) was cut as a variant of the second.
 		const exampleLangs = tool.examples.map(ex => ("call" in ex ? ex.call.language : null));
-		expect(exampleLangs).toEqual(["py", "py", "py"]);
+		expect(exampleLangs).toEqual(["py", "py"]);
 		expect(tool.examples.some(ex => "call" in ex && ex.call.language === "rb")).toBe(false);
 	});
 
