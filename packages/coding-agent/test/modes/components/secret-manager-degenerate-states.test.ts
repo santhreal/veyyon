@@ -304,6 +304,100 @@ describe("the log view's footer offers only chips that can act", () => {
 	});
 });
 
+/**
+ * WHY THIS SUITE EXISTS.
+ *
+ * The roster's footer was built entirely from the SELECTED ROW, so `a` — which belongs to the card
+ * and needs no row — appeared on no screen at all. The state that made it indefensible is the
+ * empty vault, the first screen a new operator ever sees: the body said "Press a to store a
+ * credential, and it lands here" while the footer under it read `left/right view · esc back`, so
+ * the only key that can populate the card was promised by the prose and denied by the footer.
+ *
+ * The same derivation dropped `? keys` from this view, which is where `m` move, `i` detail, `s`
+ * sort and `/` search are documented. Those keys worked; nothing on the screen said so.
+ *
+ * WHAT THIS DOES NOT CATCH: whether the add flow itself is any good once it opens. That is
+ * `secret-add-flow.test.ts`. This suite only proves the card offers the action, in every state,
+ * and that the chip is wired to the same handler as the key.
+ */
+describe("the roster's footer offers the card's own actions, not only the row's", () => {
+	/**
+	 * Every resting state of the roster, so this closes the class rather than the one screen the
+	 * defect was reported on. A state added here with no add chip turns this RED, which is the
+	 * point: the row-derived footer passed on the populated screen and failed on the empty one.
+	 */
+	const ROSTER_STATES: readonly { name: string; open: () => Promise<SecretManager> }[] = [
+		{
+			name: "an empty vault, where add is the only thing left to do",
+			open: async () => openManager(await seedLog()),
+		},
+		{
+			name: "a populated roster with a row selected",
+			open: async () => {
+				await seedVault();
+				return openManager(await seedLog());
+			},
+		},
+		{
+			name: "a roster narrowed by a search that matched nothing",
+			open: async () => {
+				await seedVault();
+				const manager = await openManager(await seedLog());
+				manager.render(WIDTH);
+				manager.handleInput("/");
+				await manager.settled();
+				for (const character of "zzzz") manager.handleInput(character);
+				manager.handleInput("\n");
+				await manager.settled();
+				return manager;
+			},
+		},
+	];
+
+	for (const state of ROSTER_STATES) {
+		it(`offers add and the key map on ${state.name}`, async () => {
+			const manager = await state.open();
+
+			const text = screenText(manager);
+			expect(text).toContain("a add");
+			expect(text).toContain("? keys");
+		});
+	}
+
+	/**
+	 * The empty state's PROSE and its FOOTER have to agree, which is the exact contradiction that
+	 * shipped. Asserted together in one test because either half alone is satisfiable by deleting
+	 * the other, and deleting the instruction would be the wrong repair.
+	 */
+	it("says press a in the body and lists a add in the footer on the same screen", async () => {
+		const manager = await openManager(await seedLog());
+
+		const text = unwrapped(manager);
+		expect(text).toContain("Press a to store a credential");
+		expect(text).toContain("a add");
+	});
+
+	/**
+	 * A CHIP THAT CANNOT ACT IS WORSE THAN NO CHIP, so the label is not the contract: the chip is
+	 * clicked here, through the real SGR mouse path, and the add flow has to open. A chip whose id
+	 * the dispatch switch does not handle paints identically and does nothing.
+	 */
+	it("opens the add flow when the add chip is clicked, not only when a is pressed", async () => {
+		const manager = await openManager(await seedLog());
+
+		const rows = screen(manager);
+		const row = rows.findIndex(line => line.includes("a add"));
+		expect(row).toBeGreaterThanOrEqual(0);
+		const col = (rows[row] ?? "").indexOf("a add");
+		manager.handleInput(`\x1b[<0;${col + 1};${row + 1}M`);
+		await manager.settled();
+
+		// The card's own first field, not the composer's masked prompt: the manager runs the add
+		// flow in place, so its title is what proves the chip reached `#startAdd`.
+		expect(screenText(manager)).toContain("New secret: paste the value");
+	});
+});
+
 describe("the log view's file notices survive the card's width", () => {
 	/**
 	 * REGRESSION: an empty log's entire payload is the PATH of the file it is empty at, and the
