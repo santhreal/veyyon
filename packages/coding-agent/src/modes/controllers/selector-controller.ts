@@ -1769,7 +1769,7 @@ export class SelectorController {
 				},
 				onAddAccount: provider => {
 					done();
-					void this.showOAuthSelector("login", provider);
+					void this.#loginThenReopenAccountManager(provider);
 				},
 				onToggleLoadBalancing: () => {
 					const next = !this.ctx.session.settings.get("accounts.loadBalancing");
@@ -1806,6 +1806,25 @@ export class SelectorController {
 			() => manager,
 			() => closed,
 		);
+	}
+
+	/**
+	 * `a` / `+ add another …` from the account card: log in, then come back to the card on the
+	 * provider the login was started from.
+	 *
+	 * Reopened after a CANCELLED login too, not just a successful one, because escape unwinds one
+	 * level: the login is what the user opened from the card, so abandoning it must return them to
+	 * the card rather than to the composer. Reopening rebuilds the inventory from the store, which
+	 * is what makes a freshly added account visible in the row list the user is already looking at
+	 * instead of only on the next `/account`.
+	 *
+	 * The new credential is deliberately NOT made the serving account. With load balancing off, the
+	 * selected credential decides what gets spent, and a login is not a request to move the
+	 * session's traffic; the card shows the new row and `enter` moves traffic when the user says so.
+	 */
+	async #loginThenReopenAccountManager(providerId: string): Promise<void> {
+		await this.#handleOAuthLogin(providerId);
+		await this.showAccountManager(providerId);
 	}
 
 	/**

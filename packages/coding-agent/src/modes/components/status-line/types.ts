@@ -144,6 +144,15 @@ export interface SegmentContext {
 	 * the worktree/branch is already shown by the git segment.
 	 */
 	worktree: { projectName: string; worktreeName: string } | null;
+	/**
+	 * The credential currently serving the active provider, and how many that provider stores.
+	 *
+	 * Null when no provider is resolved or it stores nothing. `storedCount` is carried rather than
+	 * pre-applied because whether one account is worth naming is a DISPLAY decision, and the
+	 * segment owns it: with load balancing off exactly one of several accounts is being spent, and
+	 * a user holding one account has nothing to tell apart.
+	 */
+	account: { label: string; storedCount: number } | null;
 	usage: {
 		tier?: string;
 		fiveHour?: { percent: number; resetMinutes?: number };

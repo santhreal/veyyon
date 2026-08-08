@@ -43,6 +43,10 @@ function makeComponent(
 			authStorage: {
 				getOAuthAccountIdentity: (provider: string) =>
 					provider === options.provider ? options.activeIdentity : undefined,
+				// This session stores no credentials: these cases are about usage windows, and the
+				// footline's account segment reads the store to decide whether there is more than one
+				// account to tell apart.
+				listStoredCredentials: () => [],
 			},
 		},
 		getAsyncJobSnapshot: () => ({ running: [] }),
@@ -214,6 +218,9 @@ describe("usage status-line segment", () => {
 						requestedProvider === provider && provider === "openai-codex"
 							? { accountId: "active-account" }
 							: undefined,
+					// No stored credentials: this case is about the usage cache key, and the account
+					// segment asks the store how many accounts a provider has.
+					listStoredCredentials: () => [],
 				},
 			},
 			getAsyncJobSnapshot: () => ({ running: [] }),

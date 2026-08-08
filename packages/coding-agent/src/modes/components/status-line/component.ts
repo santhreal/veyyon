@@ -7,6 +7,7 @@ import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSigna
 import { resolveContextLimit } from "../../../config/compaction-strategy";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
+import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from "../../../session/account-inventory";
 import type { AgentSession } from "../../../session/agent-session";
 import type { OAuthAccountIdentity } from "../../../session/auth-storage";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
@@ -403,6 +404,16 @@ export class StatusLineComponent implements Component {
 	#usageFetchedAt = 0;
 	#usageInFlight = false;
 	#usageStartTimer: Timer | null = null;
+	/**
+	 * Serving-account memo. The label ladder has ONE owner ({@link accountDisplayLabel} over the
+	 * account inventory), and reaching it means reading every stored credential plus the
+	 * failed-refresh list, which is far too much work for a line that redraws on every spinner
+	 * tick. The key holds the cheap facts that can change the answer — the provider, how many
+	 * credentials it stores, which one routing says is serving, and that account's stored name — so
+	 * the rebuild happens when one of them moves and not otherwise. The name is in the key because
+	 * renaming an account from the card must change this line, not the line after next.
+	 */
+	#cachedServingAccount: { key: string; value: { label: string; storedCount: number } | null } | null = null;
 	// Context-usage memo. The status line redraws on every agent event, so the
 	// hot path must not recompute context tokens unless an input changed.
 	// `getContextUsage()` anchors on the last assistant's real prompt-token
@@ -904,6 +915,42 @@ export class StatusLineComponent implements Component {
 	}
 
 	/**
+	 * Which stored credential is serving the active provider, and how many it stores.
+	 *
+	 * Reports the fact only; whether one account is worth naming on the line is the segment's
+	 * decision. Prefers what routing says is ACTIVE over what the user selected, because those
+	 * differ exactly when the interesting thing happened — a chosen account was rate-limit blocked
+	 * or revoked and traffic moved — and the line has to name what is being spent, not what was
+	 * picked. Falls back to the first stored credential, which is what an unselected provider uses.
+	 */
+	#servingAccount(session: AgentSession): { label: string; storedCount: number } | null {
+		const activeProvider = session.state.model?.provider ?? session.model?.provider;
+		const authStorage = session.modelRegistry?.authStorage;
+		if (!activeProvider || !authStorage) return null;
+		const stored = authStorage.listStoredCredentials(activeProvider);
+		if (stored.length === 0) return null;
+		const routing = authStorage.sessionCredentialRouting(activeProvider, session.sessionId);
+		const servingId = routing?.activeCredentialId ?? routing?.selectedCredentialId ?? stored[0]?.id;
+		if (servingId === undefined) return null;
+		const key = [
+			activeProvider,
+			servingId,
+			stored.length,
+			authStorage.getAccountName(activeProvider, servingId) ?? "",
+		].join("\0");
+		const cached = this.#cachedServingAccount;
+		if (cached?.key === key) return cached.value;
+		const rows = accountsForProvider(
+			buildAccountInventory(authStorage, { sessionId: session.sessionId }),
+			activeProvider,
+		);
+		const serving = rows.find(row => row.credentialId === servingId) ?? rows[0];
+		const value = serving ? { label: accountDisplayLabel(serving), storedCount: rows.length } : null;
+		this.#cachedServingAccount = { key, value };
+		return value;
+	}
+
+	/**
 	 * Startup redraws only arm a short-delayed task; timeout releases the render
 	 * cadence while a late successful fetch can still refresh the cached segment.
 	 */
@@ -1217,6 +1264,7 @@ export class StatusLineComponent implements Component {
 				pr: gitPr,
 			},
 			worktree: activeRepoCache.worktree,
+			account: this.#servingAccount(this.session),
 			usage: this.#cachedUsage,
 		};
 	}

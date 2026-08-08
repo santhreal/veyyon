@@ -760,6 +760,28 @@ const profileSegment: StatusLineSegment = {
 	},
 };
 
+/**
+ * Which of several stored accounts is spending right now.
+ *
+ * Silent for a provider with one credential: the account is not in question, and the decluttered
+ * footline stays quiet. It appears the moment a second credential exists for the active provider,
+ * because load balancing is off by default — one account serves until the user moves the selection
+ * or it runs out, and a quota that drains has to drain somewhere the reader can see.
+ *
+ * Prefixed `as ` so it cannot be read as the profile chip or the session name, which are also bare
+ * words on this line.
+ */
+const accountSegment: StatusLineSegment = {
+	id: "account",
+	render(ctx) {
+		const account = ctx.account;
+		if (!account || account.storedCount < 2) return { content: "", visible: false };
+		const label = truncateToWidth(sanitizeStatusText(account.label), TRUNCATE_LENGTHS.CHIP);
+		if (!label) return { content: "", visible: false };
+		return { content: theme.fg("muted", `as ${label}`), visible: true };
+	},
+};
+
 const cacheReadSegment: StatusLineSegment = {
 	id: "cache_read",
 	render(ctx) {
@@ -900,6 +922,7 @@ const usageSegment: StatusLineSegment = {
 export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	pi: piSegment,
 	model: modelSegment,
+	account: accountSegment,
 	mode: modeSegment,
 	path: pathSegment,
 	git: gitSegment,

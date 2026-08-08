@@ -80,6 +80,7 @@ function createGoalContext(opts: {
 		activeRepo: null,
 		worktree: null,
 		git: { branch: null, status: null, pr: null },
+		account: null,
 		usage: null,
 	};
 }
