@@ -27,6 +27,14 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import {
+	getDefault,
+	getEnumValues,
+	getType,
+	isSettingPath,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+} from "@veyyon/coding-agent/config/settings-schema";
 import { logger, removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../utils/test/helpers/destructive-guard";
@@ -386,5 +394,112 @@ describe("subagent settings migration", () => {
 		expect((onDisk.task as Record<string, unknown> | undefined)?.maxRecursionDepth).toBeUndefined();
 		expect((onDisk.subagent as Record<string, unknown> | undefined)?.maxRecursionDepth).toBeUndefined();
 		expect((onDisk.modelRoles as Record<string, unknown> | undefined)?.task).toBeUndefined();
+	});
+
+	/**
+	 * WHERE EVERY SUBAGENT SETTING'S LEGACY VALUE COMES FROM, ENUMERATED AT RUN TIME.
+	 *
+	 * Each case above pins one legacy key, which closes those incidents and nothing else. The next
+	 * setting added to this section arrives with no case at all, and a legacy key it should have
+	 * consumed is then discovered by an operator whose config silently reverted to a default. So the
+	 * section is enumerated from `SETTINGS_SCHEMA` and every path is probed against the real loader,
+	 * and the answer for every one of them is recorded by exact equality: a new `subagent.*` row is
+	 * unclassified and turns this RED until someone writes down whether it has a legacy twin.
+	 */
+	describe("every subagent setting records where its legacy value comes from", () => {
+		/** Settings whose legacy value arrived under the same name below `task.`, with no transform. */
+		const CARRIES_FROM_TASK: readonly string[] = [
+			"subagent.batch",
+			"subagent.enableLsp",
+			"subagent.isolation.commits",
+			"subagent.isolation.merge",
+			"subagent.isolation.mode",
+			"subagent.maxConcurrency",
+			"subagent.maxRuntimeMs",
+			"subagent.showResolvedModelBadge",
+			"subagent.softRequestBudget",
+			"subagent.softRequestBudgetNotice",
+		];
+
+		/**
+		 * Settings whose legacy value came from somewhere else, or arrived in a different shape. The
+		 * value mapping itself belongs to the dedicated cases above; what is asserted here is that the
+		 * recorded legacy key still reaches the setting at all, which is what a rename breaks.
+		 */
+		const LEGACY_SOURCES: Record<string, Record<string, unknown>> = {
+			"subagent.agents": { task: { disabledAgents: ["designer"] } },
+			"subagent.delegation": { task: { eager: "always" } },
+			"subagent.enabled": { subagent: { delegation: "off" } },
+			"subagent.idleTtlMs": { task: { agentIdleTtlMs: 900_000 } },
+			"subagent.maxNestedSpawnDepth": { task: { maxRecursionDepth: 3 } },
+			"subagent.model": { modelRoles: { task: "openai/gpt-5" } },
+		};
+
+		/** Settings that never existed before this section, so there is nothing to carry. */
+		const NO_LEGACY_SOURCE: readonly string[] = [
+			"subagent.autoClose.enabled",
+			"subagent.autoClose.parkedMs",
+			"subagent.autoClose.waitingMs",
+			"subagent.thinkingLevel",
+		];
+
+		const subagentPaths = Object.keys(SETTINGS_SCHEMA)
+			.filter(isSettingPath)
+			.filter(candidate => candidate.startsWith("subagent."));
+
+		/** A valid value for `setting` that is not its default, so a carry is visible in the value itself. */
+		function probeValueFor(setting: SettingPath): unknown {
+			const fallback: unknown = getDefault(setting);
+			switch (getType(setting)) {
+				case "boolean":
+					return fallback !== true;
+				case "number":
+					return typeof fallback === "number" ? fallback + 1 : 7;
+				case "enum":
+					return getEnumValues(setting)?.find(value => value !== fallback);
+				case "record":
+					return { scout: { enabled: false } };
+				default:
+					return "openai/gpt-5";
+			}
+		}
+
+		function nest(segments: readonly string[], value: unknown): Record<string, unknown> {
+			const [head, ...rest] = segments;
+			if (head === undefined) throw new Error("nest needs at least one segment");
+			return { [head]: rest.length === 0 ? value : nest(rest, value) };
+		}
+
+		const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right);
+
+		test("carries exactly the settings recorded as same-name task keys", async () => {
+			const carried: string[] = [];
+			for (const setting of subagentPaths) {
+				const probe = probeValueFor(setting);
+				writeConfig({ task: nest(setting.slice("subagent.".length).split("."), probe) });
+				if (same((await load()).get(setting), probe)) carried.push(setting);
+			}
+
+			expect(carried.sort()).toEqual([...CARRIES_FROM_TASK].sort());
+		});
+
+		test("classifies every setting in the section", () => {
+			const classified = [...CARRIES_FROM_TASK, ...Object.keys(LEGACY_SOURCES), ...NO_LEGACY_SOURCE];
+
+			expect(classified.sort()).toEqual([...subagentPaths].sort());
+			// Nothing may be recorded twice: two answers for one setting is the ambiguity being removed.
+			expect(new Set(classified).size).toBe(classified.length);
+		});
+
+		test("still reaches the setting from every recorded legacy key", async () => {
+			const inert: string[] = [];
+			for (const [setting, legacy] of Object.entries(LEGACY_SOURCES)) {
+				if (!isSettingPath(setting)) throw new Error(`not a setting path: ${setting}`);
+				writeConfig(legacy);
+				if (same((await load()).get(setting), getDefault(setting))) inert.push(setting);
+			}
+
+			expect(inert).toEqual([]);
+		});
 	});
 });
