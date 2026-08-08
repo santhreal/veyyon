@@ -373,34 +373,8 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			},
 		},
 		{
-			caption: "Run a noninteractive service beyond broker lifetime",
-			call: {
-				op: "start",
-				name: "worker",
-				application: "worker",
-				args: ["serve"],
-				detached: true,
-			},
-		},
-		{
-			caption: "Inspect recent output",
-			call: { op: "logs", name: "web", lines: 100 },
-		},
-		{
 			caption: "Follow output after a cursor",
 			call: { op: "logs", name: "web", follow: true, cursor: 1842, timeout: 30 },
-		},
-		{
-			caption: "Set a debugger breakpoint",
-			call: { op: "send", name: "debugger", text: "breakpoint set --name main" },
-		},
-		{
-			caption: "Run a debugger command",
-			call: { op: "send", name: "debugger", text: "run" },
-		},
-		{
-			caption: "Interrupt a debugger",
-			call: { op: "send", name: "debugger", keys: ["CTRL_C"] },
 		},
 	];
 	readonly approval = approvalFor;

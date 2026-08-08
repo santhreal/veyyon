@@ -706,10 +706,6 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 			caption: "Launch a Python script with debugpy",
 			call: { action: "launch", adapter: "debugpy", program: "scripts/job.py", args: ["--flag"] },
 		},
-		{
-			caption: "Raw debugger command through repl",
-			call: { action: "evaluate", expression: "info registers", context: "repl" },
-		},
 	];
 
 	readonly concurrency = "exclusive";
