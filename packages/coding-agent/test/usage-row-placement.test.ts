@@ -53,6 +53,7 @@ function makeHarness(showTokenUsage: boolean): { ctx: InteractiveModeContext; he
 	const ctx = {
 		chatContainer: new Container(),
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		ui: { requestRender: vi.fn() },
 		statusLine: { invalidate: vi.fn() },
 		updateEditorBorderColor: vi.fn(),

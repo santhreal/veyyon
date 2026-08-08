@@ -34,7 +34,7 @@ function row(
 		type: "oauth",
 		usage: [],
 		activeForSession: false,
-		pinnedForSession: false,
+		selectedForProvider: false,
 		...overrides,
 	};
 }
@@ -238,7 +238,7 @@ describe("a pin that was rotated off is reported, never replaced", () => {
 		credentialId: 1,
 		name: "work",
 		email: "first@example.com",
-		pinnedForSession: true,
+		selectedForProvider: true,
 		blockedUntilMs: NOW + 2 * HOUR + 14 * 60_000,
 	});
 	const servingPersonal = row({
@@ -264,8 +264,8 @@ describe("a pin that was rotated off is reported, never replaced", () => {
 				"",
 				"  Anthropic          personal",
 				"                     second@example.com",
-				"                     pinned to work, rotated off it (usage limit)",
-				"                     /account switch anthropic to re-pin work · 2h until it unblocks",
+				"                     you chose work, rotated off it (usage limit)",
+				"                     /account use anthropic work to switch back · 2h until it unblocks",
 				"",
 				"  1 of 1 providers in use · /providers to manage accounts",
 			].join("\n"),
@@ -298,8 +298,8 @@ describe("a pin that was rotated off is reported, never replaced", () => {
 
 		const lines = render(superseded).split("\n");
 
-		expect(lines).toContain("                     pinned to work, rotated off it (unavailable)");
-		expect(lines).toContain("                     /account switch anthropic to re-pin work");
+		expect(lines).toContain("                     you chose work, rotated off it (unavailable)");
+		expect(lines).toContain("                     /account use anthropic work to switch back");
 	});
 
 	/**
@@ -314,7 +314,7 @@ describe("a pin that was rotated off is reported, never replaced", () => {
 			inventory({ provider: "anthropic", label: "Anthropic", rows: [unblocked, servingPersonal] }),
 		);
 
-		expect(rendered).toContain("pinned to work, rotated off it (invalid_grant: refresh token revoked)");
+		expect(rendered).toContain("you chose work, rotated off it (invalid_grant: refresh token revoked)");
 	});
 });
 

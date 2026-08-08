@@ -151,11 +151,20 @@ describe("applyUsageReports attributes limits per account", () => {
 	});
 
 	/**
-	 * A row with no identity at all cannot be attributed to anything, so it keeps an empty
-	 * usage list rather than absorbing whatever the report happened to carry. An api-key row
-	 * showing someone else's quota would be a straightforward data leak between accounts.
+	 * The SOLE credential of a provider absorbs its report even with no identity of its own.
+	 *
+	 * This inverts what this file used to assert, because the old contract was the defect. Cursor,
+	 * Kimi and xAI store no email and no account id, so requiring a match left every one of those
+	 * accounts with zero usage bars on a live store — the card said nothing at all about quota for
+	 * three of the operator's providers. Identity matching exists to arbitrate between SIBLINGS,
+	 * and the usage fan-out issues one request per stored credential, so a report reaching a
+	 * provider that holds exactly one credential can only be that credential's. There is no other
+	 * account for it to leak from.
+	 *
+	 * The leak this guards against is the multi-row case, which the sibling tests above cover: with
+	 * two rows, an identity-less row still absorbs nothing.
 	 */
-	test("an api-key row with no identity absorbs no limits", async () => {
+	test("the sole credential of a provider absorbs its report even with no identity", async () => {
 		if (!authStorage) throw new Error("test setup failed");
 		const storage = authStorage;
 		await storage.set(MULTI_ACCOUNT_PROVIDER, [{ type: "api_key", key: "raw-key" }]);
@@ -168,7 +177,41 @@ describe("applyUsageReports attributes limits per account", () => {
 
 		const next = applyUsageReports(buildAccountInventory(storage), [report]);
 
-		expect(next.providers[0]?.rows[0]?.usage).toEqual([]);
+		expect(next.providers[0]?.rows[0]?.usage.map(window => window.usedFraction)).toEqual([0.5]);
+	});
+
+	/**
+	 * ...and the sibling case keeps the guard. Two rows, one of them carrying no identity: the
+	 * identity-less row absorbs nothing, because now there IS another account the limit could
+	 * belong to and showing it under the wrong row is the leak.
+	 */
+	test("an identity-less row absorbs nothing while a sibling exists", async () => {
+		if (!authStorage) throw new Error("test setup failed");
+		const storage = authStorage;
+		await storage.set(MULTI_ACCOUNT_PROVIDER, [
+			{ type: "api_key", key: "raw-key" },
+			{
+				type: "oauth",
+				access: "access-known",
+				refresh: "refresh-known",
+				expires: Date.now() + HOUR_MS,
+				accountId: "account-someone",
+				email: "someone@example.com",
+			},
+		]);
+		const report: UsageReport = {
+			provider: MULTI_ACCOUNT_PROVIDER,
+			fetchedAt: RESETS_AT - HOUR_MS,
+			metadata: { email: "someone@example.com", accountId: "account-someone" },
+			limits: [limitFor("5h", { provider: MULTI_ACCOUNT_PROVIDER, accountId: "account-someone" }, 0.5, "5h")],
+		};
+
+		const rows = applyUsageReports(buildAccountInventory(storage), [report]).providers[0]?.rows ?? [];
+
+		expect(rows.map(row => [row.type, row.usage.map(window => window.usedFraction)])).toEqual([
+			["api_key", []],
+			["oauth", [0.5]],
+		]);
 	});
 
 	/** A report for another provider never reaches this provider's rows. */

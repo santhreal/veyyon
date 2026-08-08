@@ -34,7 +34,7 @@ import {
 } from "@veyyon/tui";
 import { clampLow } from "@veyyon/utils";
 import type { AccountInventory, AccountRow } from "../../session/account-inventory";
-import { accountsForProvider, pinnedButRotated } from "../../session/account-inventory";
+import { accountsForProvider, selectedButRotated } from "../../session/account-inventory";
 import { formatProviderName } from "../../slash-commands/helpers/format";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
@@ -95,10 +95,11 @@ const SHORTCUT_KEYS: Record<string, string> = {
 	usage: "u",
 	logout: "x",
 	add: "a",
+	balance: "b",
 };
 
 export interface AccountManagerCallbacks {
-	/** Route this provider's traffic to this credential for the session. */
+	/** Make this credential the account the provider uses, for every session and profile. */
 	onUseAccount: (row: AccountRow) => void;
 	/** Persist a chosen name for this credential. An empty string clears it. */
 	onRename: (row: AccountRow, name: string) => void;
@@ -110,6 +111,15 @@ export interface AccountManagerCallbacks {
 	onShowUsage: (row: AccountRow) => void;
 	/** Start a login that adds another account for this provider. */
 	onAddAccount: (provider: string) => void;
+	/**
+	 * Flip `accounts.loadBalancing` and return its new value.
+	 *
+	 * On the card because the setting decides what happens when the account on screen runs out of
+	 * quota, and sending the user to `/settings` to answer that question loses the context they
+	 * are looking at. Returns the value actually stored, so a write the settings layer refuses
+	 * cannot leave the footer claiming a state the config does not have.
+	 */
+	onToggleLoadBalancing: () => boolean;
 	onCancel: () => void;
 }
 
@@ -133,6 +143,13 @@ export interface AccountManagerOptions {
 	 * Naming the height is what makes a proof reproduce the operator's card.
 	 */
 	terminalHeight?: number;
+	/**
+	 * Current value of `accounts.loadBalancing`, for the footer chip and the scope line.
+	 *
+	 * Passed in rather than read here: this component owns no config, and a card that reached for
+	 * the settings singleton could not be rendered by a proof script or a test without one.
+	 */
+	loadBalancing?: boolean;
 }
 
 /**
@@ -197,12 +214,15 @@ export class AccountManagerComponent implements Component {
 	#sidebarWidthLast = SIDEBAR_MIN_WIDTH;
 	#bodyLines: BodyLine[] = [];
 	#reveal = new ModalRevealDriver();
+	/** Mirrors `accounts.loadBalancing`; only `b` and the chip change it. */
+	#loadBalancing = false;
 
 	constructor(inventory: AccountInventory, callbacks: AccountManagerCallbacks, options: AccountManagerOptions = {}) {
 		this.#inventory = inventory;
 		this.#callbacks = callbacks;
 		this.#requestRender = options.requestRender;
 		this.#terminalHeight = options.terminalHeight;
+		this.#loadBalancing = options.loadBalancing ?? false;
 		this.#rebuildEntries();
 		const requested = options.initialProviderId;
 		if (requested && this.#entries.some(entry => entry.providerId === requested)) {
@@ -363,6 +383,11 @@ export class AccountManagerComponent implements Component {
 				return;
 			case "a":
 				if (this.#activeProviderId) this.#callbacks.onAddAccount(this.#activeProviderId);
+				return;
+			case "b":
+				// Mirrored locally from the callback's return so the footer reflects what was STORED.
+				// Assuming the flip landed is how a chip ends up claiming a state the config refused.
+				this.#loadBalancing = this.#callbacks.onToggleLoadBalancing();
 				return;
 		}
 	}
@@ -664,6 +689,22 @@ export class AccountManagerComponent implements Component {
 		const rows = this.#rows();
 		const lines: BodyLine[] = [
 			{ text: theme.bold(truncateToWidth(providerHeaderLine(entry.label, rows), width)) },
+			// The scope, stated once per provider, because the choice below is not what a user
+			// assumes. Every account here is shared by every profile and every session on this
+			// machine, so pressing enter changes what a different terminal will use too. The
+			// load-balancing state rides the same line: it is the answer to "what happens when this
+			// account runs out", which is the next question the bars below provoke.
+			{
+				text: theme.fg(
+					"dim",
+					truncateToWidth(
+						`shared by every profile and session on this machine · quota load balancing ${
+							this.#loadBalancing ? "on" : "off"
+						}`,
+						width,
+					),
+				),
+			},
 			{ text: "" },
 		];
 
@@ -677,7 +718,7 @@ export class AccountManagerComponent implements Component {
 			if (group.disabledCause) lines.push({ text: "" });
 		}
 
-		const divergence = pinnedButRotated(this.#inventory, this.#activeProviderId);
+		const divergence = selectedButRotated(this.#inventory, this.#activeProviderId);
 		if (divergence) {
 			for (const line of divergenceLines(divergence, nowMs)) {
 				lines.push({ text: theme.fg("warning", truncateToWidth(`  ${line}`, width)) });
@@ -769,17 +810,19 @@ export class AccountManagerComponent implements Component {
 			];
 		}
 		const entry = this.#activeEntry();
-		// Naming the provider is the point: `enter use` alone reads as a global account switch,
-		// and switching accounts is per provider. On the add entry `enter` does not use anything,
-		// so the chip says what it will actually do rather than naming an account it cannot pick.
+		// The chip names the ACTION, not the mechanism: "switch to" is what pressing enter does, and
+		// the previous "use for <provider>" left the card's headline capability reading as a noun.
+		// Naming the provider is still the point — switching is per provider, and a bare "enter
+		// switch" reads as a global account change. On the add entry `enter` switches nothing, so
+		// the chip says what it will actually do rather than naming an account it cannot pick.
 		const use =
 			this.#bodySelection.kind === "add"
 				? entry
 					? `enter add ${entry.label} account`
 					: "enter add account"
 				: entry
-					? `enter use for ${entry.label}`
-					: "enter use";
+					? `enter switch ${entry.label} to this account`
+					: "enter switch to this account";
 		return [
 			{ label: "↑↓ move" },
 			{ label: "←→ pane" },
@@ -793,6 +836,7 @@ export class AccountManagerComponent implements Component {
 				id: "logout",
 			},
 			{ label: "a add", clickable: true, id: "add" },
+			{ label: `b balancing ${this.#loadBalancing ? "on" : "off"}`, clickable: true, id: "balance" },
 			{ label: "esc close", clickable: true, id: "close" },
 		];
 	}

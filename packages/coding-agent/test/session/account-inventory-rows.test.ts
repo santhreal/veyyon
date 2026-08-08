@@ -111,7 +111,7 @@ describe("buildAccountInventory", () => {
 		expect(row.name).toBeUndefined();
 		expect(row.usage).toEqual([]);
 		expect(row.activeForSession).toBe(false);
-		expect(row.pinnedForSession).toBe(false);
+		expect(row.selectedForProvider).toBe(false);
 	});
 
 	/**
@@ -130,14 +130,14 @@ describe("buildAccountInventory", () => {
 		const oauthRows = inventory.providers[1]?.rows ?? [];
 
 		expect(oauthRows.filter(row => row.activeForSession).map(row => row.credentialId)).toEqual([servedId]);
-		expect(oauthRows.every(row => row.pinnedForSession === false)).toBe(true);
+		expect(oauthRows.every(row => row.selectedForProvider === false)).toBe(true);
 		// A provider the session never touched has no active row at all.
 		expect(inventory.providers[0]?.rows.some(row => row.activeForSession)).toBe(false);
 	});
 
 	/**
 	 * A pin shows up as both marks on the same row while it is healthy, because a usable pin
-	 * IS what serves next. The manager renders `pinnedForSession` as the user's choice and
+	 * IS what serves next. The manager renders `selectedForProvider` as the user's choice and
 	 * `activeForSession` as the live routing, so conflating them would hide a rotation.
 	 */
 	test("a healthy pin marks its row as both pinned and active", () => {
@@ -149,7 +149,7 @@ describe("buildAccountInventory", () => {
 
 		const rows = buildAccountInventory(storage, { sessionId: SESSION_ID }).providers[1]?.rows ?? [];
 
-		expect(rows.map(row => [row.credentialId, row.pinnedForSession, row.activeForSession])).toEqual([
+		expect(rows.map(row => [row.credentialId, row.selectedForProvider, row.activeForSession])).toEqual([
 			[firstRow.id, false, false],
 			[secondRow.id, true, true],
 		]);

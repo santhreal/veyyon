@@ -32,7 +32,7 @@ function account(credentialId: number, overrides: Partial<AccountRow> = {}): Acc
 		origin: { kind: "oauth" },
 		usage: [],
 		activeForSession: false,
-		pinnedForSession: false,
+		selectedForProvider: false,
 		...overrides,
 	};
 }
@@ -82,6 +82,7 @@ function harness(
 		onLogout: row => recorded.loggedOut.push(row.credentialId),
 		onShowUsage: row => recorded.usage.push(row.credentialId),
 		onAddAccount: provider => recorded.added.push(provider),
+		onToggleLoadBalancing: () => false,
 		onCancel: () => {
 			recorded.cancels += 1;
 		},
@@ -177,16 +178,16 @@ describe("AccountManagerComponent rendering", () => {
 	 */
 	test("reports a rotated pin instead of presenting the substitute as chosen", () => {
 		const { frame } = harness([
-			account(1, { name: "work", pinnedForSession: true, blockedUntilMs: NOW + 2 * HOUR }),
+			account(1, { name: "work", selectedForProvider: true, blockedUntilMs: NOW + 2 * HOUR }),
 			account(2, { name: "personal", activeForSession: true }),
 		]);
 		const lines = frame();
 
-		expect(lineWith(lines, "rotated off")).toBe("pinned to work, rotated off it onto personal");
-		expect(lineWith(lines, "re-pins")).toBe("enter re-pins work · 2h until it unblocks");
-		expect(lineWith(lines, "● personal")).not.toContain("pinned");
-		expect(lineWith(lines, "● personal")).toContain("this session");
-		expect(lineWith(lines, "⊗ work")).toContain("pinned");
+		expect(lineWith(lines, "rotated off")).toBe("you chose work, rotated off it onto personal");
+		expect(lineWith(lines, "switches back")).toBe("enter switches back to work · 2h until it unblocks");
+		expect(lineWith(lines, "● personal")).not.toContain("your choice");
+		expect(lineWith(lines, "● personal")).toContain("serving");
+		expect(lineWith(lines, "⊗ work")).toContain("your choice");
 	});
 
 	/**
@@ -213,7 +214,7 @@ describe("AccountManagerComponent rendering", () => {
 	 */
 	test("names the provider in the enter shortcut", () => {
 		const { card } = harness(THREE_ACCOUNTS());
-		expect(card()).toContain("enter use for Anthropic");
+		expect(card()).toContain("enter switch Anthropic to this account");
 	});
 
 	/**

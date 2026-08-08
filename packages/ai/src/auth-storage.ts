@@ -30,6 +30,8 @@ import { trimTrailingSlashes } from "@veyyon/utils/url";
 // the names that were public here.
 import {
 	isRefreshFailureDisableCause,
+	normalizeStoredAccountId,
+	normalizeStoredEmail,
 	resolveAccountNameIdentity,
 	resolveCredentialIdentityKey,
 	serializeCredential,
@@ -178,17 +180,29 @@ const SESSION_PIN_CACHE_PREFIX = "session:pin:";
 const SESSION_PIN_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 /**
+ * How long an auth-death failover stays pending before it is dropped unannounced.
+ *
+ * The notice describes the request that is retrying right now. If no resolve lands inside this
+ * window the retry was abandoned, and firing then would announce a move that never happened.
+ */
+const FAILOVER_NOTICE_WINDOW_MS = 60_000;
+
+/**
  * How one provider's traffic is routed for one session: what the user chose, what is
  * actually serving, and why those can differ.
  */
 export interface SessionCredentialRouting {
 	provider: string;
-	/** Credential the user pinned with `/account`, when they pinned one. */
-	pinnedCredentialId?: number;
+	/**
+	 * The account the user chose: their global `/account` selection for this provider, or a
+	 * session pin when one is set (a pin outranks the global choice for that one session).
+	 * Absent when they never chose.
+	 */
+	selectedCredentialId?: number;
 	/** Credential the next request will use. Equals the pin unless the pin is unusable. */
 	activeCredentialId?: number;
-	/** Epoch ms the pinned credential becomes usable again, when it is rate-limit blocked. */
-	pinnedBlockedUntilMs?: number;
+	/** Epoch ms the chosen credential becomes usable again, when it is rate-limit blocked. */
+	selectedBlockedUntilMs?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -533,6 +547,19 @@ export interface AuthCredentialStore {
 	listAccountNames?(): Array<{ identity: string; name: string }>;
 	setAccountName?(identity: string, name: string): void;
 	deleteAccountName?(identity: string): void;
+	/**
+	 * The account chosen for a provider, keyed by the same stable identity as the names table.
+	 *
+	 * GLOBAL and durable by design: the credentials themselves are shared by every profile and
+	 * every session on the machine, so the account you picked has to be too. Keyed by identity
+	 * rather than row id so a re-login, which writes a new row, keeps the choice.
+	 *
+	 * Optional, like the names: the remote-broker store keeps no local table, and a store without
+	 * it simply has no persisted choice, so selection lives for the process and says so.
+	 */
+	getProviderSelection?(provider: string): string | undefined;
+	setProviderSelection?(provider: string, identity: string): void;
+	clearProviderSelection?(provider: string): void;
 	tryAcquireCredentialRefreshLease?(credentialId: number, owner: string, expiresAtMs: number): boolean;
 	getCredentialRefreshLeaseExpiresAt?(credentialId: number): number | undefined;
 	releaseCredentialRefreshLease?(credentialId: number, owner: string): void;
@@ -663,6 +690,27 @@ export interface CredentialDisabledEvent {
 	disabledCause: string;
 }
 
+/**
+ * Event payload describing an automatic move from one account to another.
+ *
+ * Emitted only for AUTH DEATH — a credential a request cannot be served with at all (revoked
+ * token, `invalid_grant`, a row disabled underneath us). Quota and rate-limit movement never
+ * emits this, because that movement is gated by the load-balancing setting and, when it is on,
+ * is the routine thing the operator asked for rather than news.
+ *
+ * Both accounts are named: a notice that says only "switched account" leaves the operator unable
+ * to tell which credential died or which one is now spending, which is the whole content of the
+ * event.
+ */
+export interface CredentialFailoverEvent {
+	provider: string;
+	/** The account that could no longer serve, and why. */
+	from: { credentialId: number; label: string };
+	/** The account routing moved to. */
+	to: { credentialId: number; label: string };
+	cause: string;
+}
+
 export type AuthStorageOptions = {
 	usageProviderResolver?: (provider: Provider) => UsageProvider | undefined;
 	rankingStrategyResolver?: (provider: Provider) => CredentialRankingStrategy | undefined;
@@ -683,6 +731,26 @@ export type AuthStorageOptions = {
 	 * duplicate credentials (uninteresting hygiene).
 	 */
 	onCredentialDisabled?: (event: CredentialDisabledEvent) => void | Promise<void>;
+	/**
+	 * Fired when auth death moved a provider from one account to another. See
+	 * {@link CredentialFailoverEvent}; never fired for quota or rate-limit movement.
+	 */
+	onCredentialFailover?: (event: CredentialFailoverEvent) => void | Promise<void>;
+	/**
+	 * Whether QUOTA and RATE-LIMIT exhaustion may move a provider to a different account.
+	 *
+	 * Defaults to `true` so every existing embedder — the auth broker, the gateway, the SDK —
+	 * keeps the behaviour it has today. The coding-agent passes the operator's
+	 * `accounts.loadBalancing` setting, which defaults to OFF: spreading one operator's work
+	 * across their accounts is a choice with consequences they must opt into, not a default.
+	 *
+	 * This gates ONLY exhaustion-driven movement. Auth death is never gated: a revoked
+	 * credential cannot serve the request at all, so refusing to move would just fail.
+	 *
+	 * A resolver rather than a plain boolean is accepted because the setting is live-editable;
+	 * reading it per decision means a `/settings` change takes effect without a restart.
+	 */
+	loadBalancing?: boolean | (() => boolean);
 	/**
 	 * Override OAuth refresh. When set, `AuthStorage` calls this instead of the
 	 * per-provider local refresh function. Receives the credential id so the
@@ -1276,6 +1344,11 @@ export class AuthStorage {
 	 * resolve path costs a map lookup rather than a store read per request.
 	 */
 	#sessionPinnedCredential: Map<string, Map<string, number>> = new Map();
+	/**
+	 * Global per-provider account choice, memoised. `null` means "asked the store, it has none",
+	 * which is what keeps a provider without a choice from re-querying on every credential resolve.
+	 */
+	#providerSelection: Map<string, string | null> = new Map();
 	/** Recent bearer fingerprints resolved for each durable OAuth row; used only for delayed usage-limit attribution. */
 	#oauthBearerFingerprints: Map<string, Map<number, string[]>> = new Map();
 	/**
@@ -1313,6 +1386,18 @@ export class AuthStorage {
 	 * but a process that runs without subscribers for a long time shouldn't grow this unboundedly).
 	 */
 	#pendingDisabledEvents: CredentialDisabledEvent[] = [];
+	/**
+	 * Auth-death failover subscribers.
+	 *
+	 * Not buffered the way disable events are: a failover notice is about what is happening to
+	 * the request in flight, so replaying one to a listener that subscribes minutes later would
+	 * announce a move the operator has long since lived through.
+	 */
+	#credentialFailoverListeners: Set<(event: CredentialFailoverEvent) => void | Promise<void>> = new Set();
+	/** Provider → the account auth death just retired, awaiting the resolve that names its replacement. */
+	#pendingFailover: Map<string, { from: { credentialId: number; label: string }; cause: string; at: number }> =
+		new Map();
+	#loadBalancing: boolean | (() => boolean) = true;
 	#generation = 1;
 	#generationListeners: Set<(generation: number) => void> = new Set();
 	#oauthRefreshInFlight: Map<number, Promise<AuthCredentialSnapshotEntry>> = new Map();
@@ -1324,6 +1409,11 @@ export class AuthStorage {
 		this.#configValueResolver = options.configValueResolver ?? defaultConfigValueResolver;
 		this.#usageProviderResolver = options.usageProviderResolver ?? resolveDefaultUsageProvider;
 		this.#rankingStrategyResolver = options.rankingStrategyResolver ?? resolveDefaultRankingStrategy;
+		if (options.loadBalancing !== undefined) this.#loadBalancing = options.loadBalancing;
+		if (options.onCredentialFailover) {
+			// Permanent for this AuthStorage's lifetime; the unsubscribe handle is discarded.
+			this.onCredentialFailover(options.onCredentialFailover);
+		}
 		this.#usageCache = new AuthStorageUsageCache(this.#store);
 		// Opportunistic hygiene, once per AuthStorage lifetime: drop expired
 		// cache rows (24h last-good retention). A cheap indexed DELETE;
@@ -1434,6 +1524,57 @@ export class AuthStorage {
 		return () => {
 			this.#credentialDisabledListeners.delete(listener);
 		};
+	}
+
+	/**
+	 * Subscribe to auth-death failover notices. Returns an unsubscribe handle.
+	 *
+	 * Listener faults are isolated exactly as they are for disable events: a subscriber that
+	 * throws must not break the rotation that is trying to keep the request alive.
+	 */
+	onCredentialFailover(listener: (event: CredentialFailoverEvent) => void | Promise<void>): () => void {
+		this.#credentialFailoverListeners.add(listener);
+		return () => {
+			this.#credentialFailoverListeners.delete(listener);
+		};
+	}
+
+	#emitCredentialFailover(event: CredentialFailoverEvent): void {
+		for (const listener of [...this.#credentialFailoverListeners]) {
+			const logListenerError = (error: unknown): void => {
+				logger.warn("onCredentialFailover listener threw", { provider: event.provider, error: String(error) });
+			};
+			try {
+				const result = listener(event);
+				if (result instanceof Promise) result.catch(logListenerError);
+			} catch (error) {
+				logListenerError(error);
+			}
+		}
+	}
+
+	/**
+	 * The label a notice uses for an account: the operator's own name for it when they set one,
+	 * else the identity the account list shows, else the row id. Never a token or a secret.
+	 */
+	#accountNoticeLabel(provider: string, credentialId: number): string {
+		const named = this.getAccountName(provider, credentialId);
+		if (named) return named;
+		const row = this.#getStoredCredentials(provider).find(entry => entry.id === credentialId);
+		if (!row) return `#${credentialId}`;
+		if (row.credential.type === "oauth") {
+			const email = normalizeStoredEmail(row.credential.email);
+			if (email) return email;
+			const accountId = normalizeStoredAccountId(row.credential.accountId);
+			if (accountId) return accountId;
+		}
+		return `#${credentialId}`;
+	}
+
+	/** Whether exhaustion-driven movement between accounts is allowed right now. */
+	#loadBalancingEnabled(): boolean {
+		const setting = this.#loadBalancing;
+		return typeof setting === "function" ? setting() : setting;
 	}
 
 	/**
@@ -1878,13 +2019,16 @@ export class AuthStorage {
 		type: AuthCredential["type"],
 		index: number,
 	): void {
+		const credentialId = this.#getStoredCredentials(provider)[index]?.id;
+		// Drained BEFORE the sessionId guard: a sessionless caller still moves accounts, and a
+		// notice the operator never sees is the failure this event exists to fix.
+		if (credentialId !== undefined) this.#drainPendingFailover(provider, credentialId);
 		if (!sessionId) return;
 		const sessionMap = this.#sessionLastCredential.get(provider) ?? new Map();
 		sessionMap.set(sessionId, { type, index });
 		this.#sessionLastCredential.set(provider, sessionMap);
 
 		try {
-			const credentialId = this.#getStoredCredentials(provider)[index]?.id;
 			if (credentialId !== undefined) {
 				const cacheKey = `${SESSION_STICKY_CACHE_PREFIX}${provider}:${sessionId}`;
 				const cacheValue = JSON.stringify({ type, index, credentialId });
@@ -1895,6 +2039,33 @@ export class AuthStorage {
 		} catch (err) {
 			this.#reportStickyCacheFailure("write", provider, err);
 		}
+	}
+
+	/**
+	 * Emit the auth-death notice at the moment the move is a FACT, not when it was predicted.
+	 *
+	 * `rotateSessionCredential` knows the account that died but not the account that will take
+	 * over: ranking picks that on the next resolve, and with several healthy siblings a guess
+	 * would name the wrong one. So the dying account is parked here and the notice fires from the
+	 * resolve that actually served, which is the only place both names are true.
+	 *
+	 * Landing back on the SAME account (a refresh healed it) drains the entry silently: nothing
+	 * moved, so there is nothing to report.
+	 */
+	#drainPendingFailover(provider: string, servedCredentialId: number): void {
+		const pending = this.#pendingFailover.get(provider);
+		if (!pending) return;
+		this.#pendingFailover.delete(provider);
+		if (pending.from.credentialId === servedCredentialId) return;
+		// A notice describes the request in flight. If nothing resolved inside the window the
+		// rotation was abandoned, and announcing it now would describe a move that never happened.
+		if (Date.now() - pending.at > FAILOVER_NOTICE_WINDOW_MS) return;
+		this.#emitCredentialFailover({
+			provider,
+			from: pending.from,
+			to: { credentialId: servedCredentialId, label: this.#accountNoticeLabel(provider, servedCredentialId) },
+			cause: pending.cause,
+		});
 	}
 
 	/**
@@ -1948,21 +2119,21 @@ export class AuthStorage {
 		provider: string,
 		sessionId: string | undefined,
 	): { type: AuthCredential["type"]; index: number; credentialId: number } | undefined {
-		if (!sessionId) return undefined;
+		if (!sessionId) return this.#getSelectedCredential(provider);
 		let credentialId = this.#sessionPinnedCredential.get(provider)?.get(sessionId);
 		if (credentialId === undefined) {
 			try {
 				const raw = this.#store.getCache(`${SESSION_PIN_CACHE_PREFIX}${provider}:${sessionId}`);
-				if (!raw) return undefined;
+				if (!raw) return this.#getSelectedCredential(provider);
 				const parsed = JSON.parse(raw) as { credentialId?: number };
-				if (typeof parsed.credentialId !== "number") return undefined;
+				if (typeof parsed.credentialId !== "number") return this.#getSelectedCredential(provider);
 				credentialId = parsed.credentialId;
 				const pinMap = this.#sessionPinnedCredential.get(provider) ?? new Map<string, number>();
 				pinMap.set(sessionId, credentialId);
 				this.#sessionPinnedCredential.set(provider, pinMap);
 			} catch (err) {
 				this.#reportStickyCacheFailure("pin-read", provider, err);
-				return undefined;
+				return this.#getSelectedCredential(provider);
 			}
 		}
 		const stored = this.#getStoredCredentials(provider);
@@ -1971,10 +2142,10 @@ export class AuthStorage {
 			// The pinned account was logged out or replaced. Forget the pin rather than
 			// leave a dangling id that would be re-resolved on every request.
 			this.clearSessionCredentialPin(provider, sessionId);
-			return undefined;
+			return this.#getSelectedCredential(provider);
 		}
 		const credential = stored[index]?.credential;
-		if (!credential) return undefined;
+		if (!credential) return this.#getSelectedCredential(provider);
 		return { type: credential.type, index, credentialId };
 	}
 
@@ -1992,7 +2163,9 @@ export class AuthStorage {
 		provider: string,
 		sessionId: string | undefined,
 	): { type: AuthCredential["type"]; index: number } | undefined {
-		if (!sessionId) return undefined;
+		// No early return on a missing session id: the GLOBAL selection is not session state, and a
+		// caller with no session (a one-shot CLI, a subagent role resolving outside a session) must
+		// still route to the account the user picked.
 		const pinned = this.#getSessionCredentialPin(provider, sessionId);
 		if (pinned) return { type: pinned.type, index: pinned.index };
 		return this.#getStickySessionCredential(provider, sessionId);
@@ -2120,10 +2293,106 @@ export class AuthStorage {
 	}
 
 	/**
+	 * The account identity chosen for a provider, memoised per process.
+	 *
+	 * `null` in the memo means "the store was asked and has none", so a provider with no choice
+	 * costs one query per process rather than one per credential resolve.
+	 */
+	#readProviderSelection(provider: string): string | undefined {
+		const memo = this.#providerSelection.get(provider);
+		if (memo !== undefined) return memo ?? undefined;
+		const read = this.#store.getProviderSelection;
+		const identity = read ? read.call(this.#store, provider) : undefined;
+		this.#providerSelection.set(provider, identity ?? null);
+		return identity;
+	}
+
+	/**
+	 * The globally selected credential of a provider, resolved against the rows loaded now.
+	 *
+	 * Resolved on every read rather than cached as an index, for the same reason the pin is: an
+	 * index is meaningless once the row set changes, and honouring a stale one routes to somebody
+	 * else's account. A selection naming an account that is no longer stored resolves to nothing
+	 * and is deliberately LEFT in the store — a re-login rewrites the row under the same identity,
+	 * and forgetting the choice in between would silently move the user to a different account.
+	 */
+	#getSelectedCredential(
+		provider: string,
+	): { type: AuthCredential["type"]; index: number; credentialId: number } | undefined {
+		const identity = this.#readProviderSelection(provider);
+		if (!identity) return undefined;
+		const stored = this.#getStoredCredentials(provider);
+		const index = stored.findIndex(entry => resolveAccountNameIdentity(provider, entry) === identity);
+		const entry = index === -1 ? undefined : stored[index];
+		if (!entry) return undefined;
+		return { type: entry.credential.type, index, credentialId: entry.id };
+	}
+
+	/** The credential id the user chose for a provider, or undefined when they never chose. */
+	selectedProviderCredentialId(provider: string): number | undefined {
+		return this.#getSelectedCredential(provider)?.credentialId;
+	}
+
+	/**
+	 * Choose the account a provider uses, for every session and every profile on this machine.
+	 *
+	 * GLOBAL, not session-scoped, because the credentials are: they live in one shared database
+	 * that every profile reads, so a choice recorded per session evaporates on the next `veyyon`
+	 * and a choice recorded per profile would disagree with the account list it was made from.
+	 *
+	 * PER PROVIDER, deliberately. Several providers serve one session at the same time (the main
+	 * model, subagent roles, web search), so there is no single "current account" to switch:
+	 * choosing an Anthropic account must leave Codex and Gemini exactly as they were.
+	 *
+	 * The session's sticky routing record is dropped as part of the same call, so the next resolve
+	 * re-ranks from the choice instead of reusing whatever served the previous request. Without
+	 * that the card would show the newly chosen account while the old one kept serving.
+	 *
+	 * Returns false when `credentialId` is not a live credential of `provider`, so a caller cannot
+	 * record a choice that would resolve to nothing.
+	 */
+	selectProviderCredential(provider: string, credentialId: number, options?: { sessionId?: string }): boolean {
+		const entry = this.#getStoredCredentials(provider).find(row => row.id === credentialId);
+		if (!entry) return false;
+		const identity = resolveAccountNameIdentity(provider, entry);
+		this.#providerSelection.set(provider, identity);
+		const write = this.#store.setProviderSelection;
+		if (write) {
+			try {
+				write.call(this.#store, provider, identity);
+			} catch (err) {
+				// The in-process choice still holds, so the switch the user just made does take
+				// effect; it simply will not survive a restart. Loud, because a choice that quietly
+				// evaporates looks like the switch was ignored.
+				this.#reportStickyCacheFailure("selection-write", provider, err);
+			}
+		}
+		// A session pin would outrank the global choice at the chokepoint, so the switch the user
+		// just made must retire it rather than sit behind it.
+		this.clearSessionCredentialPin(provider, options?.sessionId);
+		this.#clearSessionCredential(provider, options?.sessionId);
+		return true;
+	}
+
+	/** Forget the global choice for a provider; routing returns to its own selection. */
+	clearProviderSelection(provider: string, options?: { sessionId?: string }): void {
+		this.#providerSelection.set(provider, null);
+		const clear = this.#store.clearProviderSelection;
+		if (clear) {
+			try {
+				clear.call(this.#store, provider);
+			} catch (err) {
+				this.#reportStickyCacheFailure("selection-clear", provider, err);
+			}
+		}
+		this.#clearSessionCredential(provider, options?.sessionId);
+	}
+
+	/**
 	 * What this session is routed to for one provider, and whether that matches what the
 	 * user asked for.
 	 *
-	 * `pinnedCredentialId` is the user's choice; `activeCredentialId` is what will actually
+	 * `selectedCredentialId` is the user's choice; `activeCredentialId` is what will actually
 	 * serve the next request. They differ when the pinned account is blocked or was rotated
 	 * away from, and reporting that difference is the whole reason this returns both:
 	 * showing only the active account would present a rate-limit rotation as if the user
@@ -2131,18 +2400,21 @@ export class AuthStorage {
 	 * that is not.
 	 */
 	sessionCredentialRouting(provider: string, sessionId: string | undefined): SessionCredentialRouting | undefined {
-		if (!sessionId) return undefined;
+		// No `!sessionId` early return: `selectedCredentialId` now reports the GLOBAL selection when
+		// no session pin exists, and that fact is true with or without a session. Bailing here left
+		// every sessionless surface — a one-shot CLI, the account card built for a test — unable to
+		// see which account the user chose.
 		const stored = this.#getStoredCredentials(provider);
 		if (stored.length === 0) return undefined;
 		const routing: SessionCredentialRouting = { provider };
 		const pin = this.#getSessionCredentialPin(provider, sessionId);
 		// The LAST-USED record, never `#getSessionCredential`: that one answers with the pin,
-		// so asking it here made `activeCredentialId` a copy of `pinnedCredentialId` and the
+		// so asking it here made `activeCredentialId` a copy of `selectedCredentialId` and the
 		// divergence this method exists to report could never be observed.
 		const sticky = this.#getStickySessionCredential(provider, sessionId);
 		const stickyEntry = sticky ? stored[sticky.index] : undefined;
 		if (pin) {
-			routing.pinnedCredentialId = pin.credentialId;
+			routing.selectedCredentialId = pin.credentialId;
 			// `${provider}:${type}`, the same composite `#getProviderTypeKey` builds. Passing the
 			// bare credential type looked plausible and silently matched no block row at all, so
 			// a blocked pin reported itself as healthy.
@@ -2151,7 +2423,7 @@ export class AuthStorage {
 				this.#getProviderTypeKey(provider, stored[pin.index]!.credential.type),
 				pin.index,
 			);
-			if (blockedUntil !== undefined) routing.pinnedBlockedUntilMs = blockedUntil;
+			if (blockedUntil !== undefined) routing.selectedBlockedUntilMs = blockedUntil;
 			// A usable pin IS what serves next. A blocked one is not, and then the credential
 			// that last served is the honest answer to "what is running this session".
 			if (blockedUntil === undefined) {
@@ -2230,16 +2502,53 @@ export class AuthStorage {
 
 		const providerKey = this.#getProviderTypeKey(provider, type);
 		const order = this.#getCredentialOrder(providerKey, sessionId, credentials.length);
-		const fallback = credentials[order[0]];
+		const ordered = this.#orderByBlockAvailability(
+			provider,
+			providerKey,
+			order.map(idx => credentials[idx]),
+		);
+		return ordered[0] ?? credentials[order[0]];
+	}
 
-		for (const idx of order) {
-			const candidate = credentials[idx];
-			if (!this.#isCredentialBlocked(provider, providerKey, candidate.index)) {
-				return candidate;
-			}
-		}
-
-		return fallback;
+	/**
+	 * Order credential candidates so a usable account always precedes a blocked
+	 * one, and blocked accounts precede each other by how soon they free up.
+	 *
+	 * Selection used to answer a single yes/no question — "is this one blocked?"
+	 * — and fall back to the round-robin head when every answer was yes. Every
+	 * answer IS yes whenever a provider-wide quota wall marks each account as its
+	 * turn comes round, and the round-robin head is then whichever account
+	 * happens to sort first, routinely the one just marked with the LONGEST
+	 * window. Handing that one back means the next request is guaranteed to fail
+	 * the same way, which is the immediate-repeat signature in the error
+	 * telemetry. The soonest-unblocking account is the only choice where the wait
+	 * has a defined end, and by the time the caller's backoff elapses it may
+	 * already be usable.
+	 *
+	 * Unblocked candidates keep their incoming order, so session stickiness and
+	 * round-robin fairness are untouched whenever any account is actually usable.
+	 */
+	#orderByBlockAvailability<C extends { index: number }>(
+		provider: string,
+		providerKey: string,
+		candidates: readonly (C | undefined)[],
+		blockScope?: string,
+	): C[] {
+		return candidates
+			.filter((candidate): candidate is C => candidate !== undefined)
+			.map((candidate, position) => ({
+				candidate,
+				position,
+				// `0` sorts every usable account ahead of every blocked one, and a
+				// real expiry is a future epoch, so the two ranges cannot collide.
+				blockedUntil: this.#getCredentialBlockedUntil(provider, providerKey, candidate.index, blockScope) ?? 0,
+			}))
+			.sort((left, right) =>
+				left.blockedUntil === right.blockedUntil
+					? left.position - right.position
+					: left.blockedUntil - right.blockedUntil,
+			)
+			.map(entry => entry.candidate);
 	}
 
 	async #rankApiKeySelections(args: {
@@ -2361,13 +2670,12 @@ export class AuthStorage {
 		const fallback = credentials[order[0]];
 		const strategy = this.#rankingStrategyResolver?.(provider);
 		if (!strategy) {
-			for (const idx of order) {
-				const candidate = credentials[idx];
-				if (!this.#isCredentialBlocked(provider, providerKey, candidate.index)) {
-					return candidate;
-				}
-			}
-			return fallback;
+			const ordered = this.#orderByBlockAvailability(
+				provider,
+				providerKey,
+				order.map(idx => credentials[idx]),
+			);
+			return ordered[0] ?? fallback;
 		}
 
 		const rankingContext: CredentialRankingContext = { modelId: options?.modelId };
@@ -4432,6 +4740,15 @@ export class AuthStorage {
 			this.#markCredentialBlocked(provider, providerKey, targetIndex, blockedUntil, blockScope);
 		}
 
+		if (!this.#loadBalancingEnabled()) {
+			// The block above still stands: the window really is exhausted, and recording that is
+			// what lets the account list say when it comes back. What load balancing gates is the
+			// MOVE. With it off the caller waits for this account's own window instead of spending
+			// a sibling the operator did not offer up, so `retryAtMs` is this account's reset —
+			// never a sibling's, which is exactly the leak the gate exists to prevent.
+			return { switched: false, retryAtMs: blockedUntil };
+		}
+
 		const remainingCredentials = this.#getCredentialsForProvider(provider)
 			.map((credential, index) => ({ credential, index }))
 			.filter(
@@ -4745,10 +5062,17 @@ export class AuthStorage {
 					rankingContext,
 					blockScope,
 				})
-			: order
-					.map(idx => credentials[idx])
-					.filter((selection): selection is { credential: OAuthCredential; index: number } => Boolean(selection))
-					.map(selection => ({ selection, usage: null, usageChecked: false }));
+			: // The unranked path (no ranking strategy, or a session that already
+				// has a working preferred account) still has to answer "which
+				// account first" while some of them are blocked. Round-robin order
+				// alone puts a blocked account ahead of a usable one, and under a
+				// provider-wide quota wall it puts the longest-blocked one first.
+				this.#orderByBlockAvailability(
+					provider,
+					providerKey,
+					order.map(idx => credentials[idx]),
+					blockScope,
+				).map(selection => ({ selection, usage: null, usageChecked: false }));
 
 		if (sessionPreferredIndex !== undefined && !hasPlanRequirement) {
 			const sessionPreferredCandidate = candidates.findIndex(
@@ -6232,6 +6556,17 @@ export class AuthStorage {
 			sessionCredential.index,
 			Date.now() + AuthStorage.#defaultBackoffMs,
 		);
+
+		if (hasSibling && target) {
+			// Parked, not emitted: the label of the account that DIED must be read now, before
+			// `markCredentialSuspect` soft-deletes the row and the name it was known by with it.
+			// The replacement is named later, by the resolve that actually serves.
+			this.#pendingFailover.set(provider, {
+				from: { credentialId: target.id, label: this.#accountNoticeLabel(provider, target.id) },
+				cause: message ?? (status !== undefined ? `HTTP ${status}` : "authentication failed"),
+				at: Date.now(),
+			});
+		}
 
 		if (target) {
 			const markSuspect = this.#store.markCredentialSuspect?.bind(this.#store);

@@ -1,7 +1,7 @@
 /**
  * The one condition worth interrupting the user about: the account changed without them.
  *
- * `pinnedButRotated` answers "did a rate limit move this session off the account the user
+ * `selectedButRotated` answers "did a rate limit move this session off the account the user
  * picked?" and it must answer with BOTH rows, because the sentence the surfaces render names
  * them together — "pinned to work, rotated off it at 14:03 (usage limit)". Returning only the
  * serving row would present the substitution as the user's own choice, and returning
@@ -15,7 +15,7 @@ import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test, vi } from "bun:test";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
-import { buildAccountInventory, pinnedButRotated } from "@veyyon/coding-agent/session/account-inventory";
+import { buildAccountInventory, selectedButRotated } from "@veyyon/coding-agent/session/account-inventory";
 
 const PROVIDER = "unit-rotated";
 const SESSION_ID = "session-rotated";
@@ -23,7 +23,7 @@ const NOW_MS = 1_760_000_000_000;
 const HOUR_MS = 60 * 60_000;
 const BLOCK_FOR_MS = 2 * HOUR_MS;
 
-describe("pinnedButRotated", () => {
+describe("selectedButRotated", () => {
 	let store: SqliteAuthCredentialStore | null = null;
 	let authStorage: AuthStorage | null = null;
 	let workId = 0;
@@ -84,7 +84,7 @@ describe("pinnedButRotated", () => {
 
 		const inventory = buildAccountInventory(storage, { sessionId: SESSION_ID });
 
-		expect(pinnedButRotated(inventory, PROVIDER)).toBeUndefined();
+		expect(selectedButRotated(inventory, PROVIDER)).toBeUndefined();
 	});
 
 	/**
@@ -106,12 +106,12 @@ describe("pinnedButRotated", () => {
 		const inventory = buildAccountInventory(storage, { sessionId: SESSION_ID });
 		const rows = inventory.providers[0]?.rows ?? [];
 		// The precondition the fallback would trip over: row 0 is not the serving row.
-		expect(rows.map(row => [row.credentialId, row.pinnedForSession, row.activeForSession])).toEqual([
+		expect(rows.map(row => [row.credentialId, row.selectedForProvider, row.activeForSession])).toEqual([
 			[personalId, false, false],
 			[workId, false, true],
 		]);
 
-		expect(pinnedButRotated(inventory, PROVIDER)).toBeUndefined();
+		expect(selectedButRotated(inventory, PROVIDER)).toBeUndefined();
 	});
 
 	/**
@@ -132,18 +132,18 @@ describe("pinnedButRotated", () => {
 		expect(await storage.getApiKey(PROVIDER, SESSION_ID)).toBe("access-personal");
 
 		const inventory = buildAccountInventory(storage, { sessionId: SESSION_ID });
-		const rotated = pinnedButRotated(inventory, PROVIDER);
+		const rotated = selectedButRotated(inventory, PROVIDER);
 
 		if (!rotated) throw new Error("expected a rotated pin to be reported");
-		expect(rotated.pinned.credentialId).toBe(workId);
-		expect(rotated.pinned.name).toBe("work");
-		expect(rotated.pinned.pinnedForSession).toBe(true);
-		expect(rotated.pinned.activeForSession).toBe(false);
-		expect(rotated.pinned.blockedUntilMs).toBe(NOW_MS + BLOCK_FOR_MS);
+		expect(rotated.chosen.credentialId).toBe(workId);
+		expect(rotated.chosen.name).toBe("work");
+		expect(rotated.chosen.selectedForProvider).toBe(true);
+		expect(rotated.chosen.activeForSession).toBe(false);
+		expect(rotated.chosen.blockedUntilMs).toBe(NOW_MS + BLOCK_FOR_MS);
 		expect(rotated.serving.credentialId).toBe(personalId);
 		expect(rotated.serving.name).toBe("personal");
 		expect(rotated.serving.activeForSession).toBe(true);
-		expect(rotated.serving.pinnedForSession).toBe(false);
+		expect(rotated.serving.selectedForProvider).toBe(false);
 	});
 
 	/**
@@ -163,6 +163,6 @@ describe("pinnedButRotated", () => {
 
 		const inventory = buildAccountInventory(storage, { sessionId: SESSION_ID });
 
-		expect(pinnedButRotated(inventory, "unit-rotated-elsewhere")).toBeUndefined();
+		expect(selectedButRotated(inventory, "unit-rotated-elsewhere")).toBeUndefined();
 	});
 });

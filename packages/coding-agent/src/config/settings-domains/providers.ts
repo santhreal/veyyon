@@ -34,6 +34,30 @@ import { unsetNumberOption } from "../optional-number";
 export const PROVIDERS_SETTINGS = {
 	// Providers
 	// ────────────────────────────────────────────────────────────────────────
+	/**
+	 * Whether hitting a quota or rate limit may move a provider to one of your other accounts.
+	 *
+	 * OFF, and off is the honest default. Every account you are signed into belongs to a real
+	 * subscription with a real bill and a real terms-of-service, and spreading one session's work
+	 * across them is a decision only the operator can make. Silently doing it on their behalf is
+	 * how a work account ends up serving personal traffic, and there is no way to un-spend that.
+	 *
+	 * This gates EXHAUSTION only. A revoked or disabled credential still fails over, because a
+	 * dead credential cannot serve the request no matter what this says, and the alternative is a
+	 * hard error where a working account is sitting right there. That move announces itself and
+	 * names both accounts, so it is never the silent kind.
+	 */
+	"accounts.loadBalancing": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "providers",
+			group: "Accounts",
+			label: "Account Load Balancing",
+			description:
+				"When one account hits its quota or rate limit, continue on another account of the same provider. Off: the session waits for that account's window. A revoked account always fails over regardless, with a notice",
+		},
+	},
 
 	/**
 	 * Whether secrets are replaced before anything is sent to a provider.

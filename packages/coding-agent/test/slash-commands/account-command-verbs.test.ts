@@ -240,7 +240,7 @@ describe("/account verbs", () => {
 		await executeBuiltinSlashCommand("/account frobnicate", current().runtime);
 
 		expect(current().warnings).toEqual([
-			'Unknown /account subcommand "frobnicate". Use status, manager, switch, name, refresh, usage, logout, add.',
+			'Unknown /account subcommand "frobnicate". Use status, manager, switch, use, name, refresh, usage, login, logout.',
 		]);
 		expect(current().status).toEqual([]);
 	});
@@ -356,7 +356,7 @@ describe("/account verbs", () => {
 		await executeAcpBuiltinSlashCommand("/account manager", runtime);
 
 		expect(said).toEqual([
-			"/account manager opens a view, which needs the interactive TUI. From here: /account status, /account name <text>, /account refresh, /account usage.",
+			"/account manager opens a view, which needs the interactive TUI. From here: /account status, /account use <provider> <account>, /account name <text>, /account refresh, /account usage.",
 		]);
 		expect(current().managerOpenedWith).toEqual([]);
 	});

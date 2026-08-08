@@ -36,7 +36,7 @@ function account(credentialId: number, name: string): AccountRow {
 		origin: { kind: "oauth" },
 		usage: [],
 		activeForSession: false,
-		pinnedForSession: false,
+		selectedForProvider: false,
 		name,
 	};
 }
@@ -64,6 +64,7 @@ function harness(rows: AccountRow[]) {
 		onLogout: row => recorded.loggedOut.push(row.credentialId),
 		onShowUsage: () => {},
 		onAddAccount: provider => recorded.added.push(provider),
+		onToggleLoadBalancing: () => false,
 		onCancel: () => {},
 	};
 	const component = new AccountManagerComponent(inventory(rows), callbacks, { terminalHeight: 40 });
@@ -191,16 +192,16 @@ describe("the add-account entry is part of the list", () => {
 
 	/**
 	 * The footer names what `enter` will do. While the add entry is selected `enter` does not use
-	 * an account, so a chip still reading `enter use for Anthropic` would be the card promising an
+	 * an account, so a chip still reading `enter switch Anthropic to this account` would be the card promising an
 	 * action it will not take.
 	 */
 	test("the enter chip says add while the add entry is selected", () => {
 		const { component, footer } = harness(THREE());
-		expect(footer()).toContain("enter use for Anthropic");
+		expect(footer()).toContain("enter switch Anthropic to this account");
 
 		for (let i = 0; i < 3; i++) component.handleInput(DOWN);
 
 		expect(footer()).toContain("enter add Anthropic account");
-		expect(footer()).not.toContain("enter use for Anthropic");
+		expect(footer()).not.toContain("enter switch Anthropic to this account");
 	});
 });

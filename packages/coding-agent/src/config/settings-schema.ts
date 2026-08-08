@@ -145,7 +145,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	],
 	tasks: ["Modes", "Commands & Skills"],
 	subagents: ["Delegation", "Agents", "Models", "Limits", "Auto Close", "Isolation", "Coordination"],
-	providers: ["Services", "Discovery", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"],
+	providers: ["Accounts", "Services", "Discovery", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"],
 	experimental: ["Argot", "Tool Calling", "Auto-Learn"],
 };
 

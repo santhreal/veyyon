@@ -98,7 +98,7 @@ describe("session credential pin lifecycle", () => {
 
 		expect(await storage.getApiKey(PROVIDER, SESSION_ID)).toBe(bearerBefore);
 		expect(storage.sessionCredentialRouting(PROVIDER, SESSION_ID)).toEqual(routingBefore);
-		expect(routingBefore?.pinnedCredentialId).toBeUndefined();
+		expect(routingBefore?.selectedCredentialId).toBeUndefined();
 	});
 
 	/**
@@ -117,7 +117,7 @@ describe("session credential pin lifecycle", () => {
 
 		expect(await storage.removeCredential(PROVIDER, secondId)).toBe(true);
 
-		expect(storage.sessionCredentialRouting(PROVIDER, SESSION_ID)?.pinnedCredentialId).toBeUndefined();
+		expect(storage.sessionCredentialRouting(PROVIDER, SESSION_ID)?.selectedCredentialId).toBeUndefined();
 		expect(await storage.getApiKey(PROVIDER, SESSION_ID)).toBe("access-first");
 		expect(storage.getOAuthAccountIdentity(PROVIDER, SESSION_ID)).toEqual({
 			accountId: "account-first",
@@ -139,7 +139,7 @@ describe("session credential pin lifecycle", () => {
 
 		const reopened = await reopen();
 
-		expect(reopened.sessionCredentialRouting(PROVIDER, SESSION_ID)?.pinnedCredentialId).toBe(secondId);
+		expect(reopened.sessionCredentialRouting(PROVIDER, SESSION_ID)?.selectedCredentialId).toBe(secondId);
 		expect(await reopened.getApiKey(PROVIDER, SESSION_ID)).toBe("access-second");
 		expect(reopened.getOAuthAccountIdentity(PROVIDER, SESSION_ID)).toEqual({
 			accountId: "account-second",
@@ -155,7 +155,7 @@ describe("session credential pin lifecycle", () => {
 	 * The routing record is compared whole rather than by one field: after a clear, the
 	 * session keeps running on the account it last used (that is stickiness, not a pin), so
 	 * the observable difference between a cleared pin and a surviving one is the PRESENCE of
-	 * `pinnedCredentialId`, and only an exact comparison catches it coming back.
+	 * `selectedCredentialId`, and only an exact comparison catches it coming back.
 	 */
 	test("clearSessionCredentialPin removes the pin durably", async () => {
 		if (!authStorage) throw new Error("test setup failed");

@@ -5,7 +5,7 @@
  * manager has to be able to say "you asked for `work`, it hit its limit at 14:03, `personal`
  * is serving" — which is only possible if `sessionCredentialRouting` keeps BOTH facts. The
  * regression this file exists to prevent: `activeCredentialId` was computed from the same
- * private helper that answers with the pin, so it was always a copy of `pinnedCredentialId`,
+ * private helper that answers with the pin, so it was always a copy of `selectedCredentialId`,
  * the divergence could never be observed, and the substitute account was presented as if the
  * user had picked it. The second test below is that bug's permanent gate.
  */
@@ -91,7 +91,7 @@ describe("sessionCredentialRouting reports a pin that rotation moved off", () =>
 
 		expect(storage.sessionCredentialRouting(PROVIDER, sessionId)).toEqual({
 			provider: PROVIDER,
-			pinnedCredentialId: secondId,
+			selectedCredentialId: secondId,
 			activeCredentialId: secondId,
 		});
 	});
@@ -126,8 +126,8 @@ describe("sessionCredentialRouting reports a pin that rotation moved off", () =>
 
 		expect(storage.sessionCredentialRouting(PROVIDER, sessionId)).toEqual({
 			provider: PROVIDER,
-			pinnedCredentialId: secondId,
-			pinnedBlockedUntilMs: NOW_MS + BLOCK_FOR_MS,
+			selectedCredentialId: secondId,
+			selectedBlockedUntilMs: NOW_MS + BLOCK_FOR_MS,
 			activeCredentialId: firstId,
 		});
 	});
@@ -156,7 +156,7 @@ describe("sessionCredentialRouting reports a pin that rotation moved off", () =>
 		expect(await storage.getApiKey(PROVIDER, sessionId)).toBe("access-second");
 		expect(storage.sessionCredentialRouting(PROVIDER, sessionId)).toEqual({
 			provider: PROVIDER,
-			pinnedCredentialId: secondId,
+			selectedCredentialId: secondId,
 			activeCredentialId: secondId,
 		});
 	});

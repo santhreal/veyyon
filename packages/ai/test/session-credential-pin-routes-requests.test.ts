@@ -113,7 +113,7 @@ describe("AuthStorage.pinSessionCredential routes this session's requests", () =
 		expect(await storage.getApiKey(PROVIDER, siblingSession)).toBe(siblingBearerBefore);
 		expect(storage.getOAuthAccountIdentity(PROVIDER, siblingSession)).toEqual(siblingIdentityBefore);
 		expect(storage.sessionCredentialRouting(PROVIDER, siblingSession)).toEqual(siblingRoutingBefore);
-		expect(siblingRoutingBefore?.pinnedCredentialId).toBeUndefined();
+		expect(siblingRoutingBefore?.selectedCredentialId).toBeUndefined();
 	});
 
 	/**
@@ -135,7 +135,7 @@ describe("AuthStorage.pinSessionCredential routes this session's requests", () =
 		const otherBearerBefore = await storage.getApiKey(OTHER_PROVIDER, sessionId);
 		const otherIdentityBefore = storage.getOAuthAccountIdentity(OTHER_PROVIDER, sessionId);
 		const otherRoutingBefore = storage.sessionCredentialRouting(OTHER_PROVIDER, sessionId);
-		expect(otherRoutingBefore?.pinnedCredentialId).toBeUndefined();
+		expect(otherRoutingBefore?.selectedCredentialId).toBeUndefined();
 
 		expect(storage.pinSessionCredential(PROVIDER, sessionId, secondId)).toBe(true);
 		expect(await storage.getApiKey(PROVIDER, sessionId)).toBe("pin-access-second");
@@ -179,7 +179,7 @@ describe("AuthStorage.pinSessionCredential routes this session's requests", () =
 		expect(storage.getOAuthAccountIdentity(PROVIDER, sessionId)).toEqual(targetIdentity);
 		expect(storage.sessionCredentialRouting(PROVIDER, sessionId)).toEqual({
 			provider: PROVIDER,
-			pinnedCredentialId: targetId,
+			selectedCredentialId: targetId,
 			activeCredentialId: targetId,
 		});
 	});

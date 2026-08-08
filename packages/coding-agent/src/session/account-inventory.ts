@@ -28,12 +28,20 @@ import { formatProviderName } from "../slash-commands/helpers/format";
 
 /** One usage window as an account row shows it. */
 export interface AccountUsageWindow {
-	/** Provider's own label for the window ("5h", "Claude 7 Day"). */
+	/**
+	 * What the row calls this window, unique within the account.
+	 *
+	 * The provider's window label alone is NOT unique: Antigravity reports one daily counter per
+	 * backend and Codex reports a plan window beside a per-model one, so three limits arrive whose
+	 * `window.label` is the same word. See {@link usageWindowLabel} for how the qualifier is added.
+	 */
 	label: string;
 	/** 0..1 consumed, or undefined when the provider reported no figure. */
 	usedFraction?: number;
 	/** Epoch ms the window rolls over. */
 	resetsAtMs?: number;
+	/** Window length in ms when the provider states one. Orders the bars, shortest window first. */
+	durationMs?: number;
 }
 
 /** Health of one credential as last probed. `undefined` means "not probed yet", never "fine". */
@@ -71,8 +79,15 @@ export interface AccountRow {
 	usage: AccountUsageWindow[];
 	/** True when this credential serves the session's next request for its provider. */
 	activeForSession: boolean;
-	/** True when the user explicitly pinned this credential for the session. */
-	pinnedForSession: boolean;
+	/**
+	 * True when this is the account the user chose for this provider.
+	 *
+	 * GLOBAL and durable, not session state: the choice is stored beside the credentials, so it
+	 * holds for every session and every profile on this machine until the user changes it. The
+	 * card says so, because a per-session choice that silently reverted on the next launch is
+	 * exactly what this replaced.
+	 */
+	selectedForProvider: boolean;
 }
 
 /**
@@ -130,7 +145,12 @@ export interface AccountInventory {
 }
 
 export interface BuildAccountInventoryOptions {
-	/** Session whose routing decides `activeForSession` / `pinnedForSession`. */
+	/**
+	 * Session whose live routing decides `activeForSession`.
+	 *
+	 * `selectedForProvider` does NOT depend on it: the choice is global, so the card shows it
+	 * identically in a session, in a one-shot CLI run, and in a test with no session at all.
+	 */
 	sessionId?: string;
 }
 
@@ -216,7 +236,7 @@ export function buildAccountInventory(
 			type: credential.type,
 			usage: [],
 			activeForSession: false,
-			pinnedForSession: false,
+			selectedForProvider: false,
 		};
 		const name = authStorage.getAccountName(provider, stored.id);
 		if (name) row.name = name;
@@ -239,9 +259,9 @@ export function buildAccountInventory(
 		for (let index = 0; index < rows.length; index++) {
 			const row = rows[index]!;
 			if (routing?.activeCredentialId === row.credentialId) row.activeForSession = true;
-			if (routing?.pinnedCredentialId === row.credentialId) {
-				row.pinnedForSession = true;
-				if (routing.pinnedBlockedUntilMs !== undefined) row.blockedUntilMs = routing.pinnedBlockedUntilMs;
+			if (routing?.selectedCredentialId === row.credentialId) {
+				row.selectedForProvider = true;
+				if (routing.selectedBlockedUntilMs !== undefined) row.blockedUntilMs = routing.selectedBlockedUntilMs;
 			}
 			if (row.blockedUntilMs === undefined) {
 				// `${provider}:${type}` is the block key AuthStorage writes; the bare type matches
@@ -332,16 +352,88 @@ export function applyCredentialHealth(
 	return { providers, totalAccounts: inventory.totalAccounts, unhealthyCount };
 }
 
+/**
+ * What tells two limits of one account apart, beyond the window they share.
+ *
+ * Providers put this in three different places and none of them is `window.label`:
+ * Antigravity names the backend counter in the limit label (`Usage (Google)`), Codex names the
+ * model tier the same way (`7 days (Spark)`), Claude names the model family (`Claude 7 Day
+ * (Opus)`), and GitHub Copilot gives three limits one reset window and distinguishes them only by
+ * the limit label (`Premium Requests`). A trailing parenthetical is the qualifier when there is
+ * one; otherwise the limit's own label is, unless it merely restates the window.
+ */
+function usageWindowQualifier(limit: UsageLimit, windowLabel: string): string | undefined {
+	const own = limit.label.trim();
+	if (!own) return undefined;
+	const parenthetical = /\(([^()]+)\)\s*$/.exec(own)?.[1]?.trim();
+	if (parenthetical) return parenthetical;
+	// `Claude 5 Hour` against window `5 Hour` says nothing the window did not: the provider
+	// prefixed its own name, and repeating it on every bar is noise, not identity.
+	return own.toLowerCase().includes(windowLabel.toLowerCase()) ? undefined : own;
+}
+
+/**
+ * The label one usage bar wears.
+ *
+ * WHY THIS IS NOT `limit.window.label`. It used to be, and that is the whole single-window bug:
+ * an Antigravity account reports three daily counters and rendered three bars all reading
+ * `Daily`, a Codex account reports its plan window and a Spark window and rendered `7 days`
+ * twice. Bars that cannot be told apart read as one window repeated, which is exactly what was
+ * reported — "usage shows one window when the account has more". The window still leads the
+ * label, because that is what a user scans for; the qualifier follows it.
+ */
+function usageWindowLabel(limit: UsageLimit): string {
+	const windowLabel = limit.window?.label?.trim() || limit.scope.windowId?.trim();
+	if (!windowLabel) return limit.label.trim();
+	const qualifier = usageWindowQualifier(limit, windowLabel);
+	return qualifier ? `${windowLabel} · ${qualifier}` : windowLabel;
+}
+
 /** One usage window per limit, in the provider's own order. */
 function usageWindowsFor(limits: readonly UsageLimit[]): AccountUsageWindow[] {
 	const windows: AccountUsageWindow[] = [];
 	for (const limit of limits) {
-		const window: AccountUsageWindow = { label: limit.window?.label ?? limit.scope.windowId ?? limit.label };
+		const window: AccountUsageWindow = { label: usageWindowLabel(limit) };
 		if (limit.amount.usedFraction !== undefined) window.usedFraction = limit.amount.usedFraction;
 		if (limit.window?.resetsAt !== undefined) window.resetsAtMs = limit.window.resetsAt;
+		if (limit.window?.durationMs !== undefined) window.durationMs = limit.window.durationMs;
 		windows.push(window);
 	}
 	return windows;
+}
+
+/**
+ * Every window of one account, each shown once, shortest window first.
+ *
+ * ORDERING is by the window's own length, not by the order the provider listed its limits in:
+ * `5 Hour` before `7 Day`, `Daily` before `Weekly`. Antigravity sorts its limits by remaining
+ * fraction and Claude emits the umbrella windows before the model-scoped ones, so provider order
+ * puts a weekly bar above an hourly one for no reason the reader can see. A window whose length
+ * the provider never stated sorts last, because there is nothing to place it against.
+ *
+ * DEDUPING is by label, keeping the freshest reading. Two reports for the same account reach here
+ * routinely — the header-ingested snapshot and the endpoint fetch are separate cache rows — and
+ * without this the card showed `5 Hour, 7 Day, 5 Hour, 7 Day`.
+ */
+function orderUsageWindows(
+	windows: readonly { window: AccountUsageWindow; fetchedAt: number }[],
+): AccountUsageWindow[] {
+	const freshest = new Map<string, { window: AccountUsageWindow; fetchedAt: number; position: number }>();
+	for (const entry of windows) {
+		const prior = freshest.get(entry.window.label);
+		if (prior && prior.fetchedAt >= entry.fetchedAt) continue;
+		freshest.set(entry.window.label, { ...entry, position: prior?.position ?? freshest.size });
+	}
+	return [...freshest.values()]
+		.sort((left, right) => {
+			const leftMs = left.window.durationMs;
+			const rightMs = right.window.durationMs;
+			if (leftMs === rightMs) return left.position - right.position;
+			if (leftMs === undefined) return 1;
+			if (rightMs === undefined) return -1;
+			return leftMs - rightMs;
+		})
+		.map(entry => entry.window);
 }
 
 /**
@@ -352,11 +444,20 @@ function usageWindowsFor(limits: readonly UsageLimit[]): AccountUsageWindow[] {
  * Anthropic subscriptions sharing a login do not both claim each other's limits. Only the
  * limit COLUMNS that match a row are attached to it, because one report can carry limits for
  * several accounts at once.
+ *
+ * EXCEPT when the provider holds exactly one credential, where identity matching is skipped
+ * entirely. Matching exists to arbitrate between siblings, and a provider with no sibling has
+ * nothing to arbitrate: the usage fan-out builds one request per stored credential, so a report
+ * for a single-credential provider can only be that credential's. Requiring a match there is how
+ * an account whose stored credential carries no email or account id (Cursor, Kimi and xAI store
+ * none) showed no usage at all, and how an Anthropic row carrying an `orgId` the report's
+ * metadata omits lost every window it had.
  */
 export function applyUsageReports(inventory: AccountInventory, reports: readonly UsageReport[]): AccountInventory {
 	const providers = inventory.providers.map(entry => {
 		const providerReports = reports.filter(report => report.provider === entry.provider);
 		if (providerReports.length === 0) return entry;
+		const soleCredential = entry.rows.length === 1;
 		return {
 			...entry,
 			rows: entry.rows.map(row => {
@@ -366,19 +467,22 @@ export function applyUsageReports(inventory: AccountInventory, reports: readonly
 					...(row.projectId ? { projectId: row.projectId } : {}),
 					...(row.orgId ? { orgId: row.orgId } : {}),
 				};
-				if (Object.keys(identity).length === 0) return row;
-				const usage: AccountUsageWindow[] = [];
+				if (!soleCredential && Object.keys(identity).length === 0) return row;
+				const collected: { window: AccountUsageWindow; fetchedAt: number }[] = [];
 				const tiers = new Set<string>();
 				for (const report of providerReports) {
-					const matched = report.limits.filter(limit => limitMatchesActiveAccount(report, limit, identity));
-					if (matched.length > 0) usage.push(...usageWindowsFor(matched));
+					const matched = soleCredential
+						? report.limits
+						: report.limits.filter(limit => limitMatchesActiveAccount(report, limit, identity));
+					const fetchedAt = Number.isFinite(report.fetchedAt) ? report.fetchedAt : 0;
+					for (const window of usageWindowsFor(matched)) collected.push({ window, fetchedAt });
 					for (const limit of matched) {
 						const tier = limit.scope.tier?.trim();
 						if (tier) tiers.add(tier);
 					}
 				}
-				if (usage.length === 0) return row;
-				const next = { ...row, usage };
+				if (collected.length === 0) return row;
+				const next = { ...row, usage: orderUsageWindows(collected) };
 				// Only when the account's own limits agree on ONE tier. Anthropic reports several
 				// windows per account and a Team seat can carry both a shared and a personal pool,
 				// so two different tiers on one account means the label would have to pick a winner,
@@ -409,26 +513,26 @@ export function activeSessionAccounts(inventory: AccountInventory): AccountRow[]
 	const active: AccountRow[] = [];
 	for (const entry of inventory.providers) {
 		for (const row of entry.rows) {
-			if (row.activeForSession || row.pinnedForSession) active.push(row);
+			if (row.activeForSession || row.selectedForProvider) active.push(row);
 		}
 	}
 	return active;
 }
 
 /**
- * The row a user pinned for a provider whose traffic has since moved elsewhere.
+ * The account a user chose for a provider whose traffic has since moved elsewhere.
  *
- * Returns the pinned row only when a DIFFERENT row is serving, which is the condition worth
+ * Returns the chosen row only when a DIFFERENT row is serving, which is the condition worth
  * reporting: the account changed without the user asking. Both rows are returned so the
  * caller can name what it swapped to.
  */
-export function pinnedButRotated(
+export function selectedButRotated(
 	inventory: AccountInventory,
 	provider: string,
-): { pinned: AccountRow; serving: AccountRow } | undefined {
+): { chosen: AccountRow; serving: AccountRow } | undefined {
 	const rows = accountsForProvider(inventory, provider);
-	const pinned = rows.find(row => row.pinnedForSession);
-	if (!pinned || pinned.activeForSession) return undefined;
+	const chosen = rows.find(row => row.selectedForProvider);
+	if (!chosen || chosen.activeForSession) return undefined;
 	const serving = rows.find(row => row.activeForSession);
-	return serving ? { pinned, serving } : undefined;
+	return serving ? { chosen, serving } : undefined;
 }

@@ -34,7 +34,7 @@ function account(provider: string, credentialId: number, overrides: Partial<Acco
 		type: "oauth",
 		usage: [],
 		activeForSession: false,
-		pinnedForSession: false,
+		selectedForProvider: false,
 		...overrides,
 	};
 }
@@ -136,12 +136,16 @@ describe("account row wording", () => {
 	});
 
 	/**
-	 * Locks out a prose window label pushing the usage bar out of the pane. Anthropic names its
-	 * windows in sentences, so an unclamped label ("Claude 7 Day (Fable)") shifts the bar and the
-	 * reset text right until they fall off the card. The clamp matches `/account status` so the
-	 * same window reads the same way on both surfaces.
+	 * Locks out a prose window label pushing the usage bar out of the pane, AND locks in that every
+	 * bar of one account starts in the same column.
+	 *
+	 * Anthropic names its windows in sentences and Antigravity qualifies three same-named daily
+	 * counters, so a fixed 8-column gutter either truncated the label into uselessness ("Claude 7…")
+	 * or let a long one shove the bar off the card. The column is sized against THIS account's own
+	 * labels: a label up to `USAGE_WINDOW_LABEL_MAX` survives whole, the short label beside it pads
+	 * out to meet it, and only a label past the clamp is truncated.
 	 */
-	test("clamps a prose usage-window label so the bar stays put", () => {
+	test("sizes the label gutter to the account's own labels and clamps past the maximum", () => {
 		const now = Date.now();
 		const lines = accountUsageLines(
 			account("anthropic", 1, {
@@ -153,37 +157,75 @@ describe("account row wording", () => {
 			now,
 		).map(line => stripVTControlCharacters(line));
 
-		expect(lines[0]).toBe("5h      [███████░░░] 70%   resets in 2h");
-		expect(lines[1]?.slice(0, 13)).toBe("Claude 7 Da… ");
-		expect(lines[1]).toBe("Claude 7 Da… [███░░░░░░░] 34%");
+		// 20 characters, exactly the clamp: rendered in full, never abbreviated.
+		expect(lines[1]).toBe("Claude 7 Day (Fable) [███░░░░░░░] 34%");
+		// The short label pads to the same column, so the two bars line up.
+		expect(lines[0]).toBe("5h                   [███████░░░] 70%   resets in 2h");
+		expect(lines[0]?.indexOf("[")).toBe(lines[1]?.indexOf("[") ?? -1);
+	});
+
+	/** Past the clamp the label truncates rather than pushing the bar off the card. */
+	test("truncates a label longer than the clamp", () => {
+		const now = Date.now();
+		const lines = accountUsageLines(
+			account("anthropic", 1, {
+				usage: [{ label: "Claude 7 Day (Fable Preview)", usedFraction: 0.34 }],
+			}),
+			now,
+		).map(line => stripVTControlCharacters(line));
+
+		expect(lines[0]).toBe("Claude 7 Day (Fable… [███░░░░░░░] 34%");
 	});
 });
 
 describe("the routing tag reports both facts", () => {
 	/**
 	 * The bug this locks out was found by walking the card as a user. Pressing `enter` on the
-	 * account ALREADY serving the session recorded the pin and left the card byte-identical, because
-	 * `activeForSession` owned the tag outright and never mentioned the pin. The host's confirmation
-	 * goes to the transcript, which is behind this fullscreen card, so the row is the only place
-	 * feedback can land: a primary action with no visible effect reads as a broken key.
+	 * account ALREADY serving the session recorded the choice and left the card byte-identical,
+	 * because `activeForSession` owned the tag outright and never mentioned the choice. The host's
+	 * confirmation goes to the transcript, which is behind this fullscreen card, so the row is the
+	 * only place feedback can land: a primary action with no visible effect reads as a broken key.
 	 */
-	test("a serving account that was pinned says both", () => {
+	test("a serving account the user chose says both", () => {
 		expect(
-			accountHeadLine(account("anthropic", 1, { activeForSession: true, pinnedForSession: true }), NOW).tag,
-		).toBe("this session · pinned");
+			accountHeadLine(account("anthropic", 1, { activeForSession: true, selectedForProvider: true }), NOW).tag,
+		).toBe("serving · your choice");
 	});
 
-	/** Serving by ordinary routing, with no pin, must NOT claim the user chose it. */
-	test("a serving account that was not pinned says only that it is serving", () => {
-		expect(accountHeadLine(account("anthropic", 1, { activeForSession: true }), NOW).tag).toBe("this session");
+	/** Serving by ordinary routing, with no choice recorded, must NOT claim the user picked it. */
+	test("a serving account nobody chose says only that it is serving", () => {
+		expect(accountHeadLine(account("anthropic", 1, { activeForSession: true }), NOW).tag).toBe("serving");
 	});
 
 	/**
-	 * A pin whose account is not serving is the rotation case, and it must stay distinguishable from
-	 * both of the above: this is the row the divergence banner is talking about.
+	 * A chosen account that is not serving is the rotation case, and it must stay distinguishable
+	 * from both of the above: this is the row the divergence banner is talking about.
 	 */
-	test("a pinned account that is not serving says only that it is pinned", () => {
-		expect(accountHeadLine(account("anthropic", 1, { pinnedForSession: true }), NOW).tag).toBe("pinned");
+	test("a chosen account that is not serving says only that it is the choice", () => {
+		expect(accountHeadLine(account("anthropic", 1, { selectedForProvider: true }), NOW).tag).toBe("your choice");
+	});
+
+	/**
+	 * The tag never says "session". The choice outlives the session and the profile, so a word
+	 * that scopes it to this run misdescribes what pressing enter did — which was the whole defect
+	 * behind replacing the session pin. Enumerated over every reachable tag state rather than the
+	 * one that regressed, so a future wording change cannot reintroduce the scope claim on a
+	 * branch this file did not happen to name.
+	 */
+	test("no tag state claims the choice is session-scoped", () => {
+		const states: Partial<AccountRow>[] = [
+			{ activeForSession: true, selectedForProvider: true },
+			{ activeForSession: true },
+			{ selectedForProvider: true },
+			{ blockedUntilMs: NOW + 60_000 },
+			{ health: "failed" },
+			{},
+		];
+		for (const state of states) {
+			const tag = accountHeadLine(account("anthropic", 1, state), NOW).tag;
+			expect(tag).not.toContain("session");
+			expect(tag).not.toContain("pinned");
+		}
 	});
 });
 
