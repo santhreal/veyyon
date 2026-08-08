@@ -310,10 +310,10 @@ export const INTERACTION_SETTINGS = {
 
 	// Notifications.
 	//
-	// Both of these default to OFF, and that is the whole point: a desktop toast is an interruption,
-	// so it is something an operator asks for, never something they have to discover and switch off.
-	// They shipped on, and an operator watching the terminal got a toast at the end of every single
-	// turn, dozens per session, for information already on the screen in front of them.
+	// The two are not the same kind of event, and they no longer default the same way. A toast is an
+	// interruption, so it is worth one only when the session cannot continue without the operator.
+	// Both shipped on, and completion fired at the end of EVERY turn, dozens per session, announcing
+	// what was already on the screen in front of whoever was watching it.
 	"completion.notify": {
 		type: "enum",
 		values: ["on", "off"] as const,
@@ -322,7 +322,7 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Notifications",
 			label: "Completion Notification",
-			description: "Notify when the agent finishes a turn (off by default; a toast is opt-in)",
+			description: "Notify when the agent finishes a turn (off by default: the turn is on your screen)",
 		},
 	},
 
@@ -347,12 +347,16 @@ export const INTERACTION_SETTINGS = {
 	"ask.notify": {
 		type: "enum",
 		values: ["on", "off"] as const,
-		default: "off",
+		// ON, and the one notification that earns it: the turn has stopped and will not continue until
+		// the operator answers. Nothing else in the session is waiting on them like this, and the
+		// window-focus gate already withholds it while they are looking at the terminal, so it can only
+		// arrive when they are somewhere else.
+		default: "on",
 		ui: {
 			tab: "interaction",
 			group: "Notifications",
 			label: "Ask Notification",
-			description: "Notify when the ask tool is waiting for input (off by default; a toast is opt-in)",
+			description: "Notify when the agent is blocked on a question you have not answered",
 		},
 	},
 
