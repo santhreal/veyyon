@@ -339,6 +339,10 @@ describe("the card's blank rows are the ones it needs", () => {
 	 *
 	 * IF THIS REGRESSES a blank row reappears under the chips. Both halves matter: the Secrets
 	 * footer genuinely wraps to two rows and must still be given two.
+	 *
+	 * The pinned second row carries `? keys` because the Secrets footer advertises the key map the
+	 * same way the Log footer does. It used to omit it, so `m` move, `i` detail, `s` sort and `/`
+	 * search were reachable but documented only on an overlay this view never mentioned.
 	 */
 	it("reserves one footer row for the Log's one row of chips and two for the roster's", async () => {
 		await seedThreeSecrets();
@@ -348,7 +352,7 @@ describe("the card's blank rows are the ones it needs", () => {
 		const rosterDivider = rosterRows.findIndex(row => row.startsWith("├"));
 		expect(rosterRows.length - rosterDivider - 2).toBe(2);
 		expect(body(rosterRows[rosterRows.length - 2] ?? "")).toBe(
-			"r revoke  ·  u uses  ·  left/right view  ·  esc back",
+			"r revoke  ·  u uses  ·  ? keys  ·  left/right view  ·  esc back",
 		);
 
 		manager.handleInput("\t");

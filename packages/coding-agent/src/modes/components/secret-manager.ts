@@ -205,7 +205,21 @@ export interface SecretManagerDeps {
 }
 
 /**
- * Footer chips for the Secrets view, built from what the SELECTED row can actually do.
+ * Footer chips for the Secrets view: the card's own actions, then what the SELECTED row can do.
+ *
+ * THE CARD-LEVEL KEYS ARE NOT DERIVED FROM THE ROW, and that is the whole correction here. Every
+ * chip used to come from the selected row, so `a` never appeared on any screen: it belongs to the
+ * card, not to a credential, and a row-derived list had nowhere to put it. On an empty vault that
+ * produced a footer reading `left/right view · esc back` directly under body text saying "Press a
+ * to store a credential", so the one key that can populate the card was advertised by the prose
+ * and denied by the footer, on the only screen a new operator ever sees first.
+ *
+ * `a add` is unconditional because it is the one action that is ALWAYS available: it needs no row,
+ * and on an empty vault it is the only thing left to do. `? keys` is unconditional for the same
+ * reason it is in the Log view's footer, which is that the key map is where the rest of the keys
+ * (`m` move, `i` detail, `s` sort, `/` search) are documented. Those stay out of this footer
+ * deliberately: restating them here would duplicate the map and wrap the footer onto three rows on
+ * a 40-column card, spending the table's budget to say something `?` already says completely.
  *
  * THE ESCAPE CHIP SAYS `back`, NOT `close`. Both the key and the chip run {@link
  * SecretManager#dismiss}, which peels one level per press — a log search, then the credential the
@@ -230,7 +244,9 @@ function secretShortcuts(row: ManagerRow | undefined): readonly ModalShortcut[] 
 					];
 	return [
 		...(row === undefined ? [] : [{ label: "up/down navigate" }]),
+		{ label: "a add", clickable: true, id: "add" },
 		...rowActions,
+		{ label: "? keys", clickable: true, id: "help" },
 		{ label: "left/right view" },
 		{ label: "esc back", clickable: true, id: "close" },
 	];
@@ -2111,6 +2127,11 @@ export class SecretManager extends Container {
 				case "confirm":
 					if (this.#mode === "confirm") this.#resolveConfirm(true);
 					else if (this.#mode === "prompt") this.#submitPrompt(this.#input.getValue());
+					break;
+				// Card-level, so it is the one chip that acts with no row selected. That is also the
+				// state it matters most in: an empty vault has nothing else to click.
+				case "add":
+					this.#startAdd();
 					break;
 				case "copy":
 					this.#copySelected();
