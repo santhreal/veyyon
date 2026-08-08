@@ -204,4 +204,44 @@ describe("the add-account entry is part of the list", () => {
 		expect(footer()).toContain("enter add Anthropic account");
 		expect(footer()).not.toContain("enter switch Anthropic to this account");
 	});
+
+	/**
+	 * The other three chips have to go the same way `enter` did. `n`, `u` and `x` each read the
+	 * selected ACCOUNT, so on this row all three were painted, made clickable, and answered with
+	 * nothing: pressing an advertised key and getting no response teaches the operator that the card
+	 * is broken rather than that the row is different. `r`, `a` and `b` are provider or profile
+	 * scoped and still act from here, so they stay: the claim is that the footer lists what works,
+	 * not that it shrinks.
+	 */
+	test("the footer drops the account-only keys while the add entry is selected", () => {
+		const { component, footer } = harness(THREE());
+		const onAccount = footer();
+		expect(onAccount).toContain("n name");
+		expect(onAccount).toContain("u usage");
+		expect(onAccount).toContain("x logout");
+
+		for (let i = 0; i < 3; i++) component.handleInput(DOWN);
+		const onAdd = footer();
+
+		expect(onAdd).not.toContain("n name");
+		expect(onAdd).not.toContain("u usage");
+		expect(onAdd).not.toContain("x logout");
+		expect(onAdd).toContain("r refresh");
+		expect(onAdd).toContain("a add");
+		expect(onAdd).toContain("b balancing");
+	});
+
+	/** Arrowing back onto an account brings them back, so the pruning is per row and not one-way. */
+	test("the account-only keys return when an account is selected again", () => {
+		const { component, footer } = harness(THREE());
+
+		for (let i = 0; i < 3; i++) component.handleInput(DOWN);
+		expect(footer()).not.toContain("x logout");
+
+		component.handleInput(DOWN);
+
+		expect(footer()).toContain("n name");
+		expect(footer()).toContain("u usage");
+		expect(footer()).toContain("x logout");
+	});
 });
