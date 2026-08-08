@@ -67,8 +67,10 @@ describe("provider registry auth surface", () => {
 		expect(ids).toContain("kagi");
 		expect(ids).toContain("umans");
 		expect(ids).toContain("llama.cpp");
-		// openai has no interactive login flow.
-		expect(ids).not.toContain("openai");
+		// openai now has a key-paste login, so it is in the list; azure stays out because an endpoint
+		// plus a deployment name cannot be captured as one pasted key.
+		expect(ids).toContain("openai");
+		expect(ids).not.toContain("azure");
 	});
 
 	test("paste-code login set is derived from pasteCodeFlow", () => {
