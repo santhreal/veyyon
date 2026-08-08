@@ -55,12 +55,20 @@ function lineWindowMeta(): OutputMeta {
 	};
 }
 
-/** The shape an upstream-truncated payload produces: a tail kept, elided amount unmeasurable. */
+/**
+ * The shape an upstream-truncated payload produces: a tail kept, elided amount unmeasurable.
+ *
+ * The totals equal the kept sizes on purpose. That is what `elidedAmountUnknown` means: nothing
+ * upstream reported a pre-truncation size, so the only figures there are describe what survived, and
+ * a consumer that treats them as the total is exactly the reader this notice exists to warn.
+ */
 function unknownElisionMeta(): OutputMeta {
 	return {
 		truncation: {
 			direction: "tail",
 			truncatedBy: "bytes",
+			totalLines: 12,
+			totalBytes: 2_048,
 			outputLines: 12,
 			outputBytes: 2_048,
 			elidedAmountUnknown: true,
