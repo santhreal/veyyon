@@ -16,15 +16,41 @@
  * proxy/reseller path uses for pricing and capabilities. So the order is: what the gateway reported, then what
  * the catalog knows about that model, and only then the gateway assumption.
  *
+ * THE CATALOG IS NOT ASKED ABOUT ITSELF. The bundled catalog also carries the gateways' OWN rows, written by a
+ * previous discovery run: `cursor/gpt-5.1-high` sits there at 200k because that is what this module's ancestor
+ * assumed. Resolving against the whole catalog therefore answered a gateway's question with the gateway's own
+ * assumption one indirection removed, which is the original defect wearing a disguise — and it reached exactly
+ * the ids the gateway actually serves, since those are the ids a discovery run wrote down. The index consulted
+ * here is built from rows that are evidence about a model: not a gateway's own row, and not a row that is
+ * numerically indistinguishable from the assumption below (which no answer can be worse than, since discarding
+ * it lands on that same pair).
+ *
  * The assumption is still the floor rather than the answer, because being too LOW is the safe direction: an
  * over-estimate makes the agent keep filling a window the model does not have until the provider rejects the
  * request, while an under-estimate only compacts earlier than it needed to.
  */
-import { getBundledModelReferenceIndex } from "../identity/bundled";
-import { resolveModelReference } from "../identity/reference";
+import { buildModelReferenceIndex, type ModelReferenceIndex, resolveModelReference } from "../identity/reference";
+import { getBundledModels, getBundledProviders } from "../models";
 import type { Api, Model } from "../types";
 import { stripEffortTierSuffix } from "../variant-collapse";
 import { AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW, AGENT_GATEWAY_DEFAULT_MAX_TOKENS } from "./default-limits";
+
+/**
+ * Providers whose bundled rows are a gateway's own description of somebody else's model, keyed to why they are
+ * not evidence about it. A row here says what a discovery run assumed or what the gateway reported about its
+ * proxy, and neither is a statement about the model, so none of them may answer a question asked here.
+ *
+ * Every id is a member of the provider catalog table, and every gateway whose discovery calls into this module
+ * appears here: `test/gateway-model-limits.test.ts` drives each gateway's real discovery, reads the provider id
+ * off the rows it produces, and fails when one of them is missing from this table or absent from the catalog.
+ */
+export const GATEWAY_ROW_PROVIDERS: Record<string, string> = {
+	cursor: "reports no limits at all, so every limit on a cursor row was assumed by discovery",
+	devin: "reports one number for both limits, so a devin row's output cap was assumed by discovery",
+	"google-antigravity": "reports limit fields that are frequently absent",
+	"gitlab-duo": "gateway rows for GitLab's proxied Anthropic and Gemini models",
+	"gitlab-duo-agent": "resolves its windows from its own pattern table rather than from the proxied model",
+};
 
 /** A limit a gateway reported. Anything not a positive finite number is "not told", not zero. */
 function reportedLimit(value: number | null | undefined): number | undefined {
@@ -32,17 +58,98 @@ function reportedLimit(value: number | null | undefined): number | undefined {
 }
 
 /**
- * The catalog's own entry for a gateway model id, or undefined when the id names nothing known.
+ * Whether a bundled row says anything about the model it names beyond this module's own assumption.
  *
- * An effort-tiered id (`grok-4.5-medium`, `gpt-5.4-medium-fast`) is the base model at a fixed effort, so it
+ * Two rows fail: one published by a gateway (see {@link GATEWAY_ROW_PROVIDERS}), and one carrying exactly the
+ * assumed pair with no pricing at all, which is the shape every gateway row had before this module existed and
+ * is how a gateway nobody has classified yet still cannot launder its guess back in. Discarding the second kind
+ * costs nothing even when the row was honest: the answer without it is the same pair.
+ */
+function isEvidenceAboutTheModel(row: Model<Api>): boolean {
+	if (GATEWAY_ROW_PROVIDERS[row.provider] !== undefined) return false;
+	return !(
+		row.contextWindow === AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW &&
+		row.maxTokens === AGENT_GATEWAY_DEFAULT_MAX_TOKENS &&
+		row.cost.input === 0 &&
+		row.cost.output === 0 &&
+		row.cost.cacheRead === 0 &&
+		row.cost.cacheWrite === 0
+	);
+}
+
+let evidenceIndex: ModelReferenceIndex | undefined;
+
+/**
+ * Reference index over the rows that are evidence about a model. Memoized: the walk over every bundled model
+ * triggers thinking enrichment, and discovery normalizes a whole catalog one row at a time.
+ */
+function getEvidenceReferenceIndex(): ModelReferenceIndex {
+	evidenceIndex ??= buildModelReferenceIndex(
+		getBundledProviders().flatMap(provider => getBundledModels(provider).filter(isEvidenceAboutTheModel)),
+	);
+	return evidenceIndex;
+}
+
+/**
+ * A gateway's speed marker: the same model on faster infrastructure (`gpt-5.4-medium-fast`, `swe-1-6-fast`).
+ * Kept here rather than in the effort-tier vocabulary because it is not an effort: it changes neither how the
+ * model thinks nor how much context it has, and it is a gateway id spelling rather than a vendor one.
+ */
+const GATEWAY_SPEED_SUFFIX_RE = /-(?:fast|slow)$/;
+
+/**
+ * A gateway that cannot put a dot in an id writes the version with a dash: Devin serves `gpt-5-4`,
+ * `gemini-3-1-pro` and `kimi-k2-7` for models the vendors publish as `gpt-5.4`, `gemini-3.1-pro` and
+ * `kimi-k2.7`. Only a dash BETWEEN two digits is a version separator; the dashes around words are the
+ * vendor's own. Without this the resolver was inert for most of Devin's catalog, which is the defect it
+ * exists to fix: a silent `gemini-3-1-pro` row was published at a fifth of its window.
+ */
+const GATEWAY_VERSION_DASH_RE = /(\d)-(\d)/g;
+
+/**
+ * The ids to try for a gateway model, nearest first: the id itself, then the same id with one gateway affix
+ * removed or one spelling normalized, and so on. Each rewrite has to compose with the others in any order,
+ * since a gateway stacks them (`gpt-5-4-high-fast` is a dash-spelled base model at high effort on fast
+ * infrastructure, and no single rewrite reaches the base).
+ *
+ * The walk ends because every rewrite strictly reduces the pair (length, dashes between digits) and no
+ * candidate is ever visited twice, so the list is finite, free of duplicates, and holds nothing longer than
+ * the id it started from. Exported for the suite that asserts exactly that: a rewrite which lengthens a
+ * candidate, or a lost visited check, turns this queue into a walk that never returns, and a resolver that
+ * never returns hangs discovery instead of publishing a wrong number.
+ */
+export function gatewayIdCandidates(modelId: string): string[] {
+	const candidates: string[] = [];
+	const seen = new Set<string>();
+	const queue = [modelId.trim()];
+	for (let index = 0; index < queue.length; index += 1) {
+		const candidate = queue[index];
+		if (!candidate || seen.has(candidate)) continue;
+		seen.add(candidate);
+		candidates.push(candidate);
+		const tierBase = stripEffortTierSuffix(candidate);
+		if (tierBase !== undefined) queue.push(tierBase);
+		const speedBase = candidate.replace(GATEWAY_SPEED_SUFFIX_RE, "");
+		if (speedBase !== candidate && speedBase.length > 0) queue.push(speedBase);
+		const dotted = candidate.replace(GATEWAY_VERSION_DASH_RE, "$1.$2");
+		if (dotted !== candidate) queue.push(dotted);
+	}
+	return candidates;
+}
+
+/**
+ * The catalog's own entry for a gateway model id, or undefined when nothing known describes it.
+ *
+ * An effort-tiered id (`grok-4.5-medium`, `gpt-5.4-high-fast`) is the base model at a fixed effort, so it
  * resolves through its base: the tier changes how the model thinks, never how much context it has.
  */
 export function gatewayModelReference(modelId: string): Model<Api> | undefined {
-	const index = getBundledModelReferenceIndex();
-	const direct = resolveModelReference(modelId, index);
-	if (direct) return direct;
-	const tierBase = stripEffortTierSuffix(modelId);
-	return tierBase === undefined ? undefined : resolveModelReference(tierBase, index);
+	const index = getEvidenceReferenceIndex();
+	for (const candidate of gatewayIdCandidates(modelId)) {
+		const reference = resolveModelReference(candidate, index);
+		if (reference) return reference;
+	}
+	return undefined;
 }
 
 /**

@@ -146,7 +146,11 @@ export function resolveModelThinking<TApi extends Api>(
 		if (spec.reasoningOptions.noEffortControl === true) return undefined;
 		const discovered = spec.reasoningOptions.efforts;
 		if (discovered !== undefined && discovered.length > 0) {
-			return thinkingConfigFromEfforts(spec, compat, normalizeOllamaWireEfforts(spec, canonicalizeEfforts(discovered)));
+			return thinkingConfigFromEfforts(
+				spec,
+				compat,
+				normalizeOllamaWireEfforts(spec, canonicalizeEfforts(discovered)),
+			);
 		}
 	}
 	if (spec.thinking && Array.isArray(spec.thinking.efforts) && spec.thinking.efforts.length > 0) {

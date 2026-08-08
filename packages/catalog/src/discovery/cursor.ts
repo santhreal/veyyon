@@ -323,14 +323,22 @@ function normalizeCursorModel(
 	const reference = exactReference ?? (tierBaseId !== undefined ? references.get(tierBaseId) : undefined);
 	const reasoning = Boolean(details.thinkingDetails) || reference?.reasoning === true;
 
+	// Limits never come from the bundled reference. A bundled cursor row is a row THIS provider
+	// published, so its window is whatever a discovery run assumed rather than anything Cursor
+	// reported: the shipped `gpt-5.4` row carries 200k against the model's real 1.05M window, and
+	// taking the reference's limits made the proxied-model resolution inert for every id a
+	// generator had already written down, which is every id Cursor actually serves. The reference
+	// stays authoritative for modalities, pricing and the thinking surface.
+	const limits = { contextWindow: gatewayContextWindow(id), maxTokens: gatewayMaxTokens(id) };
+
 	if (reference) {
 		// A tier-suffixed id (`gpt-5.5-low`) inherits its BASE model's reference
-		// for limits, modalities, and the reasoning flag: a tier IS the base
-		// model at a fixed effort. The thinking surface and wire id are NOT
-		// inherited: the effort is baked into this row's own id, so carrying the
-		// base's ladder (or its default route) would offer a control that does
-		// nothing and could send a sibling's wire id. Collapse re-derives the
-		// family surface from its hand table when the tier folds into one.
+		// for modalities and the reasoning flag: a tier IS the base model at a
+		// fixed effort. The thinking surface and wire id are NOT inherited: the
+		// effort is baked into this row's own id, so carrying the base's ladder
+		// (or its default route) would offer a control that does nothing and
+		// could send a sibling's wire id. Collapse re-derives the family surface
+		// from its hand table when the tier folds into one.
 		if (exactReference === undefined) {
 			const {
 				thinking: _thinking,
@@ -340,6 +348,7 @@ function normalizeCursorModel(
 			} = reference;
 			return {
 				...tierRest,
+				...limits,
 				id,
 				name,
 				baseUrl: baseUrlOverride ?? reference.baseUrl,
@@ -349,6 +358,7 @@ function normalizeCursorModel(
 		}
 		return {
 			...reference,
+			...limits,
 			id,
 			name,
 			baseUrl: baseUrlOverride ?? reference.baseUrl,
@@ -367,16 +377,15 @@ function normalizeCursorModel(
 		// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		pricing: "unknown",
-		// Not readings. `ModelDetails` carries an id, display names, aliases, thinking details and a
-		// max-mode flag, and nothing about limits, so this endpoint tells us nothing. What the CATALOG
-		// knows about the proxied model stands in instead: a gateway-only `grok-4.5` row is a 500k
-		// model, not the 200k Claude-class assumption, and describing it as 200k made auto-compaction
-		// fire at two fifths of the window and told the operator a 256k threshold was too large. Only a
-		// model the catalog has never heard of falls to the gateway assumption. The live per-turn
-		// number still outranks this: `ConversationTokenDetails.max_tokens` is promoted to
+		// The endpoint tells us nothing about limits. `ModelDetails` carries an id, display names,
+		// aliases, thinking details and a max-mode flag, and no limit at all, so what the CATALOG
+		// knows about the proxied model stands in: a gateway-only `grok-4.5` row is a 500k model,
+		// not the 200k Claude-class assumption, and describing it as 200k made auto-compaction fire
+		// at two fifths of the window and told the operator a 256k threshold was too large. Only a
+		// model nothing known describes falls to the gateway assumption. The live per-turn number
+		// still outranks this: `ConversationTokenDetails.max_tokens` is promoted to
 		// `providerContextWindow`.
-		contextWindow: gatewayContextWindow(id),
-		maxTokens: gatewayMaxTokens(id),
+		...limits,
 		cursorMaxMode: details.maxMode,
 	};
 }

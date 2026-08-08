@@ -7,7 +7,13 @@ import { getModelDbPath } from "@veyyon/utils";
 import type { Api, Model, ModelSpec } from "./types";
 
 // Rows persist ModelSpec JSON (sparse `compat`, never the resolved record);
-// the model manager rebuilds via `buildModel` on load. v9 invalidates rows
+// the model manager rebuilds via `buildModel` on load. v10 invalidates agent
+// gateway rows (Cursor, Devin, Antigravity) whose limits were assumed rather
+// than resolved: discovery published a blind 200k/64k pair for every proxied
+// model, and a cached row keeps telling the user a 1M-token model holds 200k
+// long after the resolver was fixed, because the startup list reads the cache
+// with a 24 hour TTL and the refresh path serves a stale row while backoff
+// applies. v9 invalidates rows
 // carrying an identity-derived effort ladder: those specs were written when a
 // ladder could be guessed from a model id, so a cached row still offers tiers
 // the endpoint never published (Fireworks MiniMax keeping `minimal` and its
@@ -21,7 +27,7 @@ import type { Api, Model, ModelSpec } from "./types";
 // unknown-limit sentinels (222222/8888); v5 invalidated rows predating
 // effort-tier variant collapsing (raw `-low`/`-high`/`-thinking` member ids);
 // v4 dropped the pre-efforts ThinkingConfig shape.
-const CACHE_SCHEMA_VERSION = 9;
+const CACHE_SCHEMA_VERSION = 10;
 
 interface CacheRow {
 	provider_id: string;

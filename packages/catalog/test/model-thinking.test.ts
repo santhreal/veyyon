@@ -1321,3 +1321,50 @@ describe("resolveReasoningSelection", () => {
 		expect(resolveReasoningSelection(unsupported, { effort: Effort.High }).state).toBe("unsupported");
 	});
 });
+
+describe("models.dev declarations on ollama rows respect the host wire vocabulary", () => {
+	// The reasoningOptions path used to skip normalizeOllamaWireEfforts, so a
+	// models.dev declaration naming levels an ollama endpoint rejects would
+	// have reached the picker verbatim. Endpoint-verified host facts beat the
+	// declaration here, exactly as they do on the authored path.
+	const ollamaSpec = (overrides: {
+		id: string;
+		provider: "ollama" | "ollama-cloud";
+		efforts: Effort[];
+	}): ModelSpec<"ollama-chat"> => ({
+		id: overrides.id,
+		name: overrides.id,
+		api: "ollama-chat",
+		provider: overrides.provider,
+		baseUrl: "",
+		reasoning: true,
+		reasoningOptions: { efforts: overrides.efforts },
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 200000,
+		maxTokens: 32000,
+	});
+
+	it("clamps an ollama-cloud GLM-5.2 declaration to the endpoint-verified high/max quirk", () => {
+		const model = buildModel(
+			ollamaSpec({
+				id: "glm-5.2",
+				provider: "ollama-cloud",
+				efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.Max],
+			}),
+		);
+		expect(getSupportedEfforts(model)).toEqual([Effort.High, Effort.Max]);
+	});
+
+	it("replaces a declared ladder naming off-vocabulary levels with the host vocabulary", () => {
+		const model = buildModel(
+			ollamaSpec({ id: "qwen3.6-27b", provider: "ollama", efforts: [Effort.Minimal, Effort.High] }),
+		);
+		expect(getSupportedEfforts(model)).toEqual([Effort.Low, Effort.Medium, Effort.High, Effort.Max]);
+	});
+
+	it("keeps a declared ladder that already fits the wire vocabulary", () => {
+		const model = buildModel(ollamaSpec({ id: "glm-4.6", provider: "ollama", efforts: [Effort.Low, Effort.High] }));
+		expect(getSupportedEfforts(model)).toEqual([Effort.Low, Effort.High]);
+	});
+});
