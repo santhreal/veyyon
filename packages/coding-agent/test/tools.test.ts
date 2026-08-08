@@ -17,7 +17,7 @@ import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import * as toolTimeouts from "@veyyon/coding-agent/tools/tool-timeouts";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { unzip } from "@veyyon/coding-agent/utils/zip";
-import { $which, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import { $which, errorMessage, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { GlobTool } from "../src/tools/glob";
 import { DEFAULT_FILE_LIMIT, GrepTool, MULTI_FILE_PER_FILE_MATCHES } from "../src/tools/grep";
 import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
@@ -1453,7 +1453,16 @@ function b() {
 			await asyncJobManager.dispose();
 		});
 
-		it("should background instead of timing out when auto-background wait exceeds the effective timeout", async () => {
+		// A clamped timer is not a choice. When the command's own timeout would fire
+		// before the auto-background threshold, `#resolveWaitMs` collapses the wall
+		// timer to 0, and this case pins what that collapse must NOT mean: the
+		// command runs in view and surfaces its timeout, rather than being handed
+		// back as a background job the operator never saw start. It asserted the
+		// opposite until `fix(bash): make the background key work on a stock
+		// install` (ef88ef7b7) settled the question and left this red; the sibling
+		// in test/bash-stall-detection.test.ts covers the same rule for a command
+		// that finishes in time, so this one covers the timeout actually firing.
+		it("times out in the foreground instead of backgrounding when the timer clamps to zero", async () => {
 			const deliveries: Array<{ jobId: string; text: string }> = [];
 			const asyncJobManager = new AsyncJobManager({
 				onJobComplete: async (jobId, text) => {
@@ -1476,32 +1485,38 @@ function b() {
 				),
 			);
 			// Drive the effective timeout via the production clamp seam so the
-			// backgrounded job hits its timeout in ~0.1s instead of a real
-			// wall-clock second. The auto-background-on-timeout decision path is
-			// unchanged; we assert the timeout-notice prefix rather than the
-			// rounded seconds (it reads "0" here only because the seam
-			// deliberately undercuts the 1s production floor).
+			// deadline lands in ~0.05s instead of a real wall-clock second. The
+			// notice reads "0 seconds" only because the seam deliberately undercuts
+			// the 1s production floor.
 			vi.spyOn(toolTimeouts, "clampTimeout").mockReturnValue(0.05);
 
-			const result = await autoBackgroundBashTool.execute("test-call-9-auto-timeout-background", {
-				command: "printf 'start\\n'; sleep 0.5; printf 'done\\n'",
-				timeout: 1,
-			});
+			const failure = await autoBackgroundBashTool
+				.execute("test-call-9-auto-timeout-background", {
+					command: "printf 'start\\n'; sleep 0.5; printf 'done\\n'",
+					timeout: 1,
+				})
+				.then(
+					result => ({ kind: "result" as const, result }),
+					(error: unknown) => ({ kind: "error" as const, error }),
+				);
 
-			expect(result.details?.timeoutSeconds).toBe(0.05);
-			expect(result.details?.async?.state).toBe("running");
-			expect(getTextOutput(result)).toContain("Backgrounded as job");
-			const jobId = result.details?.async?.jobId;
-			if (!jobId) {
-				throw new Error("expected an auto-backgrounded job id");
-			}
-			const runningJob = asyncJobManager.getJob(jobId);
-			expect(runningJob?.status).toBe("running");
-			await runningJob?.promise;
+			expect(failure.kind).toBe("error");
+			const message = failure.kind === "error" ? errorMessage(failure.error) : "";
+			expect(message).toContain("Command timed out after");
+			// Output the command did produce before the deadline still reaches the model.
+			expect(message).toContain("start");
+			// Nothing was backgrounded, so nothing is owed a later delivery.
 			await asyncJobManager.drainDeliveries({ timeoutMs: 1 });
-			expect(deliveries).toHaveLength(1);
-			expect(deliveries[0]?.jobId).toBe(jobId);
-			expect(deliveries[0]?.text).toContain("Command timed out after");
+			expect(deliveries).toEqual([]);
+			expect(asyncJobManager.getRunningJobs()).toEqual([]);
+			// The call still ROUTES through the managed-job machinery (that is what
+			// gives the manual background key something to win), so the job exists and
+			// is recorded failed. What must not happen is a second telling: the
+			// foreground already threw this text, so its delivery stays acknowledged.
+			const recorded = asyncJobManager.getAllJobs();
+			expect(recorded.map(job => job.status)).toEqual(["failed"]);
+			expect(recorded[0]?.errorText).toContain("Command timed out after");
+			expect(asyncJobManager.hasPendingDeliveries()).toBe(false);
 			await asyncJobManager.dispose();
 		});
 
