@@ -6,19 +6,28 @@ The terminal-UX conventions Veyyon follows. Implementation lives in `packages/tu
 
 First-party themes follow [Brand and identity](./brand.md); the website (`website/site.css` `:root`) is the reference token source.
 
-| Role | Titanium (default dark) | Veyyon Dark | Light (default light) |
+| Role | Titanium (default dark) | `dark` (legacy) | `light` |
 | --- | --- | --- | --- |
-| Surface | Terminal's own ground (see [Terminal ground](#terminal-ground)) | Explicit black `#000000` component fills (legacy) | Terminal's own ground |
-| Primary text | Silver bright `#E6E9EE` | `#FAFAFA` | Terminal default (near-black) |
-| Structure / brand | Silver `#C6CBD4` | Silver `#B8BDC7` | Dark silver `#5C6470` |
-| Accent | Ember `#F0862E` | Deep blue `#4A84C9` (pre-ember) | Ember `#F0862E` (chrome) / `#B65E14` (links) |
+| Surface | Terminal's own ground (see [Terminal ground](#terminal-ground)) | Explicit `#000000` component fills | Explicit `#FFFFFF` fills on the same surfaces titanium leaves transparent |
+| Primary text | The terminal's own foreground (`text` is `""`) | `#FAFAFA` | The terminal's own foreground (`text` is `""`) |
+| Bright text | Silver bright `#E6E9EE` on `mdHeading`, `mdCode`, `syntaxFunction`, `statusLineModel` (website `--silver-hi`) | `#E1E4E9` on `mdHeading` | `#343B45` on `mdHeading` |
+| Structure / brand (`accent`) | Silver `#C6CBD4` | Silver `#B8BDC7` | Dark silver `#5C6470` |
+| Ember | `borderAccent`, `link`, `mdLink`, `mdListBullet` `#F0862E` | not used; `link`/`mdLink` are deep blue `#4A84C9` | `borderAccent` `#F0862E`, `mdLink` `#B65E14` (no `link` key, so it inherits `mdLink`) |
 
-Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse. Both are locked by `packages/coding-agent/test/brand-conformance.test.ts`, which is the shipped source of truth for every brand color: the brand notes it was written from are local to the maintainer's machine and are not distributed, so a doc that points a reader at them points at nothing.
+The `accent` token is silver in all three and is never ember: ember is the highlight, carried by links
+and the accent border. `brand-conformance.test.ts` asserts both halves, including that titanium's
+`accent` is NOT `#F0862E`.
 
-Veyyon Dark is the legacy exception. Its selected rows, message and tool surfaces, and status line use
-explicit `#000000` fills. Titanium is the default dark theme and follows the transparent-ground rules
-below. Outside the Veyyon Dark compatibility theme, pitch-black `#000000` applies only to controlled
-grounds such as the HTML export (`export.pageBg`/`cardBg`/`infoBg`) and the website.
+Titanium mirrors the website tokens exactly, and `light` is its sanctioned inverse. Both are locked by `packages/coding-agent/test/brand-conformance.test.ts`, which is the shipped source of truth for every brand color: the brand notes it was written from are local to the maintainer's machine and are not distributed, so a doc that points a reader at them points at nothing.
+
+`dark` is the legacy exception. Its selected rows, message and tool surfaces, and status line use
+explicit `#000000` fills, and its export surfaces are black as well. Titanium is the default dark theme
+(the `theme` setting defaults to `titanium`) and follows the transparent-ground rules below. Outside
+`dark`, pitch-black `#000000` reaches an in-terminal token in exactly one bundled theme, `dark-midnight`'s
+`userMessageBg`; everywhere else it stays on controlled grounds such as the HTML export
+(`export.pageBg`/`cardBg`/`infoBg`, which titanium and `dark` both set to black) and the website. The rule
+holds with that one exception named: nothing enforces it beyond titanium and `light`, which
+brand-conformance locks.
 
 ## Terminal ground
 
@@ -33,7 +42,7 @@ via clear-to-EOL.
 The rules:
 
 - In-terminal background tokens default to `""` (transparent, inherit the real ground). Titanium ships this way.
-- A raised surface or hairline must be a RELATIVE tint derived from the detected terminal background, never an absolute hex. The ONE owner is `modes/theme/ground-tints.ts`: it takes the OSC 11 hex (`terminal.backgroundColor` / `onBackgroundColorChange`) and offsets it a fixed contrast step toward the pole (12% for hairlines and card outlines, 5% for raised grounds). The composer hairline and every outlined card route through it. Without detection, the static token is the exact fallback; do not paint what you cannot derive.
+- A raised surface or hairline must be a RELATIVE tint derived from the detected terminal background, never an absolute hex. The ONE owner is `modes/theme/ground-tints.ts`: it takes the OSC 11 hex (`terminal.backgroundColor` / `onBackgroundColorChange`) and offsets it a fixed contrast step toward the pole: 12% for hairlines and card outlines (`groundHairlineHex()`), 5% for raised grounds (`groundRaisedHex()`, which has no consumer today, because the raised composer ground was deleted). Two surfaces derive from it: the composer hairline (`ComposerHairline` in `composer-chrome.ts`) and `cardOutlineColor()` in `message-frame.ts`, which is what every `Box.setBorder` in `modes/components` passes (`message-frame.ts:91`, `skill-message.ts:48`). `BorderedLoader`'s full-width `DynamicBorder` rules are not outlines and still paint the static `border` token. Without detection, the static token is the exact fallback; do not paint what you cannot derive.
 - A background fill must close before the row ends. A bg attribute left open at end-of-line paints the remainder of the row on clear-to-EOL: that is the "leaking everywhere" bug class.
 - Never validate a background change in tmux. tmux panes sit on a pure-black default ground, so an absolute dark fill is invisible there and a transparent regression looks identical to a fix. Evidence for any visual change is a real-render PNG of the shipped component on BOTH a grey (`#1e2127`-class) and a black ground, plus exact-byte test assertions. The user's own screenshots outrank everything.
 
@@ -69,11 +78,14 @@ below 30 columns. Once real work starts, everything is full-bleed.
 Overlays (settings, pickers, hubs) size themselves from the modal sizing
 tokens, not ad-hoc widths.
 
-**The conversation hugs the composer.** While the viewport is not yet full,
-the home-anchor slack routes ABOVE the transcript (`home-anchor-layout.ts`):
-the first prompt renders directly above the composer at the viewport bottom
-and content climbs upward as replies land, until the screen fills and the
-anchor latches off. Never reintroduce a flexible fill BETWEEN the transcript
+**The conversation hugs the composer.** Once a conversation exists, ALL the
+home-anchor slack routes ABOVE the transcript (`home-anchor-layout.ts`): the
+first prompt renders directly above the composer at the viewport bottom and
+content climbs upward as replies land. There is no latch. The routing is
+recomputed every frame from the measured content height, so a full screen
+simply means zero slack and the composer sits at the natural bottom, and a
+transient tall frame followed by a collapse can never strand it mid-screen.
+Never reintroduce a flexible fill BETWEEN the transcript
 and the composer once a conversation exists: that layout painted the prompt at
 the top and the loader at the bottom with a void of blank rows between, and
 when a reply landed the void overflowed the screen and pushed the prompt into
@@ -90,25 +102,32 @@ for unframed work surfaces; hugging applies to outlined cards only.
 
 Use a 4-cell rhythm:
 
-| Token | Cells | Use |
-| --- | ---: | --- |
-| `space-0` | 0 | Flush edges |
-| `space-1` | 1 | Inline gap, chip padding |
-| `space-2` | 2 | Between stacked rows |
-| `space-3` | 3 | Section break inside a pane |
-| `space-4` | 4 | Pane padding from terminal edge |
+| Cells | Use |
+| ---: | --- |
+| 0 | Flush edges |
+| 1 | Inline gap, chip padding |
+| 2 | Between stacked rows |
+| 3 | Section break inside a pane |
+| 4 | Pane padding from terminal edge |
 
-Prefer `space-1` / `space-2` in dense tool UIs. One-off paddings are bugs.
+The scale has no `space-*` tokens in the code; these are cell counts you write directly. The two named
+constants the code does own are `COMPOSER_INSET_COLS` (2) and `COMPOSER_BOTTOM_MARGIN_ROWS` (1), both in
+`composer-chrome.ts`. Prefer 1 or 2 cells in dense tool UIs. One-off paddings are bugs.
 
 ### Separator grammar
 
 Modal footer chips use the middle dot `·` with two spaces on each side (`  ·  `). The dot is dim; the
 terms around it carry the emphasis. These footers route through the shared
 `SHORTCUT_SEP = "  ·  "` in `modal-shell.ts`, locked by `modal-shell.test.ts`. The dense
-`theme.sep.dot` (` · `, one space each side) joins compact inline metadata. Status-line separators are
-configurable instead: the shipped presets use pipe, slash, powerline-thin, powerline, and ASCII
-variants from `status-line/separators.ts`. Use the owner for the surface instead of pasting a separator
-literal into a widget.
+`theme.sep.dot` (` · `, one space each side in the `unicode` and `nerd` presets, ` - ` in `ascii`) joins
+compact inline metadata. The status-line footline is NOT configurable: it joins every segment with its
+own fixed `theme.fg("dim", "  ·  ")` (`status-line/component.ts:1455` and `:1592`), and the wider gap
+before the run clock is `SESSION_CLOCK_GAP`, six spaces and no dot. The `statusLine.separator` enum still
+exists with its seven values, but nothing renders it: `status-line/separators.ts` was deleted along with
+the powerline top border it belonged to, the key has no settings row, and it survives only for two reads
+in `modes/controllers/selector-controller.ts` (the comment on `statusLine.separator` in
+`config/settings-domains/appearance.ts` says to delete the key with those reads). Use the owner for the
+surface instead of pasting a separator literal into a widget.
 
 ## Color and emphasis
 
@@ -122,9 +141,9 @@ literal into a widget.
 | Danger / deny | Theme `error` (red) |
 | Success / approved | Theme `success` (green) |
 | Warning | Theme `warning` (yellow) |
-| MCP / external tools | Distinct marker glyph; consistent hue within MCP cells |
+| MCP / external tools | Accent `server/tool` title (`mcp/render.ts`); the `tool.mcp` marker is blank in `unicode`, `\uEB2D` in `nerd`, `<>` in `ascii` |
 
-Never rely on color alone. Pair hue with a glyph or word (`ok`, `err`, `mcp`). Respect `NO_COLOR` / `--no-color`.
+Never rely on color alone. Pair hue with a glyph or word. Color-off is environment-driven and owned by `detectAnsiPolicy` / `detectStreamAnsiPolicy` in `packages/tui/src/terminal-capabilities.ts`: a non-empty `NO_COLOR` yields `noColor`, `TERM=dumb` yields `plain`, `FORCE_COLOR` yields `full`. There is no `--no-color` flag anywhere in the CLI; do not document one.
 
 A block's `state` is not a signal by itself. `renderOutputBlock` turns `state` into a border TINT and nothing else, so passing `state: "error"` and stopping there leaves the outcome carried by hue alone. This shipped in the bash renderer (2026-07-25): `showHeader: false` suppressed the title, correctly, and suppressed the failure marker with it, so with SGR sequences stripped a failed command rendered byte-identically to a clean one. A failed run now draws its own `✗ failed` header. When you pass a state to a block, ask what a reader sees with every color removed, and assert it with the styling stripped — a test that reads the ANSI is testing the tint, not the signal.
 
@@ -134,7 +153,7 @@ A selection band fills the ROW, not the text. `theme.bg("selectedBg", line)` wra
 
 A row's width comes from the view that will render it. `renderScrollableList` takes a `buildRows(rowWidth)` callback rather than a finished array, and hands it `ScrollView.contentWidth(width)` from the very view it is about to render through. That shape exists because the alternative kept going wrong: the helper it replaced reserved ONE column for the scrollbar while `ScrollView` reserves TWO, a gutter plus the glyph, so every row was built one column too wide and silently truncated on the way out. A row that was merely padded lost a space and nobody noticed; a row that was FILLED lost the escape that closes the fill, and the bar and every cell after it came out painted. Do not recompute the reserve, and do not pass a width you measured yourself.
 
-The compact decision has one owner too. `modalNeedsCompactPadding(areaHeight, sizing)` answers "is this card still pinned to its floor", which depends on that sizing's own margin and padding. Twelve components carried a bare `height < 24` instead, so when the shared rule was fixed none of them moved; a threshold restated as a number against the terminal is only ever right for one sizing. `modal-shell-height-is-monotonic.test.ts` scans the source for that comparison and fails if a copy comes back.
+The compact decision has one owner too. `modalNeedsCompactPadding(areaHeight, sizing)` answers "is this card still pinned to its floor", which depends on that sizing's own margin and padding. Components that carried a bare `height < 24` instead did not move when the shared rule was fixed; a threshold restated as a number against the terminal is only ever right for one sizing. `modal-shell-height-is-monotonic.test.ts` scans the source for that comparison and fails if a copy comes back, but the scan is `/\b(?:term)?[Hh]eight\s*[<>]=?\s*24\b/`, so it only sees a variable named `height` or `termHeight`. One copy is live and invisible to it: `model-picker.ts:250` passes `termRows < 24` straight to `withCompact`. Every other modal calls the helper. The owner is authoritative and the picker is the outstanding violation; widening the scan is what would catch the next one.
 
 Ordinary widget call sites route colors and attributes through theme helpers. Raw ANSI is limited to
 named component or terminal-protocol owners when a theme token cannot express the required SGR
@@ -145,17 +164,17 @@ bytes in leaf widgets.
 
 | Kind | Budget |
 | --- | --- |
-| Spinner / shimmer | Low effective FPS; no 30 FPS frames for short blinks |
-| Cursor blink | Hardware cursor, the terminal's own blink cadence; no software blink loop |
-| Status pulse | Slow, interruptible |
-| Gauge frontier | Live turns only, same-vocabulary `▰`↔`▱` pulse (see [Gauges](#gauges)) |
+| Spinner glyph | One frame per 80 ms (~12.5 fps), phase-locked across live tool blocks by `sharedSpinnerFrame` (`tool-execution.ts`). `Loader` ticks at 1000/30 ms only when its message color is animated, and that faster tick repaints the shimmer without advancing the glyph (`packages/tui/src/components/loader.ts`) |
+| Cursor | No blink loop and no SGR blink attribute. The hardware cursor keeps the terminal's own cadence; the software cursor glyph renders steady, because Ghostty and cmux leave afterimages for SGR-blink cells during rapid input-row repaints (`#getStyledInputCursor` in `packages/tui/src/components/editor.ts`) |
+| Gauge frontier | Live turns only, same-vocabulary `▰`↔`▱` pulse (see [Gauges](#gauges)). The frontier cell steps every 1000 ms, halving to 500 ms past the error threshold (`CONTEXT_BAR_TIP_STEP_MS` / `CONTEXT_BAR_TIP_STEP_URGENT_MS`) |
+| Goal spinner | One frame per 120 ms of ACTIVE time (`GOAL_SPINNER_PERIOD_MS` in `status-line/segments.ts`), steady while idle or paused |
 
 No gratuitous animation on static content. Motion is a semantic signal (the model is working); an idle screen is byte-stable.
 
 ## Empty / loading / error
 
-- **Empty:** one quiet hint + example prompts; hide once the user types.
-- **Loading:** spinner + short verb (`thinking`, `running`, `compacting`).
+- **Empty:** the composer's ghost hint, which hides once the user types, plus the welcome hero's single rotating tip (`renderWelcomeTip`, prefixed `Tip: ` and centered under the hero). No example-prompt list.
+- **Loading:** spinner + a capitalized verb phrase carrying its cancel key: `Working…` with the bracketed `[esc]` hint from `interruptHint()`, `Running… (esc to cancel)` for a shell block, `Compacting context... (esc to cancel)`.
 - **Error:** cause first, remediation second. No stack dumps in the composer.
 
 ## Transcript roles
@@ -167,7 +186,7 @@ Every transcript block declares its role visually, never by content alone: a pas
 1. Header: glyph + tool name + status word.
 2. Arguments: syntax-aware JSON when applicable; wrap with expand affordance for large bodies.
 3. Output: collapse large bodies; keep a one-line summary visible.
-4. MCP tools: visually distinct from local shell/file tools.
+4. MCP tools: titled `server/tool` in accent, so the origin is in the words. The `tool.mcp` marker adds a glyph only under the `nerd` and `ascii` presets; under `unicode` it is a deliberate blank.
 
 ## Iconography
 
@@ -219,9 +238,9 @@ A preset may leave an icon blank, and the `unicode` preset leaves thirty-one of 
 withIcon(theme.icon.job, `${runningJobs}`); // "⚙ 5", or "5" when icon.job is empty
 ```
 
-Writing `` `${theme.icon.job} ${runningJobs}` `` instead renders ` 5` under such a preset: a leading space, and a number with nothing saying what it counts. That was the state of twenty-nine call sites, so the same status line showed the gap in some segments and not others. `test/modes/theme/an-empty-icon-leaves-no-gap.test.ts` fails if the template is written by hand again.
+Writing `` `${theme.icon.job} ${runningJobs}` `` instead renders ` 5` under such a preset: a leading space, and a number with nothing saying what it counts. Written by hand across the status line's segments, that showed the gap in some and not others on the same line. `test/modes/theme/an-empty-icon-leaves-no-gap.test.ts` fails if the template is written by hand again.
 
-Nine of those blanks were treated as an unfinished task for a while, so the reason is worth stating.
+Those blanks were treated as an unfinished task for a while, so the reason is worth stating.
 The obvious glyph for a cache, a job, a camera, a roster of agents or a lightning-fast mode is
 pictographic, and every pictographic codepoint is a width risk: a font may give it emoji
 presentation and draw it two cells while the TUI counts one, which is the overlap the width contract
@@ -252,16 +271,16 @@ The website nav speaks lowercase terse ("docs install models changelog"), a disp
 
 ## Composer and chrome
 
-- **The composer has no box. Ever.** The final ruling, after three shipped attempts: every painted composer ground, the absolute `#0C0E12` hex AND the OSC 11-derived raised tint AND the theme `composerBg` token, read as a gray slab on the real terminal. The composer is hairline + text + footline rendered directly on the terminal's own background; nothing paints behind the input. `CardPadRow` survives only as a blank spacer row (mount order stability) and must emit zero escape bytes; `composerCardGround()` is deleted. Regression locks: `ground-tints.test.ts` (pad row paints nothing even with a detected ground; source lock bans `48;2` and `composerBg` reads in composer-chrome) and `composer-hairline.test.ts` (editor rows carry `setRowBackground(undefined)`). Do not pitch a tinted prompt surface again; spend composer identity on the glyph morphs and the hairline instead.
-- **One left rail — transcript included.** Everything shares the composer inset `COMPOSER_INSET_COLS` (2, owned by `composer-chrome.ts`): the composer prompt gutter is `"  " + glyph + " "` (resolved by `resolveComposerAccents`, the one pure owner of the DS-6 glyph morph), the metadata footline uses the same inset (`QuietZoneLine` indent), and — since the V1 aligned-quiet merge — so does the transcript: past-prompt gutters sit their `›` at column 2 (`user-message.ts`, children width-4), assistant prose and the Thinking label render at paddingX 2 (`assistant-message.ts`), and bash/eval headers, output, and footers sit at paddingX 2 with NO full-width border rules (`execution-shared.ts` builds no `DynamicBorder`; the mode color lives on the `$`/`>>>` header). Nothing sits at column 0. When adding any transcript or chrome line, give it the shared inset; a flush-left line next to inset ones reads as a misalignment, not a choice. Framed tool cards obey the same rule: `tool-execution.ts` gives its content box `COMPOSER_INSET_COLS`, so a card's border starts at column 2 and ends the same distance from the right edge, including the self-framing custom renderers that used to render flush (they were the last blocks at column 0). The rail is locked by `test/transcript-one-left-rail.test.ts`, which measures the rendered column rather than the source padding, and `scripts/demos/render-transcript-rail.ts | scripts/demos/render-proof.ts` renders the stack with a column ruler when you need to see it.
-- **The footline's live value comes last.** Everything in the metadata footline's right group is standing state you set once (session name, model, mode); the context gauge is the one value that moves every turn, so it ends the line. Order comes from the preset's segment lists, with one rule enforced by the assembly: a `context_pct`/`context_total` configured in `leftSegments` is appended AFTER the right group rather than ahead of it, because a left-configured gauge belongs in the right group but must not jump the segments configured there (it used to, purely because that push happened in the first of two loops, and the default preset read `model · gauge · session-name`). A gauge placed explicitly in `rightSegments` keeps the position it was given. Locked by `status-line/quiet-live-value-order.test.ts`, which asserts order by index in the rendered line; `scripts/demos/render-status-footline.ts | scripts/demos/render-proof.ts` renders every preset at one width when you need to compare them.
-- **The zone mounts in one order, from one place.** The composer zone's vertical order (working loader, hook status, hairline, air/input/air rows, metadata footline, shortcuts, one bottom-margin row) is a design contract, not incidental `addChild` sequencing. Its single owner is `mountComposerZone(ui, parts)` in `composer-chrome.ts`, which also owns `COMPOSER_BOTTOM_MARGIN_ROWS`; `interactive-mode.ts` only supplies the parts. Never mount a composer-zone row inline in the host: a second mount site is where sandwich and margin regressions come from. Locked by `composer-zone-mount.test.ts`.
+- **The composer has no box. Ever.** The final ruling, after three shipped attempts: every painted composer ground, the absolute `#0C0E12` hex AND the OSC 11-derived raised tint AND the theme `composerBg` token, read as a gray slab on the real terminal. The composer is hairline + text + footline rendered directly on the terminal's own background; nothing paints behind the input. `CardPadRow` survives only as a blank spacer row (mount order stability) and must emit zero escape bytes; `composerCardGround()` is deleted, and `composerBg` survives only as a theme-schema key that defaults to `""` and that nothing reads. Regression locks: `ground-tints.test.ts` (the pad row paints nothing even with a detected ground) and `composer-hairline.test.ts` (one row, exact visible width at every size, `borderMuted` and no other token, byte-identical across wall time and shimmer states, and the pad row rendering `""`). Neither is a source lock: nothing bans a `48;2` write or a `composerBg` read in `composer-chrome.ts`. The editor's own ground is cleared at `interactive-mode.ts:1957` with `setRowBackground(undefined)`, and only `packages/tui/test/editor-row-background.test.ts` asserts what clearing does; no test asserts that the app clears it. Do not pitch a tinted prompt surface again; spend composer identity on the glyph morphs and the hairline instead.
+- **One left rail, with named exceptions.** Everything in the composer zone shares the inset `COMPOSER_INSET_COLS` (2, owned by `composer-chrome.ts`): the composer prompt gutter is `"  " + glyph + " "` (resolved by `resolveComposerAccents`, the one pure owner of the DS-6 glyph morph), the metadata footline uses the same inset (`QuietZoneLine` indent), and so does the transcript: past-prompt gutters sit their `›` at column 2 (`user-message.ts`, children width-4), assistant prose and the Thinking label render at paddingX 2 (`assistant-message.ts:919`), and bash/eval headers, output, and footers sit at paddingX 2 with NO full-width border rules (`execution-shared.ts` builds no `DynamicBorder`; the mode color lives on the `$`/`>>>` header). Framed tool cards obey the same rule: `tool-execution.ts` gives its content box `COMPOSER_INSET_COLS`, so a card's border starts at column 2 and ends the same distance from the right edge. The framed MESSAGE cards do not: `skill-message.ts:21`, `custom-message.ts:24`, `hook-message.ts:26`, `todo-reminder.ts:29`, `ttsr-notification.ts:29` and `compaction-summary-message.ts:100` all build `new Box(1, 1)`, whose outline draws at column 0. The rail is the rule and those six are the outstanding violation, not a second convention. `test/transcript-one-left-rail.test.ts` measures the rendered column rather than the source padding, but it covers only the composer, tool cards and bash blocks, which is how they stayed unnoticed. When adding any transcript or chrome line, give it the shared inset; a flush-left line next to inset ones reads as a misalignment, not a choice. `scripts/demos/render-transcript-rail.ts | scripts/demos/render-proof.ts` renders the stack with a column ruler when you need to see it.
+- **The footline's live value comes last.** Everything in the metadata footline's right group is standing state you set once (session name, model, mode); the context gauge is the one value that moves every turn, so it ends the line. Order comes from the preset's segment lists, with one rule enforced by the assembly: a `context_pct`/`context_total` configured in `leftSegments` is held aside and appended AFTER the right group rather than ahead of it, because a left-configured gauge belongs in the right group but must not jump the segments configured there (it used to, purely because that push happened in the first of two loops, and the default preset read `model · gauge · session-name`). A gauge placed explicitly in `rightSegments` keeps the position it was given. The rule lives in `#gatherQuietSegments` (`status-line/component.ts:1347-1357`). No test asserts the gauge's index in the rendered line; what IS locked is `status-line-footline-width-budget.test.ts`, which pins that the gauge survives the width shed on every preset at every realistic width, and that below 80 columns the protected parts degrade in rank order (gauge, then approval rung, then owner zone), since appending last and shedding from the end had together made the live value the first thing dropped. `scripts/demos/render-status-footline.ts | scripts/demos/render-proof.ts` renders every preset at one width when you need to compare them.
+- **The zone mounts in one order, from one place.** The composer zone's vertical order (working loader, hook status, the above-composer hook widgets, hairline, air/input/air rows, metadata footline, shortcuts, the below-composer hook widgets, one bottom-margin row) is a design contract, not incidental `addChild` sequencing. Its single owner is `mountComposerZone(ui, parts)` in `composer-chrome.ts`, which also owns `COMPOSER_BOTTOM_MARGIN_ROWS` and returns the child count (11) that scroll isolation pins as its live footer; `interactive-mode.ts` only supplies the parts. Never mount a composer-zone row inline in the host: a second mount site is where sandwich and margin regressions come from. Locked by `composer-zone-mount.test.ts`.
 - **Derived tints are wired, not assumed.** `setDetectedTerminalGround` is fed from `terminal.onBackgroundColorChange` in interactive-mode setup (which also replays the current value on subscribe). A ground-relative color that is never fed detection silently degrades to its static fallback forever; if you add a derived-tint consumer, verify the app actually seeds the detection, not just the tests.
-- Empty composer hints `?` for shortcuts and `/` for commands.
+- The empty composer carries the ghost placeholder and nothing else. There is no `?` hint and no chip band at rest: `buildComposerShortcuts` emits chips only when there is a live action (interrupt, background a running command, dequeue).
 - The ghost placeholder uses the dense separator variant (`ask anything · / for commands`, ONE space each side of the dot). The two-space chip dialect inside ghost text read as uneven double-wide gaps; there is one definition site (`COMPOSER_PLACEHOLDER` in `interactive-mode.ts`), never a pasted literal.
 - One blank cell always separates the cursor cell from ghost hint text, in every cursor mode (software `▏`, hardware, override glyph). Flush hint text puts the cursor visually on top of the placeholder's first character. Locked by `editor-placeholder-cursor-gap.test.ts`.
-- Mid-turn: `esc to interrupt` while a turn runs.
-- Picker gutters use `› ` (not `>`) for the selected row caret.
+- Mid-turn: the chip band shows `<key> interrupt` (`escape interrupt` with the default binding, built in `composer-shortcuts.ts:51`), and only while the agent is streaming and the view is not focused on a subagent, where `esc` returns to the main session instead of interrupting. The working loader carries the bracketed `[esc]` hint from `interruptHint()`.
+- Picker gutters draw the selected-row caret from `theme.nav.cursor` (`›` in the `unicode` and `nerd` presets, `>` in `ascii`). No call site pastes the literal.
 - Tree connectors (`├─`, `└─`) use theme `tree.*` symbols consistently in session tree and tool groups.
 - **Active profile indicator.** The `profile` status line segment names the live profile (`work`, `rec`, a client sandbox) so you always know which config, sessions, and keys are in play. It hides on the built-in `default` profile, so a vanilla status line is unchanged, and it leads the metadata run on the welcome hero the same way. The single owner is `getActiveProfileOrDefault()` in `@veyyon/utils`; the icon is `icon.profile` across the three symbol presets. See [the status line reference](../handbook/src/features/cockpit.md#status-line).
 
@@ -271,4 +290,4 @@ When touching TUI polish, name the token (spacing, theme color, motion budget). 
 sequence in an ordinary widget is a design-system bug. Keep any required raw sequence in one named
 component or terminal-protocol owner.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `19234e94d39e` on 2026-08-07.*
