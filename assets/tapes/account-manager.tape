@@ -161,15 +161,23 @@ Sleep 2s
 Screenshot assets/account-manager-17-login-unknown.png
 Sleep 900ms
 
-# A provider that exists and signs in with an API key is named, with the environment variable it
-# actually reads. There is no browser login to start, and the refusal says so instead of talking
-# about an OAuth callback nobody mentioned.
+# A provider whose credential is one pasted key opens the same login screen as a browser provider,
+# because it now HAS a login: `createApiKeyLogin` gives groq one, so the key is pasted into veyyon
+# and stored as an account row instead of being exported into a shell profile veyyon cannot see.
+# This step used to record the opposite, a refusal reading "Groq has no browser login", which was
+# true until that login existed and is now unreachable for this provider.
 Type "/login groq"
 Sleep 700ms
 Enter
 Sleep 2s
 Screenshot assets/account-manager-18-login-api-key.png
 Sleep 900ms
+# Dismissed before the next command is typed. This step opens a DIALOG now rather than printing a
+# one-line warning, and a dialog holds the keystrokes: without this the `/login Anthropic` below is
+# typed into the API key field, and frames 19 through 21 record a session that is still sitting in
+# this screen.
+Escape
+Sleep 1500ms
 
 # The DISPLAY NAME works, because it is the spelling the card, the model hub and the picker print.
 # The frame is taken while the login is in flight: the network here is a closed port, so the dialog
