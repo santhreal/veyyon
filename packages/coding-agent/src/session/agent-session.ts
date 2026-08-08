@@ -75,6 +75,7 @@ import {
 	resolveServerCompactionTransport,
 	resolveThresholdTokens,
 	resolveThresholdWithOrigin,
+	rollbackTailElisions,
 	type SessionMessageEntry,
 	type ShakeConfig,
 	type ShakeRegion,
@@ -115,6 +116,7 @@ import type {
 	TextContent,
 	ToolCall,
 	ToolChoice,
+	ToolResultMessage,
 	Usage,
 	UsageReport,
 } from "@veyyon/ai";
@@ -486,6 +488,7 @@ import type {
 import { EPHEMERAL_MODEL_CHANGE_ROLE } from "./session-entries";
 import { formatSessionHistoryMarkdown } from "./session-history-format";
 import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
+import { isAwaitingUserAnswer, mayContinueAtSettle, type SettleContinuationState } from "./settle-continuation";
 import type { ShakeMode, ShakeResult } from "./shake-types";
 import { incompleteTodoItems, renderTodoContinuationReminder, todoReminderFingerprint } from "./todo-reminder";
 import { ToolChoiceQueue } from "./tool-choice-queue";
@@ -522,18 +525,6 @@ const MID_RUN_TODO_NUDGE_MUTATING_TOOLS: Record<string, true> = {
 	write: true,
 	ast_edit: true,
 };
-const MARKDOWN_PROMPT_PREFIX_RE = /^(?:>\s*)?(?:(?:[-*+]|\d+[.)])\s+)*/;
-const PROMPT_LABEL_RE = /^(?:q(?:uestion)?|ask)\s*\d*\s*[:.)-]\s*/i;
-const QUESTION_PROMPT_RE =
-	/^(?:what|which|when|where|why|how|who|whom|whose|do|does|did|can|could|would|will|should|is|are|am|may|shall)\b/i;
-const USER_DIRECTED_PROMPT_RE = /\b(?:you|your|we|our)\b/i;
-const USER_RESPONSE_CUE_RE =
-	/^(?:please\s+)?(?:confirm|reply|choose|pick|decide|advise)\b|^(?:please\s+)?answer\b|^(?:please\s+)?(?:let\s+me\s+know|tell\s+me)\b/i;
-
-interface PromptLine {
-	text: string;
-	hadPromptLabel: boolean;
-}
 
 interface PendingContextSnapshot {
 	promptTokens: number;
@@ -545,40 +536,6 @@ interface PendingContextSnapshot {
 	compactionEntryId?: string;
 }
 
-function promptLine(line: string): PromptLine {
-	const withoutMarkdownPrefix = line.trim().replace(MARKDOWN_PROMPT_PREFIX_RE, "").trim();
-	const withoutPromptLabel = withoutMarkdownPrefix.replace(PROMPT_LABEL_RE, "").trim();
-	return {
-		text: withoutPromptLabel,
-		hadPromptLabel: withoutPromptLabel !== withoutMarkdownPrefix,
-	};
-}
-
-function isQuestionPromptLine(line: string): boolean {
-	const candidate = promptLine(line);
-	if (!/[?？]\s*$/.test(candidate.text)) return false;
-	return (
-		candidate.hadPromptLabel ||
-		QUESTION_PROMPT_RE.test(candidate.text) ||
-		USER_DIRECTED_PROMPT_RE.test(candidate.text)
-	);
-}
-
-function isResponseCueLine(line: string): boolean {
-	const candidate = promptLine(line)
-		.text.replace(/[.!?。！？]+$/, "")
-		.trim();
-	return USER_RESPONSE_CUE_RE.test(candidate);
-}
-
-function isAwaitingUserAnswer(message: AssistantMessage): boolean {
-	// Trim is load-bearing: a trailing newline would make split().at(-1) an empty
-	// last line. The shared @veyyon/ai assistantText leaves trimming to the caller.
-	const text = assistantText(message).trim();
-	if (!text) return false;
-	const lastLine = text.split(/\r?\n/).at(-1)?.trim();
-	return lastLine !== undefined && (isQuestionPromptLine(lastLine) || isResponseCueLine(lastLine));
-}
 /** `customType` for the hidden mid-run todo nudge; `display: false`, so it reaches
  *  the model but never renders in the TUI or transcript. */
 const MID_RUN_TODO_NUDGE_MESSAGE_TYPE = "mid-run-todo-nudge";
@@ -2453,6 +2410,15 @@ export class AgentSession {
 	// Cursor exec, TUI listeners) is held back. Without this, a client that resumes
 	// on `agent_end` can fire its next `prompt` before #promptWithMessage's finally
 	#emptyStopRetryCount = 0;
+	/**
+	 * Developer reminders appended by a turn-retry cycle (empty stop, unexpected
+	 * stop), in append order. They are scaffolding: their only job is to nudge a
+	 * stalled turn back into producing something, and they speak about a turn that
+	 * either was discarded or has already given up. Removed from active context
+	 * when the cycle ends, so a later turn is not carrying instructions about a
+	 * turn that no longer exists.
+	 */
+	#turnRetryReminders: AgentMessage[] = [];
 	#unexpectedStopRetryCount = 0;
 	#acceptTerminalEmptyStopForPrompt = false;
 	#promptGeneration = 0;
@@ -2500,6 +2466,7 @@ export class AgentSession {
 
 	#resetPromptMaintenanceState(): void {
 		this.#emptyStopRetryCount = 0;
+		this.#dropTurnRetryReminders();
 		this.#unexpectedStopRetryCount = 0;
 		this.#yieldTerminationPending = false;
 		this.#acceptTerminalEmptyStopForPrompt = false;
@@ -4145,8 +4112,54 @@ export class AgentSession {
 			firstKeptEntryId,
 		} as CompactionSummaryMessage & { firstKeptEntryId?: string };
 
-		agent.replaceMessages([summaryMessage, ...preparation.recentMessages]);
+		// Tail elisions ride the preparation as pointerless markers; close them
+		// out (recovery pointer, or undo) before they enter advisor memory.
+		const recentMessages = await this.#resolveAdvisorTailElisions(preparation);
+		agent.replaceMessages([summaryMessage, ...recentMessages]);
 		return false;
+	}
+
+	/**
+	 * Close out a successful advisor compaction's tail elisions before they
+	 * enter advisor memory. `prepareCompaction` swaps over-budget tool results
+	 * in the kept tail for pointerless markers as a side effect, and the
+	 * advisor's retained tail comes from `preparation.recentMessages`, so
+	 * feeding it unchanged would strand the original bytes behind a marker
+	 * that names no recovery: advisor memory is in-memory and nothing else
+	 * retains the pre-elision copy. The advisor's read tool resolves
+	 * `artifact://` against THIS session's artifacts dir, so the offload lands
+	 * on the same store the primary compaction paths use and the pointer
+	 * stays live for later advisor turns. A failed offload puts the original
+	 * message back instead — the next maintenance pass re-elides if the tail
+	 * is still heavy, which beats a dead marker no turn can ever resolve.
+	 * The replacement is always a NEW message object, never an in-place
+	 * patch: `estimateTokens` caches by message identity, and the pointerless
+	 * marker's estimate may already be primed from mid-pass reads.
+	 */
+	async #resolveAdvisorTailElisions(preparation: CompactionPreparation): Promise<AgentMessage[]> {
+		const elisions = preparation.tailElisions ?? [];
+		if (elisions.length === 0) return preparation.recentMessages;
+		let artifactId: string | undefined;
+		try {
+			artifactId = await this.sessionManager.saveArtifact(renderTailElisionArtifact(elisions), "compaction-tail");
+		} catch {
+			artifactId = undefined;
+		}
+		const resolved = new Map<AgentMessage, AgentMessage>();
+		for (const elision of elisions) {
+			resolved.set(
+				elision.message,
+				artifactId
+					? {
+							...elision.message,
+							content: [
+								{ type: "text", text: renderTailElisionMarker(elision.toolName, elision.tokens, artifactId) },
+							],
+						}
+					: elision.originalMessage,
+			);
+		}
+		return preparation.recentMessages.map(message => resolved.get(message) ?? message);
 	}
 
 	/** Model registry for API key resolution and model discovery */
@@ -6103,17 +6116,27 @@ export class AgentSession {
 				await emitAgentEndNotification();
 				return;
 			}
+			// One reading of "this reply is waiting on the user", shared by every
+			// route below. Computed here rather than inside each guard because the
+			// bug was precisely that they disagreed: only the todo reminder looked,
+			// so whether a question survived depended on which guard was armed.
+			const settleState: SettleContinuationState = { awaitingUserAnswer: isAwaitingUserAnswer(msg) };
 			if (msg.stopReason !== "error") {
-				if (this.#enforceRewindBeforeYield()) {
+				if (mayContinueAtSettle("rewind-checkpoint", settleState) && this.#enforceRewindBeforeYield()) {
 					await emitAgentEndNotification();
 					return;
 				}
-				const planModeContinuationScheduled = await this.#enforcePlanModeDecisionAtSettle();
+				const planModeContinuationScheduled =
+					mayContinueAtSettle("plan-mode-decision", settleState) &&
+					(await this.#enforcePlanModeDecisionAtSettle());
 				if (planModeContinuationScheduled) {
 					await emitAgentEndNotification();
 					return;
 				}
-				const todoContinuationScheduled = await this.#checkTodoCompletion(msg);
+				// Called unconditionally: its first statement consumes the served
+				// tool-choice label, and skipping that leaks a `user-force` label
+				// onto the next turn. The hold is a parameter instead.
+				const todoContinuationScheduled = await this.#checkTodoCompletion(settleState);
 				if (todoContinuationScheduled) {
 					await emitAgentEndNotification();
 					return;
@@ -6128,7 +6151,10 @@ export class AgentSession {
 				await emitAgentEndNotification();
 				return;
 			}
-			if (this.#enforceVerificationBeforeFinalize()) {
+			// Gated BEFORE the enforcer runs: it drains the ledger's one reminder
+			// as it reads it, so deferring from inside would spend the reminder it
+			// meant to keep.
+			if (mayContinueAtSettle("verification-evidence", settleState) && this.#enforceVerificationBeforeFinalize()) {
 				await emitAgentEndNotification();
 				return;
 			}
@@ -12945,6 +12971,10 @@ export class AgentSession {
 		const compactionAbortController = new AbortController();
 		this.#compactionAbortController = compactionAbortController;
 
+		// Hoisted so the catch can roll the preparation's tail elisions back:
+		// prepareCompaction applies them to the live branch as a side effect.
+		let preparation: CompactionPreparation | undefined;
+
 		try {
 			this.#disconnectFromAgent();
 			await this.abort({ goalReason: "internal", preserveCompaction: true });
@@ -12963,7 +12993,7 @@ export class AgentSession {
 			const availableModels = this.#modelRegistry.getAvailable();
 			const compactionCandidates = this.#getCompactionModelCandidates(availableModels);
 			const pathEntries = this.sessionManager.getBranch();
-			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(effectiveSettings), {
+			preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(effectiveSettings), {
 				nonMessageTokens: computeNonMessageTokens(this),
 				contextWindow: declaredContextWindow(this.model),
 			});
@@ -13144,6 +13174,7 @@ export class AgentSession {
 			options?.onComplete?.(compactionResult);
 			return compactionResult;
 		} catch (error) {
+			this.#rollbackCompactionTailElisions(preparation);
 			const err = error instanceof Error ? error : new Error(String(error));
 			options?.onError?.(err);
 			throw error;
@@ -14061,8 +14092,8 @@ export class AgentSession {
 		this.#emptyStopRetryCount++;
 		if (this.#emptyStopRetryCount > EMPTY_STOP_MAX_RETRIES) {
 			const attempts = this.#emptyStopRetryCount - 1;
-			const finalError = "Assistant returned empty stop after retry cap";
-			logger.warn(finalError, {
+			const failure = "Assistant returned empty stop after retry cap";
+			logger.warn(failure, {
 				attempts,
 				model: assistantMessage.model,
 				provider: assistantMessage.provider,
@@ -14071,25 +14102,40 @@ export class AgentSession {
 				type: "auto_retry_end",
 				success: false,
 				attempt: this.#retryAttempt > 0 ? this.#retryAttempt : attempts,
-				finalError,
+				// Name the model in the operator-facing line: an empty completion is
+				// a property of the model behind the turn, and switching models is
+				// the recovery the user has to reach for.
+				finalError: `${failure} (${assistantMessage.provider}/${assistantMessage.model})`,
 			});
 			this.#clearPendingRecoveredRetryErrors();
 			this.#retryAttempt = 0;
 			this.#resolveRetry();
-			// Tool-use orphans corrupt Anthropic message history (tool_result without
-			// matching tool_use). Always remove them even when the retry cap is hit.
-			if (assistantMessage.stopReason === "toolUse") {
-				this.#discardAssistantTurn(assistantMessage);
-			}
+			// The cycle is over, so the budget belongs to the next turn. Leaving the
+			// count above the cap made the next turn that does NOT run the
+			// per-prompt reset — an agent-initiated maintenance nudge, an IRC wake,
+			// a queued follow-up — cap on its first empty stop with zero retries and
+			// report an attempt count for requests it never made.
+			this.#emptyStopRetryCount = 0;
+			// Nothing this turn produced is worth keeping. An empty assistant turn
+			// replays on reload and re-sends the very context that produced it (the
+			// reasoning isEmptyErrorTurn already records for provider-rejection
+			// turns); a toolUse stop with no tool_use block additionally corrupts
+			// Anthropic history, where a later tool_result has nothing to anchor to.
+			// The reminders describe a turn that has just been discarded, so they
+			// are false by the time any later turn reads them.
+			this.#discardAssistantTurn(assistantMessage);
+			this.#dropTurnRetryReminders();
 			return false;
 		}
 		this.#discardAssistantTurn(assistantMessage);
-		this.agent.appendMessage({
+		const reminder: AgentMessage = {
 			role: "developer",
 			content: [{ type: "text", text: this.#emptyStopRetryReminder() }],
 			attribution: "agent",
 			timestamp: Date.now(),
-		});
+		};
+		this.#turnRetryReminders.push(reminder);
+		this.agent.appendMessage(reminder);
 		this.#scheduleAgentContinue({ generation: this.#promptGeneration });
 		return true;
 	}
@@ -14124,6 +14170,22 @@ export class AgentSession {
 			maxRetries: EMPTY_STOP_MAX_RETRIES,
 		});
 	}
+
+	/**
+	 * Drop the current cycle's turn-retry reminders from active context. Filters
+	 * by object identity rather than by text: the reminder body is rendered from
+	 * a prompt file, and matching on those bytes would also delete an unrelated
+	 * developer message that happened to quote them.
+	 */
+	#dropTurnRetryReminders(): void {
+		if (this.#turnRetryReminders.length === 0) return;
+		const scaffolding = new Set<AgentMessage>(this.#turnRetryReminders);
+		this.#turnRetryReminders = [];
+		const messages = this.agent.state.messages;
+		const kept = messages.filter(message => !scaffolding.has(message));
+		if (kept.length !== messages.length) this.agent.replaceMessages(kept);
+	}
+
 	async #handleUnexpectedAssistantStop(assistantMessage: AssistantMessage): Promise<boolean> {
 		if (!this.settings.get("features.unexpectedStopDetection")) {
 			return false;
@@ -14169,15 +14231,21 @@ export class AgentSession {
 				provider: assistantMessage.provider,
 			});
 			this.#unexpectedStopRetryCount = 0;
+			// Same reasoning as the empty-stop cap: the nudges tell the model to
+			// finish a turn this cycle has just stopped trying to finish, so they are
+			// false for every turn that reads them after this point.
+			this.#dropTurnRetryReminders();
 			return false;
 		}
 
-		this.agent.appendMessage({
+		const reminder: AgentMessage = {
 			role: "developer",
 			content: [{ type: "text", text: this.#unexpectedStopRetryReminder() }],
 			attribution: "agent",
 			timestamp: Date.now(),
-		});
+		};
+		this.#turnRetryReminders.push(reminder);
+		this.agent.appendMessage(reminder);
 		this.#scheduleAgentContinue({ generation: this.#promptGeneration });
 		return true;
 	}
@@ -14665,8 +14733,13 @@ export class AgentSession {
 	}
 	/**
 	 * Check if agent stopped with incomplete todos and prompt to continue.
+	 *
+	 * `settleState` carries the tail's single reading of "waiting on the user".
+	 * This runs even when that hold is set, because the first statement consumes
+	 * the served tool-choice label and skipping the call would leak it onto the
+	 * next turn.
 	 */
-	async #checkTodoCompletion(message: AssistantMessage): Promise<boolean> {
+	async #checkTodoCompletion(settleState: SettleContinuationState): Promise<boolean> {
 		// Skip todo reminders when the most recent turn was driven by an explicit user force —
 		// the user wanted exactly that tool, not a follow-up nag about incomplete todos.
 		const lastServedLabel = this.#toolChoiceQueue.consumeLastServedLabel();
@@ -14733,7 +14806,7 @@ export class AgentSession {
 			return false;
 		}
 
-		if (isAwaitingUserAnswer(message)) {
+		if (!mayContinueAtSettle("todo-reminder", settleState)) {
 			logger.debug("Todo completion: assistant is waiting for user input; skipping reminder", {
 				incomplete: incomplete.length,
 			});
@@ -15448,7 +15521,21 @@ export class AgentSession {
 		const model = this.model;
 		if (!model || !resolveServerCompactionTransport(model)) return undefined;
 		const apiKey = await this.#modelRegistry.getApiKey(model, this.sessionId);
-		if (!apiKey) return undefined;
+		if (!apiKey) {
+			// The loader announced a remote pass from the sync half of this gate;
+			// a missing credential must not downgrade to a local pass silently.
+			const message = `no API key for ${model.provider}/${model.id}`;
+			logger.warn("Server-side compaction unavailable, falling back to local compaction", { reason: message });
+			if (!this.#announcedServerCompactionFailures.has(message)) {
+				this.#announcedServerCompactionFailures.add(message);
+				this.emitNotice(
+					"warning",
+					`Server-side compaction unavailable (${message}); falling back to local compaction.`,
+					"compaction",
+				);
+			}
+			return undefined;
+		}
 		try {
 			return await compactWithProvider(
 				this.#obfuscatePreparationForProvider(preparation),
@@ -15860,13 +15947,40 @@ export class AgentSession {
 			artifactId = undefined;
 		}
 		if (artifactId) {
+			const branch = this.sessionManager.getBranch();
 			for (const elision of elisions) {
-				elision.message.content = [
-					{ type: "text", text: renderTailElisionMarker(elision.toolName, elision.tokens, artifactId) },
-				];
+				// A NEW message object, never an in-place content patch:
+				// estimateTokens caches by message identity, so mutating the
+				// marker would leave every later estimate at the pre-pointer
+				// size (same replace-not-mutate rule the elision producer
+				// follows).
+				const pointed: ToolResultMessage = {
+					...elision.message,
+					content: [{ type: "text", text: renderTailElisionMarker(elision.toolName, elision.tokens, artifactId) }],
+				};
+				const entry = branch.find(e => e.id === elision.entryId);
+				if (entry?.type !== "message" || entry.message !== elision.message) continue;
+				entry.message = pointed;
+				elision.message = pointed;
 			}
 		}
 		await this.sessionManager.rewriteEntries();
+	}
+
+	/**
+	 * Restore the originals a failed compaction elided from the kept tail.
+	 * `prepareCompaction` swaps them for pointerless markers as a side effect
+	 * of preparing, and until `#persistCompactionTailElisions` runs the
+	 * preparation holds the only copy of the bytes — so every failure path
+	 * between the two must put them back, or the branch keeps a dead marker
+	 * (`prunedAt` blocks re-elision, the next summarizer sees marker text)
+	 * and the next rewriteEntries persists it over the last copy of the
+	 * output.
+	 */
+	#rollbackCompactionTailElisions(preparation: CompactionPreparation | undefined): void {
+		const elisions = preparation?.tailElisions;
+		if (!elisions || elisions.length === 0) return;
+		rollbackTailElisions(this.sessionManager.getBranch(), elisions);
 	}
 
 	/** Notice fragment for a dead-end elide tier: what was freed and where it went. */
@@ -15929,6 +16043,11 @@ export class AgentSession {
 		this.#autoCompactionAbortController = autoCompactionAbortController;
 		const autoCompactionSignal = autoCompactionAbortController.signal;
 
+		// Hoisted so failure paths can roll the preparation's tail elisions
+		// back: prepareCompaction applies them to the live branch as a side
+		// effect.
+		let preparation: CompactionPreparation | undefined;
+
 		try {
 			// Emit start after the controller is installed so isCompacting is already true
 			// for any listener and for input routed during this emit's event-loop yield.
@@ -15963,7 +16082,7 @@ export class AgentSession {
 
 			const pathEntries = this.sessionManager.getBranch();
 
-			const preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings), {
+			preparation = prepareCompaction(pathEntries, toAgentCompactionSettings(compactionSettings), {
 				nonMessageTokens: computeNonMessageTokens(this),
 				contextWindow: declaredContextWindow(this.model),
 			});
@@ -16012,6 +16131,7 @@ export class AgentSession {
 				})) as SessionBeforeCompactResult | undefined;
 
 				if (hookResult?.cancel) {
+					this.#rollbackCompactionTailElisions(preparation);
 					await this.#emitSessionEvent({
 						type: "auto_compaction_end",
 						action,
@@ -16235,6 +16355,7 @@ export class AgentSession {
 			}
 
 			if (autoCompactionSignal.aborted) {
+				this.#rollbackCompactionTailElisions(preparation);
 				await this.#emitSessionEvent({
 					type: "auto_compaction_end",
 					action,
@@ -16412,6 +16533,7 @@ export class AgentSession {
 			if (continuationScheduled) return COMPACTION_CHECK_CONTINUATION;
 			return noProgressDeadEnd ? COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION : COMPACTION_CHECK_NONE;
 		} catch (error) {
+			this.#rollbackCompactionTailElisions(preparation);
 			if (autoCompactionSignal.aborted) {
 				await this.#emitSessionEvent({
 					type: "auto_compaction_end",
@@ -17327,6 +17449,10 @@ export class AgentSession {
 		const retryAbortController = new AbortController();
 		this.#retryAbortController?.abort();
 		this.#retryAbortController = retryAbortController;
+		// abortRetry() can land before this assignment (same drain as auto_retry_start); the cancel is lost without this.
+		if (!this.#retryPromise) {
+			retryAbortController.abort();
+		}
 		try {
 			await scheduler.wait(delayMs, { signal: retryAbortController.signal });
 		} catch {

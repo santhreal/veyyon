@@ -61,6 +61,7 @@ function createContext(options: {
 		clearOptimisticUserMessage,
 		replaceOptimisticUserMessage,
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		viewSession: { isStreaming: false },
 		// Required members of the context. Omitting them used to be tolerated by
 		// `?.()` calls in the controller, which meant production silently skipped

@@ -51,6 +51,7 @@ function createFixture() {
 		streamingComponent,
 		streamingMessage: makeStreamingMessage(""),
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		noteDisplayableThinkingContent: vi.fn(() => false),
 		chatContainer: { addChild: vi.fn() },
 		toolOutputExpanded: false,

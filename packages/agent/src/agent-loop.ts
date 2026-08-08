@@ -2216,7 +2216,11 @@ async function executeToolCalls(
 		}
 		let effectiveArgs: Record<string, unknown>;
 		try {
-			if (!tool) throw new Error(`Tool ${toolCall.name} not found`);
+			if (!tool)
+				throw new AIError.ToolNotFoundError(
+					toolCall.name,
+					tools?.map(t => t.name),
+				);
 			if (config.repairToolCallArguments) {
 				const repairOutcome = config.repairToolCallArguments(tool, {
 					...toolCall,
@@ -2369,7 +2373,11 @@ async function executeToolCalls(
 
 		await runInActiveSpan(toolSpan, async () => {
 			try {
-				if (!tool) throw new Error(`Tool ${toolCall.name} not found`);
+				if (!tool)
+					throw new AIError.ToolNotFoundError(
+						toolCall.name,
+						tools?.map(t => t.name),
+					);
 				if (record.signal.aborted) {
 					result = createToolSignalAbortedResult(
 						record.signal,

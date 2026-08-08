@@ -76,6 +76,7 @@ function createFixture() {
 		ui: { requestRender: vi.fn(), imageBudget: undefined },
 		chatContainer,
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		noteDisplayableThinkingContent: vi.fn(() => false),
 		settings: { get: () => false },
 		toolOutputExpanded: false,

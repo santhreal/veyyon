@@ -21,8 +21,7 @@
  * "Compaction Threshold" in the UI, both defaulting to the `-1` sentinel, and with
  * their precedence recorded nowhere but a comment above the resolver. An operator
  * reading the settings list could not tell which one was in force, and setting the
- * one nearer the top silently did nothing when the other was already set
- * (operator review 2026-07-24).
+ * one nearer the top silently did nothing when the other was already set.
  *
  * Now there is one value whose UNIT IS PART OF THE VALUE:
  *

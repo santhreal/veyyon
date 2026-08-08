@@ -147,9 +147,12 @@ The automatic paths are intentionally different:
 
 `summary` is the sole compaction strategy, and it continues the SAME session. The generated summary
 is prefixed onto a retained raw tail in one message array: `buildSessionContext` pushes the summary,
-then re-emits every entry from `firstKeptEntryId` onward verbatim. The tail is non-empty by
-construction, because `findCutPoint` walks backwards accumulating until `keepRecentTokens`
-(default 20000).
+then re-emits every entry from `firstKeptEntryId` onward. `findCutPoint` walks backwards
+accumulating until `keepRecentTokens` (default 10000), and because it can only cut at a turn
+boundary, `prepareCompaction` then hard-bounds the tail: a kept turn whose bulk exceeds the budget
+has its heavy non-error tool results replaced with an elision marker (largest first, originals
+offloaded to a recovery `artifact://` blob), so the tail stays within budget even when one turn
+alone is bigger. User messages, assistant text, tool calls, and error results are never elided.
 
 Note that the summary prompt does not say any of that. Its opening line asks for "a structured
 handoff summary for another LLM to resume the task", which describes a cold restart that compaction
@@ -540,7 +543,7 @@ From `settings-schema.ts`:
 - `compaction.enabled` = `true`
 - `compaction.strategy` = `"summary"`, the sole strategy. Every stored legacy strategy token migrates to `summary`; legacy `off` also sets `compaction.enabled: false`. Use `/handoff` for an explicit transfer to a new session.
 - `compaction.reserveTokens` = unset (absent key). When unset the compaction layer falls back to `DEFAULT_RESERVE_TOKENS` = `16384`, and small-window recovery may substitute a proportional 15%-of-window reserve when the default does not fit the window (`resolveBudgetReserveTokens`).
-- `compaction.keepRecentTokens` = `20000`
+- `compaction.keepRecentTokens` = `10000`
 - `compaction.supersedeReads` = `true` (drop earlier file reads that a later read of the same file makes redundant)
 - `compaction.dropUseless` = `true`
 - `compaction.handoffSaveToDisk` = `false` (also write the handoff packet to disk)

@@ -65,6 +65,7 @@ describe("EventController async update finalization", () => {
 			statusLine: { invalidate: vi.fn() },
 			toolOutputExpanded: false,
 			pendingTools,
+			settledToolCalls: new Set<string>(),
 			chatContainer,
 			session: { getToolByName: () => undefined, isStreaming: true },
 			showWarning: vi.fn(),

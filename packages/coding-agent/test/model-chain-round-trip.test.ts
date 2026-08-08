@@ -11,11 +11,12 @@
  * the TUI, because the splitter is where the encoding is actually decided.
  */
 
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { normalizeModelPatternList, resolveCompactionModelPatterns } from "@veyyon/coding-agent/config/model-resolver";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import type { SubagentAgentSettings } from "@veyyon/coding-agent/config/settings-domains/subagents";
 import { resolveSubagentModel } from "@veyyon/coding-agent/task/subagent-settings";
 import { TempDir } from "@veyyon/utils";
 import { YAML } from "bun";
@@ -103,10 +104,13 @@ describe("model chain encoding", () => {
 	 * suite exists to catch, arriving through a field nothing is supposed to read.
 	 */
 	it("ignores a retired per-agent model row and keeps the blanket chain", () => {
+		// The retired shape is no longer expressible as a literal, and an old config still holds it.
+		const staleRow: SubagentAgentSettings = {};
+		Object.assign(staleRow, { model: "openai/gpt-5" });
 		const settings = Settings.isolated({
 			"subagent.model": "anthropic/opus,anthropic/sonnet",
-			"subagent.agents": { reviewer: { model: "openai/gpt-5" } },
-		} as Parameters<typeof Settings.isolated>[0]);
+			"subagent.agents": { reviewer: staleRow },
+		});
 		const resolved = resolveSubagentModel({ settings, agentName: "reviewer", agentModel: undefined });
 		expect(resolved.source).toBe("blanket");
 		expect(resolved.patterns).toEqual(["anthropic/opus", "anthropic/sonnet"]);
@@ -114,6 +118,20 @@ describe("model chain encoding", () => {
 });
 
 describe("compaction model preference persistence", () => {
+	/**
+	 * `Settings.init` hands back the process-wide instance, so a suite that ran earlier in the same
+	 * process and initialized it against ITS OWN agent directory leaves this one writing there: the
+	 * `flush` below lands in the other directory and the `config.yml` this test reads never exists.
+	 * That is not hypothetical, it is what this test did after any session-initializing suite in the
+	 * same batch, while passing perfectly on its own.
+	 */
+	beforeEach(() => {
+		resetSettingsForTest();
+	});
+	afterEach(() => {
+		resetSettingsForTest();
+	});
+
 	it("preserves the selected ordered list and fallback policy across save and reload", async () => {
 		const tempDir = TempDir.createSync("@veyyon-compaction-model-roundtrip-");
 		try {

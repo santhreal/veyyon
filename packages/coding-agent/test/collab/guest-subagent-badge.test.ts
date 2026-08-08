@@ -69,6 +69,7 @@ function makeGuestContext(counts: number[]): InteractiveModeContext {
 		streamingComponent: undefined,
 		streamingMessage: undefined,
 		pendingTools: new Map(),
+		settledToolCalls: new Set<string>(),
 		loadingAnimation: undefined as { stop(): void } | undefined,
 		clearWorkingLoader(): boolean {
 			const self = this as { loadingAnimation?: { stop(): void } };
