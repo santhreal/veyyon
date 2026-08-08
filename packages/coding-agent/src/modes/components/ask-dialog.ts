@@ -334,7 +334,7 @@ function renderRowLabel(
 function describeAskValue(value: unknown): string {
 	if (value === undefined) return "missing";
 	if (typeof value === "string") return `the string ${JSON.stringify(value)}`;
-	if (typeof value === "object") return value === null ? "null" : `a ${Array.isArray(value) ? "array" : "object"}`;
+	if (typeof value === "object") return value === null ? "null" : Array.isArray(value) ? "an array" : "an object";
 	return `the ${typeof value} ${String(value)}`;
 }
 
@@ -370,7 +370,7 @@ function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQues
 	for (let index = 0; index < questions.length; index++) {
 		const raw: unknown = questions[index];
 		const at = `Ask dialog question ${index}`;
-		if (typeof raw !== "object" || raw === null) {
+		if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
 			throw new Error(`${at} is ${describeAskValue(raw)}, not an object.`);
 		}
 		const question = raw as Partial<ExtensionAskDialogQuestion>;
@@ -392,7 +392,7 @@ function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQues
 		for (let optionIndex = 0; optionIndex < question.options.length; optionIndex++) {
 			const option: unknown = question.options[optionIndex];
 			const optionAt = `${where} option ${optionIndex}`;
-			if (typeof option !== "object" || option === null) {
+			if (typeof option !== "object" || option === null || Array.isArray(option)) {
 				throw new Error(`${optionAt} is ${describeAskValue(option)}, not an object.`);
 			}
 			const { label, description, preview } = option as Partial<ExtensionAskDialogOption>;
