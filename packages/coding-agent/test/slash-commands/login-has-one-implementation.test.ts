@@ -32,12 +32,26 @@ import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
+import { formatProviderName } from "@veyyon/coding-agent/slash-commands/helpers/format";
 import type { SlashCommandRuntime, TuiSlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
 
 const PROVIDER = "unit-accounts";
 const SESSION_ID = "session-login-aliases";
 const NOW_MS = 1_760_000_000_000;
 const HOUR_MS = 60 * 60_000;
+
+/** The provider a pending login is recorded against; never a real one, so nothing here depends on the registry. */
+const PENDING_PROVIDER = "pending-provider";
+
+/**
+ * The warning a second login attempt prints, built through the SAME label helper the product uses.
+ * Spelling the display name as a literal here is what made this suite fail the day `/login` started
+ * routing every provider label through `formatProviderName`: the test pinned the raw slug the product
+ * had deliberately stopped printing, so a label fix looked like a routing regression.
+ */
+function pendingWarning(providerId: string): string {
+	return `OAuth login already in progress for ${formatProviderName(providerId)}. Paste the redirect URL with /login <url>.`;
+}
 
 /**
  * One recorded effect per thing the user would see, in order. Comparing lists rather than individual
@@ -122,18 +136,18 @@ describe("/login and /account login are one implementation", () => {
 			what: "a pasted URL nobody is waiting for is refused",
 			args: "https://example.test/callback?code=abc",
 			pending: { hasPending: false, submitAccepts: false },
-			expected: [
-				"submit:https://example.test/callback?code=abc",
-				"warning:No OAuth login is waiting for a manual callback.",
-			],
+			// No `submit:` event: with nothing pending, the text is classified as "not a
+			// provider and not a live callback" and refused by name. The old order handed
+			// every unrecognized argument to the manual-input controller first and let it
+			// refuse, which is how a misspelled provider produced a sentence about
+			// manual callbacks.
+			expected: ["warning:No OAuth login is waiting for a manual callback. Start one with /login <provider>."],
 		},
 		{
 			what: "a second bare login while one is pending names the provider still waiting",
 			args: "",
-			pending: { pendingProviderId: "pending-provider", hasPending: true, submitAccepts: false },
-			expected: [
-				"warning:OAuth login already in progress for pending-provider. Paste the redirect URL with /login <url>.",
-			],
+			pending: { pendingProviderId: PENDING_PROVIDER, hasPending: true, submitAccepts: false },
+			expected: [`warning:${pendingWarning(PENDING_PROVIDER)}`],
 		},
 		{
 			what: "a pending login with no provider recorded still warns",
@@ -144,10 +158,8 @@ describe("/login and /account login are one implementation", () => {
 		{
 			what: "a provider id while a login is pending warns instead of starting a second one",
 			args: knownProviderId,
-			pending: { pendingProviderId: "pending-provider", hasPending: true, submitAccepts: false },
-			expected: [
-				"warning:OAuth login already in progress for pending-provider. Paste the redirect URL with /login <url>.",
-			],
+			pending: { pendingProviderId: PENDING_PROVIDER, hasPending: true, submitAccepts: false },
+			expected: [`warning:${pendingWarning(PENDING_PROVIDER)}`],
 		},
 	];
 
