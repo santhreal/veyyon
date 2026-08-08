@@ -34,8 +34,8 @@ export function getBundledModel<TApi extends Api = Api>(provider: GeneratedProvi
 	return providerModels?.get(modelId) as Model<TApi>;
 }
 
-export function getBundledProviders(): KnownProvider[] {
-	return Object.keys(MODELS) as KnownProvider[];
+export function getBundledProviders(): GeneratedProvider[] {
+	return Object.keys(MODELS) as GeneratedProvider[];
 }
 
 export function getBundledModels(provider: GeneratedProvider): Model<Api>[] {

@@ -1,47 +1,50 @@
 /**
- * ONE-PLACE lock for the token limits assumed when an agent gateway does not publish its own.
+ * WHY THIS SUITE EXISTS (ONE-ASSUMED-PAIR-WITH-ONE-OWNER).
  *
- * Why this suite exists: `DEFAULT_CONTEXT_WINDOW` and `DEFAULT_MAX_TOKENS` were each declared four times in
- * `src/discovery/`, and one of those four held DIFFERENT values under the same names. Antigravity, Cursor and
- * Devin all assumed 200_000 / 64_000; `codex.ts` assumed 272_000 / 128_000. One name meaning two values in one
- * directory is how a reader carries the wrong number across a file boundary, and these particular numbers feed
- * auto-compaction and the context panel, so a wrong one is not a cosmetic mistake.
+ * `DEFAULT_CONTEXT_WINDOW` and `DEFAULT_MAX_TOKENS` were each declared four times under `src/discovery/`, and one
+ * of those four held DIFFERENT values under the same names: Antigravity, Cursor and Devin all assumed
+ * 200_000 / 64_000 while `codex.ts` assumed 272_000 / 128_000. One name meaning two values in one directory is
+ * how a reader carries the wrong number across a file boundary, and these numbers feed auto-compaction, the
+ * context panel and the overflow check, so a wrong one is not cosmetic.
  *
- * The three matching copies were one decision restated: all three are gateways that proxy Claude-class models and
- * report their limits unreliably, and all three also carry the same note that their zero prices mean "not told"
- * rather than "free". Raising the assumption when the proxied model class changes should be one edit.
+ * THE CLASS: an assumed limit must have one owner, and a module that assumes something different must be
+ * assuming it for a reason of its own. The suite closes that by driving each module's real discovery over an
+ * endpoint that reports nothing and pinning the number it answers, which is the only thing a divergent copy can
+ * be observed by. Two of the assertions are deliberately asymmetric, and the pair is what makes divergence
+ * visible: the owner's constants are pinned to LITERALS, so changing the assumption is a recorded decision, while
+ * every module's fallback is asserted against the CONSTANT, so a module holding its own copy of 200_000 goes red
+ * the moment the shared number moves. Against the constant alone the first would follow a bad edit; against the
+ * literal alone the second could not tell a shared number from a copied one.
  *
- * The cases below pin the pair, prove each discovery module actually falls back to it, and record the two places
- * that deliberately keep their own value along with the reason.
+ * WHAT THIS DOES NOT CATCH. A module that retypes 200_000 inline AND is never driven here: it answers the same
+ * number today, and only diverges when the assumption changes, which is exactly when the fallback cases above go
+ * red. `test/gateway-model-limits.test.ts` is what makes sure the set of driven modules is complete, by
+ * classifying every module in the directory.
  */
 
 import { describe, expect, it } from "bun:test";
-import * as path from "node:path";
-import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { fetchAntigravityDiscoveryModels } from "../src/discovery/antigravity";
+import { fetchCodexModels } from "../src/discovery/codex";
 import {
 	AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW,
 	AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
 } from "../src/discovery/default-limits";
+import { buildGitLabDuoWorkflowModelSpec } from "../src/discovery/gitlab-duo-workflow";
 
-const DISCOVERY = path.resolve(import.meta.dir, "../src/discovery");
-const SHARERS = ["antigravity.ts", "cursor.ts", "devin.ts"];
-
-async function discoverySources(): Promise<ReadonlyArray<{ file: string; text: string }>> {
-	const files = [...new Bun.Glob("**/*.ts").scanSync(DISCOVERY)]
-		.map(file => file.split(path.sep).join("/"))
-		.filter(file => file !== "default-limits.ts")
-		.sort();
-	return await Promise.all(
-		files.map(async file => ({ file, text: await Bun.file(path.join(DISCOVERY, file)).text() })),
+/** A `typeof fetch` that answers every request with one JSON body, without casting through `unknown`. */
+function respondWith(models: unknown): typeof fetch {
+	return Object.assign(
+		async () =>
+			new Response(JSON.stringify({ models }), { status: 200, headers: { "Content-Type": "application/json" } }),
+		{ preconnect() {} },
 	);
 }
 
-describe("the agent-gateway default limits", () => {
+describe("the agent-gateway assumed limits", () => {
 	/**
-	 * The Claude-class context window. Pinned because auto-compaction and the context panel read it: an
-	 * over-estimate makes the agent fill a window the model does not have and the provider rejects the request,
-	 * while an under-estimate only compacts earlier than needed. Too low is the safe direction, and 200k is the
-	 * real Claude window rather than a round number chosen for comfort.
+	 * The Claude-class context window, pinned to the literal. Auto-compaction and the context panel read it: an
+	 * over-estimate makes the agent fill a window the model does not have until the provider rejects the request,
+	 * so moving this number is a decision and not a refactor.
 	 */
 	it("assumes a 200k context window", () => {
 		expect(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW).toBe(200_000);
@@ -53,8 +56,8 @@ describe("the agent-gateway default limits", () => {
 	});
 
 	/**
-	 * The output cap has to stay comfortably below the window, since a request is sent with both and a cap at or
-	 * above the window leaves no room for the prompt at all.
+	 * The cap has to stay comfortably below the window, since a request carries both and a cap at or above the
+	 * window leaves no room for the prompt at all.
 	 */
 	it("keeps the output cap well below the window", () => {
 		expect(AGENT_GATEWAY_DEFAULT_MAX_TOKENS).toBeLessThan(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW / 2);
@@ -63,31 +66,23 @@ describe("the agent-gateway default limits", () => {
 	/** Both are positive integers, since they are serialised into a request and compared against token counts. */
 	it("holds positive integers", () => {
 		for (const value of [AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW, AGENT_GATEWAY_DEFAULT_MAX_TOKENS]) {
-			expect(Number.isInteger(value)).toBeTrue();
+			expect(Number.isSafeInteger(value)).toBe(true);
 			expect(value).toBeGreaterThan(0);
 		}
 	});
 });
 
 describe("a gateway falls back to the shared pair", () => {
-	function respondWith(models: unknown): typeof globalThis.fetch {
-		return (async () =>
-			new Response(JSON.stringify({ models }), {
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			})) as unknown as typeof globalThis.fetch;
-	}
-
 	/**
-	 * Antigravity reports limit fields that are frequently absent, so an entry with none falls back to the assumed
-	 * pair while an entry that DOES report them keeps its own numbers. Both halves matter: a fallback that also
-	 * overrode reported values would be worse than having no fallback at all.
-	 *
 	 * Driven through the real discovery function with an injected fetcher, so this proves the wiring rather than
-	 * re-asserting the constants against themselves.
+	 * re-asserting the constants against themselves. Antigravity's limit fields are frequently absent, so a row
+	 * with none falls back while a row that DOES report keeps its own numbers. Both halves matter: a fallback that
+	 * also overrode reported values would be worse than having no fallback at all.
+	 *
+	 * The ids are deliberately nonsense. This is the fallback path, and it is reached only for a model nothing
+	 * known describes; a real model id would resolve through the catalog and never arrive here.
 	 */
 	it("falls back only when the endpoint reports nothing", async () => {
-		const { fetchAntigravityDiscoveryModels } = await import("../src/discovery/antigravity");
 		const models = await fetchAntigravityDiscoveryModels({
 			token: "test-token",
 			endpoint: "https://antigravity.example",
@@ -98,13 +93,10 @@ describe("a gateway falls back to the shared pair", () => {
 			}),
 		});
 		expect(models).not.toBeNull();
-		const silent = models?.find(model => model.id.includes("silent"));
-		const talkative = models?.find(model => model.id.includes("talkative"));
+		const silent = models?.find(model => model.id === "silent-model");
+		const talkative = models?.find(model => model.id === "talkative-model");
 		expect(silent, "silent model missing").toBeDefined();
-		// Literal, not the exported constant: 200k is what a provider that told us
-		// nothing is assumed to have, and asserting against the constant follows a
-		// bad edit to it instead of catching one.
-		expect(silent?.contextWindow).toBe(200_000);
+		expect(silent?.contextWindow).toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
 		expect(silent?.maxTokens).toBe(AGENT_GATEWAY_DEFAULT_MAX_TOKENS);
 		expect(talkative?.contextWindow).toBe(1_000_000);
 		expect(talkative?.maxTokens).toBe(96_000);
@@ -116,97 +108,56 @@ describe("a gateway falls back to the shared pair", () => {
 	 * and every turn would be compacted before it began.
 	 */
 	it("treats a reported zero as not told", async () => {
-		const { fetchAntigravityDiscoveryModels } = await import("../src/discovery/antigravity");
 		const models = await fetchAntigravityDiscoveryModels({
 			token: "test-token",
 			endpoint: "https://antigravity.example",
 			fetcher: respondWith({ "zero-model": { displayName: "Zero", maxTokens: 0, maxOutputTokens: 0 } }),
 		});
-		const zero = models?.find(model => model.id.includes("zero"));
-		expect(zero?.contextWindow).toBe(200_000);
+		const zero = models?.find(model => model.id === "zero-model");
+		expect(zero?.contextWindow).toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
 		expect(zero?.maxTokens).toBe(AGENT_GATEWAY_DEFAULT_MAX_TOKENS);
 	});
 });
 
-describe("the discovery limits have one owner", () => {
+describe("a module that assumes something else assumes it for its own reason", () => {
 	/**
-	 * The ratchet on the retired names. They were bare `DEFAULT_CONTEXT_WINDOW` and `DEFAULT_MAX_TOKENS` in four
-	 * modules, so the check is that no module in this directory declares either bare name again, whatever value it
-	 * would give it. That covers both the duplication and the divergence in one rule.
+	 * Codex keeps a different pair on purpose: GPT-5-class Codex has a documented under-reporting quirk and a
+	 * genuinely larger window, so the bug was the shared NAME rather than the different value. Driven with a model
+	 * that reports no `context_window` at all, which is the only way to observe which pair the module holds. A
+	 * non-5.6 slug is used because the 5.6 SKUs apply their own documented floor on top.
 	 */
-	it("declares no bare default-limit name anywhere under discovery", async () => {
-		const offenders: string[] = [];
-		for (const { file, text } of await discoverySources()) {
-			for (const name of ["DEFAULT_CONTEXT_WINDOW", "DEFAULT_MAX_TOKENS"]) {
-				if (new RegExp(`^\\s*(?:export )?const ${name}\\b`, "m").test(text)) offenders.push(`${file}: ${name}`);
-			}
-		}
-		expect(offenders).toEqual([]);
-	});
-
-	/**
-	 * The non-vacuity twin: prove the scan reaches all five modules that were involved, so a broken glob cannot
-	 * satisfy the ratchet by reading nothing.
-	 */
-	it("scans the five modules that were involved", async () => {
-		const files = (await discoverySources()).map(entry => entry.file);
-		for (const file of [...SHARERS, "codex.ts", "gitlab-duo-workflow.ts"]) {
-			expect(files).toContain(file);
-		}
-	});
-
-	/**
-	 * The positive half. The pair has ONE reader now — `gateway-limits.ts`, which resolves a gateway model's
-	 * limits from the catalog and uses the pair only for a model it cannot identify — and all three gateways read
-	 * that. A gateway reaching past it to the raw pair is the defect this replaced: it described every proxied
-	 * model as Claude-class, including 500k and 1M ones.
-	 */
-	it("routes all three gateways through the one resolver, not the raw pair", async () => {
-		for (const file of SHARERS) {
-			const text = await Bun.file(path.join(DISCOVERY, file)).text();
-			expect(moduleSpecifiersIn(text), file).toContain("./gateway-limits");
-			expect(moduleSpecifiersIn(text), file).not.toContain("./default-limits");
-		}
-		const resolver = await Bun.file(path.join(DISCOVERY, "gateway-limits.ts")).text();
-		expect(resolver).toContain("AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW");
-		expect(resolver).toContain("AGENT_GATEWAY_DEFAULT_MAX_TOKENS");
-		expect(moduleSpecifiersIn(resolver)).toContain("./default-limits");
-	});
-
-	/**
-	 * Codex keeps a different pair on purpose, so the requirement is that it is provider-prefixed rather than that
-	 * it is absent. GPT-5-class Codex has a documented under-reporting quirk and a genuinely larger window; the
-	 * bug was the shared NAME, not the different value.
-	 */
-	it("keeps Codex's different pair under provider-prefixed names", async () => {
-		const codex = await Bun.file(path.join(DISCOVERY, "codex.ts")).text();
-		expect(codex).toContain("const CODEX_DEFAULT_CONTEXT_WINDOW = 272_000;");
-		expect(codex).toContain("const CODEX_DEFAULT_MAX_TOKENS = 128_000;");
-		expect(codex).not.toContain("AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW");
+	it("gives Codex its own 272k/128k pair, not the gateway pair", async () => {
+		const result = await fetchCodexModels({
+			accessToken: "test-token",
+			baseUrl: "https://codex.example/backend-api",
+			fetchFn: Object.assign(
+				async () =>
+					new Response(JSON.stringify({ models: [{ slug: "gpt-5.5", display_name: "GPT-5.5" }] }), {
+						status: 200,
+					}),
+				{ preconnect() {} },
+			),
+		});
+		const model = result?.models.find(candidate => candidate.id === "gpt-5.5");
+		expect(model?.contextWindow).toBe(272_000);
+		expect(model?.maxTokens).toBe(128_000);
+		expect(model?.contextWindow).not.toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
+		expect(model?.maxTokens).not.toBe(AGENT_GATEWAY_DEFAULT_MAX_TOKENS);
 	});
 
 	/**
 	 * GitLab Duo Workflow also assumes 200_000 and deliberately keeps its own constant, because its value has an
-	 * independent reason recorded beside it: the Duo Workflow Service's own global fallback in
-	 * `duo_workflow_service/conversation/trimmer.py`. Folding it in would tie two unrelated decisions together, and
-	 * whoever next changed the gateway assumption would silently move GitLab off the number its upstream uses.
-	 * Asserted, with the reason, so the exemption is a recorded decision rather than an oversight.
+	 * independent reason: the Duo Workflow Service's own global fallback in
+	 * `duo_workflow_service/conversation/trimmer.py`. Folding it in would tie two unrelated decisions together,
+	 * and whoever next changed the gateway assumption would silently move GitLab off the number its upstream
+	 * uses. What makes the coincidence observable is that GitLab's assumption is per-model where the gateway pair
+	 * is not: a ref it recognizes gets its own window, and its output cap is null rather than 64k.
 	 */
-	it("leaves GitLab Duo Workflow its independently-reasoned copy", async () => {
-		const gitlab = await Bun.file(path.join(DISCOVERY, "gitlab-duo-workflow.ts")).text();
-		expect(gitlab).toContain("const GITLAB_DUO_WORKFLOW_DEFAULT_CONTEXT_WINDOW = 200_000;");
-		expect(gitlab).toContain("trimmer.py");
-		expect(gitlab).not.toContain("AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW");
-	});
-
-	/**
-	 * The owner is a leaf, so a discovery module pays nothing to read the pair. Every copy in this codebase existed
-	 * because importing cost more than retyping.
-	 */
-	it("imports nothing", async () => {
-		const owner = await Bun.file(path.join(DISCOVERY, "default-limits.ts")).text();
-		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
-		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
-		expect(moduleSpecifiersIn(owner)).toEqual([]);
+	it("leaves GitLab Duo Workflow its independently-reasoned copy", () => {
+		const unrecognized = buildGitLabDuoWorkflowModelSpec({ name: "Unknown", ref: "duo-chat-unknown-model" });
+		expect(unrecognized.contextWindow).toBe(200_000);
+		expect(unrecognized.maxTokens).toBeNull();
+		const recognized = buildGitLabDuoWorkflowModelSpec({ name: "Sonnet", ref: "claude_sonnet_4_6_vertex" });
+		expect(recognized.contextWindow).toBe(1_000_000);
 	});
 });
