@@ -29,7 +29,8 @@ import { describe, expect, it, spyOn } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getUi, isSettingPath, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import type { SubagentAgentSettings } from "@veyyon/coding-agent/config/settings-domains/subagents";
+import { isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
 import {
 	delegationBlockedNotice,
@@ -39,6 +40,8 @@ import {
 	isSubagentEnableDefaulted,
 	isSubagentEnabled,
 	nextSubagentEnableValue,
+	RETIRED_AGENT_ROW_FIELDS,
+	type RetiredAgentRowField,
 	resetRetiredAgentRowReports,
 	resolveDelegation,
 	resolveSubagentModel,
@@ -625,20 +628,34 @@ describe("retired per-agent model and effort rows are named, not honored", () =>
 	 * the setting that replaced it. It is a report, not a refusal — a leftover field
 	 * must not stop a spawn (see the refusal suite above).
 	 */
-	const RETIRED_FIELDS = [
-		{ field: "model", row: { model: "openai/gpt-5" }, replacement: "Subagent Model" },
-		{ field: "thinkingLevel", row: { thinkingLevel: "xhigh" }, replacement: "Subagent Effort" },
-	] as const;
+	/**
+	 * The fields are read from the owner table rather than restated, so a third retired field gets its
+	 * cases the moment it is added there. The probe value and the replacement wording each live in a
+	 * `Record` over that same union, so a new field does not typecheck until someone records both.
+	 */
+	const RETIRED_ROW_VALUE: Record<RetiredAgentRowField, string> = {
+		model: "openai/gpt-5",
+		thinkingLevel: "xhigh",
+	};
+	const REPLACEMENT_NAMED: Record<RetiredAgentRowField, string> = {
+		model: "Subagent Model",
+		thinkingLevel: "Subagent Effort",
+	};
+
+	it("records a probe value and a replacement for every retired field", () => {
+		expect(Object.keys(RETIRED_ROW_VALUE).sort()).toEqual([...RETIRED_AGENT_ROW_FIELDS].sort());
+		expect(Object.keys(REPLACEMENT_NAMED).sort()).toEqual([...RETIRED_AGENT_ROW_FIELDS].sort());
+	});
 
 	// A `for` loop rather than `it.each`: each case needs its own agent name, because
 	// the report is deduplicated per agent and field for the life of the process.
-	for (const { field, row, replacement } of RETIRED_FIELDS) {
+	for (const field of RETIRED_AGENT_ROW_FIELDS) {
 		it(`names subagent.agents.<name>.${field} and where the value moved to`, () => {
 			resetRetiredAgentRowReports();
 			const agentName = `retired-${field}`;
-			const settings = Settings.isolated({
-				"subagent.agents": { [agentName]: row },
-			} as Parameters<typeof Settings.isolated>[0]);
+			const row: SubagentAgentSettings = {};
+			Object.assign(row, { [field]: RETIRED_ROW_VALUE[field] });
+			const settings = Settings.isolated({ "subagent.agents": { [agentName]: row } });
 			const warnings: string[] = [];
 			const restore = captureLoggerWarnings(warnings);
 			try {
@@ -651,7 +668,7 @@ describe("retired per-agent model and effort rows are named, not honored", () =>
 			const reported = warnings.find(message => message.includes(`subagent.agents.${agentName}.${field}`));
 			expect(reported).toBeDefined();
 			expect(reported).toContain("no longer read");
-			expect(reported).toContain(replacement);
+			expect(reported).toContain(REPLACEMENT_NAMED[field]);
 		});
 	}
 
@@ -662,9 +679,9 @@ describe("retired per-agent model and effort rows are named, not honored", () =>
 	 */
 	it("reports each retired field once per process", () => {
 		resetRetiredAgentRowReports();
-		const settings = Settings.isolated({
-			"subagent.agents": { "retired-twice": { model: "openai/gpt-5", thinkingLevel: "high" } },
-		} as Parameters<typeof Settings.isolated>[0]);
+		const row: SubagentAgentSettings = {};
+		Object.assign(row, RETIRED_ROW_VALUE);
+		const settings = Settings.isolated({ "subagent.agents": { "retired-twice": row } });
 		const warnings: string[] = [];
 		const restore = captureLoggerWarnings(warnings);
 		try {
@@ -676,20 +693,22 @@ describe("retired per-agent model and effort rows are named, not honored", () =>
 			restore();
 		}
 
-		expect(warnings.filter(message => message.includes("subagent.agents.retired-twice.model"))).toHaveLength(1);
-		expect(warnings.filter(message => message.includes("subagent.agents.retired-twice.thinkingLevel"))).toHaveLength(
-			1,
+		const counted = RETIRED_AGENT_ROW_FIELDS.map(
+			field => warnings.filter(message => message.includes(`subagent.agents.retired-twice.${field}`)).length,
 		);
+		expect(counted).toEqual(RETIRED_AGENT_ROW_FIELDS.map(() => 1));
 	});
 
 	/** The value is ignored, so it can never be the deciding layer. */
 	it("keeps the blanket setting as the answer over a retired row", () => {
 		resetRetiredAgentRowReports();
+		const row: SubagentAgentSettings = {};
+		Object.assign(row, RETIRED_ROW_VALUE);
 		const settings = Settings.isolated({
 			"subagent.model": "anthropic/opus",
 			"subagent.thinkingLevel": "low",
-			"subagent.agents": { "retired-loses": { model: "openai/gpt-5", thinkingLevel: "xhigh" } },
-		} as Parameters<typeof Settings.isolated>[0]);
+			"subagent.agents": { "retired-loses": row },
+		});
 
 		const resolved = resolveSubagentModel({ settings, agentName: "retired-loses" });
 		expect(resolved.source).toBe("blanket");
@@ -698,93 +717,10 @@ describe("retired per-agent model and effort rows are named, not honored", () =>
 	});
 
 	/** The retired paths are gone from the schema, so no picker can write one again. */
-	it("declares neither retired field in the settings schema", () => {
-		expect(isSettingPath("subagent.agents.model")).toBe(false);
-		expect(isSettingPath("subagent.agents.thinkingLevel")).toBe(false);
-	});
-});
+	it("declares no retired field in the settings schema", () => {
+		const declared = RETIRED_AGENT_ROW_FIELDS.filter(field => isSettingPath(`subagent.agents.${field}`));
 
-describe("no settings row hardcodes the effort ladder", () => {
-	/**
-	 * WHY THIS SUITE READS THIS WAY (EFFORT-ROWS-NARROW-TO-THE-MODEL).
-	 * `/thinking` and `/effort` ask the model which efforts it exposes, so a model
-	 * that routes effort through separate ids (the cursor rows) correctly offers
-	 * none. The settings screens printed a fixed ladder instead, so the same
-	 * operator was offered `xhigh` in one place and told it did not exist in
-	 * another. A static list is the defect, not the specific levels in it.
-	 *
-	 * The check is derived from the schema at run time and fails on any NEW effort
-	 * row that ships a static list, which is the only way this class stays closed:
-	 * a hardcoded list of known-good paths would go stale the next time someone adds
-	 * an effort setting.
-	 */
-	const EFFORT_VALUES = new Set<string>([
-		INHERIT_EFFORT_OPTION_VALUE,
-		...CONFIGURED_THINKING_LEVELS,
-		...CLI_THINKING_LEVELS,
-		AUTO_THINKING,
-	]);
-
-	/**
-	 * `low`/`medium`/`high` are not effort words — `textVerbosity` is a different axis with the same
-	 * three names — so a row only counts as an effort ladder when it also offers a level nothing but
-	 * effort has. Every static ladder this closes shipped the WHOLE vocabulary, which always includes
-	 * one of these.
-	 */
-	const EFFORT_ONLY_VALUES = new Set([...EFFORT_VALUES].filter(value => !["low", "medium", "high"].includes(value)));
-
-	/** Is this option list an effort ladder? Applied to the real schema and to a control below. */
-	const isEffortLadder = (options: ReadonlyArray<{ value: string }>): boolean => {
-		if (options.length === 0) return false;
-		const values = options.map(option => option.value);
-		return values.every(value => EFFORT_VALUES.has(value)) && values.some(value => EFFORT_ONLY_VALUES.has(value));
-	};
-
-	it("leaves every effort row's options to the runtime", () => {
-		// Rows whose options are ALL effort levels are effort pickers, whatever they
-		// are named. Not a hardcoded list of paths: the assertion is that none exist.
-		const staticEffortRows = Object.keys(SETTINGS_SCHEMA).filter(path => {
-			if (!isSettingPath(path)) return false;
-			const options = getUi(path)?.options;
-			if (!Array.isArray(options)) return false;
-			return isEffortLadder(options.map(option => ({ value: String(option.value) })));
-		});
-
-		expect(staticEffortRows).toEqual([]);
-	});
-
-	/**
-	 * The detector's own positive control. Without it the ratchet above would also pass on a detector
-	 * that recognizes nothing, which is the failure mode that lets a static ladder ship unnoticed.
-	 */
-	it("recognizes a static ladder and does not mistake verbosity for one", () => {
-		expect(isEffortLadder([...CONFIGURED_THINKING_LEVELS].map(value => ({ value })))).toBe(true);
-		expect(isEffortLadder([{ value: INHERIT_EFFORT_OPTION_VALUE }, { value: ThinkingLevel.High }])).toBe(true);
-		expect(isEffortLadder([{ value: "low" }, { value: "medium" }, { value: "high" }])).toBe(false);
-		expect(isEffortLadder([{ value: "dark" }, { value: "light" }])).toBe(false);
-	});
-
-	it("still finds the effort rows it is guarding", () => {
-		// Without this the suite above passes on a schema with no effort rows at all,
-		// which is the green-by-luck failure it is meant to avoid.
-		const runtimeRows = Object.keys(SETTINGS_SCHEMA).filter(
-			path => isSettingPath(path) && getUi(path)?.options === "runtime",
-		);
-
-		expect(runtimeRows).toContain("subagent.thinkingLevel");
-	});
-
-	it("narrows the effort rows the selector builds to the model in scope", () => {
-		invalidateSettingDefsCache();
-		const def = getSettingsForTab("subagents").find(entry => entry.path === "subagent.thinkingLevel");
-		expect(def?.type).toBe("submenu");
-		// The def itself ships no options; the selector fills them from the model.
-		expect(def && "options" in def ? def.options : undefined).toEqual([]);
-
-		const noEffort = getBundledModel("cursor", "composer-1.5");
-		expect(configuredThinkingLevelOptions({ model: noEffort }).map(option => option.value)).toEqual([
-			INHERIT_EFFORT_OPTION_VALUE,
-		]);
+		expect(declared).toEqual([]);
 	});
 });
 

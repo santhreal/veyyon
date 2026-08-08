@@ -22,7 +22,7 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import { rpcThinkingLevelRefusal } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
-import { configuredThinkingLevelsForModel } from "@veyyon/coding-agent/thinking";
+import { CONFIGURED_THINKING_LEVELS, configuredThinkingLevelsForModel } from "@veyyon/coding-agent/thinking";
 
 const ALL_LEVELS: readonly ThinkingLevel[] = Object.values(ThinkingLevel);
 
@@ -66,18 +66,30 @@ describe("RPC set_thinking_level accepts exactly what the model declares", () =>
 
 	/**
 	 * The sweep above would also pass on a rule that accepts everything IF every bundled model declared
-	 * every level. It does not, and this asserts that: some rows in the catalog decline some levels, so
-	 * the sweep is actually exercising both answers.
+	 * every level. Counting non-uniform rows is too weak to see that: one odd row keeps a count above
+	 * zero while a whole ladder shape quietly leaves the catalog. So the models are partitioned by the
+	 * SHAPE of their declared ladder and every shape must be present, which turns this RED when a
+	 * catalog refresh stops supplying one and the sweep silently stops discriminating.
 	 */
-	it("exercises both answers, because the catalog is not uniform", () => {
-		const models = bundledModels();
-		const refusing = models.filter(model =>
-			ALL_LEVELS.some(level => rpcThinkingLevelRefusal(model, level) !== undefined),
-		);
-		const accepting = models.filter(model => configuredThinkingLevelsForModel(model).length > 0);
+	it("covers every shape of ladder the catalog can hold", () => {
+		const vocabulary = CONFIGURED_THINKING_LEVELS.map(String).join(",");
+		const plainLevels = ["low", "medium", "high"];
+		const shapeOf = (model: Model<Api>): string => {
+			const declared = configuredThinkingLevelsForModel(model).map(String);
+			if (declared.length === 0) return "declares-nothing";
+			if (declared.join(",") === vocabulary) return "declares-the-whole-vocabulary";
+			if (!declared.some(level => plainLevels.includes(level))) return "reasons-without-plain-levels";
+			return "declares-a-strict-subset";
+		};
 
-		expect(refusing.length).toBeGreaterThan(0);
-		expect(accepting.length).toBeGreaterThan(0);
+		const shapes = new Set(bundledModels().map(shapeOf));
+
+		expect([...shapes].sort()).toEqual([
+			"declares-a-strict-subset",
+			"declares-nothing",
+			"declares-the-whole-vocabulary",
+			"reasons-without-plain-levels",
+		]);
 	});
 
 	/**

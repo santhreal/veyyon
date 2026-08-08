@@ -511,47 +511,72 @@ export function subagentModelSourceLabel(source: SubagentModelSource, agentName:
 const reportedRetiredAgentFields = new Set<string>();
 
 /**
- * Report a `subagent.agents.<name>` row that still carries `model` or
- * `thinkingLevel`.
+ * The per-agent row fields that were retired when model and effort got one owner.
  *
- * Those two fields were removed: model and effort for every subagent are now
- * decided by the one subagent setting (`subagent.model`, whose entries carry
- * their own `:effort`) plus the agent file's own frontmatter. A leftover row is
- * a value the operator can still see in their config and that no longer
- * governs anything, which is the exact shape of a setting that looks configured
- * and does nothing — so it is said out loud instead of dropped in silence.
+ * Exported so the regression suite enumerates the fields instead of restating them: a third retired
+ * field added here gets its cases without anybody remembering to write them.
  */
-function reportRetiredAgentRowField(agentName: string, field: "model" | "thinkingLevel", value: unknown): void {
+export const RETIRED_AGENT_ROW_FIELDS = ["model", "thinkingLevel"] as const;
+
+export type RetiredAgentRowField = (typeof RETIRED_AGENT_ROW_FIELDS)[number];
+
+/**
+ * Where the value went, per retired field. A record rather than a conditional so a new retired field
+ * does not compile until its replacement is named: a report that points nowhere is worse than none.
+ */
+const RETIRED_FIELD_REPLACEMENT: Record<RetiredAgentRowField, string> = {
+	model: "Set Subagents → Subagent Model, or the agent file's own `model:` frontmatter.",
+	thinkingLevel:
+		"Set the effort on the Subagent Model entry (`model:effort`), Subagents → Subagent Effort, or the agent file's own `thinking-level:` frontmatter.",
+};
+
+/**
+ * Report a `subagent.agents.<name>` row that still carries a retired field.
+ *
+ * Those fields were removed: model and effort for every subagent are now decided by the one subagent
+ * setting (`subagent.model`, whose entries carry their own `:effort`) plus the agent file's own
+ * frontmatter. A leftover row is a value the operator can still see in their config and that no longer
+ * governs anything, which is the exact shape of a setting that looks configured and does nothing, so it
+ * is said out loud instead of dropped in silence.
+ */
+function reportRetiredAgentRowField(agentName: string, field: RetiredAgentRowField, value: unknown): void {
 	const key = `${agentName}.${field}`;
 	if (reportedRetiredAgentFields.has(key)) return;
 	reportedRetiredAgentFields.add(key);
-	const replacement =
-		field === "model"
-			? "Set Subagents → Subagent Model, or the agent file's own `model:` frontmatter."
-			: "Set the effort on the Subagent Model entry (`model:effort`), Subagents → Subagent Effort, or the agent file's own `thinking-level:` frontmatter.";
 	logger.warn(
 		`Settings: subagent.agents.${agentName}.${field} is "${String(value)}", which is no longer read — ` +
-			`per-agent model and effort were unified into the subagent model setting. ${replacement}`,
+			`per-agent model and effort were unified into the subagent model setting. ${RETIRED_FIELD_REPLACEMENT[field]}`,
 		{ setting: `subagent.agents.${agentName}.${field}`, value },
 	);
 }
 
 /**
- * Name any retired field left on an agent's row. Called from both resolvers so
- * the report happens on the path that would previously have honored the value.
+ * Name every retired field left anywhere in the `subagent.agents` table. Called
+ * from both resolvers so the report happens on the path that would previously
+ * have honored the value.
+ *
+ * The WHOLE table rather than the resolving agent's row. Scoped to one row, a
+ * leftover on an agent that is disabled was never mentioned at all: that agent
+ * never resolves, so the value sat in the operator's config looking configured
+ * and doing nothing, which is the exact state retiring the field was meant to
+ * end. Nobody should have to enable an agent to discover its setting is dead.
+ * The per-field dedupe below is what keeps the sweep from costing anything after
+ * the first resolution.
  *
  * A blank field is what a cleared row leaves behind and what the old pickers'
  * Inherit rows stored, so it is not a value anyone is losing and gets no report.
  */
-function reportRetiredAgentRow(settings: Settings, agentName: string): void {
-	const row = subagentSettingsFor(settings, agentName) as SubagentAgentSettings & {
-		model?: unknown;
-		thinkingLevel?: unknown;
-	};
-	for (const field of ["model", "thinkingLevel"] as const) {
-		const value = row[field];
-		if (value === undefined || (typeof value === "string" && value.trim().length === 0)) continue;
-		reportRetiredAgentRowField(agentName, field, value);
+function reportRetiredAgentRows(settings: Settings): void {
+	const table = settings.get("subagent.agents");
+	if (!table || typeof table !== "object") return;
+	for (const [agentName, row] of Object.entries(table)) {
+		if (!row || typeof row !== "object") continue;
+		for (const field of RETIRED_AGENT_ROW_FIELDS) {
+			if (!(field in row)) continue;
+			const value = Reflect.get(row, field);
+			if (value === undefined || (typeof value === "string" && value.trim().length === 0)) continue;
+			reportRetiredAgentRowField(agentName, field, value);
+		}
 	}
 }
 
@@ -597,9 +622,12 @@ export function resolveSubagentModel(options: {
 	/** Fallback when the session has no active model yet (headless start). */
 	fallbackModelPattern?: string;
 }): ResolvedSubagentModel {
-	const { settings, agentName, agentModel, activeModelPattern, fallbackModelPattern } = options;
+	// `agentName` stays in the options because every caller pairs the result with
+	// `subagentModelSourceLabel(source, agentName)`, but no layer reads it any more:
+	// the retired per-agent row was the last one that did.
+	const { settings, agentModel, activeModelPattern, fallbackModelPattern } = options;
 
-	reportRetiredAgentRow(settings, agentName);
+	reportRetiredAgentRows(settings);
 	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined }> = [
 		{ source: "blanket", value: settings.get("subagent.model") },
 		{ source: "frontmatter", value: agentModel },
@@ -648,7 +676,7 @@ export function resolveSubagentThinkingLevel(options: {
 	agentName: string;
 	agentThinkingLevel?: ConfiguredThinkingLevel;
 }): ConfiguredThinkingLevel | undefined {
-	reportRetiredAgentRow(options.settings, options.agentName);
+	reportRetiredAgentRows(options.settings);
 	// Blanket BEFORE frontmatter, the same order {@link resolveSubagentModel} uses.
 	// This used to be the other way round, and bundled agents carry a
 	// `thinking-level` even though they carry no `model:` (scout `medium`,
