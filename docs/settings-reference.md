@@ -28,6 +28,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
+| `statusLine.enabled` | Composer Footline | boolean | `false` | Show the quiet metadata line under the composer (model, mode, path, git, context). Off by default; the agent-focus exit hint still shows while a view is proxied. |
 | `statusLine.preset` | Status Line Preset | enum | `default` | Pre-built status line configurations. Values: `default`, `minimal`, `compact`, `full`, `nerd`, `ascii`, `custom`. |
 | `statusLine.sessionAccent` | Session Accent | boolean | `true` | Use the session name color for the editor border. Shown under the tab's Advanced fold. |
 | `statusLine.compactThinkingLevel` | Compact Thinking Level | boolean | `false` | Show the thinking level as a single icon on the model name instead of a separate ` · <level>` suffix. Shown under the tab's Advanced fold. |
@@ -178,9 +179,9 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `completion.notify` | Completion Notification | enum | `on` | Notify when the agent finishes a turn. Values: `on`, `off`. |
+| `completion.notify` | Completion Notification | enum | `off` | Notify when the agent finishes a turn (off by default: the turn is on your screen). Values: `on`, `off`. |
 | `ask.timeout` | Ask Timeout | number | `0` | Auto-select the recommended ask option after this many seconds (0 disables). |
-| `ask.notify` | Ask Notification | enum | `on` | Notify when the ask tool is waiting for input. Values: `on`, `off`. |
+| `ask.notify` | Ask Notification | enum | `on` | Notify when the agent is blocked on a question you have not answered. Values: `on`, `off`. |
 | `recap.enabled` | Idle Recap | boolean | `true` | Generate a brief LLM recap of where things stand after the terminal has been idle. |
 | `recap.idleSeconds` | Idle Recap Delay | number | `240` | Seconds to wait while idle before showing the recap. |
 
@@ -252,6 +253,34 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `git.enabled` | Enable Git Integration | boolean | `true` | Show git branch, status, and PR information in the TUI, watch repository metadata, and let the commit nudge read repository state. |
 | `commit.nudgeAfterFiles` | Commit Nudge Threshold | number | `4` | Remind the agent to commit once this many files it edited itself are uncommitted. Counts only files this session changed, never other work already dirty in the tree. 0 turns the reminder off. |
+
+## Resources
+
+### CPU
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `session.cpuLimitCores` | Session CPU Limit | number | `0` | Maximum CPU a session's spawned processes may use, in cores (0 = off). This is the per-profile default: every session that profile starts inherits it, and one session can depart from it with /cpu-limit <cores> or lift it entirely with /cpu-limit remove, neither of which writes this setting. Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness's own compute (agent turns, in-process workers) is never capped. |
+| `session.cpuLimitKill` | Kill Over-Budget Commands | boolean | `false` | What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. /cpu-limit kill on\|off changes it for one session without writing this setting. |
+
+### Memory
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `session.memoryLimitGb` | Session Memory Limit | number | `0` | Maximum resident memory the session tree may hold at once, in gigabytes (0 = unlimited). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it. |
+
+### Disk
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `session.writeBudgetGb` | Session Write Budget | number | `0` | Cumulative gigabytes the session tree may WRITE to disk before further writes are refused (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. Writes are metered by the same group that meters CPU (cgroup v2 io accounting on Linux, Job Object I/O accounting on Windows). Once the total is reached, a new command is refused with an error naming the budget and how much it has written; already running commands keep running unless Kill Over-Budget Writers is on. A host where write accounting cannot be read reports the limit as unenforceable once at startup rather than pretending to hold it. |
+| `session.writeBudgetKill` | Kill Over-Budget Writers | boolean | `false` | What happens when the session tree passes its write budget. Off (default): new commands are refused, and whatever is already writing runs to completion. On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action rather than a crash, so a command that vanished mid-write is explained instead of looking like a failure. Hidden while the write budget is 0, because a kill policy for a budget that does not exist is a knob with nothing behind it. |
+
+### Processes
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `session.maxProcesses` | Max Processes | number | `0` | Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it. |
 
 ## Context
 
@@ -413,13 +442,6 @@ veyyon config get compaction.threshold
 | `python.interpreter` | Python Interpreter | string | _(empty)_ | Optional path to an exact Python executable. When set, automatic Python runtime discovery is skipped. |
 | `ruby.interpreter` | Ruby Interpreter | string | _(empty)_ | Optional path to an exact Ruby executable. When set, automatic Ruby runtime discovery is skipped. |
 | `julia.interpreter` | Julia Interpreter | string | _(empty)_ | Optional path to an exact Julia executable. When set, automatic Julia runtime discovery is skipped. |
-
-### CPU Limit
-
-| Key | Setting | Type | Default | What it does |
-|---|---|---|---|---|
-| `session.cpuLimitCores` | Session CPU Limit | number | `0` | Maximum CPU a session's spawned processes may use, in cores (0 = off). This is the per-profile default: every session that profile starts inherits it, and one session can depart from it with /cpu-limit <cores> or lift it entirely with /cpu-limit remove, neither of which writes this setting. Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness's own compute (agent turns, in-process workers) is never capped. |
-| `session.cpuLimitKill` | Kill Over-Budget Commands | boolean | `false` | What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. /cpu-limit kill on\|off changes it for one session without writing this setting. |
 
 ## Tools
 
@@ -724,4 +746,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-338 settings.
+343 settings.

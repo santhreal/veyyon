@@ -195,6 +195,7 @@ export type SymbolKey =
 	| "tab.appearance"
 	| "tab.model"
 	| "tab.interaction"
+	| "tab.resources"
 	| "tab.context"
 	| "tab.rules"
 	| "tab.files"
@@ -479,6 +480,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"tab.appearance": "",
 	"tab.model": "",
 	"tab.interaction": "",
+	"tab.resources": "",
 	"tab.context": "",
 	"tab.rules": "",
 	"tab.files": "",
@@ -805,6 +807,9 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"tab.appearance": "󰃣",
 	"tab.model": "󰚩",
 	"tab.interaction": "󰌌",
+	// nf-fa-tachometer: the gauge, the same glyph icon.throughput already uses for
+	// "how much is being consumed". Single-cell like every other tab glyph.
+	"tab.resources": "\uf0e4",
 	"tab.context": "󰘸",
 	// mdi-gavel: rules are the things that stop the run, not another document.
 	"tab.rules": "\u{F0A7C}",
@@ -1028,6 +1033,7 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"tab.appearance": "[A]",
 	"tab.model": "[M]",
 	"tab.interaction": "[I]",
+	"tab.resources": "[U]",
 	"tab.context": "[X]",
 	"tab.rules": "[R]",
 	"tab.files": "[F]",

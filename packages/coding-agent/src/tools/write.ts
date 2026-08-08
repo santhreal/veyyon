@@ -33,6 +33,7 @@ import { highlightCode } from "../modes/theme/highlight";
 import type { Theme } from "../modes/theme/theme-class";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
+import { budgetedFileCommit, sessionBudgetLimits } from "../session/cpu-limit";
 // Owners, not the local `../tui` barrel: it re-exports `./file-list`, and that module took
 // `getLanguageFromPath` from the theme ENGINE, so three names cost 282 modules of presentation layer.
 import { fileHyperlink } from "../tui/hyperlink";
@@ -459,6 +460,13 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	}
 
 	readonly #writethrough: WritethroughCallback;
+	/**
+	 * The budgeted stand-in for a bare `writethroughNoop`, for the write paths
+	 * that deliberately skip LSP formatting (conflict-marker resolution, SQLite
+	 * and archive members). They still put bytes on the operator's disk, so
+	 * they still spend the session tree's write budget.
+	 */
+	readonly #plainWritethrough: WritethroughCallback;
 	readonly #deferredDiagnostics: DeferredDiagnostics | undefined;
 
 	constructor(private readonly session: ToolSession) {
@@ -468,15 +476,27 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const dedup = enableDiagnostics && session.settings.get("lsp.diagnosticsDeduplicate");
 		this.#deferredDiagnostics =
 			enableDiagnostics && session.queueDeferredDiagnostics ? new DeferredDiagnostics(session, dedup) : undefined;
-		this.#writethrough = enableLsp
-			? createLspWritethrough(session.cwd, {
-					enableFormat,
-					enableDiagnostics,
-					transformDiagnostics: dedup
-						? (path, result) => getDiagnosticsLedger(session).reduce(path, result)
-						: undefined,
-				})
-			: writethroughNoop;
+		// The harness is deliberately never a member of its own budget group, so
+		// no io.stat and no /proc/<pid>/io reading can see a byte the write tool
+		// puts on disk. Wrapping the commit callback is how those bytes reach the
+		// session tree's write budget, and how a write past it is refused.
+		const budgetSource = {
+			sessionId: () => session.getSessionId?.() ?? null,
+			limits: () => sessionBudgetLimits(session.settings),
+		};
+		this.#writethrough = budgetedFileCommit(
+			budgetSource,
+			enableLsp
+				? createLspWritethrough(session.cwd, {
+						enableFormat,
+						enableDiagnostics,
+						transformDiagnostics: dedup
+							? (path, result) => getDiagnosticsLedger(session).reduce(path, result)
+							: undefined,
+					})
+				: writethroughNoop,
+		);
+		this.#plainWritethrough = budgetedFileCommit(budgetSource, writethroughNoop);
 		this.description = prompt.render(toolsPrompts["tools/write"].text);
 	}
 
@@ -720,7 +740,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const splice = spliceConflict(originalText, entry, expanded);
 		const newContent = splice.text;
 
-		await writethroughNoop(absolutePath, newContent, signal);
+		await this.#plainWritethrough(absolutePath, newContent, signal);
 		invalidateFsScanAfterWrite(absolutePath);
 		this.session.bumpFileMutationVersion?.(absolutePath);
 		this.session.fileSnapshotStore?.invalidate(absolutePath);
@@ -899,7 +919,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				continue;
 			}
 
-			await writethroughNoop(absolutePath, text, signal);
+			await this.#plainWritethrough(absolutePath, text, signal);
 			invalidateFsScanAfterWrite(absolutePath);
 			this.session.bumpFileMutationVersion?.(absolutePath);
 			this.session.fileSnapshotStore?.invalidate(absolutePath);

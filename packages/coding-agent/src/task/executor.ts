@@ -62,11 +62,12 @@ import { AgentRegistry } from "../registry/agent-registry";
 // subagent the real program has loaded `sdk` anyway, and a test that never spawns
 // one no longer pays for it. The TYPE stays a static import because types are
 // erased.
-import type { CreateAgentSessionOptions } from "../sdk";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../sdk";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
 import type { ArtifactManager } from "../session/artifacts";
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import type { AuthStorage } from "../session/auth-storage";
+import { rootBudgetGroupOwnerId, withInheritedBudgetGroup } from "../session/cpu-limit";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
 import { truncateTail } from "../session/streaming-output";
@@ -480,6 +481,18 @@ export interface ExecutorOptions {
 	 * passes its own `getAgentId()`).
 	 */
 	parentAgentId?: string;
+	/**
+	 * The SPAWNING session's id, so this subagent's own session registers as an
+	 * alias of the spawner's budget group instead of creating a second one. See
+	 * `withInheritedBudgetGroup`: a subagent that opens its own group multiplies
+	 * every resource limit the operator set by the number of live subagents.
+	 *
+	 * An id that is itself an alias resolves to the same root owner, which is
+	 * what makes the inheritance work at unbounded depth. Omitted falls back to
+	 * the process's root session, because a subagent always belongs to some
+	 * tree and no tree is a better guess than the first one.
+	 */
+	parentSessionId?: string;
 	/**
 	 * Keep the finished subagent addressable in the registry for IRC/revival.
 	 * Defaults to true. Eval bridge agents are programmatic one-shot helpers and
@@ -2677,6 +2690,38 @@ export function resolveRootUIContext(childId: string): ExtensionUIContext | unde
 }
 
 /**
+ * The ONE way a subagent's session is created, and therefore the one place the
+ * tree's budget group is pinned.
+ *
+ * A subagent opens its own `SessionManager`, so `AgentSession`'s constructor
+ * registers a budget group of its own unless it is told to borrow the tree's.
+ * That is not cosmetic: an operator who caps a session at four cores otherwise
+ * gets four cores PER LIVE SUBAGENT, and the write budget, the process cap and
+ * the memory cap all multiply the same way.
+ *
+ * The pin is an AsyncLocalStorage scope rather than a parameter because the
+ * constructor calls `initSessionCpuLimit` synchronously, several layers below
+ * this module, and `agent-session.ts` cannot take an argument for it.
+ *
+ * Creation and pinning live in ONE function on purpose. They were two wrappers
+ * around two call sites, and the suite covering the registry helpers stayed
+ * green when both wrappers were deleted, which is precisely how the
+ * multiplication would come back unnoticed. Now the only way to build a
+ * subagent session is the way that joins the tree.
+ */
+export function createSubagentSession(
+	parentSessionId: string | undefined,
+	sessionOptions: CreateAgentSessionOptions,
+): Promise<CreateAgentSessionResult> {
+	return withInheritedBudgetGroup(parentSessionId ?? rootBudgetGroupOwnerId(), async () => {
+		// Loaded on demand for the reason given at the top of this file: naming
+		// `../sdk` statically puts this module in a 54-module import cycle.
+		const { createAgentSession } = await import("../sdk");
+		return createAgentSession(sessionOptions);
+	});
+}
+
+/**
  * Run a single agent in-process.
  */
 export async function runSubprocess(options: ExecutorOptions): Promise<SingleResult> {
@@ -3097,8 +3142,10 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				},
 			});
 
-			const { createAgentSession } = await import("../sdk");
-			const sessionPromise = createAgentSession(buildSubagentSessionOptions(sessionManager, subagentSettings));
+			const sessionPromise = createSubagentSession(
+				options.parentSessionId,
+				buildSubagentSessionOptions(sessionManager, subagentSettings),
+			);
 			let session: AgentSession;
 			try {
 				({ session } = await awaitAbortable(sessionPromise));
@@ -3140,8 +3187,8 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 						reopened.adoptArtifactManager(options.parentArtifactManager);
 					}
 					const revivedSettings = await subagentSettings.cloneForCwd(reopened.getCwd());
-					const { createAgentSession: createRevivedSession } = await import("../sdk");
-					const { session: revived } = await createRevivedSession(
+					const { session: revived } = await createSubagentSession(
+						options.parentSessionId,
 						buildSubagentSessionOptions(reopened, revivedSettings),
 					);
 					installRegistryStatusSync(revived);

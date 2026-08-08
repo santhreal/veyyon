@@ -60,7 +60,9 @@ export interface FakeHost {
  * A `CpuLimitEnvironment` rooted at `root`, with a scriptable `run`, a
  * recording `kill` and a clock the test advances by hand. `run` defaults to
  * "no systemd user manager", which is what forces the probe onto the direct
- * cgroup backend the fake tree models.
+ * cgroup backend the fake tree models. `procRoot` defaults to a path that
+ * does not exist, so a suite that has not built a fake procfs reads the
+ * honest "no /proc/<pid>/io here" rather than this machine's real one.
  */
 export function makeFakeHost(root: string, runScript?: (cmd: string[]) => CpuLimitCommandResult): FakeHost {
 	const host: FakeHost = {
@@ -75,6 +77,7 @@ export function makeFakeHost(root: string, runScript?: (cmd: string[]) => CpuLim
 		uid: 1000,
 		cgroupRoot: root,
 		ownCgroupPath: "",
+		procRoot: path.join(root, "no-such-proc"),
 		run: async cmd => {
 			host.ran.push(cmd);
 			return script(cmd);
