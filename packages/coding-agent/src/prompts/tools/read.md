@@ -20,7 +20,7 @@ Read files, directories, archives, SQLite, images, documents, internal resources
 - `:2-4:raw` / `:raw:2-4` — range AND verbatim; either order.
 - `:conflicts` — one line per unresolved git merge conflict block.
 
-A bounded range is padded with up to 1 line before (when you constrain the start) and 3 after, keeping their own numbers: `:1-5` returns 1-8, and the last line states what was padded. `:raw` (e.g. `:raw:1-5`) returns exactly the requested lines.
+A bounded range is padded with up to 1 line before (when you constrain the start) and 3 after, keeping their own numbers: `:1-5` returns lines 1-8, and the last line states what was padded. `:raw` (e.g. `:raw:1-5`) returns exactly the requested lines.
 
 # Files
 

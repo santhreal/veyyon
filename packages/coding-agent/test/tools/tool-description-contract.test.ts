@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
 import { useTempHome } from "../helpers/temp-home";
 
@@ -83,6 +84,41 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		"Re-run setup only after `reset`, a crash, or a `NameError`/`ReferenceError`",
 		"NEVER re-import, re-require, or re-declare a helper",
 	],
+	irc: [
+		// The prose cut collapsed two statements of the narration rule into one and
+		// removed a duplicated "never send a progress report" list. What no cut may
+		// take: what a message COSTS, and the two prohibitions that stop a loop.
+		"NEVER invent names",
+		"WAKES an `idle` or `parked` peer",
+		"Silence IS the acknowledgement",
+		"traded 16 in a row",
+		"NEVER send JSON status objects",
+		"DM them before editing, not after",
+	],
+	ast_grep: [
+		// The example array went 5 -> 2, so the metavariable grammar is now stated
+		// once. A pattern written with the two-dollar form silently matches nothing.
+		"`$$$NAME`, NOT `$$NAME`",
+		"MUST be the whole AST node",
+		"Parse issues = query failure, not absence",
+	],
+	ast_edit: [
+		// Same grammar, same single statement, plus the one op an example no longer
+		// demonstrates: deleting a match is an empty `out`, not a missing field.
+		"`$$$NAME`, NOT `$$NAME`",
+		"empty `out`",
+	],
+	debug: [
+		// The repl example went; the rule it stood next to did not.
+		"Only one active debug session at a time",
+		"`program` is a target path, not a shell command",
+	],
+	glob: [
+		// Two of four examples went, including the gitignored-file pair, so the
+		// defaults they demonstrated have to be readable in the prose.
+		"`gitignore` (default `true`)",
+		"becomes `**/*.json`",
+	],
 	browser: [
 		// Ref lifetime is the failure mode a trimmed sentence could have dropped.
 		"Refs renumber from e1 each call",
@@ -102,6 +138,10 @@ describe("tool descriptions keep their model-visible rules", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
+			// `irc` refuses to build without both of these, so without them its rules
+			// were not "kept through the cut", they were unverified.
+			agentRegistry: new AgentRegistry(),
+			getAgentId: () => "Main",
 			// In-memory settings: this suite never touches a repo, so the isolated
 			// constructor (which also skips on-disk discovery) is the right fixture.
 			// `browser` ships off by default and `RETAINED` names its rules, so the

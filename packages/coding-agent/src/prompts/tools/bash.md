@@ -68,7 +68,7 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 {{#if asyncEnabled}}
 # Timeout and async
 
-- `timeout` is seconds, default 300, clamped to `1..3600`, and the process is killed on elapse. Set `timeout: 0` only for a finite command whose completion is cancellation-owned.
+- `timeout` is seconds, default 300; nonzero values are clamped to `1..3600` and the process is killed on elapse. Set `timeout: 0` only for a finite command whose completion is cancellation-owned.
 - `async: true` defers only reporting; it does NOT extend a nonzero timeout.
 {{#unless hasLaunch}}
 - Need a long-running process or >3600s run? Use an external process supervisor; avoid detached shell jobs you cannot later observe or stop.
