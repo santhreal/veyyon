@@ -79,6 +79,8 @@ interface Harness {
 	readonly settings: Settings;
 	/** The card body with ANSI stripped, joined, for chip and scope-line assertions. */
 	readonly text: () => string;
+	/** Every status line the press produced, which is where the toggle's receipt goes. */
+	readonly statuses: string[];
 }
 
 async function openCard(initial: boolean): Promise<Harness> {
@@ -87,6 +89,7 @@ async function openCard(initial: boolean): Promise<Harness> {
 	// surfaces disagreed, which is the exact failure the last case here exists to catch.
 	const settings = Settings.instance;
 	settings.set("accounts.loadBalancing", initial);
+	const statuses: string[] = [];
 
 	let mounted: AccountManagerComponent | undefined;
 	const ctx = {
@@ -109,7 +112,9 @@ async function openCard(initial: boolean): Promise<Harness> {
 			// contract is about the config write, so they answer empty rather than being reached.
 			fetchUsageReports: async () => [],
 		},
-		showStatus: vi.fn(),
+		showStatus: vi.fn((message: string) => {
+			statuses.push(message);
+		}),
 		showWarning: vi.fn(),
 		showError: vi.fn(),
 		refreshComposerShortcuts: vi.fn(),
@@ -123,6 +128,7 @@ async function openCard(initial: boolean): Promise<Harness> {
 	const card = mounted;
 	return {
 		card,
+		statuses,
 		settings,
 		// Wide enough that the scope line is not truncated: the sidebar takes a fixed column, and at
 		// 120 the sentence that names what the toggle governs is cut mid-word.
@@ -222,5 +228,47 @@ describe("the account card's balancing toggle", () => {
 
 		expect(screen).toContain("Account Load Balancing");
 		expect(screen).toContain("true");
+	});
+
+	/**
+	 * A two-word chip is a thin receipt for a PERMANENT change. The press wrote a value that outlives
+	 * the session, so the receipt says what the new state does and that it was saved; a repaint alone
+	 * leaves the operator to infer both, and the thing they most need to know (this survives the
+	 * restart) is the part a repaint cannot express.
+	 */
+	it("says what the new state does and that it persists", async () => {
+		const harness = await openCard(false);
+
+		harness.card.handleInput("b");
+
+		const receipt = harness.statuses.at(-1) ?? "";
+		expect(receipt).toContain("Account load balancing on");
+		expect(receipt).toContain("moves to another account of the same provider");
+		expect(receipt).toContain("Saved for this profile.");
+
+		harness.card.handleInput("b");
+
+		const offReceipt = harness.statuses.at(-1) ?? "";
+		expect(offReceipt).toContain("Account load balancing off");
+		expect(offReceipt).toContain("waits for its own quota window");
+		expect(offReceipt).toContain("Saved for this profile.");
+	});
+
+	/**
+	 * The receipt comes from the STORED value, like the chip. A sentence built from the value the
+	 * press tried to write would announce a saved change that was refused, which is the same lie as a
+	 * chip painting `on` over a config that says off, in the surface the operator is more likely to
+	 * read.
+	 */
+	it("reports the stored value when the write does not stick", async () => {
+		const harness = await openCard(false);
+		const refusedWrite = vi.spyOn(harness.settings, "set").mockImplementation(() => {});
+		try {
+			harness.card.handleInput("b");
+
+			expect(harness.statuses.at(-1) ?? "").toContain("Account load balancing off");
+		} finally {
+			refusedWrite.mockRestore();
+		}
 	});
 });

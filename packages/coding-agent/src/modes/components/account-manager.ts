@@ -702,10 +702,15 @@ export class AccountManagerComponent implements Component {
 		// WRAPPED, not truncated: with the sidebar taking its 30 columns the pane is ~54 wide, and
 		// truncation cut this at `…on thi…`, dropping the load-balancing clause entirely. A scope
 		// warning that only renders in full on a wide terminal is not a warning.
+		// The two scopes are NAMED separately because they are not the same scope. Credentials live
+		// in the machine-wide auth db, so every profile and session sees this list; load balancing is
+		// an ordinary setting in the active profile's `agent/config.yml`, so another profile can have
+		// it the other way. One line saying "shared by every profile · balancing on" read as though
+		// the toggle travelled with the accounts, which is the opposite of true.
 		for (const wrapped of this.#wrapNote(
-			`shared by every profile and session on this machine · quota load balancing ${
+			`accounts shared by every profile and session on this machine · quota load balancing ${
 				this.#loadBalancing ? "on" : "off"
-			}`,
+			} for this profile`,
 			"",
 			width,
 		)) {

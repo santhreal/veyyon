@@ -711,6 +711,31 @@ export interface CredentialFailoverEvent {
 	cause: string;
 }
 
+/**
+ * Event payload for the move that did NOT happen: this account's quota window is exhausted and
+ * sibling accounts are sitting unblocked, but `accounts.loadBalancing` is off so nothing moved.
+ *
+ * The exact counterpart of {@link CredentialFailoverEvent}. Auth death moves without asking and
+ * says so; quota exhaustion respects the setting and, until now, said nothing at all: the turn
+ * simply waited out a window that can be hours long, next to accounts that could have served it.
+ * That silence is what makes the setting undiscoverable, because the one moment it is worth
+ * knowing about is the moment it costs something.
+ *
+ * Emitted at most once per exhausted window per account, so a turn that retries does not repeat
+ * itself. Never emitted when the setting is ON (the move is the routine thing the operator asked
+ * for) and never when no sibling could have served (then the wait is the provider's, not a
+ * choice anyone made).
+ */
+export interface UsageLimitWithheldEvent {
+	provider: string;
+	/** The account whose window is exhausted. */
+	account: { credentialId: number; label: string };
+	/** Stored, same-type, unblocked accounts that would have served this request. Always >= 1. */
+	idleSiblings: number;
+	/** Epoch ms when this account's own window is expected back. */
+	retryAtMs: number;
+}
+
 export type AuthStorageOptions = {
 	usageProviderResolver?: (provider: Provider) => UsageProvider | undefined;
 	rankingStrategyResolver?: (provider: Provider) => CredentialRankingStrategy | undefined;
@@ -736,6 +761,11 @@ export type AuthStorageOptions = {
 	 * {@link CredentialFailoverEvent}; never fired for quota or rate-limit movement.
 	 */
 	onCredentialFailover?: (event: CredentialFailoverEvent) => void | Promise<void>;
+	/**
+	 * Fired when quota exhaustion could have moved to an idle sibling and the load-balancing
+	 * setting withheld it. See {@link UsageLimitWithheldEvent}.
+	 */
+	onUsageLimitWithheld?: (event: UsageLimitWithheldEvent) => void | Promise<void>;
 	/**
 	 * Whether QUOTA and RATE-LIMIT exhaustion may move a provider to a different account.
 	 *
@@ -857,6 +887,11 @@ const OAUTH_REFRESH_OPERATION_TIMEOUT_MS = 10_000;
  * pathological detach-without-reattach loops can't grow memory unboundedly.
  */
 const MAX_PENDING_DISABLED_EVENTS = 32;
+/**
+ * Cap on remembered withheld-quota notice keys (one per exhausted window per account). Sized like
+ * the disabled-event backlog: a handful of accounts times a handful of windows a day.
+ */
+const MAX_WITHHELD_QUOTA_NOTICES = 64;
 
 // Re-exported from the error module (its new home) to preserve the public
 // `@veyyon/ai` entrypoint and the in-module call sites below.
@@ -873,6 +908,11 @@ export { isDefinitiveOAuthFailure } from "./error/auth-classify";
  * multi-hour) retry-after when it is sooner. `retryAtMs` is `undefined` when
  * no sibling credentials exist at all, or when the session has no tracked
  * credential to rotate away from.
+ *
+ * A gate-off return carries no sibling count. The fact that idle siblings were
+ * withheld is announced through {@link UsageLimitWithheldEvent} instead, which
+ * has the one thing a return value cannot: a dedupe key, so a turn that retries
+ * into the same exhausted window states it once.
  */
 export interface UsageLimitMarkResult {
 	switched: boolean;
@@ -1397,6 +1437,18 @@ export class AuthStorage {
 	/** Provider → the account auth death just retired, awaiting the resolve that names its replacement. */
 	#pendingFailover: Map<string, { from: { credentialId: number; label: string }; cause: string; at: number }> =
 		new Map();
+	/**
+	 * Withheld-quota subscribers, unbuffered for the same reason failover notices are: the news is
+	 * about the turn that is waiting right now.
+	 */
+	#usageLimitWithheldListeners: Set<(event: UsageLimitWithheldEvent) => void | Promise<void>> = new Set();
+	/**
+	 * `provider:credentialId:retryAtMs` of every withheld-quota notice already emitted, so one
+	 * exhausted window is announced once however many times the turn retries into it. Keyed by the
+	 * window's own end, so the NEXT exhaustion of the same account is a new notice rather than a
+	 * silent one.
+	 */
+	#withheldQuotaNotices: Set<string> = new Set();
 	#loadBalancing: boolean | (() => boolean) = true;
 	#generation = 1;
 	#generationListeners: Set<(generation: number) => void> = new Set();
@@ -1413,6 +1465,10 @@ export class AuthStorage {
 		if (options.onCredentialFailover) {
 			// Permanent for this AuthStorage's lifetime; the unsubscribe handle is discarded.
 			this.onCredentialFailover(options.onCredentialFailover);
+		}
+		if (options.onUsageLimitWithheld) {
+			// Permanent for this AuthStorage's lifetime, exactly like the failover subscription above.
+			this.onUsageLimitWithheld(options.onUsageLimitWithheld);
 		}
 		this.#usageCache = new AuthStorageUsageCache(this.#store);
 		// Opportunistic hygiene, once per AuthStorage lifetime: drop expired
@@ -1543,6 +1599,31 @@ export class AuthStorage {
 		for (const listener of [...this.#credentialFailoverListeners]) {
 			const logListenerError = (error: unknown): void => {
 				logger.warn("onCredentialFailover listener threw", { provider: event.provider, error: String(error) });
+			};
+			try {
+				const result = listener(event);
+				if (result instanceof Promise) result.catch(logListenerError);
+			} catch (error) {
+				logListenerError(error);
+			}
+		}
+	}
+
+	/**
+	 * Subscribe to withheld-quota notices (quota exhausted, siblings idle, balancing off).
+	 * Returns an unsubscribe handle. Listener faults are isolated like every other notice here.
+	 */
+	onUsageLimitWithheld(listener: (event: UsageLimitWithheldEvent) => void | Promise<void>): () => void {
+		this.#usageLimitWithheldListeners.add(listener);
+		return () => {
+			this.#usageLimitWithheldListeners.delete(listener);
+		};
+	}
+
+	#emitUsageLimitWithheld(event: UsageLimitWithheldEvent): void {
+		for (const listener of [...this.#usageLimitWithheldListeners]) {
+			const logListenerError = (error: unknown): void => {
+				logger.warn("onUsageLimitWithheld listener threw", { provider: event.provider, error: String(error) });
 			};
 			try {
 				const result = listener(event);
@@ -4740,30 +4821,53 @@ export class AuthStorage {
 			this.#markCredentialBlocked(provider, providerKey, targetIndex, blockedUntil, blockScope);
 		}
 
+		const siblings = this.#getCredentialsForProvider(provider)
+			.map((credential, index) => ({ credential, index }))
+			.filter(
+				(entry): entry is { credential: AuthCredential; index: number } =>
+					entry.credential.type === credentialType && entry.index !== targetIndex,
+			);
+		const siblingBlockedUntil = (index: number): number | undefined =>
+			this.#getCredentialBlockedUntil(provider, providerKey, index, blockScope);
+
 		if (!this.#loadBalancingEnabled()) {
 			// The block above still stands: the window really is exhausted, and recording that is
 			// what lets the account list say when it comes back. What load balancing gates is the
 			// MOVE. With it off the caller waits for this account's own window instead of spending
 			// a sibling the operator did not offer up, so `retryAtMs` is this account's reset —
 			// never a sibling's, which is exactly the leak the gate exists to prevent.
+			//
+			// Idle siblings make that wait a CHOICE, and the operator cannot revisit a choice
+			// nobody told them about, so the one moment the setting costs something is the one
+			// moment it announces itself. Counted and announced here rather than at the call site
+			// because the block scope and provider type key that decide "blocked" are private to
+			// this class, and because the dedupe key is this window's own end.
+			const idleSiblings = siblings.filter(candidate => siblingBlockedUntil(candidate.index) === undefined).length;
+			if (idleSiblings > 0) {
+				const noticeKey = `${provider}:${targetCredentialId}:${blockedUntil}`;
+				if (!this.#withheldQuotaNotices.has(noticeKey)) {
+					// Keys accumulate one per exhausted window per account. Drop the whole set past a
+					// cap rather than tracking ages: the worst a cleared key costs is one repeated
+					// notice, and a window that old has already reset.
+					if (this.#withheldQuotaNotices.size >= MAX_WITHHELD_QUOTA_NOTICES) this.#withheldQuotaNotices.clear();
+					this.#withheldQuotaNotices.add(noticeKey);
+					this.#emitUsageLimitWithheld({
+						provider,
+						account: {
+							credentialId: targetCredentialId,
+							label: this.#accountNoticeLabel(provider, targetCredentialId),
+						},
+						idleSiblings,
+						retryAtMs: blockedUntil,
+					});
+				}
+			}
 			return { switched: false, retryAtMs: blockedUntil };
 		}
 
-		const remainingCredentials = this.#getCredentialsForProvider(provider)
-			.map((credential, index) => ({ credential, index }))
-			.filter(
-				(entry): entry is { credential: AuthCredential; index: number } =>
-					entry.credential.type === credentialType && entry.index !== targetIndex,
-			);
-
 		let retryAtMs: number | undefined;
-		for (const candidate of remainingCredentials) {
-			const candidateBlockedUntil = this.#getCredentialBlockedUntil(
-				provider,
-				providerKey,
-				candidate.index,
-				blockScope,
-			);
+		for (const candidate of siblings) {
+			const candidateBlockedUntil = siblingBlockedUntil(candidate.index);
 			if (candidateBlockedUntil === undefined) return { switched: true };
 			if (retryAtMs === undefined || candidateBlockedUntil < retryAtMs) retryAtMs = candidateBlockedUntil;
 		}

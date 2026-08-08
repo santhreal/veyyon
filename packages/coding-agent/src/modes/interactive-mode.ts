@@ -118,7 +118,7 @@ import { getRecentSessions } from "../session/session-listing";
 import type { SessionManager } from "../session/session-manager";
 import type { ShakeMode } from "../session/shake-types";
 import { BUILTIN_SLASH_COMMAND_RESERVED_NAMES, buildTuiBuiltinSlashCommands } from "../slash-commands/builtin-registry";
-import { formatDurationCoarse } from "../slash-commands/helpers/format";
+import { formatDurationCoarse, formatProviderName } from "../slash-commands/helpers/format";
 import type { SubcommandDef } from "../slash-commands/types";
 import { STTController, type SttState } from "../stt";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../system-prompt";
@@ -1360,7 +1360,19 @@ export class InteractiveMode implements InteractiveModeContext {
 			// surprise this notice exists to prevent.
 			this.session.modelRegistry.authStorage.onCredentialFailover(event => {
 				this.showWarning(
-					`${event.provider}: ${event.from.label} could not authenticate (${event.cause}) — now using ${event.to.label}`,
+					`${formatProviderName(event.provider)}: ${event.from.label} could not authenticate (${event.cause}), now using ${event.to.label}`,
+				);
+			}),
+			// The move that did NOT happen: quota is out, other accounts are idle, and
+			// `accounts.loadBalancing` is off. The turn is already waiting out a window that can be
+			// hours long, so the notice names what is spent, when it returns, how many accounts are
+			// sitting unused, and the one toggle that would use them. AuthStorage emits this once per
+			// exhausted window, so a retrying turn does not repeat it.
+			this.session.modelRegistry.authStorage.onUsageLimitWithheld(event => {
+				const returnsAt = new Date(event.retryAtMs).toLocaleTimeString();
+				const idle = event.idleSiblings === 1 ? "1 other account is" : `${event.idleSiblings} other accounts are`;
+				this.showWarning(
+					`${formatProviderName(event.provider)}: ${event.account.label} is out of quota until ${returnsAt}. ${idle} idle; turn on Account Load Balancing in /settings (Providers) to use them.`,
 				);
 			}),
 		);

@@ -51,6 +51,7 @@ import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "../../s
 import type { SessionInfo } from "../../session/session-listing";
 import { SessionManager } from "../../session/session-manager";
 import { FileSessionStorage } from "../../session/session-storage";
+import { formatProviderName } from "../../slash-commands/helpers/format";
 import { type LogoutAccount, toLogoutAccounts } from "../../slash-commands/helpers/logout";
 import {
 	describeRedeemOutcome,
@@ -1466,7 +1467,10 @@ export class SelectorController {
 	 * credentials were stored.
 	 */
 	async #handleOAuthLogin(providerId: string): Promise<boolean> {
-		this.ctx.showStatus(`Logging in to ${providerId}…`);
+		// `formatProviderName`, not the raw slug: the account card, the model hub and the footline all
+		// name this provider the same way, and a login is where the operator meets it first.
+		const providerLabel = formatProviderName(providerId);
+		this.ctx.showStatus(`Logging in to ${providerLabel}…`);
 		const manualInput = this.ctx.oauthManualInput;
 		const useManualInput = PASTE_CODE_LOGIN_PROVIDERS.has(providerId);
 		let restored = false;
@@ -1522,7 +1526,7 @@ export class SelectorController {
 			const who = whoBase ? ` as ${whoBase}${whoOrg ? ` (${whoOrg})` : ""}` : whoOrg ? ` as ${whoOrg}` : "";
 			block.addChild(
 				new Text(
-					theme.fg("success", `${theme.status.success} Successfully logged in to ${providerId}${who}`),
+					theme.fg("success", `${theme.status.success} Successfully logged in to ${providerLabel}${who}`),
 					1,
 					0,
 				),
@@ -1547,11 +1551,12 @@ export class SelectorController {
 	}
 
 	async #handleCredentialLogout(providerId: string, account: LogoutAccount): Promise<void> {
+		const providerLabel = formatProviderName(providerId);
 		try {
 			const authStorage = this.ctx.session.modelRegistry.authStorage;
 			const removed = await authStorage.removeCredential(providerId, account.credentialId);
 			if (!removed) {
-				this.ctx.showError(`Logout skipped: ${account.label} is no longer stored for ${providerId}.`);
+				this.ctx.showError(`Logout skipped: ${account.label} is no longer stored for ${providerLabel}.`);
 				return;
 			}
 
@@ -1561,7 +1566,7 @@ export class SelectorController {
 				new Text(
 					theme.fg(
 						"success",
-						`${theme.status.success} Successfully logged out ${account.label} from ${providerId}`,
+						`${theme.status.success} Successfully logged out ${account.label} from ${providerLabel}`,
 					),
 					1,
 					0,
@@ -1571,7 +1576,7 @@ export class SelectorController {
 			const remainingSource = authStorage.describeCredentialSource(providerId, this.ctx.session.sessionId);
 			if (remainingSource) {
 				block.addChild(
-					new Text(theme.fg("warning", `${providerId} is still authenticated via ${remainingSource}`), 1, 0),
+					new Text(theme.fg("warning", `${providerLabel} is still authenticated via ${remainingSource}`), 1, 0),
 				);
 			}
 			this.ctx.present(block);
@@ -1596,7 +1601,7 @@ export class SelectorController {
 		if (accounts.length === 0) {
 			const source = authStorage.describeCredentialSource(providerId, this.ctx.session.sessionId);
 			const suffix = source ? ` Current auth comes from ${source}; remove that source to log out.` : "";
-			this.ctx.showError(`Logout skipped: no stored credentials for ${providerId}.${suffix}`);
+			this.ctx.showError(`Logout skipped: no stored credentials for ${formatProviderName(providerId)}.${suffix}`);
 			return;
 		}
 
@@ -1619,10 +1624,21 @@ export class SelectorController {
 		});
 	}
 
+	/**
+	 * The login/logout surface every spelling of the command reaches (`/login`, `/account login`,
+	 * `/logout`, `/account logout`); the account card and the model hub have their own wrappers.
+	 *
+	 * A login that STORES a credential ends in the account manager, focused on the provider it just
+	 * added. `/login` is documented as an alias of `/account login`, and it was not one in the place
+	 * it mattered: the card's own "add another account" came back to the card, while the same login
+	 * typed at the composer dropped the operator back at an empty prompt with one receipt line and no
+	 * way to see which account now serves. A cancelled or failed login stays where it was, because
+	 * the composer is where that operator came from and there is nothing new to show them.
+	 */
 	async showOAuthSelector(mode: "login" | "logout", providerId?: string): Promise<void> {
 		if (providerId) {
 			if (mode === "login") {
-				await this.#handleOAuthLogin(providerId);
+				if (await this.#handleOAuthLogin(providerId)) await this.showAccountManager(providerId);
 			} else {
 				await this.#showOAuthLogoutAccountSelector(providerId);
 			}
@@ -1650,7 +1666,9 @@ export class SelectorController {
 					selector.stopValidation();
 					done();
 					if (mode === "login") {
-						await this.#handleOAuthLogin(selectedProviderId);
+						if (await this.#handleOAuthLogin(selectedProviderId)) {
+							await this.showAccountManager(selectedProviderId);
+						}
 					} else {
 						await this.#showOAuthLogoutAccountSelector(selectedProviderId);
 					}
@@ -1781,7 +1799,17 @@ export class SelectorController {
 					// Read back rather than trusting `next`: the card paints from what the settings
 					// object actually holds, so a refused or coerced write cannot leave the footer
 					// advertising a state the config does not have.
-					return this.ctx.session.settings.get("accounts.loadBalancing") === true;
+					const stored = this.ctx.session.settings.get("accounts.loadBalancing") === true;
+					// A settings write is permanent, and a repainted two-word chip is a thin receipt
+					// for one. Say what changed, what it now does, and that it outlives the session,
+					// from the value that was actually stored.
+					this.ctx.showStatus(
+						stored
+							? "Account load balancing on: an exhausted account moves to another account of the same provider. Saved for this profile."
+							: "Account load balancing off: an exhausted account waits for its own quota window. Saved for this profile.",
+						{ dim: false },
+					);
+					return stored;
 				},
 				onCancel: done,
 			},
