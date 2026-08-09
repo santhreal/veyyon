@@ -395,8 +395,11 @@ Two public workflows run in `.github/workflows/`. Both gate changes and releases
 
 Runs on GitHub-hosted runners and validates workspace type checking and linting,
 Rust formatting and clippy, secret scanning of the commits the change adds,
-changelog coherence, changed-suite global-state isolation, and the TypeScript test
-suite.
+changelog coherence, changed-suite global-state isolation, and the repo script
+gates. The TypeScript test buckets are `ci.yml`'s, all seven of them: this
+workflow does not fire on a release tag, so `ci.yml` has to be self-sufficient
+anyway, and running the workspace bucket in both meant every push paid for it
+twice against a ~20-job account ceiling.
 
 The Rust gate lives HERE and nowhere else. `cargo fmt --all -- --check` answers in
 seconds, and it used to run only inside `ci.yml`'s native matrix, behind an
