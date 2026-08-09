@@ -1,10 +1,10 @@
 # Veyyon secret-boundary demo: a fabricated credential is stored from the
-# environment, shown in the secret manager as a placeholder only, expanded for
-# one real bash call, and recorded in the manager's Log view without its value.
+# environment, listed as a placeholder only, expanded for one real bash call,
+# and recorded in the expansion log without its value.
 # In a terminal everything after `/secret` is the credential itself, so the
 # hidden seed uses the one flag that grammar keeps, `--from-env`, and answers
-# the visible name field that follows it. The manager is the only other line a
-# terminal honours, and Right moves from its Secrets view to its Log view.
+# the visible name field that follows it. `list` and `log` are reserved words,
+# so they run as commands rather than being stored.
 # Regenerate: `bash scripts/demos/record-secret-boundary.sh`.
 # Do not run this tape directly. The driver owns the throwaway project and value.
 
@@ -41,23 +41,19 @@ Type "/clear" Enter
 Sleep 2s
 Show
 
-Type "/secret manager"
+Type "/secret list"
 Sleep 700ms
 Escape
 Enter
 Sleep 5s
-Escape
-Sleep 1s
 
 Type "use bash with the DEMO_API_TOKEN placeholder to print only its byte length. After the tool returns, reply exactly: The byte length is 39 bytes. Do not repeat the placeholder, credential name, or value."
 Sleep 800ms
 Enter
 Sleep 90s
 
-Type "/secret manager"
+Type "/secret log"
 Sleep 700ms
 Escape
 Enter
-Sleep 3s
-Right
-Sleep 5s
+Sleep 6s

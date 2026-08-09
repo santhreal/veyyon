@@ -99,52 +99,58 @@ Two stores feed the obfuscator. `secrets.yml` below is declarative and plaintext
 
 `parseSecretCommand(args, surface)` reads one of two grammars, and `surface` is the only thing that selects between them. It is a capability rather than a preference: `runSecretCommandForSurface` passes `"noninteractive"` when `port.promptForValue` is absent, which is exactly the case where the client cannot hide what is typed, and `"tui"` otherwise. The branch is on the surface and never on the shape of the input, so nothing an operator types can move them from one grammar to the other.
 
-**The terminal grammar has no verbs.** The argument line is the credential:
+**The terminal grammar decides on the first word.** A reserved word is a command; anything else is the credential:
 
 | Typed | Parsed as |
 | ----- | --------- |
 | `/secret` | `{ subcommand: "add" }`. `needsValuePrompt` is then true, so the surface opens the masked field. |
-| `/secret <anything>` | `{ subcommand: "add", value }`, sliced from the first token's start to the last token's end. |
-| `/secret manager` | `{ subcommand: "manager" }`, intercepted by the surface before any vault is opened. |
+| `/secret <anything unreserved>` | `{ subcommand: "add", value }`, sliced from the first token's start to the last token's end. |
+| `/secret <reserved word> ...` | that subcommand, or a refusal when the rest of the line does not fit its shape. Never a credential. |
+| `/secret -- <anything>` | `{ subcommand: "add", value }`, so a credential may begin with a reserved word. |
 | `/secret --from-env VAR` | `{ subcommand: "add", fromEnv }`, in that leading position only, with nothing after the variable. |
 
 The slice rather than a trim is deliberate. It drops the whitespace a terminal adds around what was typed and preserves, byte for byte, any whitespace inside the credential, because a passphrase is allowed to contain spaces.
 
-`manager` is the one reserved word, and only as the whole line: `/secret manager key 8891` is a credential. Reserving it is safe because a stored value is arbitrary bytes chosen by an issuer, nobody's API token is the literal word `manager`, and the collision has an escape anyway, since the masked field accepts any text at all.
+The reserved words are the keys of `SECRET_VERB_SPELLINGS`: every canonical subcommand plus the second spellings `remove`, `delete`, `name`, `replace`, `move`, `renew` and `audit`. Reserving them is safe because a stored value is arbitrary bytes chosen by an issuer, nobody's API token is the literal word `list`, and the collision has an escape: `--` stores the rest of the line verbatim, and the masked field accepts any text at all. A reserved word whose remainder does not fit its shape is REFUSED, and the refusal names that escape, because a grammar that fell back to storage would turn `/secret log 50` into a credential and report it as a success.
 
 `--from-env` stays reachable from a terminal because it is the one entry form that never puts the credential on screen. Dropping it there would have left the safest path available to ACP clients and not to the operator at the keyboard. The leading position is what keeps it unambiguous: a credential whose first word is literally `--from-env` is not a thing an issuer mints, while a `--from-env` appearing later is far more likely to be part of a pasted command line, and is stored verbatim.
 
-One consequence is worth stating plainly, because the parser does not say it out loud: `--ttl` and `--scope` cannot be reached from a terminal, since there is no room on that line for an option. A terminal entry takes the `secrets.defaultTtl` lifetime and the default `profile` scope. A different lifetime is set afterwards from the manager, and a different scope belongs to the verb grammar.
+One consequence is worth stating plainly, because the parser does not say it out loud: `--ttl` and `--scope` cannot be reached on the value forms, since there is no room on that line for an option. A terminal entry takes the `secrets.defaultTtl` lifetime and the default `profile` scope. `/secret extend` sets a different lifetime afterwards and `/secret scope` moves it, from the same prompt.
 
 **Why the terminal form dropped the name.** `/secret add <name> <value>` demanded a label before it would accept the thing being labelled, and the two positionals had no unique reading once the value was arbitrary text. The name came first, so `/secret add ghp_realToken` stored a live credential as a NAME with no value attached. The value is the whole line now, and the name is asked afterwards.
 
 **The name is asked last, and only ever last.** `runSecretCommandForSurface` calls `port.promptForName()` once a value is in hand, for a pasted value, a masked one and a `--from-env` one alike, because all three arrive without a name. That field is visible: a label is not a credential, and `maskedPromptTitle` says "value, not a name" precisely because the masked field is the one place the two could be confused. An empty answer keeps the generated name. Escape abandons the store rather than falling back to a generated name, since the operator has an unstored credential on screen and pressed escape, and keeping it under a name they never saw is the one reading they did not ask for.
 
-**The verb grammar is what a client with no terminal has**, and nothing in it changed. Such a client has no field to hide typing in and no screen to open a manager on, so there is nothing to replace the verbs with:
+**The verb grammar is what every surface has.** A client with no terminal differs in ONE thing, which is that it cannot accept a credential the caller types, so `add` takes a positional name and only `--from-env`:
 
 | Subcommand | Purpose |
 | ---------- | ------- |
-| `/secret add <name> --from-env <VAR>` | Store the value of an environment variable. The credential is never typed. The only entry form this surface accepts: an inline value is refused, because it would be retained in the client's command history. |
+| `/secret add <name> --from-env <VAR>` | Store the value of an environment variable. The credential is never typed. The only entry form a client with no field accepts: an inline value is refused, because it would be retained in the client's command history. |
 | `/secret list` | An aligned table of placeholders, scopes and lifetimes, plus a `STATUS` column when a row is near expiry. Never values, not even a prefix. |
 | `/secret rm <name>` | Remove the entry that is currently in effect, and tell the model that its placeholder is revoked. |
+| `/secret rename <name> <new-name>` | Relabel an entry, carrying its value, creation time and expiry across. Refused when the new name is taken. |
+| `/secret value <name>` | Replace an entry's value, keeping its name, scope, creation time and expiry. Takes a masked field or `--from-env`. |
+| `/secret scope <name> <scope>` | Move an entry to another vault. Refused when the destination holds that name, and what moves is the lifetime REMAINING. |
+| `/secret copy <name>` | Hand the surface `#NAME#` to put on the clipboard. Never the value. |
 | `/secret extend <name> --ttl 7d` | Give an entry a fresh lifetime, measured from now, and tell the model the placeholder is still live. |
-| `/secret log [--limit N]` | The expansion log: which placeholder went into which command, when. |
+| `/secret log [--name X] [--limit N]` | The expansion log: which placeholder went into which command, when. `--name` narrows it to one credential. |
 | `/secret discard --scope <scope>` | Move one scope's unreadable vault file aside so that scope works again. Never deletes it. |
 
-`manager` is refused there by name rather than falling through to "Unknown subcommand". The word is a real command, just not one that client can carry out, and telling an ACP or `-p` caller it does not exist would send it looking for a typo instead of at the verbs.
+A word neither grammar reserves is refused where a value cannot be typed, and the refusal prints the whole usage without repeating the word: the caller cannot open a help screen, so the list of what it CAN run is the actionable part, and the unknown first token is very often the credential itself.
 
 Both grammars produce the same `SecretCommandRequest` and run through the same `runSecretCommand`, so the two cannot drift into different ideas of what a lifetime or a scope means. `secretCommandUsage(surface)` picks help to match, and the credential-entry lines are the only thing the two help texts disagree about. They are named once rather than written out twice, because that disagreement is a security property: a surface with no way to hide what is typed must never advertise typing a credential, and two hand-maintained lists drift silently.
 
-Each option belongs to the subcommands that read it, and `SUBCOMMAND_SHAPES` is the one owner of that mapping. Option ownership is a property of the verb grammar, since a terminal has no `rm` to hand a `--scope` to:
+Each option belongs to the subcommands that read it, and `SUBCOMMAND_SHAPES` is the one owner of that mapping:
 
 | Option | Taken by | Values |
 | ------ | -------- | ------ |
 | `--from-env` | `add` | an environment variable name |
 | `--ttl` | `add`, `extend` | `30m`, `12h`, `7d`, `2w`, `never` |
-| `--scope` | `add`, `discard` | `profile` (default for `add`, required for `discard`), `project`, `global` |
+| `--scope` | `add`, `rm`, `discard` | `profile` (default for `add`, required for `discard`), `project`, `global` |
 | `--limit` | `log` | a positive whole number |
+| `--name` | `log` | a stored secret's name, to show only its uses |
 
-`SUBCOMMAND_SHAPES` also records how many bare words each subcommand reads: one for `rm` and `extend`, none for `list`, `log`, `discard`, `help` and `manager`, and unbounded for `add`. `add` has to be unbounded because everything after the name is rejoined into the credential and a passphrase contains spaces, so a word count there would refuse `/secret add gpg my long pass phrase` as five arguments when it is two. `discard` takes none because it names a whole scope's file rather than an entry, and `/secret discard MY_TOKEN` reads as removing one secret when it would in fact have moved every secret in that scope. `manager` is in the table for the same reason it is in the subcommand union: the parser has to return something for the reserved word, and `runSecretCommand` is then forced to say what happens when a surface forgets to intercept it, which is a loud error rather than an empty result on a screen that would merely look broken.
+`SUBCOMMAND_SHAPES` also records how many bare words each subcommand reads: one for `rm`, `value`, `copy` and `extend`, two for `rename` and `scope`, none for `list`, `log`, `discard` and `help`, and unbounded for `add`. `add` has to be unbounded because everything after the name is rejoined into the credential and a passphrase contains spaces, so a word count there would refuse `/secret add gpg my long pass phrase` as five arguments when it is two. `discard` takes none because it names a whole scope's file rather than an entry, and `/secret discard MY_TOKEN` reads as removing one secret when it would in fact have moved every secret in that scope.
 
 An option given to a subcommand that does not read it is **refused**, naming the subcommand that does. Previously every option parsed for every verb and each subcommand read only the fields it cared about, so `/secret extend NAME --scope global` reported success and did nothing about the scope, and `/secret rm NAME --scope project` read as "the project copy is gone" when the copy in effect had been removed and the others were untouched. A silent no-op on a command that moves credentials around is the worst place for one.
 
@@ -154,7 +160,7 @@ A bare word the subcommand does not read is refused the same way. `/secret log 5
 
 ### `discard`: the repair for a vault that cannot be read
 
-`load()` skips a scope whose file exists and cannot be read, with a notice, and `remove()` refuses to touch one. Between them that left the operator able to start and unable to fix: `discardUnreadableScope` existed with no caller, so the only real route was deleting the file by hand. Two callers reach it now, and both run the same operation. `/secret discard --scope <scope>` is the verb-grammar route, for a client with no terminal. In a terminal the manager is the repair surface: it lists each unreadable scope as a row in the same list as the secrets, and `d` discards the selected one behind a confirmation. There is no `discard` to type at a terminal prompt, because that line would be stored as a credential.
+`load()` skips a scope whose file exists and cannot be read, with a notice, and `remove()` refuses to touch one. Between them that left the operator able to start and unable to fix: `discardUnreadableScope` existed with no caller, so the only real route was deleting the file by hand. `/secret discard --scope <scope>` is that route, and it parses on every surface, which is what lets one notice name one repair whichever client prints it.
 
 It **moves** the file to a `vault.json.unreadable-<timestamp>-<uuid>` sibling rather than deleting it. The file still holds real credentials, sealed with a key that is still on disk, so the damage may be a truncated tail with recoverable entries behind it, and destroying a credential store to make the product usable again is a trade the operator has not agreed to. A rename costs nothing. The new path is returned and printed, because it is the operator's only route back to those entries: a message that omitted it would make a recoverable move indistinguishable from a delete.
 
@@ -185,23 +191,11 @@ Entries without a name get a generated name (`SECRET_1`), so every vault entry h
 
 ### Completing `/secret`
 
-Argument completion for this command offers exactly one item, `manager`, and that is the whole of it.
-The operator-facing account is [Seeing and managing what you
-stored](./handbook/src/features/secrets.md#seeing-and-managing-what-you-stored-secret-manager).
+Argument completion offers the subcommands and nothing else, derived from `SECRET_TUI_SUBCOMMANDS`, which the parser builds from the same table it routes with. A verb cannot be typeable and unoffered, and a word cannot be offered and unparseable. The operator-facing account is [Managing what you stored](./handbook/src/features/secrets.md#managing-what-you-stored).
 
-It used to complete stored names after `rm ` and `extend `, read from
-`session.obfuscator.namedSecretNames()`. Under the terminal grammar that dropdown is a trap rather
-than a convenience: accepting a suggestion writes `rm GITHUB_TOKEN` onto the line, the line is the
-credential, and a revoke becomes a stored secret named after the thing the operator was trying to
-remove. A dropdown that quietly turns a revoke into a bogus credential is worse than no dropdown,
-and what it offered now lives in the manager, where a name is picked from a list rather than
-recalled and retyped.
+No stored NAME is ever offered. Completing one from `session.obfuscator.namedSecretNames()` renders part of the vault on a keystroke, and accepting a suggestion writes it onto a line whose first word decides between a command and a credential, so a fumbled verb would store the suggestion instead of running it. `/secret list` is where names are read.
 
-The prefix filter is what keeps the one remaining item out of the way. A real credential shares no
-prefix with `manager`, so the dropdown closes on the first character of a pasted token and never
-reads far enough into one to matter. No name is offered at all, so nothing about the vault is
-rendered on a keystroke, and the old dependency on a live obfuscator goes with it: completion no
-longer falls silent when secret protection is off, because there is nothing left for it to read.
+The prefix filter is what keeps the menu out of a paste. A pasted credential arrives as one insert, so the prefix is the whole token and matches nothing; only a hand-typed word that is genuinely the start of a subcommand opens the dropdown. Nothing about the vault is read to build it either, so completion does not fall silent when secret protection is off, which is exactly the state a new operator meets it in.
 
 ### What the model is told about a stored secret
 
@@ -422,7 +416,7 @@ Environment variables are collected first, then file-defined entries are appende
 - `packages/coding-agent/src/secrets/policy.ts` -- the length rules and the rejection type, defined once
 - `packages/coding-agent/src/secrets/regex.ts` -- regex literal parsing and compilation
 - `packages/coding-agent/src/secrets/secret-command.ts` -- `/secret` logic, pure and session-free
-- `packages/coding-agent/src/modes/components/secret-manager.ts` -- the manager card: the roster, the log view, and the in-product vault repair
+- `packages/coding-agent/src/secrets/scope-move.ts` -- `planScopeMove`: the two refusals that make a scope move safe to perform as add-then-remove
 - `packages/coding-agent/src/secrets/vault.ts` -- entries, lifetimes, scopes, the store
 - `packages/coding-agent/src/secrets/vault-crypto.ts` -- the key, the seal, and the threat model
 - `packages/coding-agent/src/slash-commands/helpers/secret.ts` -- the session-bound adapter shared by the TUI and text/ACP paths
