@@ -34,6 +34,7 @@ const WORKFLOWS_DIR = path.join(REPO_ROOT, ".github", "workflows");
 
 interface WorkflowStep {
 	run?: string;
+	uses?: string;
 }
 
 interface WorkflowJob {
@@ -116,6 +117,11 @@ describe("the scripts bucket", () => {
 	/**
 	 * The job has to install first. These suites import from `packages/`, and a bucket that runs
 	 * without `node_modules` fails on module resolution rather than on any contract it checks.
+	 *
+	 * The shared composite counts: it installs the same lockfile and additionally generates the
+	 * gitignored tool-view module, so a job that uses it is strictly better prepared than one
+	 * spelling out `bun install`. Reading only `run:` bodies made the correct spelling look like
+	 * a missing install.
 	 */
 	it("is invoked by a job that installs dependencies", () => {
 		const docs = fs
@@ -130,7 +136,9 @@ describe("the scripts bucket", () => {
 			for (const [job, spec] of Object.entries(doc.jobs ?? {})) {
 				const steps = spec.steps ?? [];
 				const runsBucket = steps.some(step => bucketsSelectedBy(step.run ?? "").includes("scripts"));
-				const installs = steps.some(step => (step.run ?? "").includes("bun install"));
+				const installs = steps.some(
+					step => (step.run ?? "").includes("bun install") || step.uses === "./.github/actions/bun-install",
+				);
 				if (runsBucket && installs) installing.push(`${name}::${job}`);
 			}
 		}
