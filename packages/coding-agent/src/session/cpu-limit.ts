@@ -88,7 +88,8 @@ import { CpuBudgetGroup as NativeCpuBudgetGroup } from "@veyyon/natives";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 81.
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { Settings } from "../config/settings";
+import type { Settings } from "../config/settings";
+import { settingsOrNull } from "../config/settings-instance";
 import { registerOwnedResourceDisposer } from "./owned-resources";
 import {
 	BYTES_PER_GB,
@@ -1654,14 +1655,13 @@ export function sessionBudgetLimits(settings: Settings): SessionBudgetLimits {
 /**
  * The operator's non-CPU limits, or undefined when settings are not loaded.
  *
- * `Settings.instance` throws before the config file is read, which is not an
- * error here: it means nothing has been configured for this process yet, so the
- * group has no limits to write.
+ * The slot is empty before the config file is read, which is not an error here:
+ * it means nothing has been configured for this process yet, so the group has no
+ * limits to write. Asking the SLOT rather than `Settings.instance` also keeps the
+ * store off this module's import graph, and off every graph that reaches a spawn
+ * site through it (see `test/architecture/leveraged-imports-stay-cut.test.ts`).
  */
 function configuredBudgetLimits(): SessionBudgetLimits | undefined {
-	try {
-		return sessionBudgetLimits(Settings.instance);
-	} catch {
-		return undefined;
-	}
+	const settings = settingsOrNull();
+	return settings ? sessionBudgetLimits(settings) : undefined;
 }
