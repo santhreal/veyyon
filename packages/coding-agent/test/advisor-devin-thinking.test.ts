@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
@@ -9,6 +10,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { resolveThinkingLevelForModel } from "@veyyon/coding-agent/thinking";
 import { TempDir } from "@veyyon/utils";
 
 // Regression for https://github.com/can1357/oh-my-pi/issues/4579.
@@ -118,19 +120,33 @@ describe("AgentSession advisor descriptor thinking level", () => {
 		expect(advisor.state.disableReasoning).toBe(false);
 	});
 
-	it("Anthropic advisor with no configured thinking suffix clamps the medium default to the declared ladder", () => {
-		// claude-sonnet-4-5 declares the budget-only pair [high, max] (models.dev
-		// anthropic: budget_tokens, no effort levels), so the historical medium
-		// default is not selectable and clamps up to high. The Devin test above
-		// guards the no-surface direction; opus-4-5 (which declares medium) pins
-		// the preserved direction.
+	it("Anthropic advisor with no configured thinking suffix keeps the medium default", () => {
+		// claude-sonnet-4-5 is budget mode, and a budget transport takes any legal
+		// integer, so the catalog gives it minimal..xhigh: medium is selectable and
+		// nothing clamps. The Devin test above guards the no-surface direction, and
+		// the next one guards a ladder that genuinely lacks the default.
 		session.settings.setModelRole("advisor", `${anthropicModel.provider}/${anthropicModel.id}`);
 		expect(session.setAdvisorEnabled(true)).toBe(true);
 
 		const advisor = session.getAdvisorAgent();
 		if (!advisor) throw new Error("Expected advisor Agent to be live");
 		expect(advisor.state.model.provider).toBe(anthropicModel.provider);
-		expect(advisor.state.thinkingLevel).toBe(Effort.High);
+		expect(advisor.state.thinkingLevel).toBe(Effort.Medium);
+	});
+
+	it("clamps the medium default onto a ladder that omits it", () => {
+		// The descriptor asks `resolveThinkingLevelForModel(model, Medium)` for the
+		// level it hands the Agent (agent-session.ts, advisor branch), so the clamp
+		// is only observable on a row whose ladder omits the default. Only google
+		// ships one: gemini-3-pro-preview declares low/high, a google-level ladder
+		// with a genuine gap. This session carries no google credential, so the
+		// owner is driven directly rather than through a second fixture provider.
+		const gemini = getBundledModel("google", "gemini-3-pro-preview");
+		if (!gemini) throw new Error("Expected bundled google/gemini-3-pro-preview to exist");
+		expect(gemini.thinking?.efforts).not.toContain(Effort.Medium);
+
+		const resolved = resolveThinkingLevelForModel(gemini, ThinkingLevel.Medium);
+		expect(gemini.thinking?.efforts).toContain(resolved);
 	});
 
 	it("Anthropic advisor on a model declaring medium keeps the medium default", () => {
