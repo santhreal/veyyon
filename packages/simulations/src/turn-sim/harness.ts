@@ -32,7 +32,7 @@
  *    assertion that can be satisfied by a stuck session.
  */
 import { Agent, type AgentTool } from "@veyyon/agent-core";
-import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions, ToolCall } from "@veyyon/ai";
+import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions, ToolCall, ToolChoice } from "@veyyon/ai";
 import { setBedrockProviderModule } from "@veyyon/ai/providers/register-builtins";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
@@ -71,6 +71,14 @@ export interface ScriptedTurn {
 	readonly context: Context;
 	/** The provider-side abort signal, i.e. what a user cancel reaches. */
 	readonly signal: AbortSignal | undefined;
+	/**
+	 * What the loop demanded of this call, when it demanded anything: `required`
+	 * forces some tool, a name forces that one. A forced choice is queued by one
+	 * turn and spent by the next, so this is the only way a scenario can see that
+	 * a reminder's demand reached the provider, or that it leaked onto a later
+	 * turn it was never meant for.
+	 */
+	readonly toolChoice: ToolChoice | undefined;
 	/** Emit a complete text block. */
 	text(value: string): void;
 	/** Emit a complete tool call block. */
@@ -170,6 +178,7 @@ async function runScript(
 		call,
 		context,
 		signal: options?.signal,
+		toolChoice: options?.toolChoice,
 		text(value) {
 			const index = content.length;
 			content.push({ type: "text", text: value });
@@ -374,6 +383,13 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 	const toolRegistry = new Map(tools.map(tool => [tool.name, tool]));
 
 	const baseStreamFn = createSettingsAwareStreamFn(settings);
+	// The loop asks the HOST for the turn's tool-choice directive; the session is
+	// what answers, and it is built after the agent, so the callback reads a
+	// binding assigned below. This is the same shape production uses (sdk.ts), and
+	// without it a forced choice a settle reminder queues is queued into nothing:
+	// the demand is spent by the loop, never reaches the provider, and a
+	// simulation would report a reminder working when it does not.
+	let host: AgentSession | undefined;
 	const agent = new Agent({
 		getApiKey: () => "simulation-key",
 		initialState: {
@@ -383,6 +399,7 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 			messages: [],
 		},
 		convertToLlm,
+		getToolChoice: () => host?.nextToolChoiceDirective(),
 		streamFn: options.providerConcurrency
 			? wrapStreamFnWithProviderConcurrency(settings, baseStreamFn)
 			: baseStreamFn,
@@ -396,6 +413,7 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 		toolRegistry,
 		...(options.ttsrManager ? { ttsrManager: options.ttsrManager } : {}),
 	});
+	host = session;
 	const events: AgentSessionEvent[] = [];
 	session.subscribe(event => {
 		events.push(event);
