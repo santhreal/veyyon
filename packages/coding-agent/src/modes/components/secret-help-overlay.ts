@@ -53,6 +53,7 @@ export const SECRET_MANAGER_HELP: readonly HelpEntry[] = [
 	{ keys: "e", description: "extend how long the selected secret lasts", view: "secrets" },
 	{ keys: "n", description: "rename the selected secret", view: "secrets" },
 	{ keys: "r", description: "revoke the selected secret", view: "secrets" },
+	{ keys: "v", description: "replace the selected secret's value", view: "secrets" },
 	{ keys: "a", description: "add a credential to the vault", view: "secrets" },
 	{ keys: "f", description: "add a credential read from an environment variable", view: "secrets" },
 	{ keys: "m", description: "move the selected secret to another scope", view: "secrets" },

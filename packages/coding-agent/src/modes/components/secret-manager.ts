@@ -40,9 +40,11 @@
  * already in this file.
  * - Tab, Shift+Tab, Left/Right: switch view
  * - Up/Down or j/k: move the cursor, in either view
- * - a: add a credential (value first, hidden; then an optional name)
+ * - a: store a credential (one hidden field, stored on the answer)
+ * - f: store one read out of an environment variable
  * - r: revoke the selected secret (confirmed)
  * - e: extend its lifetime
+ * - v: replace its value, keeping its name, scope and expiry
  * - n: rename it
  * - m: move it to another scope
  * - c: copy its placeholder
@@ -1264,6 +1266,37 @@ export class SecretManager extends Container {
 		);
 	}
 
+	/**
+	 * `v`: replace the selected credential's value, keeping everything else.
+	 *
+	 * The card could rename, extend, move, copy and revoke a credential, and could not CORRECT one.
+	 * A token pasted with a character missing, or rotated at the provider, had to be revoked and
+	 * stored again, which mints a new name while every prompt in the session still spends the old
+	 * placeholder. The field is masked for the same reason the add field is, and the notice says the
+	 * expiry was kept, because that is the difference between this and storing it again.
+	 */
+	#requestValueReplace(): void {
+		const row = this.#selectedRow();
+		if (row?.kind !== "secret") return;
+		const name = row.entry.name;
+		const placeholder = buildNamePlaceholder(name);
+		this.#openPrompt(
+			{
+				title: `New value for ${placeholder}`,
+				hint: "The corrected credential. The name, the scope and the expiry are kept.",
+				credential: true as const,
+				submit: async value => {
+					const replaced = await this.#vault.replaceValue(name, value);
+					if (replaced === null) {
+						throw new Error(`${placeholder} is no longer in the vault, so its value was not replaced.`);
+					}
+					return `${placeholder} now spends the new value, still ${describeTimeLeft(replaced, this.#now())}.`;
+				},
+			},
+			"",
+		);
+	}
+
 	/** `n`: rename in place. A collision is refused by the vault and shown here. */
 	#requestRename(): void {
 		const row = this.#selectedRow();
@@ -2337,6 +2370,9 @@ export class SecretManager extends Container {
 				return;
 			case "n":
 				this.#requestRename();
+				return;
+			case "v":
+				this.#requestValueReplace();
 				return;
 			case "c":
 				this.#copySelected();

@@ -289,6 +289,97 @@ describe("extending from the manager", () => {
 	});
 });
 
+/**
+ * `v`: correcting a credential in place.
+ *
+ * WHY IT IS ITS OWN GROUP. Every other write on this card changes a label, a lifetime or a location.
+ * This one changes the SECRET, which makes it the only action whose failure is silent: a card that
+ * reported success while the session kept spending the old bytes looks identical to one that worked.
+ * That is why the refresh is asserted here and not left to the revoke group.
+ */
+describe("correcting a value from the manager", () => {
+	/**
+	 * The value changes and nothing else does. A correction that re-dated the entry would be `add`
+	 * wearing another key, and an operator who corrected a typo would silently get a fresh lifetime.
+	 */
+	it("replaces the value and keeps the name, the scope and the expiry", async () => {
+		const added = await new SecretVault(locations).add({
+			name: "GITHUB_TOKEN",
+			value: VALUE,
+			scope: "profile",
+			ttl: 60 * 60 * 1000,
+		});
+
+		const manager = await openManager();
+		manager.handleInput("v");
+		type(manager, OTHER_VALUE);
+		await manager.settled();
+
+		const [stored] = await new SecretVault(locations).load();
+		expect(stored.name).toBe("GITHUB_TOKEN");
+		expect(stored.value).toBe(OTHER_VALUE);
+		expect(stored.scope).toBe("profile");
+		expect(stored.expiresAt).toBe(added.expiresAt);
+		expect(stored.createdAt).toBe(added.createdAt);
+	});
+
+	/**
+	 * THE RUNNING SESSION HAS TO BE TOLD. The obfuscator captured the old value at startup; without a
+	 * refresh the model keeps writing `#GITHUB_TOKEN#` and the session keeps substituting the bytes
+	 * the operator just corrected, which is the one failure mode of this action that nothing on screen
+	 * would reveal.
+	 */
+	it("refreshes the live secret runtime after the edit", async () => {
+		await new SecretVault(locations).add({ name: "GITHUB_TOKEN", value: VALUE, scope: "profile" });
+		let refreshes = 0;
+		const manager = await openManager({
+			refreshSecrets: async () => {
+				refreshes++;
+			},
+		});
+
+		manager.handleInput("v");
+		type(manager, OTHER_VALUE);
+		await manager.settled();
+
+		expect(refreshes).toBe(1);
+	});
+
+	/** The new value is never painted, for the same reason the add field hides what is typed. */
+	it("never echoes the corrected value", async () => {
+		await new SecretVault(locations).add({ name: "GITHUB_TOKEN", value: VALUE, scope: "profile" });
+
+		const manager = await openManager();
+		manager.handleInput("v");
+		for (const character of OTHER_VALUE) manager.handleInput(character);
+
+		expect(screenText(manager)).not.toContain(OTHER_VALUE);
+		type(manager, "");
+		await manager.settled();
+		expect(screenText(manager)).not.toContain(OTHER_VALUE);
+	});
+
+	/**
+	 * A refused correction keeps the credential AND the field. Closing on the refusal would leave an
+	 * operator staring at the roster with a half-corrected credential and no field to finish it in,
+	 * and accepting the short value would store something the obfuscator cannot protect.
+	 */
+	it("keeps the credential and the field when the value is refused", async () => {
+		await new SecretVault(locations).add({ name: "GITHUB_TOKEN", value: VALUE, scope: "profile" });
+
+		const manager = await openManager();
+		manager.handleInput("v");
+		type(manager, "pin1234");
+		await manager.settled();
+
+		const [stored] = await new SecretVault(locations).load();
+		expect(stored.value).toBe(VALUE);
+		const painted = screenText(manager);
+		expect(painted).toContain("New value for #GITHUB_TOKEN#");
+		expect(painted).toContain("under the 8-character");
+	});
+});
+
 describe("renaming from the manager", () => {
 	/**
 	 * A rename must carry the value across. Losing it would silently destroy the credential while

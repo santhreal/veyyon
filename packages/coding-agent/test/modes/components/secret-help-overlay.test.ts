@@ -94,6 +94,7 @@ describe("SECRET_MANAGER_HELP as the single source of truth", () => {
 			"e",
 			"n",
 			"r",
+			"v",
 			"a",
 			"f",
 			"m",
@@ -142,7 +143,7 @@ describe("SECRET_MANAGER_HELP as the single source of truth", () => {
 	 * in the card rather than a gap in the map.
 	 */
 	it("gives every entry a non-empty key and a lower-case description", () => {
-		expect(SECRET_MANAGER_HELP.length).toBe(18);
+		expect(SECRET_MANAGER_HELP.length).toBe(19);
 		for (const entry of SECRET_MANAGER_HELP) {
 			expect(entry.keys).toBe(entry.keys.trim());
 			expect(entry.keys.length).toBeGreaterThan(0);
@@ -266,6 +267,7 @@ describe("view filtering", () => {
 			"                e  extend how long the selected secret lasts",
 			"                n  rename the selected secret",
 			"                r  revoke the selected secret",
+			"                v  replace the selected secret's value",
 			"                a  add a credential to the vault",
 			"                f  add a credential read from an environment variable",
 			"                m  move the selected secret to another scope",
@@ -334,7 +336,7 @@ describe("key column alignment", () => {
 	 */
 	it("starts every description at one column across both groups", () => {
 		const columns = descriptionColumns(screen("secrets"));
-		expect(columns.length).toBe(18);
+		expect(columns.length).toBe(19);
 		expect(new Set(columns).size).toBe(1);
 		// Two spaces of indent, the widest shown key ("left/right, tab"), then the two-space gap.
 		expect(columns[0]).toBe(19);
@@ -437,10 +439,10 @@ describe("narrow widths", () => {
 		const plain = lines.map(line => stripAnsi(line));
 		expect(plain[0]).toBe("In the Secrets view");
 		expect(plain[1]).toBe("                c  copy ");
-		// The Secrets group is eleven rows plus its heading, so the blank separator sits at 12.
-		expect(plain[12]).toBe("");
-		expect(plain[13]).toBe("Anywhere in the card");
-		expect(plain[16]).toBe("                /  filte");
+		// The Secrets group is twelve rows plus its heading, so the blank separator sits at 13.
+		expect(plain[13]).toBe("");
+		expect(plain[14]).toBe("Anywhere in the card");
+		expect(plain[17]).toBe("                /  filte");
 	});
 
 	/**
@@ -450,7 +452,7 @@ describe("narrow widths", () => {
 	 */
 	it("renders without throwing at width 1", () => {
 		const lines = new SecretHelpOverlay("secrets").render(1);
-		expect(lines.length).toBe(21);
+		expect(lines.length).toBe(22);
 		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(1);
 		expect(stripAnsi(lines[1])).toBe(" ");
 	});
