@@ -64,12 +64,10 @@ describe("AgentSession handoff", () => {
 	/**
 	 * Pin the session effort and prove it landed unclamped.
 	 *
-	 * The fixture model is the real bundled `anthropic/claude-sonnet-4-5`, whose
-	 * thinking ladder is `[high, max]`. Any level below High (Low, Medium) is
-	 * lifted to High by `resolveThinkingLevelForModel`, so a test that pinned Low
-	 * and expected High was observing the clamp rather than the behavior under
-	 * test: it stayed green whether the compaction effort came from the session,
-	 * from an `:effort` suffix, or from pi-agent's built-in High default.
+	 * The fixture model is the real bundled `anthropic/claude-sonnet-4-5`, a
+	 * budget-mode row whose declared ladder is `[minimal, low, medium, high,
+	 * xhigh]`. `Max` is NOT on it and clamps down to `xhigh`, so a case that
+	 * pinned Max was observing the clamp rather than the behavior under test.
 	 * Asserting the pinned level survived keeps these assertions meaningful, and
 	 * fails loudly naming the effort if the catalog ladder shifts again.
 	 */
@@ -856,11 +854,11 @@ describe("AgentSession handoff", () => {
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
-		// The session runs at Max while the compaction model is pinned to :high, so
+		// The session runs at XHigh while the compaction model is pinned to :high, so
 		// the candidate's own configured effort must win over the session effort.
-		// Max is the session effort on purpose: a level under High is not
-		// expressible on this model, and would leave the suffix unproven.
-		pinSessionEffort(ThinkingLevel.Max);
+		// XHigh is the session effort on purpose: it is the one declared tier above
+		// High, so a suffix that failed to apply would be visible.
+		pinSessionEffort(ThinkingLevel.XHigh);
 		session.settings.set("compaction.model", `${model.provider}/${model.id}:high`);
 
 		let capturedCandidateKey: string | undefined;
@@ -893,10 +891,10 @@ describe("AgentSession handoff", () => {
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
 		// Bare selector, no `:effort`, so the session effort governs compaction.
-		// Max also separates inheritance from pi-agent's built-in compaction
+		// XHigh also separates inheritance from pi-agent's built-in compaction
 		// default of High (`resolveCompactionEffort`), which a broken inheritance
 		// path would fall back to.
-		pinSessionEffort(ThinkingLevel.Max);
+		pinSessionEffort(ThinkingLevel.XHigh);
 		session.settings.set("compaction.model", `${model.provider}/${model.id}`);
 
 		let capturedCandidateKey: string | undefined;
@@ -920,7 +918,7 @@ describe("AgentSession handoff", () => {
 		await waitFor(() => capturedCandidateKey !== undefined);
 
 		expect(capturedCandidateKey).toBe(`${model.provider}/${model.id}`);
-		expect(capturedLevel).toBe(ThinkingLevel.Max);
+		expect(capturedLevel).toBe(ThinkingLevel.XHigh);
 	});
 
 	it("keeps pre-prompt context-full checks aligned with provider-anchored usage", async () => {
