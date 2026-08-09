@@ -1231,6 +1231,44 @@ function sameVaultEntries(left: readonly VaultEntry[], right: readonly VaultEntr
 	);
 }
 
+/**
+ * Refuse a value the vault cannot store, or that the obfuscator could not protect.
+ *
+ * ONE OWNER for the rule, because more than one path writes this field: `add` stores a new
+ * credential and `replaceValue` corrects one. A limit enforced on the first and not the second is a
+ * value that is refused when it is stored and accepted when it is edited, and the second write is
+ * the one nobody tests by hand.
+ *
+ * The obfuscation floor is the load-bearing one: accepting a value under it produces an entry that
+ * looks stored and is sent to the provider verbatim, for the reason spelled out in `policy.ts`.
+ */
+function assertStorableValue(value: string): void {
+	if (!isWellFormedUtf16(value)) {
+		throw new Error("This secret contains ill-formed UTF-16. Refusing to store it.");
+	}
+	if (value.length === 0) throw new Error("A secret cannot be empty.");
+	if (value.length > MAX_VAULT_PLAINTEXT_BYTES) {
+		throw new Error(
+			`This secret value is over the ${MAX_VAULT_PLAINTEXT_BYTES}-byte plaintext safety limit. ` +
+				"Refusing it before encoded-size scanning or serialization.",
+		);
+	}
+	const encodedValueBytes = jsonStringByteLength(value);
+	if (encodedValueBytes > MAX_VAULT_PLAINTEXT_BYTES) {
+		throw new Error(
+			`This secret value needs ${encodedValueBytes} bytes in the vault, over the ` +
+				`${MAX_VAULT_PLAINTEXT_BYTES}-byte plaintext safety limit. Refusing it before serialization.`,
+		);
+	}
+	if (!canObfuscatePlainValue(value)) {
+		throw new Error(
+			`This secret is ${secretCharacterLength(value)} characters, under the ${MIN_OBFUSCATABLE_LENGTH}-character ` +
+				`minimum. Values that short cannot be replaced in text without cutting into ordinary words, ` +
+				`so storing it would not protect it.`,
+		);
+	}
+}
+
 /** Replace a named entry in place, collapsing malformed duplicates without reordering peers. */
 function replaceVaultEntry(entries: readonly VaultEntry[], replacement: VaultEntry): VaultEntry[] {
 	const next: VaultEntry[] = [];
@@ -2010,30 +2048,7 @@ export class SecretVault {
 		ttl?: number | null;
 	}): Promise<AddedVaultEntry> {
 		const scope = options.scope ?? "profile";
-		if (!isWellFormedUtf16(options.value)) {
-			throw new Error("This secret contains ill-formed UTF-16. Refusing to store it.");
-		}
-		if (options.value.length === 0) throw new Error("A secret cannot be empty.");
-		if (options.value.length > MAX_VAULT_PLAINTEXT_BYTES) {
-			throw new Error(
-				`This secret value is over the ${MAX_VAULT_PLAINTEXT_BYTES}-byte plaintext safety limit. ` +
-					"Refusing it before encoded-size scanning or serialization.",
-			);
-		}
-		const encodedValueBytes = jsonStringByteLength(options.value);
-		if (encodedValueBytes > MAX_VAULT_PLAINTEXT_BYTES) {
-			throw new Error(
-				`This secret value needs ${encodedValueBytes} bytes in the vault, over the ` +
-					`${MAX_VAULT_PLAINTEXT_BYTES}-byte plaintext safety limit. Refusing it before serialization.`,
-			);
-		}
-		if (!canObfuscatePlainValue(options.value)) {
-			throw new Error(
-				`This secret is ${secretCharacterLength(options.value)} characters, under the ${MIN_OBFUSCATABLE_LENGTH}-character ` +
-					`minimum. Values that short cannot be replaced in text without cutting into ordinary words, ` +
-					`so storing it would not protect it.`,
-			);
-		}
+		assertStorableValue(options.value);
 
 		// The name is validated BEFORE the lock, so a bad name fails fast without contending.
 		const requestedName = options.name === undefined ? undefined : normaliseSecretName(options.name);
@@ -2120,6 +2135,51 @@ export class SecretVault {
 					entries: replaceVaultEntry(live, next),
 					result: next,
 				};
+			});
+			if (updated !== null) return { ...updated, scope };
+		}
+		return null;
+	}
+
+	/**
+	 * Replace a live entry's VALUE, keeping its name, its scope, its creation time and its expiry.
+	 *
+	 * THE GAP THIS CLOSES. A credential pasted with a character missing, or rotated at the provider,
+	 * could only be revoked and stored again. That loses the name, which is the handle every prompt
+	 * in the session already spends, and it re-dates the entry, so a secret with two days left comes
+	 * back with the default lifetime. Correcting a value is the most ordinary thing an operator wants
+	 * from a vault and it was the one write with no path to it.
+	 *
+	 * NOT `add`. `add` overwrites a same-name entry, which is how a credential is rotated from the
+	 * command line, and it restarts the lifetime from now and needs the scope named. Both are wrong
+	 * for a correction: the entry keeps the window it was given, and the scope is wherever it already
+	 * lives.
+	 *
+	 * Walks narrowest first and edits the first holder, exactly as `extend` and `rename` do, so the
+	 * entry that is edited is the one a placeholder would have spent.
+	 */
+	async replaceValue(name: string, value: string): Promise<ScopedVaultEntry | null> {
+		// Both the name and the value are validated BEFORE the lock, so a refusal costs no contention
+		// and, more importantly, cannot leave a scope locked while it is being explained.
+		const wanted = normaliseSecretName(name);
+		assertStorableValue(value);
+		const now = this.#now();
+		for (const scope of VAULT_SCOPES_NARROWEST_FIRST) {
+			const updated = await this.#withScopeLocked<VaultEntry | null>(scope, (current, exists) => {
+				const live = current.filter(entry => !isExpired(entry, now));
+				const target = live.find(entry => entry.name === wanted);
+				if (target === undefined) {
+					return {
+						entries: live,
+						result: null,
+						write: exists && live.length !== current.length,
+					};
+				}
+				// Only the value. Spreading the target rather than rebuilding the entry is what keeps
+				// `createdAt` and `expiresAt` out of this write: an edit that re-dated the entry would
+				// be `add` under another name.
+				const next: VaultEntry = { ...target, value };
+				return { entries: replaceVaultEntry(live, next), result: next };
 			});
 			if (updated !== null) return { ...updated, scope };
 		}
