@@ -471,15 +471,22 @@ jobs:
          - name: Test native/TUI/browser-ish packages (TS)
            run: bun run ci:test:ts:native
 
-   test_coding_agent_ui:
-      name: Test coding-agent UI/TUI (TS)
+   # Three buckets, one runner. Each of these was its own job, and each paid the
+   # same checkout, `bun install`, artifact download and sandbox image build to
+   # run a short bucket: 2.5 + 2.2 + 1.2 minutes of tests behind roughly three
+   # minutes of duplicated setup, holding three slots. This account's runner pool
+   # is shared with the owner's other repositories, so the scarce thing is a slot
+   # and what waits for one is veyyon's own push. Every step keeps its own name
+   # and runs even after an earlier one failed, so a red bucket still names
+   # itself exactly as it did when it was a job.
+   test_coding_agent_buckets:
+      name: Test coding-agent UI/runtime/unit (TS)
       runs-on: ubuntu-22.04
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
-      timeout-minutes: 25
+      timeout-minutes: 40
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
          - name: Resolve Linux x64 native artifact run
@@ -510,86 +517,13 @@ jobs:
            run: bash scripts/test-sandbox/run.sh --build
          - name: Test coding-agent UI/TUI bucket
            run: bun run ci:test:coding-agent:ui
-
-   test_coding_agent_runtime:
-      name: Test coding-agent runtime/session (TS)
-      runs-on: ubuntu-22.04
-      needs: [native_linux_x64, native_artifact_lookup]
-      if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
-      timeout-minutes: 25
-      steps:
-         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-         - uses: ./.github/actions/setup-system-deps
-         - uses: ./.github/actions/bun-install
-         - name: Resolve Linux x64 native artifact run
-           id: source
-           shell: bash
-           run: |
-              if [ "${{ needs.native_linux_x64.result }}" = "success" ]; then
-                echo "artifact-run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
-              else
-                echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
-              fi
-         - name: Download native addons
-           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-           with:
-              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
-              path: packages/natives/native
-              merge-multiple: true
-              run-id: ${{ steps.source.outputs.artifact-run-id }}
-              github-token: ${{ secrets.GITHUB_TOKEN }}
-         - name: Build the test sandbox image
-           # Every `bun test` in this repo refuses to run unless it can PROVE the
-           # operator's home is unreachable, so CI has to establish the same boundary
-           # a workstation does or the contract holds on one machine only. On a
-           # GitHub runner that is the container rung, and this builds the guest
-           # userland it runs. There is no /dev/kvm here, so the script builds the
-           # userland only and says so; the microVM rung reports itself unavailable
-           # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox/run.sh --build
          - name: Test coding-agent runtime bucket
-           # Runtime/session tests import native-backed barrels too; keep this
-           # separate for concurrency, not as a native-free guardrail.
+           # Runtime/session tests import native-backed barrels too; they are a
+           # separate bucket for reporting, not as a native-free guardrail.
+           if: ${{ !cancelled() }}
            run: bun run ci:test:coding-agent:runtime
-
-   test_coding_agent_native:
-      name: Test coding-agent native/unit (TS)
-      runs-on: ubuntu-22.04
-      needs: [native_linux_x64, native_artifact_lookup]
-      if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
-      timeout-minutes: 25
-      steps:
-         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
-         - uses: ./.github/actions/setup-system-deps
-         - uses: ./.github/actions/bun-install
-         - name: Resolve Linux x64 native artifact run
-           id: source
-           shell: bash
-           run: |
-              if [ "${{ needs.native_linux_x64.result }}" = "success" ]; then
-                echo "artifact-run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
-              else
-                echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
-              fi
-         - name: Download native addons
-           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-           with:
-              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
-              path: packages/natives/native
-              merge-multiple: true
-              run-id: ${{ steps.source.outputs.artifact-run-id }}
-              github-token: ${{ secrets.GITHUB_TOKEN }}
-         - name: Build the test sandbox image
-           # Every `bun test` in this repo refuses to run unless it can PROVE the
-           # operator's home is unreachable, so CI has to establish the same boundary
-           # a workstation does or the contract holds on one machine only. On a
-           # GitHub runner that is the container rung, and this builds the guest
-           # userland it runs. There is no /dev/kvm here, so the script builds the
-           # userland only and says so; the microVM rung reports itself unavailable
-           # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox/run.sh --build
          - name: Test coding-agent native/unit bucket
+           if: ${{ !cancelled() }}
            run: bun run ci:test:coding-agent:native
 
    test_smoke:
@@ -730,14 +664,12 @@ jobs:
          needs.test_workspace.result == 'success' &&
          needs.test_coding_agent_singleton.result == 'success' &&
          needs.test_ts_native.result == 'success' &&
-         needs.test_coding_agent_ui.result == 'success' &&
-         needs.test_coding_agent_runtime.result == 'success' &&
-         needs.test_coding_agent_native.result == 'success' &&
+         needs.test_coding_agent_buckets.result == 'success' &&
          needs.test_smoke.result == 'success' && needs.check.result == 'success' &&
          needs.install_methods.result == 'success' &&
          needs.install_ps1_e2e.result == 'success' &&
          needs.install_ps1_functions.result == 'success' }}
-      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, native_artifact_lookup]
+      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_buckets, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, native_artifact_lookup]
       strategy:
          fail-fast: false
          matrix:
@@ -1534,7 +1466,7 @@ jobs:
       # casualty would report "release_binary skipped" with no cause attached.
       # scripts/release-train-alert-watches-the-train.test.ts derives this set
       # from the needs graph and fails when a new release job is not added here.
-      needs: [release_metadata, native_artifact_lookup, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows, release_github_publish, release_site_finalize, release_install_verify]
+      needs: [release_metadata, native_artifact_lookup, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_buckets, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows, release_github_publish, release_site_finalize, release_install_verify]
       runs-on: ubuntu-22.04
       permissions:
          contents: read
