@@ -35,11 +35,16 @@ afterEach(() => {
 });
 
 describe("role thinking helper propagation", () => {
+	// Opus 4.5 rather than Sonnet 4.5, because the assertion has to be able to fail:
+	// Sonnet declares `high` and `max` and nothing lower, so a smol role asking for
+	// `minimal` clamps to `high` and matches what dropping the alias suffix entirely
+	// would send. Opus declares `low`/`medium`/`high`, so `low` arriving is `low` and
+	// nothing else.
 	it("passes smol-role thinking to commit message generation", async () => {
-		const model = getModelOrThrow("claude-sonnet-4-5");
+		const model = getModelOrThrow("claude-opus-4-5");
 		const settings = createSettings({
 			default: `${model.provider}/${model.id}:high`,
-			smol: "@default:minimal",
+			smol: "@default:low",
 		});
 		const registry = {
 			getAvailable: () => [model],
@@ -59,7 +64,7 @@ describe("role thinking helper propagation", () => {
 		);
 		expect(message).toBe("fix scope handling");
 		expect(completeSimpleMock.mock.calls[0]?.[2]).toMatchObject({
-			reasoning: Effort.Minimal,
+			reasoning: Effort.Low,
 			maxTokens: 1024,
 		});
 	});
@@ -92,7 +97,7 @@ describe("role thinking helper propagation", () => {
 	});
 
 	it("disables reasoning for title generation even when smol role has thinking", async () => {
-		const model = getModelOrThrow("claude-sonnet-4-5");
+		const model = getModelOrThrow("claude-opus-4-5");
 		const settings = createSettings({
 			default: `${model.provider}/${model.id}:high`,
 			smol: "@default:low",
