@@ -57,24 +57,34 @@ const NOT_A_PROSE_PAGE: readonly RegExp[] = [
 	/-doc\.md$/,
 ];
 
+/**
+ * Every tracked markdown path, listed once.
+ *
+ * Both rules below need this list, and the second one used to ask git for the
+ * whole tracked tree and then throw away everything that is not markdown. With
+ * the handbook's rendered book committed, that is tens of thousands of paths
+ * buffered through a shell for a set of a few hundred, and under a parallel
+ * chunk on a CI runner it was slow enough to trip the suite's 30-second
+ * deadline. One pathspec answers both questions.
+ *
+ * The pathspec is interpolated, not written inline: Bun's `$` expands a bare
+ * `*.md` as a shell glob against the working directory, so git would receive
+ * the ten root-level files and the walk would silently cover a tenth of the
+ * tree. Interpolated values are passed through untouched, which is what git
+ * needs to do the matching itself.
+ */
+const TRACKED_MARKDOWN = (await $`git -C ${REPO_ROOT} ls-files ${"*.md"}`.text())
+	.split("\n")
+	.map(line => line.trim())
+	.filter(line => line.length > 0);
+
 /** Tracked markdown paths that are first-party prose pages outside `docs/`. */
-async function prosePagesOutsideDocs(): Promise<string[]> {
-	// The pathspec is interpolated, not written inline: Bun's `$` expands a bare
-	// `*.md` as a shell glob against the working directory, so git would receive
-	// the ten root-level files and the walk would silently cover a tenth of the
-	// tree. Interpolated values are passed through untouched, which is what git
-	// needs to do the matching itself.
-	const tracked = await $`git -C ${REPO_ROOT} ls-files ${"*.md"}`.text();
-	return tracked
-		.split("\n")
-		.map(line => line.trim())
-		.filter(line => line.length > 0)
-		.filter(file => !NOT_A_PROSE_PAGE.some(pattern => pattern.test(file)))
-		.sort();
+function prosePagesOutsideDocs(): string[] {
+	return TRACKED_MARKDOWN.filter(file => !NOT_A_PROSE_PAGE.some(pattern => pattern.test(file))).sort();
 }
 
 const INDEX = await readFile(path.join(REPO_ROOT, "docs", "README.md"), "utf8");
-const PAGES = await prosePagesOutsideDocs();
+const PAGES = prosePagesOutsideDocs();
 
 /** Repo-relative paths the index links to, resolved from `docs/`. */
 function indexedPaths(): Set<string> {
@@ -143,13 +153,8 @@ describe("first-party prose outside docs/", () => {
 	 * placement that no longer exists, so the next person adding a doc there
 	 * cites a precedent for a file nobody can open.
 	 */
-	it("has no row pointing outside docs/ at a page that is not tracked prose", async () => {
-		const tracked = new Set(
-			(await $`git -C ${REPO_ROOT} ls-files`.text())
-				.split("\n")
-				.map(line => line.trim())
-				.filter(line => line.endsWith(".md")),
-		);
+	it("has no row pointing outside docs/ at a page that is not tracked prose", () => {
+		const tracked = new Set(TRACKED_MARKDOWN);
 		const dangling = [...indexedPaths()]
 			.filter(target => !target.startsWith(`docs${path.sep}`))
 			.filter(target => !tracked.has(target.split(path.sep).join("/")))
