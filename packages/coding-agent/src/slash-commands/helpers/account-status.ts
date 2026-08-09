@@ -26,6 +26,7 @@ import {
 	accountDisplayLabel,
 	accountIdentityDetail,
 	activeSessionAccounts,
+	credentialStateNote,
 	selectedButRotated,
 } from "../../session/account-inventory";
 import { TRUNCATE_LENGTHS } from "../../tools/render-utils";
@@ -220,6 +221,12 @@ export function renderAccountStatus(
 		if (!rotated && row.blockedUntilMs !== undefined && row.blockedUntilMs > now) {
 			const unblocks = formatDurationCoarse(row.blockedUntilMs - now);
 			lines.push(line(DETAIL_INDENT, `rate limited · ${unblocks} until it unblocks`));
+		}
+		// The same sentence the card prints, with this surface's own remedy: a text client has no
+		// `a` key to press. The fact is one owner's, the offer is the surface's.
+		const credential = credentialStateNote(row, now);
+		if (credential) {
+			lines.push(line(DETAIL_INDENT, `${credential} · /providers to sign in again`));
 		}
 		lines.push("");
 	}
