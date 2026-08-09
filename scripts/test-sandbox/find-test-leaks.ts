@@ -31,6 +31,8 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 const TRACER = "packages/utils/test/helpers/global-state-leak-preload.ts";
 /** The tripwire preload every test process gets from `bunfig.toml`. */
 const TRIPWIRE = "packages/utils/test/helpers/real-data-tripwire.ts";
+/** Lines of a failing run's own output the report echoes. Enough for a bun failure block. */
+const FAILURE_TAIL_LINES = 40;
 
 /**
  * Directories never walked, whatever they contain. `fixtures` holds deliberately broken
@@ -91,6 +93,15 @@ export interface FileResult {
 	runnerFailed: boolean;
 	/** Why there is no verdict, when `runnerFailed`. Absent otherwise. */
 	failure?: RunFailure;
+	/**
+	 * The failing run's own output, when `runnerFailed`. Absent otherwise.
+	 *
+	 * Without it the gate names a file and nothing else, and a failure that only
+	 * happens under CI's nesting cannot be read at all: the reader has to guess
+	 * the conditions and try to reproduce them, which is how one red suite cost a
+	 * full CI cycle to identify. The child already produced the answer.
+	 */
+	output?: string;
 }
 
 /**
@@ -187,7 +198,7 @@ export function traceFile(repoRoot: string, file: string): FileResult {
 		file,
 		leaks,
 		runnerFailed,
-		...(runnerFailed ? { failure: classifyRunFailure(output) } : {}),
+		...(runnerFailed ? { failure: classifyRunFailure(output), output } : {}),
 	};
 }
 
@@ -247,6 +258,11 @@ if (import.meta.main) {
 					? `\nloaded, but its own tests failed (no leak verdict): ${result.file}`
 					: `\ncould not load (no leak verdict): ${result.file}`,
 			);
+			// The child's own words, indented so the report stays readable. A tail
+			// rather than everything: a red suite prints every passing test first,
+			// and the reason is always at the end.
+			const tail = (result.output ?? "").trimEnd().split("\n").slice(-FAILURE_TAIL_LINES);
+			for (const line of tail) console.log(`  | ${line}`);
 		}
 	}
 
