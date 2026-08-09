@@ -35,11 +35,10 @@ afterEach(() => {
 });
 
 describe("role thinking helper propagation", () => {
-	// Opus 4.5 rather than Sonnet 4.5, because the assertion has to be able to fail:
-	// Sonnet declares `high` and `max` and nothing lower, so a smol role asking for
-	// `minimal` clamps to `high` and matches what dropping the alias suffix entirely
-	// would send. Opus declares `low`/`medium`/`high`, so `low` arriving is `low` and
-	// nothing else.
+	// Opus 4.5 rather than a budget row, because the assertion has to be able to
+	// fail: `low` must arrive as `low` and nothing else. Opus declares
+	// `low`/`medium`/`high`, so a suffix that never propagated would send the
+	// role's stored `high` and read red instead of matching a clamp.
 	it("passes smol-role thinking to commit message generation", async () => {
 		const model = getModelOrThrow("claude-opus-4-5");
 		const settings = createSettings({
