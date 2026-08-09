@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
-import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
+import { createTools, type Tool } from "@veyyon/coding-agent/tools";
 import { useTempHome } from "../helpers/temp-home";
+import { makeToolSession } from "../helpers/tool-session";
 
 /**
  * A tool's `description` is the only API documentation the model ever reads: it is
@@ -144,7 +145,7 @@ describe("tool descriptions keep their model-visible rules", () => {
 	let byName = new Map<string, Tool>();
 
 	beforeAll(async () => {
-		const session = {
+		const session = makeToolSession({
 			cwd: home(),
 			hasUI: false,
 			getSessionFile: () => null,
@@ -159,7 +160,7 @@ describe("tool descriptions keep their model-visible rules", () => {
 			// fixture enables the opt-in tools rather than letting the default drop
 			// them from `createTools` and leave their contract unverified.
 			settings: Settings.isolated({ "browser.enabled": true, "lsp.enabled": true }),
-		} as unknown as ToolSession;
+		});
 		byName = new Map((await createTools(session)).map(tool => [tool.name, tool]));
 	});
 

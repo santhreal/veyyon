@@ -53,9 +53,38 @@ afterAll(() => {
 	fs.rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
-const parentSkills = [{ name: "parent-skill" }] as unknown as ToolSession["skills"];
-const parentPromptTemplates = [{ name: "parent-template" }] as unknown as ToolSession["promptTemplates"];
-const parentRules = [{ name: "parent-rule" }] as unknown as ToolSession["rules"];
+// Real member shapes, not double casts: these fixtures stand for capabilities the
+// parent already loaded, so they are the types the spawn forwards.
+const parentSkills: ToolSession["skills"] = [
+	{
+		name: "parent-skill",
+		description: "A skill the parent loaded.",
+		filePath: path.join(parentCwd, ".veyyon/skills/parent-skill/SKILL.md"),
+		baseDir: path.join(parentCwd, ".veyyon/skills/parent-skill"),
+		source: "project",
+	},
+];
+const parentPromptTemplates: ToolSession["promptTemplates"] = [
+	{
+		name: "parent-template",
+		description: "A template the parent loaded.",
+		content: "Do the work.",
+		source: "(project)",
+	},
+];
+const parentRules: ToolSession["rules"] = [
+	{
+		name: "parent-rule",
+		path: path.join(parentCwd, ".veyyon/rules/parent-rule.md"),
+		content: "Follow the parent rule.\n",
+		_source: {
+			provider: "project",
+			providerName: "Project",
+			path: path.join(parentCwd, ".veyyon/rules/parent-rule.md"),
+			level: "project",
+		},
+	},
+];
 const parentContextFiles = [{ path: path.join(parentCwd, "AGENTS.md"), content: "# parent rules\n", depth: 0 }];
 
 function makeResult(name: string): SingleResult {

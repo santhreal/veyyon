@@ -485,9 +485,12 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/inspect-image",
 		section: "tool-policy",
-		condition: contains("tools", "inspect_image"),
+		// Both tools it names: the statement is a PREFERENCE between them, so with no
+		// `read` tool it would compare the image tool against something the session
+		// cannot call and read as an instruction to use a tool that is not there.
+		condition: allOf(contains("tools", "inspect_image"), contains("tools", "read")),
 		text: statementToolPolicyInspectImage,
-		purpose: "prefers the image tool over a plain read to spare context, when that tool exists",
+		purpose: "prefers the image tool over a plain read to spare context, when both tools exist",
 	},
 	{
 		id: "tool-policy/specialized-tools",

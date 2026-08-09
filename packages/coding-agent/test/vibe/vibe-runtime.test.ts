@@ -273,9 +273,34 @@ describe("vibe session registry", () => {
 		expect(bare?.rules).toBeUndefined();
 
 		const contextFiles = [{ path: "/tmp/AGENTS.md", content: "# project rules\n", depth: 0 }];
-		const skills = [{ name: "review" }] as unknown as ToolSession["skills"];
-		const promptTemplates = [{ name: "brief" }] as unknown as ToolSession["promptTemplates"];
-		const rules = [{ name: "no-em-dash" }] as unknown as ToolSession["rules"];
+		// Real member shapes, not double casts: what this case proves is that the
+		// parent's loaded capabilities reach the spawn, so the fixtures have to be
+		// the types the spawn would forward.
+		const skills: ToolSession["skills"] = [
+			{
+				name: "review",
+				description: "Review a diff.",
+				filePath: "/tmp/skills/review/SKILL.md",
+				baseDir: "/tmp/skills/review",
+				source: "project",
+			},
+		];
+		const promptTemplates: ToolSession["promptTemplates"] = [
+			{ name: "brief", description: "Brief the reader.", content: "Brief: {{topic}}", source: "(project)" },
+		];
+		const rules: ToolSession["rules"] = [
+			{
+				name: "no-em-dash",
+				path: "/tmp/rules/no-em-dash.md",
+				content: "No em dashes.\n",
+				_source: {
+					provider: "project",
+					providerName: "Project",
+					path: "/tmp/rules/no-em-dash.md",
+					level: "project",
+				},
+			},
+		];
 		const resolvedParent = makeToolSession({
 			cwd: "/tmp",
 			hasUI: false,
@@ -390,8 +415,13 @@ describe("vibe session registry", () => {
 	/**
 	 * Prevents Vibe from drifting from task/eval policy by pinning the exact
 	 * model and effort fields handed to its production executor.
+	 *
+	 * The values come from the ONE place model and effort are set (`subagent.model`
+	 * and `subagent.thinkingLevel`), because the per-agent row that used to carry
+	 * them is retired: it outranked the setting the operator had just changed from
+	 * another screen. The case below this one is the other half of that contract.
 	 */
-	it("forwards canonical per-agent model and effort overrides", async () => {
+	it("forwards canonical model and effort overrides from the one place they are set", async () => {
 		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
 			AgentRegistry.global().register({
 				id: options.id,
@@ -408,9 +438,9 @@ describe("vibe session registry", () => {
 			cwd: "/tmp",
 			hasUI: false,
 			settings: Settings.isolated({
-				"subagent.agents": {
-					sonic: { enabled: true, model: "openai/gpt-5.2-codex", thinkingLevel: "xhigh" },
-				},
+				"subagent.agents": { sonic: { enabled: true } },
+				"subagent.model": "openai/gpt-5.2-codex",
+				"subagent.thinkingLevel": "xhigh",
 			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
@@ -427,6 +457,57 @@ describe("vibe session registry", () => {
 		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["openai/gpt-5.2-codex"]);
 		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.XHigh);
 		expect(spy.mock.calls[0]?.[0]?.parentThinkingLevel).toBeUndefined();
+	});
+
+	/**
+	 * The retired layer, asserted rather than described.
+	 *
+	 * `subagent.agents.<name>.model` and `.thinkingLevel` used to decide here and
+	 * ranked above the blanket settings, so an operator who changed the subagent
+	 * model watched the Agents table win. A leftover row must now decide NOTHING:
+	 * the worker takes the blanket values, and the row governs only whether the
+	 * lane is offered at all. Without this case the retired fields could quietly
+	 * come back and only the spawn path would know.
+	 */
+	it("lets a leftover per-agent model and effort row decide nothing", async () => {
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "idle",
+			});
+			return makeResult(options.id);
+		});
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({
+				// The retired row asks for one model and effort; the blanket settings ask
+				// for another. The blanket pair is what must reach the executor.
+				"subagent.agents": {
+					sonic: { enabled: true, model: "anthropic/claude-retired", thinkingLevel: "minimal" },
+				},
+				"subagent.model": "openai/gpt-5.2-codex",
+				"subagent.thinkingLevel": "xhigh",
+			}),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		const { jobId } = await VibeSessionRegistry.global().spawn(session, {
+			cli: "fast",
+			name: "LeftoverRowVibe",
+			prompt: "Ignore the retired row.",
+		});
+		await manager.getJob(jobId)?.promise;
+
+		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["openai/gpt-5.2-codex"]);
+		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.XHigh);
 	});
 
 	it("spawn returns immediately and self-delivers a turn result with activity trace + response", async () => {
