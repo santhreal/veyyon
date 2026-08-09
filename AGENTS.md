@@ -417,6 +417,19 @@ the per-platform binaries, verifies their SHA-256 sidecars and runtime smoke tes
 then publishes the **GitHub release** and redeploys `veyyon.dev/changelog`. That is
 the whole published surface — see Distribution.
 
+**A per-push cost must buy a per-push answer.** The installer end-to-end jobs
+(`install_methods` on three POSIX runners, `install_ps1_e2e` on Windows) build the
+product from source to prove a release ARTIFACT installs, so they run on pull
+requests and on the release tag, and are skipped on an ordinary push to main where
+nothing publishes. They still gate `release_binary`. The two monitors of the
+release ALREADY out (`install_binary_posix`, `install_ps1_binary`) left `ci.yml`
+entirely and run once a day from `published-release-monitor.yml`, which no push or
+pull request can reach. The reason is measured, not stylistic: one main run spent
+635 minutes of queue wait against 82 minutes of execution, because the account's
+five concurrent macOS slots were being spent four at a time on questions about an
+artifact the commit had not changed. `scripts/install-methods-coverage.test.ts`
+fails if a monitor comes back onto the push path.
+
 ## Distribution — GitHub only (no npm, ever; no cargo yet)
 
 Veyyon ships through **exactly two** channels and no others:

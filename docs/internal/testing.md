@@ -915,12 +915,12 @@ its own gate:
 | Platform | Gate | What it drives |
 |---|---|---|
 | Linux, macOS | `scripts/install-tests/run-ci.sh` (CI job `install_methods`, matrixed over `ubuntu-22.04`, `macos-14` and `macos-15-intel`) | `install.sh --local` end to end: install, reinstall, uninstall, plus the no-clobber rules for a `vey` the user already owns |
-| Linux, macOS, on push to main | `scripts/install-tests/published-release-e2e.sh` (CI job `install_binary_posix`) | `install.sh` with no mode: the release lookup, the download and the `.sha256` check, which is what `curl \| sh` does |
+| Linux, macOS, daily | `scripts/install-tests/published-release-e2e.sh` (job `install_binary_posix` in `published-release-monitor.yml`) | `install.sh` with no mode: the release lookup, the download and the `.sha256` check, which is what `curl \| sh` does |
 | Linux | `scripts/installer-environment-matrix.test.ts` | `install.sh --local` once per shell/XDG combination in `environments.toml` |
 | Linux | `scripts/update-environment-matrix.test.ts` | A real binary swap and completions refresh over each of those same installs |
 | Any | `scripts/posix-shell-portability.test.ts` | The one bash 3.2 incompatibility that only shows up on macOS, linted rather than executed |
 | Windows | `scripts/install-tests/e2e.test.ps1` (CI job `install_ps1_e2e`) | `install.ps1 -Local` end to end: install, reinstall, reinstall over a quoted PATH entry, uninstall |
-| Windows, on push to main | `scripts/install-tests/e2e.test.ps1 -Mode Binary` (CI job `install_ps1_binary`) | The same run against the newest published release, which is the default install |
+| Windows, daily | `scripts/install-tests/e2e.test.ps1 -Mode Binary` (job `install_ps1_binary` in `published-release-monitor.yml`) | The same run against the newest published release, which is the default install |
 | Windows | `scripts/install-tests/functions.test.ps1` (CI job `install_ps1_functions`) | The pure helpers, with nothing installed |
 | Linux, by hand | `scripts/install-tests/stress.sh` | Real downloads in ~44 adversarial environments, in a disposable container |
 
