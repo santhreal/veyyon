@@ -62,28 +62,31 @@ export const APPEARANCE_SETTINGS = {
 
 	// Status line
 	/**
-	 * The composer footline is OPT-IN.
+	 * The composer footline ships ON.
 	 *
-	 * It is a permanent row of standing state under a composer whose entire design is quiet, and
-	 * almost everything on it is either already known (which model, which mode, which directory) or
-	 * available on demand (`/context` for the gauge's own breakdown, `/account`, `/usage`). A row
-	 * that is paid for on every frame for the life of the session, to repeat what the operator just
-	 * chose, is the kind of chrome this composer exists to not have — so it ships off, and an
-	 * operator who wants it turns it on here.
+	 * It shipped off for one release on the argument that everything on it is either already known
+	 * (which model, which mode, which directory) or available on demand through `/context`,
+	 * `/account` and `/usage`. That argument does not survive contact with a session: the row is the
+	 * only standing answer to which directory this window is pointed at, which branch it is on,
+	 * which model and mode are live, and how much context is left, and a long session is exactly
+	 * where "you just chose it" stops being true. Turning it off left an operator opening a second
+	 * window with no way to tell the two apart without typing a command, and the first report of the
+	 * new default read as the binary having broken.
 	 *
-	 * Off does not silence the focus badge: while the view is proxied onto an agent, the footline
-	 * still renders the agent's name and `esc to go back`. See `#composerFootline` in
+	 * Off is still one keystroke away for a composer that should carry nothing, and off does not
+	 * silence the focus badge: while the view is proxied onto an agent, the footline still renders
+	 * the agent's name and `esc to go back`. See `#composerFootline` in
 	 * `modes/interactive-mode.ts` for why that one line is not configurable.
 	 */
 	"statusLine.enabled": {
 		type: "boolean",
-		default: false,
+		default: true,
 		ui: {
 			tab: "appearance",
 			group: "Status Line",
 			label: "Composer Footline",
 			description:
-				"Show the quiet metadata line under the composer (model, mode, path, git, context). Off by default; the agent-focus exit hint still shows while a view is proxied.",
+				"Show the quiet metadata line under the composer (model, mode, path, git, context). Off leaves the composer carrying nothing; the agent-focus exit hint still shows while a view is proxied.",
 		},
 	},
 

@@ -71,8 +71,8 @@ const ADVANCED_COUNT = ALL_ADVANCED_APPEARANCE_PATHS.length;
 // unfold: it is the reduced-motion switch for structural chrome animation, a
 // first-class taste choice like Shimmer, not an experimental toggle.
 // `statusLine.enabled` joined it as the composer footline's master toggle: the
-// footline ships off, so this is the row that turns it on, and a master toggle
-// folded away behind Advanced would strand the feature.
+// row ships on, so this is the one control that quiets it, and a toggle folded
+// away behind Advanced would leave no reachable way to turn the row off.
 const KEPT_APPEARANCE_PATHS = [
 	"statusLine.enabled",
 	"theme.dark",
@@ -340,10 +340,15 @@ describe("settings selector — initial item jump (/statusline)", () => {
 
 	/**
 	 * A jump to a row a condition is hiding falls back to the tab's default rather than selecting
-	 * something invisible. `statusLine.preset` is exactly that row while the footline is off, which
-	 * is why `/statusline` names the toggle instead.
+	 * something invisible. `statusLine.preset` is exactly that row once the footline is turned off,
+	 * which is why `/statusline` names the toggle instead: the toggle is the row that survives both
+	 * states. The footline ships ON, so the condition has to be driven here rather than assumed —
+	 * asserting the fallback against a row the panel is currently showing would pass on a selector
+	 * that ignored conditions altogether.
 	 */
-	it("falls back to the default selection for a row a condition hides", () => {
+	it("falls back to the default selection for a row a condition hides", async () => {
+		await Settings.instance.set("statusLine.enabled", false);
+
 		const comp = createSelector("statusLine.preset");
 		expect(comp.getSelectedSettingId()).toBe("theme.dark");
 	});

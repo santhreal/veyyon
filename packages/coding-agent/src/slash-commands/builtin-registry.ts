@@ -780,11 +780,10 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 	},
 	statusline: {
 		handleTui: (_command, runtime) => {
-			// The footline's master toggle, not the preset. The preset is hidden while
-			// `statusLine.enabled` is off, so opening on it would fall through to the
-			// selector's default row and land the command on Dark Theme; the toggle is
-			// the first row of the same group, so the preset is right underneath it once
-			// the footline is on.
+			// The footline's master toggle, not the preset: the toggle is the first row of the
+			// group and the preset sits directly underneath it, so opening here reaches both,
+			// and it is the row that still exists when the footline has been turned off (the
+			// preset hides with it, and a jump to a hidden row falls through to Dark Theme).
 			runtime.ctx.showSettingsSelector("statusLine.enabled");
 			runtime.ctx.editor.setText("");
 		},
