@@ -22,11 +22,12 @@ export const fuzzDir = path.join(repoRoot, "fuzz");
 /**
  * Where cargo writes build artifacts.
  *
- * Kept off the Santh share on purpose: the share is network-backed, and a
- * sanitizer build writes tens of gigabytes of object files. Honours an existing
- * `CARGO_TARGET_DIR` so CI and other machines can point it wherever they like.
+ * Kept out of the repo tree on purpose: a sanitizer build writes tens of
+ * gigabytes of object files, and the checkout may well sit on a network share.
+ * Honours an existing `CARGO_TARGET_DIR`, so CI and any machine with a fast
+ * local disk can point it wherever they like.
  */
-export const DEFAULT_TARGET_DIR = "/mnt/FlareTraining/santh-archive/cargo-target/veyyon-fuzz";
+export const DEFAULT_TARGET_DIR = path.join(os.homedir(), ".cache", "veyyon", "fuzz-target");
 
 /** Default seconds per target. One minute is a smoke test, not a campaign. */
 export const DEFAULT_SECONDS = 60;

@@ -45,8 +45,9 @@ Other subcommands:
 | `bun scripts/fuzz.ts cmin` | Shrink each corpus to the smallest set with the same coverage. |
 | `bun scripts/fuzz.ts coverage <target>` | Produce a coverage report for one target. |
 
-Build artifacts go to `/mnt/FlareTraining/santh-archive/cargo-target/veyyon-fuzz` by default, off the
-Santh share, because a sanitizer build writes tens of gigabytes. Set `CARGO_TARGET_DIR` to move it.
+Build artifacts go to `~/.cache/veyyon/fuzz-target` by default, outside the checkout, because a
+sanitizer build writes tens of gigabytes and the checkout may sit on a network share. Set
+`CARGO_TARGET_DIR` to move it.
 
 Naming targets builds only those targets. That matters more than it sounds: an unqualified build
 compiles every target, and the ones that link `veyyon-shell` pull the whole vendored uutils tree
