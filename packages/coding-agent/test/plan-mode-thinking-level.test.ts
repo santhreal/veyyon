@@ -1,20 +1,36 @@
 /**
- * Tests for plan mode thinking level propagation.
+ * A role's thinking suffix must reach the caller.
  *
- * Bug: When entering plan mode, the thinking level configured on the plan role
- * (e.g., "anthropic/claude-sonnet-4-5:xhigh") is discarded. resolveRoleModel()
- * calls resolveModelRoleValue() but only returns .model, dropping the thinking level.
- * #applyPlanModeModel() therefore has no thinking level to apply.
+ * `modelRoles.plan: "anthropic/claude-sonnet-4-5:xhigh"` used to resolve through
+ * `resolveModelRoleValue` and then have only `.model` returned, so plan mode had no
+ * level to apply and the operator's suffix did nothing.
+ *
+ * Every level here is DERIVED from what the model declares rather than written in.
+ * A hardcoded `:xhigh` says nothing once the catalog declares `high` and `max` for
+ * this model and nothing else: the clamp answers `high`, the case reads red, and the
+ * contract it was defending is not the thing that changed. The sweep below asks the
+ * round-trip question for every level the model does declare, and one case asks what
+ * happens to a level it does not.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { Agent, ThinkingLevel } from "@veyyon/agent-core";
+import { Agent } from "@veyyon/agent-core";
+import { type Effort, THINKING_EFFORTS } from "@veyyon/catalog/effort";
+import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
+
+const MODEL_ID = "claude-sonnet-4-5";
+const CATALOG_MODEL = getBundledModel("anthropic", MODEL_ID);
+if (!CATALOG_MODEL) throw new Error(`Expected anthropic/${MODEL_ID} in the bundled catalog`);
+const DECLARED_EFFORTS: readonly Effort[] = getSupportedEfforts(CATALOG_MODEL);
+if (DECLARED_EFFORTS.length === 0) throw new Error(`Expected anthropic/${MODEL_ID} to declare thinking efforts`);
+const UNDECLARED_EFFORT = THINKING_EFFORTS.find(effort => !DECLARED_EFFORTS.includes(effort));
 
 describe("plan mode thinking level", () => {
 	let tempDir: TempDir;
@@ -41,12 +57,12 @@ describe("plan mode thinking level", () => {
 	});
 
 	function createSessionWithRoles(modelRoles: Record<string, string>): AgentSession {
-		const sonnet = modelRegistry.find("anthropic", "claude-sonnet-4-5");
-		if (!sonnet) throw new Error("Expected claude-sonnet-4-5 to exist in registry");
+		const model = modelRegistry.find("anthropic", MODEL_ID);
+		if (!model) throw new Error(`Expected ${MODEL_ID} to exist in registry`);
 
 		session = new AgentSession({
 			agent: new Agent({
-				initialState: { model: sonnet, systemPrompt: ["Test"], tools: [], messages: [] },
+				initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
 			}),
 			sessionManager: SessionManager.inMemory(),
 			settings: Settings.isolated({ modelRoles }),
@@ -56,25 +72,30 @@ describe("plan mode thinking level", () => {
 	}
 
 	describe("resolveRoleModelWithThinking", () => {
-		it("returns thinking level when plan role includes a thinking suffix", () => {
-			createSessionWithRoles({ plan: "anthropic/claude-sonnet-4-5:xhigh" });
+		// One case per level the catalog declares for this model, generated from the
+		// declaration. A level added to or removed from the model shows up here as a
+		// case appearing or disappearing rather than as a stale literal.
+		for (const effort of DECLARED_EFFORTS) {
+			it(`carries the plan role's ${effort} suffix through to the caller`, () => {
+				createSessionWithRoles({ plan: `anthropic/${MODEL_ID}:${effort}` });
 
-			const result = session.resolveRoleModelWithThinking("plan");
+				const result = session.resolveRoleModelWithThinking("plan");
 
-			expect(result.model).toBeDefined();
-			expect(result.model!.provider).toBe("anthropic");
-			expect(result.model!.id).toBe("claude-sonnet-4-5");
-			expect(result.thinkingLevel).toBe(ThinkingLevel.XHigh);
-			expect(result.explicitThinkingLevel).toBe(true);
-		});
+				expect(result.model).toBeDefined();
+				expect(result.model!.provider).toBe("anthropic");
+				expect(result.model!.id).toBe(MODEL_ID);
+				expect(result.thinkingLevel).toBe(effort);
+				expect(result.explicitThinkingLevel).toBe(true);
+			});
+		}
 
 		it("returns no explicit thinking level when plan role has no thinking suffix", () => {
-			createSessionWithRoles({ plan: "anthropic/claude-sonnet-4-5" });
+			createSessionWithRoles({ plan: `anthropic/${MODEL_ID}` });
 
 			const result = session.resolveRoleModelWithThinking("plan");
 
 			expect(result.model).toBeDefined();
-			expect(result.model!.id).toBe("claude-sonnet-4-5");
+			expect(result.model!.id).toBe(MODEL_ID);
 			expect(result.explicitThinkingLevel).toBe(false);
 		});
 
@@ -86,30 +107,37 @@ describe("plan mode thinking level", () => {
 			expect(result.model).toBeUndefined();
 		});
 
-		it("returns thinking level for different levels", () => {
-			createSessionWithRoles({ plan: "anthropic/claude-sonnet-4-5:high" });
+		// A suffix the model cannot take is still the operator asking for a level, so it
+		// stays explicit and resolves to one the model declares. Silently reporting no
+		// level at all would put plan mode back on the model's own default.
+		it("resolves a level the model does not declare to one it does, still as explicit", () => {
+			if (!UNDECLARED_EFFORT) throw new Error("Expected a level outside the model's declared set");
+			createSessionWithRoles({ plan: `anthropic/${MODEL_ID}:${UNDECLARED_EFFORT}` });
 
 			const result = session.resolveRoleModelWithThinking("plan");
-			expect(result.thinkingLevel).toBe(ThinkingLevel.High);
+
 			expect(result.explicitThinkingLevel).toBe(true);
+			expect(result.thinkingLevel).not.toBe(UNDECLARED_EFFORT);
+			expect(DECLARED_EFFORTS).toContain(result.thinkingLevel as Effort);
 		});
 
 		it("works with the default role", () => {
-			createSessionWithRoles({ default: "anthropic/claude-sonnet-4-5:medium" });
+			const effort = DECLARED_EFFORTS[0];
+			createSessionWithRoles({ default: `anthropic/${MODEL_ID}:${effort}` });
 
 			const result = session.resolveRoleModelWithThinking("default");
-			expect(result.model!.id).toBe("claude-sonnet-4-5");
-			expect(result.thinkingLevel).toBe(ThinkingLevel.Medium);
+			expect(result.model!.id).toBe(MODEL_ID);
+			expect(result.thinkingLevel).toBe(effort);
 			expect(result.explicitThinkingLevel).toBe(true);
 		});
 
-		it("resolveRoleModel still returns just the model (backward compat)", () => {
-			createSessionWithRoles({ plan: "anthropic/claude-sonnet-4-5:xhigh" });
+		it("resolveRoleModel still returns just the model", () => {
+			createSessionWithRoles({ plan: `anthropic/${MODEL_ID}:${DECLARED_EFFORTS[0]}` });
 
 			const model = session.resolveRoleModel("plan");
 			expect(model).toBeDefined();
 			expect(model!.provider).toBe("anthropic");
-			expect(model!.id).toBe("claude-sonnet-4-5");
+			expect(model!.id).toBe(MODEL_ID);
 		});
 	});
 });
