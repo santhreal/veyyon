@@ -196,6 +196,7 @@ const GATING_PROPS = [
 	"hasLsp",
 	"hasTodo",
 	"hasAstTools",
+	"hasBrowser",
 	"useCodexTaskPrompt",
 ] as const;
 
@@ -318,6 +319,11 @@ describe("system prompt settings parity: tool policy", () => {
 	it(`${asserted("hasAstTools")} toggles the AST section`, async () => {
 		expect(await renderBlock0({ toolNames: ["read", "ast_grep"] })).toContain("# AST");
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("# AST");
+	});
+
+	it(`${asserted("hasBrowser")} toggles the browser verification bullet`, async () => {
+		expect(await renderBlock0({ toolNames: ["read", "browser"] })).toContain("driven with the `browser` tool");
+		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("driven with the `browser` tool");
 	});
 
 	// Foundational-tool bullets: each `{{#has tools "X"}}` gates one line of the
@@ -741,6 +747,7 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	"tools:report_tool_issue": "hasReportToolIssue",
 	"tools:ast_grep": "hasAstTools",
 	"tools:ast_edit": "hasAstTools",
+	"tools:browser": "hasBrowser",
 };
 
 /**

@@ -116,7 +116,10 @@ function panelSession(compactionSettings: CompactionSettings): AgentSession {
 		systemPrompt: ["You are a helpful assistant."],
 		agent: { state: { tools: [] } },
 		skills: [],
-		settings: { getGroup: () => compactionSettings },
+		// `get` as well as `getGroup`: the breakdown reads `inlineToolDescriptors`
+		// to decide whether tool descriptions are pruned from the non-message
+		// total, and a fake without it throws instead of taking the default.
+		settings: { getGroup: () => compactionSettings, get: () => undefined },
 	} as unknown as AgentSession;
 }
 
