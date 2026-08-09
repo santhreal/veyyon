@@ -930,11 +930,13 @@ tui:
 | `symbolPreset` | enum | `unicode` | `unicode`, `nerd`, `ascii`. |
 | `colorBlindMode` | boolean | `false` | Use blue instead of green for diff additions. |
 | `showHardwareCursor` | boolean | `true` | Show the terminal hardware cursor. |
+| `statusLine.enabled` | boolean | `true` | Show the composer footline, the quiet metadata row under the composer (profile, model, account, secrets, mode, path, git, context gauge, MCP boot health, draft token count). Off hides the row and skips the work behind it. |
 | `statusLine.preset` | enum | `default` | `default`, `minimal`, `compact`, `full`, `nerd`, `ascii`, `custom`. |
-| `statusLine.separator` | enum | `pipe` | `powerline`, `powerline-thin`, `slash`, `pipe`, `block`, `none`, `ascii`. |
+| `statusLine.separator` | enum | `pipe` | Retired. It styled the powerline status bar that the composer footline replaced, and the footline joins its segments with a fixed `  ·  ` of its own. The key still loads so an existing config file is accepted, no value changes anything on screen, and it has no settings row. |
 | `statusLine.sessionAccent` | boolean | `true` | Tint the editor border with the session color. |
-| `statusLine.transparent` | boolean | `true` | Use the terminal's own background for the status line instead of the theme's `statusLineBg`. Powerline end caps are dropped while transparent, because they need a contrasting fill to bridge into the surrounding terminal. |
+| `statusLine.transparent` | boolean | `true` | Retired, with `statusLine.separator`. It governed the theme background fill and the powerline end caps of the deleted status bar; the footline paints no background at all. |
 | `statusLine.showHookStatus` | boolean | `true` | Show hook status messages. |
+| `statusLine.showAccount` | boolean | `false` | Name the account serving the next request on the footline, when the active provider stores more than one credential. Off by default; `/account` answers the same question on demand. Hidden while the footline is off. |
 | `terminal.showImages` | boolean | `true` | Render images inline (when the terminal supports it). |
 | `images.autoResize` | boolean | `true` | Resize large images for model compatibility. |
 | `images.blockImages` | boolean | `false` | Never send images to providers. |

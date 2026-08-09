@@ -10,8 +10,9 @@ Configure under **Settings → Appearance → Status Line** (`/statusline` jumps
 | --- | --- |
 | `statusLine.preset` | `default`, `minimal`, `compact`, `full`, `nerd`, `ascii`, or `custom` |
 | `statusLine.leftSegments` / `statusLine.rightSegments` | Segment lists when `preset: custom` |
-| `statusLine.separator` | `powerline`, `pipe`, `slash`, `block`, `none`, `ascii`, … |
-| `statusLine.sessionAccent` | Color the bar from the session accent |
+| `statusLine.enabled` | Show the footline at all (on by default) |
+| `statusLine.showAccount` | Name the account serving the next request, when the provider stores more than one (off by default) |
+| `statusLine.sessionAccent` | Tint the editor border with the session color |
 | `statusLine.showHookStatus` | Show active hook status when hooks run |
 
 Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `secrets`, `mode`, `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
