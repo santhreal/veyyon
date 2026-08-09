@@ -281,18 +281,37 @@ describe("ci.yml concurrency", () => {
 	// that made a subject string load-bearing. Here the subject is inert.
 	it("the version-bump commit is an ordinary main push, not a release run", () => {
 		const ctx = baseCtx({ event: { head_commit: { message: `${RELEASE_SUBJECT}\n\nbody` } } });
-		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-refs/heads/main");
+		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-main-deadbeefcafebabe");
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
 	});
 
-	it("regular main push: branch-wide group, queued not cancelled (release-train starvation guard)", () => {
+	// THE HAZARD THE PER-SHA MAIN GROUP CREATES, and the reason the two prefixes
+	// differ. A cut pushes the bump commit to main and then pushes the tag at THAT
+	// SAME SHA. Keyed on the sha alone the two runs would share one group with
+	// cancellation off, so the publishing run would sit behind the run that tested
+	// it, or take its place. That is #2564 again by a different route.
+	it("a tag and the main push at the same sha are different groups", () => {
+		const sha = "deadbeefcafebabe";
+		const mainPush = baseCtx({ sha });
+		const tagPush = baseCtx({ ref: "refs/tags/v15.12.6", sha });
+		expect(GhaEval.template(groupTemplate, mainPush)).not.toBe(GhaEval.template(groupTemplate, tagPush));
+	});
+
+	it("each main push gets its own group, so no run queues behind another (release-train starvation guard)", () => {
 		// 2026-07-24: six consecutive main CI runs were cancelled by successor
 		// pushes (bot traffic every ~2 minutes), so no run ever completed and no
-		// commit on main was ever green enough to tag. With cancellation off, the
-		// queue never grows beyond one and the tip still gets tested.
-		const ctx = baseCtx({ event: { head_commit: { message: "fix(ux): theme tweak" } } });
-		expect(GhaEval.template(groupTemplate, ctx)).toBe("CI-refs/heads/main");
-		expect(GhaEval.template(cancelTemplate, ctx)).toBe("false");
+		// commit on main was ever green enough to tag. Turning cancellation off was
+		// the first answer, and it moved the failure rather than removing it: one
+		// shared group holds ONE pending run, and 2026-08-09 read four cancelled,
+		// two stuck queued for over an hour, one failure and zero successes across
+		// the last twenty-five main runs. Two pushes at different shas are two
+		// different questions, so they get different groups and are answered in
+		// parallel; what they wait on is a runner, and that queue drains.
+		const first = baseCtx({ sha: "aaaa1111", event: { head_commit: { message: "fix(ux): theme tweak" } } });
+		const second = baseCtx({ sha: "bbbb2222", event: { head_commit: { message: "fix(ux): another" } } });
+		expect(GhaEval.template(groupTemplate, first)).toBe("CI-main-aaaa1111");
+		expect(GhaEval.template(groupTemplate, second)).toBe("CI-main-bbbb2222");
+		expect(GhaEval.template(cancelTemplate, first)).toBe("false");
 	});
 
 	it("push to a non-main branch keeps cancel-on-newer-push (feedback latency wins there)", () => {
@@ -357,10 +376,10 @@ describe("sibling workflow concurrency stays in release lockstep with ci.yml", (
 			expect(GhaEval.template(cancel, ctx)).toBe("false");
 		});
 
-		it(`${name}.yml: ordinary main push queues in the branch-wide group without cancellation`, async () => {
+		it(`${name}.yml: an ordinary main push gets its own per-sha group`, async () => {
 			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
 			const ctx = baseCtx({ event: { head_commit: { message: "fix(ux): theme tweak" } } });
-			expect(GhaEval.template(group, ctx)).toBe(`${name}-refs/heads/main`);
+			expect(GhaEval.template(group, ctx)).toBe(`${name}-main-deadbeefcafebabe`);
 			expect(GhaEval.template(cancel, ctx)).toBe("false");
 		});
 

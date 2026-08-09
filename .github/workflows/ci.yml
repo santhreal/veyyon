@@ -16,11 +16,23 @@ on:
 
 # A tag run publishes, and a later main push must never cancel it: sharing the
 # branch-wide `CI-refs/heads/main` group once cancelled an in-flight release and
-# left the tag without a GitHub Release (#2564). Tag runs get a per-sha group
-# with no cancellation; every other event keeps branch-wide cancellation for
-# PR/main churn.
+# left the tag without a GitHub Release (#2564).
+#
+# Every push to main now gets its own per-sha group too, for the same reason one
+# step further out. A single shared main group holds ONE pending run, so on a
+# repository pushing to main several times an hour the runs do not queue politely:
+# 2026-08-09 read four cancelled, two stuck queued for over an hour, one failure
+# and zero successes across the last twenty-five main runs, which is a release
+# train that can never depart because no commit on main is ever green. Runs at
+# distinct shas are independent questions and now answer in parallel; what they
+# compete for is runners, and a runner queue drains while a cancelled run does
+# not. A tag and its bump commit share a sha, so the tag keeps a DIFFERENT prefix
+# and cannot land in the same group as the main run that tested it.
+#
+# Pull requests and other branches keep branch-wide cancellation, which is where
+# superseding a run is the right answer.
 concurrency:
-   group: "${{ github.workflow }}-${{ startsWith(github.ref, 'refs/tags/v') && format('release-{0}', github.sha) || github.ref }}"
+   group: "${{ github.workflow }}-${{ startsWith(github.ref, 'refs/tags/v') && format('release-{0}', github.sha) || (github.ref == 'refs/heads/main' && format('main-{0}', github.sha) || github.ref) }}"
    cancel-in-progress: "${{ !(startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}"
 
 env:

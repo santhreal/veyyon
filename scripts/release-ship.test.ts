@@ -166,12 +166,10 @@ describe("checkVerdict", () => {
 
 /**
  * WHY. A red verdict has two causes that look identical in a run list and want
- * opposite responses. A failing suite means fix main. A CANCELLED run means a
- * push landed on main while the cut was waiting, GitHub gave the pending slot to
- * the newer push, and the release commit was never judged: nothing is broken and
- * the run needs re-running. Printing "fix main" for that sends the operator to
- * look for a defect that does not exist, which is how a recoverable cut turns
- * into a hand-tagged release.
+ * opposite responses. A failing suite means fix main. A CANCELLED run means the
+ * release commit was never judged: nothing is broken and the run needs re-running.
+ * Printing "fix main" for that sends the operator to look for a defect that does
+ * not exist, which is how a recoverable cut turns into a hand-tagged release.
  *
  * What this does NOT catch: whether the run ids printed are re-runnable. A run
  * from a deleted workflow file cannot be re-run and this still offers it.
@@ -181,7 +179,7 @@ describe("failureAdvice", () => {
 		const advice = failureAdvice([done("CI", "cancelled"), done("Checks", "cancelled")], "v9.9.9").join("\n");
 		expect(advice).toContain("CANCELLED");
 		expect(advice).toContain("gh run rerun");
-		expect(advice).toContain("Do not push to main until the cut finishes");
+		expect(advice).toContain("no defect to look for");
 		expect(advice).not.toContain("Fix main");
 	});
 

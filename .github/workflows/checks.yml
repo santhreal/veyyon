@@ -16,7 +16,7 @@ on:
 # detection expression ci.yml owns. GitHub cannot share concurrency expressions
 # across workflow files, so keep the checks/docs copies aligned with ci.yml.
 concurrency:
-  group: "checks-${{ startsWith(github.ref, 'refs/tags/v') && format('release-{0}', github.sha) || github.ref }}"
+  group: "checks-${{ startsWith(github.ref, 'refs/tags/v') && format('release-{0}', github.sha) || (github.ref == 'refs/heads/main' && format('main-{0}', github.sha) || github.ref) }}"
   cancel-in-progress: "${{ !(startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}"
 
 permissions:
