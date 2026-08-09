@@ -341,7 +341,13 @@ export async function getLatestRelease(timeoutMs: number = RELEASE_METADATA_TIME
 			method: "HEAD",
 			redirect: "manual",
 			headers: { "User-Agent": GITHUB_USER_AGENT },
-			signal: new AbortController().signal,
+			// The deadline the caller asked for. This was `new AbortController().signal`: a
+			// signal nothing ever aborts, so `timeoutMs` reached the error message and nothing
+			// else, and a connection that accepts and then stalls hung this call forever. That
+			// is the one thing this function documents it must never do, and it is on the
+			// startup path, so a captive portal or a black-holed route froze the launch rather
+			// than falling back to "could not check".
+			signal: withTimeoutSignal(timeoutMs),
 		});
 	} catch (err) {
 		if (isTimeoutError(err)) {
