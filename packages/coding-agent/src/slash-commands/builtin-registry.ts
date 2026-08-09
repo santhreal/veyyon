@@ -416,7 +416,7 @@ async function refreshActiveAccounts(session: AgentSession): Promise<string> {
 	const before = await loadAccountInventory(authStorage, { sessionId: session.sessionId });
 	const routed = activeSessionAccounts(before);
 	if (routed.length === 0) {
-		return "No provider has routed a request in this session yet, so there is nothing to re-probe.";
+		return "No provider has routed a request in this session yet, so there is nothing to re-probe. /providers to probe a stored account.";
 	}
 	const after = applyCredentialHealth(before, await authStorage.checkCredentials());
 	const lines = ["Re-probed the accounts this session is using"];
@@ -442,6 +442,10 @@ async function refreshActiveAccounts(session: AgentSession): Promise<string> {
  * A refused write is reported as a refusal, on the WARNING channel. `setAccountName` returns false
  * when the credential is unknown or the store keeps no names at all (the remote broker), and
  * reporting a save there would leave the user believing a name exists that nothing reads back.
+ *
+ * Only a row that has ACTUALLY routed is a target. A persisted card choice is not: it survives
+ * every restart and every profile, so falling back to it would silently name an account this
+ * session never spent, on the strength of a decision made in some other session.
  */
 async function renameActiveAccount(session: AgentSession, text: string): Promise<{ ok: boolean; message: string }> {
 	const provider = session.model?.provider;
@@ -449,8 +453,10 @@ async function renameActiveAccount(session: AgentSession, text: string): Promise
 		return { ok: false, message: "No model is active, so no account is routed. Pick one with /model first." };
 	}
 	const inventory = await loadAccountInventory(session.modelRegistry.authStorage, { sessionId: session.sessionId });
-	const rows = accountsForProvider(inventory, provider);
-	const row = rows.find(entry => entry.activeForSession) ?? rows.find(entry => entry.selectedForProvider);
+	// Through the routed-accounts owner, not a second hand-rolled predicate: `activeForSession`
+	// alone is true for a PREDICTED row too, so finding it here named an account this session had
+	// never spent, on a provider whose traffic had not started.
+	const row = activeSessionAccounts(inventory).find(entry => entry.provider === provider);
 	if (!row) {
 		return {
 			ok: false,
