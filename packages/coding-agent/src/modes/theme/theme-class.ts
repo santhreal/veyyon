@@ -661,19 +661,35 @@ export class Theme {
 	}
 
 	/**
-	 * Get language icon for a language name.
-	 * Maps common language names to their corresponding symbol keys.
+	 * The badge for a language, or the empty string when the preset has none.
+	 *
+	 * AN EMPTY GLYPH IS AN ANSWER, not a hole to patch. This used to resurrect a blank
+	 * per-language glyph as `lang.default`, so the unicode preset — where every language is
+	 * deliberately blank — badged every file in the product with `⌘`, the Command mark, and
+	 * an Edit header read `⌘ packages/tui/src/box.ts`. The same mark on every row carries no
+	 * information and costs two columns of a header that truncates its path to fit.
+	 *
+	 * Callers therefore have to cope with `""` by omitting the separator they would have put
+	 * after it, which is the one thing the fallback was hiding.
 	 */
 	getLangIcon(lang: string | undefined): string {
-		const fallback = this.#symbols["lang.default"];
-		if (!lang) return fallback;
+		if (!lang) return this.#symbols["lang.default"];
 		const key = langMap[lang.toLowerCase()];
-		const icon = key ? this.#symbols[key] : fallback;
-		// A known language whose preset glyph is empty (the unicode preset leaves
-		// most langs blank, intending the default mark) must still render a visible
-		// badge — otherwise the file icon disappears. Fall back to `lang.default`.
-		// No-op for the nerd/ascii presets, whose per-lang glyphs are non-empty.
-		return icon || fallback;
+		return key ? this.#symbols[key] : this.#symbols["lang.default"];
+	}
+
+	/**
+	 * The muted language badge AND the space after it, or `""` when the preset has none.
+	 *
+	 * Every header that puts a badge before a path wants exactly this, and each one used to
+	 * build it itself as `${icon} ${path}`. With a preset that has no glyph for the language
+	 * that leaves a leading space before the path, so the fix for the universal `⌘` badge
+	 * would have traded one cosmetic defect for another on four surfaces. The separator
+	 * belongs to the badge.
+	 */
+	langBadge(lang: string | undefined): string {
+		const icon = this.getLangIcon(lang);
+		return icon ? `${this.fg("muted", icon)} ` : "";
 	}
 
 	/**

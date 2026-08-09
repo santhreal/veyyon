@@ -283,8 +283,7 @@ function renderHover(
 
 function formatDiagnosticLocation(file: string, line: string | number, col: string | number, theme: Theme): string {
 	const lang = getLanguageFromPath(file);
-	const icon = theme.fg("muted", theme.getLangIcon(lang));
-	return `${icon} ${file}:${line}:${col}`;
+	return `${theme.langBadge(lang)}${file}:${line}:${col}`;
 }
 
 /**

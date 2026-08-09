@@ -296,11 +296,10 @@ function formatEditDescription(
 	options?: EditPathDisplayOptions,
 ): { language: string; description: string; pathWidth: number } {
 	const language = getLanguageFromPath(rawPath) ?? "text";
-	const icon = uiTheme.fg("muted", uiTheme.getLangIcon(language));
 	const pathDisplay = formatEditPathDisplay(rawPath, uiTheme, options);
 	return {
 		language,
-		description: `${icon} ${pathDisplay.text}`,
+		description: `${uiTheme.langBadge(language)}${pathDisplay.text}`,
 		pathWidth: pathDisplay.pathWidth,
 	};
 }

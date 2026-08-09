@@ -435,8 +435,20 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"md.colorSwatch": "■",
 	// Advisor note rail (heavier than md.quoteBorder so notes read as a distinct voice)
 	"advisor.rail": "▎",
-	// Language/file icons (emoji-centric, no Nerd Font required)
-	"lang.default": "⌘",
+	// Language/file icons. EVERY ONE IS EMPTY, AND THAT IS THE VALUE.
+	//
+	// There is no Nerd Font here, and the honest set of one-cell glyphs that read as
+	// "TypeScript" or "Dockerfile" in a plain monospace font is the empty set. What shipped
+	// instead was `lang.default: "⌘"` with every language blank and a fallback in
+	// {@link Theme.getLangIcon} that turned blank into the default: so every file in the
+	// product wore the Command glyph, and `Edit: ⌘ packages/tui/src/box.ts` badged a
+	// TypeScript file with a mark that means "unknown kind". A badge identical on every row
+	// distinguishes nothing, and it cost two columns of a header whose path is already
+	// truncated to fit.
+	//
+	// The path carries the fact. `nerd` has devicons and `ascii` has per-language
+	// abbreviations, so both still badge; this preset does not.
+	"lang.default": "",
 	"lang.typescript": "",
 	"lang.javascript": "",
 	"lang.python": "",
@@ -463,7 +475,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"lang.text": "",
 	"lang.env": "",
 	"lang.toml": "",
-	"lang.xml": "⟨⟩",
+	"lang.xml": "",
 	"lang.ini": "",
 	"lang.conf": "",
 	"lang.log": "",
