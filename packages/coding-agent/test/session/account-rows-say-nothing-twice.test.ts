@@ -34,6 +34,7 @@ function row(overrides: Partial<AccountRow> = {}): AccountRow {
 		type: "oauth",
 		usage: [],
 		activeForSession: false,
+		activeIsPrediction: false,
 		selectedForProvider: false,
 		...overrides,
 	};

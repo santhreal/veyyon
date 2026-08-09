@@ -1061,6 +1061,32 @@ export class SecretObfuscator {
 	}
 
 	/**
+	 * What is spendable HERE, RIGHT NOW: how many placeholders would expand, and when the first of
+	 * them stops.
+	 *
+	 * A surface that reports "3 secrets" has to be counting the same thing the tool boundary
+	 * expands, or it becomes the least trustworthy thing on the screen: a count read off the vault
+	 * file names credentials scoped to another directory, and a count read off the configuration
+	 * names ones this process already retired. Both are answered by {@link #deobfuscateMap}, after
+	 * the expiry sweep, which is exactly the set {@link knowsPlaceholder} answers from.
+	 *
+	 * COUNTED BY VALUE, not by placeholder, because a value that carries a readable name and an
+	 * opaque alias is one credential the operator stored once and would otherwise be reported
+	 * twice. `nextExpiryAt` is absent when nothing expires, which is the ordinary shape for
+	 * `secrets.yml` and environment entries.
+	 */
+	liveSecrets(): { count: number; nextExpiryAt: number | undefined } {
+		if (!this.#hasAny) return { count: 0, nextExpiryAt: undefined };
+		this.#forgetExpired();
+		const values = new Set<string>();
+		for (const value of this.#deobfuscateMap.values()) values.add(value);
+		return {
+			count: values.size,
+			nextExpiryAt: Number.isFinite(this.#nextExpiryAt) ? this.#nextExpiryAt : undefined,
+		};
+	}
+
+	/**
 	 * Names of every secret currently protected under a name placeholder, sorted.
 	 *
 	 * Exists so a caller can reconcile against the vault: whatever is here and no longer live

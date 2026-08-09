@@ -16,6 +16,7 @@ import {
 import { PRIORITY_TIER_LABEL } from "../../../config/service-tier";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
+import { describeMsLeft } from "../../../secrets/vault";
 import { normalizeApprovalMode } from "../../../tools/approval";
 import { AUTONOMY_LABEL } from "../../../tools/approval-modes";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
@@ -34,6 +35,16 @@ export type { SegmentContext } from "./types";
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * How close a secret's deadline has to be before the secrets chip prints it.
+ *
+ * One hour. Inside it the operator can still finish what the credential is for, or extend it with
+ * `e` in the card, which is the whole reason to say anything; outside it the deadline is a fact
+ * about next week and belongs in the card's EXPIRES column. A chip that always shows a countdown is
+ * a chip nobody reads by the time the countdown means something.
+ */
+const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
 
 /** Left-truncate a path/label to `maxLen`, prefixing an ellipsis when clipped. */
 function clampPathLength(pwd: string, maxLen: number): string {
@@ -769,7 +780,9 @@ const profileSegment: StatusLineSegment = {
  * or it runs out, and a quota that drains has to drain somewhere the reader can see.
  *
  * Prefixed `as ` so it cannot be read as the profile chip or the session name, which are also bare
- * words on this line.
+ * words on this line. Before the session's first request the prefix is `next `, because routing can
+ * only say which account WOULD serve: the reader can tell an account that is spending from one that
+ * is merely selected, and the chip flips to `as ` the moment a request confirms it.
  */
 const accountSegment: StatusLineSegment = {
 	id: "account",
@@ -778,7 +791,45 @@ const accountSegment: StatusLineSegment = {
 		if (!account || account.storedCount < 2) return { content: "", visible: false };
 		const label = truncateToWidth(sanitizeStatusText(account.label), TRUNCATE_LENGTHS.CHIP);
 		if (!label) return { content: "", visible: false };
-		return { content: theme.fg("muted", `as ${label}`), visible: true };
+		const prefix = account.isPrediction ? "next" : "as";
+		return { content: theme.fg("muted", `${prefix} ${label}`), visible: true };
+	},
+};
+
+/**
+ * That a credential is live HERE, and when the first of them stops being live.
+ *
+ * NOTHING OUTSIDE THE CARD SAID A SECRET EXISTED. A vault is per directory and expansion is per
+ * placeholder, so the two questions an operator has while typing are whether `#GITHUB_TOKEN#` will
+ * turn into anything in THIS session and whether it still will in an hour, and both were answerable
+ * only by opening `/secret`. The consequence was not confusion but pasted plaintext: a credential
+ * typed into the composer because the reader had no reason to believe a placeholder was live.
+ *
+ * COUNTED FROM THE EXPANSION AUTHORITY, never from the vault file. `SecretObfuscator.liveSecrets`
+ * answers with the set the tool boundary would actually substitute from, so a credential scoped to
+ * another directory, one this process retired, and one that expired ten minutes ago are all absent
+ * from the count. A chip that overstates what will expand is worse than no chip, because the
+ * operator plans around it.
+ *
+ * Silent when nothing is live, on the same terms as the account chip: a user with no vault pays
+ * nothing for it, and the decluttered footline stays quiet.
+ *
+ * The deadline is shown only once it is CLOSE, within {@link SECRET_EXPIRY_CHIP_WINDOW_MS}. A
+ * credential with six days left is not news, and printing `6d left` on every frame trains the
+ * reader to ignore the field that matters at forty minutes.
+ */
+const secretsSegment: StatusLineSegment = {
+	id: "secrets",
+	render(ctx) {
+		const live = ctx.session.obfuscator?.liveSecrets();
+		if (!live || live.count === 0) return { content: "", visible: false };
+		const body = theme.fg("muted", `${live.count} ${live.count === 1 ? "secret" : "secrets"}`);
+		const left = live.nextExpiryAt === undefined ? undefined : live.nextExpiryAt - Date.now();
+		if (left === undefined || left > SECRET_EXPIRY_CHIP_WINDOW_MS) return { content: body, visible: true };
+		// The parentheses carry the body's colour and the phrase inside carries the warning, so the
+		// deadline is the only thing on the chip that changes weight when it starts to matter.
+		const deadline = `${theme.fg("muted", "(")}${theme.fg("warning", describeMsLeft(left))}${theme.fg("muted", ")")}`;
+		return { content: `${body} ${deadline}`, visible: true };
 	},
 };
 
@@ -923,6 +974,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	pi: piSegment,
 	model: modelSegment,
 	account: accountSegment,
+	secrets: secretsSegment,
 	mode: modeSegment,
 	path: pathSegment,
 	git: gitSegment,

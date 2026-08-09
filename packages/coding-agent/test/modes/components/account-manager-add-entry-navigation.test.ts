@@ -36,6 +36,7 @@ function account(credentialId: number, name: string): AccountRow {
 		origin: { kind: "oauth" },
 		usage: [],
 		activeForSession: false,
+		activeIsPrediction: false,
 		selectedForProvider: false,
 		name,
 	};

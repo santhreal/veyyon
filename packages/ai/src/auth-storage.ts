@@ -200,8 +200,27 @@ export interface SessionCredentialRouting {
 	 * Absent when they never chose.
 	 */
 	selectedCredentialId?: number;
-	/** Credential the next request will use. Equals the pin unless the pin is unusable. */
+	/**
+	 * Credential the next request will use: the pin while it is usable, else the one that last
+	 * served, else the selection this storage would make if the request went out now.
+	 *
+	 * Absent only when the provider holds no credential at all. It used to be absent whenever
+	 * nothing had been spent yet, so a fresh session with three accounts had NOTHING that answered
+	 * which one the next request goes to: the card showed three rows, none tagged, and the operator
+	 * had to send a request to find out.
+	 */
 	activeCredentialId?: number;
+	/**
+	 * True when {@link activeCredentialId} is a PREDICTION rather than an observation.
+	 *
+	 * Set when no pin and no last-used record decided it, so the answer came from replaying the
+	 * selection the next request would make. Surfaces must say which they are showing: "serving"
+	 * describes traffic that has already gone somewhere, and claiming it before the first request
+	 * of a session is a guess wearing the clothes of a fact. The prediction covers stickiness and
+	 * rate-limit ordering, which are deterministic; a provider with an async usage-ranking strategy
+	 * can still land elsewhere, and that is the honest reason the two are distinguished.
+	 */
+	activeIsPrediction?: boolean;
 	/** Epoch ms the chosen credential becomes usable again, when it is rate-limit blocked. */
 	selectedBlockedUntilMs?: number;
 }
@@ -2539,8 +2558,67 @@ export class AuthStorage {
 				return routing;
 			}
 		}
+		// A sticky record is an OBSERVATION and outranks a prediction, but only while the credential
+		// it names can still serve: a blocked one answers "where your traffic went", not "where the
+		// next request goes", and those are different questions on a card that only asks the second.
+		if (sticky && stickyEntry && this.#credentialUsableNow(provider, stickyEntry, sticky.index)) {
+			routing.activeCredentialId = stickyEntry.id;
+			return routing;
+		}
+		const predicted = this.#predictNextCredentialId(provider, sessionId);
+		if (predicted !== undefined) {
+			routing.activeCredentialId = predicted;
+			routing.activeIsPrediction = true;
+			return routing;
+		}
+		// The cascade recognised no credential type here, which leaves the last-used one as the only
+		// account with any claim on the next request, blocked or not.
 		if (stickyEntry) routing.activeCredentialId = stickyEntry.id;
 		return routing;
+	}
+
+	/** Whether one stored credential is free of a live rate-limit block right now. */
+	#credentialUsableNow(provider: string, entry: StoredCredential, index: number): boolean {
+		const providerKey = this.#getProviderTypeKey(provider, entry.credential.type);
+		return this.credentialBlockedUntil(provider, providerKey, index) === undefined;
+	}
+
+	/**
+	 * Which credential the next request for this provider would pick, WITHOUT moving anything.
+	 *
+	 * PURE BY CONSTRUCTION, and that is the whole difficulty. The real selector reaches
+	 * `#getCredentialOrder`, which calls `#getNextRoundRobinIndex` for a sessionless caller and
+	 * ADVANCES the stored cursor as it answers. Predicting through it would mean that merely
+	 * looking at the account list, or rendering a status chip on a repaint, moved the next request
+	 * onto a different account: a display that changes the thing it reports. This reproduces the
+	 * same arithmetic and stores nothing, so a hundred renders predict the same account and the
+	 * request that eventually goes out is the one that advances the cursor.
+	 *
+	 * Covers the deterministic half of selection: the credential-type cascade (a login before a
+	 * stored key, as `#resolveProviderApiKey` does it), session stickiness, and rate-limit ordering
+	 * through {@link #orderByBlockAvailability}. It does NOT run an async usage-ranking strategy or
+	 * a refresh, so a provider that ranks by remaining quota can still land elsewhere. Callers mark
+	 * the answer as a prediction for exactly that reason.
+	 */
+	#predictNextCredentialId(provider: string, sessionId: string | undefined): number | undefined {
+		const stored = this.#getStoredCredentials(provider);
+		if (stored.length === 0) return undefined;
+		for (const type of ["oauth", "api_key"] as const) {
+			const candidates = stored
+				.map((entry, index) => ({ entry, index }))
+				.filter(candidate => candidate.entry.credential.type === type);
+			if (candidates.length === 0) continue;
+			const providerKey = this.#getProviderTypeKey(provider, type);
+			const start = sessionId
+				? this.#getHashedIndex(sessionId, candidates.length)
+				: (((this.#providerRoundRobinIndex.get(providerKey) ?? -1) + 1) % candidates.length + candidates.length) %
+					candidates.length;
+			const rotated = candidates.map((_, offset) => candidates[(start + offset) % candidates.length]!);
+			const ordered = this.#orderByBlockAvailability(provider, providerKey, rotated);
+			const chosen = ordered[0];
+			if (chosen) return chosen.entry.id;
+		}
+		return undefined;
 	}
 
 	/**

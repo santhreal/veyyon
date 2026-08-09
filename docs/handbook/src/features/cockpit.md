@@ -14,7 +14,7 @@ Configure under **Settings → Appearance → Status Line** (`/statusline` jumps
 | `statusLine.sessionAccent` | Color the bar from the session accent |
 | `statusLine.showHookStatus` | Show active hook status when hooks run |
 
-Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `mode`, `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
+Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `secrets`, `mode`, `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
 
 The `model` segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:
 
@@ -40,6 +40,13 @@ A rebase detaches HEAD, so without the suffix the segment could only say `detach
 The `pr` segment is skipped while any of these operations is in progress. A branch being rebased does not yet point where it is going to end up, so a pull request looked up against it would describe a state that is about to be replaced.
 
 The `profile` segment shows the active profile name (`work`, `rec`, a client sandbox), so you always know which profile's config, sessions, and keys are live. It hides itself on the built-in `default` profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.
+
+The `secrets` segment says a stored credential is live where you are working: `2 secrets`. It counts
+what would actually expand at the tool boundary in this directory, not what is in the vault file, so
+a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
+live, so a session with no vault shows nothing. When the soonest deadline is under an hour it appends
+the time left in the warning color, `2 secrets (34m left)`, which is the window in which extending it
+with `e` in `/secret` still helps; a deadline further out belongs to the card's EXPIRES column.
 
 The `context_pct` segment answers one question: how much room is left before the context runs out. "Runs out" means whichever comes first, auto-compaction firing or the model's window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what `context_total` prints.
 

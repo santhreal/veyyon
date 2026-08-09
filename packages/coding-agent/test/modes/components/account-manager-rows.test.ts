@@ -34,6 +34,7 @@ function account(provider: string, credentialId: number, overrides: Partial<Acco
 		type: "oauth",
 		usage: [],
 		activeForSession: false,
+		activeIsPrediction: false,
 		selectedForProvider: false,
 		...overrides,
 	};

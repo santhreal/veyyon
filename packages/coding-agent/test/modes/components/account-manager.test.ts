@@ -32,6 +32,7 @@ function account(credentialId: number, overrides: Partial<AccountRow> = {}): Acc
 		origin: { kind: "oauth" },
 		usage: [],
 		activeForSession: false,
+		activeIsPrediction: false,
 		selectedForProvider: false,
 		...overrides,
 	};

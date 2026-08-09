@@ -923,6 +923,13 @@ export class InteractiveMode implements InteractiveModeContext {
 				void this.openGoalDetail();
 				return;
 			}
+			// The chip says a credential is live here; the card is the only place to see WHICH, extend
+			// one whose deadline the chip just started counting down, or correct a value. A reader who
+			// notices the chip should not have to remember a command name to act on it.
+			if (segmentId === "secrets") {
+				this.showSecretManager();
+				return;
+			}
 			if (segmentId === "context_pct" || segmentId === "context_total") {
 				this.handleContextCommand();
 			}
@@ -1003,13 +1010,13 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
-	 * The composer's footline row, or null when the operator has not asked for one.
+	 * The composer's footline row: standing session state, or just the focus badge when the operator
+	 * has turned the row off.
 	 *
-	 * `statusLine.enabled` ships OFF (see its entry in `config/settings-domains/appearance.ts`), so
-	 * the default composer is hairline, input, shortcuts — nothing standing. Read per render rather
-	 * than captured at construction: settings live in memory, so toggling the row in `/settings`
-	 * lands on the next frame with no re-mount, and the reads behind the row (git state, usage,
-	 * account inventory) never happen at all while it is off.
+	 * `statusLine.enabled` ships ON (see its entry in `config/settings-domains/appearance.ts`). Read
+	 * per render rather than captured at construction: settings live in memory, so toggling the row
+	 * in `/settings` lands on the next frame with no re-mount, and the reads behind the row (git
+	 * state, usage, account inventory) never happen at all while it is off.
 	 *
 	 * The one part that is not configurable is the focus badge. While the view is proxied onto an
 	 * agent, Esc means "go back" instead of "clear the line", and the badge is the only persistent

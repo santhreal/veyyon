@@ -18,7 +18,9 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 		// names the serving account the moment there are two. Load balancing is off by default, so
 		// one of those accounts is being spent and the others are not; which one that is cannot be
 		// something you have to open a card to find out.
-		leftSegments: ["profile", "model", "account", "mode", "path", "git", "context_pct"],
+		// `secrets` sits beside it on identical terms: silent unless a credential is live in THIS
+		// directory, and the one place outside the card that says a placeholder will expand at all.
+		leftSegments: ["profile", "model", "account", "secrets", "mode", "path", "git", "context_pct"],
 		rightSegments: ["session_name"],
 		segmentOptions: {
 			model: { showThinkingLevel: true },
@@ -28,7 +30,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	minimal: {
-		leftSegments: ["profile", "account", "path", "git"],
+		leftSegments: ["profile", "account", "secrets", "path", "git"],
 		rightSegments: ["session_name", "mode", "context_pct"],
 		segmentOptions: {
 			path: { abbreviate: true, maxLength: 30 },
@@ -37,7 +39,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	compact: {
-		leftSegments: ["profile", "model", "account", "mode", "git", "pr"],
+		leftSegments: ["profile", "model", "account", "secrets", "mode", "git", "pr"],
 		rightSegments: ["session_name", "cost", "context_pct"],
 		segmentOptions: {
 			model: { showThinkingLevel: false },
@@ -46,7 +48,19 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	},
 
 	full: {
-		leftSegments: ["pi", "hostname", "profile", "model", "account", "mode", "path", "git", "pr", "subagents"],
+		leftSegments: [
+			"pi",
+			"hostname",
+			"profile",
+			"model",
+			"account",
+			"secrets",
+			"mode",
+			"path",
+			"git",
+			"pr",
+			"subagents",
+		],
 		rightSegments: [
 			"session_name",
 			"cache_hit",
@@ -75,6 +89,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 			"profile",
 			"model",
 			"account",
+			"secrets",
 			"mode",
 			"path",
 			"git",
@@ -105,7 +120,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	ascii: {
 		// No Nerd Font dependencies
-		leftSegments: ["profile", "model", "account", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "model", "account", "secrets", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		segmentOptions: {
 			model: { showThinkingLevel: true },
@@ -116,7 +131,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 
 	custom: {
 		// User-defined - these are just defaults that get overridden
-		leftSegments: ["profile", "model", "account", "mode", "path", "git", "pr"],
+		leftSegments: ["profile", "model", "account", "secrets", "mode", "path", "git", "pr"],
 		rightSegments: ["session_name", "token_total", "cost", "context_pct"],
 		segmentOptions: {},
 	},

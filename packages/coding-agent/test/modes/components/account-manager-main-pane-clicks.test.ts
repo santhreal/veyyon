@@ -33,6 +33,7 @@ function account(credentialId: number, name: string, extra: Partial<AccountRow> 
 		origin: { kind: "oauth" },
 		usage: [],
 		activeForSession: false,
+		activeIsPrediction: false,
 		selectedForProvider: false,
 		name,
 		...extra,
