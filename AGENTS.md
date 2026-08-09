@@ -394,8 +394,15 @@ Two public workflows run in `.github/workflows/`. Both gate changes and releases
 ### `checks.yml` — the fast public gate (every push to `main` + every PR)
 
 Runs on GitHub-hosted runners and validates workspace type checking and linting,
+Rust formatting and clippy, secret scanning of the commits the change adds,
 changelog coherence, changed-suite global-state isolation, and the TypeScript test
 suite.
+
+The Rust gate lives HERE and nowhere else. `cargo fmt --all -- --check` answers in
+seconds, and it used to run only inside `ci.yml`'s native matrix, behind an
+artifact lookup, a toolchain install and a runner queue: a rewrapped doc comment
+turned main red about 70 minutes into a run and skipped all seven TypeScript test
+jobs behind it. Do not add a second copy to a native job.
 
 To keep it green before you push: run `bun run check` and the relevant test bucket
 locally. Never weaken a test to pass (Laws 6 & 9).

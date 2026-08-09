@@ -16,7 +16,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { checkVerdict, REQUIRED_WORKFLOWS, type RunSummary, runsForSha } from "./release-ship";
+import { checkVerdict, failureAdvice, REQUIRED_WORKFLOWS, type RunSummary, runsForSha } from "./release-ship";
 
 /** Run ids ascend in construction order, so a later-built run is the newer one. */
 let nextRunId = 1;
@@ -161,6 +161,54 @@ describe("checkVerdict", () => {
 			expect(checkVerdict([ci, stale, fresh])).toEqual({ state: "green" });
 			expect(checkVerdict([ci, fresh, done("Checks", "cancelled", older)]).state).toBe("failed");
 		});
+	});
+});
+
+/**
+ * WHY. A red verdict has two causes that look identical in a run list and want
+ * opposite responses. A failing suite means fix main. A CANCELLED run means a
+ * push landed on main while the cut was waiting, GitHub gave the pending slot to
+ * the newer push, and the release commit was never judged: nothing is broken and
+ * the run needs re-running. Printing "fix main" for that sends the operator to
+ * look for a defect that does not exist, which is how a recoverable cut turns
+ * into a hand-tagged release.
+ *
+ * What this does NOT catch: whether the run ids printed are re-runnable. A run
+ * from a deleted workflow file cannot be re-run and this still offers it.
+ */
+describe("failureAdvice", () => {
+	it("offers a re-run, and never says fix main, when every failure is a cancellation", () => {
+		const advice = failureAdvice([done("CI", "cancelled"), done("Checks", "cancelled")], "v9.9.9").join("\n");
+		expect(advice).toContain("CANCELLED");
+		expect(advice).toContain("gh run rerun");
+		expect(advice).toContain("Do not push to main until the cut finishes");
+		expect(advice).not.toContain("Fix main");
+	});
+
+	it("names each cancelled run's id, so the re-run does not have to be looked up", () => {
+		const ci = done("CI", "cancelled");
+		const checks = done("Checks", "cancelled");
+		const advice = failureAdvice([ci, checks], "v9.9.9").join("\n");
+		expect(advice).toContain(`gh run rerun ${ci.databaseId}`);
+		expect(advice).toContain(`gh run rerun ${checks.databaseId}`);
+	});
+
+	it("says fix main when a cancellation sits beside a real failure", () => {
+		const advice = failureAdvice([done("CI", "cancelled"), done("Checks", "failure")], "v9.9.9").join("\n");
+		expect(advice).toContain("Fix main");
+		expect(advice).not.toContain("gh run rerun");
+	});
+
+	it("says fix main for a plain failure", () => {
+		const advice = failureAdvice([done("Checks", "timed_out")], "v9.9.9").join("\n");
+		expect(advice).toContain("Fix main");
+	});
+
+	/** Both branches end at the same place: the commit is on main and still tag-able. */
+	it("always ends with the tag command for this version", () => {
+		for (const failures of [[done("CI", "cancelled")], [done("CI", "failure")]]) {
+			expect(failureAdvice(failures, "v9.9.9").join("\n")).toContain("git tag v9.9.9 && git push origin v9.9.9");
+		}
 	});
 });
 

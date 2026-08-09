@@ -85,6 +85,48 @@ jobs:
       - name: Format check and clippy
         run: bun run check:rs
 
+  secrets:
+    name: Secret scan
+    # This repository is public, so "no real credential in the tree or its
+    # history" has to be a gate rather than an audit someone remembers to run.
+    # The answer today came from a hand scan of 2053 commits, and a hand scan
+    # tells you about the past: several releases a day is exactly the cadence at
+    # which one paste goes out before anybody looks again.
+    #
+    # Scoped to the commits this push or PR ADDS. The full history is already
+    # clean and rescanning it every push would only pay for that fact again,
+    # while the range is the question that can still change. `.gitleaks.toml`
+    # carries the allowlist and says what each entry gives up; a base that is
+    # unavailable (a first push, a force push, a manual dispatch) falls back to
+    # the whole history rather than to scanning nothing.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Full history: the base commit below has to be reachable, and the
+          # fallback scan needs every commit.
+          fetch-depth: 0
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.0
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+      - name: Scan the commits this change adds
+        env:
+          SCAN_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SCAN_BASE}" ] || [ "${SCAN_BASE}" = "0000000000000000000000000000000000000000" ]; then
+            echo "No usable base commit; scanning the whole history."
+            gitleaks git . --redact --no-banner
+          else
+            echo "Scanning ${SCAN_BASE}..HEAD"
+            gitleaks git . --redact --no-banner --log-opts "${SCAN_BASE}..HEAD"
+          fi
+
   changelog:
     name: Changelog entry
     # Gate BOTH PRs and direct pushes to main. This repo lands changes directly
