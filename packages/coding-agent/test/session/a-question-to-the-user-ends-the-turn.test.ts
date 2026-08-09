@@ -109,7 +109,13 @@ describe("a reply that asks the user something ends the turn", () => {
 		const ROUTES_ALLOWED_TO_OVERRIDE_A_QUESTION: SettleContinuationRoute[] = [];
 
 		it("enumerates every guard that can re-wake the agent at settle", () => {
-			expect(routes).toEqual(["rewind-checkpoint", "plan-mode-decision", "todo-reminder", "verification-evidence"]);
+			expect(routes).toEqual([
+				"rewind-checkpoint",
+				"plan-mode-decision",
+				"todo-reminder",
+				"verification-evidence",
+				"unexpected-stop-retry",
+			]);
 		});
 
 		it("holds every route while the reply is waiting on the user", () => {
