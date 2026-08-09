@@ -30,10 +30,6 @@ inputs:
          cross-arch linux build, or set alone for a host-arch (x64) linux build.
       required: false
       default: ""
-   rust_checks:
-      description: Run clippy/rustfmt checks (only one matrix entry should set this)
-      required: false
-      default: "false"
    save_cache:
       description: Whether Swatinem/rust-cache should write a cache entry
       required: false
@@ -86,7 +82,7 @@ runs:
         uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-07-24
         with:
            toolchain: nightly-2026-04-29
-           components: ${{ inputs.rust_checks == 'true' && 'clippy, rustfmt' || '' }}
+           components: ""
            targets: ${{ steps.resolve.outputs.bare_target }}
       - name: Install Linux build prerequisites
         if: runner.os == 'Linux'
@@ -229,11 +225,15 @@ runs:
         shell: bash
         run: echo "XWIN_ACCEPT_LICENSE=1" >> "$GITHUB_ENV"
 
-      # --- Checks, build, upload (shared) -------------------------------------
-      - name: Rust checks
-        if: inputs.rust_checks == 'true'
-        shell: bash
-        run: bun run check:rs
+      # --- Build and upload (shared) ------------------------------------------
+      # `check:rs` used to run here, on the one matrix entry that set
+      # `rust_checks`. That put the repo's cheapest gate at the end of its
+      # slowest path: a `cargo fmt` diff was reported roughly 70 minutes into a
+      # CI run, after an artifact lookup, a toolchain install, an apt update and
+      # a runner queue, and it failed the job every TypeScript test bucket needs.
+      # Rust format and clippy now run as their own job in checks.yml, which
+      # gates every push and PR to main before a native build starts. A native
+      # job builds.
       - name: Test workspace (Rust)
         # macOS has no `#[cfg(target_os = "macos")]` tests in the workspace, and
         # Windows-only tests are no longer exercised in CI (win32-x64 cross-builds
