@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Refuse to push a commit that does not typecheck.
+# Refuse to push a commit that does not typecheck, or whose root changelog is
+# a stale render of the package changelogs.
 #
 # Why this exists: main has gone red from a pushed commit four separate times,
 # every one of them a TypeScript error that `bun run check:ts` reports in well
@@ -108,12 +109,25 @@ for sha in $shas; do
 	fi
 	link_node_modules "$checkout"
 
-	echo "pre-push: typechecking $short (bypass: git push --no-verify)" >&2
+	echo "pre-push: checking $short (bypass: git push --no-verify)" >&2
 	if ! (cd "$checkout" && bun run check:ts); then
 		echo >&2
 		echo "pre-push: REFUSED. Commit $short does not typecheck, and pushing it turns" >&2
 		echo "          every open PR red against a broken base, not just this branch." >&2
 		echo "          Fix the errors above, or bypass with: git push --no-verify" >&2
+		exit 1
+	fi
+
+	# The root CHANGELOG.md is a render of every packages/*/CHANGELOG.md, so adding a
+	# bullet to a package without regenerating it leaves the two out of sync. CI catches
+	# it (checks.yml, `Changelog entry`), which costs a full run to learn something this
+	# comparison answers in under a second and which nothing else in the push reveals.
+	# It reads no history, so it works on a first push of a new branch too.
+	if ! (cd "$checkout" && bun run changelog:root:check); then
+		echo >&2
+		echo "pre-push: REFUSED. Commit $short carries a root CHANGELOG.md that is not a" >&2
+		echo "          fresh render of the package changelogs." >&2
+		echo "          Run: bun scripts/sync-root-changelog.ts, then commit CHANGELOG.md" >&2
 		exit 1
 	fi
 	cleanup
