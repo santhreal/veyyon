@@ -283,6 +283,7 @@ export const repoScriptTests = [
 	"scripts/bun-install-action.test.ts",
 	"scripts/ensure-rust-toolchain-action.test.ts",
 	"scripts/native-artifact-lookup.test.ts",
+	"scripts/workflow-source-codegen.test.ts",
 	"scripts/ci-release-notes.test.ts",
 	"scripts/ci-release-build-binaries.test.ts",
 	"scripts/release-version.test.ts",
