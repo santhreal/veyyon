@@ -364,13 +364,22 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 	const settings = simulationSettings(options.settings);
 	const sessionManager = SessionManager.inMemory(tempDir.path());
 
+	// The session keeps its own registry of every tool it can run, and several
+	// production paths ask it rather than the agent state: plan-mode convergence
+	// refuses to force a decision unless `ask` and `resolve` are both registered,
+	// and a renamed tool is resolved through it. A simulation whose registry was
+	// empty could not reach those paths at all, so the same list the agent gets is
+	// registered here, keyed by name exactly as production does.
+	const tools = options.tools ?? [];
+	const toolRegistry = new Map(tools.map(tool => [tool.name, tool]));
+
 	const baseStreamFn = createSettingsAwareStreamFn(settings);
 	const agent = new Agent({
 		getApiKey: () => "simulation-key",
 		initialState: {
 			model: simulatedModel(options.modelId, options.model),
 			systemPrompt: ["Simulation"],
-			tools: options.tools ?? [],
+			tools,
 			messages: [],
 		},
 		convertToLlm,
@@ -384,6 +393,7 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 		sessionManager,
 		settings,
 		modelRegistry,
+		toolRegistry,
 		...(options.ttsrManager ? { ttsrManager: options.ttsrManager } : {}),
 	});
 	const events: AgentSessionEvent[] = [];

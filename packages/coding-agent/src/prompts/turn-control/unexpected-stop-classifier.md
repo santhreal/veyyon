@@ -4,12 +4,12 @@ Examples of unexpected stops:
 - "I should do the same for the JS eval worker. Doing that now."
 - "Let me run the tests next."
 - "I'll fix that now."
-- "Should I do that for you?"
 
 Not an unexpected stop:
 - "I've completed the task."
 - "Is there anything else I can help with?"
 - "The fix is done and tests pass."
+- "Should I do that for you?" (a direct question to the user is not an abandoned turn: the turn is over until they answer, whatever it was about to do next)
 
 {{#if message}}
 Message:

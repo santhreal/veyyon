@@ -2,21 +2,30 @@
  * Who may re-wake the agent after it settles, and when it must not.
  *
  * A turn that ends with a question to the user is finished: the next thing that
- * should happen is the user typing. Four different guards in the `agent_end`
+ * should happen is the user typing. Five different guards in the `agent_end`
  * tail can schedule an autonomous continuation instead (an active checkpoint
  * demanding a rewind, plan mode demanding an `ask`/`resolve`, an unfinished
- * todo board, missing verification evidence), and each one used to decide the
- * question on its own. Only the todo reminder ever looked, so whether a reply
- * that ended in a question was answered by the user or immediately overwritten
- * by another agent turn depended on which of the four happened to be armed.
- * That is the "reinvoked randomly, not consistent" behaviour: the trigger is
- * hidden state, not anything the user did.
+ * todo board, missing verification evidence, and a classifier that read the
+ * reply as a turn the model abandoned mid-thought), and each one used to decide
+ * the question on its own. Only the todo reminder ever looked, so whether a
+ * reply that ended in a question was answered by the user or immediately
+ * overwritten by another agent turn depended on which of the five happened to
+ * be armed. That is the "reinvoked randomly, not consistent" behaviour: the
+ * trigger is hidden state, not anything the user did.
  *
  * So the decision has one owner. The tail computes "is this reply waiting on the
  * user" ONCE, and every route consults {@link mayContinueAtSettle} with its own
  * id. A route that is added later cannot compile without a row in
  * {@link SETTLE_CONTINUATION_POLICY}, which is the point: the next guard has to
  * state its answer instead of inheriting whatever the default happened to be.
+ *
+ * ONE settle continuation is deliberately not a route here, and the exemption is
+ * structural rather than a judgement call: the empty-stop retry fires only on an
+ * assistant turn with no tool call and no non-whitespace text at all, so there
+ * is no sentence in it that could be a question, and `awaitingUserAnswer` reads
+ * false for it by construction. Its continuation is also history repair (a
+ * `toolUse` stop carrying no `tool_use` block corrupts the next Anthropic
+ * request) rather than a nudge that can wait for anyone.
  */
 import type { AssistantMessage } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
@@ -26,7 +35,8 @@ export type SettleContinuationRoute =
 	| "rewind-checkpoint"
 	| "plan-mode-decision"
 	| "todo-reminder"
-	| "verification-evidence";
+	| "verification-evidence"
+	| "unexpected-stop-retry";
 
 interface SettleContinuationRule {
 	/**
@@ -57,6 +67,10 @@ export const SETTLE_CONTINUATION_POLICY: Record<SettleContinuationRoute, SettleC
 	"verification-evidence": {
 		holdsForUserAnswer: true,
 		why: "The mutation is already recorded in the ledger, so the reminder is still owed after the user replies. It must be checked BEFORE the ledger is drained, or the deferral spends the one reminder it was holding.",
+	},
+	"unexpected-stop-retry": {
+		holdsForUserAnswer: true,
+		why: "A reply that asks the user something is the hardest case the unexpected-stop classifier is asked to judge, and the shape it answers YES on most readily: a question about what to do next reads exactly like a turn that announced an action and stopped short of it. The retry budget is unspent by the deferral, so a genuinely abandoned turn still gets its nudge at the next settle. The gate is checked BEFORE the classifier runs, so a question also costs no classifier call.",
 	},
 };
 
