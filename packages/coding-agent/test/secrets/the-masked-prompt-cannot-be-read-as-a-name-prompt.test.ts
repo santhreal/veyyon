@@ -14,11 +14,11 @@
  * such as `AKIAIOSFODNN7EXAMPLE` is uppercase, underscore-free, and indistinguishable from a name.
  *
  * THE GRAMMAR IS NOW THE PRIMARY DEFENCE, and the wording is the second. In a terminal there is no
- * `add` verb and no leading name to mistype a credential into: the argument line IS the value,
- * `manager` is the only reserved word, and the name is asked afterwards where declining it costs
+ * leading name to mistype a credential into: the argument line IS the value unless its first word
+ * is one of the management verbs, and the name is asked afterwards where declining it costs
  * nothing. So the suite asserts three separable things, because any one alone would let the bug
  * back:
- *   1. the terminal grammar reads the whole line as a credential and reserves nothing else,
+ *   1. the terminal grammar reads the whole line as a credential and reserves nothing but the verbs,
  *   2. the wording of the masked field cannot be read as a request for a name, and
  *   3. whatever the operator actually types or pastes is the exact byte sequence stored.
  */
@@ -164,7 +164,7 @@ function type(text: string): Drive {
 }
 
 /**
- * The terminal grammar: the argument line is the credential, and only `manager` is reserved.
+ * The terminal grammar: the argument line is the credential, and only the verbs are reserved.
  *
  * This is the layer that makes the original bug unreachable rather than merely discouraged. There
  * is no longer a position in the command where a name is expected, so a pasted token cannot land
