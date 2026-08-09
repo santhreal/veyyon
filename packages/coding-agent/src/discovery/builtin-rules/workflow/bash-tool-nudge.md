@@ -1,5 +1,5 @@
 ---
-description: "Suggest built-in grep/glob tools when a bash command starts with grep/rg/find"
+description: "Suggest built-in grep/glob tools when grep/rg/find opens any command in a bash call"
 condition: "(?:^|\\n|&&|\\|\\||;|\\()\\s*(?:grep|rg|ripgrep|ag|ack|find|fd)(?![^\\n;&|]*<<)\\s+"
 scope: "tool:bash"
 interruptMode: never

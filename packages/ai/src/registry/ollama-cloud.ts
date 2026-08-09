@@ -18,6 +18,7 @@ export async function loginOllamaCloud(options: OAuthController): Promise<string
 	const apiKey = await options.onPrompt({
 		message: "Paste your Ollama Cloud API key",
 		placeholder: "ollama-cloud-api-key",
+		secret: true,
 	});
 	if (options.signal?.aborted) {
 		throw new AIError.LoginCancelledError();

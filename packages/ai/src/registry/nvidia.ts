@@ -21,6 +21,7 @@ export async function loginNvidia(options: OAuthController): Promise<string> {
 	const apiKey = await options.onPrompt({
 		message: "Paste your NVIDIA API key",
 		placeholder: "nvapi-...",
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

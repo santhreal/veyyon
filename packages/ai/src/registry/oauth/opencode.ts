@@ -35,6 +35,7 @@ export async function loginOpenCode(options: OAuthController): Promise<string> {
 	const apiKey = await options.onPrompt({
 		message: "Paste your OpenCode Zen API key",
 		placeholder: "sk-...",
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

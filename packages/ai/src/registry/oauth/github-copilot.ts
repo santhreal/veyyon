@@ -27,7 +27,12 @@ const SLOW_DOWN_POLL_INTERVAL_MULTIPLIER = 1.4;
 
 type GitHubCopilotLoginOptions = {
 	onAuth: (url: string, instructions?: string) => void;
-	onPrompt: (prompt: { message: string; placeholder?: string; allowEmpty?: boolean }) => Promise<string>;
+	onPrompt: (prompt: {
+		message: string;
+		placeholder?: string;
+		allowEmpty?: boolean;
+		secret?: boolean;
+	}) => Promise<string>;
 	onProgress?: (message: string) => void;
 	onSuccessPage?: (url: string) => void;
 	signal?: AbortSignal;
@@ -308,6 +313,8 @@ export async function loginGitHubCopilot(options: GitHubCopilotLoginOptions): Pr
 		message: "GitHub Enterprise URL/domain (blank for github.com)",
 		placeholder: "company.ghe.com",
 		allowEmpty: true,
+		// A hostname, not a credential, and it is rejected for a typo you have to be able to see.
+		secret: false,
 	});
 
 	if (options.signal?.aborted) {

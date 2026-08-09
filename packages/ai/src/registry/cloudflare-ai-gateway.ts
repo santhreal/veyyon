@@ -24,6 +24,7 @@ export async function loginCloudflareAiGateway(options: OAuthController): Promis
 	const apiKey = await options.onPrompt({
 		message: "Paste your Cloudflare AI Gateway token/API key",
 		placeholder: "cf-aig-...",
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

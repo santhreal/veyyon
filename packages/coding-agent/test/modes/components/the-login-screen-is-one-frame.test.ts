@@ -123,12 +123,27 @@ describe("the login screen is one frame", () => {
 		await expect(answer).resolves.toBe("gsk_LIVE_secret_0123456789");
 	});
 
-	it("leaves a non-credential answer readable", () => {
+	/**
+	 * ABSENT MEANS MASKED, and this is the case that used to say the opposite. A login flow asks for
+	 * credentials far more often than for configuration, and seventeen of the prompts that ask you to
+	 * paste a key said nothing at all, so reading silence as "safe to echo" put those keys on screen.
+	 * Silence now masks, and a flow that wants a readable field says so.
+	 */
+	it("masks an answer no flow said anything about", () => {
 		const { dialog, rows } = makeDialog();
-		void dialog.showPrompt({ message: "Enter the code shown in your browser" });
-		dialog.pasteText("WDJB-MJHT");
+		void dialog.showPrompt({ message: "Paste your Groq API key" });
+		dialog.pasteText("gsk_UNDECLARED_0123456789");
 
-		expect(rowsWith(rows(), "WDJB-MJHT")).toBe(1);
+		expect(rowsWith(rows(), "gsk_UNDECLARED_0123456789")).toBe(0);
+		expect(rowsWith(rows(), "•")).toBe(1);
+	});
+
+	it("leaves a field the flow declared readable", () => {
+		const { dialog, rows } = makeDialog();
+		void dialog.showPrompt({ message: "GitHub Enterprise URL/domain (blank for github.com)", secret: false });
+		dialog.pasteText("company.ghe.com");
+
+		expect(rowsWith(rows(), "company.ghe.com")).toBe(1);
 	});
 
 	it("draws one authorization block however many times the flow reports it", () => {

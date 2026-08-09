@@ -15,15 +15,18 @@
  * fill in health and usage without blocking, and it is what lets tests assert exact rows
  * against fixed inputs with no probes running.
  */
-import {
-	type AuthStorage,
-	type CredentialHealthResult,
-	type CredentialOrigin,
-	type CredentialOriginKind,
-	OAUTH_REFRESH_FAILURE_DISABLE_PREFIX,
-	type UsageLimit,
-	type UsageReport,
+// The barrel would add the streaming engine and every transport for one constant, so the
+// disable-cause prefix comes from the module that declares it and the rest are types, erased.
+
+import type {
+	AuthStorage,
+	CredentialHealthResult,
+	CredentialOrigin,
+	CredentialOriginKind,
+	UsageLimit,
+	UsageReport,
 } from "@veyyon/ai";
+import { OAUTH_REFRESH_FAILURE_DISABLE_PREFIX } from "@veyyon/ai/auth-credential-rows";
 import { limitMatchesActiveAccount } from "../slash-commands/helpers/active-oauth-account";
 import { formatDurationCoarse, formatProviderName } from "../slash-commands/helpers/format";
 

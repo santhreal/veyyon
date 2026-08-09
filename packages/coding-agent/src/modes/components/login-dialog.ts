@@ -194,7 +194,8 @@ export class LoginDialogComponent extends Container {
 		return this.#ask({
 			message: prompt.message,
 			...(prompt.placeholder ? { placeholder: prompt.placeholder } : {}),
-			secret: prompt.secret === true,
+			// Absent means masked: a flow that wants a readable field says so.
+			secret: prompt.secret !== false,
 			footer: "Enter  submit    Esc  cancel",
 		});
 	}

@@ -138,12 +138,83 @@ describe("SignInTab", () => {
 
 			expect(focusTarget).toBeDefined();
 			focusTarget?.pasteText("code-from-terminal-paste");
-			expect(Bun.stripANSI(tab.render(80).join("\n"))).toContain("> code-from-terminal-paste");
+			// The field takes the paste and masks it: an authorization code is exchangeable for tokens,
+			// and onboarding is exactly where someone is watching the screen.
+			const drawn = Bun.stripANSI(tab.render(80).join("\n"));
+			expect(drawn).not.toContain("code-from-terminal-paste");
+			expect(drawn).toContain(`> ${"•".repeat("code-from-terminal-paste".length)}`);
 
 			focusTarget?.handleInput?.("\x03");
 			expect(skipSetup).toHaveBeenCalledTimes(1);
 			expect(finish).not.toHaveBeenCalled();
 			expect(submittedCodes).toEqual([]);
+		} finally {
+			tab.dispose();
+			await Promise.resolve();
+		}
+	});
+
+	/**
+	 * ABSENT MEANS MASKED, on the onboarding surface too.
+	 *
+	 * WHY BOTH SURFACES. The wizard builds its own prompt field rather than reusing the login dialog,
+	 * so it reads the same flag through different code, and it was the surface where a pasted key was
+	 * drawn in clear text with a stranger's onboarding recording running. A flow that says nothing is
+	 * asking for a credential far more often than not, so silence masks here as well, and only a flow
+	 * that declares `secret: false` gets a readable field.
+	 */
+	it.each([
+		["says nothing about the answer", undefined, false],
+		["declares a credential", true, false],
+		["declares a readable field", false, true],
+	])("masks the onboarding field when the flow %s", async (_label, secret, expectReadable) => {
+		const promptShown = Promise.withResolvers<void>();
+		let focusTarget: (Component & { pasteText(text: string): void }) | undefined;
+		const typed = "sk-live-onboarding-0123456789";
+
+		const authStorage = {
+			has: (_providerId: string) => false,
+			hasAuth: (_providerId: string) => false,
+			getCredentialOrigin: (_providerId: string) => undefined,
+			async login(_provider: OAuthProviderId, ctrl: OAuthLoginCallbacks): Promise<void> {
+				const answered = ctrl.onPrompt({
+					message: "Paste your Anthropic API key",
+					...(secret === undefined ? {} : { secret }),
+				});
+				promptShown.resolve();
+				await answered;
+			},
+		} as unknown as AuthStorage;
+
+		const host = {
+			ctx: {
+				openInBrowser(): void {},
+				session: {
+					modelRegistry: {
+						authStorage,
+						async refresh(): Promise<void> {},
+					},
+				},
+			},
+			requestRender(): void {},
+			finish(): void {},
+			skipSetup(): void {},
+			setFocus(component: Component | null): void {
+				focusTarget = (component as (Component & { pasteText(text: string): void }) | null) ?? undefined;
+			},
+			restoreFocus(): void {},
+		} as unknown as SetupSceneHost;
+
+		const tab = new SignInTab(host);
+		try {
+			for (const char of "anthropic") tab.handleInput(char);
+			tab.handleInput("\n");
+			await promptShown.promise;
+
+			focusTarget?.pasteText(typed);
+			const drawn = Bun.stripANSI(tab.render(80).join("\n"));
+			expect(drawn.includes(typed)).toBe(expectReadable);
+			expect(drawn.includes("•".repeat(typed.length))).toBe(!expectReadable);
 		} finally {
 			tab.dispose();
 			await Promise.resolve();

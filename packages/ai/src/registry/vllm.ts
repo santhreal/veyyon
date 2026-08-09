@@ -19,6 +19,7 @@ export async function loginVllm(options: OAuthController): Promise<string> {
 		message: "Paste your vLLM API key (optional for local no-auth)",
 		placeholder: DEFAULT_LOCAL_TOKEN,
 		allowEmpty: true,
+		secret: true,
 	});
 	if (options.signal?.aborted) {
 		throw new AIError.LoginCancelledError();
