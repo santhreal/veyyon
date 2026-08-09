@@ -100,7 +100,15 @@ describe("license preservation", () => {
 				offenders.push({ name: manifest.name, license: manifest.license });
 			}
 		}
-		expect(paths).toHaveLength(20);
+		// Non-vacuity without a magic count. A hardcoded 20 broke the moment a
+		// twenty-first package landed, and the number never described anything a
+		// reader could check: what matters is that the scan reached the root manifest
+		// and the packages the grant has to cover, so adding a package cannot silently
+		// exempt it and cannot fail this test either.
+		expect(paths).toContain("package.json");
+		for (const owner of ["packages/coding-agent", "packages/tui", "packages/argot", "packages/hashline"]) {
+			expect(paths).toContain(`${owner}/package.json`);
+		}
 		expect(offenders).toEqual([]);
 	});
 

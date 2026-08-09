@@ -8,12 +8,17 @@ const EMPTY_TREE = { rendered: "", truncated: false, totalLines: 0, agentsMdFile
 
 /** The unconditional half of the ruling: it must hold with or without context files. */
 const USER_INSTRUCTION_AUTHORITY = "The user's instructions in this conversation have ABSOLUTE authority.";
-/** The conditional half: the three-scope ladder, which only means something when files are loaded. */
-const PROJECT_IS_LOWEST =
-	"3. The PROJECT's files, from the repository you are working in. LOWEST authority of the three.";
-const PROJECT_MAY_NOT_CONTRADICT = "It MAY NOT contradict them, loosen them, or forbid something they allow.";
-/** The closing reprise, in the highest-recency slot of the context block. */
-const CLOSING_REPRISE = "do what the user asked and say which";
+/**
+ * The conditional half: the precedence ladder, which only means something when files are
+ * loaded. It ships as one sentence in `prompts/session/context-file-authority.md`; the
+ * three numbered lines and the separate "MAY NOT contradict" sentence this file used to
+ * quote are gone, and a test quoting prose the prompt no longer carries asserts an
+ * architecture rather than a contract.
+ */
+const CONTEXT_PRECEDENCE =
+	"Context file precedence (broadest to narrowest): 1. User home config, 2. Profile config, 3. Project files.";
+/** The ruling inside the same sentence: narrower never wins. */
+const PROJECT_NEVER_OVERRIDES = "project rules NEVER override home or user instructions.";
 
 /** The two sentences that produced the operator's refusal. Neither may come back. */
 const REFUSAL_CAUSE_AUTHORITY = "later and deeper files override earlier and broader files";
@@ -100,9 +105,11 @@ describe("context-file authority", () => {
 
 		// PROSE: and it says so, in words, in the same prompt.
 		expect(prompt).toContain(USER_INSTRUCTION_AUTHORITY);
-		expect(prompt).toContain(PROJECT_IS_LOWEST);
-		expect(prompt).toContain(PROJECT_MAY_NOT_CONTRADICT);
-		expect(prompt.lastIndexOf(CLOSING_REPRISE)).toBeGreaterThan(globalAt);
+		expect(prompt).toContain(CONTEXT_PRECEDENCE);
+		expect(prompt).toContain(PROJECT_NEVER_OVERRIDES);
+		// Recency is carried by the render ORDER, asserted above: the operator's own file
+		// occupies the last slot. The authority statement is stated once, before the files,
+		// so there is no closing reprise after them to measure.
 
 		// The exact wording that produced the refusal, in both places it lived.
 		expect(prompt).not.toContain(REFUSAL_CAUSE_AUTHORITY);
@@ -140,7 +147,7 @@ describe("context-file authority", () => {
 		]);
 
 		for (const prompt of [defaultPrompt, customPrompt]) {
-			const ladderAt = prompt.indexOf(PROJECT_IS_LOWEST);
+			const ladderAt = prompt.indexOf(CONTEXT_PRECEDENCE);
 			const fileAt = prompt.indexOf(`<file path="${f.rootAgentsPath}">`);
 			expect(ladderAt).toBeGreaterThanOrEqual(0);
 			expect(fileAt).toBeGreaterThan(ladderAt);
@@ -148,12 +155,12 @@ describe("context-file authority", () => {
 		}
 
 		// The custom path: exactly one ladder, and it is the custom template's copy.
-		expect(customPrompt.split(PROJECT_IS_LOWEST)).toHaveLength(2);
+		expect(customPrompt.split(CONTEXT_PRECEDENCE)).toHaveLength(2);
 		const instructionsAt = customPrompt.indexOf("<instructions>");
 		const instructionsEndAt = customPrompt.indexOf("</instructions>");
 		expect(instructionsAt).toBeGreaterThanOrEqual(0);
-		expect(customPrompt.indexOf(PROJECT_IS_LOWEST)).toBeGreaterThan(instructionsAt);
-		expect(customPrompt.indexOf(PROJECT_IS_LOWEST)).toBeLessThan(instructionsEndAt);
+		expect(customPrompt.indexOf(CONTEXT_PRECEDENCE)).toBeGreaterThan(instructionsAt);
+		expect(customPrompt.indexOf(CONTEXT_PRECEDENCE)).toBeLessThan(instructionsEndAt);
 	});
 
 	/**
@@ -176,6 +183,6 @@ describe("context-file authority", () => {
 		// Non-vacuity: the ladder really is absent, so the sentence above is not
 		// arriving as part of the context block.
 		expect(prompt).not.toContain("<context>");
-		expect(prompt).not.toContain(PROJECT_IS_LOWEST);
+		expect(prompt).not.toContain(CONTEXT_PRECEDENCE);
 	});
 });
