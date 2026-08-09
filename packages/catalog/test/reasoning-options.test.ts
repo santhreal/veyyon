@@ -100,15 +100,16 @@ describe("mapModelsDevReasoningOptions", () => {
 		});
 	});
 
-	it("opens the fixed high/max budget pair for budget-only declarations, nothing for future tiers", () => {
-		// opencode's budgetVariants contract: a budget_tokens declaration with
-		// no effort levels maps to the fixed high/max pair the encoder ranges.
-		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens", min: 0, max: 16384 }])).toEqual({
-			efforts: [Effort.High, Effort.Max],
-		});
-		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens" }, { type: "toggle" }])).toEqual({
-			efforts: [Effort.High, Effort.Max],
-		});
+	it("declares nothing from a budget-only declaration, and nothing for future tiers", () => {
+		// A budget_tokens option is a token RANGE. It names no level, so it cannot
+		// be read as a ladder: this used to return the fixed `[high, max]` pair for
+		// opencode parity, which reached every Anthropic budget row as a declaration
+		// and cut Sonnet 4.5 down to two selectable tiers. An operator asking for
+		// medium got high, because a level the ladder does not carry clamps to one
+		// it does. Declaring nothing hands the ladder to the control mode, which
+		// knows the transport takes any budget.
+		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens", min: 0, max: 16384 }])).toBeUndefined();
+		expect(mapModelsDevReasoningOptions([{ type: "budget_tokens" }, { type: "toggle" }])).toBeUndefined();
 		expect(mapModelsDevReasoningOptions([{ type: "effort", values: ["ultra"] }])).toBeUndefined();
 		expect(mapModelsDevReasoningOptions(undefined)).toBeUndefined();
 	});
@@ -152,16 +153,25 @@ describe("discovery-declared reasoning surfaces", () => {
 		expect(getSupportedEfforts(model)).toEqual([]);
 	});
 
-	it("opens the high/max budget surface when discovery declares a budget range only", () => {
-		// models.dev budget-only declarations normalize to the fixed high/max
-		// pair (opencode parity); no ladder is identity-derived.
+	it("gives a budget-range-only row the tiers its transport can express", () => {
+		// Discovery declaring only a token range says nothing about levels, so the
+		// row keeps the budget ladder rather than the invented high/max pair. The
+		// ceiling is xhigh: `max` would map to the same budget and could not
+		// change a byte on the wire.
 		const model = createModel({
-			id: "gemini-3.1-pro-preview",
-			api: "google-generative-ai",
-			provider: "google",
-			reasoningOptions: { efforts: [Effort.High, Effort.Max] },
+			id: "claude-sonnet-4-5",
+			api: "anthropic-messages",
+			provider: "anthropic",
+			baseUrl: "https://api.anthropic.com",
 		});
-		expect(getSupportedEfforts(model)).toEqual([Effort.High, Effort.Max]);
+		expect(model.thinking?.mode).toBe("budget");
+		expect(getSupportedEfforts(model)).toEqual([
+			Effort.Minimal,
+			Effort.Low,
+			Effort.Medium,
+			Effort.High,
+			Effort.XHigh,
+		]);
 	});
 
 	it("never overrides a collapsed row's routed surface with discovery data", () => {

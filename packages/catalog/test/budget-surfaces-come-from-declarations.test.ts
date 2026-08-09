@@ -1,20 +1,38 @@
 /**
- * Whole-catalog guards for the declared-surface contract.
+ * Whole-catalog guards for a budget transport's effort surface.
  *
- * The class of bug these pin: f07786fe6 mapped a models.dev `budget_tokens`
- * declaration (a token RANGE, no levels) to the fixed high/max pair, matching
- * opencode's budgetVariants. A later change "fixed" that by COMPUTING a
- * ladder — minimal through high, plus xhigh on Anthropic — for any budget-mode
- * row, on the theory that a token range can be labeled with level names. That
- * is a ladder nobody declared: the endpoint documents a budget, not levels,
- * and the operator was offered tiers indistinguishable from real ones. It was
- * reverted, and these guards exist so the next well-argued version of the
- * same idea fails a test instead of shipping.
+ * This contract has been argued twice and reversed once, so both turns are
+ * recorded here rather than in a commit nobody reads.
  *
- * Two layers, because the bug lived between them:
+ * First turn. f07786fe6 mapped a models.dev `budget_tokens` declaration (a token
+ * RANGE, no levels) to the fixed `[high, max]` pair, matching opencode's
+ * budgetVariants. A change that computed a ladder instead was reverted, on the
+ * theory that naming levels over a range offers tiers nobody declared.
+ *
+ * Second turn, which is the contract now. The pair does not survive its own
+ * argument: it also names levels over the same range, just two of them, and one
+ * of them is `max`. What a budget model accepts is `thinking.budget_tokens`, any
+ * legal integer, and Veyyon owns the effort→budget schedule
+ * (`ANTHROPIC_THINKING_BUDGETS` and friends), so minimal/low/medium/high/xhigh
+ * are five DISTINCT requests the endpoint cannot reject. The pair made those
+ * five into two on the most used models in the catalog: `claude-sonnet-4-5` and
+ * `claude-haiku-4-5` offered high and max only, `medium` clamped up to `high`,
+ * and eleven session, compaction and handoff tests failed because an operator's
+ * explicit choice silently became a different one.
+ *
+ * So a declaration still wins, and a row with none gets the tiers its transport
+ * can express. `max` is excluded from the computed ladder: the Anthropic and
+ * Bedrock schedules give `max` the same 32768 tokens as `xhigh`, so offering
+ * both puts a selection in the picker that cannot change a single byte.
+ *
+ * Three layers, because the bug lived between them:
  *  1. Every bundled budget-mode row without an explicit effort declaration
- *     carries exactly the [high, max] pair — never a computed ladder.
- *  2. Every bundled row whose reasoningOptions declare efforts bakes exactly
+ *     carries exactly the budget ladder — never a pair copied from another
+ *     tool, never a ladder derived from the model id (see
+ *     no-identity-derived-thinking.test.ts).
+ *  2. No computed budget ladder carries a dead top tier (`xhigh` and `max`
+ *     together), which is what "just add max as well" would produce.
+ *  3. Every bundled row whose reasoningOptions declare efforts bakes exactly
  *     that declaration (canonicalized) — the declaration and the baked row
  *     cannot drift apart.
  */
@@ -26,7 +44,8 @@ import {
 	GEMINI_CLI_VARIANT_COLLAPSE_TABLE,
 } from "@veyyon/catalog/variant-collapse";
 
-const BUDGET_PAIR = [Effort.High, Effort.Max];
+/** The tiers a budget transport can express; `max` would repeat `xhigh`'s budget. */
+const BUDGET_LADDER = [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh];
 
 /**
  * Authored budget ladders live in the variant-collapse families, not in
@@ -56,8 +75,8 @@ function allBundledRows() {
 	return getBundledProviders().flatMap(provider => getBundledModels(provider).map(model => ({ provider, model })));
 }
 
-describe("the baked catalog honors declared surfaces only", () => {
-	it("gives every budget-mode row without an explicit declaration exactly the high/max pair", () => {
+describe("a budget transport's effort surface", () => {
+	it("gives every budget-mode row without an explicit declaration exactly the budget ladder", () => {
 		const offenders: string[] = [];
 		for (const { provider, model } of allBundledRows()) {
 			const thinking = model.thinking;
@@ -66,18 +85,11 @@ describe("the baked catalog honors declared surfaces only", () => {
 			// guard below; a routed row's surface is its collapse table's.
 			if (model.reasoningOptions?.efforts !== undefined) continue;
 			if (thinking.effortRouting !== undefined) continue;
-			if (
-				thinking.efforts.length === 2 &&
-				thinking.efforts[0] === Effort.High &&
-				thinking.efforts[1] === Effort.Max
-			) {
-				continue;
-			}
 			const authored = familyAuthoredLadder(provider, model.id);
+			const expected = authored ?? BUDGET_LADDER;
 			if (
-				authored !== undefined &&
-				authored.length === thinking.efforts.length &&
-				authored.every((e, i) => e === thinking.efforts[i])
+				expected.length === thinking.efforts.length &&
+				expected.every((effort, index) => effort === thinking.efforts[index])
 			) {
 				continue;
 			}
@@ -85,9 +97,26 @@ describe("the baked catalog honors declared surfaces only", () => {
 		}
 		expect(
 			offenders,
-			"budget-mode rows with no declared efforts must carry exactly the high/max pair; " +
-				"a wider ladder here is a computed surface nobody declared",
+			`budget-mode rows with no declared efforts must carry exactly [${BUDGET_LADDER.join(",")}]; ` +
+				"a two-tier pair here is another tool's picker, and a different ladder is a surface nobody owns",
 		).toEqual([]);
+	});
+
+	it("never computes a ladder whose top tier repeats the tier below it", () => {
+		// `xhigh` and `max` are the same 32768-token budget on the Anthropic and
+		// Bedrock schedules, so a computed ladder carrying both offers a selection
+		// that cannot change the request. A declared ladder is upstream's business
+		// and is checked verbatim below.
+		const dead: string[] = [];
+		for (const { provider, model } of allBundledRows()) {
+			const thinking = model.thinking;
+			if (thinking?.mode !== "budget") continue;
+			if (model.reasoningOptions?.efforts !== undefined || thinking.effortRouting !== undefined) continue;
+			if (thinking.efforts.includes(Effort.XHigh) && thinking.efforts.includes(Effort.Max)) {
+				dead.push(`${provider}/${model.id} [${thinking.efforts.join(",")}]`);
+			}
+		}
+		expect(dead, "a computed budget ladder must not offer both xhigh and max").toEqual([]);
 	});
 
 	it("bakes every declared effort ladder verbatim, with no drift between declaration and row", () => {
@@ -103,11 +132,15 @@ describe("the baked catalog honors declared surfaces only", () => {
 		expect(drifted, "baked ladders must equal the declaration that produced them").toEqual([]);
 	});
 
-	it("pins the row this class of bug was found on: claude-sonnet-4-5 is budget with the high/max pair", () => {
-		const sonnet = getBundledModel("anthropic", "claude-sonnet-4-5");
-		expect(sonnet).toBeDefined();
-		expect(sonnet?.reasoningOptions).toEqual({ efforts: BUDGET_PAIR });
-		expect(sonnet?.thinking?.mode).toBe("budget");
-		expect(sonnet?.thinking?.efforts).toEqual(BUDGET_PAIR);
+	it("pins the rows this class of bug was found on: sonnet and haiku 4.5 keep five tiers", () => {
+		for (const id of ["claude-sonnet-4-5", "claude-haiku-4-5"]) {
+			const model = getBundledModel("anthropic", id);
+			expect(model, id).toBeDefined();
+			// No declaration survives for these rows: a token range declares no
+			// levels, so the mapper reports nothing and the mode supplies the ladder.
+			expect(model?.reasoningOptions, id).toBeUndefined();
+			expect(model?.thinking?.mode, id).toBe("budget");
+			expect(model?.thinking?.efforts, id).toEqual(BUDGET_LADDER);
+		}
 	});
 });

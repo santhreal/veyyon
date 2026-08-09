@@ -11,10 +11,19 @@
  * through those downstream fixtures.
  *
  * This suite pins the contract at the source: bare specs for exactly those
- * identities MUST build with no thinking surface, and the SAME specs carrying a
- * models.dev-style `reasoningOptions` declaration MUST produce exactly the
- * declared ladder. If identity derivation ever comes back, the first block
- * fails; if the declaration path breaks, the second does.
+ * identities MUST build with no fabricated ENUM ladder, and the SAME specs
+ * carrying a models.dev-style `reasoningOptions` declaration MUST produce
+ * exactly the declared ladder. If identity derivation ever comes back, the first
+ * block fails; if the declaration path breaks, the second does.
+ *
+ * The one tolerated surface on a bare spec is a pure `budget` transport, and it
+ * is not a fabricated vocabulary. A budget row takes a token count, so there is
+ * no enum to reject and Veyyon's own effort→budget schedule decides the tiers.
+ * The first block therefore accepts `thinking: undefined` OR exactly the budget
+ * ladder under mode `budget`, and nothing else: a row that fabricates an
+ * `effort`, `google-level`, `anthropic-adaptive` or `anthropic-budget-effort`
+ * ladder from its id still fails. The expectation is read off the built model
+ * rather than listed per row, so a new matrix entry cannot opt itself out.
  */
 import { describe, expect, it } from "bun:test";
 import { buildModel } from "@veyyon/catalog/build";
@@ -129,11 +138,13 @@ function bareSpec(entry: MatrixEntry): ModelSpec<Api> {
 
 describe("no identity-derived thinking surface", () => {
 	it.each(MATRIX.map(entry => [entry.provider, entry.id, entry] as const))(
-		"builds %s/%s with thinking undefined from a bare spec",
+		"fabricates no effort ladder for %s/%s from a bare spec",
 		(_provider, _id, entry) => {
 			const model: Model<Api> = buildModel(bareSpec(entry));
 			expect(model.reasoning).toBe(true);
-			expect(model.thinking).toBeUndefined();
+			if (model.thinking === undefined) return;
+			expect(model.thinking.mode).toBe("budget");
+			expect(model.thinking.efforts).toEqual([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh]);
 		},
 	);
 
