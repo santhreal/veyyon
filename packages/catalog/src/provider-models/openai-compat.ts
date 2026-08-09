@@ -116,12 +116,13 @@ const REASONING_NON_LEVEL_VALUES: Record<string, true> = { none: true, default: 
 /**
  * Map models.dev `reasoning_options` to the spec-level reasoning surface.
  * The declared effort ladder is authoritative; an empty list or a toggle-only
- * surface means the model reasons but exposes no effort control. Budget-only
- * declarations open the fixed high/max budget pair (opencode's budgetVariants
- * contract). An effort option naming only values Veyyon does not know (a
- * future tier) returns `undefined` rather than hiding a working control; a
- * MIXED list keeps its known values, so a newly added tier appears the moment
- * Veyyon learns it instead of silently dropping the declared surface.
+ * surface means the model reasons but exposes no effort control. A budget-only
+ * declaration is a token RANGE and names no level, so it declares nothing about
+ * the ladder and the control mode owns it (see `resolveModelThinking`). An
+ * effort option naming only values Veyyon does not know (a future tier) returns
+ * `undefined` rather than hiding a working control; a MIXED list keeps its known
+ * values, so a newly added tier appears the moment Veyyon learns it instead of
+ * silently dropping the declared surface.
  *
  * An effort declaration carrying no level at all is the toggle case, not the
  * future-tier case, and maps like the empty option list: `cerebras/zai-glm-4.7`
@@ -155,11 +156,15 @@ export function mapModelsDevReasoningOptions(
 		}
 		return undefined;
 	}
-	// Budget-only declarations carry no levels; opencode opens the fixed
-	// high/max budget pair for them (budgetVariants), and Veyyon maps that
-	// pair onto the endpoint's token range at encode time. Copy that surface.
+	// A budget range carries no level data, so it cannot narrow or widen a
+	// ladder. Copying opencode's two budget variants as `[high, max]` read as a
+	// declaration and cost every Anthropic budget model its ladder: Sonnet 4.5
+	// offered high and max only, `max` and `xhigh` map to the same 32768-token
+	// budget so the top tier was unaddressable, and low/medium/minimal were
+	// unreachable on the most used model in the catalog. Declaring nothing lets
+	// the control mode supply the tiers the transport can actually express.
 	if (options.some(option => option.type === "budget_tokens")) {
-		return { efforts: [Effort.High, Effort.Max] };
+		return undefined;
 	}
 	return { noEffortControl: true };
 }

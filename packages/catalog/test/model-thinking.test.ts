@@ -898,6 +898,33 @@ describe("model thinking derivation", () => {
 		expect(getSupportedEfforts(model)).toEqual([Effort.High, Effort.Max]);
 		expect(model.thinking?.effortMap).toBeUndefined();
 	});
+
+	// The catalog bakes no effort ladder for a row models.dev describes with a
+	// `budget_tokens` RANGE, so the control mode is the only thing left to answer,
+	// and it has to answer for a spec that never came from models.dev: a
+	// discovered gateway row, a proxy, a hand-authored entry. While it answered
+	// with nothing, the picker offered two rungs and a `medium` request was served
+	// as `high`. The bundled rows are covered off the baked catalog in
+	// budget-surfaces-come-from-declarations.test.ts; this is the resolver itself.
+	it.each([
+		["anthropic-messages" as const, "claude-sonnet-4-5", "anthropic" as const],
+		["google-generative-ai" as const, "gemini-2.5-pro", "google" as const],
+	])("gives an undeclared %s budget row the five tiers its transport can express", (api, id, provider) => {
+		const model = createModel({ id, api, provider });
+
+		expect(model.thinking?.mode).toBe("budget");
+		expect(getSupportedEfforts(model)).toEqual([
+			Effort.Minimal,
+			Effort.Low,
+			Effort.Medium,
+			Effort.High,
+			Effort.XHigh,
+		]);
+		// The harm a missing ladder did: an operator asking for medium got high.
+		expect(clampThinkingLevelForModel(model, Effort.Medium)).toBe(Effort.Medium);
+		// `max` stays out. Its budget is xhigh's own 32768, so selecting it changes no byte.
+		expect(() => requireSupportedEffort(model, Effort.Max)).toThrow(/not supported/);
+	});
 });
 
 describe("model thinking runtime helpers", () => {

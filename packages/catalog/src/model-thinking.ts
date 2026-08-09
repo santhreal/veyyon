@@ -125,6 +125,25 @@ function normalizeOllamaWireEfforts<TApi extends Api>(
 	return efforts;
 }
 
+/**
+ * The ladder a pure budget transport can express.
+ *
+ * A `budget` model takes a token count, never an effort name, so no upstream
+ * effort list is a wire fact about it: Veyyon's own effort→budget schedule
+ * decides which tiers exist, and it has a budget for every tier below `max`.
+ * `max` is left out because the Anthropic and Bedrock schedules give it the same
+ * 32768 tokens as `xhigh`, which makes it a second name for the top tier rather
+ * than a tier of its own — offering it puts a selection in the picker that
+ * cannot change a single byte on the wire.
+ */
+const BUDGET_CONTROL_EFFORTS: readonly Effort[] = [
+	Effort.Minimal,
+	Effort.Low,
+	Effort.Medium,
+	Effort.High,
+	Effort.XHigh,
+];
+
 export function resolveModelThinking<TApi extends Api>(
 	spec: ModelSpec<TApi>,
 	compat: CompatOf<TApi>,
@@ -161,6 +180,15 @@ export function resolveModelThinking<TApi extends Api>(
 	// controllable surface: never fabricate an effort ladder from identity.
 	if ((compat as ResolvedDevinCompat | ResolvedCursorCompat | undefined)?.trustExplicitThinkingOnly === true) {
 		return undefined;
+	}
+	// A pure budget transport takes a token count and never an effort name, so a
+	// row that declares no ladder still has one: the tiers Veyyon has a budget
+	// for. This is a control-mode fact rather than identity derivation — nothing
+	// here reads the model id to decide WHICH tiers exist, and a row whose
+	// endpoint really exposes no control says so through `noEffortControl` or a
+	// transport that trusts explicit thinking only, both of which return above.
+	if (inferThinkingControlMode(spec, parseKnownModel(spec.id)) === "budget") {
+		return thinkingConfigFromEfforts(spec, compat, BUDGET_CONTROL_EFFORTS);
 	}
 	// Ollama declares its effort vocabulary host-wide (see OLLAMA_WIRE_EFFORTS)
 	// and models.dev cannot catalog a local daemon, so bare ollama specs — stale
