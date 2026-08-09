@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f1493838.js";
+            window.path_to_searchindex_js = "../searchindex-8f5709bf.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -213,7 +213,7 @@
 </tbody>
 </table>
 </div>
-<p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
+<p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>account</code>, <code>secrets</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
 <p>The <code>model</code> segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:</p>
 <ul>
 <li>The <strong>thinking effort</strong> joins the model label as one unit (<code>Sonnet 4.5 @high</code> in the quiet footline, <code>Sonnet 4.5 · high</code> elsewhere), in the model’s own color. It is how much reasoning the model does per turn. Change it with <code>/effort</code> (its alias is <code>/thinking</code>), or set a per-model default under Settings → Model → Default Effort.
@@ -233,6 +233,12 @@ detached|BISECT      bisecting
 <p>A rebase detaches HEAD, so without the suffix the segment could only say <code>detached</code>, which tells you neither which branch you are rebasing nor that a rebase is running. Veyyon reads the branch back from the rebase’s own record, so you see <code>topic|REBASE</code>. A merge is the opposite case: it leaves HEAD on its branch, so the segment would look like an ordinary checkout while your working tree holds conflict markers. The suffix is what distinguishes them.</p>
 <p>The <code>pr</code> segment is skipped while any of these operations is in progress. A branch being rebased does not yet point where it is going to end up, so a pull request looked up against it would describe a state that is about to be replaced.</p>
 <p>The <code>profile</code> segment shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox), so you always know which profile’s config, sessions, and keys are live. It hides itself on the built-in <code>default</code> profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.</p>
+<p>The <code>secrets</code> segment says a stored credential is live where you are working: <code>2 secrets</code>. It counts
+what would actually expand at the tool boundary in this directory, not what is in the vault file, so
+a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
+live, so a session with no vault shows nothing. When the soonest deadline is under an hour it appends
+the time left in the warning color, <code>2 secrets (34m left)</code>, which is the window in which extending it
+with <code>e</code> in <code>/secret</code> still helps; a deadline further out belongs to the card’s EXPIRES column.</p>
 <p>The <code>context_pct</code> segment answers one question: how much room is left before the context runs out. “Runs out” means whichever comes first, auto-compaction firing or the model’s window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what <code>context_total</code> prints.</p>
 <p>In the composer’s quiet footline the segment renders as an 8-cell bar with a labelled percentage: <code>▰▰▰▰▰▰▱▱ 76% left ∞</code>. The bar drains, one cell per eighth of the room remaining, so the bar and the number always agree. Filled cells take the usage hue (silver, then gold, ember, and red as room runs out). While the model is running, the last remaining cell pulses between filled and empty, faster once you are past 90 percent used; at rest the bar never moves, so an idle screen is still. A session-accent <code>∞</code> after the bar means auto-compaction is on, so the session continues past the trigger.</p>
 <p>Classic status-line presets render the same measurement as text, in tokens on both sides of the slash: <code>47K/170K</code>. For a full picture of what is in the window, and how it is divided between the system prompt, tools, skills, and messages, run <code>/context</code>.</p>
