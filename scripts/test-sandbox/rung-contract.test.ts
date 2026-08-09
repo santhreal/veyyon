@@ -216,6 +216,72 @@ describe("when no rung is available", () => {
 	});
 });
 
+/**
+ * A LOAD-TIME PROBE THAT FAILS MUST NOT KILL THE DRIVER SILENTLY.
+ *
+ * `run.sh` runs under `set -euo pipefail` and reads two optional facts before it
+ * ever parses argv: the operator's home from `getent passwd`, and the pinned bun
+ * version from `package.json`. Each has a documented fallback on the very next
+ * line, and neither fallback could run, because a failing command substitution
+ * inside a pipeline takes the script down first. `getent` exits 2 with no output
+ * when the uid has no passwd entry, which is the ordinary state of a container
+ * running as a mapped host uid, so on CI every invocation of the driver died with
+ * an empty exit 2: the five tests above could not execute at all, and the sandbox
+ * did not refuse, it said nothing. An empty exit 2 from the one script standing
+ * between a test process and the operator's home is the worst available answer,
+ * because it is indistinguishable from a boundary nobody asked for.
+ *
+ * Each case below breaks ONE load-time probe and asserts the driver still answers.
+ * The last asserts the other half: a fact that is genuinely unknowable stops the
+ * run with a reason and the command does not execute, because HOST_HOME decides
+ * what gets hidden and an empty one turns the mount-relocation test into `/*`,
+ * which matches every absolute path.
+ *
+ * What this does NOT catch: a third optional fact added later with the same
+ * mistake. These are per-probe behaviours, not a scan of the script.
+ */
+describe("a load-time probe that fails", () => {
+	/** A PATH whose first entry shadows `name` with a script that exits `status`. */
+	function shimming(name: string, status: number): Record<string, string> {
+		const binDir = mkdtempSync(path.join(os.tmpdir(), "rung-contract-loadprobe-"));
+		const shimPath = path.join(binDir, name);
+		writeFileSync(shimPath, `#!/bin/sh\nexit ${status}\n`);
+		chmodSync(shimPath, 0o755);
+		return { PATH: `${binDir}:${process.env.PATH ?? ""}` };
+	}
+
+	/** The exact CI shape: a container uid with no passwd entry. */
+	it("still answers --probe when getent cannot resolve the uid", () => {
+		const probe = runDriver(["--probe"], shimming("getent", 2));
+
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toMatch(/^ {2}docker\s+(AVAILABLE|unavailable)/m);
+	});
+
+	/** The same mistake at the other optional read: no manifest to pin a bun version. */
+	it("still answers --probe when the manifest cannot be read", () => {
+		const probe = runDriver(["--probe"], {
+			VEYYON_SANDBOX_REPO_ROOT: mkdtempSync(path.join(os.tmpdir(), "rung-contract-nomanifest-")),
+		});
+
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toMatch(/^ {2}docker\s+(AVAILABLE|unavailable)/m);
+	});
+
+	/**
+	 * HOME is emptied rather than deleted because that is what the fallback reads,
+	 * and the sentinel is the load-bearing half: silently continuing with an empty
+	 * HOST_HOME would relocate the mount and still run the command.
+	 */
+	it("refuses, with a reason and without running the command, when no home can be determined", () => {
+		const run = runDriver(["sh", "-c", `echo ${SENTINEL}`], { ...shimming("getent", 2), HOME: "" });
+
+		expect(run.stdout).not.toContain(SENTINEL);
+		expect(run.status).not.toBe(0);
+		expect(run.stderr).toContain("cannot tell which home to remove from the guest");
+	});
+});
+
 describe("the guest this suite is running in", () => {
 	/**
 	 * The marker contract, asserted from inside rather than by spawning a container:
