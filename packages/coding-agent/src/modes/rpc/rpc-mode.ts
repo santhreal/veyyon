@@ -790,7 +790,13 @@ export async function runRpcMode(
 			return this.#createDialogPromise(
 				dialogOptions,
 				undefined,
-				{ method: "input", title, placeholder, timeout: dialogOptions?.timeout },
+				{
+					method: "input",
+					title,
+					placeholder,
+					timeout: dialogOptions?.timeout,
+					...(dialogOptions?.secret === true ? { secret: true } : {}),
+				},
 				response => parseValueDialogResponse(response, dialogOptions),
 			);
 		}
@@ -1375,7 +1381,13 @@ export async function runRpcMode(
 									),
 								);
 							}
-							return (await uiCtx.input(prompt.message, prompt.placeholder, { timeout: 600_000 })) ?? "";
+							return (
+								(await uiCtx.input(prompt.message, prompt.placeholder, {
+									timeout: 600_000,
+									// Absent means masked, the same reading the terminal dialog gives it.
+									secret: prompt.secret !== false,
+								})) ?? ""
+							);
 						},
 					});
 					await session.modelRegistry.refresh();

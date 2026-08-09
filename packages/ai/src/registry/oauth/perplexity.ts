@@ -91,6 +91,8 @@ async function httpEmailLogin(ctrl: OAuthController): Promise<OAuthCredentials> 
 	const email = await ctrl.onPrompt({
 		message: "Enter your Perplexity email address",
 		placeholder: "user@example.com",
+		// An address you type rather than paste, and a typo in it means no code arrives.
+		secret: false,
 	});
 	const trimmedEmail = email.trim();
 	if (!trimmedEmail)
@@ -144,6 +146,9 @@ async function httpEmailLogin(ctrl: OAuthController): Promise<OAuthCredentials> 
 	const otp = await ctrl.onPrompt({
 		message: "Enter the code sent to your email",
 		placeholder: "123456",
+		// A six-digit code copied off a screen by hand: it is worth nothing after one use, and
+		// hiding the digits only causes the mistyped attempt this flow cannot retry.
+		secret: false,
 	});
 	const trimmedOtp = otp.trim();
 	if (!trimmedOtp)

@@ -24,6 +24,7 @@ export async function loginLiteLLM(options: OAuthController): Promise<string> {
 	const apiKey = await options.onPrompt({
 		message: "Paste your LiteLLM API key (master key or virtual key)",
 		placeholder: "sk-...",
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

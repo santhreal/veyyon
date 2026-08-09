@@ -174,6 +174,12 @@ export interface ExtensionUIDialogOptions {
 	onTimeoutReset?: () => void;
 	/** Initial cursor position for select dialogs (0-indexed) */
 	initialIndex?: number;
+	/**
+	 * Input dialogs only: the answer is a credential, so a client MUST NOT echo it. Set by a login
+	 * flow asking for a key or a pasted authorization code. Surfaces that have no masked field
+	 * (an ACP client's elicitation form) cannot honour it and say so where they are wired.
+	 */
+	secret?: boolean;
 	/** Render an outlined list for select dialogs */
 	outline?: boolean;
 	/** Invoked when user presses left arrow in select dialogs */

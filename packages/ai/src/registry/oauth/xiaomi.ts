@@ -168,6 +168,7 @@ export async function loginXiaomi(options: OAuthController): Promise<string> {
 	const apiKey = await options.onPrompt({
 		message: "Paste your Xiaomi API key (sk-... or token-plan tp-...)",
 		placeholder: "sk-... or tp-...",
+		secret: true,
 	});
 	if (options.signal?.aborted) {
 		throw new AIError.LoginCancelledError();
@@ -199,6 +200,7 @@ export async function loginXiaomiTokenPlan(options: OAuthController, region: Xia
 	const apiKey = await options.onPrompt({
 		message: `Paste your Xiaomi Token Plan ${TOKEN_PLAN_REGION_NAMES[region]} API key (tp-...)`,
 		placeholder: "tp-...",
+		secret: true,
 	});
 	if (options.signal?.aborted) {
 		throw new AIError.LoginCancelledError();

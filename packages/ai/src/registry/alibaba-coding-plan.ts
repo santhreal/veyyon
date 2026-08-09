@@ -19,6 +19,8 @@ export async function loginAlibabaCodingPlan(options: OAuthController): Promise<
 	const endpointChoice = await options.onPrompt({
 		message: "Select Alibaba Coding Plan endpoint: 1=International (default), 2=China, 3=Custom — enter 1, 2, or 3",
 		placeholder: "1",
+		// A menu digit, not a credential: masking it would hide which endpoint you picked.
+		secret: false,
 	});
 
 	// Check for abort after endpoint selection (Escape returns "")
@@ -38,6 +40,8 @@ export async function loginAlibabaCodingPlan(options: OAuthController): Promise<
 		const customUrl = await options.onPrompt({
 			message: "Enter custom base URL",
 			placeholder: "https://your-proxy.com/v1",
+			// A URL you have to be able to check for a typo before it is used.
+			secret: false,
 		});
 		const trimmedUrl = trimTrailingSlashes(customUrl.trim());
 		if (!trimmedUrl) {
@@ -60,6 +64,7 @@ export async function loginAlibabaCodingPlan(options: OAuthController): Promise<
 	const apiKey = await options.onPrompt({
 		message: "Paste your Alibaba Coding Plan API key",
 		placeholder: "sk-...",
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

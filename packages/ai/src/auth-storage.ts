@@ -2623,7 +2623,7 @@ export class AuthStorage {
 			const providerKey = this.#getProviderTypeKey(provider, type);
 			const start = sessionId
 				? this.#getHashedIndex(sessionId, candidates.length)
-				: (((this.#providerRoundRobinIndex.get(providerKey) ?? -1) + 1) % candidates.length + candidates.length) %
+				: ((((this.#providerRoundRobinIndex.get(providerKey) ?? -1) + 1) % candidates.length) + candidates.length) %
 					candidates.length;
 			const rotated = candidates.map((_, offset) => candidates[(start + offset) % candidates.length]!);
 			const ordered = this.#orderByBlockAvailability(provider, providerKey, rotated);
@@ -3648,8 +3648,10 @@ export class AuthStorage {
 		// paste-code providers is the authoritative gate (it covers every caller, not
 		// just the CLI); an explicit caller-supplied `onManualCodeInput` is still
 		// honored for any provider as an escape hatch.
+		// The pasted answer is credential material: an authorization code, or a redirect URL carrying
+		// one, and either is exchangeable for tokens. It is marked so no UI echoes it.
 		const manualCodeInput = PASTE_CODE_LOGIN_PROVIDERS.has(provider)
-			? () => ctrl.onPrompt({ message: "Paste the authorization code (or full redirect URL):" })
+			? () => ctrl.onPrompt({ message: "Paste the authorization code (or full redirect URL):", secret: true })
 			: undefined;
 		// Built-in registry first, then runtime-registered extension providers.
 		const def = getProviderDefinition(provider) ?? getOAuthProvider(provider);

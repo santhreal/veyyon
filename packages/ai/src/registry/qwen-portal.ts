@@ -20,6 +20,7 @@ export async function loginQwenPortal(options: OAuthController): Promise<string>
 	const token = await options.onPrompt({
 		message: "Paste your Qwen OAuth token or API key",
 		placeholder: "sk-...",
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

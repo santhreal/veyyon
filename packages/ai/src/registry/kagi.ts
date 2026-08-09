@@ -21,10 +21,7 @@ export async function loginKagi(options: OAuthController): Promise<string> {
 			"Copy your Kagi Search API key from Kagi API settings. Search API access is beta-only; if unavailable, email support@kagi.com.",
 	});
 
-	const apiKey = await options.onPrompt({
-		message: "Paste your Kagi API key",
-		placeholder: "KG_...",
-	});
+	const apiKey = await options.onPrompt({ message: "Paste your Kagi API key", placeholder: "KG_...", secret: true });
 
 	if (options.signal?.aborted) {
 		throw new AIError.LoginCancelledError();

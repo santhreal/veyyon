@@ -17,6 +17,7 @@ export async function loginVercelAiGateway(options: OAuthController): Promise<st
 	const apiKey = await options.onPrompt({
 		message: "Paste your Vercel AI Gateway API key",
 		placeholder: "vck_...",
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

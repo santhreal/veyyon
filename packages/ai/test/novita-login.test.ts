@@ -11,7 +11,7 @@ describe("Novita login", () => {
 
 	test("validates the pasted key against the authenticated balance endpoint", async () => {
 		const authEvents: Array<{ url: string; instructions?: string }> = [];
-		const prompts: Array<{ message: string; placeholder?: string }> = [];
+		const prompts: Array<{ message: string; placeholder?: string; secret?: boolean }> = [];
 		const progress: string[] = [];
 		const requests: Array<{
 			url: string;
@@ -47,7 +47,8 @@ describe("Novita login", () => {
 				instructions: "Create or copy your API key from the Novita dashboard",
 			},
 		]);
-		expect(prompts).toEqual([{ message: "Paste your Novita API key", placeholder: "sk_..." }]);
+		// `secret` is what stops the pasted key being drawn in clear text, so it is part of the ask.
+		expect(prompts).toEqual([{ message: "Paste your Novita API key", placeholder: "sk_...", secret: true }]);
 		expect(progress).toEqual(["Validating API key..."]);
 		expect(requests).toEqual([
 			{

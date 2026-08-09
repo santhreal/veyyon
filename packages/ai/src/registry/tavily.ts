@@ -23,6 +23,7 @@ export async function loginTavily(options: OAuthLoginCallbacks): Promise<string>
 	const apiKey = await options.onPrompt({
 		message: "Paste your Tavily API key",
 		placeholder: "tvly-...",
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

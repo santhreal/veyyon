@@ -23,6 +23,7 @@ export async function loginParallel(options: OAuthController): Promise<string> {
 	const apiKey = await options.onPrompt({
 		message: "Paste your Parallel API key",
 		placeholder: "sk_...",
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

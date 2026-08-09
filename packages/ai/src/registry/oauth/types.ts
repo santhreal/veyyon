@@ -29,11 +29,13 @@ export type OAuthPrompt = {
 	placeholder?: string;
 	allowEmpty?: boolean;
 	/**
-	 * The answer is a credential, so a UI MUST NOT echo it.
+	 * Whether the answer may be echoed. ABSENT MEANS MASKED: a login flow asks for credentials far
+	 * more often than for configuration, so the safe reading is the default one and a flow that
+	 * wants a visible field says `secret: false` for it (an endpoint choice, a base URL, an email).
 	 *
-	 * Declared by the flow that asks, because only it knows what it is asking for: an API key paste
-	 * and a pasted verification code reach the same `onPrompt`, and a UI guessing from the message
-	 * text would be wrong for whichever provider words it differently.
+	 * It is the asking flow's call either way, because only it knows what it is asking for: an API
+	 * key paste and a pasted verification code reach the same `onPrompt`, and a UI guessing from the
+	 * message text would be wrong for whichever provider words it differently.
 	 */
 	secret?: boolean;
 };

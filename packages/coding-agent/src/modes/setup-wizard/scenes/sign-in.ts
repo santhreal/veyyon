@@ -280,7 +280,8 @@ export class SignInTab implements SetupTab {
 					this.host.requestRender();
 				},
 				onManualCodeInput: () =>
-					this.#showPrompt({ message: "Paste the authorization code (or full redirect URL):" }),
+					// An authorization code, or a redirect URL carrying one: exchangeable for tokens.
+					this.#showPrompt({ message: "Paste the authorization code (or full redirect URL):", secret: true }),
 				onSuccessPage: url => {
 					// Device-code/paste flows have no browser redirect of their own;
 					// open the freshly-served branded success page so every provider
@@ -343,9 +344,9 @@ export class SignInTab implements SetupTab {
 		const input = new Input();
 		// An API key pasted during onboarding is a credential and stayed on screen in clear text,
 		// including on whatever recording or shoulder was watching. `credentialMode` masks the render
-		// and keeps the pasted bytes exactly as pasted. The flow that asks declares this, so a
-		// verification code (`secret` absent) is still readable while it is typed.
-		input.credentialMode = prompt.secret === true;
+		// and keeps the pasted bytes exactly as pasted. Absent means masked, so a flow that asks for
+		// configuration rather than a credential (an endpoint choice, an email) says `secret: false`.
+		input.credentialMode = prompt.secret !== false;
 		const focusInput = new CopyablePromptInput(
 			input,
 			() => {

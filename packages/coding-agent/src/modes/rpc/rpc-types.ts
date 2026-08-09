@@ -336,6 +336,12 @@ export type RpcExtensionUIRequest =
 			title: string;
 			placeholder?: string;
 			timeout?: number;
+			/**
+			 * The answer is a credential, so a client MUST NOT echo it. Set by a login flow asking for
+			 * a key or a pasted authorization code; absent for ordinary extension input, which is not
+			 * credential material and reads better visible.
+			 */
+			secret?: boolean;
 	  }
 	| {
 			type: "extension_ui_request";

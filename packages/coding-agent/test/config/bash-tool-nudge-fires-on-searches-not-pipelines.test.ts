@@ -59,6 +59,10 @@ describe("commands the built-in tools can replace", () => {
 		["inside a command substitution", "echo $(grep -c foo file)"],
 		["a search whose output is then paged", "grep -n foo src | head -5"],
 		["on a later line", "cd packages\nrg foo src"],
+		[
+			"a search that opens a later command after an unrelated pipeline",
+			'ls target/ 2>/dev/null | head -5; echo "==="; find target/ -name ".cargo-lock" 2>/dev/null | head -5',
+		],
 	])("nudges on %s", (_label, command) => {
 		expect(nudges(command)).toBe(true);
 	});
@@ -129,4 +133,19 @@ test("the body names the stdin limit that makes a pipeline the exception", () =>
 	// The positional condition decides WHEN it fires; the body has to explain why a
 	// pipe is different, or the model generalises the nudge back over pipelines.
 	expect(rule.content).toContain("cannot read stdin");
+});
+
+/**
+ * The banner an operator reads is the rule's `description`, and it has to describe the
+ * condition above it. It said the nudge fires when a bash command "starts with" a search
+ * tool, while the condition fires on any command the call opens with one, so a call that
+ * began with `ls` and ran `find` in its third command produced a banner that contradicted
+ * the command beside it. A rule whose banner reads as a misfire is ignored on the searches
+ * it should catch, which is the same failure the positional condition was written to avoid.
+ */
+test("the description does not promise a narrower trigger than the condition fires on", () => {
+	const description = rule.description ?? "";
+	expect(description).not.toContain("starts with");
+	// The claim is only worth making if the wider case really is live.
+	expect(nudges('ls target/ | head -5; find target/ -name "*.lock"')).toBe(true);
 });

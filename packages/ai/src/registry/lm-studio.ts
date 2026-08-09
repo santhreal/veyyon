@@ -14,6 +14,7 @@ export async function loginLmStudio(options: OAuthController): Promise<string> {
 		message: "Optional: Paste LM Studio API key (to customize endpoint URL, set LM_STUDIO_BASE_URL env var)",
 		placeholder: DEFAULT_LOCAL_TOKEN,
 		allowEmpty: true,
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {

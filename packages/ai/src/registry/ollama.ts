@@ -27,6 +27,7 @@ export async function loginOllama(options: OAuthController): Promise<string> {
 		message: "Paste your Ollama API key/token (optional)",
 		placeholder: "ollama-local",
 		allowEmpty: true,
+		secret: true,
 	});
 
 	if (options.signal?.aborted) {
