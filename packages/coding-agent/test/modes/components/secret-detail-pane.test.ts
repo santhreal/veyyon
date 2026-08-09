@@ -267,15 +267,13 @@ describe("SecretDetailPane broken rows", () => {
 	 * continuation rows line up with the first so the sentence reads as one block.
 	 */
 	it("wraps a long repair sentence under the value column", () => {
-		const reason =
-			"This vault file decrypted but its contents would not parse, so the secrets it holds are unavailable.";
+		const reason = "This vault file decrypted but would not parse, so it cannot be read.";
 		const lines = plain({ kind: "broken", scope: "global", reason });
 		expect(lines).toEqual([
 			"  scope        global",
 			"  status       vault unreadable",
-			"  repair       This vault file decrypted but its contents",
-			"               would not parse, so the secrets it holds are",
-			"               unavailable.",
+			"  repair       This vault file decrypted but would not",
+			"               parse, so it cannot be read.",
 		]);
 		// The wrapped rows must reconstitute the sentence exactly, so a wrap that ate a word or a
 		// space fails here even though the row list above would still look plausible.

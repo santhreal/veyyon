@@ -31,6 +31,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { SECRET_MANAGER_HELP } from "@veyyon/coding-agent/modes/components/secret-help-overlay";
 import { SecretManager } from "@veyyon/coding-agent/modes/components/secret-manager";
+import { SECRET_CARD_PROSE_COLS } from "@veyyon/coding-agent/modes/components/secret-manager-types";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { SecretAuditLog, secretAuditPath } from "@veyyon/coding-agent/secrets/audit";
 import { resolveVaultLocations, SecretVault, type VaultLocations } from "@veyyon/coding-agent/secrets/vault";
@@ -182,16 +183,17 @@ describe("the card is as wide as its content, not as wide as the terminal", () =
 	 * IF THIS REGRESSES the card goes back to 108 columns and the roster floats in the middle of an
 	 * empty slab. The numbers are exact rather than an upper bound because a card that merely "got
 	 * smaller" is not the fix: it has to be the width its content asks for, which here is the
-	 * empty log's notice at the prose measure of 72 columns.
+	 * empty log's notice at {@link SECRET_CARD_PROSE_COLS}, the one measure every sentence on this
+	 * card is written to.
 	 */
-	it("sizes a three-credential roster to 78 columns on a 120-column terminal", async () => {
+	it("sizes a three-credential roster to its longest sentence on a 120-column terminal", async () => {
 		await seedThreeSecrets();
 		const manager = await openManager(await emptyLog());
 
-		expect(cardWidth(manager)).toBe(78);
-		expect(contentWidth(manager)).toBe(72);
+		expect(contentWidth(manager)).toBe(SECRET_CARD_PROSE_COLS);
+		expect(cardWidth(manager)).toBe(SECRET_CARD_PROSE_COLS + 6);
 		// Every row closes on the same column, so the card that shrank is still a card.
-		expect(cardRows(manager).filter(row => row.length !== 78)).toEqual([]);
+		expect(cardRows(manager).filter(row => row.length !== SECRET_CARD_PROSE_COLS + 6)).toEqual([]);
 	});
 
 	/**
@@ -200,7 +202,7 @@ describe("the card is as wide as its content, not as wide as the terminal", () =
 	 * row and the slack beside it is what makes this a test about dead space rather than about a
 	 * number that happens to be smaller.
 	 */
-	it("leaves the widest roster row 32 columns of slack instead of 62", async () => {
+	it("leaves the widest roster row 28 columns of slack instead of 62", async () => {
 		await seedThreeSecrets();
 		const manager = await openManager(await emptyLog());
 
@@ -209,7 +211,7 @@ describe("the card is as wide as its content, not as wide as the terminal", () =
 			.filter(text => text.includes("#GITHUB_TOKEN#") || text.includes("#STRIPE_KEY#"));
 		expect(table).toEqual(["#GITHUB_TOKEN#  profile  never expires", "#STRIPE_KEY#    global   never expires"]);
 		expect(Math.max(...table.map(text => text.length)) + 2).toBe(40);
-		expect(contentWidth(manager) - 40).toBe(32);
+		expect(contentWidth(manager) - 40).toBe(28);
 	});
 
 	/**
@@ -227,7 +229,7 @@ describe("the card is as wide as its content, not as wide as the terminal", () =
 			{ name: "SPENT_TOKEN", scope: "project" },
 		]);
 		const withoutLog = await openManager(await emptyLog());
-		expect(cardWidth(withoutLog)).toBe(78);
+		expect(cardWidth(withoutLog)).toBe(SECRET_CARD_PROSE_COLS + 6);
 
 		const manager = await openManager(await longCommandLog());
 		const onSecrets = cardWidth(manager);

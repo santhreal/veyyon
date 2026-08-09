@@ -111,13 +111,14 @@ import { SecretDetailPane } from "./secret-detail-pane";
 import { SecretHelpOverlay } from "./secret-help-overlay";
 import { describeSort, nextSortKey, shapeSecretRows } from "./secret-list-shaping";
 import { describeLogFilter, filterLogRecords, usageStatsFor } from "./secret-log-shaping";
-import type {
-	ManagerRow,
-	MatchSpan,
-	ScopeMovePlan,
-	SecretSortKey,
-	ShapedRow,
-	SortDirection,
+import {
+	type ManagerRow,
+	type MatchSpan,
+	type ScopeMovePlan,
+	SECRET_CARD_PROSE_COLS,
+	type SecretSortKey,
+	type ShapedRow,
+	type SortDirection,
 } from "./secret-manager-types";
 import { describeScopeMove, nextScope, planScopeMove } from "./secret-scope-move";
 import { clampSelection, handleTabSwitchKey, renderScrollableList, selectionBand } from "./selector-helpers";
@@ -327,26 +328,18 @@ function pad(text: string, cells: number): string {
  * integrity check and still would not parse, which is the one failure the loader degrades past.
  * Stating that, rather than inventing a cause, keeps the card honest about what it knows.
  */
-const PARTIAL_UNREADABLE_REASON =
-	"This vault file decrypted but its contents would not parse, so the secrets it holds are unavailable.";
+const PARTIAL_UNREADABLE_REASON = "This vault file decrypted but would not parse, so it cannot be read.";
 
 /**
  * What the Log view says when nothing is being recorded.
  *
- * It NAMES the setting, in both the words the settings UI uses and the key, because the only
- * useful thing this view can do in that state is tell the operator how to make it useful.
- *
- * One PARAGRAPH per entry, not one line. These were hand-wrapped at a width the card only has on
- * a short terminal, so on an ordinary one the second line lost its last word to a hard `…` and
- * the instruction stopped mid-sentence. The view wraps them to whatever the card is, and a
- * paragraph is the only input a wrapper can do that with.
+ * ONE LINE, within {@link SECRET_CARD_PROSE_COLS}. It NAMES the setting, in both the words the
+ * settings UI uses and the key, because that is the only fact this state carries: an empty table
+ * under a tab reading `Log (off)` has already said that nothing is recorded, and the three
+ * sentences that used to explain what recording would capture were read by nobody who could not
+ * already see the empty table.
  */
-const AUDIT_DISABLED_LINES: readonly string[] = [
-	"Secret use is not being recorded, so there is nothing here to show.",
-	"",
-	'Turn on "Record Secret Use" in /settings (secrets.auditLog) to start recording which credential ' +
-		"was spent, in which tool, and what the model wrote around it.",
-];
+const AUDIT_DISABLED_LINES: readonly string[] = ['Turn on "Record Secret Use" (secrets.auditLog) to record every use.'];
 
 /**
  * Body rows the tab strip and the blank line under it take before either pane starts.
@@ -402,14 +395,11 @@ const HELP_MEASURE_COLS = 400;
 /**
  * The widest a paragraph of the card's own prose will ask the card to be.
  *
- * The Log's file notices are the only running prose this card holds, and they are the whole body
- * of the two states that have no table: an empty log and a log that is not being written. Left
- * uncapped they would ask for their full sentence — a hundred and fifty columns for the
- * recording-is-off explanation — and stretch every other state to match. Capped too tightly they
- * orphan their last word onto a row of its own. Seventy-two is the measure the rest of the
- * product's prose is written to, and it holds the longest of these sentences on one line.
+ * The same budget every sentence on this card is written to, so the width a notice ASKS for and
+ * the width its author was held to are one number. Left uncapped, the Log's file notices would ask
+ * for their full sentence and stretch every other state to match.
  */
-const PROSE_MAX_COLS = 72;
+const PROSE_MAX_COLS = SECRET_CARD_PROSE_COLS;
 
 /**
  * The card's own geometry, rather than the shared `MODAL_SIZING_LARGE` it used to borrow.
@@ -693,17 +683,16 @@ function logEmptyState(state: {
 	const query = state.query.trim();
 	const placeholder = state.placeholder;
 	if (placeholder === undefined && query.length === 0) return [];
+	// The finding and the way out are ONE sentence. Split across a headline and a guidance row with
+	// a blank between them, they made a three-row paragraph out of "nothing matched", on a view
+	// whose table is already empty; and the way out is four words.
 	const headline =
 		placeholder === undefined
-			? `${NOTICE_INDENT}No recorded use matches "${query}".`
+			? `${NOTICE_INDENT}No recorded use matches "${query}". Escape clears the search.`
 			: query.length === 0
-				? `${NOTICE_INDENT}${placeholder} has not been used yet.`
-				: `${NOTICE_INDENT}No use of ${placeholder} matches "${query}".`;
-	const guidance =
-		query.length === 0
-			? `${NOTICE_INDENT}Press escape to show every recorded use.`
-			: `${NOTICE_INDENT}Press / to change the search, then escape to clear it.`;
-	return [theme.fg("muted", headline), "", theme.fg("dim", guidance)];
+				? `${NOTICE_INDENT}${placeholder} has not been used yet. Escape shows every use.`
+				: `${NOTICE_INDENT}No use of ${placeholder} matches "${query}". Escape clears it.`;
+	return [theme.fg("muted", headline)];
 }
 
 /**
@@ -871,19 +860,17 @@ class SecretTablePane implements Component {
 	 */
 	#emptyState(): readonly string[] {
 		if (this.query.trim().length > 0) {
-			return [
-				theme.fg("muted", `  Nothing matches "${this.query.trim()}".`),
-				"",
-				theme.fg("dim", "  Press / to change the search, then escape to clear it."),
-			];
+			// The finding and the way out on one row: / changes the search and escape clears it, which
+			// is a clause, not the second paragraph of a screen that has nothing else on it.
+			return [theme.fg("muted", `  Nothing matches "${this.query.trim()}". / searches again, escape clears.`)];
 		}
 		return [
 			theme.fg("muted", "  Nothing stored."),
 			"",
-			theme.fg("dim", "  a stores a credential; f reads one out of an environment variable."),
-			// Both named on the ONE screen that has nothing else to read, because they are the same
-			// action with different sources and the footer offers a chip for each.
-			theme.fg("dim", "  Either way it is stored at once, and the model spends it as #NAME#."),
+			// Both sources named on the ONE screen that has nothing else to read, because they are
+			// the same action with a different source and the footer offers a chip for each. One row:
+			// the two keys and what the credential becomes are the whole of what this screen knows.
+			theme.fg("dim", "  a stores a credential; f reads one out of $VAR. Spent as #NAME#."),
 		];
 	}
 
@@ -1225,11 +1212,7 @@ export class SecretManager extends Container {
 			body: [
 				`${theme.bold(placeholder)}  ${theme.fg("muted", `${row.entry.scope} · ${describeTimeLeft(row.entry, this.#now())}`)}`,
 				"",
-				theme.fg(
-					"warning",
-					`The stored value is deleted from the vault and cannot be recovered. Anything still ` +
-						`writing ${placeholder} will be refused rather than expanded.`,
-				),
+				theme.fg("warning", `The value is deleted for good and ${placeholder} stops expanding.`),
 			],
 			confirmLabel: "enter yes, revoke",
 			run: async () => {
@@ -1283,7 +1266,7 @@ export class SecretManager extends Container {
 		this.#openPrompt(
 			{
 				title: `New value for ${placeholder}`,
-				hint: "The corrected credential. The name, the scope and the expiry are kept.",
+				hint: "The corrected credential. The name, the scope and the expiry stay.",
 				credential: true as const,
 				submit: async value => {
 					const replaced = await this.#vault.replaceValue(name, value);
@@ -1305,7 +1288,7 @@ export class SecretManager extends Container {
 		this.#openPrompt(
 			{
 				title: `Rename ${buildNamePlaceholder(name)}`,
-				hint: "Letters, digits, spaces, dashes and underscores. The value and the expiry are kept.",
+				hint: "Letters, digits, spaces, dashes and underscores. The value is kept.",
 				submit: async value => {
 					const renamed = await this.#vault.rename(name, value.trim());
 					if (renamed === null) {
@@ -1348,12 +1331,7 @@ export class SecretManager extends Container {
 			body: [
 				theme.fg("error", row.reason),
 				"",
-				theme.fg(
-					"warning",
-					`The file is MOVED aside, not deleted, because it still holds real credentials sealed ` +
-						`with a key that is still on disk. The ${scope} scope becomes usable again and the path ` +
-						`it was moved to is reported here.`,
-				),
+				theme.fg("warning", "The file is MOVED aside, not deleted, and the path is reported here."),
 			],
 			confirmLabel: "enter yes, move it aside",
 			run: async () => {
@@ -1508,7 +1486,7 @@ export class SecretManager extends Container {
 		this.#openPrompt(
 			{
 				title: "Search stored credentials",
-				hint: "Matches the placeholder and the scope. Escape clears the search and shows everything.",
+				hint: "Matches the placeholder and the scope. Escape clears it.",
 				submit: async value => {
 					this.#setQuery(value);
 					return value.trim().length === 0 ? "Showing every stored credential." : "";
@@ -1561,7 +1539,7 @@ export class SecretManager extends Container {
 		this.#openPrompt(
 			{
 				title: "Search the expansion log",
-				hint: "Matches the tool and the command. Escape clears the search and shows every use.",
+				hint: "Matches the tool and the command. Escape clears it.",
 				submit: async value => {
 					this.#setLogQuery(value);
 					return value.trim().length === 0 ? "Showing every recorded use." : "";

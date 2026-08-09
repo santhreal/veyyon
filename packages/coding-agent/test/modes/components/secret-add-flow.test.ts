@@ -136,9 +136,7 @@ describe("SecretAddFlow value field", () => {
 		const flow = new SecretAddFlow();
 		flow.submit("");
 		expect(flow.step).toBe("value");
-		expect(flow.refusal).toBe(
-			"Enter the credential itself. An empty secret would store nothing and expand to nothing, so it is never what you meant.",
-		);
+		expect(flow.refusal).toBe("Enter the credential itself: an empty secret expands to nothing.");
 		expect(flow.plan).toBeUndefined();
 	});
 
@@ -179,10 +177,7 @@ describe("SecretAddFlow value field", () => {
 		flow.submit("pin1234");
 		expect(flow.step).toBe("value");
 		expect(flow.refusal).toBe(SHORT_VALUE_REFUSAL);
-		expect(flow.refusal).toBe(
-			"A credential has to be at least 8 characters. Anything shorter cannot be swapped for a " +
-				"placeholder without cutting into ordinary words, so the vault will not store it.",
-		);
+		expect(flow.refusal).toBe("A credential has to be at least 8 characters to be masked at all.");
 		// One more character is the whole difference, and it must be enough.
 		flow.submit("pin12345");
 		expect(flow.step).toBe("done");
@@ -314,7 +309,7 @@ describe("SecretAddFlow reading a credential out of the environment", () => {
 		expect(flow.field).toEqual({
 			step: "env",
 			title: "New secret: name the environment variable",
-			hint: "The variable's NAME, not its value: veyyon reads the credential out of its own environment, so nothing secret is typed or drawn. This field is not masked, because a variable name is not a credential.",
+			hint: "The variable's NAME, not its value. Nothing secret is typed here.",
 			masked: false,
 		});
 	});

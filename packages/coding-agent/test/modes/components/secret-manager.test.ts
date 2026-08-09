@@ -540,7 +540,6 @@ describe("the log view", () => {
 		const manager = await openLogView(await openManager());
 		const text = screenText(manager);
 
-		expect(text).toContain("Secret use is not being recorded");
 		expect(text).toContain("secrets.auditLog");
 		expect(text).toContain("Record Secret Use");
 		// The tab strip must not claim a count, which would read as "zero uses".
