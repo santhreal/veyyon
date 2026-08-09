@@ -257,8 +257,7 @@ describe("convertMessageToLlm: compaction roles", () => {
 describe("compaction summary provider trust boundary", () => {
 	it("keeps current Cargo developer policy above a conflicting historical summary claim", () => {
 		const cargoClaim = "Build with CARGO_TARGET_DIR=/tmp/<name>-target";
-		const currentDeveloperPolicy =
-			"Never override Cargo env and use the persistent shared `/srv/cargo-target`.";
+		const currentDeveloperPolicy = "Never override Cargo env and use the persistent shared `/srv/cargo-target`.";
 		const serialized = defaultConvertToLlm([
 			agentMessage({ role: "developer", content: currentDeveloperPolicy, timestamp: 6000 }),
 			agentMessage({
