@@ -934,6 +934,9 @@ export class StatusLineComponent implements Component {
 	 * would pin the opening wording for the rest of the cache's life.
 	 */
 	#servingAccount(session: AgentSession): { label: string; storedCount: number; isPrediction: boolean } | null {
+		// Read here rather than in the segment, so the whole inventory walk below is skipped as well as
+		// the chip: an operator who has not asked for this pays neither the width nor the work.
+		if (!settings.get("statusLine.showAccount")) return null;
 		const activeProvider = session.state.model?.provider ?? session.model?.provider;
 		const authStorage = session.modelRegistry?.authStorage;
 		if (!activeProvider || !authStorage) return null;

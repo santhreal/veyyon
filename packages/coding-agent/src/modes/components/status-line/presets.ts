@@ -13,13 +13,15 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 		// user sees nothing, but any named sandbox ("work", "rec") reads first, so you
 		// always know which config, sessions, and keys are live.
 		//
-		// `account` is in every preset, including `minimal`, on the same terms: it is silent for a
-		// provider with one stored credential, so a single-account user pays nothing for it, and it
-		// names the serving account the moment there are two. Load balancing is off by default, so
-		// one of those accounts is being spent and the others are not; which one that is cannot be
-		// something you have to open a card to find out.
-		// `secrets` sits beside it on identical terms: silent unless a credential is live in THIS
-		// directory, and the one place outside the card that says a placeholder will expand at all.
+		// `account` is in every preset, including `minimal`, so that turning it on is one boolean
+		// rather than a segment list. It is OFF by default (`statusLine.showAccount`): the chip is
+		// silent for a provider with one stored credential anyway, and for a provider with several it
+		// answers a question only an operator who moves between them asks, which `/account` answers on
+		// demand. Presence in the preset is what makes the setting sufficient; it is not a claim that
+		// the chip renders.
+		// `secrets` sits beside it on different terms: it needs no setting, because it is silent unless
+		// a credential is live in THIS directory, and it is the one place that says a placeholder will
+		// expand at all.
 		leftSegments: ["profile", "model", "account", "secrets", "mode", "path", "git", "context_pct"],
 		rightSegments: ["session_name"],
 		segmentOptions: {

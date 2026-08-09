@@ -37,6 +37,8 @@ import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { APPEARANCE_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/appearance";
+import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import type { StatusLineSegmentId } from "@veyyon/coding-agent/config/settings-schema";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
@@ -66,8 +68,11 @@ afterAll(async () => {
 	resetSettingsForTest();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
 	vi.restoreAllMocks();
+	// The chip ships OFF, so every case below that expects to SEE it has to ask for it. The default
+	// itself is asserted in the last describe, in both states, rather than assumed by these cases.
+	await settings.set("statusLine.showAccount", true);
 });
 
 /**
@@ -364,5 +369,44 @@ describe("every preset carries the account", () => {
 		const configured: StatusLineSegmentId[] = [...def.leftSegments, ...def.rightSegments];
 
 		expect(configured).toContain("account");
+	});
+});
+
+/**
+ * The chip is a knob, and a knob has to be asserted in BOTH states.
+ *
+ * The presets all carry the `account` segment, so the preset table cannot say whether the chip is on
+ * for a fresh install; only the setting can, and a test that exercised the visible state alone would
+ * pass just as happily with the default flipped back on. The declared default is pinned here as well
+ * as the behaviour, because the shipped value is the contract an operator gets without doing
+ * anything, and it is the half that regresses in a one-character diff.
+ */
+describe("the serving-account chip ships off", () => {
+	it("declares a default of off", () => {
+		expect(APPEARANCE_SETTINGS["statusLine.showAccount"].default).toBe(false);
+	});
+
+	it("stays off the footline while the setting is off, with several accounts stored", async () => {
+		await storeAccounts("first@example.com", "second@example.com");
+		await settings.set("statusLine.showAccount", false);
+
+		const line = accountOnly().line();
+
+		expect(line).not.toContain("as ");
+		expect(line).not.toContain("first@example.com");
+		expect(line).not.toContain("second@example.com");
+	});
+
+	it("names the account as soon as the setting is on", async () => {
+		await storeAccounts("visible@example.com", "other@example.com");
+		await settings.set("statusLine.showAccount", false);
+		expect(accountOnly().line()).not.toContain("visible@example.com");
+
+		await settings.set("statusLine.showAccount", true);
+
+		// `next` rather than `as`: no request has gone out in this fixture, so the honest answer is what
+		// the next one would use. Which of the two prefixes is right is pinned by the prediction cases
+		// above; what matters here is that the chip appeared at all.
+		expect(accountOnly().line()).toContain("next visible@example.com");
 	});
 });

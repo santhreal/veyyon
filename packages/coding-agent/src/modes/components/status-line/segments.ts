@@ -774,10 +774,12 @@ const profileSegment: StatusLineSegment = {
 /**
  * Which of several stored accounts is spending right now.
  *
- * Silent for a provider with one credential: the account is not in question, and the decluttered
- * footline stays quiet. It appears the moment a second credential exists for the active provider,
- * because load balancing is off by default — one account serves until the user moves the selection
- * or it runs out, and a quota that drains has to drain somewhere the reader can see.
+ * OFF unless `statusLine.showAccount` is on, which the resolver enforces by reporting no account at
+ * all: this segment never sees one, and the inventory walk behind it never runs. Silent as well for a
+ * provider with one credential, because then the account is not in question. So the chip appears only
+ * where it answers something: the setting is on, and the active provider stores more than one login.
+ * Load balancing is off by default, so exactly one of those is being spent, and a quota that drains
+ * has to drain somewhere the reader can see.
  *
  * Prefixed `as ` so it cannot be read as the profile chip or the session name, which are also bare
  * words on this line. Before the session's first request the prefix is `next `, because routing can
