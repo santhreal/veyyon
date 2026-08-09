@@ -57,7 +57,7 @@ import {
 	postmortem,
 	prompt,
 } from "@veyyon/utils";
-import { isTerminalTodoStatus } from "@veyyon/wire";
+import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY } from "@veyyon/wire";
 import chalk from "chalk";
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
@@ -2235,6 +2235,22 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.todoContainer.clear();
 		const phases = this.todoPhases.filter(phase => phase.tasks.length > 0);
 		if (phases.length === 0) return;
+		// A board with work on it and nothing left open is one line, the same line
+		// the transcript card and the HTML export collapse to, from the same owner
+		// (`isTodoListDone` / `TODO_DONE_SUMMARY` in `@veyyon/wire`). This HUD is
+		// anchored above the composer for the rest of the session, so a finished
+		// plan redrawn here in full is the loudest block on screen saying nothing.
+		//
+		// Derived from the phases in hand and stored nowhere: `append` puts a
+		// pending task back on the board and the full list returns on the next
+		// frame. The expand toggle does not reopen it, because a finished board is
+		// history on every surface and the two must not disagree on one screen.
+		if (isTodoListDone(phases)) {
+			const doneTasks = phases.reduce((count, phase) => count + phase.tasks.length, 0);
+			const summary = `${theme.checkbox.checked} ${TODO_DONE_SUMMARY} · ${formatCount("task", doneTasks)}`;
+			this.todoContainer.addChild(new Text(`\n${theme.fg("success", summary)}`, 1, 0));
+			return;
+		}
 		const expanded = this.todoExpanded;
 		const multiPhase = phases.length > 1;
 		const activeIdx = phases.indexOf(this.#getActivePhase(phases) ?? phases[0]);
