@@ -86,10 +86,16 @@ function captureAnthropicBody(
 }
 
 describe("bundled Anthropic rows declare their thinking surface (models.dev drift fails here)", () => {
-	it("claude-sonnet-4-5 is budget mode with the high/max pair", () => {
+	it("claude-sonnet-4-5 is budget mode with the five budget tiers", () => {
 		expect(sonnet).toBeDefined();
-		expect(sonnet.reasoningOptions).toEqual({ efforts: [Effort.High, Effort.Max] });
-		expect(sonnet.thinking).toEqual({ mode: "budget", efforts: [Effort.High, Effort.Max] });
+		// A `budget_tokens` declaration names no level, so nothing is declared here
+		// and the control mode supplies the ladder: every tier below max, each one a
+		// distinct budget the endpoint accepts. `max` repeats xhigh's 32768.
+		expect(sonnet.reasoningOptions).toBeUndefined();
+		expect(sonnet.thinking).toEqual({
+			mode: "budget",
+			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+		});
 	});
 
 	it("claude-opus-4-5 is budget-effort mode with the low/medium/high ladder", () => {
@@ -221,8 +227,8 @@ describe("out-of-ladder tiers never reach the wire", () => {
 		expect(payloadSeen).toBe(false);
 	}
 
-	it("claude-sonnet-4-5 rejects low (ladder is high/max)", async () => {
-		await expectRejected(sonnet, Effort.Low);
+	it("claude-sonnet-4-5 rejects max (the budget ladder tops out at xhigh)", async () => {
+		await expectRejected(sonnet, Effort.Max);
 	});
 
 	it("claude-opus-4-5 rejects xhigh (ladder is low/medium/high)", async () => {

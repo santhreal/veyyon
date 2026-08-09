@@ -1840,8 +1840,9 @@ function getGoogleBudget(
 			case "medium":
 				return 8192;
 			case "high":
-				// models.dev declares these rows budget-only, which opens the fixed
-				// high/max pair; high must sit below max or the pair is decorative.
+				// The 2.5 rows declare a budget range and no levels, so the ladder is the
+				// budget mode's own minimal..xhigh; high must sit below xhigh or the two
+				// top tiers are the same request.
 				return 16_384;
 			case "xhigh":
 			case "max":
