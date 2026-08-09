@@ -33,6 +33,7 @@ veyyon config get compaction.threshold
 | `statusLine.sessionAccent` | Session Accent | boolean | `true` | Use the session name color for the editor border. Shown under the tab's Advanced fold. |
 | `statusLine.compactThinkingLevel` | Compact Thinking Level | boolean | `false` | Show the thinking level as a single icon on the model name instead of a separate ` · <level>` suffix. Shown under the tab's Advanced fold. |
 | `statusLine.showHookStatus` | Show Hook Status | boolean | `true` | Display hook status messages below the status line. Shown under the tab's Advanced fold. |
+| `statusLine.showAccount` | Show Serving Account | boolean | `false` | Name the account serving the next request on the composer footline, when the active provider stores more than one. Off: /account answers it on demand. |
 
 ### Display
 
@@ -746,4 +747,4 @@ veyyon config get compaction.threshold
 | `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
-343 settings.
+344 settings.

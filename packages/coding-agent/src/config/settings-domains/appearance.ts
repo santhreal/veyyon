@@ -296,6 +296,31 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
+	/**
+	 * Whether the footline names the account serving the next request.
+	 *
+	 * OFF. The chip answers a question most sessions never ask: it is silent for a provider with one
+	 * stored credential, and for a provider with several it is silent about everything except which
+	 * one is being spent. That is worth a permanent slot on the one line that is always on screen
+	 * only for an operator who keeps several accounts of one provider and moves between them, and
+	 * `/account` answers it on demand for everybody else.
+	 *
+	 * A default of on also spends the line's scarcest resource on the reader least able to use it.
+	 * The footline sheds segments from the right as the terminal narrows, so a chip nobody reads
+	 * still costs the width that the model, the mode and the context percentage are competing for.
+	 */
+	"statusLine.showAccount": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "appearance",
+			group: "Status Line",
+			label: "Show Serving Account",
+			description:
+				"Name the account serving the next request on the composer footline, when the active provider stores more than one. Off: /account answers it on demand",
+		},
+	},
+
 	"statusLine.leftSegments": { type: "array", default: [] as StatusLineSegmentId[] },
 
 	"statusLine.rightSegments": { type: "array", default: [] as StatusLineSegmentId[] },
