@@ -4,7 +4,7 @@ import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
 import { resolveConfiguredModelPatterns, resolveModelOverride } from "@veyyon/coding-agent/config/model-resolver";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getBundledAgent } from "@veyyon/coding-agent/task/agents";
+import { getBundledAgent, loadBundledAgents } from "@veyyon/coding-agent/task/agents";
 
 describe("bundled agent parsing", () => {
 	/**
@@ -24,26 +24,38 @@ describe("bundled agent parsing", () => {
 	/**
 	 * No bundled agent pins a model.
 	 *
-	 * They used to: `task` carried `@task`, `scout`/`sonic` carried `@smol`,
-	 * `reviewer` carried `@slow`, `designer` carried `@designer`. Those aliases
-	 * resolved through role expansion before any subagent model setting was
+	 * They used to: the default lane carried `@task`, `scout`/`sonic` carried
+	 * `@smol`, `reviewer` carried `@slow`, `designer` carried `@designer`. Those
+	 * aliases resolved through role expansion before any subagent model setting was
 	 * consulted, so a stock install fanned its subagents across several different
 	 * models and changing the subagent model appeared to do nothing. The models now
 	 * come from the Subagents settings area, which inherits the session model when
-	 * unset — so a definition that names a model here is a regression of that bug.
-	 * A thinking level is still fine: it is not a model choice. `task` states
-	 * `inherit`, so the subagent runs at whatever effort the resolved subagent
-	 * model already carries rather than being forced onto the `auto` ladder.
+	 * unset, so a definition that names a model here is a regression of that bug.
+	 * A thinking level is still fine: it is not a model choice.
+	 *
+	 * The roster is READ OFF the loader rather than listed here. A hand-written list
+	 * goes stale silently in both directions: a renamed lane makes
+	 * `getBundledAgent(name)?.model` undefined and the case passes for the wrong
+	 * reason, and a NEW lane that pins a model is never asked about at all.
 	 */
 	it("ships no model on any bundled agent, so the subagent settings decide", () => {
-		const task = getBundledAgent("task");
-		expect(task).toBeDefined();
-		expect(task?.model).toBeUndefined();
-		expect(task?.thinkingLevel).toBe(ThinkingLevel.Inherit);
+		const bundled = loadBundledAgents();
 
-		for (const name of ["scout", "reviewer", "designer", "librarian", "sonic"]) {
-			expect(getBundledAgent(name)?.model, `${name} must not pin a model`).toBeUndefined();
+		expect(bundled.map(agent => agent.name).sort()).toEqual([
+			"deep",
+			"designer",
+			"librarian",
+			"reviewer",
+			"scout",
+			"sonic",
+		]);
+		for (const agent of bundled) {
+			expect(agent.model, `${agent.name} must not pin a model`).toBeUndefined();
+			expect(agent.source, agent.name).toBe("bundled");
 		}
+		// `deep` is the lane that states `inherit`, so it runs at whatever effort the
+		// resolved subagent model already carries rather than on the `auto` ladder.
+		expect(getBundledAgent("deep")?.thinkingLevel).toBe(ThinkingLevel.Inherit);
 	});
 
 	// Issue #4761: with `modelRoles.slow: ...:xhigh`, the role's explicit effort
