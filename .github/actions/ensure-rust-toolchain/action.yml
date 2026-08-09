@@ -10,7 +10,7 @@ inputs:
    components:
       required: false
       default: ""
-      description: Optional comma-separated rustup components
+      description: Optional comma-separated rustup components (spaces after the commas are fine)
    target:
       required: false
       default: ""
@@ -38,7 +38,10 @@ runs:
 
            missing_components=()
            if [ -n "$COMPONENTS" ]; then
-             IFS=',' read -r -a wanted_components <<< "$COMPONENTS"
+             # Space is a delimiter as well as comma: the ordinary YAML spelling
+             # `clippy, rustfmt` otherwise reaches rustup as the component
+             # " rustfmt", which it rejects. Empty fields fall out below.
+             IFS=', ' read -r -a wanted_components <<< "$COMPONENTS"
              for component in "${wanted_components[@]}"; do
                [ -z "$component" ] && continue
                if ! rustup component list --toolchain "$TOOLCHAIN" --installed | grep -qE "^${component}(-|$)"; then
