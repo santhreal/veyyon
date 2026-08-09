@@ -42,7 +42,7 @@ function collapseSchedulerSettleDelays(): void {
 }
 /** Text of a `custom` message, whose content may be a plain string or content blocks. */
 function customMessageText(message: AgentMessage | undefined): string {
-	if (!message || message.role !== "custom") return "";
+	if (message?.role !== "custom") return "";
 	const content = message.content;
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";

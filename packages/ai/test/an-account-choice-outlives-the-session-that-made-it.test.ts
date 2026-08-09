@@ -255,7 +255,7 @@ describe("an account choice outlives the session that made it", () => {
 		const otherProviderChoice = siblingRows.find(
 			row => row.credential.type === "oauth" && row.credential.access !== otherProviderDefault,
 		);
-		if (!otherProviderChoice || otherProviderChoice.credential.type !== "oauth") {
+		if (otherProviderChoice?.credential.type !== "oauth") {
 			throw new Error("both sibling credentials resolved the same way");
 		}
 		expect(storage.selectProviderCredential(PROVIDER, chosenId)).toBe(true);

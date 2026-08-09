@@ -1,6 +1,6 @@
 import { buildModel } from "./build";
 import MODELS from "./models.json" with { type: "json" };
-import type { Api, KnownProvider, Model, ModelSpec, Usage } from "./types";
+import type { Api, Model, ModelSpec, Usage } from "./types";
 
 /**
  * Static bundled model registry loaded from `models.json`.
