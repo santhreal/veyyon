@@ -38,9 +38,20 @@ describe("tools/renderers boot-path weight (PERF-6)", () => {
 	test("importing the renderer barrel does not load the vibe runtime", async () => {
 		// A clean subprocess is required: this test file's own runner has other
 		// suites' imports in its module registry, which would false-positive.
+		//
+		// The child answers the question rather than shipping its evidence: the loaded-module
+		// list is ~2000 keys and 220KB on one line, and a write that size is not reliably
+		// flushed to a pipe before the child exits, so the parent parsed a truncated line and
+		// the suite failed with `JSON Parse error: Unterminated string` while the contract it
+		// guards was perfectly intact. The banned-substring check needs a count and the hits,
+		// which is a few dozen bytes.
 		const script = `
 			await import(${JSON.stringify(path.join(repoRoot, "packages/coding-agent/src/tools/renderers.ts"))});
-			console.log(JSON.stringify(Object.keys(import.meta.require.cache)));
+			const loaded = Object.keys(import.meta.require.cache);
+			const banned = ${JSON.stringify(BANNED_ON_BOOT)};
+			const hits = {};
+			for (const name of banned) hits[name] = loaded.filter(key => key.includes(name));
+			console.log(JSON.stringify({ count: loaded.length, hits }));
 		`;
 		const proc = Bun.spawn(["bun", "-e", script], { cwd: repoRoot, stdout: "pipe", stderr: "pipe" });
 		const [out, err, code] = await Promise.all([
@@ -49,10 +60,13 @@ describe("tools/renderers boot-path weight (PERF-6)", () => {
 			proc.exited,
 		]);
 		expect(code, `renderer barrel failed to import: ${err}`).toBe(0);
-		const loaded: string[] = JSON.parse(out.trim().split("\n").at(-1) ?? "[]");
-		expect(loaded.length).toBeGreaterThan(50); // sanity: the barrel graph did load
+		const report = JSON.parse(out.trim().split("\n").at(-1) ?? "{}") as {
+			count?: number;
+			hits?: Record<string, string[]>;
+		};
+		expect(report.count ?? 0).toBeGreaterThan(50); // sanity: the barrel graph did load
 		for (const banned of BANNED_ON_BOOT) {
-			const hits = loaded.filter(key => key.includes(banned));
+			const hits = report.hits?.[banned] ?? [];
 			expect(hits, `${banned} loaded at boot via the renderer barrel: ${hits.join(", ")}`).toEqual([]);
 		}
 	});

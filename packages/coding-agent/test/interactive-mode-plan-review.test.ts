@@ -334,6 +334,13 @@ describe("InteractiveMode plan review rendering", () => {
 	});
 
 	it("dismisses Plan Review and restores input when a provider error is pinned", async () => {
+		// The editor must be REACHABLE from the renderer root for focus restoration to have
+		// anywhere to go: `hide()` hands focus back to what the overlay captured only while that
+		// component is still attached, and falls back to the first attached focusable otherwise.
+		// `init()` mounts the composer zone in production; this harness builds the mode without
+		// it, so attaching the container is what makes the assertion below about production
+		// behaviour rather than about an orphaned tree (where the only possible answer is null).
+		mode.ui.addChild(mode.editorContainer);
 		mode.ui.setFocus(mode.editor);
 		const choice = mode.showPlanReview("# Plan\n\nReady for approval.", "Plan mode - next step", ["Approve"]);
 

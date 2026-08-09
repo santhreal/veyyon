@@ -213,4 +213,63 @@ describe("an unreachable release source fails loudly and never answers from stal
 			expect((await updateCli.runAutoUpdate("1.0.0", undefined, await statePath())).status).toBe("up-to-date");
 		});
 	});
+
+	/**
+	 * A CONNECTION THAT ACCEPTS AND THEN SAYS NOTHING.
+	 *
+	 * The block above proves the error MAPPING: hand `getLatestRelease` a rejected fetch whose
+	 * name is `TimeoutError` and it reports a timeout with its budget. That is green whether or
+	 * not any deadline exists, which is how `getLatestRelease` shipped passing
+	 * `new AbortController().signal` to `fetch`: a signal nothing ever aborts. `timeoutMs`
+	 * reached the message and nothing else, so a stalled connection hung the call forever, on the
+	 * startup path, with the function's own doc promising the opposite. Locally it took a test
+	 * runner to OOM-kill after four minutes.
+	 *
+	 * These cases never synthesize the timeout. The stub accepts the request and answers only
+	 * when the signal it was handed aborts, so the ONLY thing that can end the call is the
+	 * module's own deadline. Both entries that take an injectable budget are covered, plus the
+	 * positive control that a request actually went out (a function that stopped fetching would
+	 * otherwise satisfy every assertion here by doing nothing).
+	 *
+	 * What this does NOT catch: the two call sites whose deadline is a fixed constant rather than
+	 * a parameter, the checksum sidecar and the binary download. Proving those the same way means
+	 * waiting out 30 seconds and 15 minutes of real time, which costs more than the guard is
+	 * worth; they are covered only by using the same `withTimeoutSignal` owner.
+	 */
+	describe("a stalled connection is ended by the module's own deadline", () => {
+		/** Fetch that answers only when its signal aborts, recording every signal it is handed. */
+		function stallUntilAborted(): { signals: Array<AbortSignal | undefined> } {
+			const signals: Array<AbortSignal | undefined> = [];
+			const impl = ((_input: string | URL | Request, init?: RequestInit) => {
+				const signal = init?.signal ?? undefined;
+				signals.push(signal);
+				const { promise, reject } = Promise.withResolvers<Response>();
+				signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+				return promise;
+			}) as unknown as typeof fetch;
+			spyOn(globalThis, "fetch").mockImplementation(impl);
+			return { signals };
+		}
+
+		it("ends the latest-release check on its own budget instead of waiting forever", async () => {
+			const { signals } = stallUntilAborted();
+
+			await expect(updateCli.getLatestRelease(1200)).rejects.toThrow(/Timed out fetching release info after 1s/);
+
+			// The request went out, and the signal it carried is the thing that ended it.
+			expect(signals).toHaveLength(1);
+			expect(signals[0]).toBeInstanceOf(AbortSignal);
+			expect(signals[0]?.aborted).toBe(true);
+		});
+
+		it("ends the release-list walk on its own budget instead of waiting forever", async () => {
+			const { signals } = stallUntilAborted();
+
+			await expect(updateCli.getAllReleases(1200)).rejects.toThrow(/Timed out fetching the release list after 1s/);
+
+			expect(signals).toHaveLength(1);
+			expect(signals[0]).toBeInstanceOf(AbortSignal);
+			expect(signals[0]?.aborted).toBe(true);
+		});
+	});
 });
