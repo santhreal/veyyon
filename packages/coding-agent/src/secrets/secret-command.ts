@@ -289,8 +289,12 @@ export function secretCommandUsage(surface: SecretCommandSurface): string {
  * The ONE owner of that mapping, declared as data rather than checked with a chain of `if`s, so
  * parsing, error messages and guards cannot describe different sets of rules. `add` has unbounded
  * words because its second positional is the untouched credential suffix, not a word list.
+ *
+ * EXPORTED so the grammar suites can be derived from it rather than restating it. A hand-written
+ * copy of this table in a test goes stale the moment a verb is added, and a stale copy is the same
+ * thing as no test: the new verb's options and word count are then asserted by nobody.
  */
-const SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: readonly string[]; words: number }> = {
+export const SECRET_SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: readonly string[]; words: number }> = {
 	add: { options: ["--from-env", "--ttl", "--scope"], words: Number.POSITIVE_INFINITY },
 	list: { options: [], words: 0 },
 	// OPTIONAL scope, unlike `discard`. Omitted, removal takes the narrowest match, which is the
@@ -322,7 +326,7 @@ const SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: readonly string[]; 
 
 /** Every known option, derived from its subcommand owners so the two cannot drift. */
 const SECRET_COMMAND_OPTIONS: Record<string, true> = Object.fromEntries(
-	Object.values(SUBCOMMAND_SHAPES).flatMap(shape => shape.options.map(option => [option, true] as const)),
+	Object.values(SECRET_SUBCOMMAND_SHAPES).flatMap(shape => shape.options.map(option => [option, true] as const)),
 );
 
 /**
@@ -513,7 +517,7 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 	for (let i = 1; i < tokens.length; i++) {
 		const token = tokens[i].value;
 		if (SECRET_COMMAND_OPTIONS[token]) {
-			if (!SUBCOMMAND_SHAPES[request.subcommand].options.includes(token)) {
+			if (!SECRET_SUBCOMMAND_SHAPES[request.subcommand].options.includes(token)) {
 				throw irrelevantOption(request.subcommand, token, usageText);
 			}
 			if (suppliedOptions.has(token)) {
@@ -646,7 +650,7 @@ function refuseExtraWords(
 	usageText: string,
 	surface: SecretCommandSurface,
 ): void {
-	const shape = SUBCOMMAND_SHAPES[request.subcommand];
+	const shape = SECRET_SUBCOMMAND_SHAPES[request.subcommand];
 	if (words.length <= shape.words) return;
 
 	const extra = words[shape.words];
@@ -708,8 +712,8 @@ function refuseMissingScope(request: SecretCommandRequest, usageText: string): v
  * byte for byte by tests and read by an operator who has just been refused, so it is spelled out.
  */
 function irrelevantOption(subcommand: SecretSubcommand, option: string, usageText: string): Error {
-	const takenBy = (Object.keys(SUBCOMMAND_SHAPES) as SecretSubcommand[]).filter(candidate =>
-		SUBCOMMAND_SHAPES[candidate].options.includes(option),
+	const takenBy = (Object.keys(SECRET_SUBCOMMAND_SHAPES) as SecretSubcommand[]).filter(candidate =>
+		SECRET_SUBCOMMAND_SHAPES[candidate].options.includes(option),
 	);
 	const verbs = takenBy.map(verb => `/secret ${verb}`);
 	const named = verbs.length <= 2 ? verbs.join(" and ") : `${verbs.slice(0, -1).join(", ")} and ${verbs.at(-1)}`;
