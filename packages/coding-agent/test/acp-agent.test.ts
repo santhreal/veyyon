@@ -19,6 +19,7 @@ import {
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 // One owner for how `/fast` names the state it changes, so this suite cannot drift
 // from the command the way it did when the wording became "priority tier".
@@ -58,6 +59,17 @@ function expectAcpStructure(schema: z.ZodType, value: unknown): void {
 	expect(result.success, result.success ? undefined : JSON.stringify(result.error.issues, null, 2)).toBe(true);
 }
 
+/**
+ * The models an ACP client sees, each declaring the effort ladder its transport
+ * exposes.
+ *
+ * The ladders are the point, not decoration. `reasoning: true` on its own means "this
+ * model reasons and exposes no control over it": the catalog never fabricates a ladder
+ * from a model id, so a spec without one makes every thinking level unsettable and
+ * `setSessionConfigOption({ configId: "thinking" })` refuses with "none (this model
+ * exposes no effort control)". Three cases below drive that surface, so the fixture has
+ * to declare what a real thinking model declares.
+ */
 const TEST_MODELS: Model[] = [
 	buildModel({
 		id: "claude-sonnet-4-20250514",
@@ -66,6 +78,7 @@ const TEST_MODELS: Model[] = [
 		provider: "anthropic",
 		baseUrl: "https://example.invalid",
 		reasoning: true,
+		thinking: { mode: "budget", efforts: [Effort.High, Effort.Max] },
 		input: ["text", "image"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 200_000,
@@ -78,6 +91,7 @@ const TEST_MODELS: Model[] = [
 		provider: "openai",
 		baseUrl: "https://example.invalid",
 		reasoning: true,
+		thinking: { mode: "effort", efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh] },
 		input: ["text", "image"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 200_000,
@@ -2620,5 +2634,67 @@ describe("ACP publishes only the effort levels the model in scope declares", () 
 			value: accepted,
 		});
 		expect(harness.findSession(created.sessionId)?.thinkingLevel).toBe(accepted);
+	});
+
+	it("spells out the levels that would have worked, and pushes nothing when it refuses", async () => {
+		// The two things the cases above cannot see. Their regex stops at the model and the
+		// level, so a build that dropped the "Accepted: …" clause stays green; and they read
+		// session state only, so a build that published a `config_option_update` for a level
+		// it had just refused stays green too.
+		const ladder = getBundledModel("anthropic", "claude-sonnet-4-6");
+		const declared = configuredThinkingLevelsForModel(ladder);
+		const forbidden = CONFIGURED_THINKING_LEVELS.find(level => !declared.includes(level));
+		const accepted = declared[0];
+		if (!forbidden || accepted === undefined) {
+			throw new Error("this model cannot show both sides of the refusal");
+		}
+
+		const harness = await createHarness();
+		const created = await harness.agent.newSession({ cwd: harness.cwdA, mcpServers: [] });
+		const session = harness.findSession(created.sessionId);
+		if (!session) throw new Error("session not registered");
+		session.model = ladder;
+		// Past the bootstrap guard the session-lifetime subscription is installed, so an
+		// absent notification below means "refused", not "too early to publish".
+		await waitForBootstrapGuard();
+		const configUpdatesSince = (from: number): SessionNotification[] =>
+			harness.updates
+				.slice(from)
+				.filter(
+					notification =>
+						notification.sessionId === created.sessionId &&
+						notification.update.sessionUpdate === "config_option_update",
+				);
+
+		const acceptedFrom = harness.updates.length;
+		await harness.agent.setSessionConfigOption({
+			sessionId: created.sessionId,
+			configId: "thinking",
+			value: accepted,
+		});
+		expect(configUpdatesSince(acceptedFrom)).toHaveLength(1);
+
+		const refusedFrom = harness.updates.length;
+		await expect(
+			harness.agent.setSessionConfigOption({ sessionId: created.sessionId, configId: "thinking", value: forbidden }),
+		).rejects.toThrow(
+			`${ladder.provider}/${ladder.id} does not accept thinking level ${forbidden}. Accepted: ${declared.join(", ")}`,
+		);
+		expect(configUpdatesSince(refusedFrom)).toEqual([]);
+		expect(session.thinkingLevel).toBe(accepted);
+
+		// A row with no effort control names that absence rather than an empty list, so a
+		// client can say why the menu is missing instead of showing a blank one.
+		session.model = getBundledModel("cursor", "composer-1.5");
+		const noEffortFrom = harness.updates.length;
+		await expect(
+			harness.agent.setSessionConfigOption({ sessionId: created.sessionId, configId: "thinking", value: accepted }),
+		).rejects.toThrow(
+			`does not accept thinking level ${accepted}. Accepted: none (this model exposes no effort control)`,
+		);
+		expect(configUpdatesSince(noEffortFrom)).toEqual([]);
+
+		harness.abortController.abort();
+		await Bun.sleep(0);
 	});
 });
