@@ -155,44 +155,44 @@ describe("storing a credential from inside the card", () => {
 	 * name for a read-only roster. The assertion is on the VAULT, not on a notice, because a card
 	 * that said "Stored" without writing anything would satisfy a screen-only check.
 	 */
-	it("stores a named credential in the chosen scope", async () => {
+	it("stores the credential in the default scope as soon as the value is given", async () => {
 		const manager = await open();
 
 		manager.handleInput("a");
 		await type(manager, "ghp_secret_value");
-		await type(manager, "GITHUB_TOKEN");
-		await type(manager, "project");
 
 		const stored = await vault().load();
 		expect(stored).toHaveLength(1);
-		expect(stored[0].name).toBe("GITHUB_TOKEN");
 		expect(stored[0].value).toBe("ghp_secret_value");
-		expect(stored[0].scope).toBe("project");
+		expect(stored[0].scope).toBe("profile");
+		expect(stored[0].name.length).toBeGreaterThan(0);
 	});
 
 	/**
-	 * THE VALUE IS ASKED FOR FIRST AND THE NAME SECOND.
+	 * ONE FIELD, NOT THREE. Storing one credential used to cost a masked value prompt, then a name
+	 * prompt, then a scope prompt. The middle one is also the defect that once stored the literal
+	 * string `GITHUB_TOKEN` as a live credential: a masked field opened before any value had been
+	 * given reads as a request for the name, so the operator typed the name into it.
 	 *
-	 * This is the exact defect that once stored the literal string `GITHUB_TOKEN` as a live
-	 * credential: a masked field opened before any value had been given reads as a request for the
-	 * name, so the operator typed the name into it. If the order ever flips back, the value below
-	 * lands in the name and this fails on both fields at once.
+	 * Counted from the SCREEN rather than from the flow object, because the flow can hold one step
+	 * while the container opens two prompts, and the operator only ever sees the container.
 	 */
-	it("asks for the value before the name, so the name is never stored as the value", async () => {
+	it("asks one question and returns to the roster", async () => {
 		const manager = await open();
 
 		manager.handleInput("a");
-		const firstPrompt = text(manager);
+		await manager.settled();
+		const asked = text(manager);
 		await type(manager, "ghp_real_credential");
-		const secondPrompt = text(manager);
-		await type(manager, "GITHUB_TOKEN");
-		await type(manager, "profile");
+		const after = text(manager);
 
-		expect(firstPrompt.toLowerCase()).toContain("value");
-		expect(secondPrompt.toLowerCase()).toContain("name");
+		expect(asked).toContain("New secret: paste the value");
+		// No second question: the card is back on its own roster, showing what it stored.
+		expect(after).not.toContain("New secret:");
+		expect(after).toContain("Stored #");
 		const stored = await vault().load();
+		expect(stored).toHaveLength(1);
 		expect(stored[0].value).toBe("ghp_real_credential");
-		expect(stored[0].value).not.toBe("GITHUB_TOKEN");
 	});
 
 	/**
@@ -211,22 +211,77 @@ describe("storing a credential from inside the card", () => {
 	});
 
 	/**
-	 * An empty name means "generate one", which is the documented behaviour of `vault.add`. It is
-	 * asserted here because the card could plausibly have refused the blank field instead, which
-	 * would force a name on an operator who deliberately wanted the generated one.
+	 * The vault names the entry, and the confirmation NAMES THE PLACEHOLDER IT MINTED and the keys
+	 * that change it. A generated name the operator is never told about is a credential they cannot
+	 * spend: the placeholder is the only handle the model has on it.
 	 */
-	it("accepts a blank name and lets the vault generate one", async () => {
+	it("names the credential itself and says how to change that", async () => {
 		const manager = await open();
 
 		manager.handleInput("a");
 		await type(manager, "some_value_here");
-		await type(manager, "");
-		await type(manager, "profile");
 
 		const stored = await vault().load();
 		expect(stored).toHaveLength(1);
-		expect(stored[0].name.length).toBeGreaterThan(0);
 		expect(stored[0].value).toBe("some_value_here");
+		// ON ONE PAINTED ROW. A receipt that wraps pushes the table down and reads as an error, so
+		// the row is located and asserted whole rather than matched against the flattened screen.
+		const receipt = body(manager).filter(line => line.includes("Stored #"));
+		expect(receipt).toHaveLength(1);
+		expect(receipt[0]).toContain(`Stored #${stored[0].name}# in profile. n renames, m moves.`);
+	});
+
+	/**
+	 * THE ROW IT STORED IS THE SELECTED ROW.
+	 *
+	 * The confirmation points at `n` and `m`, and both act on the selection. With four credentials
+	 * already in the vault the cursor sits on the first of them, so a store that left the selection
+	 * alone would tell the operator to press a key that renames somebody else's credential. Driven
+	 * through the real `n` action rather than by reading a private field, because the mistake this
+	 * closes is a rename landing on the wrong entry.
+	 */
+	it("selects the credential it just stored, so the keys it names act on it", async () => {
+		await seed();
+		const manager = await open();
+
+		manager.handleInput("a");
+		await type(manager, "ghp_the_new_one");
+		const created = (await vault().load()).find(entry => entry.value === "ghp_the_new_one");
+		expect(created).toBeDefined();
+
+		manager.handleInput("n");
+		await manager.settled();
+		// The rename field is prefilled with the SELECTED row's name, so the title alone says which
+		// credential the key reached. Typed on the end of that prefill, which is what a terminal does.
+		expect(text(manager)).toContain(`Rename #${created?.name}#`);
+		await type(manager, "_RENAMED");
+
+		const after = await vault().load();
+		expect(after.find(entry => entry.name === `${created?.name}_RENAMED`)?.value).toBe("ghp_the_new_one");
+		// And the credential that was selected before the store still carries its own name.
+		expect(after.map(entry => entry.name)).toContain("AWS_SECRET");
+	});
+
+	/**
+	 * A SEARCH DOES NOT HIDE WHAT WAS JUST STORED. The filter is cleared by the store, because a
+	 * generated name almost never matches whatever the operator was searching for: the row would be
+	 * absent from a table that had just reported storing it, and `n` would act on a hidden selection.
+	 */
+	it("clears an active filter so the new row is on screen", async () => {
+		await seed();
+		const manager = await open();
+
+		manager.handleInput("/");
+		await type(manager, "STRIPE");
+		expect(placeholderOrder(manager)).toEqual(["#STRIPE_KEY#"]);
+
+		manager.handleInput("a");
+		await type(manager, "ghp_after_the_filter");
+
+		const created = (await vault().load()).find(entry => entry.value === "ghp_after_the_filter");
+		expect(created).toBeDefined();
+		expect(placeholderOrder(manager)).toContain(`#${created?.name}#`);
+		expect(placeholderOrder(manager)).toContain("#GITHUB_TOKEN#");
 	});
 
 	/**
@@ -259,14 +314,11 @@ describe("storing a credential from inside the card", () => {
 
 		manager.handleInput("f");
 		await type(manager, "GITHUB_TOKEN");
-		await type(manager, "DEPLOY_KEY");
-		await type(manager, "project");
 
 		const stored = await vault().load();
 		expect(stored).toHaveLength(1);
-		expect(stored[0].name).toBe("DEPLOY_KEY");
 		expect(stored[0].value).toBe("ghp_from_the_environment");
-		expect(stored[0].scope).toBe("project");
+		expect(stored[0].scope).toBe("profile");
 	});
 
 	/**
@@ -279,12 +331,12 @@ describe("storing a credential from inside the card", () => {
 
 		manager.handleInput("f");
 		await type(manager, "GITHUB_TOKEN");
-		await type(manager, "DEPLOY_KEY");
-		await type(manager, "profile");
 
-		const painted = text(manager);
-		expect(painted).toContain("Stored #DEPLOY_KEY# from $GITHUB_TOKEN in the profile vault.");
-		expect(painted).not.toContain("ghp_from_the_environment");
+		const stored = await vault().load();
+		const receipt = body(manager).filter(line => line.includes("Stored #"));
+		expect(receipt).toHaveLength(1);
+		expect(receipt[0]).toContain(`Stored #${stored[0].name}# from $GITHUB_TOKEN in profile. n renames, m moves.`);
+		expect(text(manager)).not.toContain("ghp_from_the_environment");
 	});
 
 	/**

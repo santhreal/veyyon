@@ -1,10 +1,12 @@
 /**
  * The state machine behind storing a NEW credential from inside the Secret Manager card.
  *
- * The card could list, rename, extend and revoke credentials, and could not store one. An
- * operator who wanted a new secret had to close the card and type `/secret add`, which teaches
- * people that the card is not the real surface. This holds the questions adding takes, in the order
- * that keeps the answers honest, and hands the container a plan for `vault.add`.
+ * ONE QUESTION, then the credential is stored: what is the value, or which environment variable
+ * holds it. The vault invents the name and {@link DEFAULT_ADD_SCOPE} takes the scope, because both
+ * are labels on an entry that has to exist before they mean anything, and both are one keystroke
+ * away on the row (`n` renames, `m` moves). Asking for them here cost three full-screen prompts per
+ * credential, and one of them was a masked field asking for a name, which is exactly the illusion
+ * that once stored the literal string `GITHUB_TOKEN` as a live credential.
  *
  * IT NEVER TOUCHES THE VAULT, the audit log, or the filesystem. It collects, refuses, and
  * yields a plan; the container performs the mutation. That separation is what lets the flow be
@@ -15,9 +17,8 @@
  * exactly one door, {@link SecretAddFlow.plan}. No title, hint, refusal, or other accessor
  * carries it, so a future prompt cannot accidentally paint a live credential onto the screen.
  */
-import { errorMessage } from "@veyyon/utils";
 import { canObfuscatePlainValue, MIN_OBFUSCATABLE_LENGTH } from "../../secrets/policy";
-import { normaliseSecretName, VAULT_SCOPES, type VaultScope } from "../../secrets/vault";
+import type { VaultScope } from "../../secrets/vault";
 import type { AddFlowState, AddFlowStep } from "./secret-manager-types";
 
 /**
@@ -27,9 +28,6 @@ import type { AddFlowState, AddFlowStep } from "./secret-manager-types";
  * to every project at once, so it is the answer that surprises the fewest people.
  */
 export const DEFAULT_ADD_SCOPE: VaultScope = "profile";
-
-/** The scopes named in prose, derived from {@link VAULT_SCOPES} so a hint cannot drift from reality. */
-const SCOPE_LIST = VAULT_SCOPES.join(", ");
 
 /**
  * Why an empty credential is refused rather than stored.
@@ -43,12 +41,10 @@ export const EMPTY_VALUE_REFUSAL =
 /**
  * Why a credential the obfuscator could not protect is refused at the field that holds it.
  *
- * THE VAULT ALREADY REFUSES THIS, and that was the problem. The refusal arrived from `vault.add`
- * after all three questions had been answered, by which point the container has torn the flow
- * down: the operator was returned to the roster having lost the credential, the name and the
- * scope, and had to retype all three to be told the same thing. The value step is where the rule
- * can still be acted on, so it is enforced here, exactly as the name step already runs the
- * vault's own normaliser rather than letting a bad name reach the write.
+ * THE VAULT ALREADY REFUSES THIS, and that was the problem. The refusal arrived from `vault.add`,
+ * by which point the container has torn the flow down: the operator was returned to the roster
+ * having lost the credential and had to retype it to be told the same thing. The value step is
+ * where the rule can still be acted on, so it is enforced here.
  *
  * The rule itself is not restated: {@link canObfuscatePlainValue} decides, and the threshold is
  * read from {@link MIN_OBFUSCATABLE_LENGTH}, so a change to the policy cannot leave this field
@@ -57,14 +53,6 @@ export const EMPTY_VALUE_REFUSAL =
 export const SHORT_VALUE_REFUSAL =
 	`A credential has to be at least ${MIN_OBFUSCATABLE_LENGTH} characters. Anything shorter cannot be swapped ` +
 	`for a placeholder without cutting into ordinary words, so the vault will not store it.`;
-
-/**
- * Why a scope the vault does not have is refused.
- *
- * The offending input is deliberately not echoed. It is arbitrary typed text, and a refusal is
- * not worth the escaping question.
- */
-export const UNKNOWN_SCOPE_REFUSAL = `That is not a scope a vault has. Choose ${SCOPE_LIST}.`;
 
 /** Why a blank answer at the environment step is refused: there is no variable to read. */
 export const EMPTY_ENV_NAME_REFUSAL =
@@ -104,9 +92,9 @@ export interface AddFlowField {
 	/**
 	 * True only for the credential itself.
 	 *
-	 * Masking the name would hide a typo in a label that has to be read back later, and a masked
-	 * field asking for a name is the exact illusion that made `/secret add` store `GITHUB_TOKEN`
-	 * as a live credential.
+	 * A variable NAME is not a credential, so masking one would hide a typo in something that has to
+	 * be read back, and a masked field asking for anything other than the value is the illusion that
+	 * made `/secret add` store the literal string `GITHUB_TOKEN` as a live credential.
 	 */
 	readonly masked: boolean;
 }
@@ -114,15 +102,12 @@ export interface AddFlowField {
 /**
  * What the container hands to `vault.add` once every question is answered.
  *
- * The only place the collected value is readable. Kept separate from {@link AddFlowState} so
- * the "generate a name for me" answer arrives as `undefined` rather than as an empty string the
- * caller has to remember to interpret.
+ * The only place the collected value is readable. It carries the value and, when there was one, the
+ * variable it was read out of. There is nothing else to hand over: the name and the scope are no
+ * longer questions, so the container stores at {@link DEFAULT_ADD_SCOPE} under a generated name.
  */
 export interface AddFlowPlan {
-	/** `undefined` when the name field was left blank, which asks the vault to invent one. */
-	readonly name: string | undefined;
 	readonly value: string;
-	readonly scope: VaultScope;
 	/**
 	 * The environment variable the credential was read out of, when it was.
 	 *
@@ -143,25 +128,13 @@ const FIELDS: Readonly<Record<Exclude<AddFlowStep, "done">, AddFlowField>> = {
 	value: {
 		step: "value",
 		title: "New secret: paste the value",
-		hint: "The credential itself, such as the token or the password. It stays masked, and the manager never shows it again.",
+		hint: "The token or password itself. It stays masked and is stored at once; n renames the row, m moves it.",
 		masked: true,
 	},
 	env: {
 		step: "env",
 		title: "New secret: name the environment variable",
 		hint: "The variable's NAME, not its value: veyyon reads the credential out of its own environment, so nothing secret is typed or drawn. This field is not masked, because a variable name is not a credential.",
-		masked: false,
-	},
-	name: {
-		step: "name",
-		title: "New secret: name it",
-		hint: "Letters, digits, spaces, dashes and underscores. Leave it blank to have a name generated for you.",
-		masked: false,
-	},
-	scope: {
-		step: "scope",
-		title: "New secret: choose a scope",
-		hint: `Who can see it: ${SCOPE_LIST}. Leave it blank to keep ${DEFAULT_ADD_SCOPE}.`,
 		masked: false,
 	},
 };
@@ -190,14 +163,16 @@ const FIRST_STEP: Readonly<Record<AddFlowSource, "value" | "env">> = {
 };
 
 /**
- * Ask for a credential, then a name, then a scope, and produce a plan.
+ * Ask for a credential and produce a plan. One question, one answer, stored.
  *
- * VALUE FIRST is the whole point of the ordering, not a preference. Asking the name first puts a
- * masked field on screen before any credential has been given, and a masked field reads as
- * "type the secret". That is how `/secret add` came to hold an entry whose value was the literal
- * string `GITHUB_TOKEN`: the operator answered the question the field appeared to be asking.
+ * THE VALUE IS THE ONLY THING ASKED. A name and a scope describe an entry that has to exist
+ * before either means anything, the row that appears carries `n` to rename and `m` to move, and
+ * asking for them here turned one credential into three full-screen prompts. The middle one was a
+ * masked field asking for a name, which is how `/secret add` came to hold an entry whose value was
+ * the literal string `GITHUB_TOKEN`: the operator answered the question the field appeared to ask.
+ * With the question gone, that mistake is no longer expressible.
  *
- * TWO SOURCES FOR THAT FIRST ANSWER. `paste` opens the masked field; `env` names a variable and the
+ * TWO SOURCES FOR THAT ONE ANSWER. `paste` opens the masked field; `env` names a variable and the
  * credential is read out of the environment, which is the only entry form where the value never
  * reaches the screen or the input buffer at all. `/secret --from-env VAR` has always offered that on
  * the command line, and the manager could not, so the safest path was the one the GUI lacked.
@@ -211,17 +186,8 @@ export class SecretAddFlow {
 	 */
 	readonly #readEnv: (variable: string) => string | undefined;
 
-	/** The step this flow opened at, which is where a back out of the name question returns to. */
-	readonly #firstStep: "value" | "env";
-
 	constructor(options: { source?: AddFlowSource; readEnv?: (variable: string) => string | undefined } = {}) {
-		this.#firstStep = FIRST_STEP[options.source ?? "paste"];
-		this.#state = {
-			step: this.#firstStep,
-			value: "",
-			name: "",
-			scope: DEFAULT_ADD_SCOPE,
-		};
+		this.#state = { step: FIRST_STEP[options.source ?? "paste"], value: "" };
 		this.#readEnv = options.readEnv ?? (variable => process.env[variable]);
 	}
 
@@ -248,33 +214,23 @@ export class SecretAddFlow {
 		return this.#refusal;
 	}
 
-	/** The scopes the scope step offers, in the vault's own widest-first order. */
-	get scopeChoices(): readonly VaultScope[] {
-		return VAULT_SCOPES;
-	}
-
-	/** The scope currently chosen, so the scope step can show which entry is already selected. */
-	get scope(): VaultScope {
-		return this.#state.scope;
-	}
-
 	/**
-	 * The finished plan, or `undefined` before the last question is answered.
+	 * The finished plan, or `undefined` before the question is answered.
 	 *
 	 * The single exit for the collected credential. Everything else this class exposes is safe to
 	 * print; this is not.
 	 */
 	get plan(): AddFlowPlan | undefined {
-		const { step, name, value, scope, fromEnv } = this.#state;
+		const { step, value, fromEnv } = this.#state;
 		if (step !== "done") return undefined;
-		return { name: name === "" ? undefined : name, value, scope, ...(fromEnv === undefined ? {} : { fromEnv }) };
+		return { value, ...(fromEnv === undefined ? {} : { fromEnv }) };
 	}
 
 	/**
-	 * Answer the current question and advance, or record a refusal and stay put.
+	 * Answer the question and finish, or record a refusal and stay put.
 	 *
-	 * One entry point for every field because the container has one prompt: it does not need to know
-	 * which question it is showing in order to hand over what was typed.
+	 * One entry point for both sources because the container has one prompt: it does not need to know
+	 * which of the two it is showing in order to hand over what was typed.
 	 */
 	submit(input: string): void {
 		switch (this.#state.step) {
@@ -284,49 +240,22 @@ export class SecretAddFlow {
 			case "env":
 				this.#submitEnv(input);
 				return;
-			case "name":
-				this.#submitName(input);
-				return;
-			case "scope":
-				this.#submitScope(input);
-				return;
 			case "done":
 				// Nothing is being asked, so there is nothing to answer. Ignoring the input keeps a
-				// stray keystroke arriving after the last step from rewriting a finished plan.
+				// stray keystroke arriving after the answer from rewriting a finished plan.
 				return;
 		}
 	}
 
 	/**
-	 * Return to the previous question, clearing any refusal on the way.
+	 * Clear any refusal. There is no earlier question to return to.
 	 *
-	 * Stepping back from `done` is allowed and returns to the scope step, so an operator who reads
-	 * the summary and changes their mind can amend the entry rather than store the wrong one and
-	 * then fix it.
-	 *
-	 * A back out of `name` returns to whichever FIRST step this flow started at, so an operator who
-	 * named the wrong variable is asked for the variable again rather than handed a masked field they
-	 * never chose.
+	 * Kept as a method because the container calls it on escape at a field, and reading a back at the
+	 * only question as cancel is the container's decision, not this class's. Once the answer is in,
+	 * the credential is already stored: there is no `done` state to walk back out of.
 	 */
 	back(): void {
 		this.#refusal = null;
-		switch (this.#state.step) {
-			case "value":
-			case "env":
-				// The first question has nothing behind it. The container reads a back at this step as
-				// cancel and closes the flow, so this changes nothing rather than quietly discarding
-				// the answer under it.
-				return;
-			case "name":
-				this.#state.step = this.#firstStep;
-				return;
-			case "scope":
-				this.#state.step = "name";
-				return;
-			case "done":
-				this.#state.step = "scope";
-				return;
-		}
 	}
 
 	/**
@@ -334,7 +263,7 @@ export class SecretAddFlow {
 	 *
 	 * The value is measured by the same guard the pasted path uses, because a variable holding three
 	 * characters is refused by the vault for the same reason a typed one is, and finding that out at
-	 * the write would be a refusal two questions after the mistake.
+	 * the write would be a refusal after the flow had already been torn down.
 	 */
 	#submitEnv(input: string): void {
 		const variable = input.trim();
@@ -359,7 +288,7 @@ export class SecretAddFlow {
 		// newline the exporting tool left there, and a trimmed copy authenticates against nothing.
 		this.#state.value = value;
 		this.#state.fromEnv = variable;
-		this.#state.step = "name";
+		this.#state.step = "done";
 		this.#refusal = null;
 	}
 
@@ -380,50 +309,6 @@ export class SecretAddFlow {
 		// which is a failure the operator has no way to see from here. Only the emptiness test
 		// trims, because whitespace alone is never a credential.
 		this.#state.value = input;
-		this.#state.step = "name";
-		this.#refusal = null;
-	}
-
-	#submitName(input: string): void {
-		if (input.trim().length === 0) {
-			// Blank is an answer rather than a mistake: it asks for a generated name, which the vault
-			// does at store time, once it can see which names are already taken.
-			this.#state.name = "";
-			this.#state.step = "scope";
-			this.#refusal = null;
-			return;
-		}
-		let normalised: string;
-		try {
-			// The vault's own normaliser, so a name accepted here cannot be rejected at store time.
-			// Validating identically in a second place would be a rule with two definitions, and only
-			// one of them would get updated.
-			normalised = normaliseSecretName(input);
-		} catch (error) {
-			// It throws the sentence that spells out the rule. Surface that rather than inventing a
-			// second wording, which could describe a rule the vault no longer enforces.
-			this.#refusal = errorMessage(error);
-			return;
-		}
-		this.#state.name = normalised;
-		this.#state.step = "scope";
-		this.#refusal = null;
-	}
-
-	#submitScope(input: string): void {
-		const wanted = input.trim().toLowerCase();
-		if (wanted.length === 0) {
-			// Blank keeps whatever is already selected, which starts at DEFAULT_ADD_SCOPE.
-			this.#state.step = "done";
-			this.#refusal = null;
-			return;
-		}
-		const chosen = VAULT_SCOPES.find(scope => scope === wanted);
-		if (chosen === undefined) {
-			this.#refusal = UNKNOWN_SCOPE_REFUSAL;
-			return;
-		}
-		this.#state.scope = chosen;
 		this.#state.step = "done";
 		this.#refusal = null;
 	}

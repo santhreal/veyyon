@@ -234,20 +234,21 @@ await section("the list, with the detail panel open:", component => {
 	component.handleInput("i");
 });
 
-// The add flow's FIRST field. It asks for the value, not the name, and the field is masked: this
-// image is the standing proof of that ordering, which is the defect that once stored the string
-// GITHUB_TOKEN as a live credential.
+// The add flow's ONLY field. It asks for the value, not a name, and the field is masked. This is
+// half of a pair: the frame below is the same card one keystroke later.
 await section("storing a credential, the first field:", component => {
 	component.handleInput("a");
 });
 
-// The same flow's second field, unmasked, so the pair shows the value is hidden and the name is
-// not. One frame alone cannot show that the masking is conditional.
-await section("storing a credential, the second field:", async component => {
+// The other half. There is no second question and no third: answering stores the credential, and
+// the receipt names the placeholder it minted and the keys that rename and move the row it selected.
+// The pair is what shows storing a credential costs one field rather than three.
+await section("storing a credential, stored on the answer:", async component => {
 	component.handleInput("a");
 	await component.settled();
 	for (const character of "ghp_valueTypedIntoTheField") component.handleInput(character);
 	component.handleInput("\r");
+	await component.settled();
 });
 
 // THE ENV PAIR, and it only means anything beside the masked field above. `f` asks for the NAME of

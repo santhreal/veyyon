@@ -104,7 +104,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { type AddFlowSource, SecretAddFlow } from "./secret-add-flow";
+import { type AddFlowSource, DEFAULT_ADD_SCOPE, SecretAddFlow } from "./secret-add-flow";
 import { SecretDetailPane } from "./secret-detail-pane";
 import { SecretHelpOverlay } from "./secret-help-overlay";
 import { describeSort, nextSortKey, shapeSecretRows } from "./secret-list-shaping";
@@ -878,13 +878,10 @@ class SecretTablePane implements Component {
 		return [
 			theme.fg("muted", "  Nothing stored."),
 			"",
-			theme.fg("dim", "  Press a to store a credential, and it lands here."),
-			// Named on the ONE screen that has nothing else to read, and named beside `a` because the
-			// two are the same action with different sources. The footer offers both, and prose that
-			// mentioned only `a` would leave the other chip looking like decoration.
-			theme.fg("dim", "  Press f to read one out of an environment variable instead."),
-			theme.fg("dim", "  The model spends it by writing the #NAME# placeholder,"),
-			theme.fg("dim", "  and the value is never shown again, including on this card."),
+			theme.fg("dim", "  a stores a credential; f reads one out of an environment variable."),
+			// Both named on the ONE screen that has nothing else to read, because they are the same
+			// action with different sources and the footer offers a chip for each.
+			theme.fg("dim", "  Either way it is stored at once, and the model spends it as #NAME#."),
 		];
 	}
 
@@ -904,6 +901,14 @@ export class SecretManager extends Container {
 	#shaped: readonly ShapedRow[] = [];
 	/** The active search text. Empty means the table is showing everything. */
 	#query = "";
+	/**
+	 * A credential just stored, so the next reshape can put the cursor on its row.
+	 *
+	 * Held as a NAME rather than an index because the row lands wherever the sort puts it, and read
+	 * once: the confirmation for a store names keys that act on the selection, so the cursor has to
+	 * be on the row that was written and not on whichever one it was on before.
+	 */
+	#selectName: string | undefined;
 	#sortKey: SecretSortKey = "name";
 	#direction: SortDirection = "asc";
 	/** The add flow, present only while you are storing a new credential from inside the card. */
@@ -1104,8 +1109,10 @@ export class SecretManager extends Container {
 	 * credential, and the next `r` would revoke that one instead.
 	 */
 	#reshape(): void {
+		const stored = this.#selectName;
+		this.#selectName = undefined;
 		const previous = this.#selectedRow();
-		const key = previous === undefined ? undefined : this.#rowKey(previous);
+		const key = stored === undefined ? this.#rowKey(previous) : `secret:${stored}`;
 		this.#shaped = shapeSecretRows(this.#rows, {
 			query: this.#query,
 			sortKey: this.#sortKey,
@@ -1326,15 +1333,16 @@ export class SecretManager extends Container {
 	/**
 	 * `a` and `f`: store a new credential without leaving the card.
 	 *
-	 * The flow asks for the VALUE first and the name second. That ordering is the whole reason
-	 * this runs through `SecretAddFlow` rather than a pair of prompts written here: asking the
-	 * name first is what once stored the literal string `GITHUB_TOKEN` as a live credential,
-	 * because a masked field opened before any value was given reads as a request for the name.
+	 * The flow asks for the VALUE and nothing else. The credential is stored the moment it is known,
+	 * under a name the vault invents, in {@link DEFAULT_ADD_SCOPE}: `n` renames the row it lands as
+	 * and `m` moves it, so the two questions this used to ask are one keystroke each afterwards, on
+	 * an entry that exists. Asking them first is also what once stored the literal string
+	 * `GITHUB_TOKEN` as a live credential, because a masked field opened before any value was given
+	 * reads as a request for the name.
 	 *
-	 * `f` answers that first question with an environment variable instead, which is the only entry
+	 * `f` answers that one question with an environment variable instead, which is the only entry
 	 * form where the credential never reaches the screen or the input buffer. One function for both,
-	 * with the source as an argument, because everything after the first field is identical and a
-	 * second copy of the name and scope steps would drift.
+	 * with the source as an argument, because everything after the field is identical.
 	 */
 	#startAdd(source: AddFlowSource = "paste"): void {
 		this.#addFlow = new SecretAddFlow({ source, ...(this.#readEnv ? { readEnv: this.#readEnv } : {}) });
@@ -1344,11 +1352,12 @@ export class SecretManager extends Container {
 	}
 
 	/**
-	 * Show the add flow's current field, or store the credential once it has them all.
+	 * Show the add flow's field, or store the credential once it has been answered.
 	 *
-	 * One prompt is reused across every step rather than the steps being nested, so escape always
-	 * means the same thing and the field cannot be left holding a value from a step you have already
-	 * passed.
+	 * THE STORED ROW IS SELECTED and any filter is cleared, because the confirmation points at `n`
+	 * and `m` and both act on the selection. Leaving the cursor where it was would name keys that
+	 * rename and move a different credential, and a search that the generated name does not match
+	 * would hide the row the operator was just told about.
 	 *
 	 * The confirmation SAYS WHERE THE VALUE CAME FROM when it came from the environment. It is the
 	 * only entry form whose value the operator never saw, so naming the variable is the one chance to
@@ -1367,9 +1376,13 @@ export class SecretManager extends Container {
 			// queue behind the promise currently executing, landing the write after the caller's
 			// `settled()` had already resolved.
 			await this.#mutate(async () => {
-				const stored = await this.#vault.add({ name: plan.name, value: plan.value, scope: plan.scope });
+				const stored = await this.#vault.add({ value: plan.value, scope: DEFAULT_ADD_SCOPE });
+				this.#selectName = stored.name;
+				this.#query = "";
 				const source = plan.fromEnv === undefined ? "" : ` from $${plan.fromEnv}`;
-				return `Stored ${buildNamePlaceholder(stored.name)}${source} in the ${plan.scope} vault.`;
+				// ONE ROW at the card's width, which is why it is this terse: a notice that wraps
+				// pushes the table down and reads as an error rather than a receipt.
+				return `Stored ${buildNamePlaceholder(stored.name)}${source} in ${DEFAULT_ADD_SCOPE}. n renames, m moves.`;
 			});
 			return;
 		}
@@ -1377,8 +1390,8 @@ export class SecretManager extends Container {
 			{
 				title: field.title,
 				hint: field.hint,
-				// Only the value step preserves bytes and hides them. The name and the scope are
-				// yours to read back before you commit to them.
+				// Only the value field hides what is typed. A variable NAME is not a credential and
+				// has to be read back, so the env field is drawn.
 				...(field.masked ? { credential: true as const } : {}),
 				submit: async input => {
 					flow.submit(input);

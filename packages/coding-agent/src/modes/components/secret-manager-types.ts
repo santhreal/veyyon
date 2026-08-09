@@ -78,24 +78,23 @@ export interface LogFilter {
 /**
  * The steps of adding a credential from inside the card.
  *
- * Value FIRST. The name is a label for a thing that must already exist, and asking for it first is
- * what made `/secret add` store `GITHUB_TOKEN` as a credential: a masked field that appears before
- * the value has been given reads as a request for the name.
+ * ONE QUESTION. The credential is stored the moment its value is known, under a name the vault
+ * invents, in the default scope. A name and a scope are labels on a thing that has to exist first,
+ * both are one keystroke away on the row it lands as (`n` renames, `m` moves), and asking for them
+ * up front made storing one token cost three full-screen prompts. The terminal has always stored a
+ * bare `/secret` in one step; this is the card agreeing with it.
  *
- * `env` is the same first step reached the other way: the operator names an environment VARIABLE and
+ * `env` is that one question reached the other way: the operator names an environment VARIABLE and
  * the credential is read out of it, so it is never typed and never on screen. It replaces `value`
  * rather than preceding it, because the two are alternative sources for one answer.
  */
-export type AddFlowStep = "value" | "env" | "name" | "scope" | "done";
+export type AddFlowStep = "value" | "env" | "done";
 
 /** What the add flow has collected so far, and what it still needs. */
 export interface AddFlowState {
 	step: AddFlowStep;
 	/** The credential. Held only until the container stores it, and never rendered. */
 	value: string;
-	/** Empty means "generate one", which is what an empty name field accepts. */
-	name: string;
-	scope: VaultScope;
 	/**
 	 * The environment variable the value came from, when it came from one.
 	 *
