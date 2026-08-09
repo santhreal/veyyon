@@ -272,9 +272,7 @@ jobs:
       strategy:
          fail-fast: false
          matrix:
-            include:
-               - { variant: baseline, rust_checks: true }
-               - { variant: modern }
+            variant: [baseline, modern]
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/build-native
@@ -284,7 +282,6 @@ jobs:
               arch: x64
               variant: ${{ matrix.variant }}
               glibc: ${{ env.GLIBC_FLOOR }}
-              rust_checks: ${{ matrix.rust_checks && 'true' || 'false' }}
               save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
    # Pre-warm the cross-platform native build cache on `main`, in addition to
