@@ -12,7 +12,7 @@ import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test, vi } from "bun:test";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
-import { buildAccountInventory } from "@veyyon/coding-agent/session/account-inventory";
+import { activeSessionAccounts, buildAccountInventory } from "@veyyon/coding-agent/session/account-inventory";
 
 /** Sorts AFTER the api-key provider by label, and is inserted FIRST, so ordering is testable. */
 const OAUTH_PROVIDER = "zeta-widgets";
@@ -110,14 +110,25 @@ describe("buildAccountInventory", () => {
 		expect(row.projectId).toBeUndefined();
 		expect(row.name).toBeUndefined();
 		expect(row.usage).toEqual([]);
-		expect(row.activeForSession).toBe(false);
+		// The provider's only credential, so routing replays it as what would serve a first
+		// request: marked, and marked as a PREDICTION. Nothing has been spent on it, which is
+		// why `activeSessionAccounts` below excludes exactly this shape.
+		expect(row.activeForSession).toBe(true);
+		expect(row.activeIsPrediction).toBe(true);
 		expect(row.selectedForProvider).toBe(false);
 	});
 
 	/**
-	 * `activeForSession` marks the credential this session's next request actually uses, and
-	 * exactly that one. Driven through a real `getApiKey` so the mark is compared against the
-	 * bearer that came back, not against the mark's own source.
+	 * `activeForSession` marks the credential this session's next request uses, and exactly that
+	 * one. Driven through a real `getApiKey` so the mark is compared against the bearer that came
+	 * back, not against the mark's own source.
+	 *
+	 * The mark alone does not mean the session spent anything: with no traffic yet, routing answers
+	 * with a prediction and marks it. `activeSessionAccounts` is the owner of the observed question
+	 * ("what has this session actually routed"), and it is asserted here beside the raw marks
+	 * because three surfaces read it as "in use by this session": the `/account status` block,
+	 * `/account refresh`, and `/account name`. Each of those named an untouched provider while the
+	 * predicted rows counted.
 	 */
 	test("activeForSession marks exactly the credential the session resolved to", async () => {
 		if (!authStorage) throw new Error("test setup failed");
@@ -130,9 +141,12 @@ describe("buildAccountInventory", () => {
 		const oauthRows = inventory.providers[1]?.rows ?? [];
 
 		expect(oauthRows.filter(row => row.activeForSession).map(row => row.credentialId)).toEqual([servedId]);
+		expect(oauthRows.every(row => row.activeIsPrediction === false)).toBe(true);
 		expect(oauthRows.every(row => row.selectedForProvider === false)).toBe(true);
-		// A provider the session never touched has no active row at all.
-		expect(inventory.providers[0]?.rows.some(row => row.activeForSession)).toBe(false);
+		// The provider the session never touched carries a predicted mark, and nothing else, so it
+		// is absent from the routed set even though its row says `activeForSession`.
+		expect(inventory.providers[0]?.rows.every(row => row.activeIsPrediction)).toBe(true);
+		expect(activeSessionAccounts(inventory).map(row => row.credentialId)).toEqual([servedId]);
 	});
 
 	/**

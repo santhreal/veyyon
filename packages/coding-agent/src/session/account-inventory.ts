@@ -639,12 +639,19 @@ export function accountsForProvider(inventory: AccountInventory, provider: strin
  * serve one session at once (main model, subagent roles, web search), so the honest answer
  * to "which account am I on" is one row per provider that has actually routed, not a list of
  * everything configured.
+ *
+ * `selectedForProvider` is deliberately NOT consulted. The choice an operator makes on the
+ * account card is persisted for good and shared by every profile on the machine, so reading it
+ * here would report a provider chosen months ago in another session as one this session is
+ * spending, and would hand `/account refresh` and `/account name` an account the operator never
+ * routed. A standing choice is a prediction about the NEXT request; `selectedButRotated` is where
+ * it earns a mention, and only once something else is actually serving.
  */
 export function activeSessionAccounts(inventory: AccountInventory): AccountRow[] {
 	const active: AccountRow[] = [];
 	for (const entry of inventory.providers) {
 		for (const row of entry.rows) {
-			if (row.activeForSession || row.selectedForProvider) active.push(row);
+			if (row.activeForSession && !row.activeIsPrediction) active.push(row);
 		}
 	}
 	return active;
