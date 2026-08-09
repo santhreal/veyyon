@@ -39,10 +39,10 @@ export type { SegmentContext } from "./types";
 /**
  * How close a secret's deadline has to be before the secrets chip prints it.
  *
- * One hour. Inside it the operator can still finish what the credential is for, or extend it with
- * `e` in the card, which is the whole reason to say anything; outside it the deadline is a fact
- * about next week and belongs in the card's EXPIRES column. A chip that always shows a countdown is
- * a chip nobody reads by the time the countdown means something.
+ * One hour. Inside it the operator can still finish what the credential is for, or give it a fresh
+ * lease with `/secret extend`, which is the whole reason to say anything; outside it the deadline is
+ * a fact about next week and belongs in the EXPIRES column of `/secret list`. A chip that always
+ * shows a countdown is a chip nobody reads by the time the countdown means something.
  */
 const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
 
