@@ -40,12 +40,15 @@ describe("resolveEffectiveSubagentThinkingLevel", () => {
 	});
 
 	/**
-	 * The built-in general worker advertises inheritance rather than auto, so a
-	 * task without an effort override cannot silently reclassify its own effort.
+	 * The built-in general worker advertises inheritance rather than auto, so a task
+	 * without an effort override cannot silently reclassify its own effort. The lane is
+	 * `deep`; the name `task` belonged to an earlier roster and matches no bundled agent,
+	 * so the lookup answered `undefined` and the case failed on a roster it was reading
+	 * by a retired name.
 	 */
-	it("configures the bundled task agent to inherit effort", () => {
-		const task = loadBundledAgents().find(agent => agent.name === "task");
-		expect(task?.thinkingLevel).toBe(ThinkingLevel.Inherit);
+	it("configures the bundled general lane to inherit effort", () => {
+		const deep = loadBundledAgents().find(agent => agent.name === "deep");
+		expect(deep?.thinkingLevel).toBe(ThinkingLevel.Inherit);
 	});
 
 	/**

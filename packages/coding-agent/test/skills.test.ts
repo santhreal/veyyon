@@ -150,6 +150,7 @@ describe("skills", () => {
 		let tempHome: string;
 		let tempCwd: string;
 		let agentSkillsDir: string;
+		let agentDir: string;
 		let dirOverrides: DirOverridesSnapshot;
 		let homedirSpy: ReturnType<typeof spyOn>;
 
@@ -160,7 +161,7 @@ describe("skills", () => {
 			tempCwd = path.join(tempHome, "work");
 			await fs.mkdir(tempCwd, { recursive: true });
 			homedirSpy = spyOn(os, "homedir").mockReturnValue(tempHome);
-			const agentDir = path.join(tempHome, ".veyyon", "agent");
+			agentDir = path.join(tempHome, ".veyyon", "agent");
 			setAgentDir(agentDir);
 			agentSkillsDir = path.join(agentDir, "skills");
 			await fs.mkdir(agentSkillsDir, { recursive: true });
@@ -190,11 +191,10 @@ describe("skills", () => {
 			const pluginRoot = path.join(tempHome, "configured-plugin");
 			await writeSkill(agentSkillsDir, "calendar", "Profile calendar.");
 			await writeSkill(path.join(pluginRoot, "skills"), "calendar", "Plugin calendar.");
-			await fs.mkdir(path.join(tempCwd, ".veyyon"), { recursive: true });
-			await fs.writeFile(
-				path.join(tempCwd, ".veyyon", "settings.json"),
-				JSON.stringify({ extensions: [pluginRoot] }),
-			);
+			// The `extensions` entry has to live in the PROFILE's settings: a repository's own
+			// `.veyyon/settings.json` grants no capabilities, so configuring the plugin there
+			// would load nothing and the collision this case is about would never happen.
+			await fs.writeFile(path.join(agentDir, "settings.json"), JSON.stringify({ extensions: [pluginRoot] }));
 
 			const { skills, warnings } = await loadSkills({ cwd: tempCwd });
 			const calendar = skills.filter(skill => skill.name === "calendar");
@@ -204,7 +204,12 @@ describe("skills", () => {
 			expect(calendar[0]?.filePath).toBe(path.join(agentSkillsDir, "calendar", "SKILL.md"));
 			expect(warnings).toContainEqual({
 				skillPath: losingPath,
-				message: expect.stringMatching(/name collision: "calendar".*skipping this one/),
+				// The shipped sentence names the winner, the effect and the remedy. It is
+				// matched rather than quoted whole so the path interpolation stays the
+				// contract and the surrounding prose can be reworded.
+				message: expect.stringMatching(
+					/skill name "calendar" is already taken by .*\/\.veyyon\/agent\/skills\/calendar\/SKILL\.md, so this file is not available to the model/,
+				),
 			});
 		});
 
