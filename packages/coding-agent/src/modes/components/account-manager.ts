@@ -102,8 +102,15 @@ export interface AccountManagerCallbacks {
 	onUseAccount: (row: AccountRow) => void;
 	/** Persist a chosen name for this credential. An empty string clears it. */
 	onRename: (row: AccountRow, name: string) => void;
-	/** Re-probe health and usage for one provider. */
-	onRefresh: (provider: string) => void;
+	/**
+	 * Re-probe one account, or the whole provider when no row is selected.
+	 *
+	 * Row-scoped because the probe costs a network round-trip PER CREDENTIAL, sequentially: on a
+	 * nine-account provider, asking about the row under the cursor made the user wait behind eight
+	 * accounts they did not ask about. `row` is absent only from the add entry, which has no
+	 * credential to probe, and then the provider's accounts are all there is to refresh.
+	 */
+	onRefresh: (provider: string, row?: AccountRow) => void;
 	/** Remove this credential from the store. Destructive; the card confirms first. */
 	onLogout: (row: AccountRow) => void;
 	/** Show the full usage report for one account. */
@@ -375,9 +382,12 @@ export class AccountManagerComponent implements Component {
 			case "n":
 				this.#openRename();
 				return;
-			case "r":
-				if (this.#activeProviderId) this.#callbacks.onRefresh(this.#activeProviderId);
+			case "r": {
+				// The selected row when there is one, so the probe pays for the account under the
+				// cursor and nothing else. The add entry selects no row and refreshes the provider.
+				if (this.#activeProviderId) this.#callbacks.onRefresh(this.#activeProviderId, this.#selectedRow());
 				return;
+			}
 			case "u": {
 				const row = this.#selectedRow();
 				if (row) this.#callbacks.onShowUsage(row);
@@ -859,8 +869,15 @@ export class AccountManagerComponent implements Component {
 			{ label: "←→ pane" },
 			{ label: use, clickable: true, id: "confirm" },
 			...(onAddEntry ? [] : [{ label: "n name", clickable: true, id: "name" }]),
-			// Provider-scoped, so it acts from the add entry as well and stays.
-			{ label: "r refresh", clickable: true, id: "refresh" },
+			// Stays on the add entry, where it refreshes the provider's accounts: the probe is the one
+			// account-area key that still means something with no row selected. The label says which of
+			// the two it is about to do, because "refresh" alone leaves the reader to guess whether
+			// pressing it costs one round-trip or nine.
+			{
+				label: onAddEntry ? "r refresh accounts" : "r refresh this account",
+				clickable: true,
+				id: "refresh",
+			},
 			...(onAddEntry
 				? []
 				: [

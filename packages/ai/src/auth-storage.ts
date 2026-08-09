@@ -416,6 +416,18 @@ export interface CheckCredentialsOptions {
 	signal?: AbortSignal;
 	/** Per-credential probe timeout (ms). Defaults to the configured usage request timeout. */
 	timeoutMs?: number;
+	/**
+	 * Probe only these credential row ids, instead of every active row.
+	 *
+	 * For a surface that re-probes ONE account: a card with nine accounts open costs nine network
+	 * round-trips per refresh, and a user asking about one row has no reason to pay for the other
+	 * eight or to wait behind them. An id that is not stored (a row a peer logged out between the
+	 * render and the keypress) contributes no result rather than an error, because the caller's
+	 * question about it is already answered: it is gone.
+	 *
+	 * Absent means every active row, which is what the whole-store callers want.
+	 */
+	credentialIds?: readonly number[];
 	/** Provider → base URL override, same shape as {@link AuthStorage.fetchUsageReports}. */
 	baseUrlResolver?: (provider: Provider) => string | undefined;
 	/**
@@ -4674,7 +4686,11 @@ export class AuthStorage {
 	 */
 	async checkCredentials(options?: CheckCredentialsOptions): Promise<CredentialHealthResult[]> {
 		options?.signal?.throwIfAborted();
-		const stored = this.#store.listAuthCredentials();
+		const active = this.#store.listAuthCredentials();
+		// Filtered here rather than by the caller, so the per-row deadline, the refresh-on-expiry and
+		// the sequential pacing below all apply unchanged to a one-row probe.
+		const wanted = options?.credentialIds;
+		const stored = wanted === undefined ? active : active.filter(row => wanted.includes(row.id));
 		const resolver = this.#usageProviderResolver;
 		const timeoutMs = options?.timeoutMs ?? this.#usageRequestTimeoutMs;
 		const completionProbe = options?.completionProbe;

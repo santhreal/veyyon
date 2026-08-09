@@ -1,4 +1,5 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
+import type { CredentialHealthResult, UsageReport } from "@veyyon/ai";
 import type { InstrumentationLevel } from "@veyyon/ai/instrumentation";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
@@ -136,6 +137,19 @@ export type SelectorControllerContext = Pick<
 >;
 
 const MANUAL_LOGIN_TIP = "Tip: You can complete pairing with /login <redirect URL>.";
+
+/**
+ * Probe answers accumulated for ONE open account card.
+ *
+ * Per card rather than per controller: a card that is closed and reopened must re-probe, because
+ * an account's health is a reading taken at a moment and a stale reading presented as current is
+ * the thing every part of this surface is built to avoid. Health is keyed by credential row id so
+ * a one-row refresh replaces only its own answer.
+ */
+interface AccountProbeCache {
+	health: Map<number, CredentialHealthResult>;
+	usage: UsageReport[] | null;
+}
 
 export class SelectorController {
 	constructor(private ctx: SelectorControllerContext) {}
@@ -1701,12 +1715,22 @@ export class SelectorController {
 			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
 		};
+		const probes: AccountProbeCache = { health: new Map(), usage: null };
 		// Re-read from the store rather than mutating the rendered model: a pin, a rename and a
 		// logout all change what the store says, and rebuilding is the only way the card cannot
 		// disagree with it.
+		//
+		// The probe answers are re-applied on top, because they are not in the store. Rebuilding
+		// without them is how naming an account blanked the health mark and every usage bar on the
+		// card until the next probe landed: the rename succeeded and the card looked like it had lost
+		// the account's readings.
 		const reload = () => {
 			if (closed) return;
-			manager?.setInventory(buildAccountInventory(authStorage, { sessionId }));
+			let inventory = applyCredentialHealth(buildAccountInventory(authStorage, { sessionId }), [
+				...probes.health.values(),
+			]);
+			if (probes.usage) inventory = applyUsageReports(inventory, probes.usage);
+			manager?.setInventory(inventory);
 			this.ctx.ui.requestRender();
 		};
 
@@ -1740,10 +1764,12 @@ export class SelectorController {
 							: `${row.providerLabel}: ${previous} is now "${name.trim()}"`,
 					);
 				},
-				onRefresh: () => {
+				onRefresh: (_provider, row) => {
 					void this.#probeAccountHealth(
 						() => manager,
 						() => closed,
+						probes,
+						row ? [row.credentialId] : undefined,
 					);
 				},
 				onLogout: row => {
@@ -1814,6 +1840,7 @@ export class SelectorController {
 		await this.#probeAccountHealth(
 			() => manager,
 			() => closed,
+			probes,
 		);
 	}
 
@@ -1843,19 +1870,29 @@ export class SelectorController {
 	 * the health column from arriving, and a health probe that times out must not blank the usage
 	 * bars. A failure leaves the affected column absent, which the card renders as "not probed"
 	 * rather than as a healthy account.
+	 *
+	 * `credentialIds` narrows the HEALTH probe to those rows, which is what `r` on a row passes: the
+	 * probe is a sequential network round-trip per credential, so a nine-account provider made the
+	 * user wait for eight accounts they had not asked about. The USAGE fetch stays whole because
+	 * there is nothing per-account to narrow it to: it is one cached call that answers for every
+	 * credential at once, and asking for less would cost the same.
 	 */
 	async #probeAccountHealth(
 		getManager: () => AccountManagerComponent | undefined,
 		isClosed: () => boolean,
+		probes: AccountProbeCache,
+		credentialIds?: readonly number[],
 	): Promise<void> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		const sessionId = this.ctx.session.sessionId;
 		const baseUrlResolver = (target: string) => this.ctx.session.modelRegistry.getProviderBaseUrl?.(target);
 		const [health, usage] = await Promise.all([
-			authStorage.checkCredentials({ baseUrlResolver }).catch(error => {
-				logger.debug("account manager: credential health probe failed", { error: errorMessage(error) });
-				return [];
-			}),
+			authStorage
+				.checkCredentials(credentialIds ? { baseUrlResolver, credentialIds } : { baseUrlResolver })
+				.catch(error => {
+					logger.debug("account manager: credential health probe failed", { error: errorMessage(error) });
+					return [];
+				}),
 			this.ctx.session.fetchUsageReports().catch(error => {
 				logger.debug("account manager: usage probe failed", { error: errorMessage(error) });
 				return null;
@@ -1864,8 +1901,16 @@ export class SelectorController {
 		if (isClosed()) return;
 		const manager = getManager();
 		if (!manager) return;
-		let inventory = applyCredentialHealth(await loadAccountInventory(authStorage, { sessionId }), health);
-		if (usage) inventory = applyUsageReports(inventory, usage);
+		// ACCUMULATED for the life of this card, because a scoped probe answers for one credential
+		// while the inventory underneath it is rebuilt from the store every time. Without this,
+		// refreshing one row would blank the health mark on every other row that had already been
+		// probed: a card that had answered for nine accounts would answer for one.
+		for (const result of health) probes.health.set(result.id, result);
+		if (usage) probes.usage = usage;
+		let inventory = applyCredentialHealth(await loadAccountInventory(authStorage, { sessionId }), [
+			...probes.health.values(),
+		]);
+		if (probes.usage) inventory = applyUsageReports(inventory, probes.usage);
 		manager.setInventory(inventory);
 		this.ctx.ui.requestRender();
 	}

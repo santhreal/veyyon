@@ -49,7 +49,7 @@ function inventory(rows: AccountRow[], disabledCause?: string): AccountInventory
 interface Recorded {
 	used: number[];
 	renamed: Array<{ credentialId: number; name: string }>;
-	refreshed: string[];
+	refreshed: Array<{ provider: string; credentialId: number | null }>;
 	loggedOut: number[];
 	usage: number[];
 	added: string[];
@@ -86,7 +86,7 @@ function harness(
 	const callbacks: AccountManagerCallbacks = {
 		onUseAccount: row => recorded.used.push(row.credentialId),
 		onRename: (row, name) => recorded.renamed.push({ credentialId: row.credentialId, name }),
-		onRefresh: provider => recorded.refreshed.push(provider),
+		onRefresh: (provider, row) => recorded.refreshed.push({ provider, credentialId: row ? row.credentialId : null }),
 		onLogout: row => recorded.loggedOut.push(row.credentialId),
 		onShowUsage: row => recorded.usage.push(row.credentialId),
 		onAddAccount: provider => recorded.added.push(provider),
@@ -379,8 +379,8 @@ describe("AccountManagerComponent interaction", () => {
 	});
 
 	/**
-	 * Locks out row actions firing against the wrong account or the wrong provider: refresh and
-	 * add are provider-scoped, usage is row-scoped, and every one of them reads the SAME
+	 * Locks out row actions firing against the wrong account or the wrong provider: usage and
+	 * refresh are row-scoped, add is provider-scoped, and every one of them reads the SAME
 	 * selection the card is drawing a cursor on.
 	 */
 	test("row and provider actions target the selected row and its provider", () => {
@@ -392,8 +392,52 @@ describe("AccountManagerComponent interaction", () => {
 		component.handleInput("a");
 
 		expect(recorded.usage).toEqual([2]);
-		expect(recorded.refreshed).toEqual(["anthropic"]);
+		expect(recorded.refreshed).toEqual([{ provider: "anthropic", credentialId: 2 }]);
 		expect(recorded.added).toEqual(["anthropic"]);
+	});
+
+	/**
+	 * A one-row refresh is a network round-trip; the whole-provider form is nine of them. Which one
+	 * `r` asks for is decided by the SELECTION, so it has to move with the cursor rather than being
+	 * fixed at the row the card opened on.
+	 */
+	test("refresh follows the cursor from row to row", () => {
+		const { component, recorded } = harness(THREE_ACCOUNTS());
+
+		component.handleInput("r");
+		component.handleInput("\x1b[B");
+		component.handleInput("\x1b[B");
+		component.handleInput("r");
+
+		expect(recorded.refreshed).toEqual([
+			{ provider: "anthropic", credentialId: 1 },
+			{ provider: "anthropic", credentialId: 3 },
+		]);
+	});
+
+	/**
+	 * The add entry holds no credential, so there is nothing to scope to and the provider's accounts
+	 * are what `r` refreshes. It stays offered there for exactly that reason, unlike `n`, `u` and
+	 * `x`, which are omitted because they would answer with nothing.
+	 */
+	test("refresh from the add entry asks for the whole provider", () => {
+		const { component, recorded } = harness(THREE_ACCOUNTS());
+
+		for (let index = 0; index < 3; index++) component.handleInput("\x1b[B");
+		component.handleInput("r");
+
+		expect(recorded.refreshed).toEqual([{ provider: "anthropic", credentialId: null }]);
+	});
+
+	/** And the footer says which of the two the key is about to do, rather than just "refresh". */
+	test("the refresh chip names what it will refresh", () => {
+		const { component, card } = harness(THREE_ACCOUNTS());
+
+		expect(card()).toContain("r refresh this account");
+
+		for (let index = 0; index < 3; index++) component.handleInput("\x1b[B");
+
+		expect(card()).toContain("r refresh accounts");
 	});
 });
 

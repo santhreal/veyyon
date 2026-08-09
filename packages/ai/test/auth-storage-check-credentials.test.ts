@@ -261,6 +261,80 @@ describe("AuthStorage.checkCredentials", () => {
 			storage.close();
 		}
 	});
+	/**
+	 * `credentialIds` exists because the probe is one sequential network round-trip PER ROW: an
+	 * account card asking about the row under the cursor was paying for every other account and
+	 * waiting behind them. What has to be true is that the OTHER rows are never touched, so the
+	 * assertion is on the probe's own call count, not just on the returned ids.
+	 */
+	it("probes only the credentials it was asked about", async () => {
+		const store = makeStore([
+			oauthRow(1, "alpha@example.com"),
+			oauthRow(2, "beta@example.com"),
+			oauthRow(3, "gamma@example.com"),
+		]);
+		const storage = new AuthStorage(store, {
+			usageProviderResolver: provider => (provider === "anthropic" ? claudeUsage.claudeUsageProvider : undefined),
+		});
+		await storage.reload();
+
+		const probed: string[] = [];
+		vi.spyOn(claudeUsage.claudeUsageProvider, "fetchUsage").mockImplementation(async params => {
+			probed.push(params.credential.accessToken ?? "");
+			return { provider: "anthropic", fetchedAt: Date.now(), limits: [], metadata: {} };
+		});
+
+		try {
+			const results = await storage.checkCredentials({ credentialIds: [2] });
+
+			expect(results.map(result => result.id)).toEqual([2]);
+			expect(probed).toEqual(["oat-2"]);
+		} finally {
+			storage.close();
+		}
+	});
+
+	/** An empty list is a request for nothing, which is NOT the same request as omitting it. */
+	it("probes nothing for an empty credential list", async () => {
+		const store = makeStore([oauthRow(1, "alpha@example.com")]);
+		const storage = new AuthStorage(store, {
+			usageProviderResolver: provider => (provider === "anthropic" ? claudeUsage.claudeUsageProvider : undefined),
+		});
+		await storage.reload();
+		const probe = vi.spyOn(claudeUsage.claudeUsageProvider, "fetchUsage");
+
+		try {
+			expect(await storage.checkCredentials({ credentialIds: [] })).toEqual([]);
+			expect(probe).not.toHaveBeenCalled();
+		} finally {
+			storage.close();
+		}
+	});
+
+	/**
+	 * A row the caller names that is no longer stored contributes no result rather than an error: a
+	 * peer logged it out between the render and the keypress, and the question about it is already
+	 * answered.
+	 */
+	it("stays silent about a credential id that is not stored", async () => {
+		const store = makeStore([oauthRow(1, "alpha@example.com")]);
+		const storage = new AuthStorage(store, {
+			usageProviderResolver: provider => (provider === "anthropic" ? claudeUsage.claudeUsageProvider : undefined),
+		});
+		await storage.reload();
+		vi.spyOn(claudeUsage.claudeUsageProvider, "fetchUsage").mockResolvedValue({
+			provider: "anthropic",
+			fetchedAt: Date.now(),
+			limits: [],
+			metadata: {},
+		});
+
+		try {
+			expect(await storage.checkCredentials({ credentialIds: [1, 404] })).toHaveLength(1);
+		} finally {
+			storage.close();
+		}
+	});
 
 	it("invokes the completionProbe with the post-refresh OAuth bearer", async () => {
 		const refreshed = {
