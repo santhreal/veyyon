@@ -18,11 +18,21 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { checkVerdict, REQUIRED_WORKFLOWS, type RunSummary, runsForSha } from "./release-ship";
 
-function run(workflowName: string, status: string, conclusion = ""): RunSummary {
-	return { workflowName, status, conclusion, url: `https://example.invalid/${workflowName}` };
+/** Run ids ascend in construction order, so a later-built run is the newer one. */
+let nextRunId = 1;
+
+function run(workflowName: string, status: string, conclusion = "", createdAt = "2026-08-07T10:00:00Z"): RunSummary {
+	return {
+		workflowName,
+		status,
+		conclusion,
+		url: `https://example.invalid/${workflowName}`,
+		createdAt,
+		databaseId: nextRunId++,
+	};
 }
 
-const done = (name: string, conclusion: string) => run(name, "completed", conclusion);
+const done = (name: string, conclusion: string, createdAt?: string) => run(name, "completed", conclusion, createdAt);
 
 describe("checkVerdict", () => {
 	it("is green only once every required workflow has finished successfully", () => {
@@ -96,6 +106,61 @@ describe("checkVerdict", () => {
 	/** An empty list is the instant after a push, not a clean bill of health. */
 	it("never calls an empty run list green", () => {
 		expect(checkVerdict([]).state).toBe("pending");
+	});
+
+	/**
+	 * WHY. One SHA carries several runs of the same workflow: a re-run after a
+	 * cancellation, a `workflow_dispatch` on top of the push run, a run someone
+	 * stopped by hand. Counting every run made a green verdict unreachable,
+	 * because a cancelled run never leaves the list: four of the last six `CI`
+	 * runs on main were cancelled, and re-running CI to green could not clear the
+	 * cut, so the release had to be tagged by hand. Only the newest run of each
+	 * workflow decides, in whichever order GitHub lists them, and a newer red
+	 * still outvotes an older green.
+	 *
+	 * What this does NOT catch: whether the newest run is the one that ran the
+	 * gates. A dispatched run with a narrower job set has the same shape here.
+	 */
+	describe("several runs of one workflow", () => {
+		const older = "2026-08-07T10:00:00Z";
+		const newer = "2026-08-07T11:00:00Z";
+
+		it("lets a re-run clear a cancelled gate, in either list order", () => {
+			const ci = done("CI", "success", older);
+			const cancelled = done("Checks", "cancelled", older);
+			const rerun = done("Checks", "success", newer);
+			expect(checkVerdict([ci, cancelled, rerun])).toEqual({ state: "green" });
+			expect(checkVerdict([rerun, cancelled, ci])).toEqual({ state: "green" });
+		});
+
+		it("keeps a newer failure over an older success", () => {
+			const verdict = checkVerdict([
+				done("CI", "success", older),
+				done("Checks", "success", older),
+				done("Checks", "failure", newer),
+			]);
+			expect(verdict.state).toBe("failed");
+			expect(verdict.state === "failed" && verdict.failures.map(entry => entry.workflowName)).toEqual(["Checks"]);
+		});
+
+		it("waits while the newest run of a workflow is still going", () => {
+			expect(
+				checkVerdict([
+					done("CI", "success", older),
+					done("Checks", "failure", older),
+					run("Checks", "in_progress", "", newer),
+				]),
+			).toEqual({ state: "pending", waitingOn: ["Checks"] });
+		});
+
+		it("breaks a creation-time tie on the run id GitHub increments", () => {
+			const ci = done("CI", "success", older);
+			const stale = done("Checks", "cancelled", older);
+			const fresh = done("Checks", "success", older);
+			expect(fresh.databaseId).toBeGreaterThan(stale.databaseId);
+			expect(checkVerdict([ci, stale, fresh])).toEqual({ state: "green" });
+			expect(checkVerdict([ci, fresh, done("Checks", "cancelled", older)]).state).toBe("failed");
+		});
 	});
 });
 
@@ -188,8 +253,8 @@ describe("runsForSha", () => {
 	it("asks per required workflow, so an unrelated schedule cannot displace a required run", async () => {
 		const fake = withFakeGh(
 			`case "$*" in
-  *"--workflow CI"*) echo '[{"workflowName":"CI","status":"completed","conclusion":"failure","url":"u/ci"}]' ;;
-  *"--workflow Checks"*) echo '[{"workflowName":"Checks","status":"completed","conclusion":"failure","url":"u/checks"}]' ;;
+  *"--workflow CI"*) echo '[{"workflowName":"CI","status":"completed","conclusion":"failure","url":"u/ci","createdAt":"2026-08-07T10:00:00Z","databaseId":1}]' ;;
+  *"--workflow Checks"*) echo '[{"workflowName":"Checks","status":"completed","conclusion":"failure","url":"u/checks","createdAt":"2026-08-07T10:00:00Z","databaseId":2}]' ;;
   *) echo '[]' ;;
 esac`,
 		);
@@ -202,8 +267,22 @@ esac`,
 			expect(checkVerdict(runs)).toEqual({
 				state: "failed",
 				failures: [
-					{ workflowName: "CI", status: "completed", conclusion: "failure", url: "u/ci" },
-					{ workflowName: "Checks", status: "completed", conclusion: "failure", url: "u/checks" },
+					{
+						workflowName: "CI",
+						status: "completed",
+						conclusion: "failure",
+						url: "u/ci",
+						createdAt: "2026-08-07T10:00:00Z",
+						databaseId: 1,
+					},
+					{
+						workflowName: "Checks",
+						status: "completed",
+						conclusion: "failure",
+						url: "u/checks",
+						createdAt: "2026-08-07T10:00:00Z",
+						databaseId: 2,
+					},
 				],
 			});
 			// One scoped query per required workflow, never one broad one.
@@ -213,6 +292,47 @@ esac`,
 				expect(calls.some(call => call.includes(`--workflow ${workflow}`))).toBe(true);
 			}
 			for (const call of calls) expect(call).toContain("--commit deadbeef");
+		} finally {
+			process.env.PATH = previousPath;
+			fs.rmSync(fake.dir, { recursive: true, force: true });
+		}
+	});
+
+	/**
+	 * WHY. `latestPerWorkflow` can only order runs it was given the ordering
+	 * fields for, and those fields come from the `--json` list in this file. Drop
+	 * `createdAt` from that list and every run ties, the first entry wins, and a
+	 * superseded cancellation quietly decides the release again. So the fake
+	 * answers with the ordering fields only when the query asks for them, and it
+	 * lists the older cancelled run FIRST: the verdict is green only if the query
+	 * asked and the newer run was picked.
+	 */
+	it("asks for the fields the newest-run rule needs", async () => {
+		const fake = withFakeGh(
+			`ordered=""
+case "$*" in
+  *createdAt*databaseId*) ordered=yes ;;
+esac
+case "$*" in
+  *"--workflow CI"*)
+    if [ -n "$ordered" ]; then
+      echo '[{"workflowName":"CI","status":"completed","conclusion":"success","url":"u/ci","createdAt":"2026-08-07T10:00:00Z","databaseId":1}]'
+    else
+      echo '[{"workflowName":"CI","status":"completed","conclusion":"success","url":"u/ci"}]'
+    fi ;;
+  *"--workflow Checks"*)
+    if [ -n "$ordered" ]; then
+      echo '[{"workflowName":"Checks","status":"completed","conclusion":"cancelled","url":"u/old","createdAt":"2026-08-07T10:00:00Z","databaseId":2},{"workflowName":"Checks","status":"completed","conclusion":"success","url":"u/new","createdAt":"2026-08-07T11:00:00Z","databaseId":3}]'
+    else
+      echo '[{"workflowName":"Checks","status":"completed","conclusion":"cancelled","url":"u/old"},{"workflowName":"Checks","status":"completed","conclusion":"success","url":"u/new"}]'
+    fi ;;
+  *) echo '[]' ;;
+esac`,
+		);
+		const previousPath = process.env.PATH;
+		process.env.PATH = `${fake.dir}${path.delimiter}${previousPath}`;
+		try {
+			expect(checkVerdict(await runsForSha("deadbeef"))).toEqual({ state: "green" });
 		} finally {
 			process.env.PATH = previousPath;
 			fs.rmSync(fake.dir, { recursive: true, force: true });

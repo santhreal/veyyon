@@ -73,6 +73,10 @@ export type RunSummary = {
 	/** Empty until `status` is `completed`. */
 	conclusion: string;
 	url: string;
+	/** ISO 8601, so lexicographic order is chronological order. */
+	createdAt: string;
+	/** Monotonic run id, the tie-break when two runs share a creation second. */
+	databaseId: number;
 };
 
 export type Verdict =
@@ -93,6 +97,35 @@ export type Verdict =
 const PASSING_CONCLUSIONS: Record<string, true> = { success: true, skipped: true };
 
 /**
+ * The newest run per workflow, because a superseded run is not a verdict.
+ *
+ * One SHA can carry several runs of the same workflow: a re-run of a cancelled
+ * gate, a `workflow_dispatch` on top of the push run, a run cancelled by hand
+ * while the operator watched it. GitHub's own checks view answers with the
+ * latest of each, and anything else makes a verdict permanently unreachable:
+ * four of the last six `CI` runs on main were `cancelled`, and because every run
+ * for the SHA counted, re-running CI to green could not clear the cut. The
+ * release then had to be tagged by hand, which is the one step this script
+ * exists to keep honest.
+ *
+ * This never forgives a red gate. A stale success cannot outvote a newer
+ * failure, because the newer run is the one kept.
+ */
+export function latestPerWorkflow(runs: readonly RunSummary[]): RunSummary[] {
+	const newest = new Map<string, RunSummary>();
+	for (const run of runs) {
+		const seen = newest.get(run.workflowName);
+		if (seen === undefined || isNewer(run, seen)) newest.set(run.workflowName, run);
+	}
+	return [...newest.values()];
+}
+
+function isNewer(candidate: RunSummary, incumbent: RunSummary): boolean {
+	if (candidate.createdAt !== incumbent.createdAt) return candidate.createdAt > incumbent.createdAt;
+	return candidate.databaseId > incumbent.databaseId;
+}
+
+/**
  * Decide whether a SHA is ready to tag.
  *
  * Pending beats failed on purpose: while anything is still running the answer
@@ -101,16 +134,17 @@ const PASSING_CONCLUSIONS: Record<string, true> = { success: true, skipped: true
  * gets one final verdict instead of a race between two.
  */
 export function checkVerdict(runs: readonly RunSummary[], required: readonly string[] = REQUIRED_WORKFLOWS): Verdict {
-	const present = new Set(runs.map(run => run.workflowName));
+	const latest = latestPerWorkflow(runs);
+	const present = new Set(latest.map(run => run.workflowName));
 	const missing = required.filter(name => !present.has(name));
-	const unfinished = runs.filter(run => run.status !== "completed");
+	const unfinished = latest.filter(run => run.status !== "completed");
 	if (missing.length > 0 || unfinished.length > 0) {
 		return {
 			state: "pending",
 			waitingOn: [...missing.map(name => `${name} (not started)`), ...unfinished.map(run => run.workflowName)],
 		};
 	}
-	const failures = runs.filter(run => !PASSING_CONCLUSIONS[run.conclusion]);
+	const failures = latest.filter(run => !PASSING_CONCLUSIONS[run.conclusion]);
 	if (failures.length > 0) return { state: "failed", failures };
 	return { state: "green" };
 }
@@ -161,7 +195,7 @@ export async function runsForSha(sha: string, required: readonly string[] = REQU
 					"--limit",
 					"20",
 					"--json",
-					"workflowName,status,conclusion,url",
+					"workflowName,status,conclusion,url,createdAt,databaseId",
 				],
 				{ maxBuffer: 32 * 1024 * 1024 },
 			);
