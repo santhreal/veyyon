@@ -145,14 +145,19 @@ export interface SegmentContext {
 	 */
 	worktree: { projectName: string; worktreeName: string } | null;
 	/**
-	 * The credential currently serving the active provider, and how many that provider stores.
+	 * The credential serving the active provider, and how many that provider stores.
 	 *
 	 * Null when no provider is resolved or it stores nothing. `storedCount` is carried rather than
 	 * pre-applied because whether one account is worth naming is a DISPLAY decision, and the
 	 * segment owns it: with load balancing off exactly one of several accounts is being spent, and
 	 * a user holding one account has nothing to tell apart.
+	 *
+	 * `isPrediction` marks the answer as the account the NEXT request would use rather than one
+	 * observed serving a request, which is the state every session opens in. The segment words the
+	 * two differently; a line that says `as work` before anything was spent through `work` is
+	 * wrong in the one case the operator most needs to trust it.
 	 */
-	account: { label: string; storedCount: number } | null;
+	account: { label: string; storedCount: number; isPrediction: boolean } | null;
 	usage: {
 		tier?: string;
 		fiveHour?: { percent: number; resetMinutes?: number };

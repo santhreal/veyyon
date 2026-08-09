@@ -159,6 +159,7 @@ export type StatusLineSegmentId =
 	| "pi"
 	| "model"
 	| "account"
+	| "secrets"
 	| "mode"
 	| "path"
 	| "git"

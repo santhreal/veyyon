@@ -34,6 +34,7 @@ function row(
 		type: "oauth",
 		usage: [],
 		activeForSession: false,
+		activeIsPrediction: false,
 		selectedForProvider: false,
 		...overrides,
 	};

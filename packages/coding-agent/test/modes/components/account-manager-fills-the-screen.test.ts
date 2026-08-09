@@ -35,6 +35,7 @@ const INVENTORY: AccountInventory = {
 					origin: { kind: "oauth" },
 					usage: [],
 					activeForSession: true,
+					activeIsPrediction: false,
 					selectedForProvider: false,
 					name: "work",
 				},

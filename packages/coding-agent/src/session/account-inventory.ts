@@ -80,6 +80,15 @@ export interface AccountRow {
 	/** True when this credential serves the session's next request for its provider. */
 	activeForSession: boolean;
 	/**
+	 * True when {@link activeForSession} is a prediction rather than an observation.
+	 *
+	 * No request has gone out on this session yet, or the one that had cannot serve another, so the
+	 * routing was answered by replaying the selection the next request would make. Surfaces say
+	 * `serves next` instead of `serving` for it: the account is right, but nothing has been spent
+	 * through it, and a provider that ranks accounts by remaining quota can still land elsewhere.
+	 */
+	activeIsPrediction: boolean;
+	/**
 	 * True when this is the account the user chose for this provider.
 	 *
 	 * GLOBAL and durable, not session state: the choice is stored beside the credentials, so it
@@ -236,6 +245,7 @@ export function buildAccountInventory(
 			type: credential.type,
 			usage: [],
 			activeForSession: false,
+			activeIsPrediction: false,
 			selectedForProvider: false,
 		};
 		const name = authStorage.getAccountName(provider, stored.id);
@@ -258,7 +268,10 @@ export function buildAccountInventory(
 		const routing = authStorage.sessionCredentialRouting(provider, sessionId);
 		for (let index = 0; index < rows.length; index++) {
 			const row = rows[index]!;
-			if (routing?.activeCredentialId === row.credentialId) row.activeForSession = true;
+			if (routing?.activeCredentialId === row.credentialId) {
+				row.activeForSession = true;
+				row.activeIsPrediction = routing.activeIsPrediction === true;
+			}
 			if (routing?.selectedCredentialId === row.credentialId) {
 				row.selectedForProvider = true;
 				if (routing.selectedBlockedUntilMs !== undefined) row.blockedUntilMs = routing.selectedBlockedUntilMs;

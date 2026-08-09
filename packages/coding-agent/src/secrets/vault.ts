@@ -364,14 +364,25 @@ export function warningThresholdCrossed(entry: VaultEntry, now: number): number 
 	return crossed;
 }
 
-/** Human phrase for how long an entry has left. */
-export function describeTimeLeft(entry: VaultEntry, now: number): string {
-	if (entry.expiresAt === null) return "never expires";
-	const left = entry.expiresAt - now;
+/**
+ * Human phrase for a remaining lifetime in milliseconds.
+ *
+ * ONE OWNER FOR THE WORDING, because two surfaces say it: the Secret Manager's EXPIRES column, and
+ * the composer's secrets chip, which reports the SOONEST deadline of everything spendable in this
+ * directory. A chip that rounded differently from the card would have the two disagree about the
+ * same credential on the same screen.
+ */
+export function describeMsLeft(left: number): string {
 	if (left <= 0) return "expired";
 	if (left < TTL_UNITS.h) return `${Math.max(1, Math.round(left / TTL_UNITS.m))}m left`;
 	if (left < TTL_UNITS.d) return `${Math.round(left / TTL_UNITS.h)}h left`;
 	return `${Math.round(left / TTL_UNITS.d)}d left`;
+}
+
+/** Human phrase for how long an entry has left. */
+export function describeTimeLeft(entry: VaultEntry, now: number): string {
+	if (entry.expiresAt === null) return "never expires";
+	return describeMsLeft(entry.expiresAt - now);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -195,7 +195,14 @@ export function accountHeadLine(row: AccountRow, nowMs: number): AccountHeadLine
 	//
 	// "your choice" rather than "pinned": the choice outlives this session and this profile, and a
 	// word that says "for now" would misdescribe what pressing enter did.
-	if (row.activeForSession) tag = row.selectedForProvider ? "serving · your choice" : "serving";
+	//
+	// `serves next` RATHER THAN `serving` when the routing is a prediction, which is the state a
+	// fresh session opens in: nothing has been spent through this account, so calling it "serving"
+	// claims traffic that has not happened. Before the routing could predict at all this row wore
+	// no tag whatsoever, and the card could not answer the one question it exists for until the
+	// operator had sent a request and reopened it.
+	const routed = row.activeIsPrediction ? "serves next" : "serving";
+	if (row.activeForSession) tag = row.selectedForProvider ? `${routed} · your choice` : routed;
 	else if (row.selectedForProvider) tag = "your choice";
 	else if (row.blockedUntilMs !== undefined && row.blockedUntilMs > nowMs) tag = "rate limited";
 	else if (row.health === "failed") tag = "needs attention";
@@ -278,11 +285,20 @@ export function accountNoticeLines(row: AccountRow, nowMs: number): string[] {
  * This exists so the card never presents the substitute as a choice. The rotation happened to
  * the user, not because of them, and a card that silently shows `personal · serving` after they
  * chose `work` reads as their own setting having changed.
+ *
+ * A PREDICTED substitute is phrased in the future, because nothing has moved yet: the chosen
+ * account is blocked and the next request is what will land elsewhere. Saying "rotated off it"
+ * about traffic that has not been sent is the same class of overclaim as tagging a row `serving`
+ * before its first request.
  */
 export function divergenceLines(divergence: { chosen: AccountRow; serving: AccountRow }, nowMs: number): string[] {
 	const chosen = sanitizeAccountText(accountDisplayLabel(divergence.chosen));
 	const serving = sanitizeAccountText(accountDisplayLabel(divergence.serving));
-	const lines = [`you chose ${chosen}, rotated off it onto ${serving}`];
+	const lines = [
+		divergence.serving.activeIsPrediction
+			? `you chose ${chosen}; it cannot serve, so the next request uses ${serving}`
+			: `you chose ${chosen}, rotated off it onto ${serving}`,
+	];
 	const until = divergence.chosen.blockedUntilMs;
 	if (until !== undefined && until > nowMs) {
 		lines.push(`enter switches back to ${chosen} · ${formatDurationCoarse(until - nowMs)} until it unblocks`);
