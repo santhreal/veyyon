@@ -367,9 +367,9 @@ export function warningThresholdCrossed(entry: VaultEntry, now: number): number 
 /**
  * Human phrase for a remaining lifetime in milliseconds.
  *
- * ONE OWNER FOR THE WORDING, because two surfaces say it: the Secret Manager's EXPIRES column, and
- * the composer's secrets chip, which reports the SOONEST deadline of everything spendable in this
- * directory. A chip that rounded differently from the card would have the two disagree about the
+ * ONE OWNER FOR THE WORDING, because two surfaces say it: the `/secret list` EXPIRES column, and the
+ * composer's secrets chip, which reports the SOONEST deadline of everything spendable in this
+ * directory. A chip that rounded differently from the table would have the two disagree about the
  * same credential on the same screen.
  */
 export function describeMsLeft(left: number): string {
@@ -427,7 +427,7 @@ export function generateSecretName(taken: ReadonlySet<string>): string {
 		const candidate = `${GENERATED_NAME_PREFIX}${n}`;
 		if (candidate.length <= MAX_SECRET_NAME_LENGTH && !taken.has(candidate)) return candidate;
 	}
-	throw new Error("Could not invent an unused secret name. Remove some entries from /secret manager.");
+	throw new Error("Could not invent an unused secret name. Remove some entries with /secret rm NAME.");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1458,9 +1458,9 @@ function noteUnreadableVault(scope: VaultScope, vaultPath: string, error: unknow
 		`Your ${scope} vault at ${safeText(vaultPath)} exists but could not be read, so it was skipped ` +
 			`and the secrets stored in it are unavailable for the rest of this session: their placeholders ` +
 			`will NOT expand. Every OTHER scope loaded normally, and masking of known secret values is ` +
-			`unaffected. The vault is encrypted, so a hand edit cannot repair it: open /secret manager and ` +
-			`move the unreadable file aside, or run /secret discard --scope ${scope} in a client with no ` +
-			`terminal. Then store the secrets it held again. The reason it could not be read was ` +
+			`unaffected. The vault is encrypted, so a hand edit cannot repair it: run /secret discard --scope ` +
+			`${scope} to move the unreadable file aside. Then store the secrets it held again. The reason it ` +
+			`could not be read was ` +
 			`${safeError(error)}`,
 	);
 }
@@ -1483,9 +1483,8 @@ function noteFailedVaultLoad(locations: VaultLocations, unreadable: readonly Vau
 	const repair =
 		unreadable.length === 0
 			? `No vault file was found to move aside, so this is a fault in the key or the vault directory rather than in a stored file.`
-			: `Open /secret manager and move the unreadable ${unreadable.length === 1 ? "file" : "files"} aside, ` +
-				`or run ${unreadable.map(scope => `/secret discard --scope ${scope}`).join(" and ")} in a client ` +
-				`with no terminal. Then store the secrets it held again.`;
+			: `Run ${unreadable.map(scope => `/secret discard --scope ${scope}`).join(" and ")} to move the ` +
+				`unreadable ${unreadable.length === 1 ? "file" : "files"} aside. Then store the secrets it held again.`;
 	const where = unreadable.map(scope => `${scope} (${safeText(vaultPathFor(locations, scope))})`).join(", ");
 	noteSecretsCondition(
 		`Your vault could not be read, so this session started WITHOUT it: nothing you have stored is ` +

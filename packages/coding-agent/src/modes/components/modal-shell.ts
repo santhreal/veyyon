@@ -323,22 +323,60 @@ export interface ShortcutLayoutRow {
 	chips: { id?: string; clickable: boolean; offset: number; width: number }[];
 }
 
+/** Chip labels with live keybindings resolved. A chip whose every action is unbound disappears. */
+function resolveShortcutLabels(shortcuts: readonly ModalShortcut[]): ModalShortcut[] {
+	const resolved: ModalShortcut[] = [];
+	for (const shortcut of shortcuts) {
+		if (!shortcut.keybindings) {
+			resolved.push(shortcut);
+			continue;
+		}
+		const keys = shortcut.keybindings.map(actionKeyHint).filter(Boolean);
+		if (keys.length === 0) continue;
+		resolved.push({ ...shortcut, label: `${keys.join("/")} ${shortcut.label}` });
+	}
+	return resolved;
+}
+
+/**
+ * Greedy forward pack of chip widths into rows, in the order given.
+ *
+ * ONE OWNER FOR THE PACKING RULE, because two callers ask about it: the renderer, which needs the
+ * rows, and {@link shortcutBandWidth}, which needs only how many there would be at a candidate
+ * width. A second copy of this loop would let a card size itself against a packing its own footer
+ * does not perform, which paints a row of chips the card is one column too narrow to hold.
+ *
+ * Greedy is optimal for the row COUNT, since the chips cannot be reordered, but it can strand a
+ * lone trailing chip whose row-mates all landed on the row above; the caller that renders fixes
+ * that by borrowing backwards, which never changes the count.
+ */
+function packChipRows(widths: readonly number[], width: number, sepW: number): number[][] {
+	const groups: number[][] = [];
+	let current: number[] = [];
+	let currentW = 0;
+	for (let i = 0; i < widths.length; i++) {
+		const w = widths[i]!;
+		const extra = current.length === 0 ? w : sepW + w;
+		if (current.length > 0 && currentW + extra > width) {
+			groups.push(current);
+			current = [i];
+			currentW = w;
+		} else {
+			current.push(i);
+			currentW += extra;
+		}
+	}
+	if (current.length > 0) groups.push(current);
+	return groups;
+}
+
 export function layoutShortcutRows(
 	shortcuts: readonly ModalShortcut[],
 	width: number,
 	hoveredId?: string | null,
 ): ShortcutLayoutRow[] {
 	if (width <= 0 || shortcuts.length === 0) return [];
-	const resolvedShortcuts: ModalShortcut[] = [];
-	for (const shortcut of shortcuts) {
-		if (!shortcut.keybindings) {
-			resolvedShortcuts.push(shortcut);
-			continue;
-		}
-		const keys = shortcut.keybindings.map(actionKeyHint).filter(Boolean);
-		if (keys.length === 0) continue;
-		resolvedShortcuts.push({ ...shortcut, label: `${keys.join("/")} ${shortcut.label}` });
-	}
+	const resolvedShortcuts = resolveShortcutLabels(shortcuts);
 	const chips = resolvedShortcuts.map(s => ({
 		id: s.id,
 		clickable: Boolean(s.clickable && s.id),
@@ -347,26 +385,11 @@ export function layoutShortcutRows(
 		w: visibleWidth(s.label),
 	}));
 	const sepW = visibleWidth(SHORTCUT_SEP);
-
-	// Greedy forward pass: pack as many chips per row as fit. This is optimal
-	// for the row *count* (can't reorder chips), but can strand a lone trailing
-	// chip whose row-mates all landed on the row above.
-	const groups: number[][] = [];
-	let current: number[] = [];
-	let currentW = 0;
-	for (let i = 0; i < chips.length; i++) {
-		const chip = chips[i]!;
-		const extra = current.length === 0 ? chip.w : sepW + chip.w;
-		if (current.length > 0 && currentW + extra > width) {
-			groups.push(current);
-			current = [i];
-			currentW = chip.w;
-		} else {
-			current.push(i);
-			currentW += extra;
-		}
-	}
-	if (current.length > 0) groups.push(current);
+	const groups = packChipRows(
+		chips.map(c => c.w),
+		width,
+		sepW,
+	);
 
 	const groupWidth = (indices: number[]): number =>
 		indices.reduce((w, idx, pos) => w + chips[idx]!.w + (pos > 0 ? sepW : 0), 0);

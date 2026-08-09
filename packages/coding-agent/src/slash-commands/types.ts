@@ -178,7 +178,6 @@ export type TuiSlashCommandHostContext = CollabHostContext &
 		| "showOAuthSelector"
 		| "showProviderSetup"
 		| "showResetUsageSelector"
-		| "showSecretManager"
 		| "showSessionSelector"
 		| "showSettingsSelector"
 		| "showStatus"

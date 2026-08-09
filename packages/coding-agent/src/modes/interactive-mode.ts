@@ -923,11 +923,11 @@ export class InteractiveMode implements InteractiveModeContext {
 				void this.openGoalDetail();
 				return;
 			}
-			// The chip says a credential is live here; the card is the only place to see WHICH, extend
-			// one whose deadline the chip just started counting down, or correct a value. A reader who
-			// notices the chip should not have to remember a command name to act on it.
+			// The chip says a credential is live here, and clicking it answers WHICH: the same list
+			// `/secret list` prints, without leaving the screen the reader is already looking at. A
+			// reader who notices the chip should not have to remember a command name to act on it.
 			if (segmentId === "secrets") {
-				this.showSecretManager();
+				this.showSecretList();
 				return;
 			}
 			if (segmentId === "context_pct" || segmentId === "context_total") {
@@ -4807,8 +4807,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#selectorController.showAgentsDashboard(this.#observerRegistry, options);
 	}
 
-	showSecretManager(): void {
-		this.#selectorController.showSecretManager();
+	showSecretList(): void {
+		this.#commandController.showSecretList();
 	}
 
 	showModelSelector(options?: { temporaryOnly?: boolean }): void {

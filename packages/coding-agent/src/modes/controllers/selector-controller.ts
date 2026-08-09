@@ -7,14 +7,7 @@ import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
-import {
-	errorMessage,
-	getActiveAuthDbPath,
-	getAgentDir,
-	getGlobalConfigRootDir,
-	getProjectDir,
-	normalizePathForComparison,
-} from "@veyyon/utils";
+import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
 import { isRollbackSupported, rollbackToVersion } from "../../cli/update-cli";
 import { formatModelSelectorValue } from "../../config/model-resolver";
@@ -38,8 +31,6 @@ import {
 } from "../../modes/theme/theme";
 import type { InteractiveModeContext } from "../../modes/types";
 import { resolveAvailablePersonalities } from "../../personality/resolver";
-import { SecretAuditLog, secretAuditPath } from "../../secrets/audit";
-import { resolveVaultLocations, SecretVault } from "../../secrets/vault";
 import {
 	accountDisplayLabel,
 	applyCredentialHealth,
@@ -85,7 +76,6 @@ import { ModelHubComponent } from "../components/model-hub";
 import { ModelPickerComponent } from "../components/model-picker";
 import { OAuthSelectorComponent } from "../components/oauth-selector";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
-import { SecretManager } from "../components/secret-manager";
 import { SessionSelectorComponent } from "../components/session-selector";
 import { SettingsSelectorComponent } from "../components/settings-selector";
 import { SubcommandPickerComponent } from "../components/subcommand-picker";
@@ -556,63 +546,6 @@ export class SelectorController {
 			return;
 		}
 		show();
-	}
-
-	/**
-	 * Show the Secret Manager: the ONE place stored credentials are managed.
-	 *
-	 * `manager` is the only reserved word after `/secret`, because everything else typed there IS
-	 * the credential. That trade is only honest if the surface the word is reserved for can do
-	 * everything the subcommand grammar could, so this card owns revoke, extend, rename, copying
-	 * the placeholder, and the repair for a vault file that cannot be read.
-	 *
-	 * The vault and the audit log are built from the SAME resolved locations `/secret` itself uses
-	 * (`slash-commands/helpers/secret.ts`). Resolving them a second way here is how the card and
-	 * the command come to read different files and disagree about what is stored.
-	 *
-	 * The Log view is also the ONLY route to the expansion record now. In a terminal `/secret log`
-	 * no longer parses, because everything after `/secret` is read as the credential, so a card
-	 * without the log would have retired the evidence trail as a side effect of a parser change.
-	 */
-	showSecretManager(): void {
-		const locations = resolveVaultLocations({
-			globalConfigRoot: getGlobalConfigRootDir(),
-			agentDir: getAgentDir(),
-			cwd: this.ctx.sessionManager.getCwd(),
-		});
-		const manager = new SecretManager({
-			vault: new SecretVault(locations),
-			// Absent when recording is off, which the card reports as "off" rather than as an
-			// empty log: the two states support opposite conclusions about what has been spent.
-			auditLog: this.ctx.settings.get("secrets.auditLog")
-				? new SecretAuditLog(secretAuditPath(locations), this.ctx.session.operatorNotices)
-				: undefined,
-			terminalHeight: this.ctx.ui.terminal.rows,
-			reveal: modalRevealEnabled(),
-			// Every mutation the card makes has to reach the running session, or it keeps spending
-			// the secret state it captured at startup: a revoked credential stays substitutable
-			// and a renamed one leaves the model writing a placeholder nothing resolves.
-			refreshSecrets: () => this.ctx.session.refreshSecrets(),
-		});
-		// Fullscreen on the alternate screen (the /settings idiom): the overlay borrows the
-		// terminal's alt buffer and enables mouse tracking for its lifetime, leaving the
-		// transcript untouched underneath.
-		const overlay = this.ctx.ui.showOverlay(manager, {
-			width: "100%",
-			maxHeight: "100%",
-			anchor: "top-left",
-			margin: 0,
-			fullscreen: true,
-		});
-		manager.onClose = () => {
-			overlay.hide();
-			this.focusActiveEditorArea();
-			this.ctx.ui.requestRender();
-		};
-		manager.onRequestRender = () => {
-			this.ctx.ui.requestRender();
-		};
-		this.ctx.ui.requestRender();
 	}
 
 	/**
