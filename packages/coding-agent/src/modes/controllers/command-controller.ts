@@ -51,6 +51,7 @@ import type { NewSessionOptions } from "../../session/session-entries";
 import { formatShakeSummary, type ShakeMode, type ShakeResult } from "../../session/shake-types";
 import { limitMatchesActiveAccount } from "../../slash-commands/helpers/active-oauth-account";
 import { formatProviderName } from "../../slash-commands/helpers/format";
+import { interactiveSecretPort, runSecretCommandForSurface } from "../../slash-commands/helpers/secret";
 import { outputMeta } from "../../tools/output-meta";
 import { resolveToCwd, stripOuterDoubleQuotes } from "../../tools/path-utils";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
@@ -94,6 +95,7 @@ export type CommandControllerContext = Pick<
 	| "settings"
 	| "showError"
 	| "showHookConfirm"
+	| "showHookInput"
 	| "showStatus"
 	| "showWarning"
 	| "statusContainer"
@@ -497,6 +499,19 @@ export class CommandController {
 		block.addChild(new Text(output, 1, 0));
 		block.addChild(new DynamicBorder());
 		this.ctx.present(block);
+	}
+
+	/**
+	 * Print `/secret list`, which is the answer the footline's secrets chip is a handle for.
+	 *
+	 * Runs the command the operator would have typed, through the same port, rather than reading the
+	 * vault here. A chip that answered from a second reader could disagree with the command about
+	 * what is stored, and a chip exists to be trusted at a glance or not at all.
+	 */
+	showSecretList(): void {
+		void runSecretCommandForSurface("list", interactiveSecretPort(this.ctx))
+			.then(outcome => this.ctx.showStatus(outcome.message))
+			.catch(error => this.ctx.showWarning(errorMessage(error)));
 	}
 
 	async handleMemoryCommand(text: string): Promise<void> {

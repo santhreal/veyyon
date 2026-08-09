@@ -404,8 +404,8 @@ export interface InteractiveModeContext {
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;
 	showAgentsDashboard(options?: { requireContent?: boolean }): void;
-	/** Opens the secret manager: the one screen `/secret manager` reserves a word for. */
-	showSecretManager(): void;
+	/** Prints `/secret list`, which is what the footline's secrets chip is a handle for. */
+	showSecretList(): void;
 	showModelSelector(options?: { temporaryOnly?: boolean }): void;
 	showThinkingSelector(): void;
 	/**

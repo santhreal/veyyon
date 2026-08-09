@@ -339,10 +339,10 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Store a credential the agent can use without ever seeing it",
 		acpDescription: "Manage credentials; new values are accepted only from environment variables",
 		allowArgs: true,
-		// Every canonical spelling but `add`, `help` and `discard`: `add` is a synonym for the bare
-		// value form, and the other two are rare enough that spending a third of one line of ghost
-		// text on them would push the value form off the end. The dropdown lists all eight.
-		inlineHint: "<value> | manager | list | rm | extend | log | --from-env VAR",
+		// The value form first, then the verbs a new operator reaches for. The rest of the grammar is
+		// in the dropdown rather than the ghost text: one line cannot carry eleven verbs and still
+		// show that a bare value is all `/secret` needs.
+		inlineHint: "<value> | list | rm | rename | value | extend | log | --from-env VAR",
 		acpInputHint: "add <name> --from-env <VAR>",
 		// Bare /secret opens the masked value field rather than a subcommand picker: the value form
 		// needs no verb, so `add` is a synonym rather than a hidden default, and a picker would put a
@@ -361,6 +361,26 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 				usage: "/secret rm <name> [--scope profile|project|global]",
 			},
 			{
+				name: "rename",
+				description: "Give a stored secret a different name, keeping its value and lifetime",
+				usage: "/secret rename <name> <new-name>",
+			},
+			{
+				name: "value",
+				description: "Replace a stored secret's value, keeping its name and deadline",
+				usage: "/secret value <name> [--from-env <VAR>]",
+			},
+			{
+				name: "scope",
+				description: "Move a stored secret to another vault",
+				usage: "/secret scope <name> profile|project|global",
+			},
+			{
+				name: "copy",
+				description: "Copy #NAME#, the placeholder, never the value",
+				usage: "/secret copy <name>",
+			},
+			{
 				name: "extend",
 				description: "Give a stored secret a fresh lifetime",
 				usage: "/secret extend <name> --ttl 7d",
@@ -368,8 +388,14 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{
 				name: "log",
 				description: "Show which secrets were used, in which command, and when",
-				usage: "/secret log [--limit 50]",
+				usage: "/secret log [--name <name>] [--limit 50]",
 			},
+			{
+				name: "discard",
+				description: "Move a vault file aside that could not be read",
+				usage: "/secret discard --scope profile|project|global",
+			},
+			{ name: "help", description: "Show every way to store and manage a credential", usage: "/secret help" },
 		],
 	},
 

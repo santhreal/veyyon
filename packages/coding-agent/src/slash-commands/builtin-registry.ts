@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { getOAuthProviders, type OAuthProviderInfo } from "@veyyon/ai/oauth";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { stripEffortTierSuffix } from "@veyyon/catalog/variant-collapse";
-import { type AutocompleteItem, DEFAULT_MASK_CHAR, Spacer } from "@veyyon/tui";
+import { type AutocompleteItem, Spacer } from "@veyyon/tui";
 import {
 	APP_NAME,
 	CHANGELOG_URL,
@@ -78,13 +78,7 @@ import { formatDurationCoarse, formatProviderName } from "./helpers/format";
 import { handleMcpAcp } from "./helpers/mcp";
 import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usage } from "./helpers/parse";
 import { describeRedeemOutcome, type ResetUsageAccount, toResetUsageAccounts } from "./helpers/reset-usage";
-import {
-	maskedPromptHint,
-	maskedPromptTitle,
-	namePromptHint,
-	namePromptTitle,
-	runSecretCommandForSurface,
-} from "./helpers/secret";
+import { interactiveSecretPort, runSecretCommandForSurface } from "./helpers/secret";
 import { handleSshAcp } from "./helpers/ssh";
 import { handleTodoAcp } from "./helpers/todo";
 import { buildUsageReportText } from "./helpers/usage-report";
@@ -1506,29 +1500,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			const ctx = runtime.ctx;
 			ctx.editor.setText("");
 			try {
-				const outcome = await runSecretCommandForSurface(command.args ?? "", {
-					session: ctx.session,
-					sessionManager: ctx.sessionManager,
-					settings: ctx.settings,
-					cwd: ctx.sessionManager.getCwd(),
-					globalConfigRoot: getGlobalConfigRootDir(),
-					agentDir: getAgentDir(),
-					promptForValue: () =>
-						ctx.showHookInput(maskedPromptTitle(), undefined, {
-							mask: DEFAULT_MASK_CHAR,
-							hint: maskedPromptHint(),
-						}),
-					// Deliberately unmasked: a name is not a credential, and the operator seeing this
-					// field echo after the hidden one is what distinguishes the two questions.
-					promptForName: () => ctx.showHookInput(namePromptTitle(), undefined, { hint: namePromptHint() }),
-				});
-				// The manager is a screen, so it is opened here rather than returned as text. No
-				// status line goes with it: the card that just appeared is the entire answer, and a
-				// message underneath it would be reporting on something already on screen.
-				if (outcome.openManager) {
-					ctx.showSecretManager();
-					return commandConsumed();
-				}
+				const outcome = await runSecretCommandForSurface(command.args ?? "", interactiveSecretPort(ctx));
 				if (!outcome.cancelled) ctx.showStatus(outcome.message);
 			} catch (error) {
 				ctx.showWarning(errorMessage(error));
@@ -2655,15 +2627,14 @@ function buildProfileArgumentCompletions(): (prefix: string) => Promise<Autocomp
  * Argument completion for `/secret`, one entry per subcommand the terminal parses.
  *
  * DERIVED, NOT LISTED. `SECRET_TUI_SUBCOMMANDS` is built from the parser's own table of reserved
- * words, so a subcommand cannot be typeable and unoffered, which is what this menu was: it offered
- * `manager` alone while the help text advertised five verbs, and in a terminal those five did not
- * parse at all, so an operator who read the help and typed `/secret list` stored the word `list` as
- * a credential. Both halves of that are fixed together, because either alone is still a lie.
+ * words, so a subcommand cannot be typeable and unoffered. A hand-written menu beside a separate
+ * help text is two lists that drift, and the drift is not cosmetic: a verb the help advertises and
+ * the terminal does not parse is stored as a credential instead of run.
  *
- * NAMES ARE STILL NEVER OFFERED. An earlier version completed the verbs and then the names of
- * stored secrets, so `/secret rm git` offered `GITHUB_TOKEN`; picking one rendered part of the
- * vault on a keystroke, and under the verbless grammar it also stored the whole suggestion as a
- * credential. Choosing a name from a list is what the manager is for.
+ * NAMES ARE NEVER OFFERED. Completing the names of stored secrets would render part of the vault on
+ * a keystroke, and under the verbless grammar it would also store the whole suggestion as a
+ * credential when the verb turned out not to parse. `/secret list` is where names are read, on
+ * purpose and in one place.
  *
  * The prefix filter is what keeps the menu out of a paste: a pasted credential arrives as one
  * insert, so the prefix is the entire token and matches nothing. Only a hand-typed word that is

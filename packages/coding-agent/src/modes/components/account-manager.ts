@@ -138,7 +138,7 @@ export interface AccountManagerOptions {
 	 * A piped render has no `process.stdout.rows`, so it falls back to a height nobody is looking
 	 * at, and the compact card that a short terminal produces is two columns WIDER than the
 	 * ordinary one. That is how a body line that overflows on a real terminal renders as fitting
-	 * in an image proof, which has happened here before (see `scripts/demos/render-secret-manager.ts`).
+	 * in an image proof, which has happened here before.
 	 * Naming the height is what makes a proof reproduce the operator's card.
 	 */
 	terminalHeight?: number;

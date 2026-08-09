@@ -8,12 +8,12 @@
  * through a live TUI.
  *
  * ONE GRAMMAR, TWO ENTRY FORMS. Every subcommand parses on every surface: `add`, `list`, `rm`,
- * `extend`, `log`, `discard`, `help`, and `manager` wherever there is a screen to open. What the
+ * `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard` and `help`. What the
  * surfaces disagree about is how a credential is entered, because that is a security property and
  * not a matter of taste. In a terminal the first word decides: a reserved word is a command, and
  * anything else is the credential itself, so stashing a token costs one paste and no verb, while
- * `--` stores a value that happens to begin with a reserved word. A client with neither a masked
- * field nor a GUI cannot accept a bare value at all, and reaches one only through `--from-env`.
+ * `--` stores a value that happens to begin with a reserved word. A client with no masked field
+ * cannot accept a bare value at all, and reaches one only through `--from-env`.
  *
  * WHY THE TERMINAL FORM DROPPED THE NAME. `/secret add <name> <value>` demanded a label before it
  * would accept the thing being labelled, and the two positionals had no unique reading once the
@@ -36,6 +36,7 @@ import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth } 
 import { errorMessage, formatCount } from "@veyyon/utils";
 import type { SecretAuditLog, SecretExpansionRecord } from "./audit";
 import { MAX_SECRET_NAME_LENGTH } from "./placeholder";
+import { planScopeMove } from "./scope-move";
 import {
 	DEFAULT_TTL_MS,
 	describeTimeLeft,
@@ -52,12 +53,22 @@ import {
 /**
  * Every subcommand `/secret` understands.
  *
- * `manager` is the ONE word the TUI grammar reserves, and it is not run here: the surface
- * intercepts it and opens the GUI, because a manager is a screen and this module is pure logic
- * over a vault. It still lives in this union so the parser has something to return and so
- * {@link runSecretCommand} is forced to say what happens when a surface forgets to intercept it.
+ * There is no verb that opens a screen. Every capability is a word here, so a client with a
+ * terminal and a client with none reach the same feature through the same grammar, and a rule
+ * proved over this union is proved for both.
  */
-export type SecretSubcommand = "add" | "list" | "rm" | "extend" | "log" | "discard" | "manager" | "help";
+export type SecretSubcommand =
+	| "add"
+	| "list"
+	| "rm"
+	| "rename"
+	| "value"
+	| "scope"
+	| "copy"
+	| "extend"
+	| "log"
+	| "discard"
+	| "help";
 
 /** How many log lines `/secret log` shows when the operator does not say. */
 export const DEFAULT_LOG_LIMIT = 20;
@@ -66,6 +77,8 @@ export const DEFAULT_LOG_LIMIT = 20;
 export interface SecretCommandRequest {
 	subcommand: SecretSubcommand;
 	name?: string;
+	/** The new name, for `rename`: the second bare word of the line. */
+	newName?: string;
 	/** Inline credential, when the user supplied one directly. */
 	value?: string;
 	/** Environment variable to read the credential from. */
@@ -93,7 +106,11 @@ export interface SecretCommandRequest {
  * about when a prompt is warranted, and so the rule is testable without a terminal.
  */
 export function needsValuePrompt(request: SecretCommandRequest): boolean {
-	return request.subcommand === "add" && request.value === undefined && request.fromEnv === undefined;
+	return (
+		(request.subcommand === "add" || request.subcommand === "value") &&
+		request.value === undefined &&
+		request.fromEnv === undefined
+	);
 }
 
 /** What the caller should do after the command ran. */
@@ -123,6 +140,14 @@ export interface SecretCommandResult {
 	 * with nothing expanding, every `#NAME#` the model writes reaches the shell verbatim.
 	 */
 	agentNoticeIsRevocation?: true;
+	/**
+	 * Text the surface should put on the clipboard, set by `copy`.
+	 *
+	 * A PLACEHOLDER, never a value. This layer is pure logic over a vault and owns no clipboard, and
+	 * the only thing worth copying is the token the model spends, which is not a credential: it can
+	 * be printed, pasted and shared freely, which is the whole reason it exists.
+	 */
+	copyText?: string;
 	/** True when the vault changed, so the caller can refresh the obfuscator. */
 	changed: boolean;
 }
@@ -159,44 +184,43 @@ const USAGE_ADD_FROM_ENV = "/secret add <name> --from-env <VAR>   store the valu
 /**
  * Everything you only need once a secret exists, shared by both surfaces.
  *
- * ONE LIST, because both surfaces parse all of it. The terminal used to advertise `manager` alone,
- * on the reasoning that rename and revoke are actions inside the GUI. That held for the actions and
- * not for the words: `/secret rm TOKEN` was read as a credential, so the vault gained an entry
- * whose value was the name of the command the operator had been told to type. The manager line
- * stays first, because it is still the better way to do all four.
+ * ONE LIST, because both surfaces parse all of it. Every capability `/secret` has is a word in this
+ * list, including rename, value, scope and copy, which is what makes the list the feature rather
+ * than a summary of a screen the operator has to find first.
  */
-const USAGE_MANAGER = "/secret manager                       open the manager: rename, extend, revoke, copy";
 const USAGE_LIST = "/secret list                          show active secrets, never their values";
 const USAGE_MANAGE = [
 	USAGE_LIST,
 	"/secret rm <name> [--scope global]    remove a secret",
+	"/secret rename <name> <new-name>      give a secret a different name",
+	"/secret value <name>                  replace a secret's value, keeping its name and lifetime",
+	"/secret scope <name> global           move a secret to another vault",
+	"/secret copy <name>                   copy #NAME#, the placeholder, never the value",
 	"/secret extend <name> --ttl 7d        give a secret a fresh lifetime",
-	"/secret log [--limit 50]              show which secrets were used, and where",
+	"/secret log [--name X] [--limit 50]   show which secrets were used, and where",
 	"/secret discard --scope project       move a broken vault file aside",
 ];
 
 /**
  * The options, and which subcommands read them.
  *
- * Named per option rather than claimed for all of them. This block used to open with "Options:"
- * and nothing else, which read as "every subcommand takes these": it does not. `list` takes
- * neither, `rm` takes only `--scope`, and `extend` takes only `--ttl`. Advertising a flag the
- * parser then refuses is worse than not mentioning it, because the refusal looks like a bug.
+ * Named per option rather than claimed for all of them. A block that opens with "Options:" and
+ * nothing else reads as "every subcommand takes these": they do not. `list` takes none, `rm` takes
+ * only `--scope`, `extend` takes only `--ttl`, and `log` is the only reader of `--name`. Advertising
+ * a flag the parser then refuses is worse than not mentioning it, because the refusal looks like a
+ * bug.
  *
- * PER SURFACE, because the annotation names VERBS and only one surface has any. A single shared
- * footer put "on add, rm and discard" into terminal help, where there is no `discard` to type and
- * the whole argument line is the credential, so it advertised a verb the surface cannot parse.
- * The terminal keeps the option values and the defaults, which are true there, and drops the
- * verb column and the removal-precedence line, which are facts about the verb grammar.
+ * ONE FOOTER FOR BOTH SURFACES, because the verbs it annotates parse on both. The surfaces differ
+ * in how a VALUE is entered, which is why the entry lines above it differ, and in nothing else; a
+ * per-surface footer would be two answers to the question of what `--scope` applies to.
  */
 const USAGE_FOOTER_SCOPES =
 	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.";
 
-const USAGE_FOOTER_TUI = ["--ttl 30m|12h|7d|2w|never", "--scope profile|project|global", USAGE_FOOTER_SCOPES];
-
-const USAGE_FOOTER_NONINTERACTIVE = [
+const USAGE_FOOTER = [
 	"--ttl 30m|12h|7d|2w|never            on add and extend",
 	"--scope profile|project|global       on add, rm and discard",
+	"--name <name>                        on log, to show only that secret's uses",
 	USAGE_FOOTER_SCOPES,
 	"Removal without --scope takes the narrowest match, which is the one currently in effect.",
 ];
@@ -207,6 +231,16 @@ const USAGE_FOOTER_NONINTERACTIVE = [
  * rather than three that nearly line up.
  */
 const OUTPUT_INDENT = "  ";
+
+/**
+ * What a value typed on the command line costs, said in the confirmation that stores it.
+ *
+ * ONE OWNER, because `add` and `value` both accept an inline credential and both have to say the
+ * same thing about it: the obfuscator protects what goes to a provider and cannot retroactively
+ * scrub a terminal, so the bytes are in the scrollback until the operator clears it.
+ */
+const SCROLLBACK_WARNING =
+	"The value was typed on screen, so it is in your scrollback. Use --from-env next time to avoid that.";
 
 /**
  * Help, grouped: what you do every day first, management second.
@@ -237,16 +271,12 @@ function buildUsage(
 /** TUI help leads with the verbless value forms, then every verb the terminal also parses. */
 export const SECRET_COMMAND_USAGE = buildUsage(
 	[USAGE_TUI_INLINE, USAGE_TUI_MASKED, USAGE_TUI_FROM_ENV, USAGE_TUI_ESCAPE],
-	[USAGE_MANAGER, ...USAGE_MANAGE],
-	USAGE_FOOTER_TUI,
+	USAGE_MANAGE,
+	USAGE_FOOTER,
 );
 
 /** Noninteractive help exposes only environment-backed creation and the text management verbs. */
-export const NONINTERACTIVE_SECRET_COMMAND_USAGE = buildUsage(
-	[USAGE_ADD_FROM_ENV],
-	USAGE_MANAGE,
-	USAGE_FOOTER_NONINTERACTIVE,
-);
+export const NONINTERACTIVE_SECRET_COMMAND_USAGE = buildUsage([USAGE_ADD_FROM_ENV], USAGE_MANAGE, USAGE_FOOTER);
 
 /** Select help that matches what the invoking surface can enter safely. */
 export function secretCommandUsage(surface: SecretCommandSurface): string {
@@ -268,15 +298,26 @@ const SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: readonly string[]; 
 	// removes from that scope only. Without the option a name held in two scopes had its outer
 	// copy stranded: every `rm` took the inner one, and there was no way to reach the other.
 	rm: { options: ["--scope"], words: 1 },
+	// TWO words: the name, then the new name. The second one is a name and not a credential, so it
+	// is read off the line where `add`'s never is, and a third word is still refused.
+	rename: { options: [], words: 2 },
+	// ONE word, and the replacement arrives the way a credential always does: from a masked field,
+	// or from the environment. Reading it off the line is allowed for the same reason `add` allows
+	// it and no more, and it costs the same scrollback warning.
+	value: { options: ["--from-env"], words: 1 },
+	// TWO words: the name, then the destination vault. The destination is a positional rather than
+	// `--scope`, because on this verb it is the entire point of the line and not an option to it.
+	scope: { options: [], words: 2 },
+	copy: { options: [], words: 1 },
 	extend: { options: ["--ttl"], words: 1 },
-	log: { options: ["--limit"], words: 0 },
+	// `--name` narrows the log to one secret. Without it the log is every use, which is the right
+	// default for "what has been spent" and the wrong one for "who has been spending this".
+	log: { options: ["--limit", "--name"], words: 0 },
 	// REQUIRED scope, so `words: 0` and the guard below. The scope names a FILE to move aside
 	// rather than a place to store something, so there is no safe default to fall back on, and a
 	// bare word here would read as a secret name, which is the mistake worth refusing outright.
 	discard: { options: ["--scope"], words: 0 },
 	help: { options: [], words: 0 },
-	// Reserved word, no options, no words. Parsed only so a surface can be told to open the GUI.
-	manager: { options: [], words: 0 },
 };
 
 /** Every known option, derived from its subcommand owners so the two cannot drift. */
@@ -295,32 +336,36 @@ const SECRET_COMMAND_OPTIONS: Record<string, true> = Object.fromEntries(
  * WHY RESERVING WORDS IS SAFE. A stored value is arbitrary bytes chosen by an issuer, so nobody's
  * API token is the literal word `list`, and the collision has two escapes: the masked field
  * reached by a bare `/secret` accepts any text at all, and `--` stores the rest of the line
- * verbatim. What was NOT safe is the grammar this replaced, in which the terminal reserved only
- * `manager`: `/secret list` stored the string `list` as a credential and switched protection on,
- * and `/secret rm TOKEN` stored `rm TOKEN`, so the two commands an operator reaches for right
- * after storing something both filled the vault with garbage while the help text advertised them.
+ * verbatim. Reserving EVERY verb is what makes that trade safe: a grammar that reserved only some
+ * of them would store the string `list` as a credential and switch protection on, and store
+ * `rm TOKEN` for `/secret rm TOKEN`, so the two commands an operator reaches for right after
+ * storing something would fill the vault with garbage while the help text advertised them.
  *
  * THE FIRST WORD DECIDES, not the shape of the rest. `/secret log 50` is a malformed `log` and is
  * refused; it is never re-read as a credential that happens to begin with `log`. A grammar that
  * fell back to storing on a shape mismatch would put the silent-storage bug back for exactly the
  * lines an operator gets slightly wrong, which are the ones that need the explanation.
  */
-const MANAGER_WORD = "manager";
-
 export const SECRET_VERB_SPELLINGS: Record<string, SecretSubcommand> = {
-	// Ordered as the completion menu is read, which is why the manager comes first: it is the one
-	// entry that replaces four of the others.
-	[MANAGER_WORD]: "manager",
+	// Ordered as the completion menu is read: storing first, then the edits a stored credential
+	// needs, then the two answers about use, and the repair last.
 	add: "add",
 	list: "list",
 	rm: "rm",
 	remove: "rm",
 	delete: "rm",
+	rename: "rename",
+	name: "rename",
+	value: "value",
+	replace: "value",
+	scope: "scope",
+	move: "scope",
+	copy: "copy",
 	extend: "extend",
 	renew: "extend",
 	log: "log",
 	audit: "log",
-	// No alias. `rm` and `extend` have two natural spellings each; `discard` has no twin, and
+	// No alias. The verbs above have two natural spellings each; `discard` has no twin, and
 	// inventing one for a destructive-looking repair only widens what a typo can reach.
 	discard: "discard",
 	help: "help",
@@ -334,17 +379,20 @@ export const SECRET_VERB_SPELLINGS: Record<string, SecretSubcommand> = {
  * the completion menu's completeness expressed as a type instead of as a test nobody updates.
  *
  * THE TERMINAL'S TRUTH, WHICH IS NOT THE DECLARATION'S. `/secret add` takes no name here, because
- * a name parsed off this line would be a credential in plaintext metadata, and `manager` exists at
- * all only where there is a screen. The declaration in `builtin-declarations.ts` keeps the
- * noninteractive spellings, which is what an ACP client is told it may run.
+ * a name parsed off this line would be a credential in plaintext metadata. The declaration in
+ * `builtin-declarations.ts` keeps the noninteractive spellings, which is what an ACP client is
+ * told it may run.
  */
 const SECRET_TUI_SUBCOMMAND_HELP: Record<SecretSubcommand, { usage: string; description: string }> = {
-	manager: { usage: "", description: "Open the manager: list, rename, extend, revoke, copy" },
 	add: { usage: "<value>", description: "Store a credential; the rest of the line is the value" },
 	list: { usage: "", description: "Show active secrets, never their values" },
 	rm: { usage: "<name> [--scope global]", description: "Remove a stored secret" },
+	rename: { usage: "<name> <new-name>", description: "Give a stored secret a different name" },
+	value: { usage: "<name>", description: "Replace a secret's value, keeping its name and lifetime" },
+	scope: { usage: "<name> global", description: "Move a secret to the profile, project or global vault" },
+	copy: { usage: "<name>", description: "Copy #NAME#, the placeholder, never the value" },
 	extend: { usage: "<name> --ttl 7d", description: "Give a stored secret a fresh lifetime" },
-	log: { usage: "[--limit 50]", description: "Show which secrets were used, and where" },
+	log: { usage: "[--name X] [--limit 50]", description: "Show which secrets were used, and where" },
 	discard: { usage: "--scope project", description: "Move a broken vault file aside" },
 	help: { usage: "", description: "Show every form /secret understands" },
 };
@@ -352,9 +400,9 @@ const SECRET_TUI_SUBCOMMAND_HELP: Record<SecretSubcommand, { usage: string; desc
 /**
  * The terminal completion menu: canonical spellings only, in the order above.
  *
- * Aliases are parsed and not offered. `remove`, `delete`, `renew` and `audit` exist so muscle
- * memory lands somewhere, and listing all four beside their canonical twins would double a menu
- * whose whole job is to say what the eight things are.
+ * Aliases are parsed and not offered. `remove`, `delete`, `renew`, `name`, `replace`, `move` and
+ * `audit` exist so muscle memory lands somewhere, and listing them beside their canonical twins
+ * would double a menu whose whole job is to say what the verbs are.
  */
 export const SECRET_TUI_SUBCOMMANDS: readonly { name: SecretSubcommand; usage: string; description: string }[] =
 	Object.entries(SECRET_VERB_SPELLINGS)
@@ -449,13 +497,13 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 	if (tokens.length === 0) return { subcommand: "help" };
 
 	const subcommand = SECRET_VERB_SPELLINGS[tokens[0].value.toLowerCase()];
-	if (subcommand === undefined) throw new Error(`Unknown /secret subcommand.\n\n${usageText}`);
-
-	// Named explicitly rather than falling through to "Unknown subcommand". The word IS a real
-	// command, just not one this surface can carry out, and telling an ACP or `-p` caller it does
-	// not exist would send them looking for a typo instead of at the text verbs below.
-	if (subcommand === "manager" && surface !== "tui") {
-		throw new Error(`The secret manager is a terminal screen, and this client has none.\n\n${usageText}`);
+	if (subcommand === undefined) {
+		// THE WORD IS NOT REPEATED. An unknown first token is most often an inline credential: this
+		// surface has no field to hide one in, so a client or a `-p` invocation typing `/secret ghp_…`
+		// lands here, and echoing it would write the credential into the refusal, the scrollback and
+		// the saved transcript. The usage below is the actionable half anyway, because it names every
+		// word this surface does run.
+		throw new Error(`Unknown /secret subcommand.\n\n${usageText}`);
 	}
 
 	const request: SecretCommandRequest = { subcommand };
@@ -498,6 +546,11 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 					throw new Error("--limit needs a positive whole number.");
 				}
 				request.limit = parsed;
+			} else if (token === "--name") {
+				if (value === undefined || value.startsWith("--")) {
+					throw new Error("--name needs the name of a stored secret.");
+				}
+				request.name = normaliseSecretName(value);
 			} else {
 				if (value !== "profile" && value !== "project" && value !== "global") {
 					throw new Error("--scope must be profile, project or global.");
@@ -535,6 +588,19 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 	}
 
 	if (request.subcommand !== "add" && positional.length > 0) request.name = positional[0];
+	// The SECOND word, for the two verbs that take one. Read here rather than inside the loop so
+	// `refuseExtraWords` still sees the whole positional list and refuses a third word.
+	if (request.subcommand === "rename" && positional.length > 1) request.newName = positional[1];
+	if (request.subcommand === "scope" && positional.length > 1) {
+		// Validated here rather than in the runner, because a destination that is not a vault is a
+		// malformed line and the parser is where a malformed line is refused. The scope words are a
+		// closed set of three, so a positional cannot be mistaken for anything else.
+		const to = positional[1].toLowerCase();
+		if (to !== "profile" && to !== "project" && to !== "global") {
+			throw new Error(`Which vault? /secret scope <name> profile|project|global.\n\n${usageText}`);
+		}
+		request.scope = to;
+	}
 
 	refuseExtraWords(request, positional, usageText, surface);
 	refuseMissingScope(request, usageText);
@@ -617,6 +683,13 @@ function ordinalWord(count: number): string {
  * working vault out from under the session, and the operator asked for a repair rather than that.
  */
 function refuseMissingScope(request: SecretCommandRequest, usageText: string): void {
+	if (request.subcommand === "scope" && request.scope === undefined) {
+		throw new Error(
+			`/secret scope needs the vault to move the secret INTO, such as /secret scope MY_TOKEN global. ` +
+				`There is no default: the vault it is already in is the one answer that cannot be meant.` +
+				`\n\n${usageText}`,
+		);
+	}
 	if (request.subcommand !== "discard" || request.scope !== undefined) return;
 	throw new Error(
 		`/secret discard needs the scope whose vault file you want moved aside, such as ` +
@@ -678,12 +751,14 @@ export async function runSecretCommand(
 			return await showLog(request, context);
 		case "discard":
 			return await discardVaultScope(request, context);
-		case "manager":
-			// Not a vault operation, so there is nothing here to run. A surface that can open the
-			// manager intercepts this before calling, and one that cannot never parses the word. This
-			// arm exists so the omission is loud instead of returning an empty result to a screen that
-			// then looks merely broken.
-			throw new Error("The secret manager must be opened by the surface, not run as a vault command.");
+		case "rename":
+			return await renameSecret(request, context);
+		case "value":
+			return await replaceSecretValue(request, context);
+		case "scope":
+			return await moveSecretScope(request, context);
+		case "copy":
+			return await copyPlaceholder(request, context);
 	}
 }
 
@@ -743,33 +818,7 @@ async function addSecret(
 	let value: string;
 	let typedOnScreen: boolean;
 	if (request.fromEnv !== undefined) {
-		const fromEnv = context.readEnv(request.fromEnv);
-		// Set-but-empty is kept DISTINCT from unset, because collapsing the two told an operator that a
-		// variable they had just exported "is not set", sending them to re-check an export that was
-		// already there while the real cause was an assignment that set it to nothing. Each case gets
-		// the fix that applies to it. Whitespace-only is refused rather than trimmed and stored:
-		// nothing made only of spaces is a credential, and storing it would mint a placeholder that
-		// spends blank text into a command. A value that merely CONTAINS surrounding space is stored
-		// byte for byte, since a real credential is allowed to and trimming one would corrupt it.
-		if (fromEnv === undefined) {
-			throw new Error(
-				`The environment variable ${request.fromEnv} is not set in this process, so there is nothing to store. ` +
-					`Note that it must be set for the veyyon process, not only in a shell you opened afterwards.`,
-			);
-		}
-		if (fromEnv.length === 0) {
-			throw new Error(
-				`The environment variable ${request.fromEnv} is set but empty, so there is no credential to store. ` +
-					`Check where it is exported: an assignment such as ${request.fromEnv}= sets it to nothing.`,
-			);
-		}
-		if (fromEnv.trim().length === 0) {
-			throw new Error(
-				`The environment variable ${request.fromEnv} contains only whitespace, so there is no credential to ` +
-					`store. Storing it would create a placeholder that spends blank text.`,
-			);
-		}
-		value = fromEnv;
+		value = readEnvCredential(request.fromEnv, context.readEnv);
 		typedOnScreen = false;
 	} else if (request.value !== undefined) {
 		value = request.value;
@@ -813,7 +862,7 @@ async function addSecret(
 	if (typedOnScreen) {
 		// Said plainly rather than left for the user to work out. The obfuscator protects what
 		// goes to the provider; it cannot retroactively scrub the terminal.
-		lines.push(`The value was typed on screen, so it is in your scrollback. Use --from-env next time to avoid that.`);
+		lines.push(SCROLLBACK_WARNING);
 	}
 
 	return {
@@ -1154,6 +1203,184 @@ async function extendSecret(
 	};
 }
 
+/**
+ * Read a credential out of the environment, or refuse in terms of the variable that failed.
+ *
+ * ONE OWNER for the three ways an environment variable can fail to hold a credential, because
+ * `add` and `value` both take `--from-env` and a refusal worded differently between them would be
+ * two diagnoses of one mistake.
+ *
+ * Set-but-empty is kept DISTINCT from unset, because collapsing the two told an operator that a
+ * variable they had just exported "is not set", sending them to re-check an export that was
+ * already there while the real cause was an assignment that set it to nothing. Each case gets the
+ * fix that applies to it. Whitespace-only is refused rather than trimmed and stored: nothing made
+ * only of spaces is a credential, and storing it would mint a placeholder that spends blank text
+ * into a command. A value that merely CONTAINS surrounding space is stored byte for byte, since a
+ * real credential is allowed to and trimming one would corrupt it.
+ */
+function readEnvCredential(variable: string, readEnv: (name: string) => string | undefined): string {
+	const value = readEnv(variable);
+	if (value === undefined) {
+		throw new Error(
+			`The environment variable ${variable} is not set in this process, so there is nothing to store. ` +
+				`Note that it must be set for the veyyon process, not only in a shell you opened afterwards.`,
+		);
+	}
+	if (value.length === 0) {
+		throw new Error(
+			`The environment variable ${variable} is set but empty, so there is no credential to store. ` +
+				`Check where it is exported: an assignment such as ${variable}= sets it to nothing.`,
+		);
+	}
+	if (value.trim().length === 0) {
+		throw new Error(
+			`The environment variable ${variable} contains only whitespace, so there is no credential to ` +
+				`store. Storing it would create a placeholder that spends blank text.`,
+		);
+	}
+	return value;
+}
+
+async function renameSecret(
+	request: SecretCommandRequest,
+	context: { vault: SecretVault },
+): Promise<SecretCommandResult> {
+	if (request.name === undefined || request.newName === undefined) {
+		throw new Error("Which secret, and to what? /secret rename <name> <new-name>");
+	}
+	const from = normaliseSecretName(request.name);
+	const to = normaliseSecretName(request.newName);
+	// Answered rather than refused, and reported as no change. The vault treats this as a read for
+	// the same reason: there is nothing wrong with the line, it just asks for the state that holds.
+	if (from === to) return { message: `${from} already has that name, so nothing was changed.`, changed: false };
+	// A destination that is already taken throws from the vault, which owns that refusal because it
+	// owns the scope walk that found the collision.
+	const renamed = await context.vault.rename(from, to);
+	if (renamed === null) throw new Error(`No secret named ${from} is stored. Run /secret list to see what is.`);
+	return {
+		message:
+			`${from} is now ${renamed.name} in the ${renamed.scope} vault, with the same value and the same ` +
+			`lifetime. #${from}# no longer expands.`,
+		// BOTH halves in one notice. The model has `#OLD#` in its history and will keep writing it,
+		// and the credential it used to spend is still live under the new name, so saying only that
+		// the old placeholder is dead would strand a working credential the model can no longer reach.
+		agentNotice:
+			`The user has renamed the secret ${from} to ${renamed.name}. #${from}# is no longer replaced with ` +
+			`a value: writing it now sends the literal text #${from}# rather than a credential. The same ` +
+			`credential is available as #${renamed.name}#, so use that placeholder wherever you used the old one.`,
+		changed: true,
+	};
+}
+
+async function replaceSecretValue(
+	request: SecretCommandRequest,
+	context: {
+		vault: SecretVault;
+		readEnv: (name: string) => string | undefined;
+		now: number;
+		surface?: SecretCommandSurface;
+	},
+): Promise<SecretCommandResult> {
+	if (request.name === undefined) throw new Error("Which secret? /secret value <name>");
+	if (request.fromEnv !== undefined && request.value !== undefined) {
+		throw new Error("Give either --from-env or a value, not both.");
+	}
+	const name = normaliseSecretName(request.name);
+	let value: string;
+	let typedOnScreen = false;
+	if (request.fromEnv !== undefined) {
+		value = readEnvCredential(request.fromEnv, context.readEnv);
+	} else if (request.value !== undefined) {
+		value = request.value;
+		typedOnScreen = request.maskedEntry !== true;
+	} else {
+		// Reached only where there is no terminal to mask; an interactive session opens a hidden field
+		// instead (see `needsValuePrompt`). The refusal recommends the form the surface can carry out.
+		throw new Error(
+			`No value given, and this client cannot prompt for one without showing it. ` +
+				`Name an environment variable to read it from:\n  /secret value ${name} --from-env MY_TOKEN`,
+		);
+	}
+	const entry = await context.vault.replaceValue(name, value);
+	if (entry === null) throw new Error(`No secret named ${name} is stored. Run /secret list to see what is.`);
+	const lines = [
+		// The lifetime is repeated BECAUSE IT DID NOT RESTART, which is the whole difference between
+		// this and storing over the name with `add`, and otherwise takes a `/secret list` to confirm.
+		`${entry.name} in the ${entry.scope} vault has a new value, ${describeTimeLeft(entry, context.now)}.`,
+		`The name and the lifetime are unchanged, so #${entry.name}# now spends what you just gave it.`,
+	];
+	if (typedOnScreen) lines.push(SCROLLBACK_WARNING);
+	return {
+		message: lines.join("\n"),
+		// NO NOTICE. The placeholder, its name and its meaning are exactly what the model was already
+		// told; only the bytes behind it changed, and it never had those.
+		changed: true,
+	};
+}
+
+async function moveSecretScope(
+	request: SecretCommandRequest,
+	context: { vault: SecretVault; now: number },
+): Promise<SecretCommandResult> {
+	if (request.name === undefined) throw new Error("Which secret? /secret scope <name> profile|project|global");
+	// Established by `refuseMissingScope` before this runs. Restated so the function reads on its own
+	// and so a future caller that skips the parser cannot move a secret into an unnamed vault.
+	if (request.scope === undefined) throw new Error("Which vault? /secret scope <name> profile|project|global");
+	const name = normaliseSecretName(request.name);
+	// EVERY scope, not the resolved view. The entry being moved may be shadowed by a copy in a
+	// narrower vault, and the destination check has to see occupants a resolved read hides.
+	const everywhere = await context.vault.loadEverywhere();
+	const entry = everywhere.find(candidate => candidate.name === name);
+	if (entry === undefined) throw new Error(`No secret named ${name} is stored. Run /secret list to see what is.`);
+	if (entry.expiresAt !== null && entry.expiresAt <= context.now) {
+		throw new Error(
+			`${name} has expired, so there is nothing to move: it would arrive in the ${request.scope} vault ` +
+				`already lapsed. Store it again with /secret --scope ${request.scope} instead.`,
+		);
+	}
+	const { plan, refusal } = planScopeMove(entry, request.scope, everywhere);
+	if (plan === null) throw new Error(refusal ?? `${name} cannot move to the ${request.scope} vault.`);
+	// ADD FIRST, REMOVE SECOND, never the other way round. The plan has established the destination
+	// is free, so the add cannot overwrite anything, and a crash between the two writes leaves the
+	// credential in both vaults, which `/secret list` reports and the operator can finish by hand.
+	// Removing first and then failing to add would destroy the credential outright.
+	//
+	// The deadline is carried across as the time REMAINING, so a move does not lengthen a lifetime:
+	// `add` dates an entry from now, and passing the original window would hand back time already
+	// spent. A secret that never expires keeps that.
+	const ttl = entry.expiresAt === null ? null : entry.expiresAt - context.now;
+	const moved = await context.vault.add({ name: entry.name, value: entry.value, scope: plan.to, ttl });
+	await context.vault.remove(entry.name, plan.from);
+	return {
+		message:
+			`Moved #${moved.name}# from the ${plan.from} vault to the ${plan.to} vault, ` +
+			`${describeTimeLeft(moved, context.now)}. The value and the deadline are unchanged.`,
+		// No notice: the placeholder and what it spends are both exactly as they were. Which file the
+		// credential lives in is the operator's business and not the model's.
+		changed: true,
+	};
+}
+
+async function copyPlaceholder(
+	request: SecretCommandRequest,
+	context: { vault: SecretVault },
+): Promise<SecretCommandResult> {
+	if (request.name === undefined) throw new Error("Which secret? /secret copy <name>");
+	const name = normaliseSecretName(request.name);
+	// The resolved view, deliberately: the placeholder means whichever copy is in effect, so a name
+	// held in two vaults copies one token either way and the scope reported is the one it spends.
+	const entry = (await context.vault.load()).find(candidate => candidate.name === name);
+	if (entry === undefined) throw new Error(`No secret named ${name} is stored. Run /secret list to see what is.`);
+	return {
+		// THE PLACEHOLDER, NOT THE VALUE, and the message says so outright rather than leaving the
+		// operator to guess what landed on the clipboard. A surface with no clipboard still gets the
+		// token in the message, which is the answer to "what do I write to spend this".
+		message: `#${entry.name}# is the placeholder for the ${entry.scope} secret. The value is never copied.`,
+		copyText: `#${entry.name}#`,
+		changed: false,
+	};
+}
+
 async function showLog(
 	request: SecretCommandRequest,
 	context: { auditLog?: SecretAuditLog; now: number },
@@ -1168,8 +1395,21 @@ async function showLog(
 	}
 
 	const limit = request.limit ?? DEFAULT_LOG_LIMIT;
-	const { records, malformed } = await context.auditLog.read({ limit });
-	return { message: renderLog(records, { malformed, path: context.auditLog.path, now: context.now }), changed: false };
+	const wanted = request.name;
+	// READ EVERYTHING, THEN NARROW, THEN LIMIT. `read({ limit })` keeps the last N records of the
+	// whole log, so limiting first and filtering second would answer "the last 20 uses, of which 3
+	// were this secret" to a question that asked for the last 20 uses OF this secret. The read is
+	// already bounded by the log's own rotation and decode ceilings, so the wider read costs nothing
+	// a `--limit 20` did not already cost.
+	const { records, malformed } = await context.auditLog.read(wanted === undefined ? { limit } : undefined);
+	const shown =
+		wanted === undefined ? records : records.filter(record => record.secrets.includes(`#${wanted}#`)).slice(-limit);
+	const rendered = renderLog(shown, { malformed, path: context.auditLog.path, now: context.now });
+	if (wanted === undefined) return { message: rendered, changed: false };
+	// Named even when there is nothing to show, because an empty log for one secret and an empty log
+	// altogether support opposite conclusions: the first says the credential has not been spent, the
+	// second says nothing has.
+	return { message: `Uses of #${wanted}#:\n${rendered}`, changed: false };
 }
 
 /**
@@ -1214,8 +1454,8 @@ export function renderLog(
 /**
  * "3m ago", for log rows. Coarse on purpose: the exact millisecond is in the file.
  *
- * Exported because the manager card's log table phrases the same instants, and two spellings of
- * "how long ago" over one file is how a card and a command come to disagree about it.
+ * Exported so every surface that phrases an instant over this file phrases it the same way. Two
+ * spellings of "how long ago" over one log is how two readers of it come to disagree.
  */
 export function describeAgo(elapsedMs: number): string {
 	if (elapsedMs < 60_000) return "just now";
@@ -1281,9 +1521,9 @@ function expiryUrgency(entry: ScopedVaultEntry, now: number): ExpiryUrgency | nu
  * calls it healthy.
  *
  * Each line names the remedy, because a warning you cannot act on is noise. Expiry deletes the
- * value, so the action is to extend it before that happens rather than after. The remedy names
- * the manager first: this notice cannot know which surface will print it, and in a terminal
- * `/secret extend NAME --ttl 7d` is not a command, it is a credential being stored.
+ * value, so the action is to extend it before that happens rather than after. The remedy is a
+ * command, not a keystroke on a screen: `extend` is a reserved word in a terminal too, so the
+ * line this prints is runnable wherever it is read.
  */
 export function expiryWarnings(entries: readonly ScopedVaultEntry[], now: number): string[] {
 	const warnings: string[] = [];
@@ -1293,8 +1533,7 @@ export function expiryWarnings(entries: readonly ScopedVaultEntry[], now: number
 		const phrase = urgency === "soon" ? "expires soon" : "is over halfway through its lifetime";
 		warnings.push(
 			`#${entry.name}# ${phrase}, ${describeTimeLeft(entry, now)}. ` +
-				`Extend it with 'e' in /secret manager, or with /secret extend ${entry.name} --ttl 7d in a ` +
-				`client with no terminal, or it will be deleted.`,
+				`Extend it with /secret extend ${entry.name} --ttl 7d, or it will be deleted.`,
 		);
 	}
 	return warnings;

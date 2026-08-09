@@ -9,8 +9,10 @@
  * for a credential without showing it, and that difference is one injected function
  * ({@link SecretCommandPort.promptForValue}) rather than a second copy of the logic.
  */
-import { errorMessage, logger } from "@veyyon/utils";
+import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
+import { errorMessage, getAgentDir, getGlobalConfigRootDir, logger } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
+import type { InteractiveModeContext } from "../../modes/types";
 import { SecretAuditLog, secretAuditPath } from "../../secrets/audit";
 import {
 	needsValuePrompt,
@@ -22,6 +24,7 @@ import {
 import { normaliseSecretName, resolveVaultLocations, SecretVault, type VaultLocations } from "../../secrets/vault";
 import type { AgentSession } from "../../session/agent-session";
 import type { SessionManager } from "../../session/session-manager";
+import { copyToClipboard } from "../../utils/clipboard";
 
 /** What `/secret` needs from whichever surface invoked it. */
 export interface SecretCommandPort {
@@ -55,6 +58,14 @@ export interface SecretCommandPort {
 	 * read as "name the secret", and the name was stored as the credential.
 	 */
 	promptForName?: () => Promise<string | undefined>;
+	/**
+	 * Put text on the clipboard, or absent when the surface has none.
+	 *
+	 * Used by `copy`, and it never carries a value: the command layer sets `copyText` to a
+	 * PLACEHOLDER. A surface without a clipboard still prints the placeholder in the message, so the
+	 * question the command answers does not depend on this being here.
+	 */
+	copy?: (text: string) => Promise<void>;
 }
 
 /** Result of running the command, for the surface to render. */
@@ -63,14 +74,6 @@ export interface SecretCommandOutcome {
 	message: string;
 	/** True when the operator cancelled a prompt, so the surface can stay quiet about it. */
 	cancelled?: true;
-	/**
-	 * True when the manager was requested, which the surface opens itself.
-	 *
-	 * Returned rather than thrown, and decided HERE rather than by the caller re-reading the
-	 * argument line, so `manager` is reserved in exactly one place. A caller that checked the text
-	 * itself would be a second parser, and the two would disagree the first time either changed.
-	 */
-	openManager?: true;
 }
 
 /** Vault locations for a port, in ONE place so every path below reads the same files. */
@@ -91,14 +94,17 @@ function locationsFor(port: SecretCommandPort): VaultLocations {
 export async function runSecretCommandForSurface(args: string, port: SecretCommandPort): Promise<SecretCommandOutcome> {
 	const surface = port.promptForValue === undefined ? "noninteractive" : "tui";
 	const request = parseSecretCommand(args, surface);
-	// Before the vault is touched at all: the manager reads it for itself, and opening a file here
-	// only to hand the screen a second reader would be work whose only effect is a race.
-	if (request.subcommand === "manager") return { message: "", openManager: true };
 	if (request.name !== undefined) request.name = normaliseSecretName(request.name);
-	if (request.subcommand === "add" && request.value !== undefined && port.promptForValue === undefined) {
+	// BOTH VERBS THAT CARRY A CREDENTIAL. `value` replaces one, so an inline value on this surface
+	// would be retained in exactly the same command history for exactly the same reason.
+	if (
+		(request.subcommand === "add" || request.subcommand === "value") &&
+		request.value !== undefined &&
+		port.promptForValue === undefined
+	) {
 		throw new Error(
 			`This non-interactive client refuses inline credentials because they would be retained in command history. ` +
-				`Use /secret add ${request.name ?? "<name>"} --from-env MY_TOKEN instead.`,
+				`Use /secret ${request.subcommand} ${request.name ?? "<name>"} --from-env MY_TOKEN instead.`,
 		);
 	}
 	const needsDefaultTtl =
@@ -159,6 +165,19 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		auditLog,
 		surface,
 	});
+
+	// THE CLIPBOARD BELONGS TO THE SURFACE. The command layer decides what is worth copying and
+	// never touches a clipboard itself, which is what keeps it testable without one and incapable of
+	// exporting a value. A failure is reported and does not fail the command: the placeholder is in
+	// the message either way, and that is what the operator asked for.
+	if (result.copyText !== undefined && port.copy !== undefined) {
+		try {
+			await port.copy(result.copyText);
+			result.message = `Copied ${result.copyText} to the clipboard. ${result.message}`;
+		} catch (error) {
+			result.message = `${result.message}\nIt could not be put on the clipboard: ${errorMessage(error)}`;
+		}
+	}
 
 	// STORING A CREDENTIAL IS THE OPT-IN. `secrets.enabled` ships off, so before this every
 	// first `/secret add` stored a value, said "the model sees #NAME#", and then did nothing:
@@ -282,12 +301,13 @@ function tellTheAgent(port: SecretCommandPort, text: string): void {
 /**
  * Prompt title for the VISIBLE name field, shown after the value is already in hand.
  *
- * Says the field is optional, because otherwise an operator who has just handed over a credential
- * believes they are now required to invent a label for it and stalls on the one step that has a
- * correct answer waiting.
+ * ONE LINE, AND IT NAMES THE WAY OUT. The operator has just handed over a credential and the work
+ * is done; this field is the only thing between them and a stored secret, so it says that enter
+ * alone finishes. Without that an operator who has no label in mind believes they are required to
+ * invent one and stalls on the step that already has a correct answer waiting.
  */
 export function namePromptTitle(): string {
-	return "Name this secret, or press enter to have one generated.";
+	return "Name it, or press enter to skip.";
 }
 
 /** What the name field IS, as opposed to what to do with it: how the name gets spent later. */
@@ -296,33 +316,67 @@ export function namePromptHint(): string {
 }
 
 /**
- * Prompt title for the masked field. The imperative and nothing else.
+ * Prompt title for the masked field: the imperative, and the promise that the name comes later.
  *
- * IT SAYS "VALUE" AND SAYS "NOT A NAME" because the field is masked: the operator cannot see what
- * they typed, so a title they can misread is the last thing standing between them and storing the
- * wrong string. "Paste the secret" was read as "name the secret", and the name was then stored as
- * the credential under an invented `SECRET_1`. Nothing downstream can catch that: a name is a
- * perfectly well-formed secret value, and a shape heuristic would refuse real credentials
- * (`AKIAIOSFODNN7EXAMPLE` is a valid AWS key id and looks exactly like a name).
+ * TWO SENTENCES, BECAUSE IT IS THE FIRST THING `/secret` DOES. The field is what a bare `/secret`
+ * opens, before any name exists, so the only two things worth saying are what to put in it and
+ * that a label is still coming. Without the second sentence an operator who wants to name the
+ * secret has no reason to believe they will get the chance, and the pressure to answer a MASKED
+ * field with a name comes straight back. This carried four clauses in one accent colour once (the
+ * imperative, a correction, the later name, and the assurance that typing is hidden) and read as a
+ * paragraph that did not say what to do.
  *
- * WHAT MOVED OUT, and why the correction survived it. This used to carry four clauses in one
- * accent colour: the imperative, the correction, the promise of a later name, and the assurance
- * that typing is hidden and storage encrypted. Every clause was true and every clause was equally
- * weighted, so the sentence read as a paragraph and it did not say what to do. The two clauses
- * that describe what the FIELD IS, rather than what to DO, are now {@link maskedPromptHint} on
- * the legend row. The correction stays here, in the imperative, since it is the one clause that
- * exists to stop a specific unrecoverable mistake.
+ * WHERE THE CORRECTION WENT. Typing a NAME into this field is a real mistake with an unrecoverable
+ * ending: the name is stored as the credential, and nothing downstream can catch it, because a
+ * name is a well-formed secret value and a shape heuristic would refuse real credentials
+ * (`AKIAIOSFODNN7EXAMPLE` is a valid AWS key id and looks exactly like a name). The correction
+ * sits on the legend row in {@link maskedPromptHint}, where it is visible for as long as the field
+ * is open, and `assertStorableValue` refuses the shapes it can refuse.
  *
- * It takes no name and has no second form. The field is only ever reached by a bare `/secret`,
- * before any name exists, so a "value for X" variant would be dead text that only looked reachable.
+ * It takes no name and has no second form. `/secret value <name>` reuses it verbatim: the answer
+ * wanted there is the same kind of bytes, and a "value for X" variant would only restate the line
+ * the operator just typed.
  */
 export function maskedPromptTitle(): string {
-	return "Paste the secret value, not a name. You can name it afterwards.";
+	return "Paste the secret value here. You can name it afterwards.";
 }
 
-/** What the masked field IS: the two mechanical promises that make pasting a live credential safe. */
+/** What the masked field IS: the correction, and the two promises that make pasting a live credential safe. */
 export function maskedPromptHint(): string {
-	return "hidden as you type, stored encrypted";
+	return "the value, not a name · hidden as you type, stored encrypted";
 }
 
 export type { SecretCommandResult };
+
+/**
+ * What a surface must offer before it can host the interactive `/secret`: a session, its manager,
+ * settings, and one question-asking primitive. Stated as the four members rather than the whole
+ * interactive context so a controller that legitimately holds a narrow slice of the mode can still
+ * open the command, instead of the port being reachable only from the one object that owns the world.
+ */
+export type SecretPortHost = Pick<InteractiveModeContext, "session" | "sessionManager" | "settings" | "showHookInput">;
+
+/**
+ * The port for a terminal session: the ONE description of what the interactive `/secret` can do.
+ *
+ * Two callers need it, `/secret` itself and the footline's secrets chip, and a second copy would be
+ * a second answer to the questions that decide whether the surface is safe: is the value field
+ * masked, is a name asked afterwards, which vault files are read, and is there a clipboard. A chip
+ * that opened a differently configured `/secret` would be a different command wearing one name.
+ */
+export function interactiveSecretPort(ctx: SecretPortHost): SecretCommandPort {
+	return {
+		session: ctx.session,
+		sessionManager: ctx.sessionManager,
+		settings: ctx.settings,
+		cwd: ctx.sessionManager.getCwd(),
+		globalConfigRoot: getGlobalConfigRootDir(),
+		agentDir: getAgentDir(),
+		promptForValue: () =>
+			ctx.showHookInput(maskedPromptTitle(), undefined, { mask: DEFAULT_MASK_CHAR, hint: maskedPromptHint() }),
+		// Deliberately unmasked: a name is not a credential, and the operator seeing this field echo
+		// after the hidden one is what distinguishes the two questions.
+		promptForName: () => ctx.showHookInput(namePromptTitle(), undefined, { hint: namePromptHint() }),
+		copy: copyToClipboard,
+	};
+}
