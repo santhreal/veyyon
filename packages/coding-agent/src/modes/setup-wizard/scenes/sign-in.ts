@@ -228,7 +228,6 @@ export class SignInTab implements SetupTab {
 
 	#createSelector(): OAuthSelectorComponent {
 		return new OAuthSelectorComponent(
-			"login",
 			this.#authStorage,
 			providerId => {
 				void this.#login(providerId);
