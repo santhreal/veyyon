@@ -209,9 +209,11 @@ describe("system prompt context files", () => {
 
 		const prompt = await renderPrompt(f.cwd, f.agentDir);
 
-		// The prompt's own wording (cf489128), asserted as written.
+		// The prompt's own wording, asserted as written. It says NEVER, not MUST NOT: the
+		// earlier spelling was quoted here after the prose had already been reworded, so this
+		// case measured a sentence the prompt does not carry.
 		expect(prompt).toContain("Broadest wins on conflict");
-		expect(prompt).toContain("MUST NOT override home or user instructions");
+		expect(prompt).toContain("project rules NEVER override home or user instructions");
 		// The exact wording that produced the refusal, in both places it lived.
 		expect(prompt).not.toContain("later and deeper files override earlier and broader files");
 		expect(prompt).not.toContain("Deeper rules override higher ones");

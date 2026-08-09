@@ -172,10 +172,41 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 		expect(session.isToolDiscoveryEnabled()).toBe(false);
 		expect(activeNames).not.toContain("search_tool_bm25");
 		expect(activeNames).toContain("mcp__small_echo");
-		expect(activeNames).toContain("browser");
+		// The built-ins this session is entitled to are all directly callable. `browser` is NOT
+		// one of them and never was: `browser.enabled` defaults off, so quoting it here measured
+		// its own switch instead of discovery. The second session below is the control that
+		// separates the two, and these names are the ones the permission table admits with the
+		// default settings this session was built with.
+		for (const name of ["read", "bash", "edit", "grep", "glob", "task", "todo", "web_search"]) {
+			expect(activeNames, `${name} is entitled and must be directly callable`).toContain(name);
+		}
+		expect(activeNames).not.toContain("browser");
 		expect(session.getDiscoverableTools({ source: "builtin" })).toEqual([]);
 		expect(session.getDiscoverableTools({ source: "mcp" })).toEqual([]);
 		await session.dispose();
+
+		// Same catalog, `browser.enabled` on: the tool appears and discovery still stays off. So
+		// the absence above is owned by the setting, and no built-in is being withheld for a
+		// discovery turn that this session does not have.
+		const { session: withBrowser } = await createAgentSession({
+			cwd: tempDir,
+			agentDir: tempDir,
+			modelRegistry,
+			sessionManager: SessionManager.inMemory(),
+			settings: Settings.isolated({ "browser.enabled": true }),
+			model: getBundledModel("openai", "gpt-4o-mini"),
+			disableExtensionDiscovery: true,
+			skills: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			customTools: [mcpTool],
+		});
+		expect(withBrowser.getActiveToolNames()).toContain("browser");
+		expect(withBrowser.isToolDiscoveryEnabled()).toBe(false);
+		await withBrowser.dispose();
 	});
 
 	it("advertises discovery guidance for builtin-only tools.discoveryMode all sessions", async () => {

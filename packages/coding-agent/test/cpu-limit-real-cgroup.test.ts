@@ -43,6 +43,7 @@ import {
 	probeCpuLimitSupport,
 	SessionCpuLimit,
 } from "../src/session/cpu-limit";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 /** Wall window the burner spins for. Long enough to span 30 quota periods. */
 const WINDOW_MS = 3_000;
@@ -85,18 +86,32 @@ interface BurnResult {
 }
 
 async function runBurner(adopt?: (pid: number) => void): Promise<BurnResult> {
+	// The burner is a spawned `bun -e` child, so it gets a hermetic HOME and no provider
+	// credentials like every other spawning suite here. It only spins the CPU, but a child
+	// that inherits the operator's HOME can read and migrate their real ~/.veyyon the moment
+	// the script it runs changes, and `hermetic-spawn-env.test.ts` is the standing gate that
+	// no spawning suite is exempt from that.
+	const hermetic = hermeticSpawnEnv();
 	const startedAt = Bun.nanoseconds();
-	const proc = Bun.spawn([process.execPath, "-e", BURNER], { stdout: "pipe", stderr: "pipe" });
+	const proc = Bun.spawn([process.execPath, "-e", BURNER], {
+		stdout: "pipe",
+		stderr: "pipe",
+		env: hermetic.env,
+	});
 	adopt?.(proc.pid);
-	const [stdout, exitCode] = await Promise.all([
-		new Response(proc.stdout as ReadableStream<Uint8Array>).text(),
-		proc.exited,
-	]);
-	const wallUsec = (Bun.nanoseconds() - startedAt) / 1_000;
-	if (exitCode !== 0) throw new Error(`burner exited ${exitCode}: ${await new Response(proc.stderr).text()}`);
-	const match = /"cpuUsec":(\d+)/.exec(stdout);
-	if (!match) throw new Error(`burner printed no usage report: ${stdout}`);
-	return { selfUsec: Number(match[1]), wallUsec };
+	try {
+		const [stdout, exitCode] = await Promise.all([
+			new Response(proc.stdout as ReadableStream<Uint8Array>).text(),
+			proc.exited,
+		]);
+		const wallUsec = (Bun.nanoseconds() - startedAt) / 1_000;
+		if (exitCode !== 0) throw new Error(`burner exited ${exitCode}: ${await new Response(proc.stderr).text()}`);
+		const match = /"cpuUsec":(\d+)/.exec(stdout);
+		if (!match) throw new Error(`burner printed no usage report: ${stdout}`);
+		return { selfUsec: Number(match[1]), wallUsec };
+	} finally {
+		hermetic.cleanup();
+	}
 }
 
 /** `usageUsec()` and `throttledPeriods()`, or a failure naming which one the backend withheld. */

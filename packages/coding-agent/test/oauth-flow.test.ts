@@ -434,7 +434,10 @@ describe("mcp oauth flow", () => {
 					},
 					{},
 				),
-		).toThrow("HTTPS loopback redirect URIs require oauth.callbackPort");
+			// The refusal now states the reason (the local listener terminates no TLS) and the
+			// remedy. Matching the diagnosis rather than the old bare requirement keeps this on
+			// the contract the operator reads.
+		).toThrow(/is an HTTPS loopback URL, and the local callback listener speaks plain HTTP/);
 	});
 
 	it("listens on the implied port for exact HTTP loopback redirectUri values", async () => {
