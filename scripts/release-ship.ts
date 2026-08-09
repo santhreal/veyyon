@@ -150,6 +150,37 @@ export function checkVerdict(runs: readonly RunSummary[], required: readonly str
 }
 
 /**
+ * What to do about a red verdict, which depends on why it is red.
+ *
+ * A cancelled run is not a broken tree. GitHub keeps at most ONE pending run per
+ * concurrency group, and main's group is branch-wide with cancellation off, so a
+ * third push while two runs are outstanding cancels the pending one. When that
+ * pending run is the release commit's, the commit ends up with no verdict through
+ * no fault of its own: 4 of 6 consecutive CI runs on main were cancelled that way.
+ * In a run list it is indistinguishable from a failing test suite, and it is the
+ * opposite problem. Nothing needs fixing, the run needs re-running, and nobody
+ * should push to main while a cut is waiting.
+ */
+export function failureAdvice(failures: readonly RunSummary[], tag: string): string[] {
+	if (failures.length > 0 && failures.every(run => run.conclusion === "cancelled")) {
+		return [
+			"Nothing failed. Every run on this commit was CANCELLED, which happens when a push",
+			"lands on main while the cut is waiting: GitHub keeps one pending run per group and",
+			"the newer push takes the slot. Do not push to main until the cut finishes, and",
+			"re-run the cancelled runs:",
+			...failures.map(run => `    gh run rerun ${run.databaseId}   # ${run.workflowName}`),
+			"",
+			"Then tag that commit:",
+			`    git tag ${tag} && git push origin ${tag}`,
+		];
+	}
+	return [
+		"The bump commit is on main. Fix main, then tag the green commit:",
+		`    git tag ${tag} && git push origin ${tag}`,
+	];
+}
+
+/**
  * How long to keep polling before giving up.
  *
  * The full matrix is the slow one, and a queued runner can sit for a while
@@ -272,8 +303,7 @@ export async function shipRelease(version: string): Promise<void> {
 					`${tag} was not tagged: the checks on ${sha.slice(0, 12)} did not pass.`,
 					...named,
 					"",
-					"The bump commit is on main. Fix main, then tag the green commit:",
-					`    git tag ${tag} && git push origin ${tag}`,
+					...failureAdvice(verdict.failures, tag),
 				].join("\n"),
 			);
 		}

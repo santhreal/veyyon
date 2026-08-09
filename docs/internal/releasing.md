@@ -45,8 +45,17 @@ git tag v1.2.3 && git push origin v1.2.3             # the tag push publishes
 That is all `bun run release` does after the prompt. The only judgement it
 automates is "are the checks green yet", and it is stricter about that than a
 human watching a run list: it waits for every workflow that fires on a main push
-to appear and finish, and it refuses to tag on a run that was cancelled or
-skipped its way to something other than success.
+to appear and finish, and it refuses to tag on anything but `success` or a
+legitimate `skipped`.
+
+**Do not push to `main` while a cut is waiting.** GitHub keeps at most one
+*pending* run per concurrency group, and `main`'s group is branch-wide, so a
+third push while two runs are outstanding cancels the pending one. When that
+pending run belongs to the bump commit, the commit ends up with no verdict
+through nobody's fault: four of six consecutive `CI` runs on `main` were
+cancelled that way. The cut says so when it sees it, and names the `gh run rerun`
+for each cancelled run rather than sending you to look for a defect that does not
+exist.
 
 Nothing on `main` cuts a release on its own: not a push, not a green CI run, not
 a waiting `## [Unreleased]` bullet. Only a `v*` tag push publishes. If the
@@ -121,10 +130,14 @@ tag, asks once, then:
    registered yet reads as pending, never as passing, because the run list takes
    a moment to fill in and "everything I can see passed" would tag on a partial
    view.
-3. **Judge.** Only `success` and `skipped` are passes. `cancelled` is not: a
-   cancelled gate proves nothing about the SHA, and reading "not a failure" as "a
-   pass" is how `v1.0.36` published with its Checks run killed by branch churn.
-   A run that ran and failed blocks the tag whether or not it was required.
+3. **Judge the newest run of each workflow.** One commit carries several runs of
+   one workflow: a re-run, a `workflow_dispatch`, a run someone stopped. Only the
+   latest of each decides, ordered by creation time with the run id as the
+   tie-break, so re-running a cancelled gate to green clears the cut. A newer red
+   still outvotes an older green. Within that set only `success` and `skipped` are
+   passes: `cancelled` proves nothing about the SHA, and reading "not a failure"
+   as "a pass" is how `v1.0.36` published with its Checks run killed by branch
+   churn. A run that ran and failed blocks the tag whether or not it was required.
 4. **Tag.** `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
 Every way this can stop leaves the bump commit on `main` and prints the tag
