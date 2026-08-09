@@ -6001,6 +6001,13 @@ export class AgentSession {
 			}
 			this.#lastSuccessfulYieldToolCallId = undefined;
 
+			// One reading of "this reply is waiting on the user", shared by every
+			// route below. Computed once here rather than inside each guard because
+			// the bug was precisely that they disagreed: only the todo reminder
+			// looked, so whether a question survived depended on which guard was
+			// armed. Read before the first guard runs, so the two retry guards that
+			// settle earliest see the same answer as the four that settle last.
+			const settleState: SettleContinuationState = { awaitingUserAnswer: isAwaitingUserAnswer(msg) };
 			// Empty-stop cleanup MUST run before any compaction continuation: an
 			// empty toolUse stop must be stripped from active context + session
 			// history before we schedule another turn, otherwise the next
@@ -6033,7 +6040,7 @@ export class AgentSession {
 				}
 			}
 
-			if (await this.#handleUnexpectedAssistantStop(msg)) {
+			if (await this.#handleUnexpectedAssistantStop(msg, settleState)) {
 				maintenanceRoute("unexpected-stop-handled");
 				await emitAgentEndNotification();
 				return;
@@ -6116,11 +6123,6 @@ export class AgentSession {
 				await emitAgentEndNotification();
 				return;
 			}
-			// One reading of "this reply is waiting on the user", shared by every
-			// route below. Computed here rather than inside each guard because the
-			// bug was precisely that they disagreed: only the todo reminder looked,
-			// so whether a question survived depended on which guard was armed.
-			const settleState: SettleContinuationState = { awaitingUserAnswer: isAwaitingUserAnswer(msg) };
 			if (msg.stopReason !== "error") {
 				if (mayContinueAtSettle("rewind-checkpoint", settleState) && this.#enforceRewindBeforeYield()) {
 					await emitAgentEndNotification();
@@ -14186,8 +14188,21 @@ export class AgentSession {
 		if (kept.length !== messages.length) this.agent.replaceMessages(kept);
 	}
 
-	async #handleUnexpectedAssistantStop(assistantMessage: AssistantMessage): Promise<boolean> {
+	async #handleUnexpectedAssistantStop(
+		assistantMessage: AssistantMessage,
+		settleState: SettleContinuationState,
+	): Promise<boolean> {
 		if (!this.settings.get("features.unexpectedStopDetection")) {
+			return false;
+		}
+		// Checked BEFORE the classifier, not after. A reply that hands the turn
+		// back to the user is the shape the classifier most readily reads as a
+		// turn that announced an action and stopped short of it, so asking it
+		// spends a model call to be told the opposite of what the reply says. The
+		// budget resets rather than carrying over: the cycle is finished, the user
+		// is in the loop, and the next turn starts with its full runway.
+		if (!mayContinueAtSettle("unexpected-stop-retry", settleState)) {
+			this.#unexpectedStopRetryCount = 0;
 			return false;
 		}
 		if (!isUnexpectedStopCandidate(assistantMessage)) {
