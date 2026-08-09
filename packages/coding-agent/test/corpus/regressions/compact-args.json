@@ -41,7 +41,7 @@
 			},
 			"expect": {
 				"instructions": "soft keep the auth bits",
-				"noticeContains": "use `/compact summary`"
+				"noticeContains": "Use `/compact summary`"
 			}
 		},
 		{
