@@ -1567,10 +1567,20 @@ async function defaultResolvedEnvironment(): Promise<CpuLimitEnvironment> {
 
 function runHostCommand(cmd: string[]): Promise<CpuLimitCommandResult> {
 	const { promise, resolve } = Promise.withResolvers<CpuLimitCommandResult>();
-	execFile(cmd[0], cmd.slice(1), { timeout: 10_000 }, (error, stdout, stderr) => {
-		const code = typeof error?.code === "number" ? error.code : error ? 1 : 0;
-		resolve({ code, stdout: String(stdout), stderr: String(stderr || error?.message || "") });
-	});
+	// `execFile` can fault SYNCHRONOUSLY, before it ever returns a promise or calls back: a
+	// spawn implementation that rejects the argument shape, EMFILE, a bad executable path. Every
+	// caller treats this as "the host cannot answer" and guards the async rejection only, so a
+	// synchronous throw escapes past those guards as an unhandled error and takes the process
+	// down while a probe of an OPTIONAL capability is all that failed. A failed spawn is a
+	// nonzero exit with the reason on stderr, which is exactly what the callers already read.
+	try {
+		execFile(cmd[0], cmd.slice(1), { timeout: 10_000 }, (error, stdout, stderr) => {
+			const code = typeof error?.code === "number" ? error.code : error ? 1 : 0;
+			resolve({ code, stdout: String(stdout), stderr: String(stderr || error?.message || "") });
+		});
+	} catch (error) {
+		resolve({ code: 1, stdout: "", stderr: errorMessage(error) });
+	}
 	return promise;
 }
 

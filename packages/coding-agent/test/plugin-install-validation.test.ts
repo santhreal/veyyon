@@ -537,7 +537,11 @@ describe("PluginManager.install load validation", () => {
 			} as Subprocess;
 		}) as typeof Bun.spawn);
 
-		await expect(new PluginManager(tmpRoot).install("github:org/plugin[ghost]")).rejects.toThrow(/Unknown feature/);
+		// The refusal names the plugin, the effect (rolled back) and the features it does
+		// offer. The old `/Unknown feature/` matched a sentence that no longer ships.
+		await expect(new PluginManager(tmpRoot).install("github:org/plugin[ghost]")).rejects.toThrow(
+			/has no feature named "ghost", so the install was rolled back/,
+		);
 
 		expect(await Bun.file(bunLockPath).text()).toBe(ORIGINAL_LOCK);
 		const pluginsPackage = await Bun.file(pluginsPkgJson).json();

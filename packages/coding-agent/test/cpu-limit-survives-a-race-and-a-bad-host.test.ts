@@ -21,11 +21,16 @@
  * tree, with `createGroup` injected only so the handle can report whether it was
  * disposed. Neither needs a real cgroup controller.
  */
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { CpuBudgetGroupHandle } from "../src/session/cpu-limit";
-import { probeCpuLimitSupport, SessionCpuLimit, sessionCpuBudgetName } from "../src/session/cpu-limit";
+import type { CpuBudgetGroupHandle, CpuLimitEnvironment } from "../src/session/cpu-limit";
+import {
+	defaultCpuLimitEnvironment,
+	probeCpuLimitSupport,
+	SessionCpuLimit,
+	sessionCpuBudgetName,
+} from "../src/session/cpu-limit";
 import type { FakeHost } from "./helpers/fake-cgroup";
 import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 
@@ -149,5 +154,76 @@ describe("a budget whose first setup failed", () => {
 		await limiter.ensureGroup();
 
 		expect(await limiter.statusLine()).toBe("configured for 2 core(s) but group setup failed");
+	});
+});
+
+/**
+ * A HOST WHOSE SPAWN FAULTS BEFORE THE COMMAND EVEN STARTS.
+ *
+ * `probeCpuLimitSupport` asks the host one question through `env.run` and guards the answer with
+ * `.catch(...)`, which only covers a REJECTED promise. The production `env.run` reaches
+ * `child_process.execFile`, and that can fault SYNCHRONOUSLY: an argument shape the spawn
+ * implementation refuses, EMFILE, a bad executable path. A synchronous throw walks straight past
+ * `.catch(...)` and out of the probe, which is an optional capability check, into whatever was
+ * driving. Observed: a TUI test stubbed `Bun.spawn`, the stub rejected `execFile`'s argument
+ * shape, and the throw surfaced as `# Unhandled error between tests` plus three phantom terminal
+ * writes and a hook timeout in a suite that has nothing to do with CPU limits.
+ *
+ * The class this closes: NO host command the CPU limiter runs may fault synchronously, for any
+ * argv and any reason. So the assertions go at the one owner every command passes through
+ * (`defaultCpuLimitEnvironment().run`), not at the probe's single call site, and they cover both
+ * a faulting spawn implementation and a real nonexistent executable.
+ *
+ * What it does NOT catch: a spawn that hangs forever without faulting. That is the `execFile`
+ * timeout's job, and asserting a 10 second timeout would cost 10 seconds.
+ */
+describe("a host whose spawn faults synchronously", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("answers with a failed command instead of throwing out of the caller", async () => {
+		const env = defaultCpuLimitEnvironment();
+		vi.spyOn(Bun, "spawn").mockImplementation((() => {
+			throw new TypeError("Spread syntax requires ...iterable[Symbol.iterator] to be a function");
+		}) as unknown as typeof Bun.spawn);
+
+		// Synchronous by construction: a throwing `run` would escape here, before any await.
+		const result = env.run(["systemctl", "--user", "show-environment"]);
+		await expect(result).resolves.toMatchObject({ code: 1, stdout: "" });
+		expect((await result).stderr).toContain("Symbol.iterator");
+	});
+
+	it("carries the fault into the probe as an unsupported verdict that names the reason", async () => {
+		// A cgroup v2 root with no writable delegated parent for this uid, so the probe exhausts
+		// its direct candidates and asks systemctl, which is the call that used to throw.
+		const root = await makeCgroupRoot();
+		const env: CpuLimitEnvironment = {
+			...defaultCpuLimitEnvironment(),
+			platform: "linux",
+			uid: 999_999,
+			cgroupRoot: root,
+			ownCgroupPath: "",
+		};
+		vi.spyOn(Bun, "spawn").mockImplementation((() => {
+			throw new Error("EMFILE: too many open files");
+		}) as unknown as typeof Bun.spawn);
+
+		const probe = await probeCpuLimitSupport(env);
+
+		expect(probe.supported).toBe(false);
+		expect(probe.detail).toContain("EMFILE");
+	});
+
+	it("answers with a failed command for an executable the host does not have", async () => {
+		const env = defaultCpuLimitEnvironment();
+
+		// No mock: a real spawn of a real absent binary. Whether the runtime reports that
+		// synchronously or through the callback is its business; the contract is the same result
+		// shape either way.
+		const result = await env.run(["veyyon-no-such-binary-9f2c", "--version"]);
+
+		expect(result.code).not.toBe(0);
+		expect(result.stderr.length).toBeGreaterThan(0);
 	});
 });
