@@ -46,6 +46,13 @@ const execFileAsync = promisify(execFile);
 /** No `v*` tag yet is veyyon's first-release state; treat it as a 0.0.0 baseline. */
 export const NO_TAG_BASELINE = "0.0.0";
 
+/**
+ * How many dirty paths a dry run lists before summarizing the rest. Enough to
+ * recognize a tree at a glance; short enough that the next steps below it stay
+ * on screen, which is the part the operator came for.
+ */
+const DIRTY_PATHS_SHOWN = 12;
+
 async function git(...args: string[]): Promise<string> {
 	const { stdout } = await execFileAsync("git", args, { maxBuffer: 64 * 1024 * 1024 });
 	return stdout;
@@ -196,8 +203,18 @@ async function main(argv: readonly string[]): Promise<void> {
 		console.log(`A real cut would commit the v${version} bump, push main, wait for its checks, and tag it.\n`);
 		if (branch !== "main") console.log(`  (a real cut refuses here: on '${branch}', not main)`);
 		if (status.trim().length > 0) {
-			const dirty = statusPaths(await git("status", "--porcelain", "-z")).length;
-			console.log(`  (a real cut refuses here: ${dirty} uncommitted path(s))\n`);
+			const dirty = statusPaths(await git("status", "--porcelain", "-z"));
+			console.log(`  (a real cut refuses here: ${dirty.length} uncommitted path(s))`);
+			// Naming them is the point of running this before a cut. A bare count
+			// sends the operator to `git status` to find out the one thing that
+			// decides what to do next: whether the tree holds their own leftovers,
+			// which they commit, or somebody else's in-flight work, which they must
+			// not touch. This tree routinely carries both.
+			for (const dirtyPath of dirty.slice(0, DIRTY_PATHS_SHOWN)) console.log(`      ${dirtyPath}`);
+			if (dirty.length > DIRTY_PATHS_SHOWN) {
+				console.log(`      … and ${dirty.length - DIRTY_PATHS_SHOWN} more`);
+			}
+			console.log("");
 		}
 		for (const line of nextSteps(version)) console.log(line);
 		return;
