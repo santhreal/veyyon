@@ -48,8 +48,15 @@ function dashboardStub() {
 	};
 }
 
+// A run is attributed to the session that started it: `run_experiment` reads the
+// session id and hands it to the process executor as the CPU-budget group, so a ctx
+// without a session manager takes a TypeError before the command is ever spawned.
 function createCtx(cwd: string): ExtensionContext {
-	return { cwd, hasUI: false } as ExtensionContext;
+	return {
+		cwd,
+		hasUI: false,
+		sessionManager: { getSessionId: () => "autoresearch-tools-test-session" },
+	} as unknown as ExtensionContext;
 }
 
 interface PiHarness {
