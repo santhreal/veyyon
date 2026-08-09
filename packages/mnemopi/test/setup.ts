@@ -70,25 +70,29 @@ class FakeLocalLlmBackend implements LlmBackend {
 /**
  * Every entry sitting DIRECTLY in the home that a mnemopi run could have put there, sorted.
  *
- * TWO prefixes, because this package has TWO home-derived roots and the guard used to watch
- * only one. `.veyyon*` is the shape the mistake this package's isolation replaced leaves
- * behind: `VEYYON_CONFIG_DIR` is a directory NAME joined onto `os.homedir()`, so a fresh
- * `.veyyon-mnemopi-profile-iso-<id>` is a config root in the home rather than out of it.
+ * THREE prefixes, because this package derives three roots from the home. `.veyyon*` is the
+ * shape the mistake this package's isolation replaced leaves behind: `VEYYON_CONFIG_DIR` is a
+ * directory NAME joined onto `os.homedir()`, so a fresh `.veyyon-mnemopi-profile-iso-<id>` is a
+ * config root in the home rather than out of it.
  *
- * `.hermes` is the other one and it was invisible here. `dataDir()` defaults to
- * `~/.hermes/mnemopi/data` and every module-level facade call (`remember`, `recall`,
- * `getContext`, `getStats`) opens the database there when `MNEMOPI_DATA_DIR` is unset, which
- * is a SQLite file, a `-wal` and a `-shm` in the operator's home. `enterIsolatedConfigRoot`
- * cannot move it: it is not derived from the config root. A 372KB schema-only
+ * `.hermes` holds the data dir, the blob store, the plugin dir, the model cache and the
+ * embedding cache. `dataDir()` defaults to `~/.hermes/mnemopi/data` and every module-level
+ * facade call (`remember`, `recall`, `getContext`, `getStats`) opens the database there, which is
+ * a SQLite file, a `-wal` and a `-shm` in the operator's home; `storeBlob()` writes under the
+ * same root and answered to no lever at all until `MNEMOPI_HOME` existed. A 372KB schema-only
  * `~/.hermes/mnemopi/data/mnemopi.db` with zero rows in every data table was found in one real
  * home, and this list is why nothing said so.
  *
- * Reading the directory is the only way to see either, because every path the suite resolves
- * looks correct from inside the suite.
+ * `.mnemopi` is the cost log's, and it is the one root nothing here has ever watched:
+ * `getConn()` with no argument opens `~/.mnemopi/data/cost_log.db` and creates the tree on the
+ * way.
+ *
+ * Reading the directory is the only way to see any of them, because every path the suite
+ * resolves looks correct from inside the suite.
  */
 function homeRootsAMnemopiRunCouldCreate(): string[] {
 	return readdirSync(homedir())
-		.filter(entry => entry.startsWith(".veyyon") || entry === ".hermes")
+		.filter(entry => entry.startsWith(".veyyon") || entry === ".hermes" || entry === ".mnemopi")
 		.sort();
 }
 
@@ -126,23 +130,32 @@ function homeRootsAMnemopiRunCouldCreate(): string[] {
 export function useMnemopiTestEnv(): void {
 	let isolated: IsolatedConfigRoot | undefined;
 	let rootsBefore: string[] = [];
-	let previousDataDir: string | undefined;
+	const previous = new Map<string, string | undefined>();
+
+	function override(name: string, value: string): void {
+		previous.set(name, process.env[name]);
+		process.env[name] = value;
+	}
 
 	beforeAll(() => {
 		rootsBefore = homeRootsAMnemopiRunCouldCreate();
 		isolated = enterIsolatedConfigRoot("mnemopi-suite", { defaultProfile: true });
-		// The SECOND root, which the config root cannot move. `MNEMOPI_DATA_DIR` is the only
-		// lever over `dataDir()`, and unlike `VEYYON_CONFIG_DIR` it takes an absolute path, so
-		// it gets a directory inside the isolated root rather than a name. Left unset, the
-		// default is `~/.hermes/mnemopi/data` and every facade call opens a database there.
-		previousDataDir = process.env.MNEMOPI_DATA_DIR;
-		process.env.MNEMOPI_DATA_DIR = join(isolated.root, "mnemopi-data");
+		// `MNEMOPI_HOME` is the one lever over every home-derived root: `hermesRoot()` and the
+		// cost log both resolve through `mnemopiHome()`, so this single variable moves the data
+		// dir, the blob store, the plugin dir, the model cache and the cost log out of the real
+		// home together. `VEYYON_CONFIG_DIR` reaches none of them.
+		override("MNEMOPI_HOME", isolated.root);
+		// `MNEMOPI_DATA_DIR` stays set as well, because it is the lever production uses and a
+		// suite that reads it must see an isolated path rather than fall through to the default.
+		override("MNEMOPI_DATA_DIR", join(isolated.root, "mnemopi-data"));
 	});
 
 	afterAll(() => {
-		if (previousDataDir === undefined) delete process.env.MNEMOPI_DATA_DIR;
-		else process.env.MNEMOPI_DATA_DIR = previousDataDir;
-		previousDataDir = undefined;
+		for (const [name, value] of previous) {
+			if (value === undefined) delete process.env[name];
+			else process.env[name] = value;
+		}
+		previous.clear();
 		isolated?.restore();
 		isolated = undefined;
 		expect(homeRootsAMnemopiRunCouldCreate()).toEqual(rootsBefore);

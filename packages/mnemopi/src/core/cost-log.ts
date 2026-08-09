@@ -1,11 +1,16 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { mnemopiHome } from "../config";
 import { toUtcIso } from "../util/datetime";
 
-export const DEFAULT_LOG_DIR = join(homedir(), ".mnemopi", "data");
-export const DEFAULT_LOG_DB = join(DEFAULT_LOG_DIR, "cost_log.db");
+/**
+ * Resolved per call, for the reason given on `mnemopiHome`: a path decided at import
+ * time is a path no test and no operator can redirect.
+ */
+export function costLogDb(env: NodeJS.ProcessEnv = process.env): string {
+	return join(mnemopiHome(env), ".mnemopi", "data", "cost_log.db");
+}
 
 export interface CostStats {
 	total_calls: number;
@@ -22,7 +27,7 @@ type AggregateRow = {
 };
 
 export function getConn(dbPath?: string): Database {
-	const path = dbPath ?? DEFAULT_LOG_DB;
+	const path = dbPath ?? costLogDb();
 	mkdirSync(dirname(path), { recursive: true });
 	return new Database(path, { create: true, readwrite: true, strict: true });
 }

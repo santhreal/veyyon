@@ -1,8 +1,8 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { atomicWriteFileSync } from "@veyyon/utils";
+import { hermesRoot } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 
 export interface TripleRow {
@@ -70,12 +70,8 @@ interface ImportBindingRow {
 type ProcessEnv = Record<string, string | undefined>;
 type SerializableDatabase = Database & { serialize(): Uint8Array };
 
-function homeDir(env: ProcessEnv = process.env): string {
-	return env.HOME && env.HOME.length > 0 ? env.HOME : homedir();
-}
-
 export function legacyDataDir(env: ProcessEnv = process.env): string {
-	return join(homeDir(env), ".hermes", "mnemopi", "data");
+	return join(hermesRoot(env), "mnemopi", "data");
 }
 
 export function defaultDataDir(env: ProcessEnv = process.env): string {
