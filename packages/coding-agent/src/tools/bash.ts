@@ -69,6 +69,7 @@ import {
 	DEFAULT_TERMINAL_PREVIEW_LINES,
 	formatToolWorkingDirectory,
 	previewWindowRows,
+	renderCollapsedOutputLines,
 	replaceTabs,
 } from "./render-utils";
 import { ToolAbortError, ToolError } from "./tool-errors";
@@ -1736,10 +1737,11 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 						} else if (expanded) {
 							outputLines.push(...rawOutputLines.map(line => uiTheme.fg("toolOutput", replaceTabs(line))));
 						} else {
-							const styledOutput = rawOutputLines
-								.map(line => uiTheme.fg("toolOutput", replaceTabs(line)))
-								.join("\n");
-							const textContent = styledOutput;
+							// Progress runs collapse BEFORE the tail window is measured, so a
+							// build's `Compiling …` wall cannot spend the whole window and push
+							// the one interesting line out of it. `expanded` (ctrl+o) above and
+							// the raw artifact still carry every line.
+							const textContent = renderCollapsedOutputLines(rawOutputLines, uiTheme).join("\n");
 							// Cap the collapsed/streaming output to a viewport-sized tail and
 							// measure it at the box's INNER width. Otherwise a growing tail
 							// window scrolls its (mutating) rows above the live-region window

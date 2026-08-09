@@ -123,6 +123,134 @@ export function previewLine(text: string, maxWidth: number, ellipsis?: Ellipsis)
 }
 
 // =============================================================================
+// Progress-run Collapsing
+// =============================================================================
+
+/**
+ * Minimum consecutive same-shape lines before a run is counted away. A run
+ * collapses to one row plus a count, so anything shorter would trade a saved
+ * row for a lost line.
+ */
+export const PROGRESS_RUN_MIN_LINES = 4;
+
+/**
+ * Leading tokens a run is never keyed on. A diagnostic is the anomaly the
+ * collapsed preview exists to surface, so a wall of DISTINCT warnings keeps
+ * every line even though the lines share a shape. Byte-identical neighbours
+ * still collapse, diagnostic or not: repeating one line eight times says
+ * nothing the count does not. Severity words only here, because the moment this
+ * set learns what one specific tool prints, that knowledge belongs in the shell
+ * minimizer (`crates/veyyon-shell/src/minimizer/`), which owns per-tool output
+ * semantics for the sealed capture.
+ */
+const DIAGNOSTIC_LEAD_TOKENS: ReadonlySet<string> = new Set([
+	"assertion",
+	"err",
+	"error",
+	"errors",
+	"exception",
+	"fail",
+	"failed",
+	"failure",
+	"failures",
+	"fatal",
+	"help",
+	"hint",
+	"note",
+	"panic",
+	"panicked",
+	"traceback",
+	"warn",
+	"warning",
+	"warnings",
+]);
+
+/** A collapsed preview row: one verbatim line plus the lines it stands in for. */
+export interface CollapsedOutputRow {
+	/** The run's newest line, verbatim. */
+	readonly text: string;
+	/** Lines this row stands in for beyond `text`; 0 when nothing was collapsed. */
+	readonly hidden: number;
+}
+
+/**
+ * Shape key consecutive lines are grouped by: the first whitespace-delimited
+ * token with digit runs normalized, so `[1/47]` and `[2/47]` share a key and so
+ * do `Compiling serde` and `Compiling tokio`. `undefined` means the line can
+ * only extend a run of byte-identical neighbours.
+ *
+ * Three token shapes qualify, because any other leading token is content: a
+ * Capitalized word (`Compiling`, `Downloaded`), a lowercase word ending in a
+ * colon (`remote:`, `info:`), and a bracketed or hashed counter (`[#/#]`, `##`).
+ * `ls -l` mode columns (`-rw-r--r--`, `drwxr-xr-x`) match none of the three, so
+ * a directory listing is never counted away.
+ */
+function progressRunKey(line: string): string | undefined {
+	const token = /^\S+/.exec(line.trim())?.[0];
+	if (token === undefined) return undefined;
+	if (DIAGNOSTIC_LEAD_TOKENS.has(token.replace(/:$/, "").toLowerCase())) return undefined;
+	const shaped = /^[A-Z][A-Za-z]*:?$/.test(token) || /^[a-z]+:$/.test(token) || /^[[(#]/.test(token);
+	return shaped ? token.replace(/\d+/g, "#") : undefined;
+}
+
+/**
+ * Collapse runs of consecutive progress lines so a viewport-sized tail window is
+ * spent on anomalies instead of on a build's `Compiling …` wall. Each run of
+ * `minRun` or more same-shape lines becomes its newest line plus a count;
+ * every other line survives verbatim, in order.
+ *
+ * Language-agnostic by construction (see `progressRunKey`): the shell minimizer
+ * owns per-tool semantics, but it only ever sees a sealed capture, so a card
+ * that is still streaming has to condense on shape alone.
+ */
+export function collapseProgressRuns(
+	lines: readonly string[],
+	minRun: number = PROGRESS_RUN_MIN_LINES,
+): CollapsedOutputRow[] {
+	const rows: CollapsedOutputRow[] = [];
+	let index = 0;
+	while (index < lines.length) {
+		const first = lines[index]!;
+		const key = progressRunKey(first);
+		let end = index + 1;
+		while (end < lines.length) {
+			const next = lines[end]!;
+			// A blank line never anchors a run: an empty row carries no text to keep,
+			// so counting blanks away would leave a bare `+N earlier` marker.
+			const extendsRun =
+				next === first ? first.trim().length > 0 : key !== undefined && progressRunKey(next) === key;
+			if (!extendsRun) break;
+			end++;
+		}
+		const run = end - index;
+		if (run >= minRun) {
+			rows.push({ text: lines[end - 1]!, hidden: run - 1 });
+		} else {
+			for (let i = index; i < end; i++) rows.push({ text: lines[i]!, hidden: 0 });
+		}
+		index = end;
+	}
+	return rows;
+}
+
+/**
+ * {@link collapseProgressRuns} themed for a tool card's collapsed output
+ * section: the counted-away lines are named in `dim` so the count reads as
+ * chrome rather than as output. `styleLine` owns per-line styling (a failed eval
+ * cell paints its output in `error`), and defaults to tab-replaced tool output.
+ */
+export function renderCollapsedOutputLines(
+	lines: readonly string[],
+	theme: Theme,
+	styleLine: (line: string) => string = line => theme.fg("toolOutput", replaceTabs(line)),
+): string[] {
+	return collapseProgressRuns(lines).map(row => {
+		const text = styleLine(row.text);
+		return row.hidden === 0 ? text : `${text}${theme.fg("dim", ` … +${row.hidden} earlier`)}`;
+	});
+}
+
+// =============================================================================
 // URL Utilities
 // =============================================================================
 

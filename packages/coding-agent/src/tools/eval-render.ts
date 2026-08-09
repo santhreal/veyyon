@@ -38,6 +38,7 @@ import {
 	formatStatusIcon,
 	formatTitle,
 	previewWindowRows,
+	renderCollapsedOutputLines,
 	replaceTabs,
 	shortenPath,
 	truncateToWidth,
@@ -463,16 +464,18 @@ function formatCellOutputLines(
 		return { lines: displayLines, hiddenCount };
 	}
 
-	const styledOutput = cell.output
-		.split("\n")
-		.map(line => {
-			const cleaned = replaceTabs(line);
-			return cell.status === "error" ? theme.fg("error", cleaned) : theme.fg("toolOutput", cleaned);
-		})
-		.join("\n");
+	const styleLine = (line: string): string => {
+		const cleaned = replaceTabs(line);
+		return cell.status === "error" ? theme.fg("error", cleaned) : theme.fg("toolOutput", cleaned);
+	};
+	const outputLines = cell.output.split("\n");
 	if (expanded) {
-		return { lines: styledOutput.split("\n"), hiddenCount: 0 };
+		return { lines: outputLines.map(styleLine), hiddenCount: 0 };
 	}
+	// Progress runs collapse before the window is measured, so a wall of
+	// same-shape lines cannot spend the whole tail and push the interesting line
+	// out of the cell.
+	const styledOutput = renderCollapsedOutputLines(outputLines, theme, styleLine).join("\n");
 	const { visualLines, skippedCount } = truncateToVisualLines(styledOutput, previewLines, innerWidth);
 	return { lines: visualLines, hiddenCount: skippedCount };
 }
@@ -700,11 +703,10 @@ export const evalToolRenderer = {
 			return new Text(lines.join("\n"), 0, 0);
 		}
 
-		const styledOutput = combinedOutput
-			.split("\n")
-			.map(line => uiTheme.fg("toolOutput", line))
-			.join("\n");
-		const textContent = `\n${styledOutput}`;
+		// Same tail window as the bash card, same reason to condense before it is
+		// measured: a run of progress lines must not push the interesting line out
+		// of the collapsed preview. `expanded` above keeps every line.
+		const textContent = `\n${renderCollapsedOutputLines(combinedOutput.split("\n"), uiTheme).join("\n")}`;
 
 		let cachedWidth: number | undefined;
 		let cachedLines: readonly string[] | undefined;
