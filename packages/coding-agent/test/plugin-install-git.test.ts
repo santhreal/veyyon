@@ -57,6 +57,28 @@ async function runCommand(command: string[], cwd: string): Promise<string> {
 	return stdout.trim();
 }
 
+// The real `Bun.spawn`, captured before any spy exists.
+const realBunSpawn = Bun.spawn;
+
+/**
+ * Intercept the manager's `bun …` invocations and hand every other spawn back to
+ * the real one.
+ *
+ * A mock that answered EVERY call in the process was answering calls that are not
+ * this suite's: `node:child_process` routes through `Bun.spawn`, so the CPU-limit
+ * support probe arrived here with an options object where the mock expected an argv
+ * array, and its `expect(cmd[0]).toBe("bun")` failed on a command the case never
+ * issued. Delegating keeps the assertions pointed at the argv the manager builds.
+ */
+function mockBunSpawn(handle: (cmd: string[]) => Subprocess): void {
+	vi.spyOn(Bun, "spawn").mockImplementation(((first: unknown, options?: unknown) => {
+		if (!Array.isArray(first) || first[0] !== "bun") {
+			return (realBunSpawn as unknown as (cmd: unknown, options?: unknown) => Subprocess)(first, options);
+		}
+		return handle(first as string[]);
+	}) as typeof Bun.spawn);
+}
+
 describe("PluginManager.install with git sources", () => {
 	let tmpRoot: string;
 	let pluginsDir: string;
@@ -91,7 +113,7 @@ describe("PluginManager.install with git sources", () => {
 			JSON.stringify({ name: "veyyon-plugins", private: true, dependencies: {} }, null, 2),
 		);
 
-		vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[]) => {
+		mockBunSpawn((cmd: string[]) => {
 			// Verify the manager forwards the spec verbatim to bun install.
 			expect(cmd[0]).toBe("bun");
 			expect(cmd[1]).toBe("install");
@@ -127,7 +149,7 @@ describe("PluginManager.install with git sources", () => {
 				stderr: emptyStream(),
 				exited: prepare.then(() => 0),
 			} as Subprocess;
-		}) as typeof Bun.spawn);
+		});
 
 		const mgr = new PluginManager(tmpRoot);
 		const result = await mgr.install("github:foo/bar");
@@ -144,7 +166,7 @@ describe("PluginManager.install with git sources", () => {
 			JSON.stringify({ name: "veyyon-plugins", private: true, dependencies: {} }, null, 2),
 		);
 
-		vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[]) => {
+		mockBunSpawn((cmd: string[]) => {
 			expect(cmd[0]).toBe("bun");
 			expect(cmd[1]).toBe("install");
 			expect(cmd[2]).toBe("https://gitlab.com/group/sub/project#v1.0.0");
@@ -178,7 +200,7 @@ describe("PluginManager.install with git sources", () => {
 				stderr: emptyStream(),
 				exited: prepare.then(() => 0),
 			} as Subprocess;
-		}) as typeof Bun.spawn);
+		});
 
 		const mgr = new PluginManager(tmpRoot);
 		const result = await mgr.install("gitlab:group/sub/project#v1.0.0");
@@ -214,7 +236,7 @@ describe("PluginManager.install with git sources", () => {
 		await fs.mkdir(cacheDir);
 
 		const spawnedCommands: string[][] = [];
-		vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[]) => {
+		mockBunSpawn((cmd: string[]) => {
 			spawnedCommands.push([...cmd]);
 			if (cmd[1] === "install") {
 				// `bun install <same spec>` is a no-op on the lockfile pin —
@@ -254,7 +276,7 @@ describe("PluginManager.install with git sources", () => {
 				stderr: emptyStream(),
 				exited: prepare.then(() => 0),
 			} as Subprocess;
-		}) as typeof Bun.spawn);
+		});
 
 		const mgr = new PluginManager(tmpRoot);
 		const result = await mgr.install("github:foo/bar");
@@ -288,7 +310,7 @@ describe("PluginManager.install with git sources", () => {
 		);
 
 		const spawnedCommands: string[][] = [];
-		vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[]) => {
+		mockBunSpawn((cmd: string[]) => {
 			spawnedCommands.push([...cmd]);
 			if (cmd[1] === "install") {
 				expect(cmd).toEqual(["bun", "install", "github:foo/bar"]);
@@ -338,7 +360,7 @@ describe("PluginManager.install with git sources", () => {
 				stderr: emptyStream(),
 				exited: Promise.resolve(0),
 			} as Subprocess;
-		}) as typeof Bun.spawn);
+		});
 
 		const mgr = new PluginManager(tmpRoot);
 		const result = await mgr.install("github:foo/bar");
@@ -357,7 +379,7 @@ describe("PluginManager.install with git sources", () => {
 		);
 
 		const spawnedCommands: string[][] = [];
-		vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[]) => {
+		mockBunSpawn((cmd: string[]) => {
 			spawnedCommands.push([...cmd]);
 			expect(cmd[1]).toBe("install");
 			const prepare = (async () => {
@@ -386,7 +408,7 @@ describe("PluginManager.install with git sources", () => {
 				stderr: emptyStream(),
 				exited: prepare.then(() => 0),
 			} as Subprocess;
-		}) as typeof Bun.spawn);
+		});
 
 		const mgr = new PluginManager(tmpRoot);
 		await mgr.install("github:foo/bar");
@@ -416,7 +438,7 @@ describe("PluginManager.install with git sources", () => {
 			return { stream, drained };
 		};
 
-		vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[]) => {
+		mockBunSpawn((cmd: string[]) => {
 			expect(cmd).toEqual(["bun", "install", "github:foo/bar"]);
 			const { stream: stdout, drained: stdoutDrained } = makeGatedStream("progress\n");
 			const { stream: stderr, drained: stderrDrained } = makeGatedStream("");
@@ -442,7 +464,7 @@ describe("PluginManager.install with git sources", () => {
 				return 0;
 			});
 			return { pid: 1, stdout, stderr, exited } as Subprocess;
-		}) as typeof Bun.spawn);
+		});
 
 		const mgr = new PluginManager(tmpRoot);
 		const installed = await Promise.race([
@@ -517,13 +539,36 @@ describe("PluginManager.install with git sources", () => {
 		}
 	});
 
-	test("rejects git specs containing shell metacharacters", async () => {
-		const mgr = new PluginManager(tmpRoot);
-		await expect(mgr.install("github:foo/bar; rm -rf /")).rejects.toThrow(/Invalid characters in plugin source/);
-	});
+	/**
+	 * A refused source installs nothing and says so.
+	 *
+	 * Both rows used to assert a phrase ("Invalid characters in plugin source") that no
+	 * longer appears anywhere, so they were red while the refusal itself worked. The
+	 * shape asserted here is the operator contract every refusal in `install` shares:
+	 * the rejected input is echoed back, the message states nothing was installed, and
+	 * it names the edit that fixes it. The manifest is read afterwards because a claim
+	 * that nothing was installed is worth nothing on its own.
+	 */
+	const refusedSources: Array<{ source: string; because: string }> = [
+		{ source: "Invalid Name With Spaces", because: "not a valid npm package name" },
+		{ source: "github:foo/bar; rm -rf /", because: "contains shell punctuation" },
+	];
+	for (const { source, because } of refusedSources) {
+		test(`refuses ${JSON.stringify(source)} and installs nothing`, async () => {
+			await Bun.write(
+				pluginsPkgJson,
+				JSON.stringify({ name: "veyyon-plugins", private: true, dependencies: {} }, null, 2),
+			);
+			const mgr = new PluginManager(tmpRoot);
 
-	test("still rejects invalid npm names with the original error", async () => {
-		const mgr = new PluginManager(tmpRoot);
-		await expect(mgr.install("Invalid Name With Spaces")).rejects.toThrow(/Invalid (package name|characters)/);
-	});
+			await expect(mgr.install(source)).rejects.toThrow(because);
+			await expect(mgr.install(source)).rejects.toThrow(source);
+			await expect(mgr.install(source)).rejects.toThrow("nothing was installed");
+			await expect(mgr.install(source)).rejects.toThrow("Fix:");
+
+			const manifest = JSON.parse(await Bun.file(pluginsPkgJson).text());
+			expect(manifest.dependencies).toEqual({});
+			expect(await fs.readdir(pluginsNodeModules)).toEqual([]);
+		});
+	}
 });
