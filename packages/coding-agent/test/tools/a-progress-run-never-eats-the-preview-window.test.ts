@@ -74,6 +74,17 @@ describe("collapseProgressRuns", () => {
 		).toEqual([{ text: "[4/47] Building w", hidden: 3 }]);
 	});
 
+	test("keys past the SGR escapes a real build writes", () => {
+		// What cargo actually emits, bold-green verb and all. Keyed on raw bytes the
+		// first token is the escape sequence, which is no shape at all, so a colored
+		// build collapsed nothing while the plain fixture above passed.
+		const colored = Array.from(
+			{ length: 5 },
+			(_, i) => `\u001b[0m\u001b[1m\u001b[32m   Compiling\u001b[0m crate-${i} v0.1.${i}`,
+		);
+		expect(collapseProgressRuns(colored)).toEqual([{ text: colored[4], hidden: 4 }]);
+	});
+
 	test("never counts distinct diagnostics away", () => {
 		const warnings = ["warning: unused a", "warning: unused b", "warning: unused c", "warning: unused d"];
 		expect(collapseProgressRuns(warnings)).toEqual(warnings.map(text => ({ text, hidden: 0 })));
