@@ -86,9 +86,12 @@ Package scripts wrap the common ones: `test:sandbox:probe`, `test:sandbox:build`
 
 ## The remote rung
 
-It syncs the work tree to `axiomexec` with rsync, honouring `.gitignore`, then runs the
-container there. The first sync moves about 490 MB and takes ten seconds; later ones take
-under a second because rsync only ships the difference.
+Set `VEYYON_SANDBOX_REMOTE_HOST=<user>@<host-or-address>` to enable it; there is no
+default host, and without the variable the rung reports itself unavailable. It syncs the
+work tree there with rsync, honouring `.gitignore`, then runs the container on that
+machine. The first sync moves about 490 MB and takes ten seconds; later ones take under a
+second because rsync only ships the difference. `VEYYON_SANDBOX_REMOTE_KEY` picks the ssh
+key, defaulting to `~/.ssh/id_ed25519`.
 
 Dependencies are installed in a separate networked container keyed on the lockfile hash,
 so the test container itself still runs with `--network none`.

@@ -6,6 +6,11 @@
 # a card that never talks to a model. And every outbound request has to fail instantly: the seeded
 # tokens are fabricated, so a live health probe would spend the recording waiting on a real
 # provider for answers it cannot get.
+#
+# Run: bash scripts/demos/launch-accounts.sh
+#
+# assets/tapes/account-manager.tape types that exact line; run it directly to check the
+# seeded accounts before spending a recording on them.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

@@ -19,13 +19,18 @@
 # selection order on a workstation and absent from it on GitHub Actions; see the
 # SELECTION ORDER note in run.sh.
 #
-# WHY THE LAN ADDRESS AND NOT THE TAILSCALE NAME
-# ----------------------------------------------
-# The host is also on Tailscale, and `ssh axiomexec` goes through Tailscale SSH,
-# which answers with "Tailscale SSH requires an additional check" and a browser URL
-# that a script cannot satisfy. The LAN address reaches the host's ordinary sshd
-# with the ordinary key and needs no interactive step. Do not switch this back to
-# the Tailscale name; override VEYYON_SANDBOX_REMOTE_HOST instead.
+# NAMING THE HOST
+# ---------------
+# There is no default host, and adding one back is a mistake: a guessed
+# `user@address` in a public repository either names infrastructure that is
+# nobody else's business or points a stranger's ssh at whatever answers that
+# address on their own LAN. Set VEYYON_SANDBOX_REMOTE_HOST to reach this rung;
+# unset, it reports itself unavailable and the ladder falls through to docker.
+#
+# Prefer a LAN address over a Tailscale name. Tailscale SSH answers with
+# "Tailscale SSH requires an additional check" and a browser URL that a script
+# cannot satisfy, while the LAN address reaches the ordinary sshd with the
+# ordinary key and needs no interactive step.
 #
 # WHAT IS BLOCKED, AND BY WHICH MECHANISM
 # ---------------------------------------
@@ -75,7 +80,7 @@
 # the lockfile hash, because the test container has none. That split is deliberate:
 # the container that runs unreviewed test code never has a route out.
 
-REMOTE_SSH_DEST="${VEYYON_SANDBOX_REMOTE_HOST:-axiomexec@192.168.0.135}"
+REMOTE_SSH_DEST="${VEYYON_SANDBOX_REMOTE_HOST:-}"
 REMOTE_SSH_KEY="${VEYYON_SANDBOX_REMOTE_KEY:-${HOME}/.ssh/id_ed25519}"
 # Where the repo appears inside the remote container. Always /srv, never the work
 # tree's own path: the work tree lives under the remote user's home, and mirroring
@@ -105,6 +110,11 @@ probe_remote() {
 	command -v ssh >/dev/null 2>&1 || { skip remote "ssh not on PATH"; return 1; }
 	command -v rsync >/dev/null 2>&1 || { skip remote "rsync not on PATH; the work tree cannot be shipped to ${REMOTE_SSH_DEST}"; return 1; }
 	[ -r "${REMOTE_SSH_KEY}" ] || { skip remote "ssh key ${REMOTE_SSH_KEY} is not readable; set VEYYON_SANDBOX_REMOTE_KEY"; return 1; }
+
+	[ -n "${REMOTE_SSH_DEST}" ] || {
+		skip remote "no remote host configured; set VEYYON_SANDBOX_REMOTE_HOST=<user>@<host-or-address>"
+		return 1
+	}
 
 	# One round trip answers reachability, the remote home, the remote uid/gid and
 	# whether docker is usable by that account. Four probes would be four round
@@ -327,6 +337,7 @@ binprobe_remote() {
 # microVM kernel and initramfs are for the local microvm rung and mean nothing on
 # the far side of an ssh connection.
 remote_build() {
+	[ -n "${REMOTE_SSH_DEST}" ] || die "set VEYYON_SANDBOX_REMOTE_HOST=<user>@<host-or-address> to build the remote rung"
 	command -v rsync >/dev/null 2>&1 || die "rsync is required to ship the guest sources to ${REMOTE_SSH_DEST}"
 	probe_remote >/dev/null 2>&1 || true
 	[ -n "${REMOTE_HOME}" ] || {
