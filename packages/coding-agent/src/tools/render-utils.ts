@@ -418,8 +418,11 @@ export function formatDiagnostics(
 		const isLastFileNode = fi === files.length - 1 && unparsed.length === 0 && willShowAllRemaining;
 		const fileBranch = isLastFileNode ? theme.tree.last : theme.tree.branch;
 
-		const fileIcon = theme.fg("muted", getLangIcon(filePath));
-		output += `\n ${theme.fg("dim", fileBranch)} ${fileIcon} ${theme.fg("accent", filePath)}`;
+		// The badge carries its own trailing space, so a preset without a glyph for this
+		// language leaves the path directly after the branch instead of one column adrift.
+		const fileIcon = getLangIcon(filePath);
+		const badge = fileIcon ? `${theme.fg("muted", fileIcon)} ` : "";
+		output += `\n ${theme.fg("dim", fileBranch)} ${badge}${theme.fg("accent", filePath)}`;
 
 		for (let di = 0; di < diagnostics.length && diagsShown < maxDiags; di++) {
 			const d = diagnostics[di];

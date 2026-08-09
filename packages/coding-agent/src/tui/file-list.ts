@@ -40,14 +40,16 @@ export function renderFileList(options: FileListOptions, theme: Theme): string[]
 				const isDirectory = entry.isDirectory ?? entry.path.endsWith("/");
 				const displayPath = isDirectory && entry.path.endsWith("/") ? entry.path : entry.path;
 				const lang = isDirectory ? undefined : getLanguageFromPath(displayPath);
-				const icon = !showIcons
-					? ""
-					: isDirectory
-						? theme.fg("accent", theme.icon.folder)
-						: theme.fg("muted", theme.getLangIcon(lang));
+				// A file's badge comes with its own separator, because `fg("muted", "")` is a pair of
+				// escapes rather than an empty string: the old `icon ? ... : ""` test read a preset
+				// with no glyph for this language as a badge and indented the row by one column.
+				const iconPrefix = showIcons
+					? isDirectory
+						? `${theme.fg("accent", theme.icon.folder)} `
+						: theme.langBadge(lang)
+					: "";
 				const labelColor = isDirectory ? "accent" : "toolOutput";
 				const meta = entry.meta ? ` ${theme.fg("dim", entry.meta)}` : "";
-				const iconPrefix = icon ? `${icon} ` : "";
 				const pathStr = theme.fg(labelColor, displayPath);
 				const linkedPath = entry.absPath && hyperlinkFn ? hyperlinkFn(entry.absPath, pathStr) : pathStr;
 				return `${iconPrefix}${linkedPath}${meta}`;

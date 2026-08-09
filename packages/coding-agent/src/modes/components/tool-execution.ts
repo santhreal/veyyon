@@ -248,6 +248,12 @@ function notExecutedReason(result: { details?: unknown } | undefined, sealed: bo
 			: "not executed: an interrupt cut the batch short before this call ran";
 	}
 	if (record.__synthetic !== true || record.executed !== false) return undefined;
+	// The provider's own words, which are the only actionable fact in the whole card: "the stream
+	// stalled while waiting for the next event" is what tells an operator this was a transport
+	// failure and not their prompt. It used to reach the screen only inside the model-facing
+	// placeholder text, wrapped across two rows of a red `failed` frame.
+	const upstream = typeof record.upstreamError === "string" ? record.upstreamError.trim() : "";
+	const detail = upstream.length > 0 ? `: ${upstream}` : "";
 	switch (record.source) {
 		case "assistant_stop_aborted":
 			return "not executed: the turn was interrupted before this call ran";
@@ -256,10 +262,36 @@ function notExecutedReason(result: { details?: unknown } | undefined, sealed: bo
 		case "assistant_stop_length":
 			return "not executed: the assistant hit its output limit before the arguments finished";
 		case "assistant_stop_error":
-			return "not executed: the provider stream failed before this call ran";
+			return `not executed: the provider stream failed before this call ran${detail}`;
 		default:
 			return "not executed";
 	}
+}
+
+/**
+ * Whether this result is a placeholder for a call that never reached the tool.
+ *
+ * The card renders the CALL and nothing else when it is. The placeholder's text is written for the
+ * model — "Tool call was not executed because the provider stream ended with an error before the
+ * tool could run", and for a truncated one a paragraph telling the model to split its payload — and
+ * putting it through the tool's own result renderer drew a red `✗ failed` frame around it, so a call
+ * that touched nothing looked exactly like a command that ran and exited non-zero, with the reason
+ * stated twice in two registers. {@link notExecutedReason} says it once, in the operator's words.
+ *
+ * BOTH DISCRIMINATORS, and that is deliberate. `__synthetic` with `executed: false` is a call the
+ * loop never dispatched; `__skipped` with `entered: false` is a call an interrupt cut the batch
+ * short of. They are the same claim about the machine, and this file's own history is a branch
+ * written for one of them while its sibling kept rendering as a failure.
+ *
+ * `entered: true` is the one that is NOT included: the tool was running when the interrupt arrived,
+ * so whatever it printed is real output about real side effects and stays on screen.
+ */
+function isNeverRanResult(result: { details?: unknown } | undefined): boolean {
+	const details = result?.details;
+	if (details == null || typeof details !== "object") return false;
+	const record = details as Record<string, unknown>;
+	if (record.__skipped === true) return record.entered !== true;
+	return record.__synthetic === true && record.executed === false;
 }
 
 /**
@@ -970,6 +1002,12 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#renderState.expanded = this.#expanded;
 		this.#renderState.isPartial = this.#isPartial;
 		this.#renderState.spinnerFrame = this.#spinnerFrame;
+		// A call that never reached the tool has no result to render, only a reason, and the reason
+		// is the notice under the card. Every branch below therefore renders as though the result had
+		// not arrived: the card shows the CALL the assistant asked for, which is the one fact the
+		// notice cannot carry, and nothing paints failure chrome around a tool that did nothing.
+		const neverRan = isNeverRanResult(this.#result);
+		const renderableResult = neverRan ? undefined : this.#result;
 
 		// Check for custom tool rendering
 		if (this.#tool && (this.#tool.renderCall || this.#tool.renderResult)) {
@@ -988,7 +1026,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// missing `renderCall`; when the call is intentionally suppressed
 			// (mergeCallAndResult once a result exists) we render nothing here so
 			// the result component isn't preceded by a redundant tool-name line.
-			const shouldRenderCall = !this.#result || !mergeCallAndResult;
+			const shouldRenderCall = !renderableResult || !mergeCallAndResult;
 			if (shouldRenderCall) {
 				if (tool.renderCall) {
 					try {
@@ -1008,7 +1046,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			}
 
 			// Render result component if we have a result
-			if (this.#result && tool.renderResult) {
+			if (renderableResult && tool.renderResult) {
 				try {
 					const renderResult = tool.renderResult as (
 						result: { content: Array<{ type: string; text?: string }>; details?: unknown; isError?: boolean },
@@ -1018,9 +1056,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					) => Component;
 					const resultComponent = renderResult(
 						{
-							content: this.#result.content,
-							details: this.#result.details,
-							isError: this.#result.isError,
+							content: renderableResult.content,
+							details: renderableResult.details,
+							isError: renderableResult.isError,
 						},
 						this.#renderState,
 						theme,
@@ -1040,7 +1078,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						this.#contentBox.addChild(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0));
 					}
 				}
-			} else if (this.#result) {
+			} else if (renderableResult) {
 				// Has result but no custom renderResult
 				const output = this.#getTextOutput();
 				if (output) {
@@ -1068,7 +1106,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 
 			// Check for multi-file edit results
 			const perFileResults = (
-				this.#result?.details as { perFileResults?: Array<{ path: string; isError?: boolean }> } | undefined
+				renderableResult?.details as { perFileResults?: Array<{ path: string; isError?: boolean }> } | undefined
 			)?.perFileResults;
 			if (perFileResults && perFileResults.length > 1) {
 				// Multi-file: render each file as its own Box (identical to separate tool calls)
@@ -1140,7 +1178,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				const renderContext = this.#buildRenderContext();
 				this.#renderState.renderContext = renderContext;
 
-				const shouldRenderCall = !this.#result || !renderer.mergeCallAndResult;
+				const shouldRenderCall = !renderableResult || !renderer.mergeCallAndResult;
 				if (shouldRenderCall) {
 					// Render call component
 					try {
@@ -1156,13 +1194,13 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				}
 
 				// Render result component if we have a result
-				if (this.#result) {
+				if (renderableResult) {
 					try {
 						const resultComponent = renderer.renderResult(
 							{
-								content: this.#result.content,
-								details: this.#result.details,
-								isError: this.#result.isError,
+								content: renderableResult.content,
+								details: renderableResult.details,
+								isError: renderableResult.isError,
 							},
 							this.#renderState,
 							theme,
@@ -1369,11 +1407,15 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	 */
 	#formatToolExecution(contentWidth: number): string {
 		const lines: string[] = [];
+		// Same rule as the renderer branches: a call that never reached the tool has no result here,
+		// so it neither prints the model-facing placeholder as output nor wears the error glyph. The
+		// notice under the block is what says it did not run.
+		const result = isNeverRanResult(this.#result) ? undefined : this.#result;
 		const icon = this.#isPartial
 			? this.#spinnerFrame !== undefined
 				? "running"
 				: "pending"
-			: this.#result?.isError
+			: result?.isError
 				? "error"
 				: "done";
 		lines.push(renderStatusLine({ icon, spinnerFrame: this.#spinnerFrame, title: this.#toolLabel }, theme));
@@ -1406,7 +1448,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			lines.push("");
 		}
 
-		if (!this.#result) {
+		if (!result) {
 			return lines.join("\n");
 		}
 

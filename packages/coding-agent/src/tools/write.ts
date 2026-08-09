@@ -1327,7 +1327,7 @@ export const writeToolRenderer = {
 			typeof args.file_path === "string" ? args.file_path : typeof args.path === "string" ? args.path : "";
 		const filePath = shortenPath(rawPath);
 		const lang = rawPath ? (getLanguageFromPath(rawPath) ?? "text") : "text";
-		const langIcon = uiTheme.fg("muted", uiTheme.getLangIcon(lang));
+		const langBadge = uiTheme.langBadge(lang);
 		const pathDisplay = filePath ? uiTheme.fg("accent", filePath) : uiTheme.fg("toolOutput", "…");
 		// No status icon on the head row: it's the head of the framed block, and
 		// native-scrollback commits are prefix-only — an animated glyph would pin
@@ -1336,7 +1336,7 @@ export const writeToolRenderer = {
 		const header = renderStatusLine(
 			{
 				title: "Write",
-				description: `${langIcon} ${pathDisplay}`,
+				description: `${langBadge}${pathDisplay}`,
 			},
 			uiTheme,
 		);
@@ -1376,7 +1376,7 @@ export const writeToolRenderer = {
 		const filePath = shortenPath(rawPath);
 		const fileContent = normalizeDisplayText(args?.content);
 		const lang = rawPath ? getLanguageFromPath(rawPath) : undefined;
-		const langIcon = uiTheme.fg("muted", uiTheme.getLangIcon(lang));
+		const langBadge = uiTheme.langBadge(lang);
 		// The header shows the cwd-relative path but links to the absolute path the
 		// write resolved to (args.path may be relative, which would yield a broken
 		// `file://` URI). Falls back to plain text when the result lacks a path.
@@ -1387,7 +1387,7 @@ export const writeToolRenderer = {
 		if (result.isError) {
 			const errorText = result.content?.find(c => c.type === "text")?.text ?? "";
 			const header = renderStatusLine(
-				{ icon: "error", title: "Write", description: `${langIcon} ${pathDisplay}` },
+				{ icon: "error", title: "Write", description: `${langBadge}${pathDisplay}` },
 				uiTheme,
 			);
 			return framedBlock(uiTheme, width => ({
@@ -1413,7 +1413,7 @@ export const writeToolRenderer = {
 				iconOverride: isPartial ? undefined : uiTheme.styledSymbol("tool.write", "accent"),
 				spinnerFrame: options.spinnerFrame,
 				title: "Write",
-				description: `${langIcon} ${pathDisplay}${lineSuffix}${execSuffix}`,
+				description: `${langBadge}${pathDisplay}${lineSuffix}${execSuffix}`,
 			},
 			uiTheme,
 		);

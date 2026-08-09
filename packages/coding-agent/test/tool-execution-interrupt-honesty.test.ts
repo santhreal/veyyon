@@ -72,6 +72,14 @@ describe("tool block honesty about calls that never ran", () => {
 	 * rest is the shape this defect already had. The `length` row wraps at 80 columns and
 	 * the expected rows say so, because a notice that silently overflows would be its own
 	 * defect.
+	 *
+	 * THE CARD SHOWS THE CALL AND THE REASON, AND NOTHING ELSE. The `✗ failed` header and the
+	 * `Output` section carrying the loop's model-facing placeholder text used to sit above the
+	 * notice, so a call that touched nothing wore the chrome of a command that ran and exited
+	 * non-zero and stated its reason twice: once for the model ("Tool call was not executed
+	 * because the provider stream ended with an error before the tool could run: ...") and once
+	 * for the operator. The command the assistant asked for is the one fact the notice cannot
+	 * carry, so that is what the frame keeps.
 	 */
 	it.each([
 		["assistant_stop_aborted", ["  ! not executed: the turn was interrupted before this call ran"]],
@@ -91,13 +99,83 @@ describe("tool block honesty about calls that never ran", () => {
 		});
 
 		expect(rows(block)).toEqual([
-			"  ┌─── ✗ failed ─────────────────────────────────────────────────────────────┐",
+			"  ┌──────────────────────────────────────────────────────────────────────────┐",
 			"  │ $ npm run migrate:up                                                     │",
-			"  ├─── Output ───────────────────────────────────────────────────────────────┤",
-			"  │ Tool execution was aborted.                                              │",
 			"  └──────────────────────────────────────────────────────────────────────────┘",
 			...expectedRows,
 		]);
+	});
+
+	/**
+	 * The provider's own words. `upstreamError` is the only actionable fact a transport failure
+	 * carries — it is what separates "the stream stalled" from anything the operator's prompt
+	 * did — and it reached the screen only inside the model-facing placeholder, wrapped across
+	 * two rows of a red frame. Suppressing that body without moving the detail into the notice
+	 * would have deleted the fact, which is why it is asserted on its own.
+	 */
+	it("carries the provider's error into the notice", () => {
+		const block = createToolExecution("bash", { command: "npm run migrate:up" }, {}, undefined, ui);
+		block.setArgsComplete();
+		block.updateResult({
+			content: [{ type: "text", text: "Tool call was not executed because the provider stream ended." }],
+			details: {
+				__synthetic: true,
+				source: "assistant_stop_error",
+				executed: false,
+				upstreamError: "OpenAI completions stream stalled",
+			},
+			isError: true,
+		});
+
+		expect(rows(block)).toEqual([
+			"  ┌──────────────────────────────────────────────────────────────────────────┐",
+			"  │ $ npm run migrate:up                                                     │",
+			"  └──────────────────────────────────────────────────────────────────────────┘",
+			"  ! not executed: the provider stream failed before this call ran: OpenAI",
+			"  completions stream stalled",
+		]);
+	});
+
+	/**
+	 * The sibling discriminator, which is the whole reason this suite loops. `__skipped` with
+	 * `entered: false` is the same claim as a synthetic placeholder — the interrupt arrived
+	 * before the tool did anything — and it kept the failure frame and the placeholder text for
+	 * a release after the synthetic one was fixed.
+	 *
+	 * `entered: true` is the case that MUST keep its body: the tool was running, so its output
+	 * describes side effects that really happened.
+	 */
+	it.each([
+		[
+			false,
+			[
+				"  ┌──────────────────────────────────────────────────────────────────────────┐",
+				"  │ $ npm run migrate:up                                                     │",
+				"  └──────────────────────────────────────────────────────────────────────────┘",
+				"  ! not executed: an interrupt cut the batch short before this call ran",
+			],
+		],
+		[
+			true,
+			[
+				"  ┌─── ✗ failed ─────────────────────────────────────────────────────────────┐",
+				"  │ $ npm run migrate:up                                                     │",
+				"  ├─── Output ───────────────────────────────────────────────────────────────┤",
+				"  │ dropped table users                                                      │",
+				"  └──────────────────────────────────────────────────────────────────────────┘",
+				"  ! cut off while running: side effects may be partial",
+			],
+		],
+	])("renders an interrupt with entered=%s by whether the tool did anything", (entered, expectedRows) => {
+		const block = createToolExecution("bash", { command: "npm run migrate:up" }, {}, undefined, ui);
+		block.setArgsComplete();
+		block.updateResult({
+			content: [{ type: "text", text: "dropped table users" }],
+			details: { __skipped: true, source: "steering", entered },
+			isError: true,
+		});
+
+		expect(rows(block)).toEqual(expectedRows);
 	});
 
 	/**
