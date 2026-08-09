@@ -28,7 +28,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `statusLine.enabled` | Composer Footline | boolean | `false` | Show the quiet metadata line under the composer (model, mode, path, git, context). Off by default; the agent-focus exit hint still shows while a view is proxied. |
+| `statusLine.enabled` | Composer Footline | boolean | `true` | Show the quiet metadata line under the composer (model, mode, path, git, context). Off leaves the composer carrying nothing; the agent-focus exit hint still shows while a view is proxied. |
 | `statusLine.preset` | Status Line Preset | enum | `default` | Pre-built status line configurations. Values: `default`, `minimal`, `compact`, `full`, `nerd`, `ascii`, `custom`. |
 | `statusLine.sessionAccent` | Session Accent | boolean | `true` | Use the session name color for the editor border. Shown under the tab's Advanced fold. |
 | `statusLine.compactThinkingLevel` | Compact Thinking Level | boolean | `false` | Show the thinking level as a single icon on the model name instead of a separate ` · <level>` suffix. Shown under the tab's Advanced fold. |

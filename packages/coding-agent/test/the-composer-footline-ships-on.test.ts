@@ -1,25 +1,31 @@
 /**
- * The composer footline ships OFF, and the one line on it that is not a preference stays.
+ * The composer footline ships ON, and turning it off keeps the one line on it that is not a
+ * preference.
  *
- * WHY THIS SUITE EXISTS. The footline is a permanent row of standing state under a composer whose
- * whole design is quiet, and almost everything it carries is either already known (which model,
- * which mode, which directory) or available on demand (`/context` owns the gauge's own breakdown).
- * It is now opt-in: `statusLine.enabled` defaults to false, and an operator who wants the row
- * turns it on in `/settings`.
+ * WHY THIS SUITE EXISTS. The footline shipped OFF for one release, on the argument that everything
+ * it carries is either already known (which model, which mode, which directory) or available on
+ * demand (`/context` owns the gauge's own breakdown). The first operator to launch a build with the
+ * new default read the missing row as the binary having broken: it is the only standing answer to
+ * which directory this window is pointed at, which branch, which model and mode are live, and how
+ * much context is left, and none of those stay "just chosen" an hour into a session. So the default
+ * is ON, and an operator who wants a composer that carries nothing turns the row off in
+ * `/settings`.
  *
- * The risk a default flip like this carries is not "the row is missing" — that is the feature. It
- * is the things that were riding on the row and are not preferences:
+ * THE RISK A DEFAULT CARRIES RUNS BOTH WAYS, which is why this suite asserts both states of every
+ * claim rather than the shipped one:
  *
- *  1. THE FOCUS BADGE. While the view is proxied onto an agent, Esc means "go back" rather than
+ *  1. THE DEFAULT ITSELF. A row that ships on has to render on a session that set nothing, which is
+ *     exactly the configuration no test exercises when every suite enables it first.
+ *  2. THE FOCUS BADGE. While the view is proxied onto an agent, Esc means "go back" rather than
  *     "clear the line", and the badge is the only persistent thing that says so. That defect has
- *     already shipped once, from the other direction: the announcement lived in a preset-gated
- *     segment, so on four of six presets a focused view was indistinguishable from your own
- *     (see `modes/components/the-proxied-view-says-how-to-leave-it.test.ts`). A footline
- *     preference must not be able to reintroduce it, so off means "no segments", not "no row".
- *  2. THE CLICK MAP. `quietSegmentAt` answers from the layout the last render recorded, and the
+ *     already shipped once: the announcement lived in a preset-gated segment, so on four of six
+ *     presets a focused view was indistinguishable from your own (see
+ *     `modes/components/the-proxied-view-says-how-to-leave-it.test.ts`). Turning the footline off
+ *     must not be able to reintroduce it, so off means "no segments", not "no row".
+ *  3. THE CLICK MAP. `quietSegmentAt` answers from the layout the last render recorded, and the
  *     composer routes clicks on that row through it. A row that renders a badge and no segments
  *     must record no segments, or a click lands on wherever `mode` was several renders ago.
- *  3. THE DEPENDENT SETTINGS. A preset is a layout for a row that is not on screen, and the
+ *  4. THE DEPENDENT SETTINGS. A preset is a layout for a row that is not on screen, and the
  *     thinking-level spelling is a detail of a chip that is not rendered. Both hide while the
  *     footline is off. `statusLine.sessionAccent` does NOT hide: it colors the editor border and
  *     the working-message accent, which have nothing to do with this row.
@@ -32,8 +38,9 @@
  * WHAT THIS DOES NOT CATCH, honestly. It drives the composer that exists. A SECOND composer
  * surface that mounted its own footline without consulting the setting would be a new mount path,
  * and nothing here would see it; today `capabilityLine` is the only one (`mountComposerZone` takes
- * exactly one footline component). Moving the gate INSIDE the status-line component would leave
- * every test here green, which is correct: these assert the contract, not where it is enforced.
+ * exactly one footline component). It also cannot see a preset that resolves to no visible segments
+ * at all: the row would be on, empty, and every assertion here would still pass — the width and
+ * content assertions pin what a rendered row looks like, not that a preset selects anything.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
@@ -56,7 +63,7 @@ import { stubStdoutGeometry } from "./helpers/stdout-geometry";
 const WIDTH = 100;
 const AGENT = "designer-3";
 
-describe("the composer footline is opt-in", () => {
+describe("the composer footline ships on", () => {
 	let authStorage: AuthStorage;
 	let mode: InteractiveMode;
 	let session: AgentSession;
@@ -77,7 +84,7 @@ describe("the composer footline is opt-in", () => {
 			vi.spyOn(process.stdin, "setRawMode").mockReturnValue(process.stdin);
 		}
 		resetSettingsForTest();
-		tempDir = TempDir.createSync("@pi-footline-opt-in-");
+		tempDir = TempDir.createSync("@pi-footline-ships-on-");
 		await Settings.init({ inMemory: true, cwd: tempDir.path() });
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		const modelRegistry = new ModelRegistry(authStorage);
@@ -120,32 +127,34 @@ describe("the composer footline is opt-in", () => {
 			.join("\n");
 	}
 
-	async function enableFootline(): Promise<void> {
-		await Settings.instance.set("statusLine.enabled", true);
+	async function hideFootline(): Promise<void> {
+		await Settings.instance.set("statusLine.enabled", false);
 	}
 
 	/**
-	 * THE DEFAULT. Zero rows rather than one empty row: an empty row still costs the composer a
-	 * line of vertical space and still pushes the input up, which is most of what the operator was
-	 * turning off.
+	 * THE DEFAULT, asserted on a session that set nothing. This is the configuration every other
+	 * footline suite skips past by enabling the row in its own `beforeEach`, and it is the one an
+	 * operator's first launch actually runs: the row shipped off once, and the missing state read as
+	 * a broken build rather than as a quiet composer.
 	 */
-	it("renders no footline row at all until it is asked for", () => {
-		expect(Settings.instance.get("statusLine.enabled")).toBe(false);
-		expect(rows()).toEqual([]);
-	});
-
-	/**
-	 * NON-VACUITY for every "the row is gone" assertion here. If the row never rendered under any
-	 * setting, the tests above would pass on a permanently dead component.
-	 */
-	it("renders the row, with its segments, once the setting is on", async () => {
-		await enableFootline();
+	it("renders the row, with its segments, out of the box", () => {
+		expect(Settings.instance.get("statusLine.enabled")).toBe(true);
 
 		const [row, ...rest] = rows();
 
 		expect(rest).toEqual([]);
-		expect(row).toBeDefined();
 		expect(row).toContain("Sonnet");
+	});
+
+	/**
+	 * NON-VACUITY for every "the row is gone" assertion below, and the opt-out itself. Zero rows
+	 * rather than one empty row: an empty row still costs the composer a line of vertical space and
+	 * still pushes the input up, which is most of what an operator turning it off is asking for.
+	 */
+	it("renders no row at all once the operator turns it off", async () => {
+		await hideFootline();
+
+		expect(rows()).toEqual([]);
 	});
 
 	/**
@@ -154,27 +163,27 @@ describe("the composer footline is opt-in", () => {
 	 * would need a restart to take effect, which for a display preference reads as a broken toggle.
 	 */
 	it("appears and disappears on the next frame, with no re-mount", async () => {
-		expect(rows()).toEqual([]);
-
-		await enableFootline();
 		expect(rows().length).toBe(1);
 
-		await Settings.instance.set("statusLine.enabled", false);
+		await hideFootline();
 		expect(rows()).toEqual([]);
+
+		await Settings.instance.set("statusLine.enabled", true);
+		expect(rows().length).toBe(1);
 	});
 
 	/**
-	 * The frame is what the operator sees, and the row's content must be absent from it rather than
-	 * merely unmounted. The marker is the rendered row itself: a hand-picked substring (a model
-	 * name, the separator) also appears in the welcome splash above the composer, so it would pass
-	 * on a frame that still carried the whole footline.
+	 * The frame is what the operator sees, and the row's content must leave it rather than merely
+	 * unmounting. The marker is the rendered row itself: a hand-picked substring (a model name, the
+	 * separator) also appears in the welcome splash above the composer, so it would pass on a frame
+	 * that still carried the whole footline.
 	 */
 	it("keeps the footline's segments out of the frame while it is off", async () => {
-		const off = frame();
-
-		await enableFootline();
 		const on = frame();
 		const row = (rows()[0] ?? "").trim();
+
+		await hideFootline();
+		const off = frame();
 
 		expect(row.length).toBeGreaterThan(0);
 		expect(on).toContain(row);
@@ -182,11 +191,12 @@ describe("the composer footline is opt-in", () => {
 	});
 
 	/**
-	 * REGRESSION GUARD, the expensive half of this change. Esc changes meaning while the view is
+	 * REGRESSION GUARD, the expensive half of the opt-out. Esc changes meaning while the view is
 	 * proxied onto an agent, and the badge is the only persistent thing that says so. Turning the
 	 * footline off must not be able to hide it.
 	 */
-	it("still says whose session you are in, and how to leave, while the footline is off", () => {
+	it("still says whose session you are in, and how to leave, while the footline is off", async () => {
+		await hideFootline();
 		mode.statusLine.setSession(session, AGENT);
 
 		const [row, ...rest] = rows();
@@ -197,7 +207,8 @@ describe("the composer footline is opt-in", () => {
 	});
 
 	/** Off means "no segments", not "the whole footline whenever an agent is focused". */
-	it("carries the badge alone, with none of the footline's segments", () => {
+	it("carries the badge alone, with none of the footline's segments", async () => {
+		await hideFootline();
 		mode.statusLine.setSession(session, AGENT);
 
 		const row = rows()[0] ?? "";
@@ -207,24 +218,33 @@ describe("the composer footline is opt-in", () => {
 	});
 
 	/**
-	 * THE OTHER MEMBER of the same union: with the footline ON, the badge shares the row with the
+	 * THE OTHER MEMBER of the same union: with the footline on, the badge shares the row with the
 	 * segments rather than replacing them. Without this, a gate that routed every focused render
-	 * through the badge-only path would look correct here and would silently delete the footline
-	 * for anyone who both turned it on and opened an agent.
+	 * through the badge-only path would look correct above and would silently delete the footline
+	 * for anyone who opened an agent.
+	 *
+	 * Asserted at 200 columns on purpose. At 100 the badge plus the right-hand group fills the
+	 * budget and the left group is shed entirely, which is the width shed working correctly; a
+	 * narrow assertion here would read that as the badge having replaced the segments and would
+	 * pin one particular shed order as the contract.
 	 */
-	it("shares the row between the badge and the segments while the footline is on", async () => {
-		await enableFootline();
+	it("shares the row between the badge and the segments while the footline is on", () => {
 		mode.statusLine.setSession(session, AGENT);
 
-		const row = rows()[0] ?? "";
+		const row = stripVTControlCharacters(mode.capabilityLine.render(200)[0] ?? "");
 
 		expect(row).toContain(AGENT);
 		expect(row).toContain("esc to go back");
 		expect(row).toContain("Sonnet");
 	});
 
-	/** Unproxied and off is the resting state: no badge, no row. */
-	it("says nothing about going back when nothing is proxied", () => {
+	/** Nothing proxied: the row says what the session is, and nothing about going back. */
+	it("says nothing about going back when nothing is proxied", async () => {
+		expect(rows().length).toBe(1);
+		expect(frame()).not.toContain("esc to go back");
+
+		await hideFootline();
+
 		expect(rows()).toEqual([]);
 		expect(frame()).not.toContain("esc to go back");
 	});
@@ -235,11 +255,10 @@ describe("the composer footline is opt-in", () => {
 	 * open the goal detail view or the context breakdown from a row that shows neither.
 	 */
 	it("leaves no clickable segments behind on the badge-only row", async () => {
-		await enableFootline();
 		rows();
 		expect(mode.statusLine.getQuietSegmentBounds().length).toBeGreaterThan(0);
 
-		await Settings.instance.set("statusLine.enabled", false);
+		await hideFootline();
 		mode.statusLine.setSession(session, AGENT);
 		rows();
 
@@ -249,15 +268,26 @@ describe("the composer footline is opt-in", () => {
 		}
 	});
 
-	/** A badge wider than the terminal would wrap and push the composer up a row on every render. */
-	it("fits the width it is given, even at a width the badge cannot fit in", () => {
+	/**
+	 * A row wider than the terminal wraps and pushes the composer up on every render, so both states
+	 * are pinned: the segments the default renders, and the badge that survives the opt-out. Ten
+	 * columns is narrower than either can fit in, which is the width that catches a renderer that
+	 * pads to its content instead of to the space it was given.
+	 */
+	it("fits the width it is given, in both states, even where the content cannot fit", async () => {
 		mode.statusLine.setSession(session, AGENT);
 
-		for (const width of [10, 30, WIDTH]) {
-			const rendered = mode.capabilityLine.render(width).map(line => stripVTControlCharacters(line));
+		for (const enabled of [true, false]) {
+			await Settings.instance.set("statusLine.enabled", enabled);
+			for (const width of [10, 30, WIDTH]) {
+				const rendered = mode.capabilityLine.render(width).map(line => stripVTControlCharacters(line));
 
-			for (const line of rendered) {
-				expect(`${width}: ${line.length <= width}`).toBe(`${width}: true`);
+				for (const line of rendered) {
+					const fits = line.length <= width;
+					expect(`on=${enabled} w=${width} fits=${fits} ${JSON.stringify(line)}`).toBe(
+						`on=${enabled} w=${width} fits=true ${JSON.stringify(line)}`,
+					);
+				}
 			}
 		}
 	});
@@ -302,33 +332,37 @@ describe("the Status Line rows that only matter while the footline renders", () 
 		return component.render(WIDTH).map(stripVTControlCharacters).join("\n");
 	}
 
-	/** The toggle itself is always reachable, or the feature could not be turned on at all. */
-	it("offers the footline toggle while the footline is off", () => {
+	/** The toggle itself is always reachable, in both states, or the row could not be turned back on. */
+	it("offers the footline toggle whichever way it is set", async () => {
+		expect(appearancePanel()).toContain("Composer Footline");
+
+		await Settings.instance.set("statusLine.enabled", false);
+
 		expect(appearancePanel()).toContain("Composer Footline");
 	});
 
-	it("hides the preset while the footline is off, and offers it once it is on", async () => {
-		expect(appearancePanel()).not.toContain("Status Line Preset");
-
-		await Settings.instance.set("statusLine.enabled", true);
-
+	it("offers the preset by default, and hides it once the footline is off", async () => {
 		expect(appearancePanel()).toContain("Status Line Preset");
+
+		await Settings.instance.set("statusLine.enabled", false);
+
+		expect(appearancePanel()).not.toContain("Status Line Preset");
 	});
 
 	/**
 	 * `statusLine.compactThinkingLevel` is an advanced row, which the panel folds away unless its
 	 * value differs from the default — a changed value always surfaces. Setting it is therefore
-	 * what makes the condition observable: with the footline off it must stay hidden even though
-	 * it is changed, because the chip it re-spells is not being rendered.
+	 * what makes the condition observable: with the footline off it must go back to hidden even
+	 * though it is changed, because the chip it re-spells is not being rendered.
 	 */
-	it("hides the changed thinking-level spelling while the footline is off", async () => {
+	it("hides the changed thinking-level spelling once the footline is off", async () => {
 		await Settings.instance.set("statusLine.compactThinkingLevel", true);
 
-		expect(appearancePanel()).not.toContain("Compact Thinking Level");
-
-		await Settings.instance.set("statusLine.enabled", true);
-
 		expect(appearancePanel()).toContain("Compact Thinking Level");
+
+		await Settings.instance.set("statusLine.enabled", false);
+
+		expect(appearancePanel()).not.toContain("Compact Thinking Level");
 	});
 
 	/**
@@ -338,6 +372,7 @@ describe("the Status Line rows that only matter while the footline renders", () 
 	 */
 	it("keeps the session accent row, which is not part of the footline", async () => {
 		await Settings.instance.set("statusLine.sessionAccent", false);
+		await Settings.instance.set("statusLine.enabled", false);
 
 		expect(appearancePanel()).toContain("Session Accent");
 	});
@@ -350,7 +385,7 @@ describe("the Status Line rows that only matter while the footline renders", () 
 	 */
 	it("requires a decision from every statusLine row that reaches the settings screen", () => {
 		// Reasons these three answer for something other than the footline row:
-		//  - `statusLine.enabled` is the master toggle; hiding it would strand the feature off.
+		//  - `statusLine.enabled` is the master toggle; hiding it would strand the row off.
 		//  - `sessionAccent` colors the editor border and the working-message accent.
 		//  - `showHookStatus` gates the component's own hook-status rows, mounted above the
 		//    hairline, which render whether or not the footline does.

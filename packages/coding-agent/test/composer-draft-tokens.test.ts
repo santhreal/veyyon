@@ -60,9 +60,9 @@ describe("composer draft token count (DS-6 dock)", () => {
 		resetSettingsForTest();
 		tempDir = TempDir.createSync("@pi-composer-draft-tokens-");
 		await Settings.init({ inMemory: true, cwd: tempDir.path() });
-		// The footline is opt-in (`statusLine.enabled` defaults to false, see
-		// `the-composer-footline-is-opt-in.test.ts`), and this zone rides its right side. The zone's
-		// own contract starts once the row exists.
+		// The footline ships on (`statusLine.enabled`, see `the-composer-footline-ships-on.test.ts`),
+		// and this zone rides its right side. Set explicitly so the zone's own contract holds against
+		// the row rather than against whatever the default happens to be.
 		await Settings.instance.set("statusLine.enabled", true);
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		const modelRegistry = new ModelRegistry(authStorage);

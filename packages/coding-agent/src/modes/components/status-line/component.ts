@@ -413,7 +413,10 @@ export class StatusLineComponent implements Component {
 	 * the rebuild happens when one of them moves and not otherwise. The name is in the key because
 	 * renaming an account from the card must change this line, not the line after next.
 	 */
-	#cachedServingAccount: { key: string; value: { label: string; storedCount: number } | null } | null = null;
+	#cachedServingAccount: {
+		key: string;
+		value: { label: string; storedCount: number; isPrediction: boolean } | null;
+	} | null = null;
 	// Context-usage memo. The status line redraws on every agent event, so the
 	// hot path must not recompute context tokens unless an input changed.
 	// `getContextUsage()` anchors on the last assistant's real prompt-token
@@ -922,8 +925,15 @@ export class StatusLineComponent implements Component {
 	 * differ exactly when the interesting thing happened — a chosen account was rate-limit blocked
 	 * or revoked and traffic moved — and the line has to name what is being spent, not what was
 	 * picked. Falls back to the first stored credential, which is what an unselected provider uses.
+	 *
+	 * Carries whether the answer is a PREDICTION. Routing answers with the account the next request
+	 * would use even before one has gone out, so this resolver has a label to report from the first
+	 * frame; the flag is what stops the line from wording that as an account already being spent.
+	 * It joins the memo key, because the flip from predicted to observed happens on the first
+	 * request with everything else about the account unchanged, and a key that could not see it
+	 * would pin the opening wording for the rest of the cache's life.
 	 */
-	#servingAccount(session: AgentSession): { label: string; storedCount: number } | null {
+	#servingAccount(session: AgentSession): { label: string; storedCount: number; isPrediction: boolean } | null {
 		const activeProvider = session.state.model?.provider ?? session.model?.provider;
 		const authStorage = session.modelRegistry?.authStorage;
 		if (!activeProvider || !authStorage) return null;
@@ -937,6 +947,7 @@ export class StatusLineComponent implements Component {
 			servingId,
 			stored.length,
 			authStorage.getAccountName(activeProvider, servingId) ?? "",
+			routing?.activeIsPrediction === true ? "next" : "serving",
 		].join("\0");
 		const cached = this.#cachedServingAccount;
 		if (cached?.key === key) return cached.value;
@@ -945,7 +956,13 @@ export class StatusLineComponent implements Component {
 			activeProvider,
 		);
 		const serving = rows.find(row => row.credentialId === servingId) ?? rows[0];
-		const value = serving ? { label: accountDisplayLabel(serving), storedCount: rows.length } : null;
+		const value = serving
+			? {
+					label: accountDisplayLabel(serving),
+					storedCount: rows.length,
+					isPrediction: serving.activeForSession && serving.activeIsPrediction,
+				}
+			: null;
 		this.#cachedServingAccount = { key, value };
 		return value;
 	}
@@ -1516,12 +1533,22 @@ export class StatusLineComponent implements Component {
 		// the line is built into what the badge leaves, so no width pressure can
 		// shed the one line of text that says whose session this is and that Esc
 		// leaves it.
-		const badge = this.#focusedAgentId ? focusExitBadge(this.#focusedAgentId) : "";
+		const rawBadge = this.#focusedAgentId ? focusExitBadge(this.#focusedAgentId) : "";
+		// The badge is prefixed verbatim, so it has to be clamped to the row exactly as
+		// `renderFocusBadge` clamps it: an agent id long enough to outrun the terminal wrapped the
+		// footline and pushed the composer up a row on every render.
+		const badge = rawBadge === "" ? "" : truncateToWidth(rawBadge, Math.max(1, width));
 		const badgeWidth = visibleWidth(badge);
-		const { location, capLeft, capRight } = this.#gatherQuietSegments(width - badgeWidth);
+		const { location, capLeft, capRight } = this.#gatherQuietSegments(Math.max(0, width - badgeWidth));
 		const sep = theme.fg("dim", "  ·  ");
-		// One cell of right margin, always — nothing kisses the terminal edge.
-		const budget = Math.max(1, width - 1 - badgeWidth);
+		// One cell of right margin, always — nothing kisses the terminal edge. Floored at ZERO, not
+		// at one: a badge that already fills the row leaves no room to compete for, and clamping to
+		// one cell is what let a 28-cell badge plus a segment render onto an 8-cell row.
+		const budget = Math.max(0, width - 1 - badgeWidth);
+		if (budget === 0) {
+			this.#quietLineBounds = [];
+			return badge === "" ? null : badge;
+		}
 		const locationContents = location.map(part => part.content);
 		let left = this.#locationWithRunClock(locationContents, sep);
 		const rightParts = [...capLeft, ...capRight];
