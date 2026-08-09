@@ -18,11 +18,13 @@
  * It is named below as an ACCEPTED case, not quietly dropped from the refusal list: a verb leaving
  * this suite has to be a decision someone can see, or the guard erodes one exemption at a time.
  *
- * WHICH GRAMMAR THIS IS. Option ownership is a property of the VERB grammar, and the verbs now
- * exist only on the noninteractive surface: a terminal has no `rm` to hand `--scope` to, because
- * the whole argument line there is the credential. So every parse below is explicitly
- * `"noninteractive"`. Nothing here is weakened by that; it is the same guard against the same
- * silent no-op, pinned on the surface that can still commit it.
+ * WHICH GRAMMAR THIS IS. Option ownership is a property of the VERB grammar, and both surfaces
+ * share it: `list`, `rm`, `extend` and `log` parse in a terminal as well as in a client with no
+ * masked field. What the surfaces disagree about is how a CREDENTIAL is entered, which is why every
+ * parse below names `"noninteractive"` explicitly rather than leaning on the default. In the
+ * terminal grammar the first word decides, so a case whose first word is not a reserved verb is the
+ * credential itself: it would be stored rather than refused, and the test would fail for a reason
+ * that has nothing to do with option ownership.
  *
  * The other half of what these tests pin is that the refusal is USEFUL: it names the subcommand
  * that does take the option, so the operator learns the right command instead of only learning
@@ -35,9 +37,11 @@ import { parseSecretCommand } from "@veyyon/coding-agent/secrets/secret-command"
 /**
  * Parse on the verb surface, returning the thrown message.
  *
- * The surface is spelled out at the call rather than left to the parameter's default, because the
- * default is the terminal grammar, where every line below would be stored as a credential instead
- * of refused and each of these tests would fail for a reason that has nothing to do with options.
+ * The surface is spelled out at the call rather than left to the parameter's default. Option
+ * ownership is checked after the verb resolves, so a reserved first word reaches the same refusal on
+ * either surface; what the default would change is a line whose first word is NOT a verb, which the
+ * terminal grammar stores as a credential. Naming the surface keeps a case added later from failing
+ * for a reason that has nothing to do with options.
  */
 function refusal(args: string): string {
 	try {

@@ -799,14 +799,18 @@ export interface ExaSettings {
 	enableWebsets: boolean;
 }
 
-export interface StatusLineSettings {
-	preset: StatusLinePreset;
-	separator: StatusLineSeparatorStyle;
-	showHookStatus: boolean;
-	leftSegments: StatusLineSegmentId[];
-	rightSegments: StatusLineSegmentId[];
-	segmentOptions: Record<string, unknown>;
-}
+/**
+ * Every `statusLine.*` setting, derived from the schema rather than restated.
+ *
+ * `getGroup("statusLine")` returns every key with that prefix at run time, and the
+ * hand-written version of this interface listed six of eleven: `enabled`,
+ * `sessionAccent`, `transparent`, `compactThinkingLevel` and `showAccount` were all
+ * readable and none of them type-checked. A mapped type cannot fall behind the next
+ * footline knob someone adds.
+ */
+export type StatusLineSettings = {
+	[P in SettingPath as P extends `statusLine.${infer Key}` ? Key : never]: SettingValue<P>;
+};
 
 export interface ThinkingBudgetsSettings {
 	minimal: number;

@@ -58,7 +58,15 @@ const DEMOTED_APPEARANCE_PATHS = [
 // toggle across sessions; it lands here rather than in the visible set because
 // the toggle is already how people reach it, and this row only persists the
 // choice they made with it.
-const EXTRA_ADVANCED_APPEARANCE_PATHS = ["tui.scrollIsolation", "display.toolOutputExpanded"] as const;
+// `statusLine.showAccount` names the account serving the next request on the
+// footline. It is silent for a provider holding one credential, which is most
+// setups, so it belongs beside the other footline display details rather than
+// among the rows every session has an opinion about.
+const EXTRA_ADVANCED_APPEARANCE_PATHS = [
+	"tui.scrollIsolation",
+	"display.toolOutputExpanded",
+	"statusLine.showAccount",
+] as const;
 
 // Everything the collapsed Advanced fold holds today: the spec-demoted originals
 // still on this tab, plus any post-spec experimental additions. Drives the heading

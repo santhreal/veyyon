@@ -134,8 +134,6 @@ const VERIFIED_IN_PLAIN_MONOSPACE: readonly number[] = [
 	0x2750, // ❐  tool.write
 	0x27e6, // ⟦  format.bracketLeft
 	0x27e7, // ⟧  format.bracketRight
-	0x27e8, // ⟨  lang.xml
-	0x27e9, // ⟩  lang.xml
 	0x27f5, // ⟵  nav.back
 ];
 
