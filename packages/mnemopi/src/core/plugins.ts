@@ -1,9 +1,16 @@
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
+import { hermesRoot } from "../config";
 
-export const DEFAULT_PLUGIN_DIR = join(homedir(), ".hermes", "mnemopi", "plugins");
+/**
+ * Resolved per call rather than baked at import: a constant computed from `homedir()`
+ * cannot be moved by `MNEMOPI_HOME`, so a plugin write landed in the real home no
+ * matter how the caller was isolated.
+ */
+export function pluginRoot(env: NodeJS.ProcessEnv = process.env): string {
+	return join(hermesRoot(env), "mnemopi", "plugins");
+}
 
 export type PluginConfig = Record<string, unknown>;
 export type MemoryDict = Record<string, unknown>;
@@ -268,7 +275,7 @@ export type PluginConstructor<T extends MnemopiPlugin = MnemopiPlugin> = new (co
 export class PluginManager {
 	readonly #registry = new Map<string, PluginConstructor>();
 	readonly #instances = new Map<string, MnemopiPlugin>();
-	constructor(private readonly pluginDir = DEFAULT_PLUGIN_DIR) {
+	constructor(private readonly pluginDir: string = pluginRoot()) {
 		this.registerPlugin("logging", LoggingPlugin);
 		this.registerPlugin("metrics", MetricsPlugin);
 		this.registerPlugin("filter", FilterPlugin);

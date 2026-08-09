@@ -19,10 +19,39 @@ import {
 export type { Env };
 export { envBool, envDisabled, envFloat, envInt, envOneOf, envOptionalString, envString, envTruthy };
 
-export const DEFAULT_DATA_DIR = join(homedir(), ".hermes", "mnemopi", "data");
+/**
+ * THE home this package derives every on-disk root from.
+ *
+ * Order: `MNEMOPI_HOME`, then `HOME`, then `os.homedir()`. It is a function, and that
+ * is the whole point of it. The roots used to be module-level constants computed from
+ * `homedir()` at import time, which made them unreachable by any lever: a test could
+ * move `VEYYON_CONFIG_DIR` and `MNEMOPI_DATA_DIR` and still have `storeBlob()` create
+ * `~/.hermes/mnemopi/blobs` in the operator's real home, because that path was decided
+ * before the test ran. `MNEMOPI_HOME` moves every root at once, so isolating this
+ * package is one variable rather than one variable per directory that happens to exist
+ * today.
+ *
+ * The dot-directory names below it are unchanged: this resolves WHERE the home is, not
+ * what the package calls its directories inside it.
+ */
+export function mnemopiHome(env: Env = process.env): string {
+	return envOptionalString("MNEMOPI_HOME", env) ?? envOptionalString("HOME", env) ?? homedir();
+}
+
+/** The `.hermes` root: data, models, blobs, plugins and the embedding cache live under it. */
+export function hermesRoot(env: Env = process.env): string {
+	return join(mnemopiHome(env), ".hermes");
+}
+
 export const DEFAULT_DB_FILENAME = "mnemopi.db";
-export const FASTEMBED_CACHE_DIR = join(homedir(), ".hermes", "cache", "fastembed");
-export const MODEL_CACHE_DIR = join(homedir(), ".hermes", "mnemopi", "models");
+
+export function fastembedCacheDir(env: Env = process.env): string {
+	return join(hermesRoot(env), "cache", "fastembed");
+}
+
+export function modelCacheDir(env: Env = process.env): string {
+	return join(hermesRoot(env), "mnemopi", "models");
+}
 
 export const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5";
 /**
@@ -82,7 +111,7 @@ export const VERACITY_WEIGHT_DEFAULTS = {
 } as const;
 
 export function dataDir(env: Env = process.env): string {
-	return envOptionalString("MNEMOPI_DATA_DIR", env) ?? DEFAULT_DATA_DIR;
+	return envOptionalString("MNEMOPI_DATA_DIR", env) ?? join(hermesRoot(env), "mnemopi", "data");
 }
 
 export function dbPath(env: Env = process.env): string {
