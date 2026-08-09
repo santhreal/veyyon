@@ -18,7 +18,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, collapseWhitespace, formatCount, formatMoreLines } from "@veyyon/utils";
+import { clampLow, collapseWhitespace, formatCount, formatMoreLines, isRecord } from "@veyyon/utils";
 import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 import type {
 	ExtensionAskDialogOption,
@@ -370,7 +370,7 @@ function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQues
 	for (let index = 0; index < questions.length; index++) {
 		const raw: unknown = questions[index];
 		const at = `Ask dialog question ${index}`;
-		if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+		if (!isRecord(raw)) {
 			throw new Error(`${at} is ${describeAskValue(raw)}, not an object.`);
 		}
 		const question = raw as Partial<ExtensionAskDialogQuestion>;
@@ -392,7 +392,7 @@ function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQues
 		for (let optionIndex = 0; optionIndex < question.options.length; optionIndex++) {
 			const option: unknown = question.options[optionIndex];
 			const optionAt = `${where} option ${optionIndex}`;
-			if (typeof option !== "object" || option === null || Array.isArray(option)) {
+			if (!isRecord(option)) {
 				throw new Error(`${optionAt} is ${describeAskValue(option)}, not an object.`);
 			}
 			const { label, description, preview } = option as Partial<ExtensionAskDialogOption>;
