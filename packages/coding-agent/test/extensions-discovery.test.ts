@@ -11,6 +11,7 @@ import { type ExtensionModule, extensionModuleCapability } from "@veyyon/coding-
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { getCapability } from "@veyyon/coding-agent/discovery";
+import * as discoveryHelpers from "@veyyon/coding-agent/discovery/helpers";
 import {
 	discoverAndLoadExtensions,
 	discoverExtensionPaths,
@@ -898,20 +899,27 @@ describe("extensions discovery", () => {
 	});
 
 	// ONE PLACE lock. Extension layout resolution had two implementations carrying
-	// the same doc comment and behaving differently; this fails if a second walk
-	// reappears in the loader instead of extending the single owner.
-	it("keeps exactly one extension-discovery walk", async () => {
-		const loaderSrc = await Bun.file(
-			path.join(import.meta.dir, "..", "src", "extensibility", "extensions", "loader.ts"),
-		).text();
+	// the same doc comment and behaving differently. Neutering the single owner must
+	// leave BOTH branches with nothing to load: the well-known profile dir and an
+	// explicitly configured path. A second hand-rolled walk in the loader would keep
+	// finding these files with the owner stubbed out, and that is the regression.
+	it("routes both discovery branches through the one layout owner", async () => {
+		const configured = path.join(tempDir.path(), "owner-lock");
+		fs.mkdirSync(configured, { recursive: true });
+		fs.writeFileSync(path.join(configured, "configured.ts"), extensionCode);
+		fs.writeFileSync(path.join(extensionsDir, "well-known.ts"), extensionCode);
+		clearFsCache();
 
-		expect(loaderSrc).toContain("discoverExtensionModulePaths");
-		// A re-hand-rolled directory walk in the loader is the regression.
-		expect(loaderSrc).not.toMatch(/fs\.readdir\s*\([^)]*withFileTypes/);
-		expect(loaderSrc).not.toMatch(/async function discoverExtensionsInDir/);
+		const before = (await discoverExtensionPaths([configured], tempDir.path())).map(p => path.basename(p));
+		expect(before).toContain("configured.ts");
+		expect(before).toContain("well-known.ts");
 
-		const helpersSrc = await Bun.file(path.join(import.meta.dir, "..", "src", "discovery", "helpers.ts")).text();
-		const owners = helpersSrc.match(/export async function discoverExtensionModulePaths/g) ?? [];
-		expect(owners.length).toBe(1);
+		const walk = vi.spyOn(discoveryHelpers, "discoverExtensionModulePaths").mockResolvedValue([]);
+		try {
+			clearFsCache();
+			expect(await discoverExtensionPaths([configured], tempDir.path())).toEqual([]);
+		} finally {
+			walk.mockRestore();
+		}
 	});
 });
