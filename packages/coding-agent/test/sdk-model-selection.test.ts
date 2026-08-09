@@ -319,7 +319,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		expect(session.thinkingLevel).toBe("off");
 	});
 
-	test("clamps a max default thinking level to the model's ladder ceiling", async () => {
+	test("a max default thinking level fabricates no ladder on a model that declares none", async () => {
 		const settings = Settings.isolated({ defaultThinkingLevel: "max" });
 
 		const { session } = await createAgentSession({
@@ -330,9 +330,16 @@ describe("createAgentSession deferred model pattern resolution", () => {
 
 		expect(session.model?.provider).toBe("runtime-provider");
 		expect(session.model?.id).toBe("runtime-reasoning-model");
-		// The extension model has no explicit ladder; the inferred fallback tops
-		// out at xhigh, so the real max level clamps down.
-		expect(session.thinkingLevel).toBe(Effort.XHigh);
+		// The extension registers `reasoning: true` and no effort surface, and
+		// nothing may derive one from the model id, so the operator's `max` default
+		// resolves to no effort at all rather than to an invented ceiling. The
+		// reason is asserted beside the effect: a session reporting no level while
+		// the model DID declare a ladder would be a different defect.
+		expect(session.model?.thinking).toBeUndefined();
+		expect(session.thinkingLevel).toBeUndefined();
+		// Clamping onto a ladder that exists is owned by
+		// `agent-session-role-thinking.test.ts` ("clamps max selections down to the
+		// ladder ceiling on models without a max tier").
 	});
 
 	test("selects the settings default model without synchronously validating auth", async () => {
@@ -668,7 +675,10 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		try {
 			expect(session.model?.provider).toBe("runtime-provider");
 			expect(session.model?.id).toBe("runtime-reasoning-model");
-			expect(session.thinkingLevel).toBe(Effort.XHigh);
+			// The restored `:max` selector names a level this extension model never
+			// declared, and no ladder is invented for it, so it resolves to nothing.
+			expect(session.model?.thinking).toBeUndefined();
+			expect(session.thinkingLevel).toBeUndefined();
 		} finally {
 			await session.dispose();
 			authStorage.close();

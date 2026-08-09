@@ -488,13 +488,19 @@ describe("system prompt cache prefix", () => {
 	};
 
 	/**
-	 * Providers cache block zero across turns and parent/subagent requests. This
-	 * test prevents tool, model, personality, and delegation settings from
-	 * invalidating that cache boundary while proving the later policy block
-	 * still reflects those capabilities.
+	 * The prompt reaches the model as TWO blocks: the assembled template, then the
+	 * PROJECT section. Providers cache a prefix, so what matters is which block a
+	 * given input lands in.
+	 *
+	 * The template block carries every gate input (tools, model, personality,
+	 * delegation, section order), so changing one of those costs a cache miss by
+	 * design. The PROJECT block carries the volatile per-turn context (workspace
+	 * tree, cwd, context files) and must stay INDEPENDENT of the gates, so a tool
+	 * or personality change cannot invalidate it and a project change cannot
+	 * invalidate the template.
 	 */
-	it("keeps the first block byte-identical across dynamic harness policies", async () => {
-		const minimal = await buildSystemPrompt({
+	it("splits the gated template from the volatile project block", async () => {
+		const minimalOptions = {
 			...baseOptions,
 			skills: [],
 			toolNames: ["read"],
@@ -504,7 +510,9 @@ describe("system prompt cache prefix", () => {
 			taskBatch: false,
 			taskMaxConcurrency: 1,
 			renderMermaid: false,
-		});
+		};
+		const minimal = await buildSystemPrompt(minimalOptions);
+		const repeated = await buildSystemPrompt(minimalOptions);
 		const delegated = await buildSystemPrompt({
 			...baseOptions,
 			skills: [
@@ -529,11 +537,21 @@ describe("system prompt cache prefix", () => {
 			sectionOrder: ["tool-policy", "role"],
 		});
 
-		expect(minimal.systemPrompt[0]).toBe(delegated.systemPrompt[0]);
-		expect(minimal.systemPrompt[1]).not.toBe(delegated.systemPrompt[1]);
-		expect(minimal.systemPrompt[0]).toContain("DELIVERY CONTRACT");
-		expect(minimal.systemPrompt[0]).not.toContain("TOOL POLICY");
-		expect(delegated.systemPrompt[1]).toContain("TOOL POLICY");
-		expect(delegated.systemPrompt[1]).toContain("<personality>");
+		// Same inputs, same bytes: the prefix is stable across turns.
+		expect(minimal.systemPrompt[0]).toBe(repeated.systemPrompt[0]);
+		// The gates live in the template block, so a different session differs there.
+		expect(delegated.systemPrompt[0]).not.toBe(minimal.systemPrompt[0]);
+		expect(minimal.systemPrompt[0]).not.toContain("<personality>");
+		expect(delegated.systemPrompt[0]).toContain("<personality>");
+		// And `sectionOrder` permutes that same block: TOOL POLICY leads it.
+		expect(delegated.systemPrompt[0].indexOf("TOOL POLICY")).toBeLessThan(
+			delegated.systemPrompt[0].indexOf("ROLE\n"),
+		);
+		// The project block is the volatile one, and no gate reaches it: both
+		// sessions share this cwd and workspace tree, so its bytes are identical.
+		expect(minimal.systemPrompt[1]).toContain("PROJECT");
+		expect(minimal.systemPrompt[1]).toBe(delegated.systemPrompt[1]);
+		expect(minimal.systemPrompt[0]).not.toContain("PROJECT\n=");
+		expect(minimal.systemPrompt).toHaveLength(2);
 	});
 });
