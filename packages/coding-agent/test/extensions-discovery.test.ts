@@ -8,6 +8,7 @@ import {
 	restoreRegistryForTests,
 } from "@veyyon/coding-agent/capability";
 import { type ExtensionModule, extensionModuleCapability } from "@veyyon/coding-agent/capability/extension-module";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { getCapability } from "@veyyon/coding-agent/discovery";
 import {
@@ -15,7 +16,7 @@ import {
 	discoverExtensionPaths,
 	loadExtensions,
 } from "@veyyon/coding-agent/extensibility/extensions/loader";
-import { getProjectAgentDir, TempDir } from "@veyyon/utils";
+import { getAgentDir, getProjectAgentDir, TempDir } from "@veyyon/utils";
 import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
 import { filterUserScoped } from "./utils/filter-user-extensions";
 
@@ -26,6 +27,15 @@ useIsolatedAgentDir();
 
 describe("extensions discovery", () => {
 	let tempDir: TempDir;
+	/**
+	 * The PROFILE's extensions dir, which is the only place discovery reads from.
+	 *
+	 * These cases used to write into `<cwd>/.veyyon/extensions` and a working tree
+	 * grants no capabilities any more: a checked-out repository is untrusted input,
+	 * so one line in a cloned repo used to configure the agent. Every case below is
+	 * therefore about the profile dir, and the project dir has one case of its own
+	 * asserting that it grants nothing.
+	 */
 	let extensionsDir: string;
 
 	// One case installs a Settings carrying `disabledExtensions`, and
@@ -36,22 +46,32 @@ describe("extensions discovery", () => {
 	beforeEach(() => {
 		registrySnapshot = captureRegistryForTests();
 		tempDir = TempDir.createSync("@pi-ext-test-");
-		extensionsDir = path.join(getProjectAgentDir(tempDir.path()), "extensions");
+		extensionsDir = path.join(getAgentDir(), "extensions");
 		fs.mkdirSync(extensionsDir, { recursive: true });
+		// Discovery reads directories through the capability FS cache, and every case
+		// here scans the SAME profile path, so without this each case answers with the
+		// previous case's listing.
+		clearFsCache();
 	});
 	afterEach(() => {
 		resetSettingsForTest();
 		if (registrySnapshot) restoreRegistryForTests(registrySnapshot);
 		registrySnapshot = undefined;
+		// The agent dir is isolated per FILE rather than per case, so what one case
+		// wrote into it is what the next case would discover.
+		fs.rmSync(extensionsDir, { recursive: true, force: true });
+		fs.rmSync(path.join(getAgentDir(), "hooks"), { recursive: true, force: true });
 		tempDir.removeSync();
+		clearFsCache();
 	});
 
 	const discoverForTest = async (configuredPaths: string[] = []) => {
 		const result = await discoverAndLoadExtensions(configuredPaths, tempDir.path());
+		const keep = [getAgentDir(), tempDir.path(), ...configuredPaths];
 		return {
 			...result,
-			extensions: filterUserScoped(result.extensions, [tempDir.path(), ...configuredPaths]),
-			errors: filterUserScoped(result.errors, [tempDir.path(), ...configuredPaths]),
+			extensions: filterUserScoped(result.extensions, keep),
+			errors: filterUserScoped(result.errors, keep),
 		};
 	};
 
@@ -85,14 +105,20 @@ describe("extensions discovery", () => {
 		expect(result.extensions.map(e => path.basename(e.path)).sort()).toEqual(["bar.ts", "foo.ts"]);
 	});
 
+	// Every `.js` fixture here carries a basename no `.ts` fixture uses, and that is
+	// about the RUNTIME rather than about discovery: importing `<dir>/foo.js` in a
+	// process that already imported `<dir>/foo.ts` resolves back to the `.ts`
+	// sibling, which this suite deleted, so the load fails with ENOENT on a file the
+	// case never wrote. Every case now scans one shared profile directory, so a
+	// reused basename is a collision rather than two separate temp trees.
 	it("discovers direct .js files in extensions/", async () => {
-		fs.writeFileSync(path.join(extensionsDir, "foo.js"), extensionCode);
+		fs.writeFileSync(path.join(extensionsDir, "only-js.js"), extensionCode);
 
 		const result = await discoverForTest();
 
 		expect(result.errors).toHaveLength(0);
 		expect(result.extensions).toHaveLength(1);
-		expect(path.basename(result.extensions[0].path)).toBe("foo.js");
+		expect(path.basename(result.extensions[0].path)).toBe("only-js.js");
 	});
 
 	it("discovers subdirectory with index.ts", async () => {
@@ -109,7 +135,7 @@ describe("extensions discovery", () => {
 	});
 
 	it("discovers subdirectory with index.js", async () => {
-		const subdir = path.join(extensionsDir, "my-extension");
+		const subdir = path.join(extensionsDir, "js-extension");
 		fs.mkdirSync(subdir);
 		fs.writeFileSync(path.join(subdir, "index.js"), extensionCode);
 
@@ -577,7 +603,13 @@ describe("extensions discovery", () => {
 		const result = await discoverForTest();
 
 		expect(result.errors).toHaveLength(1);
-		expect(result.errors[0].error).toContain("does not export a valid factory function");
+		// The operator-facing contract for a rejected extension: it says what is wrong
+		// with THIS file, that the file is inactive, and the edit that fixes it. A
+		// bare "invalid extension" left the operator with a file on disk and nothing
+		// to change.
+		expect(result.errors[0].error).toContain("no default export that is a function");
+		expect(result.errors[0].error).toContain("not active in this run");
+		expect(result.errors[0].error).toContain("export default");
 		expect(result.extensions).toHaveLength(0);
 	});
 
@@ -620,7 +652,7 @@ describe("extensions discovery", () => {
 	});
 
 	it("loads hookCapability JS factories as extension handlers", async () => {
-		const hookDir = path.join(getProjectAgentDir(tempDir.path()), "hooks", "pre");
+		const hookDir = path.join(getAgentDir(), "hooks", "pre");
 		fs.mkdirSync(hookDir, { recursive: true });
 		const hookPath = path.join(hookDir, "guard-test.ts");
 		fs.writeFileSync(
@@ -644,7 +676,7 @@ describe("extensions discovery", () => {
 		const extensionPath = path.join(extensionsDir, "guard.ts");
 		fs.writeFileSync(extensionPath, extensionCode);
 
-		const hookDir = path.join(getProjectAgentDir(tempDir.path()), "hooks", "pre");
+		const hookDir = path.join(getAgentDir(), "hooks", "pre");
 		fs.mkdirSync(hookDir, { recursive: true });
 		const hookPath = path.join(hookDir, "guard.ts");
 		fs.writeFileSync(
@@ -765,23 +797,58 @@ describe("extensions discovery", () => {
 	});
 
 	// A gitignored `extensions/` folder is the normal way to keep local experiments
-	// out of a repo. Discovery used to run the native glob with `gitignore: true`, so
-	// those extensions were silently dropped from the well-known directories while the
-	// configured-path walk still loaded them — the same file loaded or not depending on
-	// which route reached it.
-	it("loads an extension from the project extensions dir even when git ignores it", async () => {
+	// out of a repository, and a profile directory kept in a dotfiles repo is the
+	// normal way to carry one between machines. Discovery used to run the native glob
+	// with `gitignore: true`, so those extensions were silently dropped from the
+	// well-known directories while the configured-path walk still loaded them — the
+	// same file loaded or not depending on which route reached it.
+	it("loads an extension from the profile extensions dir even when git ignores it", async () => {
 		// Two things this setup depends on, both verified against the native glob:
 		// it only applies .gitignore inside a real repo, and a DIRECTORY pattern
 		// ("extensions/") does not filter because the walk root is that directory.
 		// A file-level pattern is what actually reaches the entries.
-		Bun.spawnSync(["git", "init", "-q"], { cwd: tempDir.path() });
-		fs.writeFileSync(path.join(tempDir.path(), ".gitignore"), "ignored-ext.ts\n");
+		Bun.spawnSync(["git", "init", "-q"], { cwd: getAgentDir() });
+		fs.writeFileSync(path.join(getAgentDir(), ".gitignore"), "ignored-ext.ts\n");
 		fs.writeFileSync(path.join(extensionsDir, "ignored-ext.ts"), extensionCode);
 
 		const { extensions, errors } = await discoverForTest();
 
 		expect(errors).toEqual([]);
 		expect(extensions.map(e => path.basename(e.path))).toContain("ignored-ext.ts");
+
+		fs.rmSync(path.join(getAgentDir(), ".git"), { recursive: true, force: true });
+		fs.rmSync(path.join(getAgentDir(), ".gitignore"), { force: true });
+	});
+
+	/**
+	 * A working tree grants no capabilities, and this is the case that says so.
+	 *
+	 * `<cwd>/.veyyon/extensions` used to be scanned at level "project", so cloning a
+	 * repository and opening a session in it executed whatever that repository's
+	 * `.veyyon` directory declared: one file in untrusted input, loaded as code with
+	 * the session's tools. It is the same shape for hooks, which run on every tool
+	 * call. Both are pinned here because the loader reads them through ONE call, so
+	 * a project scope coming back would come back for both at once.
+	 */
+	it("grants nothing to a repository's own .veyyon directory", async () => {
+		const projectDir = getProjectAgentDir(tempDir.path());
+		const projectExtensions = path.join(projectDir, "extensions");
+		const projectHooks = path.join(projectDir, "hooks", "pre");
+		fs.mkdirSync(projectExtensions, { recursive: true });
+		fs.mkdirSync(projectHooks, { recursive: true });
+		fs.writeFileSync(path.join(projectExtensions, "from-the-repo.ts"), extensionCodeWithTool("from-the-repo"));
+		fs.writeFileSync(path.join(projectHooks, "from-the-repo.ts"), extensionCode);
+		// Non-vacuity: the identical file IS loaded from the profile dir, so a green
+		// assertion below means the scope was refused rather than the fixture broken.
+		fs.writeFileSync(path.join(extensionsDir, "from-the-profile.ts"), extensionCodeWithTool("from-the-profile"));
+
+		const { extensions, errors } = await discoverForTest();
+		const names = extensions.map(extension => path.basename(extension.path));
+
+		expect(errors).toEqual([]);
+		expect(names).toContain("from-the-profile.ts");
+		expect(names).not.toContain("from-the-repo.ts");
+		expect(extensions.some(extension => extension.tools.has("from-the-repo"))).toBe(false);
 	});
 
 	it("loads a gitignored extension given as an explicitly configured path", async () => {
