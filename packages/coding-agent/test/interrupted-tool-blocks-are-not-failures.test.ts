@@ -32,7 +32,25 @@ function rows(component: { render(width: number): readonly string[] }): string[]
 		.filter(line => line.length > 0);
 }
 
-const FRAME = [
+/**
+ * A call the interrupt caught BEFORE dispatch: the card is the call and the
+ * notice, with no failure chrome and no Output section. The placeholder's text is
+ * written for the model ("Skipped due to ..."), so putting it through the tool's
+ * result renderer would state the reason twice, once in the model's register and
+ * once in the operator's.
+ */
+const CALL_ONLY_FRAME = [
+	"  ┌──────────────────────────────────────────────────────────────────────────┐",
+	"  │ $ npm run migrate:up                                                     │",
+	"  └──────────────────────────────────────────────────────────────────────────┘",
+];
+
+/**
+ * A call the interrupt caught INSIDE `tool.execute()`: whatever it printed is
+ * real output about real side effects, so the output stays on screen and the
+ * frame keeps its failed header.
+ */
+const ENTERED_FRAME = [
 	"  ┌─── ✗ failed ─────────────────────────────────────────────────────────────┐",
 	"  │ $ npm run migrate:up                                                     │",
 	"  ├─── Output ───────────────────────────────────────────────────────────────┤",
@@ -66,7 +84,7 @@ describe("a tool block an interrupt cut short says so", () => {
 		expect(sources.length).toBeGreaterThanOrEqual(6);
 		for (const source of sources) {
 			expect(renderSkipped(source, false), source).toEqual([
-				...FRAME,
+				...CALL_ONLY_FRAME,
 				"  ! not executed: an interrupt cut the batch short before this call ran",
 			]);
 		}
@@ -82,7 +100,7 @@ describe("a tool block an interrupt cut short says so", () => {
 		const sources = await unionMembers(await loopSource(), "SkippedToolResultDetails", "source");
 		for (const source of sources) {
 			expect(renderSkipped(source, true), source).toEqual([
-				...FRAME,
+				...ENTERED_FRAME,
 				"  ! cut off while running: side effects may be partial",
 			]);
 		}

@@ -42,6 +42,7 @@ import {
 	TodoTool,
 } from "@veyyon/coding-agent/tools/todo";
 import { isTerminalTodoStatus, TODO_STATUSES, type TodoStatus } from "@veyyon/wire";
+import { makeToolSession } from "../helpers/tool-session";
 
 interface TodoHarness {
 	session: ToolSession;
@@ -51,7 +52,7 @@ interface TodoHarness {
 
 function sessionWith(phases: TodoPhase[]): TodoHarness {
 	let current = phases;
-	const session = {
+	const session = makeToolSession({
 		cwd: "/tmp/test",
 		hasUI: false,
 		getSessionFile: () => null,
@@ -64,7 +65,7 @@ function sessionWith(phases: TodoPhase[]): TodoHarness {
 		setTodoPhases: (next: TodoPhase[]) => {
 			current = next;
 		},
-	} as unknown as ToolSession;
+	});
 	return { session, stored: () => current };
 }
 

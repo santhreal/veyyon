@@ -85,6 +85,22 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
+			// Updated 2026-08-07, deliberately: `e9ee4981c4a330e5` / 11_132 ->
+			// `562a3940c0412e3a` / 11_160 (+28).
+			//
+			// WHAT THE +28 IS, measured rather than assumed. Shipping `browser` off by default made
+			// the `execution-workflow/verify` UI bullet tool-agnostic: "drive it in browser" became
+			// "drive the real interface and look at the result", which is exactly 28 bytes longer,
+			// and the browser-specific mechanics moved into `execution-workflow/verify-browser`
+			// conditioned on `contains("tools", "browser")`. This fixture grants read/write/bash, so
+			// the new statement renders nothing here and the whole delta is the reworded bullet.
+			// Ablating the reword at this fixture returns `e9ee4981c4a330e5` / 11_132.
+			//
+			// The gate did its job and nobody read it: the reword landed while the prompt digest was
+			// only being run inside a whole-package bucket whose failures were being triaged as
+			// environment noise. The lesson recorded here is that this pair is the single line a
+			// prompt change has to touch, so a red digest means "find the bytes", never "rerun it".
+			//
 			// Updated 2026-08-04, deliberately: `2a975b88105db940` / 10_108 -> `e9ee4981c4a330e5`
 			// / 11_132 (+1_024).
 			//
@@ -147,8 +163,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "e9ee4981c4a330e5",
-			length: 11_132,
+			sha: "562a3940c0412e3a",
+			length: 11_160,
 		});
 	});
 
