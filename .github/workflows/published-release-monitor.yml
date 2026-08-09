@@ -1,0 +1,84 @@
+name: Published release monitor
+
+# What is ALREADY out, not what is about to ship.
+#
+# `install.sh` and `install.ps1` with no mode do three things nothing else
+# exercises: resolve the newest release, download its asset, and verify the
+# `.sha256` before running it. Those steps can only be driven against a release
+# that exists, so they say nothing about the commit under test: a red run here
+# describes yesterday's artifact, and the release that repairs it must not be
+# blocked by it.
+#
+# These two jobs used to hang off every push to main, where they cost four
+# runner slots per push (two of them macOS, and macOS concurrency is the
+# scarcest pool an account has) to re-answer a question whose answer only
+# changes when a release is published. On a repository cutting several releases
+# a day that is what starves the release itself: one CI run measured 635 minutes
+# of queue wait against 82 minutes of execution. Answering once a day costs the
+# same information and leaves the pool for the cut.
+#
+# `release_github_verify`, `release_github_verify_linux` and
+# `release_github_verify_windows` in ci.yml already download each DRAFT asset
+# and verify its checksum before publication, so a release is never published on
+# the strength of this workflow. It is the redundant check that a published
+# asset still installs through the shipped installer, days later.
+on:
+   schedule:
+      # Off the hour: GitHub queues scheduled runs hardest at :00.
+      - cron: "27 7 * * *"
+   workflow_dispatch:
+
+concurrency:
+   group: "${{ github.workflow }}"
+   cancel-in-progress: true
+
+permissions:
+   contents: read
+
+jobs:
+   install_binary_posix:
+      # The DEFAULT install on Linux and macOS: `curl -fsSL https://get.veyyon.dev | sh`.
+      # `install_methods` in ci.yml drives the same installer with --local, which
+      # covers everything it does around the binary and nothing about how the
+      # binary gets there: the release lookup, the download and the `.sha256`
+      # verification. The release workflow downloads the asset directly, which
+      # proves the asset is fine, not that the installer can install it.
+      name: "Published release install (${{ matrix.os }})"
+      strategy:
+         fail-fast: false
+         matrix:
+            # macos-14 is arm64 and macos-15-intel is x64, so both shipped macOS
+            # binaries get their install path exercised.
+            os: [ubuntu-22.04, macos-14, macos-15-intel]
+      runs-on: ${{ matrix.os }}
+      timeout-minutes: 30
+      steps:
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+         - name: install.sh end-to-end against the published release
+           shell: bash
+           # Keep a broken published artifact visible as a failed step without
+           # failing the monitor: nothing gates on this workflow, and a red run
+           # here is a report about production, not a verdict on a commit.
+           continue-on-error: true
+           run: bash scripts/install-tests/published-release-e2e.sh
+
+   install_ps1_binary:
+      # The DEFAULT Windows install, which is what a user gets from
+      # `irm https://veyyon.dev/install.ps1 | iex`. `install_ps1_e2e` in ci.yml
+      # proves everything the installer does around the binary, but with -Local,
+      # so the release lookup, the download, the `.sha256` verification and the
+      # staged preflight only ever run here. Same assertions as the -Local run;
+      # only the source of the binary differs.
+      name: Windows installer end-to-end (published release)
+      runs-on: windows-latest
+      timeout-minutes: 30
+      steps:
+         - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+         - name: install.ps1 end-to-end against the published release
+           shell: pwsh
+           continue-on-error: true
+           env:
+              # The script refuses to run without this, because it edits the user
+              # PATH and the PowerShell profile for real (both restored after).
+              VEYYON_INSTALL_E2E: "1"
+           run: pwsh -File scripts/install-tests/e2e.test.ps1 -Mode Binary

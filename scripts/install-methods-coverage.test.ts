@@ -100,34 +100,54 @@ describe("the release gate covers both shipped install channels", () => {
 
 	/**
 	 * A broken artifact already in production must stay visible without blocking the source-built release that repairs it.
+	 *
+	 * The two published-release monitors used to hang off every push to main,
+	 * where they spent four runner slots per push (two of them macOS, the
+	 * scarcest pool an account has) re-answering a question whose answer only
+	 * changes when a release is published. They live in a scheduled workflow of
+	 * their own now, and this asserts both halves of that: they are gone from the
+	 * workflow a push starts, and the workflow they moved to cannot be reached by
+	 * a push or a pull request. Moving one back onto the push path means editing
+	 * an assertion here.
 	 */
-	it("keeps published-release monitors non-blocking while candidate installer jobs remain release gates", async () => {
+	it("keeps published-release monitors off the push path while candidate installer jobs remain release gates", async () => {
 		type WorkflowJob = {
 			"continue-on-error"?: boolean;
 			needs?: string[];
 			steps?: Array<{ name?: string; "continue-on-error"?: boolean }>;
 		};
-		const workflow = Bun.YAML.parse(await Bun.file(path.join(repoRoot, ".github", "workflows", "ci.yml")).text()) as {
+		// YAML 1.1 reads a bare `on` key as the boolean true, and which spelling
+		// survives is the parser's business, not this gate's.
+		type Workflow = {
+			on?: Record<string, unknown>;
+			true?: Record<string, unknown>;
 			jobs: Record<string, WorkflowJob>;
 		};
-		const posixMonitor = workflow.jobs.install_binary_posix?.steps?.find(
+		const readWorkflow = async (file: string): Promise<Workflow> =>
+			Bun.YAML.parse(await Bun.file(path.join(repoRoot, ".github", "workflows", file)).text()) as Workflow;
+		const ci = await readWorkflow("ci.yml");
+		const monitor = await readWorkflow("published-release-monitor.yml");
+
+		expect(Object.keys(ci.jobs)).not.toContain("install_binary_posix");
+		expect(Object.keys(ci.jobs)).not.toContain("install_ps1_binary");
+		expect(Object.keys(monitor.on ?? monitor.true ?? {}).sort()).toEqual(["schedule", "workflow_dispatch"]);
+
+		const posixMonitor = monitor.jobs.install_binary_posix?.steps?.find(
 			step => step.name === "install.sh end-to-end against the published release",
 		);
-		const windowsMonitor = workflow.jobs.install_ps1_binary?.steps?.find(
+		const windowsMonitor = monitor.jobs.install_ps1_binary?.steps?.find(
 			step => step.name === "install.ps1 end-to-end against the published release",
 		);
-		expect(workflow.jobs.install_binary_posix?.["continue-on-error"]).toBeUndefined();
-		expect(workflow.jobs.install_ps1_binary?.["continue-on-error"]).toBeUndefined();
+		expect(monitor.jobs.install_binary_posix?.["continue-on-error"]).toBeUndefined();
+		expect(monitor.jobs.install_ps1_binary?.["continue-on-error"]).toBeUndefined();
 		expect(posixMonitor?.["continue-on-error"]).toBe(true);
 		expect(windowsMonitor?.["continue-on-error"]).toBe(true);
-		expect(workflow.jobs.install_methods?.["continue-on-error"]).toBeUndefined();
-		expect(workflow.jobs.install_ps1_e2e?.["continue-on-error"]).toBeUndefined();
-		expect(workflow.jobs.install_ps1_functions?.["continue-on-error"]).toBeUndefined();
-		expect(workflow.jobs.release_binary?.needs).toContain("install_methods");
-		expect(workflow.jobs.release_binary?.needs).toContain("install_ps1_e2e");
-		expect(workflow.jobs.release_binary?.needs).toContain("install_ps1_functions");
-		expect(workflow.jobs.release_binary?.needs).not.toContain("install_binary_posix");
-		expect(workflow.jobs.release_binary?.needs).not.toContain("install_ps1_binary");
+		expect(ci.jobs.install_methods?.["continue-on-error"]).toBeUndefined();
+		expect(ci.jobs.install_ps1_e2e?.["continue-on-error"]).toBeUndefined();
+		expect(ci.jobs.install_ps1_functions?.["continue-on-error"]).toBeUndefined();
+		expect(ci.jobs.release_binary?.needs).toContain("install_methods");
+		expect(ci.jobs.release_binary?.needs).toContain("install_ps1_e2e");
+		expect(ci.jobs.release_binary?.needs).toContain("install_ps1_functions");
 	});
 });
 

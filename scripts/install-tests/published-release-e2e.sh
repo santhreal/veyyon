@@ -14,8 +14,9 @@ set -euo pipefail
 #
 # Windows has had this gate since `install_ps1_binary` (`e2e.test.ps1 -Mode Binary`),
 # and it found a broken published binary on its first run. This is its POSIX
-# counterpart, with the same reasoning and the same schedule: push-to-main only,
-# because it downloads a published release every time and needs one to exist.
+# counterpart, with the same reasoning and the same schedule: both run once a day
+# from `published-release-monitor.yml`, because a published release is what they
+# download and that only changes when one is published.
 #
 # Run it by hand the same way CI does:
 #
