@@ -96,8 +96,8 @@ Names are 5 to 64 characters. They begin with a letter and normalize to `A-Z`,
 `0-9`, and underscore. For example, `staging deploy key` becomes
 `STAGING_DEPLOY_KEY`.
 
-To rename something already stored, press `n` on its row in the manager. The
-value stays where it is and is never re-entered.
+To rename something already stored, run `/secret rename STRIPE_TEST_KEY BILLING_KEY`.
+The value stays where it is and is never re-entered.
 
 Storing a value under a name that already exists in the same scope rotates it.
 The old value is replaced:
@@ -134,31 +134,33 @@ the credential facility you already trust to populate the environment.
 such as `--print` mode and ACP clients. Those surfaces cannot hide what is typed,
 so Veyyon refuses an inline credential there.
 
-## Open the manager
+## Manage what you stored
 
-Everything you do to a credential after storing it happens in one card:
+Everything you do to a credential after storing it is a verb on the same command.
+The first word decides: a word from the table below runs that verb, and anything
+else is a value again.
 
 ```text
-/secret manager
+/secret list                          show active secrets, never their values
+/secret rm <name> [--scope global]    remove a secret
+/secret rename <name> <new-name>      give a secret a different name
+/secret value <name>                  replace a secret's value, keeping its name and lifetime
+/secret scope <name> global           move a secret to another vault
+/secret copy <name>                   copy #NAME#, the placeholder, never the value
+/secret extend <name> --ttl 7d        give a secret a fresh lifetime
+/secret log [--name X] [--limit 50]   show which secrets were used, and where
+/secret discard --scope project       move a broken vault file aside
 ```
 
-`manager` is the only word `/secret` reserves. Anything longer is a credential
-again, so `/secret manager key 8891` stores the text `manager key 8891`.
-
-The card has two views. Secrets is the roster: one row per entry, carrying the
-placeholder, the scope it lives in, and how long it has left. Log is the record
-of where a placeholder was spent. Left and right move between the two views.
-
-On a row, `c` copies its placeholder, `n` renames it, `e` extends how long it
-lasts, `m` moves it to another scope, `r` revokes it, `u` shows the log narrowed
-to its uses, and `i` inspects what it has been used for. `a` adds a credential,
-`s` sorts the table by another column, `/` filters the rows, `?` shows the whole
-key map, and `esc` or `q` closes the card.
+Those words are reserved, so a credential that begins with one needs the escape:
+`/secret -- list 8891` stores the text `list 8891`. `/secret help` prints the same
+table with the options footer under it.
 
 ## Choose where it is available
 
-A new entry lands in the `profile` scope. Press `m` on its row to move it to a
-narrower or broader one.
+A new entry lands in the `profile` scope. Move it with `/secret scope
+STRIPE_TEST_KEY project`. The value is written to the destination vault before it
+is removed from the old one, so an interrupted move never loses a credential.
 
 ### Keep it with one repository
 
@@ -191,28 +193,28 @@ Other entries remain available.
 ## Set a lifetime
 
 A new entry lasts one day unless your settings specify another default. A
-terminal entry line carries no lifetime, so set one from the manager: press `e`
-on the row and give a form such as `30m`, `12h`, `7d`, `2w`, or `never`. The new
-lifetime is measured from the moment you set it.
+terminal entry line carries no lifetime, so set one afterwards with `/secret
+extend STRIPE_TEST_KEY --ttl 7d`, taking a form such as `30m`, `12h`, `7d`, `2w`,
+or `never`. The new lifetime is measured from the moment you set it.
 
 An expired entry stops expanding immediately. Veyyon removes its placeholder
 from the active inventory and tells the agent that it can no longer use it.
 
 ## See what is active
 
-The Secrets view is the answer to that question. It shows placeholders, scope,
-and expiry, and never a value, not even a prefix, because a prefix on screen is
-a prefix in a screenshot. A row picks up a status of `past halfway` or `expires
+`/secret list` is the answer to that question. It prints placeholders, scope, and
+expiry, and never a value, not even a prefix, because a prefix on screen is a
+prefix in a screenshot. A row picks up a status of `past halfway` or `expires
 soon` as it approaches its deadline.
 
-The roster holds the effective live entries for your current profile and working
+The table holds the effective live entries for your current profile and working
 directory.
 
 ## Check how a credential was used
 
-The Log view records the placeholder, the tool, the command context, and the
-time. It never records the value. Press right from the Secrets view to reach it,
-or `u` on a row to see the log narrowed to that one credential. The
+`/secret log` records the placeholder, the tool, the command context, and the
+time. It never records the value. `--name STRIPE_TEST_KEY` narrows the record to
+one credential, and `--limit 5` keeps the last few lines of whatever is left. The
 `secrets.auditLog` setting controls this record and is on by default.
 
 The log answers a different question from masking. Masking shows what the model
@@ -220,9 +222,10 @@ could not read. The log shows where an available placeholder was spent.
 
 ## Remove or rotate it
 
-Press `r` on a row to revoke that credential.
+Run `/secret rm STRIPE_TEST_KEY` to revoke that credential. Without `--scope` it
+takes the narrowest match, which is the one currently in effect.
 
-Revoking retires the entry the row names. If a project entry shadows a profile or
+Revoking retires the entry you name. If a project entry shadows a profile or
 global entry with the same name, revoking one layer reveals the entry under it,
 so revoke each layer you intend to retire.
 
@@ -230,23 +233,25 @@ During the running process, a tool call that still carries the retired placehold
 is refused before execution. The error names the placeholder and never the value.
 Text that was never a stored credential, such as `#TODO#`, is unaffected.
 
-Rotate a credential by storing the new value and answering the name field with
-the existing name, in the same scope. Veyyon replaces the old value atomically.
+Rotate a credential with `/secret value STRIPE_TEST_KEY`, which asks for the new
+value in the hidden field and keeps the name, the scope, and the lifetime it
+already has. Veyyon replaces the old value atomically.
 
 ## Repair a vault that no longer opens
 
 A disk failure or file-sync conflict can leave an encrypted vault unreadable.
-Veyyon will not guess how to repair authenticated ciphertext. An unreadable vault
-file gets a row of its own in the manager. Press `d` on it to move the file
-aside, then store the entries it held again.
+Veyyon will not guess how to repair authenticated ciphertext. `/secret discard
+--scope project` moves that scope's file aside, so you can store the entries it
+held again.
 
 The file is moved rather than deleted, because it still holds real credentials.
-`d` refuses a vault that still reads correctly.
+`discard` refuses a scope whose vault still reads correctly.
 
 ## If your client has no terminal
 
-`--print` mode and an ACP editor cannot hide typing and have no screen to draw
-the manager on. There `/secret` keeps the verb grammar:
+`--print` mode and an ACP editor cannot hide what is typed, so they refuse an
+inline credential and read the value from the environment instead. Every
+management verb is the same one you use at a terminal:
 
 ```text
 /secret add stripe-test-key --from-env STRIPE_TEST_KEY --scope project --ttl 12h
@@ -257,10 +262,10 @@ the manager on. There `/secret` keeps the verb grammar:
 /secret discard --scope project
 ```
 
-Those forms belong to that surface only. Typed at a terminal prompt, each of them
-is stored as a credential, because there the argument line is the value. Going
-the other way, `/secret manager` on a client with no terminal is refused and told
-why, rather than reported as an unknown command.
+Only the entry line differs between the two surfaces. Every verb above parses at a
+terminal as well, in the same order and with the same options; what a terminal
+adds is the hidden paste, and what those clients add is nothing, because a value
+they cannot hide has to come from somewhere they can read it.
 
 `list` prints a table:
 
