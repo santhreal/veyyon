@@ -28,13 +28,21 @@ function createSettings(modelRoles: Record<string, string>) {
 }
 
 describe("commit role thinking selection", () => {
-	it("returns explicit thinking for commit and smol roles, including alias overrides", async () => {
-		const defaultModel = getModelOrThrow("claude-sonnet-4-5");
-		const commitModel = getModelOrThrow("claude-opus-4-5");
+	// Which selector decides, and what the model does with it, are two questions,
+	// and a fixture that asks them on one model can answer neither. `minimal` on
+	// Sonnet 4.5 clamps to `high` because the model declares `high` and `max` and
+	// nothing lower, so a case that asked for `@default:minimal` against a role
+	// storing `:high` read the clamp as proof the alias was honored and would have
+	// stayed green with the alias suffix dropped entirely. Opus 4.5 declares
+	// `low`/`medium`/`high`, so a level the alias asks for is a level the model can
+	// take, and the two questions separate.
+	it("lets an alias's own thinking suffix replace the one stored on the role it points at", async () => {
+		const defaultModel = getModelOrThrow("claude-opus-4-5");
+		const commitModel = getModelOrThrow("claude-sonnet-4-5");
 		const settings = createSettings({
 			default: `${defaultModel.provider}/${defaultModel.id}:high`,
-			commit: `${commitModel.provider}/${commitModel.id}:low`,
-			smol: "@default:minimal",
+			commit: `${commitModel.provider}/${commitModel.id}:max`,
+			smol: "@default:low",
 		});
 		const registry = {
 			getAvailable: () => [defaultModel, commitModel],
@@ -46,11 +54,40 @@ describe("commit role thinking selection", () => {
 
 		const primary = await resolvePrimaryModel(undefined, settings, registry);
 		expect(primary.model.id).toBe(commitModel.id);
-		expect(primary.thinkingLevel).toBe(Effort.Low);
+		expect(primary.thinkingLevel).toBe(Effort.Max);
 
 		const smol = await resolveSmolModel(settings, registry, commitModel, "fallback-key");
 		expect(smol.model.id).toBe(defaultModel.id);
-		expect(smol.thinkingLevel).toBe(Effort.Minimal);
+		// `low` rather than the `high` stored on the `default` role: the suffix
+		// nearest the caller wins, and it is not appended to produce `high:low`.
+		expect(smol.thinkingLevel).toBe(Effort.Low);
+	});
+
+	it("clamps a level the aliased model cannot take to its lowest, not to the aliased role's level", async () => {
+		const defaultModel = getModelOrThrow("claude-opus-4-5");
+		const commitModel = getModelOrThrow("claude-sonnet-4-5");
+		const settings = createSettings({
+			default: `${defaultModel.provider}/${defaultModel.id}:high`,
+			commit: `${commitModel.provider}/${commitModel.id}:max`,
+			smol: "@default:minimal",
+		});
+		const registry = {
+			getAvailable: () => [defaultModel, commitModel],
+			getApiKey: async () => "test-key",
+			getApiKeyForProvider: async () => "test-key",
+			authStorage: { rotateSessionCredential: async () => false as const },
+			resolver: () => async () => "test-key",
+		};
+
+		const smol = await resolveSmolModel(settings, registry, commitModel, "fallback-key");
+
+		expect(smol.model.id).toBe(defaultModel.id);
+		// Opus 4.5 declares no level below `low`, so `minimal` resolves to `low`.
+		// The assertion that matters is the second one: the clamp lands on the
+		// model's floor and never on the `high` the aliased role stores, which is
+		// what inheriting the alias target's suffix would produce.
+		expect(smol.thinkingLevel).toBe(Effort.Low);
+		expect(smol.thinkingLevel).not.toBe(Effort.High);
 	});
 });
 
