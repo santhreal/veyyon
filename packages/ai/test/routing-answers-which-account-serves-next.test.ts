@@ -205,7 +205,11 @@ describe("routing answers which account serves next", () => {
 
 		const routing = storage.sessionCredentialRouting(PROVIDER, SESSION_ID);
 
-		expect(ids).toContain(routing?.activeCredentialId);
+		// Narrowed rather than compared through `?.`: an answer of `undefined` is the failure this
+		// test is about, so it has to fail here rather than passing a hole to a membership check.
+		const active = routing?.activeCredentialId;
+		if (active === undefined) throw new Error("routing named no account while every sibling was blocked");
+		expect(ids).toContain(active);
 		expect(routing?.activeIsPrediction).toBe(true);
 	});
 
