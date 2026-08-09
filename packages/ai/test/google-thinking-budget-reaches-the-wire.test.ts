@@ -60,15 +60,19 @@ describe("Google thinking budgets reach the wire", () => {
 	 * two of the efforts it advertises, or the control is decorative.
 	 */
 	it.each([
-		["google", "gemini-2.5-pro", [16_384, 32_768]],
-		["google", "gemini-2.5-flash", [16_384, 24_576]],
+		["google", "gemini-2.5-pro", [128, 2048, 8192, 16_384, 32_768]],
+		["google", "gemini-2.5-flash", [128, 2048, 8192, 16_384, 24_576]],
 	])("gives %s/%s a distinct budget per effort", (provider, id, expected) => {
 		const model = bundledRow(provider, id);
 
 		// models.dev declares these rows budget-only (`budget_tokens` min/max), which
-		// opens the fixed high/max pair; both ends of the pair must reach the wire.
-		expect([Effort.High, Effort.Max].map(effort => budgetFor(model, effort))).toEqual(expected);
-		expect(new Set(expected).size).toBeGreaterThan(1);
+		// names no level at all: the budget control mode opens minimal..xhigh, and
+		// every tier on that ladder must reach the wire with a number of its own.
+		const ladder = model.thinking?.efforts ?? [];
+		expect(ladder).toEqual([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh]);
+		const budgets = ladder.map(effort => budgetFor(model, effort));
+		expect(budgets).toEqual(expected);
+		expect(new Set(budgets).size).toBe(ladder.length);
 	});
 
 	/**

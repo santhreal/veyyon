@@ -493,10 +493,16 @@ describe("runEvalAgent", () => {
 		expect(secondOptions.outputSchemaOverridesAgent).toBeUndefined();
 	});
 
-	it("applies per-agent effort independently while preserving explicit call suffix precedence", async () => {
+	it("ignores a retired per-agent effort row and takes the blanket setting instead", async () => {
+		// `subagent.agents.<name>.thinkingLevel` is retired: effort is decided in one
+		// place, either the `subagent.thinkingLevel` setting or the agent's own
+		// `thinking-level` frontmatter. A retired row is reported and skipped, never
+		// honoured, so a spawn under it inherits the session effort — asserting the
+		// old row still worked is what let the retirement look complete while the
+		// bridge quietly read a setting nothing else does.
 		mockAgents([taskAgent]);
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
-		const session = makeSession({
+		const retiredRow = makeSession({
 			settings: Settings.isolated({
 				"async.enabled": false,
 				"subagent.isolation.mode": "none",
@@ -505,19 +511,28 @@ describe("runEvalAgent", () => {
 				},
 			}),
 		});
+		const blanket = makeSession({
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"subagent.isolation.mode": "none",
+				"subagent.thinkingLevel": "high",
+			}),
+		});
 
-		await runEvalAgent({ prompt: "bare override", model: "p/call" }, { session });
-		await runEvalAgent({ prompt: "suffixed override", model: "p/call:max" }, { session });
+		await runEvalAgent({ prompt: "retired row", model: "p/call" }, { session: retiredRow });
+		await runEvalAgent({ prompt: "blanket setting", model: "p/call:max" }, { session: blanket });
 
-		const bare = runSpy.mock.calls[0]?.[0];
-		const suffixed = runSpy.mock.calls[1]?.[0];
-		if (!bare || !suffixed) throw new Error("runSubprocess was not called twice");
-		expect(bare.modelOverride).toEqual(["p/call"]);
-		expect(bare.thinkingLevel).toBe(ThinkingLevel.High);
-		expect(bare.parentThinkingLevel).toBeUndefined();
-		expect(suffixed.modelOverride).toEqual(["p/call:max"]);
-		expect(suffixed.thinkingLevel).toBe(ThinkingLevel.High);
-		expect(suffixed.parentThinkingLevel).toBeUndefined();
+		const ignored = runSpy.mock.calls[0]?.[0];
+		const applied = runSpy.mock.calls[1]?.[0];
+		if (!ignored || !applied) throw new Error("runSubprocess was not called twice");
+		expect(ignored.modelOverride).toEqual(["p/call"]);
+		expect(ignored.thinkingLevel).toBeUndefined();
+		expect(ignored.parentThinkingLevel).toBeUndefined();
+		// The `:max` suffix rides on the model pattern: only the executor knows a
+		// suffix was present, so the resolved effort stays the blanket value here.
+		expect(applied.modelOverride).toEqual(["p/call:max"]);
+		expect(applied.thinkingLevel).toBe(ThinkingLevel.High);
+		expect(applied.parentThinkingLevel).toBeUndefined();
 	});
 
 	it("forwards session-scoped MCP, local protocol options, and the parent agent id", async () => {

@@ -2071,12 +2071,15 @@ describe("Anthropic request fingerprint alignment", () => {
 		// via `thinking.budget_tokens`. Opus 4.5 supports the field and keeps
 		// emitting it — covered in the next test.
 		const payload = (await captureAnthropicPayload(
-			// Bundled anthropic/claude-sonnet-4-5 surface: budget thinking opens the
-			// fixed high/max pair (opencode's budgetVariants contract); medium is not
-			// selectable on this SKU.
+			// Bundled anthropic/claude-sonnet-4-5 surface: a `budget_tokens` range
+			// declares no level, so the budget control mode opens minimal..xhigh
+			// and each tier is a distinct budget_tokens value.
 			buildModel({
 				...ANTHROPIC_MODEL_SPEC,
-				thinking: { mode: "budget", efforts: [Effort.High, Effort.Max] },
+				thinking: {
+					mode: "budget",
+					efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+				},
 			}),
 			{
 				systemPrompt: ["Stay concise."],

@@ -125,10 +125,17 @@ describe("bundled codex/google rows declare their thinking surface (models.dev d
 		});
 	});
 
-	it("google/gemini-2.5-pro is budget mode with the high/max pair and requiresEffort", () => {
+	it("google/gemini-2.5-pro is budget mode with the five budget tiers and requiresEffort", () => {
 		expect(gemini).toBeDefined();
-		expect(gemini.reasoningOptions).toEqual({ efforts: [Effort.High, Effort.Max] });
-		expect(gemini.thinking).toEqual({ mode: "budget", efforts: [Effort.High, Effort.Max], requiresEffort: true });
+		// models.dev declares a `budget_tokens` range for this row, which names no
+		// level: the budget control mode supplies the ladder, and the schedule in
+		// GOOGLE_THINKING_BUDGETS gives each of the five tiers a distinct budget.
+		expect(gemini.reasoningOptions).toBeUndefined();
+		expect(gemini.thinking).toEqual({
+			mode: "budget",
+			efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
+			requiresEffort: true,
+		});
 	});
 });
 
@@ -177,7 +184,7 @@ describe("google budget wire fidelity (google/gemini-2.5-pro)", () => {
 	// endpoint would reject.
 	it("disableReasoning on a requiresEffort row pins the floor budget instead of zero", async () => {
 		const floor = gemini.thinking?.efforts[0];
-		expect(floor).toBe(Effort.High);
+		expect(floor).toBe(Effort.Minimal);
 		const { body } = await captureBody(gemini, { disableReasoning: true });
 		const config = body.generationConfig as { thinkingConfig?: Record<string, unknown> };
 		expect(config.thinkingConfig).toEqual({
@@ -224,7 +231,7 @@ describe("out-of-ladder tiers never reach the wire", () => {
 		await expectRejected(codex, Effort.Max);
 	});
 
-	it("google/gemini-2.5-pro rejects medium (ladder is high/max)", async () => {
-		await expectRejected(gemini, Effort.Medium);
+	it("google/gemini-2.5-pro rejects max (the budget ladder tops out at xhigh)", async () => {
+		await expectRejected(gemini, Effort.Max);
 	});
 });
