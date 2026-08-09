@@ -1,7 +1,6 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { CredentialHealthResult, UsageReport } from "@veyyon/ai";
 import type { InstrumentationLevel } from "@veyyon/ai/instrumentation";
-import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // The derived provider set from the registry that derives it (164 modules) rather than the
 // barrel (346).
@@ -44,7 +43,6 @@ import type { SessionInfo } from "../../session/session-listing";
 import { SessionManager } from "../../session/session-manager";
 import { FileSessionStorage } from "../../session/session-storage";
 import { formatProviderName } from "../../slash-commands/helpers/format";
-import { type LogoutAccount, toLogoutAccounts } from "../../slash-commands/helpers/logout";
 import {
 	describeRedeemOutcome,
 	type ResetUsageAccount,
@@ -71,11 +69,9 @@ import { CopySelectorComponent } from "../components/copy-selector";
 import { ExtensionDashboard } from "../components/extensions";
 import { HistorySearchComponent } from "../components/history-search";
 import { LoginDialogComponent } from "../components/login-dialog";
-import { LogoutAccountSelectorComponent } from "../components/logout-account-selector";
 import { modalRevealEnabled } from "../components/modal-shell";
 import { ModelHubComponent } from "../components/model-hub";
 import { ModelPickerComponent } from "../components/model-picker";
-import { OAuthSelectorComponent } from "../components/oauth-selector";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
 import { SessionSelectorComponent } from "../components/session-selector";
 import { SettingsSelectorComponent } from "../components/settings-selector";
@@ -153,20 +149,6 @@ interface AccountProbeCache {
 
 export class SelectorController {
 	constructor(private ctx: SelectorControllerContext) {}
-
-	async #refreshOAuthProviderAuthState(): Promise<void> {
-		const oauthProviders = getOAuthProviders();
-		await Promise.all(
-			oauthProviders.map(provider =>
-				// This refreshes the selector's view of which providers are authenticated. A provider whose key
-				// cannot be resolved is exactly what "not authenticated" looks like here, and the registry
-				// reports its own resolution failures; treating one as fatal would empty the whole selector.
-				this.ctx.session.modelRegistry
-					.getApiKeyForProvider(provider.id, this.ctx.session.sessionId)
-					.catch(() => undefined),
-			),
-		);
-	}
 
 	/**
 	 * Restore keyboard focus to whatever currently owns the editor slot. The
@@ -1539,13 +1521,21 @@ export class SelectorController {
 		return name;
 	}
 
-	async #handleCredentialLogout(providerId: string, account: LogoutAccount): Promise<void> {
+	/**
+	 * Remove one credential and report it, from wherever the removal was asked for.
+	 *
+	 * The account card owns the asking now (`x`, armed twice), so this is the one place that says
+	 * what a logout DID: which account left, which file it left, and whether the provider is still
+	 * authenticated by an env variable or a config key that a credential removal cannot touch. That
+	 * last line is the one an operator needs and the one a status toast kept dropping.
+	 */
+	async #handleCredentialLogout(providerId: string, credentialId: number, label: string): Promise<void> {
 		const providerLabel = formatProviderName(providerId);
 		try {
 			const authStorage = this.ctx.session.modelRegistry.authStorage;
-			const removed = await authStorage.removeCredential(providerId, account.credentialId);
+			const removed = await authStorage.removeCredential(providerId, credentialId);
 			if (!removed) {
-				this.ctx.showError(`Logout skipped: ${account.label} is no longer stored for ${providerLabel}.`);
+				this.ctx.showError(`Logout skipped: ${label} is no longer stored for ${providerLabel}.`);
 				return;
 			}
 
@@ -1553,10 +1543,7 @@ export class SelectorController {
 			const block = new TranscriptBlock();
 			block.addChild(
 				new Text(
-					theme.fg(
-						"success",
-						`${theme.status.success} Successfully logged out ${account.label} from ${providerLabel}`,
-					),
+					theme.fg("success", `${theme.status.success} Successfully logged out ${label} from ${providerLabel}`),
 					1,
 					0,
 				),
@@ -1574,7 +1561,38 @@ export class SelectorController {
 		}
 	}
 
-	async #showOAuthLogoutAccountSelector(providerId: string): Promise<void> {
+	/**
+	 * `/login` and `/account login`.
+	 *
+	 * A login that names its provider runs straight away and ends in the account card, focused on the
+	 * provider it just added: the operator's next question is which account now serves, and only the
+	 * card answers it. A cancelled or failed login stays where it was, because there is nothing new
+	 * to show. Without a provider the card IS the picker: its sidebar lists every provider a login is
+	 * possible for, `a` starts one on the provider under the cursor, and the accounts already stored
+	 * are on screen while you choose, which a bare provider list could never show.
+	 */
+	async showLogin(providerId?: string): Promise<void> {
+		if (providerId) {
+			if (await this.#handleOAuthLogin(providerId)) await this.showAccountManager(providerId);
+			return;
+		}
+		await this.showAccountManager();
+	}
+
+	/**
+	 * `/logout` and `/account logout`.
+	 *
+	 * Also the card, because logging out is choosing an ACCOUNT and the card is the only surface that
+	 * shows what each one is: its plan, its usage, whether it is the account serving this session and
+	 * whether it is the one you chose. A dedicated picker could show a label and a bullet, so the
+	 * operator picked from names alone and the destructive key was the first thing they were offered.
+	 * `x` on the card is armed twice, and the report it prints is the same one it always was.
+	 *
+	 * The refusals stay, because they are the two cases the card cannot state: a provider with no
+	 * stored credential has nothing to remove, and an auth that comes from an env variable or a
+	 * config key is not removable here at all. Both name where the auth actually comes from.
+	 */
+	async showLogout(providerId?: string): Promise<void> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		try {
 			await authStorage.reload();
@@ -1582,114 +1600,21 @@ export class SelectorController {
 			this.ctx.showError(`Could not load stored credentials: ${errorMessage(error)}`);
 			return;
 		}
-		const accounts = toLogoutAccounts(providerId, authStorage.listStoredCredentials(providerId), {
-			activeIdentity: authStorage.getOAuthAccountIdentity(providerId, this.ctx.session.sessionId),
-			activeApiKey: authStorage.getCredentialOrigin(providerId)?.kind === "api_key",
-		});
-		if (accounts.length === 0) {
-			const source = authStorage.describeCredentialSource(providerId, this.ctx.session.sessionId);
-			const suffix = source ? ` Current auth comes from ${source}; remove that source to log out.` : "";
-			this.ctx.showError(`Logout skipped: no stored credentials for ${formatProviderName(providerId)}.${suffix}`);
-			return;
-		}
-
-		this.showModalSelector(done => {
-			const selector = new LogoutAccountSelectorComponent(
-				// One label owner. `getOAuthProviders()` has no row for a provider that authenticates with
-				// an api key, and this selector now opens for those too, so reading its name from there
-				// printed the raw slug (`Logout · groq`) while every other surface said `Groq`.
-				formatProviderName(providerId),
-				accounts,
-				account => {
-					done();
-					void this.#handleCredentialLogout(providerId, account);
-				},
-				() => {
-					done();
-					this.ctx.ui.requestRender();
-				},
-
-				modalRevealEnabled(),
-			);
-			return { component: selector, focus: selector };
-		});
-	}
-
-	/**
-	 * The login/logout surface every spelling of the command reaches (`/login`, `/account login`,
-	 * `/logout`, `/account logout`); the account card and the model hub have their own wrappers.
-	 *
-	 * A login that STORES a credential ends in the account manager, focused on the provider it just
-	 * added. `/login` is documented as an alias of `/account login`, and it was not one in the place
-	 * it mattered: the card's own "add another account" came back to the card, while the same login
-	 * typed at the composer dropped the operator back at an empty prompt with one receipt line and no
-	 * way to see which account now serves. A cancelled or failed login stays where it was, because
-	 * the composer is where that operator came from and there is nothing new to show them.
-	 */
-	async showOAuthSelector(mode: "login" | "logout", providerId?: string): Promise<void> {
 		if (providerId) {
-			if (mode === "login") {
-				if (await this.#handleOAuthLogin(providerId)) await this.showAccountManager(providerId);
-			} else {
-				await this.#showOAuthLogoutAccountSelector(providerId);
-			}
-			return;
-		}
-
-		if (mode === "logout") {
-			await this.#refreshOAuthProviderAuthState();
-			const oauthProviders = getOAuthProviders();
-			const loggedInProviders = oauthProviders.filter(provider =>
-				this.ctx.session.modelRegistry.authStorage.has(provider.id),
-			);
-			if (loggedInProviders.length === 0) {
-				this.ctx.showStatus("No stored provider credentials to log out. Remove env or config auth at its source.");
+			if (authStorage.listStoredCredentials(providerId).length === 0) {
+				const source = authStorage.describeCredentialSource(providerId, this.ctx.session.sessionId);
+				const suffix = source ? ` Current auth comes from ${source}; remove that source to log out.` : "";
+				this.ctx.showError(`Logout skipped: no stored credentials for ${formatProviderName(providerId)}.${suffix}`);
 				return;
 			}
+			await this.showAccountManager(providerId);
+			return;
 		}
-
-		this.showModalSelector(done => {
-			let selector: OAuthSelectorComponent;
-			selector = new OAuthSelectorComponent(
-				mode,
-				this.ctx.session.modelRegistry.authStorage,
-				async (selectedProviderId: string) => {
-					selector.stopValidation();
-					done();
-					if (mode === "login") {
-						if (await this.#handleOAuthLogin(selectedProviderId)) {
-							await this.showAccountManager(selectedProviderId);
-						}
-					} else {
-						await this.#showOAuthLogoutAccountSelector(selectedProviderId);
-					}
-				},
-				() => {
-					selector.stopValidation();
-					done();
-					this.ctx.ui.requestRender();
-				},
-				{
-					validateAuth: async (selectedProviderId: string) => {
-						const apiKey = await this.ctx.session.modelRegistry.getApiKeyForProvider(
-							selectedProviderId,
-							this.ctx.session.sessionId,
-						);
-						return !!apiKey;
-					},
-					// Component-scoped: the validating spinner ticks every 80ms while
-					// this selector is shown over a possibly large live transcript;
-					// a full requestRender() would re-walk that whole tree per tick
-					// purely to advance a spinner glyph or one provider's auth state.
-					requestRender: () => {
-						this.ctx.ui.requestComponentRender(selector);
-					},
-					standalone: true,
-					reveal: modalRevealEnabled(),
-				},
-			);
-			return { component: selector, focus: selector };
-		});
+		if (authStorage.listStoredCredentials().length === 0) {
+			this.ctx.showStatus("No stored provider credentials to log out. Remove env or config auth at its source.");
+			return;
+		}
+		await this.showAccountManager();
 	}
 
 	/**
@@ -1774,17 +1699,11 @@ export class SelectorController {
 				},
 				onLogout: row => {
 					void (async () => {
-						try {
-							const removed = await authStorage.removeCredential(row.provider, row.credentialId);
-							if (!removed) {
-								this.ctx.showWarning(`${row.providerLabel}: that account was already removed`);
-							} else {
-								this.ctx.showStatus(`${row.providerLabel}: logged out of ${accountDisplayLabel(row)}`);
-							}
-							await this.ctx.session.modelRegistry.refresh();
-						} catch (error) {
-							this.ctx.showError(`Logout failed: ${errorMessage(error)}`);
-						}
+						// ONE reporter for a removal, whichever surface asked. The card used to say
+						// "logged out of X" in a status line and stop there, which drops the two facts a
+						// logout has to carry: which file the credential left, and whether the provider
+						// is still authenticated by an env variable this cannot touch.
+						await this.#handleCredentialLogout(row.provider, row.credentialId, accountDisplayLabel(row));
 						reload();
 					})();
 				},

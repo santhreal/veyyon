@@ -128,7 +128,7 @@ describe("the second account is named when it lands", () => {
 	it("does not ask about the first account for a provider", async () => {
 		const h = harness({ rows: 1, credentialId: 1 });
 
-		await h.controller.showOAuthSelector("login", "groq");
+		await h.controller.showLogin("groq");
 
 		expect(h.setAccountName).not.toHaveBeenCalled();
 		expect(h.transcript()).toContain("Successfully logged in to Groq");
@@ -137,7 +137,7 @@ describe("the second account is named when it lands", () => {
 
 	it("asks once a provider holds two accounts, and names the row the login created", async () => {
 		const h = harness({ rows: 2, credentialId: 7 });
-		const done = h.controller.showOAuthSelector("login", "groq");
+		const done = h.controller.showLogin("groq");
 		await settle();
 
 		const frame = h
@@ -158,7 +158,7 @@ describe("the second account is named when it lands", () => {
 
 	it("keeps the login when the name is skipped", async () => {
 		const h = harness({ rows: 2, credentialId: 7 });
-		const done = h.controller.showOAuthSelector("login", "groq");
+		const done = h.controller.showLogin("groq");
 		await settle();
 
 		h.dialog()?.handleInput?.("\x1b");
@@ -173,7 +173,7 @@ describe("the second account is named when it lands", () => {
 	it("does not ask when the store could not say which row it wrote", async () => {
 		const h = harness({ rows: 2 });
 
-		await h.controller.showOAuthSelector("login", "groq");
+		await h.controller.showLogin("groq");
 
 		// Naming a sibling is worse than not asking.
 		expect(h.setAccountName).not.toHaveBeenCalled();
@@ -182,7 +182,7 @@ describe("the second account is named when it lands", () => {
 
 	it("says so when the name could not be kept, instead of reporting one", async () => {
 		const h = harness({ rows: 2, credentialId: 7, nameAccepted: false });
-		const done = h.controller.showOAuthSelector("login", "groq");
+		const done = h.controller.showLogin("groq");
 		await settle();
 
 		h.dialog()?.pasteText?.("work laptop");

@@ -89,7 +89,7 @@ describe("SelectorController login", () => {
 		} as unknown as InteractiveModeContext;
 		const controller = new SelectorController(ctx);
 
-		void controller.showOAuthSelector("login", "xai-oauth");
+		void controller.showLogin("xai-oauth");
 		await loginSaved.promise;
 		await Promise.resolve();
 
@@ -139,7 +139,7 @@ describe("SelectorController login", () => {
 		} as unknown as InteractiveModeContext;
 		const controller = new SelectorController(ctx);
 
-		const loginDone = controller.showOAuthSelector("login", "xai-oauth");
+		const loginDone = controller.showLogin("xai-oauth");
 		const dialog = editorSlot[0] as { handleInput(data: string): void };
 		expect(dialog).toBeDefined();
 		expect(dialog).not.toBe(editor);

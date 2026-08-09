@@ -22,14 +22,15 @@
  *     path it travels in production (dialog aborts, the provider flow rejects, the catch sees
  *     `signal.aborted`). Cancel and failure reach the same `return false` by different routes, so a
  *     guard keyed on the error rather than the outcome passes one and fails the other.
- *  4. `logout` mode mounts no account manager. The two modes share one entry point, and a card
- *     mounted after a logout would be the same defect wearing the opposite sign.
+ *  4. `/logout <provider>` lands on the SAME card, because choosing an account to remove needs the
+ *     plan, the usage and the serving mark that only the card shows. Its refusals live in
+ *     `selector-controller-logout.test.ts`.
  *  5. Every provider-facing sentence names the provider through `formatProviderName`, so the status
  *     line, the receipt and the card agree on the spelling.
  *
  * WHAT IT DOES NOT CATCH. `authStorage.login` is mocked, so no provider protocol is exercised: this
  * is about where control lands, not about whether a sign-in works. Which argument reaches
- * `showOAuthSelector` in the first place is the sibling contract, proven in
+ * `showLogin` in the first place is the sibling contract, proven in
  * `test/slash-commands/login-names-a-provider-or-refuses.test.ts` against the real dispatcher.
  */
 
@@ -94,7 +95,8 @@ interface Harness {
 	/** Resolves once the mocked provider flow has started and the dialog is on screen. */
 	readonly loginStarted: Promise<void>;
 	readonly dialog: () => LoginDialogComponent;
-	readonly run: (mode: "login" | "logout", providerId: string) => Promise<void>;
+	readonly login: (providerId?: string) => Promise<void>;
+	readonly logout: (providerId?: string) => Promise<void>;
 }
 
 async function harness(outcome: Outcome): Promise<Harness> {
@@ -190,7 +192,8 @@ async function harness(outcome: Outcome): Promise<Harness> {
 			if (!dialog) throw new Error("no login dialog was mounted");
 			return dialog;
 		},
-		run: (mode, providerId) => controller.showOAuthSelector(mode, providerId),
+		login: providerId => controller.showLogin(providerId),
+		logout: providerId => controller.showLogout(providerId),
 	};
 }
 
@@ -207,7 +210,7 @@ describe("a login started from a command", () => {
 	it("lands on the account manager for that provider with the new account listed", async () => {
 		const calls = await harness("stores");
 
-		await calls.run("login", "anthropic");
+		await calls.login("anthropic");
 
 		expect(calls.cards).toHaveLength(1);
 		const text = calls.cardText();
@@ -220,7 +223,7 @@ describe("a login started from a command", () => {
 	it("names the provider the way the card names it", async () => {
 		const calls = await harness("stores");
 
-		await calls.run("login", "anthropic");
+		await calls.login("anthropic");
 
 		expect(calls.statuses).toContain("Logging in to Anthropic…");
 		expect(calls.presented()).toContain("Successfully logged in to Anthropic as second@example.com");
@@ -230,7 +233,7 @@ describe("a login started from a command", () => {
 	it("stays at the composer when the login failed", async () => {
 		const calls = await harness("fails");
 
-		await calls.run("login", "anthropic");
+		await calls.login("anthropic");
 
 		expect(calls.cards).toHaveLength(0);
 		expect(calls.showError).toHaveBeenCalledTimes(1);
@@ -246,7 +249,7 @@ describe("a login started from a command", () => {
 	it("stays at the composer when the login was cancelled", async () => {
 		const calls = await harness("cancelled");
 
-		const running = calls.run("login", "anthropic");
+		const running = calls.login("anthropic");
 		await calls.loginStarted;
 		calls.dialog().handleInput(ESC);
 		await running;
@@ -256,14 +259,18 @@ describe("a login started from a command", () => {
 	});
 
 	/**
-	 * The logout half of the same entry point. It opens the logout account selector, and mounting
-	 * the manager here would be the mirror image of the bug being fixed.
+	 * The logout half of the same pair of commands lands on the SAME card, because choosing which
+	 * account to remove needs everything the card shows and nothing a bare label list can show. The
+	 * card is asserted to carry both accounts: a card mounted on the wrong provider, or before the
+	 * store was read, would satisfy a mount-only check.
 	 */
-	it("mounts no account manager for logout mode", async () => {
+	it("lands on the same account manager for logout", async () => {
 		const calls = await harness("stores");
 
-		await calls.run("logout", "anthropic");
+		await calls.logout("anthropic");
 
-		expect(calls.cards).toHaveLength(0);
+		expect(calls.cards).toHaveLength(1);
+		expect(calls.cardText()).toContain("first@example.com");
+		expect(calls.showError).not.toHaveBeenCalled();
 	});
 });

@@ -21,7 +21,7 @@
  *
  * AND THE REMEDY MUST BE ONE THE READER CAN RUN. Three of these branches used to
  * end in `/login` or `/model`. Both are TUI-only slash commands: `/login` calls
- * `showOAuthSelector` and `/model` opens the model selector, so neither exists
+ * `showLogin` and `/model` opens the model selector, so neither exists
  * for the readers that reach this module most often. The FIRST caller is
  * `main.ts`, which throws this text at CLI startup, and `bench-cli.ts` and
  * `veyyon commit` reach it too, all with no terminal UI. Naming a command the

@@ -27,8 +27,12 @@ const createRuntimeHarness = (manualInput: OAuthManualInputManager): RuntimeHarn
 		showWarning: (message: string) => {
 			warningMessage = message;
 		},
-		showOAuthSelector: async (mode: "login" | "logout", providerId?: string) => {
-			selectorMode = mode;
+		showLogin: async (providerId?: string) => {
+			selectorMode = "login";
+			selectorProvider = providerId;
+		},
+		showLogout: async (providerId?: string) => {
+			selectorMode = "logout";
 			selectorProvider = providerId;
 		},
 	} as InteractiveModeContext;

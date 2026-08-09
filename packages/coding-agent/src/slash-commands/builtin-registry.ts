@@ -658,10 +658,11 @@ function logoutTargetRefusal(requested: string): string {
 /**
  * The provider a `/logout <text>` should open, or `undefined` when nothing stored answers to it.
  *
- * An OAuth provider always resolves, so `/logout anthropic` still reaches the selector that reports
- * having nothing stored. Beyond that, ANY provider holding a stored credential resolves, because the
- * account card lists those rows and deletes them with `x`: a groq api_key row is visibly removable
- * there, and `/logout groq` refusing it was the command contradicting the card.
+ * An OAuth provider always resolves, so `/logout anthropic` reaches `showLogout`, which states the
+ * refusal naming where that provider's auth actually comes from. Beyond that, ANY provider holding a
+ * stored credential resolves, because the account card lists those rows and deletes them with `x`: a
+ * groq api_key row is visibly removable there, and `/logout groq` refusing it was the command
+ * contradicting the card.
  */
 function findLogoutProvider(requested: string, authStorage: AuthStorage): string | undefined {
 	const oauth = findOAuthProvider(requested);
@@ -703,7 +704,7 @@ function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): v
 				runtime.ctx.editor.setText("");
 				return;
 			}
-			void runtime.ctx.showOAuthSelector("login", matchedProvider.id);
+			void runtime.ctx.showLogin(matchedProvider.id);
 			runtime.ctx.editor.setText("");
 			return;
 		}
@@ -725,7 +726,7 @@ function startProviderLogin(rawArgs: string, runtime: TuiSlashCommandRuntime): v
 		return;
 	}
 
-	void runtime.ctx.showOAuthSelector("login");
+	void runtime.ctx.showLogin();
 	runtime.ctx.editor.setText("");
 }
 
@@ -946,10 +947,10 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 						runtime.ctx.showWarning(logoutTargetRefusal(requested));
 						return;
 					}
-					void runtime.ctx.showOAuthSelector("logout", matched);
+					void runtime.ctx.showLogout(matched);
 					return;
 				}
-				void runtime.ctx.showOAuthSelector("logout");
+				void runtime.ctx.showLogout();
 				return;
 			}
 			runtime.ctx.showWarning(`Unknown /account subcommand "${verb}". Use ${ACCOUNT_VERBS.join(", ")}.`);
@@ -1984,11 +1985,11 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 					runtime.ctx.editor.setText("");
 					return;
 				}
-				void runtime.ctx.showOAuthSelector("logout", matched);
+				void runtime.ctx.showLogout(matched);
 				runtime.ctx.editor.setText("");
 				return;
 			}
-			void runtime.ctx.showOAuthSelector("logout");
+			void runtime.ctx.showLogout();
 			runtime.ctx.editor.setText("");
 		},
 	},
