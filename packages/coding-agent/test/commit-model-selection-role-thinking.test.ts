@@ -29,13 +29,12 @@ function createSettings(modelRoles: Record<string, string>) {
 
 describe("commit role thinking selection", () => {
 	// Which selector decides, and what the model does with it, are two questions,
-	// and a fixture that asks them on one model can answer neither. `minimal` on
-	// Sonnet 4.5 clamps to `high` because the model declares `high` and `max` and
-	// nothing lower, so a case that asked for `@default:minimal` against a role
-	// storing `:high` read the clamp as proof the alias was honored and would have
-	// stayed green with the alias suffix dropped entirely. Opus 4.5 declares
-	// `low`/`medium`/`high`, so a level the alias asks for is a level the model can
-	// take, and the two questions separate.
+	// and a fixture that asks them on one model can answer neither. This case asks
+	// only the first, so every level it names must be one the target model declares:
+	// Opus 4.5 declares `low`/`medium`/`high` and takes `low` as `low`, which a
+	// dropped alias suffix could not fake by clamping. Resolution reports the
+	// selector it read, so the `:max` on the commit role arrives as `max` here and
+	// meets the model's ladder later, at the session that sends it.
 	it("lets an alias's own thinking suffix replace the one stored on the role it points at", async () => {
 		const defaultModel = getModelOrThrow("claude-opus-4-5");
 		const commitModel = getModelOrThrow("claude-sonnet-4-5");
