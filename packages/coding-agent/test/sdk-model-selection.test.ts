@@ -4,7 +4,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { FetchImpl } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
-import { Effort } from "@veyyon/catalog/effort";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";

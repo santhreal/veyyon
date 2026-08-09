@@ -30,11 +30,11 @@ function createSettings(modelRoles: Record<string, string>) {
 describe("commit role thinking selection", () => {
 	// Which selector decides, and what the model does with it, are two questions,
 	// and a fixture that asks them on one model can answer neither. This case asks
-	// only the first, so every level it names must be one the target model declares:
-	// Opus 4.5 declares `low`/`medium`/`high` and takes `low` as `low`, which a
-	// dropped alias suffix could not fake by clamping. Resolution reports the
-	// selector it read, so the `:max` on the commit role arrives as `max` here and
-	// meets the model's ladder later, at the session that sends it.
+	// which selector decides, so the level it checks on the OTHER role must be one
+	// that model declares: Opus 4.5 declares `low`/`medium`/`high` and takes `low`
+	// as `low`, which a dropped alias suffix could not fake by clamping. The commit
+	// role's `:max` is the second question and resolution answers it here, against
+	// Sonnet 4.5's budget ladder, which stops at `xhigh`.
 	it("lets an alias's own thinking suffix replace the one stored on the role it points at", async () => {
 		const defaultModel = getModelOrThrow("claude-opus-4-5");
 		const commitModel = getModelOrThrow("claude-sonnet-4-5");
@@ -53,7 +53,7 @@ describe("commit role thinking selection", () => {
 
 		const primary = await resolvePrimaryModel(undefined, settings, registry);
 		expect(primary.model.id).toBe(commitModel.id);
-		expect(primary.thinkingLevel).toBe(Effort.Max);
+		expect(primary.thinkingLevel).toBe(Effort.XHigh);
 
 		const smol = await resolveSmolModel(settings, registry, commitModel, "fallback-key");
 		expect(smol.model.id).toBe(defaultModel.id);
