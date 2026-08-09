@@ -78,7 +78,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/guided-goal` | Guided goal wizard |
 | `/loop` | Loop mode controls |
 | `/prewalk` | Prewalk edit path |
-| `/secret` | Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential, a bare `/secret` opens a hidden field, and `/secret manager` opens the manager. A client with no terminal keeps the verbs `add`, `list`, `rm`, `extend`, `log`, `discard`. See [Secrets](../features/secrets.md) |
+| `/secret` | Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential and a bare `/secret` opens a hidden field; the name is asked afterwards and Enter accepts the generated one. Every surface runs the verbs `add`, `list`, `rm`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help`; `/secret -- <value>` stores a credential that starts with one of them. See [Secrets](../features/secrets.md) |
 | `/settings`, `/setup` | Settings UI; `/setup` opens first-run provider sign-in |
 | `/providers`, `/account manager` | Open the account manager: every stored account per provider, with its email, plan, health, and usage. See [Authentication](../using/authentication.md) |
 | `/account status` | Show which account each provider is serving this session with. A bare `/account` opens the picker |
