@@ -31,6 +31,22 @@ export type ManagerRow =
 	| { readonly kind: "secret"; readonly entry: ScopedVaultEntry }
 	| { readonly kind: "broken"; readonly scope: VaultScope; readonly reason: string };
 
+/**
+ * The columns every sentence this card paints has to fit into.
+ *
+ * The card asks for at most 78 columns and spends two of them on its frame, so a string longer
+ * than this wraps, and a wrapped hint is the paragraph an operator stops reading. The card hands
+ * its prose seventy-one columns once its own frame and padding are paid for; sixty-eight is that
+ * measure with three columns of slack, so a hint, a refusal, a notice and an empty state are all
+ * held to one number here rather than to whatever each part picked for itself.
+ *
+ * It is a BUDGET, not a wrapping width: the card still wraps whatever it is handed, so a long
+ * variable name or search term inside an otherwise short sentence costs a second row instead of
+ * losing its tail. What it forbids is a sentence that is over budget before anything is
+ * interpolated into it.
+ */
+export const SECRET_CARD_PROSE_COLS = 68;
+
 /** What the Secrets table can be ordered by. */
 export type SecretSortKey = "name" | "scope" | "expiry" | "created";
 

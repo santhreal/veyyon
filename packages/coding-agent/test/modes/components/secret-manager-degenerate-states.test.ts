@@ -169,8 +169,7 @@ describe("the log view explains a narrowing that matched nothing", () => {
 		await manager.settled();
 
 		const text = screenText(manager);
-		expect(text).toContain("#BACKUP_TOKEN# has not been used yet.");
-		expect(text).toContain("Press escape to show every recorded use.");
+		expect(text).toContain("#BACKUP_TOKEN# has not been used yet. Escape shows every use.");
 		expect(text).not.toContain("Showing 0 of");
 		// The tab strip still reports the log's true size, so the empty body is legibly a
 		// narrowing of two records rather than a log that holds none.
@@ -178,11 +177,11 @@ describe("the log view explains a narrowing that matched nothing", () => {
 	});
 
 	/**
-	 * REGRESSION: `u` on a fresh profile stacked THREE lines that contradicted each other —
-	 * `#BACKUP_TOKEN# has not been used yet.`, `Press escape to show every recorded use.`, and the
-	 * file's own `No secret has been used yet. The log is …`. The first two describe a narrowing
-	 * of records that exist; against a log holding none they invent them, and the middle line
-	 * offered to widen into a view with nothing in it either. Three sentences, one fact.
+	 * REGRESSION: `u` on a fresh profile stacked lines that contradicted each other —
+	 * `#BACKUP_TOKEN# has not been used yet. Escape shows every use.` and the file's own `No secret
+	 * has been used yet. The log is …`. The first describes a narrowing of records that exist;
+	 * against a log holding none it invents them, and it offered to widen into a view with nothing
+	 * in it either. Two sentences, one fact.
 	 *
 	 * IF THIS REGRESSES the per-credential empty state fires again on an empty file and the card
 	 * says "nothing has ever been recorded" and "escape will show you what was recorded" in the
@@ -201,7 +200,6 @@ describe("the log view explains a narrowing that matched nothing", () => {
 		const text = unwrapped(manager);
 		expect(text).toContain(`No secret has been used yet. The log is ${secretAuditPath(locations)}.`);
 		expect(text).not.toContain("#BACKUP_TOKEN# has not been used yet.");
-		expect(text).not.toContain("Press escape to show every recorded use.");
 		expect(text).not.toContain("Showing 0 of");
 		// The narrowing did happen — the card is on the Log, restricted to a credential — so this
 		// is the empty state being coherent rather than the keypress being ignored.
@@ -219,8 +217,7 @@ describe("the log view explains a narrowing that matched nothing", () => {
 		await searchLog(manager, "kubectl");
 
 		const text = screenText(manager);
-		expect(text).toContain('No recorded use matches "kubectl".');
-		expect(text).toContain("Press / to change the search, then escape to clear it.");
+		expect(text).toContain('No recorded use matches "kubectl". Escape clears the search.');
 		expect(text).not.toContain("Showing 0 of");
 	});
 
@@ -377,7 +374,7 @@ describe("the roster's footer offers the card's own actions, not only the row's"
 	 */
 	const ENTRY_POINTS: Partial<Record<AddFlowSource, { readonly prose: string; readonly chip: string }>> = {
 		paste: { prose: "a stores a credential", chip: "a add" },
-		env: { prose: "f reads one out of an environment variable", chip: "f from env" },
+		env: { prose: "f reads one out of $VAR", chip: "f from env" },
 	};
 
 	it("names every way in, in the body and in the footer, on the same screen", async () => {
@@ -456,10 +453,7 @@ describe("the log view's file notices survive the card's width", () => {
 	it("paints the recording-is-off instruction to its last word", async () => {
 		const manager = await openLogView(undefined);
 
-		expect(unwrapped(manager)).toContain(
-			'Turn on "Record Secret Use" in /settings (secrets.auditLog) to start recording which ' +
-				"credential was spent, in which tool, and what the model wrote around it.",
-		);
+		expect(unwrapped(manager)).toContain('Turn on "Record Secret Use" (secrets.auditLog) to record every use.');
 		expect(screenText(manager)).not.toContain("…");
 	});
 });

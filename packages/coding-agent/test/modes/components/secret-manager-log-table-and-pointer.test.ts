@@ -263,7 +263,7 @@ describe("the log renders as a table, not as the CLI transcript", () => {
 
 		const text = screen(manager).join("\n");
 		expect(text).toContain("Log (off)");
-		expect(text).toContain("not being recorded");
+		expect(text).toContain("secrets.auditLog");
 	});
 });
 
@@ -422,8 +422,7 @@ describe("searching the log", () => {
 
 		expect(tableRows(manager)).toHaveLength(0);
 		const text = screen(manager).join("\n");
-		expect(text).toContain('No recorded use matches "nothing-matches-this".');
-		expect(text).toContain("Press / to change the search, then escape to clear it.");
+		expect(text).toContain('No recorded use matches "nothing-matches-this". Escape clears the search.');
 		expect(text).not.toContain("0 of 2");
 	});
 
@@ -743,7 +742,7 @@ describe("escaping a narrowed roster", () => {
 	 *
 	 * This shipped broken: the unwind was gated on the Log view alone, so a search in the Secrets
 	 * view made escape close the whole card in one press. That is worse than merely surprising.
-	 * The roster's own status line reads "Press / to change the search, then escape to clear it",
+	 * The roster's own status line offers escape as the way to clear the search,
 	 * so the card was instructing the operator to press a key that did the opposite of what the
 	 * line promised, and the search was lost with the card. It was caught by recording the demo
 	 * tape, where the card vanished mid-take and every later keystroke fell through to the chat

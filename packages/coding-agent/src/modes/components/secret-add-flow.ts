@@ -35,8 +35,7 @@ export const DEFAULT_ADD_SCOPE: VaultScope = "profile";
  * Exported so the container and its tests can name the exact sentence the operator sees instead
  * of matching a fragment of it.
  */
-export const EMPTY_VALUE_REFUSAL =
-	"Enter the credential itself. An empty secret would store nothing and expand to nothing, so it is never what you meant.";
+export const EMPTY_VALUE_REFUSAL = "Enter the credential itself: an empty secret expands to nothing.";
 
 /**
  * Why a credential the obfuscator could not protect is refused at the field that holds it.
@@ -50,13 +49,10 @@ export const EMPTY_VALUE_REFUSAL =
  * read from {@link MIN_OBFUSCATABLE_LENGTH}, so a change to the policy cannot leave this field
  * accepting values the vault will reject.
  */
-export const SHORT_VALUE_REFUSAL =
-	`A credential has to be at least ${MIN_OBFUSCATABLE_LENGTH} characters. Anything shorter cannot be swapped ` +
-	`for a placeholder without cutting into ordinary words, so the vault will not store it.`;
+export const SHORT_VALUE_REFUSAL = `A credential has to be at least ${MIN_OBFUSCATABLE_LENGTH} characters to be masked at all.`;
 
 /** Why a blank answer at the environment step is refused: there is no variable to read. */
-export const EMPTY_ENV_NAME_REFUSAL =
-	"Name the environment variable to read the credential out of, such as GITHUB_TOKEN.";
+export const EMPTY_ENV_NAME_REFUSAL = "Name the variable to read the credential out of, like GITHUB_TOKEN.";
 
 /**
  * Why a variable that is not in the environment is refused.
@@ -67,15 +63,12 @@ export const EMPTY_ENV_NAME_REFUSAL =
  * unmasked.
  */
 export function missingEnvRefusal(variable: string): string {
-	return (
-		`${variable} is not set in this process's environment, so there is nothing to read. veyyon sees the ` +
-		`environment it was launched with, so a variable exported in your shell afterwards is not visible here.`
-	);
+	return `${variable} is not set in the environment veyyon was launched with.`;
 }
 
 /** Why a variable that exists but holds nothing usable is refused, named so the two cannot be confused. */
 export function emptyEnvRefusal(variable: string): string {
-	return `${variable} is set but holds nothing, so there is no credential in it to store.`;
+	return `${variable} is set but holds nothing.`;
 }
 
 /**
@@ -128,13 +121,13 @@ const FIELDS: Readonly<Record<Exclude<AddFlowStep, "done">, AddFlowField>> = {
 	value: {
 		step: "value",
 		title: "New secret: paste the value",
-		hint: "The token or password itself. It stays masked and is stored at once; n renames the row, m moves it.",
+		hint: "The token or password itself. Masked, and stored at once.",
 		masked: true,
 	},
 	env: {
 		step: "env",
 		title: "New secret: name the environment variable",
-		hint: "The variable's NAME, not its value: veyyon reads the credential out of its own environment, so nothing secret is typed or drawn. This field is not masked, because a variable name is not a credential.",
+		hint: "The variable's NAME, not its value. Nothing secret is typed here.",
 		masked: false,
 	},
 };
