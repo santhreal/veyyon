@@ -409,7 +409,20 @@ describe("runGcCommand blob sweep", () => {
 		expect(await Bun.file(path.join(root, "settings.json.bak")).exists()).toBe(false);
 	});
 
-	test("dry-run merges project gc settings like apply without initializing settings storage", async () => {
+	/**
+	 * A repository configures nothing. `<cwd>/.veyyon/config.yml` used to merge over
+	 * the profile config, so cloning a repository and running a command in it took
+	 * settings from a file the operator never wrote. Settings now come from the
+	 * profile alone, and gc is a good place to pin it because every knob it reads has
+	 * an observable sweep behind it.
+	 *
+	 * Asserted in BOTH directions, because one direction cannot tell "the project
+	 * file was ignored" apart from "the project file happened to agree": a project
+	 * file that would turn archiving ON while the profile has it off must not
+	 * archive, and a project file that would turn it OFF while the profile has it on
+	 * must not stop it.
+	 */
+	test("takes gc settings from the profile alone, whatever a repository's own config says", async () => {
 		const projectRoot = path.join(root, "project-root");
 		await fs.mkdir(projectRoot, { recursive: true });
 		setProjectDir(projectRoot);
@@ -421,30 +434,49 @@ describe("runGcCommand blob sweep", () => {
 				"  blobs: false",
 				"  archive: false",
 				"  wal: false",
-				"  coldArchiveAfterDays: 30",
-				"  retainNewestGlobal: 1",
-				"  retainNewestPerCwd: 1",
-				"",
-			].join("\n"),
-		);
-		await writeProjectConfig(
-			projectRoot,
-			[
-				"gc:",
-				"  archive: true",
 				"  coldArchiveAfterDays: 7",
 				"  retainNewestGlobal: 0",
 				"  retainNewestPerCwd: 0",
 				"",
 			].join("\n"),
 		);
+		await writeProjectConfig(
+			projectRoot,
+			["gc:", "  archive: true", "  coldArchiveAfterDays: 7", "  retainNewestGlobal: 0", ""].join("\n"),
+		);
 
-		const dryRun = await runGcCommand({ flags: { agentDir: root } });
+		const offByProfile = await runGcCommand({ flags: { agentDir: root } });
 
-		expect(dryRun.blobs).toBeUndefined();
-		expect(dryRun.archive?.wouldArchive).toBe(1);
-		expect(dryRun.archive?.archived).toBe(0);
-		expect(dryRun.wal).toBeUndefined();
+		// The profile says archive: false, so there is no archive sweep to report at
+		// all, rather than a sweep that would archive zero sessions.
+		expect(offByProfile.archive).toBeUndefined();
+		expect(offByProfile.blobs).toBeUndefined();
+		expect(offByProfile.wal).toBeUndefined();
+
+		// Same session, same repository config, profile flipped: the profile decides.
+		await writeConfig(
+			root,
+			[
+				"gc:",
+				"  blobs: false",
+				"  archive: true",
+				"  wal: false",
+				"  coldArchiveAfterDays: 7",
+				"  retainNewestGlobal: 0",
+				"  retainNewestPerCwd: 0",
+				"",
+			].join("\n"),
+		);
+		await writeProjectConfig(
+			projectRoot,
+			["gc:", "  archive: false", "  coldArchiveAfterDays: 3650", "  retainNewestGlobal: 50", ""].join("\n"),
+		);
+
+		const onByProfile = await runGcCommand({ flags: { agentDir: root } });
+
+		expect(onByProfile.archive?.wouldArchive).toBe(1);
+		expect(onByProfile.archive?.archived).toBe(0);
+		// A dry run opens no database and rewrites no settings file.
 		expect(await Bun.file(path.join(root, "agent.db")).exists()).toBe(false);
 		expect(await Bun.file(path.join(root, "settings.json.bak")).exists()).toBe(false);
 
