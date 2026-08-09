@@ -289,11 +289,11 @@ describe("a tool call from a session whose vault revision has moved", () => {
 		const refusal = toolResultTexts[0];
 		expect(refusal).toContain("Secret expansion was refused");
 		expect(refusal).toContain("retry this call");
-		// Names where to look if retrying does not clear it. `/secret list` was named here until the
-		// terminal grammar dropped its verbs, at which point that sentence told an operator to store
-		// the word `list` as a credential while their real one was already failing to resolve.
-		expect(refusal).toContain("/secret manager");
-		expect(refusal).not.toContain("/secret list");
+		// Names where to look if retrying does not clear it, with a command that runs on whichever
+		// surface reads this: a refusal is printed below the vault loader, which knows nothing about
+		// the client it is talking to.
+		expect(refusal).toContain("/secret list");
+		expect(refusal).not.toContain("manager");
 		expect(refusal).not.toContain("changed in another session or process");
 		// A refusal is a failed tool result the model can act on, never a value leak.
 		expect(refusal).not.toContain(ORIGINAL_VALUE);

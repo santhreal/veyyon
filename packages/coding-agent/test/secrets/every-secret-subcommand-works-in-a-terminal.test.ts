@@ -31,10 +31,13 @@ import {
 
 /** A line that satisfies each subcommand's shape, so a refusal here is a routing failure. */
 const WELL_FORMED: Record<string, string> = {
-	manager: "",
 	add: "ghp_theCredentialItself",
 	list: "",
 	rm: "TOKEN_NAME",
+	rename: "TOKEN_NAME OTHER_NAME",
+	value: "TOKEN_NAME",
+	scope: "TOKEN_NAME global",
+	copy: "TOKEN_NAME",
 	extend: "TOKEN_NAME --ttl 7d",
 	log: "--limit 5",
 	discard: "--scope project",
@@ -79,7 +82,15 @@ describe("every reserved word is a command in a terminal, not a credential", () 
 	 * does start with a reserved word is stuck.
 	 */
 	it("refuses a malformed reserved line instead of storing it, and names the escape", () => {
-		for (const line of ["log 50", "list something", "manager now", "rm A B", "extend TOK 7d"]) {
+		for (const line of [
+			"log 50",
+			"list something",
+			"rm A B",
+			"extend TOK 7d",
+			"copy A B",
+			"value A B",
+			"scope TOK",
+		]) {
 			expect(() => parseSecretCommand(line, "tui")).toThrow(/\/secret -- <value>/u);
 		}
 	});

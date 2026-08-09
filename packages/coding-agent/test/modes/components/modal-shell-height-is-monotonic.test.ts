@@ -100,9 +100,9 @@ function canPayForItsPadding(sizing: ModalSizing): boolean {
 }
 
 /**
- * Every sizing the class has to hold for: the exported ones plus a synthetic grid
- * standing in for the shapes that are not exported (`MANAGER_SIZING` in
- * `secret-manager.ts` is module-private) and the ones nobody has written yet.
+ * Every sizing the class has to hold for: the exported ones plus a synthetic grid standing in for
+ * the shapes that are not exported (a card whose sizing preset is module-private) and the ones
+ * nobody has written yet.
  */
 function everySizing(): ModalSizing[] {
 	const synthetic: ModalSizing[] = [];

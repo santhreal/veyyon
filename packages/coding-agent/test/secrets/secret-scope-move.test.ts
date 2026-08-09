@@ -14,7 +14,7 @@
  * correctly it plans.
  */
 import { describe, expect, it } from "bun:test";
-import { describeScopeMove, nextScope, planScopeMove } from "@veyyon/coding-agent/modes/components/secret-scope-move";
+import { planScopeMove } from "@veyyon/coding-agent/secrets/scope-move";
 import { type ScopedVaultEntry, VAULT_SCOPES, type VaultScope } from "@veyyon/coding-agent/secrets/vault";
 
 /** Fixed, so `createdAt` and `expiresAt` never vary the assertions. */
@@ -88,9 +88,10 @@ describe("planScopeMove on a destination that is free", () => {
 
 describe("planScopeMove refusing a move to the scope the entry is in", () => {
 	/**
-	 * Locks out the no-op move. Destination is chosen by cycling a key, so pressing it three times
-	 * lands back on the source. Allowed to run, the add would write over the entry and the remove
-	 * that follows would delete the name it had just written, destroying the credential in exchange
+	 * Locks out the no-op move. `/secret scope <name> <vault>` takes the destination as a word, and
+	 * the vault a secret already lives in is the easiest one to name by mistake. Allowed to run, the
+	 * add would write over the entry and the remove that follows would delete the name it had just
+	 * written, destroying the credential in exchange
 	 * for no change at all.
 	 */
 	it("refuses with an exact sentence and no plan", () => {
@@ -132,8 +133,8 @@ describe("planScopeMove refusing a name collision in the destination", () => {
 		expect(refusal).toBe(
 			"The profile vault already holds #GITHUB_TOKEN#, and it is a different credential from the " +
 				"project one. Moving would overwrite it and then delete the copy being moved, losing both. " +
-				"Revoke #GITHUB_TOKEN# from the profile vault first if this one should replace it, then " +
-				"move again.",
+				"Remove it with /secret rm GITHUB_TOKEN --scope profile first if this one should replace it, " +
+				"then move again.",
 		);
 	});
 
@@ -148,7 +149,7 @@ describe("planScopeMove refusing a name collision in the destination", () => {
 		const { refusal } = planScopeMove(moving, "project", [moving, occupant]);
 		expect(refusal).toContain("The project vault already holds #DEPLOY_KEY#");
 		expect(refusal).toContain("a different credential from the global one");
-		expect(refusal).toContain("Revoke #DEPLOY_KEY# from the project vault first");
+		expect(refusal).toContain("Remove it with /secret rm DEPLOY_KEY --scope project first");
 	});
 
 	/**
@@ -188,85 +189,22 @@ describe("planScopeMove refusing a name collision in the destination", () => {
 	});
 });
 
-describe("describeScopeMove", () => {
-	/**
-	 * Locks out a confirmation that omits an end of the move. The destination is picked by cycling
-	 * a key with no picker on screen, so a line reading "Move #GITHUB_TOKEN#" gives the operator
-	 * nothing to check the cycle against before they approve a destructive pair of writes.
-	 */
-	it("names the placeholder and both vaults in one sentence", () => {
-		expect(describeScopeMove({ name: "GITHUB_TOKEN", from: "project", to: "profile" })).toBe(
-			"Move #GITHUB_TOKEN# from the project vault to the profile vault.",
-		);
-	});
-
-	/**
-	 * Locks out a from/to swap in the sentence. Both ends are scope names of the same shape, so a
-	 * transposition reads perfectly and tells the operator the move runs the other way.
-	 */
-	it("puts the source before the destination in the other direction too", () => {
-		expect(describeScopeMove({ name: "DEPLOY_KEY", from: "global", to: "project" })).toBe(
-			"Move #DEPLOY_KEY# from the global vault to the project vault.",
-		);
-	});
-
-	/**
-	 * Locks out a raw name where a placeholder belongs. The operator writes `#NAME#` into prompts
-	 * and sees `#NAME#` in every row of the table, and a confirmation that drops the hashes reads
-	 * as a different identifier from the one being moved.
-	 */
-	it("wraps the name as a placeholder rather than printing it bare", () => {
-		const line = describeScopeMove({ name: "API_KEY_ONE", from: "profile", to: "global" });
-		expect(line).toContain("#API_KEY_ONE#");
-	});
-});
-
-describe("nextScope", () => {
-	/**
-	 * Locks out a cycle that stalls or skips. The key is the only way to choose a destination, so a
-	 * scope missing from the cycle is a scope no one can move a secret into, and a cycle that does
-	 * not wrap strands the operator on the last one.
-	 */
-	it("walks every scope in vault order and wraps back to the first", () => {
-		expect([...VAULT_SCOPES]).toEqual(["global", "profile", "project"]);
-		expect(nextScope("global")).toBe("profile");
-		expect(nextScope("profile")).toBe("project");
-		expect(nextScope("project")).toBe("global");
-	});
-
-	/**
-	 * Locks out a cycle that visits a scope twice or drops one. Walking the length of the list must
-	 * touch each scope exactly once and land where it started, which a naive clamp would not do.
-	 */
-	it("returns to the starting scope after one full lap and visits each scope once", () => {
-		let current: VaultScope = "profile";
-		const visited: VaultScope[] = [];
-		for (let step = 0; step < VAULT_SCOPES.length; step += 1) {
-			current = nextScope(current);
-			visited.push(current);
-		}
-		expect(visited).toEqual(["project", "global", "profile"]);
-		expect(current).toBe("profile");
-	});
-});
-
 describe("secret values never reach the planner's output", () => {
 	/**
 	 * Locks out the one defect that would make this module unshippable. `ScopedVaultEntry` carries
 	 * the credential, so every string built here is a place it could be interpolated by accident,
 	 * for example by a refusal that tried to show what would be overwritten.
 	 */
-	it("keeps the value out of a plan, a confirmation line and both refusals", () => {
+	it("keeps the value out of a plan and both refusals", () => {
 		const moving = entryIn("project");
 		const occupant = entryIn("profile", "GITHUB_TOKEN", "second-live-credential");
 
 		const clean = planScopeMove(moving, "global", [moving, occupant]);
 		expect(clean.plan).not.toBeNull();
-		const line = clean.plan === null ? "" : describeScopeMove(clean.plan);
 		const collision = planScopeMove(moving, "profile", [moving, occupant]);
 		const noop = planScopeMove(moving, "project", [moving]);
 
-		const emitted = [JSON.stringify(clean.plan), line, collision.refusal ?? "", noop.refusal ?? ""].join("\n");
+		const emitted = [JSON.stringify(clean.plan), collision.refusal ?? "", noop.refusal ?? ""].join("\n");
 		expect(emitted).not.toContain(SECRET_VALUE);
 		expect(emitted).not.toContain("second-live-credential");
 		expect(emitted).not.toContain("ghp_");

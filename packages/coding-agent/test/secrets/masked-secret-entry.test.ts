@@ -677,26 +677,22 @@ describe("the TUI path", () => {
 	});
 
 	/**
-	 * `manager` is the one reserved word, and here that reservation is followed through to the
-	 * SCREEN: the surface opens the manager itself, and no field opens on the way.
+	 * A VERB PRINTS, and opens nothing. `/secret list` is the reply to "what do I have", and the
+	 * whole reply is text: no field opens on the way, and the answer arrives on the status line the
+	 * operator is already reading.
 	 *
-	 * The empty message that comes back with it must NOT be rendered. A status line under a card
-	 * that just appeared reports on something already on screen, and an empty one is a blank line
-	 * of noise. This is the only place that wiring is checked; the parse-level reservation, and
-	 * that a longer line starting with the word is still a credential, are covered in the
-	 * masked-prompt suite.
+	 * This is the wiring check for the terminal path. That the parser reserves the word, and that a
+	 * longer line beginning with it is still a credential, are covered in the masked-prompt suite.
 	 */
-	it("opens the manager for /secret manager, with no field and no status line", async () => {
+	it("prints the list for /secret list, with no field on the way", async () => {
 		const showHookInput = vi.fn(async () => undefined);
 		const showStatus = vi.fn();
-		const showSecretManager = vi.fn();
 
-		await executeBuiltinSlashCommand("/secret manager", {
+		await executeBuiltinSlashCommand("/secret list", {
 			ctx: {
 				editor: { setText: vi.fn() },
 				showHookInput,
 				showStatus,
-				showSecretManager,
 				showWarning: vi.fn(),
 				session: { obfuscator: undefined, operatorNotices: new OperatorNotices(), agent: {} },
 				sessionManager: { getCwd: () => project, appendMessage: vi.fn() },
@@ -704,9 +700,9 @@ describe("the TUI path", () => {
 			} as unknown as InteractiveModeContext,
 		});
 
-		expect(showSecretManager).toHaveBeenCalledTimes(1);
 		expect(showHookInput).not.toHaveBeenCalled();
-		expect(showStatus).not.toHaveBeenCalled();
+		expect(showStatus).toHaveBeenCalledTimes(1);
+		expect(String(showStatus.mock.calls[0]?.[0] ?? "")).toContain("/secret");
 	});
 });
 

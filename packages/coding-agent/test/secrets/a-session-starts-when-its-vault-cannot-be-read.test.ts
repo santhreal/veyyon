@@ -113,10 +113,10 @@ describe("an SDK session over a project whose vault cannot be read", () => {
 				expect(text).toContain("aside");
 				// Reachable from wherever this is being read, which is the whole point of starting
 				// degraded rather than exiting. The notice is raised by the vault loader and cannot know
-				// its surface, so it names the manager for a terminal and the verb form for a client
-				// without one, rather than one route that works half the time.
-				expect(text).toContain("/secret manager");
-				expect(text).toContain("in a client with no terminal");
+				// its surface, so it names one command that runs on all of them rather than a screen the
+				// reader may not have.
+				expect(text).not.toContain("manager");
+				expect(text).not.toContain("in a client with no terminal");
 				// A degraded start must not silently behave like a working one.
 				expect(text).toContain("refused rather than sent as literal text");
 				// ... and must not leak what it failed to read.
