@@ -15,16 +15,17 @@
  * fill in health and usage without blocking, and it is what lets tests assert exact rows
  * against fixed inputs with no probes running.
  */
-import type {
-	AuthStorage,
-	CredentialHealthResult,
-	CredentialOrigin,
-	CredentialOriginKind,
-	UsageLimit,
-	UsageReport,
+import {
+	type AuthStorage,
+	type CredentialHealthResult,
+	type CredentialOrigin,
+	type CredentialOriginKind,
+	OAUTH_REFRESH_FAILURE_DISABLE_PREFIX,
+	type UsageLimit,
+	type UsageReport,
 } from "@veyyon/ai";
 import { limitMatchesActiveAccount } from "../slash-commands/helpers/active-oauth-account";
-import { formatProviderName } from "../slash-commands/helpers/format";
+import { formatDurationCoarse, formatProviderName } from "../slash-commands/helpers/format";
 
 /** One usage window as an account row shows it. */
 export interface AccountUsageWindow {
@@ -97,6 +98,23 @@ export interface AccountRow {
 	 * exactly what this replaced.
 	 */
 	selectedForProvider: boolean;
+	/**
+	 * Epoch ms this credential's access token stops being accepted.
+	 *
+	 * OAuth only: an api key carries no expiry, and a row without this field is not "expired
+	 * unknown", it is a credential whose lifetime has no clock. Read straight off the stored
+	 * credential, never from a probe, so it is available in the first synchronous frame.
+	 */
+	tokenExpiresAtMs?: number;
+	/**
+	 * True when a refresh token is stored, so {@link tokenExpiresAtMs} passing costs nothing.
+	 *
+	 * This is the difference between the two expiries a user can meet. A renewable token that
+	 * expired renews on the next request and needs no action at all; a token with no refresh
+	 * beside it is a login that has ended. Rendering both as "expired" is how a working account
+	 * gets signed in again for no reason, and how a dead one gets waited on.
+	 */
+	renewable?: boolean;
 }
 
 /**
@@ -256,6 +274,12 @@ export function buildAccountInventory(
 			if (credential.orgId) row.orgId = credential.orgId;
 			if (credential.orgName) row.orgName = credential.orgName;
 			if (credential.projectId) row.projectId = credential.projectId;
+			// A zero or non-finite `expires` is a credential written by a provider that does not
+			// state one, not a token that expired at the epoch. Leaving the field absent says so.
+			if (Number.isFinite(credential.expires) && credential.expires > 0) {
+				row.tokenExpiresAtMs = credential.expires;
+			}
+			row.renewable = credential.refresh.trim().length > 0;
 		}
 		const origin = authStorage.getCredentialOrigin(provider);
 		if (origin) row.origin = origin;
@@ -309,6 +333,97 @@ export function buildAccountInventory(
 		totalAccounts: providers.reduce((sum, entry) => sum + entry.rows.length, 0),
 		unhealthyCount: 0,
 	};
+}
+
+/**
+ * What state one credential is in, on the one axis a user can act on.
+ *
+ * `valid` is the only state that needs nothing. The other four each have exactly one remedy, and
+ * naming them apart is the whole point: a rate-limited account comes back on its own, a renewable
+ * token that expired renews itself on the next request, a token with no refresh beside it needs a
+ * login, and a refresh the provider rejected needs a login AND will keep failing until it gets
+ * one. Collapsing any two of those into "expired" is how a healthy account gets re-authenticated
+ * for nothing.
+ */
+export type AccountCredentialState = "valid" | "expiring" | "expired" | "blocked" | "refresh-failed";
+
+/** One credential's state, with the moment it ends by itself when there is one. */
+export interface AccountCredentialStatus {
+	state: AccountCredentialState;
+	/**
+	 * Epoch ms this state resolves without anyone doing anything: the rate-limit reset for
+	 * `blocked`, the token's own expiry for `expiring`. Absent for the states that only a login
+	 * ends, because a countdown against them would promise a recovery that never comes.
+	 */
+	resetsAtMs?: number;
+	/** True when a stored refresh token means the state costs the user nothing. */
+	renewable: boolean;
+}
+
+/**
+ * How close to expiry a token has to be before the card says so, in ms.
+ *
+ * Wider than the 60s refresh skew `AuthStorage` uses on purpose. The skew is when the runtime
+ * decides to renew; this is when a reader is told, and a warning that appears one minute before
+ * it matters is one nobody sees. Five minutes is long enough to read the card and act, short
+ * enough that a token with an hour left is not flagged.
+ */
+export const CREDENTIAL_EXPIRY_WARN_MS = 5 * 60_000;
+
+/**
+ * The state one row is in, highest remedy first.
+ *
+ * PRECEDENCE, and why it is this order. A refresh the provider REJECTED outranks everything: the
+ * credential is finished, and no clock running down changes that. A rate-limit block outranks
+ * expiry because the row is unusable right now however fresh its token is. Only then does the
+ * token's own clock matter, and a token whose expiry has passed is reported ahead of one merely
+ * approaching it.
+ *
+ * A row whose health is `failed` for a reason that is NOT a refresh failure stays `valid` here.
+ * Its glyph and its verbatim reason already say a probe failed, and a probe failure is not a
+ * statement about the credential's lifetime: an outage would otherwise read as an expired login.
+ * `unverifiable` says the same thing more weakly and is likewise not a credential state.
+ */
+export function accountCredentialStatus(row: AccountRow, nowMs: number): AccountCredentialStatus {
+	const renewable = row.renewable === true;
+	if (row.health === "failed" && row.healthReason?.startsWith(OAUTH_REFRESH_FAILURE_DISABLE_PREFIX)) {
+		return { state: "refresh-failed", renewable };
+	}
+	if (row.blockedUntilMs !== undefined && row.blockedUntilMs > nowMs) {
+		return { state: "blocked", resetsAtMs: row.blockedUntilMs, renewable };
+	}
+	if (row.tokenExpiresAtMs !== undefined) {
+		if (row.tokenExpiresAtMs <= nowMs) return { state: "expired", renewable };
+		if (row.tokenExpiresAtMs - nowMs <= CREDENTIAL_EXPIRY_WARN_MS) {
+			return { state: "expiring", resetsAtMs: row.tokenExpiresAtMs, renewable };
+		}
+	}
+	return { state: "valid", renewable };
+}
+
+/**
+ * The one sentence both account surfaces print about a credential's lifetime, or nothing.
+ *
+ * ONE OWNER because the card and the inline `/account status` block used to derive every row fact
+ * separately, and that is what let them disagree. The remedy is deliberately NOT in it: the card
+ * offers `press a`, the inline block offers `/providers`, and a shared sentence naming the wrong
+ * one is worse than two sentences agreeing on the fact.
+ *
+ * SILENT for every state a user cannot act on, which is most of them. A renewable token renews
+ * itself, so its expiry is bookkeeping and printing it would put a warning under a working
+ * account; a rate-limit block and a rejected refresh already have their own line on both
+ * surfaces. What is left is the case with no other voice: a token running out with no refresh
+ * token stored, which ends the login when it lands.
+ */
+export function credentialStateNote(row: AccountRow, nowMs: number): string | undefined {
+	const status = accountCredentialStatus(row, nowMs);
+	if (status.renewable) return undefined;
+	if (status.state === "expired") return "the access token expired and no refresh token is stored";
+	if (status.state === "expiring" && status.resetsAtMs !== undefined) {
+		const left = formatDurationCoarse(status.resetsAtMs - nowMs);
+		return `the access token expires in ${left} and no refresh token is stored`;
+	}
+	return undefined;
 }
 
 /**

@@ -20,8 +20,15 @@
  * or a newline in an upstream failure reason tears a card open, and those strings arrive from
  * the network.
  */
-import type { AccountInventory, AccountRow } from "../../session/account-inventory";
-import { accountDisplayLabel, accountIdentityDetail, accountOriginLabel } from "../../session/account-inventory";
+import {
+	type AccountInventory,
+	type AccountRow,
+	accountCredentialStatus,
+	accountDisplayLabel,
+	accountIdentityDetail,
+	accountOriginLabel,
+	credentialStateNote,
+} from "../../session/account-inventory";
 import {
 	formatDurationCoarse,
 	formatUsageWindowLine,
@@ -159,9 +166,26 @@ export function providerHeaderLine(label: string, rows: readonly AccountRow[]): 
  */
 export type AccountGlyphKind = "serving" | "idle" | "failed" | "blocked";
 
+/**
+ * A login that has ENDED: the access token is past its expiry and no refresh token is stored.
+ *
+ * The one credential state that has to be marked, and the reason it is a named predicate rather
+ * than an inline condition is that three separate parts of a row have to agree on it: the glyph,
+ * the right-aligned tag, and the notice line. Two of them disagreeing is the same account reading
+ * as broken in one column and fine in the next.
+ */
+function expiredWithoutRefresh(row: AccountRow, nowMs: number): boolean {
+	const status = accountCredentialStatus(row, nowMs);
+	return status.state === "expired" && !status.renewable;
+}
+
 export function accountGlyphKind(row: AccountRow, nowMs: number): AccountGlyphKind {
 	if (row.health === "failed") return "failed";
-	if (row.blockedUntilMs !== undefined && row.blockedUntilMs > nowMs) return "blocked";
+	// An expired access token with no refresh token beside it is a login that has ENDED. It cannot
+	// serve a request and no waiting fixes it, which is exactly what the failure mark means; the
+	// renewable form of the same expiry renews itself and wears no mark at all.
+	if (expiredWithoutRefresh(row, nowMs)) return "failed";
+	if (accountCredentialStatus(row, nowMs).state === "blocked") return "blocked";
 	return row.activeForSession ? "serving" : "idle";
 }
 
@@ -206,6 +230,10 @@ export function accountHeadLine(row: AccountRow, nowMs: number): AccountHeadLine
 	else if (row.selectedForProvider) tag = "your choice";
 	else if (row.blockedUntilMs !== undefined && row.blockedUntilMs > nowMs) tag = "rate limited";
 	else if (row.health === "failed") tag = "needs attention";
+	// Same words as a failed probe, because it is the same ask of the reader: this row needs a
+	// login. Only the non-renewable form: an expired token with a refresh beside it renews itself
+	// on the next request, and telling a reader to attend to that is telling them to do nothing.
+	else if (expiredWithoutRefresh(row, nowMs)) tag = "needs attention";
 	return {
 		label: sanitizeAccountText(accountDisplayLabel(row)),
 		detail: sanitizeAccountText(detail),
@@ -276,6 +304,8 @@ export function accountNoticeLines(row: AccountRow, nowMs: number): string[] {
 	if (row.blockedUntilMs !== undefined && row.blockedUntilMs > nowMs) {
 		lines.push(`rate limited · unblocks in ${formatDurationCoarse(row.blockedUntilMs - nowMs)}`);
 	}
+	const credential = credentialStateNote(row, nowMs);
+	if (credential) lines.push(`${credential} · press a to sign in again`);
 	return lines;
 }
 
