@@ -8,13 +8,13 @@
  * another does not break anything loudly. It produces a subcommand a client can list and cannot
  * run, or one that works and is absent from the help, and nothing fails until somebody tries it.
  *
- * WHAT CHANGED, AND WHY THAT IS NOT DRIFT. The terminal grammar has no verbs at all: the argument
- * line IS the credential, a bare `/secret` opens a masked field, and `manager` is the single
- * reserved word. The verbs survive only where there is no field and no screen to replace them. So
- * the two surfaces genuinely disagree, and the disagreement is the feature — but it is allowed to
- * be EXACTLY two things:
- *   1. the ENTRY GRAMMAR: what an argument line means (a value, or a verb and its options), and
- *   2. the MANAGER: reserved in a terminal, refused by name everywhere else.
+ * WHAT THE SURFACES ARE ALLOWED TO DISAGREE ABOUT: ONE THING, the ENTRY GRAMMAR. In a terminal the
+ * argument line can BE the credential, a bare `/secret` opens a masked field, and the first word
+ * decides between the two readings. A client with no field cannot accept a typed value at all, so
+ * there the first word is always a verb and a credential arrives only through `--from-env`.
+ *
+ * No VERB is surface-only. Every word the parser reserves runs on both, which is what makes a rule
+ * proved over this grammar a rule about the whole command rather than about one client.
  *
  * Everything else must still be one implementation seen from two places: a lifetime means the same
  * span, a scope means the same file, the same bytes get stored under the same name, and neither
@@ -31,6 +31,8 @@ import {
 	parseSecretCommand,
 	runSecretCommand,
 	SECRET_COMMAND_USAGE,
+	SECRET_TUI_SUBCOMMANDS,
+	SECRET_VERB_SPELLINGS,
 	type SecretCommandRequest,
 	type SecretCommandResult,
 	type SecretCommandSurface,
@@ -41,6 +43,27 @@ import { BUILTIN_SLASH_COMMAND_DECLARATIONS } from "@veyyon/coding-agent/slash-c
 import { ACP_BUILTIN_SLASH_COMMANDS } from "@veyyon/coding-agent/slash-commands/text-mode-builtins";
 
 const declaration = BUILTIN_SLASH_COMMAND_DECLARATIONS.find(command => command.name === "secret");
+
+/**
+ * The rest of a line that satisfies each subcommand's shape, so a refusal is never about arity.
+ *
+ * Keyed by SUBCOMMAND rather than by spelling, because the alias rows below need the shape of the
+ * verb an alias REACHES: `move` is `scope`, which takes a destination, and a bare `move` refuses
+ * for a reason that says nothing about whether the word routed.
+ */
+const WELL_FORMED_REMAINDER: Record<SecretSubcommand, string> = {
+	add: "SOME_NAME --from-env VEYYON_SURFACE_AGREES_VALUE",
+	list: "",
+	rm: "SOME_NAME",
+	rename: "SOME_NAME OTHER_NAME",
+	value: "SOME_NAME",
+	scope: "SOME_NAME global",
+	copy: "SOME_NAME",
+	extend: "SOME_NAME --ttl 7d",
+	log: "",
+	discard: "--scope project",
+	help: "",
+};
 
 /** Fixed clock, so two vaults written a millisecond apart still hold byte-identical entries. */
 const NOW = 1_800_000_000_000;
@@ -103,19 +126,21 @@ async function run(
 describe("the /secret declaration", () => {
 	/**
 	 * THE NON-VACUITY ANCHOR for this whole describe: every test below iterates
-	 * `declaration?.subcommands ?? []`, which an absent declaration satisfies for free. The inventory
-	 * is pinned as an exact set rather than a count, because the surface-agreement rows further down
-	 * are written against these five verbs: a verb added here without a divergence decision, or one
-	 * silently dropped, has to fail at the inventory instead of quietly shrinking the guard.
+	 * `declaration?.subcommands ?? []`, which an absent declaration satisfies for free.
+	 *
+	 * DERIVED FROM THE PARSER, not written out here, and that is what closes the class. A verb added
+	 * to `SECRET_VERB_SPELLINGS` reaches `SECRET_TUI_SUBCOMMANDS` for free, so a hand-written list
+	 * here would have gone stale silently and the rows below would have kept passing over whichever
+	 * subset somebody remembered. Equality in both directions: a declared word the parser does not
+	 * reserve is a listable command that refuses, and a reserved word nobody declared is a working
+	 * command no client can discover. The ORDER is asserted too, because these are the two lists an
+	 * operator reads side by side (the ACP listing and the composer dropdown) and one of them
+	 * shuffling is a diff nobody would otherwise notice.
 	 */
 	it("is registered", () => {
-		expect(declaration?.subcommands?.map(subcommand => subcommand.name)).toEqual([
-			"add",
-			"list",
-			"rm",
-			"extend",
-			"log",
-		]);
+		expect(declaration?.subcommands?.map(subcommand => subcommand.name)).toEqual(
+			SECRET_TUI_SUBCOMMANDS.map(subcommand => subcommand.name),
+		);
 	});
 
 	/**
@@ -126,8 +151,11 @@ describe("the /secret declaration", () => {
 	 */
 	it("declares only subcommands the noninteractive parser accepts", () => {
 		for (const subcommand of declaration?.subcommands ?? []) {
-			expect(() => parseSecretCommand(subcommand.name, "noninteractive")).not.toThrow();
-			expect(parseSecretCommand(subcommand.name, "noninteractive").subcommand).toBe(subcommand.name);
+			// A well-formed line per verb, so the only thing under test is the routing. A bare `scope`
+			// or `discard` refuses on its own grounds, which would have made this row pass through a
+			// catch and stop asserting the mapping it exists for.
+			const line = `${subcommand.name} ${WELL_FORMED_REMAINDER[subcommand.name as SecretSubcommand]}`.trim();
+			expect(parseSecretCommand(line, "noninteractive").subcommand).toBe(subcommand.name);
 		}
 	});
 
@@ -140,6 +168,10 @@ describe("the /secret declaration", () => {
 	 */
 	it("declares only subcommands the noninteractive usage text mentions", () => {
 		for (const subcommand of declaration?.subcommands ?? []) {
+			// `help` is the one exemption, and it is exempt from THIS text only: a help listing that
+			// spends a row telling you how to reach the help you are reading is circular. It is still
+			// declared and still offered in the dropdown, which is where it is discovered.
+			if (subcommand.name === "help") continue;
 			expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain(`/secret ${subcommand.name}`);
 		}
 	});
@@ -157,22 +189,24 @@ describe("the /secret declaration", () => {
 	 * anything is typed, so it has to name both halves of the terminal grammar.
 	 *
 	 * `inlineHint` is read only by `materializeTuiBuiltinSlashCommand`; ACP is handed `acpInputHint`
-	 * instead. It used to be asserted to contain NO verb, on the reasoning that a verb in it is a
-	 * word an operator would type expecting a command and store as the first bytes of a credential.
-	 * The premise was true and the fix was the wrong one: the verbs now parse in a terminal, so the
-	 * hint naming them is the discoverability that was missing, and it is the parser that stops one
-	 * from being swallowed.
+	 * instead. A hint naming no verb at all would hide the whole management half of the command
+	 * behind `/secret help`, and a hint naming every verb would push the value form off the end of
+	 * one line. So it carries the value forms plus the verbs an operator reaches for first, and the
+	 * dropdown carries the rest.
 	 *
-	 * Asserted in both directions: the value forms a terminal has, and the verbs it now parses.
+	 * Asserted in both directions: the value forms a terminal has, and that the words it names are
+	 * words the parser runs rather than stores.
 	 */
 	it("hints both the value forms and the verbs in the composer", () => {
 		expect(declaration?.inlineHint).toContain("<value>");
-		expect(declaration?.inlineHint).toContain("manager");
 		expect(declaration?.inlineHint).toContain("--from-env");
 
-		for (const verb of ["list", "rm", "extend", "log"]) {
+		for (const verb of ["list", "rm", "rename", "extend", "log"]) {
 			expect(declaration?.inlineHint).toMatch(new RegExp(`\\b${verb}\\b`, "u"));
 		}
+		// A word the parser does not reserve would be stored as the first bytes of a credential by
+		// the operator who typed it because the composer suggested it.
+		expect(declaration?.inlineHint).not.toContain("manager");
 	});
 
 	/**
@@ -199,32 +233,41 @@ describe("the /secret declaration", () => {
 
 describe("the noninteractive parser and its usage text", () => {
 	/**
-	 * Every subcommand that surface's parser accepts is either declared or a deliberate alias.
+	 * Every word the parser reserves is either a declared subcommand or a deliberate second spelling.
 	 *
-	 * The other direction of the check. An undeclared verb is not necessarily wrong: `rm` has
-	 * `remove` and `delete`, `extend` has `renew`, `log` has `audit`, and those exist because
-	 * people reach for them. Pinning the alias set means a NEW undeclared verb is a finding while
-	 * the intended ones are not.
+	 * The other direction of the check, and DERIVED from `SECRET_VERB_SPELLINGS` so a spelling added
+	 * later is covered here without anybody remembering this file. An alias is a word `SECRET_TUI_-
+	 * SUBCOMMANDS` deliberately leaves out (its key differs from the subcommand it reaches), and the
+	 * rule is that it must still RUN and must still be absent from the listing: doubling the list
+	 * with `remove` beside `rm` would make a small set look like a large one, and the aliases exist
+	 * for muscle memory rather than for discovery.
+	 *
+	 * The set of them is pinned as well, because "every alias runs" is satisfied by having none: a
+	 * spelling silently dropped from the table would leave this row green while `/secret remove TOK`
+	 * started storing a credential called `remove`.
 	 */
-	it("accepts exactly the declared subcommands plus the known aliases", () => {
+	it("runs every alias the table carries, and lists none of them", () => {
 		// Widened to `Set<string>` deliberately: the declaration's names are typed as the subcommand
-		// union, and the whole point here is to ask whether a string that is NOT in that union (an
-		// alias, or `help`) is declared.
+		// union, and the whole point here is to ask whether a string that is NOT in that union is
+		// declared.
 		const declared = new Set<string>((declaration?.subcommands ?? []).map(subcommand => subcommand.name));
-		const aliases: Record<string, SecretSubcommand> = {
-			remove: "rm",
-			delete: "rm",
-			renew: "extend",
-			audit: "log",
-		};
+		const aliases = Object.entries(SECRET_VERB_SPELLINGS).filter(([word, subcommand]) => word !== subcommand);
 
-		for (const [alias, target] of Object.entries(aliases)) {
-			expect(parseSecretCommand(alias, "noninteractive").subcommand).toBe(target);
+		expect(aliases.map(([word]) => word).sort()).toEqual(
+			["audit", "delete", "move", "name", "remove", "renew", "replace"].sort(),
+		);
+		for (const [alias, target] of aliases) {
+			// The remainder is the target's own shape: `move` reaches `scope`, which refuses without a
+			// destination, so a bare alias would fail here for a reason that has nothing to do with
+			// whether the word routed.
+			const line = `${alias} ${WELL_FORMED_REMAINDER[target]}`.trim();
+			expect(parseSecretCommand(line, "noninteractive").subcommand).toBe(target);
 			expect(declared.has(alias)).toBe(false);
 		}
-		// `help` is the empty-argument fallback rather than a listed subcommand.
+		// `help` is BOTH the empty-argument fallback and a verb of its own, so unlike the aliases it
+		// is declared: a client with no field has no other way to ask what the command does.
 		expect(parseSecretCommand("", "noninteractive").subcommand).toBe("help");
-		expect(declared.has("help")).toBe(false);
+		expect(declared.has("help")).toBe(true);
 	});
 
 	/** An unknown verb is refused with the usage attached, so the operator sees the options. */
@@ -354,9 +397,9 @@ describe("what the two surfaces still agree about", () => {
  * The half that changed, stated as a closed list.
  *
  * The disagreement used to be the whole verb grammar: in a terminal an argument line was a
- * credential and nothing else, and every verb belonged to the other surface. It is now exactly two
- * members wide, `add` and `manager`, and the first row below is what shrank it: every other verb
- * routes identically wherever it is typed.
+ * credential and nothing else, and every verb belonged to the other surface. It is now exactly ONE
+ * member wide, `add`, and the first row below is what shrank it: every other verb routes
+ * identically wherever it is typed.
  */
 describe("what the two surfaces deliberately disagree about", () => {
 	/**
@@ -369,20 +412,19 @@ describe("what the two surfaces deliberately disagree about", () => {
 	 * and the defect was that in a terminal every one of these lines came back with it set.
 	 */
 	it("route every verb to the same subcommand on both surfaces", () => {
-		const verbLines: Record<string, SecretSubcommand> = {
-			list: "list",
-			"rm TOKEN_NAME": "rm",
-			"extend TOKEN_NAME --ttl 7d": "extend",
-			"log --limit 5": "log",
-			"discard --scope project": "discard",
-			help: "help",
-		};
+		// DERIVED over every verb the parser reserves, minus `add`, which is the one deliberate
+		// divergence. A hand-written subset was the original mistake in miniature: it named five of
+		// the verbs, so `rename`, `value`, `scope` and `copy` could have been terminal-only or
+		// client-only and this row would have said the surfaces agreed.
+		const verbs = SECRET_TUI_SUBCOMMANDS.map(subcommand => subcommand.name).filter(name => name !== "add");
+		expect(verbs.length).toBeGreaterThan(8);
 
-		for (const [line, subcommand] of Object.entries(verbLines)) {
+		for (const verb of verbs) {
+			const line = `${verb} ${WELL_FORMED_REMAINDER[verb]}`.trim();
 			for (const surface of ["noninteractive", "tui"] as const) {
 				const request = parseSecretCommand(line, surface);
 
-				expect(request.subcommand).toBe(subcommand);
+				expect(request.subcommand).toBe(verb);
 				expect(request.value).toBeUndefined();
 			}
 		}
@@ -418,18 +460,30 @@ describe("what the two surfaces deliberately disagree about", () => {
 	});
 
 	/**
-	 * THE MANAGER, the one reserved word. It is a screen, so a client with none is told exactly that
-	 * rather than that the word does not exist: "unknown subcommand" would send an ACP caller looking
-	 * for a typo instead of at the text verbs its own help lists.
+	 * THE CLASS: no verb belongs to one surface. Every reserved word parses on both, and both help
+	 * texts advertise it, so a verb cannot be typeable in a terminal and unknown to an ACP client, or
+	 * listed in one help and missing from the other.
+	 *
+	 * Derived from the parser's own table rather than a list here, so adding a verb that only one
+	 * surface accepts turns this red without anyone remembering to extend a fixture. The two entry
+	 * forms are what differ, and they are asserted above.
 	 */
-	it("reserve the manager for a terminal, and refuse it by name where there is no screen", () => {
-		expect(parseSecretCommand("manager", "tui")).toEqual({ subcommand: "manager" });
-		expect(SECRET_COMMAND_USAGE).toContain("/secret manager");
-
-		expect(() => parseSecretCommand("manager", "noninteractive")).toThrow(
-			/terminal screen, and this client has none/,
-		);
-		expect(() => parseSecretCommand("manager", "noninteractive")).not.toThrow(/Unknown \/secret subcommand/);
-		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("/secret manager");
+	it("keep no verb to themselves, in the parser or in the help", () => {
+		for (const { name } of SECRET_TUI_SUBCOMMANDS) {
+			for (const surface of ["tui", "noninteractive"] as const) {
+				let refusal = "";
+				try {
+					// A verb needing arguments refuses, which still proves the word is reserved. What must
+					// never happen is the word being called unknown, or being swallowed as a credential.
+					expect(parseSecretCommand(name, surface).value).toBeUndefined();
+				} catch (error) {
+					refusal = error instanceof Error ? error.message : String(error);
+				}
+				expect(refusal).not.toContain("Unknown /secret subcommand");
+			}
+			if (name === "add" || name === "help") continue;
+			expect(SECRET_COMMAND_USAGE).toContain(`/secret ${name}`);
+			expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain(`/secret ${name}`);
+		}
 	});
 });

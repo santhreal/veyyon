@@ -215,45 +215,44 @@ describe("the verbless /secret grammar in a terminal", () => {
 	});
 
 	/**
-	 * The one reserved word opens the manager and does nothing else: no field, no vault write, no
-	 * message. If `manager` ever fell through to the store path it would silently save the literal
-	 * word `manager` as a credential, which is exactly the collision the reservation exists to
-	 * prevent.
+	 * A VERB RUNS AND STORES NOTHING, through the real dialogs and the real vault. `list` is the one
+	 * an operator types within seconds of storing their first credential, so if a reserved word ever
+	 * fell through to the store path this is where it would show up: the word itself saved as a
+	 * secret, protection switched on, and the answer to "what do I have" being "the word list".
 	 */
-	it("reserves manager for the GUI and stores nothing", async () => {
-		const { fields, outcome } = await secretThroughRealDialog("manager", {
+	it("runs a reserved word without opening a field or writing anything", async () => {
+		const { fields, outcome } = await secretThroughRealDialog("list", {
 			typeName: mustNotOpen("name"),
 		});
 
-		expect(outcome.openManager).toBe(true);
+		expect(outcome.message).not.toBe("");
 		expect(fields).toEqual([]);
 		expect(await stored()).toEqual([]);
 	});
 
 	/**
 	 * A reserved word is a command however much follows it, so a malformed one stores NOTHING and
-	 * refuses. The grammar this replaced reserved `manager` for exactly one word and read every
-	 * longer line as a credential, which is the same rule that turned `/secret rm TOKEN` into a
-	 * stored credential named after the command.
+	 * refuses. Falling back to storage when a verb does not fit its shape is what would turn
+	 * `/secret log 50` into a credential named after the command the operator was trying to run.
 	 */
 	it("refuses a malformed reserved line rather than storing it", async () => {
-		await expect(secretThroughRealDialog("manager key 8891", { typeName: type("") })).rejects.toThrow(
-			/\/secret -- <value>/u,
-		);
+		await expect(secretThroughRealDialog("log 50", { typeName: type("") })).rejects.toThrow(/\/secret -- <value>/u);
 
 		expect(await stored()).toEqual([]);
 	});
 
 	/**
 	 * And the escape stores that same line, so an operator whose credential really does begin with a
-	 * reserved word is not locked out. This is the row that makes the refusal above defensible.
+	 * reserved word is not locked out. This is the row that makes the refusal above defensible. The
+	 * credential is long because the vault refuses anything under the obfuscatable-length floor, and
+	 * a six-character escape would have failed here for a reason that has nothing to do with the
+	 * escape.
 	 */
 	it("stores an escaped line whose first word is reserved", async () => {
-		const { outcome } = await secretThroughRealDialog("-- manager key 8891", { typeName: type("") });
+		await secretThroughRealDialog("-- log ghp_startsWithAReservedWord", { typeName: type("") });
 
-		expect(outcome.openManager).toBeUndefined();
 		const entries = await stored();
-		expect(entries[0]?.value).toBe("manager key 8891");
+		expect(entries[0]?.value).toBe("log ghp_startsWithAReservedWord");
 	});
 
 	/**

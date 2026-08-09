@@ -412,22 +412,14 @@ describe("the two usage variants", () => {
 	});
 
 	/**
-	 * THE STRUCTURAL FRAME IS SHARED, AND ONLY THE SURFACE-SPECIFIC LINES DIVERGE.
+	 * THE STRUCTURAL FRAME IS SHARED, AND ONLY THE ENTRY LINES DIVERGE.
 	 *
-	 * The two variants no longer differ by two removable lines: a terminal has no verbs at all, so
-	 * its entry group describes the verbless grammar and its management group is the single line
-	 * that opens the manager. What must still hold, and is what stops the two lists drifting, is
-	 * that the frame around those lines is byte-identical: both headings, the blank line between
-	 * the groups, and the blank line before the footer. A reworded heading applied to one variant
-	 * and forgotten on the other fails here.
-	 *
-	 * THE FOOTER IS DELIBERATELY NOT COMPARED, and that is the one exemption. It names the verbs
-	 * that read each option, and only the noninteractive surface has verbs, so a shared footer put
-	 * "on add, rm and discard" in front of an operator who cannot type `discard`. Each footer is
-	 * pinned as an exact list by its own test below, which is a stricter check than equality with
-	 * the other surface: neither can drift silently just because this comparison stopped covering
-	 * it. The one footer line that IS a shared fact is asserted on both, so the exemption cannot
-	 * quietly widen into "the footers are unrelated".
+	 * One thing differs between the two texts: how a credential is ENTERED. A terminal can hide what
+	 * is typed, so its entry group offers the value forms; a client with no field can only read one
+	 * out of the environment. Everything else, the management group and the options footer, is the
+	 * same bytes, because every verb parses on both surfaces. What this row holds is the frame around
+	 * the entry lines: both headings, the blank line between the groups, and the blank line before
+	 * the footer. A reworded heading applied to one variant and forgotten on the other fails here.
 	 */
 	it("agree on the structural frame around the lines that differ", () => {
 		const structure = (usage: string) => usage.split("\n").filter(line => line === "" || line.endsWith(":"));
@@ -460,28 +452,20 @@ describe("the two usage variants", () => {
 	});
 
 	/**
-	 * THE SET OF COMMANDS EACH SURFACE NAMES. Both parse every verb, so both name every verb, and
-	 * the terminal additionally names the manager, which is the one command that needs a screen.
+	 * THE SET OF COMMANDS EACH SURFACE NAMES. Both parse every verb, so both name every verb: a verb
+	 * missing from either list is a working command nobody discovers, and a word in a list that the
+	 * parser does not reserve is a word the terminal would store as the start of a credential.
 	 *
-	 * The state this replaced had the terminal listing exactly one word, on the reasoning that a
-	 * verb in that list is a word the terminal would store as a credential. That was true of the
-	 * parser at the time, and the two together meant the help was consistent and the commands were
-	 * unreachable: `/secret list` stored `list`. The verbs work here now, so a verb MISSING from
-	 * either list is a working command nobody discovers.
+	 * The one asymmetry is `add`, which the terminal spells as the bare value form because the value
+	 * needs no verb there, and which a client with no field can only reach as a verb.
 	 */
-	it("list every verb on both surfaces, and the manager only where there is a screen", () => {
+	it("list every verb on both surfaces, with add spelled per surface", () => {
 		const commandWords = (usage: string) =>
 			[...new Set([...usage.matchAll(/^ {2}\/secret (\w+)/gmu)].map(match => match[1]))].sort();
 
-		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(["discard", "extend", "list", "log", "manager", "rm"]);
-		expect(commandWords(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual([
-			"add",
-			"discard",
-			"extend",
-			"list",
-			"log",
-			"rm",
-		]);
+		const verbs = ["copy", "discard", "extend", "list", "log", "rename", "rm", "scope", "value"];
+		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(verbs);
+		expect(commandWords(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual(["add", ...verbs].sort());
 	});
 
 	/**
@@ -503,67 +487,53 @@ describe("the two usage variants", () => {
 			expect(lines[manage - 1]).toBe("");
 			expect(lines.slice(store + 1, manage - 1).every(line => line.startsWith("  /secret "))).toBe(true);
 
-			// The management body itself, exactly, because the two texts still diverge there: a terminal
-			// leads with the manager screen, which is the better way to do four of the five, and a
-			// client with no screen has only the verbs. Bounded by the heading above and the blank line
-			// below rather than by fixed offsets, so the claim survives any reflow of the group in
-			// front of it.
+			// The management body itself, exactly, and identical on both surfaces: every verb parses in
+			// both places, so a body that differed would mean one surface hiding a working command.
+			// Bounded by the heading above and the blank line below rather than by fixed offsets, so
+			// the claim survives any reflow of the group in front of it.
 			const management = [
 				"  /secret list                          show active secrets, never their values",
 				"  /secret rm <name> [--scope global]    remove a secret",
+				"  /secret rename <name> <new-name>      give a secret a different name",
+				"  /secret value <name>                  replace a secret's value, keeping its name and lifetime",
+				"  /secret scope <name> global           move a secret to another vault",
+				"  /secret copy <name>                   copy #NAME#, the placeholder, never the value",
 				"  /secret extend <name> --ttl 7d        give a secret a fresh lifetime",
-				"  /secret log [--limit 50]              show which secrets were used, and where",
+				"  /secret log [--name X] [--limit 50]   show which secrets were used, and where",
 				"  /secret discard --scope project       move a broken vault file aside",
 			];
-			expect(lines.slice(manage + 1, lines.indexOf("", manage + 1))).toEqual(
-				usage === SECRET_COMMAND_USAGE
-					? [
-							"  /secret manager                       open the manager: rename, extend, revoke, copy",
-							...management,
-						]
-					: management,
-			);
+			expect(lines.slice(manage + 1, lines.indexOf("", manage + 1))).toEqual(management);
 		}
 	});
 
 	/**
-	 * The options block sits below both groups, and names which subcommands read each option.
+	 * ONE FOOTER, ON BOTH SURFACES, ANNOTATION COLUMN AND ALL.
 	 *
-	 * It used to open with a bare "Options:" heading, which read as "every subcommand takes these".
-	 * That was false: `list` takes neither, `rm` took `--scope` only after it was added, and
-	 * `extend` takes only `--ttl`. Advertising a flag the parser refuses costs more than omitting
-	 * it, because the refusal looks like the operator's mistake rather than a limit.
+	 * The footer names which subcommands read each option. There were two of them while a terminal
+	 * had no verbs to annotate, because the shared line "on add, rm and discard" pointed an operator
+	 * at commands that surface refused. Every verb parses everywhere now, so a per-surface footer
+	 * would be two answers to "what does --scope apply to", and the one that got edited would be
+	 * whichever the author happened to be reading.
+	 *
+	 * Pinned as an exact tail, in order, on both texts: a footer line added for one surface has to
+	 * be true for the other, and a line that stops applying has to be removed once.
 	 */
-	it("keep the options below both groups, naming which subcommands read each one", () => {
-		const lines = NONINTERACTIVE_SECRET_COMMAND_USAGE.split("\n");
-
-		expect(lines.slice(-4)).toEqual([
+	it("close both surfaces with the same options footer", () => {
+		const footer = [
 			"--ttl 30m|12h|7d|2w|never            on add and extend",
 			"--scope profile|project|global       on add, rm and discard",
+			"--name <name>                        on log, to show only that secret's uses",
 			"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
 			"Removal without --scope takes the narrowest match, which is the one currently in effect.",
-		]);
-		expect(lines[lines.length - 5]).toBe("");
-	});
+		];
 
-	/**
-	 * Terminal help states the option values without the annotation column beside them.
-	 *
-	 * The column says WHICH VERB reads each option, and it is noise on a surface whose first line is
-	 * `/secret <value>`: the everyday path there takes no options at all, and the verbs that do take
-	 * them spell the option in their own usage line two rows up. Pinned as an exact list so a future
-	 * footer line has to be placed on the surface it is true for.
-	 */
-	it("state the option values in the terminal without the per-verb column", () => {
-		const lines = SECRET_COMMAND_USAGE.split("\n");
+		for (const usage of [SECRET_COMMAND_USAGE, NONINTERACTIVE_SECRET_COMMAND_USAGE]) {
+			const lines = usage.split("\n");
 
-		expect(lines.slice(-3)).toEqual([
-			"--ttl 30m|12h|7d|2w|never",
-			"--scope profile|project|global",
-			"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
-		]);
-		expect(lines[lines.length - 4]).toBe("");
-		expect(SECRET_COMMAND_USAGE).not.toContain("on add, rm and discard");
+			expect(lines.slice(-footer.length)).toEqual(footer);
+			// The blank line above it, so the options never read as another management command.
+			expect(lines[lines.length - footer.length - 1]).toBe("");
+		}
 	});
 });
 

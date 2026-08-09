@@ -102,7 +102,7 @@ describe("parsing the noninteractive verb grammar", () => {
 		expect(parseSecretCommand("   ", "noninteractive").subcommand).toBe("help");
 	});
 
-	/** The subcommands, plus the synonyms people reach for. None of them is a verb in a terminal. */
+	/** The subcommands, plus the second spellings people reach for. All of them run on both surfaces. */
 	it("accepts every subcommand and its synonyms", () => {
 		expect(parseSecretCommand("add TOKEN_A x", "noninteractive").subcommand).toBe("add");
 		expect(parseSecretCommand("list", "noninteractive").subcommand).toBe("list");
@@ -111,6 +111,15 @@ describe("parsing the noninteractive verb grammar", () => {
 		expect(parseSecretCommand("delete TOKEN_A", "noninteractive").subcommand).toBe("rm");
 		expect(parseSecretCommand("extend TOKEN_A", "noninteractive").subcommand).toBe("extend");
 		expect(parseSecretCommand("renew TOKEN_A", "noninteractive").subcommand).toBe("extend");
+		expect(parseSecretCommand("rename TOKEN_A TOKEN_B", "noninteractive").subcommand).toBe("rename");
+		expect(parseSecretCommand("name TOKEN_A TOKEN_B", "noninteractive").subcommand).toBe("rename");
+		expect(parseSecretCommand("value TOKEN_A", "noninteractive").subcommand).toBe("value");
+		expect(parseSecretCommand("replace TOKEN_A", "noninteractive").subcommand).toBe("value");
+		expect(parseSecretCommand("scope TOKEN_A global", "noninteractive").subcommand).toBe("scope");
+		expect(parseSecretCommand("move TOKEN_A global", "noninteractive").subcommand).toBe("scope");
+		expect(parseSecretCommand("copy TOKEN_A", "noninteractive").subcommand).toBe("copy");
+		expect(parseSecretCommand("log", "noninteractive").subcommand).toBe("log");
+		expect(parseSecretCommand("audit", "noninteractive").subcommand).toBe("log");
 	});
 
 	/**
@@ -857,7 +866,7 @@ describe("usage text", () => {
 		const noninteractive = secretCommandUsage("noninteractive");
 		const tui = secretCommandUsage("tui");
 
-		for (const verb of ["list", "rm", "extend", "log", "discard"]) {
+		for (const verb of ["list", "rm", "rename", "value", "scope", "copy", "extend", "log", "discard"]) {
 			expect(noninteractive).toContain(`/secret ${verb}`);
 			expect(tui).toContain(`/secret ${verb}`);
 		}
@@ -868,15 +877,15 @@ describe("usage text", () => {
 		expect(tui).not.toContain("/secret add");
 	});
 
-	/** The terminal help documents the three ways in and the one reserved word, and nothing else. */
-	it("documents the verbless entry forms and the manager in a terminal", () => {
+	/** The terminal help documents the ways in, and never a screen: there is not one to open. */
+	it("documents the entry forms in a terminal", () => {
 		const tui = secretCommandUsage("tui");
 
 		expect(tui).toContain("/secret <value>");
 		expect(tui).toContain("/secret --from-env <VAR>");
 		expect(tui).toContain("paste into a hidden field");
-		expect(tui).toContain("/secret manager");
-		expect(secretCommandUsage("noninteractive")).not.toContain("/secret manager");
+		expect(tui).toContain("/secret -- <value>");
+		expect(tui).not.toContain("manager");
 	});
 
 	/** Options and their defaults mean the same thing on both surfaces, so both spell them out. */
@@ -917,30 +926,36 @@ describe("the terminal grammar", () => {
 		}
 	});
 
-	/** The single reserved word, which the adapter turns into "open the GUI" rather than a vault call. */
-	it("returns the manager subcommand for the bare reserved word", () => {
-		expect(parseSecretCommand("manager", "tui")).toEqual({ subcommand: "manager" });
-		expect(parseSecretCommand("  MANAGER  ", "tui")).toEqual({ subcommand: "manager" });
+	/**
+	 * THE FIRST WORD DECIDES, and a word the parser does not reserve is a credential. `manager` is
+	 * the test case on purpose: it is the kind of word a stale piece of advice or an old habit puts
+	 * on this line, and the answer has to be storage rather than a command, because a grammar that
+	 * guessed at near-misses would guess at credentials too.
+	 */
+	it("reads an unreserved word as the credential, whatever it looks like", () => {
+		expect(parseSecretCommand("manager", "tui")).toEqual({ subcommand: "add", value: "manager" });
+		expect(parseSecretCommand("  MANAGER  ", "tui")).toEqual({ subcommand: "add", value: "MANAGER" });
 	});
 
 	/**
 	 * A reserved word is a command however much follows it, so a malformed one is REFUSED rather
-	 * than re-read as a credential. Refusing is what closes the silent-storage class: the older
-	 * grammar reserved `manager` for exactly one word and treated every longer line as a value, so
-	 * `/secret rm TOKEN` and `/secret log 50` both quietly became credentials.
+	 * than re-read as a credential. Refusing is what closes the silent-storage class: a grammar that
+	 * fell back to storage when a verb did not fit its shape would turn `/secret log 50` into a
+	 * credential and report it as a success.
 	 *
 	 * The refusal has to carry the escape, because the operator whose credential really does start
 	 * with a reserved word has exactly one way to say so and no reason to guess it.
 	 */
 	it("refuses a malformed reserved line and names the escape", () => {
-		expect(() => parseSecretCommand("manager key 8891", "tui")).toThrow(/\/secret -- <value>/u);
+		expect(() => parseSecretCommand("log 50", "tui")).toThrow(/\/secret -- <value>/u);
+		expect(() => parseSecretCommand("list everything", "tui")).toThrow(/\/secret -- <value>/u);
 	});
 
 	/** And the escape stores that same line verbatim, reserved first word and all. */
 	it("stores an escaped line as the credential, byte for byte", () => {
-		expect(parseSecretCommand("-- manager key 8891", "tui")).toEqual({
+		expect(parseSecretCommand("-- log 50", "tui")).toEqual({
 			subcommand: "add",
-			value: "manager key 8891",
+			value: "log 50",
 		});
 	});
 
@@ -992,15 +1007,20 @@ describe("the terminal grammar", () => {
 	});
 
 	/**
-	 * The reserved word on a client with no screen to open is named for what it is, not filed under
-	 * "unknown". Calling a real command unknown sends an ACP or `-p` caller hunting for a typo
-	 * instead of reading the text verbs the same refusal prints underneath.
+	 * A WORD THIS SURFACE CANNOT READ AS A CREDENTIAL EITHER. In a terminal an unrecognised first
+	 * word is the value; where a value cannot be typed at all, the same word has no second reading,
+	 * so it is refused. The refusal carries the whole usage rather than the word alone, because the
+	 * caller cannot open a help screen and the list of what it CAN run is the actionable part.
+	 *
+	 * AND IT DOES NOT REPEAT THE WORD. A client, or a `-p` invocation, typing `/secret ghp_…` lands
+	 * exactly here, so the unknown first token is very often the credential itself: echoing it would
+	 * write it into the refusal, the scrollback and the saved transcript.
 	 */
-	it("refuses the manager on a client that has no screen, without calling it unknown", () => {
-		const message = messageOf(() => parseSecretCommand("manager", "noninteractive"));
+	it("refuses an unreadable word where a value cannot be typed, and prints what can be run", () => {
+		const message = messageOf(() => parseSecretCommand("ghp_wordThisSurfaceCannotRead", "noninteractive"));
 
-		expect(message).toContain("The secret manager is a terminal screen, and this client has none.");
-		expect(message).not.toContain("Unknown /secret subcommand");
+		expect(message).toContain("Unknown /secret subcommand.");
 		expect(message).toContain(secretCommandUsage("noninteractive"));
+		expect(message).not.toContain("ghp_wordThisSurfaceCannotRead");
 	});
 });

@@ -94,8 +94,10 @@ describe("the ghost text after /secret", () => {
 		const hint = hintFor("");
 
 		expect(hint).toContain("<value>");
-		expect(hint).toContain("manager");
+		expect(hint).toContain("list");
 		expect(hint).toContain("--from-env");
+		// A word the parser does not reserve would be typed as a command and stored as a credential.
+		expect(hint).not.toContain("manager");
 	});
 
 	/**
@@ -105,7 +107,8 @@ describe("the ghost text after /secret", () => {
 	 */
 	it("completes a partially typed verb and names its arguments", () => {
 		expect(hintFor("ex")).toBe("tend <name> --ttl 7d");
-		expect(hintFor("man")).toBe("ager");
+		expect(hintFor("ren")).toBe("ame <name> <new-name>");
+		expect(hintFor("cop")).toBe("y <name>");
 		expect(hintFor("rm ")).toBe("<name> [--scope global]");
 	});
 
@@ -139,14 +142,14 @@ describe("what /secret offers in its argument dropdown", () => {
 	 * only thing that says the feature has commands at all.
 	 *
 	 * Asserted against `SECRET_TUI_SUBCOMMANDS`, which the parser builds from the same table it
-	 * routes with, so this cannot pass while a subcommand is missing from the menu. The manager comes
-	 * first because it replaces four of the others.
+	 * routes with, so this cannot pass while a subcommand is missing from the menu. Storing comes
+	 * first, then the edits a stored credential needs, then the answers about use.
 	 */
-	it("offers every subcommand the parser reserves, manager first", async () => {
+	it("offers every subcommand the parser reserves, storing first", async () => {
 		const items = await completionsFor("", threeStoredSecrets());
 
 		expect(items?.map(item => item.label)).toEqual(SECRET_TUI_SUBCOMMANDS.map(sub => sub.name));
-		expect(items?.[0]?.label).toBe("manager");
+		expect(items?.[0]?.label).toBe("add");
 		expect(items?.every(item => (item.description ?? "").length > 10)).toBe(true);
 	});
 
@@ -161,10 +164,13 @@ describe("what /secret offers in its argument dropdown", () => {
 	 */
 	it("offers only words the terminal parser routes as commands", async () => {
 		const arguments_: Record<string, string> = {
-			manager: "",
 			add: "ghp_theCredentialItself",
 			list: "",
 			rm: "TOKEN_NAME",
+			rename: "TOKEN_NAME OTHER_NAME",
+			value: "TOKEN_NAME",
+			scope: "TOKEN_NAME global",
+			copy: "TOKEN_NAME",
 			extend: "TOKEN_NAME --ttl 7d",
 			log: "--limit 5",
 			discard: "--scope project",
@@ -224,8 +230,8 @@ describe("what /secret offers in its argument dropdown", () => {
 	 * the command itself accepts.
 	 */
 	it("matches a partial or upper-case spelling", async () => {
-		expect((await completionsFor("man", undefined))?.map(item => item.label)).toEqual(["manager"]);
-		expect((await completionsFor("MAN", undefined))?.map(item => item.label)).toEqual(["manager"]);
+		expect((await completionsFor("ren", undefined))?.map(item => item.label)).toEqual(["rename"]);
+		expect((await completionsFor("REN", undefined))?.map(item => item.label)).toEqual(["rename"]);
 		expect((await completionsFor("l", undefined))?.map(item => item.label)).toEqual(["list", "log"]);
 	});
 

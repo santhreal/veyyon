@@ -14,8 +14,8 @@
  * the store path", which is why the field-by-field comparison below is derived from the stored
  * entry's own keys rather than from a list of fields somebody remembered.
  *
- * WHAT IT DOES NOT CATCH. Whether the running session picks the new value up: that is the card's
- * `refreshSecrets` wiring, asserted in `secret-manager-credential-management.test.ts`.
+ * WHAT IT DOES NOT CATCH. Whether the running session picks the new value up: that is the
+ * `refreshSecrets` call `/secret value` makes after the write, asserted in `secret-command.test.ts`.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";

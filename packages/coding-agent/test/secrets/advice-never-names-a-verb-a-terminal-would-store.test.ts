@@ -1,52 +1,79 @@
 /**
- * Every string that tells an operator how to fix a secrets problem must name a route they can
- * actually take from where they are.
+ * Every string that tells an operator how to fix a secrets problem must name a command the surface
+ * reading it would RUN, never one it would store as a credential.
  *
- * WHY THIS SUITE EXISTS. `/secret` has two grammars. In a terminal there are no verbs: everything
- * after `/secret` IS the credential, and the only reserved word is `manager`. A client with no
- * terminal keeps `add`/`list`/`rm`/`extend`/`log`/`discard`, because it has neither a hidden field
- * nor a card to replace them with.
+ * WHY THIS SUITE EXISTS. `/secret` has one grammar and two entry forms. In a terminal the first
+ * word decides: a reserved word is a command, and anything else is the credential itself. So a
+ * piece of advice that names `/secret revoke NAME` does not fail loudly. It stores the string
+ * `revoke NAME` as a secret under a generated name, reports success, and leaves the real problem
+ * exactly where it was. The advice meant to rescue the operator becomes the next entry in their
+ * vault.
  *
- * The advice strings did not move when the grammar did. An expired placeholder said "Store it
- * again with /secret add NAME --from-env <VAR>"; a nearly-expired one said "Extend it with
- * /secret extend NAME --ttl 7d"; the unreadable-vault notices said to run
- * "/secret discard --scope <scope>". Typed at a terminal prompt, each of those is stored as a
- * credential and reported as a success. The advice meant to rescue the operator would have become
- * the next secret in their vault, under a generated name, with the real one still broken.
+ * These emitters cannot know which surface will print them: they are raised by the vault loader and
+ * the obfuscator, below any notion of a UI. So the contract is not "use the terminal form", it is
+ * that every word an advice string puts after `/secret` is a word BOTH surfaces parse as a command.
  *
- * These emitters cannot know which surface will print them: they are raised by the vault loader
- * and the obfuscator, below any notion of a UI. So the contract is not "use the TUI form", it is
- * that a string naming a VERB form must also name a route that works in a terminal. Both readers
- * are then served by one sentence.
+ * THE CHECK IS A RULE, NOT A SET OF GOLDEN STRINGS, and the reserved set is asked of the parser at
+ * run time rather than listed here. The failure mode is a new piece of advice, or a new verb, added
+ * later with a stale idea of the grammar, and a golden-string test only pins the sentences that
+ * already exist.
  *
- * The check is a rule rather than a set of golden strings on purpose: the failure mode is a NEW
- * piece of advice added later with the old grammar in mind, and a golden-string test only pins
- * the sentences that already exist.
+ * WHAT IT DOES NOT CATCH. Advice that names a real verb with the wrong arguments (`/secret extend`
+ * with no `--ttl`) reads as runnable here, because the first word does parse; the refusal an
+ * operator gets in that case names the missing option rather than storing anything, which is the
+ * property this suite is about. Notices raised through `noteSecretsCondition` inside the vault
+ * loader are covered by the suites that drive a broken vault end to end.
  */
 import { describe, expect, it } from "bun:test";
 import { describeSecretExpiry } from "@veyyon/coding-agent/secrets/obfuscator";
-import { expiryWarnings } from "@veyyon/coding-agent/secrets/secret-command";
+import type { SecretCommandSurface } from "@veyyon/coding-agent/secrets/secret-command";
+import {
+	expiryWarnings,
+	parseSecretCommand,
+	SECRET_TUI_SUBCOMMANDS,
+} from "@veyyon/coding-agent/secrets/secret-command";
 import type { ScopedVaultEntry } from "@veyyon/coding-agent/secrets/vault";
 import { generateSecretName } from "@veyyon/coding-agent/secrets/vault";
 
-/**
- * The words that only parse where there is no terminal. `manager` is deliberately absent: it is
- * the one word the terminal grammar reserves, so naming it is the fix, not the defect.
- */
-const NO_TERMINAL_VERBS = ["add", "list", "rm", "extend", "log", "discard"] as const;
+const SURFACES: readonly SecretCommandSurface[] = ["tui", "noninteractive"];
 
-/** A route an operator at a terminal prompt can actually take. */
-const TERMINAL_ROUTES = ["/secret manager", "/secret --from-env"] as const;
+/** Every word an advice string puts directly after `/secret`, flags included. */
+function wordsAdvertised(advice: string): string[] {
+	return [...advice.matchAll(/\/secret\s+(--?[a-z][\w-]*|[A-Za-z][\w-]*)/g)].map(match => match[1]);
+}
 
 /**
- * Advice is safe when it names no verb form at all, or names one alongside a terminal route.
- * Returns the offending verbs so a failure says which word is unreachable, not merely that one is.
+ * Whether this surface would RUN `/secret <word>` rather than store it or reject it as unknown.
+ *
+ * Asked of the real parser so the reserved set cannot go stale: adding a verb makes it safe to
+ * advertise the moment it parses, and removing one makes every string naming it fail here.
  */
-function verbsWithoutATerminalRoute(advice: string): string[] {
-	const named = NO_TERMINAL_VERBS.filter(verb => advice.includes(`/secret ${verb}`));
-	if (named.length === 0) return [];
-	if (TERMINAL_ROUTES.some(route => advice.includes(route))) return [];
-	return [...named];
+function isRunnableWord(word: string, surface: SecretCommandSurface): boolean {
+	// An option is never the first word, so it cannot collide with a credential.
+	if (word.startsWith("-")) return true;
+	try {
+		// A parse that captured the word as the credential means this surface would STORE the advice.
+		return parseSecretCommand(word, surface).value === undefined;
+	} catch (error) {
+		// A refusal is fine, and is what a verb missing its arguments does. Being called UNKNOWN is
+		// not: nothing runs at all, and the operator is told the fix they were handed does not exist.
+		const message = error instanceof Error ? error.message : String(error);
+		return !message.includes("Unknown /secret subcommand");
+	}
+}
+
+/**
+ * The words in this advice that some surface would not run, each tagged with the surface that
+ * refuses it, so a failure says which word is unreachable from where and not merely that one is.
+ */
+function unrunnableWords(advice: string): string[] {
+	const offences: string[] = [];
+	for (const word of wordsAdvertised(advice)) {
+		for (const surface of SURFACES) {
+			if (!isRunnableWord(word, surface)) offences.push(`${word} (${surface})`);
+		}
+	}
+	return offences;
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -63,17 +90,16 @@ function entry(overrides: Partial<ScopedVaultEntry> = {}): ScopedVaultEntry {
 	};
 }
 
-describe("advice a terminal operator can act on", () => {
+describe("advice an operator can act on from where they are", () => {
 	/**
 	 * The expiry notice is the likeliest one to be READ AND OBEYED, because it arrives unprompted
-	 * mid-session about a credential the operator is relying on right now. Obeying the old wording
-	 * stored `/secret add GITHUB_TOKEN --from-env <VAR>` as a credential.
+	 * mid-session about a credential the operator is relying on right now.
 	 */
-	it("names a terminal route when it tells you to store an expired secret again", () => {
+	it("names only runnable commands when it tells you to store an expired secret again", () => {
 		for (const persistedCiphertextRemoved of [true, false]) {
 			const advice = describeSecretExpiry({ name: "GITHUB_TOKEN", persistedCiphertextRemoved });
 
-			expect(verbsWithoutATerminalRoute(advice)).toEqual([]);
+			expect(unrunnableWords(advice)).toEqual([]);
 			expect(advice).toContain("/secret --from-env");
 		}
 	});
@@ -82,49 +108,71 @@ describe("advice a terminal operator can act on", () => {
 	 * The extend warning fires while the secret still works, which is exactly when the operator has
 	 * a reason to act and no reason to doubt the sentence in front of them.
 	 */
-	it("names a terminal route when it tells you to extend a secret", () => {
+	it("names only runnable commands when it tells you to extend a secret", () => {
 		for (const fraction of [0.5, 0.9, 0.99]) {
 			const warning = expiryWarnings([entry()], CREATED + DAY * fraction)[0] ?? "";
 
 			expect(warning).not.toBe("");
-			expect(verbsWithoutATerminalRoute(warning)).toEqual([]);
-			expect(warning).toContain("/secret manager");
+			expect(unrunnableWords(warning)).toEqual([]);
 		}
 	});
 
 	/**
-	 * Both surfaces are served by the one sentence, so the verb form has to SURVIVE. A fix that
-	 * deleted `/secret extend` in favour of the manager alone would leave an ACP client with a
-	 * warning naming a card it cannot open, which is the same defect pointed the other way.
+	 * ONE SENTENCE SERVES BOTH SURFACES, so the verb form has to survive. A remedy that named a
+	 * screen instead would leave a client with no terminal holding advice it cannot take, which is
+	 * the same defect pointed the other way.
 	 */
-	it("keeps the verb form for a client that has no manager to open", () => {
+	it("hands the operator the whole command, arguments included", () => {
 		const warning = expiryWarnings([entry({ name: "DEPLOY_KEY" })], CREATED + DAY * 0.95)[0] ?? "";
 
 		expect(warning).toContain("/secret extend DEPLOY_KEY --ttl 7d");
 	});
 
 	/**
-	 * Reached when name generation has nowhere left to go. It is the one piece of advice with no
-	 * verb form worth keeping, because there is no non-interactive command that frees a name
-	 * without naming the secret to remove, and the operator does not know which one to name.
+	 * Reached when name generation has nowhere left to go: every generated name is taken, so the
+	 * operator has to free one, and the advice has to say with what.
 	 */
-	it("names the manager when it tells you to free up a name", () => {
+	it("names a runnable command when it tells you to free up a name", () => {
 		const taken = new Set<string>();
 		for (let n = 1; n < 10_000; n++) taken.add(`SECRET_${n}`);
 
-		expect(() => generateSecretName(taken)).toThrow(/\/secret manager/);
+		let thrown = "";
+		try {
+			generateSecretName(taken);
+		} catch (error) {
+			thrown = error instanceof Error ? error.message : String(error);
+		}
+
+		expect(thrown).toContain("/secret rm");
+		expect(unrunnableWords(thrown)).toEqual([]);
+	});
+
+	/**
+	 * THE CLASS, not the three strings above: every verb the parser reserves is safe to advertise on
+	 * both surfaces. Derived from the parser's own table, so adding a verb that only one surface
+	 * accepts turns this red without anyone remembering to extend a list.
+	 */
+	it("makes every verb the parser reserves safe to name in advice", () => {
+		expect(SECRET_TUI_SUBCOMMANDS.length).toBeGreaterThan(5);
+
+		for (const { name } of SECRET_TUI_SUBCOMMANDS) {
+			expect(unrunnableWords(`Run /secret ${name} to fix it.`)).toEqual([]);
+		}
 	});
 
 	/**
 	 * The rule itself, proved against text rather than trusted. Without this, a helper that never
-	 * matched anything would pass every case above by returning an empty array forever.
+	 * matched anything would pass every case above by returning an empty array forever. `manager`
+	 * is in the list on purpose: it is not a verb, so advice naming it is advice a terminal stores.
 	 */
-	it("catches a verb standing on its own and clears one paired with a route", () => {
-		expect(verbsWithoutATerminalRoute("Run /secret discard --scope profile to repair it.")).toEqual(["discard"]);
-		expect(verbsWithoutATerminalRoute("Store it again with /secret add NAME --from-env VAR.")).toEqual(["add"]);
-		expect(
-			verbsWithoutATerminalRoute("Open /secret manager, or run /secret discard --scope profile without a terminal."),
-		).toEqual([]);
-		expect(verbsWithoutATerminalRoute("Nothing actionable here.")).toEqual([]);
+	it("catches a word no surface runs and clears one every surface does", () => {
+		expect(unrunnableWords("Open /secret manager and move the file aside.")).toEqual([
+			"manager (tui)",
+			"manager (noninteractive)",
+		]);
+		expect(unrunnableWords("Fix it with /secret revoke NAME.")).toEqual(["revoke (tui)", "revoke (noninteractive)"]);
+		expect(unrunnableWords("Run /secret discard --scope profile to repair it.")).toEqual([]);
+		expect(unrunnableWords("Store it again with /secret add NAME --from-env VAR.")).toEqual([]);
+		expect(unrunnableWords("Nothing actionable here.")).toEqual([]);
 	});
 });
