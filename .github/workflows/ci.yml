@@ -207,9 +207,17 @@ jobs:
               )
               linux_x64_run_id=""
               cross_platform_run_id=""
+              # Any run that UPLOADED the artifact counts, whatever the run's own
+              # conclusion was. `--status=success` used to be here, and it made the
+              # cache miss exactly when it is worth most: a red or cancelled main run
+              # still built and uploaded valid addons, so a red streak charged every
+              # push six native builds again (34 of the 56 runner-minutes one main push
+              # costs, including four macOS/Windows slots against a ~20-job ceiling).
+              # Validity comes from the source hash in the artifact NAME, not from
+              # whether some unrelated test bucket passed in the same run.
               for candidate in $(gh run list \
                   --repo "${{ github.repository }}" \
-                  --workflow=ci.yml --branch=main --status=success --event=push \
+                  --workflow=ci.yml --branch=main --event=push \
                   --limit=20 --json databaseId --jq='.[].databaseId'); do
                 names=$(gh api "/repos/${{ github.repository }}/actions/runs/$candidate/artifacts?per_page=100" \
                     --jq '.artifacts[] | select(.expired == false) | .name')
