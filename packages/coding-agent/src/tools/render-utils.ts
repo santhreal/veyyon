@@ -11,9 +11,10 @@ import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/tui";
-// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, pluralize } from "@veyyon/utils/format";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
@@ -184,9 +185,17 @@ export interface CollapsedOutputRow {
  * colon (`remote:`, `info:`), and a bracketed or hashed counter (`[#/#]`, `##`).
  * `ls -l` mode columns (`-rw-r--r--`, `drwxr-xr-x`) match none of the three, so
  * a directory listing is never counted away.
+ *
+ * Keyed on the line with its SGR escapes removed, because a real build writes
+ * them: cargo emits `\x1b[1m\x1b[32m   Compiling\x1b[0m serde`, whose first
+ * non-space token starts with the escape rather than with `Compiling`. Keying on
+ * the raw bytes made every colored progress line unshaped, which is to say it
+ * collapsed nothing outside a test fixture. The row still carries the ORIGINAL
+ * line, colors intact.
  */
 function progressRunKey(line: string): string | undefined {
-	const token = /^\S+/.exec(line.trim())?.[0];
+	const bare = line.includes("\u001b") ? stripAnsi(line) : line;
+	const token = /^\S+/.exec(bare.trim())?.[0];
 	if (token === undefined) return undefined;
 	if (DIAGNOSTIC_LEAD_TOKENS.has(token.replace(/:$/, "").toLowerCase())) return undefined;
 	const shaped = /^[A-Z][A-Za-z]*:?$/.test(token) || /^[a-z]+:$/.test(token) || /^[[(#]/.test(token);
