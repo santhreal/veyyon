@@ -143,10 +143,11 @@ describe("AgentSession advisor descriptor thinking level", () => {
 		// owner is driven directly rather than through a second fixture provider.
 		const gemini = getBundledModel("google", "gemini-3-pro-preview");
 		if (!gemini) throw new Error("Expected bundled google/gemini-3-pro-preview to exist");
-		expect(gemini.thinking?.efforts).not.toContain(Effort.Medium);
+		expect(gemini.thinking?.efforts).toEqual([Effort.Low, Effort.High]);
 
-		const resolved = resolveThinkingLevelForModel(gemini, ThinkingLevel.Medium);
-		expect(gemini.thinking?.efforts).toContain(resolved);
+		// Medium is absent, so the resolver walks down to the nearest declared tier
+		// rather than handing the endpoint a level it rejects.
+		expect(resolveThinkingLevelForModel(gemini, ThinkingLevel.Medium)).toBe(Effort.Low);
 	});
 
 	it("Anthropic advisor on a model declaring medium keeps the medium default", () => {
