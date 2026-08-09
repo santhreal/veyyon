@@ -487,6 +487,35 @@ describe("the gate's exit code", () => {
 		});
 	}, 60_000);
 
+	/**
+	 * Naming the file is not a diagnosis.
+	 *
+	 * The gate used to print the path and stop, so a suite that fails only under
+	 * CI's nesting could not be read at all: the reader guesses the conditions and
+	 * tries to reproduce them elsewhere, and a run that reproduces nothing costs a
+	 * whole CI cycle to learn what the child already said. Both failure kinds echo
+	 * the child's own words.
+	 */
+	it("echoes the failing run's own output", () => {
+		const red = 'import { expect, test } from "bun:test";\ntest("red", () => expect("apples").toBe("oranges"));\n';
+		withTempDir({ "a.test.ts": red }, dir => {
+			const gate = runGate(dir);
+
+			expect(gate.out).toContain("oranges");
+			expect(gate.out).toContain("  | ");
+		});
+	}, 60_000);
+
+	/** A suite that never loaded says why too, or a missing dependency reads as silence. */
+	it("echoes why a suite could not load", () => {
+		withTempDir({ "a.test.ts": 'import { missing } from "./nowhere";\nmissing();\n' }, dir => {
+			const gate = runGate(dir);
+
+			expect(gate.out).toContain("nowhere");
+			expect(gate.out).toContain("  | ");
+		});
+	}, 60_000);
+
 	/** A walk that found nothing measured nothing, so it cannot report a clean tree. */
 	it("fails when the walk found no test files", () => {
 		withTempDir({}, dir => {
