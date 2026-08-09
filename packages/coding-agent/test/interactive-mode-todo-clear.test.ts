@@ -107,12 +107,25 @@ describe("InteractiveMode todo HUD persistence", () => {
 	 * instead of no timer. The pending-timer count is what separates "never
 	 * armed" from "armed and never reached", which render identically here and
 	 * not at all identically to a process trying to exit.
+	 *
+	 * The board keeps one open task on purpose. A board with nothing open at all
+	 * collapses to the single `Todo list done` line (see
+	 * `test/modes/todo-hud-collapses-a-finished-board.test.ts`), which would hide
+	 * the row this test reads to tell "kept" from "cleared".
 	 */
 	it("keeps closed todos on the board indefinitely at the default delay", async () => {
 		await createMode();
 		vi.useFakeTimers();
 
-		mode.setTodos([{ name: "Implementation", tasks: [{ content: "done task", status: "completed" }] }]);
+		mode.setTodos([
+			{
+				name: "Implementation",
+				tasks: [
+					{ content: "done task", status: "completed" },
+					{ content: "open task", status: "pending" },
+				],
+			},
+		]);
 		expect(renderTodos(mode)).toContain("done task");
 		expect(vi.getTimerCount()).toBe(0);
 
@@ -128,7 +141,15 @@ describe("InteractiveMode todo HUD persistence", () => {
 		await createMode(1);
 		vi.useFakeTimers();
 
-		mode.setTodos([{ name: "Implementation", tasks: [{ content: "done task", status: "completed" }] }]);
+		mode.setTodos([
+			{
+				name: "Implementation",
+				tasks: [
+					{ content: "done task", status: "completed" },
+					{ content: "open task", status: "pending" },
+				],
+			},
+		]);
 		expect(renderTodos(mode)).toContain("done task");
 		expect(vi.getTimerCount()).toBe(1);
 
