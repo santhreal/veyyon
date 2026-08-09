@@ -90,7 +90,7 @@ describe("routing answers which account serves next", () => {
 	/** The access token of one stored row, so a predicted id can be compared against a served bearer. */
 	function accessOf(storage: AuthStorage, credentialId: number): string {
 		const row = storage.listStoredCredentials(PROVIDER).find(entry => entry.id === credentialId);
-		if (!row || row.credential.type !== "oauth") throw new Error(`no oauth row ${credentialId}`);
+		if (row?.credential.type !== "oauth") throw new Error(`no oauth row ${credentialId}`);
 		return row.credential.access;
 	}
 

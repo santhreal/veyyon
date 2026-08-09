@@ -554,10 +554,16 @@ describe("remote compaction with no resolvable credential", () => {
 			session.sessionManager.appendMessage({
 				role: "assistant",
 				content: [{ type: "text", text: `after reply ${i}` }],
-				api: "openai-responses", provider: "openai", model: "gpt-5.1",
+				api: "openai-responses",
+				provider: "openai",
+				model: "gpt-5.1",
 				stopReason: "stop",
 				usage: {
-					input: 1000, output: 100, cacheRead: 0, cacheWrite: 0, totalTokens: 1100,
+					input: 1000,
+					output: 100,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 1100,
 					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 				},
 				timestamp: Date.now(),

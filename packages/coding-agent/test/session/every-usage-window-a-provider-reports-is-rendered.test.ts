@@ -504,7 +504,7 @@ describe("every usage window a provider reports is rendered", () => {
 			const durations = row.usage.map(window => window.durationMs);
 			const stated = durations.filter((value): value is number => value !== undefined);
 			expect(stated).toEqual([...stated].sort((left, right) => left - right));
-			const firstUnstated = durations.findIndex(value => value === undefined);
+			const firstUnstated = durations.indexOf(undefined);
 			if (firstUnstated !== -1) {
 				expect(durations.slice(firstUnstated).every(value => value === undefined)).toBe(true);
 			}
