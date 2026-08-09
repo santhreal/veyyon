@@ -141,19 +141,39 @@ RUNGS_DIR="${SCRIPT_DIR}/rungs"
 GUEST_DIR="${SCRIPT_DIR}/guest"
 BUILD_DIR="${GUEST_DIR}/.build"
 
-BUN_VERSION="$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"bun@\([^"]*\)".*/\1/p' "${REPO_ROOT}/package.json" | head -n1)"
+# Same shape as HOST_HOME below, same `|| true` for the same reason: `sed` exits 2
+# when the file is not there, and the default on the next line is the whole point
+# of reading the manifest optionally.
+BUN_VERSION="$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"bun@\([^"]*\)".*/\1/p' "${REPO_ROOT}/package.json" 2>/dev/null | head -n1 || true)"
 : "${BUN_VERSION:=1.3.14}"
 GUEST_IMAGE="veyyon-test-guest:${BUN_VERSION}"
 
 # The host home this sandbox removes from the guest's view. Taken from the passwd
 # database rather than $HOME so a caller who already redirected HOME cannot narrow
 # what gets declared. The gate requires this exact path to be unreadable inside.
-HOST_HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
-: "${HOST_HOME:=${HOME}}"
+#
+# `|| true` is load-bearing. `getent` exits 2 with NO output when the uid has no
+# passwd entry, which is the ordinary state of a container running as a mapped
+# host uid, and under `set -e` with `pipefail` that killed the driver at load with
+# an empty exit 2. The HOME fallback below, written for exactly this case, could
+# never run: every invocation died before reaching it, so in CI the five tests of
+# the refusal contract could not execute at all and the sandbox said nothing
+# rather than refusing. A boundary that dies silently is indistinguishable from
+# one nobody asked for.
+HOST_HOME="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6 || true)"
+: "${HOST_HOME:=${HOME:-}}"
 
 log()  { printf '[test-sandbox] %s\n' "$*" >&2; }
 die()  { printf '[test-sandbox] error: %s\n' "$*" >&2; exit "${2:-2}"; }
 skip() { printf '[test-sandbox] rung %-8s unavailable: %s\n' "$1" "$2" >&2; }
+
+# An empty value is not a default, it is a refusal. The mount-relocation case
+# below tests "${HOST_HOME}"/* against the repo root, so an empty home makes that
+# pattern /*, which matches every absolute path and would silently relocate the
+# mount. This variable decides what gets hidden; not knowing it has to stop the
+# run. Checked here rather than beside the assignment because `die` is defined
+# just above.
+[ -n "${HOST_HOME}" ] || die "cannot tell which home to remove from the guest: no passwd entry for uid $(id -u) and HOME is unset"
 
 # Where the repo appears INSIDE the sandbox.
 #
