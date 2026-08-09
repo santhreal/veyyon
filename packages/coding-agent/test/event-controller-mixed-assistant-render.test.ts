@@ -71,6 +71,10 @@ function createFixture() {
 		settings,
 		chatContainer,
 		pendingTools,
+		// The ghost ledger. A tool call is rendered live at most once, and every
+		// branch that settles one records it here, so a stub without it takes a
+		// TypeError on the first `message_update` that carries a tool call.
+		settledToolCalls: new Set<string>(),
 		toolOutputExpanded: false,
 		effectiveHideThinkingBlock: false,
 		proseOnlyThinking: true,
