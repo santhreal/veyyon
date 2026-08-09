@@ -318,6 +318,12 @@ export const APPEARANCE_SETTINGS = {
 			label: "Show Serving Account",
 			description:
 				"Name the account serving the next request on the composer footline, when the active provider stores more than one. Off: /account answers it on demand",
+			// Behind the Advanced fold, beside the other footline display details. The curated
+			// rows of this tab are the ones every session has an opinion about; this one is for
+			// an operator who keeps several accounts of one provider, and it is silent for
+			// everybody else whatever its value.
+			advanced: true,
+			condition: "statusLineEnabled",
 		},
 	},
 

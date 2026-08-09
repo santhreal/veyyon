@@ -115,10 +115,30 @@ describe("missingCredentialsMessage", () => {
 		);
 	});
 
-	it("omits the login clause for a provider with no OAuth flow", () => {
+	/**
+	 * The login clause appears exactly for the providers that HAVE a login flow, swept over the
+	 * whole catalog. This was pinned to one example, `openai`, on the fact that it had no flow;
+	 * every provider whose credential is a single pasted key can be logged into now, so the example
+	 * expired and took the guard with it. The biconditional cannot expire: a provider gaining or
+	 * losing a flow is checked on both arms, and both arms are asserted non-empty so neither can
+	 * pass by being unreachable.
+	 */
+	it("names the login command exactly for the providers that have a login flow", () => {
 		const oauthIds = new Set(getOAuthProviders().map(entry => entry.id));
-		expect(oauthIds.has("openai")).toBe(false);
-		expect(missingCredentialsMessage("openai", "gpt-5.5")).not.toContain("auth-broker login");
+		let withFlow = 0;
+		let withoutFlow = 0;
+		for (const entry of CATALOG_PROVIDERS as readonly ProviderCatalogEntry[]) {
+			const message = missingCredentialsMessage(entry.id, "gpt-5.5");
+			if (oauthIds.has(entry.id)) {
+				expect(message).toContain(`run \`veyyon auth-broker login ${entry.id}\` to sign in`);
+				withFlow++;
+			} else {
+				expect(`${entry.id}: ${message}`).not.toContain("auth-broker login");
+				withoutFlow++;
+			}
+		}
+		expect(withFlow).toBeGreaterThan(0);
+		expect(withoutFlow).toBeGreaterThan(0);
 	});
 
 	/**
@@ -154,9 +174,17 @@ describe("missingCredentialsMessage", () => {
 		expect(message).toStartWith("No API key for ppp");
 	});
 
+	/**
+	 * The remedy WITHOUT the failure statement, for a caller that has already said what failed.
+	 * `openai` carries all three clauses now that it has a login flow, which is what makes it the
+	 * useful case here: the sentence has to open with `Fix:` and carry every clause, rather than
+	 * being a shorter string that happens to match a two-clause provider.
+	 */
 	it("gives the remedy sentence alone to a caller that stated the failure itself", () => {
 		expect(credentialRemedySentence("openai")).toBe(
-			`Fix: set OPENAI_API_KEY in the environment, or set providers.openai.apiKey in ${ModelsConfigFile.path()}.`,
+			"Fix: set OPENAI_API_KEY in the environment, run `veyyon auth-broker login openai` to sign in " +
+				"(`/login openai` in an interactive veyyon session), " +
+				`or set providers.openai.apiKey in ${ModelsConfigFile.path()}.`,
 		);
 	});
 });

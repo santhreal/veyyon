@@ -33,7 +33,7 @@ veyyon config get compaction.threshold
 | `statusLine.sessionAccent` | Session Accent | boolean | `true` | Use the session name color for the editor border. Shown under the tab's Advanced fold. |
 | `statusLine.compactThinkingLevel` | Compact Thinking Level | boolean | `false` | Show the thinking level as a single icon on the model name instead of a separate ` · <level>` suffix. Shown under the tab's Advanced fold. |
 | `statusLine.showHookStatus` | Show Hook Status | boolean | `true` | Display hook status messages below the status line. Shown under the tab's Advanced fold. |
-| `statusLine.showAccount` | Show Serving Account | boolean | `false` | Name the account serving the next request on the composer footline, when the active provider stores more than one. Off: /account answers it on demand. |
+| `statusLine.showAccount` | Show Serving Account | boolean | `false` | Name the account serving the next request on the composer footline, when the active provider stores more than one. Off: /account answers it on demand. Shown under the tab's Advanced fold. |
 
 ### Display
 
