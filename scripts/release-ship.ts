@@ -152,22 +152,20 @@ export function checkVerdict(runs: readonly RunSummary[], required: readonly str
 /**
  * What to do about a red verdict, which depends on why it is red.
  *
- * A cancelled run is not a broken tree. GitHub keeps at most ONE pending run per
- * concurrency group, and main's group is branch-wide with cancellation off, so a
- * third push while two runs are outstanding cancels the pending one. When that
- * pending run is the release commit's, the commit ends up with no verdict through
- * no fault of its own: 4 of 6 consecutive CI runs on main were cancelled that way.
- * In a run list it is indistinguishable from a failing test suite, and it is the
- * opposite problem. Nothing needs fixing, the run needs re-running, and nobody
- * should push to main while a cut is waiting.
+ * A cancelled run is not a broken tree, and in a run list the two are
+ * indistinguishable while being opposite problems: nothing needs fixing, the run
+ * needs re-running. Main pushes get a per-SHA concurrency group now, so a later
+ * push no longer takes the bump commit's slot (it did: 4 of 6 consecutive CI runs
+ * on main were cancelled that way, and two more sat queued for over an hour). A
+ * cancellation surviving that change is someone pressing cancel, a re-dispatch at
+ * the same sha, or a repository-level cancellation, and the answer is the same
+ * either way.
  */
 export function failureAdvice(failures: readonly RunSummary[], tag: string): string[] {
 	if (failures.length > 0 && failures.every(run => run.conclusion === "cancelled")) {
 		return [
-			"Nothing failed. Every run on this commit was CANCELLED, which happens when a push",
-			"lands on main while the cut is waiting: GitHub keeps one pending run per group and",
-			"the newer push takes the slot. Do not push to main until the cut finishes, and",
-			"re-run the cancelled runs:",
+			"Nothing failed. Every run on this commit was CANCELLED, so there is no verdict to",
+			"act on and no defect to look for. Re-run them:",
 			...failures.map(run => `    gh run rerun ${run.databaseId}   # ${run.workflowName}`),
 			"",
 			"Then tag that commit:",

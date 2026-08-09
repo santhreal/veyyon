@@ -48,14 +48,14 @@ human watching a run list: it waits for every workflow that fires on a main push
 to appear and finish, and it refuses to tag on anything but `success` or a
 legitimate `skipped`.
 
-**Do not push to `main` while a cut is waiting.** GitHub keeps at most one
-*pending* run per concurrency group, and `main`'s group is branch-wide, so a
-third push while two runs are outstanding cancels the pending one. When that
-pending run belongs to the bump commit, the commit ends up with no verdict
-through nobody's fault: four of six consecutive `CI` runs on `main` were
-cancelled that way. The cut says so when it sees it, and names the `gh run rerun`
-for each cancelled run rather than sending you to look for a defect that does not
-exist.
+**Pushing to `main` while a cut is waiting is safe.** Every push to `main` gets
+its own per-SHA concurrency group, so the bump commit's runs cannot be cancelled
+or queued by a later push. This was not always true: `main` shared one
+branch-wide group, GitHub keeps at most one *pending* run per group, and the
+result was four of six consecutive `CI` runs cancelled and two more stuck queued
+for over an hour with no completed run to gate on. If a run is cancelled anyway,
+the cut says so and names the `gh run rerun` for it rather than sending you to
+look for a defect that does not exist.
 
 Nothing on `main` cuts a release on its own: not a push, not a green CI run, not
 a waiting `## [Unreleased]` bullet. Only a `v*` tag push publishes. If the
@@ -500,13 +500,19 @@ queued waiting for a runner that is not registered. That is exactly how the firs
 `v1.0.0` tag run stalled before the self-hosted routing was removed.
 
 A `v*` tag run gets a per-SHA, never-cancel concurrency group, because it is the
-run that publishes. Manual dispatches are never cancelled either, and ordinary
-`main` pushes do not cancel each other: they
-share the branch-wide group with cancellation off, so the running run always
-completes and GitHub keeps only the newest pending run. Before that, bot pushes
-landing every few minutes cancelled every CI run in flight and the release train
-starved with no completed run to gate on. Pushes to other branches keep
-cancel-on-newer-push for fast feedback.
+run that publishes. Every push to `main` gets a per-SHA group too, under a
+different prefix so a tag and the bump commit it points at never share one: runs
+at different commits are different questions and are answered in parallel, and
+what they wait for is a runner rather than each other. Manual dispatches are
+never cancelled either. Pushes to other branches keep cancel-on-newer-push for
+fast feedback.
+
+The installer end-to-end jobs (`install_methods`, `install_ps1_e2e`) prove a
+release artifact and cost two of the account's five concurrent macOS slots, so
+they run on pull requests and on the release tag and are skipped on an ordinary
+`main` push. The monitors of the release already published
+(`install_binary_posix`, `install_ps1_binary`) run once a day from
+`published-release-monitor.yml`, which no push can reach.
 
 GitHub cannot share a concurrency expression across workflow files, so `ci.yml`,
 `checks.yml`, and `docs.yml` each carry a copy. `scripts/ci-concurrency.test.ts`
