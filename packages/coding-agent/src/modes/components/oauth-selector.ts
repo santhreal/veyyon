@@ -6,8 +6,6 @@ import {
 	extractPrintableText,
 	fuzzyFilter,
 	matchesKey,
-	padding,
-	routeSgrMouseInput,
 	type SgrMouseEvent,
 	truncateToWidth,
 } from "@veyyon/tui";
@@ -16,25 +14,14 @@ import { settings } from "../../config/settings-instance";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { AuthStorage, CredentialOriginKind } from "../../session/auth-storage";
-import {
-	applyModalReveal,
-	computeModalDims,
-	hitTestModalChrome,
-	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
-	type ModalShellGeometry,
-	renderModalShell,
-	SELECT_LIST_SHORTCUTS,
-	sizingForArea,
-} from "./modal-shell";
 import { renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Default visible provider rows when the host does not size the selector. */
 const OAUTH_SELECTOR_MAX_VISIBLE = 10;
 
 /**
- * Provider ids the user has disabled via settings. `/login` (login mode) hides
- * these so a disabled provider's models stay out of reach end-to-end, mirroring
+ * Provider ids the user has disabled via settings. The sign-in list hides these
+ * so a disabled provider's models stay out of reach end-to-end, mirroring
  * the model picker's `disabledProviders` filtering. Reads the settings singleton
  * defensively: it throws before `Settings.init()`, in which case nothing is disabled.
  */
@@ -57,16 +44,12 @@ const ORIGIN_LABELS: Record<CredentialOriginKind, string> = {
 };
 
 /**
- * Component that renders an OAuth provider selector.
+ * Component that renders an OAuth provider selector for signing IN.
  *
- * Two hosting modes:
- * - Embedded (`standalone: false`, the default): content-only rows, no
- *   chrome. Used inline by the setup wizard's Sign-in tab, which supplies its
- *   own scene border and forwards mouse via {@link routeMouse} at a local
- *   line/col offset.
- * - Standalone (`standalone: true`): a floating ModalShell medium card,
- *   hosted fullscreen by `SelectorController.showOAuthSelector`. Handles its
- *   own SGR mouse input (chrome + body) via {@link handleInput}.
+ * Content-only rows, no chrome: the one host is the setup wizard's Sign-in tab, which supplies its
+ * own scene border, sizes the list with {@link setMaxVisible} and forwards mouse reports through
+ * {@link routeMouse} at a local line/col offset. Logging out is not a provider choice at all any
+ * more, so there is no second mode: the account card owns it, one row per credential.
  */
 export class OAuthSelectorComponent implements Component {
 	#allProviders: OAuthProviderInfo[] = [];
@@ -96,7 +79,6 @@ export class OAuthSelectorComponent implements Component {
 	 * tail, leaving providers below the fold unreachable during onboarding.
 	 */
 	#maxVisible = OAUTH_SELECTOR_MAX_VISIBLE;
-	#mode: "login" | "logout";
 	#authStorage: AuthStorage;
 	#onSelectCallback: (providerId: string) => void;
 	#onCancelCallback: () => void;
@@ -107,43 +89,23 @@ export class OAuthSelectorComponent implements Component {
 	#spinnerFrame: number = 0;
 	#spinnerInterval?: NodeJS.Timeout;
 	#validationGeneration: number = 0;
-	#standalone: boolean;
-	#shellGeometry: ModalShellGeometry | null = null;
-	#hoveredShortcutId: string | null = null;
-	#onRequestRender?: () => void;
-	#reveal = new ModalRevealDriver();
 
 	constructor(
-		mode: "login" | "logout",
 		authStorage: AuthStorage,
 		onSelect: (providerId: string) => void,
 		onCancel: () => void,
 		options?: {
 			validateAuth?: (providerId: string) => Promise<boolean>;
 			requestRender?: () => void;
-			standalone?: boolean;
-			/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-			reveal?: boolean;
 		},
 	) {
-		if (options?.reveal) {
-			// Same component-scoped repaint channel as the validating spinner: the
-			// unfold is an animation tick, so it must not re-walk the full tree.
-			this.#reveal.start(() => (this.#requestRenderCallback ?? this.#onRequestRender)?.());
-		}
-		this.#mode = mode;
 		this.#authStorage = authStorage;
 		this.#onSelectCallback = onSelect;
 		this.#onCancelCallback = onCancel;
 		this.#validateAuthCallback = options?.validateAuth;
 		this.#requestRenderCallback = options?.requestRender;
-		this.#standalone = options?.standalone ?? false;
 		this.#loadProviders();
 		this.#startValidation();
-	}
-
-	setOnRequestRender(cb: () => void): void {
-		this.#onRequestRender = cb;
 	}
 
 	/** Size the provider list to the rows the host can actually show. */
@@ -178,27 +140,18 @@ export class OAuthSelectorComponent implements Component {
 	}
 
 	#hasSelectableAuth(providerId: string): boolean {
-		return this.#mode === "logout" ? this.#authStorage.has(providerId) : this.#authStorage.hasAuth(providerId);
+		return this.#authStorage.hasAuth(providerId);
 	}
 
 	#loadProviders(): void {
-		const providers = getOAuthProviders();
-		if (this.#mode === "logout") {
-			// Logout stays unfiltered by `disabledProviders`: a now-disabled
-			// provider may still hold stored credentials worth removing.
-			this.#allProviders = providers.filter(provider => this.#hasSelectableAuth(provider.id));
-		} else {
-			const disabled = getDisabledProviderIds();
-			// Hide a login entry when either its own id or the provider id it
-			// stores credentials under is disabled, so alias logins (e.g.
-			// `openai-codex-device` ⇒ `openai-codex`) disappear alongside the
-			// model provider they authenticate.
-			this.#allProviders = providers.filter(
-				provider =>
-					!disabled.has(provider.id) &&
-					!(provider.storeCredentialsAs && disabled.has(provider.storeCredentialsAs)),
-			);
-		}
+		const disabled = getDisabledProviderIds();
+		// Hide a login entry when either its own id or the provider id it stores credentials under is
+		// disabled, so alias logins (e.g. `openai-codex-device` ⇒ `openai-codex`) disappear alongside
+		// the model provider they authenticate.
+		this.#allProviders = getOAuthProviders().filter(
+			provider =>
+				!disabled.has(provider.id) && !(provider.storeCredentialsAs && disabled.has(provider.storeCredentialsAs)),
+		);
 		this.#filteredProviders = this.#allProviders;
 	}
 
@@ -398,13 +351,12 @@ export class OAuthSelectorComponent implements Component {
 		}
 
 		if (total === 0) {
-			const message =
-				this.#allProviders.length === 0
-					? this.#mode === "login"
-						? "No OAuth providers available"
-						: "No stored provider credentials to log out"
-					: "No matching providers";
-			body.push(theme.fg("muted", `  ${message}`));
+			body.push(
+				theme.fg(
+					"muted",
+					`  ${this.#allProviders.length === 0 ? "No OAuth providers available" : "No matching providers"}`,
+				),
+			);
 		}
 		if (this.#statusMessage) {
 			body.push("", theme.fg("warning", `  ${this.#statusMessage}`));
@@ -413,11 +365,6 @@ export class OAuthSelectorComponent implements Component {
 	}
 
 	handleInput(keyData: string): void {
-		if (this.#standalone && keyData.startsWith("\x1b[<")) {
-			routeSgrMouseInput(keyData, event => this.#routeStandaloneMouse(event));
-			return;
-		}
-
 		// Escape or Ctrl+C. Cancel-key ladder, the same one SelectList and the
 		// model browser use: a live search query is cleared first, and only a
 		// cancel with no query closes. Going straight to the cancel callback was
@@ -428,7 +375,7 @@ export class OAuthSelectorComponent implements Component {
 		if (matchesSelectCancel(keyData)) {
 			if (this.hasActiveSearch()) {
 				this.#setSearchQuery("");
-				(this.#requestRenderCallback ?? this.#onRequestRender)?.();
+				this.#requestRenderCallback?.();
 				return;
 			}
 			this.stopValidation();
@@ -522,62 +469,7 @@ export class OAuthSelectorComponent implements Component {
 		this.#confirmSelection();
 	}
 
-	/** Standalone-only: hit-test ModalShell chrome first, then forward to {@link routeMouse}. */
-	#routeStandaloneMouse(event: SgrMouseEvent): boolean {
-		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
-			motion: event.motion,
-			leftClick: event.leftClick,
-		});
-		if (chrome.kind === "hover-shortcut") {
-			if (this.#hoveredShortcutId !== chrome.id) {
-				this.#hoveredShortcutId = chrome.id;
-				this.#onRequestRender?.();
-			}
-			return true;
-		}
-		if (
-			chrome.kind === "close" ||
-			chrome.kind === "outside" ||
-			(chrome.kind === "shortcut" && chrome.id === "close")
-		) {
-			this.stopValidation();
-			this.#onCancelCallback();
-			return true;
-		}
-		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
-			this.#confirmSelection();
-			return true;
-		}
-		const geo = this.#shellGeometry;
-		if (!geo) return true;
-		this.routeMouse(event, event.row - geo.bodyRowStart, event.col - (geo.leftPad + 2));
-		return true;
-	}
-
 	render(width: number): readonly string[] {
-		if (!this.#standalone) {
-			return this.#buildBody(width);
-		}
-
-		const height = process.stdout.rows || 40;
-		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, height);
-		const dims = computeModalDims(width, height, sizing);
-		if (!dims) {
-			this.#shellGeometry = null;
-			return Array.from({ length: height }, () => padding(width));
-		}
-
-		const shell = renderModalShell({
-			title: this.#mode === "login" ? "Login" : "Logout",
-			sizing,
-			areaWidth: width,
-			areaHeight: height,
-			body: this.#buildBody(dims.contentWidth),
-			shortcuts: SELECT_LIST_SHORTCUTS,
-			hoveredShortcutId: this.#hoveredShortcutId,
-			showClose: true,
-		});
-		this.#shellGeometry = shell.geometry;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return this.#buildBody(width);
 	}
 }

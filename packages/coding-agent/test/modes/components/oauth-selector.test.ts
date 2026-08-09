@@ -1,3 +1,15 @@
+/**
+ * The provider picker signs IN, and that is the only thing it does.
+ *
+ * It used to carry a `logout` mode that filtered the list to providers holding a stored credential.
+ * Logging out is choosing an ACCOUNT rather than a provider, so the account card owns it now, one
+ * row per credential: `test/modes/controllers/selector-controller-logout.test.ts` drives `/logout`
+ * end to end there, including the case this file used to cover with "keeps disabled providers as
+ * logout targets" (a disabled provider's stored credential stays reachable).
+ *
+ * What remains here is the login list: fuzzy search over an overflowing list, and the two ways a
+ * disabled provider disappears from it (its own id, or the id it stores credentials under).
+ */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
@@ -28,7 +40,6 @@ describe("OAuthSelectorComponent", () => {
 
 		const selected: string[] = [];
 		const component = new OAuthSelectorComponent(
-			"login",
 			authStorage,
 			providerId => selected.push(providerId),
 			() => {},
@@ -49,61 +60,6 @@ describe("OAuthSelectorComponent", () => {
 		expect(selected).toEqual([target.id]);
 	});
 
-	it("does not offer env-only providers as logout targets", () => {
-		const selected: string[] = [];
-		const component = new OAuthSelectorComponent(
-			"logout",
-			{
-				has: (_providerId: string) => false,
-				hasAuth: (providerId: string) => providerId === "opencode-go" || providerId === "opencode-zen",
-				getCredentialOrigin: (_providerId: string) => undefined,
-			} as unknown as AuthStorage,
-			providerId => selected.push(providerId),
-			() => {},
-		);
-
-		for (const char of "opencode-go") {
-			component.handleInput(char);
-		}
-
-		const rendered = component
-			.render(80)
-			.map(line => Bun.stripANSI(line))
-			.join("\n");
-		expect(rendered).toContain("No stored provider credentials to log out");
-
-		component.handleInput("\n");
-		expect(selected).toEqual([]);
-	});
-
-	it("offers stored providers as logout targets", () => {
-		const selected: string[] = [];
-		const component = new OAuthSelectorComponent(
-			"logout",
-			{
-				has: (providerId: string) => providerId === "opencode-go",
-				hasAuth: (providerId: string) => providerId === "opencode-go",
-				getCredentialOrigin: (_providerId: string) => undefined,
-			} as unknown as AuthStorage,
-			providerId => selected.push(providerId),
-			() => {},
-		);
-
-		for (const char of "opencode-go") {
-			component.handleInput(char);
-		}
-
-		const rendered = component
-			.render(80)
-			.map(line => Bun.stripANSI(line))
-			.join("\n");
-		expect(rendered).toContain("OpenCode Go");
-		expect(rendered).toContain("logged in");
-
-		component.handleInput("\n");
-		expect(selected).toEqual(["opencode-go"]);
-	});
-
 	describe("disabledProviders", () => {
 		afterEach(() => {
 			resetSettingsForTest();
@@ -122,7 +78,6 @@ describe("OAuthSelectorComponent", () => {
 			await Settings.init({ inMemory: true, overrides: { disabledProviders: [victim.id] } });
 
 			const component = new OAuthSelectorComponent(
-				"login",
 				authStorage,
 				() => {},
 				() => {},
@@ -147,7 +102,6 @@ describe("OAuthSelectorComponent", () => {
 			await Settings.init({ inMemory: true, overrides: { disabledProviders: ["openai-codex"] } });
 
 			const component = new OAuthSelectorComponent(
-				"login",
 				authStorage,
 				() => {},
 				() => {},
@@ -160,31 +114,6 @@ describe("OAuthSelectorComponent", () => {
 				.map(line => Bun.stripANSI(line))
 				.join("\n");
 			expect(rendered).not.toContain(alias.name);
-		});
-
-		it("keeps disabled providers as logout targets", async () => {
-			resetSettingsForTest();
-			await Settings.init({ inMemory: true, overrides: { disabledProviders: ["opencode-go"] } });
-
-			const selected: string[] = [];
-			const component = new OAuthSelectorComponent(
-				"logout",
-				{
-					has: (providerId: string) => providerId === "opencode-go",
-					hasAuth: (providerId: string) => providerId === "opencode-go",
-					getCredentialOrigin: (_providerId: string) => undefined,
-				} as unknown as AuthStorage,
-				providerId => selected.push(providerId),
-				() => {},
-			);
-			for (const char of "opencode-go") {
-				component.handleInput(char);
-			}
-			const rendered = component
-				.render(80)
-				.map(line => Bun.stripANSI(line))
-				.join("\n");
-			expect(rendered).toContain("OpenCode Go");
 		});
 	});
 });

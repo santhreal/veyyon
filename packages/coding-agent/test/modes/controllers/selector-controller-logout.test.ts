@@ -283,4 +283,34 @@ describe("/logout lands in the account card", () => {
 		expect(frame).not.toContain("groq");
 		expect(h.errors).toEqual([]);
 	});
+
+	/**
+	 * A provider the operator DISABLED can still hold a credential, and a credential you cannot
+	 * reach is a credential you cannot remove. The old logout picker filtered nothing for exactly
+	 * this reason; the card gets there differently, by listing every provider the credential store
+	 * reports rather than every provider still enabled, so the guarantee has to be pinned on the card
+	 * or the next filter added to the sidebar takes it away silently.
+	 */
+	it("still reaches an account whose provider has been disabled", async () => {
+		const h = await harness({
+			provider: "anthropic",
+			credentials: [oauth("disabled@example.com", "acct-disabled")],
+		});
+		const previous = Settings.instance.get("disabledProviders");
+		Settings.instance.set("disabledProviders", ["anthropic"]);
+		try {
+			await h.controller.showLogout("anthropic");
+
+			expect(h.cards).toHaveLength(1);
+			const frame = h
+				.card()
+				.render(200)
+				.map(line => stripVTControlCharacters(line))
+				.join("\n");
+			expect(frame).toContain("disabled@example.com");
+			expect(h.errors).toEqual([]);
+		} finally {
+			Settings.instance.set("disabledProviders", previous);
+		}
+	});
 });
