@@ -26,6 +26,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "b
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { ADD_FLOW_SOURCES, type AddFlowSource } from "@veyyon/coding-agent/modes/components/secret-add-flow";
 import { SecretManager } from "@veyyon/coding-agent/modes/components/secret-manager";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { SecretAuditLog, secretAuditPath } from "@veyyon/coding-agent/secrets/audit";
@@ -366,15 +367,30 @@ describe("the roster's footer offers the card's own actions, not only the row's"
 
 	/**
 	 * The empty state's PROSE and its FOOTER have to agree, which is the exact contradiction that
-	 * shipped. Asserted together in one test because either half alone is satisfiable by deleting
-	 * the other, and deleting the instruction would be the wrong repair.
+	 * shipped: the body said "press a" while the footer offered only the row's actions, on the one
+	 * screen a new operator sees first. Asserted together in one test because either half alone is
+	 * satisfiable by deleting the other, and deleting the instruction would be the wrong repair.
+	 *
+	 * DERIVED OVER ADD_FLOW_SOURCES, so a third way to store a credential cannot be added and left
+	 * unmentioned on the only screen with room to mention it: such a source has no row here, `entry`
+	 * is undefined, and this goes red until somebody records its key, its sentence and its chip.
 	 */
-	it("says press a in the body and lists a add in the footer on the same screen", async () => {
+	const ENTRY_POINTS: Partial<Record<AddFlowSource, { readonly prose: string; readonly chip: string }>> = {
+		paste: { prose: "a stores a credential", chip: "a add" },
+		env: { prose: "f reads one out of an environment variable", chip: "f from env" },
+	};
+
+	it("names every way in, in the body and in the footer, on the same screen", async () => {
 		const manager = await openManager(await seedLog());
 
 		const text = unwrapped(manager);
-		expect(text).toContain("Press a to store a credential");
-		expect(text).toContain("a add");
+		for (const source of ADD_FLOW_SOURCES) {
+			const entry = ENTRY_POINTS[source];
+			expect(entry).toBeDefined();
+			if (entry === undefined) continue;
+			expect(text).toContain(entry.prose);
+			expect(text).toContain(entry.chip);
+		}
 	});
 
 	/**
