@@ -108,8 +108,11 @@ function recorder(pendingProvider?: string): Recorder {
 					return true;
 				},
 			},
-			showOAuthSelector: async (mode: string, providerId?: string) => {
-				selectors.push([mode, providerId]);
+			showLogin: async (providerId?: string) => {
+				selectors.push(["login", providerId]);
+			},
+			showLogout: async (providerId?: string) => {
+				selectors.push(["logout", providerId]);
 			},
 			showWarning: (message: string) => {
 				warnings.push(message);

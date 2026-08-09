@@ -78,8 +78,11 @@ function loginProbe(options: { pendingProviderId?: string; hasPending: boolean; 
 		showWarning: (text: string) => {
 			events.push(`warning:${text}`);
 		},
-		showOAuthSelector: async (mode: string, provider?: string) => {
-			events.push(`selector:${mode}:${provider ?? "-"}`);
+		showLogin: async (provider?: string) => {
+			events.push(`selector:login:${provider ?? "-"}`);
+		},
+		showLogout: async (provider?: string) => {
+			events.push(`selector:logout:${provider ?? "-"}`);
 		},
 		oauthManualInput: {
 			pendingProviderId: options.pendingProviderId,

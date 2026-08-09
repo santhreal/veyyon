@@ -19,7 +19,7 @@
  * name a variable that does not exist.
  *
  * WHY IT NAMES `veyyon auth-broker login` AND NOT `/login`. `/login` is
- * TUI-only: it calls `showOAuthSelector`, which an ACP client, `-p`, `veyyon
+ * TUI-only: it opens the account manager card via `showLogin`, which an ACP client, `-p`, `veyyon
  * commit` and a subagent's tool result cannot reach. Six of the nine throw
  * sites are reachable headlessly, and a message that names a remedy its reader
  * cannot perform costs more than one that names none. `veyyon auth-broker

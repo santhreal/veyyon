@@ -436,7 +436,15 @@ export interface InteractiveModeContext {
 	 * nowhere to see their accounts at all.
 	 */
 	showAccountManager(providerId?: string): Promise<void>;
-	showOAuthSelector(mode: "login" | "logout", providerId?: string): Promise<void>;
+	/**
+	 * `/login` and `/logout`, both of which land in the account card above.
+	 *
+	 * Two entry points rather than one with a mode, because they no longer share a component: a
+	 * login that names its provider runs the login, and everything else is the card, which is the
+	 * only surface that shows what each account IS before you switch to it or remove it.
+	 */
+	showLogin(providerId?: string): Promise<void>;
+	showLogout(providerId?: string): Promise<void>;
 	showResetUsageSelector(): Promise<void>;
 	showProviderSetup(): Promise<void>;
 	showHookConfirm(title: string, message: string): Promise<boolean>;
