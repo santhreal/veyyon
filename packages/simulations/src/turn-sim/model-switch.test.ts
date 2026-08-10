@@ -31,7 +31,7 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
-import { createSimulation, type Simulation, simTool, simulatedModel, whenSessionEvent } from "./harness";
+import { bulkTool, createSimulation, type Simulation, simTool, simulatedModel, whenSessionEvent } from "./harness";
 import { describeViolations, pairingViolations, turnViolations } from "./invariants";
 
 /**
@@ -48,6 +48,12 @@ interface Serving {
 	readonly call: number;
 	readonly model: string;
 	readonly tokens: number;
+	/**
+	 * Zero on a summarization request. It replays the conversation it is
+	 * summarizing, so it is the one request that is SUPPOSED to be larger than
+	 * what the window will hold afterwards.
+	 */
+	readonly tools?: number;
 }
 
 let sim: Simulation | undefined;
@@ -167,16 +173,34 @@ describe("a session that switches models keeps history sendable", () => {
 
 	it("compacts into the new window when the switch shrinks it", async () => {
 		const served: Serving[] = [];
-		const bulk = `worked. ${"tool output line. ".repeat(900)}`;
 		sim = await createSimulation({
 			modelId: "sim-model-a",
 			// `compaction.threshold` is left at its shipped `auto` value: the model's
 			// window minus the reserve. A row that named a token count would pass on
-			// a build whose trigger ignored the window entirely.
-			settings: { "retry.enabled": false, "compaction.enabled": true },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: bulk }] }))],
+			// a build whose trigger ignored the window entirely. The retained tail is
+			// sized down because the default 10k of kept recent history does not fit
+			// a 16k window beside a summary and a new prompt, so a tail that large
+			// would fail this row for a reason that has nothing to do with the
+			// trigger.
+			settings: { "retry.enabled": false, "compaction.enabled": true, "compaction.keepRecentTokens": 2_000 },
+			tools: [bulkTool()],
 			script: async turn => {
-				served.push({ call: turn.call, model: turn.model.id, tokens: estimatedTokens(turn.context.messages) });
+				const tools = turn.context.tools?.length ?? 0;
+				served.push({
+					call: turn.call,
+					model: turn.model.id,
+					tokens: estimatedTokens(turn.context.messages),
+					tools,
+				});
+				// A request carrying no tools is the summarizer. Answering it with the
+				// conversation's own shape below would hand compaction a tool call as
+				// its summary, which is rejected, so the row would be measuring failed
+				// compactions.
+				if (tools === 0) {
+					turn.text("SUMMARY: five rounds of tool work, each returning bulk output.");
+					turn.finish();
+					return;
+				}
 				if (turn.call % 2 === 1) {
 					turn.toolCall("work", {}, "call_0");
 					turn.finish("toolUse");
@@ -196,7 +220,11 @@ describe("a session that switches models keeps history sendable", () => {
 		await sim.session.prompt("six");
 		await sim.session.prompt("seven");
 
-		const afterSwitch = served.filter(entry => entry.model === "sim-model-b");
+		// Conversation requests only. A summarization request replays the history it
+		// is about to replace, so it is the one request larger than what the window
+		// holds afterwards, and counting it here would assert that compaction never
+		// happened rather than that it worked.
+		const afterSwitch = served.filter(entry => entry.model === "sim-model-b" && (entry.tools ?? 0) > 0);
 		expect(afterSwitch.length).toBeGreaterThan(0);
 		// The history that model A was sending would not fit model B at all, so the
 		// switch is only survivable if the trigger followed the window down.

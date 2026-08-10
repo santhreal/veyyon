@@ -65,11 +65,9 @@
  *     are not simulated.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { createSimulation, type Simulation, type SimulationRequest, simTool } from "./harness";
+import { bulkTool, createSimulation, type Simulation, type SimulationRequest } from "./harness";
 import { describeViolations, turnViolations } from "./invariants";
 
-/** About 4000 tokens of tool output a prompt, so the 85% crossing is reached. */
-const BULK = `worked. ${"tool output line. ".repeat(900)}`;
 const SUMMARY_TEXT = "SUMMARY-OF-THE-WORK";
 
 /**
@@ -104,7 +102,7 @@ async function autoCompact(settings: Record<string, unknown>, provider: string):
 	sim = await createSimulation({
 		settings: { ...LOCAL_SUMMARIZER, "compaction.enabled": true, "compaction.threshold": "85%", ...settings },
 		model: { provider, contextWindow: 16_000 },
-		tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+		tools: [bulkTool()],
 		script: turn => {
 			if ((turn.context.tools?.length ?? 0) === 0) {
 				turn.text(SUMMARY_TEXT);
@@ -183,7 +181,7 @@ describe("the operator's service tier on a request the session makes for itself"
 		sim = await createSimulation({
 			settings: { ...LOCAL_SUMMARIZER, "compaction.enabled": false, "tier.openai": "flex" },
 			model: { provider: "openai", contextWindow: 16_000 },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+			tools: [bulkTool()],
 			script: turn => {
 				if ((turn.context.tools?.length ?? 0) === 0) {
 					turn.text(SUMMARY_TEXT);

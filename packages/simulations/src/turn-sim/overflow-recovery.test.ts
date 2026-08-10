@@ -45,14 +45,11 @@
  * against a threshold crossing and against this file's overflow error.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { createSimulation, type Simulation, simTool, simulatedModel } from "./harness";
+import { bulkTool, createSimulation, type Simulation, simulatedModel } from "./harness";
 import { describeViolations, pairingViolations, turnViolations } from "./invariants";
 
 /** Bedrock's wording. The classifier flags it as a context overflow. */
 const OVERFLOW_MESSAGE = "input is too long for requested model";
-/** Big enough that four rounds of it exceed the recent-keep budget. */
-const BULK = `worked. ${"tool output line. ".repeat(900)}`;
-
 interface Call {
 	readonly index: number;
 	readonly tools: number;
@@ -162,7 +159,7 @@ describe("a turn the provider refuses for size", () => {
 		const calls: Call[] = [];
 		sim = await createSimulation({
 			settings: { "retry.enabled": false, "compaction.enabled": true },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+			tools: [bulkTool()],
 			script: serve(calls, "overflow"),
 		});
 
@@ -197,7 +194,7 @@ describe("a turn the provider refuses for size", () => {
 			// Compaction off is the operator's choice, and it removes the only rung
 			// this ladder has left once promotion is unavailable.
 			settings: { "retry.enabled": false },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+			tools: [bulkTool()],
 			script: serve(calls, "overflow"),
 		});
 
@@ -220,7 +217,7 @@ describe("a turn the provider refuses for size", () => {
 		const calls: Call[] = [];
 		sim = await createSimulation({
 			settings: { "retry.enabled": false, "compaction.enabled": true },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+			tools: [bulkTool()],
 			script: serve(calls, "length"),
 		});
 
@@ -239,7 +236,7 @@ describe("a turn the provider refuses for size", () => {
 		const calls: Call[] = [];
 		sim = await createSimulation({
 			settings: { "retry.enabled": false },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+			tools: [bulkTool()],
 			script: serve(calls, "length"),
 		});
 
@@ -262,7 +259,7 @@ describe("a turn the provider refuses for size", () => {
 		sim = await createSimulation({
 			modelId: "sim-model-a",
 			settings: { "retry.enabled": false, "compaction.enabled": true },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+			tools: [bulkTool()],
 			script: async turn => {
 				const tools = turn.context.tools?.length ?? 0;
 				calls.push({
@@ -320,7 +317,7 @@ describe("a turn the provider refuses for size", () => {
 		const calls: Call[] = [];
 		sim = await createSimulation({
 			settings: { "retry.enabled": false, "compaction.enabled": true },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+			tools: [bulkTool()],
 			script: async turn => {
 				const tools = turn.context.tools?.length ?? 0;
 				calls.push({
@@ -366,7 +363,7 @@ describe("a turn the provider refuses for size", () => {
 		const calls: Call[] = [];
 		sim = await createSimulation({
 			settings: { "retry.enabled": false, "compaction.enabled": true },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+			tools: [bulkTool()],
 			script: serve(calls, "plain"),
 		});
 

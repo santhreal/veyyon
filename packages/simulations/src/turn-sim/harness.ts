@@ -449,6 +449,28 @@ export function simTool(
 	} as AgentTool;
 }
 
+/**
+ * A tool whose result is large and never byte-identical to its own earlier
+ * results.
+ *
+ * A scenario that wants "a history worth compacting" reaches for a constant
+ * body, and a constant body makes the history redundant by construction: the
+ * session's tier-0 pass elides a tool result that duplicates a newer one before
+ * it considers summarizing at all, so a fixture built that way stops testing
+ * compaction and starts testing the dedup (a threshold crossing it brings back
+ * under the bar is not compacted, and a recovery has nothing left worth
+ * summarizing). The body is the same size every call, with the call's own
+ * ordinal appended, so the results are distinct and every pass downstream still
+ * sees the size the scenario intended.
+ */
+export function bulkTool(name = "work", lines = 900): AgentTool {
+	let call = 0;
+	return simTool(name, async () => {
+		call += 1;
+		return { content: [{ type: "text", text: `worked. ${"tool output line. ".repeat(lines)}call ${call}.` }] };
+	});
+}
+
 export interface SimulationOptions {
 	script: ProviderScript;
 	tools?: AgentTool[];
