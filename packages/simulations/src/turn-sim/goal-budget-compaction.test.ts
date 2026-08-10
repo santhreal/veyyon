@@ -39,16 +39,16 @@ afterEach(async () => {
 });
 
 /**
- * Compaction on, reachable, and allowed to fire in the middle of a turn. The
- * explicit percent of -1 keeps the fixed token trigger the only one in play.
+ * Compaction on, reachable, and allowed to fire in the middle of a turn.
+ * `compaction.threshold` is the live key: a plain number is a fixed token
+ * trigger, and the retired `thresholdTokens` spelling is deliberately not used
+ * here so this fixture does not depend on the legacy read.
  */
 const MID_TURN_COMPACTING = {
 	"compaction.enabled": true,
-	"compaction.strategy": "context-full",
 	"compaction.autoContinue": true,
 	"compaction.midTurnEnabled": true,
-	"compaction.thresholdTokens": 12_000,
-	"compaction.thresholdPercent": -1,
+	"compaction.threshold": "12000",
 	"compaction.keepRecentTokens": 2_000,
 	"compaction.remote": false,
 	"goal.modelBudgetsEnabled": true,
