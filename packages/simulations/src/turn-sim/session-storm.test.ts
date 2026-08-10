@@ -44,6 +44,14 @@
  * twice`. Every tool id here comes from a per-message counter that restarts each
  * turn, which is what makes the storm reach that class at all: ids carrying a
  * round number would have hidden it.
+ *
+ * The compacting arm carries its own proof. Making a `toolResult` a valid cut
+ * point in `findValidCutPoints` reds all five compacting cells and none of the
+ * others, for example `seed 0xbeef round 7 (an exclusive tool beside a shared one
+ * / nothing): [no-orphan-results] a result for other (call_1) answers a call that
+ * was never emitted`. Compaction is the one thing here that can put a malformed
+ * request on the wire while stored history reads perfectly, so the arm asserts
+ * that it summarized (non-aborted) at least once rather than trusting a quiet run.
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -186,153 +194,220 @@ describe("a seeded storm of turn shapes and disturbances leaves history a provid
 		}
 	});
 
+	/**
+	 * Each arm runs the same plan against a different context regime. The
+	 * compacting arm is the point of the axis: compaction rewrites the outbound
+	 * message list, so it is the one thing that can put a malformed request on the
+	 * wire while stored history is perfect, and it fires here in the middle of
+	 * steers, follow-ups and cancels rather than on a clean session. Its tool
+	 * results are bulky so the threshold is actually crossed within the plan.
+	 */
+	const ARMS = [
+		{ label: "no compaction", settings: {}, payload: "worked", window: undefined },
+		{
+			label: "auto compaction",
+			settings: {
+				"compaction.enabled": true,
+				"compaction.thresholdTokens": 12_000,
+				"compaction.keepRecentTokens": 2_000,
+			},
+			payload: `worked. ${"tool output line. ".repeat(900)}`,
+			window: 16_000,
+		},
+	] as const;
+
 	for (const seed of SEEDS) {
-		it(`settles and stays well paired for ${ROUNDS} rounds from seed 0x${seed.toString(16)}`, async () => {
-			const plan = planFor(seed, ROUNDS);
-			const contexts: Context[] = [];
-			let round: Round = {
-				index: 0,
-				shape: "text only",
-				entered: Promise.withResolvers<void>(),
-				gate: Promise.withResolvers<void>(),
-				opened: true,
-			};
-
-			sim = await createSimulation({
-				// Retries stay on: one shape is a retryable failure, and the harness
-				// caps the budget at 2 attempts with a 1ms backoff.
-				settings: { "retry.enabled": true },
-				tools: [
-					simTool("work", async () => ({ content: [{ type: "text", text: "worked" }] })),
-					simTool("other", async () => ({ content: [{ type: "text", text: "othered" }] }), {
-						concurrency: "exclusive",
-					}),
-				],
-				script: async turn => {
-					contexts.push(turn.context);
-					const current = round;
-					if (current.opened) {
-						// A continuation, a steered re-ask, or a retry: answer plainly so
-						// the round terminates instead of emitting calls forever.
-						turn.text(`continuation ${turn.call}`);
-						turn.finish();
-						return;
-					}
-					current.opened = true;
-					// Every id here is what a per-message counter emits: it restarts at
-					// `call_0` on every turn, so ids collide ACROSS rounds by design.
-					// That is what real OpenAI-compatible servers send, and it is the
-					// shape that used to collapse two calls onto one outbound handle.
-					switch (current.shape) {
-						case "text only":
-							turn.text(`answer ${current.index}`);
-							break;
-						case "one tool":
-							turn.toolCall("work", { round: current.index }, "call_0");
-							break;
-						case "two shared tools":
-							turn.toolCall("work", { round: current.index, n: 1 }, "call_0");
-							turn.toolCall("work", { round: current.index, n: 2 }, "call_1");
-							break;
-						case "an exclusive tool beside a shared one":
-							turn.toolCall("work", { round: current.index }, "call_0");
-							turn.toolCall("other", { round: current.index }, "call_1");
-							break;
-						case "text and a tool in one turn":
-							turn.text(`thinking about ${current.index}. `);
-							turn.toolCall("work", { round: current.index }, "call_0");
-							break;
-						case "a repeated tool-call id":
-							// The provider hands out the same id twice in ONE message; both
-							// calls are real and both must keep their own result.
-							turn.toolCall("work", { round: current.index, n: 1 }, "call_0");
-							turn.toolCall("work", { round: current.index, n: 2 }, "call_0");
-							break;
-						case "an empty turn":
-							break;
-						case "a retryable provider failure":
-							current.entered.resolve();
-							turn.fail(`503 Service Unavailable: round ${current.index}`);
-							return;
-					}
-					current.entered.resolve();
-					await current.gate.promise;
-					const emittedCall = current.shape !== "text only" && current.shape !== "an empty turn";
-					turn.finish(emittedCall ? "toolUse" : "stop");
-				},
-			});
-
-			const simulation = sim;
-			const settle = async (): Promise<void> => {
-				while (simulation.session.isStreaming || simulation.session.agent.hasQueuedMessages()) {
-					await whenSessionEvent(simulation.session, event => event.type === "agent_end");
-				}
-			};
-
-			const cancelledTexts: string[] = [];
-			const deliveredTexts: string[] = [];
-
-			for (const [offset, entry] of plan.entries()) {
-				const index = offset + 1;
-				const { shape, disturbance } = entry;
-				const where = `seed 0x${seed.toString(16)} round ${index} (${shape} / ${disturbance})`;
-				round = {
-					index,
-					shape,
+		for (const arm of ARMS) {
+			it(`settles and stays well paired for ${ROUNDS} rounds from seed 0x${seed.toString(16)}, ${arm.label}`, async () => {
+				const plan = planFor(seed, ROUNDS);
+				const contexts: Context[] = [];
+				let round: Round = {
+					index: 0,
+					shape: "text only",
 					entered: Promise.withResolvers<void>(),
 					gate: Promise.withResolvers<void>(),
-					opened: false,
+					opened: true,
 				};
 
-				// Zero padded: an unpadded `round 1` is a substring of `round 12`, so
-				// the exactly-once counts below would credit the wrong message.
-				const promptText = `round ${String(index).padStart(2, "0")}`;
-				const pending = simulation.session.prompt(promptText).catch(() => undefined);
-				await round.entered.promise;
+				sim = await createSimulation({
+					// Retries stay on: one shape is a retryable failure, and the harness
+					// caps the budget at 2 attempts with a 1ms backoff.
+					settings: { "retry.enabled": true, ...arm.settings },
+					...(arm.window ? { model: { contextWindow: arm.window } } : {}),
+					tools: [
+						simTool("work", async () => ({ content: [{ type: "text", text: arm.payload }] })),
+						simTool("other", async () => ({ content: [{ type: "text", text: arm.payload }] }), {
+							concurrency: "exclusive",
+						}),
+					],
+					script: async turn => {
+						contexts.push(turn.context);
+						const current = round;
+						if (current.opened) {
+							// A continuation, a steered re-ask, or a retry: answer plainly so
+							// the round terminates instead of emitting calls forever.
+							turn.text(`continuation ${turn.call}`);
+							turn.finish();
+							return;
+						}
+						current.opened = true;
+						// Every id here is what a per-message counter emits: it restarts at
+						// `call_0` on every turn, so ids collide ACROSS rounds by design.
+						// That is what real OpenAI-compatible servers send, and it is the
+						// shape that used to collapse two calls onto one outbound handle.
+						switch (current.shape) {
+							case "text only":
+								turn.text(`answer ${current.index}`);
+								break;
+							case "one tool":
+								turn.toolCall("work", { round: current.index }, "call_0");
+								break;
+							case "two shared tools":
+								turn.toolCall("work", { round: current.index, n: 1 }, "call_0");
+								turn.toolCall("work", { round: current.index, n: 2 }, "call_1");
+								break;
+							case "an exclusive tool beside a shared one":
+								turn.toolCall("work", { round: current.index }, "call_0");
+								turn.toolCall("other", { round: current.index }, "call_1");
+								break;
+							case "text and a tool in one turn":
+								turn.text(`thinking about ${current.index}. `);
+								turn.toolCall("work", { round: current.index }, "call_0");
+								break;
+							case "a repeated tool-call id":
+								// The provider hands out the same id twice in ONE message; both
+								// calls are real and both must keep their own result.
+								turn.toolCall("work", { round: current.index, n: 1 }, "call_0");
+								turn.toolCall("work", { round: current.index, n: 2 }, "call_0");
+								break;
+							case "an empty turn":
+								break;
+							case "a retryable provider failure":
+								current.entered.resolve();
+								turn.fail(`503 Service Unavailable: round ${current.index}`);
+								return;
+						}
+						current.entered.resolve();
+						await current.gate.promise;
+						const emittedCall = current.shape !== "text only" && current.shape !== "an empty turn";
+						turn.finish(emittedCall ? "toolUse" : "stop");
+					},
+				});
 
-				const disturbanceText = `${disturbance} ${String(index).padStart(2, "0")}`;
-				if (disturbance === "steer") {
-					const steered = simulation.session
-						.prompt(disturbanceText, { streamingBehavior: "steer" })
-						.catch(() => undefined);
-					round.gate.resolve();
-					await steered;
-					deliveredTexts.push(disturbanceText);
-				} else if (disturbance === "follow-up") {
-					const queued = simulation.session
-						.prompt(disturbanceText, { streamingBehavior: "followUp" })
-						.catch(() => undefined);
-					round.gate.resolve();
-					await queued;
-					deliveredTexts.push(disturbanceText);
-				} else if (disturbance === "cancel") {
-					await simulation.session.abort({ reason: USER_INTERRUPT_LABEL });
-					round.gate.resolve();
-					cancelledTexts.push(promptText);
-				} else {
-					round.gate.resolve();
+				const simulation = sim;
+				const settle = async (): Promise<void> => {
+					while (simulation.session.isStreaming || simulation.session.agent.hasQueuedMessages()) {
+						await whenSessionEvent(simulation.session, event => event.type === "agent_end");
+					}
+				};
+
+				const cancelledTexts: string[] = [];
+				const deliveredTexts: string[] = [];
+				let summariesSeen = 0;
+				// Rounds in which nothing was summarized are the ones that can carry the
+				// strict exactly-once count. There must be some, or the property below
+				// is waived every round and proves nothing.
+				let strictRounds = 0;
+
+				for (const [offset, entry] of plan.entries()) {
+					const index = offset + 1;
+					const { shape, disturbance } = entry;
+					const where = `seed 0x${seed.toString(16)} round ${index} (${shape} / ${disturbance})`;
+					round = {
+						index,
+						shape,
+						entered: Promise.withResolvers<void>(),
+						gate: Promise.withResolvers<void>(),
+						opened: false,
+					};
+
+					// Zero padded: an unpadded `round 1` is a substring of `round 12`, so
+					// the exactly-once counts below would credit the wrong message.
+					const promptText = `round ${String(index).padStart(2, "0")}`;
+					const pending = simulation.session.prompt(promptText).catch(() => undefined);
+					await round.entered.promise;
+
+					const disturbanceText = `${disturbance} ${String(index).padStart(2, "0")}`;
+					if (disturbance === "steer") {
+						const steered = simulation.session
+							.prompt(disturbanceText, { streamingBehavior: "steer" })
+							.catch(() => undefined);
+						round.gate.resolve();
+						await steered;
+						deliveredTexts.push(disturbanceText);
+					} else if (disturbance === "follow-up") {
+						const queued = simulation.session
+							.prompt(disturbanceText, { streamingBehavior: "followUp" })
+							.catch(() => undefined);
+						round.gate.resolve();
+						await queued;
+						deliveredTexts.push(disturbanceText);
+					} else if (disturbance === "cancel") {
+						await simulation.session.abort({ reason: USER_INTERRUPT_LABEL });
+						round.gate.resolve();
+						cancelledTexts.push(promptText);
+					} else {
+						round.gate.resolve();
+					}
+					if (disturbance !== "cancel") deliveredTexts.push(promptText);
+
+					await pending;
+					await settle();
+
+					expect(`${where} isStreaming=${simulation.session.isStreaming}`).toBe(`${where} isStreaming=false`);
+					expect(simulation.session.agent.hasQueuedMessages()).toBe(false);
+					expect(describeViolations(where, turnViolations(simulation))).toEqual([]);
+					expect(describeViolations(`${where} store`, pairingViolations(simulation.session.messages))).toEqual([]);
+					const outbound = contexts.at(-1)?.messages ?? [];
+					expect(describeViolations(`${where} wire`, pairingViolations(outbound))).toEqual([]);
+
+					// Delivery is checked here, round by round, rather than once at the
+					// end: compaction is allowed to fold an older user text into a
+					// summary, so a count taken after twelve rounds cannot tell an
+					// undelivered message from a summarized one. Within a round that did
+					// not summarize, the text must be present exactly once.
+					const roundTexts =
+						disturbance === "steer" || disturbance === "follow-up"
+							? [promptText, disturbanceText]
+							: disturbance === "cancel"
+								? []
+								: [promptText];
+					const summariesNow = simulation.eventsOfType("auto_compaction_end").length;
+					const summarizedThisRound = summariesNow > summariesSeen;
+					summariesSeen = summariesNow;
+					if (!summarizedThisRound) strictRounds += 1;
+					for (const text of roundTexts) {
+						const stored = countMentions(simulation.session.messages, text);
+						if (summarizedThisRound) {
+							// A summary may absorb it, but it may never appear twice.
+							expect(`${where} ${text} over-stored=${stored > 1}`).toBe(`${where} ${text} over-stored=false`);
+						} else {
+							expect(`${where} ${text} stored ${stored}x`).toBe(`${where} ${text} stored 1x`);
+						}
+					}
 				}
-				if (disturbance !== "cancel") deliveredTexts.push(promptText);
 
-				await pending;
-				await settle();
+				// Nothing the user said was ever stored twice, in either arm, and the
+				// strict per-round count was actually reached.
+				for (const text of [...deliveredTexts, ...cancelledTexts]) {
+					expect(`${text} stored ${countMentions(simulation.session.messages, text)}x`).not.toBe(
+						`${text} stored 2x`,
+					);
+				}
+				expect(`${arm.label} strict rounds ${strictRounds > 0}`).toBe(`${arm.label} strict rounds true`);
 
-				expect(`${where} isStreaming=${simulation.session.isStreaming}`).toBe(`${where} isStreaming=false`);
-				expect(simulation.session.agent.hasQueuedMessages()).toBe(false);
-				expect(describeViolations(where, turnViolations(simulation))).toEqual([]);
-				expect(describeViolations(`${where} store`, pairingViolations(simulation.session.messages))).toEqual([]);
-				const outbound = contexts.at(-1)?.messages ?? [];
-				expect(describeViolations(`${where} wire`, pairingViolations(outbound))).toEqual([]);
-			}
-
-			// Nothing the user said was stored twice, and everything that rode a
-			// round the user did not cancel is there exactly once.
-			for (const text of deliveredTexts) {
-				expect(`${text} stored ${countMentions(simulation.session.messages, text)}x`).toBe(`${text} stored 1x`);
-			}
-			for (const text of cancelledTexts) {
-				expect(countMentions(simulation.session.messages, text)).toBeLessThanOrEqual(1);
-			}
-		});
+				// The arm is only evidence if it actually reached the branch: the
+				// compacting arm must have summarized at least once without aborting,
+				// and the other arm must never have tried.
+				const summarized = simulation.eventsOfType("auto_compaction_end");
+				if (arm.window) {
+					expect(`${arm.label} summarized ${summarized.filter(event => !event.aborted).length > 0}`).toBe(
+						`${arm.label} summarized true`,
+					);
+				} else {
+					expect(`${arm.label} summarized ${summarized.length}`).toBe(`${arm.label} summarized 0`);
+				}
+			});
+		}
 	}
 });
